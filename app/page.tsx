@@ -507,13 +507,25 @@ type TargetCardSelectableDetail = {
   onToggle: (key: string) => void;
 };
 
-function supportsRandomHandSelectableDetail(selection: TargetCardSelection, target: Player) {
-  if (!selection.eligibleKeys.includes("hand") || target.handCount < 1) return false;
-  if (selection.eligibleKeys.some((key) => /^hand:\d+$/.test(key))) return false;
-  if (new Set(selection.eligibleKeys).size !== selection.eligibleKeys.length) return false;
-  if (selection.eligibleKeys.length < selection.min) return false;
+function supportsHeroFocusSelectableDetail(selection: TargetCardSelection, target: Player) {
+  if (!Number.isInteger(target.handCount) || target.handCount < 0 || selection.min < 1 || selection.max < selection.min) return false;
+  if (new Set(selection.eligibleKeys).size !== selection.eligibleKeys.length || selection.eligibleKeys.length < selection.min) return false;
   const publicIds = new Set([...target.equipmentCards, ...target.judgementCards].map((card) => card.id));
-  return selection.eligibleKeys.every((key) => key === "hand" || publicIds.has(key));
+  const hasRandomHandZone = selection.eligibleKeys.includes("hand");
+  const hasPositionedHandCards = selection.eligibleKeys.some((key) => /^hand:\d+$/.test(key));
+  if (hasRandomHandZone && hasPositionedHandCards) return false;
+  const handPositions = new Set<number>();
+  return selection.eligibleKeys.every((key) => {
+    if (key === "hand") return target.handCount > 0;
+    const handPosition = /^hand:(0|[1-9]\d*)$/.exec(key);
+    if (handPosition) {
+      const index = Number(handPosition[1]);
+      if (index >= target.handCount || handPositions.has(index)) return false;
+      handPositions.add(index);
+      return true;
+    }
+    return publicIds.has(key);
+  });
 }
 
 function hasProvenExternalHeroFocusTarget(view: PresentationClientView, viewerId: string | null, targetId: string, players: Player[]) {
@@ -759,7 +771,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     || (showMediumSource && mediumSource?.player.id === display.focusTarget.id)
     || (!showMediumSource && heroFocus.visible && heroFocus.source.id === display.focusTarget.id)
   ));
-  const showDecisionSummary = display.showDecision && !isOpenNegationResponse && !decisionActorAlreadyFocused && !(currentEffect && display.isViewerDecisionActor) && !(dyingHandoff.visible
+  const showDecisionSummary = display.showDecision && !isOpenNegationResponse && !decisionActorAlreadyFocused && display.decisionActor.id !== viewerId && !(currentEffect && display.isViewerDecisionActor) && !(dyingHandoff.visible
     && display.decisionActor.id
     && dyingHandoff.decisionActor.id === display.decisionActor.id);
   const showResolverSummary = display.showResolver && !isOpenNegationResponse && !(dyingHandoff.visible
@@ -769,6 +781,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && !(dyingHandoff.visible && heroFocus.primary && heroFocus.nestedContext === display.nestedContext);
   const showFocusSummary = showRoleSummary
     && (!display.currentParticipantPresentedInHeroFocus || hasLocalFocus)
+    && display.focusTarget.id !== viewerId
     && !focusIdentityAlreadyVisible;
   const showActiveScopeSummary = showRoleSummary
     && display.currentParticipantPresentedInHeroFocus
@@ -785,7 +798,10 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && !hasLocalFocus
     && display.isViewerDecisionActor
     && !currentEffect;
-  const hideStageArchitecturalChrome = isOpenNegationResponse || connectedCurrentEffectFocusIsVisible || judgementParticipantInDock;
+  const hideStageArchitecturalChrome = isOpenNegationResponse
+    || connectedCurrentEffectFocusIsVisible
+    || judgementParticipantInDock
+    || Boolean(display.visible && !hasLocalFocus && heroFocus.visible && heroFocus.roleLabel === "CURRENT TARGET" && heroFocus.primary?.id !== viewerId);
   if (!display.visible && !hasLocalFocus) return null;
   return <section className="interaction-stage" aria-label={isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={currentEffect ?? undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined}>
     <header>{!hideStageArchitecturalChrome
@@ -799,7 +815,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
         <div className={`interaction-stage-current-effect-flow${currentEffect ? currentEffectConnectsToFocus ? " is-connected" : " is-unlinked" : " is-empty"}`}>
           {currentEffect && <section className="interaction-stage-current-effect" role="group" aria-label="Current Effect" data-current-effect-label={currentEffect}><small>{isOpenNegationResponse ? "EFFECT" : "CURRENT EFFECT"}</small><strong>{currentEffect}</strong></section>}
           {currentEffectConnectsToFocus && <span className={`current-effect-arrow${topRowMode ? " top-row-arrow" : " side-column-arrow"}`} aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
-          <HeroFocus view={heroFocus} showSource={!showMediumSource} previewPlayer={localPreviewPlayer} inspectPlayer={inspectPlayer} selectableDetail={focusSelectableDetail} hideArchitecturalLabel={hideStageArchitecturalChrome} roleLabelOverride={hideStageArchitecturalChrome && stage.stage !== "DYING" ? "Target" : null} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
+          <HeroFocus view={heroFocus} showSource={!showMediumSource && heroFocus.source.id !== viewerId} previewPlayer={localPreviewPlayer} inspectPlayer={inspectPlayer} selectableDetail={focusSelectableDetail} hideArchitecturalLabel={hideStageArchitecturalChrome} roleLabelOverride={hideStageArchitecturalChrome && stage.stage !== "DYING" ? "Target" : null} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
         </div>
         {groupTargetScope && <section className="group-target-scope" aria-label="Original target scope" data-group-target-scope="original" data-participant-density={groupTargetScope.density}>
           <header>ORIGINAL TARGET SCOPE</header>
@@ -2050,7 +2066,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     && targetCardPickerSelection
     && targetCardPickerTarget
     && targetCardPickerTarget.id === targetCardPickerSelection.targetId
-    && supportsRandomHandSelectableDetail(targetCardPickerSelection, targetCardPickerTarget)
+    && supportsHeroFocusSelectableDetail(targetCardPickerSelection, targetCardPickerTarget)
     && !targetPreviewPresentation
     && !opponentInspectionPresentation
     && hasProvenExternalHeroFocusTarget(clientPresentation, room.meId, targetCardPickerSelection.targetId, room.players),
@@ -2327,6 +2343,9 @@ function TargetCardPicker({ option, selection, target, selectedKeys, disabled, c
 function TargetCardSelectableDetailView({ option, selection, target, selectedKeys, disabled, onToggle }: TargetCardSelectableDetail) {
   const validSelectedKeys = selectedKeys.filter((key) => selection.eligibleKeys.includes(key));
   const randomHandZone = selection.eligibleKeys.includes("hand");
+  const handPositionKeys = selection.eligibleKeys
+    .filter((key) => /^hand:\d+$/.test(key))
+    .sort((a, b) => Number(a.slice(5)) - Number(b.slice(5)));
   const eligiblePublicKeys = new Set(selection.eligibleKeys.filter((key) => key !== "hand"));
   const publicCards = [
     ...target.equipmentCards.filter((item) => eligiblePublicKeys.has(item.id)).map((card) => ({ card, zone: "equipment" as const })),
@@ -2334,17 +2353,18 @@ function TargetCardSelectableDetailView({ option, selection, target, selectedKey
   ];
   const items = [
     ...(randomHandZone ? [{ key: "hand", label: `Hand ×${target.handCount} · Random card`, hidden: true, randomHandZone: true, zone: "hand" as const, card: null }] : []),
+    ...handPositionKeys.map((key) => ({ key, label: `Hidden hand card ${Number(key.slice(5)) + 1}`, hidden: true, randomHandZone: false, zone: "hand-position" as const, card: null })),
     ...publicCards.map(({ card, zone }) => ({ key: card.id, label: `${zone === "equipment" ? "Equipment" : "Judgement"}: ${cardDefinition(card.kind).name}`, hidden: false, randomHandZone: false, zone, card })),
   ];
   const effectLabel = option.label.replace(/^Use\s+/i, "");
   const amount = selection.min === selection.max ? `${selection.min}` : `${selection.min}–${selection.max}`;
   const subtitle = randomHandZone && selection.min === 1 && selection.max === 1
     ? "Choose where to obtain 1 card"
-    : `Choose ${amount} eligible card${selection.max === 1 ? "" : "s"}`;
+    : `Choose ${amount} card${selection.max === 1 ? "" : "s"}${handPositionKeys.length > 0 ? ` · Hand ×${target.handCount}` : ""}`;
   return <section className="hero-focus-selectable-detail" role="group" aria-label={`${effectLabel} selection`} data-selectable-detail="true">
     <header><span>{effectLabel}</span><small>{subtitle}</small></header>
     <div className="target-card-picker-card-row hero-focus-selectable-detail-row" aria-label="Eligible target objects">
-      {items.map((item) => <button type="button" key={item.key} data-target-card-zone={item.zone} className={`target-card-picker-card ${item.hidden ? "concealed-card" : "equipment"} ${item.randomHandZone ? "random-hand-zone" : ""} ${validSelectedKeys.includes(item.key) ? "selected" : ""}`} disabled={disabled} aria-pressed={validSelectedKeys.includes(item.key)} aria-label={item.label} onClick={() => onToggle(item.key)}>{item.randomHandZone ? <span className="concealed-hand-zone-content"><span className="target-card-picker-hand-label">Hand ×{target.handCount}</span><span className="target-card-picker-hand-backs" aria-hidden="true">{Array.from({ length: Math.min(target.handCount, 6) }, (_, index) => <span className="target-card-picker-hand-back" key={index}>?</span>)}{target.handCount > 6 && <span className="target-card-picker-hand-overflow">+{target.handCount - 6}</span>}</span><span className="target-card-picker-hand-copy">Random card</span></span> : item.card && <CardFace card={item.card} />}{validSelectedKeys.includes(item.key) && <span className="target-card-picker-check" aria-hidden="true">✓</span>}</button>)}
+      {items.map((item) => <button type="button" key={item.key} data-target-card-zone={item.zone} className={`target-card-picker-card ${item.hidden ? "concealed-card" : "equipment"} ${item.randomHandZone ? "random-hand-zone" : ""} ${validSelectedKeys.includes(item.key) ? "selected" : ""}`} disabled={disabled} aria-pressed={validSelectedKeys.includes(item.key)} aria-label={item.label} onClick={() => onToggle(item.key)}>{item.randomHandZone ? <span className="concealed-hand-zone-content"><span className="target-card-picker-hand-label">Hand ×{target.handCount}</span><span className="target-card-picker-hand-backs" aria-hidden="true">{Array.from({ length: Math.min(target.handCount, 6) }, (_, index) => <span className="target-card-picker-hand-back" key={index}>?</span>)}{target.handCount > 6 && <span className="target-card-picker-hand-overflow">+{target.handCount - 6}</span>}</span><span className="target-card-picker-hand-copy">Random card</span></span> : item.hidden ? <span className="target-card-picker-hidden-glyph" aria-hidden="true">?</span> : item.card && <><CardFace card={item.card} /><span className="hero-focus-selectable-public-card-label"><small>{item.zone === "equipment" ? "Equipment" : "Judgement"}</small><strong>{cardDefinition(item.card.kind).name}</strong></span></>}{validSelectedKeys.includes(item.key) && <span className="target-card-picker-check" aria-hidden="true">✓</span>}</button>)}
     </div>
     <div className="target-card-picker-count" aria-live="polite">{validSelectedKeys.length} / {selection.max} selected</div>
   </section>;

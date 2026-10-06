@@ -593,6 +593,24 @@ Only a proven regression or new Reviewer-approved design requirement does.
   ESLint and `git diff --check` passed. No full local suite/build/lint was run;
   push-triggered CI status is tracked in HANDOVER.
 
+### UX2.4-SELECTABLE-DETAIL-OPAQUE-HAND-POSITIONS-01 — Frost Sword concealed positions
+
+- Shared Hero Focus SELECTABLE DETAIL now accepts only server-projected,
+  unique, in-range `hand:<index>` keys for a proven external target. Hidden
+  positions use anonymous glyphs, public Equipment remains identified, the
+  existing `cardKeys` submission and action-revision reset remain unchanged,
+  and unsupported proof retains the picker fallback.
+- Browser coverage passed 19/19 for the target-card selector, 20/20 for the
+  short-portrait Stage matrix, and 526/526 for the full local browser job.
+  Targeted ESLint and `git diff --check` passed. The previous remote-head
+  Actions run `37393574566` failed in its browser job; the local combined
+  repair/feature change has not yet produced a new Actions result.
+- The CI repair corrects the 650x700 Group Stage Safe Zone overflow by
+  compacting its read-only source card, and updates UI-19 expectations to the
+  current fail-closed semantic and player-facing-label contracts. `ui19.spec.mjs`
+  had no pre-existing local edits at task start; its current changes are part
+  of this scoped repair.
+
 ## Known deferred semantic gaps
 
 These are **not completed** and must remain fail-closed until authoritative

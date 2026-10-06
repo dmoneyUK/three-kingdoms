@@ -331,11 +331,11 @@ test.describe("UX2.0VIS-09C preserve the Hand viewport across membership changes
 
 test.describe("UX2.0VIS-10A / VIS-11A short-portrait Top Row Stage containment", () => {
   const states = [
-    { state: "interaction", required: [".hero-focus", ".hero-focus-source", '.interaction-stage-current-effect[role="group"]'] },
+    { state: "interaction", required: [".hero-focus"] },
     { state: "negation", required: [".hero-focus", '[data-reaction-chain="proven"]', '[data-reaction-node="root"]', '[data-reaction-node="active"]', '[data-negation-window-state="open"]'] },
     { state: "dying", required: ['[data-dying-handoff="proven"]', ".dying-handoff-grid", ".dying-handoff-guidance"] },
-    { state: "group-observer", required: [".hero-focus", ".medium-participant-card", '[data-group-target-scope="original"]', ".interaction-stage-meta-region"] },
-    { state: "long-guidance", required: [".hero-focus", ".hero-focus-source", '.interaction-stage-current-effect[role="group"]'] },
+    { state: "group-observer", required: [".hero-focus", ".medium-participant-card", '[data-group-target-scope="original"]', '[data-stage-event-summary="proven"]', '.interaction-stage-current-effect[role="group"]'] },
+    { state: "long-guidance", required: [".hero-focus"] },
   ];
   for (const viewport of [{ width: 480, height: 640 }, { width: 650, height: 700 }, { width: 320, height: 640 }, { width: 360, height: 640 }]) {
     for (const { state, required } of states) {
@@ -381,9 +381,15 @@ test.describe("UX2.0VIS-10A / VIS-11A short-portrait Top Row Stage containment",
           await expect(negationWindow.locator("[data-stage-meta-role]")).toHaveCount(1);
           await expect(stage.locator(".interaction-stage-meta-region")).toHaveCount(0);
         } else if (state === "interaction" || state === "long-guidance") {
-          await expect(stage.locator(".hero-focus-source")).not.toHaveText("");
+          await expect(stage.locator(".hero-focus-source")).toHaveCount(0);
+          // These fixtures do not prove the active Attack responder, so the Stage must not invent a Current Effect.
+          await expect(stage.locator('[data-current-effect-label]')).toHaveCount(0);
+          await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveCount(0);
           await expect(stage.locator(".interaction-stage-meta-region")).toHaveCount(0);
-          await expect(stage.locator(":scope > header em")).toHaveCount(0);
+          await expect(stage.locator(":scope > header em")).toHaveText("YOUR DECISION");
+        } else if (state === "group-observer") {
+          await expect(stage.locator('[data-stage-event-summary="proven"]')).not.toHaveText("");
+          await expect(stage.locator(".interaction-stage-meta-region")).toHaveCount(0);
         } else if (state !== "dying") {
           await expect(stage.locator(".interaction-stage-meta-region .interaction-stage-focus")).toBeVisible();
           const sourceAlreadyVisible = await stage.locator(".medium-participant-card, .hero-focus-source").count() > 0;
@@ -421,7 +427,7 @@ test.describe("UX2.0VIS-10A / VIS-11A short-portrait Top Row Stage containment",
           };
           return {
             stage: rect('.play-table[data-seat-topology="top-row"] .interaction-stage'),
-            stageContent: [...stage.querySelectorAll(':scope > header, .interaction-stage-body, .interaction-stage-current-effect-flow, .interaction-stage-current-effect, .current-effect-arrow, .hero-focus, .interaction-stage-meta-region, .interaction-stage-focus, .interaction-stage-context, .dying-handoff, .dying-handoff-grid, .dying-handoff-guidance')]
+            stageContent: [...stage.querySelectorAll(':scope > header, .interaction-stage-body, :scope > .interaction-stage-body > *, .interaction-stage-current-effect-flow, .interaction-stage-current-effect, .current-effect-arrow, .hero-focus, .medium-participant-card, .medium-participant-portrait, .group-target-scope, .group-target-card, .interaction-stage-event-region, .interaction-stage-meta-region, .interaction-stage-focus, .interaction-stage-context, .dying-handoff, .dying-handoff-grid, .dying-handoff-guidance')]
               .filter((element) => { const box = element.getBoundingClientRect(); return box.width > 0 && box.height > 0; })
               .map((element) => ({ selector: element.className || element.tagName, ...bounds(element) })),
             stageTextMetrics: [...stage.querySelectorAll(':scope > header, .interaction-stage-current-effect strong, .hero-focus-identity, .medium-participant-identity, .interaction-stage-focus, .interaction-stage-context, .group-target-identity, .dying-handoff-grid, .dying-handoff-guidance')]
@@ -1670,12 +1676,12 @@ for (const width of [390, 480]) {
 }
 
 const VIS_12N_INTERACTION_STATES = [
-  { state: "interaction", required: [".hero-focus", ".hero-focus-source", '.interaction-stage-current-effect[role="group"]'] },
+  { state: "interaction", required: [".hero-focus"] },
   { state: "group-observer", required: [".hero-focus", ".medium-participant-card", '[data-group-target-scope="original"]'] },
   { state: "negation", required: [".hero-focus", '[data-reaction-chain="proven"]', '[data-reaction-node="root"]', '[data-reaction-node="active"]'] },
   { state: "duel", required: [".hero-focus", ".interaction-stage-meta-region"] },
   { state: "dying", required: [".hero-focus", '[data-dying-handoff="proven"]', ".dying-handoff-grid", ".dying-handoff-guidance"] },
-  { state: "long-guidance", required: [".hero-focus", ".hero-focus-source", '.interaction-stage-current-effect[role="group"]'] },
+  { state: "long-guidance", required: [".hero-focus"] },
 ];
 const VIS_12N_STAGE_SELECTOR = '.play-table[data-seat-topology="top-row"] .interaction-stage';
 
@@ -1748,7 +1754,11 @@ for (const { state, required } of VIS_12N_INTERACTION_STATES) {
     const stage = page.locator(VIS_12N_STAGE_SELECTOR);
     for (const selector of required) await expect(stage.locator(selector)).toBeVisible();
     if (state === "interaction" || state === "long-guidance") {
+      await expect(stage.locator(".hero-focus-source")).toHaveCount(0);
       await expect(stage.locator('[data-stage-meta-role="source"], [data-stage-meta-role="focus"]')).toHaveCount(0);
+      // This synthetic pair does not prove an active responder; fail closed instead of rendering an Attack effect.
+      await expect(stage.locator('[data-current-effect-label]')).toHaveCount(0);
+      await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveCount(0);
     }
     if (state === "group-observer") {
       await expect(stage.locator('[data-group-target-scope="original"] .group-target-card')).toHaveCount(1);
@@ -2228,10 +2238,14 @@ for (const width of [1440, 650, 480]) {
         await expect(stageTitle).not.toContainText("INTERACTION STAGE");
       } else if (state === "interaction") {
         await expect(stage).toHaveAttribute("aria-label", "Interaction Stage");
-        await expect(stageTitle.locator("strong")).toHaveText("Attack Response");
+        await expect(stageTitle.locator("strong")).toHaveText("Attack · Attack Response");
+        await expect(stageTitle).not.toContainText("INTERACTION STAGE");
+      } else if (state === "group-observer") {
+        await expect(stage).toHaveAttribute("aria-label", "Interaction Stage");
+        await expect(stageTitle.locator("strong")).toHaveText("Group Resolution");
         await expect(stageTitle).not.toContainText("INTERACTION STAGE");
       } else {
-        await expect(stage).toContainText("INTERACTION STAGE");
+        await expect(stage).toHaveAttribute("aria-label", "Interaction Stage");
       }
 
       const retainedPanel = state === "negation" ? page.locator(".reaction-chain")
@@ -2281,9 +2295,9 @@ test("UX2.0VIS-12M avoids duplicating source and target identity around Hero Foc
   await expect(heroFocus).toHaveAttribute("data-hero-focus-source-id", "p1");
   await expect(heroFocus).toHaveAttribute("data-hero-focus-role", "Target");
   await expect(heroFocus).toHaveAttribute("data-hero-focus-player-id", "p2");
-  await expect(stage.locator(".hero-focus-source")).toHaveText("SOURCE · Player 1");
-  await expect(stage.locator('[data-stage-meta-role="source"]')).toHaveCount(0);
-  await expect(stage.locator('[data-stage-meta-role="focus"]')).toHaveCount(0);
+  await expect(stage.locator(".hero-focus-source")).toHaveCount(0);
+  await expect(stage.locator("[data-stage-meta-role='source'], [data-stage-meta-role='focus'], [data-stage-meta-role='decision']")).toHaveCount(0);
+  await expect(stage.locator(".interaction-stage-meta-region")).toHaveCount(0);
 });
 
 test("UX2.0VIS-12P Group observer omits current-participant metadata already in Hero Focus", async ({ page }, testInfo) => {
@@ -2338,7 +2352,8 @@ test("UX2.0VIS-12M keeps source fallback when Stage source identity is missing",
   const stage = page.locator('[aria-label="Interaction Stage"]');
   await expect(stage.locator(".hero-focus-source")).toHaveCount(0);
   await expect(stage.locator('[data-stage-meta-role="source"]')).toContainText("Unknown source");
-  await expect(stage.locator('[data-stage-meta-role="focus"]')).toContainText("FOCUS");
+  await expect(stage.locator('[data-stage-meta-role="focus"]')).toHaveCount(0);
+  await expect(stage.locator('.hero-focus[data-hero-focus-role="Target"]')).toBeVisible();
 });
 
 for (const { width, focus, medium } of [
@@ -2991,9 +3006,11 @@ test("UI-19 semantic Interaction Stage and Hero Focus remain viewer-visible", as
   await expect(stage).toHaveAttribute("data-stage", "ATTACK_RESPONSE");
   await expect(page.locator('.interaction-stage[data-presentation-transition="INTERACTION_TRANSITION"]')).toBeVisible();
   await expect(page.locator('[data-hero-focus="true"]')).toBeVisible();
-  await expect(stage.locator(":scope > header strong")).toHaveText("Attack Response");
+  await expect(stage.locator(":scope > header strong")).toHaveText("Attack · Attack Response");
   await expect(stage).not.toContainText("INTERACTION STAGE");
-  await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveText("Player 1 used Attack on Player 2.");
+  // This fixture does not prove that the current participant is the active Attack target.
+  await expect(stage.locator('[data-current-effect-label="Attack"]')).toHaveCount(0);
+  await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveCount(0);
   await expect(stage.locator('.hero-focus[data-hero-focus-role="Target"]')).toBeVisible();
   await expect(page.locator('[data-interaction-decision-actor="true"]')).toHaveCount(1);
 });
@@ -3011,7 +3028,7 @@ test("UI-19 Duel responder remains bounded at the 650px breakpoint", async ({ pa
   await expect(page.locator('[data-stage="DUEL_EXCHANGE"]')).toBeVisible();
   await assertVisible(page.locator('[data-console-surface="local-operation"]'), "Duel console");
   await expect(page.locator('[data-console-surface="local-operation"] button')).toHaveCount(2);
-  await expect(page.locator('[data-hero-focus-role="CURRENT TARGET"]')).toBeVisible();
+  await expect(page.locator('[data-hero-focus-role="Target"]')).toBeVisible();
 });
 
 test("UI-19 Negation reaction chain keeps semantic labels at 480px", async ({ page }) => {
@@ -3031,23 +3048,28 @@ test("UI-19 Dying/Peach handoff remains semantic and operable at 480px", async (
   await expect(page.locator('[data-console-surface="local-operation"] button')).toHaveCount(2);
 });
 
-test("UI-19 retained target-card picker stays bounded and scroll-safe at 480px", async ({ page }) => {
+test("UI-19 opaque Hand detail stays bounded inside external Hero Focus at 480px", async ({ page }) => {
   await loadFixture(page, { state: "picker", count: 4, width: 480, height: 900 });
-  const panel = page.locator('[role="dialog"][aria-label="Retaliation target card selection"]');
-  await expect(panel).toBeVisible();
-  const bounds = await panel.evaluate((element) => {
+  const stage = page.locator('[aria-label="Interaction Stage"]');
+  const focus = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"][data-hero-focus-player-id="p1"]');
+  const positions = focus.locator('[data-target-card-zone="hand-position"]');
+  await expect(focus).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Retaliation target card selection" })).toHaveCount(0);
+  await expect(positions).toHaveCount(2);
+  const bounds = await focus.evaluate((element) => {
     const box = element.getBoundingClientRect();
-    const row = element.querySelector(".target-card-picker-card-row");
+    const row = element.querySelector(".hero-focus-selectable-detail-row");
+    const cards = [...element.querySelectorAll("[data-target-card-zone='hand-position']")];
     return {
       withinViewport: box.left >= 0 && box.top >= 0 && box.right <= window.innerWidth && box.bottom <= window.innerHeight,
       rowScrollSafe: Boolean(row && row.scrollWidth >= row.clientWidth && getComputedStyle(row).overflowX === "auto"),
-      actionButtonsVisible: [...element.querySelectorAll(".target-card-picker-actions button")].every((button) => {
+      positionTargetsUsable: cards.length === 2 && cards.every((button) => {
         const buttonBox = button.getBoundingClientRect();
-        return buttonBox.width > 0 && buttonBox.height > 0;
+        return buttonBox.width >= 44 && buttonBox.height >= 44;
       }),
     };
   });
-  expect(bounds, "picker panel stays within the mobile viewport").toEqual({ withinViewport: true, rowScrollSafe: true, actionButtonsVisible: true });
+  expect(bounds, "opaque positions remain usable inside Hero Focus").toEqual({ withinViewport: true, rowScrollSafe: true, positionTargetsUsable: true });
   await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 480);
 });
 

@@ -1822,8 +1822,10 @@
 .hero-focus-selectable-detail > header strong { color: #a8c8b1; font: 700 7px/1.2 Arial, sans-serif; letter-spacing: .14em; }
 .hero-focus-selectable-detail > header span { color: #efc36c; font: 700 8px/1.2 Arial, sans-serif; }
 .hero-focus-selectable-detail > header small { color: #b7c6b1; font: 8px/1.2 Arial, sans-serif; }
-.hero-focus-selectable-detail-row { justify-content: flex-start; gap: 8px; width: 100%; box-sizing: border-box; overflow-x: auto; overscroll-behavior-x: contain; padding: 9px 4px 11px; touch-action: pan-x; }
+.hero-focus-selectable-public-card-label { display: none; }
+.hero-focus-selectable-detail-row { justify-content: flex-start; gap: 8px; width: 100%; box-sizing: border-box; overflow-x: auto; overscroll-behavior-x: contain; padding: 6px 4px 8px; touch-action: pan-x; }
 .hero-focus-selectable-detail-row .target-card-picker-card { pointer-events: auto; }
+.hero-focus-selectable-detail-row > .target-card-picker-card { flex-basis: 76px; width: 76px; height: 108px; }
 .hero-focus-selectable-detail > .target-card-picker-count { padding: 0 3px; text-align: left; }
 @media (max-width: 480px) {
   .hero-focus-selectable-detail > header { gap: 3px 6px; }
@@ -1831,6 +1833,73 @@
   .hero-focus-selectable-detail-row { gap: 6px; padding: 7px 3px 9px; }
   .hero-focus-selectable-detail-row .target-card-picker-card { flex-basis: 76px; width: 76px; height: 108px; }
   .hero-focus-selectable-detail-row .target-card-picker-card.random-hand-zone { flex-basis: 138px; width: 138px; padding: 7px; }
+}
+
+@container top-row-interaction-safe-zone (max-height: 330px) and (max-width: 480px) {
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-selectable-detail {
+    padding-top: 2px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-selectable-detail > header {
+    gap: 1px 4px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-selectable-detail > header span {
+    font-size: 7px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-selectable-detail > header small {
+    flex-basis: auto;
+    color: #b7c6b1;
+    font-size: 6px;
+    white-space: nowrap;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-selectable-detail-row {
+    gap: 4px;
+    padding: 2px 1px 3px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-selectable-detail-row > .target-card-picker-card {
+    flex-basis: 44px;
+    width: 44px;
+    height: 48px;
+    border-width: 1px;
+    border-radius: 4px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-selectable-detail-row > .target-card-picker-card[data-target-card-zone="equipment"],
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-selectable-detail-row > .target-card-picker-card[data-target-card-zone="judgement"] {
+    flex-basis: 74px;
+    width: 74px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .target-card-picker-hidden-glyph {
+    font-size: 24px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-selectable-detail-row .played-card {
+    display: none;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-selectable-public-card-label {
+    display: flex;
+    height: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 2px;
+    color: #e7d9b8;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-selectable-public-card-label small {
+    color: #b7c6b1;
+    font: 700 5px/1.1 Arial, sans-serif;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-selectable-public-card-label strong {
+    color: #f0d28c;
+    font: 700 7px/1.1 Arial, sans-serif;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-selectable-detail > .target-card-picker-count {
+    padding: 0 1px;
+    font-size: 7px;
+    line-height: 1.1;
+  }
 }
 
 /* ACTIVE Attack Response/Negation and current-participant Duel present only
@@ -2756,6 +2825,13 @@
   }
   .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .interaction-stage-hero-region {
     display: contents;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .medium-participant-card {
+    gap: 2px;
+    padding: 2px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .medium-participant-portrait {
+    height: 52px;
   }
   .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .medium-participant-card {
     grid-column: 1;
