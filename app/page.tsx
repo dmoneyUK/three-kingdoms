@@ -685,12 +685,19 @@ function StageActionCard({ kind, active, root = false, singleTargetNegationRoot 
   </div>;
 }
 
-function SingleTargetNegationOpenComposition({ source, target, cardKind }: { source: SingleTargetNegationParticipantIdentity; target: SingleTargetNegationParticipantIdentity; cardKind: CardKind }) {
+function SingleTargetNegationCausalComposition({ source, target, cardKind, rootActive, negationNode }: { source: SingleTargetNegationParticipantIdentity; target: SingleTargetNegationParticipantIdentity; cardKind: CardKind; rootActive: boolean; negationNode: GroupReactionNode | null }) {
   const selfTarget = source.id === target.id;
-  return <div className="single-target-negation-open-composition" data-single-target-negation-causal-spine="proven" data-negation-self-target={selfTarget ? "true" : "false"}>
+  return <div className="single-target-negation-composition" data-single-target-negation-causal-spine="proven" data-negation-self-target={selfTarget ? "true" : "false"}>
     <SingleTargetNegationParticipant identity={source} participantRole="source" />
     <span className="single-target-negation-causal-arrow" aria-hidden="true">↓</span>
-    <StageActionCard kind={cardKind} active root singleTargetNegationRoot />
+    <div className="single-target-negation-root-slot" data-single-target-negation-root-slot="true">
+      <StageActionCard kind={cardKind} active={rootActive} root singleTargetNegationRoot />
+      {negationNode && <div className="single-target-negation-first-branch" data-first-public-negation-branch="true" data-negation-node-actor-id={negationNode.actor.id ?? undefined}>
+        <span className="single-target-negation-branch-connector" aria-hidden="true" />
+        <StageActionCard kind="Negation" active />
+        <b data-public-negation-actor={negationNode.actor.id ?? undefined}>{negationNode.actor.name}</b>
+      </div>}
+    </div>
     {selfTarget
       ? <span className="single-target-negation-self-return" role="img" data-self-return-relationship="true" aria-label={`Returns to ${source.name}`} />
       : <><span className="single-target-negation-causal-arrow" aria-hidden="true">↓</span><SingleTargetNegationParticipant identity={target} participantRole="target" /></>}
@@ -975,9 +982,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const singleTargetNegationRootTargetDisplay = singleTargetNegationRootTarget?.id
     ? resolvePlayerDisplay?.(singleTargetNegationRootTarget.id) ?? null
     : null;
-  const isProvenSingleTargetOpenComposition = Boolean(isProvenSingleTargetNegation
-    && reactionChain.negationNodes.length === 0
-    && !hasLocalFocus
+  const isProvenSingleTargetNegationRoot = Boolean(isProvenSingleTargetNegation
     && singleTargetNegationRootCard
     && singleTargetNegationRootCard.interactionId === stage.interactionId
     && singleTargetNegationRootCard.frameId === stage.activeFrameId
@@ -988,10 +993,20 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && singleTargetNegationRootCard.cardKind === reactionChain.root?.cardKind
     && stage.source.id !== viewerId
     && singleTargetNegationRootTarget?.id !== viewerId);
-  const singleTargetNegationOpenSource: SingleTargetNegationParticipantIdentity | null = isProvenSingleTargetOpenComposition && stage.source.id
+  const singleTargetNegationFirstNode = reactionChain.negationNodes.length === 1 ? reactionChain.negationNodes[0] : null;
+  const isProvenSingleTargetNegationFirstBranch = Boolean(isProvenSingleTargetNegationRoot
+    && !hasLocalFocus
+    && singleTargetNegationFirstNode?.cardKind === "Negation"
+    && singleTargetNegationFirstNode.actor.id
+    && singleTargetNegationFirstNode.actor.known);
+  const isProvenSingleTargetOpenComposition = Boolean(isProvenSingleTargetNegationRoot
+    && reactionChain.negationNodes.length === 0
+    && !hasLocalFocus);
+  const isProvenSingleTargetCausalComposition = isProvenSingleTargetOpenComposition || isProvenSingleTargetNegationFirstBranch;
+  const singleTargetNegationSource: SingleTargetNegationParticipantIdentity | null = isProvenSingleTargetCausalComposition && stage.source.id
     ? { id: stage.source.id, name: stage.source.name, heroId: resolvePlayerDisplay?.(stage.source.id)?.heroId ?? null }
     : null;
-  const singleTargetNegationOpenTarget: SingleTargetNegationParticipantIdentity | null = isProvenSingleTargetOpenComposition && singleTargetNegationRootTarget?.id
+  const singleTargetNegationTarget: SingleTargetNegationParticipantIdentity | null = isProvenSingleTargetCausalComposition && singleTargetNegationRootTarget?.id
     ? { id: singleTargetNegationRootTarget.id, name: singleTargetNegationRootTarget.name, heroId: singleTargetNegationRootTargetDisplay?.heroId ?? null }
     : null;
   const bumperHarvestNegationNodes = isProvenBumperHarvestComposition && stage.stage === "NEGATION"
@@ -1154,19 +1169,19 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
         ? "DYING PLAYER"
         : null;
   if (!display.visible && !hasLocalFocus) return null;
-  return <section className="interaction-stage" aria-label={isProvenSingleTargetOpenComposition ? "Interaction Stage" : isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={isProvenGroupComposition || isProvenOathComposition || isProvenBumperHarvestComposition || isProvenSingleTargetOpenComposition ? undefined : currentEffect ?? undefined} data-borrowed-sword-forced-attack={borrowedSwordForcedAttack ? "true" : undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined} data-group-negation={isProvenGroupNegation ? "true" : undefined} data-group-composition={isProvenGroupComposition ? "true" : undefined} data-oath-composition={isProvenOathComposition ? "true" : undefined} data-bumper-harvest-composition={isProvenBumperHarvestComposition ? "true" : undefined} data-negation-open-composition={isProvenSingleTargetOpenComposition ? "proven" : undefined}>
-    {!isProvenGroupComposition && !isProvenOathComposition && !isProvenBumperHarvestComposition && !isProvenSingleTargetOpenComposition && <header>{!hideStageArchitecturalChrome
+  return <section className="interaction-stage" aria-label={isProvenSingleTargetCausalComposition ? "Interaction Stage" : isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={isProvenGroupComposition || isProvenOathComposition || isProvenBumperHarvestComposition || isProvenSingleTargetCausalComposition ? undefined : currentEffect ?? undefined} data-borrowed-sword-forced-attack={borrowedSwordForcedAttack ? "true" : undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined} data-group-negation={isProvenGroupNegation ? "true" : undefined} data-group-composition={isProvenGroupComposition ? "true" : undefined} data-oath-composition={isProvenOathComposition ? "true" : undefined} data-bumper-harvest-composition={isProvenBumperHarvestComposition ? "true" : undefined} data-single-target-negation-composition={isProvenSingleTargetCausalComposition ? "proven" : undefined} data-negation-open-composition={isProvenSingleTargetOpenComposition ? "proven" : undefined} data-negation-first-branch-composition={isProvenSingleTargetNegationFirstBranch ? "proven" : undefined}>
+    {!isProvenGroupComposition && !isProvenOathComposition && !isProvenBumperHarvestComposition && !isProvenSingleTargetCausalComposition && <header>{!hideStageArchitecturalChrome
       ? <span>INTERACTION STAGE</span>
       : stage.stage === "DYING" && <span className="interaction-stage-visually-hidden">INTERACTION STAGE</span>}<strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : currentEffect && isOpenNegationResponse ? "NEGATION RESPONSE" : currentEffect && stage.stage === "DYING" ? display.focusLabel : currentEffect ? stage.stageLabel : display.focusLabel}</strong>{showViewerDecisionMarker && <em>YOUR DECISION</em>}</header>}
-    {!isProvenGroupComposition && !isProvenOathComposition && !isProvenBumperHarvestComposition && !isProvenSingleTargetOpenComposition && currentEffectSummary && <p className="interaction-stage-event-summary" data-stage-event-summary="proven">{currentEffectSummary}</p>}
+    {!isProvenGroupComposition && !isProvenOathComposition && !isProvenBumperHarvestComposition && !isProvenSingleTargetCausalComposition && currentEffectSummary && <p className="interaction-stage-event-summary" data-stage-event-summary="proven">{currentEffectSummary}</p>}
     {isProvenGroupComposition && groupTargetScope && stage.groupCardKind
       ? <GroupInteractionComposition source={groupSource} rootKind={stage.groupCardKind} rootActive={groupNegationNodes.length === 0} negationNodes={groupNegationNodes} interactionId={reactionChain.interactionId} targetScope={groupTargetScope} />
       : isProvenOathComposition && oathRecipientScope
         ? <OathInteractionComposition source={oathSource} recipients={oathRecipientScope} negationNodes={oathNegationNodes} interactionId={reactionChain.interactionId} />
       : isProvenBumperHarvestComposition && bumperHarvestCompositionView
         ? <BumperHarvestInteractionComposition source={bumperHarvestCompositionView.source} view={bumperHarvestCompositionView} rootActive={bumperHarvestCompositionView.currentParticipantId !== null && bumperHarvestNegationNodes.length === 0} negationNodes={bumperHarvestNegationNodes} interactionId={stage.interactionId} />
-      : isProvenSingleTargetOpenComposition && singleTargetNegationOpenSource && singleTargetNegationOpenTarget && singleTargetNegationRootCard
-        ? <div className="interaction-stage-body single-target-negation-open-body"><div className="interaction-stage-hero-region"><SingleTargetNegationOpenComposition source={singleTargetNegationOpenSource} target={singleTargetNegationOpenTarget} cardKind={singleTargetNegationRootCard.cardKind} /></div></div>
+      : isProvenSingleTargetCausalComposition && singleTargetNegationSource && singleTargetNegationTarget && singleTargetNegationRootCard
+        ? <div className="interaction-stage-body single-target-negation-body"><div className="interaction-stage-hero-region"><SingleTargetNegationCausalComposition source={singleTargetNegationSource} target={singleTargetNegationTarget} cardKind={singleTargetNegationRootCard.cardKind} rootActive={isProvenSingleTargetOpenComposition} negationNode={isProvenSingleTargetNegationFirstBranch ? singleTargetNegationFirstNode : null} /></div></div>
       : <div className="interaction-stage-body">
       <div className="interaction-stage-hero-region">
         {showMediumSource && mediumSource && (isProvenSingleTargetNegation
@@ -1190,7 +1205,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
           </div>
           <small className="dying-handoff-guidance">{dyingHandoff.guidance}</small>
         </section>}
-        {!isProvenBumperHarvestComposition && !isProvenSingleTargetOpenComposition && reactionChain.visible && reactionChain.root && reactionChain.active && (!isProvenGroupNegation || reactionChain.negationNodes.length > 0) && <section className={`reaction-chain${isProvenGroupNegation ? " reaction-chain-group" : ""}`} aria-label={isProvenGroupNegation ? "AOE Negation Response" : "Reaction Chain"} data-reaction-chain="proven" data-group-negation={isProvenGroupNegation ? "true" : undefined} data-reaction-interaction-id={reactionChain.interactionId ?? undefined}>
+        {!isProvenBumperHarvestComposition && !isProvenSingleTargetCausalComposition && reactionChain.visible && reactionChain.root && reactionChain.active && (!isProvenGroupNegation || reactionChain.negationNodes.length > 0) && <section className={`reaction-chain${isProvenGroupNegation ? " reaction-chain-group" : ""}`} aria-label={isProvenGroupNegation ? "AOE Negation Response" : "Reaction Chain"} data-reaction-chain="proven" data-group-negation={isProvenGroupNegation ? "true" : undefined} data-reaction-interaction-id={reactionChain.interactionId ?? undefined}>
           <header><span>REACTION CHAIN</span></header>
           <ol>
             {!isProvenGroupNegation && <li data-reaction-node="root"><small>{isOpenNegationResponse ? "ORIGINAL EFFECT" : "ROOT EFFECT"}</small><b>{reactionChain.root.effect}</b><span>{reactionChain.root.source.name}{reactionChain.root.targets.length ? ` → ${reactionChain.root.targets.map((target) => target.name).join(", ")}` : ""}</span></li>}
