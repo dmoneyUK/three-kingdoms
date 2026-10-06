@@ -6,7 +6,8 @@ test("Quick Test viewer switching reprojects one public Attack without replaying
 
   const stage = page.locator('[aria-label="Interaction Stage"][data-stage="ATTACK_RESPONSE"]');
   const publicSnapshot = () => page.evaluate(() => {
-    const { localControl: _localControl, ...shared } = window.__browserRoom.presentationSnapshot;
+    const shared = { ...window.__browserRoom.presentationSnapshot };
+    delete shared.localControl;
     return shared;
   });
   const sharedBefore = await publicSnapshot();
