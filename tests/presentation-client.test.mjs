@@ -183,6 +183,20 @@ test("adapter carries only a proven, linked Negation history without adding UI c
   assert.deepEqual(observer.reactionChain, acting.reactionChain, "public submitted actions stay viewer-equal");
   assert.equal("options" in acting, false);
   assert.equal("legalActions" in acting, false);
+  const stage = buildInteractionStageView(acting, resolveDisplayName);
+  assert.deepEqual(stage.reactionChainNegationNodes, [
+    { actor: { id: "B", name: "Zhao Yun", known: true }, cardKind: "Negation" },
+    { actor: { id: "A", name: "Ma Chao", known: true }, cardKind: "Negation" },
+  ]);
+  const chain = buildReactionChainView(stage);
+  assert.deepEqual(chain.negationNodes.map(({ actor, cardKind }) => [actor.name, cardKind]), [
+    ["Zhao Yun", "Negation"], ["Ma Chao", "Negation"],
+  ], "the linked public order is retained for Stage rendering");
+  const observerChain = buildReactionChainView(buildInteractionStageView(observer, resolveDisplayName));
+  assert.deepEqual(observerChain.negationNodes, chain.negationNodes);
+  assert.equal(JSON.stringify(chain).includes("negation-1"), false, "internal node IDs are not carried into the display model");
+  assert.equal(JSON.stringify(chain).includes("physicalCardId"), false);
+  assert.equal(JSON.stringify(chain).includes("CurrentAction"), false);
 
   const malformed = buildPresentationClientView({
     ...snapshotValue,
@@ -951,6 +965,7 @@ test("Reaction Chain projects only a proven Negation root and active response", 
   assert.deepEqual(chain, {
     visible: true,
     interactionId: "interaction-1",
+    negationNodes: [],
     root: {
       effect: "Dismantle",
       source: { id: "A", name: "Ma Chao", known: true },
@@ -977,8 +992,8 @@ test("Reaction Chain stays viewer-equal and cannot derive counter history from l
 test("Reaction Chain fails closed outside a proven Negation scene", () => {
   const attack = buildReactionChainView(buildInteractionStageView(buildPresentationClientView(snapshot(), "B"), resolveDisplayName));
   const malformed = buildReactionChainView(buildInteractionStageView(buildPresentationClientView(snapshot({ interaction: scene({ stage: "NEGATION", effect: null }) }), "B"), resolveDisplayName));
-  assert.deepEqual(attack, { visible: false, interactionId: null, root: null, active: null });
-  assert.deepEqual(malformed, { visible: false, interactionId: null, root: null, active: null });
+  assert.deepEqual(attack, { visible: false, interactionId: null, negationNodes: [], root: null, active: null });
+  assert.deepEqual(malformed, { visible: false, interactionId: null, negationNodes: [], root: null, active: null });
 });
 
 test("Dying handoff keeps the dying participant public and the rescue actor bounded", () => {

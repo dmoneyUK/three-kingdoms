@@ -757,15 +757,26 @@ Only a proven regression or new Reviewer-approved design requirement does.
   remote head `2a99b0f` had Actions run `37419081776` queued at the pre-commit
   check; no result is claimed for it here.
 
+### UX2.6-REACTION-CHAIN-NEGATION-NODES-STAGE-01 — Public Negation nodes
+
+- The Interaction Stage now renders validated, server-projected Negation card
+  nodes in their linked order between the root effect and active response. The
+  UI exposes only public actor/card kind; physical card IDs, private
+  CurrentAction/provider data, inferred passes, and malformed history remain
+  absent. Root/active content and AOE presentation remain separate.
+- PresentationClient tests passed 45/45; the focused Active Current Effect
+  browser slice passed 13/13, including one/multiple nodes, malformed/missing
+  history, unchanged AOE/Halberd progress, 390/480/1440px, and 10-player
+  geometry. Build, targeted ESLint, and `git diff --check` passed. The previous
+  remote head `1d28913` completed Actions run `37419896636` with both
+  build-and-test and deploy successful.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
 behavior must continue to fail closed:
 
 - Public AOE outcome summaries and unrelated Group semantics remain deferred.
-- The active Negation chain now has authoritative linked card nodes, but the
-  player-facing Reaction Chain consumer does not yet render those nodes; this
-  is the next bounded Stage task.
 - Cross-frame and post-settlement Reaction Chain history beyond the active
   Negation continuation's proven linked nodes.
 - Settlement/transition history that would require new authoritative public

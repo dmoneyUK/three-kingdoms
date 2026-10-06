@@ -69,6 +69,7 @@ export type InteractionStageView = {
   activeResolver: PresentationDisplayIdentity;
   groupParticipantProgress: readonly PresentationSnapshotGroupParticipantProgress[];
   orderedTargetProgress: readonly PresentationSnapshotGroupParticipantProgress[];
+  reactionChainNegationNodes: readonly ReactionChainNegationNodeView[];
   rootOrigin?: {
     frameId: string;
     stage: PresentationInteractionScene["stage"];
@@ -103,6 +104,7 @@ export type InteractionStageDisplayModel = {
 export type ReactionChainView = {
   visible: boolean;
   interactionId: string | null;
+  negationNodes: readonly ReactionChainNegationNodeView[];
   root: {
     effect: string;
     source: PresentationDisplayIdentity;
@@ -114,6 +116,11 @@ export type ReactionChainView = {
     activeResolver: PresentationDisplayIdentity;
     relation: InteractionSceneContinuity["relation"];
   } | null;
+};
+
+export type ReactionChainNegationNodeView = {
+  actor: PresentationDisplayIdentity;
+  cardKind: "Negation";
 };
 
 export type DyingHandoffView = {
@@ -464,6 +471,12 @@ export function buildInteractionStageView(
       && view.groupResolution.resolutionSemantics === "ORDERED"
       ? view.groupResolution.participants.map((participant) => ({ ...participant }))
       : [],
+    reactionChainNegationNodes: view.stage === "NEGATION"
+      ? (view.reactionChain?.nodes ?? []).map((node) => ({
+        actor: displayIdentity(node.actorId, "Unknown player", resolvePlayerName),
+        cardKind: "Negation" as const,
+      }))
+      : [],
     ...(view.rootOrigin ? {
       rootOrigin: {
         frameId: view.rootOrigin.frameId,
@@ -492,11 +505,12 @@ export function buildInteractionStageView(
  */
 export function buildReactionChainView(stage: InteractionStageView): ReactionChainView {
   if (!stage.visible || stage.stage !== "NEGATION" || !stage.effect || !stage.source.id) {
-    return { visible: false, interactionId: null, root: null, active: null };
+    return { visible: false, interactionId: null, negationNodes: [], root: null, active: null };
   }
   return {
     visible: true,
     interactionId: stage.interactionId,
+    negationNodes: stage.reactionChainNegationNodes.map((node) => ({ ...node, actor: { ...node.actor } })),
     root: {
       effect: stage.effect,
       source: stage.source,

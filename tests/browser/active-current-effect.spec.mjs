@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, source = null, duelObserver = false, duelParticipantMissing = false, dyingParticipant = null, judgementParticipant = null, groupParticipant = null, groupProgress = null, orderedProgress = null, targetShiftCase = null }) {
+async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, source = null, duelObserver = false, duelParticipantMissing = false, dyingParticipant = null, judgementParticipant = null, groupParticipant = null, groupProgress = null, orderedProgress = null, negationHistory = null, targetShiftCase = null }) {
   await page.setViewportSize({ width, height });
   const effectQuery = effect ? `&effect=${encodeURIComponent(effect)}` : "";
   const sourceQuery = source ? `&source=${encodeURIComponent(source)}` : "";
@@ -11,8 +11,9 @@ async function loadFixture(page, { count = 4, width, height = 900, state = "acti
   const groupParticipantQuery = groupParticipant ? `&groupParticipant=${encodeURIComponent(groupParticipant)}` : "";
   const groupProgressQuery = groupProgress ? `&groupProgress=${encodeURIComponent(groupProgress)}` : "";
   const orderedProgressQuery = orderedProgress ? `&orderedProgress=${encodeURIComponent(orderedProgress)}` : "";
+  const negationHistoryQuery = negationHistory ? `&negationHistory=${encodeURIComponent(negationHistory)}` : "";
   const targetShiftCaseQuery = targetShiftCase ? `&targetShift=${encodeURIComponent(targetShiftCase)}` : "";
-  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${sourceQuery}${duelObserverQuery}${missingDuelParticipantQuery}${dyingParticipantQuery}${judgementParticipantQuery}${groupParticipantQuery}${groupProgressQuery}${orderedProgressQuery}${targetShiftCaseQuery}`);
+  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${sourceQuery}${duelObserverQuery}${missingDuelParticipantQuery}${dyingParticipantQuery}${judgementParticipantQuery}${groupParticipantQuery}${groupProgressQuery}${orderedProgressQuery}${negationHistoryQuery}${targetShiftCaseQuery}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
@@ -540,7 +541,7 @@ for (const viewport of [
   { count: 10, width: 480, height: 900, topology: "side-column" },
 ]) {
   test(`proven NEGATION Current Effect fits ${viewport.count}-player ${viewport.topology} at ${viewport.width}px`, async ({ page }) => {
-    await loadFixture(page, { ...viewport, state: "active-negation-observer" });
+    await loadFixture(page, { ...viewport, state: "active-negation-observer", negationHistory: "valid" });
     const stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
     const source = stage.locator('.medium-participant-card[data-medium-participant-player-id="p1"]');
     const effect = stage.locator('[aria-label="Current Effect"]');
@@ -617,6 +618,45 @@ for (const viewport of [
     expect(summaryBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1);
   });
 }
+
+test("Reaction Chain renders linked public Negation nodes in order without exposing the waiting responder", async ({ page }) => {
+  await loadFixture(page, { count: 4, width: 390, height: 844, state: "active-negation-observer", negationHistory: "valid" });
+  const stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
+  const chain = stage.locator('[data-reaction-chain="proven"]');
+  const orderedNodes = chain.locator("ol > li");
+  const negations = chain.locator('[data-reaction-node="negation"]');
+
+  await expect(negations).toHaveCount(2);
+  expect(await orderedNodes.evaluateAll((items) => items.map((item) => item.dataset.reactionNode))).toEqual(["root", "negation", "negation", "active"]);
+  const verticalPositions = await orderedNodes.evaluateAll((items) => items.map((item) => item.getBoundingClientRect().top));
+  expect(verticalPositions.every((top, index) => index === 0 || top >= verticalPositions[index - 1])).toBe(true);
+  await expect(negations.nth(0)).toHaveAttribute("aria-label", "Player 1 played Negation");
+  await expect(negations.nth(1)).toHaveAttribute("aria-label", "Player 2 played Negation");
+  await expect(negations.nth(0)).toContainText("Player 1 played this card.");
+  await expect(negations.nth(1)).toContainText("Player 2 played this card.");
+  await expect(chain.locator('[data-reaction-node="root"]')).toContainText("Dismantle");
+  await expect(chain.locator('[data-reaction-node="active"]')).toContainText("Waiting for response...");
+  await expect(chain).not.toContainText("Player 3");
+  await expect(stage).not.toContainText("Player 3");
+  await expect(stage.locator("button")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+});
+
+test("Reaction Chain shows one proven Negation node and omits absent or malformed history", async ({ page }) => {
+  await loadFixture(page, { count: 4, width: 480, height: 900, state: "active-negation-observer", negationHistory: "single" });
+  let chain = page.locator('[data-reaction-chain="proven"]');
+  await expect(chain.locator('[data-reaction-node="negation"]')).toHaveCount(1);
+  await expect(chain.locator("ol > li")).toHaveCount(3);
+
+  for (const negationHistory of [null, "invalid-link", "frame-mismatch"]) {
+    await loadFixture(page, { count: 4, width: 480, height: 900, state: "active-negation-observer", negationHistory });
+    chain = page.locator('[data-reaction-chain="proven"]');
+    await expect(chain.locator('[data-reaction-node="root"]')).toBeVisible();
+    await expect(chain.locator('[data-reaction-node="active"]')).toContainText("Waiting for response...");
+    await expect(chain.locator('[data-reaction-node="negation"]')).toHaveCount(0);
+    await expect(chain.locator("ol > li")).toHaveCount(2);
+  }
+});
 
 test("NEGATION effect stays unlinked without matching focus and fails closed for absent or ambiguous proof", async ({ page }) => {
   await loadFixture(page, { width: 1440, state: "active-negation-unfocused-observer" });
