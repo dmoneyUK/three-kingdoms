@@ -699,7 +699,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
 - Local validation passed: build; focused PresentationV2/Snapshot/client/render
   tests 111/111; engine-backed API tests 27/27; targeted ESLint; and
   `git diff --check`. The exact pre-change remote head `f976f3c` passed Actions
-  run #757 (`37432494493`); this task's push-triggered result is not yet
+  run #757 (`37432494493`); the pushed feature head `fb44d95` passed Actions
+  run #758 (`37433985701`).
+
+### UX2.7-AOE-NEGATED-OUTCOME-01 — Proven AOE cancellation
+
+- AOE participant progress now shows `NEGATED` only after a resolved Negation
+  cancels the exact Raining Arrows or Barbarian Invasion Group participant.
+  Open windows, pass-only resolution, counter-Negation, and target-identity
+  mismatch remain outcome-free. The Stage labels the public outcome without
+  exposing private response controls or card identities.
+- Local validation passed: build; focused PresentationV2/Snapshot/client/render
+  tests 111/111; engine-backed API tests 29/29; targeted ESLint; and
+  `git diff --check`. The exact pre-change remote head `fb44d95` passed Actions
+  run #758 (`37433985701`); the push-triggered result for this task is not yet
   observed.
 
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
@@ -818,9 +831,9 @@ Only a proven regression or new Reviewer-approved design requirement does.
 These remain incomplete; where authoritative projection does not exist,
 behavior must continue to fail closed:
 
-- Additional public AOE outcomes beyond the proven Raining Arrows `Avoided` and
-  Raining Arrows / Barbarian Invasion `Damaged` results, and unrelated Group
-  semantics, remain deferred.
+- Public AOE outcomes beyond Raining Arrows `Avoided`, Raining Arrows / Barbarian
+  Invasion `Damaged`, and Raining Arrows / Barbarian Invasion `Negated`, plus
+  unrelated Group semantics, remain deferred.
 - Cross-frame and post-settlement Reaction Chain history beyond the active
   Negation continuation's proven linked nodes.
 - Settlement/transition history that would require new authoritative public

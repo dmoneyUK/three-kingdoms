@@ -480,7 +480,7 @@ function groupParticipantStatusLabel(status: PresentationClientView["groupPartic
 }
 
 function groupParticipantOutcomeLabel(outcome: PresentationClientView["groupParticipantProgress"][number]["outcome"] | null): string | null {
-  return outcome === "AVOIDED" ? "Avoided" : outcome === "DAMAGED" ? "Damaged" : null;
+  return outcome === "AVOIDED" ? "Avoided" : outcome === "DAMAGED" ? "Damaged" : outcome === "NEGATED" ? "Negated" : null;
 }
 
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }

@@ -261,6 +261,15 @@ test("adapter carries only proven resolved Group damage outcomes", () => {
   const barbarianAvoided = buildPresentationClientView(groupProgressSnapshot({ cardKind: "BarbarianInvasion", outcome: "AVOIDED" }), "D");
   assert.deepEqual(barbarianAvoided.groupParticipantProgress, [], "Barbarian Invasion cannot claim an Avoided outcome");
 
+  for (const cardKind of ["RainingArrows", "BarbarianInvasion"]) {
+    const negated = buildPresentationClientView(groupProgressSnapshot({ cardKind, outcome: "NEGATED" }), "D");
+    assert.equal(negated.groupParticipantProgress[0].outcome, "NEGATED");
+    const stage = buildInteractionStageView(negated, resolveDisplayName);
+    const focus = projectHeroFocusForViewer(stage, buildHeroFocusView(stage), "D");
+    const source = projectMediumSourceForViewer(stage, focus, "D");
+    assert.equal(projectGroupTargetScopeForViewer(stage, focus, source, "D")?.players[0].outcome, "NEGATED");
+  }
+
   const activeOutcome = buildPresentationClientView(snapshot({
     groupParticipantProgress: {
       ...view.groupResolution,

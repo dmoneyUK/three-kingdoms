@@ -365,6 +365,19 @@ test("Interaction Stage presents the accepted public participant without becomin
   assert.match(damagedHtml, /data-participant-status="RESOLVED"[^>]*data-participant-outcome="DAMAGED"/);
   assert.match(damagedHtml, /aria-label="Status: Resolved; Outcome: Damaged">Damaged<\/span>/);
 
+  const negatedHtml = renderStage({
+    ...groupSnapshot,
+    groupParticipantProgress: {
+      ...groupProgress,
+      participants: [
+        { playerId: "B", order: 1, status: "RESOLVED", outcome: "NEGATED" },
+        { playerId: "C", order: 2, status: "CURRENT" },
+      ],
+    },
+  }, "C");
+  assert.match(negatedHtml, /data-participant-status="RESOLVED"[^>]*data-participant-outcome="NEGATED"/);
+  assert.match(negatedHtml, /aria-label="Status: Resolved; Outcome: Negated">Negated<\/span>/);
+
   const ambiguousHtml = renderStage(createSnapshot({ targetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "B", "C"], participantRoles: { sourceId: "A", originalTargetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "B", "C"] } }, { decisionActorId: "A" }, "A"));
   assert.doesNotMatch(ambiguousHtml, /data-hero-focus="true"/, "ambiguous multi-target state has no guessed Hero Focus");
 

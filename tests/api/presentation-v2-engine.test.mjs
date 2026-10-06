@@ -308,6 +308,7 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
     { playerId: opened.bob.id, order: 2, status: "PENDING" },
     { playerId: opened.carol.id, order: 3, status: "PENDING" },
   ]);
+  assert.ok(nestedView.presentationV2.groupResolution?.participantProgress?.every(({ outcome }) => outcome === undefined), "passing an unlinked Negation window does not invent a participant outcome");
   assert.deepEqual(nestedGroupFrame?.origin.originalTargetIds, [opened.target.id, opened.bob.id, opened.carol.id]);
   assert.deepEqual(nestedGroupFrame?.current.currentTargetIds, [opened.target.id]);
   assert.equal(nestedView.presentationV2.groupResolution?.currentParticipantId, nestedPending.continuation.resumeGroup.actorId);
@@ -1142,6 +1143,7 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   assert.equal(counter.data.presentationV2.groupResolution?.stage, "NEGATION");
   assert.deepEqual(counter.data.presentationV2.groupResolution?.targetIds, [opened.target.id, opened.bob.id, opened.carol.id]);
   assert.equal(counter.data.presentationV2.groupResolution?.currentParticipantId, opened.target.id);
+  assert.ok(counter.data.presentationV2.groupResolution?.participantProgress?.every(({ outcome }) => outcome === undefined), "an open Negation window has no resolved outcome yet");
   assert.deepEqual(counter.data.causalEnvelope.frames[0].current.currentTargetIds, [opened.target.id]);
   assert.equal(counter.data.presentationV2.interactionScene?.continuity.relation, "SAME_FRAME");
   assert.equal(counter.data.presentationV2.interactionScene?.activeFrameId, root.activeFrameId);
@@ -1163,7 +1165,76 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   assert.equal(restored.data.room.presentationV2.groupResolution?.stage, "GROUP_RESOLUTION");
   assert.deepEqual(restored.data.room.presentationV2.groupResolution?.targetIds, [opened.target.id, opened.bob.id, opened.carol.id]);
   assert.equal(restored.data.room.presentationV2.groupResolution?.currentParticipantId, opened.target.id);
+  assert.ok(restored.data.room.presentationV2.groupResolution?.participantProgress?.every(({ outcome }) => outcome === undefined), "counter-Negation restores the effect without claiming it was cancelled");
   assert.equal(restored.data.room.presentationV2.interactionScene?.continuity.relation, "ROOT_FRAME");
+});
+
+test("UX2.7 Group Negated outcome is scoped to an authoritative AOE cancellation", { timeout: 30_000 }, async () => {
+  for (const kind of ["RainingArrows", "BarbarianInvasion"]) {
+    const suffix = `ux27-negated-${kind.toLowerCase()}`;
+    const firstNegation = card("Negation", `${suffix}-source-negation`);
+    const targetNegation = card("Negation", `${suffix}-target-negation`);
+    const opened = await openGanglieGroup({
+      kind,
+      suffix,
+      judge: { ...card("Dodge", `${suffix}-judge`), suit: "♠", rank: "7" },
+      sourceExtraCards: [firstNegation],
+      skipNegationWindows: true,
+    });
+    setHand(opened.target.id, [targetNegation], 3, 3);
+
+    const initial = await assertProjectionMatchesEngine(opened.code, opened.sourceMember.token);
+    assert.equal(initial.currentAction.actorId, opened.source.id);
+    assert.ok(initial.presentationV2.groupResolution?.participantProgress?.every(({ outcome }) => outcome === undefined));
+    const negated = await requestAndSettle("respond", { code: opened.code, token: opened.sourceMember.token, cardId: firstNegation.id, preserveResponse: true });
+    assert.equal(negated.status, 200, `${kind}: ${JSON.stringify(negated.data)}`);
+
+    const openWindow = await assertProjectionMatchesEngine(opened.code, opened.targetMember.token);
+    assert.equal(openWindow.currentAction.actorId, opened.target.id);
+    assert.equal(authoritativePending(opened.code).continuation.negated, true);
+    assert.deepEqual(openWindow.presentationV2.groupResolution?.participantProgress?.[0], { playerId: opened.target.id, order: 1, status: "CURRENT" }, "the pending Negation is not public as a completed outcome");
+    const passed = await requestAndSettle("decline_response", { code: opened.code, token: opened.targetMember.token, preserveResponse: true });
+    assert.equal(passed.status, 200, `${kind}: ${JSON.stringify(passed.data)}`);
+
+    const resumed = await assertProjectionMatchesEngine(opened.code, opened.bobMember.token);
+    const participant = resumed.presentationV2.groupResolution?.participantProgress?.[0];
+    assert.deepEqual(participant, { playerId: opened.target.id, order: 1, status: "RESOLVED", outcome: "NEGATED" }, `${kind}: the exact cancelled participant is resolved with a public outcome`);
+    assert.equal(resumed.presentationSnapshot.groupParticipantProgress?.participants[0].outcome, "NEGATED");
+    assert.equal(resumed.players.find(({ id }) => id === opened.target.id)?.hp, 3, `${kind}: cancellation prevents the target effect`);
+
+    const otherViewer = await assertProjectionMatchesEngine(opened.code, opened.sourceMember.token);
+    assert.deepEqual(publicSnapshot(otherViewer.presentationSnapshot), publicSnapshot(resumed.presentationSnapshot), `${kind}: public outcome is viewer-equal`);
+    assert.deepEqual(otherViewer.presentationV2.groupResolution, resumed.presentationV2.groupResolution);
+    assert.equal(otherViewer.currentAction.options, undefined, `${kind}: local response options remain private`);
+  }
+});
+
+test("UX2.7 mismatched Group Negation target remains outcome-free", { timeout: 30_000 }, async () => {
+  const suffix = "ux27-negated-mismatch";
+  const firstNegation = card("Negation", `${suffix}-source-negation`);
+  const targetNegation = card("Negation", `${suffix}-target-negation`);
+  const opened = await openGanglieGroup({
+    kind: "RainingArrows",
+    suffix,
+    judge: { ...card("Dodge", `${suffix}-judge`), suit: "♠", rank: "7" },
+    sourceExtraCards: [firstNegation],
+    skipNegationWindows: true,
+  });
+  setHand(opened.target.id, [targetNegation], 3, 3);
+  const started = await requestAndSettle("respond", { code: opened.code, token: opened.sourceMember.token, cardId: firstNegation.id, preserveResponse: true });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  const livePending = authoritativePending(opened.code);
+  assert.equal(livePending.continuation.negated, true);
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify({
+    ...livePending,
+    continuation: { ...livePending.continuation, effectTargetId: opened.bob.id },
+  }))} WHERE code=${quote(opened.code)}`);
+
+  const passed = await requestAndSettle("decline_response", { code: opened.code, token: opened.targetMember.token, preserveResponse: true });
+  assert.equal(passed.status, 200, JSON.stringify(passed.data));
+  const resumed = await assertProjectionMatchesEngine(opened.code, opened.targetMember.token);
+  assert.equal(resumed.presentationV2.groupResolution?.participantProgress?.[0]?.status, "RESOLVED");
+  assert.equal(resumed.presentationV2.groupResolution?.participantProgress?.[0]?.outcome, undefined, "a mismatched target identity fails closed even when the Negation chain says cancelled");
 });
 
 test("FIX9 Group NULL and ordinary Duel malformed envelopes stay non-authoritative", { timeout: 30_000 }, async () => {

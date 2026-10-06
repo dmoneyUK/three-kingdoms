@@ -222,6 +222,28 @@ test("snapshot preserves only a resolved Raining Arrows Damaged outcome", () => 
     viewerId: "C",
   });
   assert.equal(malformed.groupParticipantProgress, null, "unresolved damage is not a public outcome");
+
+  const negated = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: { ...base, participantProgress: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "NEGATED" },
+      ...base.participantProgress.slice(1),
+    ] } },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "resolved-negated-outcome",
+    viewerId: "C",
+  });
+  assert.equal(negated.groupParticipantProgress?.participants[0].outcome, "NEGATED");
+
+  const unresolvedNegated = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: { ...base, participantProgress: [
+      { playerId: "B", order: 1, status: "PAUSED", outcome: "NEGATED" },
+      ...base.participantProgress.slice(1),
+    ] } },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "unresolved-negated-outcome",
+    viewerId: "C",
+  });
+  assert.equal(unresolvedNegated.groupParticipantProgress, null, "an unresolved Negation cannot publish an outcome");
 });
 
 test("snapshot preserves resolved Barbarian Invasion damage but rejects avoidance", () => {
@@ -255,6 +277,17 @@ test("snapshot preserves resolved Barbarian Invasion damage but rejects avoidanc
     viewerId: "C",
   });
   assert.equal(malformed.groupParticipantProgress, null, "Barbarian Invasion cannot claim an Avoided outcome");
+
+  const negated = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: { ...base, participantProgress: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "NEGATED" },
+      ...base.participantProgress.slice(1),
+    ] } },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "barbarian-negated-outcome",
+    viewerId: "C",
+  });
+  assert.equal(negated.groupParticipantProgress?.participants[0].outcome, "NEGATED");
 });
 
 test("snapshot fails closed for malformed or absent public causal proof", () => {

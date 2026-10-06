@@ -258,7 +258,7 @@ function groupProgressForSnapshot(
     const participant = progress.participants[index];
     if (!participant || participant.playerId !== scene.targetIds[index] || participant.order !== index + 1 || !validStatuses.has(participant.status)) return null;
     if (participant.outcome !== undefined && !isGroupParticipantProgressOutcomeAllowed(progress.cardKind, resolutionSemantics, participant.status, participant.outcome)) return null;
-    participants.push({ playerId: participant.playerId, order: participant.order, status: participant.status, ...(participant.outcome === "AVOIDED" || participant.outcome === "DAMAGED" ? { outcome: participant.outcome } : {}) });
+    participants.push({ playerId: participant.playerId, order: participant.order, status: participant.status, ...(participant.outcome === "AVOIDED" || participant.outcome === "DAMAGED" || participant.outcome === "NEGATED" ? { outcome: participant.outcome } : {}) });
   }
 
   const active = participants.filter(({ status }) => status === "CURRENT" || status === "PAUSED");

@@ -608,9 +608,9 @@ function groupParticipantProgress(
     const status = stored?.status;
     if (playerId !== targetIds[index] || typeof status !== "string" || !validStatuses.has(status as GroupParticipantProgressStatus)) return null;
     const outcome = stored?.outcome;
-    if (outcome !== undefined && ((outcome !== "AVOIDED" && outcome !== "DAMAGED")
+    if (outcome !== undefined && ((outcome !== "AVOIDED" && outcome !== "DAMAGED" && outcome !== "NEGATED")
       || !isGroupParticipantProgressOutcomeAllowed(values.cardKind, resolutionSemantics, status as GroupParticipantProgressStatus, outcome))) return null;
-    participants.push({ playerId, order: index + 1, status: status as GroupParticipantProgressStatus, ...(outcome === "AVOIDED" || outcome === "DAMAGED" ? { outcome } : {}) });
+    participants.push({ playerId, order: index + 1, status: status as GroupParticipantProgressStatus, ...(outcome === "AVOIDED" || outcome === "DAMAGED" || outcome === "NEGATED" ? { outcome } : {}) });
   }
 
   const activeParticipants = participants.filter(({ status }) => status === "CURRENT" || status === "PAUSED");

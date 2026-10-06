@@ -1832,6 +1832,35 @@ function pendingGroupDamageOutcomeFor(continuation: GroupContinuation, participa
     : undefined;
 }
 
+function negatedGroupParticipantOutcomeFor(pending: NegationContinuation): GroupParticipantProgressOutcome | undefined {
+  if (!pending.negated || pending.effect.kind !== "group") return undefined;
+  const response = pending.effect.pending;
+  const continuation = response.continuation;
+  const progress = continuation.participantProgress;
+  const causal = continuation.causal;
+  const participant = progress?.participants.find(({ playerId }) => playerId === response.actorId);
+  const requiredKind = continuation.cardKind === "BarbarianInvasion" ? "Attack" : "Dodge";
+  if ((continuation.cardKind !== "RainingArrows" && continuation.cardKind !== "BarbarianInvasion")
+    || continuation.requiredKind !== requiredKind
+    || continuation.sourceId !== pending.sourceId
+    || pending.cardName !== groupCardName(continuation.cardKind)
+    || pending.effectTargetId !== response.actorId
+    || progress?.resolutionSemantics !== "GROUP"
+    || !causal
+    || progress.interactionId !== causal.interactionId
+    || progress.groupFrameId !== causal.frameId
+    || pending.causal?.interactionId !== causal.interactionId
+    || pending.causal.frameId !== causal.frameId
+    || response.causal?.interactionId !== causal.interactionId
+    || response.causal.frameId !== causal.frameId
+    || !participant
+    || participant.status !== "CURRENT"
+    || participant.outcome !== undefined
+    || progress.participants.filter(({ status }) => status === "CURRENT").length !== 1
+    || progress.participants.filter(({ playerId }) => playerId === response.actorId).length !== 1) return undefined;
+  return "NEGATED";
+}
+
 function resumeGroupParticipantAfterDying(continuation: GroupContinuation, nextActorId: string, players: PlayerRow[]): GroupContinuation {
   const progress = continuation.participantProgress;
   if (!progress) return continuation;
@@ -2399,7 +2428,8 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
     if (pending.effect.kind === "group") {
       const group = { ...pending.effect.pending, continuation: { ...pending.effect.pending.continuation, heldCards: pending.heldCards ?? pending.effect.pending.continuation.heldCards } } satisfies GroupResponsePending;
       const resumed = groupResponse(group);
-      if (resumed) await finishGroupStep(resumedRoom, resumed.response, resumed.continuation, players, discard, log);
+      const outcome = negatedGroupParticipantOutcomeFor(pending);
+      if (resumed) await finishGroupStep(resumedRoom, resumed.response, resumed.continuation, players, discard, log, [], outcome);
       return [];
     }
     discard.push(...heldCards);
