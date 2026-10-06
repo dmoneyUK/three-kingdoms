@@ -801,7 +801,9 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const hideStageArchitecturalChrome = isOpenNegationResponse
     || connectedCurrentEffectFocusIsVisible
     || judgementParticipantInDock
-    || Boolean(display.visible && !hasLocalFocus && heroFocus.visible && heroFocus.roleLabel === "CURRENT TARGET" && heroFocus.primary?.id !== viewerId);
+    || Boolean(display.visible && !hasLocalFocus && heroFocus.visible
+      && (heroFocus.roleLabel === "CURRENT TARGET" || heroFocus.roleLabel === "CURRENT PARTICIPANT")
+      && heroFocus.primary?.id !== viewerId);
   if (!display.visible && !hasLocalFocus) return null;
   return <section className="interaction-stage" aria-label={isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={currentEffect ?? undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined}>
     <header>{!hideStageArchitecturalChrome

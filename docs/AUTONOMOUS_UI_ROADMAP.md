@@ -612,6 +612,27 @@ Only a proven regression or new Reviewer-approved design requirement does.
   had no pre-existing local edits at task start; its current changes are part
   of this scoped repair.
 
+### UX2.4-PENDING-TARGET-CARD-ELIGIBILITY-PROJECTION-01 — Actor-scoped card choices
+
+- `CurrentAction.targetCardSelection` now projects anonymous in-range Hand
+  position keys and public Equipment/Judgement IDs only to the live Pending
+  actor. The existing `choose_target_card` payload and live server validation
+  remain unchanged; empty and defeated targets expose no selectable-object
+  projection.
+- Build passed; the focused `tests/api/stratagems.test.mjs` file passed 22/22,
+  including actor/observer privacy, both public zones, hidden identity
+  non-disclosure, existing hand-index submission, and empty/stale-target
+  rejection. Targeted ESLint and `git diff --check` passed.
+- The previous remote-head Actions run `37398791627` on `487fbd9` completed
+  with `npm test` failure. Its stale player-facing role/duplicate-decision
+  assertions were repaired in this combined feature change. Local `npm test`
+  passed (build, fast 204/204, API 249/249); the Judgement responsive browser
+  cases passed 3/3 and targeted ESLint plus `git diff --check` passed. No
+  Actions result for this push is claimed.
+- The next bounded step is the separate Steal/Dismantle Hero Focus migration;
+  current picker fallback remains required when projection or semantic focus
+  proof is missing.
+
 ## Known deferred semantic gaps
 
 These are **not completed** and must remain fail-closed until authoritative

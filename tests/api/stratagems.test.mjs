@@ -337,6 +337,67 @@ test("Steal chooses from the target's current zones only after counter-Negation"
   assert.deepEqual(discardIds(game.code).slice(-3), ["steal-post-negation", "negation-cancel-steal", "negation-restore-steal"]);
 });
 
+test("target-card CurrentAction projects anonymous eligible positions only to its actor and omits stale targets", { timeout: 60_000 }, async () => {
+  async function openTargetCardPending(suffix, { withPublicCards = false } = {}) {
+    const game = await createHumanGame();
+    const [sourceMember, targetMember] = game.members;
+    const source = game.room.players.find((player) => player.name === "Host");
+    const target = game.room.players.find((player) => player.name === "Alice");
+    assert.ok(source && target);
+    const material = card("Dismantle", `target-projection-${suffix}`);
+    const hidden = [card("Peach", `target-projection-hidden-a-${suffix}`), card("Dodge", `target-projection-hidden-b-${suffix}`)].slice(0, withPublicCards ? 2 : 1);
+    const weapon = withPublicCards ? card("SerpentSpear", `target-projection-weapon-${suffix}`) : null;
+    const judgement = withPublicCards ? card("Lightning", `target-projection-judgement-${suffix}`) : null;
+    setHand(source.id, [material], 4, 4);
+    setHand(target.id, hidden, 4, 4);
+    for (const player of game.room.players.filter((candidate) => candidate.id !== source.id && candidate.id !== target.id)) setHand(player.id, [], 4, 4);
+    setEquipment(target.id, weapon ? { weapon } : {});
+    setJudgement(target.id, judgement ? [judgement] : []);
+    setTurn(game.code, source.seat);
+
+    const opened = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: material.id, targetId: target.id });
+    assert.equal(opened.status, 200, JSON.stringify(opened.data));
+    assert.equal(opened.data.room.pendingTargetCard?.targetId, target.id);
+    return { game, sourceMember, targetMember, source, target, hidden, weapon, judgement };
+  }
+
+  const populated = await openTargetCardPending("populated", { withPublicCards: true });
+  const actorView = (await state(populated.game.code, populated.sourceMember.token)).data;
+  assert.equal(actorView.currentAction.kind, "target_card");
+  assert.deepEqual(actorView.currentAction.legalActions, ["choose_target_card"]);
+  assert.deepEqual(actorView.currentAction.targetCardSelection, {
+    targetId: populated.target.id,
+    eligibleKeys: ["hand:0", "hand:1", populated.weapon.id, populated.judgement.id],
+  });
+  const actorActionJson = JSON.stringify(actorView.currentAction);
+  assert.equal(actorActionJson.includes(populated.hidden[0].id), false, "hand eligibility never includes concealed card identities");
+  assert.equal(actorActionJson.includes(populated.hidden[1].id), false, "all concealed identities stay private");
+
+  const observerView = (await state(populated.game.code, populated.targetMember.token)).data;
+  assert.equal(Object.hasOwn(observerView.currentAction, "targetCardSelection"), false, "non-actors do not receive target-card eligibility");
+  assert.equal(JSON.stringify(observerView.currentAction).includes("hand:0"), false);
+  assert.equal(JSON.stringify(observerView.currentAction).includes(populated.hidden[0].id), false);
+
+  const submitted = await requestAndSettle("choose_target_card", { code: populated.game.code, token: populated.sourceMember.token, targetCardZone: "hand", targetCardIndex: 1 });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
+  assert.ok(discardIds(populated.game.code).includes(populated.hidden[1].id), "the existing zone/index payload remains authoritative");
+
+  const emptied = await openTargetCardPending("empty");
+  setHand(emptied.target.id, [], 4, 4);
+  const emptyView = (await state(emptied.game.code, emptied.sourceMember.token)).data;
+  assert.equal(emptyView.currentAction.targetCardSelection, undefined, "an empty live target has no selectable-object projection");
+  assert.deepEqual(emptyView.currentAction.legalActions, ["choose_target_card"], "the existing pending action remains unchanged");
+  const emptySubmission = await request("choose_target_card", { code: emptied.game.code, token: emptied.sourceMember.token, targetCardZone: "hand", targetCardIndex: 0 });
+  assert.equal(emptySubmission.status, 400, "server revalidation rejects a position after the Hand becomes empty");
+
+  const stale = await openTargetCardPending("stale");
+  sql(`UPDATE players SET alive=0, hp=0 WHERE id=${quote(stale.target.id)}`);
+  const staleView = (await state(stale.game.code, stale.sourceMember.token)).data;
+  assert.equal(staleView.currentAction.targetCardSelection, undefined, "a defeated target has no selectable-object projection");
+  const staleSubmission = await request("choose_target_card", { code: stale.game.code, token: stale.sourceMember.token, targetCardZone: "hand", targetCardIndex: 0 });
+  assert.equal(staleSubmission.status, 409, "server revalidation rejects a defeated target");
+});
+
 test("Lu Xun's Modesty blocks only Steal and Overindulgence", { timeout: 30_000 }, async () => {
   const game = await createHumanGame(); const [host] = game.members;
   const source = game.room.players.find((player) => player.name === "Host");

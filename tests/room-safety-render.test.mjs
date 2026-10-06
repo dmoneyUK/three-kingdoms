@@ -197,7 +197,8 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
     localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: "p2", entitled: false },
   };
   const sourceOwnedStageHtml = renderToStaticMarkup(React.createElement(InteractionStage, { view: buildPresentationClientView(sourceOwnedSnapshot, "p1"), resolvePlayerName: (playerId) => presentationPlayers.find((player) => player.id === playerId)?.name ?? null }));
-  assert.match(sourceOwnedStageHtml, /<small>DECISION<\/small><b>Zhao Yun<\/b>/, "source-owned decision stays on the source");
+  assert.match(sourceOwnedStageHtml, /data-medium-participant-player-id="p2"/, "source-owned decision actor remains visible in the Source role");
+  assert.doesNotMatch(sourceOwnedStageHtml, /<small>DECISION<\/small>/, "decision identity is not repeated when that player is already visible as Source");
   assert.match(sourceOwnedStageHtml, /<small>RESOLVER<\/small><b>Lü Bu<\/b>/, "resolver remains distinct from decision owner");
   const childSnapshot = {
     ...uxRoom.presentationSnapshot,
@@ -302,7 +303,7 @@ test("Interaction Stage presents the accepted public participant without becomin
   assert.doesNotMatch(sourceOwnedHtml, /class="hero-focus"[^>]*data-hero-focus-player-id="A"/, "source-owned decision does not move Hero Focus to the decision source");
 
   const groupHtml = renderStage(createSnapshot({ stage: "GROUP_RESOLUTION", targetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"], participantRoles: { sourceId: "A", originalTargetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", parentParticipantId: null, participantIds: ["A", "B", "C"] } }, { decisionActorId: "C" }, "C"));
-  assert.match(groupHtml, /data-hero-focus-player-id="C"[^>]*data-hero-focus-role="CURRENT PARTICIPANT"/);
+  assert.match(groupHtml, /data-hero-focus-player-id="C"[^>]*data-hero-focus-role="Target"/);
 
   const ambiguousHtml = renderStage(createSnapshot({ targetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "B", "C"], participantRoles: { sourceId: "A", originalTargetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "B", "C"] } }, { decisionActorId: "A" }, "A"));
   assert.doesNotMatch(ambiguousHtml, /data-hero-focus="true"/, "ambiguous multi-target state has no guessed Hero Focus");

@@ -177,6 +177,15 @@ function parsePersistedPending(value: string | null): Pending | null {
 function equipmentZone(player?: PlayerRow | null) { return parse<EquipmentZone>(player?.equipment_json ?? null, {}); }
 function equipmentCards(player?: PlayerRow | null) { return Object.values(equipmentZone(player)).filter((card): card is Card => Boolean(card)); }
 function targetableCardCount(player?: PlayerRow | null) { return parse<Card[]>(player?.hand_json ?? null, []).length + equipmentCards(player).length + parse<Card[]>(player?.judgement_json ?? null, []).length; }
+function targetCardSelectionFor(pending: TargetCardPending, target?: PlayerRow) {
+  if (!target?.alive || target.id !== pending.targetId) return undefined;
+  const handKeys = parse<Card[]>(target.hand_json, []).flatMap((held, index) => held ? [`hand:${index}`] : []);
+  const publicKeys = [...equipmentCards(target), ...parse<Card[]>(target.judgement_json, [])]
+    .flatMap((card) => typeof card?.id === "string" && card.id.length > 0 ? [card.id] : []);
+  const eligibleKeys = [...handKeys, ...publicKeys];
+  if (!eligibleKeys.length || new Set(eligibleKeys).size !== eligibleKeys.length) return undefined;
+  return { targetId: target.id, eligibleKeys };
+}
 function damageTriggerContext(source: PlayerRow, target: PlayerRow) {
   return {
     event: "damage_about_to_apply" as const,
@@ -3545,6 +3554,13 @@ async function roomState(code: string, token?: string) {
     ? { resolutionId: responsePending?.resolutionId ?? triggerPending?.resolutionId ?? latestResolutionId(rawLog), readyAfterEventId: responsePending?.readyAfterEventId ?? triggerPending?.readyAfterEventId ?? null }
     : undefined;
   const legalActions = !legacyResponsePending && me?.id === actualActionPlayerId ? legalActionsFor(room, me, pending, players) : [];
+  const targetCardSelection = room.phase === "response"
+    && pending?.kind === "target_card"
+    && me?.id === pending.actorId
+    && actualActionPlayerId === pending.actorId
+    && legalActions.includes("choose_target_card")
+    ? targetCardSelectionFor(pending, players.find((player) => player.id === pending.targetId))
+    : undefined;
   const currentAction: CurrentAction = {
     version: 3,
     kind: responsePending ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
@@ -3557,6 +3573,7 @@ async function roomState(code: string, token?: string) {
     canDeclareAttack,
     ...(playPhaseActions.length ? { playPhaseActions } : {}),
     ...(borrowedSwordTargets.length ? { borrowedSwordTargets } : {}),
+    ...(targetCardSelection ? { targetCardSelection } : {}),
     ...(responseDecision ? { requirement: responseDecision.requirement, options: responseDecision.options, declineAction: responseDecision.declineAction } : {}),
     ...(triggerPending ? { triggerEvent: triggerPending.event, triggerOptions, ...(legalActions.includes("decline_trigger") ? { declineAction: "decline_trigger" as GameplayAction } : {}) } : triggerOptions.length ? { triggerOptions } : {}),
     ...(distributionPending && me?.id === distributionPending.actorId ? { distribution: { cards: distributionPending.cards, eligibleRecipientIds: distributionPending.eligibleRecipientIds } } : {}),

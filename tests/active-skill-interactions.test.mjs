@@ -1166,7 +1166,7 @@ test("mounted Judgement replacement keeps subject focus public and replacement c
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findByProps({ "data-stage": "JUDGEMENT" }).props["data-continuity"], "ROOT_FRAME");
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT", "Hero Focus follows the Judgement subject, not the replacement actor");
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "Target", "Hero Focus follows the Judgement subject without exposing architectural role text");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("interaction-seat-decision-actor"), true);
   assert.equal(button(renderer, { "aria-label": "Necromancy" }).props.disabled, false);
   assert.equal(buttonsContaining(renderer, "Skip").length, 1);
@@ -1182,7 +1182,7 @@ test("mounted Judgement replacement keeps subject focus public and replacement c
   room = judgementReplacementRoom({ actorId: "p1", actionRevision: "judgement-effective-2", triggerEvent: "judgement_effective" });
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT");
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "Target");
   assert.equal(button(renderer, { "aria-label": "Necromancy" }).props.disabled, true, "the old replacement provider is disabled after the authoritative actor changes");
   assert.equal(buttonsContaining(renderer, "Confirm").length, 0);
   assert.equal(buttonsContaining(renderer, "Skip").length, 0);
@@ -1211,7 +1211,7 @@ test("mounted Judgement focus and controls ignore legacy owners and require an a
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: legacy, onRecover: () => {} }, React.createElement(GameRoom, { room: legacy, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(button(renderer, { "aria-label": "Necromancy" }).props.disabled, false);
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT");
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "Target");
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: judgementReplacementRoom({ includeReveal: false }), onRecover: () => {} }, React.createElement(GameRoom, { room: judgementReplacementRoom({ includeReveal: false }), busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findAllByProps({ "data-stage": "JUDGEMENT" }).length, 1, "semantic stage may remain public from the proven snapshot");
