@@ -1074,6 +1074,22 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Actions run `37507856521` was `in_progress`; lint/build succeeded and browser
   validation was running. Reviewer acceptance remains unclaimed.
 
+### UX2.31-FANJIAN-SELECTABLE-DETAIL-BROWSER-PROOF-01 — Fanjian concealed-Hand choice
+
+- Added source-owned Fanjian browser proof for anonymous `hand:N` selection:
+  source focus is shown only with public projection proof; hidden identities
+  remain absent; selection stays local until Confirm; the existing trigger
+  payload is submitted once; action-revision changes clear selection; and the
+  generic picker remains when focus is unproven. A measured wide-screen
+  overlap was corrected by scaling shared Selectable Detail cards to 68×96px
+  above 650px; mobile sizing is unchanged.
+- The target-card browser suite passed 40/40 at 390px, 480px, and 1440px;
+  `room-safety-render` passed 19/19; targeted ESLint and `git diff --check`
+  passed. Geometry verifies the interactive hidden-card bounds remain inside
+  the viewport and clear of the Local Dock. No gameplay/projection semantics
+  changed. Pre-commit remote SHA `f2801a81` passed Actions run `37508298620`.
+  Reviewer acceptance remains unclaimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,

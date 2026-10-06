@@ -20,6 +20,12 @@ async function loadLocalEquipmentTargetCard(page, { width, height = 844, targetC
   return page.locator(".local-player-dock");
 }
 
+async function loadFanjianSelectableDetail(page, { width, height = 844, targetCardCase = "valid" }) {
+  await page.setViewportSize({ width, height });
+  await page.goto(`/tests/browser/fixture.html?state=fanjian-selectable&count=4&targetHandCount=2&targetCardCase=${targetCardCase}&hero=zhou-yu`);
+  return page.locator('[aria-label="Interaction Stage"]');
+}
+
 async function loadPendingTargetCard(page, { width, height = 844, count = 4, handCount = 4, targetCardCase = "valid", cardKind = "Dismantle" }) {
   await page.setViewportSize({ width, height });
   const params = new URLSearchParams({ state: "pending-target-card", count: String(count), targetHandCount: String(handCount), targetCardCase, targetCardKind: cardKind, effect: cardKind });
@@ -287,6 +293,79 @@ test("supported opaque per-hand keys use anonymous Hero Focus selection", async 
   await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
     { action: "trigger", extra: { providerId: "browser-target-card", cardKeys: ["hand:1"] } },
   ]);
+});
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 480, height: 900 },
+  { width: 1440, height: 900 },
+]) {
+  test(`Fanjian source-owned hidden-Hand selection uses proven Hero Focus at ${viewport.width}px`, async ({ page }) => {
+    const stage = await loadFanjianSelectableDetail(page, viewport);
+    const focus = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"][data-hero-focus-player-id="p1"]');
+    const detail = focus.getByRole("group", { name: "Sowing Distrust — choose a hidden card selection" });
+    const positions = detail.locator('[data-target-card-zone="hand-position"]');
+    const [dockBox, positionBoxes] = await Promise.all([
+      page.locator(".local-player-dock").boundingBox(),
+      positions.evaluateAll((elements) => elements.map((element) => {
+        const { x, y, width, height } = element.getBoundingClientRect();
+        return { x, y, width, height };
+      })),
+    ]);
+    await expect(focus).toBeVisible();
+    await expect(focus).toHaveAttribute("data-hero-focus-role", "Source");
+    await expect(detail.locator("header span")).toHaveText("Sowing Distrust — choose a hidden card");
+    await expect(positions).toHaveCount(2);
+    await expect(positions.nth(0)).toHaveAccessibleName("Hidden hand card 1");
+    await expect(positions.nth(1)).toHaveAccessibleName("Hidden hand card 2");
+    await expect(detail).not.toContainText(/Attack|Peach|Dodge|Negation|♥|♠/);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    const sourceProjection = await page.evaluate(() => window.__browserRoom.players.find((player) => player.id === "p1"));
+    expect(sourceProjection.handCount).toBe(2);
+    expect(sourceProjection.handCards ?? []).toEqual([]);
+    expect(dockBox && positionBoxes).toBeTruthy();
+    for (const positionBox of positionBoxes) {
+      expect(positionBox.y + positionBox.height).toBeLessThanOrEqual(dockBox.y + 1);
+      expect(positionBox.x).toBeGreaterThanOrEqual(0);
+      expect(positionBox.x + positionBox.width).toBeLessThanOrEqual(viewport.width);
+    }
+  });
+}
+
+test("Fanjian SELECTABLE DETAIL keeps anonymous selection local and submits the existing key once", async ({ page }) => {
+  const stage = await loadFanjianSelectableDetail(page, { width: 390 });
+  const detail = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]').getByRole("group", { name: "Sowing Distrust — choose a hidden card selection" });
+  const hiddenPosition = detail.getByRole("button", { name: "Hidden hand card 2" });
+  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+
+  await hiddenPosition.click();
+  await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+  await expect(confirm).toBeEnabled();
+  expect(await page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([]);
+  await confirm.click();
+  await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
+    { action: "trigger", extra: { providerId: "zhou_yu_fanjian_choice", cardKeys: ["hand:1"] } },
+  ]);
+});
+
+test("Fanjian source selection clears when the CurrentAction revision changes", async ({ page }) => {
+  const stage = await loadFanjianSelectableDetail(page, { width: 390 });
+  const detail = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]').getByRole("group", { name: "Sowing Distrust — choose a hidden card selection" });
+  const hiddenPosition = detail.getByRole("button", { name: "Hidden hand card 1" });
+  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+
+  await hiddenPosition.click();
+  await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => window.__setBrowserActionRevision("browser-fanjian-new-action"));
+  await expect(hiddenPosition).toHaveAttribute("aria-pressed", "false");
+  await expect(confirm).toBeDisabled();
+});
+
+test("Fanjian retains the generic picker when the external source focus is not proven", async ({ page }) => {
+  await loadFanjianSelectableDetail(page, { width: 390, targetCardCase: "unfocused" });
+
+  await expect(page.getByRole("dialog", { name: "Sowing Distrust — choose a hidden card target card selection" })).toBeVisible();
+  await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
 });
 
 for (const viewport of [

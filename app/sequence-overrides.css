@@ -1925,6 +1925,9 @@
 .hero-focus-selectable-detail-row .target-card-picker-card { pointer-events: auto; }
 .hero-focus-selectable-detail-row > .target-card-picker-card { flex-basis: 76px; width: 76px; height: 108px; }
 .hero-focus-selectable-detail > .target-card-picker-count { padding: 0 3px; text-align: left; }
+@media (min-width: 651px) {
+  .hero-focus-selectable-detail-row > .target-card-picker-card { flex-basis: 68px; width: 68px; height: 96px; }
+}
 @media (max-width: 480px) {
   .hero-focus-selectable-detail > header { gap: 3px 6px; }
   .hero-focus-selectable-detail > header small { flex-basis: 100%; }
