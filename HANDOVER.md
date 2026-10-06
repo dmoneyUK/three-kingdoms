@@ -7,7 +7,7 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 ## Latest result and CI
 
-The earlier AOE `npm test` failure (run `37411200534`) was addressed by the AOE continuation repair in `f98ba4c`. The browser failure on `45b7ce3` (run `37414234939`) was repaired in `bdd039a`; run `37416789582` completed **Success**. Latest pre-task remote head `1c5f4ef` also completed Actions run `37418042611` with **Success** (build-and-test and deploy). There is no unresolved prior CI failure. The current Halberd task's CI result will be recorded after its push is observed.
+The earlier AOE `npm test` failure (run `37411200534`) was addressed by the AOE continuation repair in `f98ba4c`. The browser failure on `45b7ce3` (run `37414234939`) was repaired in `bdd039a`; run `37416789582` completed **Success**. Latest pre-task remote head `1c5f4ef` completed Actions run `37418042611` with **Success** (build-and-test and deploy). Halberd projection commit `c63cc6b` triggered run `37419043447`, observed **in progress**; no result is claimed yet.
 
 ## Design checkpoint
 

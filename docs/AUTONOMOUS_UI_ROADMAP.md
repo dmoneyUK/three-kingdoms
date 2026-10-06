@@ -740,8 +740,8 @@ Only a proven regression or new Reviewer-approved design requirement does.
 - Local validation passed: build; focused PresentationV2/Snapshot/client tests
   88/88; engine-backed API tests 27/27; Halberd/equipment API tests 20/20;
   targeted ESLint; and `git diff --check`. The prior remote head `1c5f4ef` was
-  verified green in Actions run `37418042611`; this task's pushed CI result is
-  pending observation.
+  verified green in Actions run `37418042611`. Pushed as `c63cc6b`; its Actions
+  run `37419043447` was observed **in progress**, so no pass is claimed.
 
 ## Known deferred semantic gaps
 
