@@ -5,12 +5,12 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-CI REPAIR CLOSED. Remote HEAD `ef57d59515974af5521ad619f9ee7fcb3282995d` passed Actions run `37530273503` (`build-and-test` and `deploy`). UX2.35 implementation now adds a safe-zone-aware mobile causal spine and fail-closed geometry regressions; focused Borrowed Sword browser tests passed 9/9, targeted ESLint and `git diff --check` passed. No gameplay/projection changes. UX2.35 remains active through its exact-SHA CI gate; Reviewer acceptance is not claimed.
+UX2.35 closed at `457e2e16750685148c64a607b7fd951df83626ce`; Actions run `37531803898` passed (`build-and-test` and `deploy`). §12.9 review on that production HEAD passed the new 19-case geometry/screenshot matrix, 189 related interaction regressions, and 58 layout/viewport regressions. Twelve fresh ACTIVE screenshots include measured geometry attachments. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
-Remote Design blob `530c8ec9b7ef5790b6a8bc27b694ac7b00499a6a` is unchanged and was re-read at the task boundary. The §12.0–12.9 status and authority/privacy contracts were reviewed. Group/AOE, Oath, and Bumper Harvest structural compositions are implemented; the final gate remains open until remaining approved deltas close. Reviewer acceptance is unclaimed.
+Remote Design blob `530c8ec9b7ef5790b6a8bc27b694ac7b00499a6a` is unchanged and was re-read at the task boundary. §12.9 coverage includes its requested scenarios plus the direct-user additions for Oath, Bumper Harvest, exact portrait sizes, Dock/Stage separation, overflow, and fresh screenshots. No Reviewer acceptance is claimed.
 
-## Current task — UX2.35-BORROWED-SWORD-MOBILE-CAUSAL-SPINE-01
+## Current task — UX2.36-FINAL-UX2-VISUAL-GATE-01
 
-For a proven Borrowed Sword forced-Attack child scene on mobile Top Row portrait, make the current attacker → Attack → forced target read top-to-bottom when safe-zone space permits. Preserve the immutable root-source/holder/target proof, two-player Dock ownership, fail-closed behavior when root proof is absent, the compact layout under short safe-zone pressure, Side Column and wide layouts. Add geometry proof for causal order and safe-zone/Dock containment. No gameplay or projection changes. Authority: current Design blob `530c8ec9b7ef5790b6a8bc27b694ac7b00499a6a`, §§12.3 and 12.7.
+Close the integration evidence on UX2.35 production HEAD `457e2e16750685148c64a607b7fd951df83626ce`: retain the representative 2/4/6/10-player and viewport/scenario matrix, measured no-overlap/no-overflow assertions, and fresh screenshots. Only final-gate test/HANDOVER evidence is in scope; no production or gameplay changes. Pre-commit gate: exact current remote SHA `457e2e1…` Actions run `37531803898` is green. Authority: Design blob `530c8ec9b7ef5790b6a8bc27b694ac7b00499a6a`, §§12.0–12.9.
