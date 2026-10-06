@@ -4710,7 +4710,7 @@ feature.
 The directions below are **deltas on top of this baseline**, not permission to
 rebuild earlier UX2 slices.
 
-### 12.0A Current implementation status snapshot — 2026-10-05
+### 12.0A Current implementation status snapshot — 2026-10-06
 
 This status summary exists to prevent duplicate work. Exact implementation
 SHAs, CI evidence, and historical details belong in
@@ -4723,7 +4723,7 @@ SHAs, CI evidence, and historical details belong in
 | ACTIVE Current Effect composition | **PARTIAL** | Attack Response, open Negation, and Duel are proven. Extend only to additional authoritative interaction families. |
 | Local Dock hierarchy / fast-response layout | **ADVANCED / PARTIAL** | Top Guidance, mobile Hero hierarchy, peer skill sizing, timer placement/privacy, and Side Column recognition are implemented. Remaining deltas must be bounded. |
 | SELECTABLE DETAIL | **OPEN** | Major remaining UX gap; migrate only when current authoritative selectable-object data supports it. |
-| Reaction Chain history / AOE participant progress | **OPEN — AUTHORITY DEPENDENT** | Requires explicit public semantic projection before richer UI. |
+| Reaction Chain history / AOE participant progress | **ADVANCED / PARTIAL** | Authoritative Group participant order/current/pending/resolved state and several public outcomes now exist. The approved mobile AOE composition in §12.6 may be implemented from that authority; richer history/outcomes remain fail-closed until explicitly projected. |
 | Final UX2 visual gate | **OPEN** | Run only after remaining approved deltas are closed. |
 
 A closed item may be reopened only for a concrete regression or an explicit
@@ -5017,25 +5017,460 @@ matches the established design:
 Do not obtain a larger Hero by shrinking Hand usability or moving the approved
 Dock regions.
 
-### 12.6 Authority-dependent later work — Reaction Chain and AOE progress — OPEN
+### 12.6 Group / AOE mobile composition — Reviewer-approved final direction — 2026-10-06
 
-**Implementation status: OPEN / authority dependent.** The current fail-closed
-bounded Reaction Chain and neutral Group/AOE presentation are correct baseline.
-Do not treat missing richer history/progress as a CSS-only gap.
+**Implementation status: ADVANCED / PARTIAL.** Authoritative Group participant
+order, current/pending/resolved state, and several public outcomes are now
+available. That authority is sufficient to implement the mobile composition
+below. Missing richer outcomes/history still fail closed and must not be
+invented by React.
 
-Do not fabricate missing semantic history or participant progress to make the
-UI look complete.
+This section is the product authority for Group/AOE ACTIVE presentation on
+mobile. It supersedes older AOE layouts that duplicate the current participant
+as a separate large Target Hero, render large participant cards for every
+affected player, or use a large standalone Reaction Chain panel for a simple
+Negation window.
 
-Reaction Chain may expand beyond the currently proven root/active information
-only when authoritative public chain data exists.
+The core model is:
 
-AOE/Group may show per-participant resolved/current/pending state only when
-that state is explicitly projected by the server. Never infer it from
-remaining IDs, target order, timeline order, HP changes, turn owner, or seat
-position.
+> **one Source, one active/root Action Card, one Group Target Strip, one active
+> highlight.**
 
-Any required server/presentation projection is a separate semantic task from
-the visual consumer.
+The whole Group interaction should feel like one stable scene progressing
+through states, not a sequence of independently reconstructed layouts.
+
+#### 12.6.1 Mobile causal spine — top to bottom
+
+For mobile portrait, card/skill interactions should prefer a vertical causal
+spine:
+
+~~~text
+            [SOURCE HERO]
+                 ↓
+          [ROOT ACTION CARD]
+                 ↓
+         [GROUP TARGET STRIP]
+~~~
+
+For Group/AOE specifically, the root card sits physically between the source
+and the complete affected-player set:
+
+~~~text
+              Gan Ning
+             [portrait]
+                 ↓
+       [BARBARIAN INVASION]
+                 ↓
+   Cao Cao     Guo Jia     Sima Yi
+~~~
+
+This vertical mobile rule overrides the earlier generic Top-Row horizontal
+Source/Effect/Target preference when that horizontal composition would compress
+or destabilise a portrait-phone layout. Wider tablet/desktop layouts may use
+horizontal composition when it preserves the same semantic order.
+
+Do not rearrange Source, root card, or Group Target Strip merely because the
+current participant or private decision actor changes.
+
+#### 12.6.2 Source presentation
+
+The Group source occupies one stable compact position above the root action.
+
+Show only what is needed to identify the actor in this event:
+
+- Hero artwork / portrait;
+- player name.
+
+Do not repeat HP, Hero name, Hand count, Equipment, `SOURCE`, or other
+metadata already available in the fixed Seat Thumbnail.
+
+During an already-active Group interaction, the central Source should read as
+lightweight event identity rather than a second expanded player card.
+
+#### 12.6.3 Root action card is the event spine
+
+Use the real public card/skill/effect identity between Source and targets.
+
+For Barbarian Invasion:
+
+~~~text
+Gan Ning
+   ↓
+[Barbarian Invasion]
+   ↓
+Group Targets
+~~~
+
+The currently unresolved public action/head is visually highlighted. Prefer
+the card/effect art itself over a separate `EFFECT` metadata panel.
+
+Do not duplicate the root card as:
+
+- a separate title box;
+- an `Original Effect` block;
+- a second full Reaction Chain root;
+- repeated prose naming the same action.
+
+#### 12.6.4 Group targets appear once only
+
+All affected participants appear in one stable Group Target Strip.
+
+**Do not render the same current participant twice** as both:
+
+1. a member of the AOE target collection; and
+2. a separate large `Current Target` / Hero Focus.
+
+The Group Target Strip itself owns current-participant emphasis.
+
+Example:
+
+~~~text
+             ▼
+Cao Cao     Guo Jia     Sima Yi
+ -1♥           ◎            ·
+~~~
+
+A participant marker should normally contain only:
+
+- compact Hero portrait or recognisable Hero image;
+- player name;
+- compact authoritative semantic state.
+
+Do not expand each participant into a mini information card with HP, Hero name,
+Hand count, Equipment, `Focus`, `Decision`, `Active Scope`, or similar
+metadata. Those facts already exist in the Seat or Dock.
+
+The viewer may appear as a **compact Group-member marker** in this strip so the
+complete affected set remains visible. This is not permission to duplicate the
+viewer as a second large Hero Focus: the Local Player Dock remains the viewer's
+only full operational Hero surface.
+
+#### 12.6.5 Group participant state and responsive density
+
+Current/pending/resolved/outcome state must come from authoritative public
+projection.
+
+Never derive it from:
+
+- remaining IDs;
+- target-array order alone;
+- timeline order;
+- HP changes;
+- turn owner;
+- seat position;
+- animation state.
+
+Use compact visual state rather than large text-heavy cards.
+
+Representative visual language:
+
+~~~text
+CURRENT   = gold highlight / glow + small arrow or current marker
+PENDING   = subdued / neutral
+DAMAGED   = -1♥ or compact authoritative damage marker
+AVOIDED   = ✓ or compact avoided marker
+NEGATED   = ⊘ or compact negated marker
+DEFEATED  = compact defeated marker when authoritative proof exists
+~~~
+
+Accessible names may remain descriptive even when visible copy is minimal.
+
+Apply the existing density modes:
+
+~~~text
+COMFORTABLE
+Cao Cao -1♥     Guo Jia ▶     Sima Yi ·
+
+COMPACT
+Cao Cao ✓       Guo Jia ▶     Sima Yi ·
+
+CRITICAL
+1 resolved      Guo Jia ▶      1 left
+~~~
+
+At 390px / 480px portrait widths, prefer COMPACT/CRITICAL projection before
+allowing names to wrap vertically or target cards to invade the Local Dock.
+
+The current participant and the viewer-relevant state must never disappear
+during density reduction.
+
+#### 12.6.6 Open Negation window — no branch until a public card exists
+
+An open/non-directed Negation opportunity does **not** create a visible
+Negation card or large Reaction Chain panel by itself.
+
+Before anybody actually submits Negation:
+
+~~~text
+              Gan Ning
+                 ↓
+      [BARBARIAN INVASION]   ← ACTIVE / highlighted
+                 ↓
+   Cao Cao       Guo Jia       Sima Yi
+      ◎             ·             ·
+~~~
+
+Public Stage may use a very small neutral state if needed, e.g.
+`Negation window · Waiting…`, but must not name a private responder/scan actor.
+
+The eligible viewer sees private guidance only in their Local Guidance Strip:
+
+~~~text
+Play Negation or Skip.
+~~~
+
+Do not show:
+
+- `Waiting for Cao Cao`;
+- `Decision: Cao Cao`;
+- evidence that a specific player owns Negation;
+- a Negation branch before Negation becomes a public submitted action.
+
+#### 12.6.7 Public Negation becomes a side branch and active chain head
+
+When a Negation is actually submitted and becomes public, preserve the root AOE
+card and grow a compact branch from it.
+
+~~~text
+              Gan Ning
+                 ↓
+      [Barbarian Invasion] ─── [NEGATION]
+             subdued              ACTIVE
+                 ↓
+   Cao Cao       Guo Jia       Sima Yi
+      ◎             ·             ·
+~~~
+
+Rules:
+
+- the root card remains visible as causal context;
+- the previous active card loses active highlight;
+- the newly submitted Negation becomes the highlighted current response head;
+- the Group Target Strip remains in exactly the same location;
+- the current participant remains highlighted in the same strip;
+- do not create a separate large Reaction Chain panel containing the same
+  Source/root/target facts.
+
+This makes the currently responseable public card visually obvious without
+requiring explanatory prose.
+
+#### 12.6.8 Counter-Negation continues the branch
+
+If another public Negation counters the first:
+
+~~~text
+[Barbarian Invasion] ─ [Negation] ─ [NEGATION]
+      subdued            subdued        ACTIVE
+~~~
+
+The newest unresolved public response card is always the active highlight.
+
+On narrow screens:
+
+- the branch may compact, overlap, fan, or collapse older counter cards;
+- root identity and current active head must remain visible;
+- the branch must not widen the Stage beyond the viewport;
+- Group Target Strip and Local Guidance take priority over showing every old
+  card at full size.
+
+Only public submitted chain actions appear. Private Pass/Skip/Decline and
+private scan progression leave no visual node.
+
+#### 12.6.9 Returning from the Negation branch
+
+If Negation successfully cancels the root effect for the current Group
+participant:
+
+1. settle/collapse the Negation branch;
+2. project the authoritative participant outcome, e.g. `Negated`;
+3. advance the current highlight to the next authoritative participant;
+4. return active highlight to the root AOE card for that next participant.
+
+Conceptually:
+
+~~~text
+BEFORE
+[Barbarian Invasion] ─ [Negation ACTIVE]
+Cao Cao ▶ | Guo Jia · | Sima Yi ·
+
+AFTER
+[BARBARIAN INVASION ACTIVE]
+Cao Cao ⊘ | Guo Jia ▶ | Sima Yi ·
+~~~
+
+If a counter-Negation defeats the Negation:
+
+1. settle/collapse the branch;
+2. keep the same participant current;
+3. return active highlight to the root AOE card;
+4. continue to the participant's authoritative required response.
+
+Do not change target order or infer settlement from animation.
+
+#### 12.6.10 Minimal Local Guidance
+
+The Local Guidance Strip immediately below the Stage owns the viewer's private
+next-step instruction.
+
+For an eligible Negation opportunity:
+
+~~~text
+Play Negation or Skip.
+~~~
+
+For Barbarian Invasion's current participant:
+
+~~~text
+Play Attack or take 1 damage.
+~~~
+
+For Raining Arrows, use the authoritative equivalent, e.g. the required Dodge
+instruction.
+
+Do not use implementation-state phrases such as `Group Resolution`,
+`Current Participant`, `Active Scope`, or `0 cards selected` as the primary
+instruction when a direct gameplay instruction is available.
+
+The Stage explains the public event visually; the Guidance Strip tells this
+viewer what to do.
+
+#### 12.6.11 Stable six-state Barbarian Invasion reference
+
+The following sequence is a layout/continuity reference. Names are sample data,
+not hard-coded UI logic.
+
+**State 1 — Cao Cao current; open Negation opportunity**
+
+~~~text
+Gan Ning
+   ↓
+[BARBARIAN INVASION ACTIVE]
+   ↓
+Cao Cao ◎ | Guo Jia · | Sima Yi ·
+
+Local Cao Cao guidance:
+Play Negation or Skip.
+~~~
+
+**State 2 — Negation skipped; Cao Cao must play Attack or take damage**
+
+Same Stage geometry:
+
+~~~text
+Gan Ning
+   ↓
+[BARBARIAN INVASION ACTIVE]
+   ↓
+Cao Cao ◎ | Guo Jia · | Sima Yi ·
+
+Local Cao Cao guidance:
+Play Attack or take 1 damage.
+~~~
+
+**State 3 — Cao Cao resolved Damaged; Guo Jia current; open Negation**
+
+~~~text
+Gan Ning
+   ↓
+[BARBARIAN INVASION ACTIVE]
+   ↓
+Cao Cao -1♥ | Guo Jia ◎ | Sima Yi ·
+
+Eligible viewer guidance:
+Play Negation or Skip.
+~~~
+
+**State 4 — Negation skipped; Guo Jia must play Attack or take damage**
+
+Same public Stage:
+
+~~~text
+Gan Ning
+   ↓
+[BARBARIAN INVASION ACTIVE]
+   ↓
+Cao Cao -1♥ | Guo Jia ◎ | Sima Yi ·
+
+Local Guo Jia guidance:
+Play Attack or take 1 damage.
+~~~
+
+**State 5 — Cao Cao and Guo Jia resolved Damaged; Sima Yi current; open Negation**
+
+~~~text
+Gan Ning
+   ↓
+[BARBARIAN INVASION ACTIVE]
+   ↓
+Cao Cao -1♥ | Guo Jia -1♥ | Sima Yi ◎
+
+Eligible viewer guidance:
+Play Negation or Skip.
+~~~
+
+**State 6 — Negation skipped; Sima Yi must play Attack or take damage**
+
+Same public Stage:
+
+~~~text
+Gan Ning
+   ↓
+[BARBARIAN INVASION ACTIVE]
+   ↓
+Cao Cao -1♥ | Guo Jia -1♥ | Sima Yi ◎
+
+Local Sima Yi guidance:
+Play Attack or take 1 damage.
+~~~
+
+States 1→6 must look like one stable scene changing semantic state, not six
+independently reconstructed layouts.
+
+#### 12.6.12 Mobile acceptance
+
+Validate at minimum:
+
+- 390px portrait;
+- 480×900 portrait;
+- one wider tablet/desktop layout.
+
+For representative Group/AOE states prove:
+
+- Source coordinates remain stable;
+- root action card coordinates remain stable;
+- Group Target Strip position/height remains stable;
+- current participant is not duplicated as a separate Hero Focus;
+- Group participants do not collapse into vertical one-character-per-line text;
+- Stage never intrudes into Local Guidance or Local Player Dock;
+- Guidance stays fully readable;
+- Hand remains usable;
+- Confirm/Skip remain reachable;
+- simple open Negation does not create a large Reaction Chain overlay;
+- a public Negation creates a compact card branch and becomes the active
+  highlight;
+- counter-Negation advances the active highlight to the newest public card;
+- branch settlement restores root highlight and authoritative participant
+  progression correctly;
+- private responder identity is not leaked;
+- no Source/Target/Decision metadata is duplicated when position/highlight
+  already communicates the fact;
+- implementation consumes authoritative CurrentAction/Presentation/Group
+  progress and does not introduce card-name/hero-name legality rules.
+
+#### 12.6.13 Authority-dependent remainder
+
+Do not fabricate missing semantic history or participant outcomes merely to
+complete the visuals.
+
+Reaction history may expand only from authoritative public chain nodes.
+
+Group outcomes may appear only when explicitly projected by the server. If an
+outcome such as `Defeated`, `Avoided`, `Negated`, or another settlement
+state is not yet authoritatively proven for a given path, omit it or use the
+current fail-closed state rather than deriving it from HP/timeline behavior.
+
+Any missing semantic projection remains a separate server/presentation task
+from this visual composition.
 
 ### 12.7 Fast Response Interaction Stage — mobile decision clarity — ADVANCED / PARTIAL
 
@@ -5050,6 +5485,18 @@ families or concrete regressions require it.
 This is a Reviewer-approved visual/information contract for short timed
 response windows such as Negation, Dodge, Duel responses, rescue, and similar
 blocking choices.
+
+**Group/AOE specialisation:** for Group/AOE ACTIVE presentation, §12.6 is the
+more specific authority. Its single Group Target Strip replaces the generic
+large Primary Target Hero, and its compact public Negation-card branch replaces
+a large standalone Reaction Chain panel for the ordinary AOE Negation path.
+Do not apply generic single-target composition in a way that reintroduces AOE
+target duplication.
+
+For mobile portrait card/skill ACTIVE scenes, prefer top-to-bottom causal flow
+when horizontal Source/Effect/Target composition would compress or destabilise
+the interaction. Rich INSPECT/SELECTABLE DETAIL surfaces may still use their
+dedicated layouts.
 
 The visual reference is a design target, **not** a pixel-copy task. Preserve
 the repository's existing semantic architecture, artwork, topology and Local
@@ -5267,18 +5714,23 @@ The remaining product gaps are:
    server-authorized Hero skill is available, the Skills band must own the
    activation entry. Ma Chao Cavalry is the current reference case; passive
    skills are not forced into fake buttons.
-2. **Extend ACTIVE composition by semantic family.** Reuse the proven
-   Source/Effect/Target language for additional authoritative flows such as
-   Dying/Peach, Judgement, Borrowed Sword, Steal/Dismantle, target-shifting, or
-   Group/AOE current-participant presentation. Do one family at a time and do
-   not infer missing roles.
-3. **Migrate SELECTABLE DETAIL when authority supports it.** Prefer the shared
+2. **Converge Group/AOE mobile presentation on §12.6.** The authoritative
+   participant progress already available is sufficient for the fixed vertical
+   Source → root card → single Group Target Strip composition. Remove duplicated
+   current-target panels/metadata and use compact public Negation-card branching
+   without changing Group/Negation gameplay semantics. Any still-missing
+   outcomes/history remain separate authority work.
+3. **Extend other ACTIVE composition families.** Reuse the proven semantic
+   relationship language for additional authoritative flows such as
+   Dying/Peach, Judgement, Borrowed Sword, Steal/Dismantle, or target-shifting.
+   Do one family at a time and do not infer missing roles.
+4. **Migrate SELECTABLE DETAIL when authority supports it.** Prefer the shared
    Hero Focus for server-owned zone/card choices; keep the existing picker when
    current projection cannot safely support the migration.
-4. **Add missing public semantic projection before richer Reaction/AOE UI.**
+5. **Add missing public semantic projection before richer Reaction/AOE UI.**
    Multi-node Reaction history and per-participant Group/AOE progress must be
    server/projector-owned first, then consumed by React.
-5. **Run the final UX2 gate** only after the remaining bounded deltas are
+6. **Run the final UX2 gate** only after the remaining bounded deltas are
    complete.
 
 Small, proven design nonconformances may be fixed before a larger migration at
