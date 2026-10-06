@@ -1,4 +1,4 @@
-import type { Card } from "./model";
+import type { Card, CardKind } from "./model";
 import type { ActionRequirement } from "./responses";
 import type { JudgementPurpose } from "./decisions/judgement";
 import type { DamageCause } from "./capabilities/damage-modifiers";
@@ -84,7 +84,7 @@ export type NegationHistoryRecord = {
   physicalCardId: string;
   kind: "NEGATION_CARD";
 };
-export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string; negationHistory?: NegationHistoryRecord[] } & CausalFields;
+export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; /** Public root identity from the actual server-owned effective Stratagem card; legacy continuations may omit it. */ rootCardKind?: CardKind; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string; negationHistory?: NegationHistoryRecord[] } & CausalFields;
 export type ResponseContinuation = AttackContinuation | InfluencingAttackContinuation | GroupContinuation | DuelContinuation | NegationContinuation | BorrowedSwordAttackContinuation;
 
 /**

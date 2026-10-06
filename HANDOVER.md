@@ -5,12 +5,12 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-`UX2.REFINE-HERO-SKILLS-BAND-WIDTH-WRAPPING-01` pushed as `f378f0b1d9b97410a7b16bef7bf68f47f9a0309b`: Skills uses a full-width row with Equipment below at ≤390px; 30 Heroes × 320/390/480/1440px and the 4-test focused Skills spec passed. `UX2.REFINE-NEGATION-SOURCE-COMPACT-IDENTITY-01` locally verified: proven generic single-target source is portrait + player name only; source portrait measured 64×82px at 390/480/wide, with no overlap. Its focused browser spec passed 5/5; screenshots were captured and visually checked. At this task's commit gate, Actions run `37544826372` for remote HEAD `f378f0b1d9b97410a7b16bef7bf68f47f9a0309b` was `in_progress` (`build-and-test` in progress; no failure observed). Proceeded without waiting per direct user instruction.
+UX2.REFINE tasks 1–3 are implemented in this handoff: Skills wrapping (`f378f0b1…`), compact single-target Negation source (`0b765778…`), and this task's typed, viewer-equal root `cardKind` projection from the server-owned effective card. Build, 87 focused presentation/client tests, and 32 `presentation-v2-engine` API tests pass. Dismantle remains `cardKind: Dismantle` despite the display name “Burning Bridges”; frame/source/target/effect mismatches fail closed; physical card IDs are not projected; Group/Oath/Bumper contracts remain separate. At the commit gate, Actions run `37545220462` for remote HEAD `0b7657789ebd3bd7c8a5ea04bca5bca8a162b86c` was `in_progress`, with no failure observed; proceeded without waiting per direct user instruction.
 
 ## Design checkpoint
 
-Re-fetched and re-read `docs/UX2-refine.md` blob `16fe069bd585731a4dafe0c9296dc82a0487d4fc` at the Task 2 boundary; unchanged. §§1–2 remain authoritative.
+Re-fetched and re-read `docs/UX2-refine.md` blob `16fe069bd585731a4dafe0c9296dc82a0487d4fc` at the Task 3 boundary; unchanged. §§1–2 remain authoritative.
 
 ## Current task
 
-`UX2.REFINE-NEGATION-ROOT-CARD-AUTHORITY-01` — add a typed, viewer-equal public root `cardKind` for proven generic single-target `NEGATION` scenes, sourced from the actual server-owned root Stratagem card and bound to the active causal identity. Fail closed on missing/mismatched proof; preserve Group/Oath/Bumper contracts and never expose physical card IDs. Prove Dismantle/Burning Bridges identity, viewer parity, frame/source/target mismatch rejection, and no private data. No React layout change in this task.
+`UX2.REFINE-NEGATION-OPEN-CAUSAL-SPINE-01` — for proven generic single-target open Negation scenes only (no public Negation submitted; exclude Group, Oath, and Bumper), compose the portrait Stage as Source → typed root card → Target. Remove the text EFFECT/empty Reaction Chain/state-copy treatment and duplicate participant facts; preserve Local Dock guidance and responder privacy. Use the new projected `rootCard.cardKind`; fail closed if absent. Prove self/non-self scenes and 390×844, 480×900, and wide geometry, including Stage/Guidance/Dock containment, no overlap/overflow, and compact public identities. Submitted-Negation branch visuals remain out of scope.

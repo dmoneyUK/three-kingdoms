@@ -1169,6 +1169,7 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
     semantics: "PROVEN",
     interactionId: root.interactionId,
     frameId: root.activeFrameId,
+    rootCard: null,
     nodes: [{
       nodeId: `${root.interactionId}:${root.activeFrameId}:negation:1`,
       interactionId: root.interactionId,
@@ -1344,10 +1345,21 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(sourceWindowTargetView.causalEnvelope.presentationRevision, sourceRoot.presentationRevision + 1);
   const first = await assertProjectionMatchesEngine(game.code, alice.token);
   const root = first.presentationV2.rootContext;
+  const rootCard = {
+    interactionId: first.causalEnvelope.interactionId,
+    frameId: first.causalEnvelope.activeFrameId,
+    sourceId: source.id,
+    targetId: target.id,
+    cardKind: "Dismantle",
+  };
   assert.deepEqual(first.presentationV2.reactionChain, {
     semantics: "PROVEN", interactionId: first.causalEnvelope.interactionId,
-    frameId: first.causalEnvelope.activeFrameId, nodes: [],
+    frameId: first.causalEnvelope.activeFrameId, rootCard, nodes: [],
   }, "a pass opens no public Reaction Chain card node");
+  assert.equal(authoritativePending(game.code).continuation.cardName, "Burning Bridges");
+  assert.equal(authoritativePending(game.code).continuation.rootCardKind, "Dismantle", "root identity is retained from the server-owned effective card, not reverse-mapped from its display name");
+  assert.deepEqual(first.presentationSnapshot.reactionChain?.rootCard, rootCard);
+  assert.equal(JSON.stringify(first.presentationSnapshot).includes("projector-negation-root"), false, "the public snapshot contains card kind but not the physical card ID");
   assert.equal(authoritativePending(game.code).continuation.negationHistory, undefined, "decline/pass is not persisted as a public reaction");
   assert.equal(authoritativePending(game.code).continuation.kind, "negation");
   assert.equal(first.causalEnvelope.frames.length, 1, "independent top-level Negation has one root frame");
@@ -1363,6 +1375,8 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(first.presentationV2.stableBoundary.decisionActorId, target.id);
   const firstRepeat = await state(game.code, alice.token);
   const firstOtherViewer = await state(game.code, host.token);
+  assert.deepEqual(publicSnapshot(firstOtherViewer.data.presentationSnapshot), publicSnapshot(first.presentationSnapshot), "root card identity is viewer-equal while local control remains private");
+  assert.deepEqual(firstOtherViewer.data.presentationSnapshot.reactionChain?.rootCard, rootCard);
   assert.deepEqual(firstRepeat.data.presentationV2.interactionScene, first.presentationV2.interactionScene);
   assert.deepEqual(firstRepeat.data.presentationV2.stableBoundary, first.presentationV2.stableBoundary);
   assert.deepEqual(firstRepeat.data.presentationV2.interactionScene?.participantRoles, first.presentationV2.interactionScene?.participantRoles);
@@ -1382,6 +1396,7 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(firstNegation.status, 200, JSON.stringify(firstNegation.data));
   const counter = await assertProjectionMatchesEngine(game.code, host.token);
   assert.equal(counter.currentAction.actorId, source.id);
+  assert.deepEqual(counter.presentationSnapshot.reactionChain.rootCard, rootCard, "root identity remains bound across public Negation responses");
   assert.equal(counter.presentationSnapshot.reactionChain.nodes.length, 1);
   assert.equal(counter.presentationSnapshot.reactionChain.nodes[0].actorId, target.id);
   assert.equal(counter.presentationSnapshot.reactionChain.nodes[0].causedByNodeId, null);
@@ -1488,6 +1503,7 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(firstWindow.presentationV2.interactionScene?.activeResolverId, null);
   assert.equal(firstWindow.presentationV2.decision?.actorId, null, "the private scan actor is not copied into PresentationV2 decision metadata");
   assert.deepEqual(firstWindow.presentationSnapshot.reactionChain?.nodes, [], "a pass or open response is not a submitted public Negation node");
+  assert.equal(firstWindow.presentationSnapshot.reactionChain?.rootCard, null, "Bumper Harvest keeps its dedicated participant-progress contract");
 
   const observer = await assertProjectionMatchesEngine(game.code, host.token);
   assert.equal(observer.pendingNegation.actorId, null, "the observer DTO does not identify the current scan actor");
@@ -1500,6 +1516,7 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(counterWindow.currentAction.actorId, second.id);
   assert.equal(counterWindow.presentationSnapshot.bumperHarvestProgress?.currentParticipantId, source.id, "the affected chooser remains the participant through counter-Negation");
   assert.deepEqual(counterWindow.presentationSnapshot.reactionChain?.nodes.map(({ actorId }) => actorId), [first.id], "only the submitted Negation appears in public history");
+  assert.equal(counterWindow.presentationSnapshot.reactionChain?.rootCard, null, "Bumper Harvest response history does not acquire a single-target root card");
   assert.equal("physicalCardId" in counterWindow.presentationSnapshot.reactionChain.nodes[0], false);
   assert.equal(counterWindow.presentationV2.interactionScene?.decisionActorId, null);
   assert.equal(counterWindow.presentationV2.interactionScene?.activeResolverId, null);
@@ -1822,6 +1839,7 @@ test("engine-backed Oath exposes a viewer-equal living wounded recipient scope a
     recipientIds: [source.id, wounded.id],
   });
   assert.deepEqual(responderView.presentationSnapshot.oathRecipientScope, scope);
+  assert.equal(responderView.presentationSnapshot.reactionChain?.rootCard, null, "Oath continues using its separate recipient-scope contract");
   assert.deepEqual(responderView.presentationSnapshot.oathRecipientScope.recipientIds, [source.id, wounded.id], "the wounded source participates while full-health and defeated characters do not");
   assert.deepEqual(responderView.presentationV2.interactionScene.targetIds, [source.id], "the causal root's self-target does not replace Oath's separate all-wounded recipient scope");
   assert.equal("currentParticipantId" in scope, false, "simultaneous Oath recovery does not invent sequential progress");

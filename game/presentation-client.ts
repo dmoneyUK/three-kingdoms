@@ -1,4 +1,5 @@
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressStatus, type HarvestParticipantProgressStatus } from "./pending";
+import { CARD_KINDS, type CardKind } from "./model";
 import { CARD_DEFINITIONS } from "./cards";
 import type { PresentationSnapshot, PresentationSnapshotBumperHarvestProgress, PresentationSnapshotGroupParticipantProgress, PresentationSnapshotGroupProgress, PresentationSnapshotOathRecipientScope } from "./presentation-snapshot";
 import type {
@@ -77,6 +78,7 @@ export type InteractionStageView = {
   orderedTargetProgress: readonly PresentationSnapshotGroupParticipantProgress[];
   bumperHarvestProgress: PresentationSnapshotBumperHarvestProgress | null;
   reactionChainNegationNodes: readonly ReactionChainNegationNodeView[];
+  reactionChainRootCard: NonNullable<PresentationSnapshot["reactionChain"]>["rootCard"];
   rootOrigin?: {
     frameId: string;
     stage: PresentationInteractionScene["stage"];
@@ -114,6 +116,7 @@ export type ReactionChainView = {
   negationNodes: readonly ReactionChainNegationNodeView[];
   root: {
     effect: string;
+    cardKind: CardKind | null;
     source: PresentationDisplayIdentity;
     targets: readonly PresentationDisplayIdentity[];
   } | null;
@@ -235,7 +238,28 @@ function reactionChainForSnapshot(
       object: { type: "card", cardKind: "Negation" },
     });
   }
-  return { semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, nodes };
+  const rawRootCard: unknown = (chain as { rootCard?: unknown }).rootCard;
+  let rootCard: NonNullable<PresentationSnapshot["reactionChain"]>["rootCard"] = null;
+  if (rawRootCard && typeof rawRootCard === "object" && !Array.isArray(rawRootCard)) {
+    const candidate = rawRootCard as Record<string, unknown>;
+    const targetId = scene.targetIds.length === 1 ? scene.targetIds[0] : null;
+    if (candidate.interactionId === identity.interactionId
+      && candidate.frameId === scene.rootFrameId && candidate.frameId === scene.activeFrameId
+      && scene.rootFrameId === scene.activeFrameId && scene.continuity.relation === "ROOT_FRAME"
+      && typeof candidate.sourceId === "string" && candidate.sourceId === scene.sourceId && candidate.sourceId === scene.activeSourceId
+      && typeof candidate.targetId === "string" && candidate.targetId === targetId
+      && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === targetId
+      && typeof candidate.cardKind === "string" && CARD_KINDS.includes(candidate.cardKind as CardKind)) {
+      rootCard = {
+        interactionId: identity.interactionId,
+        frameId: scene.activeFrameId as string,
+        sourceId: candidate.sourceId,
+        targetId: candidate.targetId,
+        cardKind: candidate.cardKind as CardKind,
+      };
+    }
+  }
+  return { semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes };
 }
 
 function groupProgressForSnapshot(
@@ -565,6 +589,7 @@ export function buildInteractionStageView(
         cardKind: "Negation" as const,
       }))
       : [],
+    reactionChainRootCard: view.stage === "NEGATION" ? view.reactionChain?.rootCard ?? null : null,
     ...(view.rootOrigin ? {
       rootOrigin: {
         frameId: view.rootOrigin.frameId,
@@ -601,6 +626,7 @@ export function buildReactionChainView(stage: InteractionStageView): ReactionCha
     negationNodes: stage.reactionChainNegationNodes.map((node) => ({ ...node, actor: { ...node.actor } })),
     root: {
       effect: stage.effect,
+      cardKind: stage.reactionChainRootCard?.cardKind ?? null,
       source: stage.source,
       targets: stage.originalTargets,
     },

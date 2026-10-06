@@ -2602,7 +2602,7 @@ async function startNegation(room: RoomRow, source: PlayerRow, players: PlayerRo
   const holdUntilTargetedEffectFinishes = effect.kind === "dismantle" || effect.kind === "steal";
   const sequenceDiscard = holdUntilTargetedEffectFinishes ? discard.filter((discarded) => discarded.id !== card.id) : discard;
   const effectCardName = effect.kind === "dismantle" ? "Burning Bridges" : cardDefinition(card.kind).name;
-  const base = { sourceId: source.id, negated: false, cardName: effectCardName, effectTargetId, resumePhase: room.phase ?? "play", effect, responseTarget: `${effectCardName}'s effect on ${targetName}`, chainDepth: 0, resolutionId: latestResolutionId(log), ...(holdUntilTargetedEffectFinishes ? { heldCards: [card] } : {}) } satisfies Omit<NegationContinuation, "kind" | "remainingIds" | "causal">;
+  const base = { sourceId: source.id, negated: false, cardName: effectCardName, effectTargetId, resumePhase: room.phase ?? "play", effect, rootCardKind: card.kind, responseTarget: `${effectCardName}'s effect on ${targetName}`, chainDepth: 0, resolutionId: latestResolutionId(log), ...(holdUntilTargetedEffectFinishes ? { heldCards: [card] } : {}) } satisfies Omit<NegationContinuation, "kind" | "remainingIds" | "causal">;
   const first = nextEligibleNegationResponder(players, responders.map((player) => player.id), { kind: "negation", ...base, remainingIds: [] });
   const inheritedEnvelope = createdEnvelope ?? parseCausalEnvelope(room.causal_envelope_json);
   const canReuseInheritedFrame = Boolean(

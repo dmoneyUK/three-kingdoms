@@ -1,4 +1,5 @@
 import type { CurrentAction } from "./protocol";
+import { CARD_KINDS, type CardKind } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestParticipantProgressStatus } from "./pending";
 import type {
   PresentationBumperHarvestProgress,
@@ -297,7 +298,28 @@ function reactionChainFor(
       object: { type: "card", cardKind: "Negation" },
     });
   }
-  return { semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, nodes };
+  const rawRootCard: unknown = (chain as { rootCard?: unknown }).rootCard;
+  let rootCard: NonNullable<PresentationReactionChain["rootCard"]> | null = null;
+  if (rawRootCard && typeof rawRootCard === "object" && !Array.isArray(rawRootCard)) {
+    const candidate = rawRootCard as Record<string, unknown>;
+    const targetId = scene.targetIds.length === 1 ? scene.targetIds[0] : null;
+    if (candidate.interactionId === identity.interactionId
+      && candidate.frameId === scene.rootFrameId && candidate.frameId === scene.activeFrameId
+      && scene.rootFrameId === scene.activeFrameId && scene.continuity.relation === "ROOT_FRAME"
+      && typeof candidate.sourceId === "string" && candidate.sourceId === scene.sourceId && candidate.sourceId === scene.activeSourceId
+      && typeof candidate.targetId === "string" && candidate.targetId === targetId
+      && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === targetId
+      && typeof candidate.cardKind === "string" && CARD_KINDS.includes(candidate.cardKind as CardKind)) {
+      rootCard = {
+        interactionId: identity.interactionId,
+        frameId: scene.activeFrameId as string,
+        sourceId: candidate.sourceId,
+        targetId: candidate.targetId,
+        cardKind: candidate.cardKind as CardKind,
+      };
+    }
+  }
+  return { semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes };
 }
 
 function sameIds(left: readonly string[], right: readonly string[]) {

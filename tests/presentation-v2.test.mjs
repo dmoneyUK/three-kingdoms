@@ -112,6 +112,67 @@ for (const flow of flows) {
   });
 }
 
+test("single-target Negation exposes only an authoritative root card identity", () => {
+  const interactionId = "root-card-interaction";
+  const frameId = "root-negation-frame";
+  const causal = { interactionId, frameId };
+  const baseFrame = {
+    frameId,
+    parentFrameId: null,
+    stage: "NEGATION",
+    origin: { originSourceId: "A", originEffect: "Burning Bridges", originalTargetIds: ["C"] },
+    current: { currentSourceId: "A", currentEffect: "Burning Bridges", currentTargetIds: ["C"], resolvingPlayerId: "B" },
+  };
+  const baseContinuation = {
+    kind: "negation",
+    sourceId: "A",
+    effectTargetId: "C",
+    rootCardKind: "Dismantle",
+    cardName: "Burning Bridges",
+    remainingIds: [],
+    negated: false,
+    effect: { kind: "dismantle", targetId: "C" },
+    causal,
+  };
+  const project = ({ continuation = {}, frame = {}, responseFrameId = frameId } = {}) => projectPresentationV2({
+    pending: {
+      kind: "response", actorId: "B", causal: { interactionId, frameId: responseFrameId },
+      continuation: { ...baseContinuation, ...continuation },
+    },
+    currentAction: action({ actorId: "B" }),
+    actionRevision: "root-card-action",
+    timeline: [],
+    causalEnvelope: {
+      version: 1,
+      interactionId,
+      frames: [{ ...baseFrame, ...frame }],
+      activeFrameId: frameId,
+      checkpoint: { checkpointId: "root-card-checkpoint", frameId, stage: "NEGATION" },
+      presentationRevision: 1,
+    },
+  });
+
+  const proven = project();
+  assert.deepEqual(proven.reactionChain?.rootCard, {
+    interactionId,
+    frameId,
+    sourceId: "A",
+    targetId: "C",
+    cardKind: "Dismantle",
+  }, "Dismantle remains typed even though its public display name is Burning Bridges");
+
+  assert.equal(project({ continuation: { rootCardKind: undefined } }).reactionChain?.rootCard, null, "legacy/missing card proof fails closed");
+  assert.equal(project({ continuation: { rootCardKind: "Steal" } }).reactionChain?.rootCard, null, "card/effect mismatch fails closed");
+  assert.equal(project({ continuation: { sourceId: "other-source" } }).reactionChain?.rootCard, null, "source mismatch fails closed");
+  assert.equal(project({ continuation: { effectTargetId: "other-target" } }).reactionChain?.rootCard, null, "target mismatch fails closed");
+  assert.equal(project({ frame: { current: { ...baseFrame.current, currentSourceId: "other-source" } } }).reactionChain?.rootCard, null, "frame/source mismatch fails closed");
+  assert.equal(project({ frame: { current: { ...baseFrame.current, currentEffect: "Steal" } } }).reactionChain?.rootCard, null, "root-frame effect mismatch fails closed without mapping display names to card kinds");
+  assert.equal(project({ frame: { origin: { ...baseFrame.origin, originalTargetIds: ["other-target"] } } }).reactionChain?.rootCard, null, "frame/target mismatch fails closed");
+  assert.equal(project({ continuation: { causal: { interactionId, frameId: "other-frame" } } }).reactionChain, null, "continuation frame mismatch rejects the chain");
+  assert.equal(project({ continuation: { effect: { kind: "oath" }, rootCardKind: "Oath" } }).reactionChain?.rootCard, null, "multi-target Oath does not use the single-target root contract");
+  assert.equal(project({ continuation: { effect: { kind: "group", pending: {} }, rootCardKind: "BarbarianInvasion" } }).reactionChain?.rootCard, null, "Group/AOE keeps its existing presentation contract");
+});
+
 test("group projection records missing authoritative semantics instead of guessing", () => {
   const projected = projectPresentationV2({ pending: flows[3].points[0].pending, currentAction: flows[3].points[0].currentAction, actionRevision: "r", timeline: flows[3].points[0].timeline });
   assert.equal(projected.groupResolution?.semantics, "UNPROVEN");

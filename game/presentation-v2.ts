@@ -1,5 +1,6 @@
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
+import { CARD_KINDS, type CardKind } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type NegationHistoryRecord } from "./pending";
 
 export type PresentationV2Event = {
@@ -105,10 +106,19 @@ export type PresentationReactionChainNode = {
   object: { type: "card"; cardKind: "Negation" };
 };
 
+export type PresentationReactionChainRootCard = {
+  interactionId: string;
+  frameId: string;
+  sourceId: string;
+  targetId: string;
+  cardKind: CardKind;
+};
+
 export type PresentationReactionChain = {
   semantics: "PROVEN";
   interactionId: string;
   frameId: string;
+  rootCard: PresentationReactionChainRootCard | null;
   nodes: readonly PresentationReactionChainNode[];
 };
 
@@ -917,7 +927,56 @@ function reactionChainFor(
       object: { type: "card", cardKind: "Negation" },
     });
   }
-  return { semantics: "PROVEN", interactionId: scene.interactionId, frameId: scene.activeFrameId, nodes };
+  const sourceId = stringValue(continuation.sourceId);
+  const targetId = stringValue(continuation.effectTargetId);
+  const cardName = stringValue(continuation.cardName);
+  const rootCardKind = continuation.rootCardKind;
+  const expectedRootCardKind = effect && sourceId && targetId ? singleTargetNegationRootCardKind(effect, sourceId, targetId) : null;
+  const rootFrame = envelope.frames.find(({ frameId }) => frameId === scene.rootFrameId);
+  const isProvenSingleTargetRoot = Boolean(
+    expectedRootCardKind && rootCardKind === expectedRootCardKind
+      && sourceId && targetId
+      && scene.continuity.relation === "ROOT_FRAME"
+      && scene.rootFrameId === scene.activeFrameId
+      && rootFrame?.frameId === frame.frameId
+      && rootFrame.stage === "NEGATION"
+      && (rootFrame.parentFrameId === undefined || rootFrame.parentFrameId === null)
+      && rootFrame.origin.originSourceId === sourceId
+      && rootFrame.current.currentSourceId === sourceId
+      && cardName !== null && rootFrame.origin.originEffect === cardName
+      && rootFrame.current.currentEffect === cardName && scene.effect === cardName
+      && rootFrame.origin.originalTargetIds.length === 1 && rootFrame.origin.originalTargetIds[0] === targetId
+      && rootFrame.current.currentTargetIds.length === 1 && rootFrame.current.currentTargetIds[0] === targetId
+      && scene.sourceId === sourceId && scene.activeSourceId === sourceId
+      && scene.participantRoles.sourceId === sourceId
+      && scene.targetIds.length === 1 && scene.targetIds[0] === targetId
+      && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === targetId
+      && scene.participantRoles.originalTargetIds.length === 1 && scene.participantRoles.originalTargetIds[0] === targetId
+      && scene.activeResolverId === item.actorId && scene.decisionActorId === item.actorId,
+  );
+  const rootCard = isProvenSingleTargetRoot && sourceId && targetId && CARD_KINDS.includes(rootCardKind as CardKind)
+    ? { interactionId: scene.interactionId, frameId: frame.frameId, sourceId, targetId, cardKind: rootCardKind as CardKind }
+    : null;
+  return { semantics: "PROVEN", interactionId: scene.interactionId, frameId: scene.activeFrameId, rootCard, nodes };
+}
+
+function singleTargetNegationRootCardKind(effect: Record<string, unknown>, sourceId: string, targetId: string): CardKind | null {
+  const effectTargetMatches = (value: unknown) => value === targetId;
+  switch (effect.kind) {
+    case "draw_two": return sourceId === targetId ? "DrawTwo" : null;
+    case "dismantle": return effectTargetMatches(effect.targetId) ? "Dismantle" : null;
+    case "steal": return effectTargetMatches(effect.targetId) ? "Steal" : null;
+    case "duel": {
+      const pending = record(effect.pending);
+      const duel = record(pending?.continuation);
+      return pending?.kind === "response" && duel?.kind === "duel" && duel.sourceId === sourceId && duel.targetId === targetId ? "Duel" : null;
+    }
+    case "overindulgence": return effectTargetMatches(effect.targetId) ? "Overindulgence" : null;
+    case "lightning": return effectTargetMatches(effect.targetId) ? "Lightning" : null;
+    case "rations_depleted": return effectTargetMatches(effect.targetId) ? "RationsDepleted" : null;
+    case "borrowed_sword": return effectTargetMatches(effect.targetId) ? "BorrowedSword" : null;
+    default: return null;
+  }
 }
 
 function pendingCausalMatchesScene(scene: PresentationInteractionScene | null, pending: unknown): boolean {

@@ -215,6 +215,7 @@ test("adapter carries ordered Bumper Harvest progress without exposing the priva
     bumperHarvestProgress: progress,
     reactionChain: {
       semantics: "PROVEN", interactionId: "interaction-1", frameId: "harvest-negation",
+      rootCard: null,
       nodes: [{ nodeId: "submitted-negation", interactionId: "interaction-1", frameId: "harvest-negation", causedByNodeId: null, actorId: "A", kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } }],
     },
   }), "C");
@@ -249,6 +250,7 @@ test("adapter carries only a proven, linked Negation history without adding UI c
     semantics: "PROVEN",
     interactionId: interaction.interactionId,
     frameId: rootFrameId,
+    rootCard: { interactionId: interaction.interactionId, frameId: rootFrameId, sourceId: "A", targetId: "B", cardKind: "Dismantle" },
     nodes: [
       { nodeId: "negation-1", interactionId: interaction.interactionId, frameId: rootFrameId, causedByNodeId: null, actorId: "B", kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } },
       { nodeId: "negation-2", interactionId: interaction.interactionId, frameId: rootFrameId, causedByNodeId: "negation-1", actorId: "A", kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } },
@@ -270,11 +272,23 @@ test("adapter carries only a proven, linked Negation history without adding UI c
   assert.deepEqual(chain.negationNodes.map(({ actor, cardKind }) => [actor.name, cardKind]), [
     ["Zhao Yun", "Negation"], ["Ma Chao", "Negation"],
   ], "the linked public order is retained for Stage rendering");
+  assert.equal(chain.root.cardKind, "Dismantle", "the proven logical card identity is available without inferring from its display name");
   const observerChain = buildReactionChainView(buildInteractionStageView(observer, resolveDisplayName));
   assert.deepEqual(observerChain.negationNodes, chain.negationNodes);
   assert.equal(JSON.stringify(chain).includes("negation-1"), false, "internal node IDs are not carried into the display model");
   assert.equal(JSON.stringify(chain).includes("physicalCardId"), false);
   assert.equal(JSON.stringify(chain).includes("CurrentAction"), false);
+
+  for (const rootCard of [
+    { ...reactionChain.rootCard, frameId: "other-frame" },
+    { ...reactionChain.rootCard, interactionId: "other-interaction" },
+    { ...reactionChain.rootCard, sourceId: "other-source" },
+    { ...reactionChain.rootCard, targetId: "other-target" },
+    { ...reactionChain.rootCard, cardKind: "unknown-card" },
+  ]) {
+    const unproven = buildPresentationClientView({ ...snapshotValue, reactionChain: { ...reactionChain, rootCard } }, "B");
+    assert.equal(unproven.reactionChain?.rootCard, null, "mismatched or unknown root-card facts fail closed without discarding independent response history");
+  }
 
   const malformed = buildPresentationClientView({
     ...snapshotValue,
@@ -1258,6 +1272,7 @@ test("Reaction Chain projects only a proven Negation root and active response", 
     negationNodes: [],
     root: {
       effect: "Dismantle",
+      cardKind: null,
       source: { id: "A", name: "Ma Chao", known: true },
       targets: [{ id: "B", name: "Zhao Yun", known: true }],
     },
