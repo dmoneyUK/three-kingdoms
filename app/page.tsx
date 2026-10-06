@@ -14,7 +14,7 @@ import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PresentationV2 } from "../game/presentation-v2";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, isProvenBorrowedSwordForcedAttack, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildPresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
-import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupSourceForViewer, projectGroupTargetScopeForViewer, type GroupSourceView, type GroupTargetScopeView, type HeroFocusPlayerDisplay, type HeroFocusView, type MediumParticipantView } from "../game/hero-focus";
+import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupSourceForViewer, projectGroupTargetScopeForViewer, projectOathRecipientScopeForStage, type GroupSourceView, type GroupTargetScopeView, type HeroFocusPlayerDisplay, type HeroFocusView, type MediumParticipantView, type OathRecipientScopeView } from "../game/hero-focus";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
@@ -624,28 +624,29 @@ function MediumParticipantCard({ view }: { view: MediumParticipantView }) {
   </div>;
 }
 
-type GroupActionCardKind = NonNullable<PresentationClientView["groupResolution"]>["cardKind"] | "Negation";
+type StageActionCardKind = NonNullable<PresentationClientView["groupResolution"]>["cardKind"] | "Negation" | "Oath";
 type GroupReactionNode = ReturnType<typeof buildReactionChainView>["negationNodes"][number];
 
-const GROUP_ACTION_CARD_ART: Readonly<Record<GroupActionCardKind, string>> = {
+const STAGE_ACTION_CARD_ART: Readonly<Record<StageActionCardKind, string>> = {
   BarbarianInvasion: "/barbarian-invasion-card.jpg",
+  Oath: "/oath-card.jpg",
   RainingArrows: "/raining-arrows-card.jpg",
   SkyPiercingHalberdAttack: "/sky-piercing-halberd-card.jpg",
   Negation: "/negation-card.jpg",
 };
 
-function GroupStageSource({ view }: { view: GroupSourceView }) {
+function StageSource({ view, family }: { view: GroupSourceView; family: "group" | "oath" }) {
   const hero = heroDefinition(view.heroId);
-  return <div className="group-stage-source" data-group-source="proven" data-group-source-player-id={view.id} aria-label={`Source: ${view.name}`}>
+  return <div className={`group-stage-source${family === "oath" ? " oath-stage-source" : ""}`} data-group-source={family === "group" ? "proven" : undefined} data-group-source-player-id={family === "group" ? view.id : undefined} data-oath-source={family === "oath" ? "proven" : undefined} data-oath-source-player-id={family === "oath" ? view.id : undefined} aria-label={`Source: ${view.name}`}>
     <span className={hero ? "group-stage-source-portrait" : "group-stage-source-portrait group-stage-source-portrait-empty"} data-hero-id={view.heroId ?? undefined}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
     <b>{view.name}</b>
   </div>;
 }
 
-function GroupStageActionCard({ kind, active, root = false }: { kind: GroupActionCardKind; active: boolean; root?: boolean }) {
+function StageActionCard({ kind, active, root = false }: { kind: StageActionCardKind; active: boolean; root?: boolean }) {
   const name = cardDefinition(kind).name;
-  return <div className={`group-stage-card${root ? " group-stage-card-root" : " group-stage-card-negation"}${active ? " is-active" : " is-context"}`} role="img" aria-label={`${name}${root ? active ? ", active root action" : ", root action context" : active ? ", active response head" : ", public response"}`} data-action-card-kind={kind} data-group-root-action={root ? kind : undefined} data-active-head={active ? "true" : "false"}>
-    <span className="group-stage-card-art" style={{ backgroundImage: `url("${GROUP_ACTION_CARD_ART[kind]}")` }} aria-hidden="true" />
+  return <div className={`group-stage-card${root ? " group-stage-card-root" : " group-stage-card-negation"}${kind === "Oath" ? " oath-stage-card" : ""}${active ? " is-active" : " is-context"}`} role="img" aria-label={`${name}${root ? active ? ", active root action" : ", root action context" : active ? ", active response head" : ", public response"}`} data-action-card-kind={kind} data-group-root-action={root && kind !== "Oath" ? kind : undefined} data-oath-root-action={root && kind === "Oath" ? "Oath" : undefined} data-active-head={active ? "true" : "false"}>
+    <span className="group-stage-card-art" style={{ backgroundImage: `url("${STAGE_ACTION_CARD_ART[kind]}")` }} aria-hidden="true" />
     <b>{name}</b>
   </div>;
 }
@@ -702,9 +703,9 @@ function GroupInteractionComposition({ source, rootKind, rootActive, negationNod
   const collapsedNodeCount = negationNodes.length - visibleNodes.length;
   return <div className="interaction-stage-body group-stage-body" data-group-composition="proven">
     <div className="group-stage-composition">
-      {source && <><GroupStageSource view={source} /><span className="group-stage-causal-arrow" aria-hidden="true">↓</span></>}
+      {source && <><StageSource view={source} family="group" /><span className="group-stage-causal-arrow" aria-hidden="true">↓</span></>}
       <div className="group-stage-root-row" data-group-root-row="true">
-        <GroupStageActionCard kind={rootKind} active={rootActive} root />
+        <StageActionCard kind={rootKind} active={rootActive} root />
         {visibleNodes.length > 0 && <div className="group-negation-branch-anchor">
           <span className="group-negation-branch-connector" aria-hidden="true" />
           <ol className="group-negation-branch" aria-label="AOE Negation Response" data-reaction-chain="proven" data-group-negation="true" data-reaction-interaction-id={interactionId ?? undefined}>
@@ -712,7 +713,7 @@ function GroupInteractionComposition({ source, rootKind, rootActive, negationNod
             {visibleNodes.map((node, index) => {
               const active = index === visibleNodes.length - 1;
               return <li className="group-negation-branch-node" key={`${node.actor.id ?? "unknown"}-${negationNodes.length - visibleNodes.length + index}`} data-reaction-node="negation" data-active-head={active ? "true" : "false"} aria-label={`${node.cardKind} publicly played by ${node.actor.name}${active ? ", current response head" : ""}`}>
-                <GroupStageActionCard kind={node.cardKind} active={active} />
+                <StageActionCard kind={node.cardKind} active={active} />
               </li>;
             })}
           </ol>
@@ -720,6 +721,49 @@ function GroupInteractionComposition({ source, rootKind, rootActive, negationNod
       </div>
       <span className="group-stage-causal-arrow" aria-hidden="true">↓</span>
       <GroupTargetScope view={targetScope} compact />
+    </div>
+  </div>;
+}
+
+function OathRecipientStrip({ view }: { view: OathRecipientScopeView }) {
+  return <section className="oath-recipient-scope" aria-label="Oath Recipient Scope" data-oath-recipient-scope="proven" data-recipient-density={view.density}>
+    <div className="oath-recipient-track">
+      {view.recipients.length === 0
+        ? <span className="oath-empty-recipient" data-oath-empty-recipient="true">No wounded characters</span>
+        : view.recipients.map((recipient) => {
+          const hero = heroDefinition(recipient.heroId);
+          return <div className={`oath-recipient-marker${recipient.isViewer ? " is-viewer" : ""}`} key={recipient.id} data-oath-recipient-id={recipient.id} aria-label={`Oath recipient: ${recipient.isViewer ? "You" : recipient.name}`}>
+            {!recipient.isViewer && <span className={hero ? "oath-recipient-portrait" : "oath-recipient-portrait oath-recipient-portrait-empty"} data-hero-id={recipient.heroId ?? undefined}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>}
+            <b>{recipient.isViewer ? "You" : recipient.name}</b>
+          </div>;
+        })}
+    </div>
+  </section>;
+}
+
+function OathInteractionComposition({ source, recipients, negationNodes, interactionId }: { source: GroupSourceView | null; recipients: OathRecipientScopeView; negationNodes: readonly GroupReactionNode[]; interactionId: string | null }) {
+  const visibleNodes = negationNodes.slice(-2);
+  const collapsedNodeCount = negationNodes.length - visibleNodes.length;
+  return <div className="interaction-stage-body oath-stage-body" data-oath-stage-body="true">
+    <div className="oath-stage-composition" data-oath-composition="proven">
+      {source && <><StageSource view={source} family="oath" /><span className="group-stage-causal-arrow" aria-hidden="true">↓</span></>}
+      <div className="group-stage-root-row oath-stage-root-row" data-oath-root-row="true">
+        <StageActionCard kind="Oath" active={visibleNodes.length === 0} root />
+        {visibleNodes.length > 0 && <div className="group-negation-branch-anchor oath-negation-branch-anchor">
+          <span className="group-negation-branch-connector" aria-hidden="true" />
+          <ol className="group-negation-branch oath-negation-branch" aria-label="Oath Negation Response" data-oath-negation-branch="proven" data-reaction-interaction-id={interactionId ?? undefined}>
+            {collapsedNodeCount > 0 && <li className="group-negation-collapsed" aria-label={`${collapsedNodeCount} earlier public Negation cards collapsed`}><span aria-hidden="true">+{collapsedNodeCount}</span></li>}
+            {visibleNodes.map((node, index) => {
+              const active = index === visibleNodes.length - 1;
+              return <li className="group-negation-branch-node" key={`${node.actor.id ?? "unknown"}-${negationNodes.length - visibleNodes.length + index}`} data-oath-negation-node="true" data-active-head={active ? "true" : "false"} aria-label={`${node.cardKind} publicly played by ${node.actor.name}${active ? ", current response head" : ""}`}>
+                <StageActionCard kind={node.cardKind} active={active} />
+              </li>;
+            })}
+          </ol>
+        </div>}
+      </div>
+      <span className="group-stage-causal-arrow" aria-hidden="true">↓</span>
+      <OathRecipientStrip view={recipients} />
     </div>
   </div>;
 }
@@ -756,6 +800,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const isOpenNegationResponse = display.visible && stage.stage === "NEGATION";
   const mediumSource = projectMediumSourceForViewer(stage, heroFocus, viewerId, resolvePlayerDisplay);
   const groupTargetScope = projectGroupTargetScopeForViewer(stage, heroFocus, mediumSource, viewerId, resolvePlayerDisplay);
+  const oathRecipientScope = projectOathRecipientScopeForStage(stage, view.oathRecipientScope, viewerId, resolvePlayerDisplay);
   const isProvenGroupNegation = isOpenNegationResponse && groupTargetScope?.resolutionSemantics === "GROUP";
   const groupSource = projectGroupSourceForViewer(stage, viewerId, resolvePlayerDisplay);
   const isProvenGroupComposition = Boolean(groupTargetScope?.resolutionSemantics === "GROUP"
@@ -764,6 +809,18 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && stage.source.known
     && (stage.stage === "GROUP_RESOLUTION" || isProvenGroupNegation));
   const groupNegationNodes = isProvenGroupComposition && isProvenGroupNegation ? reactionChain.negationNodes : [];
+  const isProvenOathComposition = Boolean(display.visible
+    && stage.stage === "NEGATION"
+    && stage.effect === "Oath of the Peach Garden"
+    && oathRecipientScope
+    && stage.source.id
+    && stage.source.known);
+  const oathSource = isProvenOathComposition && stage.source.id && stage.source.id !== viewerId
+    ? { id: stage.source.id, name: stage.source.name, heroId: resolvePlayerDisplay?.(stage.source.id)?.heroId ?? null }
+    : null;
+  const oathNegationNodes = isProvenOathComposition && reactionChain.interactionId === stage.interactionId
+    ? reactionChain.negationNodes
+    : [];
   const currentParticipantProgress = [...stage.groupParticipantProgress, ...(stage.orderedTargetProgress ?? [])]
     .find((participant) => participant.playerId === stage.currentParticipant.id) ?? null;
   const focusGroupParticipantProgress = currentParticipantProgress?.playerId === heroFocus.primary?.id ? currentParticipantProgress : null;
@@ -920,13 +977,15 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
         ? "DYING PLAYER"
         : null;
   if (!display.visible && !hasLocalFocus) return null;
-  return <section className="interaction-stage" aria-label={isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={isProvenGroupComposition ? undefined : currentEffect ?? undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined} data-group-negation={isProvenGroupNegation ? "true" : undefined} data-group-composition={isProvenGroupComposition ? "true" : undefined}>
-    {!isProvenGroupComposition && <header>{!hideStageArchitecturalChrome
+  return <section className="interaction-stage" aria-label={isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={isProvenGroupComposition || isProvenOathComposition ? undefined : currentEffect ?? undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined} data-group-negation={isProvenGroupNegation ? "true" : undefined} data-group-composition={isProvenGroupComposition ? "true" : undefined} data-oath-composition={isProvenOathComposition ? "true" : undefined}>
+    {!isProvenGroupComposition && !isProvenOathComposition && <header>{!hideStageArchitecturalChrome
       ? <span>INTERACTION STAGE</span>
       : stage.stage === "DYING" && <span className="interaction-stage-visually-hidden">INTERACTION STAGE</span>}<strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : currentEffect && isOpenNegationResponse ? "NEGATION RESPONSE" : currentEffect && stage.stage === "DYING" ? display.focusLabel : currentEffect ? stage.stageLabel : display.focusLabel}</strong>{showViewerDecisionMarker && <em>YOUR DECISION</em>}</header>}
-    {!isProvenGroupComposition && currentEffectSummary && <p className="interaction-stage-event-summary" data-stage-event-summary="proven">{currentEffectSummary}</p>}
+    {!isProvenGroupComposition && !isProvenOathComposition && currentEffectSummary && <p className="interaction-stage-event-summary" data-stage-event-summary="proven">{currentEffectSummary}</p>}
     {isProvenGroupComposition && groupTargetScope && stage.groupCardKind
       ? <GroupInteractionComposition source={groupSource} rootKind={stage.groupCardKind} rootActive={groupNegationNodes.length === 0} negationNodes={groupNegationNodes} interactionId={reactionChain.interactionId} targetScope={groupTargetScope} />
+      : isProvenOathComposition && oathRecipientScope
+        ? <OathInteractionComposition source={oathSource} recipients={oathRecipientScope} negationNodes={oathNegationNodes} interactionId={reactionChain.interactionId} />
       : <div className="interaction-stage-body">
       <div className="interaction-stage-hero-region">
         {showMediumSource && mediumSource && <MediumParticipantCard view={mediumSource} />}

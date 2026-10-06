@@ -892,8 +892,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   are unchanged.
 - Focused PresentationV2/Snapshot/client tests passed 94/94; engine-backed API
   tests passed 31/31; targeted ESLint, `git diff --check`, and build passed.
-  Pre-commit remote `ux-v2` SHA `673efcf132e74c4280ef46c81d62a4d553e7e2d6`
-  passed Actions run `37472484337`. Reviewer acceptance remains unclaimed.
+  Pushed as `a3cecb3340b307912a6c1c28faef6a9c00ff9d4d`; exact Actions run
+  `37477034233` completed **success**. Reviewer acceptance remains unclaimed.
+
+### UX2.20-OATH-NEGATION-STAGE-COMPOSITION-01 — Oath root-card composition
+
+- Oath NEGATION now consumes only its proven simultaneous recipient scope in a
+  compact Source → root Oath card → recipient strip. Public submitted Negation
+  cards branch from that root; duplicate HeroFocus, Current Effect, event prose,
+  and Reaction Chain panels are omitted. Local response controls and private
+  identity remain in the Dock. Group and Bumper Harvest behavior are unchanged.
+- Presentation/render regressions passed 68/68; focused Oath browser semantic
+  and geometry tests passed 9/9, including ten-player mobile scrolling and
+  Stage/Dock separation. Build, targeted ESLint, and `git diff --check` passed.
+  Ready to push; Reviewer acceptance remains unclaimed.
 
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 

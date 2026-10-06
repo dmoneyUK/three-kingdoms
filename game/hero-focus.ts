@@ -1,4 +1,4 @@
-import { buildNestedEffectContext, type InteractionStageView, type PresentationDisplayIdentity } from "./presentation-client";
+import { buildNestedEffectContext, type InteractionStageView, type PresentationClientView, type PresentationDisplayIdentity } from "./presentation-client";
 import type { PresentationSnapshotGroupParticipantProgress } from "./presentation-snapshot";
 
 export type HeroFocusPlayerDisplay = {
@@ -49,6 +49,37 @@ export type GroupTargetScopeView = {
     isViewer: boolean;
   })[];
 };
+
+export type OathRecipientScopeView = {
+  density: "medium" | "compact";
+  recipients: readonly (Pick<HeroFocusPlayerView, "id" | "name" | "heroId"> & { isViewer: boolean })[];
+};
+
+/** Consume only the server-projected simultaneous Oath scope; never invent order or progress. */
+export function projectOathRecipientScopeForStage(
+  stage: InteractionStageView,
+  scope: PresentationClientView["oathRecipientScope"],
+  viewerId: string | null,
+  resolvePlayerDisplay: HeroFocusPlayerDisplayResolver = () => null,
+): OathRecipientScopeView | null {
+  if (!stage.visible || stage.stage !== "NEGATION" || !scope || scope.semantics !== "PROVEN" || scope.cardKind !== "Oath"
+    || scope.interactionId !== stage.interactionId || !stage.source.id || scope.sourceId !== stage.source.id) return null;
+
+  const seen = new Set<string>();
+  const recipients: OathRecipientScopeView["recipients"][number][] = [];
+  for (const recipientId of scope.recipientIds) {
+    if (typeof recipientId !== "string" || recipientId.length === 0 || seen.has(recipientId)) return null;
+    seen.add(recipientId);
+    const display = resolvePlayerDisplay(recipientId) ?? {};
+    recipients.push({
+      id: recipientId,
+      name: publicText(display.name) ?? "Unknown participant",
+      heroId: publicText(display.heroId),
+      isViewer: recipientId === viewerId,
+    });
+  }
+  return { density: recipients.length >= 4 ? "compact" : "medium", recipients };
+}
 
 /** Consume only accepted public Stage IDs and explicitly projected Group progress.
  * Without progress this remains a neutral historical scope; it never infers

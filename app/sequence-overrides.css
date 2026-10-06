@@ -3336,3 +3336,83 @@
   .interaction-stage[data-group-composition="true"] .group-stage-root-row { min-height: 102px; }
   .interaction-stage[data-group-composition="true"] .group-stage-card-root { height: 100px; }
 }
+
+/* UX2.20: Oath consumes its simultaneous recipient scope without Group progress semantics. */
+.interaction-stage[data-oath-composition="true"] > header,
+.interaction-stage[data-oath-composition="true"] > .interaction-stage-event-summary { display: none; }
+.interaction-stage[data-oath-composition="true"] > .oath-stage-body {
+  display: block;
+  min-width: 0;
+  padding-top: 0;
+}
+.oath-stage-composition {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  gap: 3px;
+  min-width: 0;
+  width: 100%;
+}
+.oath-stage-source { color: #f0d28c; }
+.oath-stage-root-row { width: 100%; }
+.oath-stage-card { border-color: #efad9b; }
+.oath-negation-branch-anchor { left: calc(50% + var(--group-root-card-half) - 1px); }
+.oath-recipient-scope { width: 100%; min-width: 0; margin: 0; }
+.oath-recipient-track {
+  display: flex;
+  align-items: center;
+  justify-content: safe center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 2px 0 3px;
+  touch-action: pan-x;
+  scrollbar-width: none;
+}
+.oath-recipient-track::-webkit-scrollbar { display: none; }
+.oath-recipient-marker {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 4px;
+  border-bottom: 1px solid #75897966;
+  color: #e5d4a3;
+  white-space: nowrap;
+}
+.oath-recipient-marker > b { max-width: 100px; overflow: hidden; font: 700 8px/1.05 Arial, sans-serif; text-overflow: ellipsis; }
+.oath-recipient-scope[data-recipient-density="compact"] .oath-recipient-track { gap: 3px; }
+.oath-recipient-scope[data-recipient-density="compact"] .oath-recipient-marker { gap: 2px; padding: 1px 2px; }
+.oath-recipient-scope[data-recipient-density="compact"] .oath-recipient-marker > b { max-width: 72px; font-size: 7px; }
+.oath-recipient-scope[data-recipient-density="compact"] .oath-recipient-portrait { width: 18px; height: 23px; }
+.oath-recipient-portrait {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 28px;
+  overflow: hidden;
+  border: 1px solid #8d7743;
+  background: #17231d;
+  color: #ddc88e;
+}
+.oath-recipient-portrait > .hero-art-image { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.oath-recipient-portrait-empty { font: 700 8px/1 Arial, sans-serif; }
+.oath-recipient-marker.is-viewer { color: #f0d28c; }
+.oath-empty-recipient { color: #c8bea8; font: 700 8px/1.1 Arial, sans-serif; }
+
+@media (max-width: 390px) {
+  .oath-stage-composition { gap: 2px; }
+  .oath-recipient-track { justify-content: flex-start; gap: 3px; }
+  .oath-recipient-marker { gap: 3px; padding-inline: 2px; }
+  .oath-recipient-marker > b { max-width: 80px; font-size: 7px; }
+}
+
+@container top-row-interaction-safe-zone (max-height: 520px) and (max-width: 480px) {
+  .interaction-stage[data-oath-composition="true"] .oath-stage-composition { gap: 2px; }
+  .interaction-stage[data-oath-composition="true"] .oath-stage-root-row { min-height: 102px; }
+  .interaction-stage[data-oath-composition="true"] .oath-stage-card { height: 100px; }
+}

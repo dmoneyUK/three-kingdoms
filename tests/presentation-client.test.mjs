@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles } from "../game/presentation-client.ts";
 import { buildPresentationTransition } from "../game/presentation-transition.ts";
-import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupTargetScopeForViewer } from "../game/hero-focus.ts";
+import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupTargetScopeForViewer, projectOathRecipientScopeForStage } from "../game/hero-focus.ts";
 import { buildDecisionPresentation } from "../app/page.tsx";
 
 function scene(overrides = {}) {
@@ -248,6 +248,53 @@ test("adapter carries only a proven Raining Arrows Avoided outcome to the public
     groupParticipantProgress: { ...view.groupResolution, participants: [currentOutcome, ...view.groupParticipantProgress.slice(1)] },
   }), "D");
   assert.deepEqual(malformed.groupParticipantProgress, [], "an active participant cannot already have a completed outcome");
+});
+
+test("Oath recipient view preserves simultaneous projected membership without participant progress", () => {
+  const interaction = scene({
+    stage: "NEGATION",
+    effect: "Oath of the Peach Garden",
+    targetIds: ["A"],
+    activeTargetIds: ["A"],
+    currentParticipantId: null,
+    decisionActorId: null,
+    activeResolverId: null,
+    participantIds: ["A", "B", "C"],
+    participantRoles: {
+      sourceId: "A", originalTargetIds: ["A"], activeTargetIds: ["A"], currentParticipantId: null,
+      decisionActorId: null, activeResolverId: null, parentParticipantId: null, participantIds: ["A", "B", "C"],
+    },
+  });
+  const oathRecipientScope = {
+    semantics: "PROVEN",
+    cardKind: "Oath",
+    interactionId: interaction.interactionId,
+    rootFrameId: interaction.rootFrameId,
+    activeFrameId: interaction.activeFrameId,
+    checkpointId: interaction.checkpointId,
+    presentationRevision: interaction.presentationRevision,
+    sourceId: "A",
+    recipientIds: ["A", "C"],
+  };
+  const client = buildPresentationClientView(snapshot({
+    interaction,
+    oathRecipientScope,
+    stable: { ...snapshot().stable, decisionActorId: null },
+    decision: null,
+  }), "C");
+  const stage = buildInteractionStageView(client, resolveDisplayName);
+  const display = (id) => ({ name: displayNames[id] ?? null, heroId: id === "A" ? "ma-chao" : "cao-cao" });
+  const projected = projectOathRecipientScopeForStage(stage, client.oathRecipientScope, "C", display);
+  assert.deepEqual(projected, {
+    density: "medium",
+    recipients: [
+      { id: "A", name: "Ma Chao", heroId: "ma-chao", isViewer: false },
+      { id: "C", name: "Cao Cao", heroId: "cao-cao", isViewer: true },
+    ],
+  });
+  assert.equal("currentParticipantId" in projected, false);
+  assert.equal(projectOathRecipientScopeForStage(stage, { ...oathRecipientScope, sourceId: "B" }, "C", display), null);
+  assert.equal(projectOathRecipientScopeForStage(stage, { ...oathRecipientScope, recipientIds: ["A", "A"] }, "C", display), null);
 });
 
 test("adapter carries only proven resolved Group damage outcomes", () => {
