@@ -5,7 +5,7 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-UX2.34 aligned proven external-participant Dying/Peach ACTIVE scenes into a centered Source → Current Effect → dying-player spine on portrait Top Row when the safe zone permits; short safe zones retain the compact row. The focused geometry slice passed 5/5 (390×844, 390×640, 480×900 Top Row, 480×900 Side Column, 1440×900); six rescue safe-zone cases passed 6/6. Targeted ESLint and `git diff --check` passed. Viewer-private Peach/Skip controls remain in the Dock; no gameplay/projection changes. Pre-commit remote SHA `9631b6bd16d1e858eaaa19cd1099660fd37dd200` passed Actions run `37514429249` (`build-and-test`, `deploy`). Reviewer acceptance is not claimed.
+CI REPAIR PUSHED — VALIDATION PENDING. Remote HEAD `b6a25e249da299eb176dd64d495d51c37451d55c` failed Actions run `37516354859` in `npm run test:browser`: eight Dying geometry checks reproduced a mobile layout regression from UX2.34, not an infrastructure failure. The compact causal row now activates when the measured safe zone cannot clear the Stage and bottom card-pile area, while preserving the established primary Hero portrait sizes and public/Dock ownership. Focused browser validation passed 19/19 (`Dying 650x900`, 480x900 pile clearance, proven Dying causal geometry and six safe-zone cases); targeted ESLint and `git diff --check` passed. No gameplay/projection changes. Resume UX2.35 only after the exact pushed repair HEAD is green. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 

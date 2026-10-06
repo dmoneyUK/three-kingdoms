@@ -3681,3 +3681,134 @@
     gap: 2px;
   }
 }
+
+/* Moderate safe-zone pressure uses a compact causal row while preserving a
+   measurable Hero region and the established primary portrait dimensions.
+   The bottom card-pile zone is not available Stage height. */
+@container top-row-interaction-safe-zone (min-height: 331px) and (max-height: 480px) and (max-width: 700px) {
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .interaction-stage-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: start;
+    gap: 3px;
+    padding-top: 0;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .interaction-stage-hero-region:has(> .medium-participant-card):has(> .interaction-stage-current-effect-flow.is-connected) {
+    display: grid;
+    grid-column: 1;
+    grid-row: 1;
+    grid-template-columns: minmax(56px, 68px) 10px minmax(0, 1fr);
+    grid-template-rows: auto;
+    align-items: start;
+    justify-items: stretch;
+    gap: 3px 5px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .medium-participant-card {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .medium-participant-arrow {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 12px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .medium-participant-arrow::before {
+    content: none;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .interaction-stage-current-effect-flow.is-connected {
+    grid-column: 3;
+    grid-row: 1;
+    width: 100%;
+    max-width: none;
+    grid-template-columns: minmax(58px, .6fr) 10px minmax(0, 1fr);
+    align-items: start;
+    gap: 3px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .interaction-stage-event-region {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .interaction-stage-current-effect {
+    min-height: 0;
+    gap: 1px;
+    padding: 3px 4px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .interaction-stage-current-effect small {
+    display: none;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .interaction-stage-current-effect strong {
+    font-size: 9px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .current-effect-arrow.top-row-arrow {
+    font-size: 11px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .current-effect-arrow.top-row-arrow::before {
+    content: none;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .hero-focus {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .hero-focus-portrait {
+    width: 72px;
+    height: 90px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .dying-handoff {
+    gap: 2px;
+    margin-top: 0;
+    padding: 4px 5px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .dying-handoff-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px 4px;
+  }
+}
+
+@container top-row-interaction-safe-zone (min-height: 331px) and (max-height: 480px) and (max-width: 480px) {
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .interaction-stage-hero-region:has(> .medium-participant-card):has(> .interaction-stage-current-effect-flow.is-connected) {
+    grid-template-columns: minmax(50px, 50px) 7px minmax(0, 1fr);
+    gap: 2px 4px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .medium-participant-card {
+    width: 50px;
+    gap: 2px;
+    padding: 2px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .medium-participant-role {
+    font-size: 6px;
+    letter-spacing: .08em;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .medium-participant-portrait {
+    width: 34px;
+    height: 43px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .interaction-stage-current-effect-flow.is-connected {
+    grid-template-columns: minmax(38px, .38fr) 7px minmax(0, 1fr);
+    gap: 2px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .hero-focus {
+    grid-template-columns: 64px minmax(0, 1fr);
+    column-gap: 4px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .hero-focus-portrait {
+    width: 64px;
+    height: 80px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .hero-focus-heading span,
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .hero-focus-heading strong {
+    font-size: 6px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .hero-focus-identity b {
+    font-size: 9px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .dying-handoff-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2px 4px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .interaction-stage-current-effect {
+    padding: 2px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .interaction-stage-current-effect strong {
+    font-size: 8px;
+  }
+}

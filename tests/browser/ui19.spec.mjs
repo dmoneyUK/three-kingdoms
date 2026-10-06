@@ -902,7 +902,7 @@ for (const viewport of VIS_04B_VIEWPORTS) {
       expect(result.stage.left).toBeGreaterThanOrEqual(result.safeZone.left - 4);
       expect(result.stage.top).toBeGreaterThanOrEqual(result.safeZone.top);
       expect(result.stage.right).toBeLessThanOrEqual(result.safeZone.right + 4);
-      expect(result.stage.bottom).toBeLessThanOrEqual(result.safeZone.bottom + 4);
+      expect(result.stage.bottom, JSON.stringify({ safeZone: result.safeZone, stage: result.stage })).toBeLessThanOrEqual(result.safeZone.bottom + 4);
       expect(result.safeZone.bottom).toBeCloseTo(result.playTable.bottom - 1, 4);
       expect(result.stage.bottom).toBeLessThanOrEqual(result.playTable.bottom - 1);
       expect(result.stageDockOverlap).toBe(0);
@@ -948,7 +948,7 @@ test("UX2.0VIS-04B Dying 650x900 applies compact pressure when the Safe Zone con
   await playTable.evaluate((element) => element.style.removeProperty("--interaction-safe-top"));
   const current = await interactionGeometry(page);
   await assertVisible(page.locator('[data-dying-handoff="proven"]'), "Dying handoff");
-  expect(current.stageBody.display).toBe("flex");
+  expect(current.stageBody.display).toBe("grid");
   expect(current.stage.height).toBeGreaterThan(pressured.stage.height);
   expect(current.stage.bottom).toBeLessThanOrEqual(current.safeZone.bottom + 4);
   expect(current.stage.bottom).toBeLessThanOrEqual(current.playTable.bottom - 1);
@@ -1909,7 +1909,7 @@ for (const { state, required } of VIS_12O_STATES) {
       } else {
         expect(Math.min(...piles.piles.map(({ bounds }) => bounds.top)), "full-size piles stay in the bottom-edge zone").toBeGreaterThanOrEqual(piles.table.bottom - 86);
       }
-      expect(piles.overlaps, "Deck/Discard must not obscure active Stage participants or event panels").toEqual([]);
+      expect(piles.overlaps, JSON.stringify({ safeZone: piles.safeZone, stage: piles.stage, piles: piles.piles, content: piles.content, overlaps: piles.overlaps })).toEqual([]);
       expect(piles.seats).toHaveLength(3);
       expect(piles.seatOverlaps, "Deck/Discard must not cover physical opponent seats").toEqual([]);
       expect(piles.dockOverlaps, "Deck/Discard must remain outside the Local Player Dock").toEqual([]);

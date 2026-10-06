@@ -1290,7 +1290,8 @@ for (const viewport of [
       expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(effectBox.y + 2);
       expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
     } else if (viewport.width <= 650) {
-      if (safeBox.height <= 330) {
+      const compactMobileFlow = safeBox.height <= 480;
+      if (compactMobileFlow) {
         expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(sourceArrowBox.x + sourceArrowBox.width + 2);
         expect(sourceArrowBox.x + sourceArrowBox.width).toBeLessThanOrEqual(effectBox.x + 2);
         expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(effectArrowBox.x + effectArrowBox.width + 2);
@@ -1358,7 +1359,7 @@ for (const viewport of [
       expect(box.y).toBeGreaterThanOrEqual(stageBox.y - 1);
       expect(box.y + box.height).toBeLessThanOrEqual(stageBox.y + stageBox.height + 1);
     }
-    if (safeBox.height <= 330) {
+    if (safeBox.height <= 480) {
       expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
       expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(dyingBox.x + 2);
     }
