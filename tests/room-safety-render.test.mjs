@@ -347,7 +347,11 @@ test("Interaction Stage presents the accepted public participant without becomin
     ...groupSnapshot,
     groupParticipantProgress: groupProgress,
   }, "C");
-  assert.match(groupHtml, /data-hero-focus-player-id="C"[^>]*data-hero-focus-role="Target"/);
+  assert.match(groupHtml, /data-group-composition="true"/);
+  assert.match(groupHtml, /data-group-source-player-id="A"/);
+  assert.match(groupHtml, /data-group-root-action="RainingArrows"/);
+  assert.match(groupHtml, /data-group-target-id="C"[^>]*data-participant-status="CURRENT"/);
+  assert.doesNotMatch(groupHtml, /data-hero-focus-player-id="C"/, "the Group Target Strip alone owns current-participant emphasis");
   assert.match(groupHtml, /data-participant-status="RESOLVED"[^>]*data-participant-outcome="AVOIDED"/);
   assert.match(groupHtml, /data-group-outcome-marker="AVOIDED"[^>]*aria-label="Status: Resolved; Outcome: Avoided"><span aria-hidden="true">✓<\/span><\/span>/);
   assert.doesNotMatch(groupHtml, /physicalCardId|legalActions|providers/i, "public outcome contains no response-card identity or local control data");

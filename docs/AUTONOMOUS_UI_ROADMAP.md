@@ -876,7 +876,10 @@ Only a proven regression or new Reviewer-approved design requirement does.
   overlap, and root/strip geometry stability within 1 CSS px as the public
   Negation branch grew. Targeted ESLint and `git diff --check` passed. The
   pre-commit remote SHA `c9f6afe25867e9d849aa8f8d33833370ece5e86d` had Actions
-  run `37462834224` **success**; this task's pushed-SHA CI is not yet observed.
+  run `37462834224` **success**. Pushed SHA `21ca89d741d2f0aa7cbd604b148b92d8f04f866a`
+  had Actions run `37471054417` fail at `npm test`: one stale SSR assertion
+  expected a duplicate Group Hero Focus. The build, lint, and browser steps
+  passed; deploy was skipped. A test-only CI repair is in progress.
 
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
