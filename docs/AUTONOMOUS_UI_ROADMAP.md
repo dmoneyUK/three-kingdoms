@@ -862,6 +862,22 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `37459258633` was **success**. Agent implementation complete; Reviewer
   acceptance not implied.
 
+### UX2.18-AOE-STRUCTURAL-COMPOSITION-01 — Single Group/AOE event spine
+
+- Existing typed `GROUP` scenes now use one compact public Source, the root
+  action card, and one Group Target Strip. The strip alone owns current-member
+  emphasis; duplicate Hero Focus, expanded Source, Current Effect metadata,
+  repeated event prose, AOE heading, and per-target Hero/HP details are removed
+  from this composition. Only submitted public Negation nodes form a compact
+  root-attached branch; an open window remains neutral. No gameplay or
+  projection-protocol authority changed.
+- Focused Group/AOE browser coverage passed 30/30 across 390×640, 390×844,
+  480×900, and 1440×900. Measured source/root/strip order, zero Stage/Dock
+  overlap, and root/strip geometry stability within 1 CSS px as the public
+  Negation branch grew. Targeted ESLint and `git diff --check` passed. The
+  pre-commit remote SHA `c9f6afe25867e9d849aa8f8d33833370ece5e86d` had Actions
+  run `37462834224` **success**; this task's pushed-SHA CI is not yet observed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,

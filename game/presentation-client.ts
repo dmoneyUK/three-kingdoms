@@ -68,6 +68,7 @@ export type InteractionStageView = {
   currentParticipant: PresentationDisplayIdentity;
   decisionActor: PresentationDisplayIdentity;
   activeResolver: PresentationDisplayIdentity;
+  groupCardKind: PresentationSnapshotGroupProgress["cardKind"] | null;
   groupParticipantProgress: readonly PresentationSnapshotGroupParticipantProgress[];
   orderedTargetProgress: readonly PresentationSnapshotGroupParticipantProgress[];
   reactionChainNegationNodes: readonly ReactionChainNegationNodeView[];
@@ -468,6 +469,7 @@ export function buildInteractionStageView(
     currentParticipant,
     decisionActor,
     activeResolver,
+    groupCardKind: view.groupResolution?.resolutionSemantics === "GROUP" ? view.groupResolution.cardKind : null,
     groupParticipantProgress: view.groupParticipantProgress.map((participant) => ({ ...participant })),
     orderedTargetProgress: view.groupResolution?.cardKind === "SkyPiercingHalberdAttack"
       && view.groupResolution.resolutionSemantics === "ORDERED"

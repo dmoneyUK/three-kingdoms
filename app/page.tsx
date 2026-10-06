@@ -14,7 +14,7 @@ import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PresentationV2 } from "../game/presentation-v2";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, isProvenBorrowedSwordForcedAttack, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildPresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
-import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupTargetScopeForViewer, type HeroFocusPlayerDisplay, type HeroFocusView, type MediumParticipantView } from "../game/hero-focus";
+import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupSourceForViewer, projectGroupTargetScopeForViewer, type GroupSourceView, type GroupTargetScopeView, type HeroFocusPlayerDisplay, type HeroFocusView, type MediumParticipantView } from "../game/hero-focus";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
@@ -624,6 +624,106 @@ function MediumParticipantCard({ view }: { view: MediumParticipantView }) {
   </div>;
 }
 
+type GroupActionCardKind = NonNullable<PresentationClientView["groupResolution"]>["cardKind"] | "Negation";
+type GroupReactionNode = ReturnType<typeof buildReactionChainView>["negationNodes"][number];
+
+const GROUP_ACTION_CARD_ART: Readonly<Record<GroupActionCardKind, string>> = {
+  BarbarianInvasion: "/barbarian-invasion-card.jpg",
+  RainingArrows: "/raining-arrows-card.jpg",
+  SkyPiercingHalberdAttack: "/sky-piercing-halberd-card.jpg",
+  Negation: "/negation-card.jpg",
+};
+
+function GroupStageSource({ view }: { view: GroupSourceView }) {
+  const hero = heroDefinition(view.heroId);
+  return <div className="group-stage-source" data-group-source="proven" data-group-source-player-id={view.id} aria-label={`Source: ${view.name}`}>
+    <span className={hero ? "group-stage-source-portrait" : "group-stage-source-portrait group-stage-source-portrait-empty"} data-hero-id={view.heroId ?? undefined}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
+    <b>{view.name}</b>
+  </div>;
+}
+
+function GroupStageActionCard({ kind, active, root = false }: { kind: GroupActionCardKind; active: boolean; root?: boolean }) {
+  const name = cardDefinition(kind).name;
+  return <div className={`group-stage-card${root ? " group-stage-card-root" : " group-stage-card-negation"}${active ? " is-active" : " is-context"}`} role="img" aria-label={`${name}${root ? active ? ", active root action" : ", root action context" : active ? ", active response head" : ", public response"}`} data-action-card-kind={kind} data-group-root-action={root ? kind : undefined} data-active-head={active ? "true" : "false"}>
+    <span className="group-stage-card-art" style={{ backgroundImage: `url("${GROUP_ACTION_CARD_ART[kind]}")` }} aria-hidden="true" />
+    <b>{name}</b>
+  </div>;
+}
+
+function compactGroupParticipantMarker(status: NonNullable<GroupTargetScopeView["players"][number]["status"]>, outcome: GroupTargetScopeView["players"][number]["outcome"]): string {
+  const outcomeMarker = groupParticipantOutcomeMarker(outcome ?? null);
+  if (outcomeMarker) return outcomeMarker;
+  switch (status) {
+    case "CURRENT": return "▶";
+    case "PAUSED": return "Ⅱ";
+    case "RESOLVED": return "✓";
+    case "NO_LONGER_APPLICABLE": return "—";
+    default: return "·";
+  }
+}
+
+function GroupTargetScope({ view, compact = false }: { view: GroupTargetScopeView; compact?: boolean }) {
+  const isGroup = view.resolutionSemantics === "GROUP";
+  const isOrdered = view.resolutionSemantics === "ORDERED";
+  const isCompactGroup = compact && isGroup;
+  const targetStripRef = useRef<HTMLDivElement>(null);
+  const currentTargetRef = useRef<HTMLDivElement>(null);
+  const currentParticipantId = view.players.find((player) => player.status === "CURRENT" || player.status === "PAUSED")?.id ?? null;
+  useLayoutEffect(() => {
+    if (!isCompactGroup || !targetStripRef.current || !currentTargetRef.current) return;
+    const rail = targetStripRef.current;
+    const target = currentTargetRef.current;
+    const railBounds = rail.getBoundingClientRect();
+    const targetBounds = target.getBoundingClientRect();
+    if (targetBounds.left < railBounds.left) rail.scrollLeft -= railBounds.left - targetBounds.left;
+    else if (targetBounds.right > railBounds.right) rail.scrollLeft += targetBounds.right - railBounds.right;
+  }, [isCompactGroup, currentParticipantId]);
+  return <section className={`group-target-scope${isCompactGroup ? " group-target-strip" : ""}`} aria-label={isCompactGroup ? "Group Target Strip" : isGroup ? "AOE Participant Progress" : isOrdered ? "Ordered Target Progress" : "Original target scope"} data-group-target-scope={isOrdered ? undefined : "original"} data-target-progress-scope={isOrdered ? "ordered" : undefined} data-participant-density={view.density} data-group-progress={isGroup ? "proven" : undefined} data-target-progress={isOrdered ? "proven" : undefined}>
+    {!isCompactGroup && <header>{isGroup ? "AOE PARTICIPANTS" : isOrdered ? "TARGET PROGRESS" : "ORIGINAL TARGET SCOPE"}</header>}
+    <div className="group-target-cards" ref={isCompactGroup ? targetStripRef : undefined}>
+      {view.players.map((player) => {
+        const hero = heroDefinition(player.heroId);
+        const outcomeLabel = groupParticipantOutcomeLabel(player.outcome ?? null);
+        const outcomeMarker = groupParticipantOutcomeMarker(player.outcome ?? null);
+        const status = player.status;
+        const statusLabel = status ? groupParticipantStatusLabel(status) : null;
+        const marker = isCompactGroup && status ? compactGroupParticipantMarker(status, player.outcome) : null;
+        return <div className={`group-target-card${player.isViewer ? " group-target-card-viewer" : ""}${isCompactGroup ? " group-target-card-compact" : ""}`} key={player.id} ref={isCompactGroup && (status === "CURRENT" || status === "PAUSED") ? currentTargetRef : undefined} data-group-target-id={isOrdered ? undefined : player.id} data-target-id={isOrdered ? player.id : undefined} data-group-participant-order={isGroup ? player.order ?? undefined : undefined} data-target-order={isOrdered ? player.order ?? undefined : undefined} data-participant-status={player.status ?? undefined} data-participant-outcome={player.outcome ?? undefined}>
+          {!player.isViewer && <span className="group-target-portrait">{hero ? <HeroPortrait hero={hero} /> : "?"}</span>}
+          <div className="group-target-identity">{isOrdered && player.order !== null && <small className="ordered-target-number">Target {player.order}</small>}<b>{player.isViewer ? "You" : player.name}</b>{!isCompactGroup && !player.isViewer && view.density === "medium" && player.heroName && <span>{player.heroName}</span>}{!isCompactGroup && !player.isViewer && player.hp !== null && <small>HP {player.hp}{player.maxHp !== null ? `/${player.maxHp}` : ""}</small>}{statusLabel && <span className={`group-target-status${status ? ` status-${status.toLowerCase().replaceAll("_", "-")}` : ""}${isCompactGroup ? " group-target-status-compact" : ""}`} data-group-outcome-marker={player.outcome ?? undefined} aria-label={`Status: ${statusLabel}${outcomeLabel ? `; Outcome: ${outcomeLabel}` : ""}`}>{isCompactGroup && marker ? <span aria-hidden="true">{marker}</span> : outcomeMarker ? <span aria-hidden="true">{outcomeMarker}</span> : statusLabel}</span>}</div>
+        </div>;
+      })}
+    </div>
+  </section>;
+}
+
+function GroupInteractionComposition({ source, rootKind, rootActive, negationNodes, interactionId, targetScope }: { source: GroupSourceView | null; rootKind: NonNullable<PresentationClientView["groupResolution"]>["cardKind"]; rootActive: boolean; negationNodes: readonly GroupReactionNode[]; interactionId: string | null; targetScope: GroupTargetScopeView }) {
+  const visibleNodes = negationNodes.slice(-2);
+  const collapsedNodeCount = negationNodes.length - visibleNodes.length;
+  return <div className="interaction-stage-body group-stage-body" data-group-composition="proven">
+    <div className="group-stage-composition">
+      {source && <><GroupStageSource view={source} /><span className="group-stage-causal-arrow" aria-hidden="true">↓</span></>}
+      <div className="group-stage-root-row" data-group-root-row="true">
+        <GroupStageActionCard kind={rootKind} active={rootActive} root />
+        {visibleNodes.length > 0 && <div className="group-negation-branch-anchor">
+          <span className="group-negation-branch-connector" aria-hidden="true" />
+          <ol className="group-negation-branch" aria-label="AOE Negation Response" data-reaction-chain="proven" data-group-negation="true" data-reaction-interaction-id={interactionId ?? undefined}>
+            {collapsedNodeCount > 0 && <li className="group-negation-collapsed" aria-label={`${collapsedNodeCount} earlier public Negation cards collapsed`}><span aria-hidden="true">+{collapsedNodeCount}</span></li>}
+            {visibleNodes.map((node, index) => {
+              const active = index === visibleNodes.length - 1;
+              return <li className="group-negation-branch-node" key={`${node.actor.id ?? "unknown"}-${negationNodes.length - visibleNodes.length + index}`} data-reaction-node="negation" data-active-head={active ? "true" : "false"} aria-label={`${node.cardKind} publicly played by ${node.actor.name}${active ? ", current response head" : ""}`}>
+                <GroupStageActionCard kind={node.cardKind} active={active} />
+              </li>;
+            })}
+          </ol>
+        </div>}
+      </div>
+      <span className="group-stage-causal-arrow" aria-hidden="true">↓</span>
+      <GroupTargetScope view={targetScope} compact />
+    </div>
+  </div>;
+}
+
 export function InteractionStage({ view, viewerId, transitionKind = "NONE", topRowMode = false, resolvePlayerName, resolvePlayerDisplay, previewPlayer = null, previewSubmission = null, inspectPlayer = null, selectableDetail = null, judgementInFlight, onCloseInspect, onHeroInfo, onInfoCard }: { view: PresentationClientView; viewerId: string | null; transitionKind?: PresentationTransitionKind; topRowMode?: boolean; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined; previewPlayer?: LocalTargetPreviewPresentation | null; previewSubmission?: LocalTargetPreviewSubmission | null; inspectPlayer?: LocalOpponentInspectionPresentation | null; selectableDetail?: TargetCardSelectableDetail | null; judgementInFlight?: ReadonlySet<string>; onCloseInspect?: () => void; onHeroInfo?: (hero: Hero) => void; onInfoCard?: (card: Card) => void }) {
   const stage = buildInteractionStageView(view, resolvePlayerName);
   const borrowedSwordForcedAttack = isProvenBorrowedSwordForcedAttack(stage);
@@ -657,6 +757,13 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const mediumSource = projectMediumSourceForViewer(stage, heroFocus, viewerId, resolvePlayerDisplay);
   const groupTargetScope = projectGroupTargetScopeForViewer(stage, heroFocus, mediumSource, viewerId, resolvePlayerDisplay);
   const isProvenGroupNegation = isOpenNegationResponse && groupTargetScope?.resolutionSemantics === "GROUP";
+  const groupSource = projectGroupSourceForViewer(stage, viewerId, resolvePlayerDisplay);
+  const isProvenGroupComposition = Boolean(groupTargetScope?.resolutionSemantics === "GROUP"
+    && stage.groupCardKind
+    && stage.source.id
+    && stage.source.known
+    && (stage.stage === "GROUP_RESOLUTION" || isProvenGroupNegation));
+  const groupNegationNodes = isProvenGroupComposition && isProvenGroupNegation ? reactionChain.negationNodes : [];
   const currentParticipantProgress = [...stage.groupParticipantProgress, ...(stage.orderedTargetProgress ?? [])]
     .find((participant) => participant.playerId === stage.currentParticipant.id) ?? null;
   const focusGroupParticipantProgress = currentParticipantProgress?.playerId === heroFocus.primary?.id ? currentParticipantProgress : null;
@@ -813,12 +920,14 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
         ? "DYING PLAYER"
         : null;
   if (!display.visible && !hasLocalFocus) return null;
-  return <section className="interaction-stage" aria-label={isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={currentEffect ?? undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined} data-group-negation={isProvenGroupNegation ? "true" : undefined}>
-    <header>{!hideStageArchitecturalChrome
+  return <section className="interaction-stage" aria-label={isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={isProvenGroupComposition ? undefined : currentEffect ?? undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined} data-group-negation={isProvenGroupNegation ? "true" : undefined} data-group-composition={isProvenGroupComposition ? "true" : undefined}>
+    {!isProvenGroupComposition && <header>{!hideStageArchitecturalChrome
       ? <span>INTERACTION STAGE</span>
-      : stage.stage === "DYING" && <span className="interaction-stage-visually-hidden">INTERACTION STAGE</span>}<strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : currentEffect && isOpenNegationResponse ? "NEGATION RESPONSE" : currentEffect && stage.stage === "DYING" ? display.focusLabel : currentEffect ? stage.stageLabel : display.focusLabel}</strong>{showViewerDecisionMarker && <em>YOUR DECISION</em>}</header>
-    {currentEffectSummary && <p className="interaction-stage-event-summary" data-stage-event-summary="proven">{currentEffectSummary}</p>}
-    <div className="interaction-stage-body">
+      : stage.stage === "DYING" && <span className="interaction-stage-visually-hidden">INTERACTION STAGE</span>}<strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : currentEffect && isOpenNegationResponse ? "NEGATION RESPONSE" : currentEffect && stage.stage === "DYING" ? display.focusLabel : currentEffect ? stage.stageLabel : display.focusLabel}</strong>{showViewerDecisionMarker && <em>YOUR DECISION</em>}</header>}
+    {!isProvenGroupComposition && currentEffectSummary && <p className="interaction-stage-event-summary" data-stage-event-summary="proven">{currentEffectSummary}</p>}
+    {isProvenGroupComposition && groupTargetScope && stage.groupCardKind
+      ? <GroupInteractionComposition source={groupSource} rootKind={stage.groupCardKind} rootActive={groupNegationNodes.length === 0} negationNodes={groupNegationNodes} interactionId={reactionChain.interactionId} targetScope={groupTargetScope} />
+      : <div className="interaction-stage-body">
       <div className="interaction-stage-hero-region">
         {showMediumSource && mediumSource && <MediumParticipantCard view={mediumSource} />}
         {showMediumSource && mediumSource && <span className="medium-participant-arrow" data-medium-source-arrow="true" aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
@@ -827,22 +936,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
           {currentEffectConnectsToFocus && <span className={`current-effect-arrow${topRowMode ? " top-row-arrow" : " side-column-arrow"}`} aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
           <HeroFocus view={heroFocus} showSource={!showMediumSource && heroFocus.source.id !== viewerId} previewPlayer={localPreviewPlayer} inspectPlayer={inspectPlayer} selectableDetail={focusSelectableDetail} hideArchitecturalLabel={hideStageArchitecturalChrome} roleLabelOverride={hideStageArchitecturalChrome ? playerFacingHeroFocusRole : null} groupParticipantProgress={focusGroupParticipantProgress} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
         </div>
-        {groupTargetScope && <section className="group-target-scope" aria-label={groupTargetScope.resolutionSemantics === "GROUP" ? "AOE Participant Progress" : groupTargetScope.resolutionSemantics === "ORDERED" ? "Ordered Target Progress" : "Original target scope"} data-group-target-scope={groupTargetScope.resolutionSemantics === "ORDERED" ? undefined : "original"} data-target-progress-scope={groupTargetScope.resolutionSemantics === "ORDERED" ? "ordered" : undefined} data-participant-density={groupTargetScope.density} data-group-progress={groupTargetScope.resolutionSemantics === "GROUP" ? "proven" : undefined} data-target-progress={groupTargetScope.resolutionSemantics === "ORDERED" ? "proven" : undefined}>
-          <header>{groupTargetScope.resolutionSemantics === "GROUP" ? "AOE PARTICIPANTS" : groupTargetScope.resolutionSemantics === "ORDERED" ? "TARGET PROGRESS" : "ORIGINAL TARGET SCOPE"}</header>
-          <div className="group-target-cards">
-            {groupTargetScope.players.map((player) => {
-              const hero = heroDefinition(player.heroId);
-              const outcomeLabel = groupParticipantOutcomeLabel(player.outcome);
-              const outcomeMarker = groupParticipantOutcomeMarker(player.outcome);
-              const status = player.status;
-              const statusLabel = status ? groupParticipantStatusLabel(status) : null;
-              return <div className={`group-target-card${player.isViewer ? " group-target-card-viewer" : ""}`} key={player.id} data-group-target-id={groupTargetScope.resolutionSemantics === "ORDERED" ? undefined : player.id} data-target-id={groupTargetScope.resolutionSemantics === "ORDERED" ? player.id : undefined} data-group-participant-order={groupTargetScope.resolutionSemantics === "GROUP" ? player.order ?? undefined : undefined} data-target-order={groupTargetScope.resolutionSemantics === "ORDERED" ? player.order ?? undefined : undefined} data-participant-status={player.status ?? undefined} data-participant-outcome={player.outcome ?? undefined}>
-                {!player.isViewer && <span className="group-target-portrait">{hero ? <HeroPortrait hero={hero} /> : "?"}</span>}
-                <div className="group-target-identity">{groupTargetScope.resolutionSemantics === "ORDERED" && player.order !== null && <small className="ordered-target-number">Target {player.order}</small>}<b>{player.isViewer ? "You" : player.name}</b>{!player.isViewer && groupTargetScope.density === "medium" && player.heroName && <span>{player.heroName}</span>}{!player.isViewer && player.hp !== null && <small>HP {player.hp}{player.maxHp !== null ? `/${player.maxHp}` : ""}</small>}{statusLabel && <span className={`group-target-status${status ? ` status-${status.toLowerCase().replaceAll("_", "-")}` : ""}`} data-group-outcome-marker={player.outcome ?? undefined} aria-label={`Status: ${statusLabel}${outcomeLabel ? `; Outcome: ${outcomeLabel}` : ""}`}>{outcomeMarker ? <span aria-hidden="true">{outcomeMarker}</span> : statusLabel}</span>}</div>
-              </div>;
-            })}
-          </div>
-        </section>}
+        {groupTargetScope && <GroupTargetScope view={groupTargetScope} />}
       </div>
       <div className="interaction-stage-event-region">
         {dyingHandoff.visible && <section className="dying-handoff" aria-label="Dying Rescue Handoff" data-dying-handoff="proven" data-dying-player-id={dyingHandoff.dyingPlayer.id ?? undefined} data-dying-decision-actor-id={dyingHandoff.decisionActor.id ?? undefined} data-dying-resolver-id={dyingHandoff.activeResolver.id ?? undefined} data-dying-continuity={dyingHandoff.continuity.relation} data-dying-parent-frame-id={dyingHandoff.parentFrameId ?? undefined}>
@@ -881,7 +975,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
           {showNestedContextSummary && <span><small>CONTEXT</small><b>{display.nestedContext}</b></span>}
         </div>}
       </div>}
-    </div>
+    </div>}
   </section>;
 }
 

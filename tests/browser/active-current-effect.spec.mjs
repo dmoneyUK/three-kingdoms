@@ -23,21 +23,27 @@ test("AOE progress renders the explicit participant order without duplicating th
   const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
   const cards = scope.locator(".group-target-card");
 
-  await expect(scope).toHaveAttribute("aria-label", "AOE Participant Progress");
-  await expect(scope.locator(":scope > header")).toHaveText("AOE PARTICIPANTS");
+  await expect(stage).toHaveAttribute("data-group-composition", "true");
+  await expect(scope).toHaveAttribute("aria-label", "Group Target Strip");
+  await expect(scope.locator(":scope > header")).toHaveCount(0);
   await expect(cards).toHaveCount(3);
   expect(await cards.evaluateAll((nodes) => nodes.map((node) => [node.dataset.groupTargetId, node.dataset.groupParticipantOrder, node.dataset.participantStatus]))).toEqual([
     ["p2", "1", "RESOLVED"],
     ["p1", "2", "CURRENT"],
     ["p3", "3", "PENDING"],
   ]);
-  await expect(cards.nth(0)).toContainText("Resolved");
-  await expect(cards.nth(1)).toContainText("Current");
+  await expect(cards.nth(0).locator(".group-target-status")).toHaveAttribute("aria-label", "Status: Resolved");
+  await expect(cards.nth(0).locator(".group-target-status [aria-hidden='true']")).toHaveText("✓");
+  await expect(cards.nth(1).locator(".group-target-status")).toHaveAttribute("aria-label", "Status: Current");
+  await expect(cards.nth(1).locator(".group-target-status [aria-hidden='true']")).toHaveText("▶");
   await expect(cards.nth(2)).toContainText("You");
   await expect(cards.nth(2).locator(".group-target-portrait")).toHaveCount(0);
-  await expect(cards.nth(2)).toContainText("Pending");
-  await expect(stage.locator('[data-hero-focus-player-id="p1"]')).toHaveAttribute("data-group-participant-status", "CURRENT");
-  await expect(stage.locator('[data-hero-focus-player-id="p1"] .hero-focus-group-status')).toHaveText("Current");
+  await expect(cards.nth(2).locator(".group-target-status")).toHaveAttribute("aria-label", "Status: Pending");
+  await expect(cards.nth(2).locator(".group-target-status [aria-hidden='true']")).toHaveText("·");
+  await expect(stage.locator('[data-group-source="proven"][data-group-source-player-id="p4"]')).toContainText("Player 4");
+  await expect(stage.locator('[data-group-root-action="RainingArrows"]')).toBeVisible();
+  await expect(stage.locator(".hero-focus, .medium-participant-card, .interaction-stage-current-effect, [data-stage-event-summary], .group-target-strip > header, .group-target-identity > span:not(.group-target-status), .group-target-identity > small")).toHaveCount(0);
+  await expect(stage.locator('[data-hero-focus-player-id="p1"]')).toHaveCount(0);
   await expect(stage.locator('[data-hero-focus-player-id="p3"]')).toHaveCount(0);
   await expect(page.locator('.local-player-dock[data-player-anchor="p3"]')).toBeVisible();
   await expect(stage.locator("button")).toHaveCount(0);
@@ -53,28 +59,30 @@ for (const viewport of [
     const stage = page.locator('[aria-label="Interaction Stage"][data-stage="GROUP_RESOLUTION"]');
     const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
     const cards = scope.locator(".group-target-card");
-    await expect(scope).toHaveAttribute("data-participant-density", viewport.count === 4 ? "medium" : "compact");
+    await expect(scope).toHaveAttribute("aria-label", "Group Target Strip");
     await expect(cards.first()).toBeVisible();
     const geometry = await scope.evaluate((element) => {
       const cardsElement = element.querySelector(".group-target-cards");
       const firstCard = element.querySelector(".group-target-card");
-      const portrait = element.querySelector(".group-target-portrait");
+      const currentCard = element.querySelector('[data-participant-status="CURRENT"]');
       const scopeRect = element.getBoundingClientRect();
       const cardRect = firstCard?.getBoundingClientRect();
-      const portraitRect = portrait?.getBoundingClientRect();
+      const currentRect = currentCard?.getBoundingClientRect();
+      const railRect = cardsElement?.getBoundingClientRect();
       return {
         scrollWidth: cardsElement?.scrollWidth ?? 0,
         clientWidth: cardsElement?.clientWidth ?? 0,
         scopeRight: scopeRect.right,
         cardWidth: cardRect?.width ?? 0,
-        portraitWidth: portraitRect?.width ?? 0,
+        currentInsideRail: Boolean(currentRect && railRect && currentRect.left >= railRect.left - 1 && currentRect.right <= railRect.right + 1),
       };
     });
-    expect(geometry.scrollWidth).toBeGreaterThan(geometry.clientWidth);
+    expect(geometry.scrollWidth).toBeGreaterThanOrEqual(geometry.clientWidth);
     expect(geometry.scopeRight).toBeLessThanOrEqual(viewport.width);
-    expect(geometry.cardWidth).toBeLessThanOrEqual(140);
-    expect(geometry.portraitWidth).toBeLessThanOrEqual(30);
-    await expect(scope.locator('.group-target-card[data-participant-status="CURRENT"]').first()).toContainText("Current");
+    expect(geometry.cardWidth).toBeLessThanOrEqual(180);
+    expect(geometry.currentInsideRail).toBe(true);
+    await expect(scope.locator('.group-target-card[data-participant-status="CURRENT"] .group-target-status')).toHaveAttribute("aria-label", "Status: Current");
+    await expect(stage.locator(".hero-focus, .medium-participant-card, .interaction-stage-current-effect")).toHaveCount(0);
     await expect(page.locator(".local-player-dock")).toBeVisible();
     expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
   });
@@ -123,8 +131,8 @@ test("AOE progress gives no-longer-applicable targets a distinct status", async 
   const scope = page.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
   const noLonger = scope.locator('.group-target-card[data-participant-status="NO_LONGER_APPLICABLE"]');
   await expect(noLonger).toHaveCount(1);
-  await expect(noLonger).toContainText("Not applicable");
   await expect(noLonger.locator(".group-target-status")).toHaveAttribute("aria-label", "Status: Not applicable");
+  await expect(noLonger.locator(".group-target-status [aria-hidden='true']")).toHaveText("—");
 });
 
 for (const outcome of [
@@ -154,20 +162,21 @@ for (const viewport of [
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
-  test(`AOE Negated return restores the root effect context at ${viewport.width}px`, async ({ page }) => {
+  test(`AOE Negated return restores the root action card at ${viewport.width}px`, async ({ page }) => {
     await loadFixture(page, { ...viewport, state: "group-observer", groupProgress: "negated" });
     const stage = page.locator('.interaction-stage[data-stage="GROUP_RESOLUTION"]');
     const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
     const resolved = scope.locator('[data-group-target-id="p2"]');
     const current = scope.locator('[data-group-target-id="p1"]');
-    await expect(stage.locator('[data-current-effect-label="Raining Arrows"]')).toBeVisible();
+    await expect(stage.locator('[data-group-root-action="RainingArrows"]')).toHaveAttribute("data-active-head", "true");
     await expect(stage.locator('[data-reaction-node]')).toHaveCount(0);
     await expect(resolved).toHaveAttribute("data-participant-status", "RESOLVED");
     await expect(resolved).toHaveAttribute("data-participant-outcome", "NEGATED");
     await expect(resolved.locator(".group-target-status")).toHaveText("⊘");
     await expect(resolved.locator(".group-target-status")).toHaveAttribute("aria-label", "Status: Resolved; Outcome: Negated");
     await expect(current).toHaveAttribute("data-participant-status", "CURRENT");
-    await expect(stage.locator('[data-hero-focus-player-id="p1"]')).toHaveAttribute("data-group-participant-status", "CURRENT");
+    await expect(current.locator(".group-target-status")).toHaveAttribute("aria-label", "Status: Current");
+    await expect(stage.locator('[data-hero-focus-player-id="p1"]')).toHaveCount(0);
     await expect(stage.locator("button")).toHaveCount(0);
     await expect(page.locator(".local-player-dock")).toBeVisible();
     expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
@@ -179,19 +188,20 @@ for (const viewport of [
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
-  test(`AOE Negated return advances to the projected next participant at ${viewport.width}px`, async ({ page }) => {
+  test(`AOE Negated return advances the Target Strip marker to the projected participant at ${viewport.width}px`, async ({ page }) => {
     await loadFixture(page, { ...viewport, state: "group-observer", groupParticipant: "p3", groupProgress: "negated" });
     const stage = page.locator('.interaction-stage[data-stage="GROUP_RESOLUTION"]');
     const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
     const settled = scope.locator('[data-group-target-id="p2"]');
     const current = scope.locator('[data-group-target-id="p3"]');
-    await expect(stage.locator('[data-current-effect-label="Raining Arrows"]')).toBeVisible();
+    await expect(stage.locator('[data-group-root-action="RainingArrows"]')).toHaveAttribute("data-active-head", "true");
     await expect(settled).toHaveAttribute("data-group-participant-order", "1");
     await expect(settled).toHaveAttribute("data-participant-status", "RESOLVED");
     await expect(settled).toHaveAttribute("data-participant-outcome", "NEGATED");
     await expect(settled.locator(".group-target-status")).toHaveText("⊘");
     await expect(current).toHaveAttribute("data-group-participant-order", "3");
     await expect(current).toHaveAttribute("data-participant-status", "CURRENT");
+    await expect(current.locator(".group-target-status")).toHaveAttribute("aria-label", "Status: Current");
     await expect(scope.locator('[data-participant-status="CURRENT"]')).toHaveCount(1);
     await expect(stage.locator('[data-reaction-node]')).toHaveCount(0);
     await expect(page.locator(".local-player-dock")).toBeVisible();
@@ -394,72 +404,69 @@ for (const viewport of [
   { count: 6, width: 480, height: 900, topology: "side-column" },
   { count: 4, width: 1440, height: 900, topology: "top-row" },
 ]) {
-  test(`proven Group Current Effect fits ${viewport.topology} at ${viewport.width}x${viewport.height}`, async ({ page }) => {
-    await loadFixture(page, { ...viewport, state: "group-observer", effect: "RainingArrows" });
+  test(`proven Group action uses one vertical Source → root card → Target Strip at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, state: "group-observer", effect: "RainingArrows", groupProgress: "valid" });
     const stage = page.locator('[aria-label="Interaction Stage"][data-stage="GROUP_RESOLUTION"]');
-    const source = stage.locator('.medium-participant-card[data-medium-participant-player-id="p4"]');
-    const effect = stage.locator('[aria-label="Current Effect"]');
-    const participant = stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p1"]');
-    const scope = stage.locator('[data-group-target-scope="original"]');
+    const source = stage.locator('[data-group-source="proven"][data-group-source-player-id="p4"]');
+    const root = stage.locator('[data-group-root-action="RainingArrows"]');
+    const scope = stage.locator('[aria-label="Group Target Strip"][data-group-progress="proven"]');
+    const current = scope.locator('.group-target-card[data-participant-status="CURRENT"]');
 
-    await expect(stage).toHaveAttribute("data-current-effect", "Raining Arrows");
-    await expect(stage.locator(":scope > header strong")).toHaveText("Group Resolution");
-    await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveText("Player 4 used Raining Arrows. It is now resolving for Player 1.");
+    await expect(stage).toHaveAttribute("data-group-composition", "true");
+    await expect(stage).not.toHaveAttribute("data-current-effect");
     await expect(source).toContainText("Player 4");
-    await expect(effect.locator("strong")).toHaveText("Raining Arrows");
-    await expect(participant).toContainText("Player 1");
-    await expect(participant.locator(".hero-focus-heading strong")).toHaveText("Target");
-    await expect(stage.locator(".current-effect-arrow")).toBeVisible();
-    await expect(scope.locator(":scope > header")).toHaveText("ORIGINAL TARGET SCOPE");
-    await expect(scope.locator(".group-target-card[data-group-target-id=\"p2\"]")).toBeVisible();
-    await expect(scope).not.toContainText(/resolved|pending|waiting|✓|▶|○/i);
-    await expect(stage.locator('[data-stage-meta-role="active-scope"]')).toHaveCount(0);
+    await expect(source.locator(".group-stage-source-portrait .hero-art-image")).toBeVisible();
+    await expect(root).toHaveAttribute("data-active-head", "true");
+    await expect(root).toHaveAttribute("role", "img");
+    await expect(current).toHaveAttribute("data-group-target-id", "p1");
+    await expect(scope.locator(".group-target-card")).toHaveCount(viewport.count === 4 ? 3 : 5);
+    await expect(stage.locator(".group-stage-composition > .group-stage-causal-arrow")).toHaveCount(2);
+    await expect(stage.locator(".hero-focus, .medium-participant-card, .interaction-stage-current-effect, .current-effect-arrow, [data-stage-event-summary], :scope > header, .interaction-stage-meta-region")).toHaveCount(0);
+    await expect(scope.locator(".group-target-identity > span:not(.group-target-status), .group-target-identity > small")).toHaveCount(0);
     await expect(stage.locator("button")).toHaveCount(0);
     await expect(page.locator(`.local-player-dock[data-player-anchor="p3"]`)).toBeVisible();
     await expect(stage.locator('[data-hero-focus-player-id="p3"]')).toHaveCount(0);
     expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 
-    const [sourceBox, effectBox, participantBox, stageBox, dockBox] = await Promise.all([
-      source.boundingBox(), effect.boundingBox(), participant.boundingBox(), stage.boundingBox(), page.locator(".local-player-dock").boundingBox(),
+    const [sourceBox, firstArrowBox, rootBox, secondArrowBox, stripBox, stageBox, dockBox] = await Promise.all([
+      source.boundingBox(), stage.locator(".group-stage-causal-arrow").nth(0).boundingBox(), root.boundingBox(),
+      stage.locator(".group-stage-causal-arrow").nth(1).boundingBox(), scope.boundingBox(), stage.boundingBox(), page.locator(".local-player-dock").boundingBox(),
     ]);
-    expect(sourceBox && effectBox && participantBox && stageBox && dockBox).toBeTruthy();
-    if (viewport.height <= 640) {
-      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
-      expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(participantBox.x + 2);
-      const sourceArrowBox = await stage.locator(".medium-participant-arrow").boundingBox();
-      expect(sourceArrowBox).toBeTruthy();
-      expect(Math.abs((sourceArrowBox.y + sourceArrowBox.height / 2) - (effectBox.y + effectBox.height / 2))).toBeLessThanOrEqual(8);
-    } else if (viewport.topology === "side-column") {
-      expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(effectBox.y + 2);
-      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(participantBox.y + 2);
-    } else if (viewport.width <= 650) {
-      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
-      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(participantBox.y + 2);
-    } else {
-      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
-      expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(participantBox.x + 2);
-    }
+    expect(sourceBox && firstArrowBox && rootBox && secondArrowBox && stripBox && stageBox && dockBox).toBeTruthy();
+    expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(firstArrowBox.y + 1);
+    expect(firstArrowBox.y + firstArrowBox.height).toBeLessThanOrEqual(rootBox.y + 1);
+    expect(rootBox.y + rootBox.height).toBeLessThanOrEqual(secondArrowBox.y + 1);
+    expect(secondArrowBox.y + secondArrowBox.height).toBeLessThanOrEqual(stripBox.y + 1);
     expect(stageBox.x).toBeGreaterThanOrEqual(0);
     expect(stageBox.x + stageBox.width).toBeLessThanOrEqual(viewport.width);
-    expect(Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y))).toBe(0);
+    const stageDockOverlap = Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y));
+    expect(stageDockOverlap, JSON.stringify({ stageBox, dockBox })).toBe(0);
   });
 }
 
-test("Group Current Effect fails closed without a known source, effect, or active current participant", async ({ page }) => {
+test("Group composition requires proven source and a coherent active participant projection", async ({ page }) => {
   for (const missingAuthority of [
     { source: "none" },
-    { effect: "none" },
-    { effect: "unknown-group-effect" },
     { groupParticipant: "none" },
     { groupParticipant: "p4" },
   ]) {
-    await loadFixture(page, { count: 6, width: 480, state: "group-observer", ...missingAuthority });
+    await loadFixture(page, { count: 6, width: 480, state: "group-observer", groupProgress: "valid", ...missingAuthority });
     const stage = page.locator('[data-stage="GROUP_RESOLUTION"]');
+    await expect(stage).not.toHaveAttribute("data-group-composition", "true");
     await expect(stage).not.toHaveAttribute("data-current-effect");
     await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
     await expect(stage.locator(".current-effect-arrow")).toHaveCount(0);
     await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveCount(0);
   }
+});
+
+test("Group card identity comes from the typed projection, not the redundant effect label", async ({ page }) => {
+  await loadFixture(page, { count: 4, width: 390, state: "group-observer", effect: "none", groupProgress: "valid" });
+  const stage = page.locator('[data-stage="GROUP_RESOLUTION"]');
+  await expect(stage).toHaveAttribute("data-group-composition", "true");
+  await expect(stage.locator('[data-group-root-action="RainingArrows"]')).toBeVisible();
+  await expect(stage).not.toHaveAttribute("data-current-effect");
+  await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
 });
 
 for (const viewport of [
@@ -767,24 +774,29 @@ for (const viewport of [
     const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
     const chain = stage.locator('[data-reaction-chain="proven"]');
     await expect(stage).toHaveAttribute("data-group-negation", "true");
+    await expect(stage).toHaveAttribute("data-group-composition", "true");
     await expect(scope.locator(".group-target-card")).toHaveCount(3);
     await expect(chain).toHaveAttribute("aria-label", "AOE Negation Response");
-    await expect(chain.locator('[data-reaction-node="root"]')).toHaveCount(0);
     const publicHead = chain.locator('[data-reaction-node="negation"]');
-    const waitingNode = chain.locator('[data-reaction-node="active"]');
     await expect(publicHead).toHaveCount(1);
-    await expect(publicHead).toContainText("Player 1 played this card.");
-    await expect(waitingNode).toContainText("Waiting for response...");
+    await expect(publicHead).toHaveAttribute("aria-label", "Negation publicly played by Player 1, current response head");
+    await expect(chain.locator('[data-reaction-node="active"]')).toHaveCount(0);
+    await expect(stage.locator('[data-group-root-action="RainingArrows"]')).toHaveAttribute("data-active-head", "false");
+    const rootRow = stage.locator(".group-stage-root-row");
+    await expect(rootRow.locator('[data-group-root-action="RainingArrows"]')).toBeVisible();
+    await expect(rootRow.locator('[data-reaction-chain="proven"]')).toBeVisible();
+    await expect(stage.locator(".reaction-chain")).toHaveCount(0);
+    await expect(stage.locator(".hero-focus, .interaction-stage-current-effect, [data-stage-event-summary]")).toHaveCount(0);
     const branchStyles = await chain.evaluate((element) => {
-      const head = element.querySelector('[data-reaction-node="negation"]');
-      const waiting = element.querySelector('[data-reaction-node="active"]');
+      const head = element.querySelector('[data-reaction-node="negation"] .group-stage-card-negation');
+      const root = element.closest(".group-stage-root-row")?.querySelector("[data-group-root-action]");
       return {
         headBorder: head ? getComputedStyle(head).borderTopColor : "",
-        waitingBorder: waiting ? getComputedStyle(waiting).borderTopColor : "",
+        rootOpacity: root ? getComputedStyle(root).opacity : "",
       };
     });
     expect(branchStyles.headBorder).toBe("rgb(240, 195, 94)");
-    expect(branchStyles.waitingBorder).toBe("rgb(101, 125, 114)");
+    expect(branchStyles.rootOpacity).toBe("0.62");
     await expect(stage).not.toContainText("Player 3 played this card.");
     const geometry = await chain.evaluate((element) => {
       const rect = element.getBoundingClientRect();
@@ -809,15 +821,15 @@ for (const viewport of [
     const stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
     const chain = stage.locator('[data-reaction-chain="proven"]');
     const negations = chain.locator('[data-reaction-node="negation"]');
-    await expect(chain.locator('[data-reaction-node="root"]')).toHaveCount(0);
+    await expect(stage.locator('[data-group-root-action="RainingArrows"]')).toHaveAttribute("data-active-head", "false");
+    await expect(chain.locator('[data-reaction-node="active"]')).toHaveCount(0);
     await expect(negations).toHaveCount(2);
-    await expect(negations.nth(0)).toHaveAttribute("aria-label", "Player 1 played Negation");
-    await expect(negations.nth(1)).toHaveAttribute("aria-label", "Player 2 played Negation");
-    await expect(negations.nth(0)).toContainText("Player 1 played this card.");
-    await expect(negations.nth(1)).toContainText("Player 2 played this card.");
-    const branchStyles = await chain.evaluate((element) => [...element.querySelectorAll('[data-reaction-node="negation"], [data-reaction-node="active"]')].map((node) => getComputedStyle(node).borderTopColor));
-    expect(branchStyles).toEqual(["rgb(101, 125, 114)", "rgb(240, 195, 94)", "rgb(101, 125, 114)"]);
-    await expect(chain.locator('[data-reaction-node="active"]')).toContainText("Waiting for response...");
+    await expect(negations.nth(0)).toHaveAttribute("aria-label", "Negation publicly played by Player 1");
+    await expect(negations.nth(1)).toHaveAttribute("aria-label", "Negation publicly played by Player 2, current response head");
+    const branchStyles = await chain.evaluate((element) => [...element.querySelectorAll(".group-stage-card-negation")].map((node) => getComputedStyle(node).borderTopColor));
+    expect(branchStyles).toEqual(["rgb(117, 137, 121)", "rgb(240, 195, 94)"]);
+    await expect(stage.locator(".group-stage-root-row [data-group-root-action='RainingArrows']")).toBeVisible();
+    await expect(chain).not.toContainText("Waiting for response...");
     const geometry = await chain.evaluate((element) => {
       const rect = element.getBoundingClientRect();
       const nodes = [...element.querySelectorAll("li")].map((node) => node.getBoundingClientRect());
@@ -837,14 +849,47 @@ for (const viewport of [
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
+  test(`Group root and Target Strip geometry stay fixed as the public Negation branch grows at ${viewport.width}px`, async ({ page }) => {
+    const measure = async (negationHistory) => {
+      await loadFixture(page, { ...viewport, state: "group-negation", negationHistory });
+      const stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
+      const root = stage.locator('[data-group-root-action="RainingArrows"]');
+      const strip = stage.locator('[aria-label="Group Target Strip"]');
+      const branch = stage.locator('[data-reaction-chain="proven"]');
+      await expect(stage).toHaveAttribute("data-group-composition", "true");
+      return {
+        root: await root.boundingBox(),
+        strip: await strip.boundingBox(),
+        branchCount: await branch.locator('[data-reaction-node="negation"]').count(),
+        branchPresent: await branch.count() > 0,
+      };
+    };
+    const open = await measure(null);
+    expect(open.branchPresent).toBe(false);
+    for (const [history, expectedBranchCount] of [["single", 1], ["double", 2]]) {
+      const submitted = await measure(history);
+      expect(submitted.branchPresent).toBe(true);
+      expect(submitted.branchCount).toBe(expectedBranchCount);
+      for (const region of ["root", "strip"]) {
+        for (const edge of ["x", "y", "width", "height"]) {
+          expect(Math.abs(submitted[region][edge] - open[region][edge]), `${history} ${region}.${edge}`).toBeLessThanOrEqual(1);
+        }
+      }
+    }
+  });
+
   test(`open Group Negation stays neutral without a public branch at ${viewport.width}px`, async ({ page }) => {
     await loadFixture(page, { ...viewport, state: "group-negation" });
     const stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
     const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
-    await expect(stage.locator('[data-current-effect-label="Raining Arrows"]')).toBeVisible();
+    await expect(stage).toHaveAttribute("data-group-composition", "true");
+    await expect(stage.locator('[data-group-root-action="RainingArrows"]')).toHaveAttribute("data-active-head", "true");
     await expect(stage.locator('[data-reaction-chain="proven"]')).toHaveCount(0);
+    await expect(stage.locator('[data-group-source-player-id="p4"]')).toContainText("Player 4");
+    await expect(stage.locator('[data-group-source-player-id="p3"], [data-hero-focus-player-id="p3"]')).toHaveCount(0); // the viewer remains Dock-only
     await expect(scope.locator(".group-target-card")).toHaveCount(3);
     await expect(scope.locator('[data-participant-status="CURRENT"]')).toHaveCount(1);
+    await expect(scope).toHaveAttribute("aria-label", "Group Target Strip");
     await expect(stage).not.toContainText("played this card.");
     await expect(stage).not.toContainText("Waiting for Player 1");
     await expect(stage).not.toContainText("Decision · Player 1");
@@ -900,7 +945,7 @@ for (const viewport of [
     await loadFixture(page, { ...viewport, state: "group-negation-local" });
     const stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
     const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
-    const root = stage.locator('[data-current-effect-label="Raining Arrows"]');
+    const root = stage.locator('[data-group-root-action="RainingArrows"]');
     const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
     const guidance = dock.locator(".console-guidance .decision-status");
     const handCard = page.locator('[data-hand-card-id="browser-group-negation"] .game-card');
@@ -935,7 +980,7 @@ for (const viewport of [
         && first.left < second.right && second.left < first.right
         && first.top < second.bottom && second.top < first.bottom);
       const stageSelector = '.interaction-stage[data-stage="NEGATION"]';
-      const rootSelector = `${stageSelector} [data-current-effect-label="Raining Arrows"]`;
+      const rootSelector = `${stageSelector} [data-group-root-action="RainingArrows"]`;
       const scopeSelector = `${stageSelector} [data-group-target-scope="original"][data-group-progress="proven"]`;
       const dockSelector = '.local-player-dock[data-player-anchor="p1"]';
       const guidanceSelector = `${dockSelector} .console-guidance`;

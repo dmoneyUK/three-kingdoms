@@ -36,6 +36,8 @@ export type MediumParticipantView = {
   roleLabel: "SOURCE";
 };
 
+export type GroupSourceView = Pick<HeroFocusPlayerView, "id" | "name" | "heroId">;
+
 export type GroupTargetScopeView = {
   density: "medium" | "compact";
   hasProgress: boolean;
@@ -219,4 +221,17 @@ export function projectMediumSourceForViewer(
 
   const player = decoratePlayer(source, resolvePlayerDisplay);
   return player ? { player, roleLabel: "SOURCE" } : null;
+}
+
+/** Project the typed Group root source independently of a single-target focus. */
+export function projectGroupSourceForViewer(
+  stage: InteractionStageView,
+  viewerId: string | null,
+  resolvePlayerDisplay: HeroFocusPlayerDisplayResolver = () => null,
+): GroupSourceView | null {
+  const source = stage.source;
+  if (!stage.visible || !stage.groupCardKind || !source.id || source.id === viewerId) return null;
+  const player = decoratePlayer(source, resolvePlayerDisplay);
+  if (!player?.known) return null;
+  return { id: player.id, name: player.name, heroId: player.heroId };
 }
