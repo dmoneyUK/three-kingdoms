@@ -2113,6 +2113,21 @@
 .play-table[data-seat-topology="side-column"] .medium-participant-portrait { grid-area: portrait; }
 .play-table[data-seat-topology="side-column"] .medium-participant-role { grid-area: role; }
 .play-table[data-seat-topology="side-column"] .medium-participant-identity { grid-area: identity; }
+.play-table .interaction-stage .single-target-negation-source {
+  display: flex;
+  width: 64px;
+  min-width: 64px;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  text-align: center;
+}
+.play-table .interaction-stage .single-target-negation-source .medium-participant-portrait { width: 64px; height: 82px; }
+.play-table .interaction-stage .single-target-negation-source .medium-participant-identity { width: 100%; }
+.play-table .interaction-stage .single-target-negation-source .medium-participant-identity b { font-size: 9px; line-height: 1.15; }
+.play-table[data-seat-topology="side-column"] .interaction-stage .single-target-negation-source { grid-template-columns: none; }
 @media (max-width: 650px) {
   .play-table[data-seat-topology="side-column"] .hero-focus { grid-template-columns: 72px minmax(0, 1fr); }
   .play-table[data-seat-topology="side-column"] .hero-focus-portrait { width: 72px; height: 90px; }

@@ -631,6 +631,14 @@ function MediumParticipantCard({ view }: { view: MediumParticipantView }) {
   </div>;
 }
 
+function SingleTargetNegationSource({ view }: { view: MediumParticipantView }) {
+  const hero = heroDefinition(view.player.heroId);
+  return <div className="medium-participant-card single-target-negation-source" data-negation-source="proven" data-negation-source-player-id={view.player.id} data-negation-source-known={view.player.known ? "true" : "false"} aria-label={`Source: ${view.player.name}`}>
+    <span className={hero ? "medium-participant-portrait" : "medium-participant-portrait medium-participant-portrait-empty"} data-hero-id={view.player.heroId ?? undefined}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
+    <div className="medium-participant-identity"><b>{view.player.name}</b></div>
+  </div>;
+}
+
 type StageActionCardKind = NonNullable<PresentationClientView["groupResolution"]>["cardKind"] | "Negation" | "Oath" | "BumperHarvest";
 type GroupReactionNode = ReturnType<typeof buildReactionChainView>["negationNodes"][number];
 
@@ -922,6 +930,16 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && bumperHarvestCompositionView
     && stage.bumperHarvestProgress?.semantics === "PROVEN"
     && (stage.stage === "SEQUENTIAL_CHOICE" || stage.stage === "NEGATION"));
+  const isProvenSingleTargetNegation = Boolean(isOpenNegationResponse
+    && !isProvenGroupComposition && !isProvenOathComposition && !isProvenBumperHarvestComposition
+    && reactionChain.visible && reactionChain.interactionId === stage.interactionId && reactionChain.root
+    && stage.source.id && stage.source.known
+    && stage.originalTargets.length === 1 && stage.activeTargets.length === 1
+    && stage.originalTargets[0]?.id && stage.originalTargets[0].known
+    && stage.activeTargets[0]?.id === stage.originalTargets[0].id && stage.activeTargets[0].known
+    && reactionChain.root.source.id === stage.source.id && reactionChain.root.source.known
+    && reactionChain.root.targets.length === 1
+    && reactionChain.root.targets[0]?.id === stage.activeTargets[0].id);
   const bumperHarvestNegationNodes = isProvenBumperHarvestComposition && stage.stage === "NEGATION"
     && reactionChain.interactionId === stage.interactionId
     ? reactionChain.negationNodes
@@ -1095,7 +1113,9 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
         ? <BumperHarvestInteractionComposition source={bumperHarvestCompositionView.source} view={bumperHarvestCompositionView} rootActive={bumperHarvestCompositionView.currentParticipantId !== null && bumperHarvestNegationNodes.length === 0} negationNodes={bumperHarvestNegationNodes} interactionId={stage.interactionId} />
       : <div className="interaction-stage-body">
       <div className="interaction-stage-hero-region">
-        {showMediumSource && mediumSource && <MediumParticipantCard view={mediumSource} />}
+        {showMediumSource && mediumSource && (isProvenSingleTargetNegation
+          ? <SingleTargetNegationSource view={mediumSource} />
+          : <MediumParticipantCard view={mediumSource} />)}
         {showMediumSource && mediumSource && <span className="medium-participant-arrow" data-medium-source-arrow="true" aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
         <div className={`interaction-stage-current-effect-flow${currentEffect ? currentEffectConnectsToFocus ? " is-connected" : " is-unlinked" : " is-empty"}`}>
           {currentEffect && <section className="interaction-stage-current-effect" role="group" aria-label="Current Effect" data-current-effect-label={currentEffect}><small>{isOpenNegationResponse ? "EFFECT" : "CURRENT EFFECT"}</small><strong>{currentEffect}</strong></section>}
