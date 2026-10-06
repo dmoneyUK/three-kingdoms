@@ -1101,6 +1101,18 @@ Only a proven regression or new Reviewer-approved design requirement does.
   and projection semantics are unchanged. Pre-commit remote SHA `3d64a02`
   passed Actions run `37510268990`. Reviewer acceptance remains unclaimed.
 
+### UX2.33-JUDGEMENT-MOBILE-CAUSAL-SPINE-01 — Portrait Judgement flow
+
+- Proven external-participant Judgement now reads Source → Current Effect →
+  target vertically and centered at 390×844 and 480×900 Top Row viewports.
+  A 390×640 safe zone measured 384×218px and uses a compact horizontal causal
+  row (Stage 338×143px) to stay clear of the Local Dock. Side Column and 1440px
+  Top Row remain covered and unchanged; the local participant stays Dock-only
+  and missing/mismatched authority still fails closed. The focused Judgement
+  browser slice passed 7/7, targeted ESLint, and `git diff --check`. No gameplay
+  or projection changes. Pre-commit remote SHA `aef8473` passed Actions run
+  `37512146457`. Reviewer acceptance remains unclaimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,

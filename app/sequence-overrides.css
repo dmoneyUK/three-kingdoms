@@ -2666,6 +2666,81 @@
   }
 }
 
+/* A short interaction safe zone cannot hold a full portrait spine. Preserve
+   the causal order in a compact Source -> Effect -> Target row, like Dying's
+   established short-safe-zone treatment, without invading the Dock. */
+@container top-row-interaction-safe-zone (max-height: 330px) and (max-width: 650px) {
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .interaction-stage-body {
+    display: grid;
+    grid-template-columns: minmax(64px, 72px) 10px minmax(0, 1fr);
+    align-items: start;
+    gap: 2px 4px;
+    padding-top: 0;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .interaction-stage-hero-region:has(> .medium-participant-card) {
+    display: contents;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .medium-participant-card {
+    grid-column: 1;
+    grid-row: 1;
+    width: 72px;
+    flex-direction: row;
+    align-items: center;
+    gap: 3px;
+    padding: 3px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .medium-participant-role,
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .medium-participant-identity > span,
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .medium-participant-identity > small {
+    display: none;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .medium-participant-portrait {
+    width: 34px;
+    height: 43px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .medium-participant-identity b {
+    font-size: 7px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .medium-participant-arrow {
+    grid-column: 2;
+    grid-row: 1;
+    margin-top: 12px;
+    font-size: 12px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .medium-participant-arrow::before {
+    content: none;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .interaction-stage-current-effect-flow.is-connected {
+    grid-column: 3;
+    grid-row: 1;
+    width: 100%;
+    max-width: none;
+    grid-template-columns: minmax(0, .7fr) 8px minmax(92px, 1fr);
+    align-items: start;
+    gap: 2px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .interaction-stage-current-effect {
+    min-height: 0;
+    padding: 3px 4px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .interaction-stage-current-effect small {
+    display: none;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .interaction-stage-current-effect strong {
+    font-size: 8px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .current-effect-arrow.top-row-arrow {
+    font-size: 11px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .current-effect-arrow.top-row-arrow::before {
+    content: none;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .interaction-stage-meta-region {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
 @media (max-width: 400px) and (max-height: 700px) {
   .game-shell .play-table[data-seat-topology="top-row"] > .play-center {
     top: 6px;
@@ -3509,6 +3584,42 @@
   bottom: 8px;
   left: 50%;
   translate: -50% 0;
+}
+
+/* UX2.33: keep proven mobile Judgement source/effect/target relationships on
+   one vertically aligned causal spine rather than a compressed split row. */
+@media (max-width: 650px) {
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .interaction-stage-hero-region:has(> .medium-participant-card) {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: 3px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .medium-participant-arrow {
+    grid-column: 1;
+    font-size: 0;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .medium-participant-arrow::before {
+    content: "↓";
+    font: 700 13px/1 Arial, sans-serif;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .interaction-stage-current-effect-flow {
+    grid-column: 1;
+    width: 100%;
+    max-width: 360px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+}
+
+@container top-row-interaction-safe-zone (max-height: 330px) and (max-width: 650px) {
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .medium-participant-arrow {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 12px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="JUDGEMENT"][data-current-effect] .medium-participant-arrow::before {
+    content: none;
+  }
 }
 
 @media (max-width: 400px) and (max-height: 700px) {

@@ -1366,14 +1366,18 @@ test("Dying Current Effect fails closed without source/effect/participant agreem
 
 for (const viewport of [
   { count: 4, width: 390, height: 844, topology: "top-row" },
+  { count: 4, width: 390, height: 640, topology: "top-row" },
+  { count: 4, width: 480, height: 900, topology: "top-row" },
   { count: 6, width: 480, height: 900, topology: "side-column" },
   { count: 4, width: 1440, height: 900, topology: "top-row" },
 ]) {
-  test(`proven Judgement Current Effect fits ${viewport.topology} at ${viewport.width}px`, async ({ page }) => {
+  test(`proven Judgement Current Effect fits ${viewport.topology} at ${viewport.width}×${viewport.height}`, async ({ page }) => {
     await loadFixture(page, { ...viewport, state: "judgement" });
     const stage = page.locator('.interaction-stage[data-stage="JUDGEMENT"]');
     const source = stage.locator('.medium-participant-card[data-medium-participant-player-id="p1"]');
+    const sourceArrow = stage.locator(".medium-participant-arrow");
     const effect = stage.locator('[aria-label="Current Effect"]');
+    const effectArrow = stage.locator(".current-effect-arrow");
     const target = stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"]');
     const summary = stage.locator('[data-stage-event-summary="proven"]');
     await expect(page.locator(".play-table")).toHaveAttribute("data-seat-topology", viewport.topology);
@@ -1397,10 +1401,12 @@ for (const viewport of [
     expect(await page.evaluate(() => window.__browserRoom.currentAction.options)).toBeUndefined();
     expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 
-    const [stageBox, sourceBox, effectBox, targetBox, dockBox] = await Promise.all([
-      stage.boundingBox(), source.boundingBox(), effect.boundingBox(), target.boundingBox(), page.locator(".local-player-dock").boundingBox(),
+    const [safeBox, stageBox, sourceBox, sourceArrowBox, effectBox, effectArrowBox, targetBox, dockBox] = await Promise.all([
+      page.locator(".interaction-safe-zone").boundingBox(), stage.boundingBox(), source.boundingBox(), sourceArrow.boundingBox(), effect.boundingBox(), effectArrow.boundingBox(), target.boundingBox(), page.locator(".local-player-dock").boundingBox(),
     ]);
-    expect(stageBox && effectBox && targetBox && dockBox).toBeTruthy();
+    expect(safeBox && stageBox && sourceBox && sourceArrowBox && effectBox && effectArrowBox && targetBox && dockBox).toBeTruthy();
+    expect(stageBox.y).toBeGreaterThanOrEqual(safeBox.y - 1);
+    expect(stageBox.y + stageBox.height).toBeLessThanOrEqual(safeBox.y + safeBox.height + 1);
     expect(stageBox.x).toBeGreaterThanOrEqual(0);
     expect(stageBox.x + stageBox.width).toBeLessThanOrEqual(viewport.width);
     expect(stageBox.y + stageBox.height).toBeLessThanOrEqual(dockBox.y + 1);
@@ -1409,8 +1415,21 @@ for (const viewport of [
       expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(effectBox.y + 2);
       expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
     } else if (viewport.width <= 650) {
-      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
-      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
+      if (safeBox.height <= 330) {
+        expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(sourceArrowBox.x + sourceArrowBox.width + 2);
+        expect(sourceArrowBox.x + sourceArrowBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+        expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(effectArrowBox.x + effectArrowBox.width + 2);
+        expect(effectArrowBox.x + effectArrowBox.width).toBeLessThanOrEqual(targetBox.x + 2);
+      } else {
+        const causalSpine = [sourceBox, sourceArrowBox, effectBox, effectArrowBox, targetBox];
+        for (let index = 0; index < causalSpine.length - 1; index += 1) {
+          expect(causalSpine[index].y + causalSpine[index].height).toBeLessThanOrEqual(causalSpine[index + 1].y + 2);
+        }
+        const targetCenterX = targetBox.x + targetBox.width / 2;
+        for (const elementBox of causalSpine) {
+          expect(Math.abs(elementBox.x + elementBox.width / 2 - targetCenterX)).toBeLessThanOrEqual(8);
+        }
+      }
     } else {
       expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
       expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(targetBox.x + 2);

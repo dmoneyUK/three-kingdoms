@@ -5,12 +5,12 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-UX2.32 adds Kirin Bow browser proof for authoritative public Mount selection: eligible Equipment identities render only with proven external focus, selection stays local until Confirm, the existing `trigger` payload submits once, action-revision changes clear selection, and missing focus/projection proof retains the generic picker. The target-card browser suite passed 47/47 across the focused Kirin Bow cases and existing coverage; targeted ESLint and `git diff --check` passed. Test fixture/spec only; no gameplay or projection changes. Pre-commit Actions run `37510268990` for exact remote SHA `3d64a02cad462ebb6df1fdbed516865693ce4805` completed **success**. Reviewer acceptance is not claimed.
+UX2.33 aligned proven Judgement ACTIVE scenes into a centered Source → Current Effect → target spine on 390/480px Top Row portrait, while 390×640 short safe zones retain a compact horizontal causal row. The 390×640 safe zone measured 384×218px and Stage 338×143px; browser assertions verify safe-zone/Dock containment, semantic order and centered alignment. The focused Judgement browser slice passed 7/7, targeted ESLint and `git diff --check` passed. No gameplay/projection changes. Pre-commit Actions run `37512146457` for exact remote SHA `aef847326a506f05ab04f0703b15e742cef15976` completed **success**. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
 Remote Design blob `530c8ec9b7ef5790b6a8bc27b694ac7b00499a6a` is unchanged. The authority/privacy baseline and §§12.0–12.9 were reviewed. The representative §12.9 matrix passes; the final gate remains open until remaining approved deltas close. Reviewer acceptance is unclaimed.
 
-## Current task — UX2.32-KIRIN-BOW-SELECTABLE-DETAIL-BROWSER-PROOF-01
+## Current task — UX2.33-JUDGEMENT-MOBILE-CAUSAL-SPINE-01
 
-Close the completed Kirin Bow Selectable Detail browser-proof task with this commit. Its scope is the existing `target_cards` option against a damaged opponent's publicly identified Mount: projected target focus, public Equipment identity, local-until-Confirm selection, one existing `trigger` payload, action-revision reset, and generic-picker fallback when focus/public-card proof is absent. No gameplay or semantic projection changes.
+Close the completed Judgement mobile causal-flow task with this commit. Proven external-participant Top Row scenes use a centered top-to-bottom Source → Current Effect → target spine at normal portrait safe-zone heights; short safe zones use the established compact causal row to remain clear of the Dock. Preserve local-participant-in-Dock behavior, fail-closed semantic gates, Side Column and wide Top Row layouts. No gameplay or projection changes.
