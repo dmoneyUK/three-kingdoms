@@ -1168,6 +1168,12 @@ async function sideSafeZoneGeometry(page) {
       const box = element.getBoundingClientRect();
       return style.display !== "none" && style.visibility !== "hidden" && box.width > 0 && box.height > 0;
     };
+    const isInsideScrollableGroupTrack = (element) => {
+      const track = element.closest(".group-target-cards");
+      if (!track || track === element) return false;
+      const style = getComputedStyle(track);
+      return ["auto", "scroll"].includes(style.overflowX) && track.scrollWidth > track.clientWidth;
+    };
     const zone = document.querySelector(".interaction-safe-zone");
     const stage = zone.querySelector(".interaction-stage");
     const seatElements = [...document.querySelectorAll('.player-board [data-player-anchor]')];
@@ -1179,7 +1185,7 @@ async function sideSafeZoneGeometry(page) {
     return {
       table: bounds(document.querySelector(".play-table")), dock: bounds(document.querySelector(".local-player-dock")),
       zone: bounds(zone), stage: bounds(stage), seatBounds,
-      stageBounds: [stage, ...stage.querySelectorAll("*")].filter(visible).map((element) => ({ className: element.className, ...bounds(element) })),
+      stageBounds: [stage, ...stage.querySelectorAll("*")].filter(visible).filter((element) => !isInsideScrollableGroupTrack(element)).map((element) => ({ className: element.className, ...bounds(element) })),
       stageStyle: { position: stageStyle.position, translate: stageStyle.translate, transform: stageStyle.transform, overflowX: stageStyle.overflowX, overflowY: stageStyle.overflowY },
       zoneStyle: { position: zoneStyle.position, display: zoneStyle.display, background: zoneStyle.backgroundColor, border: zoneStyle.borderWidth, overflowX: zoneStyle.overflowX, overflowY: zoneStyle.overflowY },
       reaction: Boolean(stage.querySelector('[data-reaction-chain="proven"]')),
@@ -1286,6 +1292,7 @@ for (const width of [480, 650]) {
     test(`UX2.0VIS-10C Top Row ${equipmentCase.scenario} at ${width}px keeps Hero art and public slot state readable`, async ({ page }, testInfo) => {
       await loadFixture(page, { state: "rest", count: 4, width, height: 900, equipmentCase: equipmentCase.scenario });
       const seat = page.locator('[data-player-anchor="p2"]');
+      await expect.poll(() => seat.locator(".opponent-hero-portrait .hero-art-image").evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
       const presentation = await opponentSeatPresentation(page, "p2");
       expect(presentation.topology).toBe("top-row");
       expect(presentation.imageLoaded).toBe(true);
@@ -2180,7 +2187,19 @@ for (const width of [1440, 650, 480]) {
       const result = await page.locator(".interaction-stage").evaluate(stage => {
         const rect = element => { const r=element.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom}; };
         const visible = element => { const s=getComputedStyle(element),r=element.getBoundingClientRect();return s.display!=="none"&&s.visibility!=="hidden"&&r.width>0&&r.height>0; };
-        return {zone:rect(stage.parentElement),dock:rect(document.querySelector(".local-player-dock")),boxes:[stage,...stage.querySelectorAll("*")].filter(visible).map(rect)};
+        const isInsideScrollableGroupTrack = element => {
+          const track = element.closest(".group-target-cards");
+          if (!track || track === element) return false;
+          const style = getComputedStyle(track);
+          return ["auto", "scroll"].includes(style.overflowX) && track.scrollWidth > track.clientWidth;
+        };
+        const track = stage.querySelector(".group-target-scope .group-target-cards");
+        return {
+          zone:rect(stage.parentElement),
+          dock:rect(document.querySelector(".local-player-dock")),
+          boxes:[stage,...stage.querySelectorAll("*")].filter(visible).filter(element => !isInsideScrollableGroupTrack(element)).map(rect),
+          groupTrack:track ? {overflowX:getComputedStyle(track).overflowX,touchAction:getComputedStyle(track).touchAction,clientWidth:track.clientWidth,scrollWidth:track.scrollWidth} : null,
+        };
       });
       await testInfo.attach("group-scope-bounds", {body:JSON.stringify(result),contentType:"application/json"});
       for (const box of result.boxes) {
@@ -2188,6 +2207,19 @@ for (const width of [1440, 650, 480]) {
         expect(box.right).toBeLessThanOrEqual(result.zone.right + .5);
         expect(box.bottom).toBeLessThanOrEqual(result.zone.bottom + .5);
         expect(box.bottom).toBeLessThanOrEqual(result.dock.y);
+      }
+      if (renderedSecondaryCount >= 4) {
+        expect(result.groupTrack?.overflowX).toBe("auto");
+        expect(result.groupTrack?.touchAction).toContain("pan-x");
+        expect(result.groupTrack?.scrollWidth).toBeGreaterThan(result.groupTrack?.clientWidth);
+        const lastCardAfterScroll = await scope.locator(".group-target-cards").evaluate(track => {
+          track.scrollLeft = track.scrollWidth;
+          const viewport = track.getBoundingClientRect();
+          const card = track.lastElementChild.getBoundingClientRect();
+          return {viewport:{left:viewport.left,right:viewport.right},card:{left:card.left,right:card.right}};
+        });
+        expect(lastCardAfterScroll.card.left).toBeGreaterThanOrEqual(lastCardAfterScroll.viewport.left - .5);
+        expect(lastCardAfterScroll.card.right).toBeLessThanOrEqual(lastCardAfterScroll.viewport.right + .5);
       }
       if (count > 4) {
         const layout = await sideSafeZoneGeometry(page);

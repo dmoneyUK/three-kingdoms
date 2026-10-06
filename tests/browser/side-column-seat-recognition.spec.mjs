@@ -7,6 +7,7 @@ async function loadFixture(page, { width, count }) {
   await page.setViewportSize({ width, height: 900 });
   await page.goto(`/tests/browser/fixture.html?state=interaction&count=${count}&equipmentCase=matrix`);
   await expect(page.locator(".game-shell")).toBeVisible();
+  await expect.poll(() => page.locator('.player-board[data-seat-topology="side-column"] .opponent-hero-portrait .hero-art-image').evaluateAll(images => images.length > 0 && images.every(image => image.complete && image.naturalWidth > 0))).toBe(true);
 }
 
 async function readLayout(page) {

@@ -701,8 +701,16 @@ Only a proven regression or new Reviewer-approved design requirement does.
   failure-damage path called an undefined participant-status helper. That
   server transition is now implemented, and the exact local `npm test` command
   passed build, fast 213/213, and API 250/250. The combined repair and UI task
-  were pushed as `f98ba4c`; Actions run `37414138268` is `in_progress`, so no
-  CI pass is claimed.
+  were pushed as `f98ba4c`; Actions run `37414138268` was cancelled after a
+  follow-up documentation push. Latest run `37414234939` on docs-only
+  `45b7ce3` failed at `npm run test:browser`: compact Group cards are in a
+  horizontally scrolling track, while three geometry assertions counted
+  clipped children as visible overflow. The UI remains unchanged; the tests
+  now measure the track viewport and last-card reachability. The same browser
+  run also exposed Hero-art image-load races, so the relevant fixtures wait for
+  successful image loading instead of sampling immediately. The exact local
+  browser step passed 539/539 and targeted ESLint passed; no CI pass is claimed
+  for this repair yet.
 
 ## Known deferred semantic gaps
 
