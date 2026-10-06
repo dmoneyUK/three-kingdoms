@@ -7,16 +7,16 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 ## Latest result and CI
 
-The AOE `npm test` failure on run `37411200534` was repaired in `f98ba4c`. The browser failure on `45b7ce3` (run `37414234939`) was repaired in `bdd039a`; runs `37416789582`, `37418042611`, `37419896636`, and `37420750930` completed **Success** for build-and-test and deploy. Runs `37419043447` and `37419081776` were **cancelled** by subsequent pushes. Run `37424045378` (#750) for `5c4db4c` is currently **in progress**; no result is known yet.
+The AOE `npm test` failure on run `37411200534` was repaired in `f98ba4c`. The browser failure on `45b7ce3` (run `37414234939`) was repaired in `bdd039a`; runs `37416789582`, `37418042611`, `37419896636`, and `37420750930` completed **Success** for build-and-test and deploy. Runs `37419043447`, `37419081776`, and `37424045378` (#750) were **cancelled** by subsequent pushes. Run `37424695881` (#751) for `09fdb08` is **in progress**; its result is not known yet.
 
 ## Design checkpoint
 
-Reviewed remote design blob `5157af29079cf03f86476b71bc58607a215d6b53`, including §§0.35–0.36, 0.51–0.52, 3B, and 12.6–12.9. Public Reaction Chain history must be structured and server-projected; never derive nodes from logs, timeline ordering, private response scans, or animation state.
+Reviewed remote design blob `5157af29079cf03f86476b71bc58607a215d6b53`, including §§0.56, 0.66, 0.75, 12.7, and 12.9. Quick Test changes only viewer projection/private controls; shared public causal facts stay fixed and viewer switching must not replay events.
 
-## Latest implementation — UX2.9-BORROWED-SWORD-CONTEXT-01
+## Latest implementation — UX2.9-FINAL-QUICK-TEST-REPROJECTION-01
 
-Borrowed Sword forced-Attack context no longer displays the parent-frame ID. With complete source/holder/target/current-participant proof, the Stage keeps its player-facing causal sentence as the single expression; without or against that proof, it stays neutral. Focused checks passed: active-current-effect browser tests 53/53, projection/Hero Focus unit tests 2/2, and `git diff --check`. These local changes are not yet covered by CI; run #750 for the preceding pushed commit remains in progress.
+The browser fixture re-renders a fixed public Attack response as observer p3, acting target p2, then p3 again. It verifies unchanged shared snapshot, `NONE` transition/no event replay, target-to-Dock projection, actor-only `CurrentAction` controls, and no gameplay submission; the existing one-time response timer arm occurs once. Focused browser test passed 1/1 and `git diff --check` passed. This local change is not covered by CI; run #751 for the preceding commit is in progress.
 
-## Current task — UX2.9-FINAL-UX2-INTEGRATION-GATE-01 (IN PROGRESS)
+## Current task — UX2.9-FINAL-QUICK-TEST-REPROJECTION-01 (READY TO COMMIT)
 
-Continue the §12.9 integration audit across the listed topologies and interaction families. Visual checks already cover 2/4/6/10-player layouts, Inspect, Preview-to-Active, Attack/Dodge, Duel, Negation, Dying/Peach, Judgement, AOE/Halberd, Selectable Detail, Borrowed Sword, self-target, multi-target selection, long Guidance, and large Hand; mobile and 1440px screenshots were saved and inspected. Borrowed Sword now uses the proven player-facing causal sentence without duplicate frame context; focused regression covers matching, missing, and inconsistent root proofs, and the engine-backed projection already verifies the causal root. Remaining: complete the privacy/meaningfulness pass and note that Quick Test acting-seat ownership has focused API/component proof but no live viewer-switch browser fixture. Keep the final gate open; do not alter `tests/browser/ui19.spec.mjs` unless an exact gate failure requires it.
+Within the §12.9 final gate, add a focused browser fixture that re-renders one fixed Attack-response public snapshot as an observer (p3), its acting target (p2), then the observer again. Prove public interaction/root/participants remain identical with no presentation transition or gameplay action; the acting viewer's Hero moves to the Dock and receives only its `CurrentAction` controls, while the observer gets none. Permit the existing one-time `start_response_timer` request when p2 becomes eligible, and prove it does not repeat on return to p3. Test-fixture and browser regression only; do not alter gameplay/API/protocol behavior or `tests/browser/ui19.spec.mjs`. The broader privacy/meaningfulness pass remains after this bounded task.

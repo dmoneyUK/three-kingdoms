@@ -83,7 +83,7 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
     stable: { kind: "CHOICE", interactionId, checkpointId, presentationRevision: 1, decisionActorId },
     interaction: scene,
     decision: { actorId: decisionActorId, stage },
-    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "pending-target-card" ? "target_card" : state === "picker" || state === "picker-hand-zone" || state === "frost-sword-selectable" || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" || state === "judgement" || state === "judgement-local" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "preview-ack" ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
+    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "pending-target-card" ? "target_card" : state === "picker" || state === "picker-hand-zone" || state === "frost-sword-selectable" || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" || state === "judgement" || state === "judgement-local" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "active-attack-observer" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "preview-ack" ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
     groupParticipantProgress: progressCase && orderedProgressCase !== "missing" ? {
       cardKind: orderedProgressCase ? "SkyPiercingHalberdAttack" : "RainingArrows",
       resolutionSemantics: orderedProgressCase ? "ORDERED" : "GROUP",
@@ -507,6 +507,35 @@ const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false
   }
   return true;
 }} onLeave={() => {}} />);
+window.__switchQuickTestViewer = (viewerId) => {
+  const actorId = fixtureRoom.currentAction?.actorId ?? null;
+  if (!fixtureRoom.isTestController
+    || !actorId
+    || !["p2", "p3"].includes(viewerId)
+    || fixtureRoom.presentationSnapshot?.interaction?.stage !== "ATTACK_RESPONSE"
+    || fixtureRoom.presentationSnapshot?.stable?.decisionActorId !== actorId) {
+    throw new Error("Quick Test viewer switch requires the projected Attack-response fixture.");
+  }
+  const isActingViewer = viewerId === actorId;
+  const currentAction = currentActionFor(isActingViewer ? "dodge" : "active-attack-observer", actorId, "browser-dodge");
+  const localControl = fixtureRoom.presentationSnapshot.localControl;
+  fixtureRoom = {
+    ...fixtureRoom,
+    meId: viewerId,
+    myRole: fixtureRoom.players.find((player) => player.id === viewerId)?.role ?? null,
+    myHand: isActingViewer ? [card("browser-dodge", "Dodge")] : [],
+    actionPlayerId: actorId,
+    isMyAction: isActingViewer,
+    currentAction,
+    pending: { kind: "response" },
+    presentationSnapshot: {
+      ...fixtureRoom.presentationSnapshot,
+      localControl: { ...localControl, actorId, entitled: isActingViewer },
+    },
+  };
+  window.__browserRoom = fixtureRoom;
+  renderFixture();
+};
 window.__setBrowserHandIds = (ids) => {
   const myHand = ids.map((id) => card(id, "Attack"));
   fixtureRoom = {
