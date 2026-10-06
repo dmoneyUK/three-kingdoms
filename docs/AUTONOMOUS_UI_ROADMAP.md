@@ -1238,6 +1238,41 @@ Only a proven regression or new Reviewer-approved design requirement does.
   remote head `1d28913` completed Actions run `37419896636` with both
   build-and-test and deploy successful.
 
+### UX2.34-CI-REPAIR-DYING-MOBILE-SAFE-ZONE-01 — Restore Dying containment
+
+- The failed browser run `37516354859` on `b6a25e2` exposed eight Dying
+  geometry regressions: the 650×900 safe-zone boundary overflowed by 28.375px,
+  and the 480×900 handoff overlapped the Deck/Discard region by 18.171875px.
+  The compact row now activates for the measured short safe zone while keeping
+  the primary portrait sizing. Focused regressions passed 19/19. Repair commit
+  `ef57d59515974af5521ad619f9ee7fcb3282995d` passed exact Actions run
+  `37530273503` (`build-and-test`, `deploy`).
+
+### UX2.35-BORROWED-SWORD-MOBILE-CAUSAL-SPINE-01 — Forced-Attack child
+
+- A proven Borrowed Sword forced-Attack child now prefers mobile Top Row
+  Source → Attack → target; short safe zones retain the compact row. Root
+  weapon source/holder/target proof remains authoritative and fail-closed;
+  viewer identity stays Dock-only; Side Column and wide layouts are preserved.
+  Focused browser coverage passed 9/9 with causal-order, containment, overlap,
+  and overflow measurements. Commit `457e2e16750685148c64a607b7fd951df83626ce`
+  passed exact Actions run `37531803898` (`build-and-test`, `deploy`).
+
+### UX2.36-FINAL-UX2-VISUAL-GATE-01 — §12.9 final responsive evidence
+
+- Added and ran a 19-case final geometry/screenshot matrix covering
+  representative 2/4/6/10-player layouts, requested portrait and wide sizes,
+  and Group/AOE, Oath, Bumper Harvest, Judgement, Dying, and Borrowed Sword.
+  Stage/Dock intersection and document horizontal overflow are measured. The
+  matrix passed 19/19; related interaction regressions passed 189/189 and
+  layout/viewport regressions 58/58. Twelve fresh ACTIVE screenshots were
+  captured under ignored Playwright results for Reviewer inspection. Commit
+  `90d89e2f3a276ad1816e5524e8ee418a68b5dbcd` passed exact Actions run
+  `37533803893` (`build-and-test`, `deploy`). Reviewer acceptance is not
+  claimed. The boundary review found the remaining design statuses broad and
+  partial/open, without identifying a new concrete task that would not require
+  guessing product scope.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
