@@ -687,8 +687,8 @@
 .local-hero-hp { color: #ead6a1; font: 700 clamp(6px, 1.8vw, 9px)/1 Arial, sans-serif; letter-spacing: .02em; }
 .local-hero-hearts { max-width: none; overflow: visible; color: #f0d28c; font: clamp(6px, 1.8vw, 9px)/1 Arial, sans-serif; letter-spacing: 0; white-space: nowrap; }
 .local-hero-role { color: #fff0b4; font: 800 clamp(8px, 2.4vw, 12px)/1 Arial, sans-serif; letter-spacing: .06em; text-transform: uppercase; text-shadow: 0 1px 3px #000; }
-.local-hero-skills { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 6px; width: max-content; max-width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; }
-.local-hero-skills .hero-skill-button { box-sizing: border-box; flex: 1 1 0; width: auto; min-width: 44px; max-width: min(15rem, 100%); min-height: 44px; padding: 6px 8px; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; font-size: clamp(7.5px, 1.8vw, 9px); line-height: 1.1; letter-spacing: .01em; text-align: center; }
+.local-hero-skills { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 6px; width: 100%; max-width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; }
+.local-hero-skills .hero-skill-button { box-sizing: border-box; flex: 1 1 0; width: auto; min-width: 44px; max-width: none; min-height: 44px; padding: 6px 8px; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: normal; word-break: normal; hyphens: none; font-size: clamp(7.5px, 1.8vw, 9px); line-height: 1.1; letter-spacing: .01em; text-align: center; }
 
 .local-dock-zones {
   grid-area: zones;
@@ -820,7 +820,7 @@
   .local-hero-card { flex-basis: auto; width: 100%; max-width: 88px; height: auto; }
   .local-dock-identity { gap: 2px; padding: 3px; }
   .local-hero-skills { gap: 3px; }
-  .local-hero-skills .hero-skill-button { padding: 3px 1px; }
+  .local-hero-skills .hero-skill-button { padding: 3px 0; }
   .player-board { grid-template-rows: minmax(100px, 1fr) auto minmax(70px, .35fr); }
   .player-square-target,
   .player-hero-card .player-square-target { padding-inline: 0; padding-right: 0; }
@@ -832,6 +832,13 @@
   .local-player-dock .turn-controls [data-action-slot] button { min-width: 0; }
   .local-target-selection { gap: 2px 5px; font-size: 7px; }
   .local-target-selection b { font-size: 6px; }
+}
+
+@media (max-width: 390px) {
+  .local-player-dock { --top-panel-height: 106px; }
+  .local-dock-zones { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: 2px; }
+  .local-status-panel { padding: 1px; }
+  .local-equipment-panel { justify-self: end; padding: 1px; }
 }
 
 @media (max-width: 700px) {
@@ -846,7 +853,6 @@
 @media (max-width: 360px) {
   .local-player-dock { grid-template-columns: 64px minmax(0, 1fr); }
   .local-dock-zones { gap: 2px; }
-  .local-equipment-panel { padding: 2px; }
 }
 
 

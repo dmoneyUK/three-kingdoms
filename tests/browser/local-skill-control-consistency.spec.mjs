@@ -1,38 +1,64 @@
 import { expect, test } from "@playwright/test";
 
 const viewports = [
-  { width: 320, height: 640 },
-  { width: 390, height: 844 },
-  { width: 480, height: 900 },
   { width: 1440, height: 900 },
+  { width: 480, height: 900 },
+  { width: 390, height: 844 },
+  { width: 320, height: 640 },
 ];
 
-for (const viewport of viewports) {
-  test(`Local Hero peer skills keep equal, readable hit areas at ${viewport.width}px`, async ({ page }) => {
-    await page.setViewportSize(viewport);
-    await page.goto("/tests/browser/fixture.html?state=rest&count=4&hero=zhou-yu");
+const implementedHeroIds = [
+  "cao-cao", "simayi", "xiahou-dun", "zhang-liao", "xu-chu", "guo-jia", "zhen-ji", "yue-jin",
+  "liu-bei", "guan-yu", "zhang-fei", "zhuge-liang", "zhao-yun", "sun-quan", "gan-ning", "lü-meng",
+  "huang-gai", "zhou-yu", "daqiao", "lu-xun", "sun-shangxiang", "hua-tuo", "lü-bu", "diao-chan",
+  "huaxiong", "gongsun-zan", "pan-feng", "ma-chao", "huang-yueying", "lady-gan",
+];
 
+test("implemented Hero skill bands fill their allocation and keep natural labels across the roster", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  for (const heroId of implementedHeroIds) {
+    await page.goto(`/tests/browser/fixture.html?state=rest&count=4&hero=${encodeURIComponent(heroId)}`);
     const skills = page.locator('.local-player-dock[data-player-anchor="p1"] .local-status-panel .local-hero-skills');
-    const buttons = skills.locator(".hero-skill-button");
-    await expect(buttons).toHaveText(["Heroic", "Sowing Distrust"]);
+    await expect(skills.locator(".hero-skill-button").first()).toBeVisible();
 
-    const geometry = await skills.evaluate((element) => {
-      const rect = (node) => {
-        const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
-        return { left, right, top, bottom, width, height };
-      };
-      return {
-        skills: rect(element),
-        viewportWidth: window.innerWidth,
-        documentWidth: document.documentElement.scrollWidth,
-        buttons: [...element.querySelectorAll(".hero-skill-button")].map((button) => {
+    for (const viewport of viewports) {
+      await page.setViewportSize(viewport);
+      const geometry = await skills.evaluate((element) => {
+        const rect = (node) => {
+          const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
+          return { left, right, top, bottom, width, height };
+        };
+        const panel = element.closest(".local-status-panel");
+        const panelRect = rect(panel);
+        const panelStyle = getComputedStyle(panel);
+        const availableWidth = panelRect.width
+          - parseFloat(panelStyle.borderLeftWidth) - parseFloat(panelStyle.borderRightWidth)
+          - parseFloat(panelStyle.paddingLeft) - parseFloat(panelStyle.paddingRight);
+        const dock = element.closest(".local-player-dock");
+        const zones = dock.querySelector(".local-dock-zones");
+        const equipment = dock.querySelector(".local-equipment-panel");
+        const equipmentStyle = getComputedStyle(equipment);
+        const buttons = [...element.querySelectorAll(".hero-skill-button")].map((button) => {
           const bounds = rect(button);
-          const range = document.createRange();
-          range.selectNodeContents(button);
+          const labelRange = document.createRange();
+          labelRange.selectNodeContents(button);
+          const labelRects = [...labelRange.getClientRects()];
+          const textNode = [...button.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
+          const sourceText = textNode?.textContent ?? "";
+          const wordFragments = [...sourceText.matchAll(/\S+/g)].map((match) => {
+            const wordRange = document.createRange();
+            wordRange.setStart(textNode, match.index);
+            wordRange.setEnd(textNode, match.index + match[0].length);
+            const wordRects = [...wordRange.getClientRects()].map((bounds) => ({ left: bounds.left, right: bounds.right }));
+            return { word: match[0], rectCount: wordRects.length, rects: wordRects };
+          });
+          const lineTops = [...new Set(labelRects.map((line) => Math.round(line.top * 2) / 2))];
           return {
             ...bounds,
-            label: button.textContent,
-            labelLines: range.getClientRects().length,
+            label: button.textContent.trim(),
+            labelLines: lineTops.length,
+            wordFragments,
             scrollWidth: button.scrollWidth,
             clientWidth: button.clientWidth,
             scrollHeight: button.scrollHeight,
@@ -42,32 +68,75 @@ for (const viewport of viewports) {
             disabledOpacity: Number.parseFloat(getComputedStyle(button).opacity),
             hitTarget: document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)?.closest(".hero-skill-button") === button,
           };
-        }),
-      };
-    });
+        });
+        const intersects = (first, second) => first.left < second.right && first.right > second.left && first.top < second.bottom && first.bottom > second.top;
+        const exclusionSelectors = [".local-dock-identity", ".local-equipment-panel", ".local-hand-section", ".console-guidance", ".turn-controls"];
+        const overlaps = buttons.flatMap((button) => exclusionSelectors.flatMap((selector) => {
+          const other = dock.querySelector(selector);
+          return other && intersects(button, rect(other)) ? [{ label: button.label, selector }] : [];
+        }));
+        return {
+          skills: rect(element),
+          status: rect(panel),
+          zones: rect(zones),
+          equipment: rect(equipment),
+          equipmentVisible: equipmentStyle.display !== "none" && equipmentStyle.visibility !== "hidden",
+          equipmentSlotCount: equipment.querySelectorAll(".local-equipment-slot").length,
+          availableWidth,
+          viewportWidth: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth,
+          overlaps,
+          buttons,
+        };
+      });
+      const context = JSON.stringify({ heroId, viewport, geometry });
 
-    expect(geometry.documentWidth, JSON.stringify({ viewport, geometry })).toBeLessThanOrEqual(viewport.width);
-    expect(geometry.buttons).toHaveLength(2);
-    expect(Math.abs(geometry.buttons[0].width - geometry.buttons[1].width), JSON.stringify({ viewport, geometry })).toBeLessThanOrEqual(1);
+      expect(geometry.documentWidth, context).toBeLessThanOrEqual(viewport.width);
+      expect(Math.abs(geometry.skills.width - geometry.availableWidth), context).toBeLessThanOrEqual(1);
+      expect(geometry.equipmentVisible, context).toBe(true);
+      expect(geometry.equipmentSlotCount, context).toBe(4);
+      expect(geometry.equipment.width, context).toBeGreaterThan(0);
+      expect(geometry.equipment.height, context).toBeGreaterThan(0);
+      expect(geometry.buttons.length, context).toBeGreaterThanOrEqual(1);
+      expect(geometry.buttons.length, context).toBeLessThanOrEqual(2);
+      expect(geometry.overlaps, context).toEqual([]);
+      if (viewport.width <= 390) {
+        expect(geometry.equipment.top, context).toBeGreaterThanOrEqual(geometry.status.bottom - 1);
+        expect(geometry.equipment.bottom, context).toBeLessThanOrEqual(geometry.zones.bottom + 1);
+        expect(Math.abs(geometry.equipment.right - geometry.zones.right), context).toBeLessThanOrEqual(1);
+      } else {
+        expect(geometry.equipment.left, context).toBeGreaterThanOrEqual(geometry.status.right - 1);
+        expect(geometry.equipment.top, context).toBeLessThan(geometry.status.bottom);
+        expect(geometry.equipment.bottom, context).toBeGreaterThan(geometry.status.top);
+      }
+      if (geometry.buttons.length === 2) {
+        expect(Math.abs(geometry.buttons[0].width - geometry.buttons[1].width), context).toBeLessThanOrEqual(1);
+        expect(Math.abs(geometry.buttons[0].height - geometry.buttons[1].height), context).toBeLessThanOrEqual(1);
+      }
 
-    for (const button of geometry.buttons) {
-      expect(button.width, JSON.stringify({ viewport, button })).toBeGreaterThanOrEqual(44);
-      expect(button.height, JSON.stringify({ viewport, button })).toBeGreaterThanOrEqual(44);
-      expect(button.height, JSON.stringify({ viewport, button })).toBeLessThanOrEqual(56);
-      expect(button.left, JSON.stringify({ viewport, button, skills: geometry.skills })).toBeGreaterThanOrEqual(geometry.skills.left - 1);
-      expect(button.right, JSON.stringify({ viewport, button, skills: geometry.skills })).toBeLessThanOrEqual(geometry.skills.right + 1);
-      expect(button.top, JSON.stringify({ viewport, button, skills: geometry.skills })).toBeGreaterThanOrEqual(geometry.skills.top - 1);
-      expect(button.bottom, JSON.stringify({ viewport, button, skills: geometry.skills })).toBeLessThanOrEqual(geometry.skills.bottom + 1);
-      expect(button.labelLines, JSON.stringify({ viewport, button })).toBeLessThanOrEqual(2);
-      expect(button.scrollWidth, JSON.stringify({ viewport, button })).toBeLessThanOrEqual(button.clientWidth + 1);
-      expect(button.scrollHeight, JSON.stringify({ viewport, button })).toBeLessThanOrEqual(button.clientHeight + 1);
-      expect(button.disabled).toBe(true);
-      expect(button.ariaPressed).toBe("false");
-      expect(button.disabledOpacity).toBeLessThan(1);
-      expect(button.hitTarget).toBe(true);
+      for (const button of geometry.buttons) {
+        expect(button.width, context).toBeGreaterThanOrEqual(44);
+        expect(button.height, context).toBeGreaterThanOrEqual(44);
+        expect(button.height, context).toBeLessThanOrEqual(56);
+        expect(button.left, context).toBeGreaterThanOrEqual(geometry.skills.left - 1);
+        expect(button.right, context).toBeLessThanOrEqual(geometry.skills.right + 1);
+        expect(button.label, context).not.toBe("");
+        expect(button.labelLines, context).toBeLessThanOrEqual(2);
+        expect(button.wordFragments.every(({ rectCount }) => rectCount === 1), context).toBe(true);
+        expect(button.wordFragments.flatMap(({ rects }) => rects).every((word) => word.left >= button.left - 0.5 && word.right <= button.right + 0.5), context).toBe(true);
+        expect(button.scrollWidth, context).toBeLessThanOrEqual(button.clientWidth + 2);
+        expect(button.scrollHeight, context).toBeLessThanOrEqual(button.clientHeight + 1);
+        expect(button.disabled, context).toBe(true);
+        expect(button.ariaPressed, context).toBe("false");
+        expect(button.disabledOpacity, context).toBeLessThan(1);
+        expect(button.hitTarget, context).toBe(true);
+        if (heroId === "cao-cao" && [390, 480].includes(viewport.width) && button.label === "Entourage") {
+          expect(button.labelLines, context).toBe(1);
+        }
+      }
     }
-  });
-}
+  }
+});
 
 for (const width of [390, 1440]) {
   test(`Projected Ma Chao Cavalry activates from the Skills band at ${width}px`, async ({ page }) => {

@@ -5,12 +5,12 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-Remote base `593f5a5d1a63cbed112689b8da1e9b4232513045` passed Actions run `37541914535`. Local uncommitted WIP fills the Skills band and adds a 30-Hero × 4-width browser regression. The focused sweep exposes a design-fit conflict at 390px: Zhuge Liang's `Empty Fortress Strategem` occupies three natural lines in a 61.9px equal-width peer button; at 320px the peer is 50.7px. The Skills band already uses its full allocated width. No implementation commit or push was made; CSS/test WIP is preserved.
+`UX2.REFINE-HERO-SKILLS-BAND-WIDTH-WRAPPING-01` implemented: at ≤390px Skills uses a full-width row with Equipment directly below; all 30 implemented Heroes passed geometry/text checks at 320/390/480/1440px. Full focused Skills browser spec: 4 passed. Before this task commit, latest relevant Actions run observed was `37541914535` on `593f5a5d1a63cbed112689b8da1e9b4232513045` (success); docs-only HEAD `20def13c87c66a313f1619cd5063fd02582585da` had no associated run. The new task commit's Actions result has not yet been observed.
 
 ## Design checkpoint
 
-Reviewed `docs/UX2-refine.md` blob `16fe069bd585731a4dafe0c9296dc82a0487d4fc`. §1 remains unchanged; §2 adds the single-target Negation refinement.
+Re-fetched and re-read `docs/UX2-refine.md` blob `16fe069bd585731a4dafe0c9296dc82a0487d4fc` at the task boundary; unchanged from the prior review. §§1–2 remain authoritative.
 
-## Current task — blocked
+## Current task
 
-`BLOCKED — USER INPUT REQUIRED` — `UX2.REFINE-HERO-SKILLS-BAND-WIDTH-WRAPPING-01`. Resume after the Reviewer chooses the narrow-screen treatment for long multi-word skill labels: keep two equal side-by-side controls and permit a three-line exception, or authorize a responsive Dock reflow/redistribution that retains full labels and the two-line maximum. The current design does not specify this trade-off. The 30-Hero sweep stopped at this first failing case. Preserve the local uncommitted WIP.
+`UX2.REFINE-NEGATION-SOURCE-COMPACT-IDENTITY-01` — for a proven generic single-target `NEGATION` Stage (excluding Group, Oath, and Bumper Harvest compositions), render the authoritative public Source as portrait + player name only. Preserve viewer/self-target deduplication; retain other Stage source layouts. Prove source identity/content and containment at 390/480/wide widths; no HP, Hero name, role label, or duplicate source.
