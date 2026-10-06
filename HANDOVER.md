@@ -7,7 +7,7 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 ## Latest result and CI
 
-Remote head `527e7fe` failed Actions run `37411200534` at `npm test` because the AOE failure-damage path called an undefined participant-status helper; its repair was pushed with the AOE Stage task as `f98ba4c`, and local `npm test` passed build, fast 213/213, and API 250/250. Run `37414138268` for `f98ba4c` was cancelled after a docs push. Latest remote head `45b7ce3` failed run `37414234939` at `npm run test:browser`: compact Group cards were horizontally scrollable, but three geometry cases counted clipped track children as visible Stage overflow. The browser assertions now check the scroll viewport and last-card reachability; Hero-art geometry fixtures wait for successful image load. The full local browser step passed 539/539 and targeted ESLint passed; no CI pass is claimed for this repair yet.
+Remote head `527e7fe` failed run `37411200534` at `npm test` due to the AOE failure-damage helper; the repair was pushed with the AOE Stage task as `f98ba4c`, and local `npm test` passed build, fast 213/213, and API 250/250. Run `37414138268` for `f98ba4c` was cancelled after a docs push. Remote head `45b7ce3` then failed run `37414234939` at `npm run test:browser`: compact Group cards scroll horizontally, but three geometry cases counted clipped children as visible Stage overflow; browser assertions now validate the scroll viewport and last-card reachability, and Hero-art fixtures wait for successful image load. The full local browser step passed 539/539 and targeted ESLint passed. Repair commit `bdd039a` is on `origin/ux-v2`; Actions run `37416789582` is `in_progress`. No CI pass is claimed.
 
 ## Design checkpoint
 
