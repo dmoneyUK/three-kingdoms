@@ -3416,3 +3416,83 @@
   .interaction-stage[data-oath-composition="true"] .oath-stage-root-row { min-height: 102px; }
   .interaction-stage[data-oath-composition="true"] .oath-stage-card { height: 100px; }
 }
+
+/* UX2.22: Bumper Harvest consumes its ordered public progress in one causal Stage. */
+.interaction-stage[data-bumper-harvest-composition="true"] > header,
+.interaction-stage[data-bumper-harvest-composition="true"] > .interaction-stage-event-summary { display: none; }
+.interaction-stage[data-bumper-harvest-composition="true"] > .bumper-harvest-stage-body {
+  display: block;
+  min-width: 0;
+  padding-top: 0;
+}
+.bumper-harvest-stage-composition {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  gap: 3px;
+  min-width: 0;
+  width: 100%;
+}
+.bumper-harvest-stage-source { color: #d5e1bd; }
+.bumper-harvest-root-row { width: 100%; }
+.bumper-harvest-stage-card { border-color: #b6cc84; }
+.bumper-harvest-negation-branch-anchor { left: calc(50% + var(--group-root-card-half) - 1px); }
+.bumper-harvest-participant-strip { width: 100%; min-width: 0; margin: 0; }
+.bumper-harvest-participant-track {
+  display: flex;
+  align-items: center;
+  justify-content: safe center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 2px 0 3px;
+  touch-action: pan-x;
+  scrollbar-width: none;
+}
+.bumper-harvest-participant-track::-webkit-scrollbar { display: none; }
+.bumper-harvest-participant {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 4px;
+  border-bottom: 1px solid #75897966;
+  color: #e5d4a3;
+  white-space: nowrap;
+}
+.bumper-harvest-participant[data-participant-status="CURRENT"] { border-bottom-color: #f0c35e; color: #fff0bd; }
+.bumper-harvest-participant[data-participant-status="RESOLVED"] { color: #bdc8b6; }
+.bumper-harvest-participant[data-participant-status="NO_LONGER_APPLICABLE"] { color: #b5a8a0; opacity: .76; }
+.bumper-harvest-participant > b { max-width: 100px; overflow: hidden; font: 700 8px/1.05 Arial, sans-serif; text-overflow: ellipsis; }
+.bumper-harvest-participant-status { flex: none; font: 700 9px/1 Arial, sans-serif; }
+.bumper-harvest-participant-portrait {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 28px;
+  overflow: hidden;
+  border: 1px solid #8d7743;
+  background: #17231d;
+  color: #ddc88e;
+}
+.bumper-harvest-participant-portrait > .hero-art-image { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.bumper-harvest-participant-portrait-empty { font: 700 8px/1 Arial, sans-serif; }
+.bumper-harvest-participant.is-viewer { color: #f0d28c; }
+[data-bumper-harvest-composition="proven"] .group-negation-branch .group-stage-card-negation { width: 100%; }
+
+@media (max-width: 390px) {
+  .bumper-harvest-stage-composition { gap: 2px; }
+  .bumper-harvest-participant-track { justify-content: flex-start; gap: 3px; }
+  .bumper-harvest-participant { gap: 3px; padding-inline: 2px; }
+  .bumper-harvest-participant > b { max-width: 80px; font-size: 7px; }
+}
+
+@container top-row-interaction-safe-zone (max-height: 520px) and (max-width: 480px) {
+  .interaction-stage[data-bumper-harvest-composition="true"] .bumper-harvest-stage-composition { gap: 2px; }
+  .interaction-stage[data-bumper-harvest-composition="true"] .bumper-harvest-root-row { min-height: 102px; }
+  .interaction-stage[data-bumper-harvest-composition="true"] .bumper-harvest-stage-card { height: 100px; }
+}

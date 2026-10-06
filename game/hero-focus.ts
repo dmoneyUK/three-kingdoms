@@ -1,4 +1,5 @@
 import { buildNestedEffectContext, type InteractionStageView, type PresentationClientView, type PresentationDisplayIdentity } from "./presentation-client";
+import type { HarvestParticipantProgressOutcome, HarvestParticipantProgressStatus } from "./pending";
 import type { PresentationSnapshotGroupParticipantProgress } from "./presentation-snapshot";
 
 export type HeroFocusPlayerDisplay = {
@@ -54,6 +55,103 @@ export type OathRecipientScopeView = {
   density: "medium" | "compact";
   recipients: readonly (Pick<HeroFocusPlayerView, "id" | "name" | "heroId"> & { isViewer: boolean })[];
 };
+
+export type BumperHarvestParticipantView = Pick<HeroFocusPlayerView, "id" | "name" | "heroId"> & {
+  order: number;
+  status: HarvestParticipantProgressStatus;
+  outcome?: HarvestParticipantProgressOutcome;
+  isViewer: boolean;
+};
+
+export type BumperHarvestStageCompositionView = {
+  source: GroupSourceView | null;
+  density: "medium" | "compact";
+  currentParticipantId: string | null;
+  participants: readonly BumperHarvestParticipantView[];
+};
+
+/** Consume only the identity-bound Bumper Harvest root sequence and its public participant order. */
+export function projectBumperHarvestStageCompositionForViewer(
+  stage: InteractionStageView,
+  viewerId: string | null,
+  resolvePlayerDisplay: HeroFocusPlayerDisplayResolver = () => null,
+): BumperHarvestStageCompositionView | null {
+  const progress = stage.bumperHarvestProgress;
+  if (!stage.visible || !progress || progress.semantics !== "PROVEN"
+    || (stage.stage !== "SEQUENTIAL_CHOICE" && stage.stage !== "NEGATION")
+    || stage.effect !== "BumperHarvest" || !stage.source.id || !stage.source.known
+    || progress.interactionId !== stage.interactionId
+    || progress.rootFrameId !== stage.rootFrameId || progress.activeFrameId !== stage.activeFrameId
+    || progress.checkpointId !== stage.checkpointId || progress.presentationRevision !== stage.presentationRevision
+    || progress.sourceId !== stage.source.id || !progress.targetIds.length
+    || new Set(progress.targetIds).size !== progress.targetIds.length
+    || progress.participants.length !== progress.targetIds.length) return null;
+
+  const rootFrame = stage.continuity.relation === "ROOT_FRAME"
+    && progress.activeFrameId === progress.rootFrameId
+    && stage.stage === "SEQUENTIAL_CHOICE";
+  const childFrame = stage.continuity.relation === "CHILD_FRAME"
+    && progress.activeFrameId !== progress.rootFrameId
+    && stage.stage === "NEGATION"
+    && stage.parentFrameId === progress.rootFrameId
+    && stage.rootOrigin?.frameId === progress.rootFrameId
+    && stage.rootOrigin.effect === "BumperHarvest"
+    && stage.rootOrigin.source.id === progress.sourceId
+    && stage.decisionActor.id === null
+    && stage.activeResolver.id === null;
+  if (!rootFrame && !childFrame) return null;
+
+  const semanticTargetIds = rootFrame
+    ? stage.originalTargets.map(({ id }) => id)
+    : stage.rootOrigin?.targets.map(({ id }) => id);
+  if (!semanticTargetIds || semanticTargetIds.length !== progress.targetIds.length
+    || semanticTargetIds.some((id, index) => id !== progress.targetIds[index])) return null;
+
+  const participants: BumperHarvestParticipantView[] = [];
+  const validStatuses = new Set<HarvestParticipantProgressStatus>(["PENDING", "CURRENT", "RESOLVED", "NO_LONGER_APPLICABLE"]);
+  for (let index = 0; index < progress.participants.length; index++) {
+    const participant = progress.participants[index];
+    if (!participant || participant.playerId !== progress.targetIds[index] || participant.order !== index + 1
+      || !validStatuses.has(participant.status)) return null;
+    if (participant.status === "RESOLVED") {
+      if (participant.outcome !== "CHOSE_CARD" && participant.outcome !== "NEGATED") return null;
+    } else if (participant.outcome !== undefined) return null;
+
+    const selected = stage.originalTargets.find(({ id }) => id === participant.playerId);
+    const display = resolvePlayerDisplay(participant.playerId) ?? {};
+    const name = publicText(display.name) ?? selected?.name ?? "Unknown participant";
+    participants.push({
+      id: participant.playerId,
+      name,
+      heroId: publicText(display.heroId),
+      order: index + 1,
+      status: participant.status,
+      ...(participant.outcome ? { outcome: participant.outcome } : {}),
+      isViewer: participant.playerId === viewerId,
+    });
+  }
+
+  const current = participants.filter(({ status }) => status === "CURRENT");
+  if (progress.currentParticipantId === null) {
+    if (rootFrame && (current.length || stage.currentParticipant.id || stage.activeTargets.length || stage.stableKind !== "SPECIAL" || stage.decisionActor.id !== null)) return null;
+    if (childFrame || current.length || stage.currentParticipant.id) return null;
+  } else if (current.length !== 1 || current[0].id !== progress.currentParticipantId
+    || stage.currentParticipant.id !== progress.currentParticipantId
+    || stage.activeTargets.length !== 1 || stage.activeTargets[0]?.id !== progress.currentParticipantId) return null;
+
+  if (rootFrame && progress.currentParticipantId
+    && (stage.stableKind !== "CHOICE" || stage.decisionActor.id !== progress.currentParticipantId)) return null;
+  if (childFrame && (stage.stableKind !== "SPECIAL" || !progress.currentParticipantId)) return null;
+
+  const decoratedSource = decoratePlayer(stage.source, resolvePlayerDisplay);
+  if (!decoratedSource?.known) return null;
+  return {
+    source: decoratedSource.id === viewerId ? null : { id: decoratedSource.id, name: decoratedSource.name, heroId: decoratedSource.heroId },
+    density: participants.length >= 4 ? "compact" : "medium",
+    currentParticipantId: progress.currentParticipantId,
+    participants,
+  };
+}
 
 /** Consume only the server-projected simultaneous Oath scope; never invent order or progress. */
 export function projectOathRecipientScopeForStage(

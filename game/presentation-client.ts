@@ -59,6 +59,8 @@ export type PresentationDisplayIdentity = {
 export type InteractionStageView = {
   visible: boolean;
   interactionId: string | null;
+  rootFrameId: string | null;
+  activeFrameId: string | null;
   checkpointId: string | null;
   presentationRevision: number | null;
   stage: PresentationInteractionScene["stage"];
@@ -533,6 +535,8 @@ export function buildInteractionStageView(
   return {
     visible: view.hasInteraction,
     interactionId: view.interactionId,
+    rootFrameId: view.rootFrameId,
+    activeFrameId: view.activeFrameId,
     checkpointId: view.checkpointId,
     presentationRevision: view.presentationRevision,
     stage: view.stage,

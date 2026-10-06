@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles } from "../game/presentation-client.ts";
 import { buildPresentationTransition } from "../game/presentation-transition.ts";
-import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupTargetScopeForViewer, projectOathRecipientScopeForStage } from "../game/hero-focus.ts";
+import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupTargetScopeForViewer, projectOathRecipientScopeForStage, projectBumperHarvestStageCompositionForViewer } from "../game/hero-focus.ts";
 import { buildDecisionPresentation } from "../app/page.tsx";
 
 function scene(overrides = {}) {
@@ -493,6 +493,60 @@ test("adapter exposes only identity-coherent Oath recipient scope and no invente
   assert.equal("currentParticipantId" in projected.oathRecipientScope, false);
   assert.deepEqual(buildPresentationClientView(snapshot({ interaction: oathInteraction, oathRecipientScope: { ...oathRecipientScope, interactionId: "stale" } }), "B").oathRecipientScope, null);
   assert.deepEqual(buildPresentationClientView(snapshot({ interaction: oathInteraction, oathRecipientScope: { ...oathRecipientScope, recipientIds: ["A", "A"] } }), "B").oathRecipientScope, null);
+});
+
+test("Bumper Harvest composition consumes only the proven ordered root and keeps a source-viewer copy Dock-only", () => {
+  const targetIds = ["A", "B", "C"];
+  const interaction = scene({
+    rootFrameId: "harvest-root",
+    activeFrameId: "harvest-root",
+    stage: "SEQUENTIAL_CHOICE",
+    effect: "BumperHarvest",
+    targetIds,
+    currentParticipantId: "B",
+    decisionActorId: "B",
+    activeResolverId: "B",
+    activeTargetIds: ["B"],
+    participantIds: targetIds,
+    participantRoles: {
+      sourceId: "A", originalTargetIds: targetIds, activeTargetIds: ["B"], currentParticipantId: "B",
+      decisionActorId: "B", activeResolverId: "B", parentParticipantId: null, participantIds: targetIds,
+    },
+    continuity: { relation: "ROOT_FRAME", parentFrameId: null },
+  });
+  const bumperHarvestProgress = {
+    semantics: "PROVEN",
+    interactionId: interaction.interactionId,
+    rootFrameId: interaction.rootFrameId,
+    activeFrameId: interaction.activeFrameId,
+    checkpointId: interaction.checkpointId,
+    presentationRevision: interaction.presentationRevision,
+    sourceId: "A",
+    targetIds,
+    currentParticipantId: "B",
+    participants: [
+      { playerId: "A", order: 1, status: "RESOLVED", outcome: "CHOSE_CARD" },
+      { playerId: "B", order: 2, status: "CURRENT" },
+      { playerId: "C", order: 3, status: "PENDING" },
+    ],
+  };
+  const stable = { kind: "CHOICE", interactionId: interaction.interactionId, checkpointId: interaction.checkpointId, presentationRevision: 3, decisionActorId: "B" };
+  const publicView = buildPresentationClientView(snapshot({ interaction, stable, decision: { actorId: "B", stage: "SEQUENTIAL_CHOICE" }, bumperHarvestProgress }), "A");
+  const resolveDisplay = (id) => ({ name: `Player ${id}`, heroId: id === "A" ? "cao-cao" : "liu-bei" });
+  const stage = buildInteractionStageView(publicView, (id) => `Player ${id}`);
+  const composition = projectBumperHarvestStageCompositionForViewer(stage, "A", resolveDisplay);
+  assert.ok(composition, JSON.stringify({ publicProgress: publicView.bumperHarvestProgress, stage }, null, 2));
+  assert.equal(composition.source, null, "the source-viewer remains Dock-only");
+  assert.deepEqual(composition.participants.map(({ id, order, status, outcome, isViewer }) => ({ id, order, status, outcome: outcome ?? null, isViewer })), [
+    { id: "A", order: 1, status: "RESOLVED", outcome: "CHOSE_CARD", isViewer: true },
+    { id: "B", order: 2, status: "CURRENT", outcome: null, isViewer: false },
+    { id: "C", order: 3, status: "PENDING", outcome: null, isViewer: false },
+  ]);
+  assert.equal(composition.currentParticipantId, "B");
+
+  const reorderedProgress = { ...bumperHarvestProgress, targetIds: [...targetIds].reverse() };
+  const mismatchedStage = buildInteractionStageView(buildPresentationClientView(snapshot({ interaction, stable, bumperHarvestProgress: reorderedProgress }), "A"), (id) => `Player ${id}`);
+  assert.equal(projectBumperHarvestStageCompositionForViewer(mismatchedStage, "A", resolveDisplay), null, "a scope/order mismatch cannot claim the compact composition");
 });
 
 test("adapter keeps the public scene viewer-equal while local entitlement changes", () => {

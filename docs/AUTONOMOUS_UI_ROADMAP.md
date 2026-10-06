@@ -909,6 +909,19 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `37480885665` completed **success** (`build-and-test`, `deploy`). Reviewer
   acceptance remains unclaimed.
 
+### UX2.21-BUMPER-HARVEST-AUTHORITATIVE-SEQUENCE-01 — Ordered public progress
+
+- Bumper Harvest now persists the server-computed chooser order, explicit
+  chosen/negated/no-longer-applicable states, and an identity-bound causal root
+  plus per-participant Negation child frames. PresentationV2, Snapshot, and
+  ClientView expose only the proven public sequence and submitted Negation
+  history; the open private scan actor and response legality remain private.
+- Focused Presentation/render tests passed 96/96; engine/API tests passed
+  32/32; build, targeted ESLint, and `git diff --check` passed. Pushed as
+  `5575e6422bbe370f4d8eb3552541451c00a9d896`; exact push Actions run
+  `37488197985` completed **success** at the UX2.22 planning boundary.
+  Reviewer acceptance remains unclaimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,
