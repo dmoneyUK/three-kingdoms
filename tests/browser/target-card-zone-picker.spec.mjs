@@ -26,6 +26,12 @@ async function loadFanjianSelectableDetail(page, { width, height = 844, targetCa
   return page.locator('[aria-label="Interaction Stage"]');
 }
 
+async function loadKirinBowSelectableDetail(page, { width, height = 844, targetCardCase = "valid" }) {
+  await page.setViewportSize({ width, height });
+  await page.goto(`/tests/browser/fixture.html?state=kirin-bow-selectable&count=4&targetCardCase=${targetCardCase}`);
+  return page.locator('[aria-label="Interaction Stage"]');
+}
+
 async function loadPendingTargetCard(page, { width, height = 844, count = 4, handCount = 4, targetCardCase = "valid", cardKind = "Dismantle" }) {
   await page.setViewportSize({ width, height });
   const params = new URLSearchParams({ state: "pending-target-card", count: String(count), targetHandCount: String(handCount), targetCardCase, targetCardKind: cardKind, effect: cardKind });
@@ -367,6 +373,91 @@ test("Fanjian retains the generic picker when the external source focus is not p
   await expect(page.getByRole("dialog", { name: "Sowing Distrust — choose a hidden card target card selection" })).toBeVisible();
   await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
 });
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 480, height: 900 },
+  { width: 1440, height: 900 },
+]) {
+  test(`Kirin Bow presents only authoritative public Mounts in external Selectable Detail at ${viewport.width}px`, async ({ page }) => {
+    const stage = await loadKirinBowSelectableDetail(page, viewport);
+    const focus = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"][data-hero-focus-player-id="p1"]');
+    const detail = focus.getByRole("group", { name: "Kirin Bow selection" });
+    const mounts = detail.locator('[data-target-card-zone="equipment"]');
+    const [dockBox, mountBoxes] = await Promise.all([
+      page.locator(".local-player-dock").boundingBox(),
+      mounts.evaluateAll((elements) => elements.map((element) => {
+        const { x, y, width, height } = element.getBoundingClientRect();
+        return { x, y, width, height };
+      })),
+    ]);
+
+    await expect(stage).toHaveAttribute("data-current-effect", "Attack");
+    await expect(focus).toBeVisible();
+    await expect(stage.locator('[data-hero-focus-player-id="p2"]')).toHaveCount(0);
+    await expect(detail.locator("header span")).toHaveText("Kirin Bow");
+    await expect(detail.locator("header small")).toHaveText("Choose 1 card");
+    await expect(mounts).toHaveCount(2);
+    await expect(mounts.nth(0)).toHaveAccessibleName("Equipment: Red Hare");
+    await expect(mounts.nth(1)).toHaveAccessibleName("Equipment: Shadowrunner");
+    await expect(detail.getByRole("button", { name: "Equipment: Nio Shield" })).toHaveCount(0);
+    await expect(detail.locator('[data-target-card-zone="hand-position"]')).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    const targetProjection = await page.evaluate(() => window.__browserRoom.players.find((player) => player.id === "p1"));
+    expect(targetProjection.equipmentCards.map((card) => card.id)).toEqual([
+      "browser-kirin-bow-offensive-mount",
+      "browser-kirin-bow-defensive-mount",
+      "browser-kirin-bow-ineligible-armour",
+    ]);
+    expect(mountBoxes).toHaveLength(2);
+    expect(dockBox).toBeTruthy();
+    for (const mountBox of mountBoxes) {
+      expect(mountBox.width).toBeGreaterThanOrEqual(44);
+      expect(mountBox.height).toBeGreaterThanOrEqual(44);
+      expect(mountBox.x).toBeGreaterThanOrEqual(0);
+      expect(mountBox.x + mountBox.width).toBeLessThanOrEqual(viewport.width);
+      expect(mountBox.y + mountBox.height).toBeLessThanOrEqual(dockBox.y + 1);
+    }
+  });
+}
+
+test("Kirin Bow selection stays local until Confirm and submits the existing mount key once", async ({ page }) => {
+  const stage = await loadKirinBowSelectableDetail(page, { width: 390 });
+  const detail = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]').getByRole("group", { name: "Kirin Bow selection" });
+  const mount = detail.getByRole("button", { name: "Equipment: Shadowrunner" });
+  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+
+  await mount.click();
+  await expect(mount).toHaveAttribute("aria-pressed", "true");
+  await expect(confirm).toBeEnabled();
+  expect(await page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([]);
+  await confirm.click();
+  await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
+    { action: "trigger", extra: { providerId: "kirin_bow_damage_about_to_apply", cardKeys: ["browser-kirin-bow-defensive-mount"] } },
+  ]);
+});
+
+test("Kirin Bow public Mount selection clears on CurrentAction revision change", async ({ page }) => {
+  const stage = await loadKirinBowSelectableDetail(page, { width: 390 });
+  const mount = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]').getByRole("button", { name: "Equipment: Red Hare" });
+  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+
+  await mount.click();
+  await expect(mount).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => window.__setBrowserActionRevision("browser-kirin-bow-new-action"));
+  await expect(mount).toHaveAttribute("aria-pressed", "false");
+  await expect(confirm).toBeDisabled();
+});
+
+for (const targetCardCase of ["unfocused", "unprojected"]) {
+  test(`Kirin Bow keeps the generic picker when Mount focus is not proven (${targetCardCase})`, async ({ page }) => {
+    await loadKirinBowSelectableDetail(page, { width: 390, targetCardCase });
+
+    await expect(page.getByRole("dialog", { name: "Kirin Bow target card selection" })).toBeVisible();
+    await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
+  });
+}
 
 for (const viewport of [
   { width: 390, height: 640 },

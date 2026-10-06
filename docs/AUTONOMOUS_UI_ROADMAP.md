@@ -1090,6 +1090,17 @@ Only a proven regression or new Reviewer-approved design requirement does.
   changed. Pre-commit remote SHA `f2801a81` passed Actions run `37508298620`.
   Reviewer acceptance remains unclaimed.
 
+### UX2.32-KIRIN-BOW-SELECTABLE-DETAIL-BROWSER-PROOF-01 — Public Mount choice
+
+- Added Kirin Bow browser proof for public Mount Selectable Detail: only the
+  authoritative eligible Mounts appear with proven external target focus;
+  selection remains local until Confirm, submits the existing trigger payload
+  once, resets on action revision, and falls back to the generic picker when
+  focus or public-card proof is absent. The target-card browser suite passed
+  47/47, targeted ESLint, and `git diff --check`. Fixture/spec only; gameplay
+  and projection semantics are unchanged. Pre-commit remote SHA `3d64a02`
+  passed Actions run `37510268990`. Reviewer acceptance remains unclaimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,
