@@ -52,6 +52,47 @@ function snapshot(overrides = {}) {
   };
 }
 
+function groupProgressSnapshot({ child = false } = {}) {
+  const targetIds = ["C", "B", "E", "D"];
+  const sceneValue = scene({
+    rootFrameId: "group-frame",
+    activeFrameId: child ? "damage-frame" : "group-frame",
+    parentFrameId: child ? "group-frame" : null,
+    stage: child ? "DAMAGE" : "GROUP_RESOLUTION",
+    effect: "Raining Arrows",
+    targetIds,
+    currentParticipantId: "B",
+    activeTargetIds: ["B"],
+    decisionActorId: "B",
+    activeResolverId: "B",
+    participantIds: ["A", ...targetIds],
+    participantRoles: {
+      sourceId: "A", originalTargetIds: targetIds, activeTargetIds: ["B"], currentParticipantId: "B",
+      decisionActorId: "B", activeResolverId: "B", parentParticipantId: child ? "B" : null, participantIds: ["A", ...targetIds],
+    },
+    continuity: child ? { relation: "CHILD_FRAME", parentFrameId: "group-frame" } : { relation: "ROOT_FRAME", parentFrameId: null },
+  });
+  return snapshot({
+    interaction: sceneValue,
+    groupParticipantProgress: {
+      cardKind: "RainingArrows",
+      interactionId: sceneValue.interactionId,
+      groupFrameId: sceneValue.rootFrameId,
+      activeFrameId: sceneValue.activeFrameId,
+      checkpointId: sceneValue.checkpointId,
+      presentationRevision: sceneValue.presentationRevision,
+      targetIds,
+      currentParticipantId: "B",
+      participants: [
+        { playerId: "C", order: 1, status: "RESOLVED" },
+        { playerId: "B", order: 2, status: child ? "PAUSED" : "CURRENT" },
+        { playerId: "E", order: 3, status: "PENDING" },
+        { playerId: "D", order: 4, status: "PENDING" },
+      ],
+    },
+  });
+}
+
 function semanticView(sceneOverrides = {}, { stableKind = "CHOICE", localControl = {}, meId = "B" } = {}) {
   const interaction = scene(sceneOverrides);
   interaction.participantRoles = {
@@ -106,6 +147,7 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
     decisionActorId: "B",
     activeResolverId: "A",
     participantIds: ["A", "B"],
+    groupParticipantProgress: [],
     continuity: { relation: "ROOT_FRAME", parentFrameId: null },
     parentFrameId: null,
     stableKind: "CHOICE",
@@ -116,6 +158,50 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
   assert.equal("options" in view, false);
   assert.equal("legalActions" in view, false);
   assert.equal("providers" in view, false);
+});
+
+test("adapter carries validated ordered Standard AOE progress through root and child frames", () => {
+  for (const child of [false, true]) {
+    const view = buildPresentationClientView(groupProgressSnapshot({ child }), "D");
+    assert.equal(view.hasInteraction, true);
+    assert.deepEqual(view.groupParticipantProgress.map(({ playerId, order, status }) => ({ playerId, order, status })), [
+      { playerId: "C", order: 1, status: "RESOLVED" },
+      { playerId: "B", order: 2, status: child ? "PAUSED" : "CURRENT" },
+      { playerId: "E", order: 3, status: "PENDING" },
+      { playerId: "D", order: 4, status: "PENDING" },
+    ]);
+    const stage = buildInteractionStageView(view, resolveDisplayName);
+    const focus = projectHeroFocusForViewer(stage, buildHeroFocusView(stage), "D");
+    const source = projectMediumSourceForViewer(stage, focus, "D");
+    const scope = projectGroupTargetScopeForViewer(stage, focus, source, "D");
+    assert.equal(scope?.hasProgress, true);
+    assert.equal(scope?.density, "compact");
+    assert.deepEqual(scope?.players.map(({ id, order, status, isViewer }) => ({ id, order, status, isViewer })), [
+      { id: "C", order: 1, status: "RESOLVED", isViewer: false },
+      { id: "B", order: 2, status: child ? "PAUSED" : "CURRENT", isViewer: false },
+      { id: "E", order: 3, status: "PENDING", isViewer: false },
+      { id: "D", order: 4, status: "PENDING", isViewer: true },
+    ]);
+  }
+});
+
+test("adapter drops AOE progress when its frame, identity, scope, order, or status is incoherent", () => {
+  const valid = groupProgressSnapshot();
+  const progress = valid.groupParticipantProgress;
+  const malformed = [
+    { ...progress, cardKind: "SkyPiercingHalberdAttack" },
+    { ...progress, interactionId: "other-interaction" },
+    { ...progress, groupFrameId: "other-root" },
+    { ...progress, activeFrameId: "other-active" },
+    { ...progress, targetIds: [...progress.targetIds].reverse() },
+    { ...progress, participants: [...progress.participants].reverse() },
+    { ...progress, participants: [{ ...progress.participants[0], status: "INVALID" }, ...progress.participants.slice(1)] },
+  ];
+  for (const groupParticipantProgress of malformed) {
+    const view = buildPresentationClientView(snapshot({ groupParticipantProgress }), "D");
+    assert.equal(view.hasInteraction, true, "unrelated public Stage remains available");
+    assert.deepEqual(view.groupParticipantProgress, []);
+  }
 });
 
 test("adapter keeps the public scene viewer-equal while local entitlement changes", () => {
@@ -1050,13 +1136,15 @@ test("Group scope density decorates only proven historical targets without progr
   const fourRendered = project(["A", "B", "C", "E", "F", "G", "D"]);
   assert.equal(fourRendered?.density, "compact", "four rendered secondary cards use compact density");
   assert.equal(fourRendered?.players.length, 4);
+  assert.equal(dense?.hasProgress, false);
+  assert.ok(dense?.players.every((player) => player.order === null && player.status === null), "historical scope receives no inferred order or status");
   assert.deepEqual(project(["B", "C"], { activeTargetIds: ["B"], participantIds: [] }), project(["B", "C"], { activeTargetIds: ["B"], participantIds: ["C", "B"] }), "remaining scope does not manufacture progress");
   assert.deepEqual(project(["B", "C"], { decisionActorId: "C", activeResolverId: "C" })?.players.map(p => p.id), ["C"], "decision role does not create target membership");
   assert.equal(project(["B", "C"], { stage: "NEGATION" }), null, "do not infer Group during other stages");
   const unknown = project(["B", "missing"]);
   assert.equal(unknown?.players[0].id, "missing");
   assert.equal(unknown?.players[0].heroId, null);
-  assert.doesNotMatch(JSON.stringify(dense), /completed|remaining|pending|resolved|outcome|order|eligible|legal/i);
+  assert.doesNotMatch(JSON.stringify(dense), /completed|remaining|pending|resolved|outcome|eligible|legal/i);
   const ambiguous = project(["B", "C"], { currentParticipantId: null, activeTargetIds: ["B", "C"] });
   assert.deepEqual(ambiguous?.players.map(p => p.id), ["B", "C"], "ambiguous focus does not choose first target");
   const rest = buildInteractionStageView(buildPresentationClientView(null, "D"), resolveDisplayName);

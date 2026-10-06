@@ -1,4 +1,5 @@
 import type { CurrentAction } from "./protocol";
+import type { GroupParticipantProgressStatus } from "./pending";
 import type {
   PresentationInteractionScene,
   PresentationStableBoundary,
@@ -29,10 +30,29 @@ export type PresentationSnapshotLocalControl = {
   entitled: boolean;
 };
 
+export type PresentationSnapshotGroupParticipantProgress = {
+  playerId: string;
+  order: number;
+  status: GroupParticipantProgressStatus;
+};
+
+export type PresentationSnapshotGroupProgress = {
+  cardKind: "BarbarianInvasion" | "RainingArrows";
+  interactionId: string;
+  groupFrameId: string;
+  activeFrameId: string;
+  checkpointId: string;
+  presentationRevision: number;
+  targetIds: readonly string[];
+  currentParticipantId: string;
+  participants: readonly PresentationSnapshotGroupParticipantProgress[];
+};
+
 export type PresentationSnapshot = {
   identity: PresentationSnapshotIdentity | null;
   stable: PresentationStableBoundary;
   interaction: PresentationSnapshotInteraction | null;
+  groupParticipantProgress: PresentationSnapshotGroupProgress | null;
   decision: PresentationSnapshotDecision | null;
   localControl: PresentationSnapshotLocalControl;
   /** Reserved until a durable public settlement occurrence is accepted. */
@@ -98,6 +118,62 @@ function stableFor(
   };
 }
 
+function groupParticipantProgressFor(
+  presentationV2: PresentationV2,
+  scene: PresentationInteractionScene,
+  identity: PresentationSnapshotIdentity,
+): PresentationSnapshotGroupProgress | null {
+  const group = presentationV2.groupResolution;
+  const targetIds = scene.targetIds;
+  const progress = group?.participantProgress;
+  if (!group || group.semantics !== "PROVEN"
+    || (group.cardKind !== "BarbarianInvasion" && group.cardKind !== "RainingArrows")
+    || !group.interactionId || !group.groupFrameId || !group.activeFrameId || !group.checkpointId || !group.currentParticipantId
+    || !targetIds.length || !progress?.length
+    || group.interactionId !== identity.interactionId
+    || group.groupFrameId !== scene.rootFrameId
+    || group.activeFrameId !== scene.activeFrameId
+    || group.checkpointId !== identity.checkpointId
+    || group.presentationRevision !== identity.presentationRevision
+    || group.stage !== scene.stage
+    || group.sourceId !== scene.sourceId
+    || group.currentParticipantId !== scene.currentParticipantId
+    || !sameIds(group.targetIds, targetIds)
+    || !sameIds(scene.participantRoles.originalTargetIds, targetIds)
+    || progress.length !== targetIds.length) return null;
+
+  const validStatuses = new Set<GroupParticipantProgressStatus>(["PENDING", "CURRENT", "PAUSED", "RESOLVED", "NO_LONGER_APPLICABLE"]);
+  const copied: PresentationSnapshotGroupParticipantProgress[] = [];
+  for (let index = 0; index < targetIds.length; index++) {
+    const participant = progress[index];
+    if (!participant || participant.playerId !== targetIds[index] || participant.order !== index + 1 || !validStatuses.has(participant.status)) return null;
+    copied.push({ playerId: participant.playerId, order: participant.order, status: participant.status });
+  }
+
+  const active = copied.filter(({ status }) => status === "CURRENT" || status === "PAUSED");
+  if (active.length !== 1 || active[0]?.playerId !== group.currentParticipantId) return null;
+  if (group.activeFrameId === group.groupFrameId) {
+    if (active[0].status !== "CURRENT") return null;
+  } else if (active[0].status !== "PAUSED" || scene.continuity.relation !== "CHILD_FRAME") {
+    return null;
+  }
+  return {
+    cardKind: group.cardKind,
+    interactionId: group.interactionId,
+    groupFrameId: group.groupFrameId,
+    activeFrameId: group.activeFrameId,
+    checkpointId: group.checkpointId,
+    presentationRevision: group.presentationRevision,
+    targetIds: [...targetIds],
+    currentParticipantId: group.currentParticipantId,
+    participants: copied,
+  };
+}
+
+function sameIds(left: readonly string[], right: readonly string[]) {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
 type PublicAuthority = {
   scene: PresentationInteractionScene;
   identity: PresentationSnapshotIdentity;
@@ -128,6 +204,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     identity: authority?.identity ?? null,
     stable: authority?.stable ?? REST_BOUNDARY,
     interaction: authority?.scene ?? null,
+    groupParticipantProgress: authority ? groupParticipantProgressFor(input.presentationV2, authority.scene, authority.identity) : null,
     decision: authority && authority.stable.kind === "CHOICE"
       ? { actorId: authority.scene.decisionActorId, stage: authority.scene.stage }
       : null,

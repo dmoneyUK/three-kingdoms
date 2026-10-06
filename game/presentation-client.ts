@@ -1,4 +1,5 @@
-import type { PresentationSnapshot } from "./presentation-snapshot";
+import type { GroupParticipantProgressStatus } from "./pending";
+import type { PresentationSnapshot, PresentationSnapshotGroupParticipantProgress } from "./presentation-snapshot";
 import type {
   InteractionSceneContinuity,
   PresentationInteractionScene,
@@ -21,6 +22,7 @@ export type PresentationClientView = {
   decisionActorId: string | null;
   activeResolverId: string | null;
   participantIds: readonly string[];
+  groupParticipantProgress: readonly PresentationSnapshotGroupParticipantProgress[];
   rootOrigin?: NonNullable<PresentationInteractionScene["rootOrigin"]>;
   continuity: InteractionSceneContinuity;
   parentFrameId: string | null;
@@ -63,6 +65,7 @@ export type InteractionStageView = {
   currentParticipant: PresentationDisplayIdentity;
   decisionActor: PresentationDisplayIdentity;
   activeResolver: PresentationDisplayIdentity;
+  groupParticipantProgress: readonly PresentationSnapshotGroupParticipantProgress[];
   rootOrigin?: {
     frameId: string;
     stage: PresentationInteractionScene["stage"];
@@ -157,6 +160,7 @@ function restView(snapshot: PresentationSnapshot | null, meId: string | null): P
     decisionActorId: null,
     activeResolverId: null,
     participantIds: [],
+    groupParticipantProgress: [],
     continuity: REST_CONTINUITY,
     parentFrameId: null,
     stableKind: "REST",
@@ -176,6 +180,48 @@ function isInteger(value: unknown): value is number {
 
 function isStringArray(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every(isString);
+}
+
+function groupProgressForSnapshot(
+  snapshot: PresentationSnapshot,
+  scene: PresentationInteractionScene,
+): PresentationSnapshotGroupParticipantProgress[] {
+  const progress = snapshot.groupParticipantProgress;
+  const identity = snapshot.identity;
+  if (!progress || !identity || !Array.isArray(progress.targetIds) || !Array.isArray(progress.participants)) return [];
+  if ((progress.cardKind !== "BarbarianInvasion" && progress.cardKind !== "RainingArrows")
+    || progress.interactionId !== identity.interactionId
+    || progress.groupFrameId !== scene.rootFrameId
+    || progress.activeFrameId !== scene.activeFrameId
+    || progress.checkpointId !== identity.checkpointId
+    || progress.presentationRevision !== identity.presentationRevision
+    || progress.currentParticipantId !== scene.currentParticipantId
+    || !isStringArray(progress.targetIds)
+    || !isStringArray(scene.targetIds)
+    || !sameStringIds(progress.targetIds, scene.targetIds)
+    || !sameStringIds(scene.participantRoles.originalTargetIds, scene.targetIds)
+    || progress.participants.length !== scene.targetIds.length) return [];
+
+  const validStatuses = new Set<GroupParticipantProgressStatus>(["PENDING", "CURRENT", "PAUSED", "RESOLVED", "NO_LONGER_APPLICABLE"]);
+  const participants: PresentationSnapshotGroupParticipantProgress[] = [];
+  for (let index = 0; index < scene.targetIds.length; index++) {
+    const participant = progress.participants[index];
+    if (!participant || participant.playerId !== scene.targetIds[index] || participant.order !== index + 1 || !validStatuses.has(participant.status)) return [];
+    participants.push({ playerId: participant.playerId, order: participant.order, status: participant.status });
+  }
+
+  const active = participants.filter(({ status }) => status === "CURRENT" || status === "PAUSED");
+  if (active.length !== 1 || active[0]?.playerId !== progress.currentParticipantId) return [];
+  if (progress.activeFrameId === progress.groupFrameId) {
+    if (active[0].status !== "CURRENT") return [];
+  } else if (active[0].status !== "PAUSED" || scene.continuity.relation !== "CHILD_FRAME") {
+    return [];
+  }
+  return participants;
+}
+
+function sameStringIds(left: readonly string[], right: readonly string[]) {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
 }
 
 function presentationStageLabel(stage: PresentationInteractionScene["stage"]): string {
@@ -282,6 +328,7 @@ export function buildPresentationClientView(
     decisionActorId: snapshot.stable.decisionActorId,
     activeResolverId: roles.activeResolverId,
     participantIds: [...roles.participantIds],
+    groupParticipantProgress: groupProgressForSnapshot(snapshot, scene),
     ...(scene.rootOrigin ? { rootOrigin: { ...scene.rootOrigin, targetIds: [...scene.rootOrigin.targetIds] } } : {}),
     continuity: { ...scene.continuity },
     parentFrameId: scene.parentFrameId,
@@ -367,6 +414,7 @@ export function buildInteractionStageView(
     currentParticipant,
     decisionActor,
     activeResolver,
+    groupParticipantProgress: view.groupParticipantProgress.map((participant) => ({ ...participant })),
     ...(view.rootOrigin ? {
       rootOrigin: {
         frameId: view.rootOrigin.frameId,

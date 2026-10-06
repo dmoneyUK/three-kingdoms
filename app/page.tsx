@@ -469,6 +469,16 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
   </article>;
 }
 
+function groupParticipantStatusLabel(status: PresentationClientView["groupParticipantProgress"][number]["status"]): string {
+  switch (status) {
+    case "CURRENT": return "Current";
+    case "PAUSED": return "Paused";
+    case "RESOLVED": return "Resolved";
+    case "NO_LONGER_APPLICABLE": return "Not applicable";
+    default: return "Pending";
+  }
+}
+
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
 
 function presentationViewKey(view: PresentationClientView) {
@@ -547,7 +557,7 @@ function hasProvenExternalHeroFocusTarget(view: PresentationClientView, viewerId
   return display.visible && focus.visible && targetId !== viewerId && focus.primary?.id === targetId;
 }
 
-function HeroFocus({ view, showSource = true, previewPlayer = null, inspectPlayer = null, selectableDetail = null, hideArchitecturalLabel = false, roleLabelOverride = null, judgementInFlight, onCloseInspect, onHeroInfo, onInfoCard }: { view: HeroFocusView; showSource?: boolean; previewPlayer?: LocalTargetPreviewPresentation | null; inspectPlayer?: LocalOpponentInspectionPresentation | null; selectableDetail?: TargetCardSelectableDetail | null; hideArchitecturalLabel?: boolean; roleLabelOverride?: string | null; judgementInFlight?: ReadonlySet<string>; onCloseInspect?: () => void; onHeroInfo?: (hero: Hero) => void; onInfoCard?: (card: Card) => void }) {
+function HeroFocus({ view, showSource = true, previewPlayer = null, inspectPlayer = null, selectableDetail = null, hideArchitecturalLabel = false, roleLabelOverride = null, groupParticipantProgress = null, judgementInFlight, onCloseInspect, onHeroInfo, onInfoCard }: { view: HeroFocusView; showSource?: boolean; previewPlayer?: LocalTargetPreviewPresentation | null; inspectPlayer?: LocalOpponentInspectionPresentation | null; selectableDetail?: TargetCardSelectableDetail | null; hideArchitecturalLabel?: boolean; roleLabelOverride?: string | null; groupParticipantProgress?: PresentationClientView["groupParticipantProgress"][number] | null; judgementInFlight?: ReadonlySet<string>; onCloseInspect?: () => void; onHeroInfo?: (hero: Hero) => void; onInfoCard?: (card: Card) => void }) {
   if (inspectPlayer) {
     const inspectedHero = inspectPlayer.hero;
     const publicSkills = inspectedHero?.skills ?? [];
@@ -583,8 +593,8 @@ function HeroFocus({ view, showSource = true, previewPlayer = null, inspectPlaye
   const heroName = view.primary.heroName ?? hero?.name ?? null;
   const hp = view.primary.hp !== null || view.primary.maxHp !== null ? `HP ${view.primary.hp ?? "?"}/${view.primary.maxHp ?? "?"}` : null;
   const matchingSelectableDetail = selectableDetail?.selection.targetId === view.primary.id && selectableDetail.target.id === view.primary.id ? selectableDetail : null;
-  return <div className="hero-focus" aria-label={hideArchitecturalLabel ? roleLabelOverride ?? "Target" : "Hero Focus"} data-hero-focus="true" data-hero-focus-player-id={view.primary.id} data-hero-focus-role={roleLabelOverride ?? view.roleLabel ?? undefined} data-hero-focus-source-id={view.source.id ?? undefined} data-hero-focus-known={view.primary.known ? "true" : "false"} data-hero-focus-mode={matchingSelectableDetail ? "SELECTABLE DETAIL" : undefined}>
-    <div className="hero-focus-heading">{!hideArchitecturalLabel && <span>HERO FOCUS</span>}<strong>{roleLabelOverride ?? view.roleLabel}</strong></div>
+  return <div className="hero-focus" aria-label={hideArchitecturalLabel ? roleLabelOverride ?? "Target" : "Hero Focus"} data-hero-focus="true" data-hero-focus-player-id={view.primary.id} data-hero-focus-role={roleLabelOverride ?? view.roleLabel ?? undefined} data-hero-focus-source-id={view.source.id ?? undefined} data-hero-focus-known={view.primary.known ? "true" : "false"} data-hero-focus-mode={matchingSelectableDetail ? "SELECTABLE DETAIL" : undefined} data-group-participant-status={groupParticipantProgress?.status} data-group-participant-order={groupParticipantProgress?.order}>
+    <div className="hero-focus-heading">{!hideArchitecturalLabel && <span>HERO FOCUS</span>}<strong>{roleLabelOverride ?? view.roleLabel}</strong>{groupParticipantProgress && <small className="hero-focus-group-status" aria-label={`Participant ${groupParticipantProgress.order}: ${groupParticipantStatusLabel(groupParticipantProgress.status)}`}>{groupParticipantStatusLabel(groupParticipantProgress.status)}</small>}</div>
     <div className="hero-focus-body">
       <span className={hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={view.primary.heroId ?? undefined}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
       <div className="hero-focus-identity"><b>{view.primary.name}</b>{heroName && <span>{heroName}</span>}{hp && <small>{hp}</small>}</div>
@@ -637,6 +647,8 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const isOpenNegationResponse = display.visible && stage.stage === "NEGATION";
   const mediumSource = projectMediumSourceForViewer(stage, heroFocus, viewerId, resolvePlayerDisplay);
   const groupTargetScope = projectGroupTargetScopeForViewer(stage, heroFocus, mediumSource, viewerId, resolvePlayerDisplay);
+  const currentGroupParticipantProgress = stage.groupParticipantProgress.find((participant) => participant.playerId === stage.currentParticipant.id) ?? null;
+  const focusGroupParticipantProgress = currentGroupParticipantProgress?.playerId === heroFocus.primary?.id ? currentGroupParticipantProgress : null;
   const localFocusPlayerId = inspectPlayer?.id ?? localPreviewPlayer?.id;
   const showMediumSource = Boolean(mediumSource && mediumSource.player.id !== localFocusPlayerId && !hasLocalInspect);
   const publicEffectLabel = stage.effect?.trim() || null;
@@ -820,16 +832,16 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
         <div className={`interaction-stage-current-effect-flow${currentEffect ? currentEffectConnectsToFocus ? " is-connected" : " is-unlinked" : " is-empty"}`}>
           {currentEffect && <section className="interaction-stage-current-effect" role="group" aria-label="Current Effect" data-current-effect-label={currentEffect}><small>{isOpenNegationResponse ? "EFFECT" : "CURRENT EFFECT"}</small><strong>{currentEffect}</strong></section>}
           {currentEffectConnectsToFocus && <span className={`current-effect-arrow${topRowMode ? " top-row-arrow" : " side-column-arrow"}`} aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
-          <HeroFocus view={heroFocus} showSource={!showMediumSource && heroFocus.source.id !== viewerId} previewPlayer={localPreviewPlayer} inspectPlayer={inspectPlayer} selectableDetail={focusSelectableDetail} hideArchitecturalLabel={hideStageArchitecturalChrome} roleLabelOverride={hideStageArchitecturalChrome ? playerFacingHeroFocusRole : null} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
+          <HeroFocus view={heroFocus} showSource={!showMediumSource && heroFocus.source.id !== viewerId} previewPlayer={localPreviewPlayer} inspectPlayer={inspectPlayer} selectableDetail={focusSelectableDetail} hideArchitecturalLabel={hideStageArchitecturalChrome} roleLabelOverride={hideStageArchitecturalChrome ? playerFacingHeroFocusRole : null} groupParticipantProgress={focusGroupParticipantProgress} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
         </div>
-        {groupTargetScope && <section className="group-target-scope" aria-label="Original target scope" data-group-target-scope="original" data-participant-density={groupTargetScope.density}>
-          <header>ORIGINAL TARGET SCOPE</header>
+        {groupTargetScope && <section className="group-target-scope" aria-label={groupTargetScope.hasProgress ? "AOE Participant Progress" : "Original target scope"} data-group-target-scope="original" data-participant-density={groupTargetScope.density} data-group-progress={groupTargetScope.hasProgress ? "proven" : undefined}>
+          <header>{groupTargetScope.hasProgress ? "AOE PARTICIPANTS" : "ORIGINAL TARGET SCOPE"}</header>
           <div className="group-target-cards">
             {groupTargetScope.players.map((player) => {
               const hero = heroDefinition(player.heroId);
-              return <div className="group-target-card" key={player.id} data-group-target-id={player.id}>
-                <span className="group-target-portrait">{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
-                <div className="group-target-identity"><b>{player.name}</b>{groupTargetScope.density === "medium" && player.heroName && <span>{player.heroName}</span>}{player.hp !== null && <small>HP {player.hp}{player.maxHp !== null ? `/${player.maxHp}` : ""}</small>}</div>
+              return <div className={`group-target-card${player.isViewer ? " group-target-card-viewer" : ""}`} key={player.id} data-group-target-id={player.id} data-group-participant-order={player.order ?? undefined} data-participant-status={player.status ?? undefined}>
+                {!player.isViewer && <span className="group-target-portrait">{hero ? <HeroPortrait hero={hero} /> : "?"}</span>}
+                <div className="group-target-identity"><b>{player.isViewer ? "You" : player.name}</b>{!player.isViewer && groupTargetScope.density === "medium" && player.heroName && <span>{player.heroName}</span>}{!player.isViewer && player.hp !== null && <small>HP {player.hp}{player.maxHp !== null ? `/${player.maxHp}` : ""}</small>}{player.status && <span className={`group-target-status status-${player.status.toLowerCase().replaceAll("_", "-")}`} aria-label={`Status: ${groupParticipantStatusLabel(player.status)}`}>{groupParticipantStatusLabel(player.status)}</span>}</div>
               </div>;
             })}
           </div>

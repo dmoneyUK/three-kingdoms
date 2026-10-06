@@ -36,6 +36,48 @@ function scene(overrides = {}) {
   };
 }
 
+function groupScene({ child = false } = {}) {
+  const targetIds = ["B", "C", "D"];
+  return scene({
+    rootFrameId: "group-frame",
+    activeFrameId: child ? "damage-frame" : "group-frame",
+    parentFrameId: child ? "group-frame" : null,
+    stage: child ? "DAMAGE" : "GROUP_RESOLUTION",
+    targetIds,
+    currentParticipantId: "B",
+    activeTargetIds: ["B"],
+    participantRoles: {
+      sourceId: "A", originalTargetIds: targetIds, activeTargetIds: ["B"], currentParticipantId: "B",
+      decisionActorId: "C", activeResolverId: "C", parentParticipantId: "B", participantIds: targetIds,
+    },
+    continuity: child ? { relation: "CHILD_FRAME", parentFrameId: "group-frame" } : { relation: "ROOT_FRAME", parentFrameId: null },
+  });
+}
+
+function groupResolution(groupSceneValue, overrides = {}) {
+  return {
+    semantics: "PROVEN",
+    interactionId: groupSceneValue.interactionId,
+    groupFrameId: groupSceneValue.rootFrameId,
+    activeFrameId: groupSceneValue.activeFrameId,
+    parentFrameId: groupSceneValue.parentFrameId,
+    checkpointId: groupSceneValue.checkpointId,
+    presentationRevision: groupSceneValue.presentationRevision,
+    stage: groupSceneValue.stage,
+    cardKind: "RainingArrows",
+    effect: "Raining Arrows",
+    sourceId: "A",
+    targetIds: groupSceneValue.targetIds,
+    currentParticipantId: "B",
+    participantProgress: [
+      { playerId: "B", order: 1, status: groupSceneValue.activeFrameId === groupSceneValue.rootFrameId ? "CURRENT" : "PAUSED" },
+      { playerId: "C", order: 2, status: "PENDING" },
+      { playerId: "D", order: 3, status: "RESOLVED" },
+    ],
+    ...overrides,
+  };
+}
+
 function presentation(interactionScene, stableBoundary = coherentBoundary()) {
   return {
     interactionScene,
@@ -65,6 +107,7 @@ test("snapshot composes proven identity and public scene while keeping CurrentAc
   assert.deepEqual(acting.interaction, publicPresentation.interactionScene);
   assert.deepEqual(acting.stable, publicPresentation.stableBoundary);
   assert.deepEqual(acting.decision, { actorId: "B", stage: "ATTACK_RESPONSE" });
+  assert.equal(acting.groupParticipantProgress, null);
   assert.deepEqual(acting.interaction, waiting.interaction, "public interaction is viewer-stable");
   assert.deepEqual(acting.identity, waiting.identity, "public identity is viewer-stable");
   assert.deepEqual(acting.stable, waiting.stable, "public boundary is viewer-stable");
@@ -73,6 +116,56 @@ test("snapshot composes proven identity and public scene while keeping CurrentAc
   assert.equal(waiting.localControl.entitled, false);
   assert.equal(acting.settlement, null);
   assert.deepEqual(acting.transitionEvents, []);
+});
+
+test("snapshot forwards only identity- and ordered-scope-coherent Standard AOE progress", () => {
+  for (const child of [false, true]) {
+    const interaction = groupScene({ child });
+    const projected = composePresentationSnapshot({
+      presentationV2: { ...presentation(interaction), groupResolution: groupResolution(interaction) },
+      currentAction: { kind: "response", actorId: "C" },
+      actionRevision: `aoe-${child}`,
+      viewerId: "C",
+    });
+    assert.deepEqual(projected.groupParticipantProgress, {
+      cardKind: "RainingArrows",
+      interactionId: interaction.interactionId,
+      groupFrameId: interaction.rootFrameId,
+      activeFrameId: interaction.activeFrameId,
+      checkpointId: interaction.checkpointId,
+      presentationRevision: interaction.presentationRevision,
+      targetIds: ["B", "C", "D"],
+      currentParticipantId: "B",
+      participants: [
+        { playerId: "B", order: 1, status: child ? "PAUSED" : "CURRENT" },
+        { playerId: "C", order: 2, status: "PENDING" },
+        { playerId: "D", order: 3, status: "RESOLVED" },
+      ],
+    });
+  }
+});
+
+test("snapshot drops AOE progress on root identity, order, participant, or status mismatch", () => {
+  const interaction = groupScene();
+  const base = groupResolution(interaction);
+  const malformed = [
+    { ...base, interactionId: "other-interaction" },
+    { ...base, groupFrameId: "other-frame" },
+    { ...base, targetIds: ["C", "B", "D"] },
+    { ...base, participantProgress: [...base.participantProgress].reverse() },
+    { ...base, participantProgress: [{ ...base.participantProgress[0], status: "INVALID" }, ...base.participantProgress.slice(1)] },
+    { ...base, currentParticipantId: "C" },
+  ];
+  for (const group of malformed) {
+    const snapshot = composePresentationSnapshot({
+      presentationV2: { ...presentation(interaction), groupResolution: group },
+      currentAction: { kind: "response", actorId: "B" },
+      actionRevision: "malformed-aoe",
+      viewerId: "B",
+    });
+    assert.equal(snapshot.identity?.interactionId, interaction.interactionId, "unrelated public scene remains usable");
+    assert.equal(snapshot.groupParticipantProgress, null);
+  }
 });
 
 test("snapshot fails closed for malformed or absent public causal proof", () => {

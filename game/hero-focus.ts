@@ -1,4 +1,5 @@
 import type { InteractionStageView, PresentationDisplayIdentity } from "./presentation-client";
+import type { PresentationSnapshotGroupParticipantProgress } from "./presentation-snapshot";
 
 export type HeroFocusPlayerDisplay = {
   name?: string | null;
@@ -37,12 +38,17 @@ export type MediumParticipantView = {
 
 export type GroupTargetScopeView = {
   density: "medium" | "compact";
-  players: readonly HeroFocusPlayerView[];
+  hasProgress: boolean;
+  players: readonly (HeroFocusPlayerView & {
+    order: number | null;
+    status: PresentationSnapshotGroupParticipantProgress["status"] | null;
+    isViewer: boolean;
+  })[];
 };
 
-/** Historical target membership only, never progress, eligibility or order.
- * The current primary remains owned by HeroFocus; unknown primary stays unknown.
- * Input is the accepted public Stage, not Room/Pending/private selection. */
+/** Consume only accepted public Stage IDs and explicitly projected Group progress.
+ * Without progress this remains a neutral historical scope; it never infers
+ * status, eligibility, or order from Room/Pending/private selection. */
 export function projectGroupTargetScopeForViewer(
   stage: InteractionStageView,
   projectedFocus: HeroFocusView,
@@ -50,7 +56,25 @@ export function projectGroupTargetScopeForViewer(
   viewerId: string | null,
   resolvePlayerDisplay: HeroFocusPlayerDisplayResolver = () => null,
 ): GroupTargetScopeView | null {
-  if (!stage.visible || stage.stage !== "GROUP_RESOLUTION") return null;
+  const hasProgress = stage.groupParticipantProgress.length > 0;
+  if (!stage.visible || (stage.stage !== "GROUP_RESOLUTION" && !hasProgress)) return null;
+
+  if (hasProgress) {
+    const byId = new Map(stage.originalTargets.filter((target) => target.id).map((target) => [target.id as string, target]));
+    const players = stage.groupParticipantProgress.map((progress) => {
+      const target = byId.get(progress.playerId);
+      const player = target ? decoratePlayer(target, resolvePlayerDisplay) : null;
+      return player ? { ...player, order: progress.order, status: progress.status, isViewer: progress.playerId === viewerId } : null;
+    });
+    if (players.some((player) => player === null)) return null;
+    const participants = players as NonNullable<(typeof players)[number]>[];
+    return {
+      density: participants.length >= 4 ? "compact" : "medium",
+      hasProgress: true,
+      players: participants,
+    };
+  }
+
   const targets = new Map<string, PresentationDisplayIdentity>();
   for (const target of stage.originalTargets) {
     if (target.id && target.id !== viewerId) targets.set(target.id, target);
@@ -60,7 +84,7 @@ export function projectGroupTargetScopeForViewer(
     .map((target) => decoratePlayer(target, resolvePlayerDisplay))
     .filter((player): player is HeroFocusPlayerView => player !== null);
   const density = players.length >= 4 ? "compact" : "medium";
-  return players.length ? { density, players } : null;
+  return players.length ? { density, hasProgress: false, players: players.map((player) => ({ ...player, order: null, status: null, isViewer: false })) } : null;
 }
 
 const HIDDEN_FOCUS: HeroFocusView = {

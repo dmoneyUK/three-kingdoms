@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, source = null, duelObserver = false, duelParticipantMissing = false, dyingParticipant = null, judgementParticipant = null, groupParticipant = null, targetShiftCase = null }) {
+async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, source = null, duelObserver = false, duelParticipantMissing = false, dyingParticipant = null, judgementParticipant = null, groupParticipant = null, groupProgress = null, targetShiftCase = null }) {
   await page.setViewportSize({ width, height });
   const effectQuery = effect ? `&effect=${encodeURIComponent(effect)}` : "";
   const sourceQuery = source ? `&source=${encodeURIComponent(source)}` : "";
@@ -9,10 +9,95 @@ async function loadFixture(page, { count = 4, width, height = 900, state = "acti
   const dyingParticipantQuery = dyingParticipant ? `&dyingParticipant=${encodeURIComponent(dyingParticipant)}` : "";
   const judgementParticipantQuery = judgementParticipant ? `&judgementParticipant=${encodeURIComponent(judgementParticipant)}` : "";
   const groupParticipantQuery = groupParticipant ? `&groupParticipant=${encodeURIComponent(groupParticipant)}` : "";
+  const groupProgressQuery = groupProgress ? `&groupProgress=${encodeURIComponent(groupProgress)}` : "";
   const targetShiftCaseQuery = targetShiftCase ? `&targetShift=${encodeURIComponent(targetShiftCase)}` : "";
-  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${sourceQuery}${duelObserverQuery}${missingDuelParticipantQuery}${dyingParticipantQuery}${judgementParticipantQuery}${groupParticipantQuery}${targetShiftCaseQuery}`);
+  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${sourceQuery}${duelObserverQuery}${missingDuelParticipantQuery}${dyingParticipantQuery}${judgementParticipantQuery}${groupParticipantQuery}${groupProgressQuery}${targetShiftCaseQuery}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
+
+test("AOE progress renders the explicit participant order without duplicating the local hero", async ({ page }) => {
+  await loadFixture(page, { count: 4, width: 390, height: 844, state: "group-observer", groupProgress: "valid" });
+  const stage = page.locator('[aria-label="Interaction Stage"][data-stage="GROUP_RESOLUTION"]');
+  const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
+  const cards = scope.locator(".group-target-card");
+
+  await expect(scope).toHaveAttribute("aria-label", "AOE Participant Progress");
+  await expect(scope.locator(":scope > header")).toHaveText("AOE PARTICIPANTS");
+  await expect(cards).toHaveCount(3);
+  expect(await cards.evaluateAll((nodes) => nodes.map((node) => [node.dataset.groupTargetId, node.dataset.groupParticipantOrder, node.dataset.participantStatus]))).toEqual([
+    ["p2", "1", "RESOLVED"],
+    ["p1", "2", "CURRENT"],
+    ["p3", "3", "PENDING"],
+  ]);
+  await expect(cards.nth(0)).toContainText("Resolved");
+  await expect(cards.nth(1)).toContainText("Current");
+  await expect(cards.nth(2)).toContainText("You");
+  await expect(cards.nth(2).locator(".group-target-portrait")).toHaveCount(0);
+  await expect(cards.nth(2)).toContainText("Pending");
+  await expect(stage.locator('[data-hero-focus-player-id="p1"]')).toHaveAttribute("data-group-participant-status", "CURRENT");
+  await expect(stage.locator('[data-hero-focus-player-id="p1"] .hero-focus-group-status')).toHaveText("Current");
+  await expect(stage.locator('[data-hero-focus-player-id="p3"]')).toHaveCount(0);
+  await expect(page.locator('.local-player-dock[data-player-anchor="p3"]')).toBeVisible();
+  await expect(stage.locator("button")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+});
+
+test("AOE participant progress stays visible and compact for a 10-player child-frame continuation", async ({ page }) => {
+  await loadFixture(page, { count: 10, width: 390, height: 844, state: "group-observer", groupProgress: "paused" });
+  const stage = page.locator('[aria-label="Interaction Stage"][data-stage="DAMAGE"]');
+  const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
+  const cards = scope.locator(".group-target-card");
+
+  await expect(scope).toBeVisible();
+  await expect(scope).toHaveAttribute("data-participant-density", "compact");
+  await expect(cards).toHaveCount(9);
+  await expect(cards.nth(0)).toHaveAttribute("data-group-target-id", "p2");
+  await expect(cards.nth(0)).toHaveAttribute("data-participant-status", "RESOLVED");
+  await expect(cards.nth(1)).toHaveAttribute("data-group-target-id", "p1");
+  await expect(cards.nth(1)).toHaveAttribute("data-participant-status", "PAUSED");
+  await expect(cards.nth(2)).toHaveAttribute("data-group-target-id", "p3");
+  await expect(cards.nth(2)).toHaveAttribute("data-participant-status", "PENDING");
+  const geometry = await page.evaluate(() => {
+    const scopeElement = document.querySelector('[data-group-target-scope="original"]');
+    const cardsElement = scopeElement?.querySelector(".group-target-cards");
+    const stageElement = document.querySelector(".interaction-stage");
+    const dockElement = document.querySelector(".local-player-dock");
+    const scopeRect = scopeElement?.getBoundingClientRect();
+    const stageRect = stageElement?.getBoundingClientRect();
+    const dockRect = dockElement?.getBoundingClientRect();
+    return {
+      scrollWidth: cardsElement?.scrollWidth ?? 0,
+      clientWidth: cardsElement?.clientWidth ?? 0,
+      scopeRight: scopeRect?.right ?? Infinity,
+      viewportWidth: window.innerWidth,
+      stageBottom: stageRect?.bottom ?? Infinity,
+      dockTop: dockRect?.top ?? -Infinity,
+    };
+  });
+  expect(geometry.scrollWidth).toBeGreaterThan(geometry.clientWidth);
+  expect(geometry.scopeRight).toBeLessThanOrEqual(geometry.viewportWidth);
+  expect(geometry.stageBottom).toBeLessThanOrEqual(geometry.dockTop);
+  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+});
+
+test("AOE progress gives no-longer-applicable targets a distinct status", async ({ page }) => {
+  await loadFixture(page, { count: 5, width: 480, height: 900, state: "group-observer", groupProgress: "no-longer" });
+  const scope = page.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
+  const noLonger = scope.locator('.group-target-card[data-participant-status="NO_LONGER_APPLICABLE"]');
+  await expect(noLonger).toHaveCount(1);
+  await expect(noLonger).toContainText("Not applicable");
+  await expect(noLonger.locator(".group-target-status")).toHaveAttribute("aria-label", "Status: Not applicable");
+});
+
+test("AOE progress fails closed when the snapshot root identity or scope does not match", async ({ page }) => {
+  await loadFixture(page, { count: 4, width: 390, state: "group-observer", groupProgress: "mismatch" });
+  const stage = page.locator('[aria-label="Interaction Stage"][data-stage="GROUP_RESOLUTION"]');
+  const scope = stage.locator('[data-group-target-scope="original"]');
+  await expect(scope).toBeVisible();
+  await expect(scope).not.toHaveAttribute("data-group-progress", "proven");
+  await expect(scope.locator(".group-target-card[data-participant-status]")).toHaveCount(0);
+  await expect(stage.locator(".hero-focus-group-status")).toHaveCount(0);
+});
 
 for (const viewport of [
   { count: 4, width: 390, height: 844, topology: "top-row" },

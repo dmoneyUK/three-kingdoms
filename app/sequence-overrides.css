@@ -1772,22 +1772,39 @@
   gap: 4px;
 }
 
-/* Neutral historical Group scope. No card conveys eligibility or progress. */
+/* Group scope is neutral unless the typed Stage carries explicit server progress. */
 .group-target-scope { grid-column: 1 / -1; min-width: 0; margin-top: 6px; }
 .group-target-scope > header { color: #a8bca9; font: 700 7px/1.2 Arial; letter-spacing: .12em; margin-bottom: 5px; }
 .group-target-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
 .group-target-card { display: flex; align-items: center; gap: 5px; min-width: 0; padding: 4px; border: 1px solid #6f846f66; background: #0b130fa6; }
+.group-target-card[data-participant-status="CURRENT"] { border-color: #f0c35e; box-shadow: inset 0 0 0 1px #f0c35e44; }
+.group-target-card[data-participant-status="PAUSED"] { border-color: #cf9b58; }
+.group-target-card[data-participant-status="RESOLVED"] { border-color: #75897988; }
+.group-target-card[data-participant-status="NO_LONGER_APPLICABLE"] { border-color: #826f6f88; opacity: .78; }
 .group-target-portrait { display: grid; place-items: center; flex: none; width: 48px; height: 60px; color: #ddc88e; background: #17231d; }
 .group-target-portrait > .hero-art-image { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
 .group-target-identity { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
 .group-target-identity b { color: #d9c28b; font: 700 9px/1.2 Arial; }
 .group-target-identity span { color: #b7c6b1; font: 8px/1.2 Arial; }
 .group-target-identity small { color: #aaa694; font: 8px/1.2 Arial; }
+.group-target-status { width: fit-content; max-width: 100%; padding: 2px 4px; border: 1px solid #75897988; color: #d3d4c8 !important; font: 700 7px/1.15 Arial !important; overflow-wrap: anywhere; }
+.group-target-card[data-participant-status="CURRENT"] .group-target-status,
+.hero-focus[data-group-participant-status="CURRENT"] .hero-focus-group-status { border-color: #f0c35e; background: #60471e; color: #fff0bd !important; }
+.group-target-card[data-participant-status="PAUSED"] .group-target-status,
+.hero-focus[data-group-participant-status="PAUSED"] .hero-focus-group-status { border-color: #cf9b58; background: #49361f; color: #f2d4a5 !important; }
+.group-target-card[data-participant-status="RESOLVED"] .group-target-status { color: #aeb9ad !important; }
+.group-target-card[data-participant-status="NO_LONGER_APPLICABLE"] .group-target-status { color: #c0a9a9 !important; }
+.group-target-card-viewer { min-height: 36px; }
+.group-target-card-viewer .group-target-identity { gap: 5px; }
+.hero-focus-group-status { margin-left: auto; padding: 2px 5px; border: 1px solid #cf9b58; color: #f2d4a5 !important; font: 700 7px/1.15 Arial; letter-spacing: .04em; }
+.hero-focus[data-group-participant-status="CURRENT"] { outline: 1px solid #f0c35e; outline-offset: 2px; }
+.hero-focus[data-group-participant-status="PAUSED"] { outline: 1px dashed #cf9b58; outline-offset: 2px; }
 .group-target-scope[data-participant-density="compact"] .group-target-portrait { width: 28px; height: 35px; }
 .group-target-scope[data-participant-density="compact"] .group-target-card { padding: 3px; }
-.group-target-scope[data-participant-density="compact"] .group-target-cards { gap: 4px; }
+.group-target-scope[data-participant-density="compact"] .group-target-cards { display: flex; width: 100%; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: 3px; touch-action: pan-x; }
+.group-target-scope[data-participant-density="compact"] .group-target-card { flex: 0 0 min(136px, 42vw); }
 @media (min-width: 600px) {
-  .group-target-scope[data-participant-density="compact"] .group-target-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .group-target-scope[data-participant-density="compact"] .group-target-card { flex-basis: 150px; }
 }
 .play-table[data-seat-topology="side-column"] .hero-focus {
   display: grid;

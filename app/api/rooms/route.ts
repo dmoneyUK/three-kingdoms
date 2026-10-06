@@ -1749,6 +1749,24 @@ function beginGroupParticipant(continuation: GroupContinuation, actorId: string,
   };
 }
 
+function withGroupParticipantStatus(
+  continuation: GroupContinuation,
+  playerId: string,
+  status: GroupParticipantProgress["participants"][number]["status"],
+): GroupContinuation {
+  const progress = continuation.participantProgress;
+  if (!progress || !progress.participants.some((participant) => participant.playerId === playerId)) return continuation;
+  return {
+    ...continuation,
+    participantProgress: {
+      ...progress,
+      participants: progress.participants.map((participant) => participant.playerId === playerId
+        ? { ...participant, status }
+        : participant),
+    },
+  };
+}
+
 function finishGroupParticipant(continuation: GroupContinuation, actorId: string, players: PlayerRow[]): GroupContinuation {
   const progress = continuation.participantProgress;
   if (!progress) return continuation;

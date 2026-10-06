@@ -686,14 +686,31 @@ Only a proven regression or new Reviewer-approved design requirement does.
   passed. The feature was pushed as `7554fe4`; Actions run `37411145464` was
   observed `in_progress`, so no CI pass is claimed.
 
+### UX2.6-AOE-PARTICIPANT-PROGRESS-STAGE-CONSUMER-01 — AOE participant UI
+
+- The typed Snapshot/client path now admits only Standard AOE progress matching
+  the public interaction, root/active frames, complete ordered target scope,
+  current participant, and valid statuses. Stage participant cards render that
+  exact order and state; the current/paused participant is also marked in Hero
+  Focus, while a local target is represented as text only and its Hero remains
+  in the Dock. Progress remains visible through child-frame Damage; compact
+  4+ participant rows scroll horizontally without Stage/Dock overlap.
+- Snapshot/client tests passed 50/50; the focused `active-current-effect`
+  browser spec passed 48/48; build and targeted ESLint passed. The previous
+  remote-head Actions run `37411200534` failed at `npm test` because the AOE
+  failure-damage path called an undefined participant-status helper. That
+  server transition is now implemented, and the exact local `npm test` command
+  passed build, fast 213/213, and API 250/250. `git diff --check` passed before
+  the final handoff update; this combined change is not yet pushed, so no new
+  Actions result is claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
 behavior must continue to fail closed:
 
-- Consuming the newly projected Standard AOE participant statuses in the
-  PresentationSnapshot/client adapter and Stage UI; public outcome summaries,
-  Halberd progress, and unrelated Group semantics remain deferred.
+- Public AOE outcome summaries, Halberd progress, and unrelated Group
+  semantics remain deferred.
 - Durable independently proven multi-node Reaction Chain history beyond the
   currently authoritative bounded presentation.
 - Settlement/transition history that would require new authoritative public
