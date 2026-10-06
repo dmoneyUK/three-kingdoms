@@ -5,7 +5,7 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-CI REPAIR PUSHED — VALIDATION PENDING. Remote HEAD `b6a25e249da299eb176dd64d495d51c37451d55c` failed Actions run `37516354859` in `npm run test:browser`: eight Dying geometry checks reproduced a mobile layout regression from UX2.34, not an infrastructure failure. The compact causal row now activates when the measured safe zone cannot clear the Stage and bottom card-pile area, while preserving the established primary Hero portrait sizes and public/Dock ownership. Focused browser validation passed 19/19 (`Dying 650x900`, 480x900 pile clearance, proven Dying causal geometry and six safe-zone cases); targeted ESLint and `git diff --check` passed. No gameplay/projection changes. Resume UX2.35 only after the exact pushed repair HEAD is green. Reviewer acceptance is not claimed.
+CI REPAIR CLOSED. Remote HEAD `ef57d59515974af5521ad619f9ee7fcb3282995d` passed Actions run `37530273503` (`build-and-test` and `deploy`). UX2.35 implementation now adds a safe-zone-aware mobile causal spine and fail-closed geometry regressions; focused Borrowed Sword browser tests passed 9/9, targeted ESLint and `git diff --check` passed. No gameplay/projection changes. UX2.35 remains active through its exact-SHA CI gate; Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 

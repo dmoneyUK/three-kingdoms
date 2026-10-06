@@ -3812,3 +3812,34 @@
     font-size: 8px;
   }
 }
+
+/* Borrowed Sword's proven forced-Attack child reads source -> Attack -> target
+   vertically on mobile when the Stage has enough safe-zone height. */
+@container top-row-interaction-safe-zone (min-height: 331px) and (max-width: 650px) {
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-borrowed-sword-forced-attack="true"] .interaction-stage-hero-region:has(> .medium-participant-card):has(> .interaction-stage-current-effect-flow.is-connected) {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: 3px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-borrowed-sword-forced-attack="true"] .medium-participant-card {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-borrowed-sword-forced-attack="true"] .medium-participant-arrow {
+    grid-column: 1;
+    grid-row: 2;
+    font-size: 0;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-borrowed-sword-forced-attack="true"] .medium-participant-arrow::before {
+    content: "↓";
+    font: 700 13px/1 Arial, sans-serif;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-borrowed-sword-forced-attack="true"] .interaction-stage-current-effect-flow.is-connected {
+    grid-column: 1;
+    grid-row: 3;
+    width: 100%;
+    max-width: 360px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+}

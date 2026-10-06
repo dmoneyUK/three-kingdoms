@@ -542,6 +542,7 @@ for (const viewport of [
     expect(stageBox.x + stageBox.width).toBeLessThanOrEqual(viewport.width);
     const stageDockOverlap = Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y));
     expect(stageDockOverlap, JSON.stringify({ stageBox, dockBox })).toBe(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
   });
 }
 
@@ -571,19 +572,26 @@ test("Group card identity comes from the typed projection, not the redundant eff
 });
 
 for (const viewport of [
-  { count: 4, width: 390, height: 844, topology: "top-row" },
-  { count: 6, width: 480, height: 900, topology: "side-column" },
-  { count: 4, width: 1440, height: 900, topology: "top-row" },
+  { count: 4, width: 390, height: 844, topology: "top-row", flow: "vertical" },
+  { count: 4, width: 390, height: 844, topology: "top-row", flow: "compact", safeTop: "319px" },
+  { count: 6, width: 480, height: 900, topology: "side-column", flow: "vertical" },
+  { count: 4, width: 1440, height: 900, topology: "top-row", flow: "horizontal" },
 ]) {
-  test(`Borrowed Sword forced Attack names its proven root source, holder, and target at ${viewport.width}px`, async ({ page }) => {
+  test(`Borrowed Sword forced Attack preserves proven causal order at ${viewport.width}×${viewport.height} ${viewport.flow}`, async ({ page }) => {
     await loadFixture(page, { ...viewport, state: "borrowed-sword-active" });
+    if (viewport.safeTop) {
+      await page.locator(".play-table").evaluate((element, safeTop) => element.style.setProperty("--interaction-safe-top", safeTop), viewport.safeTop);
+    }
     const stage = page.locator('[aria-label="Interaction Stage"][data-stage="ATTACK_RESPONSE"]');
     const source = stage.locator('.medium-participant-card[data-medium-participant-player-id="p2"]');
+    const sourceArrow = stage.locator(".medium-participant-arrow");
     const effect = stage.locator('[aria-label="Current Effect"]');
+    const effectArrow = stage.locator(".current-effect-arrow");
     const target = stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p3"]');
     const summary = stage.locator('[data-stage-event-summary="proven"]');
 
     await expect(stage).toHaveAttribute("data-current-effect", "Attack");
+    await expect(stage).toHaveAttribute("data-borrowed-sword-forced-attack", "true");
     await expect(stage.locator(":scope > header strong")).toHaveText("Attack Response");
     await expect(summary).toHaveText("Player 1's Borrowed Sword forces Player 2 to Attack Player 3.");
     await expect(stage).not.toContainText(/parent frame|nested effect/i);
@@ -610,19 +618,45 @@ for (const viewport of [
     expect(projection.currentParticipantId).toBe("p3");
     expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 
-    const sourceBox = await source.boundingBox();
-    const effectBox = await effect.boundingBox();
-    const targetBox = await target.boundingBox();
-    expect(sourceBox && effectBox && targetBox).toBeTruthy();
-    if (viewport.topology === "side-column") {
+    const [safeBox, stageBox, dockBox, sourceBox, sourceArrowBox, effectBox, effectArrowBox, targetBox] = await Promise.all([
+      page.locator(".interaction-safe-zone").boundingBox(),
+      stage.boundingBox(),
+      page.locator(".local-player-dock").boundingBox(),
+      source.boundingBox(),
+      sourceArrow.boundingBox(),
+      effect.boundingBox(),
+      effectArrow.boundingBox(),
+      target.boundingBox(),
+    ]);
+    expect(safeBox && stageBox && dockBox && sourceBox && sourceArrowBox && effectBox && effectArrowBox && targetBox).toBeTruthy();
+    expect(stageBox.x).toBeGreaterThanOrEqual(safeBox.x - 1);
+    expect(stageBox.y).toBeGreaterThanOrEqual(safeBox.y - 1);
+    expect(stageBox.x + stageBox.width).toBeLessThanOrEqual(safeBox.x + safeBox.width + 1);
+    expect(stageBox.y + stageBox.height).toBeLessThanOrEqual(safeBox.y + safeBox.height + 1);
+    const stageDockOverlap = Math.max(0, Math.min(stageBox.x + stageBox.width, dockBox.x + dockBox.width) - Math.max(stageBox.x, dockBox.x))
+      * Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y));
+    expect(stageDockOverlap, JSON.stringify({ stageBox, dockBox })).toBe(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+    for (const box of [sourceBox, sourceArrowBox, effectBox, effectArrowBox, targetBox]) {
+      expect(box.x).toBeGreaterThanOrEqual(stageBox.x - 1);
+      expect(box.y).toBeGreaterThanOrEqual(stageBox.y - 1);
+      expect(box.x + box.width).toBeLessThanOrEqual(stageBox.x + stageBox.width + 1);
+      expect(box.y + box.height).toBeLessThanOrEqual(stageBox.y + stageBox.height + 1);
+    }
+    if (viewport.flow === "vertical" || viewport.topology === "side-column") {
       expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(effectBox.y + 2);
       expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
-    } else if (viewport.width <= 650) {
-      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
-      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
+      expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(sourceArrowBox.y + 2);
+      expect(sourceArrowBox.y + sourceArrowBox.height).toBeLessThanOrEqual(effectBox.y + 2);
+      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(effectArrowBox.y + 2);
+      expect(effectArrowBox.y + effectArrowBox.height).toBeLessThanOrEqual(targetBox.y + 2);
     } else {
       expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
       expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(targetBox.x + 2);
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(sourceArrowBox.x + 2);
+      expect(sourceArrowBox.x + sourceArrowBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+      expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(effectArrowBox.x + 2);
+      expect(effectArrowBox.x + effectArrowBox.width).toBeLessThanOrEqual(targetBox.x + 2);
     }
   });
 }
@@ -631,6 +665,7 @@ test("two-player Borrowed Sword keeps the viewer target in the Dock without dupl
   await loadFixture(page, { count: 2, width: 390, height: 844, state: "borrowed-sword-active-two-player" });
   const stage = page.locator('[aria-label="Interaction Stage"][data-stage="ATTACK_RESPONSE"]');
   await expect(stage).toHaveAttribute("data-current-effect", "Attack");
+  await expect(stage).toHaveAttribute("data-borrowed-sword-forced-attack", "true");
   await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveText("Player 1's Borrowed Sword forces Player 2 to Attack Player 1.");
   await expect(stage).not.toContainText(/parent frame|nested effect/i);
   await expect(stage.locator(".hero-focus-context")).toHaveCount(0);
@@ -645,6 +680,7 @@ for (const state of ["borrowed-sword-active-no-root", "borrowed-sword-active-mis
     await loadFixture(page, { count: 4, width: 390, height: 844, state });
     const stage = page.locator('[aria-label="Interaction Stage"][data-stage="ATTACK_RESPONSE"]');
     await expect(stage).toHaveAttribute("data-current-effect", "Attack");
+    await expect(stage).not.toHaveAttribute("data-borrowed-sword-forced-attack");
     await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveText("Player 2 used Attack on Player 3.");
     await expect(stage).not.toContainText("Borrowed Sword");
     await expect(stage).not.toContainText(/parent frame|nested effect/i);
