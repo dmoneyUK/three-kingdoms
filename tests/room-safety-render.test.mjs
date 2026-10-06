@@ -122,7 +122,8 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.equal((html.match(/data-player-anchor="/g) ?? []).length, 2, "Interaction Stage insertion preserves both player anchors");
   assert.equal((html.match(/class="local-player-dock/g) ?? []).length, 1, "Interaction Stage insertion keeps one local dock");
   assert.equal((html.match(/data-console-surface="local-operation"/g) ?? []).length, 1, "Interaction Stage insertion keeps one footer console");
-  assert.match(html, /INTERACTION STAGE/);
+  assert.match(html, /aria-label="Interaction Stage"/, "the read-only Stage retains an accessible name");
+  assert.doesNotMatch(html, /<header><span>INTERACTION STAGE<\/span>/, "the architectural Stage label is not player-facing chrome");
   assert.match(html, /<strong>Attack Response<\/strong>/);
   assert.match(html, /<small>CURRENT EFFECT<\/small><strong>Attack<\/strong>/);
   assert.match(html, /data-continuity="ROOT_FRAME"/);

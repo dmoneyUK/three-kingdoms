@@ -7,14 +7,14 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 ## Latest result and CI
 
-`UX2.4-SELECTABLE-DETAIL-PENDING-TARGET-CARD-HERO-FOCUS-01` was pushed as `aabb312`; the handover-only follow-up is `2dfd747`. The previous relevant Actions run `37404317662` for `aabb312` was `in_progress` at the latest check; the documentation push did not create a newer run. No CI pass is claimed.
+`UX2.7-PLAYER-FACING-PREVIEW-INSPECT-LABELS-01` was pushed as `131dcdb`. Actions run `37404719333` failed in `Run npm test`: the only failing assertion expected the architectural `INTERACTION STAGE` label that design §12.7.2 removes from player-facing chrome. The focused repair now preserves the accessible Stage name and asserts that the visible architectural heading is absent; CI is not yet rerun.
 
-That delivery repaired the prior run `37400533926` browser failure and passed local build, focused unit tests 6/6, focused browser regressions 11/11, full browser suite 535/535, targeted ESLint, and `git diff --check`. Current Preview/Inspect copy change passes local build, focused browser tests 14/14, targeted ESLint, and `git diff --check`; its push-triggered CI has not started yet.
+The Steal/Dismantle delivery passed local build, focused unit tests 6/6, focused browser regressions 11/11, full browser suite 535/535, targeted ESLint, and `git diff --check`. Preview/Inspect copy passed local build, focused browser tests 14/14, targeted ESLint, and `git diff --check`. The CI-repair regression file passed locally: 19/19 tests.
 
 ## Design checkpoint
 
-Reviewed remote design blob `5157af29079cf03f86476b71bc58607a215d6b53`, including §3C and §§12.3–12.9. Player-facing UI should not expose `HERO FOCUS`; Preview/Inspect remain independent local states and must preserve their existing selection and authoritative Stage continuity.
+Reviewed remote design blob `5157af29079cf03f86476b71bc58607a215d6b53`, including §12.7.2 and §§0.35–0.36, 3B, 3C, 12.6, and 12.8–12.9. Architectural headings are not player-facing copy; Group/AOE progress must use explicit server-projected participant data.
 
-## Current task — UX2.7-PLAYER-FACING-PREVIEW-INSPECT-LABELS-01
+## Current task — CI-REPAIR-ROOM-SAFETY-STAGE-LABEL-ASSERTION-01
 
-Remove the internal `HERO FOCUS` heading from the existing local Preview and opponent Inspect presentations while retaining their useful `PREVIEW TARGET` / `INSPECT` labels and all public details. Do not change target selection, actions, privacy, or Stage identity; add browser assertions for 390/480/1440px and Preview → Inspect → Preview continuity.
+Replace the stale uppercase Stage-label assertion in `tests/room-safety-render.test.mjs` with checks for its accessible name and absence of visible architectural chrome. Keep this repair test-only; do not change product rendering or gameplay semantics.
