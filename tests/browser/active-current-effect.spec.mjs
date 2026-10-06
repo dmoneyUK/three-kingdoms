@@ -891,6 +891,130 @@ for (const viewport of [
   });
 }
 
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 480, height: 900 },
+  { width: 1440, height: 900 },
+]) {
+  test(`Group Negation stage and local controls keep reachable geometry at ${viewport.width}px`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, state: "group-negation-local" });
+    const stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
+    const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
+    const root = stage.locator('[data-current-effect-label="Raining Arrows"]');
+    const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
+    const guidance = dock.locator(".console-guidance .decision-status");
+    const handCard = page.locator('[data-hand-card-id="browser-group-negation"] .game-card');
+    const confirm = dock.locator('[data-action-slot="primary"] button');
+    const skip = dock.locator('[data-action-slot="decline"] button');
+
+    await expect(stage).toBeVisible();
+    await expect(root).toBeVisible();
+    await expect(scope).toBeVisible();
+    await expect(guidance.locator("strong")).toHaveText("Play Negation or Skip.");
+    await expect(handCard).toBeVisible();
+    await expect(confirm).toHaveText("Confirm");
+    await expect(confirm).toBeDisabled();
+    await expect(skip).toHaveText("Skip");
+    await expect(skip).toBeEnabled();
+
+    const readGeometry = () => page.evaluate(() => {
+      const rect = (selector) => {
+        const element = document.querySelector(selector);
+        if (!element) return null;
+        const { left, right, top, bottom, width, height } = element.getBoundingClientRect();
+        return { left, right, top, bottom, width, height };
+      };
+      const ownsCenter = (selector) => {
+        const element = document.querySelector(selector);
+        if (!element) return false;
+        const bounds = element.getBoundingClientRect();
+        const hit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+        return Boolean(hit && (hit === element || element.contains(hit)));
+      };
+      const overlaps = (first, second) => Boolean(first && second
+        && first.left < second.right && second.left < first.right
+        && first.top < second.bottom && second.top < first.bottom);
+      const stageSelector = '.interaction-stage[data-stage="NEGATION"]';
+      const rootSelector = `${stageSelector} [data-current-effect-label="Raining Arrows"]`;
+      const scopeSelector = `${stageSelector} [data-group-target-scope="original"][data-group-progress="proven"]`;
+      const dockSelector = '.local-player-dock[data-player-anchor="p1"]';
+      const guidanceSelector = `${dockSelector} .console-guidance`;
+      const statusSelector = `${guidanceSelector} .decision-status`;
+      const handSelector = '[data-hand-card-id="browser-group-negation"] .game-card';
+      const confirmSelector = `${dockSelector} [data-action-slot="primary"] button`;
+      const skipSelector = `${dockSelector} [data-action-slot="decline"] button`;
+      const status = document.querySelector(statusSelector);
+      const bounds = (selector) => rect(selector);
+      const stageBounds = bounds(stageSelector);
+      const rootBounds = bounds(rootSelector);
+      const scopeBounds = bounds(scopeSelector);
+      const dockBounds = bounds(dockSelector);
+      const guidanceBounds = bounds(guidanceSelector);
+      const handBounds = bounds(handSelector);
+      const confirmBounds = bounds(confirmSelector);
+      const skipBounds = bounds(skipSelector);
+      return {
+        viewport: {
+          width: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth,
+          bodyWidth: document.body.scrollWidth,
+        },
+        stage: stageBounds,
+        root: rootBounds,
+        scope: scopeBounds,
+        dock: dockBounds,
+        guidance: guidanceBounds,
+        hand: handBounds,
+        confirm: confirmBounds,
+        skip: skipBounds,
+        keyRegionsFit: [stageBounds, rootBounds, scopeBounds, dockBounds, guidanceBounds, handBounds, confirmBounds, skipBounds]
+          .every((item) => item && item.left >= -1 && item.right <= window.innerWidth + 1 && item.top >= -1 && item.bottom <= window.innerHeight + 1),
+        overlaps: {
+          stageDock: overlaps(stageBounds, dockBounds),
+          guidanceHand: overlaps(guidanceBounds, handBounds),
+          handConfirm: overlaps(handBounds, confirmBounds),
+          handSkip: overlaps(handBounds, skipBounds),
+          confirmSkip: overlaps(confirmBounds, skipBounds),
+        },
+        guidanceContentFits: Boolean(status && status.scrollWidth <= status.clientWidth && status.scrollHeight <= status.clientHeight + 1),
+        hitTargets: {
+          hand: ownsCenter(handSelector),
+          confirm: ownsCenter(confirmSelector),
+          skip: ownsCenter(skipSelector),
+        },
+      };
+    });
+
+    const before = await readGeometry();
+    expect(before.viewport.documentWidth).toBeLessThanOrEqual(before.viewport.width);
+    expect(before.viewport.bodyWidth).toBeLessThanOrEqual(before.viewport.width);
+    expect(before.keyRegionsFit).toBe(true);
+    expect(before.overlaps).toEqual({ stageDock: false, guidanceHand: false, handConfirm: false, handSkip: false, confirmSkip: false });
+    expect(before.guidance.top).toBeGreaterThanOrEqual(before.stage.bottom - 1);
+    expect(Math.abs(before.guidance.top - before.dock.top)).toBeLessThanOrEqual(1);
+    expect(before.guidanceContentFits).toBe(true);
+    expect(before.hitTargets).toEqual({ hand: true, confirm: true, skip: true });
+
+    await handCard.click();
+    await expect(handCard).toHaveClass(/selected/);
+    await expect(confirm).toBeEnabled();
+
+    const after = await readGeometry();
+    expect(after.viewport.documentWidth).toBeLessThanOrEqual(after.viewport.width);
+    expect(after.viewport.bodyWidth).toBeLessThanOrEqual(after.viewport.width);
+    expect(after.keyRegionsFit).toBe(true);
+    expect(after.overlaps).toEqual({ stageDock: false, guidanceHand: false, handConfirm: false, handSkip: false, confirmSkip: false });
+    expect(after.guidanceContentFits).toBe(true);
+    expect(after.hitTargets).toEqual({ hand: true, confirm: true, skip: true });
+
+    for (const region of ["stage", "root", "scope"]) {
+      for (const edge of ["left", "right", "top", "bottom", "width", "height"]) {
+        expect(Math.abs(after[region][edge] - before[region][edge])).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+}
+
 test("Reaction Chain shows one proven Negation node and omits absent or malformed history", async ({ page }) => {
   await loadFixture(page, { count: 4, width: 480, height: 900, state: "active-negation-observer", negationHistory: "single" });
   let chain = page.locator('[data-reaction-chain="proven"]');

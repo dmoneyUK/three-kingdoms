@@ -849,6 +849,19 @@ Only a proven regression or new Reviewer-approved design requirement does.
   37/37; build; targeted ESLint; and `git diff --check`. Pushed as `6baec5f`;
   its exact push-triggered Actions run `37458837327` is **in_progress**.
 
+### UX2.17-AOE-MOBILE-GROUP-GUIDANCE-GEOMETRY-01 — Stable mobile response layout
+
+- Added a three-viewport browser geometry regression for the authorized local
+  Group/AOE Negation responder. Before and after normal response-card selection,
+  the Stage, effect root, and proven Target Strip stay within 1 CSS px; Guidance
+  stays readable and adjacent below the Stage; Hand, Confirm, and Skip remain
+  visible, hit-testable, and non-overlapping without horizontal overflow.
+- Focused Group/AOE, Negation, observer/privacy, and related Stage regressions
+  passed 38/38, including 390×844, 480×900, and 1440×900; targeted ESLint and
+  `git diff --check` passed. Pre-commit remote `e676385d` Actions run
+  `37459258633` was **success**. Agent implementation complete; Reviewer
+  acceptance not implied.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,
