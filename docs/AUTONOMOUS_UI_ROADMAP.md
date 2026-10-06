@@ -822,6 +822,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Actions run `37457731412` **pending**; no result for this feature push is
   claimed.
 
+### UX2.15-AOE-MOBILE-NEGATION-WAITING-PRIVACY-01 — Neutral open Negation window
+
+- Proven Group/AOE NEGATION without a public submitted node now keeps the root
+  Raining Arrows effect visible, retains the authoritative Target Strip, and
+  suppresses the generic empty Reaction Chain. The Stage exposes no private
+  responder, scan-order, provider, or card fact from compatibility Pending;
+  ordinary non-Group Negation chains remain unchanged.
+- Local validation passed: focused open/return/counter Group Negation coverage
+  15/15; ordinary Reaction Chain regressions 2/2; build; the focused
+  active-current-effect plus protected `ui19.spec.mjs` Group/AOE slice 76/76;
+  targeted ESLint; and `git diff --check`. The pre-commit remote SHA
+  `5443a33` had push-triggered Actions run `37457833613`
+  **in_progress**; no result for this feature push is claimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,

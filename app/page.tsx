@@ -687,7 +687,8 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && Boolean(stage.source.id && publicEffectLabel)
     && stage.activeTargets.length === 1
     && stage.activeTargets[0]?.id === dyingHandoff.dyingPlayer.id;
-  const hasProvenGroupCurrentEffect = stage.stage === "GROUP_RESOLUTION"
+  const hasProvenGroupCurrentEffect = (stage.stage === "GROUP_RESOLUTION"
+    || stage.stage === "NEGATION" && groupTargetScope?.resolutionSemantics === "GROUP")
     && Boolean(groupCurrentEffectLabel && stage.source.id && stage.source.known)
     && Boolean(stage.currentParticipant.id && stage.currentParticipant.known)
     && stage.activeTargets.some((target) => target.id === stage.currentParticipant.id);
@@ -853,7 +854,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
           </div>
           <small className="dying-handoff-guidance">{dyingHandoff.guidance}</small>
         </section>}
-        {reactionChain.visible && reactionChain.root && reactionChain.active && <section className={`reaction-chain${isProvenGroupNegation ? " reaction-chain-group" : ""}`} aria-label={isProvenGroupNegation ? "AOE Negation Response" : "Reaction Chain"} data-reaction-chain="proven" data-group-negation={isProvenGroupNegation ? "true" : undefined} data-reaction-interaction-id={reactionChain.interactionId ?? undefined}>
+        {reactionChain.visible && reactionChain.root && reactionChain.active && (!isProvenGroupNegation || reactionChain.negationNodes.length > 0) && <section className={`reaction-chain${isProvenGroupNegation ? " reaction-chain-group" : ""}`} aria-label={isProvenGroupNegation ? "AOE Negation Response" : "Reaction Chain"} data-reaction-chain="proven" data-group-negation={isProvenGroupNegation ? "true" : undefined} data-reaction-interaction-id={reactionChain.interactionId ?? undefined}>
           <header><span>REACTION CHAIN</span></header>
           <ol>
             {!isProvenGroupNegation && <li data-reaction-node="root"><small>{isOpenNegationResponse ? "ORIGINAL EFFECT" : "ROOT EFFECT"}</small><b>{reactionChain.root.effect}</b><span>{reactionChain.root.source.name}{reactionChain.root.targets.length ? ` → ${reactionChain.root.targets.map((target) => target.name).join(", ")}` : ""}</span></li>}

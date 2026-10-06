@@ -832,6 +832,28 @@ for (const viewport of [
   });
 }
 
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 480, height: 900 },
+  { width: 1440, height: 900 },
+]) {
+  test(`open Group Negation stays neutral without a public branch at ${viewport.width}px`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, state: "group-negation" });
+    const stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
+    const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
+    await expect(stage.locator('[data-current-effect-label="Raining Arrows"]')).toBeVisible();
+    await expect(stage.locator('[data-reaction-chain="proven"]')).toHaveCount(0);
+    await expect(scope.locator(".group-target-card")).toHaveCount(3);
+    await expect(scope.locator('[data-participant-status="CURRENT"]')).toHaveCount(1);
+    await expect(stage).not.toContainText("played this card.");
+    await expect(stage).not.toContainText("Waiting for Player 1");
+    await expect(stage).not.toContainText("Decision · Player 1");
+    await expect(stage.locator("button")).toHaveCount(0);
+    await expect(page.locator(".local-player-dock")).toBeVisible();
+    expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+  });
+}
+
 test("Reaction Chain shows one proven Negation node and omits absent or malformed history", async ({ page }) => {
   await loadFixture(page, { count: 4, width: 480, height: 900, state: "active-negation-observer", negationHistory: "single" });
   let chain = page.locator('[data-reaction-chain="proven"]');
