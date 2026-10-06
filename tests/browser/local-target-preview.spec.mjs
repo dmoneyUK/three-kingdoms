@@ -22,7 +22,10 @@ for (const width of [390, 480, 1440]) {
     await selectOrdinaryTarget(page, "p2");
     const preview = page.locator('.interaction-stage[data-local-ui-mode="PREVIEW"]');
     await expect(preview).toHaveAttribute("data-local-preview-player-id", "p2");
-    await expect(preview.locator('[data-hero-focus-mode="PREVIEW"]')).toContainText("Player 2");
+    const previewFocus = preview.locator('[data-hero-focus-mode="PREVIEW"]');
+    await expect(previewFocus).toContainText("Player 2");
+    await expect(previewFocus.locator(".hero-focus-heading strong")).toHaveText("PREVIEW TARGET");
+    await expect(previewFocus).not.toContainText("HERO FOCUS");
     await expect(preview.locator(".hero-focus-context")).toContainText("LOCAL PREVIEW");
     expect(await preview.evaluate((stage) => [
       "data-interaction-id", "data-checkpoint-id", "data-presentation-revision",

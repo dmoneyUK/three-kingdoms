@@ -40,6 +40,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
 
     const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
     await expect(inspect).toHaveAttribute("data-hero-focus-mode", "INSPECT");
+    await expect(inspect.locator(".hero-focus-heading strong")).toContainText("INSPECT");
+    await expect(inspect).not.toContainText("HERO FOCUS");
     await expect(page.getByRole("dialog", { name: "Player 2 opponent inspection" })).toBeVisible();
     await expect(inspect.locator(".hero-focus-identity")).toContainText("Player 2");
     await expect(inspect.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill').first()).toBeVisible();
@@ -77,10 +79,12 @@ test("Inspect stays independent from target selection and restores the selected 
   await page.getByRole("button", { name: "Select Player 2", exact: true }).click();
   const preview = page.locator('.interaction-stage[data-local-ui-mode="PREVIEW"]');
   await expect(preview).toHaveAttribute("data-local-preview-player-id", "p2");
+  await expect(preview.locator('[data-hero-focus-mode="PREVIEW"]')).not.toContainText("HERO FOCUS");
 
   await page.getByRole("button", { name: "Inspect Player 2", exact: true }).click();
   const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
   await expect(inspect).toBeVisible();
+  await expect(inspect).not.toContainText("HERO FOCUS");
   await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
   await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
   await expect(page.locator('[data-console-surface="local-operation"] button.local-target-cancel')).toBeVisible();
@@ -94,6 +98,7 @@ test("Inspect stays independent from target selection and restores the selected 
 
   await page.getByRole("button", { name: "Close Player 2 inspection", exact: true }).click();
   await expect(preview).toHaveAttribute("data-local-preview-player-id", "p2");
+  await expect(preview.locator('[data-hero-focus-mode="PREVIEW"]')).not.toContainText("HERO FOCUS");
   expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
 });
 

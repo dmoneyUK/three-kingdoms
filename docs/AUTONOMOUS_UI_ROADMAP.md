@@ -650,6 +650,16 @@ Only a proven regression or new Reviewer-approved design requirement does.
   its browser failures were reproduced locally and repaired in this combined
   feature change. No result for the new push is claimed.
 
+### UX2.7-PLAYER-FACING-PREVIEW-INSPECT-LABELS-01 — Local focus copy
+
+- Removed the internal `HERO FOCUS` heading from local Preview and opponent
+  Inspect while retaining the `PREVIEW TARGET` / `INSPECT` state labels, public
+  details, target selection, and Preview → Inspect → Preview continuity.
+- Local build and focused Preview/Inspect browser coverage passed 14/14;
+  targeted ESLint and `git diff --check` passed. The relevant earlier Actions
+  run `37404317662` for `aabb312` was in progress at the pre-commit check; no
+  result for this copy-only change is claimed.
+
 ## Known deferred semantic gaps
 
 These are **not completed** and must remain fail-closed until authoritative

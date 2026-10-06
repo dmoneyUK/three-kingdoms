@@ -554,7 +554,7 @@ function HeroFocus({ view, showSource = true, previewPlayer = null, inspectPlaye
     const renderInspectionCard = (card: Card, hidden = false) => <button key={card.id} type="button" className="opponent-inspection-card" style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard?.(card); }}><CardFace card={card} /></button>;
     const heroName = inspectedHero?.name ?? "Unknown Hero";
     return <div className="hero-focus hero-focus-inspect opponent-inspection-panel" role="dialog" aria-label={`${inspectPlayer.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={inspectPlayer.id}>
-      <div className="hero-focus-heading"><span>HERO FOCUS</span><strong>INSPECT</strong><button type="button" className="hero-focus-inspect-close" aria-label={`Close ${inspectPlayer.name} inspection`} onClick={onCloseInspect}>×</button></div>
+      <div className="hero-focus-heading"><strong>INSPECT</strong><button type="button" className="hero-focus-inspect-close" aria-label={`Close ${inspectPlayer.name} inspection`} onClick={onCloseInspect}>×</button></div>
       <div className="hero-focus-body">
         <span className={inspectedHero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={inspectedHero?.id}>{inspectedHero ? <HeroPortrait hero={inspectedHero} /> : "?"}</span>
         <div className="hero-focus-identity"><b>{inspectPlayer.name}</b><span>{heroName}</span><small>HP {inspectPlayer.hp ?? "?"}/{inspectPlayer.maxHp ?? "?"} · {hpDisplay(inspectPlayer.hp)}</small>{inspectedHero && <button type="button" className="hero-focus-inspect-explain" aria-label={`Explain ${inspectedHero.name}`} onClick={() => onHeroInfo?.(inspectedHero)}>Explain Hero</button>}</div>
@@ -570,7 +570,7 @@ function HeroFocus({ view, showSource = true, previewPlayer = null, inspectPlaye
   if (previewPlayer) {
     const previewHeroName = previewPlayer.hero?.name ?? "Unknown Hero";
     return <div className="hero-focus hero-focus-preview" aria-label={`Preview target ${previewPlayer.name}`} data-hero-focus-mode="PREVIEW" data-preview-player-id={previewPlayer.id}>
-      <div className="hero-focus-heading"><span>HERO FOCUS</span><strong>PREVIEW TARGET</strong></div>
+      <div className="hero-focus-heading"><strong>PREVIEW TARGET</strong></div>
       <div className="hero-focus-body">
         <span className={previewPlayer.hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={previewPlayer.hero?.id}>{previewPlayer.hero ? <HeroPortrait hero={previewPlayer.hero} /> : "?"}</span>
         <div className="hero-focus-identity"><b>{previewPlayer.name}</b><span>{previewHeroName}</span><small>HP {previewPlayer.hp ?? "?"}/{previewPlayer.maxHp ?? "?"}</small></div>
