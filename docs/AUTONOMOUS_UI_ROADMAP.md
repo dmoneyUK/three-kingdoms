@@ -794,6 +794,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   pre-commit remote SHA `fb45d84` had push-triggered Actions run
   `37457458894` **pending**; no result for this feature push is claimed.
 
+### UX2.13-AOE-MOBILE-NEGATION-RETURN-01 — Root context after Negation
+
+- Added measured Group/AOE Negated-return coverage at 390px, 480px, and
+  1440px. The proven public branch is absent at the settled boundary, the
+  root Raining Arrows effect remains the current Stage context, and the
+  Target Strip retains the authoritative `⊘` outcome/current-participant
+  state without exposing private response controls.
+- Local validation passed: focused Negated-return/public-branch browser
+  coverage 10/10; build; the focused active-current-effect plus protected
+  `ui19.spec.mjs` Group/AOE slice 70/70; targeted ESLint; and
+  `git diff --check`. The pre-commit remote SHA `6fbf24d` had push-triggered
+  Actions run `37457613604` **pending**; no result for this feature push is
+  claimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,

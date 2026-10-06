@@ -149,6 +149,31 @@ for (const outcome of [
   });
 }
 
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 480, height: 900 },
+  { width: 1440, height: 900 },
+]) {
+  test(`AOE Negated return restores the root effect context at ${viewport.width}px`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, state: "group-observer", groupProgress: "negated" });
+    const stage = page.locator('.interaction-stage[data-stage="GROUP_RESOLUTION"]');
+    const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
+    const resolved = scope.locator('[data-group-target-id="p2"]');
+    const current = scope.locator('[data-group-target-id="p1"]');
+    await expect(stage.locator('[data-current-effect-label="Raining Arrows"]')).toBeVisible();
+    await expect(stage.locator('[data-reaction-node]')).toHaveCount(0);
+    await expect(resolved).toHaveAttribute("data-participant-status", "RESOLVED");
+    await expect(resolved).toHaveAttribute("data-participant-outcome", "NEGATED");
+    await expect(resolved.locator(".group-target-status")).toHaveText("⊘");
+    await expect(resolved.locator(".group-target-status")).toHaveAttribute("aria-label", "Status: Resolved; Outcome: Negated");
+    await expect(current).toHaveAttribute("data-participant-status", "CURRENT");
+    await expect(stage.locator('[data-hero-focus-player-id="p1"]')).toHaveAttribute("data-group-participant-status", "CURRENT");
+    await expect(stage.locator("button")).toHaveCount(0);
+    await expect(page.locator(".local-player-dock")).toBeVisible();
+    expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+  });
+}
+
 test("AOE progress fails closed when the snapshot root identity or scope does not match", async ({ page }) => {
   await loadFixture(page, { count: 4, width: 390, state: "group-observer", groupProgress: "mismatch" });
   const stage = page.locator('[aria-label="Interaction Stage"][data-stage="GROUP_RESOLUTION"]');
