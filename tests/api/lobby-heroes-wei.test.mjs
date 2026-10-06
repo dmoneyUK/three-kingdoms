@@ -350,10 +350,17 @@ test("Guo Jia Eight Trigrams resumes the next Raining Arrows target after Jealou
   const guoResponse = await state(game.code, guoMember.token); assert.equal(guoResponse.data.currentAction.kind, "response", JSON.stringify(guoResponse.data.currentAction)); assert.equal(guoResponse.data.currentAction.requirement, "dodge");
   const judged = await requestAndSettle("respond", { code: game.code, token: guoMember.token, providerId: "eight_trigrams_dodge" });
   assert.equal(judged.data.room.currentAction.triggerEvent, "judgement_effective", JSON.stringify(judged.data.room.currentAction));
+  const pausedGuo = judged.data.room.presentationV2.groupResolution?.participantProgress?.find(({ playerId }) => playerId === guo.id);
+  assert.equal(pausedGuo?.outcome, undefined, "a successful judgement does not publish an outcome before its continuation settles");
   const obtained = await requestAndSettle("trigger", { code: game.code, token: guoMember.token, providerId: "guo_jia_jealousy_of_god" });
   assert.equal(obtained.status, 200, JSON.stringify(obtained.data));
   const nextTarget = await waitForState(game.code, bobMember.token, (room) => room.currentAction?.kind === "response" && room.currentAction.actorId === bob.id && room.currentAction.options?.length > 0);
   assert.equal(nextTarget.currentAction.requirement, "dodge", JSON.stringify(nextTarget.currentAction));
+  const guoOutcome = nextTarget.presentationV2.groupResolution.participantProgress.find(({ playerId }) => playerId === guo.id);
+  assert.deepEqual(guoOutcome, { playerId: guo.id, order: 1, status: "RESOLVED", outcome: "AVOIDED" });
+  const observer = (await state(game.code, host.token)).data;
+  assert.deepEqual(observer.presentationV2.groupResolution.participantProgress, nextTarget.presentationV2.groupResolution.participantProgress, "the proven outcome is public and viewer-equal");
+  assert.equal(observer.currentAction.options, undefined, "Dodge capabilities remain private to the active participant");
   const bobAnswered = await requestAndSettle("respond", { code: game.code, token: bobMember.token, cardId: "dodge-raining-bob-dodge" });
   assert.equal(bobAnswered.status, 200, JSON.stringify(bobAnswered.data)); assert.equal(bobAnswered.data.room.phase, "play"); assert.equal(roomCardCount(game.code, judgement.id), 1);
 });

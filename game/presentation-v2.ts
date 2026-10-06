@@ -1,6 +1,6 @@
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
-import type { GroupParticipantProgressStatus, GroupResolutionSemantics, NegationHistoryRecord } from "./pending";
+import type { GroupParticipantProgressOutcome, GroupParticipantProgressStatus, GroupResolutionSemantics, NegationHistoryRecord } from "./pending";
 
 export type PresentationV2Event = {
   id: string;
@@ -149,7 +149,7 @@ export type PresentationV2 = {
     activeTargetIds: readonly string[];
     participantIds: readonly string[];
     activeParticipantId: string | null;
-    participantProgress: readonly { playerId: string; order: number; status: GroupParticipantProgressStatus }[] | null;
+    participantProgress: readonly { playerId: string; order: number; status: GroupParticipantProgressStatus; outcome?: GroupParticipantProgressOutcome }[] | null;
   } | null;
   decision: { kind: CurrentAction["kind"] | null; actorId: string | null; actionRevision: string; resolutionId: string | null; readyAfterEventId: string | null; deadline: number } | null;
   settlement: { eventId: string; resolutionId: string | null } | null;
@@ -544,7 +544,7 @@ function groupPresentation(
   groupValues: GroupProjectionValues | null,
   participantProgress: {
     resolutionSemantics: GroupResolutionSemantics;
-    participants: Array<{ playerId: string; order: number; status: GroupParticipantProgressStatus }>;
+    participants: Array<{ playerId: string; order: number; status: GroupParticipantProgressStatus; outcome?: GroupParticipantProgressOutcome }>;
   } | null,
 ) {
   if (!scene || !groupValues) return null;
@@ -580,7 +580,7 @@ function groupParticipantProgress(
   scene: PresentationInteractionScene | null,
 ): {
   resolutionSemantics: GroupResolutionSemantics;
-  participants: Array<{ playerId: string; order: number; status: GroupParticipantProgressStatus }>;
+  participants: Array<{ playerId: string; order: number; status: GroupParticipantProgressStatus; outcome?: GroupParticipantProgressOutcome }>;
 } | null {
   if (!envelope || !group || !values || scene?.semantics !== "PROVEN"
     || !["BarbarianInvasion", "RainingArrows", "SkyPiercingHalberdAttack"].includes(values.cardKind)) return null;
@@ -601,13 +601,15 @@ function groupParticipantProgress(
   if (new Set(targetIds).size !== targetIds.length || storedParticipants.length !== targetIds.length) return null;
 
   const validStatuses = new Set<GroupParticipantProgressStatus>(["PENDING", "CURRENT", "PAUSED", "RESOLVED", "NO_LONGER_APPLICABLE"]);
-  const participants: Array<{ playerId: string; order: number; status: GroupParticipantProgressStatus }> = [];
+  const participants: Array<{ playerId: string; order: number; status: GroupParticipantProgressStatus; outcome?: GroupParticipantProgressOutcome }> = [];
   for (let index = 0; index < targetIds.length; index++) {
     const stored = record(storedParticipants[index]);
     const playerId = stringValue(stored?.playerId);
     const status = stored?.status;
     if (playerId !== targetIds[index] || typeof status !== "string" || !validStatuses.has(status as GroupParticipantProgressStatus)) return null;
-    participants.push({ playerId, order: index + 1, status: status as GroupParticipantProgressStatus });
+    const outcome = stored?.outcome;
+    if (outcome !== undefined && (outcome !== "AVOIDED" || values.cardKind !== "RainingArrows" || resolutionSemantics !== "GROUP" || status !== "RESOLVED")) return null;
+    participants.push({ playerId, order: index + 1, status: status as GroupParticipantProgressStatus, ...(outcome === "AVOIDED" ? { outcome } : {}) });
   }
 
   const activeParticipants = participants.filter(({ status }) => status === "CURRENT" || status === "PAUSED");

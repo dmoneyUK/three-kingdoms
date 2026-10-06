@@ -660,6 +660,18 @@ Only a proven regression or new Reviewer-approved design requirement does.
   run `37404317662` for `aabb312` was in progress at the pre-commit check; no
   result for this copy-only change is claimed.
 
+### UX2.7-AOE-RAINING-ARROWS-AVOIDED-OUTCOME-01 — Proven AOE avoidance
+
+- Raining Arrows now records `AVOIDED` only after the server confirms a Dodge
+  requirement and resolves that participant, including the Eight Trigrams
+  provider path. The typed fact is validated through PresentationV2, Snapshot,
+  and client view before the read-only Stage shows “Avoided”; unresolved,
+  mismatched, or unproven participants expose no outcome.
+- Local validation passed: build; focused PresentationV2/Snapshot/client/render
+  tests 108/108; engine-backed API tests 49/49; targeted ESLint; and
+  `git diff --check`. The pre-change remote head `ceca3dc` passed Actions run
+  `37427033710`; no result for this change's push is claimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,
@@ -776,7 +788,8 @@ Only a proven regression or new Reviewer-approved design requirement does.
 These remain incomplete; where authoritative projection does not exist,
 behavior must continue to fail closed:
 
-- Public AOE outcome summaries and unrelated Group semantics remain deferred.
+- Public AOE outcome summaries other than the resolved Raining Arrows
+  `Avoided` result, and unrelated Group semantics, remain deferred.
 - Cross-frame and post-settlement Reaction Chain history beyond the active
   Negation continuation's proven linked nodes.
 - Settlement/transition history that would require new authoritative public

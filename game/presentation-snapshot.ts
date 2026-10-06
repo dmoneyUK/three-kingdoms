@@ -1,5 +1,5 @@
 import type { CurrentAction } from "./protocol";
-import type { GroupParticipantProgressStatus, GroupResolutionSemantics } from "./pending";
+import type { GroupParticipantProgressOutcome, GroupParticipantProgressStatus, GroupResolutionSemantics } from "./pending";
 import type {
   PresentationInteractionScene,
   PresentationReactionChain,
@@ -36,6 +36,7 @@ export type PresentationSnapshotGroupParticipantProgress = {
   playerId: string;
   order: number;
   status: GroupParticipantProgressStatus;
+  outcome?: GroupParticipantProgressOutcome;
 };
 
 export type PresentationSnapshotGroupProgress = {
@@ -153,7 +154,8 @@ function groupParticipantProgressFor(
   for (let index = 0; index < targetIds.length; index++) {
     const participant = progress[index];
     if (!participant || participant.playerId !== targetIds[index] || participant.order !== index + 1 || !validStatuses.has(participant.status)) return null;
-    copied.push({ playerId: participant.playerId, order: participant.order, status: participant.status });
+    if (participant.outcome !== undefined && (participant.outcome !== "AVOIDED" || group.cardKind !== "RainingArrows" || resolutionSemantics !== "GROUP" || participant.status !== "RESOLVED")) return null;
+    copied.push({ playerId: participant.playerId, order: participant.order, status: participant.status, ...(participant.outcome === "AVOIDED" ? { outcome: participant.outcome } : {}) });
   }
 
   const active = copied.filter(({ status }) => status === "CURRENT" || status === "PAUSED");

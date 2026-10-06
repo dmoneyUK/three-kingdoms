@@ -123,7 +123,11 @@ test("snapshot forwards only identity- and ordered-scope-coherent Standard AOE p
   for (const child of [false, true]) {
     const interaction = groupScene({ child });
     const projected = composePresentationSnapshot({
-      presentationV2: { ...presentation(interaction), groupResolution: groupResolution(interaction) },
+      presentationV2: { ...presentation(interaction), groupResolution: groupResolution(interaction, { participantProgress: [
+        { playerId: "B", order: 1, status: child ? "PAUSED" : "CURRENT" },
+        { playerId: "C", order: 2, status: "PENDING" },
+        { playerId: "D", order: 3, status: "RESOLVED", outcome: "AVOIDED" },
+      ] }) },
       currentAction: { kind: "response", actorId: "C" },
       actionRevision: `aoe-${child}`,
       viewerId: "C",
@@ -141,7 +145,7 @@ test("snapshot forwards only identity- and ordered-scope-coherent Standard AOE p
       participants: [
         { playerId: "B", order: 1, status: child ? "PAUSED" : "CURRENT" },
         { playerId: "C", order: 2, status: "PENDING" },
-        { playerId: "D", order: 3, status: "RESOLVED" },
+        { playerId: "D", order: 3, status: "RESOLVED", outcome: "AVOIDED" },
       ],
     });
   }
@@ -177,6 +181,8 @@ test("snapshot drops AOE progress on root identity, order, participant, or statu
     { ...base, resolutionSemantics: "INVALID" },
     { ...base, participantProgress: [...base.participantProgress].reverse() },
     { ...base, participantProgress: [{ ...base.participantProgress[0], status: "INVALID" }, ...base.participantProgress.slice(1)] },
+    { ...base, participantProgress: [{ ...base.participantProgress[0], outcome: "AVOIDED" }, ...base.participantProgress.slice(1)] },
+    { ...base, participantProgress: [...base.participantProgress.slice(0, 1), { ...base.participantProgress[1], outcome: "AVOIDED" }, ...base.participantProgress.slice(2)] },
     { ...base, currentParticipantId: "C" },
   ];
   for (const group of malformed) {

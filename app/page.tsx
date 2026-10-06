@@ -479,6 +479,10 @@ function groupParticipantStatusLabel(status: PresentationClientView["groupPartic
   }
 }
 
+function groupParticipantOutcomeLabel(outcome: PresentationClientView["groupParticipantProgress"][number]["outcome"] | null): string | null {
+  return outcome === "AVOIDED" ? "Avoided" : null;
+}
+
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
 
 function presentationViewKey(view: PresentationClientView) {
@@ -822,9 +826,12 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
           <div className="group-target-cards">
             {groupTargetScope.players.map((player) => {
               const hero = heroDefinition(player.heroId);
-              return <div className={`group-target-card${player.isViewer ? " group-target-card-viewer" : ""}`} key={player.id} data-group-target-id={groupTargetScope.resolutionSemantics === "ORDERED" ? undefined : player.id} data-target-id={groupTargetScope.resolutionSemantics === "ORDERED" ? player.id : undefined} data-group-participant-order={groupTargetScope.resolutionSemantics === "GROUP" ? player.order ?? undefined : undefined} data-target-order={groupTargetScope.resolutionSemantics === "ORDERED" ? player.order ?? undefined : undefined} data-participant-status={player.status ?? undefined}>
+              const outcomeLabel = groupParticipantOutcomeLabel(player.outcome);
+              const status = player.status;
+              const statusLabel = status ? groupParticipantStatusLabel(status) : null;
+              return <div className={`group-target-card${player.isViewer ? " group-target-card-viewer" : ""}`} key={player.id} data-group-target-id={groupTargetScope.resolutionSemantics === "ORDERED" ? undefined : player.id} data-target-id={groupTargetScope.resolutionSemantics === "ORDERED" ? player.id : undefined} data-group-participant-order={groupTargetScope.resolutionSemantics === "GROUP" ? player.order ?? undefined : undefined} data-target-order={groupTargetScope.resolutionSemantics === "ORDERED" ? player.order ?? undefined : undefined} data-participant-status={player.status ?? undefined} data-participant-outcome={player.outcome ?? undefined}>
                 {!player.isViewer && <span className="group-target-portrait">{hero ? <HeroPortrait hero={hero} /> : "?"}</span>}
-                <div className="group-target-identity">{groupTargetScope.resolutionSemantics === "ORDERED" && player.order !== null && <small className="ordered-target-number">Target {player.order}</small>}<b>{player.isViewer ? "You" : player.name}</b>{!player.isViewer && groupTargetScope.density === "medium" && player.heroName && <span>{player.heroName}</span>}{!player.isViewer && player.hp !== null && <small>HP {player.hp}{player.maxHp !== null ? `/${player.maxHp}` : ""}</small>}{player.status && <span className={`group-target-status status-${player.status.toLowerCase().replaceAll("_", "-")}`} aria-label={`Status: ${groupParticipantStatusLabel(player.status)}`}>{groupParticipantStatusLabel(player.status)}</span>}</div>
+                <div className="group-target-identity">{groupTargetScope.resolutionSemantics === "ORDERED" && player.order !== null && <small className="ordered-target-number">Target {player.order}</small>}<b>{player.isViewer ? "You" : player.name}</b>{!player.isViewer && groupTargetScope.density === "medium" && player.heroName && <span>{player.heroName}</span>}{!player.isViewer && player.hp !== null && <small>HP {player.hp}{player.maxHp !== null ? `/${player.maxHp}` : ""}</small>}{statusLabel && <span className={`group-target-status${status ? ` status-${status.toLowerCase().replaceAll("_", "-")}` : ""}`} aria-label={`Status: ${statusLabel}${outcomeLabel ? `; Outcome: ${outcomeLabel}` : ""}`}>{outcomeLabel ?? statusLabel}</span>}</div>
               </div>;
             })}
           </div>

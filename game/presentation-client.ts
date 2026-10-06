@@ -257,7 +257,8 @@ function groupProgressForSnapshot(
   for (let index = 0; index < scene.targetIds.length; index++) {
     const participant = progress.participants[index];
     if (!participant || participant.playerId !== scene.targetIds[index] || participant.order !== index + 1 || !validStatuses.has(participant.status)) return null;
-    participants.push({ playerId: participant.playerId, order: participant.order, status: participant.status });
+    if (participant.outcome !== undefined && (participant.outcome !== "AVOIDED" || progress.cardKind !== "RainingArrows" || resolutionSemantics !== "GROUP" || participant.status !== "RESOLVED")) return null;
+    participants.push({ playerId: participant.playerId, order: participant.order, status: participant.status, ...(participant.outcome === "AVOIDED" ? { outcome: participant.outcome } : {}) });
   }
 
   const active = participants.filter(({ status }) => status === "CURRENT" || status === "PAUSED");

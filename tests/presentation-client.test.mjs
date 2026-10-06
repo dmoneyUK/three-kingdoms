@@ -53,7 +53,7 @@ function snapshot(overrides = {}) {
   };
 }
 
-function groupProgressSnapshot({ child = false } = {}) {
+function groupProgressSnapshot({ child = false, avoided = false } = {}) {
   const targetIds = ["C", "B", "E", "D"];
   const sceneValue = scene({
     rootFrameId: "group-frame",
@@ -86,7 +86,7 @@ function groupProgressSnapshot({ child = false } = {}) {
       targetIds,
       currentParticipantId: "B",
       participants: [
-        { playerId: "C", order: 1, status: "RESOLVED" },
+        { playerId: "C", order: 1, status: "RESOLVED", ...(avoided ? { outcome: "AVOIDED" } : {}) },
         { playerId: "B", order: 2, status: child ? "PAUSED" : "CURRENT" },
         { playerId: "E", order: 3, status: "PENDING" },
         { playerId: "D", order: 4, status: "PENDING" },
@@ -231,6 +231,22 @@ test("adapter carries validated ordered Standard AOE progress through root and c
   }
 });
 
+test("adapter carries only a proven Raining Arrows Avoided outcome to the public participant scope", () => {
+  const view = buildPresentationClientView(groupProgressSnapshot({ avoided: true }), "D");
+  assert.equal(view.groupParticipantProgress[0].outcome, "AVOIDED");
+  const stage = buildInteractionStageView(view, resolveDisplayName);
+  const focus = projectHeroFocusForViewer(stage, buildHeroFocusView(stage), "D");
+  const source = projectMediumSourceForViewer(stage, focus, "D");
+  const scope = projectGroupTargetScopeForViewer(stage, focus, source, "D");
+  assert.equal(scope?.players[0].outcome, "AVOIDED");
+
+  const currentOutcome = { ...view.groupParticipantProgress[0], status: "CURRENT" };
+  const malformed = buildPresentationClientView(snapshot({
+    groupParticipantProgress: { ...view.groupResolution, participants: [currentOutcome, ...view.groupParticipantProgress.slice(1)] },
+  }), "D");
+  assert.deepEqual(malformed.groupParticipantProgress, [], "an active participant cannot already have a completed outcome");
+});
+
 test("adapter carries explicit ORDERED Halberd progress without deriving it from seats", () => {
   const aoe = groupProgressSnapshot();
   const halberd = {
@@ -282,6 +298,7 @@ test("adapter drops AOE progress when its frame, identity, scope, order, or stat
     { ...progress, targetIds: [...progress.targetIds].reverse() },
     { ...progress, participants: [...progress.participants].reverse() },
     { ...progress, participants: [{ ...progress.participants[0], status: "INVALID" }, ...progress.participants.slice(1)] },
+    { ...progress, participants: [progress.participants[0], { ...progress.participants[1], outcome: "AVOIDED" }, ...progress.participants.slice(2)] },
   ];
   for (const groupParticipantProgress of malformed) {
     const view = buildPresentationClientView(snapshot({ groupParticipantProgress }), "D");

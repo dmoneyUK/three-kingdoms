@@ -43,6 +43,7 @@ export type GroupTargetScopeView = {
   players: readonly (HeroFocusPlayerView & {
     order: number | null;
     status: PresentationSnapshotGroupParticipantProgress["status"] | null;
+    outcome?: PresentationSnapshotGroupParticipantProgress["outcome"];
     isViewer: boolean;
   })[];
 };
@@ -70,7 +71,7 @@ export function projectGroupTargetScopeForViewer(
     const players = progress.map((participantProgress) => {
       const target = byId.get(participantProgress.playerId);
       const player = target ? decoratePlayer(target, resolvePlayerDisplay) : null;
-      return player ? { ...player, order: participantProgress.order, status: participantProgress.status, isViewer: participantProgress.playerId === viewerId } : null;
+      return player ? { ...player, order: participantProgress.order, status: participantProgress.status, ...(participantProgress.outcome ? { outcome: participantProgress.outcome } : {}), isViewer: participantProgress.playerId === viewerId } : null;
     });
     if (players.some((player) => player === null)) return null;
     const participants = players as NonNullable<(typeof players)[number]>[];

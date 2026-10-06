@@ -262,7 +262,30 @@ test("AOE participant progress fails closed on scope, identity, ordering, or sta
     { playerId: "C", order: 2, status: "PENDING" },
     { playerId: "D", order: 3, status: "PENDING" },
   ]);
+  const avoided = {
+    ...pending,
+    continuation: {
+      ...pending.continuation,
+      participantProgress: {
+        ...progress,
+        participants: [progress.participants[0], progress.participants[1], { playerId: "D", status: "RESOLVED", outcome: "AVOIDED" }],
+      },
+    },
+  };
+  assert.deepEqual(project(avoided).groupResolution?.participantProgress, [
+    { playerId: "B", order: 1, status: "CURRENT" },
+    { playerId: "C", order: 2, status: "PENDING" },
+    { playerId: "D", order: 3, status: "RESOLVED", outcome: "AVOIDED" },
+  ]);
   assert.equal(project(pending).groupResolution?.resolutionSemantics, "GROUP");
+  for (const invalidParticipant of [
+    { playerId: "B", status: "CURRENT", outcome: "AVOIDED" },
+    { playerId: "C", status: "PENDING", outcome: "AVOIDED" },
+  ]) {
+    const participants = [progress.participants[0], progress.participants[1], progress.participants[2]];
+    participants[invalidParticipant.playerId === "B" ? 0 : 1] = invalidParticipant;
+    assert.equal(project({ ...pending, continuation: { ...pending.continuation, participantProgress: { ...progress, participants } } }).groupResolution?.participantProgress, null);
+  }
   assert.equal(project({ ...pending, continuation: { ...pending.continuation, participantProgress: { ...progress, groupFrameId: "other-frame" } } }).groupResolution?.participantProgress, null);
   assert.equal(project({ ...pending, continuation: { ...pending.continuation, participantProgress: { ...progress, participants: [...progress.participants].reverse() } } }).groupResolution?.participantProgress, null);
   assert.equal(project({ ...pending, continuation: { ...pending.continuation, participantProgress: { ...progress, participants: progress.participants.slice(0, 2) } } }).groupResolution?.participantProgress, null);
@@ -297,6 +320,14 @@ test("AOE participant progress fails closed on scope, identity, ordering, or sta
     { playerId: "C", order: 2, status: "PENDING" },
     { playerId: "D", order: 3, status: "PENDING" },
   ]);
+  const halberdWithOutcome = projectPresentationV2({
+    pending: { ...halberdPending, continuation: { ...halberdPending.continuation, participantProgress: { ...progress, resolutionSemantics: "ORDERED", participants: [progress.participants[0], progress.participants[1], { playerId: "D", status: "RESOLVED", outcome: "AVOIDED" }] } } },
+    currentAction: point.currentAction,
+    actionRevision: "halberd-outcome-invalid",
+    timeline: [],
+    causalEnvelope: { ...causalEnvelope, frames: [halberdFrame] },
+  });
+  assert.equal(halberdWithOutcome.groupResolution?.participantProgress, null, "Raining Arrows outcomes cannot be attached to ordered Halberd progress");
   const guessed = projectPresentationV2({
     pending: { ...halberdPending, continuation: { ...halberdPending.continuation, participantProgress: { ...progress, resolutionSemantics: undefined } } },
     currentAction: point.currentAction,

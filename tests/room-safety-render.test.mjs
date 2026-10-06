@@ -334,8 +334,22 @@ test("Interaction Stage presents the accepted public participant without becomin
   assert.doesNotMatch(sourceOwnedHtml, /<small>DECISION<\/small><b>Ma Chao<\/b>/, "viewer-owned decision identity stays out of the Stage");
   assert.doesNotMatch(sourceOwnedHtml, /class="hero-focus"[^>]*data-hero-focus-player-id="A"/, "source-owned decision does not move Hero Focus to the decision source");
 
-  const groupHtml = renderStage(createSnapshot({ stage: "GROUP_RESOLUTION", targetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"], participantRoles: { sourceId: "A", originalTargetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", parentParticipantId: null, participantIds: ["A", "B", "C"] } }, { decisionActorId: "C" }, "C"));
+  const groupSnapshot = createSnapshot({ activeFrameId: "focus-root", stage: "GROUP_RESOLUTION", effect: "Raining Arrows", targetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"], participantRoles: { sourceId: "A", originalTargetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", parentParticipantId: null, participantIds: ["A", "B", "C"] } }, { decisionActorId: "C" }, "C");
+  const groupHtml = renderStage({
+    ...groupSnapshot,
+    groupParticipantProgress: {
+      cardKind: "RainingArrows", resolutionSemantics: "GROUP", interactionId: "focus-interaction", groupFrameId: "focus-root", activeFrameId: "focus-root",
+      checkpointId: "focus-checkpoint", presentationRevision: 2, targetIds: ["B", "C"], currentParticipantId: "C",
+      participants: [
+        { playerId: "B", order: 1, status: "RESOLVED", outcome: "AVOIDED" },
+        { playerId: "C", order: 2, status: "CURRENT" },
+      ],
+    },
+  }, "C");
   assert.match(groupHtml, /data-hero-focus-player-id="C"[^>]*data-hero-focus-role="Target"/);
+  assert.match(groupHtml, /data-participant-status="RESOLVED"[^>]*data-participant-outcome="AVOIDED"/);
+  assert.match(groupHtml, /aria-label="Status: Resolved; Outcome: Avoided">Avoided<\/span>/);
+  assert.doesNotMatch(groupHtml, /physicalCardId|legalActions|providers/i, "public outcome contains no response-card identity or local control data");
 
   const ambiguousHtml = renderStage(createSnapshot({ targetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "B", "C"], participantRoles: { sourceId: "A", originalTargetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "B", "C"] } }, { decisionActorId: "A" }, "A"));
   assert.doesNotMatch(ambiguousHtml, /data-hero-focus="true"/, "ambiguous multi-target state has no guessed Hero Focus");

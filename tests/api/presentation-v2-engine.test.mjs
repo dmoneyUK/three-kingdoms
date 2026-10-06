@@ -416,13 +416,13 @@ test("Group progress marks a no-longer-living ordered target without inferring f
   assert.equal(finalView.currentAction.actorId, final.id);
   assert.deepEqual(finalView.presentationV2.groupResolution?.targetIds, [first.id, skipped.id, final.id]);
   assert.deepEqual(finalView.presentationV2.groupResolution?.participantProgress, [
-    { playerId: first.id, order: 1, status: "RESOLVED" },
+    { playerId: first.id, order: 1, status: "RESOLVED", outcome: "AVOIDED" },
     { playerId: skipped.id, order: 2, status: "NO_LONGER_APPLICABLE" },
     { playerId: final.id, order: 3, status: "CURRENT" },
   ]);
   const pending = authoritativePending(game.code);
-  assert.deepEqual(pending.continuation.participantProgress.participants.map(({ playerId, status }) => ({ playerId, status })), [
-    { playerId: first.id, status: "RESOLVED" },
+  assert.deepEqual(pending.continuation.participantProgress.participants.map(({ playerId, status, outcome }) => ({ playerId, status, ...(outcome ? { outcome } : {}) })), [
+    { playerId: first.id, status: "RESOLVED", outcome: "AVOIDED" },
     { playerId: skipped.id, status: "NO_LONGER_APPLICABLE" },
     { playerId: final.id, status: "CURRENT" },
   ]);
