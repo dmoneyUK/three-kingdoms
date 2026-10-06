@@ -4,7 +4,8 @@
 
 Use each repository document for one job only:
 
-- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` — product/UI design authority. It defines the intended UX, interaction semantics, responsive behavior, and reviewer-approved design requirements. It is **not** a task queue.
+- `docs/UX2-refine.md` — current UX2 product/UI design authority during the refinement phase. It defines the current reviewer-approved UX behavior, interaction presentation, responsive requirements, and measurable acceptance criteria. It is **not** a task queue.
+- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` — prior UX2 baseline/reference. Preserve its established architecture and closed foundations, but when a refinement requirement conflicts with older presentation wording, `docs/UX2-refine.md` is the current authority for refinement work.
 - `HANDOVER.md` — current execution handoff. It contains the latest relevant result and exactly one current or next bounded task. The Coding Agent maintains it.
 - `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` — execution method for autonomous UI/Layout work: startup, task boundaries, CI cadence, planning gate, and stop conditions.
 - `docs/AUTONOMOUS_UI_ROADMAP.md` — durable history only: completed milestones, important implementation evidence, and known deferred gaps. It is not task authority.
@@ -12,7 +13,7 @@ Use each repository document for one job only:
 
 Direct user instructions override repository process instructions.
 
-A design-document change does **not** automatically replace the active HANDOVER task. If the active bounded task can continue without contradicting the new design, finish it. If it would contradict the new design, stop and request review. Before planning the next task, always review the latest design revision.
+A design-document change does **not** automatically replace the active HANDOVER task. If the active bounded task can continue without contradicting the new design, finish it. If it would contradict the new design, stop and request review. Before planning the next task, always review the latest `docs/UX2-refine.md` revision.
 
 ## Working mode and branch
 
