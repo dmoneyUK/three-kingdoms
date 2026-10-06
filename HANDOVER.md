@@ -11,7 +11,7 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 `UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01` was pushed as `79b4e54`. It keeps the full server-selected ordered Group/AOE target scope separate from the single current participant; `remainingIds` remains continuation-only, and checkpoint updates require matching causal-frame proof. Actions run `37408039555` completed `cancelled`; no feature-CI pass is claimed. The current remote head `ceb5c6b` is a documentation-only status update whose Actions run `37408137461` completed successfully.
 
-`UX2.6-AOE-EXPLICIT-PARTICIPANT-PROGRESS-01` is implemented locally and ready for delivery. Standard Barbarian Invasion / Raining Arrows persist server-owned ordered participant statuses and expose them in `PresentationV2.groupResolution` only with matching root scope and causal proof. Local build passed; Presentation V2 tests passed 35/35; focused Worker/D1 tests passed 30/30; targeted ESLint and `git diff --check` passed. The current remote head's required CI passed; this local change has not yet been pushed or CI-validated.
+`UX2.6-AOE-EXPLICIT-PARTICIPANT-PROGRESS-01` was pushed as `7554fe4`. Standard Barbarian Invasion / Raining Arrows persist server-owned ordered participant statuses and expose them in `PresentationV2.groupResolution` only with matching root scope and causal proof. Local build passed; Presentation V2 tests passed 35/35; focused Worker/D1 tests passed 30/30; targeted ESLint and `git diff --check` passed. Actions run `37411145464` is `in_progress`; no feature-CI pass is claimed.
 
 ## Design checkpoint
 

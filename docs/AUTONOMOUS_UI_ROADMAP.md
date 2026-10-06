@@ -683,7 +683,8 @@ Only a proven regression or new Reviewer-approved design requirement does.
   unchanged; no player-facing UI, outcomes, or Reaction Chain history is added.
 - Local build passed; focused Presentation V2 tests passed 35/35; focused
   Worker/D1 API tests passed 30/30; targeted ESLint and `git diff --check`
-  passed. The feature change is not yet pushed, so no CI result is claimed.
+  passed. The feature was pushed as `7554fe4`; Actions run `37411145464` was
+  observed `in_progress`, so no CI pass is claimed.
 
 ## Known deferred semantic gaps
 
