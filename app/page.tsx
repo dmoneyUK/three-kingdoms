@@ -874,11 +874,30 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const bumperHarvestCompositionView = projectBumperHarvestStageCompositionForViewer(stage, viewerId, resolvePlayerDisplay);
   const isProvenGroupNegation = isOpenNegationResponse && groupTargetScope?.resolutionSemantics === "GROUP";
   const groupSource = projectGroupSourceForViewer(stage, viewerId, resolvePlayerDisplay);
+  const pausedGroupParticipants = groupTargetScope?.resolutionSemantics === "GROUP"
+    ? groupTargetScope.players.filter((participant) => participant.status === "PAUSED")
+    : [];
+  const isProvenGroupChildDamage = Boolean(display.visible
+    && stage.stage === "DAMAGE"
+    && stage.continuity.relation === "CHILD_FRAME"
+    && stage.rootOrigin?.frameId === stage.rootFrameId
+    && stage.rootOrigin.stage === "GROUP_RESOLUTION"
+    && stage.rootOrigin.effect === stage.groupCardKind
+    && stage.rootOrigin.source.id === stage.source.id
+    && stage.rootOrigin.source.known
+    && stage.source.id
+    && stage.source.known
+    && stage.groupCardKind
+    && groupTargetScope?.resolutionSemantics === "GROUP"
+    && stage.rootOrigin.targets.length === groupTargetScope.players.length
+    && stage.rootOrigin.targets.every((target, index) => target.id === groupTargetScope.players[index]?.id)
+    && pausedGroupParticipants.length === 1
+    && pausedGroupParticipants[0]?.id === stage.currentParticipant.id);
   const isProvenGroupComposition = Boolean(groupTargetScope?.resolutionSemantics === "GROUP"
     && stage.groupCardKind
     && stage.source.id
     && stage.source.known
-    && (stage.stage === "GROUP_RESOLUTION" || isProvenGroupNegation));
+    && (stage.stage === "GROUP_RESOLUTION" || isProvenGroupNegation || isProvenGroupChildDamage));
   const groupNegationNodes = isProvenGroupComposition && isProvenGroupNegation ? reactionChain.negationNodes : [];
   const isProvenOathComposition = Boolean(display.visible
     && stage.stage === "NEGATION"

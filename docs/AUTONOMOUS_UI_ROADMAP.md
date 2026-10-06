@@ -957,6 +957,26 @@ Only a proven regression or new Reviewer-approved design requirement does.
   review evidence only, not repository artifacts. Reviewer acceptance remains
   unclaimed.
 
+### UX2.24-GROUP-CHILD-DAMAGE-MOBILE-COMPOSITION-01 — Preserve the Group spine in child Damage
+
+- A coherent `DAMAGE` child frame now reuses the proven Group Source → root
+  action card → single Target Strip composition. The paused child participant
+  remains highlighted in that strip; duplicate Hero Focus, `AOE PARTICIPANTS`,
+  and repeated `ACTIVE SCOPE` are omitted. Incoherent root frame/source/effect/
+  target proof fails closed. No gameplay or projection protocol changed.
+- Focused browser validation passed 104/104 across the Group, Oath, and Bumper
+  Harvest composition specs; `room-safety-render` passed 19/19; build, targeted
+  ESLint, and `git diff --check` passed. 10-player/390px and 6-player/480px
+  screenshots were inspected. Current remote head `9195225` had Actions run
+  `37494887683` completed **success** before this task commit. Reviewer
+  acceptance remains unclaimed.
+- At the close boundary, remote Design blob
+  `530c8ec9b7ef5790b6a8bc27b694ac7b00499a6a` was unchanged. Oath's
+  authoritative recipient scope/composition and Bumper Harvest's ordered
+  progress/composition are already present in UX2.19–2.22; no duplicate
+  semantic projection is authorized. UX2.25 is the sole next task: wide-screen
+  geometry proof for the corrected Group child-Damage composition.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,

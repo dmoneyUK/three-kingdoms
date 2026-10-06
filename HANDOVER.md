@@ -5,12 +5,12 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-`UX2.22-BUMPER-HARVEST-MOBILE-STAGE-COMPOSITION-01` was pushed as `732da3771f94948989ea0845a452b63ebc934975`; exact push Actions run `37491852275` completed **success**. UX2.23 final gate: 9 fresh representative screenshots inspected; focused coverage across 16 browser specs passed 200/200. One explicit §12.6 mismatch remains in Group child-Damage composition; no Reviewer acceptance is claimed.
+`UX2.24-GROUP-CHILD-DAMAGE-MOBILE-COMPOSITION-01` is implemented locally: coherent Group child-Damage now retains the proven Source → root card → single Target Strip and omits duplicate Hero Focus / Group headings / Active Scope. Focused browser coverage passed 104/104; `room-safety-render` passed 19/19; build, targeted ESLint, and `git diff --check` passed. Before this task commit, current remote SHA `91952258877011792857bc54fd43457b7ca30c36` had exact Actions run `37494887683` completed **success**. Task push status is pending observation; no Reviewer acceptance is claimed.
 
 ## Design checkpoint
 
-Re-fetched and reviewed remote Design blob `530c8ec9b7ef5790b6a8bc27b694ac7b00499a6a` at the UX2.23 close/UX2.24 planning boundary; unchanged. §§12.0A, 12.6–12.9 reviewed. The final representative gate confirms a remaining child-Damage Group composition gap.
+Re-fetched remote Design blob `530c8ec9b7ef5790b6a8bc27b694ac7b00499a6a`; unchanged. At the UX2.24 close boundary, §§0–12.9 and the active implementation status were reviewed. Oath recipient scope/composition and Bumper Harvest ordered-progress/composition already exist in current code (UX2.19–2.22); do not duplicate those projections.
 
-## Current task — UX2.24-GROUP-CHILD-DAMAGE-MOBILE-COMPOSITION-01
+## Current task — UX2.25-GROUP-CHILD-DAMAGE-WIDE-GEOMETRY-01
 
-Extend §12.6's proven Source → root AOE card → single compact Group Target Strip to coherent nested `DAMAGE` frames. Remove the duplicate large Hero Focus, `AOE PARTICIPANTS` header, and repeated `ACTIVE SCOPE` for this Group path; retain only child/action guidance supported by current projections and keep private controls in the Dock. Use existing typed Group root/progress authority; fail closed on incoherent identity/scope. Add focused 10-player 390px and 6-player 480px regression/geometry evidence. No gameplay or projection-protocol changes. Stop after this one composition concern is validated, documented, committed, and pushed.
+After UX2.24's structural convergence, add focused measurable §12.6.12 geometry proof for a wide Group child-Damage view (6 players at 1440×900): stable Source/root-card/Target-Strip order and bounds, no viewport overflow, and clear separation from Guidance/Dock. Capture and inspect one screenshot. Make only a design-determined geometry correction if the proof exposes a concrete violation; no gameplay/projection changes. This is not the final UX2 gate.

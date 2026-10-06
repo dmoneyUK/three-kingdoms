@@ -305,7 +305,7 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
   };
 }
 
-function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, orderedProgressCase, negationHistoryCase, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority }) {
+function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority }) {
   const judgementStage = state === "judgement" || state === "judgement-local";
   const ordinaryTurn = state === "ordinary-turn";
   const borrowedSwordFixture = state === "borrowed-sword-play" || state === "borrowed-sword-no-target";
@@ -423,6 +423,15 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     : targetShiftFixture ? ["p4"] : projectedStageTargets;
   const bumperHarvestStageTargets = bumperCurrentId ? [bumperCurrentId] : [];
   const bumperHarvestRootOrigin = bumperHarvestChild ? { frameId: `browser-${state}-root`, stage: "SEQUENTIAL_CHOICE", sourceId: "p1", effect: "BumperHarvest", targetIds: playerIds } : null;
+  const groupChildRootOrigin = state === "group-observer" && groupProgressCase === "paused" && !orderedProgressCase && groupRootOriginCase !== "missing"
+    ? {
+      frameId: groupRootOriginCase === "frame-mismatch" ? `browser-${state}-other-root` : `browser-${state}-root`,
+      stage: "GROUP_RESOLUTION",
+      sourceId: groupRootOriginCase === "source-mismatch" ? "p3" : "p4",
+      effect: groupRootOriginCase === "effect-mismatch" ? "BarbarianInvasion" : "RainingArrows",
+      targetIds: groupRootOriginCase === "targets-mismatch" ? targets.slice(1) : targets,
+    }
+    : null;
   const presentationSnapshot = ordinaryTurn || selfTargetFixture || borrowedSwordFixture ? {
     identity: null,
     stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null },
@@ -446,7 +455,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     localControlActorId: bumperHarvestLocalFixture || oathNegationLocalFixture || privateNegationResponder ? actorId : undefined,
     effectOverride: bumperHarvestFixture ? "BumperHarvest" : borrowedSwordActiveFixture ? "borrowed_sword_attack" : orderedProgressCase ? "Attack" : groupNegationFixture ? "Raining Arrows" : oathNegationFixture ? "Oath of the Peach Garden" : effectOverride,
     childFrame: bumperHarvestChild || borrowedSwordActiveFixture || resolvedGroupProgressCase === "paused" || orderedProgressCase === "paused",
-    rootOrigin: bumperHarvestRootOrigin ?? borrowedSwordRootOrigin,
+    rootOrigin: bumperHarvestRootOrigin ?? borrowedSwordRootOrigin ?? groupChildRootOrigin,
     groupProgressCase: resolvedGroupProgressCase,
     orderedProgressCase,
     bumperHarvestProgressCase: bumperHarvestFixture && !bumperHarvestUnproven ? bumperHarvestComplete ? "complete" : state === "bumper-harvest-returned" ? "returned" : "valid" : null,
@@ -558,6 +567,7 @@ function readFixture() {
   const effectOverride = params.get("effect");
   const groupParticipantOverride = params.get("groupParticipant");
   const groupProgressCase = params.get("groupProgress") || null;
+  const groupRootOriginCase = params.get("groupRootOrigin") || "valid";
   const orderedProgressCase = params.get("orderedProgress") || null;
   const negationHistoryCase = params.get("negationHistory") || null;
   const timedResponse = params.get("timedResponse") === "1";
@@ -571,13 +581,13 @@ function readFixture() {
   const targetShiftCase = params.get("targetShift") || "valid";
   const targetCardCase = params.get("targetCardCase") || "valid";
   const targetCardKind = params.get("targetCardKind") === "Steal" ? "Steal" : "Dismantle";
-  return { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, orderedProgressCase, negationHistoryCase, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority };
+  return { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority };
 }
 
-const { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, orderedProgressCase, negationHistoryCase, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority } = readFixture();
+const { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority } = readFixture();
 const acknowledgeLocalPreview = new URLSearchParams(window.location.search).get("ackPreview") === "1";
 const root = createRoot(document.getElementById("root"));
-let fixtureRoom = browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, orderedProgressCase, negationHistoryCase, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority });
+let fixtureRoom = browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority });
 window.__browserActions = [];
 window.__browserRoom = fixtureRoom;
 const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false} error="" onAction={async (action, extra) => {

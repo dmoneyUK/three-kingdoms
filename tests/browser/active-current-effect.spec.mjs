@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, source = null, duelObserver = false, duelParticipantMissing = false, dyingParticipant = null, judgementParticipant = null, groupParticipant = null, groupProgress = null, orderedProgress = null, negationHistory = null, targetShiftCase = null }) {
+async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, source = null, duelObserver = false, duelParticipantMissing = false, dyingParticipant = null, judgementParticipant = null, groupParticipant = null, groupProgress = null, groupRootOrigin = null, orderedProgress = null, negationHistory = null, targetShiftCase = null }) {
   await page.setViewportSize({ width, height });
   const effectQuery = effect ? `&effect=${encodeURIComponent(effect)}` : "";
   const sourceQuery = source ? `&source=${encodeURIComponent(source)}` : "";
@@ -10,10 +10,11 @@ async function loadFixture(page, { count = 4, width, height = 900, state = "acti
   const judgementParticipantQuery = judgementParticipant ? `&judgementParticipant=${encodeURIComponent(judgementParticipant)}` : "";
   const groupParticipantQuery = groupParticipant ? `&groupParticipant=${encodeURIComponent(groupParticipant)}` : "";
   const groupProgressQuery = groupProgress ? `&groupProgress=${encodeURIComponent(groupProgress)}` : "";
+  const groupRootOriginQuery = groupRootOrigin ? `&groupRootOrigin=${encodeURIComponent(groupRootOrigin)}` : "";
   const orderedProgressQuery = orderedProgress ? `&orderedProgress=${encodeURIComponent(orderedProgress)}` : "";
   const negationHistoryQuery = negationHistory ? `&negationHistory=${encodeURIComponent(negationHistory)}` : "";
   const targetShiftCaseQuery = targetShiftCase ? `&targetShift=${encodeURIComponent(targetShiftCase)}` : "";
-  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${sourceQuery}${duelObserverQuery}${missingDuelParticipantQuery}${dyingParticipantQuery}${judgementParticipantQuery}${groupParticipantQuery}${groupProgressQuery}${orderedProgressQuery}${negationHistoryQuery}${targetShiftCaseQuery}`);
+  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${sourceQuery}${duelObserverQuery}${missingDuelParticipantQuery}${dyingParticipantQuery}${judgementParticipantQuery}${groupParticipantQuery}${groupProgressQuery}${groupRootOriginQuery}${orderedProgressQuery}${negationHistoryQuery}${targetShiftCaseQuery}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
@@ -88,41 +89,82 @@ for (const viewport of [
   });
 }
 
-test("AOE participant progress stays visible and compact for a 10-player child-frame continuation", async ({ page }) => {
-  await loadFixture(page, { count: 10, width: 390, height: 844, state: "group-observer", groupProgress: "paused" });
-  const stage = page.locator('[aria-label="Interaction Stage"][data-stage="DAMAGE"]');
-  const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
-  const cards = scope.locator(".group-target-card");
-
-  await expect(scope).toBeVisible();
-  await expect(scope).toHaveAttribute("data-participant-density", "compact");
-  await expect(cards).toHaveCount(9);
-  await expect(cards.nth(0)).toHaveAttribute("data-group-target-id", "p2");
-  await expect(cards.nth(0)).toHaveAttribute("data-participant-status", "RESOLVED");
-  await expect(cards.nth(1)).toHaveAttribute("data-group-target-id", "p1");
-  await expect(cards.nth(1)).toHaveAttribute("data-participant-status", "PAUSED");
-  await expect(cards.nth(2)).toHaveAttribute("data-group-target-id", "p3");
-  await expect(cards.nth(2)).toHaveAttribute("data-participant-status", "PENDING");
-  const geometry = await page.evaluate(() => {
-    const scopeElement = document.querySelector('[data-group-target-scope="original"]');
-    const cardsElement = scopeElement?.querySelector(".group-target-cards");
-    const stageElement = document.querySelector(".interaction-stage");
-    const dockElement = document.querySelector(".local-player-dock");
-    const scopeRect = scopeElement?.getBoundingClientRect();
-    const stageRect = stageElement?.getBoundingClientRect();
-    const dockRect = dockElement?.getBoundingClientRect();
-    return {
-      scrollWidth: cardsElement?.scrollWidth ?? 0,
-      clientWidth: cardsElement?.clientWidth ?? 0,
-      scopeRight: scopeRect?.right ?? Infinity,
-      viewportWidth: window.innerWidth,
-      stageBottom: stageRect?.bottom ?? Infinity,
-      dockTop: dockRect?.top ?? -Infinity,
+for (const viewport of [
+  { count: 10, width: 390, height: 844 },
+  { count: 6, width: 480, height: 900 },
+]) {
+  test(`Group child Damage preserves the root causal spine at ${viewport.count} players / ${viewport.width}px`, async ({ page }) => {
+    const measure = async (state) => {
+      await loadFixture(page, { ...viewport, state: "group-observer", groupProgress: state });
+      const stage = page.locator(".interaction-stage");
+      const source = stage.locator('[data-group-source="proven"][data-group-source-player-id="p4"]');
+      const root = stage.locator('[data-group-root-action="RainingArrows"]');
+      const strip = stage.locator('[aria-label="Group Target Strip"][data-group-progress="proven"]');
+      await expect(stage).toBeVisible();
+      await expect(source).toBeVisible();
+      await expect(root).toBeVisible();
+      await expect(strip).toBeVisible();
+      return {
+        boxes: await Promise.all([source.boundingBox(), root.boundingBox(), strip.boundingBox()]),
+        stage: await stage.boundingBox(),
+        dock: await page.locator(".local-player-dock").boundingBox(),
+      };
     };
+
+    const rootGeometry = await measure("valid");
+    const rootStage = page.locator('.interaction-stage[data-stage="GROUP_RESOLUTION"]');
+    await expect(rootStage).toHaveAttribute("data-group-composition", "true");
+
+    const pausedGeometry = await measure("paused");
+    const stage = page.locator('.interaction-stage[data-stage="DAMAGE"]');
+    const root = stage.locator('[data-group-root-action="RainingArrows"]');
+    const strip = stage.locator('[aria-label="Group Target Strip"][data-group-progress="proven"]');
+    const cards = strip.locator(".group-target-card");
+
+    await expect(stage).toHaveAttribute("data-continuity", "CHILD_FRAME");
+    await expect(stage).toHaveAttribute("data-group-composition", "true");
+    await expect(stage).not.toHaveAttribute("data-current-effect");
+    await expect(stage.locator(".hero-focus, .medium-participant-card, .interaction-stage-current-effect, [data-stage-event-summary], .interaction-stage-meta-region, .reaction-chain")).toHaveCount(0);
+    await expect(stage.locator(".group-target-scope")).toHaveCount(1);
+    await expect(strip.locator(":scope > header")).toHaveCount(0);
+    await expect(stage).not.toContainText("AOE PARTICIPANTS");
+    await expect(stage).not.toContainText("ACTIVE SCOPE");
+    for (const box of [...rootGeometry.boxes, ...pausedGeometry.boxes]) expect(box).not.toBeNull();
+    await expect(cards).toHaveCount(viewport.count - 1);
+    await expect(cards.nth(0)).toHaveAttribute("data-group-target-id", "p2");
+    await expect(cards.nth(0)).toHaveAttribute("data-participant-status", "RESOLVED");
+    await expect(cards.nth(1)).toHaveAttribute("data-group-target-id", "p1");
+    await expect(cards.nth(1)).toHaveAttribute("data-participant-status", "PAUSED");
+    await expect(cards.nth(2)).toHaveAttribute("data-group-target-id", "p3");
+    await expect(cards.nth(2)).toHaveAttribute("data-participant-status", "PENDING");
+    await expect(root).toHaveAttribute("data-active-head", "true");
+    await expect(page.locator('.local-player-dock[data-player-anchor="p3"]')).toBeVisible();
+
+    for (let index = 0; index < rootGeometry.boxes.length; index++) {
+      for (const edge of ["x", "y", "width", "height"]) {
+        expect(Math.abs(pausedGeometry.boxes[index][edge] - rootGeometry.boxes[index][edge]), `composition ${index} ${edge}`).toBeLessThanOrEqual(1);
+      }
+    }
+    expect(pausedGeometry.stage.x).toBeGreaterThanOrEqual(0);
+    expect(pausedGeometry.stage.x + pausedGeometry.stage.width).toBeLessThanOrEqual(viewport.width);
+    expect(pausedGeometry.stage.y + pausedGeometry.stage.height).toBeLessThanOrEqual(pausedGeometry.dock.y);
+    const stripGeometry = await strip.evaluate((element) => ({
+      scrollWidth: element.querySelector(".group-target-cards")?.scrollWidth ?? 0,
+      clientWidth: element.querySelector(".group-target-cards")?.clientWidth ?? 0,
+      right: element.getBoundingClientRect().right,
+    }));
+    expect(stripGeometry.scrollWidth).toBeGreaterThanOrEqual(stripGeometry.clientWidth);
+    expect(stripGeometry.right).toBeLessThanOrEqual(viewport.width);
+    expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
   });
-  expect(geometry.scrollWidth).toBeGreaterThan(geometry.clientWidth);
-  expect(geometry.scopeRight).toBeLessThanOrEqual(geometry.viewportWidth);
-  expect(geometry.stageBottom).toBeLessThanOrEqual(geometry.dockTop);
+}
+
+test("Group child Damage falls back when typed root-origin proof is missing or mismatched", async ({ page }) => {
+  for (const groupRootOrigin of ["missing", "frame-mismatch", "source-mismatch", "effect-mismatch", "targets-mismatch"]) {
+    await loadFixture(page, { count: 10, width: 390, height: 844, state: "group-observer", groupProgress: "paused", groupRootOrigin });
+    await expect(page.locator('[data-group-composition="true"]')).toHaveCount(0);
+    await expect(page.locator('[data-group-root-action="RainingArrows"]')).toHaveCount(0);
+  }
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 });
 
