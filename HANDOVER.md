@@ -9,7 +9,7 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 `CI-REPAIR-ROOM-SAFETY-STAGE-LABEL-ASSERTION-01` was pushed as `5e476d9`. Actions run `37405661888` completed successfully; it repairs the sole failure in `37404719333` by replacing the obsolete `INTERACTION STAGE` text assertion with an accessible-name check and an assertion against visible architectural chrome.
 
-`UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01` now keeps the full server-selected ordered Group/AOE target scope separate from the single current participant. `remainingIds` remains continuation-only; checkpoint updates require matching causal-frame proof. Local build passed; focused API tests passed 48/48; targeted ESLint and `git diff --check` passed. The feature change has not yet been pushed, so it has no Actions result recorded.
+`UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01` was pushed as `79b4e54`. It keeps the full server-selected ordered Group/AOE target scope separate from the single current participant; `remainingIds` remains continuation-only, and checkpoint updates require matching causal-frame proof. Local build passed; focused API tests passed 48/48; targeted ESLint and `git diff --check` passed. Actions run `37408039555` for this SHA is `in_progress`; no feature-CI pass is claimed.
 
 ## Design checkpoint
 

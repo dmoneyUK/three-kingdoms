@@ -669,7 +669,8 @@ Only a proven regression or new Reviewer-approved design requirement does.
   deriving progress from the continuation tail.
 - Local build passed; the focused engine-backed API set passed 48/48; targeted
   ESLint and `git diff --check` passed. The feature push-triggered Actions result
-  will be recorded in `HANDOVER.md` when observed.
+  was run `37408039555` and was `in_progress` immediately after push; the current
+  CI state is recorded in `HANDOVER.md`.
 
 ## Known deferred semantic gaps
 
