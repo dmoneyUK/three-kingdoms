@@ -720,8 +720,21 @@ for (const viewport of [
     await expect(scope.locator(".group-target-card")).toHaveCount(3);
     await expect(chain).toHaveAttribute("aria-label", "AOE Negation Response");
     await expect(chain.locator('[data-reaction-node="root"]')).toHaveCount(0);
-    await expect(chain.locator('[data-reaction-node="negation"]')).toHaveCount(1);
-    await expect(chain.locator('[data-reaction-node="active"]')).toContainText("Waiting for response...");
+    const publicHead = chain.locator('[data-reaction-node="negation"]');
+    const waitingNode = chain.locator('[data-reaction-node="active"]');
+    await expect(publicHead).toHaveCount(1);
+    await expect(publicHead).toContainText("Player 1 played this card.");
+    await expect(waitingNode).toContainText("Waiting for response...");
+    const branchStyles = await chain.evaluate((element) => {
+      const head = element.querySelector('[data-reaction-node="negation"]');
+      const waiting = element.querySelector('[data-reaction-node="active"]');
+      return {
+        headBorder: head ? getComputedStyle(head).borderTopColor : "",
+        waitingBorder: waiting ? getComputedStyle(waiting).borderTopColor : "",
+      };
+    });
+    expect(branchStyles.headBorder).toBe("rgb(240, 195, 94)");
+    expect(branchStyles.waitingBorder).toBe("rgb(101, 125, 114)");
     await expect(stage).not.toContainText("Player 3 played this card.");
     const geometry = await chain.evaluate((element) => {
       const rect = element.getBoundingClientRect();

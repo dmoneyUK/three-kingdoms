@@ -1879,8 +1879,21 @@
 .interaction-stage[data-group-negation="true"] .reaction-chain-group li[data-reaction-node="negation"] {
   border-color: #657d72;
 }
+.interaction-stage[data-group-negation="true"] .reaction-chain-group li[data-reaction-node="negation"]:nth-last-child(2) {
+  border-color: #f0c35e;
+  background: #60471e;
+  box-shadow: inset 0 0 0 1px #f0c35e44;
+}
+.interaction-stage[data-group-negation="true"] .reaction-chain-group li[data-reaction-node="negation"]:nth-last-child(2) small {
+  color: #fff0bd;
+}
+.interaction-stage[data-group-negation="true"] .reaction-chain-group li[data-reaction-node="negation"] span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .interaction-stage[data-group-negation="true"] .reaction-chain-group li[data-reaction-node="active"] {
-  border-color: #c99d55;
+  border-color: #657d72;
 }
 .play-table[data-seat-topology="side-column"] .hero-focus-body { display: contents; }
 .play-table[data-seat-topology="side-column"] .hero-focus-portrait { grid-area: portrait; width: 90px; height: 113px; align-self: start; }

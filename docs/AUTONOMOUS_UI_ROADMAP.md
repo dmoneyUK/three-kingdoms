@@ -769,6 +769,19 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Actions run `37457008657` **in_progress**; no result for this feature push is
   claimed.
 
+### UX2.11-AOE-MOBILE-NEGATION-CARD-01 — Active public Negation branch head
+
+- Proven Group/AOE Negation branches now visually distinguish the latest public
+  Negation node as the active gold card-like head while keeping the response
+  waiting node neutral. Public actor/card text remains projection-backed, the
+  root Action card and Target Strip remain stable, and private responder data
+  remains outside the Stage.
+- Local validation passed: build; the focused public Negation branch slice 5/5;
+  the focused active-current-effect plus protected `ui19.spec.mjs` Group/AOE
+  slice 64/64; targeted ESLint; and `git diff --check`. The pre-commit remote
+  SHA `d5bb7d5` had push-triggered Actions run `37457268458`
+  **in_progress**; no result for this feature push is claimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,
