@@ -5,37 +5,36 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-`UX2.REFINE-KIRIN-BOW-UNIFIED-TARGET-CARD-MODAL-01` was pushed as
-`da741ed044f83e581105b1bc555aeb938a7059cc`; Actions run `37641710984` failed
-on that exact SHA at workflow level. The only listed job, `build-and-test`, and
-all its steps passed; no deploy job was created. The workflow annotation is
-`Internal server error` (correlation ID
-`b81d14c9-f454-4e6a-8be8-d5e35be4b42f`), and GitHub rejected rerunning the run.
-Current Dismantle/Steal implementation passes the focused target-card browser
-spec 67/67 plus targeted ESLint and `git diff --check`. Reviewer acceptance is
-not claimed.
+`UX2.REFINE-DISMANTLE-STEAL-UNIFIED-TARGET-CARD-MODAL-01` was pushed as
+`792d687901b1a2d85d5bd0145fbd0582d70386f4`. Its focused target-card browser
+spec passed 67/67; targeted ESLint and `git diff --check` passed. The preceding
+exact-HEAD run `37644841686` failed only at `npm test`: two stale Dismantle/Steal
+assertions expected the superseded Hero Focus composition. Lint, build, and
+browser steps passed. The test-only assertion repair passes local `npm test`
+(exit 0), targeted ESLint, and `git diff --check`. CI REPAIR PUSHED —
+VALIDATION PENDING. Do not resume feature delivery until that exact repair SHA
+is green.
+Reviewer acceptance is not claimed. Deferred design gap: active Bumper Harvest
+choice has no authoritative deadline in the current projection
+(`countdownUntil` comes only from completion), so do not synthesize a chooser
+timer.
 
 ## Design checkpoint
 
 Latest complete remote design review: `docs/UX2-refine.md` blob
-`f8d1ff3bd61be6177de0cf562b3cd38dfb83d888` (unchanged). Re-reviewed §4C.15–16
-and §4C.21, §4C.24–28: Dismantle and Steal share the modal, with effect-correct
-copy, only authoritative eligible Hand/Equipment/Judgment cards, exact
-selection/revision/privacy behavior, and responsive/accessibility proof. §5
-still defers the Hero/player graph until active pre-§5 refinements close.
+`f8d1ff3bd61be6177de0cf562b3cd38dfb83d888` (unchanged), fully re-read at the
+task boundary. §1.5/§1.8 require Guan Yu and Zhao Yun conversion responses to
+remain activated in the Hero Skills band without duplicate generic actions.
+§5 still defers the Hero/player graph until active pre-§5 refinements close.
 
 ## Current task
 
-`UX2.REFINE-DISMANTLE-STEAL-UNIFIED-TARGET-CARD-MODAL-01` — route only proven
-external Dismantle / Burning Bridges and Steal `target_card` decisions through
-the shared modal. Preserve CurrentAction eligible keys and the exact existing
-`choose_target_card` payload; use “Choose 1 card to discard/obtain” and
-USE DISMANTLE / USE STEAL; prove Hand, Equipment, Judgment, revision safety,
-privacy, cancellation, no duplicate Dock Confirm, and modal/Stage/Dock geometry
-at 320-class, 390×844, 480×900, and wide viewports. Unproven targets/keys keep
-the existing safe fallback. Do not change Hero/player geometry, game rules, or
-projection semantics. Before committing, inspected latest run `37641710984`
-for exact remote HEAD `da741ed…`: its sole actual job `build-and-test` passed;
-the workflow-level internal error is recorded separately. Following the
-Reviewer’s job-level CI cadence, commit this task without waiting for its new
-run; inspect that run before the next commit.
+`UX2.REFINE-HERO-CONVERSION-RESPONSE-SKILLS-BAND-01` — add focused browser
+proof that Guan Yu `God of War` and Zhao Yun `Braveheart` activate the existing
+authoritative conversion-response providers from the Skills band. Cover red
+card→Attack, Dodge→Attack, and Attack→Dodge; assert only CurrentAction-eligible
+cards, exact existing `respond` provider/card payloads, no duplicate generic
+provider control, and unavailable state when the provider is absent. Do not
+change rules, provider semantics, public projection, or deferred Hero/player
+Stage geometry. At the next commit boundary, inspect the latest actual job for
+the current remote HEAD; do not wait for this task's own CI after pushing.

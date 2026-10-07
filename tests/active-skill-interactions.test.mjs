@@ -477,38 +477,43 @@ test("pending target-card picker keeps opaque selection local across Confirm and
 });
 
 for (const cardKind of ["Steal", "Dismantle"]) {
-test(`${cardKind} pending card choice uses proven Hero Focus and the Local Dock action`, async () => {
+test(`${cardKind} pending card choice uses the shared modal without duplicate Local Dock controls`, async () => {
     const room = pendingTargetCardRoom("target-card-focus", { cardKind, withFocusProjection: true });
-    const cardLabel = cardKind === "Dismantle" ? "Burning Bridges" : cardKind;
+    const title = cardKind === "Dismantle" ? "DISMANTLE" : "STEAL";
+    const instruction = cardKind === "Dismantle" ? "Choose 1 card to discard" : "Choose 1 card to obtain";
+    const useLabel = `Use ${cardKind}`;
     const actionCalls = [];
     let renderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
-    const focus = renderer.root.findByProps({ "data-hero-focus-mode": "SELECTABLE DETAIL" });
-    assert.equal(focus.props["data-hero-focus-player-id"], "p2", "only the proven external target owns the expanded detail");
-    const details = renderer.root.findAll((node) => node.props?.["data-selectable-detail"] === "true");
-    assert.equal(details.length, 1);
-    assert.equal(details[0].props["aria-label"], `${cardLabel} selection`);
-    assert.equal(renderer.root.findAll((node) => node.props?.role === "dialog").length, 0, "the separate target-card modal is replaced only with proven focus");
+    const modal = renderer.root.findByProps({ role: "dialog", "aria-label": `${cardKind} target card selection` });
+    assert.ok(modal, "the proven external choice uses the shared accessible modal");
+    assert.equal(text(renderer, title).length, 1);
+    assert.equal(text(renderer, instruction).length, 1);
+    assert.equal(renderer.root.findAll((node) => node.props?.role === "dialog").length, 1);
+    assert.equal(renderer.root.findAll((node) => node.props?.["data-hero-focus-mode"] === "SELECTABLE DETAIL").length, 0, "the choice is not duplicated in Hero Focus");
     assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["data-target-card-zone"], "hand-position");
     assert.equal(button(renderer, { "aria-label": "Judgement: Lightning" }).props["data-target-card-zone"], "judgement");
     assert.equal(button(renderer, { "aria-label": "Equipment: Nio Shield" }).props["data-target-card-zone"], "equipment");
-    assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "Local Dock confirmation waits for one eligible selection");
+    assert.equal(button(renderer, { children: useLabel }).props.disabled, true, "modal confirmation waits for one eligible selection");
+    assert.equal(buttons(renderer, { children: "Confirm" }).length, 0, "no duplicate footer Confirm is rendered");
+    assert.equal(consoleButtons(renderer).filter((node) => node.props.children === "Cancel").length, 0, "no duplicate footer Cancel is rendered");
+    assert.equal(button(renderer, { children: "Cancel" }).props.disabled, false, "modal owns local cancellation");
 
     const stageBefore = renderer.root.findByProps({ className: "interaction-stage" }).props["data-presentation-revision"];
     await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
     assert.equal(actionCalls.length, 0, "hidden-position selection remains local");
     assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], true);
-    assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
+    assert.equal(button(renderer, { children: useLabel }).props.disabled, false);
     assert.equal(renderer.root.findByProps({ className: "interaction-stage" }).props["data-presentation-revision"], stageBefore, "private choice does not mutate public presentation");
 
     await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
-    assert.equal(actionCalls.length, 0, "Dock Cancel remains local");
+    assert.equal(actionCalls.length, 0, "modal Cancel remains local");
     assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false);
     await act(async () => { button(renderer, { "aria-label": "Equipment: Nio Shield" }).props.onClick(); });
-    await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
-    assert.deepEqual(actionCalls, [["choose_target_card", { targetCardZone: "equipment", targetCardId: "target-armor" }]], "Dock Confirm keeps the existing public-card payload exactly once");
+    await act(async () => { button(renderer, { children: useLabel }).props.onClick(); });
+    assert.deepEqual(actionCalls, [["choose_target_card", { targetCardZone: "equipment", targetCardId: "target-armor" }]], "modal action keeps the existing public-card payload exactly once");
     assert.equal(text(renderer, "target-armor").length, 0, "physical object IDs are not rendered as player-facing text");
     await act(async () => { renderer.unmount(); });
 });
