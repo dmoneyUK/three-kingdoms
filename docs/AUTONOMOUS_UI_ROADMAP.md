@@ -1587,6 +1587,15 @@ Only a proven regression or new Reviewer-approved design requirement does.
   390×844, 480×900, and 1440×900. The §4A task is still open because active
   Bumper Harvest choice has no server-owned deadline or approved timeout rule.
 
+### UX2.REFINE-MOBILE-TOP-DEAD-SPACE-P5-01 — Stable mobile top-row Seats
+
+- A real four-player room measured the pre-fix top-row board gap at 55px with
+  no visible board-status row. Mobile CSS now places the board within 12px of
+  the play-table top; real-room geometry proof preserves seat alignment,
+  readable card bounds, target-center hit ownership, system-cluster clearance,
+  and zero horizontal overflow at 390×844 and 480×900. Focused P5 browser
+  proof passed 2/2. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

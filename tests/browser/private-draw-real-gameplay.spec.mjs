@@ -62,8 +62,12 @@ async function openPlayer(page, seed, playerIndex, viewport) {
   await page.addInitScript(({ code, token, name }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
   }, { code: seed.code, token: member.token, name: member.name });
+  const projectedRoom = page.waitForResponse((response) => response.url().startsWith(`${API}/api/rooms?`)
+    && response.request().method() === "GET", { timeout: 15_000 });
   await page.goto(`${API}/`);
-  await expect(page.locator(".game-shell")).toBeVisible();
+  const roomResponse = await projectedRoom;
+  expect(roomResponse.ok(), `room projection returned HTTP ${roomResponse.status()}`).toBeTruthy();
+  await expect(page.locator(".game-shell")).toBeVisible({ timeout: 15_000 });
   return member;
 }
 

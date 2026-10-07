@@ -4795,3 +4795,17 @@
     font-size: 10px;
   }
 }
+
+/* UX2 P5: the former board-status row is not rendered, so mobile top-row
+   Seats should use the play-table's actual top edge instead of reserving it. */
+@media (max-width: 700px) {
+  .game-shell .play-table[data-seat-topology="top-row"] > .player-board {
+    inset: 6px 5px 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .game-shell .play-table[data-seat-topology="top-row"] > .player-board {
+    inset: 6px 3px 7px;
+  }
+}
