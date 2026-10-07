@@ -14,6 +14,16 @@ projected target + generic Confirm continuation, submits the unchanged provider
 payload, has no duplicate Action Row activation, and stays disabled without
 authority. It is test/fixture-only; no rules or production behavior changed.
 
+This handoff also closes `UX2.REFINE-LIU-BEI-BENEVOLENCE-SKILLS-BAND-01` with
+browser proof at 390×844 and 1440×900: authoritative eligible card/target
+selection, generic Confirm with the exact existing trigger payload, no
+duplicate Action Row activation, and disabled state without the provider.
+Focused proof passed 3/3; spec ESLint and `git diff --check` passed. This is
+test/fixture-only. The latest run before this change, `37657971219` for exact
+SHA `961f818`, succeeded across all jobs. The current base `afab4ec` has no
+associated Actions run or commit checks; it only updates this handoff.
+Reviewer acceptance is not claimed.
+
 Test-suite optimization is complete/out of scope for this handoff. Do not spend
 this task re-auditing CI/test optimization.
 
