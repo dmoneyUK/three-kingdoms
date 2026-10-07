@@ -1285,6 +1285,15 @@ Only a proven regression or new Reviewer-approved design requirement does.
   6/6. Exact repair SHA passed Actions run `37584932814` (`build-and-test`,
   `deploy`). Reviewer acceptance is not claimed.
 
+### UX2.REFINE-PAN-FENG-AXE-PASSIVE-PRESENTATION-01 — Automatic skill identity
+
+- Pan Feng's automatic Axe of Insanity now has a stable, non-actionable tile in
+  the Local Skills band. The roster geometry/no-action regression passed 6/6,
+  targeted ESLint and `git diff --check` passed, with no server or continuation
+  changes. Commit `15e0e264f02d146c96fc2972416d3c52b8eb8862` passed exact Actions
+  run `37589042247` (`build-and-test`, `deploy`). Reviewer acceptance is not
+  claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
