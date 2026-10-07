@@ -857,11 +857,12 @@ for (const viewport of VIS_04B_VIEWPORTS) {
           children: [...element.children].map((child) => child.dataset.stageSystemCluster === "true" ? "stage-system-cluster" : child.className),
           cluster: bounds(cluster),
           menu: bounds(cluster.querySelector(".stage-system-menu-trigger")),
+          guidance: bounds(document.querySelector(".local-player-dock .console-guidance")),
         };
       });
       const systemCluster = page.locator('.interaction-safe-zone > .stage-system-cluster');
       const systemMenu = systemCluster.getByRole("button", { name: "System menu" });
-      const boundaryOffset = viewport.width >= 600 ? 5 : 4;
+      const guidanceGap = safeZoneVisuals.guidance.top - safeZoneVisuals.cluster.bottom;
 
       expect(await page.locator('.play-table[data-seat-topology="top-row"] .interaction-safe-zone').count()).toBe(1);
       expect(layout.safeZone.bottom).toBeCloseTo(layout.playTable.bottom - 1, 4);
@@ -875,7 +876,8 @@ for (const viewport of VIS_04B_VIEWPORTS) {
       expect(safeZoneVisuals.menu.width).toBeGreaterThanOrEqual(44);
       expect(safeZoneVisuals.menu.height).toBeGreaterThanOrEqual(44);
       expect(safeZoneVisuals.cluster.right).toBeCloseTo(layout.safeZone.right - 14, 0);
-      expect(safeZoneVisuals.cluster.bottom).toBeCloseTo(layout.safeZone.bottom + boundaryOffset, 0);
+      expect(guidanceGap, JSON.stringify({ viewport, safeZoneVisuals })).toBeGreaterThanOrEqual(8);
+      expect(guidanceGap, JSON.stringify({ viewport, safeZoneVisuals })).toBeLessThanOrEqual(12);
       const systemControlOverlaps = orderedSeats.filter((seat) => Math.min(seat.right, safeZoneVisuals.cluster.right) > Math.max(seat.left, safeZoneVisuals.cluster.left)
         && Math.min(seat.bottom, safeZoneVisuals.cluster.bottom) > Math.max(seat.top, safeZoneVisuals.cluster.top));
       expect(systemControlOverlaps, "Stage controls do not cover fixed opponent seats").toEqual([]);
@@ -912,9 +914,18 @@ for (const viewport of VIS_04B_VIEWPORTS) {
       const seats = await geometry(page);
       const result = await interactionGeometry(page);
       const focusPortrait = await page.locator(".hero-focus-portrait").boundingBox();
+      const systemCluster = await page.locator(".stage-system-cluster").boundingBox();
+      const guidance = await page.locator(".local-player-dock .console-guidance").boundingBox();
+      const guidanceGap = guidance.y - (systemCluster.y + systemCluster.height);
+      const overlappingStageRegions = result.stageRegions.filter(({ bounds, hasContent, insideStage, visible }) => insideStage && visible && hasContent
+        && Math.min(bounds.right, systemCluster.x + systemCluster.width) > Math.max(bounds.left, systemCluster.x)
+        && Math.min(bounds.bottom, systemCluster.y + systemCluster.height) > Math.max(bounds.top, systemCluster.y));
 
       await expect(page.locator(".interaction-stage")).toBeVisible();
       await assertVisible(page.locator(".local-player-dock"), "local player dock");
+      expect(guidanceGap, JSON.stringify({ state, viewport, systemCluster, guidance })).toBeGreaterThanOrEqual(8);
+      expect(guidanceGap, JSON.stringify({ state, viewport, systemCluster, guidance })).toBeLessThanOrEqual(12);
+      expect(overlappingStageRegions, JSON.stringify({ state, viewport, systemCluster })).toEqual([]);
       expect(result.safeZone).not.toBeNull();
       expect(result.stage).not.toBeNull();
       expect(result.playTable).not.toBeNull();

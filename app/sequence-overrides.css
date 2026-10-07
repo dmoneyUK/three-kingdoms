@@ -3984,6 +3984,10 @@
 @media (min-width: 600px) {
   .game-shell .interaction-safe-zone > .stage-system-cluster { bottom: -5px; }
 }
+.game-shell .play-table[data-seat-topology="top-row"] > .interaction-safe-zone > .stage-system-cluster { bottom: 4px; }
+@media (min-width: 600px) {
+  .game-shell .play-table[data-seat-topology="top-row"] > .interaction-safe-zone > .stage-system-cluster { bottom: 3px; }
+}
 .stage-system-menu {
   position: relative;
   flex: 0 0 auto;
