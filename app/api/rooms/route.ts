@@ -247,7 +247,6 @@ function damageSufferedActorId(source: PlayerRow | null | undefined, target: Pla
   const options = getTriggeredEffects(context, resolvedEffectIds, resolvedDamagePointEffectIds);
   return options.map((option) => triggerActorId(option.effectId, context) ?? target.id).find((actorId) => actorId === target.id || actorId === source?.id) ?? null;
 }
-type CausalCreation<T> = { value: T; createdEnvelope: CausalEnvelope | null };
 function damageTriggerPending(source: PlayerRow, target: PlayerRow, resumePhase: string, sequenceStartCardId: string, readyAfterEventId?: string, origin?: AttackOrigin, resumePlayerId?: string, physicalSuit?: Card["suit"], causal?: CausalContext): CausalCreation<TriggerPending> {
   const root = causal ? null : createCausalRoot({ stage: "DAMAGE", origin: { originSourceId: source.id, originEffect: origin ?? "damage", originalTargetIds: [target.id] }, current: { currentSourceId: source.id, currentEffect: origin ?? "damage", currentTargetIds: [target.id], resolvingPlayerId: source.id } });
   const resolvedCausal = causal ?? root!.context;

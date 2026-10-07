@@ -1503,6 +1503,18 @@ Only a proven regression or new Reviewer-approved design requirement does.
   1440×900. Targeted ESLint and `git diff --check` passed. This is not §4D
   real-game reachability proof; Reviewer acceptance is not claimed.
 
+### UX2.REFINE-REAL-SERVER-TO-BROWSER-PROOF-P1-01 — Validation foundation
+
+- Removed the duplicate `CausalCreation` declaration that prevented the local
+  `vinext dev` dependency scan; a real product `POST /api/rooms` create request
+  returned HTTP 201. A production Worker browser test now creates a room through
+  Host Game, adds real server-backed test seats, starts it, finishes hero
+  selection, and reaches `.game-shell` with server-generated CurrentAction.
+  Build, focused browser 1/1, targeted ESLint, and `git diff --check` passed.
+  Pre-commit Actions run `37669875927` on exact parent SHA
+  `2a4ed5f94c6694d8e0095f28f8e7c3d19a9103a4` completed success. Reviewer
+  acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
