@@ -2262,6 +2262,12 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const wushengButtonDisabled = busy || wushengMode === null && (!canUseWushengInPlay && !(responseDecisionReady && canUseWushengInResponse) || canUseWushengInPlay && presentationBusy);
   const longdanButtonDisabled = busy || longdanMode === null && (!canUseLongdanInPlay && !(responseDecisionReady && canUseLongdanInResponse) || canUseLongdanInPlay && presentationBusy);
   const heroSkillButtons: HeroSkillButtonModel[] = (localHero?.skills ?? []).map((skill) => {
+    if (me?.hero === "zhuge-liang" && skill.name === "Stargazing" && privateDeckReorder) return {
+      name: skill.name,
+      description: skill.description,
+      enabled: false,
+      active: true,
+    };
     if (me?.hero === "guan-yu" && skill.name === "God of War") return {
       name: skill.name,
       description: skill.description,

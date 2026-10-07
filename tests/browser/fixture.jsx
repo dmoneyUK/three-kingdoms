@@ -156,6 +156,13 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
     version: 3, kind: "trigger", actorId, deadline: 0, reason: "You may use Stargazing", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
     triggerOptions: [{ effectId: "zhuge_liang_stargazing", label: "Stargazing", description: "Privately reorder the top cards of the deck." }],
   };
+  if (state === "stargazing-active") return {
+    version: 3, kind: "deck_reorder", actorId, deadline: 0, reason: "Stargazing: order private cards", legalActions: ["trigger"],
+    deckReorder: { cards: [card("browser-stargazing-private-attack", "Attack")], minTop: 0, maxTop: 1 },
+  };
+  if (state === "stargazing-active-observer") return {
+    version: 3, kind: "deck_reorder", actorId, deadline: 0, reason: "Waiting for the private deck reorder", legalActions: [],
+  };
   if (state === "judgement" || state === "judgement-local") return {
     version: 3, kind: "trigger", actorId, deadline: 0, reason: "Resolve the current Judgement", legalActions: [],
   };
@@ -436,7 +443,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
   const playerIds = Array.from({ length: count }, (_, index) => `p${index + 1}`);
   const bumperCurrentId = bumperHarvestComplete ? null : state === "bumper-harvest-returned" ? playerIds[2] ?? playerIds[1] : state === "bumper-harvest-dense" ? playerIds[playerIds.length - 2] : playerIds[1];
   const meId = bumperHarvestSourceViewer || oathNegationSourceViewer ? "p1" : bumperHarvestLocalFixture || oathNegationLocalFixture ? "p3" : groupNegationLocalFixture ? "p1" : bumperHarvestFixture ? "p4" : activeNegationObserver || timedNegationObserver ? "p4" : duelObserverView ? "p3" : judgementStage ? state === "judgement-local" ? "p1" : "p4" : borrowedSwordActiveFixture ? count === 2 ? "p1" : "p4" : targetShiftFixture ? count >= 5 ? "p5" : "p3" : frostSwordSelectionFixture || kirinBowSelectionFixture ? "p2" : state === "active-attack-observer" || state === "group-observer" || unfocusedGroup || groupNegationFixture || oathNegationFixture ? "p3" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "negation" || state === "confirm-skip" || state === "picker" || state === "picker-hand-zone" || state === "fanjian-selectable" ? "p2" : state === "dying" ? "p3" : "p1";
-  const actorId = bumperHarvestFixture ? bumperHarvestChild ? "p3" : bumperCurrentId : oathNegationFixture ? oathNegationLocalFixture ? "p3" : "p2" : timedNegationObserver || duelObserverView ? "p2" : judgementStage ? state === "judgement" ? "p3" : "p2" : borrowedSwordActiveFixture ? "p2" : targetShiftFixture ? "p4" : state === "active-attack-observer" ? "p2" : activeNegationObserver ? "p3" : state === "group-observer" || unfocusedGroup || groupNegationFixture ? "p1" : state === "dying" ? "p3" : meId;
+  const actorId = state === "stargazing-active-observer" ? "p2" : bumperHarvestFixture ? bumperHarvestChild ? "p3" : bumperCurrentId : oathNegationFixture ? oathNegationLocalFixture ? "p3" : "p2" : timedNegationObserver || duelObserverView ? "p2" : judgementStage ? state === "judgement" ? "p3" : "p2" : borrowedSwordActiveFixture ? "p2" : targetShiftFixture ? "p4" : state === "active-attack-observer" ? "p2" : activeNegationObserver ? "p3" : state === "group-observer" || unfocusedGroup || groupNegationFixture ? "p1" : state === "dying" ? "p3" : meId;
   // Geometry-only large-hand fixture; IDs are synthetic, not a dealt deck.
   const hand = timedNegationObserver
     ? []
@@ -775,6 +782,25 @@ window.__setBrowserHandIds = (ids) => {
 };
 window.__setBrowserActionRevision = (actionRevision) => {
   fixtureRoom = { ...fixtureRoom, actionRevision };
+  window.__browserRoom = fixtureRoom;
+  renderFixture();
+};
+window.__replaceBrowserDeckReorder = () => {
+  if (fixtureRoom.currentAction?.kind !== "deck_reorder" || !fixtureRoom.isMyAction) {
+    throw new Error("Replacing Stargazing requires the acting viewer's projected deck-reorder decision.");
+  }
+  const currentAction = currentActionFor("normal", fixtureRoom.meId, "browser-next-turn-card");
+  fixtureRoom = {
+    ...fixtureRoom,
+    phase: "play",
+    isMyTurn: true,
+    isMyAction: true,
+    actionPlayerId: fixtureRoom.meId,
+    actionReason: currentAction.reason,
+    actionRevision: `${fixtureRoom.actionRevision}-replaced`,
+    currentAction,
+    pending: { kind: "turn" },
+  };
   window.__browserRoom = fixtureRoom;
   renderFixture();
 };
