@@ -152,6 +152,10 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
 }
 
 function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, targetCardCase = "valid", targetCardKind = "Dismantle" } = {}) {
+  if (state === "stargazing-offer") return {
+    version: 3, kind: "trigger", actorId, deadline: 0, reason: "You may use Stargazing", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
+    triggerOptions: [{ effectId: "zhuge_liang_stargazing", label: "Stargazing", description: "Privately reorder the top cards of the deck." }],
+  };
   if (state === "judgement" || state === "judgement-local") return {
     version: 3, kind: "trigger", actorId, deadline: 0, reason: "Resolve the current Judgement", legalActions: [],
   };
@@ -643,12 +647,12 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     players,
     myHand: hand,
     turnSeat: state === "group-observer" ? 3 : state === "dying" ? 1 : 0,
-    phase: state === "dying" ? "dying" : state === "rest" || state === "group" || state === "normal" || state === "interaction" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" || borrowedSwordFixture ? "play" : "response",
+    phase: state === "dying" ? "dying" : state === "rest" || state === "group" || state === "normal" || state === "interaction" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" || state === "stargazing-offer" || borrowedSwordFixture ? "play" : "response",
     deckCount: 20,
     discardTop: null,
     log: [],
     timeline: [],
-    isMyTurn: state === "normal" || state === "interaction" || state === "group" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" || borrowedSwordFixture,
+    isMyTurn: state === "normal" || state === "interaction" || state === "group" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" || state === "stargazing-offer" || borrowedSwordFixture,
     actionPlayerId: currentAction?.actorId ?? null,
     actionReason: currentAction?.reason ?? "Waiting for the next legal action",
     isMyAction: Boolean(currentAction?.actorId === meId),
