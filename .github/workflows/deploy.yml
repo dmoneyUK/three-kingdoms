@@ -4,11 +4,11 @@
      push:
        branches: [main, ux-v2]
        paths-ignore:
-         - HANDOVER.md
+         - "**/*.md"
      pull_request:
        branches: [main, ux-v2]
        paths-ignore:
-         - HANDOVER.md
+         - "**/*.md"
 
    concurrency:
      group: cloudflare-deploy-${{ github.ref }}
