@@ -3421,7 +3421,7 @@
 .group-target-strip .group-target-card-compact[data-participant-status="PAUSED"] .group-target-status-compact { color: #f2d4a5 !important; }
 
 @media (max-width: 390px) {
-  .local-hero-skills .hero-skill-button { font-family: "Arial Narrow", Arial, sans-serif; }
+  .local-hero-skills .hero-skill-button { font-family: "Arial Narrow", "Liberation Sans Narrow", "DejaVu Sans Condensed", Arial, sans-serif; }
   .group-stage-source { font-size: 9px; }
   .group-stage-source-portrait { width: 26px; height: 33px; }
   .group-stage-card-root { width: clamp(64px, 22vw, 82px); height: clamp(88px, 30vw, 112px); }
