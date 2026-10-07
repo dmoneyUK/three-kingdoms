@@ -5,12 +5,12 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-Remote `ux-v2` HEAD `6025be2820fa7bb5f6710c68f0bce5378ab53ef0` failed run #830 (`37583782375`) in `npm run test:browser`: 692 passed, 1 failed. `local-skill-control-consistency.spec.mjs` omitted Triumphant from its passive-skill matrix and treated its intentional non-actionable `role=group` tile as a disabled button. Adding it to the matrix makes the focused spec pass 6/6; targeted ESLint and `git diff --check` pass. CI repair is test-only. Pre-commit base `cf88742a062e26902ee96d11d947e504c1d20e4a` passed run #829 (`37572039698`).
+Remote `ux-v2` HEAD `e5c59532ceaae5681b56ac23d0dce1452e5acef4` passed run #831 (`37584932814`), including `build-and-test` and `deploy`. Triumphant feature commit `6025be2` passed its focused browser spec 8/8; its first full run #830 exposed a stale passive-skill test matrix (692 passed, 1 failed). Test-only repair `e5c5953` added Triumphant to that matrix; the focused matrix passed 6/6, and targeted ESLint/`git diff --check` passed. No Reviewer acceptance claimed.
 
 ## Design checkpoint
 
-Reviewed remote `docs/UX2-refine.md`, blob `7e021455c8fdc9e88dc1b3b20d036400da82be44`, §§1.5–1.8. The direct user decision is recorded locally in blob `ae314707494f48e80c24e18e1a9a186ebb6c37c1`: cross-Hero passive choices belong in the current viewer's Local Dock Action Row, not the viewer's Skills band.
+Reviewed the full remote `docs/UX2-refine.md`, blob `ae314707494f48e80c24e18e1a9a186ebb6c37c1`. Since prior blob `7e021455c8fdc9e88dc1b3b20d036400da82be44`, §1.8 added the direct user decision that cross-Hero passive choices belong in the current viewer's Local Dock Action Row, not the viewer's Skills band. §5 keeps UX3 deferred until active refinement §§1–4 close.
 
 ## Current task
 
-`CI REPAIR ONLY` for `UX2.REFINE-HUA-XIONG-TRIUMPHANT-SKILL-CHOICE-01`: add Hua Xiong/Triumphant to the existing passive-skill browser matrix so geometry and no-action checks validate its intended group semantics. Do not change production behavior. Focused spec passed 6/6; commit/push only this test correction and handoff, then wait for exact repair-SHA CI success before closing the UX2 task or planning another.
+`UX2.REFINE-PAN-FENG-AXE-PASSIVE-PRESENTATION-01` — represent Pan Feng's metadata-declared automatic Axe of Insanity as a stable, non-actionable passive tile in the Local Skills band, matching §1.6 and the existing passive registry. Add the Hero to the focused geometry/no-action matrix. Preserve its authoritative mandatory CurrentAction continuation exactly; no server/gameplay change and no continuation redesign. Prove 320/390/480/wide geometry, passive semantics, and no action submission from the tile.

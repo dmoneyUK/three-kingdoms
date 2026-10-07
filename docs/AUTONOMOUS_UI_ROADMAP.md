@@ -1273,6 +1273,18 @@ Only a proven regression or new Reviewer-approved design requirement does.
   partial/open, without identifying a new concrete task that would not require
   guessing product scope.
 
+### UX2.REFINE-HUA-XIONG-TRIUMPHANT-SKILL-CHOICE-01 — Cross-Hero passive decision in Local Dock
+
+- CurrentAction-owned Recover/Draw choices from Hua Xiong's Triumphant render in
+  the acting viewer's Local Dock Action Row beside authoritative Skip. Hua
+  Xiong's own Skills tile stays passive; observers receive no private trigger
+  options. Focused browser coverage passed 8/8 across 320/390/480/wide geometry,
+  payloads, Skip, and privacy. Feature commit `6025be2` exposed one stale passive
+  roster expectation in full CI (692 passed, 1 failed); test-only repair
+  `e5c5953` added Triumphant to the passive matrix, whose focused suite passed
+  6/6. Exact repair SHA passed Actions run `37584932814` (`build-and-test`,
+  `deploy`). Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
