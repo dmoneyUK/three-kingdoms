@@ -14,6 +14,17 @@ const implementedHeroIds = [
   "huaxiong", "gongsun-zan", "pan-feng", "ma-chao", "huang-yueying", "lady-gan",
 ];
 
+const passiveSkillNamesByHero = {
+  "zhang-fei": ["Battle Cry"],
+  "zhuge-liang": ["Empty Fortress Strategem"],
+  "ma-chao": ["Horse Riding"],
+  "huang-yueying": ["Wizardry"],
+  "sun-quan": ["Deliverance"],
+  "lu-xun": ["Modesty"],
+  "lü-bu": ["Unrivaled"],
+  "gongsun-zan": ["Militia"],
+};
+
 test("implemented Hero skill bands fill their allocation and keep natural labels across the roster", async ({ page }) => {
   test.setTimeout(120_000);
 
@@ -129,9 +140,9 @@ test("implemented Hero skill bands fill their allocation and keep natural labels
         expect(button.wordFragments.flatMap(({ rects }) => rects).every((word) => word.left >= button.left - 0.5 && word.right <= button.right + 0.5), context).toBe(true);
         expect(button.scrollWidth, context).toBeLessThanOrEqual(button.clientWidth + 2);
         expect(button.scrollHeight, context).toBeLessThanOrEqual(button.clientHeight + 1);
-        if (heroId === "zhuge-liang" && button.label === "Empty Fortress Strategem") {
+        if (passiveSkillNamesByHero[heroId]?.includes(button.label)) {
           expect(button.role, context).toBe("group");
-          expect(button.ariaLabel, context).toBe("Empty Fortress Strategem, passive skill");
+          expect(button.ariaLabel, context).toBe(`${button.label}, passive skill`);
           expect(button.disabled, context).toBeUndefined();
           expect(button.ariaPressed, context).toBeNull();
           expect(button.disabledOpacity, context).toBe(1);
@@ -147,6 +158,23 @@ test("implemented Hero skill bands fill their allocation and keep natural labels
           expect(button.labelLines, context).toBe(1);
         }
       }
+    }
+  }
+});
+
+test("passive-only Hero skill tiles never submit an action", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  for (const [heroId, skillNames] of Object.entries(passiveSkillNamesByHero)) {
+    await page.goto(`/tests/browser/fixture.html?state=rest&count=4&hero=${encodeURIComponent(heroId)}`);
+    const skills = page.locator('.local-player-dock[data-player-anchor="p1"] .local-status-panel .local-hero-skills');
+    for (const skillName of skillNames) {
+      const passive = skills.getByRole("group", { name: `${skillName}, passive skill` });
+      await expect(passive).toBeVisible();
+      await expect(skills.getByRole("button", { name: skillName, exact: true })).toHaveCount(0);
+      await page.evaluate(() => { window.__browserActions = []; });
+      await passive.click();
+      expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
     }
   }
 });
@@ -191,13 +219,15 @@ for (const width of [390, 1440]) {
     await page.goto("/tests/browser/fixture.html?state=ma-chao-cavalry&count=4&hero=ma-chao");
 
     const skills = page.locator('.local-player-dock[data-player-anchor="p1"] .local-status-panel .local-hero-skills');
-    const horseRiding = skills.getByRole("button", { name: "Horse Riding", exact: true });
+    const horseRiding = skills.getByRole("group", { name: "Horse Riding, passive skill" });
     const cavalry = skills.getByRole("button", { name: "Cavalry", exact: true });
-    await expect(horseRiding).toBeDisabled();
+    await expect(horseRiding).toBeVisible();
     await expect(cavalry).toBeEnabled();
     await expect(page.locator('[data-action-extras="true"]')).not.toContainText("Cavalry");
 
     await page.evaluate(() => { window.__browserActions = []; });
+    await horseRiding.click();
+    expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
     await cavalry.click();
     await expect.poll(() => page.evaluate(() => window.__browserActions)).toEqual([
       { action: "trigger", extra: { providerId: "ma_chao_cavalry" } },
@@ -210,7 +240,7 @@ test("Ma Chao passive and optional skill stay unavailable without a projected Cu
   await page.goto("/tests/browser/fixture.html?state=rest&count=4&hero=ma-chao");
 
   const skills = page.locator('.local-player-dock[data-player-anchor="p1"] .local-status-panel .local-hero-skills');
-  await expect(skills.getByRole("button", { name: "Horse Riding", exact: true })).toBeDisabled();
+  await expect(skills.getByRole("group", { name: "Horse Riding, passive skill" })).toBeVisible();
   await expect(skills.getByRole("button", { name: "Cavalry", exact: true })).toBeDisabled();
   await expect(page.locator('[data-action-extras="true"]')).not.toContainText("Cavalry");
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);

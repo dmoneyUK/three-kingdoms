@@ -1628,6 +1628,21 @@ export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly strin
   "zhuge-liang": { Stargazing: ["zhuge_liang_stargazing"] },
 };
 
+// These skills are stable, non-actionable entries in the Local Skills band.
+// This is an explicit semantic registry, not a UI inference from description
+// text. Skills with an authoritative CurrentAction option still use the
+// existing actionable path below.
+const HERO_PASSIVE_SKILL_NAMES: Record<string, readonly string[]> = {
+  "zhang-fei": ["Battle Cry"],
+  "zhuge-liang": ["Empty Fortress Strategem"],
+  "ma-chao": ["Horse Riding"],
+  "huang-yueying": ["Wizardry"],
+  "sun-quan": ["Deliverance"],
+  "lu-xun": ["Modesty"],
+  "lü-bu": ["Unrivaled"],
+  "gongsun-zan": ["Militia"],
+};
+
 // Response capabilities are projected in currentAction.options rather than
 // turn triggerOptions. Keep their stable provider IDs separate from the
 // turn-skill map so the Skills panel can activate the legal response path
@@ -2263,13 +2278,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const wushengButtonDisabled = busy || wushengMode === null && (!canUseWushengInPlay && !(responseDecisionReady && canUseWushengInResponse) || canUseWushengInPlay && presentationBusy);
   const longdanButtonDisabled = busy || longdanMode === null && (!canUseLongdanInPlay && !(responseDecisionReady && canUseLongdanInResponse) || canUseLongdanInPlay && presentationBusy);
   const heroSkillButtons: HeroSkillButtonModel[] = (localHero?.skills ?? []).map((skill) => {
-    if (me?.hero === "zhuge-liang" && skill.name === "Empty Fortress Strategem") return {
-      name: skill.name,
-      description: skill.description,
-      enabled: false,
-      active: false,
-      passive: true,
-    };
     if (me?.hero === "zhuge-liang" && skill.name === "Stargazing" && privateDeckReorder) return {
       name: skill.name,
       description: skill.description,
@@ -2318,6 +2326,13 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     }
     const effectIds = HERO_SKILL_EFFECT_IDS[me?.hero ?? ""]?.[skill.name] ?? [];
     const option = activeSkillOptions.find((candidate) => effectIds.includes(candidate.effectId));
+    if (HERO_PASSIVE_SKILL_NAMES[me?.hero ?? ""]?.includes(skill.name) && !option) return {
+      name: skill.name,
+      description: skill.description,
+      enabled: false,
+      active: false,
+      passive: true,
+    };
     const active = Boolean(option && kingSkillId === option.effectId);
     return {
       name: skill.name,
