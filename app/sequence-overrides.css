@@ -4060,7 +4060,8 @@
   outline: 1px solid #d47769;
   outline-offset: 1px;
 }
-.game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response {
+.game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response,
+.game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-event {
   position: relative;
   inset: auto;
   z-index: auto;
@@ -4077,11 +4078,15 @@
   border-color: #9c8249;
   text-align: center;
 }
+.game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-event {
+  pointer-events: none;
+}
 .game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response .countdown-hourglass {
   color: #e6cc8c;
   font: normal 13px/1 Arial, sans-serif;
 }
-.game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response b {
+.game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response b,
+.game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-event b {
   margin: 0;
   color: #ffe1a0;
   font: 700 14px/1 Arial, sans-serif;
@@ -4098,6 +4103,7 @@
   box-shadow: 0 0 14px #d34b3970, 0 5px 14px #0008;
 }
 .game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response[data-countdown-urgency="critical"] b,
+.game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-event[data-countdown-urgency="critical"] b,
 .game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response[data-countdown-urgency="critical"] .countdown-hourglass {
   color: #ffd0bd;
 }

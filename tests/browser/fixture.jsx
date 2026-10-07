@@ -812,6 +812,46 @@ window.__setBrowserHandIds = (ids) => {
   window.__browserRoom = fixtureRoom;
   renderFixture();
 };
+window.__showPrivateDraw = (count = 2) => {
+  const cardKinds = ["Dismantle", "Peach", "Attack", "Dodge", "Negation", "Lightning"];
+  const drawnCards = Array.from({ length: Math.min(6, Math.max(1, count)) }, (_, index) => card(`browser-private-draw-${index + 1}`, cardKinds[index], index % 2 ? "♥" : "♠", String(index + 2)));
+  const drawEvents = drawnCards.map((drawnCard, index) => ({
+    id: `browser-private-draw-event-${index + 1}`,
+    type: "card",
+    action: "draw",
+    card: drawnCard,
+    drawPlayerId: fixtureRoom.meId,
+    privateToPlayerId: fixtureRoom.meId,
+    presentation: false,
+  }));
+  const myHand = [...fixtureRoom.myHand, ...drawnCards];
+  fixtureRoom = {
+    ...fixtureRoom,
+    myHand,
+    timeline: [...fixtureRoom.timeline, ...drawEvents],
+    players: fixtureRoom.players.map((player) => player.id === fixtureRoom.meId ? { ...player, handCount: myHand.length } : player),
+  };
+  window.__browserRoom = fixtureRoom;
+  renderFixture();
+};
+window.__switchPrivateDrawObserver = () => {
+  const privateOwnerId = fixtureRoom.meId;
+  fixtureRoom = {
+    ...fixtureRoom,
+    meId: "p2",
+    myRole: fixtureRoom.players.find((player) => player.id === "p2")?.role ?? null,
+    myHand: [],
+    timeline: [{
+      id: "browser-private-draw-redacted-event",
+      type: "message",
+      message: "Player 1 drew cards",
+      drawPlayerId: privateOwnerId,
+      privateToPlayerId: privateOwnerId,
+    }],
+  };
+  window.__browserRoom = fixtureRoom;
+  renderFixture();
+};
 window.__setBrowserActionRevision = (actionRevision) => {
   fixtureRoom = { ...fixtureRoom, actionRevision };
   window.__browserRoom = fixtureRoom;
