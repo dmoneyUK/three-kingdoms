@@ -1972,10 +1972,10 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     && option.effectId !== inlineChoiceTriggerOption?.effectId);
   const choiceTriggerOption = mandatoryChoiceTriggerOption ?? (inlineChoiceTriggerOption ? null : genericChoiceTriggerOption);
   const selectedTriggerOption = choiceTriggerOption ?? triggerOptions.find((option) => option.effectId === responseProviderId) ?? null;
-  // Mapped hero skills (such as Retaliation) must be activated from the
-  // profile before their target-card picker appears. Unmapped semantic
-  // providers retain the generic picker path for equipment and future
-  // effects that have no Skills-panel control.
+  // Mapped Hero skills (such as Retaliation) must be activated from the
+  // profile before their target-card picker appears. Proven external card
+  // choices that have a refined modal design use the shared modal; other
+  // providers retain their existing authoritative selection path.
   const targetCardPickerOption = activeSkillOption?.selection?.type === "target_cards"
     ? activeSkillOption
     : triggerOptions.find((option) => option.selection?.type === "target_cards" && !heroTriggerEffectIds.has(option.effectId)) ?? null;
@@ -1983,7 +1983,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const targetCardPickerTarget = targetCardPickerSelection ? room.players.find((player) => player.id === targetCardPickerSelection.targetId) ?? null : null;
   const targetCardPickerUsesUnifiedModal = Boolean(
     targetCardPickerOption
-    && ["sima_yi_fankui", "frost_sword_damage_about_to_apply"].includes(targetCardPickerOption.effectId)
+    && ["sima_yi_fankui", "frost_sword_damage_about_to_apply", "kirin_bow_damage_about_to_apply"].includes(targetCardPickerOption.effectId)
     && targetCardPickerSelection
     && targetCardPickerSelection.targetId !== room.meId
     && targetCardPickerTarget
@@ -3078,6 +3078,8 @@ function TargetCardPicker({ option, selection, target, selectedKeys, disabled, c
     ? "Choose 1 card to obtain"
     : option.effectId === "frost_sword_damage_about_to_apply"
       ? `Choose ${amount} card${selection.max === 1 ? "" : "s"} to discard`
+      : option.effectId === "kirin_bow_damage_about_to_apply"
+        ? "Choose 1 Mount to discard"
     : randomHandZone && selection.min === 1 && selection.max === 1
     ? "Choose where to obtain 1 card"
     : `Choose ${amount} eligible card${selection.max === 1 ? "" : "s"}`;

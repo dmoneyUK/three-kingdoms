@@ -1418,6 +1418,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   the full target-card picker spec passed 56/56, and targeted ESLint plus
   `git diff --check` passed. Reviewer acceptance is not claimed.
 
+### UX2.REFINE-KIRIN-BOW-UNIFIED-TARGET-CARD-MODAL-01 — Kirin Bow modal
+
+- Proven external-target Kirin Bow now uses the shared Equipment-only modal,
+  with only CurrentAction-eligible public Mount keys, rule-facing “Choose 1
+  Mount to discard” copy, local Cancel, and the unchanged provider/key payload.
+  Unproven focus stays on the safe fallback; unprojected keys expose no
+  selectable card and cannot submit. Browser proof passed 10/10 focused and
+  59/59 for the complete target-card picker spec, including 320×568, 390×640,
+  390×844, 480×900, and 1440×900 geometry, 44px controls, overlay hit blocking,
+  payload, Cancel, and revision reset. Targeted ESLint and `git diff --check`
+  passed. Pre-commit Actions run `37639976811` passed exact parent SHA
+  `c7ec91770635261d83b2dac656dbd4bdf0ef1c59`. Reviewer acceptance is not
+  claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

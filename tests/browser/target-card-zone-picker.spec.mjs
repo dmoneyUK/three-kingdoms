@@ -39,6 +39,13 @@ async function loadKirinBowSelectableDetail(page, { width, height = 844, targetC
   return page.locator('[aria-label="Interaction Stage"]');
 }
 
+async function loadKirinBowModal(page, viewport) {
+  const stage = await loadKirinBowSelectableDetail(page, viewport);
+  const dialog = page.getByRole("dialog", { name: "Kirin Bow target card selection" });
+  await expect(dialog).toBeVisible();
+  return { stage, dialog };
+}
+
 async function loadPendingTargetCard(page, { width, height = 844, count = 4, handCount = 4, targetCardCase = "valid", cardKind = "Dismantle" }) {
   await page.setViewportSize({ width, height });
   const params = new URLSearchParams({ state: "pending-target-card", count: String(count), targetHandCount: String(handCount), targetCardCase, targetCardKind: cardKind, effect: cardKind });
@@ -422,34 +429,51 @@ test("Fanjian retains the generic picker when the external source focus is not p
 });
 
 for (const viewport of [
+  { width: 320, height: 568 },
+  { width: 390, height: 640 },
   { width: 390, height: 844 },
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
-  test(`Kirin Bow presents only authoritative public Mounts in external Selectable Detail at ${viewport.width}px`, async ({ page }) => {
-    const stage = await loadKirinBowSelectableDetail(page, viewport);
-    const focus = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"][data-hero-focus-player-id="p1"]');
-    const detail = focus.getByRole("group", { name: "Kirin Bow selection" });
-    const mounts = detail.locator('[data-target-card-zone="equipment"]');
-    const [dockBox, mountBoxes] = await Promise.all([
-      page.locator(".local-player-dock").boundingBox(),
+  test(`proven Kirin Bow uses an Equipment-only shared modal at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+    const { stage, dialog } = await loadKirinBowModal(page, viewport);
+    const overlay = page.locator(".target-card-picker-overlay");
+    const mounts = dialog.locator('[data-target-card-zone="equipment"]');
+    const stageBefore = await stage.boundingBox();
+    const dock = page.locator(".local-player-dock");
+    const dockBefore = await dock.boundingBox();
+    const [overlayBox, panelBox, mountBoxes, actionHeights] = await Promise.all([
+      overlay.boundingBox(), dialog.boundingBox(),
       mounts.evaluateAll((elements) => elements.map((element) => {
         const { x, y, width, height } = element.getBoundingClientRect();
         return { x, y, width, height };
       })),
+      dialog.locator(".target-card-picker-actions button").evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height)),
     ]);
 
     await expect(stage).toHaveAttribute("data-current-effect", "Attack");
-    await expect(focus).toBeVisible();
-    await expect(stage.locator('[data-hero-focus-player-id="p2"]')).toHaveCount(0);
-    await expect(detail.locator("header span")).toHaveText("Kirin Bow");
-    await expect(detail.locator("header small")).toHaveText("Choose 1 card");
+    await expect(dialog.locator("header strong")).toHaveText("KIRIN BOW");
+    await expect(dialog.locator("header span")).toHaveText("Choose 1 Mount to discard");
+    await expect(dialog.locator(".target-card-picker-zone-equipment h3")).toHaveText("EQUIPMENT");
+    await expect(dialog.locator(".target-card-picker-zone-hand")).toHaveCount(0);
+    await expect(dialog.locator(".target-card-picker-zone-judgement")).toHaveCount(0);
     await expect(mounts).toHaveCount(2);
     await expect(mounts.nth(0)).toHaveAccessibleName("Equipment: Red Hare");
     await expect(mounts.nth(1)).toHaveAccessibleName("Equipment: Shadowrunner");
-    await expect(detail.getByRole("button", { name: "Equipment: Nio Shield" })).toHaveCount(0);
-    await expect(detail.locator('[data-target-card-zone="hand-position"]')).toHaveCount(0);
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "Equipment: Nio Shield" })).toHaveCount(0);
+    await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
+    await expect(page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Use Kirin Bow" })).toBeDisabled();
+    await expect(dialog.locator(".target-card-picker-count")).toHaveText("0 / 1 selected");
+    const dockHitIsBlocked = await page.evaluate(() => {
+      const dock = document.querySelector(".local-player-dock");
+      if (!dock) return false;
+      const box = dock.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+      return Boolean(hit?.closest(".target-card-picker-overlay"));
+    });
+    expect(dockHitIsBlocked).toBe(true);
 
     const targetProjection = await page.evaluate(() => window.__browserRoom.players.find((player) => player.id === "p1"));
     expect(targetProjection.equipmentCards.map((card) => card.id)).toEqual([
@@ -457,52 +481,94 @@ for (const viewport of [
       "browser-kirin-bow-defensive-mount",
       "browser-kirin-bow-ineligible-armour",
     ]);
+    expect(stageBefore && dockBefore && overlayBox && panelBox).toBeTruthy();
+    expect(overlayBox.x).toBeCloseTo(0, 1);
+    expect(overlayBox.y).toBeCloseTo(0, 1);
+    expect(overlayBox.width).toBeCloseTo(viewport.width, 1);
+    expect(overlayBox.height).toBeCloseTo(viewport.height, 1);
+    expect(panelBox.x).toBeGreaterThanOrEqual(0);
+    expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(viewport.width);
+    expect(panelBox.y).toBeGreaterThanOrEqual(0);
+    expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(viewport.height);
     expect(mountBoxes).toHaveLength(2);
-    expect(dockBox).toBeTruthy();
+    expect(actionHeights.length).toBeGreaterThanOrEqual(2);
+    for (const height of actionHeights) expect(height).toBeGreaterThanOrEqual(44);
     for (const mountBox of mountBoxes) {
       expect(mountBox.width).toBeGreaterThanOrEqual(44);
       expect(mountBox.height).toBeGreaterThanOrEqual(44);
-      expect(mountBox.x).toBeGreaterThanOrEqual(0);
-      expect(mountBox.x + mountBox.width).toBeLessThanOrEqual(viewport.width);
-      expect(mountBox.y + mountBox.height).toBeLessThanOrEqual(dockBox.y + 1);
     }
+
+    await mounts.nth(1).click();
+    await expect(mounts.nth(1)).toHaveAttribute("aria-pressed", "true");
+    await expect(dialog.locator(".target-card-picker-count")).toHaveText("1 / 1 selected");
+    await expect(dialog.getByRole("button", { name: "Use Kirin Bow" })).toBeEnabled();
+    await expect(mounts.nth(0)).toBeDisabled();
+    const [stageAfter, dockAfter] = await Promise.all([stage.boundingBox(), dock.boundingBox()]);
+    expectSameBox(stageAfter, stageBefore);
+    expectSameBox(dockAfter, dockBefore);
+    const overflow = await page.evaluate(() => ({ viewport: window.innerWidth, document: document.documentElement.scrollWidth }));
+    expect(overflow.document).toBeLessThanOrEqual(overflow.viewport);
   });
 }
 
-test("Kirin Bow selection stays local until Confirm and submits the existing mount key once", async ({ page }) => {
-  const stage = await loadKirinBowSelectableDetail(page, { width: 390 });
-  const detail = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]').getByRole("group", { name: "Kirin Bow selection" });
-  const mount = detail.getByRole("button", { name: "Equipment: Shadowrunner" });
-  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+test("Kirin Bow modal submits exactly the selected authoritative Mount key", async ({ page }) => {
+  const { dialog } = await loadKirinBowModal(page, { width: 390, height: 844 });
+  const mount = dialog.getByRole("button", { name: "Equipment: Shadowrunner" });
+  const use = dialog.getByRole("button", { name: "Use Kirin Bow" });
 
   await mount.click();
   await expect(mount).toHaveAttribute("aria-pressed", "true");
-  await expect(confirm).toBeEnabled();
+  await expect(use).toBeEnabled();
   expect(await page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([]);
-  await confirm.click();
+  await use.click();
   await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
     { action: "trigger", extra: { providerId: "kirin_bow_damage_about_to_apply", cardKeys: ["browser-kirin-bow-defensive-mount"] } },
   ]);
 });
 
-test("Kirin Bow public Mount selection clears on CurrentAction revision change", async ({ page }) => {
-  const stage = await loadKirinBowSelectableDetail(page, { width: 390 });
-  const mount = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]').getByRole("button", { name: "Equipment: Red Hare" });
-  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+test("Kirin Bow Cancel clears only local selection and does not submit", async ({ page }) => {
+  const { dialog } = await loadKirinBowModal(page, { width: 390, height: 844 });
+  const mount = dialog.getByRole("button", { name: "Equipment: Red Hare" });
+  const cancel = dialog.getByRole("button", { name: "Cancel" });
+  const use = dialog.getByRole("button", { name: "Use Kirin Bow" });
+
+  await mount.click();
+  await expect(mount).toHaveAttribute("aria-pressed", "true");
+  await cancel.click();
+  await expect(dialog).toBeVisible();
+  await expect(mount).toHaveAttribute("aria-pressed", "false");
+  await expect(use).toBeDisabled();
+  expect(await page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([]);
+});
+
+test("Kirin Bow modal selection clears on CurrentAction revision change", async ({ page }) => {
+  const { dialog } = await loadKirinBowModal(page, { width: 390, height: 844 });
+  const mount = dialog.getByRole("button", { name: "Equipment: Red Hare" });
+  const use = dialog.getByRole("button", { name: "Use Kirin Bow" });
 
   await mount.click();
   await expect(mount).toHaveAttribute("aria-pressed", "true");
   await page.evaluate(() => window.__setBrowserActionRevision("browser-kirin-bow-new-action"));
+  await expect(dialog).toBeVisible();
   await expect(mount).toHaveAttribute("aria-pressed", "false");
-  await expect(confirm).toBeDisabled();
+  await expect(use).toBeDisabled();
+  await expect(page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
 });
 
 for (const targetCardCase of ["unfocused", "unprojected"]) {
-  test(`Kirin Bow keeps the generic picker when Mount focus is not proven (${targetCardCase})`, async ({ page }) => {
+  test(`Kirin Bow keeps the safe fallback when Mount proof is unavailable (${targetCardCase})`, async ({ page }) => {
     await loadKirinBowSelectableDetail(page, { width: 390, targetCardCase });
 
-    await expect(page.getByRole("dialog", { name: "Kirin Bow target card selection" })).toBeVisible();
+    const dialog = page.getByRole("dialog", { name: "Kirin Bow target card selection" });
+    await expect(dialog).toBeVisible();
     await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
+    await expect(dialog.locator("header span")).toHaveText("Choose 1 Mount to discard");
+    if (targetCardCase === "unprojected") {
+      await expect(dialog.locator(".target-card-picker-zone-equipment")).toHaveCount(0);
+      await expect(dialog.getByRole("button", { name: "Use Kirin Bow" })).toBeDisabled();
+    } else {
+      await expect(dialog.locator('.target-card-picker-zone-equipment [data-target-card-zone="equipment"]')).toHaveCount(2);
+    }
   });
 }
 
