@@ -1621,9 +1621,9 @@ export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly strin
   "guo-jia": { "Jealousy of God": ["guo_jia_jealousy_of_god"], Legacy: ["guo_jia_legacy"] },
   "zhen-ji": { "Godess of Luo River": ["zhen_ji_luoshen"] },
   "liu-bei": { Benevolence: ["liu_bei_rende"], Influencing: ["liu_bei_jijiang"] },
-  "sun-quan": { Equilibrium: ["sun_quan_zhiheng"], Deliverance: ["sun_quan_jiuyuan"] },
+  "sun-quan": { Equilibrium: ["sun_quan_zhiheng"] },
   "gan-ning": { Ambushment: ["gan_ning_qixi"] },
-  "lu-meng": { Composure: ["lu_meng_keji"] },
+  "lü-meng": { Composure: ["lu_meng_keji"] },
   "yue-jin": { Dauntless: ["yue_jin_dauntless"] },
   "zhou-yu": { Heroic: ["zhou_yu_yingzi"], "Sowing Distrust": ["zhou_yu_fanjian"] },
   "lu-xun": { "Second Wind": ["lu_xun_second_wind"] },
@@ -1643,7 +1643,7 @@ export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly strin
 // existing actionable path below.
 const LOCAL_DOCK_INLINE_TRIGGER_CHOICE_EFFECT_IDS = new Set(["hua_xiong_triumphant"]);
 
-const HERO_PASSIVE_SKILL_NAMES: Record<string, readonly string[]> = {
+export const HERO_PASSIVE_SKILL_NAMES: Record<string, readonly string[]> = {
   "zhang-fei": ["Battle Cry"],
   "zhuge-liang": ["Empty Fortress Strategem"],
   "ma-chao": ["Horse Riding"],

@@ -5,35 +5,37 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result
 
-`UX2.REFINE-UNIFIED-TARGET-CARD-MODAL-REAL-GAME-P2-01` removes Stage/Hero
-Focus, Inspect, and preview-state gates from supported authoritative target-card
-modal routing and removes the unrelated legacy target-card picker. Real
-server-backed Steal, Dismantle, Retaliation, Frost Sword, and Kirin Bow browser
-flows pass, including anonymous Hand and public mixed-zone selection; the two
-focused specs passed 73/73. `npm run build`, targeted ESLint, and
-`git diff --check` passed. Exact pre-commit parent run `37675406650` on
-`fa4c70fb0561ba918d4ec12f50753f5f61fcfda4` completed SUCCESS across all jobs.
-P2 Actions run `37676869249` on exact SHA `50dd342096a41fa1cd35b2c5b49a16cdb1253451`
-FAILED only at `npm run test:fast`: three assertions still expected the removed
-legacy picker. API, both browser shards, lint, and build succeeded. CI-only test
-repair now checks the §4C modal and fail-closed authority; local focused tests
-passed 43/43 and `npm run test:fast` passed 228/228. Reviewer acceptance is not
-claimed.
+P2 unified Target Card Selection Modal production routing is complete with
+real server-backed Steal, Dismantle, Retaliation, Frost Sword, and Kirin Bow
+browser proof. Its stale-assertion-only repair is green on exact SHA
+`42e736e60fc3a8998ebd3d358f8a1deff869993d`, Actions run `37678414085` (all
+validation and deploy jobs succeeded).
+
+P3 audit has found and corrected the `lü-meng` / `lu-meng` registry-key mismatch
+that hid real Composure CurrentAction authority from the Skills band. Removed
+the non-existent active Deliverance provider mapping. A contract test now
+accounts for all 46 skills across 30 implemented Heroes: 32 active trigger
+skills, 7 response provider IDs, 10 passive entries, and the specialized Guan
+Yu/Zhao Yun conversions. All mapped providers have API test coverage. The real
+server-backed Composure/Empress Dowager spec passed 2/2; the skill-family
+browser batch passed 137/137, and the roster/unit suite passed 44/44. Build,
+targeted ESLint, and `git diff --check` passed. Real browser proof also includes
+existing Assault and Retaliation paths. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
 Re-fetched and reviewed remote `docs/UX2-refine.md`, blob
-`9b53efac347e1186eb7195346e3ea2c51f8d17b6`; no newer design changes. Re-read
-§§4C.1–4C.28 and §4D P1–P5. Section 6 remains gated on §4.10, §4A, and all
-§4D tasks.
+`9b53efac347e1186eb7195346e3ea2c51f8d17b6`; no newer design changes. At this
+boundary re-read §1.5–1.11, §4.10, §§4A–4D, and §5. Section 6 remains gated on
+§4.10, §4A, §4B, and all §4D tasks.
 
 ## Current task
 
-CI repair only: commit the stale target-card assertions/documentation and push;
-record the exact repair SHA as `CI REPAIR PUSHED — VALIDATION PENDING`, then do
-not resume feature commits until that SHA's Actions run succeeds. Resume
-`UX2.REFINE-HERO-SKILLS-REAL-GAME-REACHABILITY-P3-01` — close §1.10 / §4D P3
-across the implemented Standard Hero roster.
+`UX2.REFINE-REAL-PRODUCTION-PATH-PARITY-P4-01` — prove and repair the real
+server-to-browser paths for single-target Negation, Raining Arrows Dodge / TAKE
+DAMAGE, and compact Opponent Inspect (public identity, skills, Equipment,
+Judgment, and private Hand count). Do not start §6 while §4.10, §4A, §4B, or
+the remaining §4D gate tasks are open.
 
 Acceptance: identify each actionable capability's real authoritative
 CurrentAction provider; prove Skills-band activation, exact existing payload,

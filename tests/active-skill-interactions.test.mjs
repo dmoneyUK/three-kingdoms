@@ -3,9 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
-import { GameRoom, GameRoomErrorBoundary } from "../app/page.tsx";
+import { GameRoom, GameRoomErrorBoundary, HERO_PASSIVE_SKILL_NAMES, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS } from "../app/page.tsx";
 import { normalizeRoomData } from "../game/room-safety.js";
 import { buildGroupScopePreview } from "../game/group-scope-preview.ts";
+import { IMPLEMENTED_STANDARD_HEROES } from "../game/heroes.ts";
 
 const card = (id, kind = "Attack", suit = "♠") => ({ id, kind, suit, rank: "A" });
 
@@ -17,6 +18,44 @@ function installRenderEnvironment() {
   globalThis.ResizeObserver = class { observe() {} disconnect() {} };
   globalThis.localStorage = { removeItem: () => {} };
 }
+
+test("implemented Hero skills all have an explicit Local Skills control category", () => {
+  const conversionSkills = new Set(["guan-yu:God of War", "zhao-yun:Braveheart"]);
+  const roster = new Map(IMPLEMENTED_STANDARD_HEROES.map((hero) => [hero.id, new Set(hero.skills.map((skill) => skill.name))]));
+
+  for (const [registryName, registry] of [
+    ["active trigger", HERO_SKILL_EFFECT_IDS],
+    ["response", HERO_SKILL_RESPONSE_IDS],
+  ]) {
+    for (const [heroId, skills] of Object.entries(registry)) {
+      assert.ok(roster.has(heroId), `${registryName} registry references non-implemented Hero ${heroId}`);
+      for (const [skillName, providerIds] of Object.entries(skills)) {
+        assert.ok(roster.get(heroId).has(skillName), `${registryName} registry references unknown skill ${heroId}/${skillName}`);
+        assert.ok(providerIds.length > 0, `${registryName} registry has no authority ID for ${heroId}/${skillName}`);
+      }
+    }
+  }
+  for (const [heroId, skillNames] of Object.entries(HERO_PASSIVE_SKILL_NAMES)) {
+    assert.ok(roster.has(heroId), `passive registry references non-implemented Hero ${heroId}`);
+    for (const skillName of skillNames) assert.ok(roster.get(heroId).has(skillName), `passive registry references unknown skill ${heroId}/${skillName}`);
+  }
+
+  for (const hero of IMPLEMENTED_STANDARD_HEROES) {
+    for (const skill of hero.skills) {
+      const key = `${hero.id}:${skill.name}`;
+      const categories = [
+        (HERO_SKILL_EFFECT_IDS[hero.id]?.[skill.name]?.length ?? 0) > 0 && "active trigger",
+        (HERO_SKILL_RESPONSE_IDS[hero.id]?.[skill.name]?.length ?? 0) > 0 && "response",
+        HERO_PASSIVE_SKILL_NAMES[hero.id]?.includes(skill.name) && "passive",
+        conversionSkills.has(key) && "authoritative card conversion",
+      ].filter(Boolean);
+      assert.ok(categories.length > 0, `${key} has no Local Skills category`);
+      if (HERO_PASSIVE_SKILL_NAMES[hero.id]?.includes(skill.name)) {
+        assert.deepEqual(categories, ["passive"], `${key} must not be falsely registered as an actionable local skill`);
+      }
+    }
+  }
+});
 
 function activeSkillRoom(skill) {
   const players = [

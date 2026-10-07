@@ -1528,6 +1528,23 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `fa4c70fb0561ba918d4ec12f50753f5f61fcfda4` completed success. Reviewer
   acceptance is not claimed.
 
+### UX2.REFINE-HERO-SKILLS-REAL-GAME-REACHABILITY-P3-01 — Roster audit
+
+- The roster audit found that server-generated `lu_meng_keji` was unreachable
+  from the Skills band because the UI registry used `lu-meng` instead of the
+  implemented ID `lü-meng`. Corrected the key and removed a phantom active
+  `sun_quan_jiuyuan` mapping; Deliverance remains a passive skill. A registry
+  contract now accounts for all 46 skills across 30 implemented Heroes (32
+  active trigger entries, 7 response provider IDs, 10 passive entries, and the
+  Guan Yu/Zhao Yun conversion controls). Every mapped provider has existing API
+  proof. Production browser proof covers real Composure activation and exact
+  payload, real Empress Dowager response, plus existing real Assault and
+  Retaliation paths. The roster unit suite passed 44/44 and the focused
+  skill-family browser batch passed 137/137; build, targeted ESLint, and
+  `git diff --check` passed. Pre-commit Actions run `37678414085` on exact
+  parent SHA `42e736e60fc3a8998ebd3d358f8a1deff869993d` completed success.
+  Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
