@@ -1385,6 +1385,16 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `2344c51349f45148a99e476b888679e5c309e769`. Reviewer acceptance is not
   claimed.
 
+### UX2.REFINE-OTHER-PLAYER-INSPECT-EMPTY-JUDGMENT-COMPACT-01 — Compact empty Judgment
+
+- An empty public Judgment Zone now renders a compact `None` state measuring
+  32px at 390×844, 480×900, and 1440×900. The focused Inspect browser spec
+  passed 20/20; restoring the prior stretching alignment makes the wide
+  viewport assertion fail at 41px. Targeted ESLint and `git diff --check`
+  passed. Actions run #853 attempt 2 passed on the exact prior head; its first
+  attempt had a non-reproduced shard-1 Wrangler transport failure. Reviewer
+  acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

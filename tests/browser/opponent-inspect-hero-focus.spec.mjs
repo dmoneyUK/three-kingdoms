@@ -235,6 +235,24 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
   });
 }
 
+for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
+  test(`Inspect keeps an empty Judgment Zone compact at ${viewport.width}px`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, equipmentCase: "empty" });
+    await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
+    const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+    const judgment = inspect.locator('[aria-label="Judgement Zone"]');
+    await expect(judgment.locator(".opponent-inspection-empty")).toHaveText("None");
+    await expect(judgment.locator(".opponent-inspection-card")).toHaveCount(0);
+    const [zoneBox, detailsBox] = await Promise.all([judgment.boundingBox(), inspect.locator(".hero-focus-inspect-details").boundingBox()]);
+    expect(zoneBox).not.toBeNull();
+    expect(detailsBox).not.toBeNull();
+    expect(zoneBox.height).toBeLessThanOrEqual(34);
+    expect(zoneBox.x).toBeGreaterThanOrEqual(detailsBox.x);
+    expect(zoneBox.x + zoneBox.width).toBeLessThanOrEqual(detailsBox.x + detailsBox.width);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+  });
+}
+
 test("Inspect shows a compact None state when public Hero skills are unavailable", async ({ page }) => {
   await loadFixture(page, { width: 390, height: 844, targetHero: "unknown-fixture-hero", equipmentCase: "empty" });
   await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
