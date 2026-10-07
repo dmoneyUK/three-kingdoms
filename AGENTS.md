@@ -15,7 +15,7 @@ Direct user instructions override repository process instructions.
 
 A design-document change does **not** automatically replace the active HANDOVER task. If the active bounded task can continue without contradicting the new design, finish it. If it would contradict the new design, stop and request review. Before planning the next task, always review the latest `docs/UX2-refine.md` revision.
 
-Current refinement sequencing: `docs/UX2-refine.md` §5 defers all Interaction Stage Hero/player visualization and UX3 seat/graph work **until the active non-Hero refinement work in Sections 1–4 is complete**. Do not interleave UX3 graph work with unfinished Sections 1–4 tasks. At the clean planning boundary after those refinements are closed, UX3 §6 is authorized and should begin from §6.25 Phase A unless a newer direct user instruction changes the order. Until that boundary, if HANDOVER contains a Hero/player graph task, defer it and replan from the active non-Hero refinement sections. Do not delete the deferred implementation as cleanup.
+Current refinement sequencing: `docs/UX2-refine.md` §5 defers all Interaction Stage Hero/player visualization and UX3 seat/graph work **until all active refinement sections before §5 are complete, including §4A**. Do not interleave UX3 graph work with unfinished pre-§5 refinement tasks. At the clean planning boundary after those refinements are closed, UX3 §6 is authorized and should begin from §6.25 Phase A unless a newer direct user instruction changes the order. Until that boundary, if HANDOVER contains a Hero/player graph task, defer it and replan from the active pre-§5 refinement sections. Do not delete the deferred implementation as cleanup.
 
 ## Working mode and branch
 
