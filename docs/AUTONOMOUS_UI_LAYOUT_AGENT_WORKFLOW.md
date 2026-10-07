@@ -58,7 +58,7 @@ A separate discovered problem should be recorded as a candidate for the next pla
 
 ### Current UX2 refinement sequencing
 
-`docs/UX2-refine.md` §5 currently defers Interaction Stage Hero/player visualization and UX3 interaction-graph work **until all active refinement sections before §5 are complete, including §4A**.
+`docs/UX2-refine.md` §5 currently defers the UX2 Interaction Stage Hero/player visualization refactor and Section 6 physical-seat causal-graph work **until all active refinement sections before §5 are complete, including §4A**.
 
 Before that boundary:
 
@@ -70,10 +70,10 @@ Before that boundary:
 At the clean planning boundary after all active pre-§5 refinements, including §4A, are closed:
 
 - re-read the latest `docs/UX2-refine.md`;
-- UX3 §6 becomes authorized implementation work;
+- UX2 Section 6 becomes authorized implementation work;
 - begin with §6.25 **Phase A — physical-seat graph foundation** unless a newer direct user instruction changes the order;
 - continue one bounded HANDOVER task at a time;
-- do not skip ahead to later UX3 phases to compensate for missing typed authority.
+- do not skip ahead to later Section 6 phases to compensate for missing typed authority.
 
 This sequencing rule is a product-scope decision, not a CI exception. Keep the existing CI cadence unchanged.
 
