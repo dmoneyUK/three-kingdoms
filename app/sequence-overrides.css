@@ -1641,18 +1641,26 @@
 .opponent-judgement-cards { overflow: visible; }
 
 /* Public Inspect is a compact overlay within the existing Stage bounds. */
-.hero-focus-inspect { min-width: 0; max-height: 100%; }
+.hero-focus-inspect { min-width: 0; min-height: 0; max-height: 100%; }
+.game-shell .play-table[data-seat-topology="top-row"] .hero-focus.hero-focus-inspect {
+  grid-template-areas: "portrait heading" "portrait identity" "context context";
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-content: start;
+}
 .hero-focus-inspect .hero-focus-heading { align-items: center; }
 .hero-focus-inspect .hero-focus-heading strong { margin-left: 0; color: #efc36c; }
+.hero-focus-inspect .hero-focus-identity { gap: 4px; }
 .hero-focus-inspect .hero-focus-identity b { font-size: 15px; line-height: 1.1; }
 .hero-focus-inspect .hero-focus-identity span { font-size: 12px; line-height: 1.15; }
 .hero-focus-inspect .hero-focus-identity small { font-size: 10px; }
 .hero-focus-inspect-close { flex: none; width: 22px; height: 22px; padding: 0; border: 1px solid #a58e5d; border-radius: 50%; background: #11140f; color: #f0d28c; font: 16px/18px Arial, sans-serif; cursor: pointer; pointer-events: auto; }
 .hero-focus-inspect-explain { width: fit-content; padding: 2px 5px; border: 1px solid #7b704c; background: #171a13; color: #d9c28b; font: 700 9px Arial, sans-serif; cursor: pointer; pointer-events: auto; }
-.hero-focus-inspect-details { grid-area: context; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 5px; max-height: min(30vh, 240px); overflow: auto; padding: 0 2px 2px 0; pointer-events: auto; }
-.hero-focus-inspect-details .opponent-inspection-zone { align-self: start; min-width: 0; padding: 4px 5px; }
-.hero-focus-inspect-details .opponent-inspection-zone h3 { margin-bottom: 4px; font-size: 7px; }
-.hero-focus-inspect-details .opponent-inspection-zone[aria-label="Public Skills"] { align-self: start; }
+.hero-focus-inspect-details { grid-area: context; grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 5px; min-width: 0; min-height: 0; max-height: min(30vh, 240px); overflow: auto; padding: 0 2px 2px 0; pointer-events: auto; }
+.hero-focus-inspect .hero-focus-inspect-public-skills { margin-top: 0; padding: 4px 5px; }
+.hero-focus-inspect-public-zones { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 5px; }
+.hero-focus-inspect-public-zones .opponent-inspection-zone { min-width: 0; padding: 4px 5px; }
+.hero-focus-inspect-public-zones .opponent-inspection-zone h3,
+.hero-focus-inspect .hero-focus-inspect-public-skills h3 { margin-bottom: 4px; font-size: 7px; }
 .hero-focus-inspect-skills { display: flex; flex-wrap: wrap; gap: 4px; }
 .hero-focus-inspect-skill { max-width: 100%; padding: 4px 7px; border: 1px solid #6f846f99; background: #17231d; color: #d9d0bb; font: 700 10px/1.15 Arial, sans-serif; overflow-wrap: anywhere; cursor: pointer; pointer-events: auto; }
 .hero-focus-inspect-hand { display: flex; align-items: center; gap: 7px; color: #d9d0bb; font: 8px Arial, sans-serif; }
@@ -1663,7 +1671,8 @@
 .hero-focus-inspect .opponent-inspection-zone[aria-label="Equipment"] .opponent-inspection-card-row:has(> .opponent-inspection-card:only-child) > .opponent-inspection-card { width: clamp(70px, 16vw, 78px); flex-basis: clamp(70px, 16vw, 78px); }
 
 @media (max-width: 520px) {
-  .hero-focus-inspect-details { grid-template-columns: minmax(0, 1fr); max-height: min(28vh, 220px); }
+  .hero-focus-inspect-details { max-height: min(30vh, 180px); }
+  .hero-focus-inspect-public-zones { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .game-shell .play-table[data-seat-topology] > .interaction-safe-zone > .interaction-stage[data-local-ui-mode="INSPECT"] {
@@ -1710,7 +1719,8 @@
   box-sizing: border-box;
   width: calc(100% - 8px);
   max-width: 680px;
-  max-height: 72%;
+  max-height: 72cqh;
+  min-height: 0;
   min-width: 0;
   overflow: hidden;
   padding: 8px;
@@ -1724,7 +1734,8 @@
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  max-height: 100%;
+  min-height: 0;
+  max-height: calc(72cqh - 16px);
   overflow: hidden;
   pointer-events: auto;
 }
@@ -1749,7 +1760,7 @@
     aspect-ratio: 4 / 5;
   }
   .opponent-inspection-floating-shell .hero-focus-inspect-details {
-    max-height: max(0px, min(130px, calc(72cqh - 44.5cqw - 10px)));
+    max-height: min(30vh, 180px);
   }
 }
 
@@ -4298,4 +4309,96 @@
 .game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-event[data-countdown-urgency="critical"] b,
 .game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response[data-countdown-urgency="critical"] .countdown-hourglass {
   color: #ffd0bd;
+}
+
+/* A participating viewer keeps their own Hero in the Dock. Show the proven
+   root card and any public Negation cards inside the existing focus flow. */
+.interaction-stage[data-single-target-negation-participant-lane="proven"] .interaction-stage-current-effect-flow.is-negation-participant-lane {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.interaction-stage[data-single-target-negation-participant-lane="proven"] .interaction-stage-current-effect-flow.is-negation-participant-lane > .hero-focus {
+  width: min(100%, 240px);
+  min-width: 0;
+  margin: 0;
+}
+.single-target-negation-participant-card-history {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 78px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.single-target-negation-participant-card-history > [data-single-target-negation-root="true"] {
+  width: 54px;
+  height: 76px;
+  flex: none;
+}
+.single-target-negation-participant-card-history > [data-single-target-negation-root="true"] > b {
+  padding: 3px 2px;
+  font: 700 7px/1.05 Georgia, serif;
+}
+.single-target-negation-participant-response-branch {
+  position: static;
+  display: flex;
+  width: auto;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  transform: none;
+}
+.single-target-negation-participant-response-branch > .single-target-negation-branch-connector {
+  position: static;
+  width: 12px;
+  flex: none;
+}
+.single-target-negation-participant-response-branch .single-target-negation-response-list {
+  width: auto;
+  gap: 5px;
+}
+.single-target-negation-participant-response-branch .single-target-negation-response-node {
+  width: 38px;
+  flex: none;
+}
+.single-target-negation-participant-response-branch .single-target-negation-response-node .group-stage-card-negation {
+  width: 38px;
+  height: 52px;
+  aspect-ratio: auto;
+}
+.single-target-negation-participant-response-branch .single-target-negation-response-node > b {
+  max-width: 54px;
+  font-size: 7px;
+}
+.interaction-stage[data-negation-restored-root-card="proven"] {
+  display: flex;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: translateY(-12px);
+}
+.single-target-negation-restored-settlement {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  justify-content: center;
+}
+.single-target-negation-restored-settlement > [data-single-target-negation-root="true"] {
+  width: 54px;
+  height: 76px;
+  flex: none;
+}
+.single-target-negation-restored-settlement > [data-single-target-negation-root="true"] > b {
+  padding: 3px 2px;
+  font: 700 7px/1.05 Georgia, serif;
 }

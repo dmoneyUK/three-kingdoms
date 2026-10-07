@@ -5,40 +5,32 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result
 
-P2 unified Target Card Selection Modal production routing is complete with
-real server-backed Steal, Dismantle, Retaliation, Frost Sword, and Kirin Bow
-browser proof. Its stale-assertion-only repair is green on exact SHA
-`42e736e60fc3a8998ebd3d358f8a1deff869993d`, Actions run `37678414085` (all
-validation and deploy jobs succeeded).
+P4 real production-path parity is implemented. Seven server-backed browser
+scenarios cover single-target Negation open/first/counter/settlement, Raining
+Arrows with and without Dodge, and private/public Opponent Inspect at 390, 480,
+and 1440px. The related browser regression group passed 16/16; the focused
+PresentationV2 engine API suite passed 33/33. Build, targeted ESLint, JS syntax
+checks, and `git diff --check` passed. Reviewer acceptance is not claimed.
 
-P3 audit has found and corrected the `lü-meng` / `lu-meng` registry-key mismatch
-that hid real Composure CurrentAction authority from the Skills band. Removed
-the non-existent active Deliverance provider mapping. A contract test now
-accounts for all 46 skills across 30 implemented Heroes: 32 active trigger
-skills, 7 response provider IDs, 10 passive entries, and the specialized Guan
-Yu/Zhao Yun conversions. All mapped providers have API test coverage. The real
-server-backed Composure/Empress Dowager spec passed 2/2; the skill-family
-browser batch passed 137/137, and the roster/unit suite passed 44/44. Build,
-targeted ESLint, and `git diff --check` passed. Real browser proof also includes
-existing Assault and Retaliation paths. Reviewer acceptance is not claimed.
+Commit gate observed before P4: remote `a8f0ec65ce86c5cff8c4f8b604e5afad11d82abb`
+had no Actions run; latest relevant push run `37681849830` for
+`6d1cf013e086cab9b74842761a89ff090f7d7c19` completed success. Per the user's
+no-status rule, work may proceed; P4's pushed SHA/status must be recorded after
+push.
 
 ## Design checkpoint
 
-Re-fetched and reviewed remote `docs/UX2-refine.md`, blob
-`9b53efac347e1186eb7195346e3ea2c51f8d17b6`; no newer design changes. At this
-boundary re-read §1.5–1.11, §4.10, §§4A–4D, and §5. Section 6 remains gated on
-§4.10, §4A, §4B, and all §4D tasks.
+Reviewed current remote `docs/UX2-refine.md`, blob
+`58100b7b1f14d2ff0b1b98e6f79ee1701daa74b4`. The new §4C.29 is compatible with
+closed P4 and is a mandatory pre-Section-6 refinement.
 
 ## Current task
 
-`UX2.REFINE-REAL-PRODUCTION-PATH-PARITY-P4-01` — prove and repair the real
-server-to-browser paths for single-target Negation, Raining Arrows Dodge / TAKE
-DAMAGE, and compact Opponent Inspect (public identity, skills, Equipment,
-Judgment, and private Hand count). Do not start §6 while §4.10, §4A, §4B, or
-the remaining §4D gate tasks are open.
-
-Acceptance: identify each actionable capability's real authoritative
-CurrentAction provider; prove Skills-band activation, exact existing payload,
-required continuation, no duplicate Action Row activation, and unavailable
-state when authority is absent. Repair any real-projection mismatch found;
-fixture-only proof is supplementary. Keep deferred §6 work out of scope.
+`UX2.REFINE-MOBILE-TARGET-CARD-MODAL-LAYOUT-4C29-01` — implement §4C.29 as one
+responsive modal-layout refinement. Prove real-authority Burning Bridge and
+Steal at 390×844, 480×900, and wide: four anonymous Hand positions, selected
+state without obscuring neighbors, Hand + Equipment + Judgment, larger-Hand
+contained overflow, ≥44px targets, no page overflow, and reachable actions.
+Use the approved player-facing name **Burning Bridge** while preserving internal
+`Dismantle` protocol identifiers. Section 6 remains gated by §4.10, §4A,
+§4C.29, P5, and all other §4D requirements.

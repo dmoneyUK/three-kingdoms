@@ -1,0 +1,538 @@
+import { expect, test } from "@playwright/test";
+
+const API = "http://127.0.0.1:3137";
+const card = (kind, id, suit = "♠", rank = "7") => ({ id, kind, suit, rank });
+
+async function seedGame(request, players) {
+  const response = await request.post(`${API}/__test/seed-playing-game`, {
+    data: { phase: "play", turnSeat: 0, players },
+  });
+  if (!response.ok()) throw new Error(`seed game failed: ${await response.text()}`);
+  return response.json();
+}
+
+async function openGame(page, seed, playerIndex, viewport = { width: 390, height: 844 }) {
+  const member = seed.players[playerIndex];
+  await page.setViewportSize(viewport);
+  await page.addInitScript(({ code, token, name }) => {
+    localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
+  }, { code: seed.code, token: member.token, name: member.name });
+  await page.goto(`${API}/`);
+  await expect(page.locator(".game-shell")).toBeVisible();
+}
+
+async function attachScreenshot(testInfo, name, page) {
+  const path = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path, animations: "disabled" });
+  await testInfo.attach(name, { path, contentType: "image/png" });
+}
+
+async function roomView(request, seed, playerIndex) {
+  const member = seed.players[playerIndex];
+  const query = new URLSearchParams({ code: seed.code, token: member.token });
+  const response = await request.get(`${API}/api/rooms?${query}`);
+  expect(response.ok()).toBeTruthy();
+  return response.json();
+}
+
+async function apiAction(request, seed, playerIndex, action, extra = {}) {
+  const before = await roomView(request, seed, playerIndex);
+  expect(before.isMyAction, `${action} is owned by this CurrentAction actor`).toBe(true);
+  expect(before.currentAction.legalActions, `${action} is authorized by CurrentAction`).toContain(action);
+  const response = await request.post(`${API}/api/rooms`, {
+    data: { action, code: seed.code, token: seed.players[playerIndex].token, ...extra },
+  });
+  if (!response.ok()) throw new Error(`${action} failed: ${await response.text()}`);
+  return response.json();
+}
+
+async function waitForActor(request, seed, playerIndex, requirement) {
+  await expect.poll(async () => {
+    const view = await roomView(request, seed, playerIndex);
+    return view.isMyAction && view.currentAction?.requirement === requirement;
+  }, { timeout: 15_000 }).toBe(true);
+  return roomView(request, seed, playerIndex);
+}
+
+function actionResponse(page, action) {
+  return page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").action === action; }
+    catch { return false; }
+  });
+}
+
+async function playDismantle(page, root, target) {
+  await page.locator(`[data-hand-card-id="${root.id}"] .game-card`).click();
+  await page.getByRole("button", { name: `Select ${target.name}`, exact: true }).click();
+  const confirm = page.locator('[data-console-surface="local-operation"] button.primary');
+  await expect(confirm).toHaveText("Confirm");
+  await expect(confirm).toBeEnabled();
+  const submittedPromise = actionResponse(page, "play_card");
+  await confirm.click();
+  const submitted = await submittedPromise;
+  expect(submitted.ok()).toBeTruthy();
+  expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
+    action: "play_card", cardId: root.id, targetId: target.id,
+  });
+}
+
+async function playRainingArrows(page, root) {
+  await page.locator(`[data-hand-card-id="${root.id}"] .game-card`).click();
+  const play = page.locator('[data-console-surface="local-operation"] button.primary');
+  await expect(play).toHaveText("Play");
+  const submittedPromise = actionResponse(page, "play_card");
+  await play.click();
+  const submitted = await submittedPromise;
+  expect(submitted.ok()).toBeTruthy();
+  expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({ action: "play_card", cardId: root.id });
+}
+
+async function declineThroughPage(page, playerId) {
+  const decline = page.locator(`.local-player-dock[data-player-anchor="${playerId}"] [data-action-slot="decline"] button`);
+  await expect(decline).toHaveText("Skip");
+  await expect(decline).toBeEnabled();
+  const submittedPromise = actionResponse(page, "decline_response");
+  await decline.click();
+  const submitted = await submittedPromise;
+  expect(submitted.ok()).toBeTruthy();
+  return JSON.parse(submitted.request().postData() ?? "{}");
+}
+
+async function respondWithCard(page, playerId, cardId) {
+  const dock = page.locator(`.local-player-dock[data-player-anchor="${playerId}"]`);
+  const cardButton = dock.locator(`[data-hand-card-id="${cardId}"] .game-card`);
+  await expect(cardButton).toBeEnabled();
+  await cardButton.click();
+  const confirm = dock.locator('[data-action-slot="primary"] button.primary');
+  await expect(confirm).toHaveText("Confirm");
+  await expect(confirm).toBeEnabled();
+  const submittedPromise = actionResponse(page, "respond");
+  await confirm.click();
+  const submitted = await submittedPromise;
+  expect(submitted.ok()).toBeTruthy();
+  return JSON.parse(submitted.request().postData() ?? "{}");
+}
+
+function expectOneActivePublicCard(stage) {
+  return expect(stage.locator(".group-stage-card[data-active-head='true']")).toHaveCount(1);
+}
+
+async function expectOpenSingleTargetNegation(page, viewerId) {
+  const stage = page.locator('.interaction-stage[data-single-target-negation-participant-lane="proven"]');
+  await expect(stage).toBeVisible({ timeout: 15_000 });
+  await expect(stage).toHaveAttribute("data-negation-open-composition", "proven");
+  await expect(stage.locator('[data-action-card-kind="Dismantle"][data-single-target-negation-root="true"]')).toHaveAttribute("data-active-head", "true");
+  await expect(stage.locator("[data-current-effect-label]")).toHaveCount(0);
+  await expect(stage.locator("[data-negation-causal-participant]")).toHaveCount(0);
+  await expect(stage.locator("[data-hero-focus-player-id]")).toHaveCount(1);
+  await expect(stage.locator("[data-hero-focus-player-id]")).not.toHaveAttribute("data-hero-focus-player-id", viewerId);
+  await expect(stage.locator("[data-public-negation-node-actor-id]")).toHaveCount(0);
+  await expect(stage.locator('[data-action-card-kind="Negation"]')).toHaveCount(0);
+  await expect(stage).not.toContainText(/EFFECT|REACTION CHAIN|ORIGINAL EFFECT|NEGATION WINDOW/i);
+  await expectOneActivePublicCard(stage);
+  return stage;
+}
+
+async function expectNoStageDockOverlap(page, stage) {
+  const stageBox = await stage.boundingBox();
+  const guidanceBox = await page.locator(".local-player-dock .console-guidance").boundingBox();
+  const dockBox = await page.locator(".local-player-dock").boundingBox();
+  expect(stageBox).not.toBeNull();
+  expect(guidanceBox).not.toBeNull();
+  expect(dockBox).not.toBeNull();
+  const overlaps = (a, b) => Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x)
+    && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
+  expect(overlaps(stageBox, guidanceBox)).toBe(false);
+  expect(overlaps(stageBox, dockBox)).toBe(false);
+  return stageBox;
+}
+
+function negationPlayers(sourceNegation, targetNegation, targetCounterNegation) {
+  return [
+    {
+      name: "SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4,
+      hand: [card("Dismantle", "real-negation-dismantle"), sourceNegation],
+    },
+    {
+      name: "TARGET", role: "Loyalist", hero: "sun-quan", hp: 4, maxHp: 4,
+      hand: [card("Attack", "real-negation-target-card"), targetNegation, targetCounterNegation],
+    },
+    { name: "THIRD", role: "Rebel", hero: "guo-jia", hp: 4, maxHp: 4, hand: [] },
+    { name: "FOURTH", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: [] },
+  ];
+}
+
+async function runNegationScenario({ page, request, testInfo, outcome, viewport, sourceCounters }) {
+  const sourceNegation = card("Negation", `real-negation-source-${outcome}`);
+  const targetNegation = card("Negation", `real-negation-target-${outcome}`);
+  const targetCounterNegation = card("Negation", `real-negation-target-counter-${outcome}`);
+  const seed = await seedGame(request, negationPlayers(sourceNegation, targetNegation, targetCounterNegation));
+  const [source, target] = seed.players;
+  await openGame(page, seed, 0, viewport);
+  const targetPage = await page.context().newPage();
+  await openGame(targetPage, seed, 1, { width: 480, height: 900 });
+
+  await playDismantle(page, { id: "real-negation-dismantle" }, target);
+  const sourceWindow = await waitForActor(request, seed, 0, "negate");
+  expect(sourceWindow.currentAction).toMatchObject({ kind: "response", actorId: source.id, requirement: "negate" });
+  expect(sourceWindow.currentAction.options.some((option) => option.providerId === "negation_card")).toBe(true);
+  const openStage = await expectOpenSingleTargetNegation(page, source.id);
+  const guidance = page.locator(`.local-player-dock[data-player-anchor="${source.id}"] .console-guidance .decision-status strong`);
+  await expect(guidance).toHaveText("Play Negation or Skip.");
+  await expectNoStageDockOverlap(page, openStage);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+  await attachScreenshot(testInfo, `negation-open-source-${viewport.width}`, page);
+
+  const observerView = await roomView(request, seed, 2);
+  expect(observerView.currentAction.options).toBeUndefined();
+  expect(JSON.stringify(observerView)).not.toContain(targetNegation.id);
+  expect(JSON.stringify(observerView)).not.toContain(targetCounterNegation.id);
+  await declineThroughPage(page, source.id);
+
+  const targetWindow = await waitForActor(request, seed, 1, "negate");
+  expect(targetWindow.currentAction).toMatchObject({ kind: "response", actorId: target.id, requirement: "negate" });
+  expect(targetWindow.currentAction.options.some((option) => option.providerId === "negation_card")).toBe(true);
+  const targetOpenStage = await expectOpenSingleTargetNegation(targetPage, target.id);
+  await expect(targetPage.locator(`.local-player-dock[data-player-anchor="${target.id}"] .console-guidance .decision-status strong`)).toHaveText("Play Negation or Skip.");
+  await expectNoStageDockOverlap(targetPage, targetOpenStage);
+  expect(await targetPage.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(480);
+  await attachScreenshot(testInfo, "negation-open-target-480", targetPage);
+  const firstPayload = await respondWithCard(targetPage, target.id, targetNegation.id);
+  expect(firstPayload).toMatchObject({ action: "respond", cardId: targetNegation.id });
+
+  const sourceCounterWindow = await waitForActor(request, seed, 0, "negate");
+  expect(sourceCounterWindow.currentAction.actorId).toBe(source.id);
+  const firstBranch = page.locator('.interaction-stage[data-negation-first-branch-composition="proven"]');
+  await expect(firstBranch).toBeVisible();
+  await expect(firstBranch.locator(".single-target-negation-response-node")).toHaveCount(1);
+  await expect(firstBranch.locator(".single-target-negation-response-node").first()).toHaveAttribute("data-active-head", "true");
+  await expect(firstBranch.locator('[data-action-card-kind="Dismantle"][data-active-head="true"]')).toHaveCount(0);
+  await expectOneActivePublicCard(firstBranch);
+  const afterFirst = await roomView(request, seed, 0);
+  expect(JSON.stringify(afterFirst)).toContain(targetNegation.id);
+  expect(JSON.stringify(afterFirst)).not.toContain("real-negation-target-card");
+  expect(JSON.stringify(afterFirst)).not.toContain(targetCounterNegation.id);
+
+  if (sourceCounters) {
+    const counterPayload = await respondWithCard(page, source.id, sourceNegation.id);
+    expect(counterPayload).toMatchObject({ action: "respond", cardId: sourceNegation.id });
+    const targetCounterWindow = await waitForActor(request, seed, 1, "negate");
+    expect(targetCounterWindow.currentAction.actorId).toBe(target.id);
+    expect(targetCounterWindow.currentAction.options.some((option) => option.providerId === "negation_card"
+      && option.selection?.eligibleCardIds?.includes(targetCounterNegation.id))).toBe(true);
+    const counterBranch = targetPage.locator('.interaction-stage[data-negation-counter-branch-composition="proven"]');
+    await expect(counterBranch).toBeVisible();
+    const nodes = counterBranch.locator(".single-target-negation-response-node");
+    await expect(nodes).toHaveCount(2);
+    await expect(nodes.nth(0)).toHaveAttribute("data-active-head", "false");
+    await expect(nodes.nth(1)).toHaveAttribute("data-active-head", "true");
+    await expectOneActivePublicCard(counterBranch);
+    await expectNoStageDockOverlap(targetPage, counterBranch);
+    expect(await targetPage.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(480);
+    await attachScreenshot(testInfo, "negation-counter-branch-480", targetPage);
+    const targetDecline = await declineThroughPage(targetPage, target.id);
+    expect(targetDecline.action).toBe("decline_response");
+  } else {
+    const sourceDecline = await declineThroughPage(page, source.id);
+    expect(sourceDecline.action).toBe("decline_response");
+    const targetRevisit = await waitForActor(request, seed, 1, "negate");
+    expect(targetRevisit.currentAction.actorId).toBe(target.id);
+    expect(targetRevisit.currentAction.options.some((option) => option.providerId === "negation_card"
+      && option.selection?.eligibleCardIds?.includes(targetCounterNegation.id))).toBe(true);
+    const activeBranch = targetPage.locator('.interaction-stage[data-negation-first-branch-composition="proven"]');
+    await expect(activeBranch).toBeVisible();
+    await expectNoStageDockOverlap(targetPage, activeBranch);
+    const finalPass = await declineThroughPage(targetPage, target.id);
+    expect(finalPass.action).toBe("decline_response");
+  }
+
+  await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot?.settlement?.outcome, { timeout: 15_000 }).toBe(outcome);
+  const settledView = await roomView(request, seed, 0);
+  expect(settledView.presentationSnapshot.settlement).toMatchObject({
+    outcome,
+    rootCardKind: "Dismantle",
+    sourceId: source.id,
+    targetId: target.id,
+  });
+  if (outcome === "ROOT_RESTORED") {
+    await expect(page.locator(`.interaction-stage[data-negation-restored-root-card="proven"][data-negation-settlement="${outcome}"]`)).toBeVisible({ timeout: 10_000 });
+    const settledStage = page.locator('.interaction-stage[data-negation-restored-root-card="proven"][data-negation-settlement="ROOT_RESTORED"]');
+    await expect(settledStage.locator(".single-target-negation-response-node")).toHaveCount(0);
+    await expect(settledStage.locator('[data-action-card-kind="Dismantle"][data-active-head="true"]')).toHaveCount(1);
+    await expect(settledStage.locator("[data-negation-causal-participant], [data-hero-focus-player-id]")).toHaveCount(0);
+    await expectOneActivePublicCard(settledStage);
+    const targetCardModal = page.getByRole("dialog", { name: "Dismantle target card selection" });
+    await expect(targetCardModal).toBeVisible();
+    const [stageBox, modalBox] = await Promise.all([settledStage.boundingBox(), targetCardModal.boundingBox()]);
+    expect(stageBox).not.toBeNull();
+    expect(modalBox).not.toBeNull();
+    const overlaps = (a, b) => Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x)
+      && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
+    expect(overlaps(stageBox, modalBox)).toBe(false);
+    await expectNoStageDockOverlap(page, settledStage);
+    expect(["target_card", "trigger", "response"]).toContain(settledView.currentAction.kind);
+    await attachScreenshot(testInfo, "negation-root-restored-dismantle-continuation", page);
+  } else {
+    await expect(page.locator('[data-single-target-negation-root="true"]')).toHaveCount(0);
+    await expect(page.locator(`.local-player-dock[data-player-anchor="${source.id}"] .console-guidance .decision-status strong`)).toContainText("turn");
+    await attachScreenshot(testInfo, "negation-root-cancelled-mobile", page);
+  }
+}
+
+test("real Dismantle Negation/counter-Negation restores the root card through its continuation", async ({ page, request }, testInfo) => {
+  await runNegationScenario({ page, request, testInfo, outcome: "ROOT_RESTORED", viewport: { width: 1440, height: 900 }, sourceCounters: true });
+});
+
+test("real Dismantle Negation cancellation exits after authoritative root settlement", async ({ page, request }, testInfo) => {
+  await runNegationScenario({ page, request, testInfo, outcome: "ROOT_CANCELLED", viewport: { width: 390, height: 844 }, sourceCounters: false });
+});
+
+async function reachRainingArrowsDodge(request, seed, targetId) {
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const views = await Promise.all(seed.players.map((_, index) => roomView(request, seed, index)));
+    const targetView = views.find((view) => view.isMyAction && view.currentAction?.actorId === targetId
+      && view.currentAction.kind === "response" && view.currentAction.requirement === "dodge");
+    if (targetView) return targetView;
+
+    const pendingNegation = views.findIndex((view) => view.isMyAction
+      && view.currentAction?.kind === "response" && view.currentAction.requirement === "negate");
+    if (pendingNegation >= 0) {
+      await apiAction(request, seed, pendingNegation, "decline_response");
+      continue;
+    }
+    const otherDodgeResponse = views.findIndex((view) => view.isMyAction
+      && view.currentAction?.kind === "response" && view.currentAction.requirement === "dodge");
+    if (otherDodgeResponse >= 0) {
+      await apiAction(request, seed, otherDodgeResponse, "decline_response");
+      continue;
+    }
+    throw new Error("Real Raining Arrows left no CurrentAction transition toward the intended participant.");
+  }
+  throw new Error("The real Raining Arrows flow did not reach the intended Dodge participant.");
+}
+
+function rainingPlayers({ root, hero = "sun-quan", hand = [] }) {
+  return [
+    { name: "SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [root] },
+    { name: "TARGET", role: "Loyalist", hero, hp: 4, maxHp: 4, hand },
+    { name: "THIRD", role: "Rebel", hero: "guo-jia", hp: 4, maxHp: 4, hand: [] },
+    { name: "FOURTH", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: [] },
+  ];
+}
+
+test("real Raining Arrows without Dodge offers only TAKE DAMAGE and advances server progress", async ({ page, request }, testInfo) => {
+  const root = card("RainingArrows", "real-raining-no-dodge-root");
+  const seed = await seedGame(request, rainingPlayers({ root }));
+  const target = seed.players[1];
+  await openGame(page, seed, 0);
+  await playRainingArrows(page, root);
+  const targetPage = await page.context().newPage();
+  await openGame(targetPage, seed, 1, { width: 480, height: 900 });
+
+  const view = await reachRainingArrowsDodge(request, seed, target.id);
+  expect(view.currentAction).toMatchObject({ kind: "response", actorId: target.id, requirement: "dodge", legalActions: ["decline_response"], options: [] });
+  expect(view.presentationV2.groupResolution).toMatchObject({ cardKind: "RainingArrows", resolutionSemantics: "GROUP", currentParticipantId: target.id });
+  await expect.poll(async () => {
+    const latest = await roomView(request, seed, 1);
+    return latest.currentAction?.actorId === target.id && latest.currentAction?.requirement === "dodge";
+  }).toBe(true);
+
+  await expect(targetPage.locator('.interaction-stage[data-stage="GROUP_RESOLUTION"] [data-group-root-action="RainingArrows"]')).toBeVisible();
+  const dock = targetPage.locator(`.local-player-dock[data-player-anchor="${target.id}"]`);
+  await expect(dock.locator('[data-action-slot="decline"] button')).toHaveText("TAKE DAMAGE");
+  await expect(dock.locator('[data-action-slot="decline"] button')).toBeEnabled();
+  await expect(dock.locator('[data-action-slot="primary"] button')).toHaveCount(0);
+  await expect(dock.getByRole("button", { name: "Skip", exact: true })).toHaveCount(0);
+  await expect(dock.getByRole("button", { name: "TAKE DAMAGE", exact: true })).toHaveCount(1);
+  await expect(dock.locator(".console-guidance .decision-status strong")).toHaveText("Respond to Raining Arrows.");
+  await expect(dock).not.toContainText("Group Resolution");
+  await expect(targetPage.locator('.interaction-stage[data-stage="GROUP_RESOLUTION"]')).not.toContainText("TAKE DAMAGE");
+  await attachScreenshot(testInfo, "raining-arrows-no-dodge-take-damage-480", targetPage);
+
+  const progressBefore = view.presentationV2.groupResolution.participantProgress.find((entry) => entry.playerId === target.id);
+  expect(progressBefore.status).toBe("CURRENT");
+  const responsePromise = actionResponse(targetPage, "decline_response");
+  await dock.getByRole("button", { name: "TAKE DAMAGE", exact: true }).click();
+  const submitted = await responsePromise;
+  expect(submitted.ok()).toBeTruthy();
+  expect(JSON.parse(submitted.request().postData() ?? "{}").action).toBe("decline_response");
+  const after = await roomView(request, seed, 1);
+  const progressAfter = after.presentationV2.groupResolution.participantProgress.find((entry) => entry.playerId === target.id);
+  expect(progressAfter.status).not.toBe("CURRENT");
+  expect(after.currentAction.actorId).not.toBe(target.id);
+  await expect(targetPage.getByRole("button", { name: "TAKE DAMAGE", exact: true })).toHaveCount(0);
+});
+
+test("real Raining Arrows exposes Zhen Ji's authoritative Dodge provider in Skills and submits it once", async ({ page, request }, testInfo) => {
+  const root = card("RainingArrows", "real-raining-empress-root");
+  const blackCard = card("Peach", "real-raining-empress-black", "♣");
+  const unrelated = card("Attack", "real-raining-empress-unrelated", "♥");
+  const seed = await seedGame(request, rainingPlayers({ root, hero: "zhen-ji", hand: [blackCard, unrelated] }));
+  const target = seed.players[1];
+  await openGame(page, seed, 0);
+  await playRainingArrows(page, root);
+  const targetPage = await page.context().newPage();
+  await openGame(targetPage, seed, 1, { width: 480, height: 900 });
+
+  const view = await reachRainingArrowsDodge(request, seed, target.id);
+  expect(view.currentAction.options.find((option) => option.providerId === "zhen_ji_black_card_dodge")).toMatchObject({
+    satisfies: "dodge",
+    selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [blackCard.id] },
+  });
+  await expect(targetPage.locator('.interaction-stage[data-stage="GROUP_RESOLUTION"] [data-group-root-action="RainingArrows"]')).toBeVisible();
+
+  const dock = targetPage.locator(`.local-player-dock[data-player-anchor="${target.id}"]`);
+  const skill = dock.locator(".local-hero-skills").getByRole("button", { name: "Empress Dowager", exact: true });
+  const extras = dock.locator('[data-action-extras="true"]');
+  const takeDamage = dock.locator('[data-action-slot="decline"] button');
+  await expect(skill).toBeEnabled();
+  await expect(extras.getByRole("button", { name: /Empress Dowager/ })).toHaveCount(0);
+  await expect(takeDamage).toHaveText("TAKE DAMAGE");
+  await expect(dock.locator('[data-action-slot="primary"] button')).toHaveCount(0);
+
+  await skill.click();
+  await expect(skill).toHaveAttribute("aria-pressed", "true");
+  await expect(dock.locator('[data-raining-arrows-dodge-providers="available"]')).toBeVisible();
+  const eligible = dock.locator(`[data-hand-card-id="${blackCard.id}"] .game-card`);
+  const ineligible = dock.locator(`[data-hand-card-id="${unrelated.id}"] .game-card`);
+  await expect(eligible).toBeEnabled();
+  await expect(ineligible).toBeDisabled();
+  await expect(takeDamage).toHaveText("TAKE DAMAGE");
+  await expect(dock.locator('[data-action-slot="primary"] button')).toBeDisabled();
+  await eligible.click();
+  const confirm = dock.locator('[data-action-slot="primary"] button.primary');
+  await expect(confirm).toBeEnabled();
+  await expect(takeDamage).toHaveText("TAKE DAMAGE");
+  const responsePromise = actionResponse(targetPage, "respond");
+  await attachScreenshot(testInfo, "raining-arrows-zhen-ji-dodge-selected-480", targetPage);
+  await confirm.click();
+  const submitted = await responsePromise;
+  expect(submitted.ok()).toBeTruthy();
+  const payload = JSON.parse(submitted.request().postData() ?? "{}");
+  expect(payload).toMatchObject({ action: "respond", providerId: "zhen_ji_black_card_dodge", cardId: blackCard.id });
+  expect((await roomView(request, seed, 1)).currentAction.actorId).not.toBe(target.id);
+  await expect(extras.getByRole("button", { name: /Empress Dowager/ })).toHaveCount(0);
+});
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 480, height: 900 },
+  { width: 1440, height: 900 },
+]) {
+  test(`server-projected opponent Inspect stays compact and private at ${viewport.width}px`, async ({ page, request }, testInfo) => {
+    const hidden = [card("Peach", `real-inspect-hidden-a-${viewport.width}`), card("Dodge", `real-inspect-hidden-b-${viewport.width}`), card("Attack", `real-inspect-hidden-c-${viewport.width}`)];
+    const crossbow = card("ZhugeCrossbow", `real-inspect-crossbow-${viewport.width}`, "♦", "A");
+    const shield = card("NioShield", `real-inspect-shield-${viewport.width}`);
+    const lightning = card("Lightning", `real-inspect-lightning-${viewport.width}`);
+    const seed = await seedGame(request, [
+      { name: "VIEWER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
+      {
+        name: "INSPECTED", role: "Loyalist", hero: "zhuge-liang", hp: 3, maxHp: 3, hand: hidden,
+        equipment: { weapon: crossbow, armor: shield }, judgement: [lightning],
+      },
+      { name: "THIRD", role: "Rebel", hero: "guo-jia", hp: 4, maxHp: 4, hand: [] },
+      { name: "FOURTH", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: [] },
+    ]);
+    const inspected = seed.players[1];
+    const projected = await roomView(request, seed, 0);
+    const target = projected.players.find((player) => player.id === inspected.id);
+    expect(target).toMatchObject({ hero: "zhuge-liang", handCount: 3 });
+    expect(target.equipmentCards.map((entry) => entry.id)).toEqual(expect.arrayContaining([crossbow.id, shield.id]));
+    expect(target.judgementCards.map((entry) => entry.id)).toEqual([lightning.id]);
+    for (const hiddenCard of hidden) expect(JSON.stringify(projected)).not.toContain(hiddenCard.id);
+
+    await openGame(page, seed, 0, viewport);
+    const inspectButton = page.locator(`[data-player-anchor="${inspected.id}"] .opponent-hero-target`);
+    await expect(inspectButton).toHaveAttribute("aria-label", "Inspect INSPECTED");
+    await inspectButton.click();
+    const stage = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"]');
+    const panel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
+    await expect(panel).toBeVisible();
+    await expect(panel.locator(".hero-focus-heading strong")).toHaveText("INSPECT · INSPECTED");
+    await expect(panel.locator(".hero-focus-identity")).toContainText("Zhuge Liang");
+    await expect(panel.locator(".hero-focus-identity")).toContainText("HP 3/3");
+    await expect(panel.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill')).toHaveCount(2);
+    await expect(panel.locator('[aria-label="Public Skills"]')).toContainText("Stargazing");
+    await expect(panel.locator('[aria-label="Public Skills"]')).toContainText("Empty Fortress Strategem");
+    await expect(panel.locator('[aria-label="Equipment"] .opponent-inspection-card')).toHaveCount(2);
+    await expect(panel.getByRole("button", { name: "Explain Zhuge Crossbow" })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Explain Nio Shield" })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Explain Lightning" })).toBeVisible();
+    const concealed = panel.locator('[aria-label="Concealed Hand"]');
+    await expect(concealed).toHaveAttribute("data-concealed-hand-count", "3");
+    await expect(concealed).toContainText("Hand · 3");
+    await expect(panel.locator(".hero-focus-inspect-hand-backs i")).toHaveCount(3);
+    await expect(concealed.locator(".played-card")).toHaveCount(0);
+    await expect(panel).not.toContainText(/\b(Lord|Loyalist|Rebel|Renegade|Spy)\b/);
+    const bodyText = await page.locator("body").innerText();
+    for (const hiddenCard of hidden) expect(bodyText).not.toContain(hiddenCard.id);
+    const details = panel.locator(".hero-focus-inspect-details");
+    const publicSkillsBox = await panel.locator('[aria-label="Public Skills"]').boundingBox();
+    const publicZonesBox = await panel.locator(".hero-focus-inspect-public-zones").boundingBox();
+    expect(publicSkillsBox).not.toBeNull();
+    expect(publicZonesBox).not.toBeNull();
+    expect(publicSkillsBox.y + publicSkillsBox.height).toBeLessThanOrEqual(publicZonesBox.y + 1);
+    const detailsGeometry = await details.evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight }));
+    await testInfo.attach(`inspect-public-zones-geometry-${viewport.width}`, { body: JSON.stringify(detailsGeometry), contentType: "application/json" });
+    const detailsViewport = async () => details.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const top = box.top + element.clientTop;
+      return { top, bottom: top + element.clientHeight };
+    });
+    const scrollContentIntoView = async (name, content) => {
+      const currentBox = await content.boundingBox();
+      const currentViewport = await detailsViewport();
+      expect(currentBox).not.toBeNull();
+      const offset = currentBox.y < currentViewport.top
+        ? currentBox.y - currentViewport.top
+        : currentBox.y + currentBox.height > currentViewport.bottom
+          ? currentBox.y + currentBox.height - currentViewport.bottom
+          : 0;
+      if (offset) await details.evaluate((element, scrollBy) => { element.scrollTop += scrollBy; }, offset);
+      const visibleBox = await content.boundingBox();
+      const visibleViewport = await detailsViewport();
+      const panelBox = await panel.boundingBox();
+      const scrollState = await details.evaluate((element) => ({ scrollTop: element.scrollTop, clientTop: element.clientTop, clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, borderTop: getComputedStyle(element).borderTopWidth }));
+      expect(visibleBox.y, JSON.stringify({ currentBox, currentViewport, visibleBox, visibleViewport, offset, scrollState })).toBeGreaterThanOrEqual(visibleViewport.top - 1);
+      expect(visibleBox.y + visibleBox.height).toBeLessThanOrEqual(visibleViewport.bottom + 1);
+      expect(visibleBox.y).toBeGreaterThanOrEqual(panelBox.y - 1);
+      expect(visibleBox.y + visibleBox.height).toBeLessThanOrEqual(panelBox.y + panelBox.height + 1);
+      await attachScreenshot(testInfo, `inspect-${name}-${viewport.width}`, page);
+    };
+    await scrollContentIntoView("equipment-crossbow", panel.getByRole("button", { name: "Explain Zhuge Crossbow" }));
+    await scrollContentIntoView("equipment-shield", panel.getByRole("button", { name: "Explain Nio Shield" }));
+    await scrollContentIntoView("judgement-lightning", panel.getByRole("button", { name: "Explain Lightning" }));
+    await scrollContentIntoView("concealed-hand", concealed);
+    await attachScreenshot(testInfo, `inspect-public-zones-scrolled-${viewport.width}`, page);
+    await details.evaluate((element) => { element.scrollTop = 0; });
+
+    const [stageBox, panelBox, dockBefore, menuBox, guidanceBox] = await Promise.all([
+      stage.boundingBox(), panel.boundingBox(), page.locator(".local-player-dock").boundingBox(),
+      page.locator(".stage-system-menu-trigger").boundingBox(), page.locator(".local-player-dock .console-guidance").boundingBox(),
+    ]);
+    expect(stageBox).not.toBeNull();
+    expect(panelBox).not.toBeNull();
+    expect(dockBefore).not.toBeNull();
+    expect(menuBox).not.toBeNull();
+    expect(guidanceBox).not.toBeNull();
+    await testInfo.attach(`inspect-layout-geometry-${viewport.width}`, { body: JSON.stringify({ stageBox, panelBox, dockBefore, menuBox, guidanceBox, detailsGeometry }, null, 2), contentType: "application/json" });
+    const overlaps = (a, b) => Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x)
+      && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
+    expect(panelBox.width).toBeLessThan(stageBox.width);
+    expect(panelBox.height).toBeLessThanOrEqual(stageBox.height * 0.72 + 1);
+    expect(panelBox.y).toBeGreaterThanOrEqual(stageBox.y - 1);
+    expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height + 1);
+    expect(overlaps(panelBox, menuBox)).toBe(false);
+    expect(overlaps(panelBox, guidanceBox)).toBe(false);
+    expect(overlaps(panelBox, dockBefore)).toBe(false);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+    await attachScreenshot(testInfo, `server-opponent-inspect-${viewport.width}`, page);
+
+    await panel.getByRole("button", { name: "Close INSPECTED inspection" }).click();
+    await expect(page.locator('.interaction-stage[data-local-ui-mode="INSPECT"]')).toHaveCount(0);
+    const dockAfter = await page.locator(".local-player-dock").boundingBox();
+    expect(Math.abs(dockAfter.x - dockBefore.x)).toBeLessThanOrEqual(2);
+    expect(Math.abs(dockAfter.y - dockBefore.y)).toBeLessThanOrEqual(2);
+  });
+}

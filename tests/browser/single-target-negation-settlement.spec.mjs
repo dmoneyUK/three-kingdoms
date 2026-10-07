@@ -112,6 +112,13 @@ test("a REST snapshot loaded without its interaction transition does not replay 
   await expect(page.locator(".interaction-stage[data-single-target-negation-composition='proven']")).toHaveCount(0);
 });
 
+test("a REST snapshot loaded without its interaction transition does not replay an old restoration", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tests/browser/fixture.html?state=rest&settlement=ROOT_RESTORED");
+  await expect(page.locator(".interaction-stage[data-single-target-negation-composition='proven']")).toHaveCount(0);
+  await expect(page.locator('.interaction-stage[data-negation-restored-root-card="proven"]')).toHaveCount(0);
+});
+
 test("self-target root restoration keeps one public participant and a stable return spine", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/tests/browser/fixture.html?state=active-negation-open&count=4&source=p2&effect=Something%20Out%20of%20Nothing");

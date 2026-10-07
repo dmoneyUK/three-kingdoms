@@ -1545,6 +1545,19 @@ Only a proven regression or new Reviewer-approved design requirement does.
   parent SHA `42e736e60fc3a8998ebd3d358f8a1deff869993d` completed success.
   Reviewer acceptance is not claimed.
 
+### UX2.REFINE-REAL-PRODUCTION-PATH-PARITY-P4-01 — Real interaction paths
+
+- Real server-backed browser proof now covers single-target Negation open,
+  first and counter responses, restored/cancelled settlement, Raining Arrows
+  with and without an authoritative Dodge provider, and public/private Opponent
+  Inspect at 390, 480, and 1440px. Repairs keep the viewer Hero Dock-only,
+  remove duplicate Stage/Action Row guidance, restore the root only on its
+  proven transition, and make every public Inspect zone reachable in the
+  contained compact panel without exposing Hand identities. The focused
+  production/settlement browser group passed 16/16; the PresentationV2 engine
+  API suite passed 33/33; build, targeted ESLint, syntax checks, and
+  `git diff --check` passed. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

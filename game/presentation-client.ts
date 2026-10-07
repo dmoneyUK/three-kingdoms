@@ -167,7 +167,6 @@ function restView(snapshot: PresentationSnapshot | null, meId: string | null): P
   const hasLocalControl = Boolean(localControl?.entitled && localControl.actorId && localControl.actorId === meId);
   const settlement = snapshot?.settlement ?? null;
   const negationSettlement = validNegationSettlement(settlement)
-    && settlement.outcome === "ROOT_CANCELLED"
     ? settlement
     : null;
   return {
