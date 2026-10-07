@@ -5,7 +5,7 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-Remote `ux-v2` HEAD `cf88742a062e26902ee96d11d947e504c1d20e4a` passed push run #829 (`37572039698`), including `build-and-test` and `deploy`. Local Triumphant change: focused browser spec 8/8 passed; targeted ESLint and `git diff --check` passed. The task change is not yet covered by CI.
+Remote `ux-v2` HEAD `6025be2820fa7bb5f6710c68f0bce5378ab53ef0` failed run #830 (`37583782375`) in `npm run test:browser`: 692 passed, 1 failed. `local-skill-control-consistency.spec.mjs` omitted Triumphant from its passive-skill matrix and treated its intentional non-actionable `role=group` tile as a disabled button. Adding it to the matrix makes the focused spec pass 6/6; targeted ESLint and `git diff --check` pass. CI repair is test-only. Pre-commit base `cf88742a062e26902ee96d11d947e504c1d20e4a` passed run #829 (`37572039698`).
 
 ## Design checkpoint
 
@@ -13,4 +13,4 @@ Reviewed remote `docs/UX2-refine.md`, blob `7e021455c8fdc9e88dc1b3b20d036400da82
 
 ## Current task
 
-`UX2.REFINE-HUA-XIONG-TRIUMPHANT-SKILL-CHOICE-01` — locally implemented. Render authoritative Recover/Draw options in the current viewer's Local Dock Action Row with server-authorized Skip; Hua Xiong's Skills band remains passive. Only `hua_xiong_triumphant` opts into inline choice rendering. Browser regression covers 320/390/480/wide geometry, exact action payloads, Skip, and observer privacy (no private trigger options). No gameplay/server changes. Next: recheck latest exact remote-head CI immediately before committing these task files, then push and record CI for the pushed SHA.
+`CI REPAIR ONLY` for `UX2.REFINE-HUA-XIONG-TRIUMPHANT-SKILL-CHOICE-01`: add Hua Xiong/Triumphant to the existing passive-skill browser matrix so geometry and no-action checks validate its intended group semantics. Do not change production behavior. Focused spec passed 6/6; commit/push only this test correction and handoff, then wait for exact repair-SHA CI success before closing the UX2 task or planning another.

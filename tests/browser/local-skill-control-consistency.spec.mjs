@@ -22,6 +22,7 @@ const passiveSkillNamesByHero = {
   "sun-quan": ["Deliverance"],
   "lu-xun": ["Modesty"],
   "lü-bu": ["Unrivaled"],
+  huaxiong: ["Triumphant"],
   "gongsun-zan": ["Militia"],
 };
 
