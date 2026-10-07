@@ -5,17 +5,18 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-§4.10 real server-backed Stargazing now keeps four private card faces visible,
-readable, and reorderable after the generic animation at 390×844, 480×900,
-320×640, and 1440×900. The focused browser group passed 6/6, including the
-server action payload, observer privacy, revision invalidation, keyboard focus
-cycling, pointer blocking, and fixed-modal/Dock geometry. Build, targeted
-ESLint, syntax, and `git diff --check` passed; Reviewer acceptance is not
-claimed.
+§4A Private Draw now has real server-backed browser proof for the normal
+two-card draw and an eight-card Equilibrium draw. Large private rows scroll
+without page overflow; viewer privacy and timer/menu/Guidance geometry are
+covered at 390×844, 480×900, and 1440×900. Build and the focused 14-test
+Private Draw/Bumper Harvest browser group passed; targeted ESLint and
+`git diff --check` passed. §4A remains open: Harvest choosing has no
+server-owned deadline, and the approved duration/expiry behavior is unresolved.
 
-Before this task commit, `9982aa426209848007734d1cbdb6661974958019` had Actions
-run `37695874026` completed successfully on that exact SHA. New-SHA validation
-will be checked before the next commit and recorded after push.
+Before this commit, remote HEAD `a9f812835339da7e0df7e4865097932899be3fe6`
+had push run `37697746722` completed successfully on that exact SHA. This
+commit's Actions state has not yet been checked; check the current remote SHA
+before the next commit. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
@@ -24,11 +25,10 @@ Reviewed the complete current remote `docs/UX2-refine.md`, blob
 
 ## Current task
 
-`UX2.REFINE-TRANSIENT-EVENT-TIMERS-4A-01` — complete §4A's compact, consistent
-lower-right timer and content-driven transient-event presentation for Private
-Draw and Bumper Harvest. Preserve event/gameplay timing and privacy; use only
-server-authoritative deadlines, and do not invent a chooser timeout. Prove the
-390×844, 480×900, and wide states, threshold/no-placeholder behavior, event
-content spacing, timer/menu and Guidance geometry stability, Dock/table
-containment, and Private Draw viewer privacy. Section 6 remains gated by §4A,
-P5, and all other §4D prerequisites.
+`UX2.REFINE-REAL-SERVER-TO-BROWSER-PROOF-P1-01` — audit and restore local
+real-room creation through the product route, then prove a server-generated
+room reaches the production browser page without handcrafted CurrentAction or
+PresentationSnapshot state. Build success alone is insufficient. §4A's
+Harvest chooser deadline question remains open; resume its active-choice timer
+only after the Reviewer resolves that authority. Section 6 remains gated by
+§4A, §4.10, §4C.29, P1–P5, and all other §4D prerequisites.

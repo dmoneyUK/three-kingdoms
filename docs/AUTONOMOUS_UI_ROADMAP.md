@@ -1578,6 +1578,15 @@ Only a proven regression or new Reviewer-approved design requirement does.
   interception, and keyboard focus cycling. Build, targeted ESLint, syntax,
   and diff checks passed. Reviewer acceptance is not claimed.
 
+### UX2.REFINE-TRANSIENT-EVENT-TIMERS-4A-01 — Private Draw evidence (partial)
+
+- Real server-backed browser proof covers the ordinary two-card draw and an
+  eight-card Sun Quan Equilibrium draw. Large Private Draw rows are keyboard-
+  focusable and horizontally scrollable without document overflow; observer
+  API/page privacy is preserved. Timer/menu and Guidance geometry passed at
+  390×844, 480×900, and 1440×900. The §4A task is still open because active
+  Bumper Harvest choice has no server-owned deadline or approved timeout rule.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

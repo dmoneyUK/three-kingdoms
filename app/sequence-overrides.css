@@ -1324,6 +1324,18 @@
 /* Keep the private opening reveal the same physical size and card rhythm as the hand. */
 .private-draw-row {
   gap: 0;
+  justify-content: flex-start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  scrollbar-width: none;
+  pointer-events: auto;
+}
+
+.private-draw-row::-webkit-scrollbar {
+  display: none;
 }
 
 .private-draw-row .played-card {
