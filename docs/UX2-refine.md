@@ -778,6 +778,245 @@ Zhuge Liang's Skills band is complete when the player can immediately distinguis
 
 while both remain visually balanced, readable, and stable beside the Hero portrait.
 
+## 4A. Transient Event Timers and Compact Event Overlays
+
+### 4A.1 Scope and purpose
+
+Timed transient events such as Private Draw must use the same compact lower-right system-control language as response timing instead of reserving a separate large timer block at the top of the combat screen.
+
+This section applies to non-response timed event presentation, including at minimum:
+
+- Private Draw / `Cards close in`;
+- Bumper Harvest choosing/closing countdowns;
+- temporary card-reveal or event-hold countdowns that are visible to the viewer;
+- other non-response event timers that currently use the generic `Countdown` presentation.
+
+This section does **not** change event timing, card privacy, reveal duration, or server/gameplay semantics.
+
+### 4A.2 One timer location during active play
+
+All visible combat/event countdowns should converge on the Stage lower-right system cluster whenever that cluster is available.
+
+Reference placement:
+
+```text
+                         2s   [☰]
+─────────────────────────────────────  Stage/event bottom
+Current local guidance / turn status
+─────────────────────────────────────
+Local Hero / Skills / Hand
+```
+
+Requirements:
+
+- the timer sits immediately to the left of the System Menu;
+- preferred gap between timer and menu: approximately 8px;
+- the System Menu keeps the same lower-right anchor used by response states;
+- the timer must not create a second top-right control block;
+- do not reserve a dedicated top band for `Cards close in`, `Choosing`, `Closing`, or similar countdown labels.
+
+The existing System Menu remains the place for Exit and other secondary system controls.
+
+### 4A.3 Compact event-timer visual treatment
+
+A transient-event timer should be visually compact.
+
+Preferred mobile footprint:
+
+- width: approximately 44–64px;
+- height: approximately 36–44px;
+- touch/pointer behavior remains non-interactive unless the timer itself has an explicit product action;
+- numeric time is the dominant content.
+
+For Private Draw, the visible timer should normally be:
+
+```text
+2s
+```
+
+or the same compact timer treatment already used for response timing.
+
+Do not render a large timer box containing:
+
+```text
+CARDS CLOSE IN
+2s
+```
+
+at the top of the table.
+
+The event title already explains what is happening. Repeating the timer meaning in a large separate heading is unnecessary.
+
+Accessible text may still expose the full meaning, e.g. `Cards close in, 2 seconds`.
+
+### 4A.4 Private Draw event content
+
+Private Draw remains a private viewer-only event.
+
+The central event content should retain:
+
+- `PRIVATE DRAW`;
+- `ONLY YOU CAN SEE THESE CARDS`;
+- the actual privately drawn cards.
+
+Those elements explain the event and its privacy boundary and should remain near the cards.
+
+The countdown is not part of that title block and should not appear above the opponent Seats.
+
+Reference composition:
+
+```text
+          PRIVATE DRAW
+   ONLY YOU CAN SEE THESE CARDS
+
+        [Card] [Card]
+
+
+                         2s   [☰]
+────────────────────────────────────
+Player / decision guidance
+```
+
+The private cards remain the visual focus.
+
+### 4A.5 Content-driven transient-event height
+
+Transient event content must not use a full-height presentation merely because the underlying table is tall.
+
+In particular, Private Draw must not rely on a layout equivalent to:
+
+```text
+position: absolute;
+inset: 0;
+justify-content: center;
+```
+
+when that produces a large empty region below the event cards.
+
+The event presentation must be content-driven relative to the usable space between the opponent Seat area and the lower system/guidance cluster.
+
+Requirements on 390px and 480px portrait:
+
+- event title and cards remain fully visible;
+- the lowest visible event card/content should normally sit within 16–24px of the lower system-control cluster;
+- the lower system-control cluster should sit 8–12px above Guidance;
+- no large unused vertical band should remain solely because the event overlay fills the entire play-table height;
+- the event must not overlap the Local Guidance Strip or Local Dock;
+- the event must not force the Local Dock lower merely to preserve old overlay height.
+
+A full-area dimming/backdrop layer may still cover the table for privacy/focus, but the **event content layout itself** must remain compact and must not create artificial blank space.
+
+### 4A.6 Deck and Discard relationship
+
+Deck/Discard remain table objects and must not be used as spacing anchors for the transient event.
+
+Private Draw cards may visually occupy the central event area without preserving a large gap simply to leave Deck/Discard visible underneath.
+
+Requirements:
+
+- transient event content may visually sit above or partially obscure Deck/Discard when the event is active;
+- the timer/System Menu cluster remains readable above Guidance;
+- Deck/Discard state must not move because the timer migrated;
+- no extra vertical padding is reserved between event cards and Deck/Discard.
+
+### 4A.7 Bumper Harvest and other timed event states
+
+Bumper Harvest and similar event-specific countdowns should use the same lower-right timer location.
+
+Labels such as:
+
+- `Choosing`;
+- `Closing`;
+- `Cards close in`;
+
+should not become large top-of-table control panels.
+
+The event-specific central UI may still explain the current event state when needed, but countdown placement remains consistent.
+
+Do not merge distinct event semantics into one generic modal. This section standardizes timer location and space usage, not the entire event interaction.
+
+### 4A.8 Timer state consistency
+
+A timer must appear consistently for the authoritative timed state.
+
+Requirements:
+
+- if the authoritative countdown is active and visible to this viewer, the compact timer is present;
+- if the countdown has not reached its visible-at threshold, no placeholder timer box is reserved;
+- when the timer becomes visible, event content must not jump materially;
+- timer appearance/disappearance must not move the Local Guidance Strip or Local Dock;
+- timer urgency styling may change without changing timer geometry.
+
+Preferred geometry stability:
+
+- System Menu coordinate delta when timer appears/disappears: ≤ 2 CSS px;
+- Guidance top coordinate delta caused only by timer visibility: ≤ 2 CSS px.
+
+### 4A.9 Privacy and accessibility
+
+Transient event timer migration must preserve privacy.
+
+For Private Draw:
+
+- only the viewer sees the private cards and private event title;
+- no public player surface exposes private card identity;
+- the timer itself reveals only time remaining, not hidden card information.
+
+Accessibility:
+
+- timer keeps an accessible full label;
+- Private Draw retains a clear private-event accessible name;
+- System Menu remains keyboard/focus accessible;
+- moving the timer must not alter the logical order of the private card interaction.
+
+### 4A.10 Measurable acceptance
+
+Validate at minimum:
+
+- 390 × 844 portrait;
+- 480 × 900 portrait;
+- one wide viewport.
+
+Required states:
+
+1. Private Draw with two cards;
+2. Private Draw with the largest supported visible private-draw count;
+3. Bumper Harvest active choice countdown;
+4. Bumper Harvest closing countdown;
+5. event countdown hidden before its visibility threshold;
+6. event countdown visible and approaching zero.
+
+Acceptance:
+
+| Requirement | Expectation |
+| --- | --- |
+| Private Draw timer | No large top-right `CARDS CLOSE IN` timer panel |
+| Timer location | Immediately left of lower-right System Menu |
+| System Menu | Remains in the same lower-right anchor |
+| Timer visibility | No placeholder space before timer becomes visible |
+| Event content | Title/cards fully visible |
+| Event trailing gap | Lowest event content to system cluster normally ≤ 24px |
+| System cluster to Guidance | Preferred 8–12px |
+| Guidance/Dock | No overlap |
+| Timer appearance | System Menu coordinate delta ≤ 2 CSS px |
+| Timer appearance | Guidance top delta ≤ 2 CSS px |
+| Horizontal overflow | 0 |
+| Privacy | Private Draw remains viewer-only |
+| Deck/Discard | No movement caused by timer relocation |
+
+### 4A.11 Completion criterion
+
+This refinement is complete when transient event timing uses one consistent lower-right control location and event overlays no longer create large artificial empty regions.
+
+For Private Draw specifically, the viewer should see:
+
+- the private event title;
+- the private cards;
+- a compact countdown beside the System Menu;
+- the current Guidance/turn status immediately below;
+
+without a large top timer box and without a large unused vertical gap.
+
 ## 5. Interaction-Stage Hero / Player Presentation — DEFERRED TO LATER REFACTOR
 
 ### 5.1 Current decision
@@ -825,15 +1064,16 @@ Current authorized refinement work includes:
 - authoritative legal response-provider emphasis;
 - System Menu / Exit relocation;
 - response timer relocation;
-- Zhuge Liang Stargazing / Empty Fortress Strategem skill presentation.
+- Zhuge Liang Stargazing / Empty Fortress Strategem skill presentation;
+- transient event timer relocation and compact event-overlay spacing from §4A.
 
 ### 5.4 Resume condition
 
-The user has now authorized the UX3 interaction-visualization refactor **after the active non-Hero refinement work in Sections 1–4 is completed**.
+The user has now authorized the UX3 interaction-visualization refactor **after all active refinement sections before §5 are completed, including §4A**.
 
 Therefore:
 
-1. finish the remaining authorized non-Hero refinement work first;
+1. finish the remaining authorized refinement work before §5 first, including §4A;
 2. do not interleave UX3 Hero/player graph work with unfinished Sections 1–4 refinement tasks;
 3. once those refinement items are closed at a clean planning boundary, UX3 Section 6 becomes authorized implementation work;
 4. begin UX3 from **§6.25 Phase A — physical-seat graph foundation** unless a newer direct user instruction changes the order;
