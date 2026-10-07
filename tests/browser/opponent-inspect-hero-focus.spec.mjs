@@ -71,18 +71,27 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     await expect(layer.locator(".opponent-inspection-backdrop")).toBeVisible();
     expect(await inspect.evaluate((element) => /\b(Lord|Loyalist|Rebel|Renegade|Spy)\b/.test(element.textContent ?? ""))).toBe(false);
 
-    const [stageBox, safeBox, shellBox, backdropBox, titleBox, closeBox, menuBox, guidanceBox, dockOpen] = await Promise.all([
+    const [stageBox, safeBox, shellBox, inspectBox, backdropBox, titleBox, closeBox, portraitBox, identityBox, identityType, menuBox, guidanceBox, dockOpen] = await Promise.all([
       stage.boundingBox(),
       page.locator(".interaction-safe-zone").boundingBox(),
       shell.boundingBox(),
+      inspect.boundingBox(),
       layer.locator(".opponent-inspection-backdrop").boundingBox(),
       inspect.locator(".hero-focus-heading strong").boundingBox(),
       inspect.getByRole("button", { name: "Close Player 2 inspection" }).boundingBox(),
+      inspect.locator(".hero-focus-portrait").boundingBox(),
+      inspect.locator(".hero-focus-identity").boundingBox(),
+      inspect.locator(".hero-focus-identity").evaluate((element) => ({
+        player: Number.parseFloat(getComputedStyle(element.querySelector("b")).fontSize),
+        hero: Number.parseFloat(getComputedStyle(element.querySelector("span")).fontSize),
+        hp: Number.parseFloat(getComputedStyle(element.querySelector("small")).fontSize),
+        explain: Number.parseFloat(getComputedStyle(element.querySelector(".hero-focus-inspect-explain")).fontSize),
+      })),
       page.locator(".stage-system-menu-trigger").boundingBox(),
       page.locator(".local-player-dock .console-guidance").boundingBox(),
       page.locator(".local-player-dock").boundingBox(),
     ]);
-    for (const box of [stageBox, safeBox, shellBox, backdropBox, titleBox, closeBox, menuBox, guidanceBox, dockBefore, dockOpen]) expect(box).not.toBeNull();
+    for (const box of [stageBox, safeBox, shellBox, inspectBox, backdropBox, titleBox, closeBox, portraitBox, identityBox, menuBox, guidanceBox, dockBefore, dockOpen]) expect(box).not.toBeNull();
     expect(Math.abs(stageBox.x - safeBox.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(stageBox.y - safeBox.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(stageBox.width - safeBox.width)).toBeLessThanOrEqual(1);
@@ -95,13 +104,26 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     expect(Math.abs((shellBox.y + shellBox.height / 2) - (stageBox.y + stageBox.height / 2))).toBeLessThanOrEqual(1);
     expect(shellBox.height / stageBox.height).toBeLessThanOrEqual(0.72);
     expect(shellBox.height).toBeLessThan(stageBox.height);
+    expect(identityType.player).toBeGreaterThanOrEqual(15);
+    expect(identityType.hero).toBeGreaterThanOrEqual(12);
+    expect(identityType.hp).toBeGreaterThanOrEqual(10);
+    expect(identityType.explain).toBeGreaterThanOrEqual(9);
     if (viewport.width <= 520) {
+      expect(portraitBox.width / inspectBox.width).toBeGreaterThanOrEqual(0.38);
+      expect(portraitBox.width / inspectBox.width).toBeLessThanOrEqual(0.44);
+      expect(identityBox.width / inspectBox.width).toBeGreaterThanOrEqual(0.56);
+      expect(identityBox.width / inspectBox.width).toBeLessThanOrEqual(0.62);
+      expect(identityBox.x).toBeGreaterThanOrEqual(portraitBox.x + portraitBox.width);
+      expect(identityBox.x + identityBox.width).toBeLessThanOrEqual(shellBox.x + shellBox.width);
       expect(shellBox.width / stageBox.width).toBeGreaterThanOrEqual(0.88);
       expect(shellBox.width / stageBox.width).toBeLessThanOrEqual(0.94);
       expect(shellBox.x - stageBox.x).toBeGreaterThanOrEqual(12);
       expect(shellBox.x - stageBox.x).toBeLessThanOrEqual(16);
       expect(stageBox.x + stageBox.width - shellBox.x - shellBox.width).toBeGreaterThanOrEqual(12);
       expect(stageBox.x + stageBox.width - shellBox.x - shellBox.width).toBeLessThanOrEqual(16);
+    } else {
+      expect(portraitBox.width).toBeLessThanOrEqual(100);
+      expect(portraitBox.height).toBeLessThanOrEqual(125);
     }
     expect(Math.abs((titleBox.y + titleBox.height / 2) - (closeBox.y + closeBox.height / 2))).toBeLessThanOrEqual(2);
     expect(overlaps(shellBox, menuBox)).toBe(false);

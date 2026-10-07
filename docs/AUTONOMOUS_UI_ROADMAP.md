@@ -1336,6 +1336,23 @@ Only a proven regression or new Reviewer-approved design requirement does.
   CI status, treated as success per direct user instruction. Reviewer
   acceptance is not claimed.
 
+### UX2.REFINE-OTHER-PLAYER-INSPECT-FLOATING-SHELL-01 — Compact Stage overlay
+
+- Inspect now uses one Stage-contained floating shell, one title/close row, and
+  a Stage-only dim backdrop. At 390×844, 480×900, and 1440×900 the shell was
+  352×223, 442×297, and 680×230px; Menu/Guidance/Dock overlap and Dock movement
+  were 0. Commit `5cc2938509982f3fd4844e8d1ad2558f7c4f4223` passed Actions #849
+  (`37618977420`).
+
+### UX2.REFINE-OTHER-PLAYER-INSPECT-IDENTITY-BLOCK-01 — Mobile identity focus
+
+- Inspect's mobile portrait/identity columns now use 39.8%/57.2% of the
+  content width at 390×844 and 40.0%/57.6% at 480×900, with readable
+  15/12/10/9px identity typography. The wide portrait remains 90×113px. The
+  focused Inspect browser spec passed 7/7 across these viewports, wide layout,
+  Preview restoration, and Side Column; targeted ESLint and `git diff --check`
+  passed. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
