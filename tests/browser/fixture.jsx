@@ -688,6 +688,7 @@ const acknowledgeLocalPreview = new URLSearchParams(window.location.search).get(
 const root = createRoot(document.getElementById("root"));
 let fixtureRoom = browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority });
 window.__browserActions = [];
+window.__browserLeaves = 0;
 window.__browserRoom = fixtureRoom;
 const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false} error="" onAction={async (action, extra) => {
   window.__browserActions.push({ action, extra });
@@ -710,7 +711,7 @@ const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false
     renderFixture();
   }
   return true;
-}} onLeave={() => {}} />);
+}} onLeave={() => { window.__browserLeaves += 1; }} />);
 window.__switchQuickTestViewer = (viewerId) => {
   const actorId = fixtureRoom.currentAction?.actorId ?? null;
   if (!fixtureRoom.isTestController

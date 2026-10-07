@@ -1,63 +1,4 @@
 /* Loaded after globals.css: one active card travels through the whole reveal. */
-.visible-countdown-response {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  min-width: 136px;
-  border-color: #9c8249;
-  color: #d8c28c;
-  transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
-}
-
-.visible-countdown-response .countdown-label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 8px;
-  letter-spacing: .04em;
-  text-align: left;
-  text-transform: none;
-}
-
-.visible-countdown-response .countdown-hourglass {
-  color: #e6cc8c;
-  font-size: 13px;
-  line-height: 1;
-}
-
-.visible-countdown-response b {
-  margin: 0;
-  font-size: 17px;
-}
-
-.visible-countdown-response[data-countdown-urgency="urgent"] {
-  border-color: #dbac55;
-  background-color: #21190df5;
-  box-shadow: 0 0 16px #ca8d2c55, 0 8px 24px #0008;
-}
-
-.visible-countdown-response[data-countdown-urgency="critical"] {
-  border-color: #d9795f;
-  background-color: #28120ff5;
-  box-shadow: 0 0 19px #d34b3970, 0 8px 24px #0008;
-}
-
-.visible-countdown-response[data-countdown-urgency="critical"] b,
-.visible-countdown-response[data-countdown-urgency="critical"] .countdown-hourglass {
-  color: #ffd0bd;
-}
-
-@media (max-width: 520px) {
-  .visible-countdown-response {
-    min-width: 132px;
-    gap: 6px;
-  }
-
-  .visible-countdown-response .countdown-label { font-size: 7px; }
-  .visible-countdown-response b { font-size: 16px; }
-}
-
 .play-center {
   transition: opacity .15s ease;
 }
@@ -2830,55 +2771,6 @@
   }
 }
 
-/* UX2.3: keep the fixed top-right response timer above the 10-player Side
-   Column seats and Stage by reserving a lane only while that timer is present. */
-.game-shell .play-table[data-seat-topology="side-column"]:has(> .visible-countdown-response) > .player-board[data-player-count="10"] {
-  inset-block-start: 64px;
-}
-.game-shell .play-table[data-seat-topology="side-column"]:has(> .visible-countdown-response) > .interaction-safe-zone {
-  inset-block-start: 64px;
-}
-
-@media (max-width: 520px) {
-  .game-shell .play-table[data-seat-topology="side-column"]:has(> .visible-countdown-response) > .player-board[data-player-count="10"] {
-    inset-block-start: 50px;
-  }
-  .game-shell .play-table[data-seat-topology="side-column"]:has(> .visible-countdown-response) > .interaction-safe-zone {
-    inset-block-start: 50px;
-  }
-}
-
-/* In narrow 10-player layouts without a response timer, centre Exit above the
-   Stage instead of covering the top-right physical seat. */
-@media (max-width: 610px) {
-  .game-shell .play-table[data-seat-topology="side-column"]:not(:has(> .visible-countdown-response)):has(> .player-board[data-player-count="10"]) > .game-exit {
-    inset-inline-start: 50%;
-    inset-inline-end: auto;
-    transform: translateX(-50%);
-  }
-  .game-shell .play-table[data-seat-topology="side-column"]:not(:has(> .visible-countdown-response)):has(> .player-board[data-player-count="10"]) > .interaction-safe-zone {
-    inset-block-start: 50px;
-  }
-}
-
-/* UX2.3: reserve a clear slot for the global Exit control beside the timer. */
-.game-shell .play-table:has(> .visible-countdown-response) > .game-exit {
-  inset-inline-end: 160px;
-}
-
-@media (max-width: 520px) {
-  .game-shell .play-table:has(> .visible-countdown-response) > .game-exit {
-    inset-block-start: 8px;
-    inset-inline-end: 148px;
-  }
-}
-
-@media (max-width: 420px) {
-  .game-shell .play-table:has(> .visible-countdown-response) > .game-messages:not(.collapsed) {
-    width: min(52vw, calc(100vw - 214px));
-  }
-}
-
 /* Dying Current Effect keeps its complete public handoff while using a
    compact, single-row Source -> Effect -> Dying Player composition whenever
    the protected Top Row safe zone is short. */
@@ -4074,4 +3966,117 @@
   color: #d5bd7d;
   content: "↖";
   font: 700 12px/1 Arial, sans-serif;
+}
+
+/* UX2 refinement §3.5–3.7: keep system navigation and the public response
+   clock at the lower-right Stage/Guidance boundary, independent of Stage
+   content and opponent-seat topology. */
+.game-shell .interaction-safe-zone > .stage-system-cluster {
+  position: absolute;
+  z-index: 24;
+  right: 14px;
+  bottom: -4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+@media (min-width: 600px) {
+  .game-shell .interaction-safe-zone > .stage-system-cluster { bottom: -5px; }
+}
+.stage-system-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+.stage-system-menu-trigger {
+  display: grid;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #9c8249;
+  border-radius: 3px;
+  background: #11140ff2;
+  box-shadow: 0 5px 14px #0008;
+  color: #e6cc8c;
+  font: 19px/1 Arial, sans-serif;
+  cursor: pointer;
+}
+.stage-system-menu-trigger:hover,
+.stage-system-menu-trigger:focus-visible {
+  border-color: #e6cc8c;
+  outline: 1px solid #e6cc8c;
+  outline-offset: 2px;
+}
+.stage-system-menu-actions {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 2;
+  min-width: 120px;
+  padding: 4px;
+  border: 1px solid #9c8249;
+  background: #11140ff5;
+  box-shadow: 0 8px 20px #000b;
+}
+.stage-system-menu-actions[hidden] { display: none; }
+.stage-system-exit {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid #9e4b42;
+  background: #2a1714;
+  color: #f0c9bd;
+  font: 700 9px/1.2 Arial, sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+.stage-system-exit:hover,
+.stage-system-exit:focus-visible {
+  border-color: #d47769;
+  background: #431f1b;
+  outline: 1px solid #d47769;
+  outline-offset: 1px;
+}
+.game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  display: flex;
+  box-sizing: border-box;
+  width: 64px;
+  min-width: 52px;
+  max-width: 68px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 5px;
+  border-color: #9c8249;
+  text-align: center;
+}
+.game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response .countdown-hourglass {
+  color: #e6cc8c;
+  font: normal 13px/1 Arial, sans-serif;
+}
+.game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response b {
+  margin: 0;
+  color: #ffe1a0;
+  font: 700 14px/1 Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response[data-countdown-urgency="urgent"] {
+  border-color: #dbac55;
+  background-color: #21190df5;
+  box-shadow: 0 0 12px #ca8d2c55, 0 5px 14px #0008;
+}
+.game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response[data-countdown-urgency="critical"] {
+  border-color: #d9795f;
+  background-color: #28120ff5;
+  box-shadow: 0 0 14px #d34b3970, 0 5px 14px #0008;
+}
+.game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response[data-countdown-urgency="critical"] b,
+.game-shell .interaction-safe-zone > .stage-system-cluster > .visible-countdown-response[data-countdown-urgency="critical"] .countdown-hourglass {
+  color: #ffd0bd;
 }

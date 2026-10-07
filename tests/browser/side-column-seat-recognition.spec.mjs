@@ -24,13 +24,17 @@ async function readLayout(page) {
     const table = board.closest(".play-table");
     const safeZone = table.querySelector(":scope > .interaction-safe-zone");
     const stage = safeZone.querySelector(":scope > .interaction-stage");
+    const systemCluster = safeZone.querySelector(":scope > .stage-system-cluster");
+    const guidance = document.querySelector(".local-player-dock .console-guidance");
     const dock = document.querySelector(".local-player-dock");
     return {
       viewportWidth: window.innerWidth,
       pageWidth: document.documentElement.scrollWidth,
       safeZone: bounds(safeZone),
+      systemCluster: bounds(systemCluster),
+      guidance: bounds(guidance),
       dock: bounds(dock),
-      exit: bounds(table.querySelector(":scope > .game-exit")),
+      menu: bounds(systemCluster.querySelector(".stage-system-menu-trigger")),
       stage: [stage, ...stage.querySelectorAll("*")].filter(visible).map(bounds),
       seats: [...board.querySelectorAll(":scope > [data-player-anchor]")].map((seat) => {
         const target = seat.querySelector(".opponent-hero-target");
@@ -84,6 +88,17 @@ for (const width of VIEWPORTS) {
       const minimumHeight = count === 10 && width >= 600 ? 100 : 108;
       expect(result.seats).toHaveLength(count - 1);
       expect(result.pageWidth, "seat sizing does not create horizontal page overflow").toBeLessThanOrEqual(width);
+      expect(result.systemCluster.right, "system cluster uses the Stage's lower-right inset").toBeCloseTo(result.safeZone.right - 14, 0);
+      const stageBoundaryOffset = width >= 600 ? 5 : 4;
+      expect(result.systemCluster.bottom, "system cluster stays anchored at the Stage/Guidance boundary").toBeCloseTo(result.safeZone.bottom + stageBoundaryOffset, 0);
+      expect(result.menu.width, "System Menu meets the minimum touch target").toBeGreaterThanOrEqual(44);
+      expect(result.menu.height, "System Menu meets the minimum touch target").toBeGreaterThanOrEqual(44);
+      expect(result.guidance.y - result.systemCluster.bottom, "system cluster clears Guidance by 8–12px").toBeGreaterThanOrEqual(8);
+      expect(result.guidance.y - result.systemCluster.bottom, "system cluster clears Guidance by 8–12px").toBeLessThanOrEqual(12);
+      expect(overlaps(result.systemCluster, result.guidance), "system controls do not cover Local Guidance").toBe(false);
+      for (const stageElement of result.stage) {
+        expect(overlaps(result.systemCluster, stageElement), "system controls do not cover Interaction Stage content").toBe(false);
+      }
 
       for (const seat of result.seats) {
         expect(seat.seat.width, `${seat.id} Hero seat width`).toBeGreaterThanOrEqual(minimumWidth);
@@ -119,10 +134,7 @@ for (const width of VIEWPORTS) {
 
       if (count === 10) {
         for (const seat of result.seats) {
-          expect(overlaps(result.exit, seat.seat), `${seat.id} is not covered by Exit`).toBe(false);
-        }
-        for (const stageElement of result.stage) {
-          expect(overlaps(result.exit, stageElement), "Exit does not obscure Interaction Stage content").toBe(false);
+          expect(overlaps(result.systemCluster, seat.seat), `${seat.id} is not covered by the System Menu`).toBe(false);
         }
       }
 

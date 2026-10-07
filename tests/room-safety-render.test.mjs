@@ -942,7 +942,8 @@ test("normalized malformed and unknown response states render safely", () => {
   });
   assert.ok(room);
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.match(html, /game-exit/);
+  assert.match(html, /aria-label="System menu"/);
+  assert.doesNotMatch(html, /class="game-exit"/);
   assert.match(html, /class="local-player-dock\s*"/);
   assert.match(html, /aria-label="Explain Sima Yi"/);
   assert.doesNotMatch(html, />Necromancy<\/em>/);
