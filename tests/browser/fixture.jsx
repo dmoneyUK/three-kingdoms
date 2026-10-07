@@ -29,7 +29,7 @@ function fixtureSeatEquipment(playerId, equipmentCase) {
   return (SEAT_EQUIPMENT_CASES[scenario] ?? []).map(([kind, suit, rank], index) => card(`browser-${playerId}-seat-equipment-${index}`, kind, suit, rank));
 }
 
-function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, originalTargetIds = targetIds, activeTargetIds = targetIds, decisionActorId, currentParticipantId = decisionActorId, activeResolverId = decisionActorId, viewerId = decisionActorId, localControlActorId = decisionActorId, effectOverride = null, childFrame = false, rootOrigin = null, groupProgressCase = null, orderedProgressCase = null, bumperHarvestProgressCase = null, bumperHarvestTargetIds = null, stableKindOverride = null, negationHistoryCase = null, rootCardMissing = false }) {
+function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, originalTargetIds = targetIds, activeTargetIds = targetIds, decisionActorId, currentParticipantId = decisionActorId, activeResolverId = decisionActorId, viewerId = decisionActorId, localControlActorId = decisionActorId, effectOverride = null, childFrame = false, rootOrigin = null, groupProgressCase = null, orderedProgressCase = null, bumperHarvestProgressCase = null, bumperHarvestTargetIds = null, stableKindOverride = null, negationHistoryCase = null, rootCardMissing = false, negationSettlementOutcome = null }) {
   const interactionId = `browser-${state}-interaction`;
   const rootFrameId = `browser-${state}-root`;
   const progressCase = orderedProgressCase ?? groupProgressCase;
@@ -134,7 +134,19 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
       nodes: negationNodes,
       ...(state === "active-negation-open" && !rootCardMissing ? { rootCard: { interactionId, frameId: activeFrameId, sourceId, targetId: targetIds[0], cardKind: sourceId === targetIds[0] ? "DrawTwo" : "Dismantle" } } : {}),
     } : null,
-    settlement: null,
+    settlement: negationSettlementOutcome ? {
+      semantics: "PROVEN",
+      outcome: negationSettlementOutcome,
+      eventId: `browser-${state}-negation-settlement`,
+      interactionId,
+      rootFrameId,
+      checkpointId,
+      presentationRevision: 1,
+      resolutionId: `browser-${state}-negation-resolution`,
+      rootCardKind: sourceId === originalTargetIds[0] ? "DrawTwo" : "Dismantle",
+      sourceId,
+      targetId: originalTargetIds[0],
+    } : null,
     transitionEvents: [],
   };
 }
@@ -366,7 +378,7 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
   };
 }
 
-function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority }) {
+function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority, negationSettlementOutcome }) {
   const judgementStage = state === "judgement" || state === "judgement-local";
   const ordinaryTurn = state === "ordinary-turn";
   const borrowedSwordFixture = state === "borrowed-sword-play" || state === "borrowed-sword-no-target";
@@ -465,7 +477,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
         : state === "active-negation-observer" ? "p2"
           : state === "active-negation-unfocused-observer" ? meId
           : state === "dying" ? "p2" : judgementStage ? state === "judgement" ? "p2" : "p1" : actorId;
-  const currentActionBase = state === "rest" || bumperHarvestComplete ? null : currentActionFor(bumperHarvestLocalFixture || oathNegationLocalFixture || groupNegationLocalFixture ? "negation" : bumperHarvestFixture && bumperHarvestChild || oathNegationFixture || groupNegationFixture ? "active-negation-observer" : bumperHarvestFixture ? "group-observer" : state, actorId, hand[0]?.id ?? "", { targetHandCount, targetCardCase, targetCardKind });
+  const currentActionBase = state === "rest" || bumperHarvestComplete || negationSettlementOutcome ? null : currentActionFor(bumperHarvestLocalFixture || oathNegationLocalFixture || groupNegationLocalFixture ? "negation" : bumperHarvestFixture && bumperHarvestChild || oathNegationFixture || groupNegationFixture ? "active-negation-observer" : bumperHarvestFixture ? "group-observer" : state, actorId, hand[0]?.id ?? "", { targetHandCount, targetCardCase, targetCardKind });
   const responseDeadline = timedResponse && state === "negation" ? Date.parse("2026-01-01T00:00:25.000Z") : 0;
   const resolvedCurrentAction = currentActionBase && duelObserverView
     ? { version: 3, kind: "response", actorId, deadline: 0, reason: "Waiting for the current Duel participant", legalActions: [] }
@@ -504,6 +516,19 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: selfTargetTriggerFixture ? "trigger" : "turn", actorId, entitled: true },
     settlement: null,
     transitionEvents: [],
+  } : state === "rest" && negationSettlementOutcome === "ROOT_CANCELLED" ? {
+    identity: null,
+    stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null },
+    interaction: null,
+    decision: null,
+    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: "turn", actorId, entitled: true },
+    settlement: {
+      semantics: "PROVEN", outcome: "ROOT_CANCELLED", eventId: "browser-rest-negation-settlement",
+      interactionId: "browser-rest-negation-interaction", rootFrameId: "browser-rest-negation-root",
+      checkpointId: "browser-rest-negation-checkpoint", presentationRevision: 1,
+      resolutionId: "browser-rest-negation-resolution", rootCardKind: "Dismantle", sourceId: "p2", targetId: "p3",
+    },
+    transitionEvents: [],
   } : state === "rest" ? null : semanticSnapshot({
     state,
     playerIds,
@@ -513,8 +538,8 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     originalTargetIds: bumperHarvestFixture && !bumperHarvestChild ? playerIds : bumperHarvestFixture ? bumperHarvestStageTargets : projectedStageTargets,
     activeTargetIds: bumperHarvestFixture ? bumperHarvestStageTargets : projectedActiveTargets,
     currentParticipantId: projectedCurrentParticipantId,
-    decisionActorId: bumperHarvestFixture && (bumperHarvestChild || bumperHarvestComplete) || timedNegationObserver || privateNegationResponder || oathNegationFixture ? null : actorId,
-    activeResolverId: bumperHarvestFixture && (bumperHarvestChild || bumperHarvestComplete) || timedNegationObserver || privateNegationResponder || oathNegationFixture ? null : actorId,
+    decisionActorId: negationSettlementOutcome || bumperHarvestFixture && (bumperHarvestChild || bumperHarvestComplete) || timedNegationObserver || privateNegationResponder || oathNegationFixture ? null : actorId,
+    activeResolverId: negationSettlementOutcome || bumperHarvestFixture && (bumperHarvestChild || bumperHarvestComplete) || timedNegationObserver || privateNegationResponder || oathNegationFixture ? null : actorId,
     viewerId: meId,
     localControlActorId: bumperHarvestLocalFixture || oathNegationLocalFixture || privateNegationResponder ? actorId : undefined,
     effectOverride: bumperHarvestFixture ? "BumperHarvest" : borrowedSwordActiveFixture ? "borrowed_sword_attack" : orderedProgressCase ? "Attack" : groupNegationFixture ? "Raining Arrows" : oathNegationFixture ? "Oath of the Peach Garden" : effectOverride,
@@ -524,9 +549,10 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     orderedProgressCase,
     bumperHarvestProgressCase: bumperHarvestFixture && !bumperHarvestUnproven ? bumperHarvestComplete ? "complete" : state === "bumper-harvest-returned" ? "returned" : "valid" : null,
     bumperHarvestTargetIds: playerIds,
-    stableKindOverride: bumperHarvestChild || bumperHarvestComplete ? "SPECIAL" : null,
+    stableKindOverride: negationSettlementOutcome || bumperHarvestChild || bumperHarvestComplete ? "SPECIAL" : null,
     negationHistoryCase,
     rootCardMissing,
+    negationSettlementOutcome,
   });
   if (oathNegationFixture && state !== "oath-negation-unproven" && presentationSnapshot?.interaction && presentationSnapshot.identity) {
     presentationSnapshot.oathRecipientScope = {
@@ -618,7 +644,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     pendingFrostSword: null,
     pendingDuel: state === "duel" || state === "duel-response" ? { kind: "duel", sourceId: "p1", targetId: "p2", actorId: "p2", opponentId: "p1", deadline: 0 } : null,
     pendingGroup: state === "group-observer" || groupNegationFixture ? { kind: "group", cardKind: "RainingArrows", sourceId: "p4", requiredKind: "Dodge" } : state === "group" ? { kind: "group", cardKind: "RainingArrows", sourceId: "p1", requiredKind: "Dodge" } : null,
-    pendingNegation: state === "negation" || state === "confirm-skip" || activeNegationObserver || groupNegationFixture || oathNegationFixture || bumperHarvestChild ? { kind: "negation", sourceId: oathNegationFixture || bumperHarvestFixture ? "p1" : "p4", actorId: groupNegationFixture || oathNegationFixture || bumperHarvestFixture || timedNegationObserver || privateNegationResponder ? null : "p2", effectTargetId: bumperHarvestFixture ? bumperCurrentId : "p1", cardName: groupNegationFixture ? "RainingArrows" : oathNegationFixture ? "Oath of the Peach Garden" : bumperHarvestFixture ? "BumperHarvest" : "Dismantle", negated: false, deadline: responseDeadline } : null,
+    pendingNegation: !negationSettlementOutcome && (state === "negation" || state === "confirm-skip" || activeNegationObserver || groupNegationFixture || oathNegationFixture || bumperHarvestChild) ? { kind: "negation", sourceId: oathNegationFixture || bumperHarvestFixture ? "p1" : "p4", actorId: groupNegationFixture || oathNegationFixture || bumperHarvestFixture || timedNegationObserver || privateNegationResponder ? null : "p2", effectTargetId: bumperHarvestFixture ? bumperCurrentId : "p1", cardName: groupNegationFixture ? "RainingArrows" : oathNegationFixture ? "Oath of the Peach Garden" : bumperHarvestFixture ? "BumperHarvest" : "Dismantle", negated: false, deadline: responseDeadline } : null,
     pendingHarvest: null,
     pendingTargetCard: state === "pending-target-card" ? { kind: "target_card", sourceId: "p1", actorId: "p1", targetId: "p2", cardKind: targetCardKind } : null,
     pendingBorrowedSword: state === "confirm-cancel" ? { kind: "borrowed_sword", sourceId: "p1", targetId: "p2", actorId: "p1", holderId: "p2", stage: "choose_target", weaponId: "browser-weapon", eligibleTargetIds: ["p3"] } : null,
@@ -641,6 +667,7 @@ function readFixture() {
   const groupRootOriginCase = params.get("groupRootOrigin") || "valid";
   const orderedProgressCase = params.get("orderedProgress") || null;
   const negationHistoryCase = params.get("negationHistory") || null;
+  const negationSettlementOutcome = params.get("settlement") === "ROOT_CANCELLED" || params.get("settlement") === "ROOT_RESTORED" ? params.get("settlement") : null;
   const rootCardMissing = params.get("rootCard") === "missing";
   const timedResponse = params.get("timedResponse") === "1";
   const timedObserver = params.get("timedObserver") === "1";
@@ -653,13 +680,13 @@ function readFixture() {
   const targetShiftCase = params.get("targetShift") || "valid";
   const targetCardCase = params.get("targetCardCase") || "valid";
   const targetCardKind = params.get("targetCardKind") === "Steal" ? "Steal" : "Dismantle";
-  return { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority };
+  return { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority };
 }
 
-const { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority } = readFixture();
+const { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority } = readFixture();
 const acknowledgeLocalPreview = new URLSearchParams(window.location.search).get("ackPreview") === "1";
 const root = createRoot(document.getElementById("root"));
-let fixtureRoom = browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority });
+let fixtureRoom = browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority });
 window.__browserActions = [];
 window.__browserRoom = fixtureRoom;
 const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false} error="" onAction={async (action, extra) => {
@@ -725,6 +752,58 @@ window.__setBrowserHandIds = (ids) => {
 };
 window.__setBrowserActionRevision = (actionRevision) => {
   fixtureRoom = { ...fixtureRoom, actionRevision };
+  window.__browserRoom = fixtureRoom;
+  renderFixture();
+};
+window.__setNegationSettlementState = (state) => {
+  const outcome = state === "ROOT_CANCELLED" || state === "ROOT_RESTORED" ? state : state === "mismatched-root" ? "ROOT_CANCELLED" : null;
+  const currentScene = fixtureRoom.presentationSnapshot?.interaction;
+  const sourceId = currentScene?.sourceId ?? "p1";
+  const targetId = currentScene?.targetIds?.[0] ?? "p2";
+  const activeSnapshot = semanticSnapshot({
+    state: "active-negation-open",
+    playerIds: fixtureRoom.players.map((player) => player.id),
+    stage: "NEGATION",
+    sourceId,
+    targetIds: [targetId],
+    effectOverride: currentScene?.effect ?? null,
+    decisionActorId: null,
+    currentParticipantId: null,
+    activeResolverId: null,
+    viewerId: fixtureRoom.meId,
+    stableKindOverride: "SPECIAL",
+    negationSettlementOutcome: outcome,
+  });
+  if (state === "mismatched-root") activeSnapshot.settlement.rootFrameId = "different-root-frame";
+  const restSnapshot = state === "REST_CANCELLED" ? {
+    identity: null,
+    stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null },
+    interaction: null,
+    decision: null,
+    localControl: { source: "CurrentAction", actionRevision: "browser-settlement-rest", kind: "turn", actorId: null, entitled: false },
+    settlement: activeSnapshot.settlement ?? {
+      semantics: "PROVEN", outcome: "ROOT_CANCELLED", eventId: "browser-rest-cancelled",
+      interactionId: `browser-active-negation-open-interaction`, rootFrameId: `browser-active-negation-open-root`,
+      checkpointId: "browser-active-negation-open-checkpoint", presentationRevision: 1,
+      resolutionId: "browser-active-negation-open-resolution", rootCardKind: sourceId === targetId ? "DrawTwo" : "Dismantle", sourceId, targetId,
+    },
+    transitionEvents: [],
+  } : state === "REST_EMPTY" ? {
+    identity: null,
+    stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null },
+    interaction: null,
+    decision: null,
+    localControl: { source: "CurrentAction", actionRevision: "browser-settlement-rest-empty", kind: "turn", actorId: null, entitled: false },
+    settlement: null,
+    transitionEvents: [],
+  } : null;
+  fixtureRoom = {
+    ...fixtureRoom,
+    currentAction: state === "ROOT_CANCELLED" || state === "ROOT_RESTORED" || state === "mismatched-root" ? null : fixtureRoom.currentAction,
+    pending: state === "ROOT_CANCELLED" || state === "ROOT_RESTORED" || state === "mismatched-root" || state.startsWith("REST_") ? null : fixtureRoom.pending,
+    pendingNegation: state === "ROOT_CANCELLED" || state === "ROOT_RESTORED" || state === "mismatched-root" || state.startsWith("REST_") ? null : fixtureRoom.pendingNegation,
+    presentationSnapshot: restSnapshot ?? (state === "REST_PLAIN" ? null : activeSnapshot),
+  };
   window.__browserRoom = fixtureRoom;
   renderFixture();
 };

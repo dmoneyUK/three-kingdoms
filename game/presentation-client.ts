@@ -29,6 +29,7 @@ export type PresentationClientView = {
   oathRecipientScope: PresentationSnapshotOathRecipientScope | null;
   bumperHarvestProgress: PresentationSnapshotBumperHarvestProgress | null;
   reactionChain: PresentationSnapshot["reactionChain"];
+  negationSettlement?: PresentationSnapshot["settlement"];
   rootOrigin?: NonNullable<PresentationInteractionScene["rootOrigin"]>;
   continuity: InteractionSceneContinuity;
   parentFrameId: string | null;
@@ -164,6 +165,11 @@ const REST_CONTINUITY: InteractionSceneContinuity = {
 function restView(snapshot: PresentationSnapshot | null, meId: string | null): PresentationClientView {
   const localControl = snapshot?.localControl;
   const hasLocalControl = Boolean(localControl?.entitled && localControl.actorId && localControl.actorId === meId);
+  const settlement = snapshot?.settlement ?? null;
+  const negationSettlement = validNegationSettlement(settlement)
+    && settlement.outcome === "ROOT_CANCELLED"
+    ? settlement
+    : null;
   return {
     hasInteraction: false,
     interactionId: null,
@@ -185,6 +191,7 @@ function restView(snapshot: PresentationSnapshot | null, meId: string | null): P
     oathRecipientScope: null,
     bumperHarvestProgress: null,
     reactionChain: null,
+    ...(negationSettlement ? { negationSettlement } : {}),
     continuity: REST_CONTINUITY,
     parentFrameId: null,
     stableKind: "REST",
@@ -200,6 +207,45 @@ function isString(value: unknown): value is string {
 
 function isInteger(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) >= 0;
+}
+
+const SINGLE_TARGET_NEGATION_ROOT_KINDS = new Set<CardKind>([
+  "DrawTwo", "Dismantle", "Steal", "Duel", "Overindulgence", "Lightning", "RationsDepleted", "BorrowedSword",
+]);
+
+function validNegationSettlement(value: unknown): value is NonNullable<PresentationSnapshot["settlement"]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const settlement = value as Partial<NonNullable<PresentationSnapshot["settlement"]>>;
+  return settlement.semantics === "PROVEN"
+    && (settlement.outcome === "ROOT_CANCELLED" || settlement.outcome === "ROOT_RESTORED")
+    && isString(settlement.eventId)
+    && isString(settlement.interactionId)
+    && isString(settlement.rootFrameId)
+    && isString(settlement.checkpointId)
+    && isInteger(settlement.presentationRevision)
+    && isString(settlement.resolutionId)
+    && typeof settlement.rootCardKind === "string"
+    && CARD_KINDS.includes(settlement.rootCardKind as CardKind)
+    && SINGLE_TARGET_NEGATION_ROOT_KINDS.has(settlement.rootCardKind as CardKind)
+    && isString(settlement.sourceId)
+    && isString(settlement.targetId);
+}
+
+function negationSettlementForScene(
+  snapshot: PresentationSnapshot,
+  scene: PresentationInteractionScene,
+): PresentationSnapshot["settlement"] {
+  const settlement = snapshot.settlement;
+  if (!validNegationSettlement(settlement)
+    || settlement.interactionId !== scene.interactionId
+    || settlement.rootFrameId !== scene.rootFrameId
+    || settlement.rootFrameId !== scene.activeFrameId
+    || scene.continuity.relation !== "ROOT_FRAME"
+    || settlement.presentationRevision > scene.presentationRevision
+    || settlement.sourceId !== scene.participantRoles.sourceId
+    || scene.participantRoles.originalTargetIds.length !== 1
+    || settlement.targetId !== scene.participantRoles.originalTargetIds[0]) return null;
+  return settlement;
 }
 
 function isStringArray(value: unknown): value is readonly string[] {
@@ -464,6 +510,7 @@ export function buildPresentationClientView(
   const groupProgress = groupProgressForSnapshot(snapshot, scene);
   const oathScope = oathRecipientScopeForSnapshot(snapshot, scene);
   const bumperHarvestProgress = bumperHarvestProgressForSnapshot(snapshot, scene);
+  const negationSettlement = negationSettlementForScene(snapshot, scene);
   return {
     hasInteraction: true,
     interactionId: snapshot.identity?.interactionId ?? null,
@@ -485,6 +532,7 @@ export function buildPresentationClientView(
     oathRecipientScope: oathScope,
     bumperHarvestProgress,
     reactionChain: reactionChainForSnapshot(snapshot, scene),
+    ...(negationSettlement ? { negationSettlement } : {}),
     ...(scene.rootOrigin ? { rootOrigin: { ...scene.rootOrigin, targetIds: [...scene.rootOrigin.targetIds] } } : {}),
     continuity: { ...scene.continuity },
     parentFrameId: scene.parentFrameId,

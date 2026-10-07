@@ -5,7 +5,7 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-Remote `ux-v2` HEAD `b7baf0ebe5762c894e8e9769585061561b8bf3a9` Actions run `37548845930` failed in `npm run test:browser`. The local CI repair fixes the short Top Row unlinked-flow grid and refreshes stale geometry/design assertions. `npm run build`, `npm run test:browser` (673/673 on the current local tree, including uncommitted Task 8 work), and `git diff --check` passed. CI repair commit/push pending; its staged scope excludes Task 8 implementation.
+CI repair commit `603cd73ccad1dac15fcee52733cdd17d8de075fc` is pushed. Actions run `37554347492` for that exact SHA was `in_progress` at the last check; no failure was observed, so proceeding under the direct user instruction not to wait on pending CI. The current local tree, including the Task 8 change, passed `npm run build`, `npm run test:browser` (673/673), and `git diff --check`. The CI-repair commit excludes Task 8 implementation.
 
 ## Design checkpoint
 
@@ -13,4 +13,4 @@ Re-fetched and re-read current `docs/UX2-refine.md`; blob `b4a26be8dc293bfb1f299
 
 ## Next task
 
-`UX2.REFINE-NEGATION-SETTLEMENT-STAGE-01` — locally implemented but not committed: consume the typed settlement proof in the public Stage; `ROOT_CANCELLED` collapses the branch and marks the root `⊘`, while `ROOT_RESTORED` collapses the branch and restores the root as active. Keep Source/root/Target geometry stable and fail closed without typed proof. Focused and full browser validation passed; resume delivery after the exact CI-repair SHA is green. Prove both states at 390×844, 480×900, and wide with Stage/Dock/Guidance containment, ≤2 CSS px anchor movement, and no overflow.
+`UX2.REFINE-NEGATION-SETTLEMENT-STAGE-01` — deliver the typed settlement proof in the public Stage: `ROOT_CANCELLED` collapses the branch and marks the root `⊘`; `ROOT_RESTORED` collapses the branch and restores the root as active. Keep Source/root/Target geometry stable and fail closed without typed proof. The implementation is in this change; local full browser validation passed 673/673. Prove both outcomes at 390×844, 480×900, and wide with Stage/Dock/Guidance containment, ≤2 CSS px anchor movement, and no overflow.

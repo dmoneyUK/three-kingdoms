@@ -3967,6 +3967,17 @@
 .interaction-stage[data-single-target-negation-composition="proven"] [data-single-target-negation-root="true"].is-context { opacity: 1; }
 .interaction-stage[data-single-target-negation-composition="proven"] [data-single-target-negation-root="true"].is-context > .group-stage-card-art { filter: brightness(.62); }
 .interaction-stage[data-single-target-negation-composition="proven"] [data-single-target-negation-root="true"].is-context > b { opacity: .76; }
+.single-target-negation-cancelled-mark {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #ffb8a6;
+  font: 800 34px/1 Arial, sans-serif;
+  text-shadow: 0 1px 4px #100806, 0 0 8px #100806;
+  pointer-events: none;
+}
 .single-target-negation-response-branch {
   position: absolute;
   z-index: 2;

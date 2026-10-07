@@ -13,7 +13,7 @@ import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PresentationV2 } from "../game/presentation-v2";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, isProvenBorrowedSwordForcedAttack, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
-import { buildPresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
+import { buildPresentationTransition, type PresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupSourceForViewer, projectGroupTargetScopeForViewer, projectOathRecipientScopeForStage, projectBumperHarvestStageCompositionForViewer, type BumperHarvestStageCompositionView, type GroupSourceView, type GroupTargetScopeView, type HeroFocusPlayerDisplay, type HeroFocusView, type MediumParticipantView, type OathRecipientScopeView } from "../game/hero-focus";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
@@ -676,16 +676,17 @@ function StageSource({ view, family }: { view: GroupSourceView; family: "group" 
   </div>;
 }
 
-function StageActionCard({ kind, active, root = false, singleTargetNegationRoot = false }: { kind: StageActionCardKind; active: boolean; root?: boolean; singleTargetNegationRoot?: boolean }) {
+function StageActionCard({ kind, active, root = false, singleTargetNegationRoot = false, cancelledRoot = false }: { kind: StageActionCardKind; active: boolean; root?: boolean; singleTargetNegationRoot?: boolean; cancelledRoot?: boolean }) {
   const name = cardDefinition(kind).name;
   const artwork = STAGE_ACTION_CARD_ART[kind];
-  return <div className={`group-stage-card${root ? " group-stage-card-root" : " group-stage-card-negation"}${kind === "Oath" ? " oath-stage-card" : ""}${kind === "BumperHarvest" ? " bumper-harvest-stage-card" : ""}${active ? " is-active" : " is-context"}`} role="img" aria-label={`${name}${root ? active ? ", active root action" : ", root action context" : active ? ", active response head" : ", public response"}`} data-action-card-kind={kind} data-single-target-negation-root={singleTargetNegationRoot ? "true" : undefined} data-group-root-action={root && kind !== "Oath" && kind !== "BumperHarvest" ? kind : undefined} data-oath-root-action={root && kind === "Oath" ? "Oath" : undefined} data-bumper-harvest-root-action={root && kind === "BumperHarvest" ? "BumperHarvest" : undefined} data-active-head={active ? "true" : "false"}>
+  return <div className={`group-stage-card${root ? " group-stage-card-root" : " group-stage-card-negation"}${kind === "Oath" ? " oath-stage-card" : ""}${kind === "BumperHarvest" ? " bumper-harvest-stage-card" : ""}${active ? " is-active" : " is-context"}`} role="img" aria-label={`${name}${root ? cancelledRoot ? ", cancelled root action" : active ? ", active root action" : ", root action context" : active ? ", active response head" : ", public response"}`} data-action-card-kind={kind} data-single-target-negation-root={singleTargetNegationRoot ? "true" : undefined} data-negation-root-cancelled={cancelledRoot ? "true" : undefined} data-group-root-action={root && kind !== "Oath" && kind !== "BumperHarvest" ? kind : undefined} data-oath-root-action={root && kind === "Oath" ? "Oath" : undefined} data-bumper-harvest-root-action={root && kind === "BumperHarvest" ? "BumperHarvest" : undefined} data-active-head={active ? "true" : "false"}>
     <span className="group-stage-card-art" style={artwork ? { backgroundImage: `url("${artwork}")` } : undefined} aria-hidden="true" />
     <b>{name}</b>
+    {cancelledRoot && <span className="single-target-negation-cancelled-mark" aria-hidden="true">⊘</span>}
   </div>;
 }
 
-function SingleTargetNegationCausalComposition({ source, target, cardKind, rootActive, negationNodes }: { source: SingleTargetNegationParticipantIdentity; target: SingleTargetNegationParticipantIdentity; cardKind: CardKind; rootActive: boolean; negationNodes: readonly GroupReactionNode[] }) {
+function SingleTargetNegationCausalComposition({ source, target, cardKind, rootActive, cancelled = false, negationNodes }: { source: SingleTargetNegationParticipantIdentity; target: SingleTargetNegationParticipantIdentity; cardKind: CardKind; rootActive: boolean; cancelled?: boolean; negationNodes: readonly GroupReactionNode[] }) {
   const selfTarget = source.id === target.id;
   const visibleNegationNodes = negationNodes.slice(-2);
   const collapsedNegationCount = negationNodes.length - visibleNegationNodes.length;
@@ -693,7 +694,7 @@ function SingleTargetNegationCausalComposition({ source, target, cardKind, rootA
     <SingleTargetNegationParticipant identity={source} participantRole="source" />
     <span className="single-target-negation-causal-arrow" aria-hidden="true">↓</span>
     <div className="single-target-negation-root-slot" data-single-target-negation-root-slot="true">
-      <StageActionCard kind={cardKind} active={rootActive} root singleTargetNegationRoot />
+      <StageActionCard kind={cardKind} active={rootActive} root singleTargetNegationRoot cancelledRoot={cancelled} />
       {visibleNegationNodes.length > 0 && <div className="single-target-negation-response-branch" data-public-negation-branch="proven" data-public-negation-count={negationNodes.length} data-visible-public-negation-count={visibleNegationNodes.length} data-collapsed-public-negation-count={collapsedNegationCount}>
         <span className="single-target-negation-branch-connector" aria-hidden="true" />
         {collapsedNegationCount > 0 && <span className="single-target-negation-collapsed-history" data-collapsed-negation-count={collapsedNegationCount} aria-label={`${collapsedNegationCount} earlier public Negation cards collapsed`}>+{collapsedNegationCount}</span>}
@@ -900,7 +901,7 @@ function BumperHarvestInteractionComposition({ source, view, rootActive, negatio
   </div>;
 }
 
-export function InteractionStage({ view, viewerId, transitionKind = "NONE", topRowMode = false, resolvePlayerName, resolvePlayerDisplay, previewPlayer = null, previewSubmission = null, inspectPlayer = null, selectableDetail = null, judgementInFlight, onCloseInspect, onHeroInfo, onInfoCard }: { view: PresentationClientView; viewerId: string | null; transitionKind?: PresentationTransitionKind; topRowMode?: boolean; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined; previewPlayer?: LocalTargetPreviewPresentation | null; previewSubmission?: LocalTargetPreviewSubmission | null; inspectPlayer?: LocalOpponentInspectionPresentation | null; selectableDetail?: TargetCardSelectableDetail | null; judgementInFlight?: ReadonlySet<string>; onCloseInspect?: () => void; onHeroInfo?: (hero: Hero) => void; onInfoCard?: (card: Card) => void }) {
+export function InteractionStage({ view, viewerId, transitionKind = "NONE", transition = null, topRowMode = false, resolvePlayerName, resolvePlayerDisplay, previewPlayer = null, previewSubmission = null, inspectPlayer = null, selectableDetail = null, judgementInFlight, onCloseInspect, onHeroInfo, onInfoCard }: { view: PresentationClientView; viewerId: string | null; transitionKind?: PresentationTransitionKind; transition?: PresentationTransition | null; topRowMode?: boolean; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined; previewPlayer?: LocalTargetPreviewPresentation | null; previewSubmission?: LocalTargetPreviewSubmission | null; inspectPlayer?: LocalOpponentInspectionPresentation | null; selectableDetail?: TargetCardSelectableDetail | null; judgementInFlight?: ReadonlySet<string>; onCloseInspect?: () => void; onHeroInfo?: (hero: Hero) => void; onInfoCard?: (card: Card) => void }) {
   const stage = buildInteractionStageView(view, resolvePlayerName);
   const borrowedSwordForcedAttack = isProvenBorrowedSwordForcedAttack(stage);
   const dyingHandoff = buildDyingHandoffView(stage);
@@ -934,6 +935,27 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const groupTargetScope = projectGroupTargetScopeForViewer(stage, heroFocus, mediumSource, viewerId, resolvePlayerDisplay);
   const oathRecipientScope = projectOathRecipientScopeForStage(stage, view.oathRecipientScope, viewerId, resolvePlayerDisplay);
   const bumperHarvestCompositionView = projectBumperHarvestStageCompositionForViewer(stage, viewerId, resolvePlayerDisplay);
+  const negationSettlement = view.negationSettlement ?? null;
+  const settlementMatchesScene = Boolean(display.visible
+    && negationSettlement
+    && negationSettlement.interactionId === stage.interactionId
+    && negationSettlement.rootFrameId === stage.rootFrameId
+    && negationSettlement.rootFrameId === stage.activeFrameId
+    && stage.continuity.relation === "ROOT_FRAME"
+    && stage.source.id === negationSettlement.sourceId
+    && stage.originalTargets.length === 1
+    && stage.originalTargets[0]?.id === negationSettlement.targetId
+    && stage.originalTargets[0]?.known);
+  const settlementRootTarget = settlementMatchesScene ? stage.originalTargets[0] : null;
+  const settlementRootCard = settlementMatchesScene && negationSettlement
+    ? {
+      interactionId: negationSettlement.interactionId,
+      frameId: negationSettlement.rootFrameId,
+      sourceId: negationSettlement.sourceId,
+      targetId: negationSettlement.targetId,
+      cardKind: negationSettlement.rootCardKind,
+    }
+    : null;
   const isProvenGroupNegation = isOpenNegationResponse && groupTargetScope?.resolutionSemantics === "GROUP";
   const groupSource = projectGroupSourceForViewer(stage, viewerId, resolvePlayerDisplay);
   const pausedGroupParticipants = groupTargetScope?.resolutionSemantics === "GROUP"
@@ -977,7 +999,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && bumperHarvestCompositionView
     && stage.bumperHarvestProgress?.semantics === "PROVEN"
     && (stage.stage === "SEQUENTIAL_CHOICE" || stage.stage === "NEGATION"));
-  const isProvenSingleTargetNegation = Boolean(isOpenNegationResponse
+  const isProvenSingleTargetNegationWindow = Boolean(isOpenNegationResponse
     && !isProvenGroupComposition && !isProvenOathComposition && !isProvenBumperHarvestComposition
     && reactionChain.visible && reactionChain.interactionId === stage.interactionId && reactionChain.root
     && stage.source.id && stage.source.known
@@ -987,8 +1009,9 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && reactionChain.root.source.id === stage.source.id && reactionChain.root.source.known
     && reactionChain.root.targets.length === 1
     && reactionChain.root.targets[0]?.id === stage.activeTargets[0].id);
-  const singleTargetNegationRootCard = stage.reactionChainRootCard;
-  const singleTargetNegationRootTarget = stage.activeTargets[0] ?? null;
+  const isProvenSingleTargetNegation = isProvenSingleTargetNegationWindow || settlementMatchesScene;
+  const singleTargetNegationRootCard = settlementRootCard ?? stage.reactionChainRootCard;
+  const singleTargetNegationRootTarget = settlementRootTarget ?? stage.activeTargets[0] ?? null;
   const singleTargetNegationRootTargetDisplay = singleTargetNegationRootTarget?.id
     ? resolvePlayerDisplay?.(singleTargetNegationRootTarget.id) ?? null
     : null;
@@ -1000,26 +1023,79 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && stage.continuity.relation === "ROOT_FRAME"
     && singleTargetNegationRootCard.sourceId === stage.source.id
     && singleTargetNegationRootCard.targetId === singleTargetNegationRootTarget?.id
-    && singleTargetNegationRootCard.cardKind === reactionChain.root?.cardKind
+    && (settlementMatchesScene || singleTargetNegationRootCard.cardKind === reactionChain.root?.cardKind)
     && stage.source.id !== viewerId
     && singleTargetNegationRootTarget?.id !== viewerId);
-  const singleTargetNegationVisibleNodes = reactionChain.negationNodes.slice(-2);
+  const singleTargetNegationVisibleNodes = settlementMatchesScene ? [] : reactionChain.negationNodes.slice(-2);
   const isProvenSingleTargetNegationPublicBranch = Boolean(isProvenSingleTargetNegationRoot
+    && !settlementMatchesScene
     && !hasLocalFocus
     && singleTargetNegationVisibleNodes.length > 0
     && singleTargetNegationVisibleNodes.every((node) => node.cardKind === "Negation" && node.actor.id && node.actor.known));
   const isProvenSingleTargetNegationFirstBranch = isProvenSingleTargetNegationPublicBranch && reactionChain.negationNodes.length === 1;
   const isProvenSingleTargetNegationCounterBranch = isProvenSingleTargetNegationPublicBranch && reactionChain.negationNodes.length >= 2;
   const isProvenSingleTargetOpenComposition = Boolean(isProvenSingleTargetNegationRoot
+    && !settlementMatchesScene
     && reactionChain.negationNodes.length === 0
     && !hasLocalFocus);
-  const isProvenSingleTargetCausalComposition = isProvenSingleTargetOpenComposition || isProvenSingleTargetNegationPublicBranch;
-  const singleTargetNegationSource: SingleTargetNegationParticipantIdentity | null = isProvenSingleTargetCausalComposition && stage.source.id
-    ? { id: stage.source.id, name: stage.source.name, heroId: resolvePlayerDisplay?.(stage.source.id)?.heroId ?? null }
+  const standaloneCancelledSettlement = !display.visible && !hasLocalFocus
+    && transition?.kind === "INTERACTION_TRANSITION"
+    && transition.reason === "INTERACTION_ENDED"
+    && transition.previousInteractionId === negationSettlement?.interactionId
+    && transition.previousRootFrameId === negationSettlement?.rootFrameId
+    && negationSettlement?.outcome === "ROOT_CANCELLED"
+    && negationSettlement.sourceId !== viewerId
+    && negationSettlement.targetId !== viewerId
+    && Object.hasOwn(STAGE_ACTION_CARD_ART, negationSettlement.rootCardKind)
+    ? negationSettlement
     : null;
-  const singleTargetNegationTarget: SingleTargetNegationParticipantIdentity | null = isProvenSingleTargetCausalComposition && singleTargetNegationRootTarget?.id
-    ? { id: singleTargetNegationRootTarget.id, name: singleTargetNegationRootTarget.name, heroId: singleTargetNegationRootTargetDisplay?.heroId ?? null }
+  const settlementDisplayIdentity = (playerId: string): SingleTargetNegationParticipantIdentity | null => {
+    const player = resolvePlayerDisplay?.(playerId);
+    const name = player?.name?.trim() || resolvePlayerName(playerId)?.trim();
+    return name ? { id: playerId, name, heroId: player?.heroId ?? null } : null;
+  };
+  const standaloneSettlementSource = standaloneCancelledSettlement
+    ? settlementDisplayIdentity(standaloneCancelledSettlement.sourceId)
     : null;
+  const standaloneSettlementTarget = standaloneCancelledSettlement
+    ? settlementDisplayIdentity(standaloneCancelledSettlement.targetId)
+    : null;
+  const isProvenStandaloneCancelledSettlement = Boolean(standaloneCancelledSettlement
+    && standaloneSettlementSource && standaloneSettlementTarget);
+  const isProvenSingleTargetNegationSettlement = Boolean(isProvenSingleTargetNegationRoot
+    && settlementMatchesScene && negationSettlement && !hasLocalFocus);
+  const standaloneSettlementRootCard = isProvenStandaloneCancelledSettlement && standaloneCancelledSettlement
+    ? {
+      interactionId: standaloneCancelledSettlement.interactionId,
+      frameId: standaloneCancelledSettlement.rootFrameId,
+      sourceId: standaloneCancelledSettlement.sourceId,
+      targetId: standaloneCancelledSettlement.targetId,
+      cardKind: standaloneCancelledSettlement.rootCardKind,
+    }
+    : null;
+  const renderedSingleTargetNegationRootCard = singleTargetNegationRootCard ?? standaloneSettlementRootCard;
+  const isProvenSingleTargetCausalComposition = isProvenSingleTargetOpenComposition
+    || isProvenSingleTargetNegationPublicBranch
+    || isProvenSingleTargetNegationSettlement
+    || isProvenStandaloneCancelledSettlement;
+  const singleTargetNegationRootActive = isProvenSingleTargetNegationSettlement
+    ? negationSettlement?.outcome === "ROOT_RESTORED"
+    : isProvenSingleTargetOpenComposition;
+  const singleTargetNegationRootCancelled = isProvenSingleTargetCausalComposition
+    && negationSettlement?.outcome === "ROOT_CANCELLED";
+  const singleTargetNegationSettlementOutcome = isProvenSingleTargetCausalComposition
+    ? negationSettlement?.outcome ?? null
+    : null;
+  const singleTargetNegationSource: SingleTargetNegationParticipantIdentity | null = isProvenStandaloneCancelledSettlement
+    ? standaloneSettlementSource
+    : isProvenSingleTargetCausalComposition && stage.source.id
+      ? { id: stage.source.id, name: stage.source.name, heroId: resolvePlayerDisplay?.(stage.source.id)?.heroId ?? null }
+      : null;
+  const singleTargetNegationTarget: SingleTargetNegationParticipantIdentity | null = isProvenStandaloneCancelledSettlement
+    ? standaloneSettlementTarget
+    : isProvenSingleTargetCausalComposition && singleTargetNegationRootTarget?.id
+      ? { id: singleTargetNegationRootTarget.id, name: singleTargetNegationRootTarget.name, heroId: singleTargetNegationRootTargetDisplay?.heroId ?? null }
+      : null;
   const bumperHarvestNegationNodes = isProvenBumperHarvestComposition && stage.stage === "NEGATION"
     && reactionChain.interactionId === stage.interactionId
     ? reactionChain.negationNodes
@@ -1179,8 +1255,8 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
       : heroFocus.roleLabel === "DYING PLAYER"
         ? "DYING PLAYER"
         : null;
-  if (!display.visible && !hasLocalFocus) return null;
-  return <section className="interaction-stage" aria-label={isProvenSingleTargetCausalComposition ? "Interaction Stage" : isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={isProvenGroupComposition || isProvenOathComposition || isProvenBumperHarvestComposition || isProvenSingleTargetCausalComposition ? undefined : currentEffect ?? undefined} data-borrowed-sword-forced-attack={borrowedSwordForcedAttack ? "true" : undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined} data-group-negation={isProvenGroupNegation ? "true" : undefined} data-group-composition={isProvenGroupComposition ? "true" : undefined} data-oath-composition={isProvenOathComposition ? "true" : undefined} data-bumper-harvest-composition={isProvenBumperHarvestComposition ? "true" : undefined} data-single-target-negation-composition={isProvenSingleTargetCausalComposition ? "proven" : undefined} data-negation-open-composition={isProvenSingleTargetOpenComposition ? "proven" : undefined} data-negation-first-branch-composition={isProvenSingleTargetNegationFirstBranch ? "proven" : undefined} data-negation-counter-branch-composition={isProvenSingleTargetNegationCounterBranch ? "proven" : undefined}>
+  if (!display.visible && !hasLocalFocus && !isProvenStandaloneCancelledSettlement) return null;
+  return <section className="interaction-stage" aria-label={isProvenSingleTargetCausalComposition ? "Interaction Stage" : isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : standaloneCancelledSettlement?.interactionId} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : standaloneCancelledSettlement?.checkpointId} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : standaloneCancelledSettlement?.presentationRevision} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={isProvenGroupComposition || isProvenOathComposition || isProvenBumperHarvestComposition || isProvenSingleTargetCausalComposition ? undefined : currentEffect ?? undefined} data-borrowed-sword-forced-attack={borrowedSwordForcedAttack ? "true" : undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined} data-group-negation={isProvenGroupNegation ? "true" : undefined} data-group-composition={isProvenGroupComposition ? "true" : undefined} data-oath-composition={isProvenOathComposition ? "true" : undefined} data-bumper-harvest-composition={isProvenBumperHarvestComposition ? "true" : undefined} data-single-target-negation-composition={isProvenSingleTargetCausalComposition ? "proven" : undefined} data-negation-settlement={singleTargetNegationSettlementOutcome ?? undefined} data-negation-open-composition={isProvenSingleTargetOpenComposition ? "proven" : undefined} data-negation-first-branch-composition={isProvenSingleTargetNegationFirstBranch ? "proven" : undefined} data-negation-counter-branch-composition={isProvenSingleTargetNegationCounterBranch ? "proven" : undefined}>
     {!isProvenGroupComposition && !isProvenOathComposition && !isProvenBumperHarvestComposition && !isProvenSingleTargetCausalComposition && <header>{!hideStageArchitecturalChrome
       ? <span>INTERACTION STAGE</span>
       : stage.stage === "DYING" && <span className="interaction-stage-visually-hidden">INTERACTION STAGE</span>}<strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : currentEffect && isOpenNegationResponse ? "NEGATION RESPONSE" : currentEffect && stage.stage === "DYING" ? display.focusLabel : currentEffect ? stage.stageLabel : display.focusLabel}</strong>{showViewerDecisionMarker && <em>YOUR DECISION</em>}</header>}
@@ -1191,8 +1267,8 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
         ? <OathInteractionComposition source={oathSource} recipients={oathRecipientScope} negationNodes={oathNegationNodes} interactionId={reactionChain.interactionId} />
       : isProvenBumperHarvestComposition && bumperHarvestCompositionView
         ? <BumperHarvestInteractionComposition source={bumperHarvestCompositionView.source} view={bumperHarvestCompositionView} rootActive={bumperHarvestCompositionView.currentParticipantId !== null && bumperHarvestNegationNodes.length === 0} negationNodes={bumperHarvestNegationNodes} interactionId={stage.interactionId} />
-      : isProvenSingleTargetCausalComposition && singleTargetNegationSource && singleTargetNegationTarget && singleTargetNegationRootCard
-        ? <div className="interaction-stage-body single-target-negation-body"><div className="interaction-stage-hero-region"><SingleTargetNegationCausalComposition source={singleTargetNegationSource} target={singleTargetNegationTarget} cardKind={singleTargetNegationRootCard.cardKind} rootActive={isProvenSingleTargetOpenComposition} negationNodes={isProvenSingleTargetNegationPublicBranch ? reactionChain.negationNodes : []} /></div></div>
+      : isProvenSingleTargetCausalComposition && singleTargetNegationSource && singleTargetNegationTarget && renderedSingleTargetNegationRootCard
+        ? <div className="interaction-stage-body single-target-negation-body"><div className="interaction-stage-hero-region"><SingleTargetNegationCausalComposition source={singleTargetNegationSource} target={singleTargetNegationTarget} cardKind={renderedSingleTargetNegationRootCard.cardKind} rootActive={singleTargetNegationRootActive} cancelled={singleTargetNegationRootCancelled} negationNodes={isProvenSingleTargetNegationPublicBranch ? reactionChain.negationNodes : []} /></div></div>
       : <div className="interaction-stage-body">
       <div className="interaction-stage-hero-region">
         {showMediumSource && mediumSource && (isProvenSingleTargetNegation
@@ -2643,7 +2719,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   return <main className="game-shell" data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"} data-presentation-transition={presentationTransition.kind}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><div className="top-actions"><button className="text-button" onClick={onLeave}>Exit</button></div></header>
     <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
     <section className={`play-table ${sequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}>
-      <div className="interaction-safe-zone"><InteractionStage view={clientPresentation} viewerId={room.meId} topRowMode={room.players.length <= 4} transitionKind={presentationTransition.kind} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} resolvePlayerDisplay={(playerId) => {
+      <div className="interaction-safe-zone"><InteractionStage view={clientPresentation} viewerId={room.meId} topRowMode={room.players.length <= 4} transitionKind={presentationTransition.kind} transition={presentationTransition} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} resolvePlayerDisplay={(playerId) => {
         const player = room.players.find((candidate) => candidate.id === playerId);
         if (!player) return null;
         const hero = heroDefinition(player.hero);

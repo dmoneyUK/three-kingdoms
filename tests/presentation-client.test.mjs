@@ -54,6 +54,15 @@ function snapshot(overrides = {}) {
   };
 }
 
+function negationSettlement(outcome = "ROOT_CANCELLED", overrides = {}) {
+  return {
+    semantics: "PROVEN", outcome, eventId: "settlement-event", interactionId: "interaction-1",
+    rootFrameId: "root-frame", checkpointId: "settlement-checkpoint", presentationRevision: 3,
+    resolutionId: "negation-resolution", rootCardKind: "Dismantle", sourceId: "A", targetId: "B",
+    ...overrides,
+  };
+}
+
 function groupProgressSnapshot({ child = false, outcome = null, cardKind = "RainingArrows" } = {}) {
   const targetIds = ["C", "B", "E", "D"];
   const effect = cardKind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows";
@@ -690,6 +699,34 @@ test("adapter keeps local action revision but does not infer public interaction 
   });
   assert.equal(view.hasLocalControl, true);
   assert.equal(view.localActionRevision, "turn-1");
+});
+
+test("typed Negation settlement is scoped to its proven root and only cancellation survives REST", () => {
+  const rootScene = scene({ rootFrameId: "root-frame", activeFrameId: "root-frame" });
+  const restored = buildPresentationClientView(snapshot({
+    interaction: rootScene,
+    settlement: negationSettlement("ROOT_RESTORED"),
+  }), "C");
+  assert.equal(restored.negationSettlement?.outcome, "ROOT_RESTORED");
+
+  const mismatchedRoot = buildPresentationClientView(snapshot({
+    interaction: rootScene,
+    settlement: negationSettlement("ROOT_RESTORED", { rootFrameId: "other-root" }),
+  }), "C");
+  assert.equal(mismatchedRoot.negationSettlement, undefined, "a settlement for another root cannot activate this Stage");
+
+  const restSnapshot = snapshot({
+    identity: null,
+    interaction: null,
+    decision: null,
+    stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null },
+    settlement: negationSettlement("ROOT_CANCELLED"),
+  });
+  assert.equal(buildPresentationClientView(restSnapshot, "C").negationSettlement?.outcome, "ROOT_CANCELLED");
+  assert.equal(buildPresentationClientView({ ...restSnapshot, settlement: negationSettlement("ROOT_RESTORED") }, "C").negationSettlement, undefined,
+    "REST cannot claim that a previously restored root action is still active");
+  assert.equal(buildPresentationClientView({ ...restSnapshot, settlement: negationSettlement("ROOT_CANCELLED", { rootCardKind: "Oath" }) }, "C").negationSettlement, undefined,
+    "multi-target cards are not accepted by the single-target settlement view");
 });
 
 test("adapter exposes child-frame continuity without reconstructing a parent", () => {
