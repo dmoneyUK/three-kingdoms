@@ -315,9 +315,20 @@ for (const viewport of [
       page.locator(".local-player-dock").boundingBox(),
       positions.evaluateAll((elements) => elements.map((element) => {
         const { x, y, width, height } = element.getBoundingClientRect();
-        return { x, y, width, height };
+        const style = getComputedStyle(element);
+        return { x, y, width, height, cssWidth: style.width, cssHeight: style.height };
       })),
     ]);
+    const stageParts = await stage.evaluate((element) => Object.fromEntries(
+      [".interaction-stage-body", ".interaction-stage-hero-region", ".interaction-stage-current-effect-flow", ".hero-focus", ".hero-focus-selectable-detail", ".hero-focus-selectable-detail-row"]
+        .map((selector) => {
+          const node = element.querySelector(selector);
+          if (!node) return [selector, null];
+          const { x, y, width, height } = node.getBoundingClientRect();
+          const style = getComputedStyle(node);
+          return [selector, { x, y, width, height, display: style.display, gridTemplateColumns: style.gridTemplateColumns, gridTemplateRows: style.gridTemplateRows }];
+        }),
+    ));
     await expect(focus).toBeVisible();
     await expect(focus).toHaveAttribute("data-hero-focus-role", "Source");
     await expect(detail.locator("header span")).toHaveText("Sowing Distrust — choose a hidden card");
@@ -331,7 +342,9 @@ for (const viewport of [
     expect(sourceProjection.handCards ?? []).toEqual([]);
     expect(dockBox && positionBoxes).toBeTruthy();
     for (const positionBox of positionBoxes) {
-      expect(positionBox.y + positionBox.height).toBeLessThanOrEqual(dockBox.y + 1);
+      expect(positionBox.width).toBeGreaterThanOrEqual(44);
+      expect(positionBox.height).toBeGreaterThanOrEqual(44);
+      expect(positionBox.y + positionBox.height, JSON.stringify({ positionBox, dockBox, stageParts })).toBeLessThanOrEqual(dockBox.y + 1);
       expect(positionBox.x).toBeGreaterThanOrEqual(0);
       expect(positionBox.x + positionBox.width).toBeLessThanOrEqual(viewport.width);
     }

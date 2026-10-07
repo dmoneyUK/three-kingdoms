@@ -834,13 +834,6 @@
   .local-target-selection b { font-size: 6px; }
 }
 
-@media (max-width: 390px) {
-  .local-player-dock { --top-panel-height: 106px; }
-  .local-dock-zones { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: 2px; }
-  .local-status-panel { padding: 1px; }
-  .local-equipment-panel { justify-self: end; padding: 1px; }
-}
-
 @media (max-width: 700px) {
   .local-player-dock .turn-controls { --action-slot-width: 78px; }
   .local-player-dock .turn-controls > [data-action-slots="true"] {
@@ -851,8 +844,10 @@
 }
 
 @media (max-width: 360px) {
-  .local-player-dock { grid-template-columns: 64px minmax(0, 1fr); }
-  .local-dock-zones { gap: 2px; }
+  .local-player-dock { --zone-card-gap: 1px; grid-template-columns: 56px minmax(0, 1fr); }
+  .local-dock-zones { gap: 0; }
+  .local-status-panel { padding-inline: 1px; }
+  .local-hero-skills { gap: 0; }
 }
 
 
@@ -2020,6 +2015,7 @@
 .current-effect-arrow { justify-self: center; color: #d5bd7d; font: 700 13px/1 Arial, sans-serif; }
 .play-table[data-seat-topology="top-row"] .interaction-stage-current-effect-flow.is-connected { grid-template-columns: minmax(56px, .7fr) 14px minmax(0, 1.3fr); gap: 6px; }
 .play-table[data-seat-topology="top-row"] .interaction-stage-current-effect-flow > .hero-focus { width: 100%; min-width: 0; margin-top: 0; }
+.play-table[data-seat-topology="top-row"] .hero-focus[data-hero-focus-mode="SELECTABLE DETAIL"] { grid-template-rows: auto auto auto auto auto; }
 
 @media (max-width: 650px) {
   .play-table[data-seat-topology="top-row"] .interaction-stage-current-effect-flow.is-connected { grid-template-columns: minmax(0, 1fr); gap: 3px; }
@@ -3222,6 +3218,9 @@
     gap: 2px;
     align-items: start;
   }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .interaction-stage-current-effect-flow.is-unlinked {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .interaction-stage-current-effect {
     min-height: 0;
     gap: 1px;
@@ -3422,6 +3421,7 @@
 .group-target-strip .group-target-card-compact[data-participant-status="PAUSED"] .group-target-status-compact { color: #f2d4a5 !important; }
 
 @media (max-width: 390px) {
+  .local-hero-skills .hero-skill-button { font-family: "Arial Narrow", Arial, sans-serif; }
   .group-stage-source { font-size: 9px; }
   .group-stage-source-portrait { width: 26px; height: 33px; }
   .group-stage-card-root { width: clamp(64px, 22vw, 82px); height: clamp(88px, 30vw, 112px); }
@@ -3508,6 +3508,17 @@
   .oath-recipient-track { justify-content: flex-start; gap: 3px; }
   .oath-recipient-marker { gap: 3px; padding-inline: 2px; }
   .oath-recipient-marker > b { max-width: 80px; font-size: 7px; }
+}
+
+@media (max-width: 390px) and (min-height: 700px) {
+  .local-player-dock { --top-panel-height: 106px; }
+  .local-dock-zones { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: 2px; }
+  .local-status-panel { padding: 1px; }
+  .local-equipment-panel { justify-self: end; padding: 1px; }
+}
+
+@media (max-width: 390px) and (max-height: 700px) {
+  .local-hero-skills .hero-skill-button { font-size: 6.5px; }
 }
 
 @container top-row-interaction-safe-zone (max-height: 520px) and (max-width: 480px) {

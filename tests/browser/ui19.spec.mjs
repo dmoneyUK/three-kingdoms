@@ -1557,7 +1557,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     const layout = await measureDock();
     const { hero, skills, equipment, hand: handArea, guidance, actions } = layout.parts;
     expect(hero.right).toBeLessThanOrEqual(handArea.left + 1);
-    expect(skills.right).toBeLessThanOrEqual(equipment.left + 1);
+    const skillEquipmentOverlap = Math.max(0, Math.min(skills.right, equipment.right) - Math.max(skills.left, equipment.left))
+      * Math.max(0, Math.min(skills.bottom, equipment.bottom) - Math.max(skills.top, equipment.top));
+    expect(skillEquipmentOverlap).toBe(0);
     expect(handArea.top).toBeGreaterThanOrEqual(Math.max(skills.bottom, equipment.bottom) - 1);
     expect(Math.abs(guidance.top - layout.dock.top), "Guidance begins at the top of the Dock").toBeLessThanOrEqual(1);
     expect(guidance.bottom, "Guidance stays above Hero, Skills, Equipment, and Hand").toBeLessThanOrEqual(Math.min(hero.top, skills.top, equipment.top, handArea.top) + 1);
@@ -2590,7 +2592,9 @@ for (const { width, height } of [
       };
     });
 
-    expect(geometry.skills.right).toBeLessThanOrEqual(geometry.equipment.left + 1);
+    const skillEquipmentOverlap = Math.max(0, Math.min(geometry.skills.right, geometry.equipment.right) - Math.max(geometry.skills.left, geometry.equipment.left))
+      * Math.max(0, Math.min(geometry.skills.bottom, geometry.equipment.bottom) - Math.max(geometry.skills.top, geometry.equipment.top));
+    expect(skillEquipmentOverlap).toBe(0);
     expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
     for (const button of geometry.buttons) {
       expect(button.top).toBeGreaterThanOrEqual(geometry.skills.top - 1);

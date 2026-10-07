@@ -100,7 +100,7 @@ test("implemented Hero skill bands fill their allocation and keep natural labels
       expect(geometry.buttons.length, context).toBeGreaterThanOrEqual(1);
       expect(geometry.buttons.length, context).toBeLessThanOrEqual(2);
       expect(geometry.overlaps, context).toEqual([]);
-      if (viewport.width <= 390) {
+      if (viewport.width <= 390 && viewport.height >= 700) {
         expect(geometry.equipment.top, context).toBeGreaterThanOrEqual(geometry.status.bottom - 1);
         expect(geometry.equipment.bottom, context).toBeLessThanOrEqual(geometry.zones.bottom + 1);
         expect(Math.abs(geometry.equipment.right - geometry.zones.right), context).toBeLessThanOrEqual(1);

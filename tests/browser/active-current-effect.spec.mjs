@@ -798,82 +798,72 @@ for (const viewport of [
   { count: 6, width: 480, height: 900, topology: "side-column" },
   { count: 10, width: 480, height: 900, topology: "side-column" },
 ]) {
-  test(`proven NEGATION Current Effect fits ${viewport.count}-player ${viewport.topology} at ${viewport.width}px`, async ({ page }) => {
-    await loadFixture(page, { ...viewport, state: "active-negation-observer", negationHistory: "valid" });
-    const stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
-    const source = stage.locator('.medium-participant-card[data-medium-participant-player-id="p1"]');
-    const effect = stage.locator('[aria-label="Current Effect"]');
-    const target = stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"]');
-    const chain = stage.locator('[data-reaction-chain="proven"]');
+  test(`proven single-target Negation branch fits ${viewport.count}-player ${viewport.topology} at ${viewport.width}px`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, state: "active-negation-open", negationHistory: "two" });
+    const stage = page.locator('.interaction-stage[data-negation-counter-branch-composition="proven"]');
+    const composition = stage.locator('[data-single-target-negation-causal-spine="proven"]');
+    const source = composition.locator('[data-negation-causal-participant="source"]');
+    const root = composition.locator('[data-single-target-negation-root="true"]');
+    const target = composition.locator('[data-negation-causal-participant="target"]');
+    const branch = composition.locator('[data-public-negation-branch="proven"]');
+    const responses = branch.locator('.single-target-negation-response-node');
     await expect(page.locator(".play-table")).toHaveAttribute("data-seat-topology", viewport.topology);
     await expect(stage).toHaveAttribute("data-stage", "NEGATION");
-    await expect(stage).toHaveAttribute("data-current-effect", "Dismantle");
-    await expect(stage).toHaveAttribute("data-interaction-id", "browser-active-negation-observer-interaction");
-    const summary = stage.locator('[data-stage-event-summary="proven"]');
-    await expect(summary).toHaveText("Player 1 used Dismantle on Player 2.");
+    await expect(stage).toHaveAttribute("data-interaction-id", "browser-active-negation-open-interaction");
+    await expect(composition).toBeVisible();
+    await expect(source).toHaveAttribute("data-negation-participant-id", "p1");
     await expect(source).toContainText("Player 1");
-    await expect(effect.locator("strong")).toHaveText("Dismantle");
+    await expect(root).toHaveAttribute("data-action-card-kind", "Dismantle");
+    await expect(root).toHaveAttribute("data-active-head", "false");
+    await expect(branch).toHaveAttribute("data-public-negation-count", "2");
+    await expect(responses).toHaveCount(2);
+    await expect(responses.nth(0)).toHaveAttribute("data-public-negation-node-actor-id", "p1");
+    await expect(responses.nth(0)).toHaveAttribute("data-active-head", "false");
+    await expect(responses.nth(0).locator('[data-public-negation-actor="p1"]')).toHaveText("Player 1");
+    await expect(responses.nth(1)).toHaveAttribute("data-public-negation-node-actor-id", "p2");
+    await expect(responses.nth(1)).toHaveAttribute("data-active-head", "true");
+    await expect(responses.nth(1).locator('[data-public-negation-actor="p2"]')).toHaveText("Player 2");
     await expect(target).toContainText("Player 2");
-    await expect(chain).toContainText("ORIGINAL EFFECT");
-    await expect(chain.locator('[data-reaction-node="root"]')).toContainText("Dismantle");
-    await expect(chain.locator('[data-reaction-node="active"]')).toContainText("NEGATION WINDOW");
-    await expect(chain.locator('[data-reaction-node="active"]')).toContainText("Waiting for response...");
-    await expect(chain).not.toContainText("Player 3");
     await expect(stage).not.toContainText("Player 3");
-    await expect(stage).not.toContainText("INTERACTION STAGE");
-    await expect(stage).not.toContainText("HERO FOCUS");
-    await expect(stage.locator(".hero-focus-heading strong")).toHaveText("Target");
-    await expect(stage.locator('[data-negation-window-state="open"]')).toContainText("A Negation may be played now.");
-    await expect(stage.locator(".medium-participant-arrow")).toHaveCount(1);
-    await expect(stage.locator(".current-effect-arrow")).toHaveCount(1);
+    await expect(stage.locator(".reaction-chain, [data-reaction-chain], .interaction-stage-current-effect, [data-stage-event-summary], .hero-focus, .medium-participant-card")).toHaveCount(0);
+    await expect(stage).not.toContainText("REACTION CHAIN");
+    await expect(stage.locator('[data-action-card-kind][data-active-head="true"]')).toHaveCount(1);
+    await expect(stage.locator("button")).toHaveCount(0);
     await expect(page.locator('.local-player-dock[data-player-anchor="p4"]')).toBeVisible();
-    await expect(stage.locator('[data-hero-focus-player-id="p4"]')).toHaveCount(0);
+    await expect(stage.locator('[data-negation-participant-id="p4"]')).toHaveCount(0);
     const hiddenResponderSeat = page.locator('.player-board [data-player-anchor="p3"]');
     await expect(hiddenResponderSeat).not.toHaveClass(/action-square|interaction-seat-decision-actor|interaction-seat-active-resolver/);
     await expect(hiddenResponderSeat).not.toHaveAttribute("data-interaction-decision-actor");
     await expect(hiddenResponderSeat).not.toHaveAttribute("data-interaction-active-resolver");
-    if (viewport.width <= 650) {
-      const heroRegionBox = await stage.locator(".interaction-stage-hero-region").boundingBox();
-      const chainBox = await chain.boundingBox();
-      const rootBox = await chain.locator('[data-reaction-node="root"]').boundingBox();
-      const activeBox = await chain.locator('[data-reaction-node="active"]').boundingBox();
-      expect(heroRegionBox && chainBox && rootBox && activeBox).toBeTruthy();
-      expect(chainBox.y).toBeGreaterThanOrEqual(heroRegionBox.y + heroRegionBox.height - 1);
-      expect(rootBox.y + rootBox.height).toBeLessThanOrEqual(activeBox.y + 2);
-    }
 
     const sourceBox = await source.boundingBox();
-    const effectBox = await effect.boundingBox();
+    const rootBox = await root.boundingBox();
     const targetBox = await target.boundingBox();
-    const chainBox = await chain.boundingBox();
+    const branchBox = await branch.boundingBox();
     const stageBox = await stage.boundingBox();
     const dockBox = await page.locator(".local-player-dock").boundingBox();
-    expect(sourceBox && effectBox && targetBox && chainBox && stageBox && dockBox).toBeTruthy();
-    if (viewport.topology === "side-column") {
-      expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(effectBox.y + 2);
-      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
-    } else if (viewport.width <= 650) {
-      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
-      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
-    } else {
-      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
-      expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(targetBox.x + 2);
+    expect(sourceBox && rootBox && targetBox && branchBox && stageBox && dockBox).toBeTruthy();
+    for (const box of [sourceBox, rootBox, targetBox]) {
+      expect(Math.abs((box.x + box.width / 2) - (rootBox.x + rootBox.width / 2))).toBeLessThanOrEqual(2);
     }
-    expect(Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y))).toBe(0);
+    expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(rootBox.y + 1);
+    expect(rootBox.y + rootBox.height).toBeLessThanOrEqual(targetBox.y + 1);
+    expect(branchBox.x).toBeGreaterThanOrEqual(rootBox.x + rootBox.width - 1);
+    expect(branchBox.x + branchBox.width).toBeLessThanOrEqual(stageBox.x + stageBox.width + 0.5);
+    const verticalOverlap = Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y));
+    const horizontalOverlap = Math.max(0, Math.min(stageBox.x + stageBox.width, dockBox.x + dockBox.width) - Math.max(stageBox.x, dockBox.x));
+    expect(verticalOverlap * horizontalOverlap).toBe(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
     if (viewport.count === 10) {
       const safeZoneBox = await page.locator(".interaction-safe-zone").boundingBox();
       expect(safeZoneBox).toBeTruthy();
-      for (const [label, box] of [["Stage", stageBox], ["Source", sourceBox], ["Effect", effectBox], ["Target", targetBox], ["Reaction Chain", chainBox]]) {
+      for (const [label, box] of [["Stage", stageBox], ["Source", sourceBox], ["Root card", rootBox], ["Target", targetBox], ["Negation branch", branchBox]]) {
         expect(box.x, `${label} left edge stays inside the central safe zone`).toBeGreaterThanOrEqual(safeZoneBox.x - 0.5);
         expect(box.x + box.width, `${label} right edge stays inside the central safe zone`).toBeLessThanOrEqual(safeZoneBox.x + safeZoneBox.width + 0.5);
         expect(box.y, `${label} top edge stays inside the central safe zone`).toBeGreaterThanOrEqual(safeZoneBox.y - 0.5);
         expect(box.y + box.height, `${label} bottom edge stays inside the central safe zone`).toBeLessThanOrEqual(safeZoneBox.y + safeZoneBox.height + 0.5);
       }
     }
-    const titleBox = await stage.locator(":scope > header").boundingBox();
-    const summaryBox = await summary.boundingBox();
-    expect(titleBox && summaryBox).toBeTruthy();
-    expect(summaryBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1);
   });
 }
 

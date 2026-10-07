@@ -5,7 +5,7 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-UX2.REFINE tasks 1–7 are implemented. Task 7 adds a typed, viewer-equal single-target Negation disposition to the public snapshot for root cancellation/restoration, bound to the proven interaction/root/resolution; legacy text/final-result flags and malformed identity fail closed. Validation: snapshot + PresentationV2 tests 48/48; `presentation-v2-engine.test.mjs` 33/33 including both settlement outcomes; `npm run build`; targeted ESLint and `git diff --check` passed. Before Task 7 commit, Actions run `37548238667` for exact base SHA `4cdabe38d34230e1bffd36b11b9f513bafb74a44` was `in_progress`, with no failure observed; proceeding without waiting per direct user instruction.
+Remote `ux-v2` HEAD `b7baf0ebe5762c894e8e9769585061561b8bf3a9` Actions run `37548845930` failed in `npm run test:browser`. The local CI repair fixes the short Top Row unlinked-flow grid and refreshes stale geometry/design assertions. `npm run build`, `npm run test:browser` (673/673 on the current local tree, including uncommitted Task 8 work), and `git diff --check` passed. CI repair commit/push pending; its staged scope excludes Task 8 implementation.
 
 ## Design checkpoint
 
@@ -13,4 +13,4 @@ Re-fetched and re-read current `docs/UX2-refine.md`; blob `b4a26be8dc293bfb1f299
 
 ## Next task
 
-`UX2.REFINE-NEGATION-SETTLEMENT-STAGE-01` — consume the typed settlement proof in the public Stage: for `ROOT_CANCELLED`, collapse the branch and show only a brief compact `⊘` on the root before exiting the interaction; for `ROOT_RESTORED`, collapse the branch and restore the root as the active head while the authoritative root action continues. Keep Source/root/Target geometry stable and fail closed without the typed proof. Prove both states at 390×844, 480×900, and wide with Stage/Dock/Guidance containment, ≤2 CSS px anchor movement, and no overflow; use the existing presentation lifecycle rather than guessed timing or inferred outcomes.
+`UX2.REFINE-NEGATION-SETTLEMENT-STAGE-01` — locally implemented but not committed: consume the typed settlement proof in the public Stage; `ROOT_CANCELLED` collapses the branch and marks the root `⊘`, while `ROOT_RESTORED` collapses the branch and restores the root as active. Keep Source/root/Target geometry stable and fail closed without typed proof. Focused and full browser validation passed; resume delivery after the exact CI-repair SHA is green. Prove both states at 390×844, 480×900, and wide with Stage/Dock/Guidance containment, ≤2 CSS px anchor movement, and no overflow.
