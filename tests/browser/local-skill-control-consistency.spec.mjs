@@ -59,6 +59,8 @@ test("implemented Hero skill bands fill their allocation and keep natural labels
             label: button.textContent.trim(),
             labelLines: lineTops.length,
             wordFragments,
+            role: button.getAttribute("role"),
+            ariaLabel: button.getAttribute("aria-label"),
             scrollWidth: button.scrollWidth,
             clientWidth: button.clientWidth,
             scrollHeight: button.scrollHeight,
@@ -66,6 +68,7 @@ test("implemented Hero skill bands fill their allocation and keep natural labels
             disabled: button.disabled,
             ariaPressed: button.getAttribute("aria-pressed"),
             disabledOpacity: Number.parseFloat(getComputedStyle(button).opacity),
+            cursor: getComputedStyle(button).cursor,
             hitTarget: document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)?.closest(".hero-skill-button") === button,
           };
         });
@@ -126,6 +129,16 @@ test("implemented Hero skill bands fill their allocation and keep natural labels
         expect(button.wordFragments.flatMap(({ rects }) => rects).every((word) => word.left >= button.left - 0.5 && word.right <= button.right + 0.5), context).toBe(true);
         expect(button.scrollWidth, context).toBeLessThanOrEqual(button.clientWidth + 2);
         expect(button.scrollHeight, context).toBeLessThanOrEqual(button.clientHeight + 1);
+        if (heroId === "zhuge-liang" && button.label === "Empty Fortress Strategem") {
+          expect(button.role, context).toBe("group");
+          expect(button.ariaLabel, context).toBe("Empty Fortress Strategem, passive skill");
+          expect(button.disabled, context).toBeUndefined();
+          expect(button.ariaPressed, context).toBeNull();
+          expect(button.disabledOpacity, context).toBe(1);
+          expect(button.cursor, context).toBe("default");
+          expect(button.hitTarget, context).toBe(true);
+          continue;
+        }
         expect(button.disabled, context).toBe(true);
         expect(button.ariaPressed, context).toBe("false");
         expect(button.disabledOpacity, context).toBeLessThan(1);

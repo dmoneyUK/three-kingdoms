@@ -1561,6 +1561,7 @@ type HeroSkillButtonModel = {
   description: string;
   enabled: boolean;
   active: boolean;
+  passive?: boolean;
   onClick?: () => void;
 };
 
@@ -2262,6 +2263,13 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const wushengButtonDisabled = busy || wushengMode === null && (!canUseWushengInPlay && !(responseDecisionReady && canUseWushengInResponse) || canUseWushengInPlay && presentationBusy);
   const longdanButtonDisabled = busy || longdanMode === null && (!canUseLongdanInPlay && !(responseDecisionReady && canUseLongdanInResponse) || canUseLongdanInPlay && presentationBusy);
   const heroSkillButtons: HeroSkillButtonModel[] = (localHero?.skills ?? []).map((skill) => {
+    if (me?.hero === "zhuge-liang" && skill.name === "Empty Fortress Strategem") return {
+      name: skill.name,
+      description: skill.description,
+      enabled: false,
+      active: false,
+      passive: true,
+    };
     if (me?.hero === "zhuge-liang" && skill.name === "Stargazing" && privateDeckReorder) return {
       name: skill.name,
       description: skill.description,
@@ -2810,7 +2818,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight}
       heroSkillControl={
         <section className="hero-skills local-hero-skills" aria-label="Available hero skills">
-          {heroSkillButtons.map((skill) => <button type="button" key={skill.name} className={`hero-skill-button ${skill.active ? "active" : ""}`} aria-label={skill.name} aria-pressed={skill.active} title={skill.description} disabled={!skill.enabled || busy || presentationBusy && !skill.active} onClick={() => skill.onClick?.()}>{skill.active && (me?.hero === "guan-yu" || me?.hero === "zhao-yun") ? `Cancel ${skill.name}` : skill.name}</button>)}
+          {heroSkillButtons.map((skill) => skill.passive
+            ? <div key={skill.name} className="hero-skill-button hero-skill-passive" role="group" aria-label={`${skill.name}, passive skill`}>{skill.name}</div>
+            : <button type="button" key={skill.name} className={`hero-skill-button ${skill.active ? "active" : ""}`} aria-label={skill.name} aria-pressed={skill.active} title={skill.description} disabled={!skill.enabled || busy || presentationBusy && !skill.active} onClick={() => skill.onClick?.()}>{skill.active && (me?.hero === "guan-yu" || me?.hero === "zhao-yun") ? `Cancel ${skill.name}` : skill.name}</button>)}
         </section>
       } guidance={
         <div className="console-guidance" data-console-guidance="true">
