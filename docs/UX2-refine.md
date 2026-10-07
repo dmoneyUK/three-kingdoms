@@ -1736,9 +1736,15 @@ If only a Hand-zone key is available, use the grouped Hand fallback defined in �
 
 The modal should feel like Sima Yi is actually choosing one possession from the damage source rather than choosing an abstract category tile.
 
-### 4C.15 Dismantle / Burning Bridges
+### 4C.15 Burning Bridge / 过河拆桥
 
-Dismantle uses the same picker structure.
+The approved player-facing English name for 过河拆桥 is **Burning Bridge**.
+
+Existing internal protocol/model identifiers may continue to use `Dismantle` for
+compatibility. Do not rename authoritative CardKind/protocol fields merely to
+change presentation copy.
+
+Burning Bridge uses the same picker structure.
 
 Rule-facing zones:
 
@@ -1749,7 +1755,7 @@ Rule-facing zones:
 Preferred UI:
 
 ~~~text
-DISMANTLE
+BURNING BRIDGE
 Choose 1 card to discard
 ~~~
 
@@ -1757,11 +1763,15 @@ Differences from Retaliation:
 
 - result is discard, not obtain;
 - Judgment may be present;
-- action button text is USE DISMANTLE.
+- action button text is `USE BURNING BRIDGE`.
 
 A selected Equipment or Judgment card remains face-up.
 
 A selected hidden Hand position remains face-down until the authoritative result reveals/removes the card.
+
+All player-visible title, instruction, CTA, accessible naming, and browser-copy
+assertions should use **Burning Bridge**. Internal `Dismantle` identifiers may
+remain where they are part of the existing rules/protocol contract.
 
 ### 4C.16 Steal
 
@@ -1980,7 +1990,7 @@ Selected state must expose aria-pressed, aria-selected, or the appropriate equiv
 The modal itself should expose an accessible name such as:
 
 - Retaliation target card selection;
-- Dismantle target card selection;
+- Burning Bridge target card selection;
 - Steal target card selection.
 
 Do not include private hidden-card identity in accessibility text.
@@ -1991,11 +2001,11 @@ The unified picker is acceptable only when all of the following hold:
 
 | Requirement | Expectation |
 | --- | --- |
-| Shared component | Retaliation, Dismantle, Steal, and Frost Sword use the same picker design system |
+| Shared component | Retaliation, Burning Bridge, Steal, and Frost Sword use the same picker design system |
 | Retaliation Hand | Opaque per-card Hand keys render as separately selectable face-down cards |
 | Privacy | Hidden Hand rank/suit/kind/art never leaks before authoritative reveal |
 | Fallback | Zone-only hand authority retains grouped Random-card behavior |
-| Dismantle | Can select legal Hand / Equipment / Judgment card |
+| Burning Bridge | Can select legal Hand / Equipment / Judgment card |
 | Steal | Can select legal Hand / Equipment / Judgment card |
 | Frost Sword | Can select 1–2 legal Hand / Equipment cards, including mixed-zone selection |
 | Kirin Bow | Uses simplified Equipment-only form |
@@ -2016,9 +2026,9 @@ Add or adapt focused browser coverage for at least:
 1. Retaliation with four authoritative anonymous Hand positions;
 2. Retaliation grouped-Hand fallback when only a hand-zone key exists;
 3. Retaliation selecting public Equipment;
-4. Dismantle selecting anonymous Hand position;
-5. Dismantle selecting Equipment;
-6. Dismantle selecting Judgment;
+4. Burning Bridge selecting anonymous Hand position;
+5. Burning Bridge selecting Equipment;
+6. Burning Bridge selecting Judgment;
 7. Steal selecting anonymous Hand position;
 8. Steal selecting Equipment;
 9. Steal selecting Judgment;
@@ -2046,8 +2056,177 @@ Which exact anonymous/public card position do I choose?
 What will this action do to that card?
 ~~~
 
-Retaliation, Dismantle, Steal, Frost Sword, and compatible future effects should feel like variations of one interaction system rather than unrelated custom interfaces, while preserving strict hidden-Hand privacy and server-owned legality.
+Retaliation, Burning Bridge, Steal, Frost Sword, and compatible future effects should feel like variations of one interaction system rather than unrelated custom interfaces, while preserving strict hidden-Hand privacy and server-owned legality.
 
+
+
+### 4C.29 Mobile target-card modal layout refinement — single pre-Section-6 task
+
+The shared target-card modal now reaches real gameplay, but the current mobile
+layout is not yet the approved final UX.
+
+Reviewer production screenshots of Burning Bridge at phone width show a
+specific usability problem:
+
+- the Hand zone is narrow;
+- individual concealed Hand cards are too large;
+- only part of the authoritative Hand is visible at once;
+- the selected card becomes visually dominant enough that neighbouring hidden
+  positions are easy to miss;
+- large unused modal space remains beside the compressed Hand zone;
+- the current composition does not scale naturally to the mixed
+  Hand + Equipment + Judgment cases required by Burning Bridge and Steal.
+
+This entire subsection is **one bounded refinement task**. The bullets below are
+acceptance requirements for that one task, not separate tasks.
+
+**Primary design goal**
+
+When the modal opens, the player should understand immediately:
+
+1. how many concealed Hand positions are available;
+2. which public Equipment cards are available;
+3. which public Judgment cards are available;
+4. which one or more cards are currently selected.
+
+The modal must optimize for **selection clarity and zone scanning**, not for
+displaying anonymous Hand backs at near-full card-reading size.
+
+**Hand-zone layout**
+
+Anonymous Hand positions are choices, not information-rich card faces.
+
+Required behavior:
+
+- hidden Hand cards remain visually card-shaped and clearly separated;
+- they should be materially smaller than full readable public Equipment /
+  Judgment cards where that improves mobile fit;
+- the Hand layout should make the authoritative count obvious at a glance;
+- for a common 4-card Hand at 390×844, the player should not see only two cards
+  and have to infer that additional hidden positions exist off-screen;
+- all four positions should preferably be visible together;
+- if larger Hands require scrolling, the existence of additional cards must be
+  visually obvious and the contained scrolling behavior must be deliberate;
+- cards must never collapse into narrow unreadable slivers;
+- hidden-card identity remains fully private.
+
+**Selected-state treatment**
+
+Selection must be obvious without obscuring the rest of the Hand.
+
+Required behavior:
+
+- retain a clear gold selected state and non-colour marker such as a check;
+- selected styling must not materially increase layout width/height;
+- neighbouring unselected hidden cards must remain easy to see;
+- the selected card must not cover, push away, or visually erase adjacent
+  choices;
+- \`0 / 1 selected\`, \`1 / 1 selected\`, and multi-select counts remain clearly
+  visible.
+
+**Use the modal width efficiently**
+
+The modal should not compress selectable content into the left side while
+leaving a large unused area on the right.
+
+For a Hand-only target:
+
+- allow the Hand zone to use the useful content width;
+- center or balance the Hand composition rather than leaving a narrow fixed
+  column.
+
+For mixed zones:
+
+- allocate width according to actual content;
+- the Hand should normally receive the largest share because it can contain
+  several anonymous positions;
+- Equipment and Judgment should remain visually distinct and readable;
+- avoid fixed columns that leave unused blank space when one zone is absent.
+
+**Mixed Hand + Equipment + Judgment composition**
+
+Burning Bridge and Steal must be designed from the mixed-zone case first, not as
+a Hand-only layout with extra zones appended later.
+
+The picker must support:
+
+~~~text
+HAND · N                 EQUIPMENT
+[?] [?] [?] [?]          [Weapon] [Armour]
+
+JUDGMENT
+[Delayed Stratagem]
+~~~
+
+The exact responsive arrangement may change by width, but:
+
+- Hand, Equipment, and Judgment remain separate labelled zones;
+- public Equipment/Judgment cards remain face-up and readable;
+- anonymous Hand cards remain face-down;
+- one zone must not crowd another into an unusable strip;
+- empty zones are omitted rather than reserving blank panels;
+- zone order stays consistent with §4C.10.
+
+At 390×844, a normal mixed case should fit without turning the modal into a
+large vertically scrolling document.
+
+**Card scale hierarchy**
+
+Use different scale priorities intentionally:
+
+- anonymous Hand position: compact selectable card back;
+- public Equipment/Judgment: readable public card;
+- selection badge/check: clear but spatially lightweight.
+
+Do not apply one oversized card dimension to every zone merely for visual
+uniformity.
+
+**Burning Bridge naming**
+
+The same refinement task must update the production presentation from
+\`DISMANTLE\` to the approved player-facing name:
+
+~~~text
+BURNING BRIDGE
+Choose 1 card to discard
+
+[ USE BURNING BRIDGE ]   [ CANCEL ]
+~~~
+
+This applies to:
+
+- modal title;
+- primary CTA;
+- accessible dialog name;
+- user-facing Guidance/copy where the card name appears;
+- browser assertions for presentation copy.
+
+Internal rule/protocol identifiers may remain \`Dismantle\`.
+
+**Required responsive proof**
+
+Validate the finished layout with real authoritative selection data at:
+
+- 390×844;
+- 480×900;
+- one wide layout.
+
+At minimum prove:
+
+1. Burning Bridge with 4 hidden Hand cards;
+2. one selected hidden Hand card without obscuring neighbours;
+3. Burning Bridge with Hand + Equipment;
+4. Burning Bridge with Hand + Equipment + Judgment;
+5. Steal with the same mixed-zone layout;
+6. a larger Hand where contained overflow is genuinely required;
+7. no page-level horizontal overflow;
+8. selectable targets remain at least 44px touchable even when anonymous Hand
+   card art is visually more compact;
+9. CTA and Cancel remain reachable without excessive scrolling.
+
+This refinement is not complete merely because all cards are technically
+clickable. The reviewer must be able to see the available choice structure
+immediately on a real phone-sized layout.
 
 ## 4D. Production-Path Completion Gate — Mandatory Before Section 6
 
@@ -2280,6 +2459,7 @@ as **Not proven**.
 Section 6 must not begin until:
 
 - §4.10 Stargazing private deck-reorder UX is closed;
+- §4C.29 mobile target-card modal layout refinement is closed;
 - §4A, including Bumper Harvest active-choice timer authority, is closed;
 - Task P1 real server-to-browser validation is available;
 - Task P2 unified target-card production routing is closed;
@@ -2349,7 +2529,7 @@ The user has authorized the UX2 interaction-visualization refactor **after all a
 
 Therefore:
 
-1. finish the remaining authorized refinement work before §5 first, including the Stargazing private deck-reorder usability task in §4.10, §4A, and all mandatory production-path completion tasks in §4D;
+1. finish the remaining authorized refinement work before §5 first, including the Stargazing private deck-reorder usability task in §4.10, the mobile target-card modal refinement in §4C.29, §4A, and all mandatory production-path completion tasks in §4D;
 2. do not interleave the UX2 interaction-visualization graph work with unfinished pre-§5 refinement tasks;
 3. once those refinement items are closed at a clean planning boundary, Section 6 becomes the next authorized UX2 implementation work;
 4. begin Section 6 from **§6.25 Phase A — physical-seat graph foundation** unless a newer direct user instruction changes the order;
