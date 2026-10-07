@@ -280,6 +280,8 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
   if (state === "pending-target-card") {
     const handKeys = targetCardCase === "out-of-range"
       ? ["hand:99"]
+      : targetCardCase === "zone-only"
+        ? ["hand"]
       : Array.from({ length: targetHandCount }, (_, index) => `hand:${index}`);
     const eligibleKeys = [...handKeys, "browser-target-equipment", "browser-target-judgement"];
     return {

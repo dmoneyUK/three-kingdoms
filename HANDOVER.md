@@ -5,38 +5,37 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-`UX2.REFINE-RETALIATION-UNIFIED-TARGET-CARD-MODAL-01` was pushed as
-`e5e8df1304b89587a5c059008381ea264745b63f`; Actions run `37637916120`
-completed `success` on that exact SHA, including tests, deployment, and
-production smoke test. `UX2.REFINE-FROST-SWORD-UNIFIED-TARGET-CARD-MODAL-01`
-was pushed as `c7ec91770635261d83b2dac656dbd4bdf0ef1c59`; Actions run
-`37639976811` completed `success` on that exact SHA, including the full
-build-and-test job, deployment, and production smoke test. Frost-focused
-browser tests passed 8/8, the complete target-card picker spec passed 56/56,
-and targeted ESLint plus `git diff --check` passed. Current Kirin Bow
-implementation is local; its focused browser slice passed 10/10, the full
-target-card picker spec passed 59/59, and targeted ESLint plus
-`git diff --check` passed. Reviewer acceptance is not claimed.
+`UX2.REFINE-KIRIN-BOW-UNIFIED-TARGET-CARD-MODAL-01` was pushed as
+`da741ed044f83e581105b1bc555aeb938a7059cc`; Actions run `37641710984` failed
+on that exact SHA at workflow level. The only listed job, `build-and-test`, and
+all its steps passed; no deploy job was created. The workflow annotation is
+`Internal server error` (correlation ID
+`b81d14c9-f454-4e6a-8be8-d5e35be4b42f`), and GitHub rejected rerunning the run.
+Current Dismantle/Steal implementation passes the focused target-card browser
+spec 67/67 plus targeted ESLint and `git diff --check`. Reviewer acceptance is
+not claimed.
 
 ## Design checkpoint
 
 Latest complete remote design review: `docs/UX2-refine.md` blob
-`f8d1ff3bd61be6177de0cf562b3cd38dfb83d888` (unchanged). §4C.18 and §4C.26–27
-require Kirin Bow to use the shared modal shell with only eligible public
-Mounts, “Choose 1 Mount to discard,” authoritative keys, revision safety,
-touch/geometry/accessibility proof, and a safe fail-closed fallback. §5 keeps
-Hero/player graph work deferred until the active §1–§4B refinements close.
+`f8d1ff3bd61be6177de0cf562b3cd38dfb83d888` (unchanged). Re-reviewed §4C.15–16
+and §4C.21, §4C.24–28: Dismantle and Steal share the modal, with effect-correct
+copy, only authoritative eligible Hand/Equipment/Judgment cards, exact
+selection/revision/privacy behavior, and responsive/accessibility proof. §5
+still defers the Hero/player graph until active pre-§5 refinements close.
 
 ## Current task
 
-`UX2.REFINE-KIRIN-BOW-UNIFIED-TARGET-CARD-MODAL-01` — route only the proven
-external-target Kirin Bow Mount choice to the shared modal's Equipment-only
-form. Preserve the existing authoritative eligible Mount keys and trigger
-payload; use “Choose 1 Mount to discard”; prove eligible Mount-only display,
-selection/submit payload, revision reset, no duplicate Dock Confirm, and
-modal/Stage/Dock containment at 320×568, 390×640, 390×844, 480×900, and wide.
-Unproven focus or keys must retain the safe fallback. Do not change gameplay
-rules or other providers. Before committing, inspect the latest run for the
-current remote HEAD; `37639976811` on
-`c7ec91770635261d83b2dac656dbd4bdf0ef1c59` completed `success` and satisfies
-the current pre-commit gate.
+`UX2.REFINE-DISMANTLE-STEAL-UNIFIED-TARGET-CARD-MODAL-01` — route only proven
+external Dismantle / Burning Bridges and Steal `target_card` decisions through
+the shared modal. Preserve CurrentAction eligible keys and the exact existing
+`choose_target_card` payload; use “Choose 1 card to discard/obtain” and
+USE DISMANTLE / USE STEAL; prove Hand, Equipment, Judgment, revision safety,
+privacy, cancellation, no duplicate Dock Confirm, and modal/Stage/Dock geometry
+at 320-class, 390×844, 480×900, and wide viewports. Unproven targets/keys keep
+the existing safe fallback. Do not change Hero/player geometry, game rules, or
+projection semantics. Before committing, inspected latest run `37641710984`
+for exact remote HEAD `da741ed…`: its sole actual job `build-and-test` passed;
+the workflow-level internal error is recorded separately. Following the
+Reviewer’s job-level CI cadence, commit this task without waiting for its new
+run; inspect that run before the next commit.
