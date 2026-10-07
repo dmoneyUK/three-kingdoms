@@ -451,7 +451,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     : groupNegationLocalFixture
       ? [card("browser-group-negation", "Negation", "♣")]
     : state === "raining-arrows-response"
-      ? [card("browser-raining-arrows-dodge", "Dodge", "♣")]
+      ? [card("browser-raining-arrows-dodge", "Dodge", "♣"), card("browser-raining-arrows-unrelated-attack", "Attack", "♠")]
     : state === "raining-arrows-no-dodge"
       ? [card("browser-raining-arrows-unrelated-attack", "Attack", "♠")]
     : state === "duel" || state === "duel-response"

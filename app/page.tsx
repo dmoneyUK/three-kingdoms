@@ -2713,6 +2713,23 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     ),
   );
   const responseDeclineLabel = rainingArrowsDamageDecline ? "TAKE DAMAGE" : "Skip";
+  const rainingArrowsDodgeProviderCardIds = new Set(
+    rainingArrowsDamageDecline
+      && responseSelection?.type === "cards"
+      && selectedResponseProvider?.satisfies === "dodge"
+      ? responseSelection.eligibleCardIds
+      : [],
+  );
+  const rainingArrowsHasHandDodgeProvider = Boolean(
+    canRespond
+    && responseDecisionReady
+    && !triggerResponse
+    && !activeSkillSelection
+    && !activeSkillTargetSelection
+    && !wushengMode
+    && !longdanMode
+    && room.myHand.some((item) => rainingArrowsDodgeProviderCardIds.has(item.id)),
+  );
   const responseRequirement = room.currentAction?.requirement;
   const localSemanticResponseGuidance = Boolean(
     consoleIsDecisionActor
@@ -2795,7 +2812,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
           {(activeSkillSelection || activeSkillTargetSelection) && activeSkillOption?.effectId === "diao_chan_lust" && activeSkillSelectedTargetIds.length > 1 && <small role="status">Lust order: {room.players.find((player) => player.id === activeSkillSelectedTargetIds[0])?.name} plays Attack first, then {room.players.find((player) => player.id === activeSkillSelectedTargetIds[1])?.name}.</small>}
         </div>
       }>
-        <div className="local-hand-section">
+        <div className="local-hand-section" data-raining-arrows-dodge-providers={rainingArrowsHasHandDodgeProvider ? "available" : undefined}>
           <div className="local-hand" data-card-origin-anchor={room.meId} aria-label="Your hand">{(() => { const multiSelectMode = room.phase === "discard" || Boolean(activeSkillSelection || serpentMode || responseSelectionMax > 1 || triggerSelectionMax > 1); const responseSelectionLimit = triggerResponse && triggerSelectionUsesCards ? triggerSelection.max : responseSelectionUsesCards ? responseSelection.max : 2; const toggleHandCard = (item: Card) => { const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1; if (room.phase === "discard") setDiscardSelected((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids.length < excessCards ? [...ids, item.id] : ids); else if (activeSkillSelection) setActiveSkillSelectionState((state) => { if (!state || !activeSkillStateIsCurrent) return state; const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)); return validIds.includes(item.id) ? { ...state, cardIds: validIds.filter((id) => id !== item.id) } : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, item.id] } : { ...state, cardIds: validIds }; }); else if (costSelection) setSerpentSelected((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids.length < responseSelectionLimit ? [...ids, item.id] : ids); else { setSelected((id) => id === item.id ? "" : item.id); setTarget(""); } setTargetCardIndex(null); }; const renderHandCard = (item: Card, index: number) => { const definition = cardDefinition(item.kind); const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1; const isSelected = room.phase === "discard" ? discardSelected.includes(item.id) : activeSkillSelection ? activeSkillSelectedCardIds.includes(item.id) : costSelection ? serpentSelected.includes(item.id) : selected === item.id; const singleSelected = !multiSelectMode && isSelected; const maySelect = (room.isMyTurn && (canPlay || room.phase === "discard")) || responseDecisionReady || rescueDecisionReady; const skillModeCardDisabled = Boolean(activeSkillTargetSelection || wushengMode && !wushengEligibleCardIds.has(item.id) || longdanMode && !longdanEligibleCardIds.has(item.id) || activeSkillSelection && !activeSkillSelection.eligibleCardIds.includes(item.id)); const skillModeEligible = wushengMode && wushengEligibleCardIds.has(item.id) || longdanMode && longdanEligibleCardIds.has(item.id) || activeSkillSelection?.eligibleCardIds.includes(item.id) === true; return <div className={`card-slot ${singleSelected ? "single-selected" : ""}`} data-hand-card-id={item.id} key={`rail-${item.id}`} style={{ marginLeft: index === 0 ? 0 : `${handCardLayout.step - 68}px` }}><div className="hand-card-visual"><button disabled={!maySelect || skillModeCardDisabled || (responseDecisionReady && (canRespond || triggerResponse) && !responseCardAllowed(item)) || (rescueDecisionReady && !canRespond && item.kind !== "Peach")} onClick={() => toggleHandCard(item)} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}><span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-name-mark">{definition.name}</span><strong>{definition.category} card</strong></button><button type="button" className="card-info-button" aria-label={`Explain ${definition.name}`} onClick={(event) => { event.stopPropagation(); setInfoCard(item); }}>i</button></div></div>; };
           // The native scroll region needs keyboard focus; it has no custom selection role.
           // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex

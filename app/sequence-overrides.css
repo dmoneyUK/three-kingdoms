@@ -725,6 +725,12 @@
 .local-hand-rail .game-card > strong { font-size: 5px; letter-spacing: .06em; }
 .local-hand-rail .game-card .corner { width: 17px; min-height: 23px; padding: 1px 1px 4px; border-width: 1px; border-radius: 0 0 5px 0; font-size: 8px; }
 .local-hand-rail .game-card .corner i { font-size: 7px; }
+/* CurrentAction already enables only legal response cards; preserve that authority visually. */
+.local-hand-section[data-raining-arrows-dodge-providers="available"] .local-hand-rail .game-card:not(:disabled):not(.selected) {
+  border-color: #e5bd68;
+  box-shadow: 0 0 0 2px #d7a94f88, 0 0 12px #d7a94f66, -5px 8px 16px #0000006b;
+}
+.local-hand-section[data-raining-arrows-dodge-providers="available"] .local-hand-rail .game-card:disabled { opacity: .64; }
 
 .local-player-dock .console-guidance { grid-area: guidance; width: 100%; min-width: 0; height: auto; padding: 5px 8px; overflow: visible; }
 .local-player-dock .console-guidance .decision-status { width: 100%; max-height: none; overflow: visible; white-space: normal; overflow-wrap: break-word; }
