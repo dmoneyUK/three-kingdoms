@@ -212,6 +212,12 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
     version: 3, kind: "response", actorId, deadline: 0, reason: "Choose an Attack response", legalActions: ["respond", "decline_response"], requirement: "attack",
     options: [{ providerId: "attack_card", label: "Attack", satisfies: "attack", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [handCardId] } }],
   };
+  if (state === "xiahou-dun-stauchness" || state === "xiahou-dun-stauchness-no-provider") return {
+    version: 3, kind: "trigger", actorId, deadline: 0, reason: "Xiahou Dun may use Stauchness, or skip", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger", triggerEvent: "damage_suffered",
+    triggerOptions: state === "xiahou-dun-stauchness"
+      ? [{ effectId: "xiahou_dun_ganglie", label: "Stauchness", description: "After the damage, reveal a Judgement card.", allowDecline: true, selection: null }]
+      : [],
+  };
   if (state === "cao-cao-treachery") return {
     version: 3, kind: "trigger", actorId, deadline: 0, reason: "Cao Cao may use Treachery, or skip", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger", triggerEvent: "damage_suffered",
     triggerOptions: [{ effectId: "cao_cao_jianxiong", label: "Treachery", description: "Obtain the card that caused the damage, if it is still available.", allowDecline: true, selection: null }],
@@ -801,7 +807,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     actionReason: currentAction?.reason ?? "Waiting for the next legal action",
     isMyAction: Boolean(currentAction?.actorId === meId),
     actionRevision: `browser-${state}-action`,
-    presentationSnapshot: state === "ma-chao-cavalry" || state === "sima-yi-necromancy" || state === "cao-cao-treachery" ? null : presentationSnapshot,
+    presentationSnapshot: state === "ma-chao-cavalry" || state === "sima-yi-necromancy" || state === "cao-cao-treachery" || state.startsWith("xiahou-dun-stauchness") ? null : presentationSnapshot,
     currentAction,
     pending: ordinaryTurn ? null : currentAction ? { kind: currentAction.kind } : null,
     pendingAttack: null,
