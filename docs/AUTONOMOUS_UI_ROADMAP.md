@@ -1452,6 +1452,16 @@ Only a proven regression or new Reviewer-approved design requirement does.
   at 390×844 and 1440×900; targeted ESLint and `git diff --check` passed. No
   production or gameplay behavior changed. Reviewer acceptance is not claimed.
 
+### UX2.REFINE-HUANG-GAI-SELF-SACRIFICE-SKILLS-BAND-01 — Self Sacrifice routing
+
+- The Local Skills mapping now connects Huang Gai's existing
+  `huang_gai_kurou` CurrentAction option to `Self Sacrifice`; the absent-option
+  state stays disabled and no generic Action Row duplicate is rendered. The
+  exact existing `trigger` payload passed browser checks at 390×844 and
+  1440×900; the focused spec passed 3/3, targeted ESLint and `git diff --check`
+  passed. No rules or server projection changed. Reviewer acceptance is not
+  claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

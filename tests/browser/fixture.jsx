@@ -256,6 +256,10 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
     version: 3, kind: "trigger", actorId, deadline: 0, reason: "Ma Chao may use Cavalry, or skip", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
     triggerOptions: [{ effectId: "ma_chao_cavalry", label: "Cavalry — enter Judgement", allowDecline: true }],
   };
+  if (state === "huang-gai-self-sacrifice") return {
+    version: 3, kind: "trigger", actorId, deadline: 0, reason: "Huang Gai may use Self Sacrifice", legalActions: ["trigger", "end_turn"],
+    triggerOptions: [{ effectId: "huang_gai_kurou", label: "Self Sacrifice", description: "Lose 1 HP to draw 2 cards.", selection: null }],
+  };
   if (state === "hua-xiong-triumphant" || state === "hua-xiong-triumphant-observer") return {
     version: 3, kind: "trigger", actorId, deadline: 0, reason: "Choose Triumphant, or skip", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
     triggerOptions: [{ effectId: "hua_xiong_triumphant", label: "Triumphant", description: "Recover 1 HP or draw 1 card.", allowDecline: true, selection: { type: "choice", choices: [{ id: "recover", label: "Recover 1 HP" }, { id: "draw", label: "Draw 1 card" }], eligibleHandKeys: [] } }],

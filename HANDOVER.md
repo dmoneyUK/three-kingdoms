@@ -5,16 +5,15 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-`UX2.REFINE-GENERIC-HERO-RESPONSE-SKILLS-BAND-01` adds browser proof for Cao Cao
-Entourage, Liu Bei Influencing, and Zhen Ji Empress Dowager; the focused spec
-passed 9/9 at 390×844 and 1440×900, targeted ESLint and `git diff --check`
-passed. Pre-commit remote HEAD `67827c9da7e31ad36edc832596f4f2070fdf8a99` had
-no workflow runs or status checks, treated as success per Reviewer instruction.
-Earlier run `37644841686` failed only on stale Dismantle/Steal assertions and was
-repaired test-only in `c3d8f16`. No production/gameplay behavior changed;
-Reviewer acceptance is not claimed. Deferred: Bumper Harvest's active choice
-has no authoritative deadline in the current projection; do not synthesize a
-chooser timer.
+`UX2.REFINE-HUANG-GAI-SELF-SACRIFICE-SKILLS-BAND-01` maps the existing
+`huang_gai_kurou` CurrentAction capability to the Local Skills button. Its
+focused browser spec passed 3/3 at 390×844 and 1440×900, targeted ESLint and
+`git diff --check` passed. Pre-commit remote HEAD
+`794ac2993b871d52de11eae84c2c837cdabc0b94` completed GitHub Actions run
+`37649255906` successfully (API tests, both browser shards, lint/fast tests,
+and deploy). No rules/server behavior changed; Reviewer acceptance is not
+claimed. Deferred: Bumper Harvest's active choice has no authoritative deadline
+in the current projection; do not synthesize a chooser timer.
 
 ## Design checkpoint
 
@@ -27,11 +26,12 @@ graph until active pre-§5 refinements close.
 
 ## Current task
 
-`UX2.REFINE-HUANG-GAI-SELF-SACRIFICE-SKILLS-BAND-01` — connect Huang Gai's
-existing authoritative `huang_gai_kurou` CurrentAction option to the Skills-band
-`Self Sacrifice` button. Prove enabled only when offered, disabled when absent,
-no duplicate generic Action Row activation, and exact existing
-`trigger` provider payload at mobile and wide viewports. Do not change HP/draw
-rules, provider semantics, or server projection. At the next commit boundary,
-inspect the latest actual job for the remote HEAD; per Reviewer instruction,
-empty CI status is success and this task's own CI need not be awaited.
+`UX2.REFINE-SIMA-YI-NECROMANCY-SKILLS-BAND-01` — prove the existing
+`sima_yi_guicai` CurrentAction option activates Necromancy from the Skills band.
+At 390×844 and wide, verify only the projected private Hand card is selectable,
+no duplicate generic Action Row activation appears, and Confirm submits the
+existing `trigger` provider/cardIds payload; absent authority stays disabled.
+Do not alter Judgement rules, provider semantics, or server projection. At the
+next commit boundary, inspect the latest actual job for the remote HEAD; per
+Reviewer instruction, empty CI status is success and this task's own CI need
+not be awaited.

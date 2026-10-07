@@ -1632,6 +1632,7 @@ export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly strin
   "hua-tuo": { "Prodigal Healer": ["hua_tuo_prodigal_healer"] },
   "sun-shangxiang": { Betrothment: ["sun_shangxiang_betrothment"], Daredevil: ["sun_shangxiang_daredevil"] },
   "huang-yueying": { Cultivation: ["huang_yueying_cultivation"] },
+  "huang-gai": { "Self Sacrifice": ["huang_gai_kurou"] },
   "zhuge-liang": { Stargazing: ["zhuge_liang_stargazing"] },
 };
 
