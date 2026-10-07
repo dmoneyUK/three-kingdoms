@@ -14,6 +14,13 @@ async function loadFrostSwordSelection(page, { width, height = 844, handCount = 
   return page.locator('[aria-label="Interaction Stage"]');
 }
 
+async function loadFrostSwordModal(page, { width, height = 844, handCount = 4, targetCardCase = "valid" }) {
+  const stage = await loadFrostSwordSelection(page, { width, height, handCount, targetCardCase });
+  const dialog = page.getByRole("dialog", { name: "Frost Sword target card selection" });
+  await expect(dialog).toBeVisible();
+  return { stage, dialog };
+}
+
 async function loadLocalEquipmentTargetCard(page, { width, height = 844, targetCardCase = "valid" }) {
   await page.setViewportSize({ width, height });
   await page.goto(`/tests/browser/fixture.html?state=local-equipment-target-card&count=4&targetCardCase=${targetCardCase}`);
@@ -504,51 +511,68 @@ for (const viewport of [
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
-  test(`Frost Sword uses anonymous projected Hand positions in external Hero Focus at ${viewport.width}px`, async ({ page }) => {
-    const stage = await loadFrostSwordSelection(page, viewport);
-    const focus = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"][data-hero-focus-player-id="p1"]');
-    const detail = focus.getByRole("group", { name: "Frost Sword selection" });
-    const positions = detail.locator('[data-target-card-zone="hand-position"]');
+  test(`proven Frost Sword selection uses the unified modal at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+    const { stage, dialog } = await loadFrostSwordModal(page, viewport);
+    const overlay = page.locator(".target-card-picker-overlay");
+    const positions = dialog.locator('[data-target-card-zone="hand-position"]');
+    const equipment = dialog.locator('[data-target-card-zone="equipment"]');
+    const dock = page.locator(".local-player-dock");
+    const [stageBefore, dockBefore] = await Promise.all([stage.boundingBox(), dock.boundingBox()]);
 
     await expect(stage).toHaveAttribute("data-stage", "ATTACK_RESPONSE");
-    await expect(focus).toBeVisible();
-    await expect(focus.locator('[data-hero-focus-player-id="p2"]')).toHaveCount(0);
-    await expect(focus.locator(".hero-focus-source")).toHaveCount(0);
-    await expect(detail.locator("header span")).toHaveText("Frost Sword");
-    await expect(detail.locator("header small")).toHaveText("Choose 1–2 cards · Hand ×4");
+    await expect(dialog.locator("header strong")).toHaveText("FROST SWORD");
+    await expect(dialog.locator("header span")).toHaveText("Choose 1–2 cards to discard");
+    await expect(dialog.locator(".target-card-picker-zone-hand h3")).toHaveText("HAND · 4");
+    await expect(dialog.locator(".target-card-picker-zone-equipment h3")).toHaveText("EQUIPMENT");
     await expect(positions).toHaveCount(4);
     for (let index = 0; index < 4; index += 1) {
       await expect(positions.nth(index)).toHaveAccessibleName(`Hidden hand card ${index + 1}`);
       await expect(positions.nth(index)).toHaveAttribute("aria-pressed", "false");
       await expect(positions.nth(index)).not.toContainText(/Attack|Peach|Dodge|Negation/);
     }
-    await expect(detail.locator('[data-target-card-zone="equipment"]')).toHaveCount(1);
-    await expect(detail.locator('[data-target-card-zone="equipment"]')).toHaveAttribute("aria-label", /^Equipment: /);
-    await expect(detail.locator('[data-target-card-zone="equipment"] .hero-focus-selectable-public-card-label strong')).toHaveText("Nio Shield");
+    await expect(equipment).toHaveAccessibleName("Equipment: Nio Shield");
+    await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
+    await expect(dock.getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
     const targetProjection = await page.evaluate(() => window.__browserRoom.players.find((player) => player.id === "p1"));
     expect(targetProjection.handCount).toBe(4);
     expect(targetProjection.handCards ?? []).toEqual([]);
 
-    const [stageBox, dockBox, focusBox, positionBox] = await Promise.all([
-      stage.boundingBox(), page.locator(".local-player-dock").boundingBox(), focus.boundingBox(), positions.first().boundingBox(),
+    const [overlayBox, panelBox, positionBox, equipmentBox, actionBoxes] = await Promise.all([
+      overlay.boundingBox(), dialog.boundingBox(), positions.first().boundingBox(), equipment.boundingBox(),
+      dialog.locator(".target-card-picker-actions button").evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height)),
     ]);
-    expect(stageBox && dockBox && focusBox && positionBox).toBeTruthy();
-    expect(stageBox.y + stageBox.height).toBeLessThanOrEqual(dockBox.y);
-    expect(focusBox.x).toBeGreaterThanOrEqual(0);
-    expect(focusBox.x + focusBox.width).toBeLessThanOrEqual(viewport.width);
+    expect(stageBefore && dockBefore && overlayBox && panelBox && positionBox && equipmentBox).toBeTruthy();
+    expect(overlayBox.x).toBeCloseTo(0, 1);
+    expect(overlayBox.y).toBeCloseTo(0, 1);
+    expect(overlayBox.width).toBeCloseTo(viewport.width, 1);
+    expect(overlayBox.height).toBeCloseTo(viewport.height, 1);
+    expect(panelBox.x).toBeGreaterThanOrEqual(0);
+    expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(viewport.width);
+    expect(panelBox.y).toBeGreaterThanOrEqual(0);
+    expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(viewport.height);
+    expect(actionBoxes.length).toBe(3);
+    for (const height of actionBoxes) expect(height).toBeGreaterThanOrEqual(44);
     expect(positionBox.width).toBeGreaterThanOrEqual(44);
     expect(positionBox.height).toBeGreaterThanOrEqual(44);
+    expect(equipmentBox.width).toBeGreaterThanOrEqual(44);
+    expect(equipmentBox.height).toBeGreaterThanOrEqual(44);
+
+    await positions.first().click();
+    const [stageAfter, dockAfter] = await Promise.all([stage.boundingBox(), dock.boundingBox()]);
+    expectSameBox(stageAfter, stageBefore);
+    expectSameBox(dockAfter, dockBefore);
+    const overflow = await page.evaluate(() => ({ viewport: window.innerWidth, document: document.documentElement.scrollWidth }));
+    expect(overflow.document).toBeLessThanOrEqual(overflow.viewport);
   });
 }
 
-test("Frost Sword keeps ten opaque Hand positions inside the horizontally scrollable Hero Focus row", async ({ page }) => {
-  const stage = await loadFrostSwordSelection(page, { width: 390, height: 640, handCount: 10 });
-  const focus = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"][data-hero-focus-player-id="p1"]');
-  const detail = focus.getByRole("group", { name: "Frost Sword selection" });
-  const positions = detail.locator('[data-target-card-zone="hand-position"]');
-  const row = detail.locator(".hero-focus-selectable-detail-row");
+test("Frost Sword keeps ten opaque Hand positions inside the modal's horizontally scrollable zone", async ({ page }) => {
+  const { dialog } = await loadFrostSwordModal(page, { width: 390, height: 640, handCount: 10 });
+  const positions = dialog.locator('[data-target-card-zone="hand-position"]');
+  const row = dialog.locator(".target-card-picker-zone-hand .target-card-picker-card-row");
 
-  await expect(detail.locator("header small")).toHaveText("Choose 1–2 cards · Hand ×10");
+  await expect(dialog.locator("header span")).toHaveText("Choose 1–2 cards to discard");
+  await expect(dialog.locator(".target-card-picker-zone-hand h3")).toHaveText("HAND · 10");
   await expect(positions).toHaveCount(10);
   for (let index = 0; index < 10; index += 1) {
     await expect(positions.nth(index)).toHaveAccessibleName(`Hidden hand card ${index + 1}`);
@@ -556,44 +580,48 @@ test("Frost Sword keeps ten opaque Hand positions inside the horizontally scroll
   const geometry = await page.evaluate(() => ({
     viewportWidth: window.innerWidth,
     documentWidth: document.documentElement.scrollWidth,
-    rowClientWidth: document.querySelector(".hero-focus-selectable-detail-row")?.clientWidth ?? 0,
-    rowScrollWidth: document.querySelector(".hero-focus-selectable-detail-row")?.scrollWidth ?? 0,
+    rowClientWidth: document.querySelector(".target-card-picker-zone-hand .target-card-picker-card-row")?.clientWidth ?? 0,
+    rowScrollWidth: document.querySelector(".target-card-picker-zone-hand .target-card-picker-card-row")?.scrollWidth ?? 0,
   }));
   expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
   expect(geometry.rowScrollWidth).toBeGreaterThan(geometry.rowClientWidth);
   await expect(row).toHaveCSS("overflow-x", "auto");
 });
 
-test("Frost Sword Confirm submits only the selected opaque keys and public card exactly once", async ({ page }) => {
-  const stage = await loadFrostSwordSelection(page, { width: 390, height: 844 });
-  const detail = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]').getByRole("group", { name: "Frost Sword selection" });
-  const hiddenPosition = detail.getByRole("button", { name: "Hidden hand card 1" });
-  const equipment = detail.locator('[data-target-card-zone="equipment"]');
-  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+test("Frost Sword modal submits a mixed Hand + Equipment selection and enforces its two-card maximum", async ({ page }) => {
+  const { dialog } = await loadFrostSwordModal(page, { width: 390, height: 844 });
+  const positions = dialog.locator('[data-target-card-zone="hand-position"]');
+  const hiddenPosition = positions.nth(0);
+  const anotherPosition = positions.nth(1);
+  const equipment = dialog.locator('[data-target-card-zone="equipment"]');
+  const use = dialog.getByRole("button", { name: "Use Frost Sword" });
 
   await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
   await equipment.click();
   await expect(equipment).toHaveAttribute("aria-pressed", "true");
-  await expect(confirm).toBeEnabled();
-  await confirm.click();
+  await expect(dialog.locator(".target-card-picker-count")).toHaveText("2 / 2 selected");
+  await expect(anotherPosition).toBeDisabled();
+  await expect(use).toBeEnabled();
+  await use.click();
 
   await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
     { action: "trigger", extra: { providerId: "frost_sword_damage_about_to_apply", cardKeys: ["hand:0", "browser-public-equipment"] } },
   ]);
 });
 
-test("Frost Sword opaque position choices reset on action revision", async ({ page }) => {
-  const stage = await loadFrostSwordSelection(page, { width: 390, height: 844 });
-  const detail = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]').getByRole("group", { name: "Frost Sword selection" });
-  const hiddenPosition = detail.getByRole("button", { name: "Hidden hand card 2" });
-  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+test("Frost Sword modal selection clears on CurrentAction revision without duplicating Dock controls", async ({ page }) => {
+  const { dialog } = await loadFrostSwordModal(page, { width: 390, height: 844 });
+  const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 2" });
+  const use = dialog.getByRole("button", { name: "Use Frost Sword" });
 
   await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
   await page.evaluate(() => window.__setBrowserActionRevision("browser-frost-sword-new-action"));
+  await expect(dialog).toBeVisible();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "false");
-  await expect(confirm).toBeDisabled();
+  await expect(use).toBeDisabled();
+  await expect(page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
 });
 
 for (const viewport of [

@@ -1408,6 +1408,16 @@ Only a proven regression or new Reviewer-approved design requirement does.
   exact parent SHA `9607280182e5f21a8d2acd5c03a707cb438906f5`. Reviewer
   acceptance is not claimed.
 
+### UX2.REFINE-FROST-SWORD-UNIFIED-TARGET-CARD-MODAL-01 — Frost Sword modal
+
+- Proven external-target Frost Sword now shares the target-card modal while
+  retaining anonymous Hand positions, public Equipment, authoritative eligible
+  keys, and the existing trigger payload. The dialog uses “Choose 1–2 cards to
+  discard,” prevents selection beyond the server-provided maximum, and keeps
+  Stage/Dock geometry stable. Focused Frost Sword browser coverage passed 8/8,
+  the full target-card picker spec passed 56/56, and targeted ESLint plus
+  `git diff --check` passed. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

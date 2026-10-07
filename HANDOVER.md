@@ -5,31 +5,33 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-`UX2.REFINE-RETALIATION-UNIFIED-TARGET-CARD-MODAL-01` implementation is ready
-to commit: proven external-target Sima Yi Retaliation now uses the shared
-full-screen card-selection modal; selection remains CurrentAction-keyed,
-revision-safe, private, and separate from Dock Confirm. The modal groups Hand,
-Equipment, and Judgment; the full-screen overlay blocks underlying controls and
-does not shift Stage/Dock geometry. Focused picker browser coverage passed
-56/56, the existing UI-19 external Hero Focus regression passed 1/1, targeted
-ESLint passed, and `git diff --check` passed.
-
-Pre-commit Actions run `37634607717` passed on exact parent SHA
-`9607280182e5f21a8d2acd5c03a707cb438906f5`. The current task change is not yet
-on the remote; record its exact pushed SHA and actual Actions status at the
-post-push boundary. Reviewer acceptance is not claimed.
+`UX2.REFINE-RETALIATION-UNIFIED-TARGET-CARD-MODAL-01` was pushed as
+`e5e8df1304b89587a5c059008381ea264745b63f`. Its Actions run `37637916120`
+completed `success` on that exact SHA, including browser/unit tests, deploy,
+and production smoke test. The preceding pre-commit run
+`37634607717` passed on exact parent SHA `9607280182e5f21a8d2acd5c03a707cb438906f5`.
+Retaliation browser coverage passed 56/56; the existing UI-19 Hero Focus
+compatibility test passed 1/1; targeted ESLint and `git diff --check` passed.
+Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
-Latest remote design blob reviewed: `f8d1ff3bd61be6177de0cf562b3cd38dfb83d888`.
-§4C.14 defines Retaliation's rule-facing instruction and safe Hand fallback;
-§4C.21–§4C.28 require authoritative keys, privacy, stable geometry, and focused
-browser proof. §5/§6 Hero/player visualization remains deferred until active
-pre-§5 refinements close.
+Latest remote design blob remains
+`f8d1ff3bd61be6177de0cf562b3cd38dfb83d888`; no revision change since the prior
+checkpoint. Re-reviewed §4C.15–§4C.28. §4C.17 defines Frost Sword as an
+authoritatively offered 1–2 card selection across anonymous Hand positions and
+eligible Equipment; §4C.21 requires key/revision safety and privacy. §5/§6
+Hero/player visualization remains deferred.
 
-## Next task
+## Current task
 
-`UX2.REFINE-POST-RETALIATION-DESIGN-RECHECK-01` — after pushing the current
-task, record its exact remote SHA/CI state, re-fetch and review the latest
-remote `docs/UX2-refine.md`, compare revisions, and select exactly one
-authorized, bounded next refinement before source edits.
+`UX2.REFINE-FROST-SWORD-UNIFIED-TARGET-CARD-MODAL-01` — route only the
+proven external-target Frost Sword selection to the shared modal. Keep the
+CurrentAction key set and existing trigger payload authoritative; use
+rule-facing “Choose 1–2 cards to discard” copy; prove one/two-card and mixed
+Hand + Equipment selection, max enforcement, revision safety, modal/Stage/Dock
+geometry, touch targets, and no overflow at 390×844, 480×900, and wide. Do not
+change server rules or unrelated picker flows. Pre-commit gate currently
+satisfied by run `37637916120` on exact parent SHA
+`e5e8df1304b89587a5c059008381ea264745b63f`; recheck the latest run for the
+remote HEAD immediately before commit.
