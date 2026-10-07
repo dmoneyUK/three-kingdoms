@@ -5,35 +5,31 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-`UX2.REFINE-BUMPER-HARVEST-CLOSING-TIMER-CLUSTER-01` moves only the existing
-authoritative closing timer into the lower-right `StageSystemCluster`; the
-choice UI and server/gameplay behavior are unchanged. Focused browser command
-`npm run test:browser -- tests/browser/bumper-harvest-composition.spec.mjs tests/browser/private-draw-countdown-cluster.spec.mjs tests/browser/response-timer.spec.mjs`
-passed 16/16; `npx eslint app/page.tsx tests/browser/bumper-harvest-composition.spec.mjs`
-and `git diff --check` passed. Previous
-Private Draw content task remains green on Actions #846 (`37606112183`, SHA
-`a040cc12b156b917a22bbe464798e1ed2a8a9b5f`). Before this commit, current remote
-base `7ccae69847a460b06fc77f877a22b4c109d15b7d` had no Actions run or combined
-status; per the user's instruction, the empty status is treated as success.
-Actions #847 on predecessor `79f8f15` was manually cancelled. Reviewer
-acceptance is not claimed.
+`UX2.REFINE-OTHER-PLAYER-INSPECT-FLOATING-SHELL-01` implements the compact
+Stage-contained Inspect overlay and one `INSPECT · Player` title/close row. At
+390×844, 480×900, and 1440×900, shell sizes were 352×223, 442×297, and 680×230
+CSS px. Measured overlap with System Menu, Guidance, and Dock was 0; opening /
+closing Dock delta was 0px. Focused browser spec passed 7/7; targeted ESLint
+and `git diff --check` passed. Reviewer acceptance is not claimed.
+
+Commit gate on base SHA `1508be23428e3f35af2c301d98c3ef575871f4e2`: Actions
+#848 (`37613975213`) was observed successful; the fresh combined-status query
+was empty and, per the user's instruction, counted as success. CI for the
+upcoming task SHA is not yet observed.
 
 ## Design checkpoint
 
-Re-read the full current remote `docs/UX2-refine.md`, blob
-`6889c2541f32fe6b4825aadd652b5ade52a6ae39`. §4A.7 requires the Bumper closing
-timer beside System Menu; §4B adds compact other-player Inspect before the
-deferred §5/§6 visualization work. The cross-Hero choice remains in the acting
-viewer's Local Dock Action Row.
+Re-read the complete current remote `docs/UX2-refine.md`, blob
+`6889c2541f32fe6b4825aadd652b5ade52a6ae39`. §4B.2–4B.3 are complete. §5 still
+defers Interaction Stage Hero/Player refactoring until all active pre-§5
+refinements are closed.
 
 ## Current task
 
-`UX2.REFINE-OTHER-PLAYER-INSPECT-FLOATING-SHELL-01` — implement only the §4B.2
-compact floating panel shell and §4B.3 single-row header. Keep public content,
-identity sizing, skills, and zones unchanged in this slice. At 390×844,
-480×900, and wide viewport, prove the panel is centered within usable Stage,
-keeps visible Stage context, uses the specified compact width/height bounds,
-has one `INSPECT · Player` title with same-row close control, and does not
-overlap System Menu, Guidance, or Dock. Opening/closing must move the Dock by
-≤2 CSS px; no horizontal overflow. Preserve Inspect's public-only data and
-existing target Preview/Stage identity behavior.
+`UX2.REFINE-OTHER-PLAYER-INSPECT-IDENTITY-BLOCK-01` — implement only §4B.4's
+Inspect identity-block proportions and readability. Keep public fields and
+current Skills/Equipment/Judgment/Hand content unchanged; add no inferred or
+private identity data. Prove portrait occupies about 38–44% of panel width,
+identity 56–62%, and name/Hero/HP/Explain Hero remain legible at 390×844,
+480×900, and wide. Preserve shell geometry, public-only data, Dock stability,
+and target Preview/Stage identity behavior.

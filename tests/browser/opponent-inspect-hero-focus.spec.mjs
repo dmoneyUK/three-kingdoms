@@ -13,6 +13,17 @@ async function seatGeometry(page) {
   }));
 }
 
+function overlaps(a, b) {
+  return Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x)
+    && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
+}
+
+function expectStableBox(before, after) {
+  for (const dimension of ["x", "y", "width", "height"]) {
+    expect(Math.abs(after[dimension] - before[dimension]), `Dock ${dimension} changed`).toBeLessThanOrEqual(2);
+  }
+}
+
 test("opponent Hero info opens without replacing the authoritative Stage with Inspect", async ({ page }) => {
   await loadFixture(page, { state: "interaction", width: 480, height: 900 });
   const stage = page.locator('.play-table[data-seat-topology="top-row"] .interaction-stage');
@@ -33,16 +44,22 @@ test("opponent Hero info opens without replacing the authoritative Stage with In
 });
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
-  test(`opponent Inspect uses Hero Focus public details at ${viewport.width}px without moving seats`, async ({ page }) => {
+  test(`opponent Inspect floats compactly inside Stage at ${viewport.width}px`, async ({ page }) => {
     await loadFixture(page, viewport);
     const before = await seatGeometry(page);
+    const dockBefore = await page.locator(".local-player-dock").boundingBox();
     await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
 
-    const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+    const stage = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"]');
+    const layer = stage.locator(":scope > .opponent-inspection-layer");
+    const shell = layer.locator(":scope > .opponent-inspection-floating-shell");
+    const inspect = shell.locator(".hero-focus-inspect");
     await expect(inspect).toHaveAttribute("data-hero-focus-mode", "INSPECT");
-    await expect(inspect.locator(".hero-focus-heading strong")).toContainText("INSPECT");
+    await expect(inspect.locator(".hero-focus-heading strong")).toHaveText("INSPECT · Player 2");
     await expect(inspect).not.toContainText("HERO FOCUS");
     await expect(page.getByRole("dialog", { name: "Player 2 opponent inspection" })).toBeVisible();
+    await expect(stage.locator(":scope > header")).toHaveCount(0);
+    await expect(stage.getByText("INSPECT · Player 2", { exact: true })).toHaveCount(1);
     await expect(inspect.locator(".hero-focus-identity")).toContainText("Player 2");
     await expect(inspect.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill').first()).toBeVisible();
     await expect(inspect.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]')).toHaveCount(1);
@@ -50,26 +67,59 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     await expect(inspect.locator(".hero-focus-inspect-hand-backs i")).toHaveCount(2);
     await expect(inspect.locator('[aria-label="Concealed Hand"] .played-card')).toHaveCount(0);
     await expect(inspect).not.toHaveAttribute("aria-modal", "true");
-    await expect(page.locator(".opponent-inspection-layer")).toHaveCount(0);
+    await expect(layer).toBeVisible();
+    await expect(layer.locator(".opponent-inspection-backdrop")).toBeVisible();
     expect(await inspect.evaluate((element) => /\b(Lord|Loyalist|Rebel|Renegade|Spy)\b/.test(element.textContent ?? ""))).toBe(false);
-    expect(await inspect.evaluate((element) => element.closest(".interaction-stage")?.getAttribute("data-interaction-id") ?? null)).toBeNull();
+
+    const [stageBox, safeBox, shellBox, backdropBox, titleBox, closeBox, menuBox, guidanceBox, dockOpen] = await Promise.all([
+      stage.boundingBox(),
+      page.locator(".interaction-safe-zone").boundingBox(),
+      shell.boundingBox(),
+      layer.locator(".opponent-inspection-backdrop").boundingBox(),
+      inspect.locator(".hero-focus-heading strong").boundingBox(),
+      inspect.getByRole("button", { name: "Close Player 2 inspection" }).boundingBox(),
+      page.locator(".stage-system-menu-trigger").boundingBox(),
+      page.locator(".local-player-dock .console-guidance").boundingBox(),
+      page.locator(".local-player-dock").boundingBox(),
+    ]);
+    for (const box of [stageBox, safeBox, shellBox, backdropBox, titleBox, closeBox, menuBox, guidanceBox, dockBefore, dockOpen]) expect(box).not.toBeNull();
+    expect(Math.abs(stageBox.x - safeBox.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(stageBox.y - safeBox.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(stageBox.width - safeBox.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(stageBox.height - safeBox.height)).toBeLessThanOrEqual(1);
+    expect(Math.abs(backdropBox.x - stageBox.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(backdropBox.y - stageBox.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(backdropBox.width - stageBox.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(backdropBox.height - stageBox.height)).toBeLessThanOrEqual(1);
+    expect(Math.abs((shellBox.x + shellBox.width / 2) - (stageBox.x + stageBox.width / 2))).toBeLessThanOrEqual(1);
+    expect(Math.abs((shellBox.y + shellBox.height / 2) - (stageBox.y + stageBox.height / 2))).toBeLessThanOrEqual(1);
+    expect(shellBox.height / stageBox.height).toBeLessThanOrEqual(0.72);
+    expect(shellBox.height).toBeLessThan(stageBox.height);
+    if (viewport.width <= 520) {
+      expect(shellBox.width / stageBox.width).toBeGreaterThanOrEqual(0.88);
+      expect(shellBox.width / stageBox.width).toBeLessThanOrEqual(0.94);
+      expect(shellBox.x - stageBox.x).toBeGreaterThanOrEqual(12);
+      expect(shellBox.x - stageBox.x).toBeLessThanOrEqual(16);
+      expect(stageBox.x + stageBox.width - shellBox.x - shellBox.width).toBeGreaterThanOrEqual(12);
+      expect(stageBox.x + stageBox.width - shellBox.x - shellBox.width).toBeLessThanOrEqual(16);
+    }
+    expect(Math.abs((titleBox.y + titleBox.height / 2) - (closeBox.y + closeBox.height / 2))).toBeLessThanOrEqual(2);
+    expect(overlaps(shellBox, menuBox)).toBe(false);
+    expect(overlaps(shellBox, guidanceBox)).toBe(false);
+    expect(overlaps(shellBox, dockOpen)).toBe(false);
+    expectStableBox(dockBefore, dockOpen);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
 
     await inspect.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]').click();
     await expect(page.getByRole("dialog", { name: "Zhuge Crossbow" })).toBeVisible();
     await page.getByRole("button", { name: "Close card explanation" }).click();
     await expect(inspect).toBeVisible();
 
-    const stageBox = await page.locator(".interaction-stage").boundingBox();
-    const dockBox = await page.locator(".local-player-dock").boundingBox();
-    expect(stageBox).not.toBeNull();
-    expect(dockBox).not.toBeNull();
-    expect(stageBox.x).toBeGreaterThanOrEqual(0);
-    expect(stageBox.x + stageBox.width).toBeLessThanOrEqual(viewport.width);
-    expect(Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y))).toBe(0);
-
     await page.getByRole("button", { name: "Close Player 2 inspection", exact: true }).click();
     await expect(page.locator(".interaction-stage")).toHaveCount(0);
+    expectStableBox(dockBefore, await page.locator(".local-player-dock").boundingBox());
     expect(await seatGeometry(page)).toEqual(before);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
   });
 }
 

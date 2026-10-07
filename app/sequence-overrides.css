@@ -1567,11 +1567,10 @@
 .opponent-judgement-zone,
 .opponent-judgement-cards { overflow: visible; }
 
-/* Public INSPECT stays inside the shared Hero Focus, leaving the Stage open
-   and the Local Player Dock / target seats independently interactive. */
+/* Public Inspect is a compact overlay within the existing Stage bounds. */
 .hero-focus-inspect { min-width: 0; max-height: 100%; }
 .hero-focus-inspect .hero-focus-heading { align-items: center; }
-.hero-focus-inspect .hero-focus-heading strong { margin-left: auto; color: #efc36c; }
+.hero-focus-inspect .hero-focus-heading strong { margin-left: 0; color: #efc36c; }
 .hero-focus-inspect-close { flex: none; width: 22px; height: 22px; padding: 0; border: 1px solid #a58e5d; border-radius: 50%; background: #11140f; color: #f0d28c; font: 16px/18px Arial, sans-serif; cursor: pointer; pointer-events: auto; }
 .hero-focus-inspect-explain { width: fit-content; padding: 2px 5px; border: 1px solid #7b704c; background: #171a13; color: #d9c28b; font: 700 7px Arial, sans-serif; cursor: pointer; pointer-events: auto; }
 .hero-focus-inspect-details { grid-area: context; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 5px; max-height: min(30vh, 240px); overflow: auto; padding: 0 2px 2px 0; pointer-events: auto; }
@@ -1587,6 +1586,77 @@
 
 @media (max-width: 520px) {
   .hero-focus-inspect-details { grid-template-columns: minmax(0, 1fr); max-height: min(28vh, 220px); }
+}
+
+.game-shell .play-table[data-seat-topology] > .interaction-safe-zone > .interaction-stage[data-local-ui-mode="INSPECT"] {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  translate: none;
+  transform: none;
+  overflow: visible;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.opponent-inspection-layer {
+  position: absolute;
+  z-index: 22;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 12px;
+  container-type: size;
+  pointer-events: none;
+}
+
+.opponent-inspection-backdrop {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background: #07090766;
+  pointer-events: none;
+}
+
+.opponent-inspection-floating-shell {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: calc(100% - 8px);
+  max-width: 680px;
+  max-height: 72%;
+  min-width: 0;
+  overflow: hidden;
+  padding: 8px;
+  border: 1px solid #9c8249;
+  background: #11140ff5;
+  box-shadow: 0 8px 24px #0009, inset 0 0 0 1px #282316;
+  pointer-events: auto;
+}
+
+.opponent-inspection-floating-shell > .hero-focus-inspect {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-height: 100%;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-heading {
+  justify-content: space-between;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-details {
+  max-height: max(0px, min(220px, calc(72cqh - 132px)));
 }
 
 .opponent-inspection-zone {
