@@ -831,3 +831,792 @@ Interaction Stage Hero/player redesign resumes only after an explicit user instr
 
 Until then, no Agent should infer that UX3 interaction-graph work is active merely because an older HANDOVER or roadmap entry describes it.
 
+## 6. UX3 Interaction Visualization — Physical-Seat Anchored Causal Graph
+
+### 6.1 Design decision and purpose
+
+The next interaction-visualization direction removes duplicated combat Hero/player portraits from the central Interaction Stage.
+
+The fixed physical player representations already present around the table become the only player nodes used by the interaction visualization:
+
+- opponent Seats remain the public player anchors around the table;
+- the Local Player Dock remains the viewer's physical player anchor;
+- no second Source Hero portrait is created in the center;
+- no second Target Hero portrait is created in the center;
+- no separate compact participant strip is required merely to restate players who are already visible at their Seats/Dock.
+
+The central combat area becomes a temporary public action/effect layer containing cards, response cards, relationship lines, settlement state, and lightweight effect feedback.
+
+The basic visual grammar is:
+
+~~~text
+Physical Player  ── played-by tether ──  Action Card  ── target arrow ──▶  Physical Player
+~~~
+
+This preserves table spatial identity and makes the interaction read directly against the players who are actually involved.
+
+This section records the reviewer-requested UX3 design direction after the existing UX2 refinement material. It does not by itself authorize a HANDOVER task, branch-wide implementation, or gameplay/protocol change. Implementation still requires a bounded reviewer-authorized task.
+
+### 6.2 Core semantic invariant
+
+Every visible relationship must represent one authoritative public fact.
+
+The renderer must not infer causality from:
+
+- timeline order;
+- turn ownership;
+- actionPlayerId;
+- DOM order or physical seat order;
+- Hero identity;
+- card animation order;
+- HP changes;
+- local selection state;
+- client-side guesses about what a card normally does.
+
+CurrentAction continues to own viewer-private legality and available controls.
+
+PresentationSnapshot / PresentationClientView, or an approved successor public-presentation model, owns public interaction facts.
+
+Missing or ambiguous semantic proof must fail closed.
+
+The visualization must therefore be treated as a renderer of a typed public interaction graph, not as an animation system that reconstructs gameplay meaning from events after the fact.
+
+### 6.3 Graph vocabulary
+
+The visual model should support the following conceptual node types.
+
+**Physical Player node**
+- not created by the interaction renderer;
+- references an existing opponent Seat or Local Player Dock;
+- identified by the existing authoritative player ID / data-player-anchor;
+- never duplicated centrally.
+
+**Action Card node**
+- a temporary public card representation for the root action;
+- examples: Attack, Steal, Duel, Raining Arrows;
+- remains stable while its interaction is unresolved.
+
+**Response Card node**
+- a temporary public card representation for a committed response;
+- examples: Dodge, Negation, an Attack played during Duel;
+- appears only after the response is actually public;
+- is not rendered merely because a player is privately eligible to respond.
+
+**Effect/Event node**
+- reserved for a later case where an authoritative public interaction has no physical card;
+- examples may include Hero skills, triggered statuses, or other rule events;
+- it should use the same graph grammar without inventing a fake card.
+
+The visual model should support three primary relationship types.
+
+**Played-by / source tether**
+
+~~~text
+Player ───── Card
+~~~
+
+Meaning:
+- this player publicly produced/played/activated this action node.
+
+Visual treatment:
+- no arrowhead;
+- visually lighter than the target relation;
+- green may be used as the primary hue, but colour must not be the only semantic distinction.
+
+**Target / affected-by relation**
+
+~~~text
+Card ─────▶ Player
+~~~
+
+Meaning:
+- this public effect currently applies to, targets, or is resolving toward that player.
+
+Visual treatment:
+- explicit arrowhead;
+- stronger line weight than the source tether;
+- red/dark-red may be used as the primary hue.
+
+**Counter / block relation**
+
+~~~text
+Response Card ──| Countered Card/Effect
+~~~
+
+Meaning:
+- this public response directly counters, blocks, cancels, or otherwise opposes another public action/effect.
+
+Visual treatment:
+- must be topologically distinct from a target arrow;
+- recommended forms include a dashed/double line, terminal bar, shield/break marker, or another clear non-target symbol;
+- it must not be communicated by colour alone.
+
+### 6.4 Active state versus causal context
+
+Highlighting means **what is currently being processed or responseable**, not whether an action is generally valid or important.
+
+At any instant:
+
+- the newest unresolved public action/response head receives the strongest highlight;
+- the currently resolving target relation receives the strongest target-arrow highlight;
+- earlier causal cards remain visible only when they are still needed to explain why the current state exists;
+- earlier relationships are subdued rather than competing for attention;
+- settled relationships disappear after the settlement hold.
+
+Recommended states:
+
+**Active**
+- full opacity;
+- highest contrast;
+- restrained glow;
+- animated line energy/pulse may be used.
+
+**Context**
+- reduced opacity;
+- no competing glow;
+- preserves causal understanding.
+
+**Blocked / countered**
+- target/effect relation becomes dim, broken, crossed, or otherwise visibly interrupted.
+
+**Settled**
+- brief final-result hold;
+- then card and relationship visuals fade out.
+
+Exactly one public response head should be visually dominant inside one causal chain.
+
+### 6.5 Physical-seat anchoring
+
+The interaction graph must connect to the players' existing physical UI positions.
+
+Do not create central proxy Hero/player cards merely to simplify line drawing.
+
+Use the existing player anchor contract:
+
+~~~text
+data-player-anchor="<playerId>"
+~~~
+
+for:
+
+- opponent Seats;
+- the Local Player Dock.
+
+The interaction overlay must span a coordinate space that can reach both the table and the Local Player Dock. It must therefore not be confined to a clipping region such as the existing .play-table { overflow: hidden } if that would cut a line leading to the local player.
+
+Preferred rendering architecture:
+
+- one interaction-overlay layer attached at .game-shell level;
+- SVG or equivalent vector layer for connectors/arrows;
+- HTML/CSS card nodes above the line layer;
+- pointer-events: none for non-interactive visualization surfaces so existing Seat/Dock controls remain usable;
+- card-info interaction, if later required, must be added deliberately without intercepting unrelated table input.
+
+Physical Seat/Dock geometry must not move when interaction visuals appear, change head, settle, or disappear.
+
+### 6.6 Card placement
+
+The root action card should appear in the open battle space inside the table, spatially biased toward the player who produced it.
+
+For an ordinary single-target action:
+
+~~~text
+[Source Seat]
+      \
+       \ source tether
+        \
+       [ROOT CARD]
+             \
+              \ target arrow
+               ─────────────▶ [Target Seat]
+~~~
+
+Placement goals:
+
+- visually close enough to the source that authorship is obvious;
+- far enough from the Seat that it does not cover Hero information or controls;
+- inside the battle/table area rather than inside a player Seat;
+- stable for the lifetime of the root interaction;
+- not directly on top of Deck/Discard piles;
+- does not cover the response timer, System Menu, Guidance, or Local Dock controls.
+
+Use curved/Bezier routing where helpful rather than forcing every relationship into a straight line through other cards or player panels.
+
+Root-card position should remain stable when:
+
+- a response card appears;
+- the active responder changes;
+- a counter-response appears;
+- the current target advances;
+- settlement state changes.
+
+### 6.7 Ordinary single-target action
+
+For a single-target action from Player A to Player B:
+
+~~~text
+A ───── [CARD] ─────▶ B
+~~~
+
+The source relation is a non-arrow tether.
+
+The target relation is an arrow from the action card to the target player.
+
+The target player itself may receive a restrained edge/halo emphasis while its target arrow is active, but the Seat/Dock must not be transformed into a new central participant card.
+
+Example:
+
+~~~text
+Cao Cao ───── [STEAL] ─────▶ Gan Ning
+~~~
+
+The graph should visually answer three questions immediately:
+
+- who created this action;
+- what action/card is resolving;
+- who the effect is directed toward.
+
+### 6.8 Self-target action
+
+If source and target are the same player, do not draw a target arrow back into the same physical player node.
+
+Preferred treatment:
+
+~~~text
+Player ───── [SELF-TARGET CARD]
+~~~
+
+with:
+
+- the card placed near/inward from that player's anchor;
+- the source tether still visible;
+- a restrained pulse/halo on the same physical player to indicate that the effect returns to self.
+
+Do not draw a long loop solely for decorative symmetry if it makes the board harder to read.
+
+Do not duplicate the same player elsewhere.
+
+### 6.9 Multi-target action
+
+A multi-target action uses one root card and one target branch per affected player.
+
+Example:
+
+~~~text
+                     ┌────────▶ B
+A ───── [AOE CARD] ──┼────────▶ C
+                     └────────▶ D
+~~~
+
+All authoritative target relations may remain visible, but only the currently resolving target/participant receives the strong active highlight.
+
+Recommended state:
+
+- unresolved non-current targets: dark/subdued target arrows;
+- current target: bright active target arrow plus restrained Seat/Dock emphasis;
+- resolved targets: subdued or marked-complete relation until the root interaction advances or closes.
+
+When authoritative resolution advances from B to C:
+
+- the root card stays fixed;
+- B's branch loses active emphasis;
+- C's branch gains active emphasis;
+- the physical Seats do not move;
+- the card does not jump to a new location.
+
+For ordered effects, a small order marker may be used only when the order is authoritative and genuinely helps comprehension.
+
+### 6.10 Target-specific effect instances
+
+A multi-target card can contain multiple independently resolving target effects.
+
+The internal public-presentation model should therefore be capable of distinguishing:
+
+- the root card action;
+- the per-target effect instance/branch;
+- the currently active target effect;
+- the outcome of each target effect.
+
+The visual UI does not need to render a separate visible "effect box" for every branch.
+
+However, this distinction is important for correct response/counter semantics. A response that cancels only B's branch must not visually imply that the entire root card has been cancelled for C and D.
+
+Counter relations should therefore attach to the correct authoritative target-effect instance when the rules distinguish that scope.
+
+### 6.11 Defensive response such as Dodge
+
+For an incoming Attack:
+
+~~~text
+A ───── [ATTACK] ─────▶ B
+~~~
+
+When B publicly plays Dodge, the Dodge card should appear on or immediately adjacent to the incoming Attack-to-B relationship.
+
+Preferred visual meaning:
+
+~~~text
+A ───── [ATTACK] ────╳────▶ B
+                         [DODGE]
+                            │
+                            B
+~~~
+
+A cleaner graph interpretation is:
+
+~~~text
+B ───── [DODGE] ──| [ATTACK → B effect]
+~~~
+
+while the incoming Attack target line is visibly interrupted.
+
+Requirements:
+
+- B-to-Dodge is a played-by/source tether;
+- Dodge is a counter/block response to the incoming Attack/effect;
+- Dodge does not need a separate target arrow pointing back to B;
+- the incoming Attack-to-B line visually shows the block;
+- if Dodge succeeds, the incoming target relation settles as avoided/blocked before disappearing;
+- if a future rule produces a counter to Dodge, that counter must target the Dodge/effect node rather than being represented as a generic arrow to B.
+
+The renderer must use typed public response proof. It must not infer that a newly played Dodge belongs to the current Attack merely because of timeline proximity.
+
+### 6.12 Duel exchange
+
+Duel is a persistent root cause with repeated alternating Attack responses.
+
+The Duel card should remain visible throughout the exchange as contextual root state:
+
+~~~text
+A ───── [DUEL] ─────▶ B
+~~~
+
+When B is required to answer with Attack:
+
+~~~text
+A ───── [DUEL] ─────▶ B
+
+B ───── [ATTACK] ─────▶ A
+~~~
+
+The current response Attack becomes the dominant active visual.
+
+When A answers with another Attack:
+
+~~~text
+A ───── [DUEL] ─────▶ B
+
+A ───── [ATTACK] ─────▶ B
+~~~
+
+The previous exchange Attack should settle/fade or collapse so that the screen does not accumulate every Attack in the Duel.
+
+The important distinction is:
+
+- DUEL remains visible because it explains **why** repeated Attack exchanges are occurring;
+- the current Attack response explains **what is happening now**.
+
+The root Duel card should not disappear and reappear each round.
+
+The source/target direction of the current Attack response must come from authoritative Duel continuation data, not alternating-client assumptions.
+
+### 6.13 Negation and third-party counter-response
+
+Negation must be visualized as a response to the action/effect it counters, not as an ordinary target arrow to the affected player.
+
+Base action:
+
+~~~text
+A ───── [STEAL] ─────▶ B
+~~~
+
+If C publicly plays Negation:
+
+~~~text
+C ───── [NEGATION 1] ──| [STEAL / Steal→B effect]
+
+A ───── [STEAL] ─ - - ▶ B
+~~~
+
+The Steal-to-B target relation becomes visibly interrupted/subdued.
+
+Do **not** represent this as:
+
+~~~text
+[NEGATION] ─────▶ B
+~~~
+
+because that visually says Negation targets B rather than countering the Stratagem effect.
+
+If D then publicly plays a counter-Negation:
+
+~~~text
+D ───── [NEGATION 2] ──| [NEGATION 1]
+~~~
+
+The first Negation becomes subdued/blocked and the original Steal-to-B relation becomes active again.
+
+The public causal meaning is therefore:
+
+~~~text
+D → Negation 2 counters Negation 1
+C → Negation 1 counters Steal
+A → Steal affects B
+~~~
+
+Do not create a redundant connection from the counter chain back through A. The existing A-to-Steal source tether already explains root authorship.
+
+### 6.14 Negation chain layout
+
+Negation response cards should stay visually close to the card/effect they counter.
+
+For shallow chains:
+
+~~~text
+[ROOT CARD] ──| [NEGATION 1] ──| [NEGATION 2]
+~~~
+
+or an equivalent branch layout may be used, provided the counter direction remains unambiguous.
+
+Rules:
+
+- root card stays fixed;
+- newest unresolved response is the only strong active card;
+- older response cards are subdued;
+- the root target relation changes between active and blocked states according to the authoritative chain outcome;
+- no duplicate Hero portraits are introduced to label responders;
+- each response card may use a small source tether back to the real physical player who played it.
+
+For long chains, retain:
+
+- the root card;
+- the most recent one or two response cards at readable size;
+- a compact older-history indicator such as +N.
+
+Do not allow a long counter chain to force document-level horizontal overflow.
+
+### 6.15 Response-card placement relative to player source
+
+Every public response card should still show who played it.
+
+For example, if C plays Negation against A's Steal:
+
+~~~text
+C ───── [NEGATION]
+             │
+             └──| [STEAL] ─────▶ B
+                  │
+                  A
+~~~
+
+The exact route may vary with table geometry.
+
+The essential rule is that the response card has:
+
+- one source tether to its real physical actor;
+- one counter relation to the authoritative card/effect it opposes.
+
+This allows third-party responses to remain understandable without central actor portraits.
+
+### 6.16 Public graph versus private response opportunity
+
+The public graph shows committed public actions, not private eligibility.
+
+Before a player actually submits Dodge, Negation, Attack-for-Duel, Peach, or another response:
+
+- do not show a placeholder response card;
+- do not draw a source tether from a privately eligible responder;
+- do not expose the identity of a private decision actor solely because the server is currently asking that player;
+- do not add public prose such as "Waiting for Cao Cao to respond" unless that identity is explicitly public under an approved presentation contract.
+
+The Local Guidance Strip continues to tell the viewer what they personally can or must do.
+
+The public graph tells everyone what has already happened and what public effect is currently unresolved.
+
+### 6.17 Settlement and removal lifecycle
+
+Interaction visuals should not vanish in the exact same frame that authoritative settlement occurs.
+
+Recommended presentation lifecycle:
+
+1. **Action enters**
+   - card appears from or near the source anchor;
+   - source tether becomes visible;
+   - target relation appears.
+
+2. **Response window**
+   - root remains stable;
+   - current target/response relation is highlighted;
+   - privately available choices remain outside the public graph.
+
+3. **Public response**
+   - response card appears;
+   - its physical player source tether appears;
+   - target/counter relation updates without moving the root card.
+
+4. **Settlement**
+   - show a short final-result state;
+   - approximately 0.4–0.8 seconds is the preferred visual hold range where motion settings allow;
+   - examples: target arrow breaks, Dodge shield/interrupt resolves, damage feedback occurs, root relation reactivates after counter-Negation.
+
+5. **Exit**
+   - temporary cards and lines fade;
+   - physical player Seats/Dock remain unchanged;
+   - durable history remains available through the existing log/history system rather than leaving stale battle objects on the table.
+
+Reduced-motion mode should shorten or remove motion while preserving state changes and semantic markers.
+
+### 6.18 Layering and routing
+
+Recommended z-order:
+
+1. board background;
+2. relationship line layer;
+3. temporary public action/response cards;
+4. existing physical player Seats/Dock and their interactive controls where appropriate;
+5. modal/private selection surfaces and system controls.
+
+Connector routing should avoid:
+
+- running directly through unrelated Hero faces;
+- covering HP/hand/equipment information;
+- crossing the Local Guidance Strip;
+- crossing the response timer/System Menu;
+- covering Deck/Discard when an alternate route is available.
+
+Use stable anchor points on each Seat/Dock edge facing the battle area rather than always drawing from the geometric center of the entire player panel.
+
+For example:
+
+- top-row opponent: prefer the inward/bottom edge;
+- left-side opponent: prefer the inward/right edge;
+- right-side opponent: prefer the inward/left edge;
+- local player: prefer the inward/top edge.
+
+These are geometry rules only. They must not be used to infer gameplay roles.
+
+### 6.19 Responsive behavior
+
+The graph must work across mobile and wide layouts without moving physical players.
+
+Validate at minimum:
+
+- 390 × 844 portrait;
+- 480 × 900 portrait;
+- one wide viewport;
+- dense 6–8 player table configurations where supported.
+
+On narrow layouts:
+
+- cards may scale down within a documented minimum readable size;
+- response cards may stack/offset;
+- long counter history may collapse;
+- connectors may use stronger curvature;
+- non-active relations may be simplified visually.
+
+Do not solve space pressure by reintroducing duplicated central Hero portraits.
+
+Do not create page-level horizontal scrolling.
+
+### 6.20 Accessibility and non-colour semantics
+
+The graph must not depend on red versus green alone.
+
+Use structural differences:
+
+- played-by/source tether: no arrowhead;
+- target relation: clear arrowhead;
+- counter relation: dashed/double/terminal-block or equivalent counter marker;
+- active relation: stronger width/glow/pulse;
+- blocked relation: break/cross/bar marker;
+- settled relation: fade/complete state.
+
+For screen readers, provide a concise semantic description of the current public interaction, for example:
+
+~~~text
+Cao Cao played Steal targeting Gan Ning.
+Zhuge Liang played Negation countering Steal.
+~~~
+
+The accessible description must be generated from the same authoritative public graph data as the visual layer.
+
+Do not use hidden text to expose private responder identity or private legality.
+
+### 6.21 Presentation-model direction
+
+The current Negation model already contains explicit public reaction-chain authority, but the long-term UX3 renderer should not be hard-coded around Negation alone.
+
+Preferred direction is a typed public graph/view model containing concepts equivalent to:
+
+~~~text
+InteractionGraph
+  players: references to physical player anchors
+  actionNodes: root/response/effect nodes
+  sourceRelations: player -> action
+  targetRelations: action/effect -> player
+  counterRelations: response -> action/effect
+  activeHead
+  activeTargetEffect
+  settlementState
+~~~
+
+This does not require the renderer to expose these exact type names.
+
+The important architectural boundary is:
+
+- game engine / server projection proves the semantics;
+- presentation adapter converts proof into a stable public graph;
+- React renders the graph;
+- React does not reconstruct missing relationships.
+
+For multi-target effects, the model must be capable of representing target-specific effect instances even if those instances are not visible as separate UI boxes.
+
+For Duel and defensive responses, the model must eventually provide explicit public response-card causality equivalent to what Negation already has.
+
+Do not generalize by reading generic timeline events on the client.
+
+### 6.22 Skills and non-card events
+
+The interaction system must eventually support public actions that are not represented by a physical hand card.
+
+Examples include:
+
+- Hero skill activation;
+- triggered equipment/status effects;
+- judgement-driven effects;
+- rule events that create a public response window.
+
+These should use the same relationship grammar with an Effect/Event node instead of inventing a fake physical card.
+
+Example:
+
+~~~text
+Player ───── [SKILL / EFFECT NODE] ─────▶ Target
+~~~
+
+The visual identity of such a node should be compact and visually distinct from a physical card while preserving the same source/target/counter semantics.
+
+### 6.23 Required visual invariants
+
+The UX3 interaction visualization must preserve all of the following:
+
+- one physical player representation per player;
+- no duplicate central Hero portrait for Source or Target;
+- root action card remains spatially stable while unresolved;
+- source tether always means "this player produced this node";
+- target arrow always means "this effect is directed at this player";
+- counter relation always means "this response opposes this action/effect";
+- active highlight always identifies the current unresolved public head/current resolving branch;
+- no public response node before the response is actually submitted;
+- no semantic inference from DOM position or animation order;
+- no movement of Seats/Dock caused by interaction presentation;
+- no hidden/private information leakage;
+- no gameplay legality moved from CurrentAction into React.
+
+### 6.24 Acceptance scenarios
+
+The design should eventually be proven against at least the following interaction families:
+
+1. **Single-target action, no response**
+   - A plays Attack/Steal/Dismantle on B;
+   - one source tether;
+   - one root card;
+   - one target arrow;
+   - settlement removes temporary graph.
+
+2. **Self-target action**
+   - A plays a self-target action;
+   - one physical A representation;
+   - no target arrow back to A;
+   - self emphasis is readable.
+
+3. **Attack + Dodge**
+   - incoming Attack targets B;
+   - B's Dodge appears only after submission;
+   - Dodge visibly blocks the incoming relation;
+   - no false Dodge-to-B target arrow.
+
+4. **Duel**
+   - Duel root remains visible;
+   - alternating Attack response direction is authoritative;
+   - only current Attack response remains visually dominant;
+   - old exchange cards do not accumulate indefinitely.
+
+5. **Single-target Negation**
+   - A plays Steal on B;
+   - C plays Negation;
+   - Negation counters Steal/effect rather than targeting B;
+   - root target relation becomes blocked.
+
+6. **Counter-Negation**
+   - D counters C's Negation;
+   - first Negation becomes blocked/subdued;
+   - original Steal-to-B relation becomes active again.
+
+7. **Multi-target**
+   - one root card fans out to several physical players;
+   - only current target branch is strongly active;
+   - branch highlight moves without root-card movement.
+
+8. **Target-specific counter inside multi-target action**
+   - only the affected target branch is blocked;
+   - other branches do not visually appear globally cancelled.
+
+9. **Local player involvement**
+   - local player may be source, target, responder, or self-target;
+   - lines reach the Local Player Dock without clipping;
+   - local controls remain usable.
+
+10. **Dense table / responsive**
+   - 6–8 players;
+   - no connector-driven page overflow;
+   - no player geometry shift;
+   - action cards remain readable.
+
+11. **Unproven/stale/reconnect state**
+   - graph fails closed rather than showing guessed lines/cards;
+   - existing safe fallback presentation remains available until sufficient typed proof exists.
+
+### 6.25 Suggested implementation sequence
+
+Implementation should be incremental rather than replacing all UX2 interaction rendering in one change.
+
+**Phase A — physical-seat graph foundation**
+- top-level interaction overlay;
+- reliable player-anchor geometry;
+- one root card;
+- single-target source tether and target arrow;
+- self-target handling;
+- fail-closed fallback.
+
+**Phase B — generic response/counter grammar**
+- public response-card nodes;
+- explicit counter relationship;
+- Attack/Dodge once typed causal proof exists;
+- existing Negation migrated onto the same graph grammar.
+
+**Phase C — persistent-root interactions**
+- Duel exchange;
+- multi-target root with active branch switching;
+- target-specific effect instances and settlement outcomes.
+
+**Phase D — extended event sources and polish**
+- Hero skills/non-card effects;
+- advanced routing/collision avoidance;
+- long-chain collapse;
+- reduced motion/accessibility narration;
+- settlement animation polish.
+
+Do not begin a later phase by adding client inference to compensate for missing typed authority.
+
+### 6.26 Completion criterion
+
+The interaction-visualization refactor is complete when a player can read combat directly from the real table:
+
+~~~text
+who acted  →  what card/effect  →  who is affected
+                         ↘
+                     what response counters it
+~~~
+
+without duplicated central Hero/player cards, while preserving authoritative semantics, private-information boundaries, stable physical Seat/Dock geometry, responsive containment, and the existing separation between public presentation and local legal-action controls.
