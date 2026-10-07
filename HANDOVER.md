@@ -5,29 +5,26 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-`UX2.REFINE-PRIVATE-DRAW-COUNTDOWN-CLUSTER-01` places the viewer-private
-Private Draw countdown immediately left of System Menu in the lower-right
-`StageSystemCluster`, with a numeric-only face and accessible full label. The
-private title/cards, viewer privacy, and event duration are unchanged. The new
-regression plus response-timer specs passed 5/5 across 390×844, 480×900, and
-1440×900; targeted ESLint and `git diff --check` passed. Commit
-`1e49694bbf642c4e3a37720932e6f0cc6074576b` passed exact Actions run #843
-(`37602622818`; `build-and-test`, `deploy`). Reviewer acceptance is not claimed.
+`UX2.REFINE-PRIVATE-DRAW-CONTENT-DRIVEN-HEIGHT-01` separates the full-table
+Private Draw backdrop from its compact title/card content. For two cards, the
+content-to-System-Cluster gap measures within 16–24px at 390×844, 480×900, and
+1440×900; card animation samples remain clear of the cluster. Menu, Guidance,
+Dock, Deck, and Discard positions remain stable. The Private Draw and existing
+response-timer specs passed 6/6; targeted ESLint and `git diff --check` passed.
+Current remote base `a37b36a4a9809ae4f1171200b5600c3650f0e337` passed both latest
+push-triggered Actions #844 (`37603844083`) and queued #845 (`37603845134`).
+This task's source SHA is not yet committed or pushed.
 
 ## Design checkpoint
 
 Reviewed current remote `docs/UX2-refine.md`, blob
-`347db2e2bc8768620eaf69bbd84191a1a79792d3`; it is unchanged from the prior
-checkpoint. §4A.5 requires content-driven Private Draw height; §1.8 keeps
-cross-Hero passive choices in the viewer's Local Dock Action Row.
+`347db2e2bc8768620eaf69bbd84191a1a79792d3`. §4A.5 requires content-driven
+Private Draw height; §1.8 keeps cross-Hero passive choices in the viewer's
+Local Dock Action Row.
 
 ## Current task
 
-`UX2.REFINE-PRIVATE-DRAW-CONTENT-DRIVEN-HEIGHT-01` — separate the Private Draw
-backdrop from its title/card content layout; place the content in the usable
-table space near the lower system cluster instead of centering it in a full-
-height content region. Preserve private content, the existing event duration,
-and timer/menu/Dock geometry. Prove full visibility and a normally 16–24px
-content-to-cluster gap at 390×844 and 480×900, plus a wide viewport; no
-Guidance/Dock overlap or horizontal overflow. Do not change other event layouts,
-Deck/Discard state, or gameplay/server semantics.
+`UX2.REFINE-PRIVATE-DRAW-CONTENT-DRIVEN-HEIGHT-01` — commit and push this
+focused layout/geometry change, then verify the exact task SHA succeeds in
+Actions. Preserve private content, 3s duration, timer/menu/Dock behavior, and
+all other event layouts; no server/gameplay changes.

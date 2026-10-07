@@ -1227,6 +1227,27 @@
   text-shadow: none;
 }
 
+/* Keep the full-area layer as backdrop; anchor its content above the lower controls. */
+.game-shell .private-draw-stage {
+  display: block;
+}
+
+.private-draw-content {
+  position: absolute;
+  right: 0;
+  bottom: calc(44px + 20px + 5px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+@media (min-width: 600px) {
+  .private-draw-content {
+    bottom: calc(44px + 20px + 4px);
+  }
+}
+
 /* Keep the private opening reveal the same physical size and card rhythm as the hand. */
 .private-draw-row {
   gap: 0;
@@ -1238,6 +1259,13 @@
   height: 154px;
   margin-left: -13px;
   padding: 12px 9px;
+  animation-name: privateDrawCardFlight;
+}
+
+@keyframes privateDrawCardFlight {
+  0% { opacity: 0; transform: translateY(-14px) scale(.65) rotate(-5deg); }
+  5%, 88% { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+  100% { opacity: 0; transform: translate(48px, -14px) scale(.34) rotate(7deg); }
 }
 
 .private-draw-row .played-card:first-child {
