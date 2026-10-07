@@ -5,7 +5,7 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-Remote `ux-v2` HEAD `e5c59532ceaae5681b56ac23d0dce1452e5acef4` passed run #831 (`37584932814`), including `build-and-test` and `deploy`. Triumphant feature commit `6025be2` passed its focused browser spec 8/8; its first full run #830 exposed a stale passive-skill test matrix (692 passed, 1 failed). Test-only repair `e5c5953` added Triumphant to that matrix; the focused matrix passed 6/6, and targeted ESLint/`git diff --check` passed. No Reviewer acceptance claimed.
+Remote HEAD `40f295d7d39732c26330acc1d283d0425628be94` run #832 (`37586451374`) was cancelled at the 10-minute `build-and-test` timeout after lint, build, browser tests, and all 96 API tests passed. CI-only repair raises that job timeout to 20 minutes. CI REPAIR PUSHED — VALIDATION PENDING. Pan Feng feature edits remain local and are excluded from the repair commit. No Reviewer acceptance claimed.
 
 ## Design checkpoint
 
@@ -13,4 +13,4 @@ Reviewed the full remote `docs/UX2-refine.md`, blob `ae314707494f48e80c24e18e1a9
 
 ## Current task
 
-`UX2.REFINE-PAN-FENG-AXE-PASSIVE-PRESENTATION-01` — represent Pan Feng's metadata-declared automatic Axe of Insanity as a stable, non-actionable passive tile in the Local Skills band, matching §1.6 and the existing passive registry. Add the Hero to the focused geometry/no-action matrix. Preserve its authoritative mandatory CurrentAction continuation exactly; no server/gameplay change and no continuation redesign. Prove 320/390/480/wide geometry, passive semantics, and no action submission from the tile.
+`UX2.REFINE-PAN-FENG-AXE-PASSIVE-PRESENTATION-01` — local implementation and focused regression are ready: `local-skill-control-consistency.spec.mjs` 6/6, targeted ESLint, and `git diff --check` passed. Preserve the mandatory authoritative CurrentAction continuation; no server/gameplay change or continuation redesign. Resume only after the exact CI-repair SHA is green, then recheck latest remote-head CI before the feature commit.
