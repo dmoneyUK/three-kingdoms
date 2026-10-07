@@ -56,6 +56,18 @@ Do not:
 
 A separate discovered problem should be recorded as a candidate for the next planning boundary unless it blocks the current task.
 
+### Current UX2 refinement freeze
+
+`docs/UX2-refine.md` §5 currently defers Interaction Stage Hero/player visualization and UX3 interaction-graph work. While that freeze is active:
+
+- do not start or continue a task that changes central combat Hero/player representation, Hero/player geometry, physical Seat/Dock graph nodes, or Hero/player-to-card connector geometry;
+- if the current HANDOVER task is in that deferred scope, stop before source edits and replan at the next safe boundary from the active non-Hero refinement sections;
+- allowed refinement work includes Local Hero Skills, response Guidance, `TAKE DAMAGE` labeling/behavior, authoritative response-provider emphasis, System Menu/Exit relocation, response-timer relocation, and Zhuge Liang skill presentation;
+- existing deferred Hero/player presentation may remain as-is and must not be deleted merely because it will later be replaced;
+- resume UX3 interaction-visualization work only after explicit user authorization.
+
+This freeze is a product-scope decision, not a CI exception. Keep the existing CI cadence unchanged.
+
 ## 4. Task implementation
 
 For the active task:
