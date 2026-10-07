@@ -1230,6 +1230,637 @@ The mobile Inspect view is complete when it behaves as a compact, readable float
 - no full-stage takeover;
 - privacy preserved.
 
+
+## 4C. Unified Target Card Selection Modal — Opponent Hand / Equipment / Judgment
+
+### 4C.1 Purpose and design decision
+
+Any interaction in which the local player must choose one or more specific cards from another character's eligible card zones should use one shared **Target Card Selection Modal** rather than a bespoke picker for each Hero skill, Stratagem, or Equipment effect.
+
+This is a UX2 design rule, not a Sima Yi-only treatment.
+
+The objective is to make interactions such as Retaliation, Dismantle, Steal, and Frost Sword feel like the player is directly choosing from the target character's real card zones while preserving all hidden-information rules.
+
+The modal should create three clear impressions:
+
+1. the player is acting on a specific opponent;
+2. that opponent's eligible card zones are physically separated and readable;
+3. hidden Hand cards are individually selectable only as anonymous positions, never as revealed identities.
+
+The picker is a transient decision surface layered above the current game state. It must not permanently replace the Interaction Stage, Local Dock, opponent Seat, or public Inspect panel.
+
+### 4C.2 Shared visual structure
+
+The preferred mobile composition is:
+
+~~~text
+┌──────────────────────────────────────────┐
+│                 ACTION NAME              │
+│          Choose N card(s) to ...         │
+│──────────────────────────────────────────│
+│                                          │
+│  HAND · 4                 EQUIPMENT      │
+│  [?] [?] [?] [?]          [Weapon]       │
+│                            [Armour]       │
+│                                          │
+│  JUDGMENT                                │
+│  [Delayed Stratagem]                     │
+│                                          │
+│────────────── N / M selected ────────────│
+│                                          │
+│      [ PRIMARY ACTION ]   [ CANCEL ]     │
+└──────────────────────────────────────────┘
+~~~
+
+Only eligible zones and eligible cards should be actionable.
+
+If a zone has no legal selectable cards, it should normally be omitted rather than shown as a large empty panel.
+
+The modal shell, spacing, typography, selection treatment, confirmation row, and privacy treatment should be shared across all supported effects.
+
+### 4C.3 Modal placement and background treatment
+
+The picker should appear as a large centered modal over the current game screen.
+
+Requirements:
+
+- preserve the underlying game context as a dimmed background;
+- keep enough background visibility to recognize the current Interaction Stage, target Seat, Local Hero, Hand, timer, and menu;
+- do not destroy or re-layout the underlying Stage solely because the picker opens;
+- do not move opponent Seats or the Local Player Dock;
+- do not create document-level horizontal overflow;
+- modal content should remain fully usable at 390 × 844 and 480 × 900 portrait sizes;
+- on short-height viewports, the card-zone content may scroll inside the modal while the title/instruction and action row remain stable where practical.
+
+The modal is a focused decision layer. Background controls should not remain accidentally clickable through it.
+
+### 4C.4 Header and action-specific copy
+
+The modal header uses the action, skill, or equipment name as the primary title.
+
+Examples:
+
+**Retaliation**
+~~~text
+RETALIATION
+Choose 1 card to obtain
+~~~
+
+**Dismantle**
+~~~text
+DISMANTLE
+Choose 1 card to discard
+~~~
+
+**Steal**
+~~~text
+STEAL
+Choose 1 card to obtain
+~~~
+
+**Frost Sword**
+~~~text
+FROST SWORD
+Choose 1–2 cards to discard
+~~~
+
+**Kirin Bow**
+~~~text
+KIRIN BOW
+Choose 1 Mount to discard
+~~~
+
+The instruction must describe the real effect, not generic picker mechanics.
+
+Do not use vague copy such as:
+
+- "Choose a zone";
+- "Choose target card";
+- "Select option";
+
+when the actual rule can be stated directly.
+
+### 4C.5 Hand presentation — individual anonymous positions
+
+When the authoritative action contract provides opaque per-Hand positions such as hand:0, hand:1, hand:2, and so on, the Hand must be represented as separate face-down selectable card positions.
+
+Example:
+
+~~~text
+HAND · 4
+
+[ ? ] [ ? ] [ ? ] [ ? ]
+  1     2     3     4
+~~~
+
+The numeric labels above are conceptual only and do not need to be visibly printed if card position is already clear.
+
+Requirements:
+
+- every hidden Hand position is an independent selectable control;
+- every hidden Hand card uses the same face-down card-back treatment;
+- no rank, suit, card kind, art, text, category, or inferred identity is exposed;
+- selecting one hidden position must not reveal the card before the authoritative result reveals it;
+- accessibility names should distinguish positions without revealing identity, for example "Hidden hand card 1" and "Hidden hand card 2";
+- the public Hand count must remain accurate;
+- selected card position uses the shared selection highlight/check treatment.
+
+This replaces the less immersive treatment where the entire Hand is a single oversized HAND ×4 / Random card block whenever the server already provides safe opaque per-card positions.
+
+### 4C.6 Hand fallback when per-card authority is unavailable
+
+The UI must not manufacture separate selectable Hand positions if the authoritative action contract does not provide them.
+
+If the only legal semantic key is a single Hand-zone key such as hand, the modal must retain the grouped anonymous Hand-zone fallback.
+
+Example:
+
+~~~text
+HAND · 4
+[ face-down fan / compact stack ]
+Random card
+~~~
+
+This means:
+
+- clicking the Hand chooses the Hand zone;
+- the resulting individual card is server-authoritative/random according to the rule;
+- the client must not pretend that selecting "the second card" has meaning when no such authoritative position exists.
+
+This fallback is required for fail-closed compatibility and privacy.
+
+### 4C.7 Hand size and responsive overflow
+
+Small Hands should be shown as clearly separated card backs.
+
+Preferred behavior:
+
+- 1–4 cards: display all individual positions at readable width;
+- 5–6 cards: display all if they fit without excessive compression;
+- larger Hands: use horizontal scrolling, slight controlled overlap, or another contained layout that still preserves one independent position per authoritative key.
+
+Do not reduce hidden cards into tiny unusable slivers merely to fit the entire Hand on one line.
+
+Do not change the authoritative Hand count.
+
+Do not collapse supported per-card positions back into one random-zone control solely because the Hand is large.
+
+### 4C.8 Equipment presentation
+
+Equipment is public information and should be displayed as real face-up cards.
+
+The Equipment section should:
+
+- show only equipment currently eligible under the authoritative selection;
+- preserve recognizable card art/name where space allows;
+- keep Weapon, Armour, +1 Horse, and -1 Horse as distinct selectable cards;
+- not present Equipment as a generic text row if actual card art is available;
+- use the same selected-state border/check marker as hidden Hand positions;
+- omit ineligible equipment from the active selection set.
+
+If useful for comprehension, ineligible public equipment may remain visually present but subdued only when the design clearly distinguishes "visible information" from "selectable target". The default simpler behavior is to show the selectable subset.
+
+### 4C.9 Judgment Zone presentation
+
+Effects such as Dismantle and Steal may legally choose cards from another character's Judgment Zone.
+
+When Judgment cards are authoritative public eligible targets:
+
+- render a distinct JUDGMENT section;
+- show the real delayed Stratagem card face-up;
+- allow each eligible Judgment card to be selected independently;
+- use the same selection-state treatment as Equipment;
+- do not merge Judgment cards into Equipment.
+
+If there are no eligible Judgment cards, omit the section.
+
+### 4C.10 Zone ordering
+
+Use a stable zone order:
+
+~~~text
+HAND  →  EQUIPMENT  →  JUDGMENT
+~~~
+
+On wide layouts these may share one row or a balanced multi-column panel.
+
+On mobile:
+
+- Hand is normally the largest section and should receive the most horizontal space;
+- Equipment may sit to the right when there is room;
+- Judgment may appear below;
+- if Equipment contains several cards, allow wrapping or contained horizontal scrolling rather than shrinking every card below a readable size.
+
+The user should not need to relearn the zone arrangement for each different skill/card.
+
+### 4C.11 Selection state
+
+The selection language is shared across all picker users.
+
+Unselected eligible card:
+- normal readable card/back;
+- subtle eligible border or hover/touch affordance.
+
+Selected card:
+- strong gold border/glow;
+- clear check badge;
+- optional slight lift/scale;
+- must remain visually identifiable without relying on colour alone.
+
+Ineligible card:
+- not clickable;
+- no selection glow;
+- use subdued treatment only if it remains visible.
+
+The selected-state marker should be the same for Retaliation, Dismantle, Steal, Frost Sword, and related future effects.
+
+### 4C.12 Selection count
+
+A centered status line should show actual authoritative selection progress.
+
+Examples:
+
+~~~text
+1 / 1 selected
+~~~
+
+~~~text
+1 / 2 selected
+~~~
+
+~~~text
+2 / 2 selected
+~~~
+
+For min/max ranges such as Frost Sword's 1–2 selection:
+
+- the confirmation action becomes available as soon as the minimum valid selection is reached;
+- selection may continue until the maximum;
+- once max is reached, another selection must either replace/toggle an existing selection or be refused clearly;
+- the UI must not submit more keys than allowed.
+
+The status line is feedback, not the source of legality.
+
+### 4C.13 Primary and cancel actions
+
+The bottom of the modal contains a large primary action plus Cancel.
+
+Examples:
+
+- USE RETALIATION
+- USE DISMANTLE
+- USE STEAL
+- USE FROST SWORD
+- USE KIRIN BOW
+
+Preferred presentation:
+
+- primary: gold;
+- cancel: red/dark red;
+- both have touch targets of at least 44px height;
+- confirmation remains disabled or unavailable until the authoritative minimum selection requirement is satisfied;
+- Cancel closes the local selection state without silently submitting.
+
+Do not add a second duplicate Confirm button in the Local Dock for the same modal decision.
+
+### 4C.14 Retaliation — Sima Yi
+
+Retaliation is the first Hero-skill reference implementation for the unified picker.
+
+Current rule intent in the project is to obtain one card from the damage source's eligible Playing Area.
+
+Preferred UI:
+
+~~~text
+RETALIATION
+Choose 1 card to obtain
+
+HAND · 4                  EQUIPMENT
+[?] [?] [?] [?]           [Frost Sword]
+
+             1 / 1 selected
+
+[ USE RETALIATION ] [ CANCEL ]
+~~~
+
+If opaque per-Hand keys are available, each face-down card must be individually selectable.
+
+If only a Hand-zone key is available, use the grouped Hand fallback defined in §4C.6.
+
+The modal should feel like Sima Yi is actually choosing one possession from the damage source rather than choosing an abstract category tile.
+
+### 4C.15 Dismantle / Burning Bridges
+
+Dismantle uses the same picker structure.
+
+Rule-facing zones:
+
+- Hand;
+- Equipment;
+- Judgment Zone.
+
+Preferred UI:
+
+~~~text
+DISMANTLE
+Choose 1 card to discard
+~~~
+
+Differences from Retaliation:
+
+- result is discard, not obtain;
+- Judgment may be present;
+- action button text is USE DISMANTLE.
+
+A selected Equipment or Judgment card remains face-up.
+
+A selected hidden Hand position remains face-down until the authoritative result reveals/removes the card.
+
+### 4C.16 Steal
+
+Steal uses the same picker structure as Dismantle.
+
+Rule-facing zones:
+
+- Hand;
+- Equipment;
+- Judgment Zone.
+
+Preferred UI:
+
+~~~text
+STEAL
+Choose 1 card to obtain
+~~~
+
+Differences from Dismantle:
+
+- result is obtain rather than discard;
+- target character must already have passed all authoritative targeting/distance legality before this picker opens.
+
+The modal must not recompute distance or target legality.
+
+### 4C.17 Frost Sword
+
+Frost Sword is the main multi-selection reference implementation.
+
+Rule-facing zones:
+
+- target Hand;
+- target Equipment.
+
+It can select 1–2 cards after the Equipment effect has been authoritatively offered.
+
+Preferred UI:
+
+~~~text
+FROST SWORD
+Choose 1–2 cards to discard
+
+HAND · 4                  EQUIPMENT
+[?] [?] [?] [?]           [Armour]
+
+             2 / 2 selected
+
+[ USE FROST SWORD ] [ CANCEL ]
+~~~
+
+Requirements:
+
+- anonymous Hand positions are independently selectable when provided;
+- Equipment cards are independently selectable;
+- mixed selections are allowed when authoritative keys allow them, e.g. one hidden Hand position plus one Equipment card;
+- the modal must visually handle two selected cards simultaneously;
+- the effect-specific resolution remains server authoritative.
+
+### 4C.18 Kirin Bow — simplified picker
+
+Kirin Bow should share the same modal shell and selection language but does not need empty Hand or Judgment sections.
+
+Its legal choice is an eligible Mount from the damaged character's Equipment Zone.
+
+Preferred UI:
+
+~~~text
+KIRIN BOW
+Choose 1 Mount to discard
+
+EQUIPMENT
+[ +1 Horse ] [ -1 Horse ]
+
+1 / 1 selected
+
+[ USE KIRIN BOW ] [ CANCEL ]
+~~~
+
+This is a simplified instance of the same component family, not a separate UX design.
+
+### 4C.19 Effects that should not use a fake card picker
+
+The shared picker should be used only when the player genuinely chooses among authoritative card positions/cards.
+
+Do not apply it mechanically to every effect that later moves a card.
+
+**Borrowed Sword**
+- if the forced Attack is not played and the source obtains the target's Weapon, the Weapon is already determined;
+- no "choose one card" picker should appear unless the rules/data model later create a real choice.
+
+**Zhang Liao — Assault**
+- the current project behavior selects one or two target characters;
+- it does not currently grant the local client an authoritative choice of a specific hidden Hand position from each target;
+- therefore do not render several clickable face-down cards and imply a choice that does not exist.
+
+The rule is simple:
+
+> No authoritative per-card choice -> no per-card picker.
+
+### 4C.20 Other future applicable effects
+
+Future Hero skills, Stratagems, and Equipment effects should reuse this picker whenever all of the following are true:
+
+- the local viewer is the decision-maker;
+- a specific other player or source-owned public card zone is already authoritatively identified;
+- one or more legal card keys/positions are exposed by CurrentAction;
+- the player must choose a subset of those legal keys;
+- hidden identity can remain protected.
+
+The picker may therefore support future operations such as:
+
+- obtain;
+- discard;
+- transfer;
+- replace;
+- move to another zone;
+
+provided the action-specific copy and authoritative key semantics are explicit.
+
+### 4C.21 Authority and privacy boundary
+
+This UI must preserve the existing architecture boundary.
+
+CurrentAction owns the viewer's legal selectable keys.
+
+Public presentation owns public target identity and public zone/card information.
+
+React must not derive legal card choices from:
+
+- opponent Hand count alone;
+- visual card position;
+- DOM order;
+- card-back animation;
+- public Equipment presence;
+- inferred rule text;
+- timeline order;
+- previous selections from an older action revision.
+
+Hidden Hand identities must remain absent from public projection.
+
+Opaque Hand position keys may be used only as anonymous positions.
+
+If action revision changes, the local selection must clear.
+
+If the authoritative target changes, the local selection must clear.
+
+If a previously selected card/key is no longer legal, it must be removed from the local selection.
+
+### 4C.22 Interaction with the opponent Inspect panel
+
+The Target Card Selection Modal and the passive opponent Inspect panel have different responsibilities.
+
+**Inspect panel**
+- informational;
+- public-only;
+- opened voluntarily;
+- does not imply an active decision.
+
+**Target Card Selection Modal**
+- actionable;
+- appears only during an authoritative selection decision;
+- shows only legal/selectable positions/cards or clearly marks legality;
+- owns temporary selection state.
+
+Do not force the player to open Inspect first in order to choose a target card.
+
+Do not reuse the passive Inspect layout as the active picker if doing so makes card positions too small or ambiguous.
+
+### 4C.23 Interaction with Hero Focus / Interaction Stage
+
+The current selectable Hero Focus can remain as a compatibility/fail-closed implementation while the unified modal is introduced.
+
+The intended UX2 end state is:
+
+- public Stage continues to explain the action/effect context;
+- the modal handles the local card-selection decision;
+- local legal controls do not need to be duplicated inside central public visualization;
+- opening the modal does not require a duplicate central Hero portrait.
+
+This section does not authorize unrelated Interaction Stage Hero/player redesign beyond the already-approved scopes elsewhere in this document.
+
+### 4C.24 Responsive requirements
+
+Validate at minimum:
+
+- 390 × 844 portrait;
+- 480 × 900 portrait;
+- one wide viewport.
+
+Required behavior:
+
+- modal stays inside viewport;
+- no document horizontal overflow;
+- card selection remains comfortably tappable;
+- individual hidden Hand cards remain visually separate;
+- Equipment/Judgment cards remain recognizable;
+- selected check badge is not clipped;
+- primary and Cancel buttons remain visible or reachable without ambiguous page scrolling;
+- Local Dock geometry underneath does not shift when the modal opens/closes.
+
+At 320px-class widths, internal horizontal scrolling is preferred over compressing cards into unreadable slivers.
+
+### 4C.25 Accessibility
+
+Each selectable card position/card must have a meaningful accessible name.
+
+Examples:
+
+- Hidden hand card 1;
+- Hidden hand card 2;
+- Equipment: Frost Sword;
+- Judgment: Overindulgence.
+
+Selected state must expose aria-pressed, aria-selected, or the appropriate equivalent.
+
+The modal itself should expose an accessible name such as:
+
+- Retaliation target card selection;
+- Dismantle target card selection;
+- Steal target card selection.
+
+Do not include private hidden-card identity in accessibility text.
+
+### 4C.26 Measurable acceptance
+
+The unified picker is acceptable only when all of the following hold:
+
+| Requirement | Expectation |
+| --- | --- |
+| Shared component | Retaliation, Dismantle, Steal, and Frost Sword use the same picker design system |
+| Retaliation Hand | Opaque per-card Hand keys render as separately selectable face-down cards |
+| Privacy | Hidden Hand rank/suit/kind/art never leaks before authoritative reveal |
+| Fallback | Zone-only hand authority retains grouped Random-card behavior |
+| Dismantle | Can select legal Hand / Equipment / Judgment card |
+| Steal | Can select legal Hand / Equipment / Judgment card |
+| Frost Sword | Can select 1–2 legal Hand / Equipment cards, including mixed-zone selection |
+| Kirin Bow | Uses simplified Equipment-only form |
+| Borrowed Sword | No unnecessary picker when Weapon outcome is predetermined |
+| Assault | No fake per-hidden-card choice without authoritative per-card keys |
+| Revision safety | Selection clears on CurrentAction revision/target/key change |
+| Touch | Selectable positions/cards and actions meet 44px minimum touch geometry |
+| 390 × 844 | No modal clipping or page overflow |
+| 480 × 900 | No modal clipping or page overflow |
+| Wide | Zones remain balanced/readable |
+| Background | Opening picker does not move Seats or Local Dock |
+| Accessibility | Anonymous hidden positions and public cards have correct accessible names |
+
+### 4C.27 Browser-proof scenarios
+
+Add or adapt focused browser coverage for at least:
+
+1. Retaliation with four authoritative anonymous Hand positions;
+2. Retaliation grouped-Hand fallback when only a hand-zone key exists;
+3. Retaliation selecting public Equipment;
+4. Dismantle selecting anonymous Hand position;
+5. Dismantle selecting Equipment;
+6. Dismantle selecting Judgment;
+7. Steal selecting anonymous Hand position;
+8. Steal selecting Equipment;
+9. Steal selecting Judgment;
+10. Frost Sword selecting one hidden Hand card;
+11. Frost Sword selecting two hidden Hand cards;
+12. Frost Sword mixed Hand + Equipment selection;
+13. max-selection enforcement;
+14. CurrentAction revision clears selection;
+15. target change clears selection;
+16. large Hand remains independently selectable without page overflow;
+17. Kirin Bow Equipment-only modal;
+18. unsupported/unproven per-Hand authority fails closed to the safe fallback.
+
+### 4C.28 Completion criterion
+
+This UX2 refinement is complete when the game has one coherent card-selection language for acting on another character's cards:
+
+~~~text
+Who am I acting on?
+        ↓
+Which of their card zones are legal?
+        ↓
+Which exact anonymous/public card position do I choose?
+        ↓
+What will this action do to that card?
+~~~
+
+Retaliation, Dismantle, Steal, Frost Sword, and compatible future effects should feel like variations of one interaction system rather than unrelated custom interfaces, while preserving strict hidden-Hand privacy and server-owned legality.
+
 ## 5. Interaction-Stage Hero / Player Presentation — DEFERRED TO UX2 INTERACTION VISUALIZATION REFACTOR
 
 ### 5.1 Current decision
