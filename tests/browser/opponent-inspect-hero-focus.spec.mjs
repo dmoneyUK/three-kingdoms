@@ -168,12 +168,49 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     expect(skillZoneBox).not.toBeNull();
     expect(skillZoneBox.height).toBeLessThanOrEqual(48);
     expect(skillType).toBeGreaterThanOrEqual(10);
-    await expect(inspect.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]')).toHaveCount(1);
+    const equipment = inspect.locator('[aria-label="Equipment"]');
+    const equipmentCard = equipment.locator('.opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]');
+    await expect(equipmentCard).toHaveCount(1);
+    const [equipmentZoneBox, equipmentCardBox] = await Promise.all([equipment.boundingBox(), equipmentCard.boundingBox()]);
+    expect(equipmentZoneBox).not.toBeNull();
+    expect(equipmentCardBox).not.toBeNull();
+    expect(equipmentCardBox.width).toBeGreaterThanOrEqual(70);
+    expect(equipmentCardBox.height / equipmentCardBox.width).toBeGreaterThanOrEqual(1.45);
+    expect(equipmentCardBox.height / equipmentCardBox.width).toBeLessThanOrEqual(1.55);
+    expect(equipmentCardBox.x).toBeGreaterThanOrEqual(equipmentZoneBox.x);
+    expect(equipmentCardBox.x + equipmentCardBox.width).toBeLessThanOrEqual(equipmentZoneBox.x + equipmentZoneBox.width);
 
     await skills.getByRole("button", { name: "Explain Stauchness" }).click();
     await expect(page.getByRole("dialog", { name: "Xiahou Dun" })).toBeVisible();
     await page.getByRole("button", { name: "Close hero information" }).click();
     await expect(inspect).toBeVisible();
+    await equipmentCard.click();
+    await expect(page.getByRole("dialog", { name: "Zhuge Crossbow" })).toBeVisible();
+    await page.getByRole("button", { name: "Close card explanation" }).click();
+    await expect(inspect).toBeVisible();
+  });
+}
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
+  test(`Inspect keeps multiple public Equipment cards compact at ${viewport.width}px`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, targetHero: "xiahou-dun", equipmentCase: "multiple" });
+    await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
+    const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+    const equipment = inspect.locator('[aria-label="Equipment"]');
+    const cards = equipment.locator(".opponent-inspection-card");
+    await expect(cards).toHaveCount(4);
+    const [zoneBox, cardBoxes] = await Promise.all([
+      equipment.boundingBox(),
+      Promise.all((await cards.all()).map((card) => card.boundingBox())),
+    ]);
+    expect(zoneBox).not.toBeNull();
+    for (const box of cardBoxes) {
+      expect(box).not.toBeNull();
+      expect(box.width).toBeLessThanOrEqual(60);
+      expect(box.x).toBeGreaterThanOrEqual(zoneBox.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(zoneBox.x + zoneBox.width);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
   });
 }
 

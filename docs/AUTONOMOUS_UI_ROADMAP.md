@@ -1363,6 +1363,17 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `git diff --check`, and visual screenshot review passed. Reviewer acceptance
   is not claimed.
 
+### UX2.REFINE-OTHER-PLAYER-INSPECT-SINGLE-EQUIPMENT-READABILITY-01 — Readable single public Equipment card
+
+- A sole public Equipment card now uses a readable 70–78px width while multiple
+  cards retain the ≤60px compact layout. At 390×844, 480×900, and 1440×900 the
+  single card measured 70×105, 76.8×115.2, and 78×117px, stayed inside its zone,
+  and continued opening its explanation. The focused Inspect browser spec
+  passed 14/14; targeted ESLint, `git diff --check`, and screenshot review
+  passed. Pre-commit Actions #851 passed exact base SHA
+  `58392a6fc83799b0865ff90ceee0ec180b97afce`. Reviewer acceptance is not
+  claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

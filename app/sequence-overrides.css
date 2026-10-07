@@ -1587,6 +1587,7 @@
 .hero-focus-inspect-hand-backs i { width: 15px; height: 20px; margin-left: -4px; border: 1px solid #aa925b; border-radius: 2px; background: repeating-linear-gradient(135deg, #25352c 0 2px, #17231d 2px 4px); box-shadow: 0 1px 2px #0008; }
 .hero-focus-inspect-hand strong { color: #f0d28c; }
 .hero-focus-inspect .opponent-inspection-card { width: clamp(42px, 12vw, 60px); flex-basis: clamp(42px, 12vw, 60px); pointer-events: auto; }
+.hero-focus-inspect .opponent-inspection-zone[aria-label="Equipment"] .opponent-inspection-card-row:has(> .opponent-inspection-card:only-child) > .opponent-inspection-card { width: clamp(70px, 16vw, 78px); flex-basis: clamp(70px, 16vw, 78px); }
 
 @media (max-width: 520px) {
   .hero-focus-inspect-details { grid-template-columns: minmax(0, 1fr); max-height: min(28vh, 220px); }
