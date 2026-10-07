@@ -1017,7 +1017,7 @@ For Private Draw specifically, the viewer should see:
 
 without a large top timer box and without a large unused vertical gap.
 
-## 5. Interaction-Stage Hero / Player Presentation — DEFERRED TO LATER REFACTOR
+## 5. Interaction-Stage Hero / Player Presentation — DEFERRED TO UX2 INTERACTION VISUALIZATION REFACTOR
 
 ### 5.1 Current decision
 
@@ -1035,7 +1035,7 @@ Do not implement further UX2 refinement tasks that change:
 - Hero/player-to-card connector geometry;
 - physical Seat / Local Dock nodes as a new combat graph;
 - a new seat-anchored interaction overlay;
-- UX3 interaction-graph foundation work.
+- UX2 interaction-visualization graph-foundation work.
 
 The current implementation remains the temporary baseline until the user explicitly resumes the interaction-visualization refactor.
 
@@ -1069,20 +1069,20 @@ Current authorized refinement work includes:
 
 ### 5.4 Resume condition
 
-The user has now authorized the UX3 interaction-visualization refactor **after all active refinement sections before §5 are completed, including §4A**.
+The user has authorized the UX2 interaction-visualization refactor **after all active refinement sections before §5 are completed, including §4A**. This refactor is part of completing UX2, not a new UX version.
 
 Therefore:
 
 1. finish the remaining authorized refinement work before §5 first, including §4A;
-2. do not interleave UX3 Hero/player graph work with unfinished Sections 1–4 refinement tasks;
-3. once those refinement items are closed at a clean planning boundary, UX3 Section 6 becomes authorized implementation work;
-4. begin UX3 from **§6.25 Phase A — physical-seat graph foundation** unless a newer direct user instruction changes the order;
-5. continue to split UX3 into bounded HANDOVER tasks rather than implementing all phases at once;
+2. do not interleave the UX2 interaction-visualization graph work with unfinished pre-§5 refinement tasks;
+3. once those refinement items are closed at a clean planning boundary, Section 6 becomes the next authorized UX2 implementation work;
+4. begin Section 6 from **§6.25 Phase A — physical-seat graph foundation** unless a newer direct user instruction changes the order;
+5. continue to split the UX2 interaction-visualization refactor into bounded HANDOVER tasks rather than implementing all phases at once;
 6. preserve all server-authority, privacy, fail-closed, and physical-seat-stability requirements in §6.
 
-An older HANDOVER item does not by itself prove that the prerequisite non-Hero refinement work is complete. The Coding Agent must re-read this document at the planning boundary before starting UX3.
+An older HANDOVER item does not by itself prove that the prerequisite refinement work is complete. The Coding Agent must re-read this document at the planning boundary before starting Section 6.
 
-## 6. UX3 Interaction Visualization — Physical-Seat Anchored Causal Graph
+## 6. UX2 Interaction Visualization Refactor — Physical-Seat Anchored Causal Graph
 
 ### 6.1 Design decision and purpose
 
@@ -1106,7 +1106,9 @@ Physical Player  ── played-by tether ──  Action Card  ── target arro
 
 This preserves table spatial identity and makes the interaction read directly against the players who are actually involved.
 
-This section records the reviewer-requested UX3 design direction after the existing UX2 refinement material. It does not by itself authorize a HANDOVER task, branch-wide implementation, or gameplay/protocol change. Implementation still requires a bounded reviewer-authorized task.
+This section records the reviewer-approved UX2 interaction-visualization refactor required to complete UX2. It does not by itself authorize a branch-wide implementation or gameplay/protocol change. Implementation still proceeds as bounded HANDOVER tasks under the sequencing in §5.4.
+
+**UX2 completion gate:** UX2 must not be declared complete while the AOE / multi-target interaction presentation remains visually unacceptable. Section 6 is part of UX2 completion. Group/AOE scenes must be revalidated after the physical-seat causal-graph refactor, and Reviewer acceptance of those final screenshots is required before UX2 can be considered complete.
 
 ### 6.2 Core semantic invariant
 
@@ -1695,7 +1697,7 @@ Do not use hidden text to expose private responder identity or private legality.
 
 ### 6.21 Presentation-model direction
 
-The current Negation model already contains explicit public reaction-chain authority, but the long-term UX3 renderer should not be hard-coded around Negation alone.
+The current Negation model already contains explicit public reaction-chain authority, but the UX2 interaction-visualization renderer should not be hard-coded around Negation alone.
 
 Preferred direction is a typed public graph/view model containing concepts equivalent to:
 
@@ -1749,7 +1751,7 @@ The visual identity of such a node should be compact and visually distinct from 
 
 ### 6.23 Required visual invariants
 
-The UX3 interaction visualization must preserve all of the following:
+The UX2 interaction visualization must preserve all of the following:
 
 - one physical player representation per player;
 - no duplicate central Hero portrait for Source or Target;
