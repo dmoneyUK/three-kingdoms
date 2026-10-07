@@ -230,6 +230,17 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
       ? [{ effectId: "liu_bei_rende", label: "Benevolence", description: "Give one or more hand cards to another living character.", selection: { type: "cards", min: 1, max: 2, eligibleCardIds: ["browser-rende-eligible-one", "browser-rende-eligible-two"], targetIds: ["p2", "p3"] } }]
       : [],
   };
+  if (state === "lady-gan-divine-wisdom") return {
+    version: 3, kind: "trigger", actorId, deadline: 0, reason: "Lady Gan may use Divine Wisdom, or skip", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
+    triggerOptions: [{ effectId: "lady_gan_divine_wisdom", label: "Divine Wisdom", selection: null, allowDecline: true }],
+  };
+  if (state === "lady-gan-prudence") return {
+    version: 3, kind: "trigger", actorId, deadline: 0, reason: "Choose another character for Prudence", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
+    triggerOptions: [{ effectId: "lady_gan_prudence", label: "Prudence", selection: { type: "target", targetIds: ["p2", "p3"], min: 1, max: 1 }, allowDecline: true }],
+  };
+  if (state === "lady-gan-no-provider") return {
+    version: 3, kind: "turn", actorId, deadline: 0, reason: "Play cards", legalActions: ["play_card", "end_turn"], canDeclareAttack: true,
+  };
   if (state === "cao-cao-treachery") return {
     version: 3, kind: "trigger", actorId, deadline: 0, reason: "Cao Cao may use Treachery, or skip", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger", triggerEvent: "damage_suffered",
     triggerOptions: [{ effectId: "cao_cao_jianxiong", label: "Treachery", description: "Obtain the card that caused the damage, if it is still available.", allowDecline: true, selection: null }],
@@ -811,12 +822,12 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     players,
     myHand: hand,
     turnSeat: state === "group-observer" ? 3 : dyingFixture ? 1 : 0,
-    phase: dyingFixture ? "dying" : state === "rest" || state === "group" || state === "normal" || state === "interaction" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" || state === "stargazing-offer" || state.startsWith("zhou-yu-sowing-distrust") || state.startsWith("liu-bei-benevolence") || borrowedSwordFixture ? "play" : "response",
+    phase: dyingFixture ? "dying" : state === "rest" || state === "group" || state === "normal" || state === "interaction" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" || state === "stargazing-offer" || state.startsWith("zhou-yu-sowing-distrust") || state.startsWith("liu-bei-benevolence") || state.startsWith("lady-gan-") || borrowedSwordFixture ? "play" : "response",
     deckCount: 20,
     discardTop: null,
     log: [],
     timeline: [],
-    isMyTurn: state === "normal" || state === "interaction" || state === "group" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" || state === "stargazing-offer" || state.startsWith("zhou-yu-sowing-distrust") || state.startsWith("liu-bei-benevolence") || borrowedSwordFixture,
+    isMyTurn: state === "normal" || state === "interaction" || state === "group" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" || state === "stargazing-offer" || state.startsWith("zhou-yu-sowing-distrust") || state.startsWith("liu-bei-benevolence") || state.startsWith("lady-gan-") || borrowedSwordFixture,
     actionPlayerId: currentAction?.actorId ?? null,
     actionReason: currentAction?.reason ?? "Waiting for the next legal action",
     isMyAction: Boolean(currentAction?.actorId === meId),

@@ -1493,6 +1493,16 @@ Only a proven regression or new Reviewer-approved design requirement does.
   parent SHA `1a12e56704edbb774077b4badb4b7d9edc057cac` completed success.
   Reviewer acceptance is not claimed.
 
+### UX2.REFINE-LADY-GAN-SKILLS-BAND-ACTIVATION-01 — Divine Wisdom / Prudence
+
+- The Local Skills mapping connects Lady Gan's existing
+  `lady_gan_divine_wisdom` and `lady_gan_prudence` CurrentAction options to
+  their Skills-band controls. Fixture-browser proof covers direct activation,
+  authoritative target selection and exact payloads, no duplicate Action Row
+  controls, and unavailable states without options: 5/5 at 390×844 and
+  1440×900. Targeted ESLint and `git diff --check` passed. This is not §4D
+  real-game reachability proof; Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

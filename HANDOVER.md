@@ -5,35 +5,32 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result
 
-`UX2.REFINE-RETALIATION-OPAQUE-HAND-POSITIONS-01` now projects authoritative
-`hand:0...hand:N-1` choices for Sima Yi Retaliation. Selection obtains the exact
-live card at that position; stale positions fail closed. Hidden identity stays
-private, and legacy grouped `hand` submissions remain compatible.
+`UX2.REFINE-LADY-GAN-SKILLS-BAND-ACTIVATION-01` maps Lady Gan's Divine Wisdom
+and Prudence CurrentAction options to the Skills band. Fixture-browser proof
+passed 5/5 at 390×844 and 1440×900: exact trigger/target payloads, no duplicate
+Action Row activation, and unavailable without authoritative options. Targeted
+ESLint and `git diff --check` passed. This is fixture evidence only, not §4D
+real-game reachability proof; Reviewer acceptance is not claimed.
 
-Focused validation passed: response-capability unit 1/1; Judgement API 12/12;
-Yue Jin API 4/4; Retaliation browser 10/10 across 390×844, 480×900, and
-1440×900; build; targeted ESLint; and `git diff --check`. The pre-commit base
-`1a12e56704edbb774077b4badb4b7d9edc057cac` Actions run `37659752814` completed
-success for all jobs. The new task commit's CI has not been checked in this
-handoff. Reviewer acceptance is not claimed.
+Pre-commit CI: latest code-path run `37660910916` on
+`269f83f821e40d26599b6333bbd3b8400a3c64ce` succeeded; current remote `268c4f8`
+adds only `docs/UX2-refine.md`. This task commit's CI state is not yet observed.
 
 ## Design checkpoint
 
-Reviewed remote `docs/UX2-refine.md`, blob `f8d1ff3bd61be6177de0cf562b3cd38dfb83d888`
-(design commit `01e436d3a975ade7f16af41c0648153e793912e4`), including §§1.5,
-1.10, 4C, and 5. Retaliation now follows §4C's opaque per-position design;
-grouped-Hand fallback remains when only grouped authority is supplied. §5
-Interaction-Stage Hero/player graph work remains deferred.
+Reviewed latest remote `docs/UX2-refine.md`, blob
+`9b53efac347e1186eb7195346e3ea2c51f8d17b6`, including §§1.5, 1.10, 4.10,
+4D (P1–P5), and 5.4; inspected all changes since the prior handoff revision.
+Section 6 remains gated on every active pre-§5 refinement and §4D task.
 
 ## Current task
 
-`UX2.REFINE-LADY-GAN-SKILLS-BAND-ACTIVATION-01` — connect Lady Gan's existing
-Divine Wisdom and Prudence CurrentAction options to the single Hero Skills-band
-activation surface required by §§1.5 and 1.10.
+`UX2.REFINE-REAL-SERVER-TO-BROWSER-PROOF-P1-01` — restore a reliable real
+server-to-browser validation path required by §4D P1.
 
-Scope: add only the two existing provider mappings and focused browser proof
-for authoritative activation, exact existing trigger payloads/target selection,
-no duplicate Action Row activation, and disabled state when the option is
-absent. Cover 390×844 and wide. Do not change gameplay rules or server
-projection. Stop after this bounded slice and refresh the handoff at its next
-planning boundary.
+Acceptance: room creation works through the product's `/api/rooms` route; a
+browser can seed/enter a real server room and reach the production game page
+without handcrafted CurrentAction or PresentationSnapshot; one clean server-
+backed browser flow proves this path and can support P2–P4. Investigate the
+duplicate `CausalCreation` declaration and reported local-runtime failure;
+change only what is needed for this bounded validation foundation.

@@ -1634,6 +1634,7 @@ export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly strin
   "huang-yueying": { Cultivation: ["huang_yueying_cultivation"] },
   "huang-gai": { "Self Sacrifice": ["huang_gai_kurou"] },
   "zhuge-liang": { Stargazing: ["zhuge_liang_stargazing"] },
+  "lady-gan": { "Divine Wisdom": ["lady_gan_divine_wisdom"], Prudence: ["lady_gan_prudence"] },
 };
 
 // These skills are stable, non-actionable entries in the Local Skills band.
