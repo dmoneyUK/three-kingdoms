@@ -84,7 +84,7 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
     stable: { kind: stableKindOverride ?? "CHOICE", interactionId, checkpointId, presentationRevision: 1, decisionActorId },
     interaction: scene,
     decision: { actorId: decisionActorId, stage },
-    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" || state.startsWith("hua-tuo-first-aid") ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "pending-target-card" ? "target_card" : state === "picker" || state === "picker-hand-zone" || state === "frost-sword-selectable" || state.startsWith("local-equipment-target-card") || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" || state === "judgement" || state === "judgement-local" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "active-attack-observer" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state.startsWith("oath-negation") || state.startsWith("bumper-harvest") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "group-negation-local" || state === "raining-arrows-response" || state === "raining-arrows-no-dodge" || state === "preview-ack" ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
+    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" || state.startsWith("hua-tuo-first-aid") ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "pending-target-card" ? "target_card" : state === "picker" || state === "picker-hand-zone" || state === "retaliation-modal" || state === "frost-sword-selectable" || state.startsWith("local-equipment-target-card") || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" || state === "judgement" || state === "judgement-local" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "active-attack-observer" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state.startsWith("oath-negation") || state.startsWith("bumper-harvest") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "group-negation-local" || state === "raining-arrows-response" || state === "raining-arrows-no-dodge" || state === "preview-ack" ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
     groupParticipantProgress: progressCase && orderedProgressCase !== "missing" ? {
       cardKind: orderedProgressCase ? "SkyPiercingHalberdAttack" : "RainingArrows",
       resolutionSemantics: orderedProgressCase ? "ORDERED" : "GROUP",
@@ -359,6 +359,21 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
       declineAction: "decline_trigger",
     };
   }
+  if (state === "retaliation-modal") {
+    const eligibleKeys = targetCardCase === "positioned-hand"
+      ? [...Array.from({ length: targetHandCount }, (_, index) => `hand:${index}`), "browser-retaliation-equipment"]
+      : ["hand", "browser-retaliation-equipment"];
+    return {
+      version: 3,
+      kind: "trigger",
+      actorId,
+      deadline: 0,
+      reason: "Choose one card from the source's Playing Area",
+      legalActions: ["trigger", "decline_trigger"],
+      triggerOptions: [{ effectId: "sima_yi_fankui", label: "Retaliation", selection: { type: "target_cards", targetId: "p2", min: 1, max: 1, eligibleKeys } }],
+      declineAction: "decline_trigger",
+    };
+  }
   if (state.startsWith("local-equipment-target-card")) {
     const eligibleKeys = targetCardCase === "mixed"
       ? ["browser-local-equipment-eligible", "hand"]
@@ -468,6 +483,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
   const targetShiftFixture = state === "target-shift-attack";
   const frostSwordSelectionFixture = state === "frost-sword-selectable";
   const kirinBowSelectionFixture = state === "kirin-bow-selectable";
+  const retaliationModalFixture = state === "retaliation-modal";
   const playerIds = Array.from({ length: count }, (_, index) => `p${index + 1}`);
   const bumperCurrentId = bumperHarvestComplete ? null : state === "bumper-harvest-returned" ? playerIds[2] ?? playerIds[1] : state === "bumper-harvest-dense" ? playerIds[playerIds.length - 2] : playerIds[1];
   const meId = huaTuoFirstAidFixture ? "p1" : state === "hua-xiong-triumphant-observer" ? "p2" : bumperHarvestSourceViewer || oathNegationSourceViewer ? "p1" : bumperHarvestLocalFixture || oathNegationLocalFixture ? "p3" : groupNegationLocalFixture ? "p1" : bumperHarvestFixture ? "p4" : activeNegationObserver || timedNegationObserver ? "p4" : duelObserverView ? "p3" : judgementStage ? state === "judgement-local" ? "p1" : "p4" : borrowedSwordActiveFixture ? count === 2 ? "p1" : "p4" : targetShiftFixture ? count >= 5 ? "p5" : "p3" : frostSwordSelectionFixture || kirinBowSelectionFixture ? "p2" : state === "active-attack-observer" || state === "group-observer" || unfocusedGroup || groupNegationFixture || oathNegationFixture ? "p3" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "negation" || state === "confirm-skip" || state === "picker" || state === "picker-hand-zone" || state === "fanjian-selectable" ? "p2" : state === "dying" ? "p3" : "p1";
@@ -512,8 +528,8 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     : groupProgressCase && state === "group-observer"
       ? ["p2", "p1", ...playerIds.filter((id) => id !== "p1" && id !== "p2" && id !== "p4")]
       : null;
-  const targets = bumperHarvestFixture ? bumperHarvestChild ? bumperCurrentId ? [bumperCurrentId] : [] : playerIds : denseGroup ? playerIds.filter((id) => id !== "p4") : unfocusedGroup ? ["p1", "p2"] : groupNegationFixture ? ["p1", "p2", "p3"] : rainingArrowsResponseFixture ? playerIds.filter((id) => id !== "p4") : oathNegationFixture ? ["p1"] : state === "active-negation-multi-observer" ? ["p2", "p5"] : activeNegationObserver ? ["p2"] : duelObserverView ? ["p2", "p1"] : judgementStage ? state === "judgement" ? ["p2"] : ["p1"] : state === "group-observer" ? orderedGroupTargets ?? ["p1", "p2", "p3"] : borrowedSwordActiveFixture ? count === 2 ? ["p1"] : ["p3"] : targetShiftFixture ? ["p2"] : frostSwordSelectionFixture ? targetCardCase === "unfocused" ? ["p3"] : ["p1"] : kirinBowSelectionFixture ? targetCardCase === "unfocused" ? ["p3"] : ["p1"] : state === "fanjian-selectable" ? targetCardCase === "unfocused" ? ["p3"] : ["p2"] : dyingFixture ? [dyingTargetId] : state === "group" ? playerIds.filter((id) => id !== "p1") : [state === "duel" || state === "negation" || state === "confirm-skip" ? "p1" : "p2"];
-  const standardStage = bumperHarvestFixture ? bumperHarvestChild ? "NEGATION" : "SEQUENTIAL_CHOICE" : state === "duel" || state === "duel-response" ? "DUEL_EXCHANGE" : state === "negation" || state === "confirm-skip" || activeNegationObserver || groupNegationFixture || oathNegationFixture ? "NEGATION" : judgementStage ? "JUDGEMENT" : dyingFixture ? "DYING" : state === "group" || state === "group-observer" || unfocusedGroup || rainingArrowsResponseFixture ? "GROUP_RESOLUTION" : "ATTACK_RESPONSE";
+  const targets = bumperHarvestFixture ? bumperHarvestChild ? bumperCurrentId ? [bumperCurrentId] : [] : playerIds : denseGroup ? playerIds.filter((id) => id !== "p4") : unfocusedGroup ? ["p1", "p2"] : groupNegationFixture ? ["p1", "p2", "p3"] : rainingArrowsResponseFixture ? playerIds.filter((id) => id !== "p4") : oathNegationFixture ? ["p1"] : state === "active-negation-multi-observer" ? ["p2", "p5"] : activeNegationObserver ? ["p2"] : duelObserverView ? ["p2", "p1"] : judgementStage ? state === "judgement" ? ["p2"] : ["p1"] : state === "group-observer" ? orderedGroupTargets ?? ["p1", "p2", "p3"] : borrowedSwordActiveFixture ? count === 2 ? ["p1"] : ["p3"] : targetShiftFixture ? ["p2"] : frostSwordSelectionFixture ? targetCardCase === "unfocused" ? ["p3"] : ["p1"] : kirinBowSelectionFixture ? targetCardCase === "unfocused" ? ["p3"] : ["p1"] : state === "fanjian-selectable" ? targetCardCase === "unfocused" ? ["p3"] : ["p2"] : retaliationModalFixture ? ["p1"] : dyingFixture ? [dyingTargetId] : state === "group" ? playerIds.filter((id) => id !== "p1") : [state === "duel" || state === "negation" || state === "confirm-skip" ? "p1" : "p2"];
+  const standardStage = bumperHarvestFixture ? bumperHarvestChild ? "NEGATION" : "SEQUENTIAL_CHOICE" : state === "duel" || state === "duel-response" ? "DUEL_EXCHANGE" : state === "negation" || state === "confirm-skip" || activeNegationObserver || groupNegationFixture || oathNegationFixture ? "NEGATION" : judgementStage ? "JUDGEMENT" : retaliationModalFixture ? "DAMAGE" : dyingFixture ? "DYING" : state === "group" || state === "group-observer" || unfocusedGroup || rainingArrowsResponseFixture ? "GROUP_RESOLUTION" : "ATTACK_RESPONSE";
   const stage = orderedProgressCase ? orderedProgressCase === "paused" ? "DAMAGE" : "ATTACK_RESPONSE" : resolvedGroupProgressCase === "paused" ? "DAMAGE" : standardStage;
   const projectedStageTargets = state === "dying" && dyingParticipantCase === "mismatch" ? ["p4"] : targets;
   const projectedCurrentParticipantId = bumperHarvestFixture ? bumperCurrentId : oathNegationFixture ? null
@@ -594,7 +610,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     state,
     playerIds,
     stage,
-    sourceId: sourceOverride === "none" ? null : sourceOverride ?? (bumperHarvestFixture ? "p1" : borrowedSwordActiveFixture || frostSwordSelectionFixture || kirinBowSelectionFixture ? "p2" : state === "group-observer" || unfocusedGroup || groupNegationFixture || rainingArrowsResponseFixture ? "p4" : "p1"),
+    sourceId: sourceOverride === "none" ? null : sourceOverride ?? (retaliationModalFixture ? "p2" : bumperHarvestFixture ? "p1" : borrowedSwordActiveFixture || frostSwordSelectionFixture || kirinBowSelectionFixture ? "p2" : state === "group-observer" || unfocusedGroup || groupNegationFixture || rainingArrowsResponseFixture ? "p4" : "p1"),
     targetIds: bumperHarvestFixture ? bumperHarvestStageTargets : projectedStageTargets,
     originalTargetIds: bumperHarvestFixture && !bumperHarvestChild ? playerIds : bumperHarvestFixture ? bumperHarvestStageTargets : projectedStageTargets,
     activeTargetIds: bumperHarvestFixture ? bumperHarvestStageTargets : projectedActiveTargets,
@@ -603,7 +619,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     activeResolverId: negationSettlementOutcome || bumperHarvestFixture && (bumperHarvestChild || bumperHarvestComplete) || timedNegationObserver || privateNegationResponder || oathNegationFixture ? null : actorId,
     viewerId: meId,
     localControlActorId: bumperHarvestLocalFixture || oathNegationLocalFixture || privateNegationResponder ? actorId : undefined,
-    effectOverride: bumperHarvestFixture ? "BumperHarvest" : borrowedSwordActiveFixture ? "borrowed_sword_attack" : orderedProgressCase ? "Attack" : groupNegationFixture ? "Raining Arrows" : oathNegationFixture ? "Oath of the Peach Garden" : effectOverride,
+    effectOverride: retaliationModalFixture ? "Attack" : bumperHarvestFixture ? "BumperHarvest" : borrowedSwordActiveFixture ? "borrowed_sword_attack" : orderedProgressCase ? "Attack" : groupNegationFixture ? "Raining Arrows" : oathNegationFixture ? "Oath of the Peach Garden" : effectOverride,
     childFrame: bumperHarvestChild || borrowedSwordActiveFixture || resolvedGroupProgressCase === "paused" || orderedProgressCase === "paused",
     rootOrigin: bumperHarvestRootOrigin ?? borrowedSwordRootOrigin ?? groupChildRootOrigin,
     groupProgressCase: resolvedGroupProgressCase,
@@ -647,7 +663,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     maxHp: 4,
     alive: oathNegationFixture ? id !== "p4" : true,
     connected: true,
-    handCount: (state === "picker-hand-zone" || frostSwordSelectionFixture || state === "fanjian-selectable") && id === "p1" || state === "pending-target-card" && id === "p2" ? targetHandCount : id === meId ? hand.length : 2,
+    handCount: (state === "picker-hand-zone" || frostSwordSelectionFixture || state === "fanjian-selectable") && id === "p1" || retaliationModalFixture && id === "p2" || state === "pending-target-card" && id === "p2" ? targetHandCount : id === meId ? hand.length : 2,
     judgementCards: state === "picker-hand-zone" && id === "p1"
       ? [card("browser-public-judgement", "Lightning", "♥", "Q")]
       : state === "pending-target-card" && id === "p2"
@@ -655,7 +671,9 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
       : hasLocalJudgementFixture && id === meId
       ? [card("browser-local-lightning", "Lightning", "♥", "Q"), card("browser-local-overindulgence", "Overindulgence", "♠", "7")].slice(0, localJudgementCount)
       : state === "rest" && id === "p3" ? [card("browser-lightning", "Lightning", "♥", "Q")] : [],
-    equipmentCards: kirinBowSelectionFixture && id === "p1"
+    equipmentCards: retaliationModalFixture && id === "p2"
+      ? [card("browser-retaliation-equipment", "NioShield", "♣", "2")]
+      : kirinBowSelectionFixture && id === "p1"
       ? [card("browser-kirin-bow-offensive-mount", "RedHare", "♥", "5"), card("browser-kirin-bow-defensive-mount", "Shadowrunner", "♠", "5"), card("browser-kirin-bow-ineligible-armour", "NioShield", "♣", "2")]
       : kirinBowSelectionFixture && id === "p2"
       ? [card("browser-kirin-bow-source", "KirinBow", "♥", "Q")]

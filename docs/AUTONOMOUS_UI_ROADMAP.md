@@ -1395,6 +1395,19 @@ Only a proven regression or new Reviewer-approved design requirement does.
   attempt had a non-reproduced shard-1 Wrangler transport failure. Reviewer
   acceptance is not claimed.
 
+### UX2.REFINE-RETALIATION-UNIFIED-TARGET-CARD-MODAL-01 — Sima Yi Retaliation modal
+
+- Proven external-target Retaliation now uses the shared centered full-screen
+  target-card modal, with distinct Hand / Equipment / Judgment sections,
+  rule-facing copy, anonymous Hand fallback or authoritative `hand:n` positions,
+  and modal-owned submit/cancel/skip controls. Browser geometry confirms the
+  overlay blocks Dock controls without changing Stage/Dock bounds at
+  390×844, 480×900, and 1440×900. The focused picker spec passed 56/56; the
+  existing UI-19 Hero Focus compatibility check passed 1/1; targeted ESLint and
+  `git diff --check` passed. Pre-commit Actions run `37634607717` passed on the
+  exact parent SHA `9607280182e5f21a8d2acd5c03a707cb438906f5`. Reviewer
+  acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

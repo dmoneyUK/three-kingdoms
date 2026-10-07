@@ -84,19 +84,20 @@
    scale for equipment and hidden hand positions while leaving the seats
    visible behind the dimmed table. */
 .target-card-picker-overlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 35;
+  z-index: 1000;
   display: grid;
   place-items: center;
   padding: 16px;
   background: #050704b8;
   pointer-events: auto;
+  overflow-y: auto;
 }
 
 .target-card-picker-panel {
   width: min(720px, calc(100vw - 32px));
-  max-height: calc(100% - 32px);
+  max-height: calc(100dvh - 32px);
   overflow: hidden;
   padding: 22px 24px 20px;
   background: #151812;
@@ -104,6 +105,60 @@
   box-shadow: 0 22px 60px #000d;
   color: #f0d28c;
   text-align: center;
+}
+
+.target-card-picker-panel--zones {
+  display: flex;
+  flex-direction: column;
+}
+
+.target-card-picker-panel--zones > header,
+.target-card-picker-panel--zones > .target-card-picker-count,
+.target-card-picker-panel--zones > .target-card-picker-actions,
+.target-card-picker-panel--zones > .error {
+  flex: 0 0 auto;
+}
+
+.target-card-picker-zones {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  align-content: start;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 0 12px;
+}
+
+.target-card-picker-zone {
+  min-width: 0;
+  padding: 8px 8px 4px;
+  border: 1px solid #554a31;
+  background: #10130de0;
+  text-align: left;
+}
+
+.target-card-picker-zone h3 {
+  margin: 0;
+  color: #d9c184;
+  font: 700 9px/1.2 Arial, sans-serif;
+  letter-spacing: .12em;
+}
+
+.target-card-picker-zone-hand h3 {
+  color: #e3cc91;
+}
+
+.target-card-picker-zone-judgement {
+  grid-column: 1 / -1;
+}
+
+.target-card-picker-zone .target-card-picker-card-row {
+  justify-content: flex-start;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 12px 4px 10px;
 }
 
 .target-card-picker-panel > header strong,
@@ -292,7 +347,7 @@
 
 .target-card-picker-actions button {
   min-width: 150px;
-  min-height: 42px;
+  min-height: 44px;
   padding: 10px 16px;
   font: 10px Arial, sans-serif;
   letter-spacing: .08em;
@@ -354,8 +409,26 @@
 
   .target-card-picker-panel {
     width: calc(100vw - 36px);
-    max-height: calc(100% - 36px);
+    max-height: calc(100dvh - 36px);
     padding: 17px 14px 15px;
+  }
+
+  .target-card-picker-zones {
+    gap: 8px;
+    padding: 14px 0 10px;
+  }
+
+  .target-card-picker-zone {
+    padding: 7px 5px 3px;
+  }
+
+  .target-card-picker-zone h3 {
+    font-size: 8px;
+  }
+
+  .target-card-picker-zone .target-card-picker-card-row {
+    gap: 6px;
+    padding: 11px 3px 9px;
   }
 
   .target-card-picker-panel > header strong {
@@ -2366,7 +2439,7 @@
     height: min(116px, 100%);
   }
 
-  .game-shell .target-card-picker-panel,
+  .game-shell .target-card-picker-panel:not(.target-card-picker-panel--zones),
   .game-shell .table-hidden-card-picker.target-card-picker,
   .game-shell .deck-reorder-panel {
     max-width: calc(100vw - 16px);

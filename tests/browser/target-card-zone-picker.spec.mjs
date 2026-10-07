@@ -39,6 +39,33 @@ async function loadPendingTargetCard(page, { width, height = 844, count = 4, han
   return page.locator('[aria-label="Interaction Stage"]');
 }
 
+async function openRetaliationModal(page, { width, height = 844, targetCardCase = "valid", handCount = 4 } = {}) {
+  await page.setViewportSize({ width, height });
+  const params = new URLSearchParams({ state: "retaliation-modal", count: "4", targetHandCount: String(handCount), targetCardCase, hero: "simayi" });
+  await page.goto(`/tests/browser/fixture.html?${params}`);
+  const skill = page.getByRole("button", { name: "Retaliation", exact: true });
+  await expect(skill).toBeEnabled();
+  const before = await page.evaluate(() => {
+    const box = (selector) => {
+      const { x, y, width: boxWidth, height: boxHeight } = document.querySelector(selector).getBoundingClientRect();
+      return { x, y, width: boxWidth, height: boxHeight };
+    };
+    return { stage: box(".play-table"), dock: box(".local-player-dock") };
+  });
+  await skill.click();
+  const dialog = page.getByRole("dialog", { name: "Retaliation target card selection" });
+  await expect(dialog).toBeVisible();
+  return { dialog, before };
+}
+
+function expectSameBox(actual, expected) {
+  for (const key of ["x", "y", "width", "height"]) expect(actual[key], `${key}: ${actual[key]} vs ${expected[key]}`).toBeCloseTo(expected[key], 1);
+}
+
+async function submittedTriggerActions(page) {
+  return page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger" || entry.action === "decline_trigger"));
+}
+
 for (const viewport of [
   { width: 390, height: 844, count: 4 },
   { width: 480, height: 900, count: 6 },
@@ -666,4 +693,162 @@ test("picker fixture changes preserve baseline public Equipment for Inspect", as
 
   const inspection = page.getByRole("dialog", { name: "Player 2 opponent inspection" });
   await expect(inspection.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]')).toHaveCount(1);
+});
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 480, height: 900 },
+  { width: 1440, height: 900 },
+]) {
+  test(`proven Sima Yi Retaliation opens a full-screen target-card modal at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+    const { dialog, before } = await openRetaliationModal(page, viewport);
+    const overlay = page.locator(".target-card-picker-overlay");
+    const handZone = dialog.locator('[data-target-card-zone="hand"]');
+    const equipment = dialog.locator('[data-target-card-zone="equipment"]');
+
+    await expect(dialog.locator("header strong")).toHaveText("RETALIATION");
+    await expect(dialog.locator("header span")).toHaveText("Choose 1 card to obtain");
+    await expect(dialog.locator(".target-card-picker-zone-hand h3")).toHaveText("HAND · 4");
+    await expect(dialog.locator(".target-card-picker-zone-equipment h3")).toHaveText("EQUIPMENT");
+    await expect(dialog.locator(".target-card-picker-zone-judgement")).toHaveCount(0);
+    await expect(handZone).toHaveAccessibleName("Hand ×4 · Random card");
+    await expect(handZone.locator(".target-card-picker-hand-back")).toHaveCount(4);
+    await expect(equipment).toHaveAccessibleName("Equipment: Nio Shield");
+    await expect(dialog.getByRole("button", { name: "Use Retaliation" })).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Skip", exact: true })).toBeVisible();
+    await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
+    await expect(page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
+
+    const [overlayBox, panelBox, stageBox, dockBox, controls] = await Promise.all([
+      overlay.boundingBox(), dialog.boundingBox(), page.locator(".play-table").boundingBox(), page.locator(".local-player-dock").boundingBox(),
+      dialog.locator(".target-card-picker-actions button").evaluateAll((buttons) => buttons.map((button) => {
+        const { width, height } = button.getBoundingClientRect();
+        return { width, height };
+      })),
+    ]);
+    expect(overlayBox).toBeTruthy();
+    expect(panelBox).toBeTruthy();
+    expect(stageBox).toBeTruthy();
+    expect(dockBox).toBeTruthy();
+    expect(overlayBox.x).toBeCloseTo(0, 1);
+    expect(overlayBox.y).toBeCloseTo(0, 1);
+    expect(overlayBox.width).toBeCloseTo(viewport.width, 1);
+    expect(overlayBox.height).toBeCloseTo(viewport.height, 1);
+    expect(panelBox.x).toBeGreaterThanOrEqual(0);
+    expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(viewport.width);
+    expect(panelBox.y).toBeGreaterThanOrEqual(0);
+    expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(viewport.height);
+    expectSameBox(stageBox, before.stage);
+    expectSameBox(dockBox, before.dock);
+    expect(controls.length).toBe(3);
+    for (const control of controls) expect(control.height).toBeGreaterThanOrEqual(44);
+    for (const selectable of [handZone, equipment]) {
+      const box = await selectable.boundingBox();
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+
+    const skill = page.getByRole("button", { name: "Retaliation", exact: true });
+    const skillBox = await skill.boundingBox();
+    expect(skillBox).toBeTruthy();
+    const hit = await page.evaluate(({ x, y }) => Boolean(document.elementFromPoint(x, y)?.closest(".target-card-picker-overlay")), {
+      x: skillBox.x + skillBox.width / 2,
+      y: skillBox.y + skillBox.height / 2,
+    });
+    expect(hit).toBe(true);
+    const overflow = await page.evaluate(() => ({ width: window.innerWidth, document: document.documentElement.scrollWidth }));
+    expect(overflow.document).toBeLessThanOrEqual(overflow.width);
+    const target = await page.evaluate(() => window.__browserRoom.players.find((player) => player.id === "p2"));
+    expect(target.handCount).toBe(4);
+    expect(target.handCards ?? []).toEqual([]);
+    await expect(dialog).not.toContainText(/Attack|Peach|Dodge|Negation|browser-retaliation/);
+  });
+}
+
+test("Retaliation modal submits exactly the chosen opaque Hand-zone key", async ({ page }) => {
+  const { dialog } = await openRetaliationModal(page, { width: 390 });
+  const handZone = dialog.locator('[data-target-card-zone="hand"]');
+  const use = dialog.getByRole("button", { name: "Use Retaliation" });
+
+  await handZone.click();
+  await expect(handZone).toHaveAttribute("aria-pressed", "true");
+  await expect(dialog.locator(".target-card-picker-count")).toHaveText("1 / 1 selected");
+  await expect(use).toBeEnabled();
+  expect(await submittedTriggerActions(page)).toEqual([]);
+  await use.click();
+  await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
+    { action: "trigger", extra: { providerId: "sima_yi_fankui", cardKeys: ["hand"] } },
+  ]);
+});
+
+test("Retaliation modal preserves server-projected anonymous Hand positions and public Equipment payloads", async ({ page }) => {
+  const { dialog } = await openRetaliationModal(page, { width: 480, targetCardCase: "positioned-hand", handCount: 4 });
+  const positions = dialog.locator('[data-target-card-zone="hand-position"]');
+  const equipment = dialog.locator('[data-target-card-zone="equipment"]');
+
+  await expect(positions).toHaveCount(4);
+  await expect(positions.nth(2)).toHaveAccessibleName("Hidden hand card 3");
+  await expect(positions.nth(2)).not.toContainText(/Attack|Peach|Dodge|Negation/);
+  await expect(equipment).toHaveAccessibleName("Equipment: Nio Shield");
+  await equipment.click();
+  await expect(equipment).toHaveAttribute("aria-pressed", "true");
+  await dialog.getByRole("button", { name: "Use Retaliation" }).click();
+  await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
+    { action: "trigger", extra: { providerId: "sima_yi_fankui", cardKeys: ["browser-retaliation-equipment"] } },
+  ]);
+});
+
+test("Retaliation modal submits only the selected server-projected opaque Hand position", async ({ page }) => {
+  const { dialog } = await openRetaliationModal(page, { width: 390, targetCardCase: "positioned-hand", handCount: 4 });
+  const position = dialog.getByRole("button", { name: "Hidden hand card 3" });
+  await position.click();
+  await expect(position).toHaveAttribute("aria-pressed", "true");
+  await dialog.getByRole("button", { name: "Use Retaliation" }).click();
+  await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
+    { action: "trigger", extra: { providerId: "sima_yi_fankui", cardKeys: ["hand:2"] } },
+  ]);
+});
+
+test("shared modal keeps a public Judgment card face and its authoritative key when focus proof is absent", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tests/browser/fixture.html?state=picker-hand-zone&count=4&targetHandCount=4&source=none");
+  const dialog = page.getByRole("dialog", { name: "Retaliation target card selection" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".target-card-picker-zone-hand h3")).toHaveText("HAND · 4");
+  await expect(dialog.locator(".target-card-picker-zone-equipment h3")).toHaveText("EQUIPMENT");
+  await expect(dialog.locator(".target-card-picker-zone-judgement h3")).toHaveText("JUDGMENT");
+  const judgement = dialog.getByRole("button", { name: "Judgement: Lightning" });
+  await expect(judgement.locator(".played-card")).toBeVisible();
+  await judgement.click();
+  await dialog.getByRole("button", { name: "Use Retaliation" }).click();
+  await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
+    { action: "trigger", extra: { providerId: "browser_retaliation_zone", cardKeys: ["browser-public-judgement"] } },
+  ]);
+});
+
+test("Retaliation modal Cancel is local while Skip remains an authoritative trigger decline", async ({ page }) => {
+  let { dialog } = await openRetaliationModal(page, { width: 390 });
+  const skill = page.getByRole("button", { name: "Retaliation", exact: true });
+  await dialog.locator('[data-target-card-zone="hand"]').click();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await submittedTriggerActions(page)).toEqual([]);
+
+  await skill.click();
+  dialog = page.getByRole("dialog", { name: "Retaliation target card selection" });
+  await expect(dialog).toBeVisible();
+  await expect(page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Skip", exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Skip", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "decline_trigger").map((entry) => entry.action))).toEqual(["decline_trigger"]);
+});
+
+test("Retaliation modal local selection clears when the CurrentAction revision changes", async ({ page }) => {
+  const { dialog } = await openRetaliationModal(page, { width: 390 });
+  const handZone = dialog.locator('[data-target-card-zone="hand"]');
+  await handZone.click();
+  await expect(handZone).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => window.__setBrowserActionRevision("browser-retaliation-modal-new-action"));
+  await expect(page.getByRole("dialog", { name: "Retaliation target card selection" })).toHaveCount(0);
+  expect(await submittedTriggerActions(page)).toEqual([]);
 });
