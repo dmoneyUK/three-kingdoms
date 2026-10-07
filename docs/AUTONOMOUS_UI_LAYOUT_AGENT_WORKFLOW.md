@@ -56,17 +56,26 @@ Do not:
 
 A separate discovered problem should be recorded as a candidate for the next planning boundary unless it blocks the current task.
 
-### Current UX2 refinement freeze
+### Current UX2 refinement sequencing
 
-`docs/UX2-refine.md` §5 currently defers Interaction Stage Hero/player visualization and UX3 interaction-graph work. While that freeze is active:
+`docs/UX2-refine.md` §5 currently defers Interaction Stage Hero/player visualization and UX3 interaction-graph work **until the active non-Hero refinement work in Sections 1–4 is complete**.
+
+Before that boundary:
 
 - do not start or continue a task that changes central combat Hero/player representation, Hero/player geometry, physical Seat/Dock graph nodes, or Hero/player-to-card connector geometry;
-- if the current HANDOVER task is in that deferred scope, stop before source edits and replan at the next safe boundary from the active non-Hero refinement sections;
+- if the current HANDOVER task is in that deferred scope, stop before source edits and replan from the active non-Hero refinement sections;
 - allowed refinement work includes Local Hero Skills, response Guidance, `TAKE DAMAGE` labeling/behavior, authoritative response-provider emphasis, System Menu/Exit relocation, response-timer relocation, and Zhuge Liang skill presentation;
-- existing deferred Hero/player presentation may remain as-is and must not be deleted merely because it will later be replaced;
-- resume UX3 interaction-visualization work only after explicit user authorization.
+- existing deferred Hero/player presentation may remain as-is and must not be deleted merely because it will later be replaced.
 
-This freeze is a product-scope decision, not a CI exception. Keep the existing CI cadence unchanged.
+At the clean planning boundary after Sections 1–4 are closed:
+
+- re-read the latest `docs/UX2-refine.md`;
+- UX3 §6 becomes authorized implementation work;
+- begin with §6.25 **Phase A — physical-seat graph foundation** unless a newer direct user instruction changes the order;
+- continue one bounded HANDOVER task at a time;
+- do not skip ahead to later UX3 phases to compensate for missing typed authority.
+
+This sequencing rule is a product-scope decision, not a CI exception. Keep the existing CI cadence unchanged.
 
 ## 4. Task implementation
 
