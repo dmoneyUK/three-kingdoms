@@ -1017,6 +1017,219 @@ For Private Draw specifically, the viewer should see:
 
 without a large top timer box and without a large unused vertical gap.
 
+## 4B. Compact Inspect Panel for Other Players
+
+### 4B.1 Scope and purpose
+
+The current Inspect view for another player uses too much vertical space, leaves large unused areas, and presents the inspected Hero and public information at a size that is too small for fast mobile reading.
+
+This refinement defines a **compact mobile Inspect panel** for another player's public state.
+
+Goals:
+
+- enlarge the inspected Hero portrait and identity text;
+- remove unnecessary empty space;
+- keep public information readable on mobile;
+- avoid taking over the full Interaction Stage;
+- preserve privacy and authoritative visibility.
+
+### 4B.2 Do not occupy the full Interaction Stage
+
+Inspect must render as a **compact floating panel inside the Stage**, not as a full-height Stage replacement.
+
+Requirements:
+
+- center the panel within the usable Stage area;
+- leave visible Stage context around the panel;
+- height is content-driven;
+- do not push Local Guidance or the Local Dock downward;
+- no overlap with Local Guidance or the Local Dock;
+- a dimmed/backdrop layer may cover the Stage, but the panel itself remains compact.
+
+Preferred mobile footprint:
+
+- width: approximately 88–92% of usable Stage width;
+- max-height: approximately 60–72% of the usable Stage area above Guidance;
+- outer inset to Stage edge: approximately 12–16px.
+
+### 4B.3 Header
+
+Use one compact header row:
+
+```text
+INSPECT · Player1                              [X]
+```
+
+Requirements:
+
+- one title only;
+- close control top-right on the same row;
+- remove duplicated decorative labels such as a second `INSPECT`;
+- no empty header band.
+
+### 4B.4 Identity block
+
+The inspected Hero identity is the visual focus.
+
+Layout:
+
+- large Hero portrait on the left;
+- player/Hero identity on the right.
+
+Show:
+
+- player name;
+- Hero name;
+- current HP;
+- public role/faction only when already public;
+- `Explain Hero` action.
+
+Preferred mobile proportions:
+
+- Hero portrait width: approximately 38–44% of panel width;
+- identity column: approximately 56–62%;
+- portrait remains recognisable and card-like;
+- Player name and Hero name use a visibly larger type scale than the current Inspect implementation.
+
+Avoid:
+
+- tiny identity text;
+- excessive line wrapping;
+- duplicate HP/identity blocks elsewhere inside Inspect.
+
+### 4B.5 Public skills
+
+Place public skills directly below or beside the identity block, depending on available width.
+
+Requirements:
+
+- heading: `PUBLIC SKILLS`;
+- skill names render as readable compact chips/cards;
+- no tall empty skill container when only one skill exists;
+- if concise explanation text is shown, it wraps cleanly and remains secondary;
+- if there are no public skills, show compact `None`.
+
+### 4B.6 Public zones
+
+Equipment, Judgment Zone, and Hand should form a compact public-information section.
+
+Preferred mobile layout:
+
+- one row of up to three compact groups when space permits;
+- otherwise use a compact two-row arrangement;
+- each group sizes to its actual content.
+
+#### Equipment
+
+- show only publicly visible equipment;
+- equipment cards must be visually identifiable;
+- a single equipment card must not be squeezed into a narrow unreadable slot;
+- multiple equipment cards may use compact wrapping or horizontal scrolling.
+
+#### Judgment Zone
+
+- show public judgment cards if present;
+- otherwise show compact `None`;
+- do not reserve a tall empty box.
+
+#### Hand
+
+Hand privacy remains authoritative.
+
+- if only hand count is public, show only the count;
+- do not reveal hidden hand-card identity;
+- real face-up Hand cards may appear only when they are authoritatively public.
+
+Preferred compact form:
+
+```text
+HAND · 1
+```
+
+or the established face-down/back representation.
+
+### 4B.7 Empty-space reduction
+
+The panel must end close to its actual content.
+
+Requirements:
+
+- normal bottom padding after the last visible content row: approximately 12–20px;
+- no large unused vertical band below zones;
+- no zone grows merely because the Stage is tall;
+- panel height tracks content;
+- the Inspect panel must not preserve old full-stage empty space.
+
+### 4B.8 Stage/control relationship
+
+Inspect is temporary Stage content, not a replacement for the entire game layout.
+
+Requirements:
+
+- System Menu must not overlap the Inspect panel;
+- Guidance remains below and visually separate;
+- Local Dock remains unchanged;
+- opening/closing Inspect must not move the Local Dock;
+- Inspect should feel like a temporary focused overlay.
+
+### 4B.9 Privacy and authority
+
+Inspect may render only authoritative public information.
+
+React must not infer or expose:
+
+- hidden Hand identities;
+- hidden role/faction;
+- hidden skills;
+- non-public equipment/judgment information.
+
+If a field is not public, omit it or render only the permitted summary.
+
+### 4B.10 Measurable acceptance
+
+Validate at minimum:
+
+- 390 × 844 portrait;
+- 480 × 900 portrait;
+- one wide viewport.
+
+Required cases:
+
+1. one public skill + one equipment;
+2. multiple public skills;
+3. empty Judgment Zone;
+4. multiple equipment cards;
+5. public hand count with private card identities.
+
+Acceptance:
+
+| Requirement | Expectation |
+| --- | --- |
+| Full-stage takeover | Inspect does not consume full Interaction Stage height |
+| Hero focus | Inspected Hero portrait is substantially larger than current implementation |
+| Identity readability | Player name, Hero name, and HP are easy to read on mobile |
+| Empty space | No large unused vertical area inside the panel |
+| Public zones | Equipment / Judgment / Hand are compact and content-driven |
+| Equipment readability | Single equipment card is not squeezed into a narrow unusable slot |
+| Hand privacy | Only authoritative public hand information is shown |
+| Guidance overlap | 0 |
+| Dock overlap | 0 |
+| System Menu overlap | 0 |
+| Horizontal overflow | 0 |
+| Open/close stability | Local Dock position delta ≤ 2 CSS px |
+
+### 4B.11 Completion criterion
+
+The mobile Inspect view is complete when it behaves as a compact, readable floating panel:
+
+- larger Hero portrait;
+- larger player/Hero identity text;
+- compact public skills;
+- compact public zones;
+- no large internal blank area;
+- no full-stage takeover;
+- privacy preserved.
+
 ## 5. Interaction-Stage Hero / Player Presentation — DEFERRED TO UX2 INTERACTION VISUALIZATION REFACTOR
 
 ### 5.1 Current decision
@@ -1065,11 +1278,12 @@ Current authorized refinement work includes:
 - System Menu / Exit relocation;
 - response timer relocation;
 - Zhuge Liang Stargazing / Empty Fortress Strategem skill presentation;
-- transient event timer relocation and compact event-overlay spacing from §4A.
+- transient event timer relocation and compact event-overlay spacing from §4A;
+- compact other-player Inspect panel refinement from §4B.
 
 ### 5.4 Resume condition
 
-The user has authorized the UX2 interaction-visualization refactor **after all active refinement sections before §5 are completed, including §4A**. This refactor is part of completing UX2, not a new UX version.
+The user has authorized the UX2 interaction-visualization refactor **after all active refinement sections before §5 are completed, including §4A and §4B**. This refactor is part of completing UX2, not a new UX version.
 
 Therefore:
 
