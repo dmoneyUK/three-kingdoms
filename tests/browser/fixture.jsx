@@ -212,6 +212,10 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
     version: 3, kind: "response", actorId, deadline: 0, reason: "Choose an Attack response", legalActions: ["respond", "decline_response"], requirement: "attack",
     options: [{ providerId: "attack_card", label: "Attack", satisfies: "attack", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [handCardId] } }],
   };
+  if (state === "cao-cao-treachery") return {
+    version: 3, kind: "trigger", actorId, deadline: 0, reason: "Cao Cao may use Treachery, or skip", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger", triggerEvent: "damage_suffered",
+    triggerOptions: [{ effectId: "cao_cao_jianxiong", label: "Treachery", description: "Obtain the card that caused the damage, if it is still available.", allowDecline: true, selection: null }],
+  };
   if (state === "sima-yi-necromancy") return {
     version: 3, kind: "trigger", actorId, deadline: 0, reason: "Sima Yi may replace the Judgement, or skip", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger", triggerEvent: "judgement_revealed",
     triggerOptions: [{ effectId: "sima_yi_guicai", label: "Necromancy", description: "Replace the revealed Judgement card.", allowDecline: true, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [handCardId] } }],
@@ -797,7 +801,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     actionReason: currentAction?.reason ?? "Waiting for the next legal action",
     isMyAction: Boolean(currentAction?.actorId === meId),
     actionRevision: `browser-${state}-action`,
-    presentationSnapshot: state === "ma-chao-cavalry" || state === "sima-yi-necromancy" ? null : presentationSnapshot,
+    presentationSnapshot: state === "ma-chao-cavalry" || state === "sima-yi-necromancy" || state === "cao-cao-treachery" ? null : presentationSnapshot,
     currentAction,
     pending: ordinaryTurn ? null : currentAction ? { kind: currentAction.kind } : null,
     pendingAttack: null,

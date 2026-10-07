@@ -1472,6 +1472,15 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `git diff --check` passed. No production, gameplay, or server-projection
   changes. Reviewer acceptance is not claimed.
 
+### UX2.REFINE-CAO-CAO-TREACHERY-SKILLS-BAND-01 — Treachery routing
+
+- Browser proof covers Cao Cao's existing `cao_cao_jianxiong` CurrentAction
+  option at 390×844 and 1440×900: Treachery activates from the Skills band,
+  has no generic Action Row duplicate, preserves the existing `trigger`
+  provider payload, and stays disabled without the option. The focused spec
+  passed 3/3; targeted ESLint and `git diff --check` passed. No production,
+  gameplay, or server-projection changes. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
