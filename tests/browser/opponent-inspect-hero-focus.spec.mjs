@@ -1,8 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-async function loadFixture(page, { count = 4, width, height = 900, state = "rest", equipmentCase = "matrix" }) {
+async function loadFixture(page, { count = 4, width, height = 900, state = "rest", equipmentCase = "matrix", targetHero = null }) {
   await page.setViewportSize({ width, height });
-  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}&equipmentCase=${equipmentCase}`);
+  const params = new URLSearchParams({ state, count: String(count), equipmentCase });
+  if (targetHero) params.set("targetHero", targetHero);
+  await page.goto(`/tests/browser/fixture.html?${params}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
@@ -62,6 +64,11 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     await expect(stage.getByText("INSPECT · Player 2", { exact: true })).toHaveCount(1);
     await expect(inspect.locator(".hero-focus-identity")).toContainText("Player 2");
     await expect(inspect.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill').first()).toBeVisible();
+    const skills = inspect.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill');
+    await expect(skills).toHaveCount(2);
+    for (const skill of await skills.all()) {
+      expect(Number.parseFloat(await skill.evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(10);
+    }
     await expect(inspect.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]')).toHaveCount(1);
     await expect(inspect.locator('[aria-label="Concealed Hand"]')).toHaveAttribute("data-concealed-hand-count", "2");
     await expect(inspect.locator(".hero-focus-inspect-hand-backs i")).toHaveCount(2);
@@ -144,6 +151,42 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
   });
 }
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
+  test(`Inspect keeps one public skill compact beside one equipment card at ${viewport.width}px`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, targetHero: "xiahou-dun", equipmentCase: "weapon" });
+    await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
+    const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+    const skills = inspect.locator('[aria-label="Public Skills"]');
+    await expect(skills.locator("h3")).toHaveText("Public Skills");
+    await expect(skills.locator(".hero-focus-inspect-skill")).toHaveCount(1);
+    await expect(skills.locator(".hero-focus-inspect-skill")).toHaveText("Stauchness");
+    const [skillZoneBox, skillType] = await Promise.all([
+      skills.boundingBox(),
+      skills.locator(".hero-focus-inspect-skill").evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+    ]);
+    expect(skillZoneBox).not.toBeNull();
+    expect(skillZoneBox.height).toBeLessThanOrEqual(48);
+    expect(skillType).toBeGreaterThanOrEqual(10);
+    await expect(inspect.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]')).toHaveCount(1);
+
+    await skills.getByRole("button", { name: "Explain Stauchness" }).click();
+    await expect(page.getByRole("dialog", { name: "Xiahou Dun" })).toBeVisible();
+    await page.getByRole("button", { name: "Close hero information" }).click();
+    await expect(inspect).toBeVisible();
+  });
+}
+
+test("Inspect shows a compact None state when public Hero skills are unavailable", async ({ page }) => {
+  await loadFixture(page, { width: 390, height: 844, targetHero: "unknown-fixture-hero", equipmentCase: "empty" });
+  await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
+  const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+  const skills = inspect.locator('[aria-label="Public Skills"]');
+  await expect(inspect.locator(".hero-focus-identity")).toContainText("Unknown Hero");
+  await expect(skills.locator(".opponent-inspection-empty")).toHaveText("None");
+  expect((await skills.boundingBox()).height).toBeLessThanOrEqual(42);
+  await expect(inspect.locator(".hero-focus-identity .hero-focus-inspect-explain")).toHaveCount(0);
+});
 
 test("Inspect stays independent from target selection and restores the selected Preview", async ({ page }) => {
   await loadFixture(page, { state: "ordinary-turn", width: 480, height: 900, equipmentCase: "empty" });

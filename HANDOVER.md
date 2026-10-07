@@ -5,30 +5,32 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-`UX2.REFINE-OTHER-PLAYER-INSPECT-IDENTITY-BLOCK-01` implements §4B.4. At
-390×844, portrait/identity widths are 132.8/191.2px (39.8%/57.2% of the
-334px Inspect content width); at 480×900, 169.7/244.3px (40.0%/57.6% of
-424px). Identity type is 15/12/10/9px; the wide portrait remains 90×113px.
-Shells measured 352×197, 442×232, and 680×230px; overlap with Menu, Guidance,
-and Dock was 0 and Dock delta was 0px. Focused Inspect browser spec passed
-7/7; targeted ESLint and `git diff --check` passed. Reviewer acceptance is not
-claimed.
+The latest pushed result is `UX2.REFINE-OTHER-PLAYER-INSPECT-IDENTITY-BLOCK-01`
+in commit `54ec487ab7c0ed0ed818d35a6c32eadb063e5ce5`; Actions #850
+(`37620426245`) passed on that exact SHA. §4B.5 Public Skills is locally
+implemented and validated: 10px chips, 42.5px single-skill zone at 390×844,
+480×900, and 1440×900, compact `None`, and the complete Inspect browser spec
+passed 11/11. Targeted ESLint and `git diff --check` passed; screenshots were
+inspected. Reviewer acceptance is not claimed.
 
-Commit gate on remote base SHA `5cc2938509982f3fd4844e8d1ad2558f7c4f4223`:
-Actions #849 (`37618977420`) completed `success` on that exact SHA. The
-identity-block task is locally validated; its CI will start after push.
+Commit gate on remote base SHA `01e436d3a975ade7f16af41c0648153e793912e4`:
+Actions runs and combined status were empty (0 checks); per direct user
+instruction, this empty state is treated as success.
 
 ## Design checkpoint
 
-Remote `docs/UX2-refine.md` blob `6889c2541f32fe6b4825aadd652b5ade52a6ae39`
-was unchanged at this task boundary; §4B.5 and §4B.10 were re-read for the
-next task. §4B.2–4B.4 are complete. §5 still defers Interaction Stage
-Hero/Player refactoring until all active pre-§5 refinements are closed.
+Current remote `docs/UX2-refine.md` blob is
+`f8d1ff3bd61be6177de0cf562b3cd38dfb83d888`. Reviewer added §4C (unified Target
+Card Selection Modal); it keeps active card picking distinct from passive
+Inspect and does not contradict current §4B.5. §4B.2–4B.4 are complete; §4B.5
+is active. Re-fetch and review the complete latest design again before the
+next-task planning boundary.
 
-## Next task
+## Current task
 
-`UX2.REFINE-OTHER-PLAYER-INSPECT-PUBLIC-SKILLS-01` — implement only §4B.5:
-readable compact public-skill chips, a content-sized single-skill block, and a
-compact `None` state. Validate one-skill (`targetHero=xiahou-dun`) and multiple-
-skill fixtures at 390×844, 480×900, and wide. Do not change skill authority,
-Inspect identity/shell geometry, other public zones, privacy, or Dock behavior.
+`UX2.REFINE-OTHER-PLAYER-INSPECT-PUBLIC-SKILLS-01` — complete only §4B.5:
+readable compact public-skill chips, content-sized single-skill block, and
+compact `None`. One/multiple/unavailable-skill cases were tested; no skill
+authority, Inspect identity/shell geometry, other zones, privacy, or Dock
+behavior changes. Local validation passed 11/11. Commit only after rechecking
+the current remote-head CI gate; preserve the newly reviewed §4C design.

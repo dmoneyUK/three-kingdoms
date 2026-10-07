@@ -1353,6 +1353,16 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Preview restoration, and Side Column; targeted ESLint and `git diff --check`
   passed. Reviewer acceptance is not claimed.
 
+### UX2.REFINE-OTHER-PLAYER-INSPECT-PUBLIC-SKILLS-01 — Compact public skills
+
+- Inspect skill chips now use readable 10px type; the single-skill section sizes
+  to 42.5px at 390×844, 480×900, and 1440×900 rather than stretching to the
+  neighboring zone height. The unavailable-public-skill path remains a compact
+  `None`. Focused Inspect browser coverage passed 11/11, including one/multiple
+  skills, explanation, privacy, Preview, and Side Column; targeted ESLint,
+  `git diff --check`, and visual screenshot review passed. Reviewer acceptance
+  is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

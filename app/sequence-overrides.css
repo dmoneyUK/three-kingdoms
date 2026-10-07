@@ -1579,8 +1579,9 @@
 .hero-focus-inspect-details { grid-area: context; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 5px; max-height: min(30vh, 240px); overflow: auto; padding: 0 2px 2px 0; pointer-events: auto; }
 .hero-focus-inspect-details .opponent-inspection-zone { min-width: 0; padding: 4px 5px; }
 .hero-focus-inspect-details .opponent-inspection-zone h3 { margin-bottom: 4px; font-size: 7px; }
+.hero-focus-inspect-details .opponent-inspection-zone[aria-label="Public Skills"] { align-self: start; }
 .hero-focus-inspect-skills { display: flex; flex-wrap: wrap; gap: 4px; }
-.hero-focus-inspect-skill { max-width: 100%; padding: 3px 5px; border: 1px solid #6f846f99; background: #17231d; color: #d9d0bb; font: 700 8px/1.1 Arial, sans-serif; overflow-wrap: anywhere; cursor: pointer; pointer-events: auto; }
+.hero-focus-inspect-skill { max-width: 100%; padding: 4px 7px; border: 1px solid #6f846f99; background: #17231d; color: #d9d0bb; font: 700 10px/1.15 Arial, sans-serif; overflow-wrap: anywhere; cursor: pointer; pointer-events: auto; }
 .hero-focus-inspect-hand { display: flex; align-items: center; gap: 7px; color: #d9d0bb; font: 8px Arial, sans-serif; }
 .hero-focus-inspect-hand-backs { display: flex; align-items: center; padding-left: 4px; }
 .hero-focus-inspect-hand-backs i { width: 15px; height: 20px; margin-left: -4px; border: 1px solid #aa925b; border-radius: 2px; background: repeating-linear-gradient(135deg, #25352c 0 2px, #17231d 2px 4px); box-shadow: 0 1px 2px #0008; }
