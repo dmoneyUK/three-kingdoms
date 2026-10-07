@@ -2699,6 +2699,20 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     ...(room.isMyTurn && canPlay && currentActionOwnedByViewer ? [{ id: "turn", label: serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play", enabled: (canUseAction(room.currentAction, "play_card") || canUseAction(room.currentAction, "serpent_spear_attack")) && (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack && attackTargetsValid) && !(["Dodge", "Negation"].includes(card?.kind ?? ""))), priority: 40 }] : []),
   ];
   const consoleIsDecisionActor = currentActionOwnedByViewer;
+  const rainingArrowsDamageDecline = Boolean(
+    currentActionOwnedByViewer
+    && room.currentAction?.kind === "response"
+    && room.currentAction.requirement === "dodge"
+    && responseDamageAction === "decline_response"
+    && clientPresentation.stage === "GROUP_RESOLUTION"
+    && clientPresentation.groupResolution?.resolutionSemantics === "GROUP"
+    && clientPresentation.groupResolution.cardKind === "RainingArrows"
+    && clientPresentation.currentParticipantId === room.meId
+    && clientPresentation.groupParticipantProgress.some((participant) =>
+      participant.playerId === room.meId && (participant.status === "CURRENT" || participant.status === "PAUSED"),
+    ),
+  );
+  const responseDeclineLabel = rainingArrowsDamageDecline ? "TAKE DAMAGE" : "Skip";
   const responseRequirement = room.currentAction?.requirement;
   const localSemanticResponseGuidance = Boolean(
     consoleIsDecisionActor
@@ -2721,7 +2735,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     : decisionPresentation.isWaiting
       ? decisionPresentation.supportingInstruction
       : room.currentAction?.reason || decisionPresentation.supportingInstruction;
-  const consoleDecline = responseDamageAction || triggerDeclineAction ? { label: "Skip", enabled: true } : null;
+  const consoleDecline = responseDamageAction || triggerDeclineAction ? { label: responseDamageAction === "decline_response" ? responseDeclineLabel : "Skip", enabled: true } : null;
   const consoleSecondaryControls = [
     ...(triggerOptions.filter((option) => !heroTriggerEffectIds.has(option.effectId) || option.selection?.type === "choice").map((option) => option.label)),
     ...(genericResponseOptions.map((option) => option.label)),
@@ -2817,7 +2831,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
           <div data-action-slot="decline">
             {rescueDecisionReady && !canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={busy || !consoleDecision.authoritativeDecline.enabled} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button>}
             {triggerResponse && triggerDeclineAction && (!targetCardPickerOption || targetCardPickerInHeroFocus || targetCardPickerInLocalDock) && consoleDecision.authoritativeDecline && <button className="end" disabled={responseControlsDisabled || !consoleDecision.authoritativeDecline.enabled} onClick={() => onAction("decline_trigger")}>Skip</button>}
-            {canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={responseControlsDisabled || !responseDamageAction || !consoleDecision.authoritativeDecline.enabled} onClick={() => responseDamageAction && onAction(responseDamageAction)}>Skip</button>}
+            {canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={responseControlsDisabled || !responseDamageAction || !consoleDecision.authoritativeDecline.enabled} onClick={() => responseDamageAction && onAction(responseDamageAction)}>{responseDeclineLabel}</button>}
             {room.isMyTurn && canPlay && consoleKind === "turn" && <button className="end" disabled={busy || presentationBusy} onClick={() => onAction("end_turn")}>{busy ? "Finishing…" : "End"}</button>}
           </div>
         </div>

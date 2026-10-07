@@ -5,12 +5,12 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-CI repair `e1bf2ad6d4fd3269062094864b3c3a84e618fad5` passed exact-SHA Actions run `37562638101` (#822), including build/test and deploy. The Top Row REST System Menu was previously 2–4px from Guidance; local CSS/test changes now prove 8–12px across 480×900, 650×900, and 1440×900, with active Stage-region overlap = 0.
+`UX2.REFINE-STAGE-SYSTEM-CLUSTER-01` completed in `b0a74fa43b7f0ee8a5f847357505720217f67f1a`. At 480×900, 650×900, and 1440×900 the Top Row REST System Menu is 8–12px above Guidance; active Stage content overlap is 0. Focused browser, timer, lint, and diff checks passed. Current remote HEAD matches this commit; Actions #823 (`37563754349`) succeeded for `build-and-test` and `deploy`. Earlier Actions #817 (`37557990410`, SHA `150ff54`) failed; subsequent repair/validation runs completed, and #823 is the current green gate.
 
 ## Design checkpoint
 
-Fully re-read remote `docs/UX2-refine.md`, blob `7e021455c8fdc9e88dc1b3b20d036400da82be44`; it matches the last reviewed revision. §3.5–3.9 authorize this non-Hero System Menu/Guidance spacing work.
+Fully reviewed remote `docs/UX2-refine.md`, blob `7e021455c8fdc9e88dc1b3b20d036400da82be44`; unchanged at this planning boundary. Current task authority: §3.3, with §3.9 acceptance.
 
 ## Current task
 
-`UX2.REFINE-STAGE-SYSTEM-CLUSTER-01` — local change validated: REST geometry 9/9, active Stage geometry 12/12, response-timer/System Menu 4/4, focused ESLint and `git diff --check` pass. Before commit, recheck latest CI for remote `ux-v2`; commit/push only `app/sequence-overrides.css`, `tests/browser/ui19.spec.mjs`, and this handoff. Await exact-SHA Actions success before closing or planning the next task.
+`UX2.REFINE-RAINING-ARROWS-TAKE-DAMAGE-01` — label the viewer-local authoritative `decline_response` control `TAKE DAMAGE` only when viewer-owned `CurrentAction` is a Dodge response and the proven public Group projection identifies the current participant as resolving Raining Arrows. Preserve the same server action; fail closed to `Skip` for all other or incomplete proof. Validation: focused browser spec 5/5; ESLint passed for `app/page.tsx` and the new spec; `git diff --check` passed. The browser cases cover no legal Dodge provider (no Confirm), a legal provider, generic-response fallback, and no private-control leakage into the public Stage. Before commit, verify the latest run for the exact current remote `ux-v2` HEAD; push only task files and this handoff, then verify the exact pushed SHA's CI.
