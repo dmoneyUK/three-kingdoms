@@ -1304,6 +1304,17 @@ Only a proven regression or new Reviewer-approved design requirement does.
   including payload, fail-closed, privacy, and Stage/Dock geometry assertions;
   targeted ESLint and `git diff --check` passed.
 
+### UX2.REFINE-PRIVATE-DRAW-COUNTDOWN-CLUSTER-01 — Compact event timer
+
+- Private Draw's countdown now sits immediately left of System Menu in the
+  lower-right `StageSystemCluster`, with a compact numeric-only face and a full
+  accessible label. Private title/cards, viewer privacy, and the existing event
+  duration remain unchanged. The new geometry/privacy regression plus existing
+  response-timer regressions passed 5/5 at 390×844, 480×900, and 1440×900;
+  targeted ESLint and `git diff --check` passed. Commit
+  `1e49694bbf642c4e3a37720932e6f0cc6074576b` passed Actions run `37602622818`
+  (#843; `build-and-test`, `deploy`). Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
