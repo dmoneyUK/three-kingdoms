@@ -827,9 +827,18 @@ Current authorized refinement work includes:
 
 ### 5.4 Resume condition
 
-Interaction Stage Hero/player redesign resumes only after an explicit user instruction authorizes the later refactor.
+The user has now authorized the UX3 interaction-visualization refactor **after the active non-Hero refinement work in Sections 1–4 is completed**.
 
-Until then, no Agent should infer that UX3 interaction-graph work is active merely because an older HANDOVER or roadmap entry describes it.
+Therefore:
+
+1. finish the remaining authorized non-Hero refinement work first;
+2. do not interleave UX3 Hero/player graph work with unfinished Sections 1–4 refinement tasks;
+3. once those refinement items are closed at a clean planning boundary, UX3 Section 6 becomes authorized implementation work;
+4. begin UX3 from **§6.25 Phase A — physical-seat graph foundation** unless a newer direct user instruction changes the order;
+5. continue to split UX3 into bounded HANDOVER tasks rather than implementing all phases at once;
+6. preserve all server-authority, privacy, fail-closed, and physical-seat-stability requirements in §6.
+
+An older HANDOVER item does not by itself prove that the prerequisite non-Hero refinement work is complete. The Coding Agent must re-read this document at the planning boundary before starting UX3.
 
 ## 6. UX3 Interaction Visualization — Physical-Seat Anchored Causal Graph
 
