@@ -212,6 +212,10 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
     version: 3, kind: "response", actorId, deadline: 0, reason: "Choose an Attack response", legalActions: ["respond", "decline_response"], requirement: "attack",
     options: [{ providerId: "attack_card", label: "Attack", satisfies: "attack", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [handCardId] } }],
   };
+  if (state === "sima-yi-necromancy") return {
+    version: 3, kind: "trigger", actorId, deadline: 0, reason: "Sima Yi may replace the Judgement, or skip", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger", triggerEvent: "judgement_revealed",
+    triggerOptions: [{ effectId: "sima_yi_guicai", label: "Necromancy", description: "Replace the revealed Judgement card.", allowDecline: true, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [handCardId] } }],
+  };
   if (state === "stargazing-offer") return {
     version: 3, kind: "trigger", actorId, deadline: 0, reason: "You may use Stargazing", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
     triggerOptions: [{ effectId: "zhuge_liang_stargazing", label: "Stargazing", description: "Privately reorder the top cards of the deck." }],
@@ -558,6 +562,8 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
   // Geometry-only large-hand fixture; IDs are synthetic, not a dealt deck.
   const hand = huaTuoFirstAidFixture
     ? [card("browser-first-aid-red", "Attack", "♥"), card("browser-first-aid-black", "Attack", "♠"), card("browser-first-aid-peach", "Peach", "♥")]
+    : state === "sima-yi-necromancy"
+    ? [card("browser-necromancy-eligible", "Peach", "♥"), card("browser-necromancy-ineligible", "Attack", "♠")]
     : state === "guan-yu-wusheng-response"
     ? [card("browser-wusheng-red-peach", "Peach", "♥"), card("browser-wusheng-black-attack", "Attack", "♠")]
     : state === "zhao-yun-longdan-attack-response"
@@ -791,7 +797,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     actionReason: currentAction?.reason ?? "Waiting for the next legal action",
     isMyAction: Boolean(currentAction?.actorId === meId),
     actionRevision: `browser-${state}-action`,
-    presentationSnapshot: state === "ma-chao-cavalry" ? null : presentationSnapshot,
+    presentationSnapshot: state === "ma-chao-cavalry" || state === "sima-yi-necromancy" ? null : presentationSnapshot,
     currentAction,
     pending: ordinaryTurn ? null : currentAction ? { kind: currentAction.kind } : null,
     pendingAttack: null,

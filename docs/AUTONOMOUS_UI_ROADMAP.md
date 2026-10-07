@@ -1462,6 +1462,16 @@ Only a proven regression or new Reviewer-approved design requirement does.
   passed. No rules or server projection changed. Reviewer acceptance is not
   claimed.
 
+### UX2.REFINE-SIMA-YI-NECROMANCY-SKILLS-BAND-01 — Necromancy card selection
+
+- Browser proof covers the existing `sima_yi_guicai` CurrentAction option at
+  390×844 and 1440×900: exactly its projected private Hand card is selectable,
+  the generic Action Row has no duplicate activation, Confirm preserves the
+  `trigger` provider/cardIds payload, and absence of the option leaves the
+  Skills button disabled. The focused spec passed 3/3; targeted ESLint and
+  `git diff --check` passed. No production, gameplay, or server-projection
+  changes. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
