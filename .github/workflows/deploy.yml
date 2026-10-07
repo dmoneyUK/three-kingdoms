@@ -1,66 +1,100 @@
-   name: Deploy to Cloudflare
+name: Deploy to Cloudflare
 
-   on:
-     push:
-       branches: [main, ux-v2]
-       paths-ignore:
-         - "**/*.md"
-     pull_request:
-       branches: [main, ux-v2]
-       paths-ignore:
-         - "**/*.md"
+on:
+  push:
+    branches: [main, ux-v2]
+    paths-ignore:
+      - "**/*.md"
+  pull_request:
+    branches: [main, ux-v2]
+    paths-ignore:
+      - "**/*.md"
 
-   concurrency:
-     group: cloudflare-deploy-${{ github.ref }}
-     queue: max
+concurrency:
+  group: cloudflare-deploy-${{ github.ref }}
+  queue: max
 
-   jobs:
-     build-and-test:
-       runs-on: ubuntu-latest
-       timeout-minutes: 20
-       steps:
-         - uses: actions/checkout@v4
-         - uses: actions/setup-node@v4
-           with:
-             node-version: "22.13.0"
-             cache: "npm"
-         - run: npm ci
-         - run: npm run lint
-         - name: Install Chromium for browser validation
-           run: npx playwright install --with-deps chromium
-         - run: npm run build
-         - run: npm run test:browser
-         - run: npm test   # already runs build first, per package.json
+jobs:
+  lint-fast:
+    name: Lint and fast tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run lint
+      - name: Build for rendered HTML coverage
+        run: npm run build
+      - run: npm run test:fast
 
-     deploy:
-       needs: build-and-test
-       if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ux-v2')
-       runs-on: ubuntu-latest
-       steps:
-         - uses: actions/checkout@v4
-         - uses: actions/setup-node@v4
-           with:
-             node-version: "22.13.0"
-             cache: "npm"
-         - run: npm ci
-         - run: npm run db:generate
-         - name: Apply D1 migrations
-           run: npx wrangler d1 migrations apply three-kingdoms-db --remote
-           env:
-             CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-             CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-         - name: Build
-           run: npm run build
-         - name: Deploy Worker
-           uses: cloudflare/wrangler-action@v4
-           with:
-             apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-             accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-             command: deploy
-         - name: Smoke test production
-           env:
-             PRODUCTION_URL: https://three-kingdoms.dai-jinge.workers.dev
-           run: |
-             set -eu
-             curl --fail --silent --show-error --location --max-time 20 "$PRODUCTION_URL/" >/dev/null
-             curl --fail --silent --show-error --location --max-time 20 "$PRODUCTION_URL/api/health" >/dev/null
+  api:
+    name: API tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:api
+
+  browser:
+    name: Browser tests (shard ${{ matrix.shard }}/2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+          cache: "npm"
+      - run: npm ci
+      - name: Install Chromium for browser validation
+        run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Run browser shard
+        run: npm run test:browser -- --shard=${{ matrix.shard }}/2
+
+  deploy:
+    needs: [lint-fast, api, browser]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ux-v2')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run db:generate
+      - name: Apply D1 migrations
+        run: npx wrangler d1 migrations apply three-kingdoms-db --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Build
+        run: npm run build
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+      - name: Smoke test production
+        env:
+          PRODUCTION_URL: https://three-kingdoms.dai-jinge.workers.dev
+        run: |
+          set -eu
+          curl --fail --silent --show-error --location --max-time 20 "$PRODUCTION_URL/" >/dev/null
+          curl --fail --silent --show-error --location --max-time 20 "$PRODUCTION_URL/api/health" >/dev/null

@@ -35,6 +35,6 @@ for (const stream of [child.stdout, child.stderr]) stream.on("data", (chunk) => 
 
 const exitCode = await new Promise((resolve) => child.on("exit", (code) => resolve(code ?? 1)));
 const durationMs = performance.now() - startedAt;
-const testCount = Number(output.match(/ℹ tests (\d+)/)?.[1] ?? 0);
+const testCount = Number(output.match(/^\s*(?:#|ℹ)\s+tests\s+(\d+)\s*$/m)?.[1] ?? 0);
 console.log(`\nTiming: fast tests=${testCount}, duration=${(durationMs / 1000).toFixed(2)}s, files=${fastTests.length}`);
 process.exit(exitCode);

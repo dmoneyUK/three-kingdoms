@@ -40,7 +40,7 @@ const results = await Promise.all(shardGroups.map((shardFiles, index) => new Pro
 })));
 
 const durationMs = performance.now() - startedAt;
-const testCount = results.reduce((count, result) => count + Number(result.output.match(/ℹ tests (\d+)/)?.[1] ?? 0), 0);
+const testCount = results.reduce((count, result) => count + Number(result.output.match(/^\s*(?:#|ℹ)\s+tests\s+(\d+)\s*$/m)?.[1] ?? 0), 0);
 console.log(`\nTiming: API tests=${testCount}, duration=${(durationMs / 1000).toFixed(2)}s, files=${files.length}, shards=${shardGroups.length}`);
 const timings = results.flatMap((result) => [...result.output.matchAll(/✔ (.+?) \(([\d.]+)ms\)/g)].map(([, name, duration]) => ({ name, duration: Number(duration) }))).sort((a, b) => b.duration - a.duration);
 console.log("Top 10 slowest API tests across shards:");

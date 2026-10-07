@@ -50,7 +50,7 @@ try {
   process.exitCode = await new Promise((resolve) => tests.on("exit", resolve)) ?? 1;
   const durationMs = performance.now() - startedAt;
   const timings = [...testOutput.matchAll(/✔ (.+?) \(([\d.]+)ms\)/g)].map(([, name, duration]) => ({ name, duration: Number(duration) })).sort((a, b) => b.duration - a.duration);
-  const testCount = Number(testOutput.match(/ℹ tests (\d+)/)?.[1] ?? 0);
+  const testCount = Number(testOutput.match(/^\s*(?:#|ℹ)\s+tests\s+(\d+)\s*$/m)?.[1] ?? 0);
   console.log(`\nTiming: API tests=${testCount}, duration=${(durationMs / 1000).toFixed(2)}s, files=${apiTestFiles.length}`);
   console.log("Top 10 slowest API tests:");
   for (const entry of timings.slice(0, 10)) console.log(`  ${(entry.duration / 1000).toFixed(2)}s  ${entry.name}`);
