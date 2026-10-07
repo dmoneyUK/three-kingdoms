@@ -1,6 +1,6 @@
 # CI Test Optimization Handover
 
-Status: Phase 1 complete and measured
+Status: Phase 1 complete and measured; Phase 2 representative reduction awaits CI measurement
 Branch: `ux-v2`
 Task authority: `docs/CI_TEST_OPTIMIZATION.md`
 Updated: 2026-10-07
@@ -27,11 +27,7 @@ The latest successful pre-optimization `ux-v2` workflow was run [#37648612674](h
 
 The run spent 11m 19s queued behind earlier branch workflows, so its push-to-deploy wall time is separated from active pipeline time. The old timing parsers printed fast/API counts as zero even though raw Node summaries contained the counts above. The baseline workflow metadata confirms that `npm test` runs after the browser suite and therefore repeats the build.
 
-Current source inventory: 24 discovered API test files and 16 explicit fast-suite files; `rendered-html.test.mjs` is added by the fast runner when the built bundle exists. Playwright `--list` now reports 752 cases in 34 files in the current working tree. That inventory includes another agent's untracked `tests/browser/huang-gai-self-sacrifice-skills-band.spec.mjs`, so it is a working-tree count, not the remote commit's count.
-
-## Concurrent work to preserve
-
-Another agent advanced `ux-v2` with commit `e1ee2bb` while this work was in progress. That commit includes `HANDOVER.md`, `docs/AUTONOMOUS_UI_ROADMAP.md`, `tests/browser/fixture.jsx`, and `tests/browser/generic-hero-response-skills-band.spec.mjs`. The shared working tree currently also has uncommitted changes in `app/page.tsx` and `tests/browser/fixture.jsx`, plus untracked `tests/browser/huang-gai-self-sacrifice-skills-band.spec.mjs`. Leave those files unstaged and untouched. Keep optimization changes limited to the workflow, test timing parsers, and this handover.
+At Phase 1 completion, the working-tree inventory was 752 browser cases in 34 files; later feature-agent work means that count is historical, not a current total. The optimization branch still has 24 discovered API test files and 16 explicit fast-suite files; `rendered-html.test.mjs` is added by the fast runner when the built bundle exists.
 
 ## Completed in this handover
 
@@ -52,12 +48,26 @@ Another agent advanced `ux-v2` with commit `e1ee2bb` while this work was in prog
 - Push-to-deploy wall time for the new run was 23m 28s, including 17m 41s queued. The earlier baseline was 22m 09s, including 11m 19s queued. The workflow queue was longer by 6m 22s, so the end-to-end wall time did not improve in these two runs even though active execution did.
 - Browser test membership stayed at 749 cases; the optimization commit removed or skipped none.
 
-## Next bounded task: Phase 2 coverage ownership audit
+## Current bounded task: Phase 2 representative Hand matrix
 
-1. Start the evidence-based review of `tests/browser/ui19.spec.mjs` against dedicated browser specs, as defined in `docs/CI_TEST_OPTIMIZATION.md` §§10–12.
-2. Build a temporary contract/viewport ownership table before changing test membership. Preserve privacy, stale-safety, important breakpoints, and each known bug's canonical regression proof.
-3. Avoid files another agent is actively editing; recheck `git status` before any change and keep feature-agent files out of optimization commits.
-4. Remove or merge only duplicates with equal or stronger surviving coverage, then measure the full browser suite in GitHub Actions.
+The initial read-only audit found no exact replacement for the full Hand interaction flow. The only safe first reduction is the repetitive Hand-size matrix itself, using the plan's §10.4 rule: retain its required viewports and the fit/overflow boundary, normal selection, largest-Hand stress, and narrow-width screenshot cases. Keep the separate clipped-edge, native-touch, and Hand-membership tests because they cover distinct behaviors.
+
+| Contract | Existing legacy cases | Dedicated/overlapping coverage | Viewports retained | Keep canonical | Remove/merge |
+| --- | --- | --- | --- | --- | --- |
+| Local Hand one-layer layout, overflow navigation, selecting the last/first physical card, card explanation, skill hit ownership, and no action submission | `ui19.spec.mjs` Hand-size matrix: 5 widths × 6 sizes; separate VIS-09B clipped-edge, native-touch, and VIS-09C membership tests | `local-dock-hero-hierarchy.spec.mjs` covers five-card layout and 25-card pannability at 390/414/480; it does not cover the matrix's full selection/navigation flow. VIS-09B clipped-edge and native-touch cases cover additional input paths. | Keep all 1440/650/480/360/320 widths. Keep 30 cards at 1440 and 650; 5 and 25 at 480; 25 and 30 at 360 and 320. | Remaining `ui19` representative matrix cases; dedicated local Dock geometry plus separate clipped-edge/touch/membership regressions. | Remove only repeated size rows at an already-covered width: 1440 sizes 5/10/15/20/25; 650 sizes 5/10/15/20/25; 480 sizes 10/15/20/30; 360 and 320 sizes 5/10/15/20. Retain the 25-card narrow screenshots. |
+
+This table was recorded before editing test membership. The matrix now has 8 cases instead of 30, removing 22 repeated parameter rows while retaining every listed viewport, the 480px normal/overflow pair, the 25-card narrow screenshots, and 30-card maximum-density cases. The separate clipped-edge, native-touch, and membership tests are unchanged. No other `ui19` cases were removed.
+
+Playwright list mode confirms `ui19.spec.mjs` now contains 376 cases, down from 398 before this edit. The eight retained Hand matrix cases match the table. `node --check tests/browser/ui19.spec.mjs` and `git diff --check` passed; no browser tests were executed locally.
+
+## Next bounded task: measure this Phase 2 reduction in CI
+
+1. Recheck the shared worktree and commit only `tests/browser/ui19.spec.mjs` plus this handover.
+2. Push the focused commit and record the complete GitHub Actions browser shard results and timing. Do not begin another deletion until this change is measured.
+
+## Concurrent feature work to preserve
+
+At the latest status check, another agent has pending changes in `HANDOVER.md`, `docs/AUTONOMOUS_UI_ROADMAP.md`, `tests/browser/fixture.jsx`, and an untracked Cao Cao skill spec. Do not touch or include them. Recheck status before editing or committing.
 
 ## Validation state
 

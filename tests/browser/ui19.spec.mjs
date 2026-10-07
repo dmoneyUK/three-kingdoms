@@ -78,8 +78,19 @@ function visibleHandAnchor(snapshot) {
     .sort((left, right) => Math.abs((left.left + left.right) / 2 - snapshot.viewportWidth / 2) - Math.abs((right.left + right.right) / 2 - snapshot.viewportWidth / 2) || left.index - right.index)[0];
 }
 
-for (const width of [1440, 650, 480, 360, 320]) {
-  for (const handSize of [5, 10, 15, 20, 25, 30]) {
+// Keep normal, overflowing, and maximum-density Hands at the viewport classes
+// that exercise the layout boundaries. The clipped-edge, native-touch, and
+// membership-change suites below cover their own input and state contracts.
+const HAND_SIZE_MATRIX = [
+  { width: 1440, handSizes: [30] },
+  { width: 650, handSizes: [30] },
+  { width: 480, handSizes: [5, 25] },
+  { width: 360, handSizes: [25, 30] },
+  { width: 320, handSizes: [25, 30] },
+];
+
+for (const { width, handSizes } of HAND_SIZE_MATRIX) {
+  for (const handSize of handSizes) {
     const task = width <= 360 ? "UX2.0VIS-12F" : "UX2.0VIS-09B";
     test(`${task} ${handSize} hand cards at ${width}px fit or scroll in one layer`, async ({ page }, testInfo) => {
       await loadFixture(page, { width, height: 900, handSize });
