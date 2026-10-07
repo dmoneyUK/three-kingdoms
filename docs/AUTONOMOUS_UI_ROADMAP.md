@@ -1374,6 +1374,17 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `58392a6fc83799b0865ff90ceee0ec180b97afce`. Reviewer acceptance is not
   claimed.
 
+### UX2.REFINE-OTHER-PLAYER-INSPECT-ZONE-CONTENT-HEIGHT-01 — Content-sized public zones
+
+- Inspect public-zone grid items now align to their own content instead of
+  stretching to the tallest adjacent card. With one public Judgment card at
+  1440×900, Judgment stays 111px high and concealed Hand is 41px (previously
+  111px); 390×844 and 480×900 containment also passed. The focused Inspect
+  browser spec passed 17/17; targeted ESLint and `git diff --check` passed.
+  Pre-commit Actions run `37624104273` passed exact base SHA
+  `2344c51349f45148a99e476b888679e5c309e769`. Reviewer acceptance is not
+  claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

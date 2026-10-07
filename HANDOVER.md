@@ -5,29 +5,28 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-`UX2.REFINE-OTHER-PLAYER-INSPECT-SINGLE-EQUIPMENT-READABILITY-01` is locally
-complete: one-card Equipment measures 70×105, 76.8×115.2, and 78×117px at
-390×844, 480×900, and 1440×900; multiple cards remain ≤60px. Inspect browser
-spec passed 14/14, targeted ESLint and `git diff --check` passed, and screenshots
-were inspected. The pre-commit remote base `58392a6fc83799b0865ff90ceee0ec180b97afce`
-passed Actions #851 (`37622065260`) on that exact SHA. Reviewer acceptance is
-not claimed.
+`UX2.REFINE-OTHER-PLAYER-INSPECT-ZONE-CONTENT-HEIGHT-01` is locally complete.
+The 1440×900 Judgment zone remains 111px high while the adjacent Concealed Hand
+is 41px (111px before the fix); 390×844 and 480×900 remain contained. Focused
+Inspect browser spec passed 17/17; targeted ESLint and `git diff --check`
+passed. Pre-commit base `2344c51349f45148a99e476b888679e5c309e769` passed
+Actions run `37624104273` on that exact SHA. Reviewer acceptance is not
+claimed.
 
 ## Design checkpoint
 
 Current remote `docs/UX2-refine.md` blob is
 `f8d1ff3bd61be6177de0cf562b3cd38dfb83d888`. Reviewer added §4C (unified Target
 Card Selection Modal); its actionable picker remains separate from passive
-Inspect. §4B.2–4B.5 and §4B.6's single-card Equipment requirement are
-complete; §5 remains deferred until active pre-§5 refinements close. Full
-design reviewed at this task boundary; no intervening remote design change.
+Inspect. §4B.2–4B.5 and §4B.6's single-card Equipment / §4B.7 zone-sizing
+requirements are complete; §5 remains deferred until active pre-§5 refinements
+close. Full design reviewed at this task boundary; the remote design blob is
+unchanged.
 
 ## Next task
 
-`UX2.REFINE-OTHER-PLAYER-INSPECT-ZONE-CONTENT-HEIGHT-01` — implement only
-§4B.7's content-driven public-zone sizing: prevent short Inspect zones (notably
-Concealed Hand / compact `None`) from stretching to the height of a taller
-adjacent public-card zone in the two-column layout. Prove the one-Judgment-card
-plus concealed-Hand case at 1440×900 and verify 390×844 / 480×900 containment,
-content-sized zone geometry, compact empty state, and unchanged shell/Menu/
-Guidance/Dock relationships. Preserve public-only data and card geometry.
+`UX2.REFINE-OTHER-PLAYER-INSPECT-EMPTY-JUDGMENT-COMPACT-01` — close the
+explicit §4B.6 empty-Judgment acceptance gap: when no public Judgment card
+exists, show compact `None` without reserving a tall zone. Add a focused fixture
+and geometry proof at 390×844, 480×900, and 1440×900; preserve public-data
+privacy, other zone geometry, and Stage/Menu/Guidance/Dock relationships.

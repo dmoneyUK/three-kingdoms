@@ -214,6 +214,27 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
   });
 }
 
+for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
+  test(`Inspect keeps Concealed Hand zone content-sized beside Judgment at ${viewport.width}px`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, count: 6, equipmentCase: "empty" });
+    await page.locator('[data-player-anchor="p3"] .opponent-hero-target').click();
+    const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+    const judgment = inspect.locator('[aria-label="Judgement Zone"]');
+    const hand = inspect.locator('[aria-label="Concealed Hand"]');
+    const judgmentCard = judgment.locator('.opponent-inspection-card[aria-label="Explain Lightning"]');
+    await expect(judgmentCard).toHaveCount(1);
+    const [judgmentBox, handBox] = await Promise.all([
+      judgment.boundingBox(),
+      hand.boundingBox(),
+    ]);
+    expect(judgmentBox).not.toBeNull();
+    expect(handBox).not.toBeNull();
+    expect(judgmentBox.height).toBeGreaterThan(handBox.height + 20);
+    expect(handBox.height).toBeLessThanOrEqual(viewport.width <= 520 ? 80 : 60);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+  });
+}
+
 test("Inspect shows a compact None state when public Hero skills are unavailable", async ({ page }) => {
   await loadFixture(page, { width: 390, height: 844, targetHero: "unknown-fixture-hero", equipmentCase: "empty" });
   await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();

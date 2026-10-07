@@ -1577,7 +1577,7 @@
 .hero-focus-inspect-close { flex: none; width: 22px; height: 22px; padding: 0; border: 1px solid #a58e5d; border-radius: 50%; background: #11140f; color: #f0d28c; font: 16px/18px Arial, sans-serif; cursor: pointer; pointer-events: auto; }
 .hero-focus-inspect-explain { width: fit-content; padding: 2px 5px; border: 1px solid #7b704c; background: #171a13; color: #d9c28b; font: 700 9px Arial, sans-serif; cursor: pointer; pointer-events: auto; }
 .hero-focus-inspect-details { grid-area: context; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 5px; max-height: min(30vh, 240px); overflow: auto; padding: 0 2px 2px 0; pointer-events: auto; }
-.hero-focus-inspect-details .opponent-inspection-zone { min-width: 0; padding: 4px 5px; }
+.hero-focus-inspect-details .opponent-inspection-zone { align-self: start; min-width: 0; padding: 4px 5px; }
 .hero-focus-inspect-details .opponent-inspection-zone h3 { margin-bottom: 4px; font-size: 7px; }
 .hero-focus-inspect-details .opponent-inspection-zone[aria-label="Public Skills"] { align-self: start; }
 .hero-focus-inspect-skills { display: flex; flex-wrap: wrap; gap: 4px; }
