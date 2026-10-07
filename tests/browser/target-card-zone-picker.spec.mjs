@@ -213,10 +213,20 @@ for (const scenario of [
   });
 }
 
-for (const targetCardCase of ["missing-projection", "out-of-range", "unfocused", "zone-only"]) {
-  test(`Pending target-card picker remains when Hero Focus proof is unavailable (${targetCardCase})`, async ({ page }) => {
+test("valid pending target-card authority uses the shared modal without Stage Hero Focus proof", async ({ page }) => {
+  await loadPendingTargetCard(page, { width: 390, targetCardCase: "unfocused" });
+  const dialog = page.getByRole("dialog", { name: "Dismantle target card selection" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-target-card-zone="hand-position"]')).toHaveCount(4);
+  await expect(page.locator(".table-hidden-card-picker")).toHaveCount(0);
+  await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
+});
+
+for (const targetCardCase of ["missing-projection", "out-of-range"]) {
+  test(`pending target-card selection fails closed instead of inventing a picker (${targetCardCase})`, async ({ page }) => {
     await loadPendingTargetCard(page, { width: 390, targetCardCase });
-    await expect(page.getByRole("dialog", { name: "Choose one current card from Player 2" })).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.locator(".table-hidden-card-picker")).toHaveCount(0);
     await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
   });
 }
@@ -608,7 +618,7 @@ test("Kirin Bow modal selection clears on CurrentAction revision change", async 
 });
 
 for (const targetCardCase of ["unfocused", "unprojected"]) {
-  test(`Kirin Bow keeps the safe fallback when Mount proof is unavailable (${targetCardCase})`, async ({ page }) => {
+  test(`Kirin Bow selection modal does not depend on Stage Hero Focus (${targetCardCase})`, async ({ page }) => {
     await loadKirinBowSelectableDetail(page, { width: 390, targetCardCase });
 
     const dialog = page.getByRole("dialog", { name: "Kirin Bow target card selection" });

@@ -526,8 +526,8 @@ type TargetCardSelectableDetail = {
   onToggle: (key: string) => void;
 };
 
-function supportsHeroFocusSelectableDetail(selection: HeroFocusTargetCardSelection, target: Player) {
-  if (!Number.isInteger(target.handCount) || target.handCount < 0 || selection.min < 1 || selection.max < selection.min) return false;
+function supportsAuthoritativeTargetCardSelection(selection: HeroFocusTargetCardSelection, target: Player) {
+  if (!target.alive || !Number.isInteger(target.handCount) || target.handCount < 0 || selection.min < 1 || selection.max < selection.min) return false;
   if (new Set(selection.eligibleKeys).size !== selection.eligibleKeys.length || selection.eligibleKeys.length < selection.min) return false;
   const publicIds = new Set([...target.equipmentCards, ...target.judgementCards].map((card) => card.id));
   const hasRandomHandZone = selection.eligibleKeys.includes("hand");
@@ -1864,9 +1864,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const card = room.myHand.find((item) => item.id === selected); const current = room.players.find((player) => player.seat === room.turnSeat); const actor = room.pendingNegation ? room.isMyAction ? room.players.find((player) => player.id === room.actionPlayerId) : undefined : room.players.find((player) => player.id === room.actionPlayerId); const me = room.players.find((player) => player.id === room.meId); const localHero = heroDefinition(me?.hero); const targetPlayer = room.players.find((player) => player.id === target); const pendingTargetPlayer = room.players.find((player) => player.id === room.pendingTargetCard?.targetId); const pickerTarget = pendingTargetPlayer ?? targetPlayer;
   const excessCards = Math.max(0, room.myHand.length - (me?.hp ?? 0));
   const myTableIndex = Math.max(0, room.players.findIndex((player) => player.id === room.meId));
-  const targetTableIndex = pickerTarget ? room.players.findIndex((player) => player.id === pickerTarget.id) : -1;
-  const targetRelativeIndex = targetTableIndex >= 0 ? (targetTableIndex - myTableIndex + room.players.length) % room.players.length : 0;
-  const targetAngle = 180 + (360 / room.players.length) * targetRelativeIndex;
   const canPlay = room.phase?.startsWith("play") && room.status === "playing";
   const canChooseHarvest = room.phase === "response" && Boolean(room.pendingHarvest) && !room.pendingHarvest?.complete && room.isMyAction;
   const canChooseTargetCard = room.phase === "response" && Boolean(room.pendingTargetCard) && room.isMyAction;
@@ -1975,9 +1972,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const choiceTriggerOption = mandatoryChoiceTriggerOption ?? (inlineChoiceTriggerOption ? null : genericChoiceTriggerOption);
   const selectedTriggerOption = choiceTriggerOption ?? triggerOptions.find((option) => option.effectId === responseProviderId) ?? null;
   // Mapped Hero skills (such as Retaliation) must be activated from the
-  // profile before their target-card picker appears. Proven external card
-  // choices that have a refined modal design use the shared modal; other
-  // providers retain their existing authoritative selection path.
+  // profile before their target-card picker appears. Supported §4C effects
+  // route from CurrentAction authority alone; Stage Hero Focus is not a second
+  // eligibility requirement for the shared modal.
   const targetCardPickerOption = activeSkillOption?.selection?.type === "target_cards"
     ? activeSkillOption
     : triggerOptions.find((option) => option.selection?.type === "target_cards" && !heroTriggerEffectIds.has(option.effectId)) ?? null;
@@ -1986,11 +1983,13 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const targetCardPickerUsesUnifiedModal = Boolean(
     targetCardPickerOption
     && ["sima_yi_fankui", "frost_sword_damage_about_to_apply", "kirin_bow_damage_about_to_apply"].includes(targetCardPickerOption.effectId)
+    && canUseAction(room.currentAction, "trigger")
     && targetCardPickerSelection
     && targetCardPickerSelection.targetId !== room.meId
     && targetCardPickerTarget
-    && supportsHeroFocusSelectableDetail(targetCardPickerSelection, targetCardPickerTarget)
-    && hasProvenExternalHeroFocusTarget(clientPresentation, room.meId, targetCardPickerSelection.targetId, room.players),
+    && targetCardPickerTarget.id === targetCardPickerSelection.targetId
+    && targetCardPickerTarget.alive
+    && supportsAuthoritativeTargetCardSelection(targetCardPickerSelection, targetCardPickerTarget)
   );
   const pendingTargetCardAvailabilityKey = pickerTarget
     ? [pickerTarget.id, pickerTarget.handCount, ...pickerTarget.equipmentCards.map((card) => card.id), ...pickerTarget.judgementCards.map((card) => card.id)].join("|")
@@ -2229,22 +2228,10 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     && pickerTarget.alive
     ? pickerTarget
     : null;
-  const pendingTargetCardHasProvenExternalSelection = Boolean(
+  const pendingTargetCardUsesUnifiedModal = Boolean(
     canChooseTargetCard
-    && room.pendingTargetCard?.actorId === room.meId
-    && (room.pendingTargetCard.cardKind === "Steal" || room.pendingTargetCard.cardKind === "Dismantle")
-    && room.currentAction?.kind === "target_card"
-    && room.currentAction.actorId === room.meId
-    && canUseAction(room.currentAction, "choose_target_card")
-    && pendingTargetCardSelectableSelection
-    && pendingTargetCardSelectableTarget
-    && !pendingTargetCardSelectableSelection.eligibleKeys.includes("hand")
-    && supportsHeroFocusSelectableDetail(pendingTargetCardSelectableSelection, pendingTargetCardSelectableTarget)
-    && !targetPreviewPresentation
-    && !opponentInspectionPresentation
-    && hasProvenExternalHeroFocusTarget(clientPresentation, room.meId, pendingTargetCardSelectableSelection.targetId, room.players),
+    && (room.pendingTargetCard?.cardKind === "Steal" || room.pendingTargetCard?.cardKind === "Dismantle")
   );
-  const pendingTargetCardUsesUnifiedModal = pendingTargetCardHasProvenExternalSelection;
   const pendingTargetCardSelectedKey = targetCardZone === "hand" && targetCardIndex !== null
     ? `hand:${targetCardIndex}`
     : targetCardId;
@@ -2705,7 +2692,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     && targetCardPickerSelection
     && targetCardPickerTarget
     && targetCardPickerTarget.id === targetCardPickerSelection.targetId
-    && supportsHeroFocusSelectableDetail(targetCardPickerSelection, targetCardPickerTarget)
+    && supportsAuthoritativeTargetCardSelection(targetCardPickerSelection, targetCardPickerTarget)
     && !targetPreviewPresentation
     && !opponentInspectionPresentation
     && hasProvenExternalHeroFocusTarget(clientPresentation, room.meId, targetCardPickerSelection.targetId, room.players),
@@ -2883,8 +2870,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       {tablePresentationVisible && <TableResolutionSequence events={sequenceEvents} activeEvent={displayedEvent} players={room.players} myTableIndex={myTableIndex} concluding={resolutionClosing} />}
       {room.pendingHarvest && !presentationBusy && <div className="game-event-stage harvest-choice-stage" role="dialog" aria-label="Bumper Harvest card choice"><div><span>BUMPER HARVEST</span><b>{room.pendingHarvest.complete ? "All choices complete" : harvestSubmitting ? "Your choice is submitted" : canChooseHarvest ? "Your turn — choose one card" : `${actor?.name ?? "The next player"} is choosing`}</b><small>{room.pendingHarvest.complete ? "The final shaded card remains visible before Bumper Harvest closes." : harvestSubmitting ? "Your card is shaded immediately while the next choice is prepared." : canChooseHarvest ? "Tap any available card to change your selection, then confirm. Selection changes are instant." : "Watch the current player's card rise, then become shaded when confirmed."}</small><div className="harvest-card-row">{room.pendingHarvest.revealed.map((choice) => { const takenBy = room.pendingHarvest?.choices.find((entry) => entry.cardId === choice.id); const submittedByMe = harvestSubmitting?.cardId === choice.id; const available = room.pendingHarvest?.availableIds.includes(choice.id); const awaitingConfirmation = !submittedByMe && activeHarvestSelection === choice.id; return <button type="button" className={`harvest-card-choice ${takenBy || submittedByMe ? "taken" : ""} ${awaitingConfirmation ? "pending-choice" : ""}`} disabled={!canChooseHarvest || Boolean(harvestSubmitting) || busy || !available} aria-pressed={awaitingConfirmation} aria-label={takenBy ? `${cardDefinition(choice.kind).name}, taken by ${takenBy.playerName}` : submittedByMe ? `${cardDefinition(choice.kind).name}, choice submitted by ${harvestSubmitting?.playerName ?? "ME"}` : `${cardDefinition(choice.kind).name}, ${awaitingConfirmation ? `selected by ${actor?.name ?? "current player"}, awaiting confirmation` : "available"}`} key={choice.id} onClick={() => { const nextCardId = activeHarvestSelection === choice.id ? "" : choice.id; setHarvestSelected(nextCardId); void publishHarvestPreview(nextCardId); }}><CardFace card={choice} />{takenBy && <strong className="harvest-taken-label">Taken by {takenBy.playerName}</strong>}{submittedByMe && !takenBy && <strong className="harvest-taken-label">Chosen by {harvestSubmitting?.playerName ?? "ME"}</strong>}{awaitingConfirmation && <strong className="harvest-pending-label">Selected by {actor?.name ?? "player"}</strong>}</button>; })}</div>{canChooseHarvest && (harvestSubmitting ? <div className="harvest-confirm-row"><small>Choice submitted · moving to the next player</small></div> : <div className="harvest-confirm-row"><small>{harvestSelectedCard ? `${cardDefinition(harvestSelectedCard.kind).name} selected` : "Select a card before confirming"}</small><button type="button" className="primary" disabled={busy || !harvestSelectedCard} onClick={async () => { if (!harvestSelectedCard || !me) return; const submission = { cardId: harvestSelectedCard.id, playerId: me.id, playerName: me.name }; queuedHarvestPreview.current = null; setHarvestSubmitting(submission); setHarvestSelected(""); const accepted = await onAction("choose_harvest", { cardId: submission.cardId }); if (!accepted) setHarvestSubmitting(null); }}>Confirm choice</button></div>)}</div></div>}
       <div className="play-center" aria-label="Card piles"><div className="draw-stack" data-draw-anchor="true" aria-label={`Draw pile, ${room.deckCount} cards`}><b>{room.deckCount}</b><span>DECK</span></div><div className="discard-stack" data-discard-anchor="true" data-discard-kind={visibleDiscardTop?.kind} aria-label={visibleDiscardTop ? `Discard pile, ${cardDefinition(visibleDiscardTop.kind).name}` : "Discard pile, empty"}>{visibleDiscardTop ? <CardFace card={visibleDiscardTop} /> : <b className="discard-empty">—</b>}<span>DISCARD</span></div></div>
-      {canChooseTargetCard && pickerTarget && !pendingTargetCardUsesUnifiedModal && <div className="hidden-card-picker table-hidden-card-picker target-card-picker" style={{ "--angle": `${targetAngle}deg` } as React.CSSProperties} role="dialog" aria-modal="true" aria-label={`Choose one current card from ${pickerTarget.name}`}><span>{pickerTarget.name}&apos;s cards</span>{pickerTarget.handCount > 0 && <section><small>Hand</small><div>{Array.from({ length: pickerTarget.handCount }, (_, index) => <button type="button" aria-label={`Hidden hand card ${index + 1}`} className={targetCardZone === "hand" && targetCardIndex === index ? "selected" : ""} aria-pressed={targetCardZone === "hand" && targetCardIndex === index} key={index} onClick={() => { setTargetCardZone("hand"); setTargetCardIndex(index); setTargetCardId(""); }}>?</button>)}</div></section>}{pickerTarget.equipmentCards.length > 0 && <section><small>Equipment</small><div>{pickerTarget.equipmentCards.map((item) => <button type="button" className={targetCardZone === "equipment" && targetCardId === item.id ? "selected named" : "named"} aria-pressed={targetCardZone === "equipment" && targetCardId === item.id} key={item.id} onClick={() => { setTargetCardZone("equipment"); setTargetCardId(item.id); setTargetCardIndex(null); }}>{cardDefinition(item.kind).name}</button>)}</div></section>}{pickerTarget.judgementCards.length > 0 && <section><small>Judgement</small><div>{pickerTarget.judgementCards.map((item) => <button type="button" className={targetCardZone === "judgement" && targetCardId === item.id ? "selected named" : "named"} aria-pressed={targetCardZone === "judgement" && targetCardId === item.id} key={item.id} onClick={() => { setTargetCardZone("judgement"); setTargetCardId(item.id); setTargetCardIndex(null); }}>{cardDefinition(item.kind).name}</button>)}</div></section>}<div className="target-picker-actions">{consoleDecision.localCancel.visible && <button className="end" disabled={busy || presentationBusy || !consoleDecision.localCancel.enabled} onClick={clearPendingTargetCardSelection}>Cancel</button>}<button className="primary" disabled={busy || !pendingTargetCardSelectionComplete} onClick={() => void confirmPendingTargetCard()}>{busy ? "Resolving…" : room.pendingTargetCard?.cardKind === "Steal" ? "Obtain selected" : "Discard selected"}</button></div>{error && <p className="error" role="alert">{error}</p>}</div>}
-      {pendingTargetCardUsesUnifiedModal && pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget && room.pendingTargetCard && <TargetCardPicker option={null} presentationCopy={{ title: room.pendingTargetCard.cardKind === "Steal" ? "Steal" : "Dismantle", accessibleName: `${room.pendingTargetCard.cardKind === "Steal" ? "Steal" : "Dismantle"} target card selection`, instruction: room.pendingTargetCard.cardKind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard", actionLabel: `Use ${room.pendingTargetCard.cardKind === "Steal" ? "Steal" : "Dismantle"}` }} selection={pendingTargetCardSelectableSelection} target={pendingTargetCardSelectableTarget} selectedKeys={pendingTargetCardSelectedKeys} disabled={busy || presentationBusy || !canUseAction(room.currentAction, "choose_target_card")} canDecline={false} showCancel error={error} onToggle={togglePendingTargetCardSelection} onUse={submitPendingTargetCardPicker} onCancel={clearPendingTargetCardSelection} onDecline={() => undefined} />}
+      {pendingTargetCardUsesUnifiedModal && pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget && supportsAuthoritativeTargetCardSelection(pendingTargetCardSelectableSelection, pendingTargetCardSelectableTarget) && room.pendingTargetCard && <TargetCardPicker option={null} presentationCopy={{ title: room.pendingTargetCard.cardKind === "Steal" ? "Steal" : "Dismantle", accessibleName: `${room.pendingTargetCard.cardKind === "Steal" ? "Steal" : "Dismantle"} target card selection`, instruction: room.pendingTargetCard.cardKind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard", actionLabel: `Use ${room.pendingTargetCard.cardKind === "Steal" ? "Steal" : "Dismantle"}` }} selection={pendingTargetCardSelectableSelection} target={pendingTargetCardSelectableTarget} selectedKeys={pendingTargetCardSelectedKeys} disabled={busy || presentationBusy || !canUseAction(room.currentAction, "choose_target_card")} canDecline={false} showCancel error={error} onToggle={togglePendingTargetCardSelection} onUse={submitPendingTargetCardPicker} onCancel={clearPendingTargetCardSelection} onDecline={() => undefined} />}
       {triggerResponse && responseDecisionReady && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget && !targetCardPickerInHeroFocus && !targetCardPickerInLocalDock && <TargetCardPicker option={targetCardPickerOption} selection={targetCardPickerSelection} target={targetCardPickerTarget} selectedKeys={triggerSelectedKeys} disabled={responseControlsDisabled} canDecline={Boolean(consoleDecision.authoritativeDecline)} showCancel={targetCardPickerUsesUnifiedModal || consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId)} error={error} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => targetCardPickerSelection.eligibleKeys.includes(selectedKey)); return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < targetCardPickerSelection.max ? [...validKeys, key] : validKeys; })} onUse={submitTargetCardPicker} onCancel={cancelTargetCardPicker} onDecline={() => onAction("decline_trigger")} />}
       {triggerResponse && responseDecisionReady && choiceTriggerOption?.selection?.type === "choice" && <MandatoryChoiceDialog option={choiceTriggerOption} selection={choiceTriggerOption.selection} hand={room.myHand} selectedChoice={triggerChoice} selectedKeys={triggerSelectionKeys} disabled={responseControlsDisabled} error={error} onChoice={(choice) => { setTriggerChoice(choice); setTriggerSelectedKeys([]); }} onToggle={(key) => { const validKeys = triggerSelectedKeys.filter((selectedKey) => choiceTriggerOption.selection?.type === "choice" && choiceTriggerOption.selection.eligibleHandKeys.includes(selectedKey)); const required = choiceTriggerOption.selection?.type === "choice" ? choiceTriggerOption.selection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0; setTriggerSelectedKeys(validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < required ? [...validKeys, key] : validKeys); }} onConfirm={(choice, cardKeys) => onAction("trigger", { providerId: choiceTriggerOption.effectId, choice, ...(cardKeys.length ? { cardKeys } : {}) })} />}
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}

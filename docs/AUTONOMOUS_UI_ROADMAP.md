@@ -1515,6 +1515,19 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `2a4ed5f94c6694d8e0095f28f8e7c3d19a9103a4` completed success. Reviewer
   acceptance is not claimed.
 
+### UX2.REFINE-UNIFIED-TARGET-CARD-MODAL-REAL-GAME-P2-01 — Real selection paths
+
+- Supported Steal/Dismantle pending decisions and Retaliation/Frost Sword/
+  Kirin Bow CurrentAction options now route to the shared target-card modal
+  without requiring Stage Hero Focus, Inspect, or target-preview presentation.
+  The unrelated legacy table picker was removed; unsupported/missing selection
+  proof fails closed. Five real server-backed browser flows cover anonymous
+  Hand positions, public Equipment/Judgment, exact selection and resolution;
+  the focused browser specs passed 73/73 and the production build passed.
+  Pre-commit Actions run `37675406650` on exact parent SHA
+  `fa4c70fb0561ba918d4ec12f50753f5f61fcfda4` completed success. Reviewer
+  acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

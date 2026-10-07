@@ -5,18 +5,15 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result
 
-`UX2.REFINE-REAL-SERVER-TO-BROWSER-PROOF-P1-01` removes the duplicate
-`CausalCreation` declaration that blocked `vinext dev`. Local product-route
-`POST /api/rooms` now returned HTTP 201. The production Worker browser test
-created a room through Host Game, added server-backed test players, started the
-match, completed hero selection, and reached `.game-shell` with server-generated
-CurrentAction/action revision: 1/1 passed. `npm run build`, targeted ESLint,
-and `git diff --check` passed. No fixture CurrentAction/PresentationSnapshot
-was substituted. Reviewer acceptance is not claimed.
-
-Pre-commit CI: run `37669875927` on exact parent SHA
-`2a4ed5f94c6694d8e0095f28f8e7c3d19a9103a4` completed SUCCESS across all five
-jobs. The P1 task commit's CI state is not yet observed.
+`UX2.REFINE-UNIFIED-TARGET-CARD-MODAL-REAL-GAME-P2-01` removes Stage/Hero
+Focus, Inspect, and preview-state gates from supported authoritative target-card
+modal routing and removes the unrelated legacy target-card picker. Real
+server-backed Steal, Dismantle, Retaliation, Frost Sword, and Kirin Bow browser
+flows pass, including anonymous Hand and public mixed-zone selection; the two
+focused specs passed 73/73. `npm run build`, targeted ESLint, and
+`git diff --check` passed. Exact pre-commit parent run `37675406650` on
+`fa4c70fb0561ba918d4ec12f50753f5f61fcfda4` completed SUCCESS across all jobs.
+Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
@@ -27,13 +24,11 @@ Re-fetched and reviewed remote `docs/UX2-refine.md`, blob
 
 ## Current task
 
-`UX2.REFINE-UNIFIED-TARGET-CARD-MODAL-REAL-GAME-P2-01` — finish §4C's
-production routing for Steal, Dismantle, Retaliation, Frost Sword, and Kirin
-Bow.
+`UX2.REFINE-HERO-SKILLS-REAL-GAME-REACHABILITY-P3-01` — close §1.10 / §4D P3
+across the implemented Standard Hero roster.
 
-Acceptance: remove presentation-only routing dependencies that send valid
-CurrentAction decisions to unrelated pickers; keep grouped `hand` fallback
-inside the shared modal; preserve opaque Hand privacy and public Equipment /
-Judgment choices; prove all five real server-generated flows, including a
-mixed-zone case, reach the unified modal without normal supported flows reaching
-the legacy picker. Keep fixture tests as supplementary evidence only.
+Acceptance: identify each actionable capability's real authoritative
+CurrentAction provider; prove Skills-band activation, exact existing payload,
+required continuation, no duplicate Action Row activation, and unavailable
+state when authority is absent. Repair any real-projection mismatch found;
+fixture-only proof is supplementary. Keep deferred §6 work out of scope.
