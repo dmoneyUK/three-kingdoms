@@ -3050,14 +3050,45 @@ type ChoiceTriggerSelection = Extract<NonNullable<TriggerOptionView["selection"]
 function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSubmit }: { cards: Card[]; minTop: number; maxTop: number; disabled: boolean; error: string; onSubmit: (topCardIds: string[], bottomCardIds: string[]) => void }) {
   const [topIds, setTopIds] = useState<string[]>([]);
   const [bottomIds, setBottomIds] = useState<string[]>(() => cards.map((card) => card.id));
+  const dialogRef = useRef<HTMLElement | null>(null);
   const held = useMemo(() => new Map(cards.map((card) => [card.id, card])), [cards]);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const focusableSelector = 'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+    const focusableElements = () => [...dialog.querySelectorAll<HTMLElement>(focusableSelector)].filter((element) => element.getClientRects().length > 0);
+    focusableElements()[0]?.focus();
+    const containTabFocus = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const focusables = focusableElements();
+      if (!focusables.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const active = document.activeElement;
+      const index = focusables.indexOf(active as HTMLElement);
+      if (index < 0) {
+        event.preventDefault();
+        (event.shiftKey ? focusables[focusables.length - 1] : focusables[0]).focus();
+      } else if (event.shiftKey && index === 0) {
+        event.preventDefault();
+        focusables[focusables.length - 1].focus();
+      } else if (!event.shiftKey && index === focusables.length - 1) {
+        event.preventDefault();
+        focusables[0].focus();
+      }
+    };
+    document.addEventListener("keydown", containTabFocus, true);
+    return () => document.removeEventListener("keydown", containTabFocus, true);
+  }, []);
   const moveBetween = (id: string, toTop: boolean) => {
     if (toTop) {
       setBottomIds((ids) => ids.filter((candidate) => candidate !== id));
-      setTopIds((ids) => [...ids, id]);
+      setTopIds((ids) => ids.includes(id) ? ids : [...ids, id]);
     } else {
       setTopIds((ids) => ids.filter((candidate) => candidate !== id));
-      setBottomIds((ids) => [...ids, id]);
+      setBottomIds((ids) => ids.includes(id) ? ids : [...ids, id]);
     }
   };
   const moveWithin = (ids: string[], setIds: (updater: (current: string[]) => string[]) => void, index: number, delta: number) => {
@@ -3066,8 +3097,38 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     setIds((current) => { const next = [...current]; [next[index], next[nextIndex]] = [next[nextIndex], next[index]]; return next; });
   };
   const complete = topIds.length >= minTop && topIds.length <= maxTop && topIds.length + bottomIds.length === cards.length;
-  const renderGroup = (title: string, ids: string[], setIds: (updater: (current: string[]) => string[]) => void, destination: "top" | "bottom") => <section className="deck-reorder-group"><header><strong>{title}</strong><span>{destination === "top" ? "First card draws next" : "Earlier here stays nearer the top"}</span></header><div className="deck-reorder-card-row">{ids.map((id, index) => { const card = held.get(id); if (!card) return null; return <div className="deck-reorder-card" key={id}><CardFace card={card} /><div className="deck-reorder-card-actions"><button type="button" disabled={disabled || index === 0} onClick={() => moveWithin(ids, setIds, index, -1)} aria-label={`Move ${cardDefinition(card.kind).name} earlier`}>↑</button><button type="button" disabled={disabled || index === ids.length - 1} onClick={() => moveWithin(ids, setIds, index, 1)} aria-label={`Move ${cardDefinition(card.kind).name} later`}>↓</button><button type="button" disabled={disabled} onClick={() => moveBetween(id, destination !== "top")}>{destination === "top" ? "Bottom" : "Top"}</button></div></div>; })}</div></section>;
-  return <div className="target-card-picker-overlay" role="presentation"><section className="target-card-picker-panel choice-trigger-panel deck-reorder-panel" role="dialog" aria-modal="true" aria-label="Stargazing deck reorder"><header><strong>STARGAZING</strong><span>Place 0–{maxTop} cards on top, then order the rest at the bottom. The top list draws first from left to right.</span></header>{renderGroup("TOP OF DECK", topIds, setTopIds, "top")}{renderGroup("BOTTOM OF DECK", bottomIds, setBottomIds, "bottom")}<div className="target-card-picker-actions"><button type="button" className="primary" disabled={disabled || !complete} onClick={() => onSubmit(topIds, bottomIds)}>Complete Stargazing</button></div>{error && <p className="error" role="alert">{error}</p>}</section></div>;
+  const renderGroup = (ids: string[], setIds: (updater: (current: string[]) => string[]) => void, destination: "top" | "bottom") => {
+    const title = destination === "top" ? "TOP OF DECK" : "BOTTOM OF DECK";
+    const orderHint = destination === "top" ? "Draws next · left to right" : "After the remaining deck · left to right";
+    return <section className={`deck-reorder-group ${ids.length ? "has-cards" : "is-empty"}`} aria-label={title} data-deck-sequence={destination} data-card-count={ids.length}>
+      <header><strong>{title}</strong><span>{orderHint}</span>{cards.length > 3 && <small className="deck-reorder-scroll-hint">Scroll horizontally to see all cards</small>}</header>
+      {ids.length ? <div className="deck-reorder-card-row" role="list" aria-label={`${title} order`} data-deck-reorder-sequence={destination}>
+        {ids.map((id, index) => {
+          const card = held.get(id);
+          if (!card) return null;
+          const name = cardDefinition(card.kind).name;
+          const nextDestination = destination === "top" ? "bottom" : "top";
+          return <article className="deck-reorder-card" role="listitem" key={id} data-deck-card-id={id} data-order-index={index} aria-label={`${name}, position ${index + 1} in ${destination} sequence`}>
+            <div className="deck-reorder-card-face"><CardFace card={card} /></div>
+            <div className="deck-reorder-card-actions" aria-label={`${name} order controls`}>
+              <button type="button" disabled={disabled || index === 0} onClick={() => moveWithin(ids, setIds, index, -1)} aria-label={`Move ${name} earlier`}>Earlier</button>
+              <button type="button" disabled={disabled || index === ids.length - 1} onClick={() => moveWithin(ids, setIds, index, 1)} aria-label={`Move ${name} later`}>Later</button>
+              <button type="button" className="deck-reorder-transfer" disabled={disabled} onClick={() => moveBetween(id, nextDestination === "top")} aria-label={`Move ${name} to ${nextDestination} of deck`}>To {nextDestination}</button>
+            </div>
+          </article>;
+        })}
+      </div> : <p className="deck-reorder-empty" role="status">No cards placed here yet.</p>}
+    </section>;
+  };
+  return <div className="target-card-picker-overlay deck-reorder-overlay" role="presentation"><section ref={dialogRef} className="target-card-picker-panel choice-trigger-panel deck-reorder-panel" role="dialog" aria-modal="true" aria-label="Stargazing deck reorder" aria-describedby="stargazing-deck-instructions">
+    <header><strong id="stargazing-deck-title">STARGAZING</strong><span id="stargazing-deck-instructions">Arrange each revealed card in the top or bottom sequence.</span></header>
+    <div className="deck-reorder-sequences">
+      {renderGroup(topIds, setTopIds, "top")}
+      {renderGroup(bottomIds, setBottomIds, "bottom")}
+    </div>
+    <div className="target-card-picker-actions deck-reorder-completion"><small>The first top card draws next. The bottom sequence follows the remaining deck.</small><button type="button" className="primary" data-deck-reorder-submit="true" disabled={disabled || !complete} onClick={() => onSubmit(topIds, bottomIds)}>Complete Stargazing</button></div>
+    {error && <p className="error" role="alert">{error}</p>}
+  </section></div>;
 }
 
 function PrivateCardDistributionDialog({ cards, players, disabled, error, onSubmit }: { cards: Card[]; players: Player[]; disabled: boolean; error: string; onSubmit: (assignments: Array<{ cardId: string; recipientId: string }>) => void }) {

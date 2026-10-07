@@ -5,19 +5,17 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-P4 real server-to-browser parity remains covered for Negation, Raining Arrows,
-and public/private Inspect. §4C.29 now refines the real Burning Bridge/Steal
-modal: compact anonymous Hand positions, readable public zones, stable selected
-state, contained large-Hand scrolling, and approved Burning Bridge copy.
-Focused target-card browser group: 89/89; Inspect geometry: 3/3; fast tests:
-229/229; build, targeted ESLint, syntax checks, and `git diff --check` passed.
-Reviewer acceptance is not claimed.
+§4.10 real server-backed Stargazing now keeps four private card faces visible,
+readable, and reorderable after the generic animation at 390×844, 480×900,
+320×640, and 1440×900. The focused browser group passed 6/6, including the
+server action payload, observer privacy, revision invalidation, keyboard focus
+cycling, pointer blocking, and fixed-modal/Dock geometry. Build, targeted
+ESLint, syntax, and `git diff --check` passed; Reviewer acceptance is not
+claimed.
 
-Before this combined task/CI-repair commit, latest remote head is
-`b12d65132a3c4adbaad9b68ebc7c52c39c2d39bb`; Actions run `37692998531` failed:
-the REST-settlement assertion expected obsolete filtering, and two Inspect
-mobile geometry cases exposed a narrow public-zone row. Focused fixes are in
-this commit. New-SHA Actions validation is pending after push.
+Before this task commit, `9982aa426209848007734d1cbdb6661974958019` had Actions
+run `37695874026` completed successfully on that exact SHA. New-SHA validation
+will be checked before the next commit and recorded after push.
 
 ## Design checkpoint
 
@@ -26,9 +24,11 @@ Reviewed the complete current remote `docs/UX2-refine.md`, blob
 
 ## Current task
 
-`UX2.REFINE-STARGAZING-DECK-REORDER-4.10-01` — complete the single §4.10
-private Stargazing reorder refinement on the production rendering path. Prove
-four persistent/readable cards after the normal animation, compact top/bottom
-sequences and truthful ordering, reorder/transfer behavior, 390×844, 480×900,
-320px-class and wide layouts, reachable completion, revision invalidation, and
-observer privacy. Section 6 remains gated by §4A, P5, and all §4D prerequisites.
+`UX2.REFINE-TRANSIENT-EVENT-TIMERS-4A-01` — complete §4A's compact, consistent
+lower-right timer and content-driven transient-event presentation for Private
+Draw and Bumper Harvest. Preserve event/gameplay timing and privacy; use only
+server-authoritative deadlines, and do not invent a chooser timeout. Prove the
+390×844, 480×900, and wide states, threshold/no-placeholder behavior, event
+content spacing, timer/menu and Guidance geometry stability, Dock/table
+containment, and Private Draw viewer privacy. Section 6 remains gated by §4A,
+P5, and all other §4D prerequisites.

@@ -1569,6 +1569,15 @@ Only a proven regression or new Reviewer-approved design requirement does.
   build, targeted ESLint, syntax checks, and `git diff --check` passed. Reviewer
   acceptance is not claimed.
 
+### UX2.REFINE-STARGAZING-DECK-REORDER-4.10-01 — Real-path compact Stargazing
+
+- Real server-triggered four-card Stargazing now keeps identifiable card faces
+  persistent and ordered at 390×844, 480×900, 320×640, and 1440×900. The
+  focused browser group passed 6/6, including the real completion payload,
+  observer privacy, action-revision closure, fixed-modal/Dock geometry, pointer
+  interception, and keyboard focus cycling. Build, targeted ESLint, syntax,
+  and diff checks passed. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
