@@ -1,6 +1,6 @@
 # CI Test Optimization Handover
 
-Status: Phase 1 complete and measured; Phase 2 representative reduction awaits CI measurement
+Status: Phase 1 complete and measured; Phase 2 representative reduction pushed, CI measurement pending
 Branch: `ux-v2`
 Task authority: `docs/CI_TEST_OPTIMIZATION.md`
 Updated: 2026-10-07
@@ -60,10 +60,12 @@ This table was recorded before editing test membership. The matrix now has 8 cas
 
 Playwright list mode confirms `ui19.spec.mjs` now contains 376 cases, down from 398 before this edit. The eight retained Hand matrix cases match the table. `node --check tests/browser/ui19.spec.mjs` and `git diff --check` passed; no browser tests were executed locally.
 
-## Next bounded task: measure this Phase 2 reduction in CI
+The reduction and this handover were committed as `d23d6ad` (`test: reduce repeated hand-size matrix cases`) and pushed to `origin/ux-v2`. Only the two optimization-owned paths were included; the concurrent feature-agent changes remained in the working tree.
 
-1. Recheck the shared worktree and commit only `tests/browser/ui19.spec.mjs` plus this handover.
-2. Push the focused commit and record the complete GitHub Actions browser shard results and timing. Do not begin another deletion until this change is measured.
+## Next bounded task: record CI measurement for Phase 2
+
+1. Inspect the GitHub Actions run for commit `d23d6ad` and record its test count, browser shard durations, and validation result.
+2. Do not begin another deletion until this change is measured. Keep CI-first validation; no full local suite was run.
 
 ## Concurrent feature work to preserve
 
@@ -71,4 +73,4 @@ At the latest status check, another agent has pending changes in `HANDOVER.md`, 
 
 ## Validation state
 
-No tests have been run locally. Playwright `--list` enumerated the suite and both shards; JavaScript syntax checks, YAML parsing, and `git diff --check` passed for the optimization changes. Run #37649255906 passed every validation job and production smoke check. Its active-time improvement is measured; queue-inflated push-to-deploy time is recorded separately.
+No tests have been run locally. Phase 1 Playwright list, JavaScript syntax checks, YAML parsing, `git diff --check`, and Actions run #37649255906 were recorded above. For Phase 2, Playwright list mode reports 376 `ui19` cases after the reduction (398 before); `node --check` and `git diff --check` passed. The Actions result for `d23d6ad` has not yet been recorded.
