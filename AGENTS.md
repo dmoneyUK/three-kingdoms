@@ -15,6 +15,8 @@ Direct user instructions override repository process instructions.
 
 A design-document change does **not** automatically replace the active HANDOVER task. If the active bounded task can continue without contradicting the new design, finish it. If it would contradict the new design, stop and request review. Before planning the next task, always review the latest `docs/UX2-refine.md` revision.
 
+Current refinement freeze: `docs/UX2-refine.md` §5 defers all Interaction Stage Hero/player visualization and UX3 seat/graph work. Until the user explicitly resumes that refactor, do not start or continue a task that changes central combat Hero/player nodes, physical Seat/Dock graph presentation, Hero/player geometry, or Hero/player-to-card connector geometry. If HANDOVER contains such a task, treat it as conflicting with the current design and replan at the next safe task boundary from the active non-Hero refinement sections. Do not delete the deferred implementation as cleanup.
+
 ## Working mode and branch
 
 The normal mode is one reviewer-authorized task from `HANDOVER.md`.
