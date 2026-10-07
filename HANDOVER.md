@@ -5,12 +5,12 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-CI repair commit `603cd73ccad1dac15fcee52733cdd17d8de075fc` is pushed. Actions run `37554347492` for that exact SHA was `in_progress` at the last check; no failure was observed, so proceeding under the direct user instruction not to wait on pending CI. The current local tree, including the Task 8 change, passed `npm run build`, `npm run test:browser` (673/673), and `git diff --check`. The CI-repair commit excludes Task 8 implementation.
+Task 8 implementation is at `c726c8cb23b40ac72911d77ec79d1e840cdb6408`. Actions run `37556346455` (#812) for `9423ead5cd898e281a3865a673dd775fe13a7b4a` failed: lint and build passed; browser tests were 672/673. The repeated failure is Zhuge Liang's `Empty Fortress Strategem` label rendering on three lines at 320×640. The repair queues same-ref runs, adjusts narrow short-screen typography, and adds focused two-line/geometry coverage. Focused browser tests, targeted ESLint, YAML parsing, and `git diff --check` passed. The repair is committed locally and pending push.
 
 ## Design checkpoint
 
-Re-fetched and re-read current `docs/UX2-refine.md`; blob `b4a26be8dc293bfb1f2996821e68a6de75338fcc`. Task 7 addresses §2.12 authority only; Stage rendering/settlement transition remains open.
+Reviewed current `docs/UX2-refine.md` blob `9f8663afea206be9350153164c2c38e84d54823e`, including changed skill-label and 320px requirements (§1.3, §1.9, §4.7–4.8) and the Interaction Stage Hero/player freeze (§5). Re-read the latest design and HANDOVER after CI repair validation before resuming design work.
 
-## Next task
+## Current task
 
-`UX2.REFINE-NEGATION-SETTLEMENT-STAGE-01` — deliver the typed settlement proof in the public Stage: `ROOT_CANCELLED` collapses the branch and marks the root `⊘`; `ROOT_RESTORED` collapses the branch and restores the root as active. Keep Source/root/Target geometry stable and fail closed without typed proof. The implementation is in this change; local full browser validation passed 673/673. Prove both outcomes at 390×844, 480×900, and wide with Stage/Dock/Guidance containment, ≤2 CSS px anchor movement, and no overflow.
+`CI-REPAIR-QUEUE-AND-ZHUGE-LIANG-320PX-LABEL-01` — preserve the meaningful two-line assertion, repair the 320×640 label layout, and queue same-ref Actions runs. The local repair commit contains only this repair and its focused regression/documentation. Push it and record its exact SHA as `CI REPAIR PUSHED — VALIDATION PENDING`; wait for that SHA's Actions run to complete successfully. Then re-read the latest design and resume `UX2.REFINE-NEGATION-SETTLEMENT-STAGE-01` from the restored Reviewer handoff; UX3 Hero/player graph work remains deferred by §5.

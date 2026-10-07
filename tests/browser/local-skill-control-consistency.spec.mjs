@@ -138,6 +138,40 @@ test("implemented Hero skill bands fill their allocation and keep natural labels
   }
 });
 
+test("Zhuge Liang skill labels stay readable within two lines at 320px", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto("/tests/browser/fixture.html?state=rest&count=4&hero=zhuge-liang");
+
+  const skills = page.locator('.local-player-dock[data-player-anchor="p1"] .local-status-panel .local-hero-skills');
+  const stargazing = skills.locator(".hero-skill-button").nth(0);
+  const emptyFortress = skills.locator(".hero-skill-button").nth(1);
+  const lineCount = (button) => button.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const lineTops = [...new Set([...range.getClientRects()]
+      .filter((rect) => rect.width > 0 && rect.height > 0)
+      .map((rect) => Math.round(rect.top * 2) / 2))];
+    return lineTops.length;
+  });
+
+  await expect(stargazing).toHaveText("Stargazing");
+  await expect(emptyFortress).toHaveText("Empty Fortress Strategem");
+  expect(await lineCount(stargazing)).toBe(1);
+  expect(await lineCount(emptyFortress)).toBeLessThanOrEqual(2);
+
+  const [stargazingBox, emptyFortressBox, documentWidth] = await Promise.all([
+    stargazing.boundingBox(),
+    emptyFortress.boundingBox(),
+    page.evaluate(() => document.documentElement.scrollWidth),
+  ]);
+  expect(stargazingBox && emptyFortressBox).toBeTruthy();
+  expect(Math.abs(stargazingBox.width - emptyFortressBox.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(stargazingBox.height - emptyFortressBox.height)).toBeLessThanOrEqual(1);
+  expect(stargazingBox.width).toBeGreaterThanOrEqual(44);
+  expect(stargazingBox.height).toBeGreaterThanOrEqual(44);
+  expect(documentWidth).toBeLessThanOrEqual(320);
+});
+
 for (const width of [390, 1440]) {
   test(`Projected Ma Chao Cavalry activates from the Skills band at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });

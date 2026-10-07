@@ -95,11 +95,11 @@ Prefer behavioral/semantic assertions over source-shape assertions. For layout, 
 
 GitHub Actions is the full validation gate.
 
-Before every commit, inspect the latest relevant push-triggered run for the current remote `ux-v2` head. A normal task commit is allowed only when that exact revision's required CI has completed successfully. A successful run for another SHA does not satisfy this gate.
+Before every commit, inspect the latest relevant push-triggered run for the current remote `ux-v2` head. If the latest run is still queued or in progress, wait for it to complete before committing. If it succeeds, continue with the scoped task commit; a successful run for another SHA does not satisfy this gate.
 
-If the latest run is **failed**, stop normal task delivery and diagnose/fix the failure first. Run the narrowest useful local reproduction and validation. The only commit permitted while the prior CI is failing is a CI-repair-only commit: stage and commit only the repair and its necessary focused regression/documentation, never bundle unrelated feature work. This repair commit is necessary to produce a new CI result. Push it, record its exact SHA as `CI REPAIR PUSHED — VALIDATION PENDING`, and do not resume feature commits until that SHA's required CI succeeds. If it fails again, repeat the repair cycle.
+If the latest run is **failed**, stop normal task delivery and diagnose/fix the failure first. Run the narrowest useful local reproduction and validation. Commit the CI repair with its necessary focused regression/documentation; never bundle unrelated feature work. Push it, record its exact SHA as `CI REPAIR PUSHED — VALIDATION PENDING`, and do not resume feature commits until that SHA's required CI succeeds. If it fails again, repeat the repair cycle.
 
-If the latest run is **queued/in progress**, or its state is **unavailable/ambiguous**, do not make a normal task commit yet. Preserve local work and check again at the next commit boundary; never infer success. After each push, record the exact revision and actual CI state. Do not claim CI green, deployment, or acceptance without observing it.
+The push workflow uses the same-ref Actions concurrency queue (`queue: max`) so new runs wait rather than cancelling an in-progress run. Queueing does not count as validation success. If the run state is **unavailable/ambiguous**, preserve local work and re-check before committing; never infer success. After each push, record the exact revision and actual CI state. Do not claim CI green, deployment, or acceptance without observing it.
 
 ## 6. CI failure rules
 
