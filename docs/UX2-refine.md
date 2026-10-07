@@ -2048,6 +2048,249 @@ What will this action do to that card?
 
 Retaliation, Dismantle, Steal, Frost Sword, and compatible future effects should feel like variations of one interaction system rather than unrelated custom interfaces, while preserving strict hidden-Hand privacy and server-owned legality.
 
+
+## 4D. Production-Path Completion Gate — Mandatory Before Section 6
+
+### 4D.1 Why this gate exists
+
+A component or fixture state is not sufficient evidence that a UX2 refinement is
+implemented in the real game.
+
+Reviewer-observed deployed-game screenshots have already demonstrated two cases
+where the repository contained the intended component/test shape but the real
+player experience did not match it:
+
+- Steal / 顺手牵羊 reached the legacy target-card picker instead of the §4C
+  unified modal;
+- Zhuge Liang Stargazing reached an oversized deck-reorder dialog in which the
+  actual card faces disappeared, leaving reorder controls without readable
+  cards.
+
+The code audit also confirmed that most browser specs directly load fixture
+states rather than driving a server-created room all the way through the real
+page. API tests and fixture browser tests remain useful, but they prove
+different layers and must not be treated as equivalent to production-path
+reachability.
+
+From this point onward, a UX2 item must not be marked complete merely because:
+
+- the component exists;
+- a fixture can render it;
+- an API test proves the server rule independently;
+- a focused browser spec passes against a handcrafted projection.
+
+For the affected refinements below, completion requires evidence that the real
+server-generated state reaches the intended production UI.
+
+The following are **five bounded pre-Section-6 tasks**. Each task is one task;
+the bullets inside each task are acceptance requirements, not separate tasks.
+The Coding Agent may choose the execution order, but all five plus §4.10 and
+§4A must be closed before Section 6 begins.
+
+### Task P1 — Restore real server-to-browser validation
+
+The project must regain a working way to create/use a real room in local browser
+validation and render the resulting server-generated state through the
+production page.
+
+The audit found a current local-development blocker in
+\`app/api/rooms/route.ts\`: \`CausalCreation\` is declared twice, and the local
+\`POST /api/rooms\` path was reported to return 500 under the development
+runtime even though the production build succeeds.
+
+Required outcome:
+
+- local real-room creation works through the same route used by the product;
+- a browser test can create/seed or otherwise enter a real room and observe the
+  production page without substituting a handcrafted CurrentAction or
+  PresentationSnapshot;
+- the test path must be suitable for validating the UX2 flows in Tasks P2–P4;
+- build success alone is not sufficient if the development/runtime route used
+  for integration validation is broken.
+
+This task is complete when at least one real server-seeded browser flow reaches
+the production game page reliably on a clean run.
+
+### Task P2 — Finish §4C in real gameplay, not only fixtures
+
+The §4C Unified Target Card Selection Modal must be the normal player-facing
+selection surface for the real authoritative flows it covers.
+
+This task includes:
+
+- Steal;
+- Dismantle / Burning Bridges;
+- Sima Yi Retaliation;
+- Frost Sword;
+- Kirin Bow.
+
+The deployed-game Steal screenshot already proves that the old
+\`table-hidden-card-picker\` remains reachable in normal play. Therefore §4C is
+currently **not complete**.
+
+Required outcome:
+
+- an authoritative target-card decision with a valid target and legal
+  selectable keys reaches the unified modal in real gameplay;
+- ordinary Steal/Dismantle/Retaliation/Frost Sword/Kirin Bow decisions must not
+  fall back to a visually unrelated legacy picker merely because Interaction
+  Stage Hero Focus, Inspect state, or a transient target preview does not match
+  an additional presentation condition;
+- CurrentAction remains the legality/selection authority;
+- Interaction Stage / Hero Focus presentation must not become a second,
+  unrelated requirement for deciding whether the viewer receives the §4C
+  selection UX;
+- \`hand:n\` keys render as individually selectable anonymous face-down cards;
+- a legacy/grouped \`hand\` key, when genuinely authoritative, uses the grouped
+  Random-card fallback **inside the same §4C visual language**, not a different
+  picker;
+- Equipment and Judgment remain public face-up selections where legal;
+- action identity/copy remains effect-specific:
+  - \`STEAL — Choose 1 card to obtain\`;
+  - \`DISMANTLE — Choose 1 card to discard\`;
+  - \`RETALIATION — Choose 1 card to obtain\`;
+  - equivalent specific copy for Frost Sword and Kirin Bow;
+- primary actions use the approved effect-specific CTA;
+- selected state, selection count, Cancel treatment, and 44px minimum touch
+  geometry match §4C;
+- no hidden Hand identity is leaked;
+- stale/revision changes still clear local selection.
+
+Required production-path proof:
+
+1. real server-generated Steal reaches the unified modal;
+2. real server-generated Dismantle reaches the unified modal;
+3. real Retaliation reaches the unified modal with multiple anonymous Hand
+   positions;
+4. real Frost Sword selection reaches the unified modal;
+5. real Kirin Bow selection reaches its simplified unified modal;
+6. at least one real mixed-zone case proves Hand plus Equipment/Judgment
+   presentation where the rules allow it;
+7. no normal supported flow above reaches the legacy picker.
+
+Fixture coverage may supplement this proof but may not replace it.
+
+### Task P3 — Close the Hero Skills real-game reachability audit
+
+Section 1.10 remains open until every implemented Hero capability that is meant
+to be actionable from the Local Hero Skills band has been checked against the
+real server-projected decision path.
+
+The recent test-only skill commits are useful regression coverage, but a
+fixture-proven button is not enough to claim that the real game reaches the same
+state.
+
+Required outcome:
+
+- every implemented active/optional/response Hero capability has an identified
+  authoritative provider/option from the real game;
+- the Skills-band control becomes enabled only from that authority;
+- activation submits the existing authoritative payload;
+- required card/target/choice continuations are reachable in the real game;
+- the same activation is not duplicated in the generic Action Row;
+- absence of authority leaves the stable skill control unavailable/passive as
+  appropriate;
+- any capability found to exist only in fixture mapping, or whose real
+  projection cannot reach the approved UX, is fixed as part of this task rather
+  than merely documented.
+
+The agent may batch capabilities by behavior family to finish this quickly.
+This is one roster-completion task, not one task per Hero.
+
+Completion evidence must distinguish:
+
+- server/provider proof;
+- production component routing;
+- browser rendering/interaction proof.
+
+Do not report a Hero skill complete solely because a fixture spec passes.
+
+### Task P4 — Real production-path parity for already-claimed interaction UX
+
+Several refinements have strong engine/API coverage and strong fixture-browser
+coverage but no proof that the same server-generated state reaches the same UI.
+
+Before Section 6, run real server-to-browser validation for at least:
+
+- single-target Negation:
+  - open window;
+  - first public Negation;
+  - counter-Negation;
+  - settlement outcome;
+- Raining Arrows:
+  - Dodge available;
+  - no Dodge / \`TAKE DAMAGE\`;
+  - correct local Guidance and no obsolete duplicate controls;
+- Opponent Inspect:
+  - public Hero identity/skills;
+  - Equipment;
+  - Judgment;
+  - Hand count without hidden Hand identity.
+
+If the real server projection does not route to the already-approved UX, this
+task includes repairing that mismatch. It is not an audit-only task.
+
+The goal is not to duplicate every fixture test with a full end-to-end test.
+The goal is to establish real production-path parity for the feature families
+that were previously claimed complete primarily from separated API + fixture
+evidence.
+
+### Task P5 — Remove the confirmed mobile top dead-space before seat geometry is frozen
+
+The audit confirmed that on phone layout the top-row \`player-board\` currently
+starts around 55px below the table top while the corresponding status element
+is absent, leaving a substantial unused band above the opponent seats.
+
+This is a confirmed geometry issue and must be resolved before Section 6,
+because Section 6 will use the physical Seat positions as graph anchors.
+
+Required outcome:
+
+- do not preserve a large empty top reservation when no visible UI occupies it;
+- reclaim the unused phone vertical space for the table/interaction area;
+- opponent seats remain aligned, readable, and non-overlapping;
+- System Menu, timer, Guidance, and any genuine top control retain required
+  clearance;
+- 390×844 and 480×900 should not show an unexplained ~55px dead band above the
+  first opponent row;
+- the physical Seat geometry should be stable after this task so Section 6 can
+  anchor interaction connectors against it.
+
+### 4D.2 Evidence language for future completion reports
+
+For all UX2 work from this point forward, completion reports must state which
+evidence layer was actually observed.
+
+Use separate statements such as:
+
+- **Rules/API proven**
+- **Server projection proven**
+- **Fixture browser proven**
+- **Real server-backed browser path proven**
+- **Deployed-game screenshot/reviewer proof**
+
+Do not collapse these into a generic statement such as "browser tests pass" or
+"the feature is complete".
+
+If real server-backed browser proof has not been run, report the UI reachability
+as **Not proven**.
+
+### 4D.3 Section 6 gate
+
+Section 6 must not begin until:
+
+- §4.10 Stargazing private deck-reorder UX is closed;
+- §4A, including Bumper Harvest active-choice timer authority, is closed;
+- Task P1 real server-to-browser validation is available;
+- Task P2 unified target-card production routing is closed;
+- Task P3 full Hero Skills real-game reachability audit is closed;
+- Task P4 real production-path parity is closed;
+- Task P5 mobile top dead-space/seat geometry is closed.
+
+This gate exists specifically to prevent a new Interaction Visualization layer
+from being built on top of UX that only works in fixtures or whose real-game
+routing is still inconsistent.
+
 ## 5. Interaction-Stage Hero / Player Presentation — DEFERRED TO UX2 INTERACTION VISUALIZATION REFACTOR
 
 ### 5.1 Current decision
@@ -2097,7 +2340,8 @@ Current authorized refinement work includes:
 - response timer relocation;
 - Zhuge Liang Stargazing / Empty Fortress Strategem skill presentation;
 - transient event timer relocation and compact event-overlay spacing from §4A;
-- compact other-player Inspect panel refinement from §4B.
+- compact other-player Inspect panel refinement from §4B;
+- mandatory real-game production-path completion tasks from §4D.
 
 ### 5.4 Resume condition
 
@@ -2105,7 +2349,7 @@ The user has authorized the UX2 interaction-visualization refactor **after all a
 
 Therefore:
 
-1. finish the remaining authorized refinement work before §5 first, including the Stargazing private deck-reorder usability task in §4.10 and §4A;
+1. finish the remaining authorized refinement work before §5 first, including the Stargazing private deck-reorder usability task in §4.10, §4A, and all mandatory production-path completion tasks in §4D;
 2. do not interleave the UX2 interaction-visualization graph work with unfinished pre-§5 refinement tasks;
 3. once those refinement items are closed at a clean planning boundary, Section 6 becomes the next authorized UX2 implementation work;
 4. begin Section 6 from **§6.25 Phase A — physical-seat graph foundation** unless a newer direct user instruction changes the order;
