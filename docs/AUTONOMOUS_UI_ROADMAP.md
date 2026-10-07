@@ -1315,6 +1315,27 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `1e49694bbf642c4e3a37720932e6f0cc6074576b` passed Actions run `37602622818`
   (#843; `build-and-test`, `deploy`). Reviewer acceptance is not claimed.
 
+### UX2.REFINE-PRIVATE-DRAW-CONTENT-DRIVEN-HEIGHT-01 — Compact event content
+
+- Private Draw keeps its full-table privacy backdrop while the title/cards use
+  content-driven height near the lower System Cluster. Two-card content stays
+  16–24px above the cluster at 390×844, 480×900, and 1440×900; sampled card
+  animation remains clear. Focused browser specs passed 6/6; targeted ESLint
+  and `git diff --check` passed. Commit `a040cc12b156b917a22bbe464798e1ed2a8a9b5f`
+  passed exact Actions run `37606112183` (#846). Reviewer acceptance is not
+  claimed.
+
+### UX2.REFINE-BUMPER-HARVEST-CLOSING-TIMER-CLUSTER-01 — Closing timer placement
+
+- The authoritative Bumper Harvest closing countdown now sits beside System
+  Menu in the lower-right `StageSystemCluster`; the choice UI and server/gameplay
+  behavior remain unchanged, and no choosing-phase deadline was invented.
+  Focused browser coverage passed 16/16 at 390×844, 480×900, and 1440×900,
+  including timer/menu/Guidance/card geometry and no legacy duplicate; targeted
+  ESLint and `git diff --check` passed. The pre-commit remote base had an empty
+  CI status, treated as success per direct user instruction. Reviewer
+  acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

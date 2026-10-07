@@ -460,7 +460,8 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
   const bumperHarvestLocalFixture = state === "bumper-harvest-open-local";
   const bumperHarvestSourceViewer = state === "bumper-harvest-source-viewer";
   const bumperHarvestChild = state === "bumper-harvest-open" || bumperHarvestLocalFixture || state === "bumper-harvest-branch" || state === "bumper-harvest-dense";
-  const bumperHarvestComplete = state === "bumper-harvest-complete";
+  const bumperHarvestClosing = state === "bumper-harvest-closing";
+  const bumperHarvestComplete = state === "bumper-harvest-complete" || bumperHarvestClosing;
   const bumperHarvestUnproven = state === "bumper-harvest-unproven";
   if (denseGroup) state = "group-observer";
   const activeNegationObserver = state.startsWith("active-negation-");
@@ -705,7 +706,25 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     pendingDuel: state === "duel" || state === "duel-response" ? { kind: "duel", sourceId: "p1", targetId: "p2", actorId: "p2", opponentId: "p1", deadline: 0 } : null,
     pendingGroup: state === "group-observer" || groupNegationFixture || rainingArrowsResponseFixture ? { kind: "group", cardKind: "RainingArrows", sourceId: "p4", requiredKind: "Dodge" } : state === "group" ? { kind: "group", cardKind: "RainingArrows", sourceId: "p1", requiredKind: "Dodge" } : null,
     pendingNegation: !negationSettlementOutcome && (state === "negation" || state === "confirm-skip" || activeNegationObserver || groupNegationFixture || oathNegationFixture || bumperHarvestChild) ? { kind: "negation", sourceId: oathNegationFixture || bumperHarvestFixture ? "p1" : "p4", actorId: groupNegationFixture || oathNegationFixture || bumperHarvestFixture || timedNegationObserver || privateNegationResponder ? null : "p2", effectTargetId: bumperHarvestFixture ? bumperCurrentId : "p1", cardName: groupNegationFixture ? "RainingArrows" : oathNegationFixture ? "Oath of the Peach Garden" : bumperHarvestFixture ? "BumperHarvest" : "Dismantle", negated: false, deadline: responseDeadline } : null,
-    pendingHarvest: null,
+    pendingHarvest: bumperHarvestClosing ? (() => {
+      const revealed = [
+        card("browser-harvest-closing-1", "Attack", "♠"),
+        card("browser-harvest-closing-2", "Peach", "♥"),
+        card("browser-harvest-closing-3", "Dodge", "♣"),
+        card("browser-harvest-closing-4", "Dismantle", "♦"),
+      ];
+      return {
+        kind: "harvest",
+        sourceId: "p1",
+        actorId: "p2",
+        revealed,
+        availableIds: [],
+        choices: revealed.map((choice, index) => ({ cardId: choice.id, playerId: `p${index + 1}`, playerName: `Player ${index + 1}` })),
+        previewCardId: null,
+        complete: true,
+        countdownUntil: Date.now() + 5_000,
+      };
+    })() : null,
     pendingTargetCard: state === "pending-target-card" ? { kind: "target_card", sourceId: "p1", actorId: "p1", targetId: "p2", cardKind: targetCardKind } : null,
     pendingBorrowedSword: state === "confirm-cancel" ? { kind: "borrowed_sword", sourceId: "p1", targetId: "p2", actorId: "p1", holderId: "p2", stage: "choose_target", weaponId: "browser-weapon", eligibleTargetIds: ["p3"] } : null,
     pendingDying,
