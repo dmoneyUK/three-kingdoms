@@ -1632,6 +1632,8 @@ export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly strin
 // This is an explicit semantic registry, not a UI inference from description
 // text. Skills with an authoritative CurrentAction option still use the
 // existing actionable path below.
+const LOCAL_DOCK_INLINE_TRIGGER_CHOICE_EFFECT_IDS = new Set(["hua_xiong_triumphant"]);
+
 const HERO_PASSIVE_SKILL_NAMES: Record<string, readonly string[]> = {
   "zhang-fei": ["Battle Cry"],
   "zhuge-liang": ["Empty Fortress Strategem"],
@@ -1640,6 +1642,7 @@ const HERO_PASSIVE_SKILL_NAMES: Record<string, readonly string[]> = {
   "sun-quan": ["Deliverance"],
   "lu-xun": ["Modesty"],
   "lü-bu": ["Unrivaled"],
+  huaxiong: ["Triumphant"],
   "gongsun-zan": ["Militia"],
 };
 
@@ -1941,7 +1944,24 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     playAuthorized: Boolean(room.isMyTurn && room.isMyAction && canPlay && !busy && !presentationBusy && room.currentAction?.actorId === room.meId && canUseAction(room.currentAction, "play_card")),
   });
   const mandatoryChoiceTriggerOption = triggerOptions.find((option) => option.selection?.type === "choice" && option.allowDecline === false) ?? null;
-  const choiceTriggerOption = mandatoryChoiceTriggerOption ?? triggerOptions.find((option) => option.selection?.type === "choice") ?? null;
+  const genericChoiceTriggerOption = triggerOptions.find((option) => option.selection?.type === "choice" && !heroSkillEffectIds.has(option.effectId)) ?? null;
+  const genericChoiceSelection = genericChoiceTriggerOption?.selection?.type === "choice" ? genericChoiceTriggerOption.selection : null;
+  const inlineChoiceTriggerOption = genericChoiceTriggerOption
+    && LOCAL_DOCK_INLINE_TRIGGER_CHOICE_EFFECT_IDS.has(genericChoiceTriggerOption.effectId)
+    && genericChoiceSelection
+    && genericChoiceTriggerOption.allowDecline !== false
+    && genericChoiceSelection.eligibleHandKeys.length === 0
+    && !Object.values(genericChoiceSelection.cardCountByChoice ?? {}).some((count) => count > 0)
+    && !genericChoiceSelection.choices.some((choice) => choice.id === "discard" && genericChoiceSelection.cardCountByChoice?.[choice.id] === undefined)
+    && genericChoiceSelection.choices.length > 0
+    && canUseAction(room.currentAction, "trigger")
+    && canUseAction(room.currentAction, "decline_trigger")
+    ? genericChoiceTriggerOption
+    : null;
+  const genericTriggerOptions = triggerOptions.filter((option) =>
+    (!heroTriggerEffectIds.has(option.effectId) || option.selection?.type === "choice")
+    && option.effectId !== inlineChoiceTriggerOption?.effectId);
+  const choiceTriggerOption = mandatoryChoiceTriggerOption ?? (inlineChoiceTriggerOption ? null : genericChoiceTriggerOption);
   const selectedTriggerOption = choiceTriggerOption ?? triggerOptions.find((option) => option.effectId === responseProviderId) ?? null;
   // Mapped hero skills (such as Retaliation) must be activated from the
   // profile before their target-card picker appears. Unmapped semantic
@@ -2784,7 +2804,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       : room.currentAction?.reason || decisionPresentation.supportingInstruction;
   const consoleDecline = responseDamageAction || triggerDeclineAction ? { label: responseDamageAction === "decline_response" ? responseDeclineLabel : "Skip", enabled: true } : null;
   const consoleSecondaryControls = [
-    ...(triggerOptions.filter((option) => !heroTriggerEffectIds.has(option.effectId) || option.selection?.type === "choice").map((option) => option.label)),
+    ...(genericTriggerOptions.map((option) => option.label)),
     ...(genericResponseOptions.map((option) => option.label)),
     ...(canFormSerpentAttack ? [serpentMode ? "Normal" : "Spear"] : []),
     ...(room.isMyTurn && canPlay ? ["End"] : []),
@@ -2852,7 +2872,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         </div>
       <div className="turn-controls" data-console-surface="local-operation" aria-label="Local operation console">
         <div data-action-extras="true">
-          {triggerResponse && triggerOptions.filter((option) => !heroTriggerEffectIds.has(option.effectId) || option.selection?.type === "choice").map((option) => option.selection?.type === "target_cards" || option.selection?.type === "choice" && option.allowDecline === false ? null : option.selection ? <button key={option.effectId} className={`serpent-control ${responseProviderId === option.effectId ? "active" : ""}`} disabled={responseControlsDisabled} onClick={() => { const active = responseProviderId === option.effectId; if (active) resetLocalTargetFlow("trigger"); else { setResponseProviderId(option.effectId); setSelected(""); setTargetIds([]); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); } }}>{responseProviderId === option.effectId ? `Cancel ${option.label}` : option.selection.type === "target" ? `Use ${option.label}` : option.label}</button> : <button key={option.effectId} className="serpent-control" disabled={responseControlsDisabled} onClick={() => onAction("trigger", { providerId: option.effectId })}>{`Use ${option.label}`}</button>)}
+          {triggerResponse && responseDecisionReady && inlineChoiceTriggerOption?.selection?.type === "choice" && inlineChoiceTriggerOption.selection.choices.map((choice) => <button type="button" key={`${inlineChoiceTriggerOption.effectId}:${choice.id}`} className="serpent-control" data-trigger-choice-provider={inlineChoiceTriggerOption.effectId} data-trigger-choice-action={choice.id} aria-label={`${inlineChoiceTriggerOption.label}: ${choice.label}`} disabled={responseControlsDisabled || !canUseAction(room.currentAction, "trigger")} onClick={() => void onAction("trigger", { providerId: inlineChoiceTriggerOption.effectId, choice: choice.id })}>{choice.label}</button>)}
+          {triggerResponse && genericTriggerOptions.map((option) => option.selection?.type === "target_cards" || option.selection?.type === "choice" && option.allowDecline === false ? null : option.selection ? <button key={option.effectId} className={`serpent-control ${responseProviderId === option.effectId ? "active" : ""}`} disabled={responseControlsDisabled} onClick={() => { const active = responseProviderId === option.effectId; if (active) resetLocalTargetFlow("trigger"); else { setResponseProviderId(option.effectId); setSelected(""); setTargetIds([]); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); } }}>{responseProviderId === option.effectId ? `Cancel ${option.label}` : option.selection.type === "target" ? `Use ${option.label}` : option.label}</button> : <button key={option.effectId} className="serpent-control" disabled={responseControlsDisabled} onClick={() => onAction("trigger", { providerId: option.effectId })}>{`Use ${option.label}`}</button>)}
           {canRespond && genericResponse && semanticResponseOptions.length > 0 && genericResponseOptions.map((option) => option.selection ? <button key={option.providerId} className={`serpent-control ${responseProviderId === option.providerId ? "active" : ""}`} disabled={responseControlsDisabled} onClick={() => { const active = responseProviderId === option.providerId; setResponseProviderId(active ? "" : option.providerId); setSelected(""); setSerpentSelected([]); }}>{responseProviderId === option.providerId ? `Cancel ${option.label}` : option.label}</button> : <button key={option.providerId} className="serpent-control" disabled={responseControlsDisabled} onClick={() => submitResponseProvider(option)}>{busy ? "Resolving…" : option.label}</button>)}
           {room.isMyTurn && canPlay && consoleKind === "turn" && canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} onClick={() => { setSerpentMode((active) => !active); setSerpentSelected([]); setSelected(""); setTarget(""); }}>{serpentMode ? "Normal" : "Spear"}</button>}
         </div>
