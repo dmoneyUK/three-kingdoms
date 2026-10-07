@@ -218,6 +218,12 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
       ? [{ effectId: "xiahou_dun_ganglie", label: "Stauchness", description: "After the damage, reveal a Judgement card.", allowDecline: true, selection: null }]
       : [],
   };
+  if (state === "zhou-yu-sowing-distrust" || state === "zhou-yu-sowing-distrust-no-provider") return {
+    version: 3, kind: "turn", actorId, deadline: 0, reason: "Choose a target for Sowing Distrust", legalActions: state === "zhou-yu-sowing-distrust" ? ["trigger", "end_turn"] : ["end_turn"],
+    triggerOptions: state === "zhou-yu-sowing-distrust"
+      ? [{ effectId: "zhou_yu_fanjian", label: "Sowing Distrust", description: "Choose another living character; they choose a suit, then take an unknown card from your hand.", selection: { type: "target", targetIds: ["p2", "p3"] } }]
+      : [],
+  };
   if (state === "cao-cao-treachery") return {
     version: 3, kind: "trigger", actorId, deadline: 0, reason: "Cao Cao may use Treachery, or skip", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger", triggerEvent: "damage_suffered",
     triggerOptions: [{ effectId: "cao_cao_jianxiong", label: "Treachery", description: "Obtain the card that caused the damage, if it is still available.", allowDecline: true, selection: null }],
@@ -797,17 +803,17 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     players,
     myHand: hand,
     turnSeat: state === "group-observer" ? 3 : dyingFixture ? 1 : 0,
-    phase: dyingFixture ? "dying" : state === "rest" || state === "group" || state === "normal" || state === "interaction" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" || state === "stargazing-offer" || borrowedSwordFixture ? "play" : "response",
+    phase: dyingFixture ? "dying" : state === "rest" || state === "group" || state === "normal" || state === "interaction" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" || state === "stargazing-offer" || state.startsWith("zhou-yu-sowing-distrust") || borrowedSwordFixture ? "play" : "response",
     deckCount: 20,
     discardTop: null,
     log: [],
     timeline: [],
-    isMyTurn: state === "normal" || state === "interaction" || state === "group" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" || state === "stargazing-offer" || borrowedSwordFixture,
+    isMyTurn: state === "normal" || state === "interaction" || state === "group" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" || state === "stargazing-offer" || state.startsWith("zhou-yu-sowing-distrust") || borrowedSwordFixture,
     actionPlayerId: currentAction?.actorId ?? null,
     actionReason: currentAction?.reason ?? "Waiting for the next legal action",
     isMyAction: Boolean(currentAction?.actorId === meId),
     actionRevision: `browser-${state}-action`,
-    presentationSnapshot: state === "ma-chao-cavalry" || state === "sima-yi-necromancy" || state === "cao-cao-treachery" || state.startsWith("xiahou-dun-stauchness") ? null : presentationSnapshot,
+    presentationSnapshot: state === "ma-chao-cavalry" || state === "sima-yi-necromancy" || state === "cao-cao-treachery" || state.startsWith("xiahou-dun-stauchness") || state.startsWith("zhou-yu-sowing-distrust") ? null : presentationSnapshot,
     currentAction,
     pending: ordinaryTurn ? null : currentAction ? { kind: currentAction.kind } : null,
     pendingAttack: null,
