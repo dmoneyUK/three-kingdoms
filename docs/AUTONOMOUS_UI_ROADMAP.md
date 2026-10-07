@@ -1294,6 +1294,16 @@ Only a proven regression or new Reviewer-approved design requirement does.
   run `37589042247` (`build-and-test`, `deploy`). Reviewer acceptance is not
   claimed.
 
+### UX2.REFINE-HUA-TUO-FIRST-AID-SKILLS-BAND-01 — First Aid via Local Skills
+
+- Hua Tuo's First Aid is available from the owner's Skills band only when the
+  viewer's authoritative `CurrentAction.options` proves the provider; eligible
+  card selection remains private and submits through the existing `respond`
+  action. Peach/Skip remain intact, with no server/gameplay changes. Focused
+  browser coverage passed 3/3 across 390×640, 390×844, 480×900, and 1440×900,
+  including payload, fail-closed, privacy, and Stage/Dock geometry assertions;
+  targeted ESLint and `git diff --check` passed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

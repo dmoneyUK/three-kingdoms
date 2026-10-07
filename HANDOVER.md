@@ -5,12 +5,12 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-Pan Feng passive-tile commit `15e0e264f02d146c96fc2972416d3c52b8eb8862` passed exact Actions run #834 (`37589042247`), including `build-and-test` and `deploy`; focused roster geometry/no-action browser coverage passed 6/6, targeted ESLint and `git diff --check` passed. CI timeout repair `8dd5737` passed exact run #833. No Reviewer acceptance claimed.
+`UX2.REFINE-HUA-TUO-FIRST-AID-SKILLS-BAND-01` now exposes Hua Tuo's First Aid only through the owner's Skills band when authorized `CurrentAction.options` contains `hua_tuo_first_aid`; private eligible-card selection submits through existing `respond`, while Peach/Skip remain intact. Focused browser coverage passed 3/3 across 390×640, 390×844, 480×900, and 1440×900; targeted ESLint and `git diff --check` passed. The exact pre-commit base `e642e80c75d475e99862498856f4e4614565dde3` passed Actions run #841 (`37594013797`), including `build-and-test` and `deploy`. This task's push-triggered run has not yet been observed. No Reviewer acceptance claimed.
 
 ## Design checkpoint
 
-Re-read the full remote `docs/UX2-refine.md` at planning boundary; blob remains `ae314707494f48e80c24e18e1a9a186ebb6c37c1`. §1.5 requires Hua Tuo First Aid to activate from the owner's Skills band when the authoritative response option is present. §1.8 keeps cross-Hero passive choices in the viewer's Local Dock Action Row. §5 defers UX3 until active refinement §§1–4 close.
+Reviewed the full current remote `docs/UX2-refine.md`, blob `347db2e2bc8768620eaf69bbd84191a1a79792d3`. §4A transient-event timer/overlay refinement must close before §6; §6 physical-seat causal graph is part of UX2, and final AOE revalidation plus Reviewer acceptance are required for UX2 completion. §1.8 keeps cross-Hero passive choices in the viewer's Local Dock Action Row.
 
 ## Current task
 
-`UX2.REFINE-HUA-TUO-FIRST-AID-SKILLS-BAND-01` — route Hua Tuo's First Aid through its Local Skills tile only when the viewer's authoritative `CurrentAction.options` contains `hua_tuo_first_aid`; keep eligible-card selection private and submit through the existing `respond` capability. Preserve ordinary Peach/Skip controls, avoid duplicate First Aid action extras, and make no server/gameplay or response-rule changes. Add focused mobile/wide regression for enabled/absent option, authoritative card selection/payload, geometry, and observer privacy.
+`UX2.REFINE-PRIVATE-DRAW-COUNTDOWN-CLUSTER-01` — move only the viewer-private Private Draw countdown from the full-table content overlay into the existing lower-right `StageSystemCluster`, immediately left of System Menu. Preserve event timing, viewer-only cards/title, and an accessible full timer label; do not change overlay height, server/gameplay semantics, or other event countdowns. Prove 390×844, 480×900, and wide timer/menu placement, privacy, containment, and no horizontal overflow.
