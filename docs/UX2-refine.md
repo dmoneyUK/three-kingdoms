@@ -233,196 +233,44 @@ The player should be able to look beside their Hero portrait and immediately ans
 
 They should never need to scan the bottom Action Row to discover a Hero-skill activation that should have been available beside the Hero.
 
-## 2. Single-Target Stratagem Negation Flow — Minimal Causal Composition
+## 2. Single-Target Stratagem Negation Flow — Card/Response Refinement Only
 
-### 2.1 Final player-facing result
+### 2.1 Current refinement boundary
 
-A single-target Stratagem that opens a Negation window must be presented as a visual causal relationship, not as a text-heavy state explanation.
+The central Interaction Stage participant/Hero presentation is **frozen for the current refinement phase**.
 
-The default mobile causal composition is:
+Do not change, resize, replace, reposition, deduplicate, reconnect, or otherwise redesign the Interaction Stage Hero/player nodes as part of UX2 refinement. Their future presentation will be handled by a separate interaction-visualization refactor.
 
-```text
-        SOURCE
-          ↓
-      ROOT CARD
-          ↓
-        TARGET
-```
+This section therefore governs only non-Hero response presentation that remains valid across the future refactor:
 
-The Stage must communicate primarily through:
+- root and public response cards;
+- active-card state;
+- public Negation branch/history;
+- Local Guidance;
+- response timer/system controls where applicable;
+- privacy and server-authority rules.
 
-- participant artwork;
-- the real action card;
-- causal arrows/lines;
-- active-card highlight;
-- compact public response branches.
+Existing participant/Hero composition may remain as the current implementation baseline until the later refactor.
 
-The Local Guidance Strip communicates the viewer's private next action.
-
-Do not require the player to read implementation-state labels such as:
-
-- `NEGATION RESPONSE`;
-- `EFFECT`;
-- `REACTION CHAIN`;
-- `ORIGINAL EFFECT`;
-- `NEGATION WINDOW`;
-- `CURRENT PARTICIPANT`;
-- `PUBLIC CAUSAL CONTEXT`;
-- `Waiting for response...`.
-
-For a legal private Negation opportunity, the local instruction should normally be only:
-
-```text
-Play Negation or Skip.
-```
-
-The player should be able to understand the public event by looking at the spatial relationship and current highlighted card.
-
-### 2.2 Fixed mobile causal geometry
-
-At mobile portrait widths, the single-target ACTIVE scene uses one stable vertical spine:
-
-```text
-         [Source portrait]
-               ↓
-          [Root card]
-               ↓
-         [Target portrait]
-```
-
-The Source, Root Card, and Target positions must remain stable throughout:
-
-- open Negation window;
-- first public Negation;
-- counter-Negation;
-- Negation settlement;
-- return to the root action when the counter-chain is defeated.
-
-The Stage must not reconstruct itself into a different layout merely because the current active public response changes.
-
-For a 390px portrait viewport:
-
-- Stage horizontal inset target: approximately 16px per side;
-- Source portrait target size: approximately 64 × 82px;
-- Root action card target width: approximately 84–92px;
-- Root action card target height: approximately 120–132px;
-- Source-to-root vertical gap: approximately 12–16px;
-- the final Stage visual element should sit no more than 24px above the Local Guidance Strip.
-
-These are layout targets rather than gameplay semantics. The implementation may adjust exact pixels for real card aspect ratio and responsive fit, but it must preserve the same hierarchy and measurable containment.
-
-### 2.3 Source presentation
-
-The Stage Source is a compact event identity, not a second full player card.
-
-Show:
-
-- Hero portrait/artwork;
-- player name.
-
-Do not repeat:
-
-- HP;
-- Hero name;
-- Hand count;
-- Equipment;
-- role/faction;
-- `SOURCE` heading.
-
-Those facts already exist in the fixed Seat or Local Dock.
-
-The Source must come from authoritative presentation data. React must not infer it from turn owner, seat position, timeline order, animation state, or card ownership guesses.
-
-### 2.4 Root action card
-
-The root Stratagem card is the main visual node of the interaction.
-
-Requirements:
-
-- Render the actual public card identity/artwork when authoritative card/effect identity is proven.
-- Do not replace the card with a separate text-only `EFFECT` panel.
-- Do not repeat the card name in a second `ORIGINAL EFFECT` block.
-- The root card is highlighted while it is the newest unresolved public action head.
-- When a public Negation is submitted, the root card remains visible but becomes visually subdued.
-- If the Negation chain is defeated and the original effect resumes, the root card becomes the active highlight again without moving.
-
-The root card's position must not move by more than 2 CSS pixels when a public Negation branch appears or disappears.
-
-### 2.5 Target presentation
-
-For an ordinary non-self target:
-
-```text
-        Cao Cao
-       [portrait]
-           ↓
-        [STEAL]
-           ↓
-       Gan Ning
-      [portrait]
-```
-
-The target presentation should contain only:
-
-- compact Hero portrait/artwork;
-- player name.
-
-Do not repeat HP, Hero name, Hand count, Equipment, `TARGET`, `FOCUS`, or decision metadata.
-
-The target must come from authoritative presentation data.
-
-### 2.6 Self-target composition
-
-If the authoritative source and target are the same player, do not render the same participant twice.
-
-For a self-target Stratagem such as Something Out of Nothing, use one participant node and a compact self-return relationship:
-
-```text
-             Player1
-           [portrait]
-               │
-               ▼
-  [SOMETHING OUT OF NOTHING]
-               ╰────↗
-```
-
-The return curve/loop means that the root action resolves back to the same participant.
-
-Visible text such as:
-
-```text
-Player1 → Player1
-SELF TARGET
-SOURCE
-TARGET
-```
-
-must not be required.
-
-A small self marker may be used only if usability testing shows that the loop alone is ambiguous, but duplicating the participant remains forbidden.
-
-Measurable rule:
-
-- In a self-target ACTIVE Stage, the same participant must have exactly one visible participant representation in the causal composition.
-
-### 2.7 Open Negation window — no Reaction Chain panel
+### 2.2 Open Negation window
 
 An open Negation opportunity is not yet a public reaction chain.
 
 Before anybody actually submits Negation:
 
+- the root action card remains the active public card;
+- no placeholder Negation card is rendered;
+- no large Reaction Chain panel is required;
+- the public Stage must not name a private responder;
+- the Local Guidance Strip supplies the viewer's private instruction.
+
+Preferred local instruction:
+
 ```text
-             Player1
-           [portrait]
-               ↓
-  [SOMETHING OUT OF NOTHING]
-             ACTIVE
-               ╰────↗
+Play Negation or Skip.
 ```
 
-The public Stage must not render a large Reaction Chain panel or a placeholder Negation card.
-
-The following visible headings/copy must be absent from the normal simple open-Negation Stage:
+Avoid player-facing implementation-state copy such as:
 
 - `NEGATION RESPONSE`;
 - `EFFECT`;
@@ -432,279 +280,99 @@ The following visible headings/copy must be absent from the normal simple open-N
 - `A Negation may be played now.`;
 - `Waiting for response...`.
 
-The eligible viewer's Local Guidance Strip supplies the private instruction:
+Do not modify participant/Hero geometry to achieve this cleanup.
 
-```text
-Play Negation or Skip.
-```
-
-No public player name may be shown merely because that player is currently being privately offered a Negation decision.
-
-### 2.8 Active-card visual state
+### 2.3 Active public card
 
 At any moment, the public root/response chain has exactly one active visual head.
 
-Recommended visual treatment:
+Recommended treatment:
 
 **Active card**
 - full opacity;
-- approximately 2px emphasized border;
-- restrained outer glow of approximately 6–10px;
-- highest visual contrast in the chain.
+- emphasized border;
+- restrained outer glow;
+- highest visual contrast in the public chain.
 
 **Inactive causal predecessor**
-- opacity approximately 0.60–0.72;
+- lower opacity;
 - no outer glow;
 - lower-emphasis border.
 
 Hard rule:
 
-- exactly one public card in the current root/response chain is marked active at a time.
+- exactly one public card in the current root/response chain is active at a time.
 
-Do not use competing simultaneous highlights that make it unclear which card is currently responseable.
+This rule applies independently of the later Interaction Stage Hero refactor.
 
-### 2.9 First public Negation — branch from the root card
+### 2.4 First public Negation
 
 A Negation card appears only after it is actually submitted and becomes public.
 
-Transition:
+When first submitted:
 
-```text
-BEFORE
+- keep the root action card visible as causal context;
+- make the root card visually subdued;
+- add the submitted Negation as a compact public response node;
+- make the Negation the only active public card;
+- do not create a duplicate text-heavy Reaction Chain panel;
+- do not reveal who could have responded before submission.
 
-            Player1
-               ↓
-  [SOMETHING OUT OF NOTHING]
-             ACTIVE
+If the actor identity of a submitted Negation is public, it may be represented compactly near the public Negation card.
 
+Do not change Interaction Stage Hero/player layout as part of this work.
 
-AFTER
+### 2.5 Counter-Negation
 
-            Player1
-               ↓
- [Something Out of Nothing] ───── [NEGATION]
-          subdued                    ACTIVE
-               ╰────↗
-```
-
-Requirements:
-
-- Source position does not move.
-- Root card position does not move.
-- Target/self relationship does not move.
-- The new Negation card branches directly from the root card.
-- The root card remains visible as causal context.
-- The new Negation becomes the only active highlight.
-- Do not create a separate text-heavy Reaction Chain panel containing the same facts.
-
-Recommended first-branch card size on 390px portrait:
-
-- approximately 72–78px wide;
-- approximately 102–112px high;
-- approximately 14–20px horizontal gap from the root card where space permits.
-
-The connecting line should visually attach the Negation to the root card.
-
-### 2.10 Public actor of a submitted Negation
-
-Once Negation is publicly submitted, the identity of the player who actually played it may be shown if that identity is public under the game rules.
-
-Preferred presentation:
-
-```text
-[NEGATION]
- Cao Cao
-```
-
-or a very small Hero/avatar badge plus the player name.
-
-Do not expand this into prose such as:
-
-```text
-NEGATION 1
-Cao Cao played this card.
-```
-
-Do not reveal who *could* play Negation before they actually submit one.
-
-### 2.11 Counter-Negation
-
-Each new public counter-response extends the same compact branch:
-
-```text
-[Something Out of Nothing] ─ [Negation] ─ [NEGATION]
-          subdued               subdued       ACTIVE
-```
+Each new public counter-response extends the compact public card history.
 
 Rules:
 
-- the newest unresolved public response is the only active highlight;
-- previous public cards remain visible as causal predecessors;
-- Source and Target do not move;
-- no large Reaction Chain panel is introduced;
-- the chain remains inside the Stage and does not create page-level horizontal overflow.
+- newest unresolved public response = only active card;
+- older public response cards remain subdued causal context;
+- root identity remains available;
+- long history compacts rather than causing page-level horizontal overflow;
+- private Pass/Skip/Decline and private responder scanning create no public card node.
 
-On narrow screens, display at most:
+On narrow screens, preserve at minimum:
 
-- the root card;
-- the most recent two public response cards at full readable size.
+- root identity;
+- recent public response context;
+- current active head.
 
-If more public counter-responses exist, compact older history:
+### 2.6 Negation settlement
 
-```text
-[ROOT] ─ [+3] ─ [Negation] ─ [NEGATION]
-                               old          ACTIVE
-```
+If Negation cancels the root effect:
 
-The compact history indicator must never replace either the root identity or the current active head.
-
-### 2.12 Negation settlement
-
-#### Negation succeeds against the root effect
-
-When the final Negation cancels the original effect:
-
-- settle/collapse the public response branch;
-- show a brief compact cancelled/negated state on the root action, e.g. `⊘`;
+- settle/collapse the public response history cleanly;
+- a compact cancelled/negated root state may be shown;
 - exit the interaction when authoritative settlement completes.
 
-Do not add explanatory prose such as:
+If counter-Negation restores the root effect:
 
-- `Negation succeeded`;
-- `Effect cancelled`;
-- `Resolution complete`.
-
-#### Negation is defeated by counter-Negation
-
-When the counter-chain restores the root effect:
-
-- collapse/settle the public response branch;
-- keep Source and Target positions unchanged;
-- restore the root action card as the active highlighted card;
+- settle/collapse the public response history;
+- restore the root action card as the active public card;
 - continue the authoritative root action.
 
-The root card must return to active state without a layout jump.
+Do not infer settlement from animation, timeline position, HP change, or local state.
 
-### 2.13 Local Guidance
+### 2.7 Local Guidance
 
-The Local Guidance Strip immediately below the Stage owns the viewer's private next-step instruction.
+The Local Guidance Strip owns the viewer's private next-step instruction.
 
-For the open Negation decision:
+For an eligible Negation opportunity:
 
 ```text
 Play Negation or Skip.
 ```
 
-Do not duplicate that instruction in the public Stage.
+Keep the instruction short and direct.
 
-The visible `YOUR RESPONSE` prefix is optional and should be removed if the action remains clear without it.
+Do not duplicate the same instruction in the public Stage.
 
-Preferred Guidance characteristics:
+The visible `YOUR RESPONSE` prefix is optional when the action remains clear without it.
 
-- one primary instruction;
-- one line whenever practical;
-- maximum two lines;
-- approximately 52–64px total height on mobile;
-- no duplicated event explanation.
-
-The Stage tells the player what is happening; the Guidance Strip tells the local player what to do.
-
-### 2.14 Response timer
-
-If the response decision is timed, the response timer remains in one stable top-right location.
-
-The timer itself already communicates that the interaction is waiting.
-
-Therefore the public Stage should not repeat `Waiting for response...`.
-
-The timer must:
-
-- not reveal a private responder identity;
-- not overlap Exit;
-- remain stable when root/branch active state changes;
-- appear consistently for the authoritative timed response state.
-
-### 2.15 Content-driven Stage height
-
-A simple single-target Negation window must not reserve a large empty Stage merely because a generic Interaction Stage supports more complex scenes.
-
-The Stage height should be content-driven.
-
-For a simple self-target open-Negation scene at 390px portrait, the intended visible interaction content should normally fit within approximately 240–300px, excluding the fixed opponent Seat area and Local Dock.
-
-Hard acceptance rule:
-
-- vertical gap between the lowest visible Stage causal element and the Local Guidance Strip must be no more than 24px unless a proven responsive constraint requires a documented compact alternative.
-
-Do not preserve large unused blank areas below a completed causal composition.
-
-### 2.16 Generic single-target Stratagem grammar
-
-The design is not specific to Something Out of Nothing.
-
-All proven single-target Stratagem/effect flows should converge on the same visual grammar when compatible with their semantics:
-
-```text
-Source
-  ↓
-Root Action
-  ↓
-Target
-```
-
-Examples include, when authoritative semantics permit:
-
-- Steal;
-- Dismantle;
-- Duel;
-- Overindulgence;
-- Rations Depleted;
-- Something Out of Nothing;
-- other single-target Negatable effects.
-
-Their public Negation grammar is always:
-
-```text
-Root Action ─ Negation ─ Counter-Negation
-```
-
-The active highlight always identifies the newest unresolved public action head.
-
-Do not hard-code card-name-specific layout behavior when one generic authoritative composition can express the same relationship.
-
-### 2.17 Relationship to Group/AOE composition
-
-Single-target and Group/AOE compositions share the same causal visual language.
-
-**Single target**
-
-```text
-Source
-  ↓
-Root Card
-  ↓
-Target
-```
-
-**Group/AOE**
-
-```text
-Source
-  ↓
-Root Card
-  ↓
-Group Target Strip
-```
-
-Both use the same public counter-response rule:
-
-```text
-Root Card ─ Negation ─ Counter-Negation
-```
-
-This consistency is intentional. Players should not need to learn a separate reaction language for single-target and Group effects.
-
-### 2.18 Privacy and authority
+### 2.8 Privacy and authority
 
 This refinement changes presentation only.
 
@@ -718,201 +386,74 @@ React must not infer:
 - public response actor;
 - response order;
 - settlement;
-- whether the root effect resumes;
+- whether the root effect resumes.
 
-from:
+Use authoritative CurrentAction / Presentation / causal-response projections.
 
-- turn owner;
-- card name;
-- player name;
-- seat order;
-- HP change;
-- timeline order;
-- local animation state.
+If the required public card relationship is not proven, fail closed.
 
-Use authoritative `CurrentAction`, Presentation, and causal/reaction projections.
+### 2.9 Measurable acceptance
 
-If a relationship is not authoritatively proven, fail closed rather than fabricating a visually complete chain.
-
-### 2.19 Measurable browser acceptance
-
-Validate at minimum at:
+Validate at minimum:
 
 - 390 × 844 portrait;
 - 480 × 900 portrait;
-- one wide desktop/tablet viewport.
+- one wide viewport.
 
-Required reference states:
+Required checks:
 
-1. open Negation window, no submitted Negation;
-2. first Negation publicly submitted;
-3. counter-Negation publicly submitted;
-4. chain resolves with root cancelled;
-5. chain resolves with root restored;
-6. ordinary non-self target;
-7. self-target root action.
-
-Acceptance metrics:
-
-| Requirement | Measurable expectation |
+| Requirement | Expectation |
 | --- | --- |
-| Self-target participant count | Same player appears once in the Stage causal composition |
-| Open Negation window | Large Reaction Chain panel count = 0 |
-| Open Negation window | Visible Negation branch card count = 0 |
-| Active public card | Exactly 1 active card in root/response chain |
-| First Negation | Root card coordinate delta ≤ 2 CSS px |
-| First Negation | Source coordinate delta ≤ 2 CSS px |
-| First Negation | Target/self relationship coordinate delta ≤ 2 CSS px |
+| Open Negation | Placeholder Negation card count = 0 |
+| Open Negation | Large Reaction Chain panel count = 0 |
+| Active public card | Exactly 1 |
+| Submitted Negation | New public response becomes active |
+| Counter-Negation | Newest public response is active; older cards subdued |
+| Long public chain | No page-level horizontal overflow |
+| Private responder leakage | None before public submission |
+| Guidance | One short primary instruction |
+| Banned visible headings in simple open window | `EFFECT`, `REACTION CHAIN`, `ORIGINAL EFFECT`, `NEGATION WINDOW` count = 0 where the refined composition is active |
 | Stage/Dock | Overlap = 0 |
 | Stage/Guidance | Overlap = 0 |
-| Horizontal document overflow | 0 |
-| Private responder leakage | No private responder name in public Stage before public submission |
-| Banned visible headings in simple open window | `EFFECT`, `REACTION CHAIN`, `ORIGINAL EFFECT`, `NEGATION WINDOW` count = 0 |
-| Primary local instruction | One main Guidance instruction |
-| Stage trailing blank space | Lowest causal element to Guidance ≤ 24px |
-| Mobile typography | No character-by-character wrapping |
-| Multi-Negation branch | Root and newest active head always remain visible |
-| Long counter chain | Older history compacts without page-level overflow |
+| Hero/player composition | No refinement task changes its geometry or representation |
 
-### 2.20 Completion criterion
+### 2.10 Completion criterion
 
-This refinement is complete when a player can understand the entire Negation flow primarily by watching cards and participant relationships rather than reading state descriptions.
+This section is complete when the public Negation state is understandable from the root/response card state and the Local Guidance instruction without relying on text-heavy implementation-state panels, while the existing Interaction Stage Hero/player presentation remains untouched pending the later refactor.
 
-At a glance, the player should be able to answer:
+## 3. Group / AOE Response Refinement — Non-Hero Controls Only
 
-- Who caused the action?
-- What root card/effect is being resolved?
-- Who is the target?
-- Which public card is currently being responded to?
-- What do I personally need to do?
+### 3.1 Current refinement boundary
 
-The public Stage should answer the first four visually.
+The Group/AOE Interaction Stage Hero/player presentation is **deferred**.
 
-The Local Guidance Strip should answer the last one with one short instruction.
+Do not modify during current UX2 refinement:
 
-## 3. Group / AOE Response Refinement — Direct Actions, Local System Controls, and Recognisable Combat Actors
+- central Source Hero artwork;
+- Group target Hero portraits;
+- target-strip Hero geometry;
+- viewer-vs-opponent target Hero representation;
+- current-participant Hero highlight/marker;
+- Source/target Hero positions;
+- Hero-to-card or card-to-Hero connector geometry;
+- participant deduplication strategy;
+- seat-as-node / physical-player-node interaction graph.
 
-### 3.1 Final player-facing result
+Those surfaces will be redesigned together in the later interaction-visualization refactor.
 
-Group/AOE response scenes must preserve the proven causal structure while making the current response immediately understandable on a phone.
+Current UX2 refinement may change only the non-Hero controls and response semantics below.
 
-Raining Arrows is the reference flow:
+### 3.2 Direct local guidance
 
-```text
-             Source
-            [portrait]
-                ↓
-       [RAINING ARROWS]
-                │
-          ──────┼──────
-           │    │    │
-        Target Target Target
-          ✓     ♥↓    CURRENT
+The Local Guidance Strip must not use `Group Resolution` as the primary player instruction.
 
-                        ⌛ 18s   [☰]
-────────────────────────────────────
-Respond to Raining Arrows.
-────────────────────────────────────
-Local Hero / Skills / Equipment / Hand
-────────────────────────────────────
-                      Confirm / Take Damage
-```
-
-The Stage must rely primarily on recognisable Hero artwork, the real public root card, visible causal connectors, compact authoritative outcomes, and one unmistakable current-participant highlight.
-
-Do not return to metadata-heavy `Group Resolution` presentation.
-
-### 3.2 One stable target strip
-
-All affected Group/AOE participants appear once in one stable target strip.
-
-Do not reintroduce a separate large Current Target Hero.
-
-Every target marker, including the viewer, uses the same structural grammar:
-
-- recognisable Hero portrait;
-- player name;
-- compact authoritative state;
-- current-state highlight when applicable.
-
-The viewer's target-strip marker represents the viewer's public role in the event. The Local Player Dock remains the viewer's operational Hero surface.
-
-Viewer and opponent target markers must not use visibly different dimensions merely because one is local.
-
-### 3.3 Enlarge central combat Hero artwork
-
-Current Group/AOE participant portraits are too small to identify reliably on phone screens. The central combat view must give Hero artwork enough visual weight to be recognisable without reading the player name first.
-
-For a three-target reference case at 390px and 480px portrait widths:
-
-- Source portrait preferred width: 92–112px;
-- Source portrait preferred height: 112–140px;
-- Group target portrait preferred width: 72–84px;
-- Group target portrait preferred height: 88–104px;
-- target portraits use equal dimensions within 2 CSS px;
-- the current target may gain glow/border emphasis but must not become a differently sized card.
-
-For four or five simultaneous targets, responsive compression may reduce target portraits to approximately 56–68px wide while preserving recognisable artwork and equal geometry.
-
-For larger Group/AOE sets, use the existing COMPACT/CRITICAL density model rather than shrinking every Hero into an unreadable thumbnail. The current participant must remain individually recognisable.
-
-The current participant must not be indicated primarily by a `▶` text glyph. Prefer:
-
-- gold border/glow;
-- a small downward current marker;
-- stronger contrast;
-- stable underline/accent.
-
-Accessible text may still announce `Current`.
-
-### 3.4 Show the AOE relationship as a visible branch
-
-The root AOE card should visibly distribute to the affected target set.
-
-Preferred relation:
-
-```text
-        [RAINING ARROWS]
-               │
-          ─────┼─────
-           │   │   │
-          P1  P2  P3
-```
-
-A single arrow ending above a row of unrelated-looking labels is not sufficient when space permits a clearer branch.
-
-The connector remains lightweight and must not compete visually with the active card or current participant.
-
-Branch geometry must remain stable as participants move from Pending to Current to Resolved.
-
-### 3.5 Compact, non-numeric participant outcomes
-
-Participant outcomes remain authoritative and visually compact.
-
-Preferred visible semantics:
-
-- successful required response: `✓`;
-- damaged: a non-numeric damage/heart-loss marker such as `♥↓`;
-- negated for this participant: `⊘`;
-- defeated: compact defeated marker;
-- pending: neutral/subdued state;
-- current: highlight/marker rather than a `▶` character.
-
-Do not hard-code a visible numeric damage amount such as `-1♥` unless the authoritative presentation explicitly supplies the resolved amount and the product intentionally needs that number.
-
-The AOE progress display communicates outcome category; it must not reconstruct damage arithmetic from the card's normal text.
-
-### 3.6 Direct local guidance
-
-The Local Guidance Strip must never use `Group Resolution` as the primary player instruction.
-
-For Raining Arrows, use a short event-facing instruction such as:
+For Raining Arrows, use concise event-facing guidance such as:
 
 ```text
 Respond to Raining Arrows.
 ```
 
-Do not use as primary guidance:
+Do not use as the primary instruction:
 
 - `Group Resolution`;
 - `0 cards selected`;
@@ -920,9 +461,9 @@ Do not use as primary guidance:
 - `Active Scope`;
 - other implementation-state terminology.
 
-A secondary selection count may appear only after the player has entered a real selection flow and when it materially helps.
+A selection count may appear only after the player has entered a real selection flow and when it materially helps.
 
-### 3.7 Raining Arrows response action — TAKE DAMAGE
+### 3.3 Raining Arrows response action — TAKE DAMAGE
 
 When the current Raining Arrows participant may satisfy the response with Dodge, the meaningful choices are:
 
@@ -945,35 +486,35 @@ The action deliberately does not encode a numeric amount. Damage can be modified
 
 If no legal Dodge provider exists:
 
-- `TAKE DAMAGE` becomes the sole main response action;
-- do not require the player to press a semantically vague `SKIP`;
-- do not show a disabled Confirm as though card selection were still possible.
+- `TAKE DAMAGE` is the sole main response action;
+- do not require a semantically vague `SKIP`;
+- do not show a disabled Confirm that implies a card selection is still possible.
 
 If one or more legal Dodge providers exist:
 
-- legal Dodge cards/providers are visually selectable using authoritative response surfaces;
+- legal Dodge cards/providers are visually discoverable using authoritative response surfaces;
 - unrelated Hand cards remain visible but visually quieter;
 - `Confirm` becomes available only when a complete legal response selection exists;
 - `TAKE DAMAGE` remains the explicit alternative.
 
 This changes presentation and decision labels only. It does not change damage settlement semantics.
 
-### 3.8 Discoverable legal response providers
+### 3.4 Discoverable legal response providers
 
 During a required-card response such as Raining Arrows → Dodge:
 
-- authoritative legal response cards/providers should be visually emphasised enough to be found in approximately one second;
+- authoritative legal response cards/providers should be visually emphasised enough to be found quickly;
 - unrelated Hand cards should remain visible but slightly subdued;
-- React must not reconstruct legality from card colour, name, Hero, or local heuristics;
-- Equipment and Hero response providers remain in their established surfaces.
+- Equipment and Hero response providers remain in their established surfaces;
+- React must not reconstruct legality from card colour, card name, Hero name, phase, or local heuristics.
 
-The emphasis must not resemble a modal picker unless the interaction has actually entered a dedicated picker state.
+The emphasis must not create a modal picker unless the interaction has actually entered a dedicated picker state.
 
-### 3.9 Minimise the top system-control area during active combat
+### 3.5 Minimise the top system-control area
 
 The active combat screen should not reserve a large top-row area for Exit, secondary event/system controls, and the response timer.
 
-During an Interaction Stage, move secondary system controls into one compact System Menu cluster at the lower-right edge of the Stage, immediately above the Local Guidance Strip.
+Move secondary system/navigation controls into one compact System Menu cluster at the lower-right edge of the Interaction Stage, immediately above the Local Guidance Strip.
 
 Reference placement:
 
@@ -984,99 +525,91 @@ Respond to Raining Arrows.
 ─────────────────────────────────────  Guidance
 ```
 
-The fixed opponent Seat topology remains at the top. Do not insert another persistent control bar between the Seats and the interaction.
+The fixed opponent Seat topology remains at the top.
 
-The active game event itself remains visible in the Stage as the causal card/relationship. Only secondary system/navigation controls move into the System Menu.
+Do not use the future combat-Hero layout as an anchor for this cluster. Anchor it to the Stage/Guidance boundary so the control placement survives the later interaction-visualization refactor.
 
-### 3.10 System Menu
+### 3.6 System Menu
 
 Provide one compact System Menu control inside the lower-right of the Interaction Stage.
 
 Requirements:
 
-- one stable menu icon such as `☰` or an equivalent established system icon;
+- one stable system/menu icon;
 - minimum touch target: 44 × 44px;
-- anchored inside the Stage, not inside the Local Player Dock;
+- anchored relative to the Stage/Guidance boundary;
 - preferred right inset: 12–16px;
 - preferred bottom inset above Guidance: 8–12px;
-- it must not overlap the target strip, public response branch, or Guidance.
+- must not overlap public interaction content or Guidance.
 
 Existing secondary system/navigation actions that currently occupy the top combat area should move into this menu where compatible with their semantics.
 
 `Exit Game` belongs inside this menu rather than as a persistent large button.
 
-Exit remains destructive and should keep its existing confirmation/safety behavior. Moving it into the menu must not make accidental exit easier.
+Exit remains destructive and must keep its confirmation/safety behavior.
 
-### 3.11 Response timer placement
+### 3.7 Response timer placement
 
 The response timer moves with the System Menu cluster.
 
 Placement:
 
 - immediately to the left of the System Menu;
-- stable throughout the same response state;
 - approximately 8px gap from the menu;
+- stable throughout the same authoritative response state;
 - visually compact;
-- close enough to the Local Guidance/action region to remain in the player's response attention zone.
+- close to the Guidance/action attention zone.
 
-Suggested mobile timer footprint:
+Suggested mobile footprint:
 
 - width: approximately 52–68px;
 - height: approximately 36–44px.
 
-The timer must not reveal a private responder identity and must not overlap the target strip or Guidance.
+The timer must not reveal private responder identity.
 
-The old large top-right timer block should not reserve persistent vertical space during active combat.
+The old large top-right timer block should not reserve persistent combat-screen space.
 
-### 3.12 Content-driven Stage ending
+### 3.8 Content-driven Stage ending
 
-After the target strip and any compact public response branch, the Stage should end promptly.
+After the public interaction content, the Stage should end promptly.
 
-For ordinary mobile Group/AOE scenes:
+For ordinary mobile response scenes:
 
-- target-strip/last-causal-element to system cluster: enough space for non-overlap only;
 - system cluster to Guidance: 8–12px preferred;
-- unused trailing Stage space must not remain merely to preserve an old fixed-height composition.
+- no unnecessary trailing Stage space should remain solely to preserve the old top-control layout;
+- Guidance should feel visually attached to the current response.
 
-The Local Guidance Strip should feel visually attached to the current combat decision.
+Do not resize or reposition central Hero/player content to achieve this; only adjust the non-Hero system/control spacing covered by this section.
 
-### 3.13 Measurable acceptance
+### 3.9 Measurable acceptance
 
 Validate at minimum:
 
 - 390 × 844 portrait;
 - 480 × 900 portrait;
-- one wide desktop/tablet viewport.
+- one wide viewport.
 
 Required checks:
 
 | Requirement | Expectation |
 | --- | --- |
-| Target representation | Every affected participant appears once |
-| Target portrait geometry | Equal within 2 CSS px for the same density mode |
-| Hero recognition | Current participant has a recognisable portrait, not text-only `You ▶` |
-| Current indication | No `▶` glyph required as the primary current marker |
-| AOE connector | Root visibly branches to the target set |
-| Damaged marker | No hard-coded numeric amount required |
-| No-Dodge action | Visible primary action is `TAKE DAMAGE` |
-| No-Dodge action | No visible `SKIP` used as the damage-acceptance label |
+| No-Dodge action | Visible primary alternative is `TAKE DAMAGE` |
+| No-Dodge action | No `SKIP` used as the damage-acceptance label |
+| No-Dodge action | No guessed numeric damage amount |
 | No-Dodge action | No disabled Confirm implying an unavailable selection |
 | Legal Dodge | Authoritative legal Dodge provider is visually discoverable |
-| Guidance | Primary visible copy does not say `Group Resolution` |
-| System menu | 44 × 44px minimum touch target |
+| Guidance | Primary copy does not say `Group Resolution` |
+| System Menu | Minimum 44 × 44px touch target |
 | Exit | Not persistently displayed as a large top combat button |
-| Timer | Immediately left of System Menu in the Stage lower-right cluster |
-| Stage/Guidance | Overlap = 0 |
+| Timer | Immediately left of System Menu |
+| System cluster/Guidance | Overlap = 0 |
 | Stage/Dock | Overlap = 0 |
-| System cluster/targets | Overlap = 0 |
 | Horizontal document overflow | 0 |
-| State progression | Source/root/target-strip anchors remain stable as Current advances |
+| Hero/player composition | No refinement task changes central Hero/player geometry or representation |
 
-### 3.14 Completion criterion
+### 3.10 Completion criterion
 
-This refinement is complete when a player can follow a Group/AOE sequence by recognising the source Hero, the root action card, the affected Hero portraits, the current highlight, and compact outcomes without reading implementation-state text.
-
-The response controls must describe the player's actual decision. In particular, accepting unresolved Raining Arrows is represented as `TAKE DAMAGE`, never as a generic `SKIP` or a guessed numeric damage amount.
+This section is complete when Group/AOE response controls describe the player's real decision, legal response providers are easy to discover, and Timer/Exit no longer consume a large top combat area, while all central Interaction Stage Hero/player presentation remains untouched pending the separate refactor.
 
 ## 4. Zhuge Liang Skill Presentation — Actionable Stargazing and Clearly Passive Empty Fortress Strategem
 
@@ -1242,4 +775,59 @@ Zhuge Liang's Skills band is complete when the player can immediately distinguis
 - `Empty Fortress Strategem` as an always-present passive skill;
 
 while both remain visually balanced, readable, and stable beside the Hero portrait.
+
+## 5. Interaction-Stage Hero / Player Presentation — DEFERRED TO LATER REFACTOR
+
+### 5.1 Current decision
+
+All Interaction Stage Hero/player visualization work is deferred.
+
+Do not implement further UX2 refinement tasks that change:
+
+- central combat Hero portraits;
+- Source Hero representation;
+- Target Hero representation;
+- Group target Hero representation;
+- viewer Hero representation inside the Stage;
+- Hero/player size, position, orientation, or duplication;
+- current-participant Hero visual treatment;
+- Hero/player-to-card connector geometry;
+- physical Seat / Local Dock nodes as a new combat graph;
+- a new seat-anchored interaction overlay;
+- UX3 interaction-graph foundation work.
+
+The current implementation remains the temporary baseline until the user explicitly resumes the interaction-visualization refactor.
+
+### 5.2 Planning consequence
+
+A HANDOVER task that alters Interaction Stage Hero/player presentation is not currently authorized by this design.
+
+At the next task/planning boundary, the Coding Agent must:
+
+1. finish only an already-running task that does not modify deferred Hero/player presentation;
+2. re-read this document;
+3. skip/defer any Hero/player interaction-graph task;
+4. choose the next bounded task from the active non-Hero refinements in Sections 1–4;
+5. preserve server-owned presentation authority and fail-closed behavior.
+
+Do not delete existing Hero/player presentation code merely because it will be replaced later.
+
+### 5.3 Active refinement scope while deferred
+
+Current authorized refinement work includes:
+
+- Local Hero Skills band consistency and activation;
+- single-target Negation public-card/response presentation that does not alter Hero/player nodes;
+- direct response Guidance;
+- `TAKE DAMAGE` semantics for Raining Arrows;
+- authoritative legal response-provider emphasis;
+- System Menu / Exit relocation;
+- response timer relocation;
+- Zhuge Liang Stargazing / Empty Fortress Strategem skill presentation.
+
+### 5.4 Resume condition
+
+Interaction Stage Hero/player redesign resumes only after an explicit user instruction authorizes the later refactor.
+
+Until then, no Agent should infer that UX3 interaction-graph work is active merely because an older HANDOVER or roadmap entry describes it.
 
