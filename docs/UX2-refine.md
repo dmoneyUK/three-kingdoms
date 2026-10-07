@@ -779,20 +779,22 @@ Zhuge Liang's Skills band is complete when the player can immediately distinguis
 while both remain visually balanced, readable, and stable beside the Hero portrait.
 
 
-### 4.10 Stargazing private deck-reorder UX is part of the refinement scope
+### 4.10 Stargazing private deck-reorder UX — single pre-Section-6 refinement task
 
 The Stargazing refinement is not complete merely because the Skills-band
 activation is authoritative and the private deck-reorder dialog opens.
 
-The private deck-reorder decision is itself a core part of Stargazing and must
-be usable on the supported mobile layouts before Section 6 work begins.
+This entire subsection is **one bounded UX2 refinement task**, not a sequence of
+separate implementation tasks. The agent may implement the internal points in
+whatever order is convenient, but they belong to one coherent Stargazing
+deck-reorder repair and should be reviewed together.
 
 A reviewer-observed production failure showed a mobile Stargazing dialog in
 which the two deck zones occupied most of the viewport while the actual card
 faces were no longer visible, leaving only reorder controls such as
 \`↑\`, \`↓\`, and \`Top\`. This state is not acceptable.
 
-The principal product requirement is simple:
+The principal product requirement is:
 
 > During Stargazing, the player must be able to see the revealed cards clearly
 > enough to identify them, understand their order, and move them between the top
@@ -801,7 +803,7 @@ The principal product requirement is simple:
 
 This requirement has priority over decorative empty space.
 
-### 4.11 Revealed cards must remain visibly present for the whole decision
+**Persistent card visibility**
 
 Every card revealed privately for Stargazing must remain visibly rendered until
 one of the following authoritative transitions occurs:
@@ -813,59 +815,56 @@ one of the following authoritative transitions occurs:
 The cards must not disappear merely because a generic played-card/reveal
 animation reaches its normal end state.
 
-Specifically:
+Requirements:
 
 - card opacity must remain visibly non-zero for the full decision;
 - no generic card-flight animation may leave a Stargazing card at
   \`opacity: 0\`, translated off-screen, or otherwise visually absent;
-- the rank, suit, card identity/art, and relative sequence position must remain
+- rank, suit, card identity/art, and relative sequence position must remain
   readable while the user is deciding;
 - reorder controls without their associated visible card are not a valid UI
   state;
-- cards must remain private to the acting viewer exactly as required by the
-  existing authoritative private-deck-reorder contract.
+- cards remain private to the acting viewer exactly as required by the existing
+  authoritative private-deck-reorder contract.
 
 A DOM node continuing to exist is not sufficient proof. The actual card face
 must remain visibly readable.
 
-### 4.12 Compact top/bottom sequence composition
+**Compact top/bottom composition**
 
 Stargazing is an ordering task, not a pair of large empty drop zones.
 
-The visual hierarchy should prioritize, in order:
+The visual hierarchy should prioritize:
 
 1. revealed cards;
 2. the current top-of-deck and bottom-of-deck sequence;
-3. the ordering/move affordances;
+3. ordering/move affordances;
 4. explanatory copy.
 
-The two sequence areas must therefore be compact and content-driven.
+The two sequence areas must be compact and content-driven.
 
-Required behavior:
+Requirements:
 
 - \`TOP OF DECK\` and \`BOTTOM OF DECK\` remain clearly labelled;
 - an empty sequence must not reserve a large blank vertical panel;
-- sequence containers should grow primarily from their card content rather than
-  from a large fixed/minimum height;
-- top and bottom groups must remain visually distinguishable without consuming
-  most of the phone viewport;
-- explanatory text such as "First card draws next" and "Earlier here stays
+- sequence containers grow primarily from their card content rather than from a
+  large fixed/minimum height;
+- top and bottom groups remain visually distinguishable without consuming most
+  of the phone viewport;
+- explanatory copy such as "First card draws next" and "Earlier here stays
   nearer the top" must not compete with the cards for the majority of vertical
   space;
-- the action button must remain visible or immediately reachable without a long
+- the action button remains visible or immediately reachable without a long
   scroll through empty area.
 
 At 390×844 and 480×900, the player should normally be able to see the relevant
 cards and enough of both sequence labels at the same time to understand the
 current arrangement.
 
-### 4.13 Card scale and realistic Stargazing counts
+**Realistic card counts and responsive scale**
 
 Browser proof must use realistic Stargazing card counts, not only a one-card
 fixture.
-
-The UI must be proven with the actual range that the current rules can present,
-including the normal multi-card case.
 
 At minimum, validate a four-card Stargazing decision because this is sufficient
 to expose wrapping, vertical growth, and mobile usability problems that a
@@ -873,21 +872,20 @@ single-card fixture cannot reveal.
 
 For four revealed cards at 390×844:
 
-- all four cards must remain visible after the normal generic played-card
-  animation duration has elapsed;
-- card faces must remain large enough to identify rank/suit/name/art;
+- all four cards remain visible after the normal generic played-card animation
+  duration has elapsed;
+- card faces remain large enough to identify rank/suit/name/art;
 - the layout must not turn each card into an unreadably small thumbnail merely
   to avoid scrolling;
-- the cards should use a compact row or intentionally contained wrap/scroll
-  treatment;
+- use a compact row or intentionally contained wrap/scroll treatment;
 - moving a card between top and bottom must not cause the whole dialog to jump
   to an unusable height;
-- the ordering controls must stay visually associated with the card they affect.
+- ordering controls stay visually associated with the card they affect.
 
-At 320px-class widths, contained horizontal scrolling or a compact sequence
-layout is preferable to very tall stacked card columns.
+At 320px-class widths, contained horizontal scrolling or another compact
+sequence layout is preferable to very tall stacked card columns.
 
-### 4.14 Ordering semantics must be visually obvious
+**Ordering semantics**
 
 The player must be able to answer these questions without reading implementation
 details:
@@ -905,21 +903,20 @@ explicit visual sequence.
 
 If arrows or text buttons are used:
 
-- their meaning must remain unambiguous;
-- a control must not appear detached from its card;
-- disabled earlier/later controls must still make the current endpoint obvious;
-- the top/bottom transfer control must use clear action copy for its current
-  destination.
+- their meaning remains unambiguous;
+- controls do not appear detached from their card;
+- disabled earlier/later controls still make the current endpoint obvious;
+- the top/bottom transfer control uses clear destination copy.
 
 The layout must not rely on large empty boxes as the primary explanation of the
 ordering model.
 
-### 4.15 Stargazing dialog containment and completion action
+**Dialog containment and completion action**
 
 The private Stargazing decision must behave as a focused modal without becoming
 larger than the useful content requires.
 
-Required containment:
+Requirements:
 
 - no page-level horizontal overflow;
 - no dialog width beyond the supported viewport;
@@ -927,72 +924,46 @@ Required containment:
 - the primary completion action remains visible or readily reachable;
 - the underlying Local Dock and table do not reflow when the dialog opens;
 - the modal remains private and blocks accidental interaction with background
-  controls while active.
+  controls while active;
+- \`Complete Stargazing\` must not be pushed far below the useful content solely
+  because one sequence is empty.
 
-The \`Complete Stargazing\` control must not be pushed far below the useful
-content solely because one sequence is empty.
-
-### 4.16 Stargazing production-path and visual acceptance
+**Production-path acceptance**
 
 The Stargazing selection UX is not considered proven by asserting that a
 \`.deck-reorder-card\` element exists.
 
-Focused proof must establish all of the following on the real rendering path:
+Focused proof for this single task must establish all of the following on the
+real rendering path:
 
-1. **Multi-card visibility**
-   - use a realistic four-card private deck-reorder state;
-   - all card faces are visible and readable;
-   - wait beyond the normal generic played-card animation duration and verify
-     that the cards remain visible.
-
-2. **390×844**
-   - no giant empty top/bottom regions;
-   - cards remain the visual focus;
-   - both sequence meaning and completion action are usable;
-   - no document overflow.
-
-3. **480×900**
-   - same requirements as 390×844;
-   - no unnecessary expansion simply because additional height exists.
-
-4. **320px-class boundary**
-   - cards remain identifiable;
-   - controls remain associated with their card;
-   - contained scrolling is allowed;
-   - no clipped primary action.
-
-5. **Wide**
-   - the dialog does not become excessively sparse or oversized;
-   - card rows remain grouped and easy to scan.
-
-6. **Reorder interaction**
-   - moving a card earlier/later visibly changes the sequence;
-   - moving a card between top and bottom visibly transfers the same card;
-   - card identity remains continuously visible through the interaction.
-
-7. **Lifecycle**
-   - cards remain visible for the entire active decision;
-   - action-revision replacement closes the stale private dialog;
-   - no private card information appears for an observing player.
+1. a realistic four-card private deck-reorder state keeps all card faces visible
+   and readable;
+2. after waiting beyond the generic played-card animation duration, all cards
+   are still visibly present;
+3. 390×844 has no giant empty top/bottom regions, no document overflow, and
+   keeps the cards as the visual focus;
+4. 480×900 satisfies the same requirements without unnecessary expansion;
+5. a 320px-class boundary keeps cards identifiable and controls associated with
+   their card, with contained scrolling allowed;
+6. wide layout remains grouped and easy to scan rather than excessively sparse;
+7. moving a card earlier/later visibly changes the sequence;
+8. moving a card between top and bottom visibly transfers the same card while
+   preserving its identity;
+9. the completion control remains visible or immediately reachable;
+10. action-revision replacement closes the stale private dialog;
+11. an observing player receives no private Stargazing card information.
 
 A test that proves only skill-button state, dialog existence, or card-node count
 does not satisfy this acceptance criterion.
 
-### 4.17 Pre-Section-6 gate for Zhuge Liang
+**Pre-Section-6 gate**
 
-Section 6 interaction-visualization work must not begin while the Stargazing
-private deck-reorder UI is still unusable on mobile.
+This single Stargazing deck-reorder refinement task must be closed before
+Section 6 interaction-visualization work begins.
 
-Before the Section 5.4 resume condition is considered satisfied, the project
-must have evidence that:
-
-- the Skills-band activation requirements in §§4.1–4.9 are satisfied;
-- the private deck-reorder usability requirements in §§4.10–4.16 are satisfied;
-- realistic multi-card mobile Stargazing has been visually/functionally proven;
-- the revealed cards remain visible for the whole authoritative decision.
-
-The implementation agent may schedule this repair together with other remaining
-pre-Section-6 refinement work, but it must be closed before beginning Section 6.
+The implementation agent may schedule this one task alongside the other
+remaining pre-Section-6 refinement items, but must not split the requirements
+above into separate handoff tasks unless the reviewer explicitly requests that.
 
 ## 4A. Transient Event Timers and Compact Event Overlays
 
@@ -2134,7 +2105,7 @@ The user has authorized the UX2 interaction-visualization refactor **after all a
 
 Therefore:
 
-1. finish the remaining authorized refinement work before §5 first, including the Stargazing private deck-reorder usability requirements in §§4.10–4.17 and §4A;
+1. finish the remaining authorized refinement work before §5 first, including the Stargazing private deck-reorder usability task in §4.10 and §4A;
 2. do not interleave the UX2 interaction-visualization graph work with unfinished pre-§5 refinement tasks;
 3. once those refinement items are closed at a clean planning boundary, Section 6 becomes the next authorized UX2 implementation work;
 4. begin Section 6 from **§6.25 Phase A — physical-seat graph foundation** unless a newer direct user instruction changes the order;
