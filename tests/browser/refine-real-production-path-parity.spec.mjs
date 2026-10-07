@@ -262,7 +262,7 @@ async function runNegationScenario({ page, request, testInfo, outcome, viewport,
     await expect(settledStage.locator('[data-action-card-kind="Dismantle"][data-active-head="true"]')).toHaveCount(1);
     await expect(settledStage.locator("[data-negation-causal-participant], [data-hero-focus-player-id]")).toHaveCount(0);
     await expectOneActivePublicCard(settledStage);
-    const targetCardModal = page.getByRole("dialog", { name: "Dismantle target card selection" });
+    const targetCardModal = page.getByRole("dialog", { name: "Burning Bridge target card selection" });
     await expect(targetCardModal).toBeVisible();
     const [stageBox, modalBox] = await Promise.all([settledStage.boundingBox(), targetCardModal.boundingBox()]);
     expect(stageBox).not.toBeNull();

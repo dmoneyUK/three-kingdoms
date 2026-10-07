@@ -497,22 +497,22 @@ test("pending Dismantle modal keeps opaque selection local across Use and Cancel
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const mainBefore = { kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] };
   const publicRolesBefore = nodeWith(renderer, "data-player-anchor", "p2").props["data-interaction-roles"];
-  assert.ok(renderer.root.findByProps({ role: "dialog", "aria-label": "Dismantle target card selection" }));
+  assert.ok(renderer.root.findByProps({ role: "dialog", "aria-label": "Burning Bridge target card selection" }));
   assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false);
-  assert.equal(button(renderer, { children: "Use Dismantle" }).props.disabled, true, "the effect-specific action waits for an eligible selection");
+  assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, true, "the effect-specific action waits for an eligible selection");
   assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "dialog-owned target-card submission is not duplicated in the footer");
   await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
   assert.equal(actionCalls.length, 0, "private hand-card selection sends no action");
   assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], true);
   assert.deepEqual({ kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] }, mainBefore, "local private selection does not alter public presentation attributes");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props["data-interaction-roles"], publicRolesBefore, "private card selection does not change public seat roles");
-  assert.equal(button(renderer, { children: "Use Dismantle" }).props.disabled, false);
+  assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, false);
   await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
   assert.equal(actionCalls.length, 0, "Cancel sends neither gameplay nor decline action");
   assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false, "Cancel clears the opaque card selection");
-  assert.equal(button(renderer, { children: "Use Dismantle" }).props.disabled, true);
+  assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, true);
   await act(async () => { button(renderer, { "aria-label": "Equipment: Nio Shield" }).props.onClick(); });
-  await act(async () => { button(renderer, { children: "Use Dismantle" }).props.onClick(); });
+  await act(async () => { button(renderer, { children: "Use Burning Bridge" }).props.onClick(); });
   assert.deepEqual(actionCalls, [["choose_target_card", { targetCardZone: "equipment", targetCardId: "target-armor" }]], "Confirm preserves the existing action and payload exactly once");
   await act(async () => { renderer.unmount(); });
 });
@@ -520,15 +520,16 @@ test("pending Dismantle modal keeps opaque selection local across Use and Cancel
 for (const cardKind of ["Steal", "Dismantle"]) {
 test(`${cardKind} pending card choice uses the shared modal without duplicate Local Dock controls`, async () => {
     const room = pendingTargetCardRoom("target-card-focus", { cardKind, withFocusProjection: true });
-    const title = cardKind === "Dismantle" ? "DISMANTLE" : "STEAL";
+    const actionName = cardKind === "Dismantle" ? "Burning Bridge" : cardKind;
+    const title = cardKind === "Dismantle" ? "BURNING BRIDGE" : "STEAL";
     const instruction = cardKind === "Dismantle" ? "Choose 1 card to discard" : "Choose 1 card to obtain";
-    const useLabel = `Use ${cardKind}`;
+    const useLabel = `Use ${actionName}`;
     const actionCalls = [];
     let renderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
-    const modal = renderer.root.findByProps({ role: "dialog", "aria-label": `${cardKind} target card selection` });
+    const modal = renderer.root.findByProps({ role: "dialog", "aria-label": `${actionName} target card selection` });
     assert.ok(modal, "the proven external choice uses the shared accessible modal");
     assert.equal(text(renderer, title).length, 1);
     assert.equal(text(renderer, instruction).length, 1);
@@ -614,7 +615,7 @@ test("pending target-card selection clears when authoritative availability chang
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: changed, onRecover: () => {} }, React.createElement(GameRoom, { room: changed, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false, "availability change clears stale opaque selection");
-  assert.equal(button(renderer, { children: "Use Dismantle" }).props.disabled, true);
+  assert.equal(button(renderer, { children: "Use Burning Bridge" }).props.disabled, true);
   await act(async () => { renderer.unmount(); });
 });
 

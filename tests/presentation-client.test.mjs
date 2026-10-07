@@ -701,7 +701,7 @@ test("adapter keeps local action revision but does not infer public interaction 
   assert.equal(view.localActionRevision, "turn-1");
 });
 
-test("typed Negation settlement is scoped to its proven root and only cancellation survives REST", () => {
+test("typed Negation settlement is root-scoped and REST preserves outcome metadata without an active interaction", () => {
   const rootScene = scene({ rootFrameId: "root-frame", activeFrameId: "root-frame" });
   const restored = buildPresentationClientView(snapshot({
     interaction: rootScene,
@@ -723,8 +723,12 @@ test("typed Negation settlement is scoped to its proven root and only cancellati
     settlement: negationSettlement("ROOT_CANCELLED"),
   });
   assert.equal(buildPresentationClientView(restSnapshot, "C").negationSettlement?.outcome, "ROOT_CANCELLED");
-  assert.equal(buildPresentationClientView({ ...restSnapshot, settlement: negationSettlement("ROOT_RESTORED") }, "C").negationSettlement, undefined,
-    "REST cannot claim that a previously restored root action is still active");
+  const restoredRestView = buildPresentationClientView({ ...restSnapshot, settlement: negationSettlement("ROOT_RESTORED") }, "C");
+  assert.equal(restoredRestView.negationSettlement?.outcome, "ROOT_RESTORED", "validated settlement metadata survives the brief REST boundary");
+  assert.equal(restoredRestView.hasInteraction, false, "settlement metadata alone does not claim an active interaction");
+  assert.equal(restoredRestView.stableKind, "REST");
+  assert.equal(restoredRestView.stage, null);
+  assert.deepEqual(restoredRestView.activeTargetIds, []);
   assert.equal(buildPresentationClientView({ ...restSnapshot, settlement: negationSettlement("ROOT_CANCELLED", { rootCardKind: "Oath" }) }, "C").negationSettlement, undefined,
     "multi-target cards are not accepted by the single-target settlement view");
 });

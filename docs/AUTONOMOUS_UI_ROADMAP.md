@@ -1558,6 +1558,17 @@ Only a proven regression or new Reviewer-approved design requirement does.
   API suite passed 33/33; build, targeted ESLint, syntax checks, and
   `git diff --check` passed. Reviewer acceptance is not claimed.
 
+### UX2.REFINE-MOBILE-TARGET-CARD-MODAL-LAYOUT-4C29-01 — Mobile zone clarity
+
+- The real server-backed Burning Bridge and Steal picker now prioritizes the
+  anonymous Hand choices while keeping public Equipment/Judgment readable.
+  Browser proof covers mixed and single-zone states, selected-state geometry,
+  four visible Hand positions, larger-Hand contained scrolling, touch-target
+  size, and reachable actions at phone and wide layouts. The focused target-
+  card browser group passed 89/89; Inspect geometry 3/3; fast tests 229/229;
+  build, targeted ESLint, syntax checks, and `git diff --check` passed. Reviewer
+  acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

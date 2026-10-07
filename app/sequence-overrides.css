@@ -1740,6 +1740,20 @@
   pointer-events: auto;
 }
 
+/* Inspect is one floating panel across both seat topologies. A side-column
+   Hero Focus normally keeps context in its narrow identity column; the
+   Inspect panel instead gives public zones a full-width third row. */
+.game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell > .hero-focus.hero-focus-inspect {
+  grid-template-areas: "portrait heading" "portrait identity" "context context";
+  grid-template-rows: auto auto minmax(0, 1fr);
+  row-gap: 4px;
+}
+.game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context {
+  grid-area: auto;
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
 .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-heading {
   justify-content: space-between;
 }
@@ -1749,6 +1763,10 @@
 }
 
 @media (max-width: 520px) {
+  .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell > .hero-focus.hero-focus-inspect {
+    grid-template-columns: minmax(0, 41fr) minmax(0, 59fr);
+    column-gap: 10px;
+  }
   .game-shell .play-table[data-seat-topology="top-row"] .hero-focus-inspect {
     grid-template-columns: minmax(0, 41fr) minmax(0, 59fr);
     column-gap: 10px;
@@ -4401,4 +4419,128 @@
 .single-target-negation-restored-settlement > [data-single-target-negation-root="true"] > b {
   padding: 3px 2px;
   font: 700 7px/1.05 Georgia, serif;
+}
+
+/* §4C.29: size anonymous choices for scanning, while preserving readable
+   face-up cards and a stable hit target/selection outline. */
+.target-card-picker-panel--zones .target-card-picker-zones {
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+}
+.target-card-picker-panel--zones .target-card-picker-zones[data-zone-count="1"],
+.target-card-picker-panel--zones .target-card-picker-zones[data-zone-composition="hand-judgement"],
+.target-card-picker-panel--zones .target-card-picker-zones[data-zone-composition="equipment-judgement"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.target-card-picker-panel--zones .target-card-picker-zone-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.target-card-picker-panel--zones .target-card-picker-zone-scroll-hint {
+  color: #d0c8b4;
+  font: 700 8px/1 Arial, sans-serif;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.target-card-picker-panel--zones .target-card-picker-zone-hand .target-card-picker-card-row {
+  justify-content: center;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+.target-card-picker-panel--zones .target-card-picker-zones[data-zone-count="1"] .target-card-picker-card-row:has(> .target-card-picker-card:only-child),
+.target-card-picker-panel--zones .target-card-picker-zone-judgement .target-card-picker-card-row:has(> .target-card-picker-card:only-child) {
+  justify-content: center;
+}
+.target-card-picker-panel--zones .target-card-picker-card {
+  box-sizing: border-box;
+  border-width: 2px;
+  scroll-snap-align: center;
+}
+.target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="hand-position"] {
+  flex: 0 0 clamp(58px, 5.8vw, 80px);
+  width: clamp(58px, 5.8vw, 80px);
+  height: auto;
+  aspect-ratio: 5 / 7;
+}
+.target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="hand-position"] .target-card-picker-hidden-glyph {
+  font-size: clamp(26px, 3.2vw, 34px);
+}
+.target-card-picker-panel--zones .target-card-picker-card.selected {
+  border-width: 2px !important;
+  border-color: #f0c86b !important;
+  outline: 0 !important;
+  outline-offset: 0;
+  box-shadow: 0 0 0 2px #151812, 0 0 0 4px #d5ae5a66 !important;
+  translate: 0 0;
+}
+.target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="equipment"] .played-card .card-name-mark,
+.target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="judgement"] .played-card .card-name-mark {
+  max-width: 90%;
+  font-size: clamp(12px, 1.1vw, 14px);
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+.target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="equipment"] .played-card > strong,
+.target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="judgement"] .played-card > strong {
+  margin-top: 4px;
+  font-size: 6px;
+  letter-spacing: .04em;
+}
+.target-card-picker-panel--zones .target-card-picker-card.concealed-card.selected {
+  background: repeating-linear-gradient(45deg, #242b21, #242b21 7px, #171b15 7px, #171b15 14px);
+}
+.target-card-picker-panel--zones .target-card-picker-card .target-card-picker-check {
+  right: 2px;
+  top: 2px;
+  width: 19px;
+  height: 19px;
+  border-width: 1px;
+  font-size: 12px;
+}
+
+@media (max-width: 520px) {
+  .target-card-picker-panel--zones .target-card-picker-zones {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding-block: 8px;
+  }
+  .target-card-picker-panel--zones .target-card-picker-zone {
+    padding: 6px 7px 4px;
+  }
+  .target-card-picker-panel--zones .target-card-picker-zone .target-card-picker-card-row {
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 3px;
+  }
+  .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="hand-position"] {
+    flex-basis: clamp(46px, 12vw, 58px);
+    width: clamp(46px, 12vw, 58px);
+  }
+  .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="hand-position"] .target-card-picker-hidden-glyph {
+    font-size: clamp(21px, 7vw, 28px);
+  }
+  .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="equipment"],
+  .target-card-picker-panel--zones .target-card-picker-card[data-target-card-zone="judgement"] {
+    flex: 0 0 clamp(88px, 23vw, 104px);
+    width: clamp(88px, 23vw, 104px);
+    height: auto;
+    aspect-ratio: 5 / 7;
+  }
+  .target-card-picker-panel--zones .target-card-picker-card .target-card-picker-check {
+    right: 1px;
+    top: 1px;
+    width: 18px;
+    height: 18px;
+    font-size: 11px;
+  }
+  .target-card-picker-panel--zones .target-card-picker-card:not(:disabled):hover,
+  .target-card-picker-panel--zones .target-card-picker-card:not(:disabled):focus-visible {
+    translate: 0 -2px;
+  }
+  .target-card-picker-panel--zones .target-card-picker-card.selected:not(:disabled):hover,
+  .target-card-picker-panel--zones .target-card-picker-card.selected:not(:disabled):focus-visible {
+    translate: 0 0;
+  }
 }

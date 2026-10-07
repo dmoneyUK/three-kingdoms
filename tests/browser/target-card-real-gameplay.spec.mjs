@@ -11,9 +11,9 @@ async function seedGame(request, players) {
   return response.json();
 }
 
-async function openGame(page, seed, playerIndex = 0) {
+async function openGame(page, seed, playerIndex = 0, viewport = { width: 390, height: 844 }) {
   const member = seed.players[playerIndex];
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize(viewport);
   await page.addInitScript(({ code, token, name }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
   }, { code: seed.code, token: member.token, name: member.name });
@@ -103,7 +103,7 @@ async function expectModal(page, title, instruction, cta) {
   expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
   expect(geometry.cardTargets.length).toBeGreaterThan(0);
   expect(geometry.cardTargets.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(geometry.viewportWidth);
   return dialog;
 }
 
@@ -114,6 +114,47 @@ function fourPlayers(source, target) {
     { name: "THIRD", role: "Lord", hero: "guo-jia", hp: 4, maxHp: 4, hand: [] },
     { name: "FOURTH", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: [] },
   ];
+}
+
+async function openRealTargetCardDecision({ page, request, kind, viewport, handCount = 4, equipment = true, judgement = true }) {
+  const prefix = `real-${kind.toLowerCase()}-${viewport.width}-${handCount}`;
+  const material = card(kind, `${prefix}-material`);
+  const hidden = Array.from({ length: handCount }, (_, index) => card("Peach", `${prefix}-hidden-${index}`));
+  const weapon = equipment ? card("ZhugeCrossbow", `${prefix}-weapon`, "♦", "A") : null;
+  const armor = equipment ? card("NioShield", `${prefix}-armor`) : null;
+  const delayed = judgement ? card("Lightning", `${prefix}-judgement`) : null;
+  const targetEquipment = equipment ? { weapon, armor } : undefined;
+  const targetJudgement = judgement ? [delayed] : undefined;
+  const seed = await seedGame(request, fourPlayers(
+    { hand: [material] },
+    { hand: hidden, equipment: targetEquipment, judgement: targetJudgement },
+  ));
+  await openGame(page, seed, 0, viewport);
+  await playCardThroughPage(page, material.id, "TARGET");
+  await passEmptyResponses(request, seed);
+  await page.reload();
+
+  const actorView = await roomView(request, seed, 0);
+  const expectedKeys = [
+    ...hidden.map((_, index) => `hand:${index}`),
+    ...(equipment ? [weapon.id, armor.id] : []),
+    ...(judgement ? [delayed.id] : []),
+  ];
+  expect(actorView.currentAction).toMatchObject({ kind: "target_card", actorId: seed.players[0].id });
+  expect(actorView.currentAction.legalActions).toContain("choose_target_card");
+  expect(actorView.currentAction.targetCardSelection).toMatchObject({ targetId: seed.players[1].id, eligibleKeys: expectedKeys });
+  for (const concealed of hidden) expect(JSON.stringify(actorView.currentAction)).not.toContain(concealed.id);
+
+  const title = kind === "Dismantle" ? "Burning Bridge" : "Steal";
+  const instruction = kind === "Dismantle" ? "Choose 1 card to discard" : "Choose 1 card to obtain";
+  const dialog = await expectModal(page, title, instruction, `Use ${title}`);
+  return { seed, actorView, dialog, hidden, weapon, armor, delayed, title };
+}
+
+async function attachScreenshot(testInfo, name, page) {
+  const path = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path, animations: "disabled" });
+  await testInfo.attach(name, { path, contentType: "image/png" });
 }
 
 for (const kind of ["Steal", "Dismantle"]) {
@@ -141,7 +182,7 @@ for (const kind of ["Steal", "Dismantle"]) {
     expect(JSON.stringify(actorView.currentAction)).not.toContain(hidden[0].id);
     expect(JSON.stringify(actorView.currentAction)).not.toContain(hidden[1].id);
 
-    const action = kind === "Steal" ? "Steal" : "Dismantle";
+    const action = kind === "Steal" ? "Steal" : "Burning Bridge";
     const instruction = kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
     const dialog = await expectModal(page, action, instruction, `Use ${action}`);
     await expect(dialog.locator('[data-target-card-zone="hand-position"]')).toHaveCount(2);
@@ -248,3 +289,177 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
     }).toBe(true);
   });
 }
+
+for (const kind of ["Dismantle", "Steal"]) {
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 480, height: 900 },
+    { width: 1440, height: 900 },
+  ]) {
+    test(`real ${kind === "Dismantle" ? "Burning Bridge" : kind} mixed-zone modal is scannable at ${viewport.width}×${viewport.height}`, async ({ page, request }, testInfo) => {
+      const { dialog, hidden, title } = await openRealTargetCardDecision({ page, request, kind, viewport });
+      const zones = dialog.locator(".target-card-picker-zones");
+      const positions = dialog.locator('[data-target-card-zone="hand-position"]');
+      const handRow = dialog.locator('.target-card-picker-zone-hand .target-card-picker-card-row');
+      const equipment = dialog.locator('[data-target-card-zone="equipment"]');
+      const judgement = dialog.locator('[data-target-card-zone="judgement"]');
+      const use = dialog.getByRole("button", { name: `Use ${title}` });
+      const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+
+      await expect(zones).toHaveAttribute("data-zone-composition", "hand-equipment-judgement");
+      await expect(zones.locator(":scope > .target-card-picker-zone h3")).toHaveText([
+        "HAND · 4", "EQUIPMENT", "JUDGMENT",
+      ]);
+      await expect(positions).toHaveCount(4);
+      await expect(equipment).toHaveCount(2);
+      await expect(judgement).toHaveCount(1);
+      for (let index = 0; index < hidden.length; index += 1) {
+        await expect(positions.nth(index)).toHaveAccessibleName(`Hidden hand card ${index + 1}`);
+        await expect(positions.nth(index)).not.toContainText(/Peach|real-/);
+      }
+      await expect(dialog.getByRole("button", { name: "Equipment: Zhuge Crossbow" })).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "Equipment: Nio Shield" })).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "Judgement: Lightning" })).toBeVisible();
+
+      const [rowBox, positionBoxes, equipmentBox, judgementBox, panelBox, useBox, cancelBox, zoneMetrics, publicNameMetrics] = await Promise.all([
+        handRow.boundingBox(),
+        positions.evaluateAll((elements) => elements.map((element) => {
+          const { x, y, width, height } = element.getBoundingClientRect();
+          return { x, y, width, height };
+        })),
+        equipment.first().boundingBox(),
+        judgement.boundingBox(),
+        dialog.boundingBox(),
+        use.boundingBox(),
+        cancel.boundingBox(),
+        zones.evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth })),
+        dialog.locator('[data-target-card-zone="equipment"], [data-target-card-zone="judgement"]').evaluateAll((elements) => elements.map((element) => {
+          const name = element.querySelector(".card-name-mark");
+          return { clientWidth: name.clientWidth, scrollWidth: name.scrollWidth, clientHeight: name.clientHeight, scrollHeight: name.scrollHeight };
+        })),
+      ]);
+      expect(rowBox && positionBoxes.length === 4 && equipmentBox && judgementBox && panelBox && useBox && cancelBox).toBeTruthy();
+      expect(positionBoxes.every((box) => box.width >= 44 && box.height >= 44)).toBe(true);
+      expect(positionBoxes.every((box) => box.x >= rowBox.x - 1 && box.x + box.width <= rowBox.x + rowBox.width + 1)).toBe(true);
+      expect(positionBoxes[0].width).toBeLessThan(equipmentBox.width * 0.8);
+      expect(equipmentBox.width).toBeGreaterThanOrEqual(70);
+      expect(judgementBox.width).toBeGreaterThanOrEqual(70);
+      expect(publicNameMetrics.every((metrics) => metrics.scrollWidth <= metrics.clientWidth + 1 && metrics.scrollHeight <= metrics.clientHeight + 1)).toBe(true);
+      for (const box of [useBox, cancelBox]) {
+        expect(box.x).toBeGreaterThanOrEqual(panelBox.x - 1);
+        expect(box.x + box.width).toBeLessThanOrEqual(panelBox.x + panelBox.width + 1);
+        expect(box.y).toBeGreaterThanOrEqual(0);
+        expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+        expect(box.height).toBeGreaterThanOrEqual(44);
+      }
+      if (viewport.width === 390) expect(zoneMetrics.scrollHeight).toBeLessThanOrEqual(zoneMetrics.clientHeight + 1);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+      await attachScreenshot(testInfo, `${title.toLowerCase().replaceAll(" ", "-")}-mixed-open-${viewport.width}`, page);
+
+      if (kind === "Dismantle" && viewport.width === 390) {
+        const positionsBefore = await positions.evaluateAll((elements) => elements.map((element) => {
+          const { x, y, width, height } = element.getBoundingClientRect();
+          return { x, y, width, height };
+        }));
+        const selected = positions.nth(1);
+        await selected.click();
+        await expect(selected).toHaveAttribute("aria-pressed", "true");
+        await expect(selected.locator(".target-card-picker-check")).toHaveText("✓");
+        await expect(use).toBeEnabled();
+        const selectedStyle = await selected.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return { borderColor: style.borderTopColor, outlineStyle: style.outlineStyle, boxShadow: style.boxShadow };
+        });
+        expect(selectedStyle.borderColor).toBe("rgb(240, 200, 107)");
+        expect(selectedStyle.outlineStyle).toBe("none");
+        expect(selectedStyle.boxShadow).not.toContain("28px");
+        const positionsAfter = await positions.evaluateAll((elements) => elements.map((element) => {
+          const { x, y, width, height } = element.getBoundingClientRect();
+          return { x, y, width, height };
+        }));
+        for (let index = 0; index < positionsBefore.length; index += 1) {
+          for (const coordinate of ["x", "y", "width", "height"]) {
+            expect(Math.abs(positionsAfter[index][coordinate] - positionsBefore[index][coordinate])).toBeLessThanOrEqual(1);
+          }
+        }
+        await attachScreenshot(testInfo, "burning-bridge-selected-hidden-position-390", page);
+        await cancel.click();
+        await expect(selected).toHaveAttribute("aria-pressed", "false");
+        await expect(use).toBeDisabled();
+      }
+    });
+  }
+}
+
+test("real Burning Bridge Hand + Equipment omits Judgment and balances the full Hand row", async ({ page, request }, testInfo) => {
+  const viewport = { width: 390, height: 844 };
+  const { dialog } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, judgement: false });
+  const zones = dialog.locator(".target-card-picker-zones");
+  const positions = dialog.locator('[data-target-card-zone="hand-position"]');
+  await expect(zones).toHaveAttribute("data-zone-composition", "hand-equipment");
+  await expect(dialog.locator(".target-card-picker-zone-judgement")).toHaveCount(0);
+  await expect(positions).toHaveCount(4);
+  const [zoneMetrics, rowBox, boxes] = await Promise.all([
+    zones.evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight })),
+    dialog.locator('.target-card-picker-zone-hand .target-card-picker-card-row').boundingBox(),
+    positions.evaluateAll((elements) => elements.map((element) => {
+      const { x, width } = element.getBoundingClientRect();
+      return { x, width };
+    })),
+  ]);
+  expect(zoneMetrics.scrollHeight).toBeLessThanOrEqual(zoneMetrics.clientHeight + 1);
+  expect(boxes.every((box) => box.x >= rowBox.x - 1 && box.x + box.width <= rowBox.x + rowBox.width + 1)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+  await attachScreenshot(testInfo, "burning-bridge-hand-equipment-no-empty-judgment-390", page);
+});
+
+test("real Burning Bridge Hand-only target uses the full modal width for four anonymous positions", async ({ page, request }, testInfo) => {
+  const viewport = { width: 390, height: 844 };
+  const { dialog } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, equipment: false, judgement: false });
+  const zones = dialog.locator(".target-card-picker-zones");
+  const handZone = dialog.locator(".target-card-picker-zone-hand");
+  const row = handZone.locator(".target-card-picker-card-row");
+  const positions = dialog.locator('[data-target-card-zone="hand-position"]');
+  const [dialogBox, zoneBox, rowBox, boxes, zoneMetrics] = await Promise.all([
+    dialog.boundingBox(), handZone.boundingBox(), row.boundingBox(),
+    positions.evaluateAll((elements) => elements.map((element) => {
+      const { x, width, height } = element.getBoundingClientRect();
+      return { x, width, height };
+    })),
+    zones.evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight })),
+  ]);
+  expect(dialogBox && zoneBox && rowBox && boxes.length === 4).toBeTruthy();
+  await expect(zones).toHaveAttribute("data-zone-composition", "hand");
+  expect(zoneBox.width).toBeGreaterThan(dialogBox.width * 0.84);
+  expect(zoneMetrics.scrollHeight).toBeLessThanOrEqual(zoneMetrics.clientHeight + 1);
+  expect(boxes.every((box) => box.width >= 44 && box.height >= 44)).toBe(true);
+  expect(boxes.every((box) => box.x >= rowBox.x - 1 && box.x + box.width <= rowBox.x + rowBox.width + 1)).toBe(true);
+  const compositionCenter = (boxes[0].x + boxes.at(-1).x + boxes.at(-1).width) / 2;
+  expect(Math.abs(compositionCenter - (rowBox.x + rowBox.width / 2))).toBeLessThanOrEqual(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+  await attachScreenshot(testInfo, "burning-bridge-hand-only-four-visible-390", page);
+});
+
+test("real Burning Bridge larger Hand shows deliberate contained scrolling without page overflow", async ({ page, request }, testInfo) => {
+  const viewport = { width: 390, height: 844 };
+  const { dialog, actorView } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 10, equipment: false, judgement: false });
+  const zones = dialog.locator(".target-card-picker-zones");
+  const row = dialog.locator('.target-card-picker-zone-hand .target-card-picker-card-row');
+  const positions = dialog.locator('[data-target-card-zone="hand-position"]');
+  const geometry = await row.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
+  expect(actorView.currentAction.targetCardSelection.eligibleKeys).toEqual(Array.from({ length: 10 }, (_, index) => `hand:${index}`));
+  await expect(zones).toHaveAttribute("data-zone-composition", "hand");
+  await expect(positions).toHaveCount(10);
+  await expect(row).toHaveAttribute("data-hand-scrollable", "true");
+  await expect(dialog.getByText("Swipe to see all", { exact: true })).toBeVisible();
+  expect(geometry.scrollWidth).toBeGreaterThan(geometry.clientWidth);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+  const lastPosition = positions.last();
+  await lastPosition.scrollIntoViewIfNeeded();
+  const [lastBox, rowBox] = await Promise.all([lastPosition.boundingBox(), row.boundingBox()]);
+  expect(lastBox.x).toBeGreaterThanOrEqual(rowBox.x - 1);
+  expect(lastBox.x + lastBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
+  await expect(dialog.getByRole("button", { name: "Use Burning Bridge" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
+  await attachScreenshot(testInfo, "burning-bridge-large-hand-contained-overflow-390", page);
+});

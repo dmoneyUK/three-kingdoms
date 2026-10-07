@@ -88,7 +88,7 @@ for (const viewport of [
 ]) {
   test(`proven Dismantle uses the shared target-card modal at ${viewport.width}×${viewport.height}`, async ({ page }) => {
     const stage = await loadPendingTargetCard(page, viewport);
-    const dialog = page.getByRole("dialog", { name: "Dismantle target card selection" });
+    const dialog = page.getByRole("dialog", { name: "Burning Bridge target card selection" });
     const positions = dialog.locator('[data-target-card-zone="hand-position"]');
     const equipment = dialog.locator('[data-target-card-zone="equipment"]');
     const judgement = dialog.locator('[data-target-card-zone="judgement"]');
@@ -103,7 +103,7 @@ for (const viewport of [
 
     await expect(stage).toHaveAttribute("data-current-effect", "Dismantle");
     await expect(dialog).toBeVisible();
-    await expect(dialog.locator("header strong")).toHaveText("DISMANTLE");
+    await expect(dialog.locator("header strong")).toHaveText("BURNING BRIDGE");
     await expect(dialog.locator("header span")).toHaveText("Choose 1 card to discard");
     await expect(positions).toHaveCount(4);
     for (let index = 0; index < 4; index += 1) {
@@ -154,10 +154,10 @@ for (const viewport of [
 
 test("Dismantle modal Cancel clears local selection and submits the existing anonymous Hand index", async ({ page }) => {
   await loadPendingTargetCard(page, { width: 390 });
-  const dialog = page.getByRole("dialog", { name: "Dismantle target card selection" });
+  const dialog = page.getByRole("dialog", { name: "Burning Bridge target card selection" });
   const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 2" });
   const dock = page.locator('[data-console-surface="local-operation"]');
-  const confirm = dialog.getByRole("button", { name: "Use Dismantle" });
+  const confirm = dialog.getByRole("button", { name: "Use Burning Bridge" });
 
   await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
@@ -198,15 +198,16 @@ for (const scenario of [
   { cardKind: "Steal", zone: "equipment", name: "Equipment: Nio Shield", payload: { targetCardZone: "equipment", targetCardId: "browser-target-equipment" } },
   { cardKind: "Steal", zone: "judgement", name: "Judgement: Lightning", payload: { targetCardZone: "judgement", targetCardId: "browser-target-judgement" } },
 ]) {
-  test(`${scenario.cardKind} modal submits its exact CurrentAction ${scenario.zone} choice`, async ({ page }) => {
+  const actionName = scenario.cardKind === "Dismantle" ? "Burning Bridge" : scenario.cardKind;
+  test(`${actionName} modal submits its exact CurrentAction ${scenario.zone} choice`, async ({ page }) => {
     await loadPendingTargetCard(page, { width: 390, cardKind: scenario.cardKind });
-    const dialog = page.getByRole("dialog", { name: `${scenario.cardKind} target card selection` });
+    const dialog = page.getByRole("dialog", { name: `${actionName} target card selection` });
     const choice = dialog.getByRole("button", { name: scenario.name });
 
     await expect(choice).toHaveAttribute("data-target-card-zone", scenario.zone);
     await choice.click();
     await expect(choice).toHaveAttribute("aria-pressed", "true");
-    await dialog.getByRole("button", { name: `Use ${scenario.cardKind}` }).click();
+    await dialog.getByRole("button", { name: `Use ${actionName}` }).click();
     await expect.poll(() => page.evaluate(() => window.__browserActions)).toEqual([
       { action: "choose_target_card", extra: scenario.payload },
     ]);
@@ -215,7 +216,7 @@ for (const scenario of [
 
 test("valid pending target-card authority uses the shared modal without Stage Hero Focus proof", async ({ page }) => {
   await loadPendingTargetCard(page, { width: 390, targetCardCase: "unfocused" });
-  const dialog = page.getByRole("dialog", { name: "Dismantle target card selection" });
+  const dialog = page.getByRole("dialog", { name: "Burning Bridge target card selection" });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('[data-target-card-zone="hand-position"]')).toHaveCount(4);
   await expect(page.locator(".table-hidden-card-picker")).toHaveCount(0);
@@ -233,9 +234,9 @@ for (const targetCardCase of ["missing-projection", "out-of-range"]) {
 
 test("Dismantle modal selection resets when CurrentAction revision changes", async ({ page }) => {
   await loadPendingTargetCard(page, { width: 390 });
-  const dialog = page.getByRole("dialog", { name: "Dismantle target card selection" });
+  const dialog = page.getByRole("dialog", { name: "Burning Bridge target card selection" });
   const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 1" });
-  const confirm = dialog.getByRole("button", { name: "Use Dismantle" });
+  const confirm = dialog.getByRole("button", { name: "Use Burning Bridge" });
 
   await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");

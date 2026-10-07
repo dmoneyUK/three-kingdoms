@@ -222,11 +222,17 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     const judgment = inspect.locator('[aria-label="Judgement Zone"]');
     const hand = inspect.locator('[aria-label="Concealed Hand"]');
     const judgmentCard = judgment.locator('.opponent-inspection-card[aria-label="Explain Lightning"]');
+    const publicZones = inspect.locator(".hero-focus-inspect-public-zones");
     await expect(judgmentCard).toHaveCount(1);
-    const [judgmentBox, handBox] = await Promise.all([
+    const [inspectBox, publicZonesBox, judgmentBox, handBox] = await Promise.all([
+      inspect.boundingBox(),
+      publicZones.boundingBox(),
       judgment.boundingBox(),
       hand.boundingBox(),
     ]);
+    expect(inspectBox).not.toBeNull();
+    expect(publicZonesBox).not.toBeNull();
+    expect(publicZonesBox.width).toBeGreaterThan(inspectBox.width * 0.7);
     expect(judgmentBox).not.toBeNull();
     expect(handBox).not.toBeNull();
     expect(judgmentBox.height).toBeGreaterThan(handBox.height + 20);
