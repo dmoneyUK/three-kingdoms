@@ -5,7 +5,7 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-`UX2.REFINE-HUA-TUO-FIRST-AID-SKILLS-BAND-01` now exposes Hua Tuo's First Aid only through the owner's Skills band when authorized `CurrentAction.options` contains `hua_tuo_first_aid`; private eligible-card selection submits through existing `respond`, while Peach/Skip remain intact. Focused browser coverage passed 3/3 across 390×640, 390×844, 480×900, and 1440×900; targeted ESLint and `git diff --check` passed. The exact pre-commit base `e642e80c75d475e99862498856f4e4614565dde3` passed Actions run #841 (`37594013797`), including `build-and-test` and `deploy`. This task's push-triggered run has not yet been observed. No Reviewer acceptance claimed.
+`UX2.REFINE-HUA-TUO-FIRST-AID-SKILLS-BAND-01` exposes Hua Tuo's First Aid only through the owner's Skills band when authorized `CurrentAction.options` contains `hua_tuo_first_aid`; private eligible-card selection submits through existing `respond`, while Peach/Skip remain intact. Focused browser coverage passed 3/3 across 390×640, 390×844, 480×900, and 1440×900; targeted ESLint and `git diff --check` passed. Commit `33b9a771003ec60a2e5fb39b0472ebad5e4c39fd` passed exact Actions run #842 (`37599174130`), including `build-and-test` and `deploy`. No Reviewer acceptance claimed.
 
 ## Design checkpoint
 
