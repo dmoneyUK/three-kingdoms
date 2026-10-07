@@ -1481,6 +1481,18 @@ Only a proven regression or new Reviewer-approved design requirement does.
   passed 3/3; targeted ESLint and `git diff --check` passed. No production,
   gameplay, or server-projection changes. Reviewer acceptance is not claimed.
 
+### UX2.REFINE-RETALIATION-OPAQUE-HAND-POSITIONS-01 — Authoritative Hand positions
+
+- Sima Yi Retaliation now projects separate opaque `hand:n` keys and resolves
+  the selected live position exactly; stale positions fail closed and the
+  legacy grouped `hand` key remains compatible. CurrentAction privacy and exact
+  card conservation are covered by API/unit proof. Focused validation passed:
+  response-capability unit 1/1, Judgement API 12/12, Yue Jin API 4/4,
+  Retaliation browser 10/10 at 390×844, 480×900, and 1440×900, build, targeted
+  ESLint, and `git diff --check`. Pre-commit Actions run `37659752814` for exact
+  parent SHA `1a12e56704edbb774077b4badb4b7d9edc057cac` completed success.
+  Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

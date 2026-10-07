@@ -4,7 +4,7 @@ const id = "sima_yi_fankui";
 
 function eligibleKeys(context: TriggerContext) {
   return [
-    ...(context.sourceHand?.length ? ["hand"] : []),
+    ...(context.sourceHand ?? []).map((_, index) => `hand:${index}`),
     ...(context.sourceEquipment ?? []).map((card) => card.id),
     ...(context.sourceJudgement ?? []).map((card) => card.id),
   ];
@@ -25,7 +25,10 @@ export const simaYiFankuiTrigger: TriggeredEffect = {
     const option = simaYiFankuiTrigger.getOption(context);
     if (!option || !context.sourceId || !context.targetId || !Array.isArray(selection.cardKeys) || selection.cardKeys.length !== 1 || typeof selection.cardKeys[0] !== "string") return null;
     const targetCardKey = selection.cardKeys[0];
-    if (!option.selection || option.selection.type !== "target_cards" || !option.selection.eligibleKeys.includes(targetCardKey)) return null;
+    // Older callers may still submit the former grouped key; new CurrentAction
+    // projections expose only opaque per-position keys.
+    const legacyHandZoneKey = targetCardKey === "hand" && Boolean(context.sourceHand?.length);
+    if (!option.selection || option.selection.type !== "target_cards" || !option.selection.eligibleKeys.includes(targetCardKey) && !legacyHandZoneKey) return null;
     return { status: "resolved", effectId: id, outcome: { kind: "gain_target_card", sourceId: context.sourceId, targetId: context.targetId, targetCardKey } };
   },
 };

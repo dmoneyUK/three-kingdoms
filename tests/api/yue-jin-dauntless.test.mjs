@@ -118,7 +118,7 @@ test("Dauntless falls back to sourced damage and preserves Sima Yi, Xiahou Dun, 
   assert.deepEqual(simaOtherViewer.data.presentationV2.interactionScene, simaView.data.presentationV2.interactionScene);
   assert.ok(simaView.data.currentAction.triggerOptions?.[0], JSON.stringify(simaView.data));
   assert.equal(simaView.data.currentAction.triggerOptions[0].effectId, "sima_yi_fankui");
-  const retaliation = await requestAndSettle("trigger", { code: simaGame.code, token: simaGame.members[0].token, providerId: "sima_yi_fankui", cardKeys: ["hand"] });
+  const retaliation = await requestAndSettle("trigger", { code: simaGame.code, token: simaGame.members[0].token, providerId: "sima_yi_fankui", cardKeys: ["hand:0"] });
   assert.equal(retaliation.status, 200, JSON.stringify(retaliation.data));
   assert.equal(retaliation.data.room.players.find((player) => player.id === sima.target.id).hp, 3);
   assert.equal(roomCardCount(simaGame.code, "drawtwo-dauntless-sima-gain"), 1);
