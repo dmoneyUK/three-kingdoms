@@ -1644,6 +1644,7 @@ const HERO_PASSIVE_SKILL_NAMES: Record<string, readonly string[]> = {
   "lü-bu": ["Unrivaled"],
   huaxiong: ["Triumphant"],
   "gongsun-zan": ["Militia"],
+  "pan-feng": ["Axe of Insanity"],
 };
 
 // Response capabilities are projected in currentAction.options rather than

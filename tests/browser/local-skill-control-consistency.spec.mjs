@@ -24,6 +24,7 @@ const passiveSkillNamesByHero = {
   "lü-bu": ["Unrivaled"],
   huaxiong: ["Triumphant"],
   "gongsun-zan": ["Militia"],
+  "pan-feng": ["Axe of Insanity"],
 };
 
 test("implemented Hero skill bands fill their allocation and keep natural labels across the roster", async ({ page }) => {
