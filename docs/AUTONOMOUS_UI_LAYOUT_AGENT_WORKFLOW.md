@@ -58,16 +58,16 @@ A separate discovered problem should be recorded as a candidate for the next pla
 
 ### Current UX2 refinement sequencing
 
-`docs/UX2-refine.md` §5 currently defers the UX2 Interaction Stage Hero/player visualization refactor and Section 6 physical-seat causal-graph work **until all active refinement sections before §5 are complete, including §4A**.
+`docs/UX2-refine.md` §5 currently defers the UX2 Interaction Stage Hero/player visualization refactor and Section 6 physical-seat causal-graph work **until all active refinement sections before §5 are complete, including §4A and §4B**.
 
 Before that boundary:
 
 - do not start or continue a task that changes central combat Hero/player representation, Hero/player geometry, physical Seat/Dock graph nodes, or Hero/player-to-card connector geometry;
 - if the current HANDOVER task is in that deferred scope, stop before source edits and replan from the active non-Hero refinement sections;
-- allowed refinement work includes Local Hero Skills, response Guidance, `TAKE DAMAGE` labeling/behavior, authoritative response-provider emphasis, System Menu/Exit relocation, response-timer relocation, Zhuge Liang skill presentation, and §4A transient-event timer/overlay refinement;
+- allowed refinement work includes Local Hero Skills, response Guidance, `TAKE DAMAGE` labeling/behavior, authoritative response-provider emphasis, System Menu/Exit relocation, response-timer relocation, Zhuge Liang skill presentation, and §4A transient-event timer/overlay refinement, and §4B compact other-player Inspect refinement;
 - existing deferred Hero/player presentation may remain as-is and must not be deleted merely because it will later be replaced.
 
-At the clean planning boundary after all active pre-§5 refinements, including §4A, are closed:
+At the clean planning boundary after all active pre-§5 refinements, including §4A and §4B, are closed:
 
 - re-read the latest `docs/UX2-refine.md`;
 - UX2 Section 6 becomes authorized implementation work;
