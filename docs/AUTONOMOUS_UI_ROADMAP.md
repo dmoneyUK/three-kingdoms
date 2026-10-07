@@ -1442,6 +1442,16 @@ Only a proven regression or new Reviewer-approved design requirement does.
   1440×900; targeted ESLint and `git diff --check` passed. No production,
   gameplay, or projection changes. Reviewer acceptance is not claimed.
 
+### UX2.REFINE-GENERIC-HERO-RESPONSE-SKILLS-BAND-01 — Mapped response providers
+
+- Browser coverage proves Cao Cao Entourage and Liu Bei Influencing delegate
+  without a local card, while Zhen Ji Empress Dowager enables only its
+  CurrentAction-eligible black card. All three activate from the Skills band,
+  have no duplicate Action Row entry, preserve exact `respond` payloads, and
+  remain disabled when their provider is absent. The focused spec passed 9/9
+  at 390×844 and 1440×900; targeted ESLint and `git diff --check` passed. No
+  production or gameplay behavior changed. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

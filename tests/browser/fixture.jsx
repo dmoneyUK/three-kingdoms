@@ -12,6 +12,41 @@ const HERO_IDS = [
 
 const card = (id, kind, suit = "♠", rank = "A") => ({ id, kind, suit, rank });
 
+const GENERIC_HERO_RESPONSE_SCENARIOS = {
+  "cao-cao-entourage-response": {
+    providerId: "cao_cao_hujia",
+    providerLabel: "Use Entourage — ask Wei",
+    satisfies: "dodge",
+    physicalCardId: "browser-cao-cao-entourage-dodge",
+    physicalCardKind: "Dodge",
+    providerCardId: null,
+    hand: [["browser-cao-cao-entourage-dodge", "Dodge", "♣"], ["browser-cao-cao-entourage-attack", "Attack", "♠"]],
+  },
+  "liu-bei-influencing-response": {
+    providerId: "liu_bei_jijiang",
+    providerLabel: "Use Influencing — ask Shu",
+    satisfies: "attack",
+    physicalCardId: "browser-liu-bei-influencing-attack",
+    physicalCardKind: "Attack",
+    providerCardId: null,
+    hand: [["browser-liu-bei-influencing-attack", "Attack", "♠"], ["browser-liu-bei-influencing-dodge", "Dodge", "♣"]],
+  },
+  "zhen-ji-empress-dowager-response": {
+    providerId: "zhen_ji_black_card_dodge",
+    providerLabel: "Use Empress Dowager as Dodge",
+    satisfies: "dodge",
+    physicalCardId: "browser-zhen-ji-empress-dowager-red-dodge",
+    physicalCardKind: "Dodge",
+    providerCardId: "browser-zhen-ji-empress-dowager-black-attack",
+    hand: [["browser-zhen-ji-empress-dowager-black-attack", "Attack", "♠"], ["browser-zhen-ji-empress-dowager-red-dodge", "Dodge", "♥"]],
+  },
+};
+
+function genericHeroResponseScenario(state) {
+  const scenarioId = state.endsWith("-no-provider") ? state.replace(/-no-provider$/, "-response") : state;
+  return GENERIC_HERO_RESPONSE_SCENARIOS[scenarioId] ?? null;
+}
+
 const SEAT_EQUIPMENT_CASES = {
   empty: [],
   weapon: [["ZhugeCrossbow", "♦", "A"]],
@@ -84,7 +119,7 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
     stable: { kind: stableKindOverride ?? "CHOICE", interactionId, checkpointId, presentationRevision: 1, decisionActorId },
     interaction: scene,
     decision: { actorId: decisionActorId, stage },
-    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" || state.startsWith("hua-tuo-first-aid") ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "pending-target-card" ? "target_card" : state === "picker" || state === "picker-hand-zone" || state === "retaliation-modal" || state === "frost-sword-selectable" || state.startsWith("local-equipment-target-card") || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" || state === "judgement" || state === "judgement-local" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "active-attack-observer" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state.startsWith("oath-negation") || state.startsWith("bumper-harvest") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "group-negation-local" || state === "raining-arrows-response" || state === "raining-arrows-no-dodge" || state === "preview-ack" ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
+    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" || state.startsWith("hua-tuo-first-aid") ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "pending-target-card" ? "target_card" : state === "picker" || state === "picker-hand-zone" || state === "retaliation-modal" || state === "frost-sword-selectable" || state.startsWith("local-equipment-target-card") || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" || state === "judgement" || state === "judgement-local" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "active-attack-observer" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state.startsWith("oath-negation") || state.startsWith("bumper-harvest") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "group-negation-local" || state === "raining-arrows-response" || state === "raining-arrows-no-dodge" || state === "preview-ack" || state === "conversion-no-provider" || state.startsWith("guan-yu-wusheng-response") || state.startsWith("zhao-yun-longdan-") || state.startsWith("cao-cao-entourage-") || state.startsWith("liu-bei-influencing-") || state.startsWith("zhen-ji-empress-dowager-") ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
     groupParticipantProgress: progressCase && orderedProgressCase !== "missing" ? {
       cardKind: orderedProgressCase ? "SkyPiercingHalberdAttack" : "RainingArrows",
       resolutionSemantics: orderedProgressCase ? "ORDERED" : "GROUP",
@@ -152,6 +187,18 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
 }
 
 function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, targetCardCase = "valid", targetCardKind = "Dismantle" } = {}) {
+  const genericResponseScenario = genericHeroResponseScenario(state);
+  if (genericResponseScenario) {
+    const options = [{ providerId: "card", label: `Play ${genericResponseScenario.physicalCardKind}`, satisfies: genericResponseScenario.satisfies, activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [genericResponseScenario.physicalCardId] } }];
+    if (state.endsWith("-response")) options.push({
+      providerId: genericResponseScenario.providerId,
+      label: genericResponseScenario.providerLabel,
+      satisfies: genericResponseScenario.satisfies,
+      activation: "explicit",
+      ...(genericResponseScenario.providerCardId ? { playedAs: genericResponseScenario.satisfies, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [genericResponseScenario.providerCardId] } } : { selection: null }),
+    });
+    return { version: 3, kind: "response", actorId, deadline: 0, reason: `Choose a ${genericResponseScenario.satisfies} response`, legalActions: ["respond", "decline_response"], requirement: genericResponseScenario.satisfies, options };
+  }
   const conversionResponse = {
     "guan-yu-wusheng-response": { providerId: "guan_yu_red_card_attack", label: "Use God of War as Attack", satisfies: "attack", cardId: "browser-wusheng-red-peach" },
     "zhao-yun-longdan-attack-response": { providerId: "zhao_yun_dodge_as_attack", label: "Use Braveheart as Attack", satisfies: "attack", cardId: "browser-longdan-dodge-as-attack" },
@@ -493,6 +540,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
   const bumperHarvestClosing = state === "bumper-harvest-closing";
   const bumperHarvestComplete = state === "bumper-harvest-complete" || bumperHarvestClosing;
   const bumperHarvestUnproven = state === "bumper-harvest-unproven";
+  const genericResponseFixture = genericHeroResponseScenario(state);
   if (denseGroup) state = "group-observer";
   const activeNegationObserver = state.startsWith("active-negation-");
   const targetShiftFixture = state === "target-shift-attack";
@@ -514,6 +562,8 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     ? [card("browser-longdan-attack-as-dodge", "Attack", "♠"), card("browser-longdan-ineligible-dodge", "Dodge", "♣")]
     : state === "conversion-no-provider"
     ? [card("browser-conversion-no-provider-attack", "Attack", "♠"), card("browser-conversion-no-provider-dodge", "Dodge", "♣")]
+    : genericResponseFixture
+    ? genericResponseFixture.hand.map(([id, kind, suit]) => card(id, kind, suit))
     : timedNegationObserver
     ? []
     : ordinaryTurn
