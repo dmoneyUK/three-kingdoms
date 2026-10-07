@@ -846,19 +846,40 @@ for (const viewport of VIS_04B_VIEWPORTS) {
       const clearance = layout.safeZone.top - maxOpponentBottom;
       const safeZoneVisuals = await page.locator(".interaction-safe-zone").evaluate((element) => {
         const style = getComputedStyle(element);
+        const bounds = (node) => {
+          const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
+          return { left, right, top, bottom, width, height };
+        };
+        const cluster = element.querySelector(":scope > .stage-system-cluster");
         return {
           background: style.backgroundColor,
           borders: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth],
-          text: element.textContent?.trim() ?? "",
+          children: [...element.children].map((child) => child.dataset.stageSystemCluster === "true" ? "stage-system-cluster" : child.className),
+          cluster: bounds(cluster),
+          menu: bounds(cluster.querySelector(".stage-system-menu-trigger")),
         };
       });
+      const systemCluster = page.locator('.interaction-safe-zone > .stage-system-cluster');
+      const systemMenu = systemCluster.getByRole("button", { name: "System menu" });
+      const boundaryOffset = viewport.width >= 600 ? 5 : 4;
 
       expect(await page.locator('.play-table[data-seat-topology="top-row"] .interaction-safe-zone').count()).toBe(1);
       expect(layout.safeZone.bottom).toBeCloseTo(layout.playTable.bottom - 1, 4);
       await expect(page.locator(".interaction-stage")).toHaveCount(0);
+      await expect(systemCluster).toBeVisible();
+      await expect(systemMenu).toBeVisible();
+      await expect(systemCluster.locator(".stage-system-menu-actions")).toBeHidden();
       expect(safeZoneVisuals.background).toBe("rgba(0, 0, 0, 0)");
       expect(safeZoneVisuals.borders).toEqual(["0px", "0px", "0px", "0px"]);
-      expect(safeZoneVisuals.text).toBe("");
+      expect(safeZoneVisuals.children).toEqual(["stage-system-cluster"]);
+      expect(safeZoneVisuals.menu.width).toBeGreaterThanOrEqual(44);
+      expect(safeZoneVisuals.menu.height).toBeGreaterThanOrEqual(44);
+      expect(safeZoneVisuals.cluster.right).toBeCloseTo(layout.safeZone.right - 14, 0);
+      expect(safeZoneVisuals.cluster.bottom).toBeCloseTo(layout.safeZone.bottom + boundaryOffset, 0);
+      const systemControlOverlaps = orderedSeats.filter((seat) => Math.min(seat.right, safeZoneVisuals.cluster.right) > Math.max(seat.left, safeZoneVisuals.cluster.left)
+        && Math.min(seat.bottom, safeZoneVisuals.cluster.bottom) > Math.max(seat.top, safeZoneVisuals.cluster.top));
+      expect(systemControlOverlaps, "Stage controls do not cover fixed opponent seats").toEqual([]);
+      expect(safeZoneVisuals.cluster.bottom).toBeLessThanOrEqual(layout.localDock.top);
       expect(orderedSeats).toHaveLength(count - 1);
       expect(seats.localDockAnchorCount).toBe(1);
       expect(Math.max(...orderedSeats.map(({ top }) => top)) - Math.min(...orderedSeats.map(({ top }) => top))).toBeLessThanOrEqual(4);
@@ -3020,20 +3041,25 @@ test("UX2.0VIS-03E keeps NEGATION Reaction Chain without a medium source", async
   await expect(page.locator('[data-reaction-chain="proven"]')).toBeVisible();
 });
 
-test("UX2.0VIS-02 keeps an empty safe-zone hook in REST", async ({ page }) => {
+test("UX2.0VIS-02 keeps the Stage System Menu anchor in REST without Stage chrome", async ({ page }) => {
   await loadFixture(page, { state: "rest", count: 4, width: 480, height: 900 });
   const safeZone = page.locator(".interaction-safe-zone");
+  const systemCluster = safeZone.locator(":scope > .stage-system-cluster");
+  const systemMenu = systemCluster.getByRole("button", { name: "System menu" });
   await expect(safeZone).toHaveCount(1);
   await expect(page.locator(".interaction-stage")).toHaveCount(0);
+  await expect(systemCluster).toBeVisible();
+  await expect(systemMenu).toBeVisible();
+  await expect(systemCluster.locator(".stage-system-menu-actions")).toBeHidden();
   const emptyGeometry = await safeZone.evaluate((element) => {
     const style = getComputedStyle(element);
     return {
       hasBackground: style.backgroundColor !== "rgba(0, 0, 0, 0)" && style.backgroundColor !== "transparent",
       hasBorder: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some((width) => width !== "0px"),
-      text: element.textContent?.trim() ?? "",
+      children: [...element.children].map((child) => child.dataset.stageSystemCluster === "true" ? "stage-system-cluster" : child.className),
     };
   });
-  expect(emptyGeometry, "empty safe zone has no visible panel or placeholder").toEqual({ hasBackground: false, hasBorder: false, text: "" });
+  expect(emptyGeometry, "REST has no Stage panel or placeholder beyond the System Menu anchor").toEqual({ hasBackground: false, hasBorder: false, children: ["stage-system-cluster"] });
 });
 
 test("UI-19 semantic Interaction Stage and Hero Focus remain viewer-visible", async ({ page }) => {
