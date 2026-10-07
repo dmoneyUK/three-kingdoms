@@ -152,6 +152,19 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
 }
 
 function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, targetCardCase = "valid", targetCardKind = "Dismantle" } = {}) {
+  const conversionResponse = {
+    "guan-yu-wusheng-response": { providerId: "guan_yu_red_card_attack", label: "Use God of War as Attack", satisfies: "attack", cardId: "browser-wusheng-red-peach" },
+    "zhao-yun-longdan-attack-response": { providerId: "zhao_yun_dodge_as_attack", label: "Use Braveheart as Attack", satisfies: "attack", cardId: "browser-longdan-dodge-as-attack" },
+    "zhao-yun-longdan-dodge-response": { providerId: "zhao_yun_attack_as_dodge", label: "Use Braveheart as Dodge", satisfies: "dodge", cardId: "browser-longdan-attack-as-dodge" },
+  }[state];
+  if (conversionResponse) return {
+    version: 3, kind: "response", actorId, deadline: 0, reason: "Choose a response card", legalActions: ["respond", "decline_response"], requirement: conversionResponse.satisfies,
+    options: [{ providerId: conversionResponse.providerId, label: conversionResponse.label, satisfies: conversionResponse.satisfies, activation: "explicit", playedAs: conversionResponse.satisfies, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [conversionResponse.cardId] } }],
+  };
+  if (state === "conversion-no-provider") return {
+    version: 3, kind: "response", actorId, deadline: 0, reason: "Choose an Attack response", legalActions: ["respond", "decline_response"], requirement: "attack",
+    options: [{ providerId: "attack_card", label: "Attack", satisfies: "attack", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [handCardId] } }],
+  };
   if (state === "stargazing-offer") return {
     version: 3, kind: "trigger", actorId, deadline: 0, reason: "You may use Stargazing", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
     triggerOptions: [{ effectId: "zhuge_liang_stargazing", label: "Stargazing", description: "Privately reorder the top cards of the deck." }],
@@ -493,6 +506,14 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
   // Geometry-only large-hand fixture; IDs are synthetic, not a dealt deck.
   const hand = huaTuoFirstAidFixture
     ? [card("browser-first-aid-red", "Attack", "♥"), card("browser-first-aid-black", "Attack", "♠"), card("browser-first-aid-peach", "Peach", "♥")]
+    : state === "guan-yu-wusheng-response"
+    ? [card("browser-wusheng-red-peach", "Peach", "♥"), card("browser-wusheng-black-attack", "Attack", "♠")]
+    : state === "zhao-yun-longdan-attack-response"
+    ? [card("browser-longdan-dodge-as-attack", "Dodge", "♣"), card("browser-longdan-ineligible-peach", "Peach", "♥")]
+    : state === "zhao-yun-longdan-dodge-response"
+    ? [card("browser-longdan-attack-as-dodge", "Attack", "♠"), card("browser-longdan-ineligible-dodge", "Dodge", "♣")]
+    : state === "conversion-no-provider"
+    ? [card("browser-conversion-no-provider-attack", "Attack", "♠"), card("browser-conversion-no-provider-dodge", "Dodge", "♣")]
     : timedNegationObserver
     ? []
     : ordinaryTurn

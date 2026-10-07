@@ -1432,6 +1432,16 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `c7ec91770635261d83b2dac656dbd4bdf0ef1c59`. Reviewer acceptance is not
   claimed.
 
+### UX2.REFINE-HERO-CONVERSION-RESPONSE-SKILLS-BAND-01 — Wusheng / Longdan response activation
+
+- Focused browser proof covers Guan Yu red Peach→Attack, Zhao Yun Dodge→Attack,
+  and Attack→Dodge. Only CurrentAction-projected providers enable the Skills-band
+  controls; only the projected card is selectable; generic Action Row duplicates
+  are absent; and the existing `respond` provider/card payload is preserved.
+  Missing-provider states remain disabled. The spec passed 8/8 at 390×844 and
+  1440×900; targeted ESLint and `git diff --check` passed. No production,
+  gameplay, or projection changes. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

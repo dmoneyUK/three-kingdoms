@@ -5,15 +5,15 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-`UX2.REFINE-DISMANTLE-STEAL-UNIFIED-TARGET-CARD-MODAL-01` was pushed as
-`792d687901b1a2d85d5bd0145fbd0582d70386f4`. Its focused target-card browser
-spec passed 67/67; targeted ESLint and `git diff --check` passed. The preceding
-exact-HEAD run `37644841686` failed only at `npm test`: two stale Dismantle/Steal
-assertions expected the superseded Hero Focus composition. Lint, build, and
-browser steps passed. The test-only assertion repair passes local `npm test`
-(exit 0), targeted ESLint, and `git diff --check`. CI REPAIR PUSHED —
-VALIDATION PENDING. Do not resume feature delivery until that exact repair SHA
-is green.
+`UX2.REFINE-HERO-CONVERSION-RESPONSE-SKILLS-BAND-01` adds focused browser proof
+for Guan Yu Wusheng and Zhao Yun Longdan responses; the spec passed 8/8 at
+390×844 and 1440×900, targeted ESLint and `git diff --check` passed. No
+production or gameplay behavior changed. Its pre-commit remote HEAD was CI
+repair `c3d8f160c291189226e0dbda506790bcfa4b1a7e`; GitHub returned no workflow
+runs or status checks for that SHA, treated as success per Reviewer instruction.
+The preceding exact-HEAD run `37644841686` on `792d687` failed only at `npm test`
+because two Dismantle/Steal assertions were stale; test-only repair was pushed
+in `c3d8f16`. Reviewer acceptance is not claimed.
 Reviewer acceptance is not claimed. Deferred design gap: active Bumper Harvest
 choice has no authoritative deadline in the current projection
 (`countdownUntil` comes only from completion), so do not synthesize a chooser
@@ -29,12 +29,12 @@ remain activated in the Hero Skills band without duplicate generic actions.
 
 ## Current task
 
-`UX2.REFINE-HERO-CONVERSION-RESPONSE-SKILLS-BAND-01` — add focused browser
-proof that Guan Yu `God of War` and Zhao Yun `Braveheart` activate the existing
-authoritative conversion-response providers from the Skills band. Cover red
-card→Attack, Dodge→Attack, and Attack→Dodge; assert only CurrentAction-eligible
-cards, exact existing `respond` provider/card payloads, no duplicate generic
-provider control, and unavailable state when the provider is absent. Do not
-change rules, provider semantics, public projection, or deferred Hero/player
-Stage geometry. At the next commit boundary, inspect the latest actual job for
-the current remote HEAD; do not wait for this task's own CI after pushing.
+`UX2.REFINE-GENERIC-HERO-RESPONSE-SKILLS-BAND-01` — add focused browser proof
+for the existing generic mapped response path: Cao Cao Entourage, Liu Bei
+Influencing, and Zhen Ji Empress Dowager. Prove Skills-band activation only when
+CurrentAction exposes the mapped provider, no duplicate generic Action Row
+activation, preserved provider/card or delegation flow, and disabled state when
+authority is absent. Do not change provider IDs, legality, rules, or projection;
+stop if proof requires server/gameplay changes. At the next commit boundary,
+inspect the latest actual job for the remote HEAD; per Reviewer instruction, an
+empty CI status is success, and this task's own CI need not be awaited.
