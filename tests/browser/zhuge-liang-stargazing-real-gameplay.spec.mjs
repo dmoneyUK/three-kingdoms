@@ -523,10 +523,26 @@ for (const entry of [
     const attackFace = cardNode(opened.dialog, attack.id).locator(".deck-reorder-card-face");
     const attackFaceBox = await attackFace.boundingBox();
     expect(attackFaceBox).toBeTruthy();
+    const attackFaceHit = await opened.actorPage.evaluate(({ x, y, cardId }) => {
+      const hit = document.elementFromPoint(x, y);
+      const face = document.querySelector(`[data-deck-card-id="${cardId}"] .deck-reorder-card-face`);
+      return Boolean(face && (hit === face || face.contains(hit)));
+    }, {
+      x: attackFaceBox.x + attackFaceBox.width / 2,
+      y: attackFaceBox.y + attackFaceBox.height / 2,
+      cardId: attack.id,
+    });
+    expect(attackFaceHit).toBe(true);
     const oldTop = await orderIn(opened.dialog, "top");
-    await opened.actorPage.mouse.move(attackFaceBox.x + attackFaceBox.width / 2, attackFaceBox.y + attackFaceBox.height / 2);
+    const attackFaceCenter = {
+      x: attackFaceBox.x + attackFaceBox.width / 2,
+      y: attackFaceBox.y + attackFaceBox.height / 2,
+    };
+    await opened.actorPage.mouse.move(attackFaceCenter.x, attackFaceCenter.y);
     await opened.actorPage.mouse.down();
-    await opened.actorPage.mouse.move(attackFaceBox.x + attackFaceBox.width / 2 + 8, attackFaceBox.y + attackFaceBox.height / 2 + 2);
+    // Deliver multiple pointer moves well beyond the 5px activation threshold;
+    // a single small jump was intermittently not observed in headless CI.
+    await opened.actorPage.mouse.move(attackFaceCenter.x + 14, attackFaceCenter.y + 3, { steps: 3 });
     await expect(cardNode(opened.dialog, attack.id)).toHaveAttribute("data-dragging", "true");
     await opened.actorPage.mouse.move(2, 2, { steps: 6 });
     await opened.actorPage.mouse.up();
