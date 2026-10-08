@@ -545,11 +545,27 @@
   opacity: .96;
 }
 
+.interaction-root-target-subdued {
+  stroke: #b85a4c;
+  stroke-width: 2.4px;
+  stroke-dasharray: 6 6;
+  opacity: .34;
+}
+
+.interaction-root-target-block-mark {
+  opacity: .98;
+}
+
 .interaction-root-counter-relation {
   stroke: #b85a4c;
   stroke-width: 2.8px;
   stroke-dasharray: 7 5;
   opacity: .96;
+}
+
+.interaction-root-negation-counter {
+  stroke-width: 2.5px;
+  stroke-dasharray: 5 4;
 }
 
 .interaction-root-block-mark {
@@ -603,6 +619,12 @@
   letter-spacing: .12em;
 }
 
+.interaction-root-action-card.is-blocked {
+  opacity: .62;
+  filter: saturate(.58) brightness(.82);
+  box-shadow: 0 4px 12px #0008, 0 0 0 1px #d8b86e22;
+}
+
 .interaction-root-response-card {
   width: clamp(82px, 24vw, 100px);
   min-height: 68px;
@@ -615,6 +637,15 @@
 .interaction-root-response-card > small {
   color: #db9b80;
   letter-spacing: .12em;
+}
+
+.interaction-root-response-card[data-response-relation="COUNTERS_ROOT"] > small {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 6px;
+  letter-spacing: .04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .interaction-root-response-card > strong {

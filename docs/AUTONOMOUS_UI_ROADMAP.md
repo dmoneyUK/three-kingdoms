@@ -1720,6 +1720,21 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Pre-commit parent `2ad5c51d83499b815f7e6d5b275d1d69402c0ebe` passed Actions
   run `37747526386`. Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-B-NEGATION-FIRST-RESPONSE-GRAPH-01 — First Negation graph
+
+- The physical-seat overlay now renders the public root and first Negation from
+  exact event/resolution links. The submitted responder's actual seat tethers
+  to the response card, the response explicitly counters the root, and the
+  root-to-target relation is subdued only for authoritative `BLOCKED` state.
+  Open Negation remains placeholder-free; missing responder anchors retain the
+  existing safe Stage fallback. A real Dismantle → open window → third-party
+  Negation browser path passed 2/2, including 390×844 / 480×900 / wide graph
+  geometry, stable root and seat anchors, Stage/Dock separation, no horizontal
+  overflow, privacy, and fallback. Attack → Dodge graph regression passed 3/3;
+  build, targeted ESLint, and `git diff --check` passed. The pre-commit parent
+  `1e2ca29a339ff357afe4a11474b9d03a15699625` passed Actions run `37748618291`.
+  Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

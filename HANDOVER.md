@@ -5,16 +5,16 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-Phase B now links the proven single-target Negation root and each submitted
-Negation to its unique public card event. The root disposition is projected as
-`ACTIVE` / `BLOCKED` only with complete public event links and coherent
-server-owned continuation state. Engine-backed Steal → Negation →
-counter-Negation proves ACTIVE → BLOCKED → ACTIVE; malformed or unlinked proof
-fails closed. Presentation tests passed 109/109, the focused engine API file
-34/34, build, targeted ESLint, and `git diff --check` passed. The pre-commit
-remote SHA `2ad5c51d83499b815f7e6d5b275d1d69402c0ebe` passed Actions run
-`37747526386`. This task's commit CI will be recorded after push. Reviewer
-acceptance is not claimed.
+The physical-seat graph now consumes the exact public single-target Negation
+links and server-owned root disposition. A real Dismantle → open Negation →
+third-party Negation browser path proves the submitted response actor, root
+block relation, fixed root/seat geometry, no Stage/Dock overlap, and fail-closed
+fallback when the responder anchor is unavailable. The focused browser tests
+passed 2/2; Attack → Dodge graph regression passed 3/3; build, targeted ESLint,
+and `git diff --check` passed. Pre-commit parent SHA
+`1e2ca29a339ff357afe4a11474b9d03a15699625` passed Actions run `37748618291`.
+This task's Actions result is pending its push. Reviewer acceptance is not
+claimed.
 
 ## Design checkpoint
 
@@ -23,12 +23,12 @@ Reviewed remote `docs/UX2-refine.md`, blob
 
 ## Current / next task
 
-`UX2.6-PHASE-B-NEGATION-FIRST-RESPONSE-GRAPH-01` — consume the exact single-
-target root/Negation public event links and `rootEffectState` in the physical-
-seat Interaction Root Graph. Keep the root fixed; for the first committed
-Negation, render one response card with its actual responder-seat tether and an
-explicit counter relation, and block/subdue the root-to-target relation only
-when authoritative state is `BLOCKED`. Open Negation remains placeholder-free.
-Preserve fail-closed fallback, viewer-private Guidance, and Dock legality. Prove
-the real server-backed open → first Negation route and responsive containment;
-do not include counter-Negation chain layout yet.
+`UX2.6-PHASE-B-NEGATION-COUNTER-CHAIN-GRAPH-01` — extend the physical-seat
+graph from the first public Negation to a proven second/counter-Negation. Use
+server-projected `causedByNodeId`, actor identity, exact public event links, and
+`rootEffectState`; keep the root fixed, tether each response to its actual
+physical actor, show each explicit counter edge, subdue the older Negation,
+and restore the root-to-target relation only when authoritative state is
+`ACTIVE`. Preserve fail-closed fallback, public/private boundaries, and Dock
+legality. Prove the real server-backed open → Negation → counter-Negation path
+and responsive graph containment; long-chain collapse remains out of scope.

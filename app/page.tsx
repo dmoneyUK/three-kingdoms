@@ -2815,9 +2815,40 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     return [{ proof, rootEvent, responseEvent }];
   });
   const attackDodgeResponseCandidate = attackDodgeResponseCandidates.length === 1 ? attackDodgeResponseCandidates[0] : null;
+  const singleTargetNegationGraphCandidates = (() => {
+    const negationStage = buildInteractionStageView(clientPresentation, (playerId) => room.players.find((player) => player.id === playerId)?.name ?? null);
+    const chain = buildReactionChainView(negationStage);
+    const root = chain?.root;
+    const links = chain?.publicEventLinks;
+    if (!chain?.visible || !root || !links || !chain.interactionId || !root.cardKind
+      || !root.source.id || root.targets.length !== 1 || !root.targets[0]?.id
+      || chain.negationNodes.length !== links.nodes.length) return [];
+    const openRoot = chain.rootEffectState === "ACTIVE" && chain.negationNodes.length === 0;
+    const firstNegation = chain.rootEffectState === "BLOCKED" && chain.negationNodes.length === 1;
+    if (!openRoot && !firstNegation) return [];
+    const rootEvents = room.timeline.filter((event) => event.id === links.root.eventId);
+    if (rootEvents.length !== 1) return [];
+    const rootEvent = rootEvents[0];
+    if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
+      || rootEvent.playedAs !== undefined || rootEvent.card?.kind !== root.cardKind
+      || rootEvent.resolutionId !== links.root.resolutionId) return [];
+    const responseLink = firstNegation ? links.nodes[0] : null;
+    const responseNode = firstNegation ? chain.negationNodes[0] : null;
+    const responseEvents = responseLink ? room.timeline.filter((event) => event.id === responseLink.eventId) : [];
+    const responseEvent = responseEvents.length === 1 ? responseEvents[0] : null;
+    if (firstNegation && (!responseLink || !responseNode?.actor.id || !responseEvent
+      || responseEvent.type !== "card" || responseEvent.action !== "play" || responseEvent.presentation === false
+      || responseEvent.playedAs !== undefined || responseEvent.card?.kind !== "Negation"
+      || responseEvent.resolutionId !== responseLink.resolutionId)) return [];
+    return [{ chain, root, rootEvent, responseEvent, responseNode }];
+  })();
+  const singleTargetNegationGraphCandidate = singleTargetNegationGraphCandidates.length === 1
+    ? singleTargetNegationGraphCandidates[0]
+    : null;
   const rootAction = clientPresentation.rootAction;
-  const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId) : attackDodgeResponseCandidate?.rootEvent ?? null;
-  const selfTargetCandidates = rootAction || attackDodgeResponseCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
+  const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId)
+    : attackDodgeResponseCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
+  const selfTargetCandidates = rootAction || attackDodgeResponseCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
       || event.resolutionId !== action.resolutionId || event.card.kind !== action.cardKind
@@ -2856,9 +2887,32 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         response: {
           eventId: attackDodgeResponseCandidate.proof.responseEventId,
           actorId: attackDodgeResponseCandidate.proof.responseActorId,
+          actorName: room.players.find((player) => player.id === attackDodgeResponseCandidate.proof.responseActorId)?.name ?? "Unknown player",
           cardLabel: "DODGE",
           ariaLabel: `${room.players.find((player) => player.id === attackDodgeResponseCandidate.proof.responseActorId)?.name ?? "Unknown player"} played Dodge to block ${room.players.find((player) => player.id === attackDodgeResponseCandidate.proof.rootSourceId)?.name ?? "Unknown player"}'s Attack against ${room.players.find((player) => player.id === attackDodgeResponseCandidate.proof.targetId)?.name ?? "an opponent"}`,
         },
+      }
+    : singleTargetNegationGraphCandidate
+      ? {
+        key: [singleTargetNegationGraphCandidate.chain.interactionId, singleTargetNegationGraphCandidate.chain.publicEventLinks?.root.eventId, singleTargetNegationGraphCandidate.chain.rootEffectState, singleTargetNegationGraphCandidate.responseEvent?.id ?? "open", singleTargetNegationGraphCandidate.responseNode?.actor.id ?? ""].join(":"),
+        rootEventId: singleTargetNegationGraphCandidate.rootEvent.id,
+        sourceId: singleTargetNegationGraphCandidate.root.source.id!,
+        targetId: singleTargetNegationGraphCandidate.root.targets[0]!.id!,
+        cardKind: singleTargetNegationGraphCandidate.root.cardKind!,
+        cardLabel: cardDefinition(singleTargetNegationGraphCandidate.root.cardKind!).name.toUpperCase(),
+        ariaLabel: `${singleTargetNegationGraphCandidate.root.source.name} played ${cardDefinition(singleTargetNegationGraphCandidate.root.cardKind!).name} targeting ${singleTargetNegationGraphCandidate.root.targets[0]!.name}`,
+        mode: "targeted",
+        rootEffectState: singleTargetNegationGraphCandidate.chain.rootEffectState ?? undefined,
+        ...(singleTargetNegationGraphCandidate.responseEvent && singleTargetNegationGraphCandidate.responseNode?.actor.id ? {
+          response: {
+            eventId: singleTargetNegationGraphCandidate.responseEvent.id,
+            actorId: singleTargetNegationGraphCandidate.responseNode.actor.id,
+            actorName: singleTargetNegationGraphCandidate.responseNode.actor.name,
+            cardLabel: "NEGATION",
+            ariaLabel: `${singleTargetNegationGraphCandidate.responseNode.actor.name} played Negation to counter ${cardDefinition(singleTargetNegationGraphCandidate.root.cardKind!).name} from ${singleTargetNegationGraphCandidate.root.source.name}`,
+            countersRoot: true,
+          },
+        } : {}),
       }
     : selfTargetCandidate
       ? {
@@ -2875,7 +2929,10 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const rootActionSource = rootActionOverlayAction ? room.players.find((player) => player.id === rootActionOverlayAction.sourceId) : null;
   const rootActionTarget = rootActionOverlayAction ? room.players.find((player) => player.id === rootActionOverlayAction.targetId) : null;
   const rootActionTemporarilyBlocked = Boolean(targetPreviewPresentation || opponentInspectionPresentation || targetCardPickerSelectableDetail || expandedOpponentId || groupScopePreview.active);
-  const rootActionAwaitingReveal = Boolean(!attackDodgeResponseCandidate && rootAction && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations));
+  const rootActionAwaitingReveal = Boolean(
+    !attackDodgeResponseCandidate && rootAction && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
+    || singleTargetNegationGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations),
+  );
   const rootActionOverlayEnabled = Boolean(rootActionOverlayAction && rootActionSource?.name
     && (rootActionOverlayAction.mode === "self-target" || rootActionTarget?.name)
     && !rootActionTemporarilyBlocked && !rootActionAwaitingReveal);
@@ -2886,12 +2943,15 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     ? sequenceEvents.filter((event) => event.id !== rootActionOverlayAction.rootEventId
       && event.id !== rootActionOverlayAction.response?.eventId
       && (!rootActionCardId || !eventCards(event).some((card) => card.id === rootActionCardId))
-      && (!attackDodgeResponseCandidate || !eventCards(event).some((card) => card.id === attackDodgeResponseCandidate.responseEvent.card.id)))
+      && (!attackDodgeResponseCandidate || !eventCards(event).some((card) => card.id === attackDodgeResponseCandidate.responseEvent.card.id))
+      && (!singleTargetNegationGraphCandidate?.responseEvent || !eventCards(event).some((card) => card.id === singleTargetNegationGraphCandidate.responseEvent!.card.id)))
     : sequenceEvents;
   const activeRootSelfTargetEvent = rootActionOverlayVisible && rootActionOverlayAction?.mode === "self-target"
     && rootActionCardId && displayedEvent && eventCards(displayedEvent).some((card) => card.id === rootActionCardId);
-  const activeRootResponseEvent = rootActionOverlayVisible && rootActionOverlayAction?.response && attackDodgeResponseCandidate
-    && displayedEvent && eventCards(displayedEvent).some((card) => card.id === attackDodgeResponseCandidate.responseEvent.card.id);
+  const activeRootResponseEvent = rootActionOverlayVisible && rootActionOverlayAction?.response && displayedEvent
+    && (displayedEvent.id === rootActionOverlayAction.response.eventId
+      || attackDodgeResponseCandidate && eventCards(displayedEvent).some((card) => card.id === attackDodgeResponseCandidate.responseEvent.card.id)
+      || singleTargetNegationGraphCandidate?.responseEvent && eventCards(displayedEvent).some((card) => card.id === singleTargetNegationGraphCandidate.responseEvent.card.id));
   const displayedTableEvent = activeRootSelfTargetEvent || activeRootResponseEvent ? null : displayedEvent;
   const tablePresentationVisible = displayedSequenceEvents.length > 0 || Boolean(displayedTableEvent && eventCards(displayedTableEvent).length);
   const localEquipmentSelection = activeSkillSelection
