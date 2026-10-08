@@ -5,29 +5,30 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-P2 closed in `f8f0f52`; its exact Actions run `37795579452` succeeded on
-`f8f0f52d2bcd99286ace78e98b15227353dd03e9` across API, lint/fast, both Browser
-shards, and deploy/smoke. Phase D Sowing Distrust now carries an exact
-server-owned public Effect root and renders one compact Effect node through
-real suit/card decisions. Local proof: API 35/35, real browser 3/3 at
-390×844, 480×900, and 1440×900, build, targeted ESLint, and `git diff --check`
-passed. Feature commit/push and its CI are pending. The 60-second Bumper
-Harvest chooser remains server-owned and real-game-proven; §4A is closed.
+`UX2.6-PHASE-D-SOWING-DISTRUST-SETTLEMENT-LIFECYCLE-01` is implemented and
+locally validated. Sowing Distrust now retains an exact public Effect root
+through authoritative settlement, shows the terminal state briefly, and
+removes the transient graph without exposing the hidden card. Reduced motion
+uses a shorter hold. The failed CI at prior HEAD `6cb6a757d6946081fdbe2b2c406d33e476230182`
+was run `37797631764` (lint/fast and Browser shard 1 failed; API and Browser
+shard 2 passed). The repair is included here: timer-only response deadlines no
+longer invalidate the same decision revision, and response-card controls are
+disabled while a request is busy. This commit's Actions result is not yet
+available.
+
+Local evidence: build passed; fast tests 244/244; focused API 36/36; Browser
+shard 1 414/414; Sowing Distrust real-gameplay browser tests 5/5; Duel
+regression repeat 8/8; targeted ESLint and `git diff --check` passed.
 
 ## Design checkpoint
 
-Re-fetched `origin/ux-v2`; `docs/UX2-refine.md` remains blob
-`7feb8af937b6407f3f33c3959325db8d3f188cf4`. Re-read the pre-§5 gate and §6.2,
-§6.3, §6.22, §6.23, §6.25, and §6.26. Roadmap evidence closes §4.10, §4A,
-§4B, §4C.29, and §4D P1–P5; Section 6 is authorized at this planning boundary.
-Phases A–C are already implemented; continue with one Phase D task.
+Latest `origin/ux-v2:docs/UX2-refine.md` reviewed at blob
+`7feb8af937b6407f3f33c3959325db8d3f188cf4`. Section 6 Phase D remains active;
+§4A timer work is closed. Reviewer acceptance has not been asserted.
 
 ## Current / next task
 
-`UX2.6-PHASE-D-SOWING-DISTRUST-SETTLEMENT-LIFECYCLE-01` — complete the real
-Sowing Distrust Effect node lifecycle after its hidden-card decision. Preserve
-the exact public root through authoritative settlement, show a brief final
-state in the §6.17 0.4–0.8s preferred hold range, then remove the temporary
-node/relations without leaving stale graph state. Preserve hidden-card privacy
-and reduced-motion semantics. Prove a real server-backed suit→hidden-card→
-settlement route and measured hold/exit behavior without arbitrary sleeps.
+`UX2.6-PHASE-D-SOWING-DISTRUST-SETTLEMENT-LIFECYCLE-01` — implementation,
+focused regressions, and repair of the observed prior-CI failures are complete;
+commit and push this bounded change, then check the exact pushed SHA's Actions
+result at the next commit boundary.

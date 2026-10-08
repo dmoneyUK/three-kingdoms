@@ -102,7 +102,76 @@ test("engine-backed Sowing Distrust exposes only its exact public Effect root ac
   assert.deepEqual(cardView.presentationSnapshot.skillEffectAction, effectAction, "the root Effect persists while the hidden-card decision is active");
   assert.deepEqual(cardView.currentAction.triggerOptions[0].selection.eligibleKeys, ["hand:0"]);
   assert.equal(JSON.stringify(cardView.presentationSnapshot.skillEffectAction).includes(hiddenCard.id), false);
+
+  const choseHiddenCard = await request("trigger", { code: game.code, token: targetMember.token, providerId: "zhou_yu_fanjian_choice", cardKeys: ["hand:0"] });
+  assert.equal(choseHiddenCard.status, 200, JSON.stringify(choseHiddenCard.data));
+  const settledView = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  const settlement = settledView.presentationV2.skillEffectSettlements;
+  assert.equal(settlement.length, 1);
+  assert.deepEqual(settlement[0], {
+    semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId: effectAction.rootEventId,
+    sourceId: source.id, targetId: target.id, outcome: "SUITS_DIFFERED",
+    eventId: settledView.timeline.find((event) => event.publicSkillEffectSettlement)?.id,
+  });
+  assert.deepEqual(settledView.presentationSnapshot.skillEffectSettlements, settlement);
+  assert.equal(settledView.players.find((player) => player.id === target.id).hp, 3, "the public settlement proof follows the actual damage transition");
+  const settlementEvent = settledView.timeline.find((event) => event.id === settlement[0].eventId);
+  assert.equal(settlementEvent.importance, "essential");
+  assert.equal(settlementEvent.finalResult, true);
+  assert.equal(settlementEvent.publicSkillEffectSettlement.rootEventId, effectAction.rootEventId);
+  assert.equal(settledView.timeline.some((event) => event.type === "card" && event.card.id === hiddenCard.id), true, "the card identity becomes public only through the game's reveal event");
+  assert.equal(JSON.stringify(settlement).includes(hiddenCard.id), false, "the semantic settlement proof contains no physical-card identity");
+
+  const settledObserver = (await state(game.code, observerMember.token)).data;
+  assert.deepEqual(settledObserver.presentationSnapshot.skillEffectSettlements, settlement);
+  assert.deepEqual(publicSnapshot(settledObserver.presentationSnapshot), publicSnapshot(settledView.presentationSnapshot));
+  assert.deepEqual(buildPresentationClientView(settledView.presentationSnapshot, target.id).skillEffectSettlements, settlement);
+  assert.deepEqual(buildPresentationClientView(null, observerMember.id).skillEffectSettlements, []);
+
+  const settledInput = { pending: null, currentAction: settledView.currentAction, actionRevision: settledView.actionRevision, timeline: settledView.timeline, causalEnvelope: settledView.causalEnvelope };
+  assert.deepEqual(projectPresentationV2({ ...settledInput, timeline: [...settledView.timeline, settlementEvent] }).skillEffectSettlements, [], "duplicate public settlement events fail closed");
+  assert.deepEqual(projectPresentationV2({ ...settledInput, timeline: settledView.timeline.filter((event) => event.id !== effectAction.rootEventId) }).skillEffectSettlements, [], "a missing exact root event fails closed");
+  assert.deepEqual(projectPresentationV2({ ...settledInput, pending: rootPending }).skillEffectSettlements, [], "settlement cannot be projected while the same Sowing Distrust choice is still active");
 });
+
+test("engine-backed Sowing Distrust publishes the matched-suit settlement without damage", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [source, target] = game.room.players;
+  const [sourceMember, targetMember] = game.members;
+  const hiddenCard = card("Peach", "fanjian-matched-settlement-hidden-card", "♥");
+  sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(source.id)}`);
+  setHand(source.id, [hiddenCard], 3, 3);
+  setHand(target.id, [], 4, 4);
+  setTurn(game.code, source.seat);
+
+  const started = await request("trigger", { code: game.code, token: sourceMember.token, providerId: "zhou_yu_fanjian", targetId: target.id });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  const rootEventId = authoritativePending(game.code).continuation.effectRoot.rootEventId;
+  const choseSuit = await request("trigger", { code: game.code, token: targetMember.token, providerId: "zhou_yu_fanjian_choice", choice: "♥" });
+  assert.equal(choseSuit.status, 200, JSON.stringify(choseSuit.data));
+  const choseHiddenCard = await request("trigger", { code: game.code, token: targetMember.token, providerId: "zhou_yu_fanjian_choice", cardKeys: ["hand:0"] });
+  assert.equal(choseHiddenCard.status, 200, JSON.stringify(choseHiddenCard.data));
+
+  const settledView = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  expectSettlement(settledView, source.id, target.id, hiddenCard.id, "SUITS_MATCHED");
+  assert.equal(settledView.presentationV2.skillEffectSettlements[0].rootEventId, rootEventId);
+  assert.deepEqual(settledView.presentationSnapshot.skillEffectSettlements, settledView.presentationV2.skillEffectSettlements);
+  assert.equal(settledView.players.find((player) => player.id === target.id).hp, 4, "matching suits do not deal damage");
+});
+
+function expectSettlement(view, sourceId, targetId, hiddenCardId, outcome) {
+  const settlements = view.presentationV2.skillEffectSettlements;
+  assert.equal(settlements.length, 1);
+  const settlement = settlements[0];
+  assert.equal(settlement.outcome, outcome);
+  assert.equal(settlement.sourceId, sourceId);
+  assert.equal(settlement.targetId, targetId);
+  assert.equal(JSON.stringify(settlement).includes(hiddenCardId), false);
+  const event = view.timeline.find((candidate) => candidate.id === settlement.eventId);
+  assert.equal(event?.publicSkillEffectSettlement?.outcome, outcome);
+  assert.equal(event?.importance, "essential");
+  assert.equal(event?.finalResult, true);
+}
 
 test("engine-backed Attack/Dodge exposes authoritative decision and legacy resolution reference", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
@@ -293,6 +362,7 @@ test("engine-backed Borrowed Sword preserves forced Attack continuation and time
   assert.equal(armed.status, 200);
   const armedView = (await state(scenario.game.code, scenario.alice.token)).data;
   assert.ok(armedView.currentAction.deadline > 0);
+  assert.equal(armedView.actionRevision, view.actionRevision, "arming the response timer does not invalidate the same local response selection");
   const reconnect = (await state(scenario.game.code, scenario.host.token)).data;
   assert.equal(reconnect.currentAction.deadline, armedView.currentAction.deadline);
   assert.deepEqual(reconnect.presentationV2.rootContext, armedView.presentationV2.rootContext);

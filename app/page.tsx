@@ -11,7 +11,7 @@ import { canUseAction, type CurrentAction, type GameplayAction, type TriggerOpti
 import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
-import type { PresentationV2 } from "../game/presentation-v2";
+import type { PresentationSkillEffectSettlementProof, PresentationV2 } from "../game/presentation-v2";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, isProvenBorrowedSwordForcedAttack, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildPresentationTransition, type PresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupSourceForViewer, projectGroupTargetScopeForViewer, projectOathRecipientScopeForStage, projectBumperHarvestStageCompositionForViewer, type BumperHarvestStageCompositionView, type GroupSourceView, type GroupTargetScopeView, type HeroFocusPlayerDisplay, type HeroFocusView, type MediumParticipantView, type OathRecipientScopeView } from "../game/hero-focus";
@@ -24,7 +24,7 @@ type Hero = { id: string; name: string; faction: string; hp: number; ability: st
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
 type PresentationImportance = "essential" | "informational";
-type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean };
+type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof };
 type CardEvent = PresentationEventMeta & { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" | "draw"; drawPlayerId?: string; presentation?: boolean };
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
 
@@ -156,7 +156,11 @@ const UI_TIMING = {
   privateDraw: 3000,
   effectNotice: 2400,
   sequenceDiscard: 700,
+  skillEffectSettlement: 600,
+  skillEffectSettlementReduced: 120,
+  skillEffectSettlementFade: 150,
 } as const;
+const NO_SKILL_EFFECT_SETTLEMENTS = [] as const;
 
 async function readApiJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -1875,6 +1879,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const initialPendingSequence = pendingTimelineSequence(room);
   const initialHeldCardIds = new Set(initialPendingSequence.flatMap(eventCards).map((item) => item.id));
   const clientPresentation = useMemo(() => presentationView ?? buildPresentationClientView(room.presentationSnapshot ?? null, room.meId), [presentationView, room.presentationSnapshot, room.meId]);
+  const skillEffectSettlements = clientPresentation.skillEffectSettlements ?? NO_SKILL_EFFECT_SETTLEMENTS;
   const [presentationTransitionStore] = useState(() => createPresentationTransitionStore(clientPresentation));
   const presentationTransition = useSyncExternalStore(presentationTransitionStore.subscribe, presentationTransitionStore.getSnapshot, presentationTransitionStore.getSnapshot);
   useEffect(() => {
@@ -1925,6 +1930,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const hasInitialDeal = room.timeline.some((event) => event.type === "card" && event.initialDeal && event.drawPlayerId === room.meId);
   const knownHandCards = useRef(baselineHand(room.meId, hasInitialDeal ? [] : room.myHand, hasInitialDeal ? [] : room.timeline));
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
+  const [activeSkillEffectSettlement, setActiveSkillEffectSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   // Events already present when the screen mounts have no new animation to
   // wait for. New event IDs enter this set only after their presentation ends.
   const [presentedEventIds, setPresentedEventIds] = useState<Set<string>>(() => new Set((room.timeline ?? []).map((event) => event.id)));
@@ -2170,7 +2176,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const responseDeadline = room.currentAction?.deadline ?? room.pendingNegation?.deadline ?? room.pendingGreenDragon?.deadline ?? room.pendingRockCleaving?.deadline ?? room.pendingDuel?.deadline ?? room.pendingAttack?.deadline ?? 0;
   const canRescue = room.phase === "dying" && room.isMyAction;
   const rescueDecisionReady = canRescue && !presentationBusy;
-  const responseCardDisabled = (item: Card) => responseCardSelectionActive && !responseCardAllowed(item)
+  const responseCardDisabled = (item: Card) => responseCardSelectionActive && (busy || !responseCardAllowed(item))
     || rescueDecisionReady && !canRespond && !dyingFirstAidSelectionActive && item.kind !== "Peach";
   const timelineKey = room.timeline.map((event) => event.id).join("|");
   useLayoutEffect(() => {
@@ -2553,6 +2559,19 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   useEffect(() => {
     const fresh = (room.timeline ?? []).filter((event) => !seenEvents.current.has(event.id));
     fresh.forEach((event) => seenEvents.current.add(event.id));
+    const freshSkillSettlements = fresh.flatMap((event) => {
+      if (event.type !== "message") return [];
+      const proofs = skillEffectSettlements.filter((proof) => proof.eventId === event.id);
+      if (proofs.length !== 1) return [];
+      const proof = proofs[0];
+      const eventProof = event.publicSkillEffectSettlement;
+      return eventProof?.semantics === proof.semantics && eventProof.effectId === proof.effectId
+        && eventProof.rootEventId === proof.rootEventId && eventProof.sourceId === proof.sourceId
+        && eventProof.targetId === proof.targetId && eventProof.outcome === proof.outcome
+        ? [proof]
+        : [];
+    });
+    if (freshSkillSettlements.length === 1) setActiveSkillEffectSettlement({ eventId: freshSkillSettlements[0].eventId, exiting: false });
     const effect = fresh.find((event) => event.type === "message" && event.effectNotice);
     if (effect?.type === "message") {
       setEffectNotice(effect.message);
@@ -2588,7 +2607,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       } else setEventQueue((queue) => coalescePresentationQueue(queue, visible));
     }
     setProcessedTimelineKey(timelineKey);
-  }, [room.timeline, timelineKey, optimisticPlay, activeEvent, eventQueue.length]);
+  }, [room.timeline, timelineKey, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements]);
   useEffect(() => { if (!optimisticPlay) return; const timer = setTimeout(() => setOptimisticPlay(null), UI_TIMING.playedCard); return () => clearTimeout(timer); }, [optimisticPlay]);
   useEffect(() => { if (!livePendingStartId || livePendingStartId === sequenceScopeStartId) return; const timer = setTimeout(() => setSequenceScopeStartId(livePendingStartId), 0); return () => clearTimeout(timer); }, [livePendingStartId, sequenceScopeStartId]);
   useEffect(() => { if (!harvestSubmitting || room.pendingHarvest?.actorId === harvestSubmitting.playerId && !room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId)) return; const timer = setTimeout(() => setHarvestSubmitting(null), 0); return () => clearTimeout(timer); }, [harvestSubmitting, room.pendingHarvest]);
@@ -3022,8 +3041,33 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     if (!source?.name || !target?.name) return null;
     return { action, rootEvent, source, target };
   })();
+  const skillEffectSettlementCandidate = (() => {
+    const settlement = skillEffectSettlements.find((candidate) => candidate.eventId === activeSkillEffectSettlement?.eventId);
+    if (!settlement || settlement.semantics !== "PROVEN" || settlement.effectId !== "zhou_yu_fanjian") return null;
+    const rootEvents = room.timeline.filter((event) => event.id === settlement.rootEventId);
+    const settlementEvents = room.timeline.filter((event) => event.id === settlement.eventId);
+    if (rootEvents.length !== 1 || settlementEvents.length !== 1) return null;
+    const rootEvent = rootEvents[0];
+    const settlementEvent = settlementEvents[0];
+    if (rootEvent.type !== "message" || rootEvent.presentation === false
+      || rootEvent.publicSkillEffect?.effectId !== settlement.effectId
+      || rootEvent.publicSkillEffect.sourceId !== settlement.sourceId
+      || rootEvent.publicSkillEffect.targetId !== settlement.targetId
+      || settlementEvent.type !== "message" || settlementEvent.presentation === false
+      || settlementEvent.importance !== "essential" || settlementEvent.finalResult !== true
+      || settlementEvent.publicSkillEffectSettlement?.semantics !== settlement.semantics
+      || settlementEvent.publicSkillEffectSettlement.effectId !== settlement.effectId
+      || settlementEvent.publicSkillEffectSettlement.rootEventId !== settlement.rootEventId
+      || settlementEvent.publicSkillEffectSettlement.sourceId !== settlement.sourceId
+      || settlementEvent.publicSkillEffectSettlement.targetId !== settlement.targetId
+      || settlementEvent.publicSkillEffectSettlement.outcome !== settlement.outcome) return null;
+    const source = room.players.find((player) => player.id === settlement.sourceId);
+    const target = room.players.find((player) => player.id === settlement.targetId);
+    if (!source?.name || !target?.name) return null;
+    return { action: settlement, rootEvent, settlementEvent, source, target, exiting: activeSkillEffectSettlement?.exiting === true };
+  })();
   const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId)
-    : groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeResponseCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
+    : groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeResponseCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
   const selfTargetCandidates = rootAction || groupTargetBranchGraphCandidate || skillEffectActionCandidate || duelExchangeGraphCandidate || attackDodgeResponseCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
@@ -3063,6 +3107,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     : skillEffectActionCandidate
     ? {
       key: ["effect", skillEffectActionCandidate.action.effectId, skillEffectActionCandidate.action.rootEventId, skillEffectActionCandidate.action.sourceId, skillEffectActionCandidate.action.targetId].join(":"),
+      rootPlacementKey: ["effect-root", skillEffectActionCandidate.action.rootEventId].join(":"),
       rootEventId: skillEffectActionCandidate.action.rootEventId,
       sourceId: skillEffectActionCandidate.action.sourceId,
       targetId: skillEffectActionCandidate.action.targetId,
@@ -3072,6 +3117,21 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       ariaLabel: `${skillEffectActionCandidate.source.name} used Sowing Distrust targeting ${skillEffectActionCandidate.target.name}`,
       mode: "targeted",
       compactRoot: true,
+    }
+    : skillEffectSettlementCandidate
+    ? {
+      key: ["effect", skillEffectSettlementCandidate.action.effectId, skillEffectSettlementCandidate.action.rootEventId, skillEffectSettlementCandidate.action.sourceId, skillEffectSettlementCandidate.action.targetId, "settled", skillEffectSettlementCandidate.action.eventId].join(":"),
+      rootPlacementKey: ["effect-root", skillEffectSettlementCandidate.action.rootEventId].join(":"),
+      rootEventId: skillEffectSettlementCandidate.action.rootEventId,
+      sourceId: skillEffectSettlementCandidate.action.sourceId,
+      targetId: skillEffectSettlementCandidate.action.targetId,
+      nodeType: "EFFECT",
+      effectId: skillEffectSettlementCandidate.action.effectId,
+      cardLabel: "SOWING DISTRUST",
+      ariaLabel: `${skillEffectSettlementCandidate.source.name} used Sowing Distrust targeting ${skillEffectSettlementCandidate.target.name}. Resolved: ${skillEffectSettlementCandidate.action.outcome === "SUITS_MATCHED" ? "suits matched" : "suits differed"}`,
+      mode: "targeted",
+      compactRoot: true,
+      settlement: { eventId: skillEffectSettlementCandidate.action.eventId, outcome: skillEffectSettlementCandidate.action.outcome, exiting: skillEffectSettlementCandidate.exiting },
     }
     : duelExchangeGraphCandidate
     ? {
@@ -3179,6 +3239,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     !attackDodgeResponseCandidate && rootAction && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || groupTargetBranchGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || skillEffectActionCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
+    || skillEffectSettlementCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || singleTargetNegationGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations),
   );
   const rootGroupTargetNamesKnown = Boolean(rootActionOverlayAction?.groupTargets?.length
@@ -3187,6 +3248,23 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     && (rootGroupTargetNamesKnown || rootActionOverlayAction.mode === "self-target" || rootActionTarget?.name)
     && !rootActionTemporarilyBlocked && !rootActionAwaitingReveal);
   const rootActionOverlayVisible = Boolean(rootActionOverlayEnabled && rootActionOverlayAction && rootActionOverlayReadyKey === rootActionOverlayAction.key);
+  const activeOverlaySettlementEventId = rootActionOverlayAction?.settlement?.eventId ?? null;
+  const activeOverlaySettlementExiting = rootActionOverlayAction?.settlement?.exiting === true;
+  useEffect(() => {
+    if (!activeOverlaySettlementEventId || !rootActionOverlayVisible || activeSkillEffectSettlement?.eventId !== activeOverlaySettlementEventId || activeSkillEffectSettlement.exiting) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setTimeout(() => {
+      setActiveSkillEffectSettlement((current) => current?.eventId === activeOverlaySettlementEventId
+        ? reducedMotion ? null : { ...current, exiting: true }
+        : current);
+    }, reducedMotion ? UI_TIMING.skillEffectSettlementReduced : UI_TIMING.skillEffectSettlement - UI_TIMING.skillEffectSettlementFade);
+    return () => window.clearTimeout(timer);
+  }, [activeOverlaySettlementEventId, activeSkillEffectSettlement?.eventId, activeSkillEffectSettlement?.exiting, rootActionOverlayVisible]);
+  useEffect(() => {
+    if (!activeOverlaySettlementExiting || !activeOverlaySettlementEventId || activeSkillEffectSettlement?.eventId !== activeOverlaySettlementEventId) return;
+    const timer = window.setTimeout(() => setActiveSkillEffectSettlement((current) => current?.eventId === activeOverlaySettlementEventId ? null : current), UI_TIMING.skillEffectSettlementFade);
+    return () => window.clearTimeout(timer);
+  }, [activeOverlaySettlementEventId, activeOverlaySettlementExiting, activeSkillEffectSettlement?.eventId]);
   const rootActionCardId = rootActionEvent?.type === "card" ? rootActionEvent.card.id
     : selfTargetCandidate?.event.card.id ?? null;
   const duelExchangeEventIds = new Set(duelExchangeGraphCandidate

@@ -1116,6 +1116,16 @@ test("mounted Duel response keeps private controls and public focus viewer-equal
   await act(async () => { renderer.unmount(); });
 });
 
+test("mounted Duel response keeps legal cards unselectable while an authoritative request is busy", async () => {
+  const room = duelResponseRoom();
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: true, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(handCardButton(renderer, "duel-response-attack").props.disabled, true, "the response card cannot race a busy deadline/action update");
+  assert.equal(consoleButtonsByClass(renderer, "primary")[0].props.disabled, true);
+  await act(async () => { renderer.unmount(); });
+});
+
 test("mounted Duel response clears local selection when the server revision hands off", async () => {
   let room = duelResponseRoom();
   let renderer;

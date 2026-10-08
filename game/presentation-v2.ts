@@ -23,6 +23,7 @@ export type PresentationV2Event = {
   attackDodgeResponse?: unknown;
   duelAttackResponse?: unknown;
   publicSkillEffect?: { effectId?: unknown; sourceId?: unknown; targetId?: unknown };
+  publicSkillEffectSettlement?: unknown;
 };
 
 export type PresentationSkillEffectAction = {
@@ -34,6 +35,19 @@ export type PresentationSkillEffectAction = {
 };
 
 export type PresentationSkillEffectActionEvent = Pick<PresentationSkillEffectAction, "effectId" | "sourceId" | "targetId">;
+
+export type PresentationSkillEffectSettlementProof = {
+  semantics: "PROVEN";
+  effectId: "zhou_yu_fanjian";
+  rootEventId: string;
+  sourceId: string;
+  targetId: string;
+  outcome: "SUITS_MATCHED" | "SUITS_DIFFERED";
+};
+
+export type PresentationSkillEffectSettlement = PresentationSkillEffectSettlementProof & {
+  eventId: string;
+};
 
 /** Server-authored public proof attached only to a successfully used self-target card event. */
 export type PresentationSelfTargetActionProof = {
@@ -320,6 +334,7 @@ export type PresentationV2 = {
   interactionScene: PresentationInteractionScene | null;
   rootAction: PresentationRootAction | null;
   skillEffectAction: PresentationSkillEffectAction | null;
+  skillEffectSettlements: readonly PresentationSkillEffectSettlement[];
   duelExchange: PresentationDuelExchange | null;
   selfTargetActions?: readonly PresentationSelfTargetAction[];
   dyingBarrier: PresentationDyingBarrier | null;
@@ -1493,6 +1508,56 @@ function skillEffectActionFor(input: PresentationV2Input): PresentationSkillEffe
   return { semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId, sourceId, targetId };
 }
 
+function skillEffectSettlementsFor(input: PresentationV2Input): PresentationSkillEffectSettlement[] {
+  const eventIdCounts = new Map<string, number>();
+  const rootIdCounts = new Map<string, number>();
+  for (const event of input.timeline) {
+    const eventId = stringValue(event.id);
+    if (eventId) eventIdCounts.set(eventId, (eventIdCounts.get(eventId) ?? 0) + 1);
+    const proof = record(event.publicSkillEffectSettlement);
+    const rootEventId = stringValue(proof?.rootEventId);
+    if (rootEventId) rootIdCounts.set(rootEventId, (rootIdCounts.get(rootEventId) ?? 0) + 1);
+  }
+  const pending = record(input.pending);
+  const continuation = record(pending?.continuation);
+  const effectRoot = record(continuation?.effectRoot);
+  const activeRootEventId = pending?.kind === "trigger" && pending.event === "hero_choice"
+    && continuation?.kind === "hero_choice_event" && effectRoot?.effectId === "zhou_yu_fanjian"
+    ? stringValue(effectRoot.rootEventId)
+    : null;
+
+  return input.timeline.flatMap((event) => {
+    const proof = record(event.publicSkillEffectSettlement);
+    const eventId = stringValue(event.id);
+    const rootEventId = stringValue(proof?.rootEventId);
+    const sourceId = stringValue(proof?.sourceId);
+    const targetId = stringValue(proof?.targetId);
+    if (!eventId || eventIdCounts.get(eventId) !== 1 || !rootEventId || rootIdCounts.get(rootEventId) !== 1
+      || !sourceId || !targetId || sourceId === targetId
+      || proof?.semantics !== "PROVEN" || proof.effectId !== "zhou_yu_fanjian"
+      || proof.outcome !== "SUITS_MATCHED" && proof.outcome !== "SUITS_DIFFERED"
+      || event.type !== "message" || event.presentation === false || event.importance !== "essential" || event.finalResult !== true
+      || activeRootEventId === rootEventId) return [];
+
+    const rootEvents = input.timeline.filter((candidate) => candidate.id === rootEventId);
+    const rootEvent = rootEvents.length === 1 ? rootEvents[0] : null;
+    const publicEffect = record(rootEvent?.publicSkillEffect);
+    if (!rootEvent || rootEvent.type !== "message" || rootEvent.presentation === false
+      || publicEffect?.effectId !== "zhou_yu_fanjian"
+      || publicEffect.sourceId !== sourceId || publicEffect.targetId !== targetId) return [];
+
+    return [{
+      semantics: "PROVEN",
+      effectId: "zhou_yu_fanjian",
+      rootEventId,
+      sourceId,
+      targetId,
+      outcome: proof.outcome,
+      eventId,
+    }];
+  });
+}
+
 function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): PresentationAttackDodgeResponse[] {
   const eventCounts = new Map<string, number>();
   const eventsById = new Map<string, PresentationV2Event[]>();
@@ -1752,6 +1817,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
   const rootAction = singleTargetAttackRootActionFor(envelope, interactionScene, input.pending, root, rootEvent);
   const skillEffectAction = skillEffectActionFor(input);
+  const skillEffectSettlements = skillEffectSettlementsFor(input);
   const duelExchange = duelExchangeFor(envelope, interactionScene, input.pending, input.timeline);
   const selfTargetActions = selfTargetActionsFor(input.timeline);
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
@@ -1788,6 +1854,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     interactionScene,
     rootAction,
     skillEffectAction,
+    skillEffectSettlements,
     duelExchange,
     selfTargetActions,
     dyingBarrier,

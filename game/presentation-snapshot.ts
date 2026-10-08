@@ -11,6 +11,7 @@ import type {
   PresentationReactionChainNode,
   PresentationRootAction,
   PresentationSkillEffectAction,
+  PresentationSkillEffectSettlement,
   PresentationAttackDodgeResponse,
   PresentationDuelExchange,
   PresentationSelfTargetAction,
@@ -66,6 +67,7 @@ export type PresentationSnapshotOathRecipientScope = PresentationOathRecipientSc
 export type PresentationSnapshotBumperHarvestProgress = PresentationBumperHarvestProgress;
 export type PresentationSnapshotRootAction = PresentationRootAction;
 export type PresentationSnapshotSkillEffectAction = PresentationSkillEffectAction;
+export type PresentationSnapshotSkillEffectSettlement = PresentationSkillEffectSettlement;
 export type PresentationSnapshotAttackDodgeResponse = PresentationAttackDodgeResponse;
 export type PresentationSnapshotDuelExchange = PresentationDuelExchange;
 export type PresentationSnapshotSelfTargetAction = PresentationSelfTargetAction;
@@ -80,6 +82,7 @@ export type PresentationSnapshot = {
   reactionChain: PresentationReactionChain | null;
   rootAction: PresentationSnapshotRootAction | null;
   skillEffectAction: PresentationSnapshotSkillEffectAction | null;
+  skillEffectSettlements: readonly PresentationSnapshotSkillEffectSettlement[];
   duelExchange: PresentationSnapshotDuelExchange | null;
   attackDodgeResponses?: readonly PresentationSnapshotAttackDodgeResponse[];
   selfTargetActions?: readonly PresentationSnapshotSelfTargetAction[];
@@ -143,6 +146,34 @@ export function provenSkillEffectAction(value: unknown): PresentationSnapshotSki
     && nonEmptyString(action.targetId) && action.sourceId !== action.targetId
     ? { semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId: action.rootEventId, sourceId: action.sourceId, targetId: action.targetId }
     : null;
+}
+
+export function provenSkillEffectSettlements(value: unknown): PresentationSnapshotSkillEffectSettlement[] {
+  if (!Array.isArray(value)) return [];
+  const settlements = value.filter((candidate): candidate is PresentationSnapshotSkillEffectSettlement => Boolean(candidate && typeof candidate === "object" && !Array.isArray(candidate)
+    && (candidate as PresentationSnapshotSkillEffectSettlement).semantics === "PROVEN"
+    && (candidate as PresentationSnapshotSkillEffectSettlement).effectId === "zhou_yu_fanjian"
+    && nonEmptyString((candidate as PresentationSnapshotSkillEffectSettlement).eventId)
+    && nonEmptyString((candidate as PresentationSnapshotSkillEffectSettlement).rootEventId)
+    && nonEmptyString((candidate as PresentationSnapshotSkillEffectSettlement).sourceId)
+    && nonEmptyString((candidate as PresentationSnapshotSkillEffectSettlement).targetId)
+    && (candidate as PresentationSnapshotSkillEffectSettlement).sourceId !== (candidate as PresentationSnapshotSkillEffectSettlement).targetId
+    && ((candidate as PresentationSnapshotSkillEffectSettlement).outcome === "SUITS_MATCHED" || (candidate as PresentationSnapshotSkillEffectSettlement).outcome === "SUITS_DIFFERED")));
+  const eventCounts = new Map<string, number>();
+  const rootCounts = new Map<string, number>();
+  settlements.forEach((settlement) => {
+    eventCounts.set(settlement.eventId, (eventCounts.get(settlement.eventId) ?? 0) + 1);
+    rootCounts.set(settlement.rootEventId, (rootCounts.get(settlement.rootEventId) ?? 0) + 1);
+  });
+  return settlements.filter((settlement) => eventCounts.get(settlement.eventId) === 1 && rootCounts.get(settlement.rootEventId) === 1).map((settlement) => ({
+    semantics: "PROVEN",
+    effectId: "zhou_yu_fanjian",
+    eventId: settlement.eventId,
+    rootEventId: settlement.rootEventId,
+    sourceId: settlement.sourceId,
+    targetId: settlement.targetId,
+    outcome: settlement.outcome,
+  }));
 }
 
 export function provenAttackDodgeResponses(value: unknown): PresentationSnapshotAttackDodgeResponse[] {
@@ -728,6 +759,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     reactionChain: authority ? reactionChainFor(input.presentationV2, authority.scene, authority.identity, groupParticipantProgress) : null,
     rootAction: authority ? rootActionFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
     skillEffectAction: provenSkillEffectAction(input.presentationV2.skillEffectAction),
+    skillEffectSettlements: provenSkillEffectSettlements(input.presentationV2.skillEffectSettlements),
     duelExchange: authority ? provenDuelExchange(input.presentationV2.duelExchange, authority.scene, authority.identity, authority.stable) : null,
     ...(input.presentationV2.attackDodgeResponses?.length ? { attackDodgeResponses: provenAttackDodgeResponses(input.presentationV2.attackDodgeResponses) } : {}),
     selfTargetActions: provenSelfTargetActions(input.presentationV2.selfTargetActions),

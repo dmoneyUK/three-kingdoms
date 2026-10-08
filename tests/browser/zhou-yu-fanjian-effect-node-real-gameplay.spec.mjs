@@ -110,6 +110,7 @@ async function measureEffectGraph(page, sourceId, targetId) {
       nodeType: nodeElement?.dataset.rootActionNodeType,
       effectId: nodeElement?.dataset.rootActionEffectId,
       rootLabel: nodeElement?.getAttribute("aria-label"),
+      rootEventId: overlay?.dataset.rootActionEventId,
       hasPhysicalCardKind: nodeElement?.hasAttribute("data-root-action-card-kind"),
       sourceId: overlay?.dataset.rootActionSourceId,
       targetId: overlay?.dataset.rootActionTargetId,
@@ -206,3 +207,203 @@ for (const viewport of viewports) {
     await sourcePage.close();
   });
 }
+
+test("real Sowing Distrust holds its exact settled Effect node for 600ms, then removes it", async ({ browser, page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const viewport = { width: 390, height: 844 };
+  const seed = await seedGame(request);
+  const source = seed.players[0];
+  const target = seed.players[1];
+  const sourcePage = await browser.newPage({ viewport });
+  await openGame(sourcePage, seed, 0, viewport);
+  await openGame(page, seed, 1, viewport);
+  await activateFanjian(sourcePage, source, target);
+
+  const overlay = page.locator('[data-root-action-overlay="true"]');
+  await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+  const decisionGeometry = await measureEffectGraph(page, source.id, target.id);
+  const suitDialog = page.getByRole("dialog", { name: "Sowing Distrust — choose a suit decision" });
+  await suitDialog.getByRole("button", { name: "♥ Heart", exact: true }).click();
+  const suitSubmission = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").providerId === "zhou_yu_fanjian_choice"; }
+    catch { return false; }
+  });
+  await suitDialog.getByRole("button", { name: "Confirm choice", exact: true }).click();
+  const suitResult = await suitSubmission;
+  if (!suitResult.ok()) throw new Error(`Fanjian suit choice failed: ${await suitResult.text()}`);
+
+  const cardChoiceDialog = page.getByRole("dialog", { name: "Sowing Distrust — choose a hidden card target card selection" });
+  await expect(cardChoiceDialog).toBeVisible();
+  await cardChoiceDialog.getByRole("button", { name: "Hidden hand card 1", exact: true }).click();
+  const useButton = cardChoiceDialog.getByRole("button", { name: /^Use / });
+  await expect(useButton).toBeEnabled();
+
+  await page.evaluate(() => {
+    window.__fanjianSettlementTiming = { shownAt: null, exitingAt: null, removedAt: null };
+    const capture = () => {
+      const timing = window.__fanjianSettlementTiming;
+      const overlay = document.querySelector('[data-root-action-overlay="true"]');
+      const node = overlay?.querySelector('[data-root-action-settled="true"]');
+      if (node && overlay?.dataset.rootActionReady === "true" && timing.shownAt === null) timing.shownAt = performance.now();
+      if (node?.classList.contains("is-settlement-exiting") && timing.exitingAt === null) timing.exitingAt = performance.now();
+      if (!node && timing.shownAt !== null && timing.removedAt === null) timing.removedAt = performance.now();
+    };
+    new MutationObserver(capture).observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "data-root-action-ready", "data-root-action-settlement-exiting"],
+    });
+    capture();
+  });
+  const cardSubmission = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").providerId === "zhou_yu_fanjian_choice" && JSON.parse(response.request().postData() ?? "{}").cardKeys?.[0] === "hand:0"; }
+    catch { return false; }
+  });
+  await useButton.click();
+  const cardResult = await cardSubmission;
+  if (!cardResult.ok()) throw new Error(`Fanjian hidden-card choice failed: ${await cardResult.text()}`);
+  const responseBody = await cardResult.json();
+  const settlement = responseBody.room.presentationSnapshot.skillEffectSettlements;
+  expect(settlement).toHaveLength(1);
+  expect(settlement[0]).toMatchObject({
+    semantics: "PROVEN",
+    effectId: "zhou_yu_fanjian",
+    rootEventId: decisionGeometry.rootEventId,
+    sourceId: source.id,
+    targetId: target.id,
+    outcome: "SUITS_DIFFERED",
+  });
+  expect(responseBody.room.players.find((player) => player.id === target.id).hp).toBe(3);
+  expect(JSON.stringify(settlement)).not.toContain(hiddenCard.id);
+  const finalEvent = responseBody.room.timeline.find((event) => event.id === settlement[0].eventId);
+  expect(finalEvent).toMatchObject({
+    type: "message",
+    importance: "essential",
+    finalResult: true,
+    publicSkillEffectSettlement: { rootEventId: decisionGeometry.rootEventId, sourceId: source.id, targetId: target.id, outcome: "SUITS_DIFFERED" },
+  });
+
+  await expect(page.locator(".active-table-reveal")).toBeVisible();
+  await expect(overlay).toHaveAttribute("data-root-action-ready", "false");
+  await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+  const settledNode = overlay.locator('[data-root-action-card="true"]');
+  await expect(settledNode).toHaveAttribute("data-root-action-settled", "true");
+  await expect(settledNode).toHaveAttribute("data-root-action-settlement-event-id", settlement[0].eventId);
+  await expect(settledNode).toHaveAttribute("data-root-action-settlement-outcome", "SUITS_DIFFERED");
+  await expect(settledNode.locator("small")).toHaveText("RESOLVED");
+  await expect(settledNode).toHaveAttribute("aria-label", /Resolved: suits differed/);
+  const settledGeometry = await measureEffectGraph(page, source.id, target.id);
+  expect(settledGeometry.ready).toBe("true");
+  expect(settledGeometry.nodeInsideTable).toBe(true);
+  expect(settledGeometry.nodeAvoidsAnchors).toBe(true);
+  expect(settledGeometry.nodeAvoidsDock).toBe(true);
+  expect(settledGeometry.sourceStartAtSeat).toBe(true);
+  expect(settledGeometry.sourceEndAtNode).toBe(true);
+  expect(settledGeometry.targetStartAtNode).toBe(true);
+  expect(settledGeometry.targetEndAtDock).toBe(true);
+  expect(settledGeometry.documentWidth).toBe(viewport.width);
+  expect(decisionGeometry.rootEventId).toBe(settledGeometry.rootEventId);
+  expect(Math.abs(settledGeometry.node.left - settledGeometry.table.left - (decisionGeometry.node.left - decisionGeometry.table.left))).toBeLessThanOrEqual(1);
+  expect(Math.abs(settledGeometry.node.right - settledGeometry.table.left - (decisionGeometry.node.right - decisionGeometry.table.left))).toBeLessThanOrEqual(1);
+  expect(Math.abs(settledGeometry.node.width - decisionGeometry.node.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(settledGeometry.node.height - decisionGeometry.node.height)).toBeLessThanOrEqual(1);
+  const tableRelativeVerticalAdjustment = (settledGeometry.node.top - settledGeometry.table.top) - (decisionGeometry.node.top - decisionGeometry.table.top);
+  expect(Math.abs(tableRelativeVerticalAdjustment)).toBeLessThanOrEqual(24);
+
+  const screenshot = await page.screenshot({ path: testInfo.outputPath("fanjian-effect-settled-390.png"), animations: "disabled" });
+  await testInfo.attach("fanjian-effect-settled-390", { body: screenshot, contentType: "image/png" });
+  await expect(settledNode).toHaveClass(/is-settlement-exiting/);
+  await expect(overlay).toHaveAttribute("data-root-action-settlement-exiting", "true");
+  await expect(overlay).toHaveCount(0);
+  const timing = await page.evaluate(() => window.__fanjianSettlementTiming);
+  expect(timing.shownAt).not.toBeNull();
+  expect(timing.exitingAt).not.toBeNull();
+  expect(timing.removedAt).not.toBeNull();
+  expect(timing.exitingAt - timing.shownAt).toBeGreaterThanOrEqual(400);
+  expect(timing.exitingAt - timing.shownAt).toBeLessThanOrEqual(550);
+  expect(timing.removedAt - timing.exitingAt).toBeGreaterThanOrEqual(120);
+  expect(timing.removedAt - timing.exitingAt).toBeLessThanOrEqual(300);
+  expect(timing.removedAt - timing.shownAt).toBeGreaterThanOrEqual(550);
+  expect(timing.removedAt - timing.shownAt).toBeLessThanOrEqual(800);
+
+  await page.reload();
+  await expect(page.locator(".game-shell")).toBeVisible();
+  await expect(page.locator('[data-root-action-overlay="true"]')).toHaveCount(0);
+  await sourcePage.close();
+});
+
+test("real Sowing Distrust shortens the settled Effect hold for reduced motion", async ({ browser, page, request }) => {
+  test.setTimeout(120_000);
+  const viewport = { width: 390, height: 844 };
+  const seed = await seedGame(request);
+  const source = seed.players[0];
+  const target = seed.players[1];
+  const sourcePage = await browser.newPage({ viewport });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openGame(sourcePage, seed, 0, viewport);
+  await openGame(page, seed, 1, viewport);
+  await activateFanjian(sourcePage, source, target);
+
+  const overlay = page.locator('[data-root-action-overlay="true"]');
+  await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+  const suitDialog = page.getByRole("dialog", { name: "Sowing Distrust — choose a suit decision" });
+  await expect(suitDialog).toBeVisible();
+  await suitDialog.getByRole("button", { name: "♥ Heart", exact: true }).click();
+  const suitSubmission = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").providerId === "zhou_yu_fanjian_choice"; }
+    catch { return false; }
+  });
+  await suitDialog.getByRole("button", { name: "Confirm choice", exact: true }).click();
+  const suitResult = await suitSubmission;
+  if (!suitResult.ok()) throw new Error(`Fanjian suit choice failed: ${await suitResult.text()}`);
+
+  const cardDialog = page.getByRole("dialog", { name: "Sowing Distrust — choose a hidden card target card selection" });
+  await expect(cardDialog).toBeVisible();
+  await cardDialog.getByRole("button", { name: "Hidden hand card 1", exact: true }).click();
+  await page.evaluate(() => {
+    window.__fanjianSettlementTiming = { shownAt: null, resolvedLabel: null, exitingAt: null, removedAt: null };
+    const capture = () => {
+      const timing = window.__fanjianSettlementTiming;
+      const overlayElement = document.querySelector('[data-root-action-overlay="true"]');
+      const node = overlayElement?.querySelector('[data-root-action-settled="true"]');
+      if (node && overlayElement?.dataset.rootActionReady === "true" && timing.shownAt === null) {
+        timing.shownAt = performance.now();
+        timing.resolvedLabel = node.querySelector("small")?.textContent ?? null;
+      }
+      if (node?.classList.contains("is-settlement-exiting") && timing.exitingAt === null) timing.exitingAt = performance.now();
+      if (!node && timing.shownAt !== null && timing.removedAt === null) timing.removedAt = performance.now();
+    };
+    new MutationObserver(capture).observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "data-root-action-ready", "data-root-action-settlement-exiting"],
+    });
+    capture();
+  });
+  const useButton = cardDialog.getByRole("button", { name: /^Use / });
+  const cardSubmission = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").cardKeys?.[0] === "hand:0"; }
+    catch { return false; }
+  });
+  await useButton.click();
+  const cardResult = await cardSubmission;
+  if (!cardResult.ok()) throw new Error(`Fanjian hidden-card choice failed: ${await cardResult.text()}`);
+  const resultRoom = (await cardResult.json()).room;
+  expect(resultRoom.presentationSnapshot.skillEffectSettlements).toHaveLength(1);
+  expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
+
+  await expect.poll(() => page.evaluate(() => window.__fanjianSettlementTiming?.shownAt ?? null)).not.toBeNull();
+  await expect.poll(() => page.evaluate(() => window.__fanjianSettlementTiming?.removedAt ?? null)).not.toBeNull();
+  const timing = await page.evaluate(() => window.__fanjianSettlementTiming);
+  expect(timing.resolvedLabel).toBe("RESOLVED");
+  expect(timing.exitingAt).toBeNull();
+  expect(timing.removedAt - timing.shownAt).toBeGreaterThanOrEqual(80);
+  expect(timing.removedAt - timing.shownAt).toBeLessThanOrEqual(300);
+  await sourcePage.close();
+});

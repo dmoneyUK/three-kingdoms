@@ -89,6 +89,7 @@ export type InteractionRootOverlayAction = {
   groupTargets?: readonly InteractionRootOverlayGroupTarget[];
   groupTargetEffectState?: { targetId: string; state: "ACTIVE" | "BLOCKED" };
   rootEffectState?: "ACTIVE" | "BLOCKED";
+  settlement?: { eventId: string; outcome: "SUITS_MATCHED" | "SUITS_DIFFERED"; exiting: boolean };
   response?: { eventId: string; actorId: string; actorName: string; cardLabel: string; ariaLabel: string; countersRoot?: boolean; targetId?: string; decisionActorId?: string };
   responses?: readonly InteractionRootOverlayResponseNode[];
 };
@@ -958,6 +959,8 @@ export function InteractionRootOverlay({
     data-root-action-group-target-graph={action.groupTargets?.length ? "true" : undefined}
     data-root-action-group-target-count={action.groupTargets?.length ?? undefined}
     data-root-action-mode={action.mode}
+    data-root-action-settlement-event-id={action.settlement?.eventId}
+    data-root-action-settlement-exiting={action.settlement?.exiting ? "true" : undefined}
     data-root-effect-state={action.rootEffectState ?? undefined}
     data-root-action-response-count={action.responses?.length ?? undefined}
     data-root-action-visible-response-count={visibleResponses.length || undefined}
@@ -1067,11 +1070,14 @@ export function InteractionRootOverlay({
     </svg>}
     <div
       ref={cardRef}
-      className={`interaction-root-action-card${action.nodeType === "EFFECT" ? " is-effect-node" : ""}${action.rootEffectState === "BLOCKED" ? " is-blocked" : ""}${responseTargetsPlayer ? " is-contextual" : ""}`}
+      className={`interaction-root-action-card${action.nodeType === "EFFECT" ? " is-effect-node" : ""}${action.rootEffectState === "BLOCKED" ? " is-blocked" : ""}${responseTargetsPlayer ? " is-contextual" : ""}${action.settlement ? " is-settled" : ""}${action.settlement?.exiting ? " is-settlement-exiting" : ""}`}
       data-root-action-card="true"
       data-root-action-card-kind={action.cardKind}
       data-root-action-node-type={action.nodeType ?? "CARD"}
       data-root-action-effect-id={action.nodeType === "EFFECT" ? action.effectId : undefined}
+      data-root-action-settled={action.settlement ? "true" : undefined}
+      data-root-action-settlement-event-id={action.settlement?.eventId}
+      data-root-action-settlement-outcome={action.settlement?.outcome}
       data-root-action-compact-root={action.compactRoot ? "true" : undefined}
       data-group-root-action={action.groupTargets?.length ? action.cardKind : undefined}
       data-root-action-contextual={responseTargetsPlayer ? "true" : undefined}
@@ -1080,7 +1086,7 @@ export function InteractionRootOverlay({
       aria-label={action.ariaLabel}
       style={layout ? { left: layout.card.left, top: layout.card.top, transform: "none" } : undefined}
     >
-      <small>{action.nodeType === "EFFECT" ? "HERO SKILL" : action.rootEffectState === "BLOCKED" ? "BLOCKED EFFECT" : "ROOT ACTION"}</small>
+      <small>{action.settlement ? "RESOLVED" : action.nodeType === "EFFECT" ? "HERO SKILL" : action.rootEffectState === "BLOCKED" ? "BLOCKED EFFECT" : "ROOT ACTION"}</small>
       <strong>{action.cardLabel}</strong>
     </div>
     {historyCount > 0 && <div

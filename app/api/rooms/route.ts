@@ -18,13 +18,13 @@ import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
 import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
 import { deckReorderCount, rebuildDeckForReorder } from "../../../game/decisions/deck-reorder";
-import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupParticipantProgressOutcome, type GroupResolutionSemantics, type GroupResponsePending, type HarvestParticipantProgress, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type HarvestPending, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
+import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupParticipantProgressOutcome, type GroupResolutionSemantics, type GroupResponsePending, type HarvestParticipantProgress, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type HarvestPending, type HeroChoiceTriggerContinuation, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
 import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { projectPresentationV2, type PresentationAttackDodgeResponseProof, type PresentationDuelAttackResponseProof, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent } from "../../../game/presentation-v2";
+import { projectPresentationV2, type PresentationAttackDodgeResponseProof, type PresentationDuelAttackResponseProof, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
@@ -35,7 +35,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null; causal_envelope_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -451,8 +451,14 @@ async function recoverClaimedHeroSkill(room: RoomRow, player: PlayerRow, hand: C
 async function actionRevisionFor(room: RoomRow, players: PlayerRow[], projectedActionPlayerId: string | null) {
   // Keep the revision sensitive to private continuation/state changes without
   // placing their serialized contents in a value returned to every viewer.
+  // Arming a response deadline changes timing metadata, not the current
+  // decision; clients may already hold a valid local card selection.
+  const persistedPending = parsePersistedPending(room.pending_json);
+  const pendingRevisionInput = persistedPending
+    ? JSON.stringify(Object.fromEntries(Object.entries(persistedPending).filter(([key]) => key !== "deadline")))
+    : room.pending_json ?? "";
   const [pendingRevision, skillStateRevision, handRevision] = await Promise.all([
-    hash(room.pending_json ?? ""),
+    hash(pendingRevisionInput),
     hash(room.skill_state_json ?? ""),
     hash(players.map((player) => `${player.id}:${player.hand_json ?? "[]"}`).join("|")),
   ]);
@@ -613,7 +619,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}) };
 }
 function addTriggeredEffectNotice(log: string[], actor: string, label: string) {
   return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined, { effectNotice: true });
@@ -622,6 +628,40 @@ function addLog(log: string[], message: string, drawPlayerId?: string, meta?: Pr
 function addLogWithId(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) {
   const id = crypto.randomUUID();
   return { log: [...log.slice(-199), `@event:${JSON.stringify({ id, message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`], eventId: id };
+}
+function fanjianSettlementProofFor(log: string[], continuation: HeroChoiceTriggerContinuation, outcome: PresentationSkillEffectSettlementProof["outcome"]): PresentationSkillEffectSettlementProof | undefined {
+  const effectRoot = continuation.effectRoot;
+  if (effectRoot?.effectId !== "zhou_yu_fanjian" || !effectRoot.rootEventId) return undefined;
+  const rootEvents = gameTimeline(log).filter((event) => event.id === effectRoot.rootEventId);
+  const rootEvent = rootEvents.length === 1 ? rootEvents[0] : null;
+  const publicEffect = rootEvent?.publicSkillEffect && typeof rootEvent.publicSkillEffect === "object" && !Array.isArray(rootEvent.publicSkillEffect)
+    ? rootEvent.publicSkillEffect as Record<string, unknown>
+    : null;
+  if (!rootEvent || rootEvent.type !== "message" || rootEvent.presentation === false
+    || publicEffect?.effectId !== "zhou_yu_fanjian"
+    || publicEffect.sourceId !== continuation.sourceId || publicEffect.targetId !== continuation.targetId
+    || continuation.sourceId === continuation.targetId) return undefined;
+  return {
+    semantics: "PROVEN",
+    effectId: "zhou_yu_fanjian",
+    rootEventId: effectRoot.rootEventId,
+    sourceId: continuation.sourceId,
+    targetId: continuation.targetId,
+    outcome,
+  };
+}
+function attachFanjianSettlement(log: string[], eventId: string, proof: PresentationSkillEffectSettlementProof) {
+  let matches = 0;
+  const next = log.map((entry) => {
+    if (!entry.startsWith("@event:")) return entry;
+    try {
+      const event = JSON.parse(entry.slice(7)) as { id?: unknown; importance?: unknown; finalResult?: unknown };
+      if (event.id !== eventId) return entry;
+      matches += 1;
+      return `@event:${JSON.stringify({ ...event, importance: "essential", finalResult: true, publicSkillEffectSettlement: proof })}`;
+    } catch { return entry; }
+  });
+  return matches === 1 ? next : log;
 }
 function addFinalResult(log: string[], message: string, drawPlayerId?: string, resolutionId?: string) { return addLog(log, message, drawPlayerId, { resolutionId, importance: "essential", finalResult: true }); }
 function addHistory(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) { return [...log.slice(-199), `@history:${JSON.stringify({ id: crypto.randomUUID(), message, presentation: false, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`]; }
@@ -3216,10 +3256,11 @@ type SourcedDamageTransition = {
   resumeDamageSuffered?: DamageSufferedTriggerContinuation;
   resumeTurnEnd?: TurnEndTriggerContinuation;
   onDamageApplied?: (hp: number) => Promise<void> | void;
+  finalizeDamageLog?: (log: string[]) => string[];
 };
 
 /** Applies sourced damage, then discovers the generic post-damage event. */
-async function resolveSourcedDamage({ room, source, target, players, amount, deck = parse<Card[]>(room.deck_json, []), discard, log, resumePhase, resumePlayerId, sequenceStartCardId, damageCards = [], physicalSuit, origin, causal, cause = "other", label = "Damage", damageDescription, writes = [], resumeGroup, resumeChildCausal, resumePending, resumeDamageSuffered, resumeTurnEnd, onDamageApplied }: SourcedDamageTransition): Promise<AttackDamageResult> {
+async function resolveSourcedDamage({ room, source, target, players, amount, deck = parse<Card[]>(room.deck_json, []), discard, log, resumePhase, resumePlayerId, sequenceStartCardId, damageCards = [], physicalSuit, origin, causal, cause = "other", label = "Damage", damageDescription, writes = [], resumeGroup, resumeChildCausal, resumePending, resumeDamageSuffered, resumeTurnEnd, onDamageApplied, finalizeDamageLog }: SourcedDamageTransition): Promise<AttackDamageResult> {
   const inheritedCausal = causal ?? resumeGroup?.causal ?? resumePending?.causal ?? resumeDamageSuffered?.causal ?? resumeTurnEnd?.causal;
   const finalAmount = resolveDamageModifiers({ sourceId: source?.id, sourceHero: source?.hero, cause, baseAmount: amount, turnState: parse<KingSkillState>(room.skill_state_json, {}) });
   const effectiveResumeGroup = finalAmount > 0 ? withPendingGroupDamageOutcome(resumeGroup, target.id) : resumeGroup;
@@ -3228,7 +3269,8 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
   const playPhase = resumePhase.startsWith("play");
   const hp = applyDamage(target.hp ?? 1, finalAmount);
   const description = typeof damageDescription === "function" ? damageDescription(finalAmount) : damageDescription ?? `${target.name} takes ${finalAmount} damage${label !== "Attack" && label ? ` from ${label}` : ""}`;
-  const damageLog = addLog(log, `${description}${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`);
+  const unfinalizedDamageLog = addLog(log, `${description}${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`);
+  const damageLog = finalizeDamageLog ? finalizeDamageLog(unfinalizedDamageLog) : unfinalizedDamageLog;
   const damageContinuation: DamageSufferedTriggerContinuation = {
     kind: "damage_suffered_event",
     ...(source ? { sourceId: source.id } : {}),
@@ -5057,15 +5099,19 @@ export async function POST(request: Request) {
       const updatedTarget = { ...target, hand_json: JSON.stringify(targetHand) } satisfies PlayerRow;
       let log = addTriggeredEffectNotice(parse<string[]>(liveRoom.log_json, []), target.name, "Sowing Distrust — choose a hidden card").log;
       const presentation = addCardEventWithId(log, source.name, card, target.name, "reveal");
-      log = addLog(presentation.log, `${target.name} chooses ${card.rank}${card.suit}. ${continuation.guess === card.suit ? "The suits match; no damage is dealt." : `${target.name} takes 1 damage from Sowing Distrust.`}`);
+      const outcome = continuation.guess === card.suit ? "SUITS_MATCHED" : "SUITS_DIFFERED";
+      const settlementProof = fanjianSettlementProofFor(presentation.log, continuation, outcome);
+      const result = addLogWithId(presentation.log, `${target.name} chooses ${card.rank}${card.suit}. ${outcome === "SUITS_MATCHED" ? "The suits match; no damage is dealt." : `${target.name} takes 1 damage from Sowing Distrust.`}`, undefined, { importance: "essential", finalResult: true });
+      log = result.log;
       if (continuation.guess === card.suit) {
+        if (settlementProof) log = attachFanjianSettlement(log, result.eventId, settlementProof);
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHandAfter), source.id),
           db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id),
           db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(continuation.resumePhase, JSON.stringify(log), room.id),
         ]);
       } else {
-        await resolveSourcedDamage({ room: liveRoom, source: updatedSource, target: updatedTarget, players: players.map((player) => player.id === source.id ? updatedSource : player.id === target.id ? updatedTarget : player), amount: 1, discard: parse<Card[]>(liveRoom.discard_json, []), log, resumePhase: continuation.resumePhase, resumePlayerId: source.id, sequenceStartCardId: card.id, damageCards: [card], label: "Sowing Distrust", damageDescription: `${target.name} takes 1 damage from Sowing Distrust`, writes: [
+        await resolveSourcedDamage({ room: liveRoom, source: updatedSource, target: updatedTarget, players: players.map((player) => player.id === source.id ? updatedSource : player.id === target.id ? updatedTarget : player), amount: 1, discard: parse<Card[]>(liveRoom.discard_json, []), log, resumePhase: continuation.resumePhase, resumePlayerId: source.id, sequenceStartCardId: card.id, damageCards: [card], label: "Sowing Distrust", damageDescription: `${target.name} takes 1 damage from Sowing Distrust`, ...(settlementProof ? { finalizeDamageLog: (damageLog: string[]) => attachFanjianSettlement(damageLog, result.eventId, settlementProof) } : {}), writes: [
           db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHandAfter), source.id),
           db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id),
         ] });

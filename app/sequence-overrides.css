@@ -718,6 +718,26 @@
   letter-spacing: .15em;
 }
 
+.interaction-root-action-card.is-settled {
+  border-color: #c8d5a6;
+  box-shadow: 0 5px 16px #0008, 0 0 0 1px #c8d5a655, 0 0 18px #b5cb8244;
+}
+
+.interaction-root-action-card.is-settled > small {
+  color: #d0dfa8;
+}
+
+.interaction-root-action-card.is-settlement-exiting {
+  opacity: .18;
+  filter: saturate(.45);
+  transition: opacity 150ms ease-out, filter 150ms ease-out;
+}
+
+.interaction-root-overlay[data-root-action-settlement-exiting="true"] .interaction-root-connectors {
+  opacity: .08;
+  transition: opacity 150ms ease-out;
+}
+
 .interaction-root-action-card > small {
   color: #c4aa72;
   font: 700 7px/1 Arial, sans-serif;

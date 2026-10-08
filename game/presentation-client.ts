@@ -1,7 +1,7 @@
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressStatus, type HarvestParticipantProgressStatus } from "./pending";
 import { CARD_KINDS, type CardKind } from "./model";
 import { CARD_DEFINITIONS } from "./cards";
-import { provenAttackDodgeResponses, provenDuelExchange, provenSelfTargetActions, provenSkillEffectAction, type PresentationSnapshot, type PresentationSnapshotAttackDodgeResponse, type PresentationSnapshotBumperHarvestProgress, type PresentationSnapshotDuelExchange, type PresentationSnapshotGroupParticipantProgress, type PresentationSnapshotGroupProgress, type PresentationSnapshotOathRecipientScope, type PresentationSnapshotRootAction, type PresentationSnapshotSelfTargetAction, type PresentationSnapshotSkillEffectAction } from "./presentation-snapshot";
+import { provenAttackDodgeResponses, provenDuelExchange, provenSelfTargetActions, provenSkillEffectAction, provenSkillEffectSettlements, type PresentationSnapshot, type PresentationSnapshotAttackDodgeResponse, type PresentationSnapshotBumperHarvestProgress, type PresentationSnapshotDuelExchange, type PresentationSnapshotGroupParticipantProgress, type PresentationSnapshotGroupProgress, type PresentationSnapshotOathRecipientScope, type PresentationSnapshotRootAction, type PresentationSnapshotSelfTargetAction, type PresentationSnapshotSkillEffectAction, type PresentationSnapshotSkillEffectSettlement } from "./presentation-snapshot";
 import type {
   PresentationGroupTargetEffectScope,
   InteractionSceneContinuity,
@@ -32,6 +32,7 @@ export type PresentationClientView = {
   reactionChain: PresentationSnapshot["reactionChain"];
   rootAction: PresentationSnapshotRootAction | null;
   skillEffectAction: PresentationSnapshotSkillEffectAction | null;
+  skillEffectSettlements: readonly PresentationSnapshotSkillEffectSettlement[];
   duelExchange: PresentationSnapshotDuelExchange | null;
   attackDodgeResponses?: readonly PresentationSnapshotAttackDodgeResponse[];
   selfTargetActions: readonly PresentationSnapshotSelfTargetAction[];
@@ -209,6 +210,7 @@ function restView(snapshot: PresentationSnapshot | null, meId: string | null): P
     reactionChain: null,
     rootAction: null,
     skillEffectAction: provenSkillEffectAction(snapshot?.skillEffectAction),
+    skillEffectSettlements: provenSkillEffectSettlements(snapshot?.skillEffectSettlements),
     duelExchange: null,
     ...(attackDodgeResponses.length ? { attackDodgeResponses } : {}),
     selfTargetActions: provenSelfTargetActions(snapshot?.selfTargetActions),
@@ -704,6 +706,7 @@ export function buildPresentationClientView(
     reactionChain: reactionChainForSnapshot(snapshot, scene, groupProgress),
     rootAction,
     skillEffectAction: provenSkillEffectAction(snapshot.skillEffectAction),
+    skillEffectSettlements: provenSkillEffectSettlements(snapshot.skillEffectSettlements),
     duelExchange: provenDuelExchange(snapshot.duelExchange, scene, snapshot.identity, snapshot.stable),
     ...(attackDodgeResponses.length ? { attackDodgeResponses } : {}),
     selfTargetActions: provenSelfTargetActions(snapshot.selfTargetActions),
