@@ -38,6 +38,24 @@ test("preserves only the privacy-safe Dismantle settlement proof fields", () => 
   assert.equal(normalizeTimeline([{ ...event, publicDismantleSettlement: { ...proof, outcome: "STEAL_RESOLVED" } }])[0].publicDismantleSettlement, undefined);
 });
 
+test("preserves only the privacy-safe Steal settlement proof fields", () => {
+  const proof = {
+    semantics: "PROVEN", rootEventId: "steal-root-event", rootResolutionId: "steal-resolution",
+    sourceId: "source", targetId: "target", outcome: "STEAL_RESOLVED", acquiredCardId: "hidden-card-id",
+  };
+  const event = normalizeTimeline([{
+    type: "message", id: "steal-settlement-event", message: "Steal resolved.", presentation: true,
+    importance: "essential", finalResult: true, resolutionId: "steal-resolution",
+    publicStealSettlement: proof,
+  }])[0];
+  assert.deepEqual(event.publicStealSettlement, {
+    semantics: "PROVEN", rootEventId: "steal-root-event", rootResolutionId: "steal-resolution",
+    sourceId: "source", targetId: "target", outcome: "STEAL_RESOLVED",
+  });
+  assert.equal(JSON.stringify(event.publicStealSettlement).includes("hidden-card-id"), false);
+  assert.equal(normalizeTimeline([{ ...event, publicStealSettlement: { ...proof, outcome: "DISMANTLE_RESOLVED" } }])[0].publicStealSettlement, undefined);
+});
+
 test("handles missing collections and rejects malformed items while preserving valid data", () => {
   const empty = normalizeRoomData({ code: "SAFE1", status: "lobby", players: [], myHand: [], timeline: [] });
   assert.deepEqual(empty.players, []); assert.deepEqual(empty.myHand, []); assert.deepEqual(empty.timeline, []);

@@ -376,6 +376,66 @@ test("Steal chooses from the target's current zones only after counter-Negation"
   assert.deepEqual(discardIds(game.code).slice(-3), ["steal-post-negation", "negation-cancel-steal", "negation-restore-steal"]);
 });
 
+test("committed Steal exposes a root-linked public settlement without revealing the acquired Hand identity", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [sourceMember, targetMember, observerMember] = game.members;
+  const [source, target] = game.room.players;
+  const hiddenCard = card("Peach", "steal-settlement-private-hand-card");
+  const stealCard = card("Steal", "steal-settlement-root-card");
+  setHand(source.id, [stealCard], 4, 4);
+  setHand(target.id, [hiddenCard], 4, 4);
+  for (const player of game.room.players.slice(2)) setHand(player.id, [], 4, 4);
+  setTurn(game.code, source.seat);
+
+  const opened = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: stealCard.id, targetId: target.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const pendingView = (await state(game.code, sourceMember.token)).data;
+  const root = pendingView.presentationSnapshot.rootAction;
+  const rootEvent = pendingView.timeline.find((event) => event.id === root.rootEventId);
+  assert.equal(root?.cardKind, "Steal");
+  assert.equal(typeof rootEvent?.resolutionId, "string");
+  const committed = await requestAndSettle("choose_target_card", { code: game.code, token: sourceMember.token, targetCardZone: "hand", targetCardIndex: 0 });
+  assert.equal(committed.status, 200, JSON.stringify(committed.data));
+
+  const settledView = (await state(game.code, sourceMember.token)).data;
+  const observerView = (await state(game.code, observerMember.token)).data;
+  assert.equal(settledView.myHand.some((held) => held.id === hiddenCard.id), true, "the acquired physical card belongs to the Steal actor");
+  assert.equal(settledView.players.find((player) => player.id === target.id).handCount, 0);
+  assert.deepEqual(settledView.presentationV2.stealSettlements, [{
+    semantics: "PROVEN",
+    eventId: settledView.timeline.find((event) => event.publicStealSettlement)?.id,
+    rootEventId: root.rootEventId,
+    rootResolutionId: rootEvent.resolutionId,
+    sourceId: source.id,
+    targetId: target.id,
+    outcome: "STEAL_RESOLVED",
+  }]);
+  const settlement = settledView.presentationV2.stealSettlements[0];
+  const settlementEvent = settledView.timeline.find((event) => event.id === settlement.eventId);
+  assert.equal(settlementEvent?.type, "message");
+  assert.equal(settlementEvent?.resolutionId, settlement.rootResolutionId);
+  assert.equal(settlementEvent?.importance, "essential");
+  assert.equal(settlementEvent?.finalResult, true);
+  assert.deepEqual(settlementEvent?.publicStealSettlement, {
+    semantics: "PROVEN", rootEventId: root.rootEventId, rootResolutionId: rootEvent.resolutionId,
+    sourceId: source.id, targetId: target.id, outcome: "STEAL_RESOLVED",
+  });
+  assert.deepEqual(settledView.presentationSnapshot.stealSettlements, settledView.presentationV2.stealSettlements);
+  assert.deepEqual(buildPresentationClientView(settledView.presentationSnapshot, source.id).stealSettlements, settledView.presentationV2.stealSettlements);
+  assert.deepEqual(observerView.presentationSnapshot.stealSettlements, settledView.presentationSnapshot.stealSettlements, "the public result is viewer-equal");
+  assert.equal(observerView.currentAction.targetCardSelection, undefined);
+  assert.equal(JSON.stringify(settlement).includes(hiddenCard.id), false);
+  assert.equal(JSON.stringify(settlementEvent.publicStealSettlement).includes(hiddenCard.id), false);
+  assert.equal(JSON.stringify(observerView.timeline).includes(hiddenCard.id), false, "the public result does not reveal the acquired card");
+  assert.equal(JSON.stringify(observerView.presentationSnapshot).includes(hiddenCard.id), false);
+
+  const settledInput = { pending: null, currentAction: settledView.currentAction, actionRevision: settledView.actionRevision, timeline: settledView.timeline, causalEnvelope: settledView.causalEnvelope };
+  assert.deepEqual(projectPresentationV2({ ...settledInput, timeline: [...settledView.timeline, settlementEvent] }).stealSettlements, [], "duplicate settlement event IDs fail closed");
+  assert.deepEqual(projectPresentationV2({ ...settledInput, timeline: settledView.timeline.filter((event) => event.id !== root.rootEventId) }).stealSettlements, [], "a missing exact Steal root fails closed");
+  assert.deepEqual(projectPresentationV2({ ...settledInput, timeline: settledView.timeline.map((event) => event.id === settlement.eventId ? { ...event, resolutionId: "unrelated-resolution" } : event) }).stealSettlements, [], "a mismatched root resolution fails closed");
+  assert.deepEqual(projectPresentationV2({ ...settledInput, timeline: settledView.timeline.map((event) => event.id === settlement.eventId ? { ...event, publicStealSettlement: { ...event.publicStealSettlement, rootEventId: "missing-root" } } : event) }).stealSettlements, [], "a mismatched root link fails closed");
+});
+
 test("target-card CurrentAction projects anonymous eligible positions only to its actor and omits stale targets", { timeout: 60_000 }, async () => {
   async function openTargetCardPending(suffix, { withPublicCards = false } = {}) {
     const game = await createHumanGame();

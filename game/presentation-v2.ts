@@ -25,6 +25,7 @@ export type PresentationV2Event = {
   publicSkillEffect?: { effectId?: unknown; sourceId?: unknown; targetId?: unknown };
   publicSkillEffectSettlement?: unknown;
   publicDismantleSettlement?: unknown;
+  publicStealSettlement?: unknown;
   bumperHarvestRoot?: { semantics?: unknown; sourceId?: unknown; cardId?: unknown };
 };
 
@@ -62,6 +63,20 @@ export type PresentationDismantleSettlementProof = {
 };
 
 export type PresentationDismantleSettlement = PresentationDismantleSettlementProof & {
+  eventId: string;
+};
+
+/** Public completion marker for a resolved Steal choice; it never identifies the acquired card. */
+export type PresentationStealSettlementProof = {
+  semantics: "PROVEN";
+  rootEventId: string;
+  rootResolutionId: string;
+  sourceId: string;
+  targetId: string;
+  outcome: "STEAL_RESOLVED";
+};
+
+export type PresentationStealSettlement = PresentationStealSettlementProof & {
   eventId: string;
 };
 
@@ -362,6 +377,7 @@ export type PresentationV2 = {
   skillEffectAction: PresentationSkillEffectAction | null;
   skillEffectSettlements: readonly PresentationSkillEffectSettlement[];
   dismantleSettlements: readonly PresentationDismantleSettlement[];
+  stealSettlements: readonly PresentationStealSettlement[];
   duelExchange: PresentationDuelExchange | null;
   selfTargetActions?: readonly PresentationSelfTargetAction[];
   dyingBarrier: PresentationDyingBarrier | null;
@@ -1803,6 +1819,44 @@ function dismantleSettlementsFor(timeline: readonly PresentationV2Event[]): Pres
   });
 }
 
+function stealSettlementsFor(timeline: readonly PresentationV2Event[]): PresentationStealSettlement[] {
+  const eventIdCounts = new Map<string, number>();
+  const rootIdCounts = new Map<string, number>();
+  for (const event of timeline) {
+    const eventId = stringValue(event.id);
+    if (eventId) eventIdCounts.set(eventId, (eventIdCounts.get(eventId) ?? 0) + 1);
+    const proof = record(event.publicStealSettlement);
+    const rootEventId = stringValue(proof?.rootEventId);
+    if (rootEventId) rootIdCounts.set(rootEventId, (rootIdCounts.get(rootEventId) ?? 0) + 1);
+  }
+
+  return timeline.flatMap((event) => {
+    const proof = record(event.publicStealSettlement);
+    const eventId = stringValue(event.id);
+    const rootEventId = stringValue(proof?.rootEventId);
+    const rootResolutionId = stringValue(proof?.rootResolutionId);
+    const sourceId = stringValue(proof?.sourceId);
+    const targetId = stringValue(proof?.targetId);
+    if (!proof || !eventId || eventIdCounts.get(eventId) !== 1
+      || !rootEventId || rootEventId === eventId || rootIdCounts.get(rootEventId) !== 1
+      || !rootResolutionId || !sourceId || !targetId || sourceId === targetId
+      || proof.semantics !== "PROVEN" || proof.outcome !== "STEAL_RESOLVED"
+      || event.type !== "message" || event.presentation === false || !stringValue(event.message)
+      || event.importance !== "essential" || event.finalResult !== true
+      || event.resolutionId !== rootResolutionId) return [];
+
+    const roots = timeline.filter((candidate) => candidate.id === rootEventId);
+    const rootEvent = roots.length === 1 ? roots[0] : null;
+    const rootCard = record(rootEvent?.card);
+    if (!rootEvent || rootEvent.type !== "card" || rootEvent.presentation === false
+      || rootEvent.action !== "play" || rootEvent.playedAs !== undefined
+      || rootEvent.resolutionId !== rootResolutionId
+      || rootCard?.kind !== "Steal" || !stringValue(rootCard.id)) return [];
+
+    return [{ semantics: "PROVEN", eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "STEAL_RESOLVED" }];
+  });
+}
+
 function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): PresentationAttackDodgeResponse[] {
   const eventCounts = new Map<string, number>();
   const eventsById = new Map<string, PresentationV2Event[]>();
@@ -2066,6 +2120,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const skillEffectAction = skillEffectActionFor(input);
   const skillEffectSettlements = skillEffectSettlementsFor(input);
   const dismantleSettlements = dismantleSettlementsFor(input.timeline);
+  const stealSettlements = stealSettlementsFor(input.timeline);
   const duelExchange = duelExchangeFor(envelope, interactionScene, input.pending, input.timeline);
   const selfTargetActions = selfTargetActionsFor(input.timeline);
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
@@ -2104,6 +2159,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     skillEffectAction,
     skillEffectSettlements,
     dismantleSettlements,
+    stealSettlements,
     duelExchange,
     selfTargetActions,
     dyingBarrier,

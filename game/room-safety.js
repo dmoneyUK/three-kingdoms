@@ -54,12 +54,29 @@ function normalizePresentationMeta(entry) {
       outcome: "DISMANTLE_RESOLVED",
     };
   }
+  if (isRecord(entry.publicStealSettlement)
+    && entry.publicStealSettlement.semantics === "PROVEN"
+    && typeof entry.publicStealSettlement.rootEventId === "string"
+    && typeof entry.publicStealSettlement.rootResolutionId === "string"
+    && typeof entry.publicStealSettlement.sourceId === "string"
+    && typeof entry.publicStealSettlement.targetId === "string"
+    && entry.publicStealSettlement.outcome === "STEAL_RESOLVED") {
+    metadata.publicStealSettlement = {
+      semantics: "PROVEN",
+      rootEventId: entry.publicStealSettlement.rootEventId,
+      rootResolutionId: entry.publicStealSettlement.rootResolutionId,
+      sourceId: entry.publicStealSettlement.sourceId,
+      targetId: entry.publicStealSettlement.targetId,
+      outcome: "STEAL_RESOLVED",
+    };
+  }
   return metadata;
 }
 
 function normalizeTimelineEvent(entry) {
   const event = { ...entry };
   delete event.publicDismantleSettlement;
+  delete event.publicStealSettlement;
   return { ...event, ...normalizePresentationMeta(entry) };
 }
 

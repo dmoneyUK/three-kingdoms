@@ -216,6 +216,31 @@ async function observeDismantleSettlement(page) {
   });
 }
 
+async function observeStealSettlement(page) {
+  await page.evaluate(() => {
+    const timing = window.__wtkStealSettlementTiming = { shownAt: null, exitingAt: null, removedAt: null, outcome: null };
+    const capture = () => {
+      const overlay = document.querySelector('[data-root-action-overlay="true"]');
+      const node = overlay?.querySelector('[data-root-action-settled="true"]');
+      if (node && overlay?.dataset.rootActionReady === "true" && timing.shownAt === null) {
+        timing.shownAt = performance.now();
+        timing.outcome = node.dataset.rootActionSettlementOutcome ?? null;
+        timing.resultLabel = node.querySelector("small")?.textContent?.trim() ?? null;
+        timing.overlayLabel = overlay.getAttribute("aria-label");
+      }
+      if (node?.classList.contains("is-settlement-exiting") && timing.exitingAt === null) timing.exitingAt = performance.now();
+      if (!node && timing.shownAt !== null && timing.removedAt === null) timing.removedAt = performance.now();
+    };
+    new MutationObserver(capture).observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "data-root-action-ready", "data-root-action-settled", "data-root-action-settlement-outcome", "data-root-action-settlement-exiting"],
+    });
+    capture();
+  });
+}
+
 async function playPeachThroughPage(page) {
   await page.locator(`[data-hand-card-id="${peach.id}"] .game-card`).click();
   const play = page.locator('[data-console-surface="local-operation"] button.primary');
@@ -515,6 +540,48 @@ for (const scenario of [
     }
   });
 }
+
+test("real Steal settlement keeps its semantic result under reduced motion without revealing the acquired card", async ({ page, request }, testInfo) => {
+  test.setTimeout(60_000);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const hiddenCard = { id: "root-overlay-real-steal-reduced-hidden", kind: "Peach", suit: "♥", rank: "3" };
+  const seed = await seedGame(request, 4, { sourceCard: steal, targetCard: hiddenCard });
+  const sourceId = seed.players[0].id;
+  const targetId = seed.players[1].id;
+  await openGame(page, seed, 0, { width: 390, height: 844 });
+  await playTargetedStratagemThroughPage(page, "TARGET", steal, "Steal");
+  await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot?.rootAction?.cardKind ?? null, { timeout: 20_000 }).toBe("Steal");
+  const dialog = page.getByRole("dialog", { name: "Steal target card selection" });
+  await expect(dialog).toBeVisible();
+  await observeStealSettlement(page);
+  await dialog.getByRole("button", { name: "Hidden hand card 1" }).click();
+  const use = dialog.getByRole("button", { name: "Use Steal" });
+  await expect(use).toBeEnabled();
+  const choosePromise = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+    catch { return false; }
+  });
+  await use.click();
+  expect((await choosePromise).ok()).toBe(true);
+  await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot?.stealSettlements?.length ?? 0, { timeout: 20_000 }).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.__wtkStealSettlementTiming.removedAt), { timeout: 10_000 }).not.toBeNull();
+  const timing = await page.evaluate(() => window.__wtkStealSettlementTiming);
+  expect(timing.outcome).toBe("STEAL_RESOLVED");
+  expect(timing.resultLabel).toBe("RESOLVED");
+  expect(timing.overlayLabel).toBe("SOURCE played Steal targeting TARGET. Steal resolved.");
+  expect(timing.exitingAt).toBeNull();
+  expect(timing.removedAt - timing.shownAt).toBeGreaterThanOrEqual(80);
+  expect(timing.removedAt - timing.shownAt).toBeLessThanOrEqual(400);
+  const settledView = await roomView(request, seed, 0);
+  const observerView = await roomView(request, seed, 2);
+  expect(settledView.myHand.some((held) => held.id === hiddenCard.id)).toBe(true);
+  expect(JSON.stringify(settledView.presentationSnapshot.stealSettlements)).not.toContain(hiddenCard.id);
+  expect(observerView.presentationSnapshot.stealSettlements).toEqual(settledView.presentationSnapshot.stealSettlements);
+  expect(JSON.stringify(observerView.timeline)).not.toContain(hiddenCard.id);
+  expect(sourceId).not.toBe(targetId);
+  await testInfo.attach("steal-reduced-motion-settlement.json", { body: JSON.stringify({ timing, settlement: settledView.presentationSnapshot.stealSettlements[0] }, null, 2), contentType: "application/json" });
+});
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
   test(`real Attack→Dodge graph visibly blocks the exact target relation at ${viewport.width}×${viewport.height}`, async ({ page, browser, request }, testInfo) => {
@@ -1026,6 +1093,7 @@ for (const viewport of [
     });
     await testInfo.attach(`steal-root-${viewport.width}x${viewport.height}.png`, { body: await page.screenshot(), contentType: "image/png" });
 
+    await observeStealSettlement(page);
     const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 1" });
     await hiddenPosition.click();
     await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
@@ -1040,7 +1108,69 @@ for (const viewport of [
     const chooseResponse = await choosePromise;
     expect(chooseResponse.ok()).toBe(true);
     await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot?.rootAction ?? null, { timeout: 20_000 }).toBeNull();
-    expect((await roomView(request, seed, 0)).myHand.some((held) => held.id === hiddenCard.id)).toBe(true);
+    await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot?.stealSettlements?.length ?? 0, { timeout: 20_000 }).toBe(1);
+    const settledView = await roomView(request, seed, 0);
+    expect(settledView.myHand.some((held) => held.id === hiddenCard.id)).toBe(true);
+    const settlement = settledView.presentationSnapshot.stealSettlements[0];
+    expect(settlement).toMatchObject({
+      semantics: "PROVEN", rootEventId: rootAction.rootEventId,
+      rootResolutionId: rootEvent.resolutionId, sourceId, targetId, outcome: "STEAL_RESOLVED",
+    });
+    expect(JSON.stringify(settlement)).not.toContain(hiddenCard.id);
+    const settlementEvent = settledView.timeline.find((event) => event.id === settlement.eventId);
+    expect(settlementEvent).toMatchObject({
+      type: "message", importance: "essential", finalResult: true,
+      resolutionId: settlement.rootResolutionId,
+      publicStealSettlement: {
+        semantics: "PROVEN", rootEventId: settlement.rootEventId,
+        rootResolutionId: settlement.rootResolutionId, sourceId, targetId, outcome: "STEAL_RESOLVED",
+      },
+    });
+    expect(settlementEvent.message).not.toContain(hiddenCard.id);
+    const observerSettledView = await roomView(request, seed, 2);
+    expect(observerSettledView.presentationSnapshot.stealSettlements).toEqual(settledView.presentationSnapshot.stealSettlements);
+    expect(JSON.stringify(observerSettledView.timeline)).not.toContain(hiddenCard.id);
+
+    const settledNode = page.locator('[data-root-action-card="true"][data-root-action-settled="true"]');
+    await expect(settledNode).toBeVisible({ timeout: 10_000 });
+    await expect(settledNode).toHaveAttribute("data-root-action-settlement-outcome", "STEAL_RESOLVED");
+    await expect(page.locator('[data-root-action-overlay="true"]')).toHaveAttribute("aria-label", "SOURCE played Steal targeting TARGET. Steal resolved.");
+    const settledGeometry = await measure(page, sourceId, targetId);
+    const [settledStageBox, settledDockBox] = await Promise.all([
+      page.locator(".play-table").boundingBox(), page.locator(".local-player-dock").boundingBox(),
+    ]);
+    expect(settledStageBox && settledDockBox).toBeTruthy();
+    for (const [before, after] of [[stageBox, settledStageBox], [dockBox, settledDockBox]]) {
+      expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(after.width - before.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(after.height - before.height)).toBeLessThanOrEqual(1);
+    }
+    expect(Math.abs(settledGeometry.card.x - geometry.card.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(settledGeometry.card.y - geometry.card.y)).toBeLessThanOrEqual(1);
+    for (const anchorName of ["source", "target"]) {
+      expect(Math.abs(settledGeometry[anchorName].x - geometry[anchorName].x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(settledGeometry[anchorName].y - geometry[anchorName].y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(settledGeometry[anchorName].width - geometry[anchorName].width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(settledGeometry[anchorName].height - geometry[anchorName].height)).toBeLessThanOrEqual(1);
+    }
+    await expect(page.locator('[data-root-action-edge="source"]')).toHaveCount(1);
+    await expect(page.locator('[data-root-action-edge="target"]')).toHaveCount(1);
+    await expect(page.locator(".active-table-reveal .game-card")).toHaveCount(0);
+    expect(settledGeometry.documentWidth).toBeLessThanOrEqual(viewport.width);
+    await expect.poll(() => page.evaluate(() => window.__wtkStealSettlementTiming.removedAt), { timeout: 5_000 }).not.toBeNull();
+    const timing = await page.evaluate(() => window.__wtkStealSettlementTiming);
+    expect(timing.outcome).toBe("STEAL_RESOLVED");
+    expect(timing.resultLabel).toBe("RESOLVED");
+    expect(timing.shownAt).not.toBeNull();
+    expect(timing.exitingAt).not.toBeNull();
+    expect(timing.removedAt).not.toBeNull();
+    expect(timing.exitingAt - timing.shownAt).toBeGreaterThanOrEqual(400);
+    expect(timing.exitingAt - timing.shownAt).toBeLessThanOrEqual(800);
+    expect(timing.removedAt - timing.shownAt).toBeGreaterThanOrEqual(550);
+    await testInfo.attach(`steal-settlement-${viewport.width}x${viewport.height}.json`, {
+      body: JSON.stringify({ viewport, settlement, timing, geometry: settledGeometry }, null, 2), contentType: "application/json",
+    });
   });
 }
 

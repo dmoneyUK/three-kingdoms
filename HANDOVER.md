@@ -5,27 +5,29 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2.6-PHASE-D-DISMANTLE-SETTLEMENT-LIFECYCLE-01` implementation and focused
-validation are complete locally; task commit/push is pending. The exact remote
-parent `2398922fc38d56ff3163d69c81ffe3c321ee080a` passed Actions run
-`37847604812` (#920), checked before this task's commit. New task CI is not yet
-available and must be recorded after push.
+`UX2.6-PHASE-D-DISMANTLE-SETTLEMENT-LIFECYCLE-01` was pushed as
+`431644d33c077c26119ba7329797ce6617510adb`; Actions run `37849530213` (#921)
+completed successfully across API, lint/fast, both browser shards, and deploy.
+`UX2.6-PHASE-D-STEAL-SETTLEMENT-LIFECYCLE-01` is implemented and locally
+validated; its pre-commit parent was the exact green SHA above. The Steal
+commit's Actions result remains to be observed after push.
 
 ## Design checkpoint
 
 Latest remote `docs/UX2-refine.md` blob:
-`7feb8af937b6407f3f33c3959325db8d3f188cf4` (unchanged). §§6.9–6.11,
-6.17–6.21, and 6.23–6.26 reviewed at the task boundary; §4D and its Section 6
-gate were also rechecked. The current task was already active in HANDOVER.
+`7feb8af937b6407f3f33c3959325db8d3f188cf4` (unchanged). §§6.1, 6.17–6.21,
+and 6.23–6.26 reread at the task boundary; §4D / §5 gates and the Roadmap's
+remaining settlement evidence were checked.
 
 ## Current task
 
-`UX2.6-PHASE-D-DISMANTLE-SETTLEMENT-LIFECYCLE-01` — add a server-owned,
-fail-closed settlement proof for a real Dismantle target-card resolution, then
-hold its exact root graph/result for 0.4–0.8 seconds before exit (shortened
-under reduced motion). Preserve the hidden selected-card identity, stable
-Seat/Dock geometry, and existing Stage/modal layering. Prove the complete
-server-backed play → select → settlement → graph exit path; do not infer the
-result from timeline order or private card data. Recheck exact-head CI before
-commit; repair any failure with this task's change. No Reviewer acceptance is
-claimed.
+`UX2.6-PHASE-D-ORDINARY-ATTACK-HIT-SETTLEMENT-01` — after a real, direct
+single-target Attack applies damage without Dodge or an intervening response,
+project a server-owned result tied to the exact Attack root/resolution/source/
+target. Show the resolved physical-seat graph for 0.4–0.8 seconds (shorter or
+motionless under reduced-motion); keep prevented, zero-damage, Dying, delegated,
+and Group cases fail-closed unless independently proven. Prove the real
+server-backed no-Dodge path, geometry stability, and exclusions at mobile and
+wide viewports. Before commit, inspect CI for the exact current remote `ux-v2`
+HEAD; wait if running and repair actual failures before bundling this feature.
+No Reviewer acceptance is claimed.

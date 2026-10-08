@@ -2044,8 +2044,24 @@ Only a proven regression or new Reviewer-approved design requirement does.
   coverage passed 4/4 at 390×844, 480×900, and 1440×900, including reduced
   motion. Build, targeted ESLint, and `git diff --check` passed. The exact
   pre-commit parent `2398922fc38d56ff3163d69c81ffe3c321ee080a` passed Actions
-  run `37847604812` (#920); CI for this task's commit remains pending after
-  push. Reviewer acceptance is not claimed.
+  run `37847604812` (#920); the exact Dismantle commit then passed all five
+  jobs in Actions run `37849530213` (#921). Reviewer acceptance is not claimed.
+
+### UX2.6-PHASE-D-STEAL-SETTLEMENT-LIFECYCLE-01 — Steal settlement
+
+- A committed real Steal target-card choice now receives a server-authored,
+  fail-closed settlement proof linked to the exact public Steal root and
+  resolution. The public proof and settlement message never identify the
+  acquired card; the physical card remains visible only to its owner. The
+  physical-seat root graph holds an accessible resolved marker for 0.4–0.8
+  seconds before fade, with a shortened no-exit reduced-motion path. Real
+  server-backed API coverage passed 23/23; room-safety/client coverage passed
+  64/64; the real-gameplay browser path passed 4/4 at 390×844, 480×900, and
+  1440×900 plus reduced motion, measuring stable Stage/Dock/Seat geometry and
+  hidden-Hand privacy. Build, targeted ESLint, and `git diff --check` passed.
+  The exact pre-commit parent `431644d33c077c26119ba7329797ce6617510adb`
+  passed Actions run `37849530213` (#921), all five jobs. CI for the Steal
+  changeset remains pending after push. Reviewer acceptance is not claimed.
 
 ## Known deferred semantic gaps
 

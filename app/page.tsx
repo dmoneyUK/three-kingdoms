@@ -11,7 +11,7 @@ import { canUseAction, type CurrentAction, type GameplayAction, type TriggerOpti
 import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
-import type { PresentationDismantleSettlementProof, PresentationSkillEffectSettlementProof, PresentationV2 } from "../game/presentation-v2";
+import type { PresentationDismantleSettlementProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, isProvenBorrowedSwordForcedAttack, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildPresentationTransition, type PresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupSourceForViewer, projectGroupTargetScopeForViewer, projectOathRecipientScopeForStage, projectBumperHarvestStageCompositionForViewer, type BumperHarvestStageCompositionView, type GroupSourceView, type GroupTargetScopeView, type HeroFocusPlayerDisplay, type HeroFocusView, type MediumParticipantView, type OathRecipientScopeView } from "../game/hero-focus";
@@ -26,7 +26,7 @@ type ActiveAttackDodgeSettlement = { eventId: string; phase: "exiting" | "comple
 type RootActionOverlayLayoutReadiness = { key: string; state: "measuring" | "ready" | "unavailable" } | null;
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
 type PresentationImportance = "essential" | "informational";
-type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof };
+type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof };
 type CardEvent = PresentationEventMeta & { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" | "draw"; drawPlayerId?: string; presentation?: boolean };
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
 
@@ -164,6 +164,7 @@ const UI_TIMING = {
 } as const;
 const NO_SKILL_EFFECT_SETTLEMENTS = [] as const;
 const NO_DISMANTLE_SETTLEMENTS = [] as const;
+const NO_STEAL_SETTLEMENTS = [] as const;
 
 async function readApiJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -1884,6 +1885,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const clientPresentation = useMemo(() => presentationView ?? buildPresentationClientView(room.presentationSnapshot ?? null, room.meId), [presentationView, room.presentationSnapshot, room.meId]);
   const skillEffectSettlements = clientPresentation.skillEffectSettlements ?? NO_SKILL_EFFECT_SETTLEMENTS;
   const dismantleSettlements = clientPresentation.dismantleSettlements ?? NO_DISMANTLE_SETTLEMENTS;
+  const stealSettlements = clientPresentation.stealSettlements ?? NO_STEAL_SETTLEMENTS;
   const [presentationTransitionStore] = useState(() => createPresentationTransitionStore(clientPresentation));
   const presentationTransition = useSyncExternalStore(presentationTransitionStore.subscribe, presentationTransitionStore.getSnapshot, presentationTransitionStore.getSnapshot);
   useEffect(() => {
@@ -1936,6 +1938,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
   const [activeSkillEffectSettlement, setActiveSkillEffectSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeDismantleSettlement, setActiveDismantleSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
+  const [activeStealSettlement, setActiveStealSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeAttackDodgeSettlement, setActiveAttackDodgeSettlement] = useState<ActiveAttackDodgeSettlement | null>(null);
   const attackDodgeSettlementTimerEventId = useRef<string | null>(null);
   // Events already present when the screen mounts have no new animation to
@@ -2592,6 +2595,19 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         : [];
     });
     if (freshDismantleSettlements.length === 1) setActiveDismantleSettlement({ eventId: freshDismantleSettlements[0].eventId, exiting: false });
+    const freshStealSettlements = fresh.flatMap((event) => {
+      if (event.type !== "message") return [];
+      const proofs = stealSettlements.filter((proof) => proof.eventId === event.id);
+      if (proofs.length !== 1) return [];
+      const proof = proofs[0];
+      const eventProof = event.publicStealSettlement;
+      return eventProof?.semantics === proof.semantics && eventProof.rootEventId === proof.rootEventId
+        && eventProof.rootResolutionId === proof.rootResolutionId && eventProof.sourceId === proof.sourceId
+        && eventProof.targetId === proof.targetId && eventProof.outcome === proof.outcome
+        ? [proof]
+        : [];
+    });
+    if (freshStealSettlements.length === 1) setActiveStealSettlement({ eventId: freshStealSettlements[0].eventId, exiting: false });
     const effect = fresh.find((event) => event.type === "message" && event.effectNotice);
     if (effect?.type === "message") {
       setEffectNotice(effect.message);
@@ -2627,7 +2643,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       } else setEventQueue((queue) => coalescePresentationQueue(queue, visible));
     }
     setProcessedTimelineKey(timelineKey);
-  }, [room.timeline, timelineKey, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements]);
+  }, [room.timeline, timelineKey, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements]);
   useEffect(() => { if (!optimisticPlay) return; const timer = setTimeout(() => setOptimisticPlay(null), UI_TIMING.playedCard); return () => clearTimeout(timer); }, [optimisticPlay]);
   useEffect(() => { if (!livePendingStartId || livePendingStartId === sequenceScopeStartId) return; const timer = setTimeout(() => setSequenceScopeStartId(livePendingStartId), 0); return () => clearTimeout(timer); }, [livePendingStartId, sequenceScopeStartId]);
   useEffect(() => { if (!harvestSubmitting || room.pendingHarvest?.actorId === harvestSubmitting.playerId && !room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId)) return; const timer = setTimeout(() => setHarvestSubmitting(null), 0); return () => clearTimeout(timer); }, [harvestSubmitting, room.pendingHarvest]);
@@ -3265,9 +3281,33 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     if (!source?.name || !target?.name || source.id === target.id) return null;
     return { action: settlement, rootEvent, settlementEvent, source, target, exiting: activeDismantleSettlement?.exiting === true };
   })();
+  const stealSettlementCandidate = (() => {
+    const settlement = stealSettlements.find((candidate) => candidate.eventId === activeStealSettlement?.eventId);
+    if (!settlement || settlement.semantics !== "PROVEN" || settlement.outcome !== "STEAL_RESOLVED") return null;
+    const rootEvents = room.timeline.filter((event) => event.id === settlement.rootEventId);
+    const settlementEvents = room.timeline.filter((event) => event.id === settlement.eventId);
+    if (rootEvents.length !== 1 || settlementEvents.length !== 1) return null;
+    const rootEvent = rootEvents[0];
+    const settlementEvent = settlementEvents[0];
+    if (rootEvent.type !== "card" || rootEvent.presentation === false || rootEvent.action !== "play"
+      || rootEvent.card.kind !== "Steal" || rootEvent.resolutionId !== settlement.rootResolutionId
+      || settlementEvent.type !== "message" || settlementEvent.presentation === false
+      || settlementEvent.importance !== "essential" || settlementEvent.finalResult !== true
+      || settlementEvent.resolutionId !== settlement.rootResolutionId
+      || settlementEvent.publicStealSettlement?.semantics !== settlement.semantics
+      || settlementEvent.publicStealSettlement.rootEventId !== settlement.rootEventId
+      || settlementEvent.publicStealSettlement.rootResolutionId !== settlement.rootResolutionId
+      || settlementEvent.publicStealSettlement.sourceId !== settlement.sourceId
+      || settlementEvent.publicStealSettlement.targetId !== settlement.targetId
+      || settlementEvent.publicStealSettlement.outcome !== settlement.outcome) return null;
+    const source = room.players.find((player) => player.id === settlement.sourceId);
+    const target = room.players.find((player) => player.id === settlement.targetId);
+    if (!source?.name || !target?.name || source.id === target.id) return null;
+    return { action: settlement, rootEvent, settlementEvent, source, target, exiting: activeStealSettlement?.exiting === true };
+  })();
   const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId)
-    : oathSimultaneousRootGraphCandidate?.rootEvent ?? bumperHarvestRootGraphCandidate?.rootEvent ?? groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? dismantleSettlementCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeGraphCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
-  const selfTargetCandidates = rootAction || oathSimultaneousRootGraphCandidate || bumperHarvestRootGraphCandidate || groupTargetBranchGraphCandidate || skillEffectActionCandidate || skillEffectSettlementCandidate || dismantleSettlementCandidate || duelExchangeGraphCandidate || attackDodgeGraphCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
+    : oathSimultaneousRootGraphCandidate?.rootEvent ?? bumperHarvestRootGraphCandidate?.rootEvent ?? groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? dismantleSettlementCandidate?.rootEvent ?? stealSettlementCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeGraphCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
+  const selfTargetCandidates = rootAction || oathSimultaneousRootGraphCandidate || bumperHarvestRootGraphCandidate || groupTargetBranchGraphCandidate || skillEffectActionCandidate || skillEffectSettlementCandidate || dismantleSettlementCandidate || stealSettlementCandidate || duelExchangeGraphCandidate || attackDodgeGraphCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
       || event.resolutionId !== action.resolutionId || event.card.kind !== action.cardKind
@@ -3381,6 +3421,19 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       ariaLabel: `${dismantleSettlementCandidate.source.name} played Burning Bridge targeting ${dismantleSettlementCandidate.target.name}`,
       mode: "targeted",
       settlement: { eventId: dismantleSettlementCandidate.action.eventId, outcome: dismantleSettlementCandidate.action.outcome, exiting: dismantleSettlementCandidate.exiting },
+    }
+    : stealSettlementCandidate
+    ? {
+      key: ["steal-settlement", stealSettlementCandidate.action.rootEventId, stealSettlementCandidate.action.eventId].join(":"),
+      rootPlacementKey: stealSettlementCandidate.action.rootEventId,
+      rootEventId: stealSettlementCandidate.action.rootEventId,
+      sourceId: stealSettlementCandidate.action.sourceId,
+      targetId: stealSettlementCandidate.action.targetId,
+      cardKind: "Steal",
+      cardLabel: "STEAL",
+      ariaLabel: `${stealSettlementCandidate.source.name} played Steal targeting ${stealSettlementCandidate.target.name}`,
+      mode: "targeted",
+      settlement: { eventId: stealSettlementCandidate.action.eventId, outcome: stealSettlementCandidate.action.outcome, exiting: stealSettlementCandidate.exiting },
     }
     : duelExchangeGraphCandidate
     ? {
@@ -3498,6 +3551,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     || skillEffectActionCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || skillEffectSettlementCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || dismantleSettlementCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
+    || stealSettlementCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || singleTargetNegationGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations),
   );
   const rootGroupTargetNamesKnown = Boolean(rootActionOverlayAction?.groupTargets?.length
@@ -3566,6 +3620,28 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     const timer = window.setTimeout(() => setActiveDismantleSettlement((current) => current?.eventId === activeDismantleSettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
   }, [activeDismantleSettlement?.eventId, activeDismantleSettlementExiting, activeDismantleSettlementEventId]);
+  const activeStealSettlementEventId = rootActionOverlayAction?.settlement?.outcome === "STEAL_RESOLVED"
+    ? rootActionOverlayAction.settlement.eventId
+    : null;
+  const activeStealSettlementExiting = rootActionOverlayAction?.settlement?.outcome === "STEAL_RESOLVED"
+    && rootActionOverlayAction.settlement.exiting;
+  useEffect(() => {
+    if (!activeStealSettlementEventId || !rootActionOverlayGraphReady
+      || activeStealSettlement?.eventId !== activeStealSettlementEventId || activeStealSettlement.exiting) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setTimeout(() => {
+      setActiveStealSettlement((current) => current?.eventId === activeStealSettlementEventId
+        ? reducedMotion ? null : { ...current, exiting: true }
+        : current);
+    }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
+    return () => window.clearTimeout(timer);
+  }, [activeStealSettlement?.eventId, activeStealSettlement?.exiting, activeStealSettlementEventId, rootActionOverlayGraphReady]);
+  useEffect(() => {
+    if (!activeStealSettlementExiting || !activeStealSettlementEventId
+      || activeStealSettlement?.eventId !== activeStealSettlementEventId) return;
+    const timer = window.setTimeout(() => setActiveStealSettlement((current) => current?.eventId === activeStealSettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
+    return () => window.clearTimeout(timer);
+  }, [activeStealSettlement?.eventId, activeStealSettlementExiting, activeStealSettlementEventId]);
   const activeAttackDodgeSettlementEventId = rootActionOverlayAction?.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE"
     ? rootActionOverlayAction.settlement.eventId
     : null;
