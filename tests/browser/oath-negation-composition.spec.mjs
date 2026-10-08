@@ -69,6 +69,7 @@ for (const viewport of [
         scope: await scope.boundingBox(),
         branchCount: await stage.locator("[data-oath-negation-node]").count(),
         branchPresent: await stage.locator("[data-oath-negation-branch]").count() > 0,
+        effectState: await page.evaluate(() => window.__browserRoom.presentationSnapshot.oathRecipientScope.effectState),
         pileClearance: await measureOathPileClearance(page, stage),
         geometry: await stage.evaluate((element) => {
           const stageRect = element.getBoundingClientRect();
@@ -91,6 +92,7 @@ for (const viewport of [
     expectCompositionClearOfPiles(open.pileClearance, `Oath ${viewport.width}x${viewport.height} open`);
     expect(open.branchPresent).toBe(false);
     expect(open.branchCount).toBe(0);
+    expect(open.effectState).toBe("ACTIVE");
     expect(open.root).not.toBeNull();
     expect(open.scope).not.toBeNull();
     expect(open.source).not.toBeNull();
@@ -105,6 +107,7 @@ for (const viewport of [
       expectCompositionClearOfPiles(submitted.pileClearance, `Oath ${viewport.width}x${viewport.height} ${history}`);
       expect(submitted.branchPresent).toBe(true);
       expect(submitted.branchCount).toBe(expectedNodes);
+      expect(submitted.effectState).toBe(history === "single" ? "BLOCKED" : "ACTIVE");
       expect(submitted.source).not.toBeNull();
       for (const region of ["root", "scope"]) {
         for (const edge of ["x", "y", "width", "height"]) {

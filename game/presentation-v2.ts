@@ -24,6 +24,7 @@ export type PresentationV2Event = {
   duelAttackResponse?: unknown;
   publicSkillEffect?: { effectId?: unknown; sourceId?: unknown; targetId?: unknown };
   publicSkillEffectSettlement?: unknown;
+  bumperHarvestRoot?: { semantics?: unknown; sourceId?: unknown; cardId?: unknown };
 };
 
 export type PresentationSkillEffectAction = {
@@ -317,8 +318,12 @@ export type PresentationBumperHarvestProgress = {
   checkpointId: string;
   presentationRevision: number;
   sourceId: string;
+  rootEventId: string;
+  rootResolutionId: string;
+  rootCardId: string;
   targetIds: readonly string[];
   currentParticipantId: string | null;
+  currentEffectState?: "ACTIVE" | "BLOCKED";
   participants: readonly { playerId: string; order: number; status: HarvestParticipantProgressStatus; outcome?: HarvestParticipantProgressOutcome }[];
 };
 
@@ -573,7 +578,10 @@ function semanticDecisionActorId(envelope: CausalEnvelope | null, pending: unkno
     const participant = Array.isArray(progress?.participants)
       ? progress.participants.map(record).find((candidate) => candidate?.playerId === actorId)
       : null;
-    if (progress?.version === 1 && progress.interactionId === envelope.interactionId
+    const progressVersionIsSupported = progress?.version === 1
+      || progress?.version === 2 && Boolean(stringValue(progress.rootEventId)
+        && stringValue(progress.rootResolutionId) && stringValue(progress.rootCardId));
+    if (progressVersionIsSupported && progress.interactionId === envelope.interactionId
       && progress.rootFrameId === activeFrame.frameId
       && harvestCausal?.interactionId === envelope.interactionId && harvestCausal.frameId === activeFrame.frameId
       && envelope.activeFrameId === activeFrame.frameId && envelope.checkpoint.frameId === activeFrame.frameId
@@ -941,6 +949,7 @@ function bumperHarvestProgressFor(
   envelope: CausalEnvelope | null,
   pending: unknown,
   scene: PresentationInteractionScene | null,
+  timeline: readonly PresentationV2Event[],
 ): PresentationBumperHarvestProgress | null {
   const item = record(pending);
   const harvest = bumperHarvestPendingFrom(pending);
@@ -948,10 +957,21 @@ function bumperHarvestProgressFor(
   const causal = record(harvest?.causal);
   const rootFrameId = stringValue(progress?.rootFrameId);
   const sourceId = stringValue(harvest?.sourceId);
+  const rootEventId = stringValue(progress?.rootEventId);
+  const rootResolutionId = stringValue(progress?.rootResolutionId);
+  const rootCardId = stringValue(progress?.rootCardId);
   const root = envelope?.frames.find((frame) => frame.frameId === rootFrameId) ?? null;
   const active = envelope?.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
+  const rootEventMatches = rootEventId ? timeline.filter((event) => event.id === rootEventId) : [];
+  const rootEvent = rootEventMatches.length === 1 ? rootEventMatches[0] : null;
+  const rootProof = record(rootEvent?.bumperHarvestRoot);
+  const rootPhysicalCardEvents = rootCardId ? timeline.filter((event) => event.type === "card" && event.action === "play" && event.card?.id === rootCardId) : [];
   const storedParticipants = progress?.participants;
-  if (!item || !harvest || !progress || progress.version !== 1 || !rootFrameId || !sourceId
+  if (!item || !harvest || !progress || progress.version !== 2 || !rootFrameId || !sourceId
+    || !rootEventId || !rootResolutionId || !rootCardId || !rootEvent || rootPhysicalCardEvents.length !== 1 || rootPhysicalCardEvents[0] !== rootEvent
+    || rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
+    || rootEvent.card?.kind !== "BumperHarvest" || rootEvent.card.id !== rootCardId || rootEvent.resolutionId !== rootResolutionId
+    || rootProof?.semantics !== "PROVEN" || rootProof.sourceId !== sourceId || rootProof.cardId !== rootCardId
     || !envelope || !root || !active || !Array.isArray(storedParticipants) || !storedParticipants.length
     || root.parentFrameId != null || root.stage !== "SEQUENTIAL_CHOICE"
     || root.origin.originEffect !== "BumperHarvest" || root.origin.originSourceId !== sourceId
@@ -980,6 +1000,7 @@ function bumperHarvestProgressFor(
     ? progress.currentParticipantId
     : null;
   const complete = Boolean(harvest.completeAt);
+  let currentEffectState: PresentationBumperHarvestProgress["currentEffectState"];
   if (complete) {
     if (current.length || currentParticipantId || root.current.currentTargetIds.length || root.current.resolvingPlayerId !== null
       || strings(harvest.remainingIds).length) return null;
@@ -996,6 +1017,12 @@ function bumperHarvestProgressFor(
   } else {
     const continuation = record(item.continuation);
     const effect = record(continuation?.effect);
+    const negationHistory = continuation?.negationHistory ?? [];
+    const chainDepth = continuation?.chainDepth;
+    if (!Array.isArray(negationHistory) || !Number.isSafeInteger(chainDepth) || (chainDepth as number) < 0
+      || (chainDepth as number) !== negationHistory.length || typeof continuation?.negated !== "boolean"
+      || continuation.negated !== ((chainDepth as number) % 2 === 1)) return null;
+    currentEffectState = continuation.negated ? "BLOCKED" : "ACTIVE";
     const responseCausal = record(item.causal);
     const continuationCausal = record(continuation?.causal);
     if (item.kind !== "response" || continuation?.kind !== "negation" || effect?.kind !== "harvest_target"
@@ -1031,8 +1058,12 @@ function bumperHarvestProgressFor(
     checkpointId: envelope.checkpoint.checkpointId,
     presentationRevision: envelope.presentationRevision,
     sourceId,
+    rootEventId,
+    rootResolutionId,
+    rootCardId,
     targetIds: [...root.origin.originalTargetIds],
     currentParticipantId,
+    ...(currentEffectState ? { currentEffectState } : {}),
     participants,
   };
 }
@@ -1325,6 +1356,16 @@ function reactionChainFor(
     && Number.isSafeInteger(chainDepth) && chainDepth >= 0 && chainDepth === nodes.length
     && continuation.negated === (chainDepth % 2 === 1)
     && publicNodeEventLinks !== undefined && publicNodeEventLinks.length === nodes.length);
+  const bumperChainStateIsProven = Boolean(bumperWindow && bumperProgress?.currentEffectState
+    && effect?.kind === "harvest_target" && effect.pending?.participantProgress?.rootEventId === bumperProgress.rootEventId
+    && effect.pending?.participantProgress?.rootResolutionId === bumperProgress.rootResolutionId
+    && effect.pending?.participantProgress?.rootCardId === bumperProgress.rootCardId
+    && continuation.effectTargetId === bumperProgress.currentParticipantId
+    && typeof continuation.negated === "boolean" && typeof chainDepth === "number"
+    && Number.isSafeInteger(chainDepth) && chainDepth >= 0 && chainDepth === nodes.length
+    && continuation.negated === (chainDepth % 2 === 1)
+    && bumperProgress.currentEffectState === (continuation.negated ? "BLOCKED" : "ACTIVE")
+    && publicNodeEventLinks !== undefined && publicNodeEventLinks.length === nodes.length);
   const groupChainStateIsProven = groupTargetEffectScopeIdentity
     && typeof continuation.negated === "boolean"
     && typeof chainDepth === "number" && Number.isSafeInteger(chainDepth) && chainDepth >= 0
@@ -1338,10 +1379,12 @@ function reactionChainFor(
     }
     : null;
   if (effect?.kind === "group" && !groupTargetEffectScope) return null;
+  if (bumperWindow && !bumperChainStateIsProven) return null;
   return {
     semantics: "PROVEN", interactionId: scene.interactionId, frameId: scene.activeFrameId, rootCard, nodes,
     ...(groupTargetEffectScope ? { groupTargetEffectScope } : {}),
     ...(groupTargetEffectScope && publicNodeEventLinks ? { publicNodeEventLinks } : {}),
+    ...(bumperChainStateIsProven && publicNodeEventLinks ? { publicNodeEventLinks } : {}),
     ...(oathChainStateIsProven && publicNodeEventLinks ? { publicNodeEventLinks } : {}),
     ...(publicEventLinks ? { publicEventLinks } : {}),
     ...(rootEffectState ? { rootEffectState } : {}),
@@ -1970,7 +2013,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const duelExchange = duelExchangeFor(envelope, interactionScene, input.pending, input.timeline);
   const selfTargetActions = selfTargetActionsFor(input.timeline);
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
-  const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene);
+  const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene, input.timeline);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
   const dyingBarrier = dyingBarrierFor(envelope, input.pending);
   const reactionChain = reactionChainFor(input.timeline, envelope, input.pending, interactionScene, projectedBumperHarvestProgress, groupValues, projectedGroupParticipantProgress);

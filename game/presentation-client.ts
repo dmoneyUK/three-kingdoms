@@ -322,6 +322,7 @@ function reactionChainForSnapshot(
   snapshot: PresentationSnapshot,
   scene: PresentationInteractionScene,
   groupProgress: PresentationSnapshotGroupProgress | null,
+  bumperProgress: PresentationSnapshotBumperHarvestProgress | null,
 ): PresentationSnapshot["reactionChain"] {
   const chain = snapshot.reactionChain;
   const identity = snapshot.identity;
@@ -423,11 +424,14 @@ function reactionChainForSnapshot(
   const groupNegation = scene.stage === "NEGATION" && scene.continuity.relation === "SAME_FRAME"
     && groupProgress?.resolutionSemantics === "GROUP" && groupProgress.groupFrameId === scene.rootFrameId
     && groupProgress.activeFrameId === scene.activeFrameId;
+  const bumperNegation = scene.stage === "NEGATION" && scene.continuity.relation === "CHILD_FRAME"
+    && bumperProgress?.activeFrameId === scene.activeFrameId && bumperProgress.currentEffectState !== undefined;
   const groupTargetEffectScope = rawGroupTargetEffectScope !== undefined
     ? groupTargetEffectScopeForClient(rawGroupTargetEffectScope, scene, identity, groupProgress, nodes.length % 2 === 0 ? "ACTIVE" : "BLOCKED")
     : null;
   if ((groupNegation && (!groupTargetEffectScope || nodes.length > 0 && !publicNodeEventLinks))
-    || (rawGroupTargetEffectScope !== undefined && (!groupTargetEffectScope || rootCard !== null))) return null;
+    || (rawGroupTargetEffectScope !== undefined && (!groupTargetEffectScope || rootCard !== null))
+    || (bumperNegation && (!publicNodeEventLinks || publicNodeEventLinks.length !== nodes.length || rootCard !== null))) return null;
   return {
     semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes,
     ...(groupTargetEffectScope ? { groupTargetEffectScope } : {}),
@@ -521,6 +525,7 @@ function bumperHarvestProgressForSnapshot(
   const identity = snapshot.identity;
   if (!progress || !identity || progress.semantics !== "PROVEN"
     || !isStringArray(progress.targetIds) || !Array.isArray(progress.participants)
+    || !isString(progress.rootEventId) || !isString(progress.rootResolutionId) || !isString(progress.rootCardId)
     || progress.interactionId !== identity.interactionId || progress.interactionId !== scene.interactionId
     || progress.rootFrameId !== scene.rootFrameId || progress.activeFrameId !== scene.activeFrameId
     || progress.checkpointId !== identity.checkpointId || progress.presentationRevision !== identity.presentationRevision
@@ -555,6 +560,8 @@ function bumperHarvestProgressForSnapshot(
   if (rootRelation && progress.currentParticipantId
     && (snapshot.stable.kind !== "CHOICE" || snapshot.stable.decisionActorId !== progress.currentParticipantId)) return null;
   if (childRelation && snapshot.stable.kind !== "SPECIAL") return null;
+  if (rootRelation && progress.currentEffectState !== undefined
+    || childRelation && progress.currentEffectState !== "ACTIVE" && progress.currentEffectState !== "BLOCKED") return null;
   return { ...progress, targetIds: [...progress.targetIds], participants };
 }
 
@@ -706,9 +713,9 @@ export function buildPresentationClientView(
     && snapshot.localControl.actorId
     && snapshot.localControl.actorId === meId);
   const groupProgress = groupProgressForSnapshot(snapshot, scene);
-  const reactionChain = reactionChainForSnapshot(snapshot, scene, groupProgress);
-  const oathScope = oathRecipientScopeForSnapshot(snapshot, scene, reactionChain);
   const bumperHarvestProgress = bumperHarvestProgressForSnapshot(snapshot, scene);
+  const reactionChain = reactionChainForSnapshot(snapshot, scene, groupProgress, bumperHarvestProgress);
+  const oathScope = oathRecipientScopeForSnapshot(snapshot, scene, reactionChain);
   const negationSettlement = negationSettlementForScene(snapshot, scene);
   const rootAction = rootActionForSnapshot(snapshot, scene);
   const attackDodgeResponses = provenAttackDodgeResponses(snapshot.attackDodgeResponses);

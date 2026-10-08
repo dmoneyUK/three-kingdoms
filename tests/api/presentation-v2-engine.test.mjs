@@ -1877,6 +1877,12 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(firstWindow.currentAction.actorId, first.id);
   const initialProgress = firstWindow.presentationSnapshot.bumperHarvestProgress;
   assert.ok(initialProgress, JSON.stringify({ envelope: { activeFrameId: firstWindow.causalEnvelope?.activeFrameId, checkpoint: firstWindow.causalEnvelope?.checkpoint, frames: firstWindow.causalEnvelope?.frames }, scene: firstWindow.presentationV2.interactionScene, stable: firstWindow.presentationV2.stableBoundary, progress: firstWindow.presentationV2.bumperHarvestProgress }));
+  assert.equal(initialProgress?.rootCardId, harvest.id);
+  assert.equal(firstWindow.timeline.filter((event) => event.id === initialProgress?.rootEventId).length, 1);
+  const rootEvent = firstWindow.timeline.find((event) => event.id === initialProgress?.rootEventId);
+  assert.equal(rootEvent?.resolutionId, initialProgress?.rootResolutionId);
+  assert.deepEqual(rootEvent?.bumperHarvestRoot, { semantics: "PROVEN", sourceId: source.id, cardId: harvest.id });
+  assert.equal(initialProgress?.currentEffectState, "ACTIVE", "an open Bumper Harvest Negation branch is public but not yet blocked");
   assert.deepEqual(initialProgress?.targetIds, game.room.players.map(({ id }) => id), "the server's turn-order declaration defines the participant sequence");
   assert.deepEqual(initialProgress?.participants.map(({ status }) => status), ["CURRENT", "PENDING", "PENDING", "PENDING"]);
   assert.equal(initialProgress?.currentParticipantId, source.id);
@@ -1898,7 +1904,9 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   const counterWindow = await assertProjectionMatchesEngine(game.code, bob.token);
   assert.equal(counterWindow.currentAction.actorId, second.id);
   assert.equal(counterWindow.presentationSnapshot.bumperHarvestProgress?.currentParticipantId, source.id, "the affected chooser remains the participant through counter-Negation");
+  assert.equal(counterWindow.presentationSnapshot.bumperHarvestProgress?.currentEffectState, "BLOCKED", "a committed public Negation blocks only the current Bumper participant branch");
   assert.deepEqual(counterWindow.presentationSnapshot.reactionChain?.nodes.map(({ actorId }) => actorId), [first.id], "only the submitted Negation appears in public history");
+  assert.equal(counterWindow.presentationSnapshot.reactionChain?.publicNodeEventLinks?.length, 1, "the public Negation node links to its exact played card event");
   assert.equal(counterWindow.presentationSnapshot.reactionChain?.rootCard, null, "Bumper Harvest response history does not acquire a single-target root card");
   assert.equal("physicalCardId" in counterWindow.presentationSnapshot.reactionChain.nodes[0], false);
   assert.equal(counterWindow.presentationV2.interactionScene?.decisionActorId, null);
@@ -1924,6 +1932,13 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(nextWindow.presentationV2.stableBoundary.kind, "SPECIAL");
 
   const storedPending = query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`);
+  const malformedRootPending = JSON.parse(storedPending);
+  malformedRootPending.continuation.effect.pending.participantProgress.rootEventId = "unrelated-public-event";
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(malformedRootPending))} WHERE code=${quote(game.code)}`);
+  const malformedRoot = (await state(game.code, host.token)).data;
+  assert.equal(malformedRoot.presentationV2.bumperHarvestProgress, null, "an unbound root event identity fails closed");
+  assert.equal(malformedRoot.presentationSnapshot.bumperHarvestProgress, null);
+  sql(`UPDATE rooms SET pending_json=${quote(storedPending)} WHERE code=${quote(game.code)}`);
   const malformedPending = JSON.parse(storedPending);
   malformedPending.continuation.effect.pending.participantProgress.participants[0].playerId = "forged-participant";
   sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(malformedPending))} WHERE code=${quote(game.code)}`);

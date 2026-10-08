@@ -2,7 +2,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import type { CardKind } from "../game/model";
-import type { PresentationSnapshotGroupParticipantProgress, PresentationSnapshotRootAction } from "../game/presentation-snapshot";
+import type { PresentationSnapshotBumperHarvestProgress, PresentationSnapshotGroupParticipantProgress, PresentationSnapshotRootAction } from "../game/presentation-snapshot";
 
 type Point = { x: number; y: number };
 type Rect = { left: number; top: number; right: number; bottom: number; width: number; height: number };
@@ -30,6 +30,8 @@ type RootActionLayout = {
 };
 
 type InteractionRootOverlayGroupTarget = PresentationSnapshotGroupParticipantProgress & { playerName: string };
+type InteractionRootOverlayOrderedTarget = PresentationSnapshotBumperHarvestProgress["participants"][number] & { playerName: string };
+type InteractionRootOverlayBranchTarget = InteractionRootOverlayGroupTarget | InteractionRootOverlayOrderedTarget;
 
 type InteractionRootOverlayResponseNode = {
   index: number;
@@ -38,7 +40,7 @@ type InteractionRootOverlayResponseNode = {
   actorName: string;
   cardLabel: string;
   ariaLabel: string;
-  counterTarget: { kind: "ROOT" } | { kind: "RESPONSE"; index: number } | { kind: "GROUP_TARGET_EFFECT"; targetId: string };
+  counterTarget: { kind: "ROOT" } | { kind: "RESPONSE"; index: number } | { kind: "GROUP_TARGET_EFFECT"; targetId: string } | { kind: "ORDERED_TARGET_EFFECT"; targetId: string };
 };
 
 type DisplayResponseNode = Omit<InteractionRootOverlayResponseNode, "counterTarget"> & {
@@ -59,7 +61,7 @@ function compactResponseGraph(responses: readonly InteractionRootOverlayResponse
   for (let index = 0; index < responses.length; index += 1) {
     const counterTarget = responses[index].counterTarget;
     if (index === 0) {
-      if (counterTarget.kind !== "ROOT" && counterTarget.kind !== "GROUP_TARGET_EFFECT") return null;
+      if (counterTarget.kind !== "ROOT" && counterTarget.kind !== "GROUP_TARGET_EFFECT" && counterTarget.kind !== "ORDERED_TARGET_EFFECT") return null;
     } else if (counterTarget.kind !== "RESPONSE" || counterTarget.index !== index - 1) return null;
   }
 
@@ -90,8 +92,10 @@ export type InteractionRootOverlayAction = {
   mode: "targeted" | "self-target" | "simultaneous";
   compactRoot?: boolean;
   groupTargets?: readonly InteractionRootOverlayGroupTarget[];
+  orderedTargets?: readonly InteractionRootOverlayOrderedTarget[];
   simultaneousTargets?: readonly { playerId: string; playerName: string }[];
   groupTargetEffectState?: { targetId: string; state: "ACTIVE" | "BLOCKED" };
+  orderedTargetEffectState?: { targetId: string; state: "ACTIVE" | "BLOCKED" };
   rootEffectState?: "ACTIVE" | "BLOCKED";
   settlement?: { eventId: string; outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE"; exiting: boolean };
   response?: { eventId: string; actorId: string; actorName: string; cardLabel: string; ariaLabel: string; countersRoot?: boolean; targetId?: string; decisionActorId?: string };
@@ -198,22 +202,24 @@ function layoutGroupRootAction(
   cardElement: HTMLElement,
   responseElements: readonly HTMLElement[],
   historySummaryElement: HTMLElement | null,
-  action: Pick<InteractionRootOverlayAction, "sourceId" | "groupTargets" | "groupTargetEffectState"> & ResponseLayout,
+  action: Pick<InteractionRootOverlayAction, "sourceId" | "groupTargets" | "orderedTargets" | "groupTargetEffectState" | "orderedTargetEffectState"> & ResponseLayout,
   preferredRootCard: Rect | null,
 ): RootActionLayout | null {
+  const fail = (): null => null;
   const table = shell.querySelector<HTMLElement>(".play-table");
   const shellBounds = shell.getBoundingClientRect();
   const cardBounds = cardElement.getBoundingClientRect();
-  const targets = action.groupTargets;
+  const targets: readonly InteractionRootOverlayBranchTarget[] | undefined = action.groupTargets ?? action.orderedTargets;
+  const targetEffectState = action.groupTargetEffectState ?? action.orderedTargetEffectState;
   if (!table || !targets?.length || new Set(targets.map(({ playerId }) => playerId)).size !== targets.length
-    || targets.some((target, index) => target.order !== index + 1)) return null;
-  if (targets.filter(({ status }) => status === "CURRENT" || status === "PAUSED").length !== 1) return null;
-  if (action.groupTargetEffectState
-    && (!targets.some(({ playerId, status }) => playerId === action.groupTargetEffectState!.targetId && status === "CURRENT")
-      || action.groupTargetEffectState.state !== "ACTIVE" && action.groupTargetEffectState.state !== "BLOCKED")) return null;
+    || targets.some((target, index) => target.order !== index + 1)) return fail();
+  if (targets.filter(({ status }) => status === "CURRENT" || status === "PAUSED").length !== 1) return fail();
+  if (targetEffectState
+    && (!targets.some(({ playerId, status }) => playerId === targetEffectState.targetId && status === "CURRENT")
+      || targetEffectState.state !== "ACTIVE" && targetEffectState.state !== "BLOCKED")) return fail();
   if (action.responses && (responseElements.length !== action.responses.length
-    || action.responses.some((response, index) => response.index !== index))) return null;
-  if (shellBounds.width <= 0 || shellBounds.height <= 0 || cardBounds.width <= 0 || cardBounds.height <= 0) return null;
+    || action.responses.some((response, index) => response.index !== index))) return fail();
+  if (shellBounds.width <= 0 || shellBounds.height <= 0 || cardBounds.width <= 0 || cardBounds.height <= 0) return fail();
 
   const anchorFor = (playerId: string) => {
     const matches = Array.from(shell.querySelectorAll<HTMLElement>("[data-player-anchor]"))
@@ -222,11 +228,11 @@ function layoutGroupRootAction(
   };
   const sourceElement = anchorFor(action.sourceId);
   const targetElements = targets.map(({ playerId }) => anchorFor(playerId));
-  if (!sourceElement || targetElements.some((element) => !element)) return null;
+  if (!sourceElement || targetElements.some((element) => !element)) return fail();
   const anchors = [sourceElement, ...targetElements as HTMLElement[]];
   const anchorRects = anchors.map((element) => element.getBoundingClientRect());
   if (anchors.some((element, index) => !element.isConnected || element.getClientRects().length !== 1
-    || anchorRects[index].width <= 0 || anchorRects[index].height <= 0)) return null;
+    || anchorRects[index].width <= 0 || anchorRects[index].height <= 0)) return fail();
 
   const tableRect = relativeRect(table, shellBounds);
   const sourceRect = relativeRect(sourceElement, shellBounds);
@@ -234,7 +240,7 @@ function layoutGroupRootAction(
   const cardWidth = cardBounds.width;
   const cardHeight = cardBounds.height;
   const margin = 12;
-  if (tableRect.width < cardWidth + margin * 2 || tableRect.height < cardHeight + margin * 2) return null;
+  if (tableRect.width < cardWidth + margin * 2 || tableRect.height < cardHeight + margin * 2) return fail();
 
   const sourceCenter = center(sourceRect);
   const targetCentroid = targetRects.reduce((sum, rect) => {
@@ -257,7 +263,10 @@ function layoutGroupRootAction(
     ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .game-messages, .game-exit")),
   ].filter((element) => element.getClientRects().length > 0);
   const obstacles = obstacleElements.map((element) => relativeRect(element, shellBounds));
-  const candidates = [.32, .4, .48, .56].flatMap((fraction) => [0, -lateralDistance, lateralDistance, -lateralDistance * 1.6, lateralDistance * 1.6].map((offset) => {
+  const lateralOffsets = action.orderedTargets?.length
+    ? [0, -1, 1, -1.6, 1.6, -2.4, 2.4].map((scale) => lateralDistance * scale)
+    : [0, -lateralDistance, lateralDistance, -lateralDistance * 1.6, lateralDistance * 1.6];
+  const candidates = [.32, .4, .48, .56].flatMap((fraction) => lateralOffsets.map((offset) => {
     const candidate = {
       x: sourceCenter.x + lineX * fraction + normal.x * offset,
       y: sourceCenter.y + lineY * fraction + normal.y * offset,
@@ -287,7 +296,9 @@ function layoutGroupRootAction(
     && stableCard.right <= tableRect.right - margin && stableCard.bottom <= stableStageBottom
     && !obstacleElements.some((element) => overlaps(stableCard, relativeRect(element, shellBounds)));
   const card = cachedRootFits && stableCard ? stableCard : candidates[0]?.card;
-  if (!card) return null;
+  if (!card) {
+    return fail();
+  }
 
   const cardCenter = center(card);
   const sourceStart = rectangleEdge(sourceRect, cardCenter);
@@ -321,25 +332,25 @@ function layoutGroupRootAction(
     const response = action.responses![index];
     const responseElement = responseElements[index];
     const actorElement = anchorFor(response.actorId);
-    if (!responseElement || !actorElement || !actorElement.isConnected || actorElement.getClientRects().length !== 1) return null;
+    if (!responseElement || !actorElement || !actorElement.isConnected || actorElement.getClientRects().length !== 1) return fail();
     const actorBounds = actorElement.getBoundingClientRect();
     const responseBounds = responseElement.getBoundingClientRect();
-    if (actorBounds.width <= 0 || actorBounds.height <= 0 || responseBounds.width <= 0 || responseBounds.height <= 0) return null;
+    if (actorBounds.width <= 0 || actorBounds.height <= 0 || responseBounds.width <= 0 || responseBounds.height <= 0) return fail();
     const actorRect = relativeRect(actorElement, shellBounds);
     const actorCenter = center(actorRect);
     let counterTargetPoint: Point;
     let counterTargetRect: Rect | null = null;
     if (response.counterTarget.kind === "HISTORY") {
       counterTargetRect = historySummary;
-      if (!counterTargetRect) return null;
+      if (!counterTargetRect) return fail();
       counterTargetPoint = center(counterTargetRect);
-    } else if (response.counterTarget.kind === "GROUP_TARGET_EFFECT") {
+    } else if (response.counterTarget.kind === "GROUP_TARGET_EFFECT" || response.counterTarget.kind === "ORDERED_TARGET_EFFECT") {
       const branch = groupTargetPaths.find(({ playerId }) => playerId === response.counterTarget.targetId);
-      if (!branch || action.groupTargetEffectState?.targetId !== response.counterTarget.targetId) return null;
+      if (!branch || targetEffectState?.targetId !== response.counterTarget.targetId) return fail();
       counterTargetPoint = branch.effectPoint;
     } else if (response.counterTarget.kind === "RESPONSE") {
       counterTargetRect = responseCards[response.counterTarget.index] ?? null;
-      if (response.counterTarget.index < 0 || response.counterTarget.index >= index || !counterTargetRect) return null;
+      if (response.counterTarget.index < 0 || response.counterTarget.index >= index || !counterTargetRect) return fail();
       counterTargetPoint = center(counterTargetRect);
     } else {
       counterTargetRect = card;
@@ -391,7 +402,7 @@ function layoutGroupRootAction(
       return [{ responseRect, score: distance + penalty }];
     }).sort((left, right) => left.score - right.score);
     const responseRect = responseCandidates[0]?.responseRect;
-    if (!responseRect) return null;
+    if (!responseRect) return fail();
     const responseCenter = center(responseRect);
     const counterStart = rectangleEdge(responseRect, counterTargetPoint);
     const counterEnd = counterTargetRect ? rectangleEdge(counterTargetRect, responseCenter) : counterTargetPoint;
@@ -401,8 +412,8 @@ function layoutGroupRootAction(
     responseSourcePaths.push(pathBetween(sourceStart, sourceEnd, Math.min(20, Math.hypot(sourceEnd.x - sourceStart.x, sourceEnd.y - sourceStart.y) * .025)));
     responseCounterPaths.push(pathBetween(counterStart, counterEnd, 0));
   }
-  const blockedGroupBranch = action.groupTargetEffectState?.state === "BLOCKED"
-    ? groupTargetPaths.find(({ playerId }) => playerId === action.groupTargetEffectState?.targetId)
+  const blockedGroupBranch = targetEffectState?.state === "BLOCKED"
+    ? groupTargetPaths.find(({ playerId }) => playerId === targetEffectState?.targetId)
     : undefined;
   const blockedGroupTarget = blockedGroupBranch && targets.find(({ playerId }) => playerId === blockedGroupBranch.playerId);
   const groupTargetEffectBlock = blockedGroupBranch && blockedGroupTarget
@@ -415,7 +426,7 @@ function layoutGroupRootAction(
       point: blockedGroupBranch.effectPoint,
     }
     : null;
-  if (action.groupTargetEffectState?.state === "BLOCKED" && !groupTargetEffectBlock) return null;
+  if (targetEffectState?.state === "BLOCKED" && !groupTargetEffectBlock) return fail();
   return {
     width: shellBounds.width,
     height: shellBounds.height,
@@ -1049,7 +1060,7 @@ export function InteractionRootOverlay({
     const shell = layer?.closest<HTMLElement>(".game-shell");
     const initialAction = actionRef.current;
     if (!enabled || !initialAction?.sourceId
-      || (!initialAction.targetId && !initialAction.groupTargets?.length && !initialAction.simultaneousTargets?.length)
+      || (!initialAction.targetId && !initialAction.groupTargets?.length && !initialAction.orderedTargets?.length && !initialAction.simultaneousTargets?.length)
       || !initialAction.key || !layer || !card || !shell) {
       setLayout(null);
       onReadyChange(null);
@@ -1067,6 +1078,7 @@ export function InteractionRootOverlay({
       const currentTargetId = currentAction.targetId;
       const currentMode = currentAction.mode;
       const currentGroupTargets = currentAction.groupTargets ?? null;
+      const currentOrderedTargets = currentAction.orderedTargets ?? null;
       const currentSimultaneousTargets = currentAction.simultaneousTargets ?? null;
       const currentResponsePresentation = currentAction.responses ? compactResponseGraph(currentAction.responses) : null;
       const currentVisibleResponses = currentResponsePresentation?.nodes ?? [];
@@ -1097,11 +1109,13 @@ export function InteractionRootOverlay({
           responses: currentAction.responses ? currentVisibleResponses : undefined,
           historyCount: currentHistoryCount,
         }, preferredRootCard)
-        : currentGroupTargets?.length
+        : currentGroupTargets?.length || currentOrderedTargets?.length
         ? layoutGroupRootAction(shell, card, responseElements, historySummaryElement, {
           sourceId: currentSourceId,
-          groupTargets: currentGroupTargets,
+          ...(currentGroupTargets?.length ? { groupTargets: currentGroupTargets } : {}),
+          ...(currentOrderedTargets?.length ? { orderedTargets: currentOrderedTargets } : {}),
           groupTargetEffectState: currentAction.groupTargetEffectState,
+          orderedTargetEffectState: currentAction.orderedTargetEffectState,
           responses: currentAction.responses ? currentVisibleResponses : undefined,
           historyCount: currentHistoryCount,
         }, preferredRootCard)
@@ -1161,6 +1175,7 @@ export function InteractionRootOverlay({
 
   if (!action) return null;
   const groupNamesKnown = Boolean(action.groupTargets?.length && action.groupTargets.every((target) => target.playerName.trim()));
+  const orderedNamesKnown = Boolean(action.orderedTargets?.length && action.orderedTargets.every((target) => target.playerName.trim()));
   const simultaneousNamesKnown = Boolean(action.simultaneousTargets?.length && action.simultaneousTargets.every((target) => target.playerName.trim()));
   const accessibleDescription = [
     action.ariaLabel,
@@ -1175,7 +1190,7 @@ export function InteractionRootOverlay({
     && (!action.response || Boolean(action.response.ariaLabel.trim()))
     && visibleResponses.every((response) => Boolean(response.ariaLabel.trim()));
   const visible = enabled && Boolean(layout) && accessiblePartsValid
-    && Boolean(sourceName && (groupNamesKnown || simultaneousNamesKnown || action.mode === "self-target" || targetName));
+    && Boolean(sourceName && (groupNamesKnown || orderedNamesKnown || simultaneousNamesKnown || action.mode === "self-target" || targetName));
   const responseChainRootBlocked = Boolean(action.responses?.length && action.rootEffectState === "BLOCKED");
   return <div
     ref={layerRef}
@@ -1185,9 +1200,11 @@ export function InteractionRootOverlay({
     data-root-action-ready={visible ? "true" : "false"}
     data-root-action-event-id={action.rootEventId}
     data-root-action-source-id={action.sourceId}
-    data-root-action-target-id={action.groupTargets?.length || action.simultaneousTargets?.length ? undefined : action.targetId ?? undefined}
+    data-root-action-target-id={action.groupTargets?.length || action.orderedTargets?.length || action.simultaneousTargets?.length ? undefined : action.targetId ?? undefined}
     data-root-action-group-target-graph={action.groupTargets?.length ? "true" : undefined}
     data-root-action-group-target-count={action.groupTargets?.length ?? undefined}
+    data-root-action-ordered-target-graph={action.orderedTargets?.length ? "true" : undefined}
+    data-root-action-ordered-target-count={action.orderedTargets?.length ?? undefined}
     data-root-action-oath-simultaneous-graph={action.simultaneousTargets?.length ? "true" : undefined}
     data-oath-recipient-count={action.simultaneousTargets?.length ?? undefined}
     data-root-action-mode={action.mode}
@@ -1199,6 +1216,8 @@ export function InteractionRootOverlay({
     data-root-action-collapsed-response-count={historyCount || undefined}
     data-group-target-effect-player-id={action.groupTargetEffectState?.targetId}
     data-group-target-effect-state={action.groupTargetEffectState?.state}
+    data-ordered-target-effect-player-id={action.orderedTargetEffectState?.targetId}
+    data-ordered-target-effect-state={action.orderedTargetEffectState?.state}
     role="img"
     aria-label={`${accessibleDescription}.`}
     aria-hidden={!visible}
@@ -1227,39 +1246,53 @@ export function InteractionRootOverlay({
       <path className="interaction-root-source-tether" data-root-action-edge="source" d={layout.sourcePath} />
       {layout.targetPath && <path className={responseTargetsPlayer ? "interaction-root-target-context" : responseCountersRoot || responseChainRootBlocked ? "interaction-root-target-subdued" : "interaction-root-target-arrow"} data-root-action-edge={responseTargetsPlayer ? "root-target-context" : responseCountersRoot || responseChainRootBlocked ? "root-target-blocked" : "target"} data-root-action-target-state={responseTargetsPlayer ? "context" : responseCountersRoot || responseChainRootBlocked ? "blocked" : "active"} d={layout.targetPath} markerEnd={responseCountersRoot || responseChainRootBlocked ? undefined : `url(#${markerId})`} />}
       {layout.groupTargetPaths?.map((branch) => {
-        const target = action.groupTargets?.find(({ playerId }) => playerId === branch.playerId);
+        const target = action.groupTargets?.find(({ playerId }) => playerId === branch.playerId)
+          ?? action.orderedTargets?.find(({ playerId }) => playerId === branch.playerId);
         if (!target) return null;
         const active = target.status === "CURRENT" || target.status === "PAUSED";
-        const effectState = action.groupTargetEffectState?.targetId === branch.playerId
+        const branchEffectState = action.groupTargetEffectState?.targetId === branch.playerId
           ? action.groupTargetEffectState.state
+          : action.orderedTargetEffectState?.targetId === branch.playerId
+            ? action.orderedTargetEffectState.state
           : null;
         const stateMarker = target.status === "CURRENT" ? "▶"
           : target.status === "PAUSED" ? "Ⅱ"
             : target.outcome === "AVOIDED" ? "✓"
               : target.outcome === "DAMAGED" ? "−♥"
                 : target.outcome === "NEGATED" ? "⊘"
+                  : target.outcome === "CHOSE_CARD" ? "✓"
                   : target.outcome === "DEFEATED" ? "✕"
                     : target.status === "RESOLVED" ? "✓"
                       : target.status === "NO_LONGER_APPLICABLE" ? "—" : "·";
-        return <g key={branch.playerId} className={`interaction-root-group-target-branch status-${target.status.toLowerCase().replaceAll("_", "-")}`}>
+        const isOrderedTarget = Boolean(action.orderedTargets?.length);
+        const branchEdge = isOrderedTarget ? "ordered-target" : "group-target";
+        return <g key={branch.playerId} className={`interaction-root-group-target-branch${isOrderedTarget ? " interaction-root-ordered-target-branch" : ""} status-${target.status.toLowerCase().replaceAll("_", "-")}`}>
           <path
-          className={`interaction-root-group-target-edge${active ? " is-active" : ""}${effectState === "BLOCKED" ? " is-negation-blocked" : effectState === "ACTIVE" ? " is-negation-active" : ""}`}
-          data-root-action-edge="group-target"
-          data-group-target-branch-player-id={branch.playerId}
-          data-group-target-status={target.status}
-          data-group-target-outcome={target.outcome}
-          data-group-target-active={active ? "true" : "false"}
-          data-group-target-effect-state={effectState ?? undefined}
+          className={`interaction-root-group-target-edge${isOrderedTarget ? " interaction-root-ordered-target-edge" : ""}${active ? " is-active" : ""}${branchEffectState === "BLOCKED" ? " is-negation-blocked" : branchEffectState === "ACTIVE" ? " is-negation-active" : ""}`}
+          data-root-action-edge={branchEdge}
+          data-group-target-branch-player-id={!isOrderedTarget ? branch.playerId : undefined}
+          data-group-target-status={!isOrderedTarget ? target.status : undefined}
+          data-group-target-outcome={!isOrderedTarget ? target.outcome : undefined}
+          data-group-target-active={!isOrderedTarget ? (active ? "true" : "false") : undefined}
+          data-group-target-effect-state={!isOrderedTarget ? branchEffectState ?? undefined : undefined}
+          data-ordered-target-branch-player-id={isOrderedTarget ? branch.playerId : undefined}
+          data-ordered-target-order={isOrderedTarget ? target.order : undefined}
+          data-ordered-target-status={isOrderedTarget ? target.status : undefined}
+          data-ordered-target-outcome={isOrderedTarget ? target.outcome : undefined}
+          data-ordered-target-active={isOrderedTarget ? (active ? "true" : "false") : undefined}
+          data-ordered-target-effect-state={isOrderedTarget ? branchEffectState ?? undefined : undefined}
           d={branch.path}
-          markerEnd={effectState === "BLOCKED" ? undefined : `url(#${markerId})`}
+          markerEnd={branchEffectState === "BLOCKED" ? undefined : `url(#${markerId})`}
           />
-          <text className="interaction-root-group-target-marker" data-group-target-marker-for={branch.playerId} x={branch.marker.x.toFixed(1)} y={branch.marker.y.toFixed(1)}>{stateMarker}</text>
+          <text className="interaction-root-group-target-marker" data-group-target-marker-for={!isOrderedTarget ? branch.playerId : undefined} data-ordered-target-marker-for={isOrderedTarget ? branch.playerId : undefined} x={branch.marker.x.toFixed(1)} y={branch.marker.y.toFixed(1)}>{stateMarker}</text>
         </g>;
       })}
       {layout.groupTargetEffectBlock && <path
         className="interaction-root-block-mark interaction-root-group-target-effect-block-mark"
-        data-root-action-group-effect-blocked="true"
-        data-group-target-branch-player-id={layout.groupTargetEffectBlock.targetId}
+        data-root-action-group-effect-blocked={!action.orderedTargets?.length ? "true" : undefined}
+        data-root-action-ordered-effect-blocked={action.orderedTargets?.length ? "true" : undefined}
+        data-group-target-branch-player-id={!action.orderedTargets?.length ? layout.groupTargetEffectBlock.targetId : undefined}
+        data-ordered-target-branch-player-id={action.orderedTargets?.length ? layout.groupTargetEffectBlock.targetId : undefined}
         data-group-target-effect-point-x={layout.groupTargetEffectBlock.point.x.toFixed(1)}
         data-group-target-effect-point-y={layout.groupTargetEffectBlock.point.y.toFixed(1)}
         d={layout.groupTargetEffectBlock.path}
@@ -1304,6 +1337,7 @@ export function InteractionRootOverlay({
         const active = index === visibleResponses.length - 1;
         const edge = counterTarget?.kind === "ROOT" ? "negation-counters-root"
           : counterTarget?.kind === "GROUP_TARGET_EFFECT" ? "negation-counters-group-target-effect"
+            : counterTarget?.kind === "ORDERED_TARGET_EFFECT" ? "negation-counters-ordered-target-effect"
             : counterTarget?.kind === "HISTORY" ? "negation-counters-history"
             : "negation-counters-response";
         return <path
@@ -1314,6 +1348,7 @@ export function InteractionRootOverlay({
           data-response-active={active ? "true" : "false"}
           data-counter-target-index={counterTarget?.kind === "RESPONSE" ? counterTarget.index : undefined}
           data-counter-target-group-player-id={counterTarget?.kind === "GROUP_TARGET_EFFECT" ? counterTarget.targetId : undefined}
+          data-counter-target-ordered-player-id={counterTarget?.kind === "ORDERED_TARGET_EFFECT" ? counterTarget.targetId : undefined}
           data-counter-target-history={counterTarget?.kind === "HISTORY" ? "true" : undefined}
           d={path}
           markerEnd={`url(#${counterMarkerId})`}
@@ -1332,6 +1367,7 @@ export function InteractionRootOverlay({
       data-root-action-settlement-outcome={action.settlement?.outcome}
       data-root-action-compact-root={action.compactRoot ? "true" : undefined}
       data-group-root-action={action.groupTargets?.length ? action.cardKind : undefined}
+      data-bumper-harvest-root-action={action.orderedTargets?.length ? action.cardKind : undefined}
       data-oath-root-action={action.simultaneousTargets?.length ? action.cardKind : undefined}
       data-root-action-contextual={responseTargetsPlayer ? "true" : undefined}
       data-root-effect-state={action.rootEffectState ?? undefined}
@@ -1387,9 +1423,11 @@ export function InteractionRootOverlay({
         data-response-active={active ? "true" : "false"}
         data-response-relation={response.counterTarget.kind === "ROOT" ? "COUNTERS_ROOT"
           : response.counterTarget.kind === "GROUP_TARGET_EFFECT" ? "COUNTERS_GROUP_TARGET_EFFECT"
+            : response.counterTarget.kind === "ORDERED_TARGET_EFFECT" ? "COUNTERS_ORDERED_TARGET_EFFECT"
             : response.counterTarget.kind === "HISTORY" ? "COUNTERS_HISTORY" : "COUNTERS_RESPONSE"}
         data-counter-target-index={response.counterTarget.kind === "RESPONSE" ? response.counterTarget.index : undefined}
         data-counter-target-group-player-id={response.counterTarget.kind === "GROUP_TARGET_EFFECT" ? response.counterTarget.targetId : undefined}
+        data-counter-target-ordered-player-id={response.counterTarget.kind === "ORDERED_TARGET_EFFECT" ? response.counterTarget.targetId : undefined}
         data-counter-target-history={response.counterTarget.kind === "HISTORY" ? "true" : undefined}
         role="img"
         aria-label={response.ariaLabel}

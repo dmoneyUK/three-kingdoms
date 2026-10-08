@@ -1979,6 +1979,24 @@ Only a proven regression or new Reviewer-approved design requirement does.
   same bounded lifecycle durations; focused browser reproduction passed 1/1.
   CI for the resulting commit is pending. Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-C-BUMPER-HARVEST-ORDERED-ROOT-GRAPH-01 — Ordered Bumper root
+
+- Bumper Harvest now keeps one exact public root card and physical-seat source
+  tether while its server-proven ordered target branches advance through
+  target-scoped Negation, counter-Negation, and chooser selection. Public
+  counter links and ACTIVE/BLOCKED target effect state remain bound to the
+  exact root/participant proof; the Local Dock retains private chooser controls
+  and its server-owned timer. A real server-backed browser path passed 1/1,
+  measuring stable root geometry, branch/source/counter endpoints, containment,
+  no Seat/Dock overlap, and no horizontal overflow at 390×844, 480×900, and
+  1440×900. Combined Bumper/Group graph browser tests passed 13/13;
+  Presentation passed 122/122; engine/API passed 36/36; Oath browser regressions
+  passed 11/11 after repairing the CI fixture's out-of-scope
+  `negationNodeCount` reference. Build, targeted ESLint, and `git diff --check`
+  passed. Parent `936c8b2f830cb004d189144c190d1a191af6c446` failed run
+  `37824882092` only on the two Oath visual-gate fixture crashes; CI for the
+  repair-and-feature changeset is pending. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

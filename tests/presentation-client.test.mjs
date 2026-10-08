@@ -343,8 +343,12 @@ test("adapter carries ordered Bumper Harvest progress without exposing the priva
     checkpointId: "checkpoint-1",
     presentationRevision: 3,
     sourceId: "A",
+    rootEventId: "bumper-root-event",
+    rootResolutionId: "bumper-root-resolution",
+    rootCardId: "bumper-root-card",
     targetIds,
     currentParticipantId: "B",
+    currentEffectState: "BLOCKED",
     participants: [
       { playerId: "A", order: 1, status: "RESOLVED", outcome: "NEGATED" },
       { playerId: "B", order: 2, status: "CURRENT" },
@@ -361,6 +365,7 @@ test("adapter carries ordered Bumper Harvest progress without exposing the priva
       semantics: "PROVEN", interactionId: "interaction-1", frameId: "harvest-negation",
       rootCard: null,
       nodes: [{ nodeId: "submitted-negation", interactionId: "interaction-1", frameId: "harvest-negation", causedByNodeId: null, actorId: "A", kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } }],
+      publicNodeEventLinks: [{ nodeId: "submitted-negation", eventId: "negation-event", resolutionId: "negation-resolution" }],
     },
   }), "C");
   assert.equal(client.activeResolverId, null);
@@ -805,6 +810,9 @@ test("Bumper Harvest composition consumes only the proven ordered root and keeps
     checkpointId: interaction.checkpointId,
     presentationRevision: interaction.presentationRevision,
     sourceId: "A",
+    rootEventId: "bumper-root-event",
+    rootResolutionId: "bumper-root-resolution",
+    rootCardId: "bumper-root-card",
     targetIds,
     currentParticipantId: "B",
     participants: [

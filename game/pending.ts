@@ -15,9 +15,12 @@ export type HarvestChoice = { cardId: string; playerId: string; playerName: stri
 export type HarvestParticipantProgressStatus = "PENDING" | "CURRENT" | "RESOLVED" | "NO_LONGER_APPLICABLE";
 export type HarvestParticipantProgressOutcome = "CHOSE_CARD" | "NEGATED";
 export type HarvestParticipantProgress = {
-  version: 1;
+  version: 2;
   interactionId: string;
   rootFrameId: string;
+  rootEventId: string;
+  rootResolutionId: string;
+  rootCardId: string;
   currentParticipantId: string | null;
   participants: Array<{ playerId: string; status: HarvestParticipantProgressStatus; outcome?: HarvestParticipantProgressOutcome }>;
 };
@@ -26,7 +29,7 @@ export type TargetCardPending = CausalFields & { kind: "target_card"; sourceId: 
 export type BorrowedSwordPending = CausalFields & { kind: "borrowed_sword"; sourceId: string; actorId: string; targetId: string; holderId: string; resumePhase: string; reason: string; deadline?: number; weaponId?: string; stage: "choose_target" | "force_attack" };
 export type BorrowedSwordAttackContinuation = CausalFields & { kind: "borrowed_sword_attack"; sourceId: string; holderId: string; targetId: string; resumePhase: string; resumePlayerId: string; weaponId: string; origin: "borrowed_sword" };
 export type DeferredStratagem =
-  | { kind: "draw_two"; cardId: string } | { kind: "oath" } | { kind: "harvest"; chooserIds: string[] } | { kind: "harvest_target"; pending: HarvestPending } | { kind: "borrowed_sword"; targetId: string }
+  | { kind: "draw_two"; cardId: string } | { kind: "oath" } | { kind: "harvest"; chooserIds: string[]; rootEventId: string; rootResolutionId: string; rootCardId: string } | { kind: "harvest_target"; pending: HarvestPending } | { kind: "borrowed_sword"; targetId: string }
   | { kind: "dismantle"; targetId: string } | { kind: "steal"; targetId: string } | { kind: "duel"; pending: ResponsePending } | { kind: "group"; pending: GroupResponsePending }
   | { kind: "overindulgence"; targetId: string; cardId: string } | { kind: "lightning"; targetId: string; cardId: string } | { kind: "rations_depleted"; targetId: string; cardId: string } | { kind: "judgement"; targetId: string; cardId: string; causalResume?: JudgementNegationCausalResume };
 export type JudgementNegationCausalResume =

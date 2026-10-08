@@ -35,7 +35,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string } };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null; causal_envelope_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -619,7 +619,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
 function addTriggeredEffectNotice(log: string[], actor: string, label: string) {
   return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined, { effectNotice: true });
@@ -2803,7 +2803,7 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
     if (!choosers.length || !draw.drawn.length) await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run();
     else {
       const participantIds = choosers.map((player) => player.id);
-      const progress = initialHarvestProgress(source.id, participantIds);
+      const progress = initialHarvestProgress(source.id, participantIds, pending.effect.rootEventId, pending.effect.rootResolutionId, pending.effect.rootCardId);
       const harvest: HarvestPending = { kind: "harvest", sourceId: source.id, actorId: choosers[0].id, remainingIds: participantIds.slice(1), revealed: draw.drawn, availableIds: draw.drawn.map((card) => card.id), choices: [], resumePhase: pending.resumePhase, reason: "Choose 1 revealed card from Bumper Harvest", causal: progress.causal, participantProgress: progress.participantProgress, ...(pending.heldCards?.length ? { heldCards: pending.heldCards } : {}) };
       await beginHarvestTarget({ ...room, causal_envelope_json: JSON.stringify(progress.causalEnvelope) }, harvest, players, deck, discard, log, [], progress.causalEnvelope);
       return [];
@@ -2925,7 +2925,7 @@ async function resumeNormalStratagemUse(room: RoomRow, source: PlayerRow, player
         .bind(room.phase, JSON.stringify(nextDeck), JSON.stringify(nextDiscard), JSON.stringify(nextLog), room.id).run();
     } else {
       const participantIds = choosers.map((player) => player.id);
-      const progress = initialHarvestProgress(source.id, participantIds);
+      const progress = initialHarvestProgress(source.id, participantIds, effect.rootEventId, effect.rootResolutionId, effect.rootCardId);
       const harvest: HarvestPending = { kind: "harvest", sourceId: source.id, actorId: choosers[0].id, remainingIds: participantIds.slice(1), revealed: draw.drawn, availableIds: draw.drawn.map((revealed) => revealed.id), choices: [], resumePhase: room.phase ?? "play", reason: "Choose 1 revealed card from Bumper Harvest", causal: progress.causal, participantProgress: progress.participantProgress, heldCards: [card] };
       await beginHarvestTarget({ ...room, causal_envelope_json: JSON.stringify(progress.causalEnvelope) }, harvest, players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(hand) } : player), nextDeck, nextDiscard, nextLog, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), source.id)], progress.causalEnvelope);
     }
@@ -3848,7 +3848,7 @@ async function advanceGroup(roomId: string) {
   }
 }
 
-function initialHarvestProgress(sourceId: string, participantIds: readonly string[]) {
+function initialHarvestProgress(sourceId: string, participantIds: readonly string[], rootEventId: string, rootResolutionId: string, rootCardId: string) {
   const firstId = participantIds[0] ?? null;
   const root = createCausalRoot({
     stage: "SEQUENTIAL_CHOICE",
@@ -3859,9 +3859,12 @@ function initialHarvestProgress(sourceId: string, participantIds: readonly strin
     causal: root.context,
     causalEnvelope: root.envelope,
     participantProgress: {
-      version: 1 as const,
+      version: 2 as const,
       interactionId: root.context.interactionId,
       rootFrameId: root.context.frameId,
+      rootEventId,
+      rootResolutionId,
+      rootCardId,
       currentParticipantId: firstId,
       participants: participantIds.map((playerId, index) => ({ playerId, status: index === 0 ? "CURRENT" as const : "PENDING" as const })),
     } satisfies HarvestParticipantProgress,
@@ -6435,8 +6438,19 @@ export async function POST(request: Request) {
         const players = rows.results ?? []; const choosersInOrder = playersInTurnOrder(players, me.seat);
         if (!choosersInOrder.length) return json({ error: "There are no living characters to take part in Bumper Harvest." }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
-        hand = hand.filter((item) => item.id !== card.id); log = addCardEvent(log, me.name, card, "All living players");
-        await beginStratagemUse(liveRoom, me, players, card, card, "all living players", me.id, { kind: "harvest", chooserIds: choosersInOrder.map((player) => player.id) }, hand, deck, discard, log);
+        hand = hand.filter((item) => item.id !== card.id);
+        const rootResolutionId = crypto.randomUUID();
+        const root = addCardEventWithId(log, me.name, card, "All living players", "play", true, {
+          resolutionId: rootResolutionId,
+          bumperHarvestRoot: { semantics: "PROVEN", sourceId: me.id, cardId: card.id },
+        });
+        await beginStratagemUse(liveRoom, me, players, card, card, "all living players", me.id, {
+          kind: "harvest",
+          chooserIds: choosersInOrder.map((player) => player.id),
+          rootEventId: root.eventId,
+          rootResolutionId,
+          rootCardId: card.id,
+        }, hand, deck, discard, root.log);
       } else if ((card.kind === "BarbarianInvasion" || card.kind === "RainingArrows") && !playableAttack) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
         const targets = playersInTurnOrder(players, me.seat).filter((player) => player.id !== me.id);

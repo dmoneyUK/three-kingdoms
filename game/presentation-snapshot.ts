@@ -474,6 +474,7 @@ function bumperHarvestProgressFor(
   const progress = presentationV2.bumperHarvestProgress;
   if (!progress || progress.semantics !== "PROVEN" || !Array.isArray(progress.targetIds) || !Array.isArray(progress.participants)
     || !progress.interactionId || !progress.rootFrameId || !progress.activeFrameId || !progress.checkpointId
+    || !nonEmptyString(progress.rootEventId) || !nonEmptyString(progress.rootResolutionId) || !nonEmptyString(progress.rootCardId)
     || progress.interactionId !== identity.interactionId || progress.interactionId !== scene.interactionId
     || progress.rootFrameId !== scene.rootFrameId || progress.activeFrameId !== scene.activeFrameId
     || progress.checkpointId !== identity.checkpointId || progress.presentationRevision !== identity.presentationRevision
@@ -513,6 +514,8 @@ function bumperHarvestProgressFor(
   if (rootRelation && progress.currentParticipantId
     && (stable.kind !== "CHOICE" || stable.decisionActorId !== progress.currentParticipantId)) return null;
   if (childRelation && stable.kind !== "SPECIAL") return null;
+  if (rootRelation && progress.currentEffectState !== undefined
+    || childRelation && progress.currentEffectState !== "ACTIVE" && progress.currentEffectState !== "BLOCKED") return null;
 
   return { ...progress, targetIds: [...progress.targetIds], participants };
 }

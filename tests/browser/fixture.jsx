@@ -759,6 +759,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     negationSettlementOutcome,
   });
   if (oathNegationFixture && state !== "oath-negation-unproven" && presentationSnapshot?.interaction && presentationSnapshot.identity) {
+    const negationDepth = presentationSnapshot.reactionChain?.nodes?.length ?? 0;
     presentationSnapshot.oathRecipientScope = {
       semantics: "PROVEN",
       cardKind: "Oath",
@@ -769,7 +770,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
       presentationRevision: presentationSnapshot.identity.presentationRevision,
       rootEventId: `browser-${state}-oath-root-event`,
       rootResolutionId: `browser-${state}-oath-root-resolution`,
-      effectState: negationNodeCount % 2 === 0 ? "ACTIVE" : "BLOCKED",
+      effectState: negationDepth % 2 === 0 ? "ACTIVE" : "BLOCKED",
       sourceId: "p1",
       recipientIds: playerIds.filter((id) => id === "p1" || id === "p2" || denseOathScope && Number(id.slice(1)) >= 5),
     };
