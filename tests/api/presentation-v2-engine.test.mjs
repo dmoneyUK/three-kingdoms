@@ -1303,6 +1303,7 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   setHand(opened.target.id, [counterNegation], 3, 3);
   const initial = await state(opened.code, opened.sourceMember.token);
   assert.equal(initial.data.currentAction.actorId, opened.source.id);
+  assert.equal(initial.data.presentationV2.reactionChain?.groupTargetEffectScope?.effectState, "ACTIVE");
   const root = initial.data.causalEnvelope;
   assert.equal(root.frames.length, 1);
   assert.equal(root.frames[0].stage, "NEGATION");
@@ -1310,6 +1311,8 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   assert.equal(first.status, 200, JSON.stringify(first.data));
   const counter = await state(opened.code, opened.targetMember.token);
   assert.equal(counter.data.currentAction.actorId, opened.target.id);
+  const firstEvent = counter.data.timeline.find((event) => event.type === "card" && event.card?.id === firstNegation.id);
+  assert.ok(firstEvent, "the committed Negation has one public card event");
   assert.deepEqual(counter.data.presentationV2.reactionChain, {
     semantics: "PROVEN",
     interactionId: root.interactionId,
@@ -1335,7 +1338,13 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
       sourceId: opened.source.id,
       cardKind: "RainingArrows",
       targetId: opened.target.id,
+      effectState: "BLOCKED",
     },
+    publicNodeEventLinks: [{
+      nodeId: `${root.interactionId}:${root.activeFrameId}:negation:1`,
+      eventId: firstEvent.id,
+      resolutionId: firstEvent.resolutionId,
+    }],
   }, "a submitted Negation in the Group continuation is bound to its proven Group frame");
   const counterOtherViewer = await assertProjectionMatchesEngine(opened.code, opened.sourceMember.token);
   assert.deepEqual(publicSnapshot(counterOtherViewer.presentationSnapshot), publicSnapshot(counter.data.presentationSnapshot), "the nested Group Negation history is viewer-equal");
@@ -1412,6 +1421,7 @@ test("UX2.7 Group Negated outcome is scoped to an authoritative AOE cancellation
       sourceId: opened.source.id,
       cardKind: kind,
       targetId: opened.target.id,
+      effectState: "BLOCKED",
     }, `${kind}: the public counter chain is scoped to the exact current target effect`);
     assert.deepEqual(openWindow.presentationV2.groupResolution?.participantProgress?.[0], { playerId: opened.target.id, order: 1, status: "CURRENT" }, "the pending Negation is not public as a completed outcome");
     const passed = await requestAndSettle("decline_response", { code: opened.code, token: opened.targetMember.token, preserveResponse: true });

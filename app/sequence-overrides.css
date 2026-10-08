@@ -580,6 +580,29 @@
   opacity: .28;
 }
 
+.interaction-root-group-target-branch .interaction-root-group-target-edge.is-negation-blocked {
+  stroke: #8b8580;
+  stroke-width: 2px;
+  stroke-dasharray: 6 6;
+  opacity: .34;
+  filter: none;
+}
+
+.interaction-root-group-target-branch .interaction-root-group-target-edge.is-negation-active {
+  stroke: #f2ca73;
+  stroke-width: 3.6px;
+  stroke-dasharray: none;
+  opacity: 1;
+  filter: drop-shadow(0 0 4px #f2ca7388);
+}
+
+.interaction-root-group-target-effect-block-mark {
+  stroke: #eee4d4;
+  stroke-width: 3px;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
 .interaction-root-group-target-marker {
   fill: #f1e8d1;
   font-size: 9px;

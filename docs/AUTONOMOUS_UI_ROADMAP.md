@@ -1820,6 +1820,24 @@ Only a proven regression or new Reviewer-approved design requirement does.
   parent `c0e7921b2ac29ddb34847dd16227c853a6b0c3cd` passed all five Actions jobs
   in run `37770799050`. Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-C-GROUP-TARGET-EFFECT-COUNTER-GRAPH-01 — Group Negation graph
+
+- The physical-seat graph now remains rooted through real Group Negation
+  chains: the first response counters the server-proven target-effect branch,
+  subsequent responses counter their exact prior Negation, and only the
+  affected branch changes between blocked and restored. A real browser audit
+  found and fixed a production adapter gap where nested Group response nodes
+  lost their public counter target because Group roots have no ordinary
+  root-card field; malformed or missing links still fail closed. The browser
+  file passed 12/12 for Raining Arrows and Barbarian Invasion at 390×844,
+  480×900, and 1440×900, including open/first/counter states, stable root and
+  seat geometry, actor/source and branch endpoints, containment, and no
+  horizontal overflow. PresentationV2 / Snapshot / Client tests passed 114/114;
+  focused API tests passed 34/34; build, targeted ESLint (zero errors; CSS
+  ignored), and `git diff --check` passed. Exact pre-commit parent
+  `b14c27117c5b758c178e88f4bf844ff530706038` passed push Actions run
+  `37772868829`. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

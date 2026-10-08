@@ -2897,8 +2897,17 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const groupTargetBranchGraphCandidate = (() => {
     const group = clientPresentation.groupResolution;
     const rootOrigin = clientPresentation.rootOrigin;
-    if (!clientPresentation.hasInteraction || clientPresentation.stage !== "GROUP_RESOLUTION"
-      || clientPresentation.continuity.relation !== "ROOT_FRAME"
+    const isRootGroupScene = clientPresentation.stage === "GROUP_RESOLUTION"
+      && clientPresentation.continuity.relation === "ROOT_FRAME";
+    const negationStage = clientPresentation.stage === "NEGATION"
+      ? buildInteractionStageView(clientPresentation, (playerId) => room.players.find((player) => player.id === playerId)?.name ?? null)
+      : null;
+    const negationChain = negationStage ? buildReactionChainView(negationStage) : null;
+    const groupTargetEffectScope = negationChain?.groupTargetEffectScope ?? null;
+    const isGroupNegationScene = clientPresentation.stage === "NEGATION"
+      && clientPresentation.continuity.relation === "SAME_FRAME"
+      && groupTargetEffectScope !== null;
+    if (!clientPresentation.hasInteraction || (!isRootGroupScene && !isGroupNegationScene)
       || !group || group.resolutionSemantics !== "GROUP"
       || (group.cardKind !== "RainingArrows" && group.cardKind !== "BarbarianInvasion")
       || group.interactionId !== clientPresentation.interactionId
@@ -2910,13 +2919,27 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       || group.currentParticipantId !== clientPresentation.currentParticipantId
       || !clientPresentation.sourceId) return null;
 
-    // A root GROUP scene is itself the authoritative source/target contract;
-    // unlike child scenes, it need not carry a separate rootOrigin. If one is
-    // present, require it to corroborate rather than override that contract.
     if (rootOrigin && (rootOrigin.frameId !== group.groupFrameId || rootOrigin.stage !== "GROUP_RESOLUTION"
       || rootOrigin.effect !== group.cardKind || rootOrigin.source.id !== clientPresentation.sourceId
       || !rootOrigin.source.known || rootOrigin.targets.length !== group.targetIds.length
       || rootOrigin.targets.some((target, index) => target.id !== group.targetIds[index]))) return null;
+
+    if (isGroupNegationScene && (!negationChain?.visible
+      || negationChain.interactionId !== group.interactionId
+      || !negationChain.root || negationChain.root.cardKind !== null
+      || negationChain.root?.source.id !== clientPresentation.sourceId
+      || !negationChain.root.source.known
+      || negationChain.root.targets.length !== group.targetIds.length
+      || negationChain.root.targets.some((target, index) => target.id !== group.targetIds[index])
+      || negationChain.rootEffectState !== null
+      || groupTargetEffectScope?.interactionId !== group.interactionId
+      || groupTargetEffectScope.groupFrameId !== group.groupFrameId
+      || groupTargetEffectScope.activeFrameId !== group.activeFrameId
+      || groupTargetEffectScope.checkpointId !== group.checkpointId
+      || groupTargetEffectScope.presentationRevision !== group.presentationRevision
+      || groupTargetEffectScope.sourceId !== clientPresentation.sourceId
+      || groupTargetEffectScope.cardKind !== group.cardKind
+      || !group.targetIds.includes(groupTargetEffectScope.targetId))) return null;
 
     const participants = group.participants;
     if (!group.targetIds.length || group.targetIds.length !== participants.length
@@ -2939,6 +2962,35 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     const rootEvent = rootEvents[0];
     if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
       || rootEvent.playedAs !== undefined || rootEvent.card.kind !== group.cardKind) return null;
+    const responses = isGroupNegationScene ? negationChain!.negationNodes.map((node, index) => {
+      const responseEvent = node.eventId
+        ? room.timeline.filter((event) => event.id === node.eventId)
+        : [];
+      const event = responseEvent.length === 1 ? responseEvent[0] : null;
+      const expectedCounterTarget = index === 0
+        ? node.counterTarget?.kind === "GROUP_TARGET_EFFECT"
+          && node.counterTarget.targetId === groupTargetEffectScope!.targetId
+        : node.counterTarget?.kind === "NEGATION_NODE" && node.counterTarget.index === index - 1;
+      const actor = node.actor.id ? room.players.find((player) => player.id === node.actor.id) : null;
+      if (!node.eventId || !node.resolutionId || !actor?.name || !expectedCounterTarget || !event
+        || event.type !== "card" || event.action !== "play" || event.presentation === false
+        || event.playedAs !== undefined || event.card?.kind !== "Negation"
+        || event.resolutionId !== node.resolutionId || event.player !== actor.name) return null;
+      return {
+        index,
+        eventId: node.eventId,
+        actorId: actor.id,
+        actorName: actor.name,
+        cardLabel: "NEGATION",
+        ariaLabel: `${actor.name} played Negation to counter ${index === 0
+          ? `${cardDefinition(group.cardKind).name} effect on ${room.players.find((player) => player.id === groupTargetEffectScope!.targetId)?.name ?? "the proven target"}`
+          : `Negation ${index}`}`,
+        counterTarget: index === 0
+          ? { kind: "GROUP_TARGET_EFFECT" as const, targetId: groupTargetEffectScope!.targetId }
+          : { kind: "RESPONSE" as const, index: index - 1 },
+      };
+    }) : [];
+    if (isGroupNegationScene && (responses.length !== negationChain!.negationNodes.length || responses.some((response) => response === null))) return null;
     const source = room.players.find((player) => player.id === clientPresentation.sourceId);
     if (!source?.name) return null;
     const targets = participants.map((participant) => {
@@ -2946,7 +2998,14 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       return player?.name ? { ...participant, playerName: player.name } : null;
     });
     if (targets.some((target) => target === null)) return null;
-    return { group, rootEvent, source, targets: targets as NonNullable<(typeof targets)[number]>[] };
+    return {
+      group,
+      rootEvent,
+      source,
+      targets: targets as NonNullable<(typeof targets)[number]>[],
+      groupTargetEffectScope: isGroupNegationScene ? groupTargetEffectScope : null,
+      responses: responses as NonNullable<(typeof responses)[number]>[],
+    };
   })();
   const rootAction = clientPresentation.rootAction;
   const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId)
@@ -2974,6 +3033,13 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       sourceId: clientPresentation.sourceId!,
       targetId: groupTargetBranchGraphCandidate.targets[0].playerId,
       groupTargets: groupTargetBranchGraphCandidate.targets,
+      ...(groupTargetBranchGraphCandidate.groupTargetEffectScope ? {
+        groupTargetEffectState: {
+          targetId: groupTargetBranchGraphCandidate.groupTargetEffectScope.targetId,
+          state: groupTargetBranchGraphCandidate.groupTargetEffectScope.effectState,
+        },
+        responses: groupTargetBranchGraphCandidate.responses,
+      } : {}),
       cardKind: groupTargetBranchGraphCandidate.group.cardKind,
       cardLabel: cardDefinition(groupTargetBranchGraphCandidate.group.cardKind).name.toUpperCase(),
       ariaLabel: `${groupTargetBranchGraphCandidate.source.name} played ${cardDefinition(groupTargetBranchGraphCandidate.group.cardKind).name}. ${groupTargetBranchGraphCandidate.targets.map((target) => `${target.playerName}: ${groupParticipantStatusLabel(target.status)}${target.outcome ? `, ${groupParticipantOutcomeLabel(target.outcome)}` : ""}`).join(". ")}`,

@@ -464,6 +464,7 @@ function groupTargetEffectScopeForSnapshot(
   scene: PresentationInteractionScene,
   identity: PresentationSnapshotIdentity,
   groupProgress: PresentationSnapshotGroupProgress | null,
+  expectedEffectState: "ACTIVE" | "BLOCKED",
 ): PresentationGroupTargetEffectScope | null {
   if (!value || typeof value !== "object" || Array.isArray(value) || !groupProgress) return null;
   const scope = value as Partial<PresentationGroupTargetEffectScope>;
@@ -479,7 +480,7 @@ function groupTargetEffectScopeForSnapshot(
     || !nonNegativeInteger(scope.presentationRevision) || scope.presentationRevision !== identity.presentationRevision
     || !nonEmptyString(scope.sourceId) || scope.sourceId !== scene.sourceId
     || (cardKind !== "RainingArrows" && cardKind !== "BarbarianInvasion") || cardKind !== groupProgress.cardKind
-    || !nonEmptyString(targetId)
+    || !nonEmptyString(targetId) || scope.effectState !== expectedEffectState
     || scene.stage !== "NEGATION" || scene.continuity.relation !== "SAME_FRAME"
     || scene.rootFrameId !== scene.activeFrameId || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== targetId
     || scene.participantRoles.sourceId !== scope.sourceId
@@ -497,6 +498,7 @@ function groupTargetEffectScopeForSnapshot(
     sourceId: scope.sourceId,
     cardKind,
     targetId,
+    effectState: expectedEffectState,
   };
 }
 
@@ -582,6 +584,24 @@ function reactionChainFor(
       nodes: links.map((link) => ({ nodeId: link!.nodeId as string, eventId: link!.eventId as string, resolutionId: link!.resolutionId as string })),
     };
   }
+  const rawPublicNodeEventLinks: unknown = (chain as { publicNodeEventLinks?: unknown }).publicNodeEventLinks;
+  let publicNodeEventLinks: NonNullable<PresentationSnapshot["reactionChain"]>["publicNodeEventLinks"] | undefined;
+  if (Array.isArray(rawPublicNodeEventLinks) && rawPublicNodeEventLinks.length === nodes.length) {
+    const links = rawPublicNodeEventLinks.map((value) => value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null);
+    const eventIds = links.map((link) => link?.eventId);
+    const validLinks = links.every((link, index) => Boolean(link
+      && link.nodeId === nodes[index].nodeId
+      && nonEmptyString(link.eventId) && nonEmptyString(link.resolutionId)))
+      && eventIds.every(nonEmptyString)
+      && new Set(eventIds).size === eventIds.length;
+    if (validLinks) publicNodeEventLinks = links.map((link) => ({
+      nodeId: link!.nodeId as string,
+      eventId: link!.eventId as string,
+      resolutionId: link!.resolutionId as string,
+    }));
+  }
   const rawRootEffectState: unknown = (chain as { rootEffectState?: unknown }).rootEffectState;
   const rootEffectState = rootCard && publicEventLinks
     && (rawRootEffectState === "ACTIVE" || rawRootEffectState === "BLOCKED")
@@ -592,13 +612,14 @@ function reactionChainFor(
     && groupProgress?.resolutionSemantics === "GROUP" && groupProgress.groupFrameId === scene.rootFrameId
     && groupProgress.activeFrameId === scene.activeFrameId;
   const groupTargetEffectScope = rawGroupTargetEffectScope !== undefined
-    ? groupTargetEffectScopeForSnapshot(rawGroupTargetEffectScope, scene, identity, groupProgress)
+    ? groupTargetEffectScopeForSnapshot(rawGroupTargetEffectScope, scene, identity, groupProgress, nodes.length % 2 === 0 ? "ACTIVE" : "BLOCKED")
     : null;
-  if ((groupNegation && !groupTargetEffectScope)
+  if ((groupNegation && (!groupTargetEffectScope || nodes.length > 0 && !publicNodeEventLinks))
     || (rawGroupTargetEffectScope !== undefined && (!groupTargetEffectScope || rootCard !== null))) return null;
   return {
     semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes,
     ...(groupTargetEffectScope ? { groupTargetEffectScope } : {}),
+    ...(publicNodeEventLinks ? { publicNodeEventLinks } : {}),
     ...(publicEventLinks ? { publicEventLinks } : {}),
     ...(rootEffectState ? { rootEffectState } : {}),
   };

@@ -141,10 +141,12 @@ export type ReactionChainView = {
 };
 
 export type ReactionChainNegationNodeView = {
+  eventId: string | null;
+  resolutionId: string | null;
   actor: PresentationDisplayIdentity;
   cardKind: "Negation";
   /** Validated public causal target, remapped from the server node link without exposing its graph ID. */
-  counterTarget: { kind: "ROOT" } | { kind: "NEGATION_NODE"; index: number } | null;
+  counterTarget: { kind: "ROOT" } | { kind: "NEGATION_NODE"; index: number } | { kind: "GROUP_TARGET_EFFECT"; targetId: string } | null;
 };
 
 export type DyingHandoffView = {
@@ -274,6 +276,7 @@ function groupTargetEffectScopeForClient(
   scene: PresentationInteractionScene,
   identity: NonNullable<PresentationSnapshot["identity"]>,
   groupProgress: PresentationSnapshotGroupProgress | null,
+  expectedEffectState: "ACTIVE" | "BLOCKED",
 ): PresentationGroupTargetEffectScope | null {
   if (!value || typeof value !== "object" || Array.isArray(value) || !groupProgress) return null;
   const scope = value as Partial<PresentationGroupTargetEffectScope>;
@@ -289,7 +292,7 @@ function groupTargetEffectScopeForClient(
     || !isInteger(scope.presentationRevision) || scope.presentationRevision !== identity.presentationRevision
     || !isString(scope.sourceId) || scope.sourceId !== scene.sourceId
     || (cardKind !== "RainingArrows" && cardKind !== "BarbarianInvasion") || cardKind !== groupProgress.cardKind
-    || !isString(targetId)
+    || !isString(targetId) || scope.effectState !== expectedEffectState
     || scene.stage !== "NEGATION" || scene.continuity.relation !== "SAME_FRAME"
     || scene.rootFrameId !== scene.activeFrameId || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== targetId
     || scene.participantRoles.sourceId !== scope.sourceId
@@ -307,6 +310,7 @@ function groupTargetEffectScopeForClient(
     sourceId: scope.sourceId,
     cardKind,
     targetId,
+    effectState: expectedEffectState,
   };
 }
 
@@ -389,6 +393,24 @@ function reactionChainForSnapshot(
       nodes: links.map((link) => ({ nodeId: link!.nodeId as string, eventId: link!.eventId as string, resolutionId: link!.resolutionId as string })),
     };
   }
+  const rawPublicNodeEventLinks: unknown = (chain as { publicNodeEventLinks?: unknown }).publicNodeEventLinks;
+  let publicNodeEventLinks: NonNullable<PresentationSnapshot["reactionChain"]>["publicNodeEventLinks"] | undefined;
+  if (Array.isArray(rawPublicNodeEventLinks) && rawPublicNodeEventLinks.length === nodes.length) {
+    const links = rawPublicNodeEventLinks.map((value) => value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null);
+    const eventIds = links.map((link) => link?.eventId);
+    const validLinks = links.every((link, index) => Boolean(link
+      && link.nodeId === nodes[index].nodeId
+      && isString(link.eventId) && isString(link.resolutionId)))
+      && eventIds.every(isString)
+      && new Set(eventIds).size === eventIds.length;
+    if (validLinks) publicNodeEventLinks = links.map((link) => ({
+      nodeId: link!.nodeId as string,
+      eventId: link!.eventId as string,
+      resolutionId: link!.resolutionId as string,
+    }));
+  }
   const rootEffectState = rootCard && publicEventLinks
     && (chain.rootEffectState === "ACTIVE" || chain.rootEffectState === "BLOCKED")
     ? chain.rootEffectState
@@ -398,13 +420,14 @@ function reactionChainForSnapshot(
     && groupProgress?.resolutionSemantics === "GROUP" && groupProgress.groupFrameId === scene.rootFrameId
     && groupProgress.activeFrameId === scene.activeFrameId;
   const groupTargetEffectScope = rawGroupTargetEffectScope !== undefined
-    ? groupTargetEffectScopeForClient(rawGroupTargetEffectScope, scene, identity, groupProgress)
+    ? groupTargetEffectScopeForClient(rawGroupTargetEffectScope, scene, identity, groupProgress, nodes.length % 2 === 0 ? "ACTIVE" : "BLOCKED")
     : null;
-  if ((groupNegation && !groupTargetEffectScope)
+  if ((groupNegation && (!groupTargetEffectScope || nodes.length > 0 && !publicNodeEventLinks))
     || (rawGroupTargetEffectScope !== undefined && (!groupTargetEffectScope || rootCard !== null))) return null;
   return {
     semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes,
     ...(groupTargetEffectScope ? { groupTargetEffectScope } : {}),
+    ...(publicNodeEventLinks ? { publicNodeEventLinks } : {}),
     ...(publicEventLinks ? { publicEventLinks } : {}),
     ...(rootEffectState ? { rootEffectState } : {}),
   };
@@ -782,17 +805,21 @@ export function buildInteractionStageView(
     } : null,
     reactionChainNegationNodes: view.stage === "NEGATION"
       ? (view.reactionChain?.nodes ?? []).map((node, index) => {
+        const publicEventLink = view.reactionChain?.publicNodeEventLinks?.find((link) => link.nodeId === node.nodeId)
+          ?? view.reactionChain?.publicEventLinks?.nodes.find((link) => link.nodeId === node.nodeId);
         const previousIndex = node.causedByNodeId === null
           ? -1
           : (view.reactionChain?.nodes ?? []).findIndex((candidate) => candidate.nodeId === node.causedByNodeId);
-        const counterTarget = view.reactionChain?.rootCard
-          ? node.causedByNodeId === null
-            ? { kind: "ROOT" as const }
+        const counterTarget = view.reactionChain?.groupTargetEffectScope && node.causedByNodeId === null
+          ? { kind: "GROUP_TARGET_EFFECT" as const, targetId: view.reactionChain.groupTargetEffectScope.targetId }
+          : node.causedByNodeId === null
+            ? view.reactionChain?.rootCard ? { kind: "ROOT" as const } : null
             : previousIndex >= 0 && previousIndex < index
               ? { kind: "NEGATION_NODE" as const, index: previousIndex }
-              : null
-          : null;
+              : null;
         return {
+          eventId: publicEventLink?.eventId ?? null,
+          resolutionId: publicEventLink?.resolutionId ?? null,
           actor: displayIdentity(node.actorId, "Unknown player", resolvePlayerName),
           cardKind: "Negation" as const,
           counterTarget,

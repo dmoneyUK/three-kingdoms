@@ -416,8 +416,8 @@ test("adapter carries only a proven, linked Negation history without adding UI c
   assert.equal("legalActions" in acting, false);
   const stage = buildInteractionStageView(acting, resolveDisplayName);
   assert.deepEqual(stage.reactionChainNegationNodes, [
-    { actor: { id: "B", name: "Zhao Yun", known: true }, cardKind: "Negation", counterTarget: { kind: "ROOT" } },
-    { actor: { id: "A", name: "Ma Chao", known: true }, cardKind: "Negation", counterTarget: { kind: "NEGATION_NODE", index: 0 } },
+    { eventId: "negation-event-1", resolutionId: "negation-resolution-1", actor: { id: "B", name: "Zhao Yun", known: true }, cardKind: "Negation", counterTarget: { kind: "ROOT" } },
+    { eventId: "negation-event-2", resolutionId: "negation-resolution-2", actor: { id: "A", name: "Ma Chao", known: true }, cardKind: "Negation", counterTarget: { kind: "NEGATION_NODE", index: 0 } },
   ], "validated server causal links become display-safe counter targets without graph IDs");
   const chain = buildReactionChainView(stage);
   assert.deepEqual(chain.publicEventLinks, {
@@ -486,10 +486,27 @@ test("adapter preserves Group Negation target-effect scope only for the current 
     sourceId: "A",
     cardKind: "RainingArrows",
     targetId: "B",
+    effectState: "ACTIVE",
   };
   const reactionChain = {
     semantics: "PROVEN", interactionId: interaction.interactionId, frameId: interaction.activeFrameId,
-    rootCard: null, nodes: [], groupTargetEffectScope: scope,
+    rootCard: null,
+    nodes: [
+      { nodeId: "group-negation-1", interactionId: interaction.interactionId, frameId: interaction.activeFrameId, causedByNodeId: null, actorId: "A", kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } },
+      { nodeId: "group-negation-2", interactionId: interaction.interactionId, frameId: interaction.activeFrameId, causedByNodeId: "group-negation-1", actorId: "B", kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } },
+    ],
+    groupTargetEffectScope: scope,
+    publicEventLinks: {
+      root: { eventId: "group-root-event", resolutionId: "group-root-resolution" },
+      nodes: [
+        { nodeId: "group-negation-1", eventId: "group-negation-event-1", resolutionId: "group-negation-resolution-1" },
+        { nodeId: "group-negation-2", eventId: "group-negation-event-2", resolutionId: "group-negation-resolution-2" },
+      ],
+    },
+    publicNodeEventLinks: [
+      { nodeId: "group-negation-1", eventId: "group-negation-event-1", resolutionId: "group-negation-resolution-1" },
+      { nodeId: "group-negation-2", eventId: "group-negation-event-2", resolutionId: "group-negation-resolution-2" },
+    ],
   };
   const snapshotValue = snapshot({
     interaction,
@@ -507,9 +524,14 @@ test("adapter preserves Group Negation target-effect scope only for the current 
   assert.deepEqual(observer.reactionChain?.groupTargetEffectScope, scope, "the public branch relation is viewer-equal");
   const stage = buildInteractionStageView(acting, resolveDisplayName);
   assert.deepEqual(stage.reactionChainGroupTargetEffectScope, scope);
-  assert.deepEqual(buildReactionChainView(stage).groupTargetEffectScope, scope);
+  const chain = buildReactionChainView(stage);
+  assert.deepEqual(chain.groupTargetEffectScope, scope);
+  assert.deepEqual(chain.negationNodes.map(({ counterTarget }) => counterTarget), [
+    { kind: "GROUP_TARGET_EFFECT", targetId: "B" },
+    { kind: "NEGATION_NODE", index: 0 },
+  ], "Group-root Negation nodes retain proven target-effect and nested-response counter links");
 
-  for (const malformedScope of [undefined, { ...scope, targetId: "C" }, { ...scope, groupFrameId: "other-frame" }, { ...scope, presentationRevision: 4 }]) {
+  for (const malformedScope of [undefined, { ...scope, targetId: "C" }, { ...scope, groupFrameId: "other-frame" }, { ...scope, presentationRevision: 4 }, { ...scope, effectState: "BLOCKED" }]) {
     const malformed = buildPresentationClientView({
       ...snapshotValue,
       reactionChain: { ...reactionChain, groupTargetEffectScope: malformedScope },

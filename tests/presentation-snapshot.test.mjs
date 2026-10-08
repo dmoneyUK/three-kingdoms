@@ -267,6 +267,7 @@ test("snapshot carries only Group Negation scope bound to the active target effe
     sourceId: "A",
     cardKind: "RainingArrows",
     targetId: "B",
+    effectState: "ACTIVE",
   };
   const reactionChain = {
     semantics: "PROVEN", interactionId: interaction.interactionId, frameId: interaction.activeFrameId,
@@ -294,6 +295,7 @@ test("snapshot carries only Group Negation scope bound to the active target effe
     { ...targetEffectScope, presentationRevision: targetEffectScope.presentationRevision + 1 },
     { ...targetEffectScope, sourceId: "other-source" },
     { ...targetEffectScope, cardKind: "BarbarianInvasion" },
+    { ...targetEffectScope, effectState: "BLOCKED" },
   ]) {
     assert.equal(compose({ ...reactionChain, groupTargetEffectScope: malformed }).reactionChain, null,
       "a target/frame/checkpoint/revision/source/card mismatch withholds the reaction chain");

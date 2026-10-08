@@ -156,6 +156,12 @@ export type PresentationReactionChainPublicEventLinks = {
   nodes: readonly { nodeId: string; eventId: string; resolutionId: string }[];
 };
 
+export type PresentationReactionChainPublicNodeEventLink = {
+  nodeId: string;
+  eventId: string;
+  resolutionId: string;
+};
+
 /** A Group target-effect identity is the public tuple (interaction, Group frame, target). */
 export type PresentationGroupTargetEffectScope = {
   semantics: "PROVEN";
@@ -168,6 +174,7 @@ export type PresentationGroupTargetEffectScope = {
   sourceId: string;
   cardKind: "RainingArrows" | "BarbarianInvasion";
   targetId: string;
+  effectState: "ACTIVE" | "BLOCKED";
 };
 
 export type PresentationReactionChain = {
@@ -178,6 +185,8 @@ export type PresentationReactionChain = {
   nodes: readonly PresentationReactionChainNode[];
   /** Present only when a Group Negation chain is proven to scope one target branch. */
   groupTargetEffectScope?: PresentationGroupTargetEffectScope;
+  /** Exact public events for committed Negation nodes, independent of root-card scope. */
+  publicNodeEventLinks?: readonly PresentationReactionChainPublicNodeEventLink[];
   /** Exact public timeline references for graph consumers; absent when any link is unproven. */
   publicEventLinks?: PresentationReactionChainPublicEventLinks;
   /** Current single-target root effect state; absent unless its public card chain is complete. */
@@ -1012,7 +1021,7 @@ function groupTargetEffectScopeFor(
   scene: PresentationInteractionScene | null,
   groupValues: GroupProjectionValues | null,
   participantProgress: ReturnType<typeof groupParticipantProgress>,
-): PresentationGroupTargetEffectScope | null {
+): Omit<PresentationGroupTargetEffectScope, "effectState"> | null {
   const item = record(pending);
   const continuation = record(item?.continuation);
   const effect = record(continuation?.effect);
@@ -1108,10 +1117,10 @@ function reactionChainFor(
       || bumperProgress.activeFrameId !== frame.frameId
       || scene.decisionActorId !== null || scene.activeResolverId !== null) return null;
   } else if (!stringValue(scene.decisionActorId) || item.actorId !== scene.decisionActorId) return null;
-  const groupTargetEffectScope = effect?.kind === "group"
+  const groupTargetEffectScopeIdentity = effect?.kind === "group"
     ? groupTargetEffectScopeFor(envelope, pending, scene, groupValues, groupProgress)
     : null;
-  if (effect?.kind === "group" && !groupTargetEffectScope) return null;
+  if (effect?.kind === "group" && !groupTargetEffectScopeIdentity) return null;
   const rawHistory: unknown = continuation.negationHistory;
   if (rawHistory !== undefined && !Array.isArray(rawHistory)) return null;
   const history = (rawHistory ?? []) as unknown[];
@@ -1199,6 +1208,12 @@ function reactionChainFor(
     ? publicCardEventFor(rootPhysicalCardId, expectedRootCardKind)
     : null;
   const linkedNodeEvents = nodeEventLinks.filter((link): link is NonNullable<typeof link> => link !== null);
+  const publicNodeEventIds = linkedNodeEvents.map(({ eventId }) => eventId);
+  const publicNodeEventLinks = nodeEventLinks.length === nodes.length
+    && linkedNodeEvents.length === nodes.length
+    && new Set(publicNodeEventIds).size === publicNodeEventIds.length
+    ? linkedNodeEvents
+    : undefined;
   const allPublicEvents = rootEvent ? [rootEvent, ...linkedNodeEvents] : [];
   const eventIds = allPublicEvents.map(({ eventId }) => eventId);
   const publicEventLinks = rootEvent && nodeEventLinks.length === nodes.length && linkedNodeEvents.length === nodes.length
@@ -1211,9 +1226,23 @@ function reactionChainFor(
     && chainDepth === nodes.length && continuation.negated === (chainDepth % 2 === 1)
     ? continuation.negated ? "BLOCKED" as const : "ACTIVE" as const
     : undefined;
+  const groupChainStateIsProven = groupTargetEffectScopeIdentity
+    && typeof continuation.negated === "boolean"
+    && typeof chainDepth === "number" && Number.isSafeInteger(chainDepth) && chainDepth >= 0
+    && chainDepth === nodes.length
+    && continuation.negated === (chainDepth % 2 === 1)
+    && (nodes.length === 0 || publicNodeEventLinks !== undefined);
+  const groupTargetEffectScope = groupTargetEffectScopeIdentity && groupChainStateIsProven
+    ? {
+      ...groupTargetEffectScopeIdentity,
+      effectState: continuation.negated ? "BLOCKED" as const : "ACTIVE" as const,
+    }
+    : null;
+  if (effect?.kind === "group" && !groupTargetEffectScope) return null;
   return {
     semantics: "PROVEN", interactionId: scene.interactionId, frameId: scene.activeFrameId, rootCard, nodes,
     ...(groupTargetEffectScope ? { groupTargetEffectScope } : {}),
+    ...(groupTargetEffectScope && publicNodeEventLinks ? { publicNodeEventLinks } : {}),
     ...(publicEventLinks ? { publicEventLinks } : {}),
     ...(rootEffectState ? { rootEffectState } : {}),
   };
