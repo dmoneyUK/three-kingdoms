@@ -168,6 +168,7 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
     rootAction: null,
     skillEffectAction: null,
     skillEffectSettlements: [],
+    dismantleSettlements: [],
     duelExchange: null,
     selfTargetActions: [],
     continuity: { relation: "ROOT_FRAME", parentFrameId: null },

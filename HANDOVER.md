@@ -5,20 +5,18 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2.6-ATTACK-ROOT-GRAPH-ROUTING-LEGIBILITY-01` was pushed as
-`d124878089c27a5baa3f5e94410d85249e62c8e6`. Actions run `37844615401`
-(#919) attempt 1 failed browser shard 1 after Wrangler/Miniflare logged
-`Network connection lost` and the local Worker port closed; 397/418 browser
-tests passed before 21 failures cascaded from that disconnect. Attempt 2
-passed all five jobs, including both browser shards, API, lint/fast, deploy,
-and production smoke, on that exact SHA. No code change was needed for the
-transient worker disconnect.
+`UX2.6-PHASE-D-DISMANTLE-SETTLEMENT-LIFECYCLE-01` implementation and focused
+validation are complete locally; task commit/push is pending. The exact remote
+parent `2398922fc38d56ff3163d69c81ffe3c321ee080a` passed Actions run
+`37847604812` (#920), checked before this task's commit. New task CI is not yet
+available and must be recorded after push.
 
 ## Design checkpoint
 
 Latest remote `docs/UX2-refine.md` blob:
 `7feb8af937b6407f3f33c3959325db8d3f188cf4` (unchanged). §§6.9–6.11,
-6.17–6.21, and 6.23–6.26 reviewed at the task boundary.
+6.17–6.21, and 6.23–6.26 reviewed at the task boundary; §4D and its Section 6
+gate were also rechecked. The current task was already active in HANDOVER.
 
 ## Current task
 

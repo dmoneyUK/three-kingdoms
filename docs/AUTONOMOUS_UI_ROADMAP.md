@@ -2029,6 +2029,24 @@ Only a proven regression or new Reviewer-approved design requirement does.
   worker network disconnect followed by cascading browser connection failures.
   Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-D-DISMANTLE-SETTLEMENT-LIFECYCLE-01 — Dismantle settlement
+
+- A committed real Dismantle target-card choice now receives a server-authored,
+  fail-closed public settlement proof linked to the exact played Dismantle root
+  and resolution. The semantic proof carries no selected-card identity; the
+  selected card appears only in the ordinary public discard event after the
+  rules resolve. The physical-seat root graph shows an accessible resolved
+  state for 0.4–0.8 seconds before its fade, with a shorter no-exit reduced-
+  motion path; the settlement reveal does not duplicate the discard card or
+  move the root, Seats, Stage, or Dock.
+- Real server-backed API coverage passed 22/22; PresentationV2 engine coverage
+  passed 36/36; room-safety and client tests passed 63/63; production browser
+  coverage passed 4/4 at 390×844, 480×900, and 1440×900, including reduced
+  motion. Build, targeted ESLint, and `git diff --check` passed. The exact
+  pre-commit parent `2398922fc38d56ff3163d69c81ffe3c321ee080a` passed Actions
+  run `37847604812` (#920); CI for this task's commit remains pending after
+  push. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

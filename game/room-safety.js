@@ -38,7 +38,29 @@ function normalizePresentationMeta(entry) {
   if (entry.effectNotice === true) metadata.effectNotice = true;
   if (entry.judgement === true) metadata.judgement = true;
   if (entry.initialDeal === true) metadata.initialDeal = true;
+  if (isRecord(entry.publicDismantleSettlement)
+    && entry.publicDismantleSettlement.semantics === "PROVEN"
+    && typeof entry.publicDismantleSettlement.rootEventId === "string"
+    && typeof entry.publicDismantleSettlement.rootResolutionId === "string"
+    && typeof entry.publicDismantleSettlement.sourceId === "string"
+    && typeof entry.publicDismantleSettlement.targetId === "string"
+    && entry.publicDismantleSettlement.outcome === "DISMANTLE_RESOLVED") {
+    metadata.publicDismantleSettlement = {
+      semantics: "PROVEN",
+      rootEventId: entry.publicDismantleSettlement.rootEventId,
+      rootResolutionId: entry.publicDismantleSettlement.rootResolutionId,
+      sourceId: entry.publicDismantleSettlement.sourceId,
+      targetId: entry.publicDismantleSettlement.targetId,
+      outcome: "DISMANTLE_RESOLVED",
+    };
+  }
   return metadata;
+}
+
+function normalizeTimelineEvent(entry) {
+  const event = { ...entry };
+  delete event.publicDismantleSettlement;
+  return { ...event, ...normalizePresentationMeta(entry) };
 }
 
 function normalizePlayers(value) {
@@ -127,14 +149,14 @@ export function normalizeTimeline(value) {
   if (!Array.isArray(value)) return [];
   return value.map((entry) => {
     if (!isRecord(entry) || typeof entry.type !== "string") return null;
-    if (entry.type === "message") return typeof entry.message === "string" ? { ...entry, ...normalizePresentationMeta(entry) } : null;
+    if (entry.type === "message") return typeof entry.message === "string" ? normalizeTimelineEvent(entry) : null;
     if (entry.type === "card") {
       const card = normalizeCard(entry.card);
-      return card ? { ...entry, ...normalizePresentationMeta(entry), card } : null;
+      return card ? { ...normalizeTimelineEvent(entry), card } : null;
     }
     if (entry.type === "cards") {
       const cards = normalizeCards(entry.cards);
-      return cards.length ? { ...entry, ...normalizePresentationMeta(entry), cards } : null;
+      return cards.length ? { ...normalizeTimelineEvent(entry), cards } : null;
     }
     return null;
   }).filter(Boolean);

@@ -24,7 +24,7 @@ import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { projectPresentationV2, type PresentationAttackDodgeResponseProof, type PresentationDuelAttackResponseProof, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof } from "../../../game/presentation-v2";
+import { projectPresentationV2, type PresentationAttackDodgeResponseProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
@@ -35,7 +35,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string } };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string } };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null; causal_envelope_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -619,7 +619,35 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
+}
+function dismantleSettlementProofFor(room: RoomRow, pending: TargetCardPending, log: string[]): PresentationDismantleSettlementProof | undefined {
+  if (pending.cardKind !== "Dismantle") return undefined;
+  const timeline = gameTimeline(log);
+  const presentation = projectPresentationV2({
+    pending,
+    currentAction: null,
+    actionRevision: "",
+    timeline,
+    causalEnvelope: parseCausalEnvelope(room.causal_envelope_json),
+  });
+  const rootAction = presentation.rootAction;
+  if (!rootAction || rootAction.semantics !== "PROVEN" || rootAction.action !== "STRATAGEM"
+    || rootAction.cardKind !== "Dismantle" || rootAction.sourceId !== pending.sourceId
+    || rootAction.targetId !== pending.targetId) return undefined;
+  const rootEvents = timeline.filter((event) => event.id === rootAction.rootEventId);
+  const rootEvent = rootEvents.length === 1 ? rootEvents[0] : null;
+  const rootResolutionId = rootEvent && typeof rootEvent.resolutionId === "string" ? rootEvent.resolutionId : "";
+  if (!rootEvent || rootEvent.type !== "card" || rootEvent.action !== "play"
+    || rootEvent.presentation === false || rootEvent.card?.kind !== "Dismantle" || !rootResolutionId) return undefined;
+  return {
+    semantics: "PROVEN",
+    rootEventId: rootAction.rootEventId,
+    rootResolutionId,
+    sourceId: rootAction.sourceId,
+    targetId: rootAction.targetId,
+    outcome: "DISMANTLE_RESOLVED",
+  };
 }
 function addTriggeredEffectNotice(log: string[], actor: string, label: string) {
   return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined, { effectNotice: true });
@@ -5875,7 +5903,14 @@ export async function POST(request: Request) {
     const lostEquipment = zone === "equipment" ? [chosen] : [];
     discard.push(...(pending.heldCards ?? []));
     if (pending.cardKind === "Dismantle") {
-      discard.push(chosen); log = addCardEvent(log, target.name, chosen, target.name, "discard");
+      const settlementProof = dismantleSettlementProofFor(liveRoom, pending, log);
+      discard.push(chosen);
+      log = addCardEvent(log, target.name, chosen, target.name, "discard", true, settlementProof ? {
+        resolutionId: settlementProof.rootResolutionId,
+        importance: "essential",
+        finalResult: true,
+        publicDismantleSettlement: settlementProof,
+      } : undefined);
       log = addHistory(log, `${me.name} uses Burning Bridges to discard one ${zone === "hand" ? "hidden hand" : zone} card from ${target.name}.`);
     } else {
       sourceHand = [...sourceHand, chosen];

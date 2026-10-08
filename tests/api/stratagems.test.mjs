@@ -2,6 +2,7 @@
 import test from "node:test";
 import { projectPresentationV2 } from "../../game/presentation-v2.ts";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
+import { buildPresentationClientView } from "../../game/presentation-client.ts";
 import {
   assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -465,6 +466,43 @@ test("target-card CurrentAction projects anonymous eligible positions only to it
   const submitted = await requestAndSettle("choose_target_card", { code: populated.game.code, token: populated.sourceMember.token, targetCardZone: "hand", targetCardIndex: 1 });
   assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
   assert.ok(discardIds(populated.game.code).includes(populated.hidden[1].id), "the existing zone/index payload remains authoritative");
+  const settledView = (await state(populated.game.code, populated.sourceMember.token)).data;
+  assert.deepEqual(settledView.presentationV2.dismantleSettlements, [{
+    semantics: "PROVEN",
+    eventId: settledView.timeline.find((event) => event.publicDismantleSettlement)?.id,
+    rootEventId: rootAction.rootEventId,
+    rootResolutionId: publicDismantlePlays[0].resolutionId,
+    sourceId: populated.source.id,
+    targetId: populated.target.id,
+    outcome: "DISMANTLE_RESOLVED",
+  }], "the committed target-card choice carries a server-owned result linked to its exact Dismantle root");
+  const dismantleSettlement = settledView.presentationV2.dismantleSettlements[0];
+  const settlementEvent = settledView.timeline.find((event) => event.id === dismantleSettlement.eventId);
+  assert.ok(settlementEvent, "settlement proof points to one persisted timeline event");
+  assert.equal(settlementEvent?.resolutionId, dismantleSettlement.rootResolutionId);
+  assert.equal(settlementEvent?.finalResult, true);
+  assert.equal(settlementEvent?.importance, "essential");
+  assert.deepEqual(settlementEvent?.publicDismantleSettlement, {
+    semantics: "PROVEN",
+    rootEventId: dismantleSettlement.rootEventId,
+    rootResolutionId: dismantleSettlement.rootResolutionId,
+    sourceId: dismantleSettlement.sourceId,
+    targetId: dismantleSettlement.targetId,
+    outcome: "DISMANTLE_RESOLVED",
+  });
+  assert.equal(JSON.stringify(dismantleSettlement).includes(populated.hidden[1].id), false, "the settlement proof carries no selected-card identity");
+  assert.deepEqual(settledView.presentationSnapshot.dismantleSettlements, settledView.presentationV2.dismantleSettlements);
+  assert.deepEqual(buildPresentationClientView(settledView.presentationSnapshot, populated.source.id).dismantleSettlements, settledView.presentationV2.dismantleSettlements);
+  const settledObserver = (await state(populated.game.code, populated.targetMember.token)).data;
+  assert.deepEqual(settledObserver.presentationSnapshot.dismantleSettlements, settledView.presentationSnapshot.dismantleSettlements, "settlement proof is public and viewer-equal");
+  assert.equal(JSON.stringify(settledObserver.presentationSnapshot.dismantleSettlements).includes(populated.hidden[1].id), false);
+  assert.equal(settlementEvent?.card?.id, populated.hidden[1].id, "the selected card becomes visible only through the ordinary public discard event");
+
+  const settledInput = { pending: null, currentAction: settledView.currentAction, actionRevision: settledView.actionRevision, timeline: settledView.timeline, causalEnvelope: settledView.causalEnvelope };
+  assert.deepEqual(projectPresentationV2({ ...settledInput, timeline: [...settledView.timeline, settlementEvent] }).dismantleSettlements, [], "duplicate settlement event IDs fail closed");
+  assert.deepEqual(projectPresentationV2({ ...settledInput, timeline: settledView.timeline.filter((event) => event.id !== rootAction.rootEventId) }).dismantleSettlements, [], "a missing exact Dismantle root event fails closed");
+  assert.deepEqual(projectPresentationV2({ ...settledInput, timeline: settledView.timeline.map((event) => event.id === dismantleSettlement.eventId ? { ...event, resolutionId: "unrelated-resolution" } : event) }).dismantleSettlements, [], "a mismatched root resolution fails closed");
+  assert.deepEqual(projectPresentationV2({ ...settledInput, timeline: settledView.timeline.map((event) => event.id === dismantleSettlement.eventId ? { ...event, publicDismantleSettlement: { ...event.publicDismantleSettlement, rootEventId: "missing-root" } } : event) }).dismantleSettlements, [], "a mismatched root link fails closed");
 
   const emptied = await openTargetCardPending("empty");
   setHand(emptied.target.id, [], 4, 4);

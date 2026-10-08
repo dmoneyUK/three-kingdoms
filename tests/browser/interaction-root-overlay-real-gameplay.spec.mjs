@@ -191,6 +191,31 @@ async function observeAttackDodgeSettlement(page) {
   });
 }
 
+async function observeDismantleSettlement(page) {
+  await page.evaluate(() => {
+    const timing = window.__wtkDismantleSettlementTiming = { shownAt: null, exitingAt: null, removedAt: null, outcome: null };
+    const capture = () => {
+      const overlay = document.querySelector('[data-root-action-overlay="true"]');
+      const node = overlay?.querySelector('[data-root-action-settled="true"]');
+      if (node && overlay?.dataset.rootActionReady === "true" && timing.shownAt === null) {
+        timing.shownAt = performance.now();
+        timing.outcome = node.dataset.rootActionSettlementOutcome ?? null;
+        timing.resultLabel = node.querySelector("small")?.textContent?.trim() ?? null;
+        timing.overlayLabel = overlay.getAttribute("aria-label");
+      }
+      if (node?.classList.contains("is-settlement-exiting") && timing.exitingAt === null) timing.exitingAt = performance.now();
+      if (!node && timing.shownAt !== null && timing.removedAt === null) timing.removedAt = performance.now();
+    };
+    new MutationObserver(capture).observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "data-root-action-ready", "data-root-action-settled", "data-root-action-settlement-outcome", "data-root-action-settlement-exiting"],
+    });
+    capture();
+  });
+}
+
 async function playPeachThroughPage(page) {
   await page.locator(`[data-hand-card-id="${peach.id}"] .game-card`).click();
   const play = page.locator('[data-console-surface="local-operation"] button.primary');
@@ -790,6 +815,7 @@ for (const viewport of [
     });
     await testInfo.attach(`dismantle-root-${viewport.width}x${viewport.height}.png`, { body: await page.screenshot(), contentType: "image/png" });
 
+    await observeDismantleSettlement(page);
     const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 1" });
     await hiddenPosition.click();
     await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
@@ -804,9 +830,131 @@ for (const viewport of [
     const chooseResponse = await choosePromise;
     expect(chooseResponse.ok()).toBe(true);
     await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot?.rootAction ?? null, { timeout: 20_000 }).toBeNull();
-    expect((await roomView(request, seed, 0)).discardTop.id).toBe(hiddenCard.id);
+    const settledView = await roomView(request, seed, 0);
+    expect(settledView.discardTop.id).toBe(hiddenCard.id);
+    expect(settledView.presentationSnapshot.dismantleSettlements).toHaveLength(1);
+    const settlement = settledView.presentationSnapshot.dismantleSettlements[0];
+    expect(settlement).toMatchObject({
+      semantics: "PROVEN", rootEventId: rootAction.rootEventId,
+      rootResolutionId: rootEvent.resolutionId, sourceId, targetId, outcome: "DISMANTLE_RESOLVED",
+    });
+    expect(JSON.stringify(settlement)).not.toContain(hiddenCard.id);
+    const settlementEvent = settledView.timeline.find((event) => event.id === settlement.eventId);
+    expect(settlementEvent).toMatchObject({
+      type: "card", action: "discard", importance: "essential", finalResult: true,
+      resolutionId: settlement.rootResolutionId,
+      publicDismantleSettlement: {
+        semantics: "PROVEN", rootEventId: settlement.rootEventId,
+        rootResolutionId: settlement.rootResolutionId, sourceId, targetId, outcome: "DISMANTLE_RESOLVED",
+      },
+    });
+    const observerSettledView = await roomView(request, seed, 2);
+    expect(observerSettledView.presentationSnapshot.dismantleSettlements).toEqual(settledView.presentationSnapshot.dismantleSettlements);
+    expect(JSON.stringify(observerSettledView.presentationSnapshot.dismantleSettlements)).not.toContain(hiddenCard.id);
+
+    const settledNode = page.locator('[data-root-action-card="true"][data-root-action-settled="true"]');
+    await expect(settledNode).toBeVisible({ timeout: 10_000 });
+    await expect(settledNode).toHaveAttribute("data-root-action-settlement-outcome", "DISMANTLE_RESOLVED");
+    await expect(page.locator('[data-root-action-overlay="true"]')).toHaveAttribute("aria-label", "SOURCE played Burning Bridge targeting TARGET. Dismantle resolved.");
+    const settledGeometry = await measure(page, sourceId, targetId);
+    const [settledStageBox, settledDockBox] = await Promise.all([
+      page.locator(".play-table").boundingBox(), page.locator(".local-player-dock").boundingBox(),
+    ]);
+    expect(settledStageBox && settledDockBox).toBeTruthy();
+    for (const [before, after] of [[stageBox, settledStageBox], [dockBox, settledDockBox]]) {
+      expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(after.width - before.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(after.height - before.height)).toBeLessThanOrEqual(1);
+    }
+    expect(Math.abs(settledGeometry.card.x - geometry.card.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(settledGeometry.card.y - geometry.card.y)).toBeLessThanOrEqual(1);
+    for (const anchorName of ["source", "target"]) {
+      expect(Math.abs(settledGeometry[anchorName].x - geometry[anchorName].x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(settledGeometry[anchorName].y - geometry[anchorName].y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(settledGeometry[anchorName].width - geometry[anchorName].width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(settledGeometry[anchorName].height - geometry[anchorName].height)).toBeLessThanOrEqual(1);
+    }
+    await expect(page.locator('[data-root-action-edge="source"]')).toHaveCount(1);
+    await expect(page.locator('[data-root-action-edge="target"]')).toHaveCount(1);
+    await expect(page.locator(".active-table-reveal .game-card")).toHaveCount(0);
+    expect(settledGeometry.documentWidth).toBeLessThanOrEqual(viewport.width);
+    await expect.poll(() => page.evaluate(() => window.__wtkDismantleSettlementTiming.removedAt), { timeout: 5_000 }).not.toBeNull();
+    const settlementTiming = await page.evaluate(() => window.__wtkDismantleSettlementTiming);
+    expect(settlementTiming.outcome).toBe("DISMANTLE_RESOLVED");
+    expect(settlementTiming.shownAt).not.toBeNull();
+    expect(settlementTiming.exitingAt).not.toBeNull();
+    expect(settlementTiming.removedAt).not.toBeNull();
+    expect(settlementTiming.exitingAt - settlementTiming.shownAt).toBeGreaterThanOrEqual(400);
+    expect(settlementTiming.exitingAt - settlementTiming.shownAt).toBeLessThanOrEqual(800);
+    expect(settlementTiming.removedAt - settlementTiming.shownAt).toBeGreaterThanOrEqual(550);
+    await testInfo.attach(`dismantle-settlement-${viewport.width}x${viewport.height}.json`, {
+      body: JSON.stringify({ viewport, settlement, settlementTiming, geometry: settledGeometry }, null, 2), contentType: "application/json",
+    });
   });
 }
+
+test("real Dismantle settlement preserves its semantic result with reduced motion", async ({ page, request }, testInfo) => {
+  test.setTimeout(60_000);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const hiddenCard = { id: "root-overlay-real-dismantle-reduced-hidden", kind: "Peach", suit: "♥", rank: "3" };
+  const seed = await seedGame(request, 4, { sourceCard: dismantle, targetCard: hiddenCard });
+  const sourceId = seed.players[0].id;
+  const targetId = seed.players[1].id;
+  await openGame(page, seed, 0, { width: 390, height: 844 });
+  await playTargetedStratagemThroughPage(page, "TARGET", dismantle, "Dismantle");
+  await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot?.rootAction?.cardKind ?? null, { timeout: 20_000 }).toBe("Dismantle");
+  const dialog = page.getByRole("dialog", { name: "Burning Bridge target card selection" });
+  await expect(dialog).toBeVisible();
+  await observeDismantleSettlement(page);
+  await dialog.getByRole("button", { name: "Hidden hand card 1" }).click();
+  const use = dialog.getByRole("button", { name: "Use Burning Bridge" });
+  await expect(use).toBeEnabled();
+  const choosePromise = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+    catch { return false; }
+  });
+  await use.click();
+  expect((await choosePromise).ok()).toBe(true);
+  await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot?.dismantleSettlements?.length ?? 0, { timeout: 20_000 }).toBe(1);
+  try {
+    await expect.poll(() => page.evaluate(() => window.__wtkDismantleSettlementTiming.shownAt !== null), { timeout: 10_000 }).toBe(true);
+  } catch (error) {
+    const diagnostic = await page.evaluate(() => {
+      const overlay = document.querySelector('[data-root-action-overlay="true"]');
+      const card = overlay?.querySelector('[data-root-action-card="true"]');
+      return {
+        timing: window.__wtkDismantleSettlementTiming,
+        overlay: overlay ? {
+          enabled: overlay.dataset.rootActionEnabled,
+          ready: overlay.dataset.rootActionReady,
+          mode: overlay.dataset.rootActionDisplayMode,
+          layout: overlay.dataset.rootActionLayoutState,
+          fallback: overlay.dataset.rootActionFallbackReason,
+          sourceId: overlay.dataset.rootActionSourceId,
+          targetId: overlay.dataset.rootActionTargetId,
+          ariaHidden: overlay.getAttribute("aria-hidden"),
+        } : null,
+        card: card ? { ariaHidden: card.getAttribute("aria-hidden"), bounds: card.getBoundingClientRect().toJSON() } : null,
+      };
+    });
+    await testInfo.attach("dismantle-reduced-motion-visibility.json", { body: JSON.stringify(diagnostic, null, 2), contentType: "application/json" });
+    throw new Error(`${error.message}\nDismantle reduced-motion diagnostic: ${JSON.stringify(diagnostic)}`);
+  }
+  await expect.poll(() => page.evaluate(() => window.__wtkDismantleSettlementTiming.removedAt), { timeout: 5_000 }).not.toBeNull();
+  const timing = await page.evaluate(() => window.__wtkDismantleSettlementTiming);
+  expect(timing.outcome).toBe("DISMANTLE_RESOLVED");
+  expect(timing.resultLabel).toBe("RESOLVED");
+  expect(timing.overlayLabel).toBe("SOURCE played Burning Bridge targeting TARGET. Dismantle resolved.");
+  expect(timing.exitingAt).toBeNull();
+  expect(timing.removedAt - timing.shownAt).toBeGreaterThanOrEqual(80);
+  expect(timing.removedAt - timing.shownAt).toBeLessThanOrEqual(400);
+  const settledView = await roomView(request, seed, 0);
+  expect(JSON.stringify(settledView.presentationSnapshot.dismantleSettlements)).not.toContain(hiddenCard.id);
+  expect((await roomView(request, seed, 2)).presentationSnapshot.dismantleSettlements).toEqual(settledView.presentationSnapshot.dismantleSettlements);
+  expect(sourceId).not.toBe(targetId);
+});
 
 for (const viewport of [
   { width: 390, height: 844 },
