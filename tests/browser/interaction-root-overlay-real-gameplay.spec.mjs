@@ -102,6 +102,29 @@ async function playDodgeThroughPage(page) {
   if (!response.ok()) throw new Error(`Dodge submission failed: ${await response.text()}`);
 }
 
+async function observeAttackDodgeSettlement(page) {
+  await page.evaluate(() => {
+    const timing = window.__wtkAttackDodgeSettlementTiming = { shownAt: null, exitingAt: null, removedAt: null, outcome: null };
+    const capture = () => {
+      const overlay = document.querySelector('[data-root-action-overlay="true"]');
+      const node = overlay?.querySelector('[data-root-action-settled="true"]');
+      if (node && overlay?.dataset.rootActionReady === "true" && timing.shownAt === null) {
+        timing.shownAt = performance.now();
+        timing.outcome = node.dataset.rootActionSettlementOutcome ?? null;
+      }
+      if (node?.classList.contains("is-settlement-exiting") && timing.exitingAt === null) timing.exitingAt = performance.now();
+      if (!node && timing.shownAt !== null && timing.removedAt === null) timing.removedAt = performance.now();
+    };
+    new MutationObserver(capture).observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "data-root-action-ready", "data-root-action-settled", "data-root-action-settlement-outcome", "data-root-action-settlement-exiting"],
+    });
+    capture();
+  });
+}
+
 async function playPeachThroughPage(page) {
   await page.locator(`[data-hand-card-id="${peach.id}"] .game-card`).click();
   const play = page.locator('[data-console-surface="local-operation"] button.primary');
@@ -308,6 +331,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       expect(openView.presentationSnapshot.attackDodgeResponses ?? []).toEqual([]);
       const before = await targetPage.evaluate(() => window.__wtkRootOverlayPreGraphAnchors);
       expect(before, "capture physical anchors before Dodge submission").toBeTruthy();
+      await targetPage.emulateMedia({ reducedMotion: "no-preference" });
+      await observeAttackDodgeSettlement(targetPage);
 
       await playDodgeThroughPage(targetPage);
       await expect.poll(async () => (await roomView(request, seed, 2)).presentationSnapshot?.attackDodgeResponses?.length ?? 0, { timeout: 20_000 }).toBe(1);
@@ -351,11 +376,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
         throw error;
       }
       await expect(dodgeCard).toBeVisible({ timeout: 20_000 });
+      await expect(rootCard).toHaveAttribute("data-root-action-settled", "true");
+      await expect(rootCard).toHaveAttribute("data-root-action-settlement-event-id", proof.responseEventId);
+      await expect(rootCard).toHaveAttribute("data-root-action-settlement-outcome", "ATTACK_BLOCKED_BY_DODGE");
+      await expect(rootCard.locator("small")).toHaveText("RESOLVED");
       await expect(dodgeCard).toHaveAttribute("data-response-event-id", proof.responseEventId);
       await expect(dodgeCard).toHaveAttribute("aria-label", "TARGET played Dodge to block SOURCE's Attack against TARGET");
       await expect(rootCard).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET");
-      await expect(overlay).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET. TARGET played Dodge to block SOURCE's Attack against TARGET.");
-      await expect(targetPage.getByRole("img", { name: /SOURCE played Attack targeting TARGET.*TARGET played Dodge to block SOURCE's Attack against TARGET/ })).toHaveCount(1);
+      await expect(overlay).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET. TARGET played Dodge to block SOURCE's Attack against TARGET. Attack resolution complete.");
+      await expect(targetPage.getByRole("img", { name: /SOURCE played Attack targeting TARGET.*Attack resolution complete/ })).toHaveCount(1);
       await expect(overlay.getByRole("img")).toHaveCount(0);
       await expect(targetPage.locator('[data-root-action-edge="target"]')).toHaveCount(0);
       await expect(targetPage.locator('[data-root-action-edge="target-blocked"]')).toHaveCount(1);
@@ -444,11 +473,55 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       expect(Math.abs(geometry.target.x - dockBefore.x), "viewer Dock keeps its horizontal anchor").toBeLessThanOrEqual(.5);
       expect(Math.abs(geometry.target.right - dockBefore.right), "viewer Dock keeps its horizontal extent").toBeLessThanOrEqual(.5);
       expect(Math.abs(geometry.target.bottom - dockBefore.bottom), "viewer Dock remains bottom-anchored as its hand changes").toBeLessThanOrEqual(.5);
+      await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.exitingAt ?? null), { timeout: 3_000 }).not.toBeNull();
+      await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.removedAt ?? null), { timeout: 3_000 }).not.toBeNull();
+      const settlementTiming = await targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming);
+      expect(settlementTiming.outcome).toBe("ATTACK_BLOCKED_BY_DODGE");
+      expect(settlementTiming.exitingAt - settlementTiming.shownAt).toBeGreaterThanOrEqual(350);
+      expect(settlementTiming.exitingAt - settlementTiming.shownAt).toBeLessThanOrEqual(750);
+      expect(settlementTiming.removedAt - settlementTiming.exitingAt).toBeGreaterThanOrEqual(100);
+      expect(settlementTiming.removedAt - settlementTiming.exitingAt).toBeLessThanOrEqual(350);
+      await expect(targetPage.locator('.table-resolution-layer .table-played-card')).toHaveCount(0);
     } finally {
       await targetPage.close();
     }
   });
 }
+
+test("real Attack→Dodge settlement shortens without an exit animation under reduced motion", async ({ page, browser, request }) => {
+  test.setTimeout(60_000);
+  const viewport = { width: 390, height: 844 };
+  const seed = await seedGame(request, 4, { targetCard: dodge });
+  await openGame(page, seed, 0, viewport);
+  await playAttackThroughPage(page, "TARGET");
+  await expect.poll(async () => (await roomView(request, seed, 1)).presentationSnapshot?.rootAction?.rootEventId ?? null, { timeout: 20_000 }).not.toBeNull();
+
+  const targetPage = await browser.newPage({ viewport });
+  try {
+    await openGame(targetPage, seed, 1, viewport);
+    const overlay = targetPage.locator('[data-root-action-overlay="true"]');
+    await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+    await expect.poll(async () => (await roomView(request, seed, 1)).currentAction?.kind ?? null, { timeout: 20_000 }).toBe("response");
+    await targetPage.emulateMedia({ reducedMotion: "reduce" });
+    await observeAttackDodgeSettlement(targetPage);
+
+    await playDodgeThroughPage(targetPage);
+    await expect.poll(async () => (await roomView(request, seed, 2)).presentationSnapshot?.attackDodgeResponses?.length ?? 0, { timeout: 20_000 }).toBe(1);
+    const proof = (await roomView(request, seed, 2)).presentationSnapshot.attackDodgeResponses[0];
+    await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.outcome ?? null), { timeout: 3_000 }).toBe("ATTACK_BLOCKED_BY_DODGE");
+    await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.removedAt ?? null), { timeout: 3_000 }).not.toBeNull();
+    const timing = await targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming);
+    expect(timing.outcome).toBe("ATTACK_BLOCKED_BY_DODGE");
+    expect(timing.exitingAt).toBeNull();
+    expect(timing.removedAt - timing.shownAt).toBeGreaterThanOrEqual(70);
+    expect(timing.removedAt - timing.shownAt).toBeLessThanOrEqual(350);
+    await expect(overlay.locator('[data-root-action-card="true"]')).toHaveCount(0);
+    await expect(targetPage.locator('.table-resolution-layer .table-played-card')).toHaveCount(0);
+    expect(proof.counterRelation).toBe("BLOCKS_TARGET_EFFECT");
+  } finally {
+    await targetPage.close();
+  }
+});
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
   test(`real wounded-player Peach uses a self-target root card at ${viewport.width}×${viewport.height}`, async ({ page, request }, testInfo) => {

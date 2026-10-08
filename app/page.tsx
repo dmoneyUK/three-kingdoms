@@ -22,6 +22,7 @@ import { InteractionRootOverlay, interactionRootActionKey, type InteractionRootO
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
+type ActiveAttackDodgeSettlement = { eventId: string; phase: "exiting" | "complete" };
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
 type PresentationImportance = "essential" | "informational";
 type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof };
@@ -156,9 +157,9 @@ const UI_TIMING = {
   privateDraw: 3000,
   effectNotice: 2400,
   sequenceDiscard: 700,
-  skillEffectSettlement: 600,
-  skillEffectSettlementReduced: 120,
-  skillEffectSettlementFade: 150,
+  interactionSettlement: 600,
+  interactionSettlementReduced: 120,
+  interactionSettlementFade: 150,
 } as const;
 const NO_SKILL_EFFECT_SETTLEMENTS = [] as const;
 
@@ -1931,6 +1932,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const knownHandCards = useRef(baselineHand(room.meId, hasInitialDeal ? [] : room.myHand, hasInitialDeal ? [] : room.timeline));
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
   const [activeSkillEffectSettlement, setActiveSkillEffectSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
+  const [activeAttackDodgeSettlement, setActiveAttackDodgeSettlement] = useState<ActiveAttackDodgeSettlement | null>(null);
+  const attackDodgeSettlementTimerEventId = useRef<string | null>(null);
   // Events already present when the screen mounts have no new animation to
   // wait for. New event IDs enter this set only after their presentation ends.
   const [presentedEventIds, setPresentedEventIds] = useState<Set<string>>(() => new Set((room.timeline ?? []).map((event) => event.id)));
@@ -2834,6 +2837,10 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     return [{ proof, rootEvent, responseEvent }];
   });
   const attackDodgeResponseCandidate = attackDodgeResponseCandidates.length === 1 ? attackDodgeResponseCandidates[0] : null;
+  const attackDodgeGraphCandidate = activeAttackDodgeSettlement?.phase === "complete"
+    && attackDodgeResponseCandidate?.proof.responseEventId === activeAttackDodgeSettlement.eventId
+    ? null
+    : attackDodgeResponseCandidate;
   const duelExchangeGraphCandidate = (() => {
     const exchange = clientPresentation.duelExchange;
     if (!exchange || exchange.semantics !== "PROVEN" || exchange.responseCount !== exchange.responses.length
@@ -3067,8 +3074,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     return { action: settlement, rootEvent, settlementEvent, source, target, exiting: activeSkillEffectSettlement?.exiting === true };
   })();
   const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId)
-    : groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeResponseCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
-  const selfTargetCandidates = rootAction || groupTargetBranchGraphCandidate || skillEffectActionCandidate || duelExchangeGraphCandidate || attackDodgeResponseCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
+    : groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeGraphCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
+  const selfTargetCandidates = rootAction || groupTargetBranchGraphCandidate || skillEffectActionCandidate || duelExchangeGraphCandidate || attackDodgeGraphCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
       || event.resolutionId !== action.resolutionId || event.card.kind !== action.cardKind
@@ -3169,22 +3176,28 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       ariaLabel: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "Unknown player"} played Attack targeting ${room.players.find((player) => player.id === rootAction.targetId)?.name ?? "unknown player"}`,
       mode: "targeted",
     }
-    : attackDodgeResponseCandidate
+    : attackDodgeGraphCandidate
       ? {
-        key: [attackDodgeResponseCandidate.proof.interactionId, attackDodgeResponseCandidate.proof.rootFrameId, attackDodgeResponseCandidate.proof.rootEventId, attackDodgeResponseCandidate.proof.responseEventId].join(":"),
-        rootEventId: attackDodgeResponseCandidate.proof.rootEventId,
-        sourceId: attackDodgeResponseCandidate.proof.rootSourceId,
-        targetId: attackDodgeResponseCandidate.proof.targetId,
+        key: [attackDodgeGraphCandidate.proof.interactionId, attackDodgeGraphCandidate.proof.rootFrameId, attackDodgeGraphCandidate.proof.rootEventId, attackDodgeGraphCandidate.proof.responseEventId].join(":"),
+        rootEventId: attackDodgeGraphCandidate.proof.rootEventId,
+        sourceId: attackDodgeGraphCandidate.proof.rootSourceId,
+        targetId: attackDodgeGraphCandidate.proof.targetId,
         cardKind: "Attack",
         cardLabel: "ATTACK",
-        ariaLabel: `${room.players.find((player) => player.id === attackDodgeResponseCandidate.proof.rootSourceId)?.name ?? "Unknown player"} played Attack targeting ${room.players.find((player) => player.id === attackDodgeResponseCandidate.proof.targetId)?.name ?? "unknown player"}`,
+        ariaLabel: `${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.rootSourceId)?.name ?? "Unknown player"} played Attack targeting ${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.targetId)?.name ?? "unknown player"}`,
         mode: "targeted",
+        settlement: {
+          eventId: attackDodgeGraphCandidate.proof.responseEventId,
+          outcome: "ATTACK_BLOCKED_BY_DODGE",
+          exiting: activeAttackDodgeSettlement?.eventId === attackDodgeGraphCandidate.proof.responseEventId
+            && activeAttackDodgeSettlement.phase === "exiting",
+        },
         response: {
-          eventId: attackDodgeResponseCandidate.proof.responseEventId,
-          actorId: attackDodgeResponseCandidate.proof.responseActorId,
-          actorName: room.players.find((player) => player.id === attackDodgeResponseCandidate.proof.responseActorId)?.name ?? "Unknown player",
+          eventId: attackDodgeGraphCandidate.proof.responseEventId,
+          actorId: attackDodgeGraphCandidate.proof.responseActorId,
+          actorName: room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.responseActorId)?.name ?? "Unknown player",
           cardLabel: "DODGE",
-          ariaLabel: `${room.players.find((player) => player.id === attackDodgeResponseCandidate.proof.responseActorId)?.name ?? "Unknown player"} played Dodge to block ${room.players.find((player) => player.id === attackDodgeResponseCandidate.proof.rootSourceId)?.name ?? "Unknown player"}'s Attack against ${room.players.find((player) => player.id === attackDodgeResponseCandidate.proof.targetId)?.name ?? "an opponent"}`,
+          ariaLabel: `${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.responseActorId)?.name ?? "Unknown player"} played Dodge to block ${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.rootSourceId)?.name ?? "Unknown player"}'s Attack against ${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.targetId)?.name ?? "an opponent"}`,
         },
       }
     : singleTargetNegationGraphCandidate
@@ -3236,7 +3249,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     || targetCardPickerSelectableDetail && !skillEffectActionCandidate
     || expandedOpponentId || groupScopePreview.active);
   const rootActionAwaitingReveal = Boolean(
-    !attackDodgeResponseCandidate && rootAction && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
+    !attackDodgeGraphCandidate && rootAction && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || groupTargetBranchGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || skillEffectActionCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || skillEffectSettlementCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
@@ -3257,19 +3270,49 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       setActiveSkillEffectSettlement((current) => current?.eventId === activeOverlaySettlementEventId
         ? reducedMotion ? null : { ...current, exiting: true }
         : current);
-    }, reducedMotion ? UI_TIMING.skillEffectSettlementReduced : UI_TIMING.skillEffectSettlement - UI_TIMING.skillEffectSettlementFade);
+    }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
   }, [activeOverlaySettlementEventId, activeSkillEffectSettlement?.eventId, activeSkillEffectSettlement?.exiting, rootActionOverlayVisible]);
   useEffect(() => {
     if (!activeOverlaySettlementExiting || !activeOverlaySettlementEventId || activeSkillEffectSettlement?.eventId !== activeOverlaySettlementEventId) return;
-    const timer = window.setTimeout(() => setActiveSkillEffectSettlement((current) => current?.eventId === activeOverlaySettlementEventId ? null : current), UI_TIMING.skillEffectSettlementFade);
+    const timer = window.setTimeout(() => setActiveSkillEffectSettlement((current) => current?.eventId === activeOverlaySettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
   }, [activeOverlaySettlementEventId, activeOverlaySettlementExiting, activeSkillEffectSettlement?.eventId]);
+  const activeAttackDodgeSettlementEventId = rootActionOverlayAction?.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE"
+    ? rootActionOverlayAction.settlement.eventId
+    : null;
+  useEffect(() => {
+    if (!activeAttackDodgeSettlementEventId || !rootActionOverlayVisible
+      || activeAttackDodgeSettlement?.eventId === activeAttackDodgeSettlementEventId
+      || attackDodgeSettlementTimerEventId.current === activeAttackDodgeSettlementEventId) return;
+    attackDodgeSettlementTimerEventId.current = activeAttackDodgeSettlementEventId;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setTimeout(() => {
+      setActiveAttackDodgeSettlement({ eventId: activeAttackDodgeSettlementEventId, phase: reducedMotion ? "complete" : "exiting" });
+    }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
+    return () => {
+      window.clearTimeout(timer);
+      if (attackDodgeSettlementTimerEventId.current === activeAttackDodgeSettlementEventId) attackDodgeSettlementTimerEventId.current = null;
+    };
+  }, [activeAttackDodgeSettlement?.eventId, activeAttackDodgeSettlementEventId, rootActionOverlayVisible]);
+  useEffect(() => {
+    if (activeAttackDodgeSettlement?.phase !== "exiting") return;
+    const timer = window.setTimeout(() => {
+      setActiveAttackDodgeSettlement((current) => current?.eventId === activeAttackDodgeSettlement.eventId && current.phase === "exiting"
+        ? { ...current, phase: "complete" }
+        : current);
+    }, UI_TIMING.interactionSettlementFade);
+    return () => window.clearTimeout(timer);
+  }, [activeAttackDodgeSettlement?.eventId, activeAttackDodgeSettlement?.phase]);
   const rootActionCardId = rootActionEvent?.type === "card" ? rootActionEvent.card.id
     : selfTargetCandidate?.event.card.id ?? null;
   const duelExchangeEventIds = new Set(duelExchangeGraphCandidate
     ? [duelExchangeGraphCandidate.exchange.root.eventId, ...duelExchangeGraphCandidate.exchange.responses.map((response) => response.responseEventId)]
     : []);
+  const completedAttackDodgeSequenceCandidate = activeAttackDodgeSettlement?.phase === "complete"
+    && attackDodgeResponseCandidate?.proof.responseEventId === activeAttackDodgeSettlement.eventId
+    ? attackDodgeResponseCandidate
+    : null;
   const displayedSequenceEvents = rootActionOverlayVisible && rootActionOverlayAction
     ? sequenceEvents.filter((event) => event.id !== rootActionOverlayAction.rootEventId
       && event.id !== rootActionOverlayAction.response?.eventId
@@ -3277,15 +3320,22 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       && (!rootActionCardId || !eventCards(event).some((card) => card.id === rootActionCardId))
       && (!attackDodgeResponseCandidate || !eventCards(event).some((card) => card.id === attackDodgeResponseCandidate.responseEvent.card.id))
       && (!singleTargetNegationGraphCandidate?.responseEvent || !eventCards(event).some((card) => card.id === singleTargetNegationGraphCandidate.responseEvent!.card.id)))
+    : completedAttackDodgeSequenceCandidate
+      ? sequenceEvents.filter((event) => event.id !== completedAttackDodgeSequenceCandidate.proof.rootEventId
+        && event.id !== completedAttackDodgeSequenceCandidate.proof.responseEventId
+        && !eventCards(event).some((card) => card.id === completedAttackDodgeSequenceCandidate.rootEvent.card.id
+          || card.id === completedAttackDodgeSequenceCandidate.responseEvent.card.id))
     : sequenceEvents;
   const activeRootSelfTargetEvent = rootActionOverlayVisible && rootActionOverlayAction?.mode === "self-target"
     && rootActionCardId && displayedEvent && eventCards(displayedEvent).some((card) => card.id === rootActionCardId);
   const activeRootResponseEvent = rootActionOverlayVisible && rootActionOverlayAction?.response && displayedEvent
     && (displayedEvent.id === rootActionOverlayAction.response.eventId
       || duelExchangeGraphCandidate?.responseEvent && displayedEvent.id === duelExchangeGraphCandidate.responseEvent.id
-      || attackDodgeResponseCandidate && eventCards(displayedEvent).some((card) => card.id === attackDodgeResponseCandidate.responseEvent.card.id)
+      || attackDodgeGraphCandidate && eventCards(displayedEvent).some((card) => card.id === attackDodgeGraphCandidate.responseEvent.card.id)
       || singleTargetNegationGraphCandidate?.responseEvent && eventCards(displayedEvent).some((card) => card.id === singleTargetNegationGraphCandidate.responseEvent.card.id));
-  const displayedTableEvent = activeRootSelfTargetEvent || activeRootResponseEvent ? null : displayedEvent;
+  const completedAttackDodgeResponseEvent = completedAttackDodgeSequenceCandidate && displayedEvent
+    && eventCards(displayedEvent).some((card) => card.id === completedAttackDodgeSequenceCandidate.responseEvent.card.id);
+  const displayedTableEvent = activeRootSelfTargetEvent || activeRootResponseEvent || completedAttackDodgeResponseEvent ? null : displayedEvent;
   const tablePresentationVisible = displayedSequenceEvents.length > 0 || Boolean(displayedTableEvent && eventCards(displayedTableEvent).length);
   const localEquipmentSelection = activeSkillSelection
     ? { eligibleIds: activeSkillSelection.eligibleCardIds, selectedIds: activeSkillSelectedCardIds, max: activeSkillSelection.max, disabled: busy || presentationBusy, onToggle: (cardId: string) => setActiveSkillSelectionState((state) => { if (!state || !activeSkillStateIsCurrent) return state; const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)); return validIds.includes(cardId) ? { ...state, cardIds: validIds.filter((id) => id !== cardId) } : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, cardId] } : { ...state, cardIds: validIds }; }) }

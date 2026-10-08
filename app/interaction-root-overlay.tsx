@@ -90,7 +90,7 @@ export type InteractionRootOverlayAction = {
   groupTargets?: readonly InteractionRootOverlayGroupTarget[];
   groupTargetEffectState?: { targetId: string; state: "ACTIVE" | "BLOCKED" };
   rootEffectState?: "ACTIVE" | "BLOCKED";
-  settlement?: { eventId: string; outcome: "SUITS_MATCHED" | "SUITS_DIFFERED"; exiting: boolean };
+  settlement?: { eventId: string; outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE"; exiting: boolean };
   response?: { eventId: string; actorId: string; actorName: string; cardLabel: string; ariaLabel: string; countersRoot?: boolean; targetId?: string; decisionActorId?: string };
   responses?: readonly InteractionRootOverlayResponseNode[];
 };
@@ -951,6 +951,7 @@ export function InteractionRootOverlay({
     ...(historyCount > 0 ? [`${historyCount} earlier committed Negation response${historyCount === 1 ? "" : "s"} collapsed`] : []),
     ...(action.response ? [action.response.ariaLabel] : []),
     ...visibleResponses.map((response) => response.ariaLabel),
+    ...(action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE" ? ["Attack resolution complete"] : []),
   ].map((sentence) => sentence.trim().replace(/[.!?]+$/u, ""))
     .filter(Boolean)
     .join(". ");
