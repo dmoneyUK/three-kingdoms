@@ -865,7 +865,7 @@ and pointer dragging must also work on desktop.
   reorder interaction.
 
 **Important touch detail:** support real iOS Safari touch/pointer interaction.
-Do not rely on desktop-only native HTML5 \`draggable\` behavior. A deliberate
+Do not rely on desktop-only native HTML5 `draggable` behavior. A deliberate
 hold-to-drag gesture should avoid accidental drag initiation during ordinary
 page/modal scrolling. Prevent page scrolling only for an active card drag;
 otherwise allow deliberate scrolling in the designated contained scroll
@@ -882,8 +882,8 @@ remaining Top cards from left to right.
 their submitted left-to-right order. The player must be able to see the
 relative order and rearrange it.
 
-Keep small instructional hints such as \`Draws first →\` and
-\`After remaining deck →\`; avoid long explanatory paragraphs and multiple
+Keep small instructional hints such as `Draws first →` and
+`After remaining deck →`; avoid long explanatory paragraphs and multiple
 control rows underneath every card.
 
 A sample intermediate state:
@@ -926,7 +926,7 @@ large ornamental boxes or button grids.
 - The active drag preview and insertion marker must not be clipped by the
   zone's scroll container or modal backdrop.
 - Do not reproduce the previous twelve-button arrangement below four cards.
-- Keep \`COMPLETE STARGAZING\` visible or immediately reachable, and do not
+- Keep `COMPLETE STARGAZING` visible or immediately reachable, and do not
   move underlying Seats, Interaction Stage, or Local Dock.
 - Only the actor may see card faces. Observer/public projection remains
   private.
@@ -943,15 +943,15 @@ Stargazing's existing authoritative API contract must stay unchanged:
 }
 ~~~
 
-The UI maintains three local ordered lists: \`unassigned\`, \`top\`, and
-\`bottom\`.
+The UI maintains three local ordered lists: `unassigned`, `top`, and
+`bottom`.
 
-- On dialog open, \`unassigned\` contains every authoritative revealed card
-  once; \`top\` and \`bottom\` are empty.
+- On dialog open, `unassigned` contains every authoritative revealed card
+  once; `top` and `bottom` are empty.
 - Every transfer or reorder is a local UI change only.
 - Each card ID appears in **exactly one** of those lists at all times.
-- \`COMPLETE STARGAZING\` is enabled only when \`unassigned\` is empty,
-  \`top.length\` satisfies authoritative \`minTop/maxTop\`, and all revealed
+- `COMPLETE STARGAZING` is enabled only when `unassigned` is empty,
+  `top.length` satisfies authoritative `minTop/maxTop`, and all revealed
   cards occur exactly once across Top+Bottom.
 - All-to-Top and all-to-Bottom are legal if and only if the existing
   authoritative min/max constraints allow them. **Do not impose a new
@@ -997,7 +997,7 @@ Use a real server-backed Zhuge Liang Stargazing decision and validate:
 5. cross-zone reassignment and optional return to center;
 6. dropped card exists once only in the UI state; cancel/invalid release
    leaves the old order unchanged;
-7. the completed submitted \`topCardIds\` and \`bottomCardIds\` match the
+7. the completed submitted `topCardIds` and `bottomCardIds` match the
    exact visible sequence and the authoritative deck order afterward;
 8. server rejection or changed action revision cannot submit stale cards;
 9. long-lasting card-face visibility (including after normal played-card
@@ -1016,7 +1016,7 @@ Stargazing UI, not a new mechanic and **not multiple tasks**.
 Stargazing UX refinement. Because it supersedes the previous button-based
 acceptance, do not represent the old button-based implementation as the final
 approved UX. Close this single drag-and-drop refinement before advancing to
-further Section 6 work. Do not edit the agent-owned \`HANDOVER.md\` from a
+further Section 6 work. Do not edit the agent-owned `HANDOVER.md` from a
 design-review pass.
 
 
