@@ -417,7 +417,32 @@ function reactionChainFor(
       };
     }
   }
-  return { semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes };
+  const rawPublicEventLinks: unknown = (chain as { publicEventLinks?: unknown }).publicEventLinks;
+  const rawLinks = rawPublicEventLinks && typeof rawPublicEventLinks === "object" && !Array.isArray(rawPublicEventLinks)
+    ? rawPublicEventLinks as Record<string, unknown>
+    : null;
+  const rawRootLink = rawLinks?.root && typeof rawLinks.root === "object" && !Array.isArray(rawLinks.root)
+    ? rawLinks.root as Record<string, unknown>
+    : null;
+  const publicEventLinksNodes = rawLinks?.nodes;
+  let publicEventLinks: NonNullable<PresentationReactionChain["publicEventLinks"]> | undefined;
+  if (rootCard && rawRootLink && Array.isArray(publicEventLinksNodes) && publicEventLinksNodes.length === nodes.length
+    && nonEmptyString(rawRootLink.eventId) && nonEmptyString(rawRootLink.resolutionId)) {
+    const links = publicEventLinksNodes.map((value) => value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null);
+    const linkedEventIds = [rawRootLink.eventId, ...links.map((link) => link?.eventId)];
+    const validLinks = links.every((link, index) => Boolean(link
+      && link.nodeId === nodes[index].nodeId
+      && nonEmptyString(link.eventId) && nonEmptyString(link.resolutionId)))
+      && linkedEventIds.every(nonEmptyString)
+      && new Set(linkedEventIds).size === linkedEventIds.length;
+    if (validLinks) publicEventLinks = {
+      root: { eventId: rawRootLink.eventId, resolutionId: rawRootLink.resolutionId },
+      nodes: links.map((link) => ({ nodeId: link!.nodeId as string, eventId: link!.eventId as string, resolutionId: link!.resolutionId as string })),
+    };
+  }
+  return { semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes, ...(publicEventLinks ? { publicEventLinks } : {}) };
 }
 
 function rootActionFor(

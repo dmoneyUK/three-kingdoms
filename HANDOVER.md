@@ -5,14 +5,14 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-Phase B renders the committed Dodge from typed public proof beside its exact
-Attack target effect; the incoming relation is interrupted and no Dodge-to-target
-arrow is drawn. Real server-backed browser proof passed 13/13 across 4/6/8-player
-physical-anchor layouts, Attack→Dodge at 390×844, 480×900, and 1440×900, and
-self-target Peach layouts. PresentationV2 contract tests passed 38/38; targeted
-ESLint and `git diff --check` passed. Pre-commit remote parent
-`80ae488d4520d763e9c5383a35b588b846c7e4e6`, Actions run `37742834438`, was
-observed `success`; this local change has not yet been pushed. Reviewer
+Phase B now links the proven single-target Negation root and each submitted
+Negation to its unique public card event. Engine-backed Steal → Negation →
+counter-Negation proof covers source, responders, observer equality, privacy,
+stale replay, and fail-closed root/response event mismatches. Presentation tests
+passed 109/109; the focused engine API file passed 34/34; build, targeted ESLint,
+and `git diff --check` passed. Pre-commit remote HEAD
+`a55d9b6cdd43f6fe47afe9db2442ce722b57fa66`, Actions run `37745870122`, was
+observed `success`; this task's commit CI is not yet observed. Reviewer
 acceptance is not claimed.
 
 ## Design checkpoint
@@ -22,10 +22,9 @@ Reviewed remote `docs/UX2-refine.md`, blob
 
 ## Current / next task
 
-`UX2.6-PHASE-B-NEGATION-EXACT-PUBLIC-EVENT-PROOF-01` — extend the existing
-server-owned single-target Negation chain proof to link the root action and each
-submitted Negation to its exact public timeline event, preserving causal parent
-links and exposing no physical card IDs or private controls. Prove a real
-Steal→Negation→counter-Negation route for source, responders, and observer;
-missing or mismatched event links must fail closed. Do not change graph rendering
-in this task.
+`UX2.6-PHASE-B-NEGATION-ROOT-DISPOSITION-AUTHORITY-01` — project the
+server-owned single-target Negation root disposition (`ACTIVE` / `BLOCKED`)
+through PresentationV2, Snapshot, and Client, bound to the proven root and
+public event links. Prove open → first Negation → counter-Negation transitions
+for all viewers; malformed or missing disposition authority fails closed.
+Do not change React graph rendering in this task.

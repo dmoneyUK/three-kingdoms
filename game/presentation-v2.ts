@@ -148,12 +148,19 @@ export type PresentationReactionChainRootCard = {
   cardKind: CardKind;
 };
 
+export type PresentationReactionChainPublicEventLinks = {
+  root: { eventId: string; resolutionId: string };
+  nodes: readonly { nodeId: string; eventId: string; resolutionId: string }[];
+};
+
 export type PresentationReactionChain = {
   semantics: "PROVEN";
   interactionId: string;
   frameId: string;
   rootCard: PresentationReactionChainRootCard | null;
   nodes: readonly PresentationReactionChainNode[];
+  /** Exact public timeline references for graph consumers; absent when any link is unproven. */
+  publicEventLinks?: PresentationReactionChainPublicEventLinks;
 };
 
 export type PresentationRootAction = {
@@ -941,6 +948,7 @@ function groupParticipantProgress(
 }
 
 function reactionChainFor(
+  timeline: readonly PresentationV2Event[],
   envelope: CausalEnvelope | null,
   pending: unknown,
   scene: PresentationInteractionScene | null,
@@ -977,6 +985,15 @@ function reactionChainFor(
   const physicalCardIds = new Set<string>();
   let previousNodeId: string | null = null;
   const nodes: PresentationReactionChainNode[] = [];
+  const nodeEventLinks: Array<{ nodeId: string; eventId: string; resolutionId: string } | null> = [];
+  const publicCardEventFor = (physicalCardId: string, cardKind: string) => {
+    const matches = timeline.filter((candidate) => candidate.type === "card" && candidate.action === "play"
+      && candidate.presentation !== false && candidate.card?.id === physicalCardId && candidate.card.kind === cardKind
+      && typeof candidate.id === "string" && candidate.id.length > 0
+      && typeof candidate.resolutionId === "string" && candidate.resolutionId.length > 0);
+    if (matches.length !== 1 || timeline.filter((candidate) => candidate.id === matches[0].id).length !== 1) return null;
+    return { eventId: matches[0].id, resolutionId: matches[0].resolutionId };
+  };
   for (const value of history) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
     const stored = value as Partial<NegationHistoryRecord>;
@@ -990,6 +1007,8 @@ function reactionChainFor(
     nodeIds.add(stored.nodeId);
     physicalCardIds.add(stored.physicalCardId);
     previousNodeId = stored.nodeId;
+    const publicEvent = publicCardEventFor(stored.physicalCardId, "Negation");
+    nodeEventLinks.push(publicEvent ? { nodeId: stored.nodeId, ...publicEvent } : null);
     nodes.push({
       nodeId: stored.nodeId,
       interactionId: stored.interactionId,
@@ -1030,7 +1049,29 @@ function reactionChainFor(
   const rootCard = isProvenSingleTargetRoot && sourceId && targetId && CARD_KINDS.includes(rootCardKind as CardKind)
     ? { interactionId: scene.interactionId, frameId: frame.frameId, sourceId, targetId, cardKind: rootCardKind as CardKind }
     : null;
-  return { semantics: "PROVEN", interactionId: scene.interactionId, frameId: scene.activeFrameId, rootCard, nodes };
+  const heldRootCardIds = Array.isArray(continuation.heldCards)
+    ? continuation.heldCards.flatMap((value) => {
+      const card = record(value);
+      const id = stringValue(card?.id);
+      return card?.kind === rootCardKind && id ? [id] : [];
+    })
+    : [];
+  const effectRootCardId = stringValue(effect?.cardId);
+  const rootPhysicalCardId = heldRootCardIds.length === 1
+    && (!effectRootCardId || effectRootCardId === heldRootCardIds[0])
+    ? heldRootCardIds[0]
+    : heldRootCardIds.length === 0 ? effectRootCardId : null;
+  const rootEvent = rootCard && rootPhysicalCardId && expectedRootCardKind
+    ? publicCardEventFor(rootPhysicalCardId, expectedRootCardKind)
+    : null;
+  const linkedNodeEvents = nodeEventLinks.filter((link): link is NonNullable<typeof link> => link !== null);
+  const allPublicEvents = rootEvent ? [rootEvent, ...linkedNodeEvents] : [];
+  const eventIds = allPublicEvents.map(({ eventId }) => eventId);
+  const publicEventLinks = rootEvent && nodeEventLinks.length === nodes.length && linkedNodeEvents.length === nodes.length
+    && new Set(eventIds).size === eventIds.length
+    ? { root: rootEvent, nodes: linkedNodeEvents }
+    : undefined;
+  return { semantics: "PROVEN", interactionId: scene.interactionId, frameId: scene.activeFrameId, rootCard, nodes, ...(publicEventLinks ? { publicEventLinks } : {}) };
 }
 
 function negationSettlementFor(
@@ -1350,7 +1391,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
   const dyingBarrier = dyingBarrierFor(envelope, input.pending);
-  const reactionChain = reactionChainFor(envelope, input.pending, interactionScene, projectedBumperHarvestProgress);
+  const reactionChain = reactionChainFor(input.timeline, envelope, input.pending, interactionScene, projectedBumperHarvestProgress);
   const negationSettlement = negationSettlementFor(input.timeline, envelope, input.pending);
   // The typed interactionScene below is the causal authority. These legacy
   // context objects intentionally retain Pending-first kind/target shapes for

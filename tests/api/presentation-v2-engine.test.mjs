@@ -1416,14 +1416,16 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   const game = await createHumanGame();
   const [host, alice] = game.members;
   const [source, target] = game.room.players;
+  const observer = game.members[2];
   const sourceCounter = card("Negation", "projector-negation-counter");
   const sourceCounterAgain = card("Negation", "projector-negation-counter-again");
   const firstCard = card("Negation", "projector-negation-first");
   const secondCard = card("Negation", "projector-negation-second");
-  setHand(source.id, [card("Dismantle", "projector-negation-root"), sourceCounter, sourceCounterAgain], 5, 5);
+  const steal = card("Steal", "projector-negation-root");
+  setHand(source.id, [steal, sourceCounter, sourceCounterAgain], 5, 5);
   setHand(target.id, [card("Attack", "projector-negation-target"), firstCard, secondCard], 4, 4);
   setTurn(game.code, source.seat);
-  const opened = await request("play_card", { code: game.code, token: host.token, cardId: "dismantle-projector-negation-root", targetId: target.id, targetCardIndex: 0 });
+  const opened = await request("play_card", { code: game.code, token: host.token, cardId: steal.id, targetId: target.id, targetCardIndex: 0 });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   const sourceWindow = await request("decline_response", { code: game.code, token: host.token });
   assert.equal(sourceWindow.status, 200, JSON.stringify(sourceWindow.data));
@@ -1438,20 +1440,24 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(sourceWindowTargetView.causalEnvelope.presentationRevision, sourceRoot.presentationRevision + 1);
   const first = await assertProjectionMatchesEngine(game.code, alice.token);
   const root = first.presentationV2.rootContext;
+  const rootEvent = first.timeline.find((event) => event.card?.id === steal.id && event.card?.kind === "Steal" && event.action === "play");
+  assert.ok(rootEvent, "the real Steal play emitted a public card event");
   const rootCard = {
     interactionId: first.causalEnvelope.interactionId,
     frameId: first.causalEnvelope.activeFrameId,
     sourceId: source.id,
     targetId: target.id,
-    cardKind: "Dismantle",
+    cardKind: "Steal",
   };
   assert.deepEqual(first.presentationV2.reactionChain, {
     semantics: "PROVEN", interactionId: first.causalEnvelope.interactionId,
     frameId: first.causalEnvelope.activeFrameId, rootCard, nodes: [],
+    publicEventLinks: { root: { eventId: rootEvent.id, resolutionId: rootEvent.resolutionId }, nodes: [] },
   }, "a pass opens no public Reaction Chain card node");
-  assert.equal(authoritativePending(game.code).continuation.cardName, "Burning Bridges");
-  assert.equal(authoritativePending(game.code).continuation.rootCardKind, "Dismantle", "root identity is retained from the server-owned effective card, not reverse-mapped from its display name");
+  assert.equal(authoritativePending(game.code).continuation.cardName, "Steal");
+  assert.equal(authoritativePending(game.code).continuation.rootCardKind, "Steal", "root identity is retained from the server-owned effective card, not reverse-mapped from its display name");
   assert.deepEqual(first.presentationSnapshot.reactionChain?.rootCard, rootCard);
+  assert.deepEqual(first.presentationSnapshot.reactionChain?.publicEventLinks, first.presentationV2.reactionChain.publicEventLinks);
   assert.equal(JSON.stringify(first.presentationSnapshot).includes("projector-negation-root"), false, "the public snapshot contains card kind but not the physical card ID");
   assert.equal(authoritativePending(game.code).continuation.negationHistory, undefined, "decline/pass is not persisted as a public reaction");
   assert.equal(authoritativePending(game.code).continuation.kind, "negation");
@@ -1468,7 +1474,9 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(first.presentationV2.stableBoundary.decisionActorId, target.id);
   const firstRepeat = await state(game.code, alice.token);
   const firstOtherViewer = await state(game.code, host.token);
+  const firstObserver = await assertProjectionMatchesEngine(game.code, observer.token);
   assert.deepEqual(publicSnapshot(firstOtherViewer.data.presentationSnapshot), publicSnapshot(first.presentationSnapshot), "root card identity is viewer-equal while local control remains private");
+  assert.deepEqual(publicSnapshot(firstObserver.presentationSnapshot), publicSnapshot(first.presentationSnapshot), "public event links are identical for a third-party observer");
   assert.deepEqual(firstOtherViewer.data.presentationSnapshot.reactionChain?.rootCard, rootCard);
   assert.deepEqual(firstRepeat.data.presentationV2.interactionScene, first.presentationV2.interactionScene);
   assert.deepEqual(firstRepeat.data.presentationV2.stableBoundary, first.presentationV2.stableBoundary);
@@ -1494,9 +1502,18 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(counter.presentationSnapshot.reactionChain.nodes[0].actorId, target.id);
   assert.equal(counter.presentationSnapshot.reactionChain.nodes[0].causedByNodeId, null);
   assert.equal("physicalCardId" in counter.presentationSnapshot.reactionChain.nodes[0], false, "opaque physical card IDs stay server-side");
+  const publicFirstNegation = counter.timeline.find((event) => event.card?.id === firstCard.id && event.card?.kind === "Negation" && event.action === "play");
+  assert.ok(publicFirstNegation, "the submitted Negation has an exact public card event");
+  assert.deepEqual(counter.presentationSnapshot.reactionChain.publicEventLinks, {
+    root: { eventId: rootEvent.id, resolutionId: rootEvent.resolutionId },
+    nodes: [{ nodeId: counter.presentationSnapshot.reactionChain.nodes[0].nodeId, eventId: publicFirstNegation.id, resolutionId: publicFirstNegation.resolutionId }],
+  });
+  assert.equal(JSON.stringify(counter.presentationSnapshot.reactionChain.publicEventLinks).includes(firstCard.id), false, "public event links never expose physical card IDs");
   const counterOtherViewer = await assertProjectionMatchesEngine(game.code, alice.token);
   assert.deepEqual(publicSnapshot(counterOtherViewer.presentationSnapshot), publicSnapshot(counter.presentationSnapshot), "submitted card history is viewer-equal");
   assert.equal(counterOtherViewer.currentAction.options, undefined, "observer receives no local response options");
+  const counterObserver = await assertProjectionMatchesEngine(game.code, observer.token);
+  assert.deepEqual(publicSnapshot(counterObserver.presentationSnapshot), publicSnapshot(counter.presentationSnapshot), "root and Negation event links are viewer-equal for an observer");
   assert.equal(counter.presentationV2.rootContext?.sourceId, root?.sourceId);
   assert.equal(counter.presentationV2.rootContext?.kind, root?.kind);
   assert.deepEqual(counter.presentationV2.rootContext?.originalTargetIds, root?.originalTargetIds);
@@ -1529,6 +1546,8 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(thirdCounter.currentAction.actorId, target.id);
   assert.equal(thirdCounter.presentationSnapshot.reactionChain.nodes.length, 2);
   assert.equal(thirdCounter.presentationSnapshot.reactionChain.nodes[1].causedByNodeId, thirdCounter.presentationSnapshot.reactionChain.nodes[0].nodeId);
+  assert.equal(thirdCounter.presentationSnapshot.reactionChain.publicEventLinks.nodes.length, 2);
+  assert.deepEqual(thirdCounter.presentationSnapshot.reactionChain.publicEventLinks.nodes.map(({ nodeId }) => nodeId), thirdCounter.presentationSnapshot.reactionChain.nodes.map(({ nodeId }) => nodeId));
   const thirdNegation = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: secondCard.id, preserveResponse: true });
   assert.equal(thirdNegation.status, 200, JSON.stringify(thirdNegation.data));
   const fourthCounter = await assertProjectionMatchesEngine(game.code, host.token);
@@ -1553,6 +1572,25 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(frameMismatch.presentationSnapshot.reactionChain, null, "a node from a different frame fails closed");
   sql(`UPDATE rooms SET pending_json=${quote(pendingWithHistory)} WHERE code=${quote(game.code)}`);
 
+  const wrongEventPending = JSON.parse(pendingWithHistory);
+  wrongEventPending.continuation.negationHistory[1].physicalCardId = "no-matching-public-negation-event";
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(wrongEventPending))} WHERE code=${quote(game.code)}`);
+  const eventMismatch = (await state(game.code, host.token)).data;
+  assert.ok(eventMismatch.presentationSnapshot.reactionChain?.rootCard, "the semantic root remains available to the safe fallback");
+  assert.equal(eventMismatch.presentationV2.reactionChain.publicEventLinks, undefined, "an unmatched private Negation card cannot link to a guessed timeline event");
+  assert.equal(eventMismatch.presentationSnapshot.reactionChain.publicEventLinks, undefined, "the public snapshot withholds the complete graph-link proof");
+  sql(`UPDATE rooms SET pending_json=${quote(pendingWithHistory)} WHERE code=${quote(game.code)}`);
+
+  const wrongRootEventPending = JSON.parse(pendingWithHistory);
+  const heldRootCard = wrongRootEventPending.continuation.heldCards.find((heldCard) => heldCard.kind === "Steal");
+  heldRootCard.id = "no-matching-public-steal-event";
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(wrongRootEventPending))} WHERE code=${quote(game.code)}`);
+  const rootEventMismatch = (await state(game.code, host.token)).data;
+  assert.ok(rootEventMismatch.presentationSnapshot.reactionChain?.rootCard, "typed root semantics remain available to the safe fallback");
+  assert.equal(rootEventMismatch.presentationV2.reactionChain.publicEventLinks, undefined, "an unmatched private root card cannot link to a guessed timeline event");
+  assert.equal(rootEventMismatch.presentationSnapshot.reactionChain.publicEventLinks, undefined, "missing root linkage withholds the complete graph proof");
+  sql(`UPDATE rooms SET pending_json=${quote(pendingWithHistory)} WHERE code=${quote(game.code)}`);
+
   const pendingBeforeStaleReplay = query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`);
   const staleReplay = await request("respond", { code: game.code, token: alice.token, cardId: secondCard.id });
   assert.equal(staleReplay.status, 409, JSON.stringify(staleReplay.data));
@@ -1562,7 +1600,7 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
   const restoredView = await assertProjectionMatchesEngine(game.code, host.token);
   assert.equal(restoredView.presentationSnapshot.settlement?.outcome, "ROOT_RESTORED");
-  assert.equal(restoredView.presentationSnapshot.settlement?.rootCardKind, "Dismantle");
+  assert.equal(restoredView.presentationSnapshot.settlement?.rootCardKind, "Steal");
   assert.equal(restoredView.presentationSnapshot.settlement?.sourceId, source.id);
   assert.equal(restoredView.presentationSnapshot.settlement?.targetId, target.id);
   const restoredObserver = await assertProjectionMatchesEngine(game.code, alice.token);

@@ -1691,6 +1691,22 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Actions run `37742834438` was success before this task commit. Reviewer
   acceptance is not claimed.
 
+### UX2.6-PHASE-B-NEGATION-EXACT-PUBLIC-EVENT-PROOF-01 — Negation event links
+
+- Single-target Negation now exposes exact public timeline event/resolution
+  references for its proven root card and every submitted Negation. Server
+  projection matches private continuation identities only internally and
+  omits the entire link proof if any event is missing, duplicated, or mismatched;
+  Snapshot and Client revalidate the chain/order without forwarding physical
+  card IDs or graph-internal node IDs to the display model. A real engine/API
+  Steal → Negation → counter-Negation route proves links for all viewers,
+  privacy, stale replay safety, and fail-closed bad root/response references.
+  Presentation tests passed 109/109, the focused engine API file 34/34, and
+  build, targeted ESLint, and `git diff --check` passed. The pre-commit exact
+  remote head `a55d9b6cdd43f6fe47afe9db2442ce722b57fa66` passed Actions run
+  `37745870122`; this task's CI remains pending. Reviewer acceptance is not
+  claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

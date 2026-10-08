@@ -166,6 +166,31 @@ test("snapshot carries typed Attack/Dodge counter proof identically for acting a
   }).attackDodgeResponses, [], "malformed and duplicate response identity is dropped");
 });
 
+test("snapshot keeps Negation public event links only when they align with the proven chain", () => {
+  const frameId = "root-negation-frame";
+  const interaction = scene({ stage: "NEGATION", rootFrameId: frameId, activeFrameId: frameId, effect: "Steal", decisionActorId: "C", activeResolverId: "C" });
+  const reactionChain = {
+    semantics: "PROVEN", interactionId: interaction.interactionId, frameId,
+    rootCard: { interactionId: interaction.interactionId, frameId, sourceId: "A", targetId: "B", cardKind: "Steal" },
+    nodes: [{ nodeId: "negation-1", interactionId: interaction.interactionId, frameId, causedByNodeId: null, actorId: "C", kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } }],
+    publicEventLinks: {
+      root: { eventId: "steal-event", resolutionId: "steal-resolution" },
+      nodes: [{ nodeId: "negation-1", eventId: "negation-event", resolutionId: "negation-resolution" }],
+    },
+  };
+  const publicPresentation = { ...presentation(interaction, coherentBoundary({ decisionActorId: "C" })), reactionChain };
+  const snapshotValue = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "response", actorId: "C" }, actionRevision: "negation", viewerId: "C" });
+  assert.deepEqual(snapshotValue.reactionChain?.publicEventLinks, reactionChain.publicEventLinks);
+  assert.deepEqual(composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, reactionChain: { ...reactionChain, publicEventLinks: { ...reactionChain.publicEventLinks, nodes: [{ ...reactionChain.publicEventLinks.nodes[0], nodeId: "unlinked-node" }] } } },
+    currentAction: { kind: "response", actorId: "C" }, actionRevision: "negation", viewerId: "C",
+  }).reactionChain?.publicEventLinks, undefined, "a response event link for another semantic node is withheld");
+  assert.deepEqual(composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, reactionChain: { ...reactionChain, publicEventLinks: { ...reactionChain.publicEventLinks, nodes: [{ ...reactionChain.publicEventLinks.nodes[0], eventId: "steal-event" }] } } },
+    currentAction: { kind: "response", actorId: "C" }, actionRevision: "negation", viewerId: "C",
+  }).reactionChain?.publicEventLinks, undefined, "one public event cannot identify both the root and a response");
+});
+
 test("single-target Negation settlement requires a typed, root-bound public occurrence", () => {
   const envelope = {
     version: 1,

@@ -173,6 +173,54 @@ test("single-target Negation exposes only an authoritative root card identity", 
   assert.equal(project({ continuation: { effect: { kind: "group", pending: {} }, rootCardKind: "BarbarianInvasion" } }).reactionChain?.rootCard, null, "Group/AOE keeps its existing presentation contract");
 });
 
+test("single-target Negation event links bind exact public card events without copying physical card IDs", () => {
+  const interactionId = "steal-negation-interaction";
+  const frameId = "steal-negation-frame";
+  const rootCardId = "private-steal-card";
+  const negationCardId = "private-negation-card";
+  const rootEvent = { id: "public-steal-event", type: "card", action: "play", presentation: true, resolutionId: "steal-resolution", card: card(rootCardId, "Steal") };
+  const negationEvent = { id: "public-negation-event", type: "card", action: "play", presentation: true, resolutionId: "negation-resolution", card: card(negationCardId, "Negation") };
+  const frame = {
+    frameId,
+    parentFrameId: null,
+    stage: "NEGATION",
+    origin: { originSourceId: "A", originEffect: "Steal", originalTargetIds: ["C"] },
+    current: { currentSourceId: "A", currentEffect: "Steal", currentTargetIds: ["C"], resolvingPlayerId: "C" },
+  };
+  const pending = {
+    kind: "response", actorId: "C", causal: { interactionId, frameId },
+    continuation: {
+      kind: "negation", sourceId: "A", effectTargetId: "C", rootCardKind: "Steal", cardName: "Steal",
+      remainingIds: [], negated: true, effect: { kind: "steal", targetId: "C" },
+      heldCards: [card(rootCardId, "Steal"), card(negationCardId, "Negation")],
+      negationHistory: [{ nodeId: "negation-node-1", interactionId, frameId, causedByNodeId: null, actorId: "B", physicalCardId: negationCardId, kind: "NEGATION_CARD" }],
+      causal: { interactionId, frameId },
+    },
+  };
+  const project = (timeline) => projectPresentationV2({
+    pending,
+    currentAction: action({ actorId: "C", resolutionId: "negation-resolution" }),
+    actionRevision: "steal-negation-revision",
+    timeline,
+    causalEnvelope: {
+      version: 1, interactionId, frames: [frame], activeFrameId: frameId,
+      checkpoint: { checkpointId: "steal-negation-checkpoint", frameId, stage: "NEGATION" }, presentationRevision: 2,
+    },
+  });
+
+  const linked = project([rootEvent, negationEvent]).reactionChain;
+  assert.deepEqual(linked?.publicEventLinks, {
+    root: { eventId: rootEvent.id, resolutionId: rootEvent.resolutionId },
+    nodes: [{ nodeId: "negation-node-1", eventId: negationEvent.id, resolutionId: negationEvent.resolutionId }],
+  });
+  assert.equal(JSON.stringify(linked.publicEventLinks).includes(rootCardId), false);
+  assert.equal(JSON.stringify(linked.publicEventLinks).includes(negationCardId), false);
+  assert.equal(project([rootEvent]).reactionChain?.publicEventLinks, undefined, "a missing response event withholds the entire graph-link proof");
+  assert.equal(project([{ ...rootEvent, id: "duplicate-root-event" }, rootEvent, negationEvent]).reactionChain?.publicEventLinks, undefined, "duplicate physical-card event matches fail closed");
+  assert.equal(project([rootEvent, negationEvent, { ...negationEvent, id: "duplicate-negation-event" }]).reactionChain?.publicEventLinks, undefined, "duplicate response-card event matches fail closed");
+  assert.equal(project([rootEvent, { ...negationEvent, card: card(negationCardId, "Dodge") }]).reactionChain?.publicEventLinks, undefined, "a non-Negation event cannot satisfy a Negation node");
+});
+
 test("ordinary self-target Peach proof requires an explicit, unique public play event", () => {
   const proof = { semantics: "PROVEN", sourceId: "A", targetId: "A", cardKind: "Peach" };
   const selfPeach = event("self-peach-event", "self-peach-resolution", {

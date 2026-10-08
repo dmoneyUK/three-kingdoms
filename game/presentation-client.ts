@@ -83,6 +83,7 @@ export type InteractionStageView = {
   bumperHarvestProgress: PresentationSnapshotBumperHarvestProgress | null;
   reactionChainNegationNodes: readonly ReactionChainNegationNodeView[];
   reactionChainRootCard: NonNullable<PresentationSnapshot["reactionChain"]>["rootCard"];
+  reactionChainPublicEventLinks: NonNullable<PresentationSnapshot["reactionChain"]>["publicEventLinks"] | null;
   rootOrigin?: {
     frameId: string;
     stage: PresentationInteractionScene["stage"];
@@ -118,6 +119,7 @@ export type ReactionChainView = {
   visible: boolean;
   interactionId: string | null;
   negationNodes: readonly ReactionChainNegationNodeView[];
+  publicEventLinks: { root: { eventId: string; resolutionId: string }; nodes: readonly { eventId: string; resolutionId: string }[] } | null;
   root: {
     effect: string;
     cardKind: CardKind | null;
@@ -311,7 +313,32 @@ function reactionChainForSnapshot(
       };
     }
   }
-  return { semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes };
+  const rawPublicEventLinks: unknown = (chain as { publicEventLinks?: unknown }).publicEventLinks;
+  const rawLinks = rawPublicEventLinks && typeof rawPublicEventLinks === "object" && !Array.isArray(rawPublicEventLinks)
+    ? rawPublicEventLinks as Record<string, unknown>
+    : null;
+  const rawRootLink = rawLinks?.root && typeof rawLinks.root === "object" && !Array.isArray(rawLinks.root)
+    ? rawLinks.root as Record<string, unknown>
+    : null;
+  const publicEventLinksNodes = rawLinks?.nodes;
+  let publicEventLinks: NonNullable<PresentationSnapshot["reactionChain"]>["publicEventLinks"] | undefined;
+  if (rootCard && rawRootLink && Array.isArray(publicEventLinksNodes) && publicEventLinksNodes.length === nodes.length
+    && isString(rawRootLink.eventId) && isString(rawRootLink.resolutionId)) {
+    const links = publicEventLinksNodes.map((value) => value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null);
+    const linkedEventIds = [rawRootLink.eventId, ...links.map((link) => link?.eventId)];
+    const validLinks = links.every((link, index) => Boolean(link
+      && link.nodeId === nodes[index].nodeId
+      && isString(link.eventId) && isString(link.resolutionId)))
+      && linkedEventIds.every(isString)
+      && new Set(linkedEventIds).size === linkedEventIds.length;
+    if (validLinks) publicEventLinks = {
+      root: { eventId: rawRootLink.eventId, resolutionId: rawRootLink.resolutionId },
+      nodes: links.map((link) => ({ nodeId: link!.nodeId as string, eventId: link!.eventId as string, resolutionId: link!.resolutionId as string })),
+    };
+  }
+  return { semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes, ...(publicEventLinks ? { publicEventLinks } : {}) };
 }
 
 function groupProgressForSnapshot(
@@ -690,6 +717,7 @@ export function buildInteractionStageView(
       }))
       : [],
     reactionChainRootCard: view.stage === "NEGATION" ? view.reactionChain?.rootCard ?? null : null,
+    reactionChainPublicEventLinks: view.stage === "NEGATION" ? view.reactionChain?.publicEventLinks ?? null : null,
     ...(view.rootOrigin ? {
       rootOrigin: {
         frameId: view.rootOrigin.frameId,
@@ -718,12 +746,16 @@ export function buildInteractionStageView(
  */
 export function buildReactionChainView(stage: InteractionStageView): ReactionChainView {
   if (!stage.visible || stage.stage !== "NEGATION" || !stage.effect || !stage.source.id) {
-    return { visible: false, interactionId: null, negationNodes: [], root: null, active: null };
+    return { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, root: null, active: null };
   }
   return {
     visible: true,
     interactionId: stage.interactionId,
     negationNodes: stage.reactionChainNegationNodes.map((node) => ({ ...node, actor: { ...node.actor } })),
+    publicEventLinks: stage.reactionChainPublicEventLinks ? {
+      root: { ...stage.reactionChainPublicEventLinks.root },
+      nodes: stage.reactionChainPublicEventLinks.nodes.map(({ eventId, resolutionId }) => ({ eventId, resolutionId })),
+    } : null,
     root: {
       effect: stage.effect,
       cardKind: stage.reactionChainRootCard?.cardKind ?? null,
