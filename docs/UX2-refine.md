@@ -779,191 +779,246 @@ Zhuge Liang's Skills band is complete when the player can immediately distinguis
 while both remain visually balanced, readable, and stable beside the Hero portrait.
 
 
-### 4.10 Stargazing private deck-reorder UX — single pre-Section-6 refinement task
+### 4.10 Stargazing — drag-and-drop private deck arrangement (single refinement task)
 
-The Stargazing refinement is not complete merely because the Skills-band
-activation is authoritative and the private deck-reorder dialog opens.
+**Reviewer design revision, 8 October 2026.** The previously implemented
+Earlier / Later / To top / To bottom button grid is **not** the approved primary
+Stargazing interaction. A production mobile screenshot showed four revealed
+cards in the Top zone with twelve large buttons underneath. The cards were
+finally visible, but the controls consumed most of the useful dialog space
+and made arranging the deck unnecessarily cumbersome.
 
-This entire subsection is **one bounded UX2 refinement task**, not a sequence of
-separate implementation tasks. The agent may implement the internal points in
-whatever order is convenient, but they belong to one coherent Stargazing
-deck-reorder repair and should be reviewed together.
+Replace that presentation with **one drag-and-drop arrangement task**. This
+whole subsection is **one task**, including interaction, responsive layout,
+accessibility, authority, and validation. Do not split it into several
+HANDOVER tasks or treat any individual bullet as a separate feature.
 
-A reviewer-observed production failure showed a mobile Stargazing dialog in
-which the two deck zones occupied most of the viewport while the actual card
-faces were no longer visible, leaving only reorder controls such as
-\`↑\`, \`↓\`, and \`Top\`. This state is not acceptable.
+#### Approved three-zone composition
 
-The principal product requirement is:
+The dialog has three clearly labelled areas, in this vertical order:
 
-> During Stargazing, the player must be able to see the revealed cards clearly
-> enough to identify them, understand their order, and move them between the top
-> and bottom sequences without excessive scrolling or losing the cards from
-> view.
+1. **TOP OF DECK** — an initially empty, compact drop zone;
+2. **REVEALED CARDS** — the four privately revealed cards, initially placed
+   here side by side at the center of the dialog;
+3. **BOTTOM OF DECK** — an initially empty, compact drop zone.
 
-This requirement has priority over decorative empty space.
+Example *initial state*:
 
-**Persistent card visibility**
+~~~text
+                 STARGAZING
+       Drag each card to the top or bottom.
 
-Every card revealed privately for Stargazing must remain visibly rendered until
-one of the following authoritative transitions occurs:
+  TOP OF DECK                          Draws first →
+  ┌────────────────────────────────────────────┐
+  │           Drop cards here                  │
+  └────────────────────────────────────────────┘
 
-- the player completes Stargazing;
-- the authoritative deck-reorder decision is replaced/cancelled;
-- the action revision changes and the private decision is no longer current.
+  REVEALED CARDS                             4 left
+           [Card A] [Card B] [Card C] [Card D]
+              Touch and hold, then drag
 
-The cards must not disappear merely because a generic played-card/reveal
-animation reaches its normal end state.
+  BOTTOM OF DECK                  After remaining deck →
+  ┌────────────────────────────────────────────┐
+  │           Drop cards here                  │
+  └────────────────────────────────────────────┘
 
-Requirements:
+                 0 / 4 arranged
+             [ COMPLETE STARGAZING ]
+~~~
 
-- card opacity must remain visibly non-zero for the full decision;
-- no generic card-flight animation may leave a Stargazing card at
-  \`opacity: 0\`, translated off-screen, or otherwise visually absent;
-- rank, suit, card identity/art, and relative sequence position must remain
-  readable while the user is deciding;
-- reorder controls without their associated visible card are not a valid UI
-  state;
-- cards remain private to the acting viewer exactly as required by the existing
-  authoritative private-deck-reorder contract.
+Four is the normal illustrated case, not an assumption that the authoritative
+reveal always contains exactly four cards. Render the actual privately
+authorized card count. On activation, **all revealed cards begin in the
+unassigned center area**, not automatically in Top or Bottom. Top and Bottom
+start empty.
 
-A DOM node continuing to exist is not sufficient proof. The actual card face
-must remain visibly readable.
+A card occupies exactly one zone at a time. Do **not** leave a duplicate
+card in the middle when a card is moved to Top or Bottom.
 
-**Compact top/bottom composition**
+The center zone shrinks as cards are assigned. It should never retain a large
+empty panel once all cards have been placed.
 
-Stargazing is an ordering task, not a pair of large empty drop zones.
+#### Core drag-and-drop behavior
 
-The visual hierarchy should prioritize:
+On mobile, the primary gesture is **touch-and-hold a card and drag**. Mouse
+and pointer dragging must also work on desktop.
 
-1. revealed cards;
-2. the current top-of-deck and bottom-of-deck sequence;
-3. ordering/move affordances;
-4. explanatory copy.
+- Drag from Revealed Cards to Top or Bottom to assign that card.
+- Drag a card already in Top or Bottom to another position **within the same
+  zone** to reorder it.
+- Drag a card from Top to Bottom, or Bottom to Top, to reassign it.
+- Permit moving an already assigned card back to Revealed Cards if the player
+  wants to undo its assignment.
+- While dragging, show a recognizable floating/raised preview of the
+  **same card** and visibly highlight eligible destination zones.
+- Show a clear insertion indicator between existing cards so the user can
+  understand *where* the dragged card will be placed, not merely which zone.
+- Releasing in an empty zone appends/inserts the card as its first item;
+  releasing at the end of an occupied zone appends it; releasing between two
+  cards inserts it at that exact position.
+- Dragging outside valid destinations, releasing without an accepted drop,
+  cancelling the pointer, or losing pointer capture must **not** silently
+  move or discard a card; preserve its previous position.
+- A drag must never duplicate a card, lose a card, submit a request, or change
+  the underlying game deck before the explicit Complete action.
+- Do not use a full rerender/remount as a substitute for a smooth in-place
+  reorder interaction.
 
-The two sequence areas must be compact and content-driven.
+**Important touch detail:** support real iOS Safari touch/pointer interaction.
+Do not rely on desktop-only native HTML5 \`draggable\` behavior. A deliberate
+hold-to-drag gesture should avoid accidental drag initiation during ordinary
+page/modal scrolling. Prevent page scrolling only for an active card drag;
+otherwise allow deliberate scrolling in the designated contained scroll
+region. Do not make a card disappear under the user's finger.
 
-Requirements:
+#### Ordering semantics
 
-- \`TOP OF DECK\` and \`BOTTOM OF DECK\` remain clearly labelled;
-- an empty sequence must not reserve a large blank vertical panel;
-- sequence containers grow primarily from their card content rather than from a
-  large fixed/minimum height;
-- top and bottom groups remain visually distinguishable without consuming most
-  of the phone viewport;
-- explanatory copy such as "First card draws next" and "Earlier here stays
-  nearer the top" must not compete with the cards for the majority of vertical
-  space;
-- the action button remains visible or immediately reachable without a long
-  scroll through empty area.
+Each zone is an ordered list with visually evident left-to-right sequence.
 
-At 390×844 and 480×900, the player should normally be able to see the relevant
-cards and enough of both sequence labels at the same time to understand the
-current arrangement.
+**Top**: first item at the left is the next card drawn, followed by the
+remaining Top cards from left to right.
 
-**Realistic card counts and responsive scale**
+**Bottom**: cards will be placed after the cards remaining in the deck, in
+their submitted left-to-right order. The player must be able to see the
+relative order and rearrange it.
 
-Browser proof must use realistic Stargazing card counts, not only a one-card
-fixture.
+Keep small instructional hints such as \`Draws first →\` and
+\`After remaining deck →\`; avoid long explanatory paragraphs and multiple
+control rows underneath every card.
 
-At minimum, validate a four-card Stargazing decision because this is sufficient
-to expose wrapping, vertical growth, and mobile usability problems that a
-single-card fixture cannot reveal.
+A sample intermediate state:
 
-For four revealed cards at 390×844:
+~~~text
+  TOP OF DECK                                      Draws first →
+  [Card C] [Card A]   |   (drop indicator)
 
-- all four cards remain visible after the normal generic played-card animation
-  duration has elapsed;
-- card faces remain large enough to identify rank/suit/name/art;
-- the layout must not turn each card into an unreadably small thumbnail merely
-  to avoid scrolling;
-- use a compact row or intentionally contained wrap/scroll treatment;
-- moving a card between top and bottom must not cause the whole dialog to jump
-  to an unusable height;
-- ordering controls stay visually associated with the card they affect.
+  REVEALED CARDS                               1 left
+  [Card D]
 
-At 320px-class widths, contained horizontal scrolling or another compact
-sequence layout is preferable to very tall stacked card columns.
+  BOTTOM OF DECK                        After remaining deck →
+  [Card B]
 
-**Ordering semantics**
+                  3 / 4 arranged
+             [ COMPLETE STARGAZING ]  (disabled)
+~~~
 
-The player must be able to answer these questions without reading implementation
-details:
+The visual order, not the order of drag gestures, determines what is submitted.
 
-- Which cards will be placed on top of the deck?
-- Which card will be drawn first?
-- In what order will the remaining top cards be drawn?
-- Which cards are going to the bottom?
-- What is the relative order of the bottom sequence?
-- Which control moves this specific card earlier/later?
-- Which control moves this specific card between top and bottom?
+#### Size, readability, and mobile layout
 
-The current order must be represented by the visible left-to-right or otherwise
-explicit visual sequence.
+The priority is **the four recognizable cards and clear drop targets**, not
+large ornamental boxes or button grids.
 
-If arrows or text buttons are used:
+- The dialog stays within 390×844 and 480×900 mobile viewports; include a
+  narrow 320px-class case and a wide viewport.
+- On a typical four-card 390px phone layout, the center cards should be
+  displayed together in one readable row where feasible.
+- Top and Bottom may be empty, but they must remain clearly usable drop
+  targets with sufficient target height and visible border/label; they must
+  **not** expand into huge blank areas.
+- As cards move into Top/Bottom, the zone grows only as necessary. Do not
+  jump the dialog into an enormous scrolling page.
+- A selected/dragged card must preserve readable rank, suit and identity;
+  avoid scaling the card to a tiny sliver.
+- If a zone contains more cards than fit, use contained horizontal scrolling
+  with clear overflow affordance and edge auto-scroll while actively dragging,
+  where necessary to reach insertion points.
+- The active drag preview and insertion marker must not be clipped by the
+  zone's scroll container or modal backdrop.
+- Do not reproduce the previous twelve-button arrangement below four cards.
+- Keep \`COMPLETE STARGAZING\` visible or immediately reachable, and do not
+  move underlying Seats, Interaction Stage, or Local Dock.
+- Only the actor may see card faces. Observer/public projection remains
+  private.
 
-- their meaning remains unambiguous;
-- controls do not appear detached from their card;
-- disabled earlier/later controls still make the current endpoint obvious;
-- the top/bottom transfer control uses clear destination copy.
+#### Completion, validation, and authority
 
-The layout must not rely on large empty boxes as the primary explanation of the
-ordering model.
+Stargazing's existing authoritative API contract must stay unchanged:
 
-**Dialog containment and completion action**
+~~~ts
+{
+  providerId: "private_deck_reorder",
+  topCardIds: string[],
+  bottomCardIds: string[]
+}
+~~~
 
-The private Stargazing decision must behave as a focused modal without becoming
-larger than the useful content requires.
+The UI maintains three local ordered lists: \`unassigned\`, \`top\`, and
+\`bottom\`.
 
-Requirements:
+- On dialog open, \`unassigned\` contains every authoritative revealed card
+  once; \`top\` and \`bottom\` are empty.
+- Every transfer or reorder is a local UI change only.
+- Each card ID appears in **exactly one** of those lists at all times.
+- \`COMPLETE STARGAZING\` is enabled only when \`unassigned\` is empty,
+  \`top.length\` satisfies authoritative \`minTop/maxTop\`, and all revealed
+  cards occur exactly once across Top+Bottom.
+- All-to-Top and all-to-Bottom are legal if and only if the existing
+  authoritative min/max constraints allow them. **Do not impose a new
+  requirement that both zones contain a card.**
+- Submitting uses exactly the visually displayed Top and Bottom orders.
+- Submission remains a single explicit action; preserve stale-action/revision
+  invalidation, busy/disabled behavior, server validation, card conservation,
+  reload safety, and the existing Draw-phase continuation.
+- Do not leak card details into observer views, public snapshots, logs, or
+  accessibility output visible to a different player.
 
-- no page-level horizontal overflow;
-- no dialog width beyond the supported viewport;
-- no vertical composition dominated by empty sequence area;
-- the primary completion action remains visible or readily reachable;
-- the underlying Local Dock and table do not reflow when the dialog opens;
-- the modal remains private and blocks accidental interaction with background
-  controls while active;
-- \`Complete Stargazing\` must not be pushed far below the useful content solely
-  because one sequence is empty.
+#### Accessibility and non-drag fallback
 
-**Production-path acceptance**
+Drag-and-drop is the primary **visual** interaction, not the only possible
+way to operate the dialog.
 
-The Stargazing selection UX is not considered proven by asserting that a
-\`.deck-reorder-card\` element exists.
+Provide a keyboard/screen-reader-accessible alternative for moving a card
+to Top/Bottom and moving it earlier/later. This may be a compact contextual
+action menu or accessible move controls, but **must not recreate the large
+three-buttons-per-card grid** in the normal mobile layout.
 
-Focused proof for this single task must establish all of the following on the
-real rendering path:
+- Each card identifies its visible name and current zone/position to the
+  acting viewer.
+- Each drop zone is clearly named.
+- Announce successful moves/reorders to assistive technology.
+- Provide an obvious way to undo or reassign an accidental drop.
+- Maintain usable focus management and avoid trapping the user's finger or
+  focus on a card that moves to another zone.
 
-1. a realistic four-card private deck-reorder state keeps all card faces visible
-   and readable;
-2. after waiting beyond the generic played-card animation duration, all cards
-   are still visibly present;
-3. 390×844 has no giant empty top/bottom regions, no document overflow, and
-   keeps the cards as the visual focus;
-4. 480×900 satisfies the same requirements without unnecessary expansion;
-5. a 320px-class boundary keeps cards identifiable and controls associated with
-   their card, with contained scrolling allowed;
-6. wide layout remains grouped and easy to scan rather than excessively sparse;
-7. moving a card earlier/later visibly changes the sequence;
-8. moving a card between top and bottom visibly transfers the same card while
-   preserving its identity;
-9. the completion control remains visible or immediately reachable;
-10. action-revision replacement closes the stale private dialog;
-11. an observing player receives no private Stargazing card information.
+#### Production-path acceptance for this one task
 
-A test that proves only skill-button state, dialog existence, or card-node count
-does not satisfy this acceptance criterion.
+Do not claim completion solely from a synthetic fixture, DOM node count,
+unit-only drag logic, or a screenshot of the idle layout.
 
-**Pre-Section-6 gate**
+Use a real server-backed Zhuge Liang Stargazing decision and validate:
 
-This single Stargazing deck-reorder refinement task must be closed before
-Section 6 interaction-visualization work begins.
+1. initial four-card presentation: four revealed cards centered, empty Top and
+   Bottom drop zones, completion disabled;
+2. touch long-press + drag from center to Top, with card still visible and
+   accurate insertion position;
+3. touch drag to Bottom, including a mixed Top/Bottom arrangement;
+4. reorder at least two cards within Top, and at least two within Bottom;
+5. cross-zone reassignment and optional return to center;
+6. dropped card exists once only in the UI state; cancel/invalid release
+   leaves the old order unchanged;
+7. the completed submitted \`topCardIds\` and \`bottomCardIds\` match the
+   exact visible sequence and the authoritative deck order afterward;
+8. server rejection or changed action revision cannot submit stale cards;
+9. long-lasting card-face visibility (including after normal played-card
+   animation time), privacy for observing players, and no underlying Dock
+   movement;
+10. 390×844, 480×900, 320px-class, and wide layouts: clear empty/filled drop
+    zones, readable cards, no unintended page overflow, no inaccessible
+    completion action;
+11. pointer/mouse drag and keyboard/non-drag movement also function correctly.
 
-The implementation agent may schedule this one task alongside the other
-remaining pre-Section-6 refinement items, but must not split the requirements
-above into separate handoff tasks unless the reviewer explicitly requests that.
+The existing Stargazing API and gameplay rules are **not** to be changed for
+this UX task. This is a replacement of the already completed button-based
+Stargazing UI, not a new mechanic and **not multiple tasks**.
+
+**Scheduling/gate:** This reviewer change reopens the same §4.10
+Stargazing UX refinement. Because it supersedes the previous button-based
+acceptance, do not represent the old button-based implementation as the final
+approved UX. Close this single drag-and-drop refinement before advancing to
+further Section 6 work. Do not edit the agent-owned \`HANDOVER.md\` from a
+design-review pass.
+
 
 ## 4A. Transient Event Timers and Compact Event Overlays
 
