@@ -1838,6 +1838,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `b14c27117c5b758c178e88f4bf844ff530706038` passed push Actions run
   `37772868829`. Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-D-NEGATION-CHAIN-COMPACTION-01 — Long public response chains
+
+- The physical-seat graph keeps the proven root and newest committed Negation,
+  compacts older responses into an attached `+N` history node, and connects the
+  newest counter relation to that node. This preserves the single-target root
+  disposition and the exact Group target-effect branch state. Real
+  server-backed single-target and Raining Arrows chains passed 6/6 at
+  390×844, 480×900, and 1440×900 with stable root geometry, source tether,
+  counter endpoint, privacy, containment, and no horizontal overflow. Build,
+  targeted ESLint, `node --check`, and `git diff --check` passed. Exact
+  pre-commit parent `21c055269182590b450e65477cc84ed2d0519d75` passed Actions run
+  `37777442409`. Playwright captured screenshots; no manual visual acceptance
+  is claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

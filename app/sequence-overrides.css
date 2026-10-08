@@ -748,6 +748,7 @@
 
 .interaction-root-response-card[data-response-relation="COUNTERS_ROOT"] > small,
 .interaction-root-response-card[data-response-relation="COUNTERS_RESPONSE"] > small,
+.interaction-root-response-card[data-response-relation="COUNTERS_HISTORY"] > small,
 .interaction-root-response-card[data-response-relation="TARGETS_PLAYER"] > small {
   max-width: 100%;
   overflow: hidden;
@@ -770,6 +771,26 @@
 
 .interaction-root-response-card > strong {
   font-size: 13px;
+}
+
+.interaction-root-history-summary {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  min-width: 42px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px dashed #c98669;
+  border-radius: 999px;
+  background: #211a18ed;
+  box-shadow: 0 3px 10px #0008;
+  color: #ecc7b8;
+  font: 700 11px/1 Arial, sans-serif;
+  letter-spacing: .04em;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
 }
 
 .game-shell .play-table {

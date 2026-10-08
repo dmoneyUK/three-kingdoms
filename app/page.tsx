@@ -2864,11 +2864,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     const links = chain?.publicEventLinks;
     if (!chain?.visible || !root || !links || !chain.interactionId || !root.cardKind
       || !root.source.id || root.targets.length !== 1 || !root.targets[0]?.id
-      || chain.negationNodes.length !== links.nodes.length || chain.negationNodes.length > 2) return [];
-    const openRoot = chain.rootEffectState === "ACTIVE" && chain.negationNodes.length === 0;
-    const firstNegation = chain.rootEffectState === "BLOCKED" && chain.negationNodes.length === 1;
-    const counterNegation = chain.rootEffectState === "ACTIVE" && chain.negationNodes.length === 2;
-    if (!openRoot && !firstNegation && !counterNegation) return [];
+      || chain.negationNodes.length !== links.nodes.length) return [];
+    const expectedRootEffectState = chain.negationNodes.length % 2 === 0 ? "ACTIVE" : "BLOCKED";
+    if (chain.rootEffectState !== expectedRootEffectState) return [];
     const rootEvents = room.timeline.filter((event) => event.id === links.root.eventId);
     if (rootEvents.length !== 1) return [];
     const rootEvent = rootEvents[0];

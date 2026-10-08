@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CardKind } from "../game/model";
 import type { PresentationSnapshotGroupParticipantProgress, PresentationSnapshotRootAction } from "../game/presentation-snapshot";
 
@@ -21,6 +21,7 @@ type RootActionLayout = {
   responseCards: readonly Rect[];
   responseSourcePaths: readonly string[];
   responseCounterPaths: readonly string[];
+  historySummary?: Rect | null;
   groupTargetPaths?: readonly { playerId: string; path: string; marker: Point; effectPoint: Point }[];
   groupTargetEffectBlock?: { targetId: string; path: string; point: Point } | null;
   selfHalo: Rect | null;
@@ -37,6 +38,40 @@ type InteractionRootOverlayResponseNode = {
   ariaLabel: string;
   counterTarget: { kind: "ROOT" } | { kind: "RESPONSE"; index: number } | { kind: "GROUP_TARGET_EFFECT"; targetId: string };
 };
+
+type DisplayResponseNode = Omit<InteractionRootOverlayResponseNode, "counterTarget"> & {
+  originalIndex: number;
+  counterTarget: InteractionRootOverlayResponseNode["counterTarget"] | { kind: "HISTORY" };
+};
+
+type ResponseLayout = {
+  responses?: readonly DisplayResponseNode[];
+  historyCount: number;
+};
+
+function compactResponseGraph(responses: readonly InteractionRootOverlayResponseNode[]) {
+  if (responses.some((response, index) => response.index !== index
+    || !response.eventId || !response.actorId || !response.actorName.trim())
+    || new Set(responses.map((response) => response.eventId)).size !== responses.length) return null;
+  for (let index = 0; index < responses.length; index += 1) {
+    const counterTarget = responses[index].counterTarget;
+    if (index === 0) {
+      if (counterTarget.kind !== "ROOT" && counterTarget.kind !== "GROUP_TARGET_EFFECT") return null;
+    } else if (counterTarget.kind !== "RESPONSE" || counterTarget.index !== index - 1) return null;
+  }
+
+  if (responses.length <= 2) return {
+    nodes: responses.map((response) => ({ ...response, originalIndex: response.index })),
+    collapsedCount: 0,
+  };
+
+  const latest = responses.at(-1);
+  if (!latest || latest.counterTarget.kind !== "RESPONSE" || latest.counterTarget.index !== responses.length - 2) return null;
+  return {
+    nodes: [{ ...latest, index: 0, originalIndex: latest.index, counterTarget: { kind: "HISTORY" as const } }],
+    collapsedCount: responses.length - 1,
+  };
+}
 
 export type InteractionRootOverlayAction = {
   key: string;
@@ -118,11 +153,45 @@ function overlaps(left: Rect, right: Rect, padding = 0): boolean {
     && left.top < right.bottom + padding && left.bottom > right.top - padding;
 }
 
+function placeHistorySummary(
+  table: Rect,
+  root: Rect,
+  size: Pick<Rect, "width" | "height">,
+  obstacles: readonly Rect[],
+  margin = 12,
+): Rect | null {
+  const gap = 10;
+  const rootCenter = center(root);
+  const candidates = [
+    { x: root.right + gap + size.width / 2, y: rootCenter.y },
+    { x: root.left - gap - size.width / 2, y: rootCenter.y },
+    { x: rootCenter.x, y: root.top - gap - size.height / 2 },
+    { x: rootCenter.x, y: root.bottom + gap + size.height / 2 },
+    { x: root.right + gap + size.width / 2, y: root.top - gap - size.height / 2 },
+    { x: root.left - gap - size.width / 2, y: root.top - gap - size.height / 2 },
+    { x: root.right + gap + size.width / 2, y: root.bottom + gap + size.height / 2 },
+    { x: root.left - gap - size.width / 2, y: root.bottom + gap + size.height / 2 },
+  ];
+  const availableWidth = table.width - margin * 2 - size.width;
+  const availableHeight = table.height - margin * 2 - size.height;
+  if (availableWidth < 0 || availableHeight < 0) return null;
+  const placed = candidates.flatMap((candidate, order) => {
+    const left = Math.max(table.left + margin, Math.min(candidate.x - size.width / 2, table.right - margin - size.width));
+    const top = Math.max(table.top + margin, Math.min(candidate.y - size.height / 2, table.bottom - margin - size.height));
+    const rect = { left, top, right: left + size.width, bottom: top + size.height, width: size.width, height: size.height };
+    if (obstacles.some((obstacle) => overlaps(rect, obstacle, 6))) return [];
+    const distance = Math.hypot(center(rect).x - rootCenter.x, center(rect).y - rootCenter.y);
+    return [{ rect, score: distance + order * .01 }];
+  }).sort((left, right) => left.score - right.score);
+  return placed[0]?.rect ?? null;
+}
+
 function layoutGroupRootAction(
   shell: HTMLElement,
   cardElement: HTMLElement,
   responseElements: readonly HTMLElement[],
-  action: Pick<InteractionRootOverlayAction, "sourceId" | "groupTargets" | "groupTargetEffectState" | "responses">,
+  historySummaryElement: HTMLElement | null,
+  action: Pick<InteractionRootOverlayAction, "sourceId" | "groupTargets" | "groupTargetEffectState"> & ResponseLayout,
   preferredRootCard: Rect | null,
 ): RootActionLayout | null {
   const table = shell.querySelector<HTMLElement>(".play-table");
@@ -233,6 +302,11 @@ function layoutGroupRootAction(
       effectPoint: quadraticPointBetween(start, end, curve, .55),
     };
   });
+  const historySummaryBounds = historySummaryElement?.getBoundingClientRect();
+  const historySummary = action.historyCount > 0 && historySummaryBounds && historySummaryBounds.width > 0 && historySummaryBounds.height > 0
+    ? placeHistorySummary(tableRect, card, { width: historySummaryBounds.width, height: historySummaryBounds.height }, [...obstacles, card], margin)
+    : null;
+  if (action.historyCount > 0 && !historySummary) return null;
   const responseCards: Rect[] = [];
   const responseSourcePaths: string[] = [];
   const responseCounterPaths: string[] = [];
@@ -248,7 +322,11 @@ function layoutGroupRootAction(
     const actorCenter = center(actorRect);
     let counterTargetPoint: Point;
     let counterTargetRect: Rect | null = null;
-    if (response.counterTarget.kind === "GROUP_TARGET_EFFECT") {
+    if (response.counterTarget.kind === "HISTORY") {
+      counterTargetRect = historySummary;
+      if (!counterTargetRect) return null;
+      counterTargetPoint = center(counterTargetRect);
+    } else if (response.counterTarget.kind === "GROUP_TARGET_EFFECT") {
       const branch = groupTargetPaths.find(({ playerId }) => playerId === response.counterTarget.targetId);
       if (!branch || action.groupTargetEffectState?.targetId !== response.counterTarget.targetId) return null;
       counterTargetPoint = branch.effectPoint;
@@ -272,7 +350,7 @@ function layoutGroupRootAction(
       x: actorCenter.x + responseLineX * preferredFraction,
       y: actorCenter.y + responseLineY * preferredFraction,
     };
-    const responseObstacles = [...obstacles, card, ...responseCards];
+    const responseObstacles = [...obstacles, card, ...(historySummary ? [historySummary] : []), ...responseCards];
     const routeCandidates = [.42, .54, .66, .78].flatMap((fraction) => [0, -34, 34, -58, 58, -82, 82, -106, 106].map((offset) => ({
       center: {
         x: actorCenter.x + responseLineX * fraction + responseNormal.x * offset,
@@ -346,13 +424,14 @@ function layoutGroupRootAction(
     responseCards,
     responseSourcePaths,
     responseCounterPaths,
+    historySummary,
     groupTargetPaths,
     groupTargetEffectBlock,
     selfHalo: null,
   };
 }
 
-function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, responseElement: HTMLElement | null, responseElements: readonly HTMLElement[], action: Pick<InteractionRootOverlayAction, "sourceId" | "targetId" | "mode" | "rootEffectState" | "response" | "responses">, preferredRootCard: Rect | null): RootActionLayout | null {
+function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, responseElement: HTMLElement | null, responseElements: readonly HTMLElement[], historySummaryElement: HTMLElement | null, action: Pick<InteractionRootOverlayAction, "sourceId" | "targetId" | "mode" | "rootEffectState" | "response"> & ResponseLayout, preferredRootCard: Rect | null): RootActionLayout | null {
   const table = shell.querySelector<HTMLElement>(".play-table");
   const shellBounds = shell.getBoundingClientRect();
   const cardBounds = cardElement.getBoundingClientRect();
@@ -523,6 +602,11 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const cardCenter = center(card);
   const sourceStart = rectangleEdge(sourceRect, cardCenter);
   const sourceEnd = rectangleEdge(card, sourceCenter);
+  const historySummaryBounds = historySummaryElement?.getBoundingClientRect();
+  const historySummary = action.historyCount > 0 && historySummaryBounds && historySummaryBounds.width > 0 && historySummaryBounds.height > 0
+    ? placeHistorySummary(tableRect, card, { width: historySummaryBounds.width, height: historySummaryBounds.height }, [...obstacles, card], margin)
+    : null;
+  if (action.historyCount > 0 && !historySummary) return null;
   if (action.responses?.length) {
     if (action.responses.some((response, index) => response.index !== index)) return null;
     const responseCards: Rect[] = [];
@@ -543,7 +627,10 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
         : null;
       if (response.counterTarget.kind === "RESPONSE"
         && (response.counterTarget.index < 0 || response.counterTarget.index >= index || !targetResponse)) return null;
-      const counterTargetRect = targetResponse ?? card;
+      const counterTargetRect = response.counterTarget.kind === "HISTORY"
+        ? historySummary
+        : targetResponse ?? card;
+      if (response.counterTarget.kind === "HISTORY" && !counterTargetRect) return null;
       const counterTargetCenter = center(counterTargetRect);
       const responseLineX = counterTargetCenter.x - actorCenter.x;
       const responseLineY = counterTargetCenter.y - actorCenter.y;
@@ -556,7 +643,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
         x: actorCenter.x + responseLineX * preferredFraction,
         y: actorCenter.y + responseLineY * preferredFraction,
       };
-      const responseObstacles = [...obstacles, card, ...responseCards];
+      const responseObstacles = [...obstacles, card, ...(historySummary ? [historySummary] : []), ...responseCards];
       const fractions = [.5, .62, .74, .84];
       const offsets = [0, -38, 38, -64, 64, -92, 92];
       const candidatesForResponse = fractions.flatMap((fraction) => offsets.flatMap((offset) => {
@@ -607,6 +694,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       responseCards,
       responseSourcePaths,
       responseCounterPaths,
+      historySummary,
       selfHalo: null,
     };
   }
@@ -742,8 +830,15 @@ export function InteractionRootOverlay({
   const layerRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const responseCardRef = useRef<HTMLDivElement>(null);
+  const historySummaryRef = useRef<HTMLDivElement>(null);
   const stableRootPlacementRef = useRef<{ rootKey: string; width: number; height: number; card: Rect } | null>(null);
   const [layout, setLayout] = useState<RootActionLayout | null>(null);
+  const responsePresentation = useMemo(
+    () => action?.responses ? compactResponseGraph(action.responses) : null,
+    [action],
+  );
+  const visibleResponses = useMemo(() => responsePresentation?.nodes ?? [], [responsePresentation]);
+  const historyCount = responsePresentation?.collapsedCount ?? 0;
   const key = action?.key ?? null;
   const sourceId = action?.sourceId ?? null;
   const targetId = action?.targetId ?? null;
@@ -769,9 +864,15 @@ export function InteractionRootOverlay({
     }
 
     const measure = () => {
-      const responseElements = action?.responses?.length
+      if (action?.responses && !responsePresentation) {
+        setLayout(null);
+        onReadyChange(null);
+        return;
+      }
+      const responseElements = visibleResponses.length
         ? Array.from(layer.querySelectorAll<HTMLElement>("[data-root-action-response-node]"))
         : responseCard ? [responseCard] : [];
+      const historySummaryElement = historySummaryRef.current;
       const shellBounds = shell.getBoundingClientRect();
       const rememberedRoot = stableRootPlacementRef.current;
       const preferredRootCard = rememberedRoot?.rootKey === rootPlacementKey
@@ -780,19 +881,21 @@ export function InteractionRootOverlay({
         ? rememberedRoot.card
         : null;
       const nextLayout = groupTargets?.length
-        ? layoutGroupRootAction(shell, card, responseElements, {
+        ? layoutGroupRootAction(shell, card, responseElements, historySummaryElement, {
           sourceId,
           groupTargets,
           groupTargetEffectState: action?.groupTargetEffectState,
-          responses: action?.responses,
+          responses: action?.responses ? visibleResponses : undefined,
+          historyCount,
         }, preferredRootCard)
-        : targetId ? layoutRootAction(shell, card, responseCard, responseElements, {
+        : targetId ? layoutRootAction(shell, card, responseCard, responseElements, historySummaryElement, {
           sourceId,
           targetId,
           mode: mode ?? "targeted",
           rootEffectState: action?.rootEffectState,
           response: action?.response,
-          responses: action?.responses,
+          responses: action?.responses ? visibleResponses : undefined,
+          historyCount,
         }, preferredRootCard) : null;
       if (nextLayout && rootPlacementKey) stableRootPlacementRef.current = {
         rootKey: rootPlacementKey,
@@ -815,6 +918,7 @@ export function InteractionRootOverlay({
           && JSON.stringify(current.responseCards) === JSON.stringify(nextLayout.responseCards)
           && JSON.stringify(current.responseSourcePaths) === JSON.stringify(nextLayout.responseSourcePaths)
           && JSON.stringify(current.responseCounterPaths) === JSON.stringify(nextLayout.responseCounterPaths)
+          && JSON.stringify(current.historySummary) === JSON.stringify(nextLayout.historySummary)
           && JSON.stringify(current.groupTargetPaths) === JSON.stringify(nextLayout.groupTargetPaths)
           && JSON.stringify(current.groupTargetEffectBlock) === JSON.stringify(nextLayout.groupTargetEffectBlock)
           && JSON.stringify(current.selfHalo) === JSON.stringify(nextLayout.selfHalo);
@@ -834,7 +938,7 @@ export function InteractionRootOverlay({
       window.removeEventListener("resize", measure);
       onReadyChange(null);
     };
-  }, [action, enabled, groupTargets, key, mode, onReadyChange, responseActorId, responseTargetId, rootPlacementKey, sourceId, targetId]);
+  }, [action, enabled, groupTargets, historyCount, key, mode, onReadyChange, responseActorId, responsePresentation, responseTargetId, rootPlacementKey, sourceId, targetId, visibleResponses]);
 
   if (!action) return null;
   const groupNamesKnown = Boolean(action.groupTargets?.length && action.groupTargets.every((target) => target.playerName.trim()));
@@ -853,6 +957,9 @@ export function InteractionRootOverlay({
     data-root-action-group-target-count={action.groupTargets?.length ?? undefined}
     data-root-action-mode={action.mode}
     data-root-effect-state={action.rootEffectState ?? undefined}
+    data-root-action-response-count={action.responses?.length ?? undefined}
+    data-root-action-visible-response-count={visibleResponses.length || undefined}
+    data-root-action-collapsed-response-count={historyCount || undefined}
     data-group-target-effect-player-id={action.groupTargetEffectState?.targetId}
     data-group-target-effect-state={action.groupTargetEffectState?.state}
     aria-hidden={!visible}
@@ -936,10 +1043,11 @@ export function InteractionRootOverlay({
         d={path}
       />)}
       {layout.responseCounterPaths.map((path, index) => {
-        const counterTarget = action.responses?.[index]?.counterTarget;
-        const active = index === (action.responses?.length ?? 0) - 1;
+        const counterTarget = visibleResponses[index]?.counterTarget;
+        const active = index === visibleResponses.length - 1;
         const edge = counterTarget?.kind === "ROOT" ? "negation-counters-root"
           : counterTarget?.kind === "GROUP_TARGET_EFFECT" ? "negation-counters-group-target-effect"
+            : counterTarget?.kind === "HISTORY" ? "negation-counters-history"
             : "negation-counters-response";
         return <path
           key={`response-counter-${index}`}
@@ -949,6 +1057,7 @@ export function InteractionRootOverlay({
           data-response-active={active ? "true" : "false"}
           data-counter-target-index={counterTarget?.kind === "RESPONSE" ? counterTarget.index : undefined}
           data-counter-target-group-player-id={counterTarget?.kind === "GROUP_TARGET_EFFECT" ? counterTarget.targetId : undefined}
+          data-counter-target-history={counterTarget?.kind === "HISTORY" ? "true" : undefined}
           d={path}
           markerEnd={`url(#${counterMarkerId})`}
         />;
@@ -970,6 +1079,17 @@ export function InteractionRootOverlay({
       <small>{action.rootEffectState === "BLOCKED" ? "BLOCKED EFFECT" : "ROOT ACTION"}</small>
       <strong>{action.cardLabel}</strong>
     </div>
+    {historyCount > 0 && <div
+      ref={historySummaryRef}
+      className="interaction-root-history-summary"
+      data-root-action-response-history="true"
+      data-collapsed-response-count={historyCount}
+      role="img"
+      aria-label={`${historyCount} earlier committed Negation response${historyCount === 1 ? "" : "s"}`}
+      style={layout?.historySummary ? { left: layout.historySummary.left, top: layout.historySummary.top, transform: "none" } : undefined}
+    >
+      +{historyCount}
+    </div>}
     {action.response && <div
       ref={responseCardRef}
       className={`interaction-root-action-card interaction-root-response-card${responseTargetsPlayer ? " is-active" : ""}`}
@@ -986,8 +1106,8 @@ export function InteractionRootOverlay({
       <small>{action.response.targetId || action.response.countersRoot ? `FROM ${action.response.actorName}` : "BLOCKED"}</small>
       <strong>{action.response.cardLabel}</strong>
     </div>}
-    {action.responses?.map((response, index) => {
-      const active = index === action.responses!.length - 1;
+    {visibleResponses.map((response, index) => {
+      const active = index === visibleResponses.length - 1;
       const box = layout?.responseCards[index];
       return <div
         key={response.eventId}
@@ -995,13 +1115,16 @@ export function InteractionRootOverlay({
         data-root-action-response-card="true"
         data-root-action-response-node="true"
         data-response-node-index={index}
+        data-response-original-index={response.originalIndex}
         data-response-event-id={response.eventId}
         data-response-actor-id={response.actorId}
         data-response-active={active ? "true" : "false"}
         data-response-relation={response.counterTarget.kind === "ROOT" ? "COUNTERS_ROOT"
-          : response.counterTarget.kind === "GROUP_TARGET_EFFECT" ? "COUNTERS_GROUP_TARGET_EFFECT" : "COUNTERS_RESPONSE"}
+          : response.counterTarget.kind === "GROUP_TARGET_EFFECT" ? "COUNTERS_GROUP_TARGET_EFFECT"
+            : response.counterTarget.kind === "HISTORY" ? "COUNTERS_HISTORY" : "COUNTERS_RESPONSE"}
         data-counter-target-index={response.counterTarget.kind === "RESPONSE" ? response.counterTarget.index : undefined}
         data-counter-target-group-player-id={response.counterTarget.kind === "GROUP_TARGET_EFFECT" ? response.counterTarget.targetId : undefined}
+        data-counter-target-history={response.counterTarget.kind === "HISTORY" ? "true" : undefined}
         role="img"
         aria-label={response.ariaLabel}
         style={box ? { left: box.left, top: box.top, transform: "none" } : undefined}
