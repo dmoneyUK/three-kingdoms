@@ -124,7 +124,7 @@ async function graphGeometry(page, sourceId, expectedState, expectedResponses) {
   await expect(overlay).toHaveAttribute("data-root-effect-state", expectedState);
   await expect(overlay).toHaveAttribute("data-oath-recipient-count", "3");
   await expect(overlay.locator("[data-root-action-response-node]")).toHaveCount(expectedResponses);
-  return page.evaluate((sourcePlayerId) => {
+  const readGeometry = () => page.evaluate((sourcePlayerId) => {
     const box = (element) => {
       const rect = element?.getBoundingClientRect();
       return rect ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height } : null;
@@ -206,6 +206,18 @@ async function graphGeometry(page, sourceId, expectedState, expectedResponses) {
       noSequentialMarkers: overlay?.querySelector('[data-group-target-marker-for], [data-group-target-status], [data-group-target-active]') === null,
     };
   }, sourceId);
+  let geometry;
+  try {
+    await expect.poll(async () => {
+      geometry = await readGeometry();
+      return geometry.ready === "true"
+        && geometry.branches.length > 0
+        && geometry.branches.every((branch) => branch.rootEndpointDistance <= 2 && branch.targetEndpointDistance <= 2);
+    }, { timeout: 5_000, intervals: [16, 32, 64, 100] }).toBe(true);
+  } catch (error) {
+    throw new Error(`${error.message}\nLast Oath geometry sample: ${JSON.stringify(geometry, null, 2)}`);
+  }
+  return geometry;
 }
 
 async function waitForSelfHaloToFollowHero(page, sourceId) {
@@ -297,7 +309,10 @@ test("real Oath Negation uses the physical-seat simultaneous root graph and exac
     expect(restoredGeometry.root.bottom).toBeLessThanOrEqual(restoredGeometry.table.bottom + 1);
     expect(restoredGeometry.horizontalOverflow).toBe(false);
     expect(restoredGeometry.branches.every((branch) => branch.effectState === "ACTIVE" && branch.markerEnd !== null && !branch.blockMark)).toBe(true);
-    expect(restoredGeometry.branches.every((branch) => branch.rootEndpointDistance <= 2 && branch.targetEndpointDistance <= 2)).toBe(true);
+    expect(
+      restoredGeometry.branches.every((branch) => branch.rootEndpointDistance <= 2 && branch.targetEndpointDistance <= 2),
+      JSON.stringify({ viewport, branches: restoredGeometry.branches }, null, 2),
+    ).toBe(true);
     expect(restoredGeometry.responseRelations).toEqual([
       { relation: "COUNTERS_ROOT", counterIndex: null },
       { relation: "COUNTERS_RESPONSE", counterIndex: "0" },

@@ -2015,6 +2015,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `84cfe44d1506f2a486d14da27259734440875231`; no post-deploy screenshot or
   Reviewer acceptance is claimed.
 
+### UX2.6-FINAL-AOE-POST-ATTACK-ROUTING-REVALIDATION-01 — Final AOE recheck
+
+- Revalidated real server-backed Raining Arrows, Barbarian Invasion, Oath, and
+  Bumper Harvest graph paths after Attack reveal convergence. The focused
+  browser matrix passed 14/14 at 390×844, 480×900, and 1440×900, including
+  Negation/counter-Negation and ordered/simultaneous branches. Oath geometry
+  proof now polls measured endpoints after viewport changes instead of trusting
+  a stale ready marker; the original ≤2px endpoint threshold is unchanged.
+  Fresh screenshots and geometry are retained in the Playwright report.
+  Parent SHA `d124878089c27a5baa3f5e94410d85249e62c8e6` passed Actions run
+  `37844615401` attempt 2 (all five jobs); attempt 1 had a Wrangler/Miniflare
+  worker network disconnect followed by cascading browser connection failures.
+  Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
