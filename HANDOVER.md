@@ -5,28 +5,35 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2.4A-BUMPER-HARVEST-MOBILE-CHOOSER-FIT-01` is implemented. The real
-server-backed chooser panel is constrained to the viewport; at 320px, all four
-52px choice cards and the local Confirm control fit without clipping. Geometry
-and no-page-overflow checks passed at 320×740, 390×844, 480×900, and 1440×900.
-The timer, menu, Guidance, Dock, and pile checks remain covered. Focused browser
-test passed 1/1; build, `node --check`, targeted ESLint, and `git diff --check`
-passed. Exact pre-commit remote HEAD `a68472626272680e67c53b6a4e2cfb67e16a90e1`
-passed Actions run `37784998759` (all five jobs successful). This task commit's
-CI is pending after push. Reviewer acceptance is not claimed.
+`UX2.4D-P1-REAL-ROOM-CREATION-BROWSER-PROOF-01` now has a clean server-backed
+browser path from Host Game through the product `POST /api/rooms` route, server
+test-seat creation, start, authoritative hero choices, and the real `.game-shell`
+with server-generated CurrentAction/revision. It uses neither the test seed
+route nor handcrafted action/presentation data. The focused browser spec passed
+1/1; syntax, targeted ESLint, and `git diff --check` passed. The Composure
+response regression now waits for CurrentAction-driven skill disablement before
+asserting there is no duplicate Action Row entry.
+
+Exact pre-commit remote HEAD `544bc932e4a0a989d6a050d53ffae35599c86445` passed
+Actions run `37786601383`, attempt 2, all five jobs successful. Attempt 1 had a
+transient Browser Worker exit followed by connection-refused errors; the same-
+SHA retry passed, and local shard 1 passed 408/408. The new task commit's CI is
+pending after push. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
 Re-fetched `origin/ux-v2`; `docs/UX2-refine.md` remains blob
-`7feb8af937b6407f3f33c3959325db8d3f188cf4`. Re-reviewed §4.10, §§4A.7–4A.10,
-§4C.29, and the §4D gate/tasks. Section 6 remains deferred until §§4.10, 4A,
-4C.29 and P1–P5 close.
+`7feb8af937b6407f3f33c3959325db8d3f188cf4`. Re-reviewed §§4C.1–4C.29 and all
+§4D tasks P1–P5 plus the Section 6 gate. Section 6 remains deferred until the
+active pre-§5 requirements close.
 
 ## Current / next task
 
-`UX2.4D-P1-REAL-ROOM-CREATION-BROWSER-PROOF-01` — prove normal room creation
-through `POST /api/rooms` (`action: "create"`) reaches the real production game
-page in a clean server-backed browser run, without the test-only seed route or
-handcrafted action/presentation state. If the local runtime route still fails,
-repair it within this task. Preserve the existing Fanjian/§6 uncommitted work;
-do not include it in pre-§5 commits.
+`UX2.REFINE-UNIFIED-TARGET-CARD-MODAL-REAL-GAME-P2-01` — make authoritative
+Steal, Burning Bridge/Dismantle, Retaliation, Frost Sword, and Kirin Bow
+decisions reach their approved shared modal in real gameplay without an
+unrelated Hero Focus/Inspect/Preview gate. Preserve CurrentAction legality,
+anonymous Hand privacy, public face-up zones, effect-specific copy/CTA, stale
+selection clearing, and prove all five server-generated paths plus a mixed-zone
+case do not fall back to the legacy picker. Preserve the existing Fanjian/§6
+uncommitted work; do not include it in pre-§5 commits.

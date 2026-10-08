@@ -147,5 +147,6 @@ test("real Empress Dowager response reaches the Skills band from CurrentAction o
   const body = JSON.parse(submitted.request().postData() ?? "{}");
   expect(body).toMatchObject({ action: "respond", providerId: "zhen_ji_black_card_dodge", cardId: blackCard.id });
   expect(requests.filter((entry) => entry.action === "respond")).toHaveLength(1);
+  await expect(skill).toBeDisabled();
   expect(extras.getByRole("button", { name: /Empress Dowager/ })).toHaveCount(0);
 });

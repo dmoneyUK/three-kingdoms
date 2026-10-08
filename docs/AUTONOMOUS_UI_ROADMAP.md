@@ -1507,13 +1507,19 @@ Only a proven regression or new Reviewer-approved design requirement does.
 
 - Removed the duplicate `CausalCreation` declaration that prevented the local
   `vinext dev` dependency scan; a real product `POST /api/rooms` create request
-  returned HTTP 201. A production Worker browser test now creates a room through
-  Host Game, adds real server-backed test seats, starts it, finishes hero
-  selection, and reaches `.game-shell` with server-generated CurrentAction.
-  Build, focused browser 1/1, targeted ESLint, and `git diff --check` passed.
-  Pre-commit Actions run `37669875927` on exact parent SHA
-  `2a4ed5f94c6694d8e0095f28f8e7c3d19a9103a4` completed success. Reviewer
-  acceptance is not claimed.
+  returned HTTP 201. The refreshed production-Worker browser proof submits the
+  actual Host Game form, asserts its create payload contains no handcrafted
+  action/presentation authority, adds server-backed test seats, starts the
+  match, selects only server-projected hero options, and reaches `.game-shell`
+  with server-generated CurrentAction and revision. It avoids the test seed
+  route. A local `vinext dev` check confirmed the form becomes interactive once
+  hydration completes; the browser proof waits for Host Game to be enabled.
+  The focused browser spec passed 1/1; syntax, targeted ESLint, and
+  `git diff --check` passed. Exact pre-commit HEAD
+  `544bc932e4a0a989d6a050d53ffae35599c86445` passed Actions run `37786601383`
+  on attempt 2 (all five jobs); attempt 1's Browser Worker exit and subsequent
+  connection failures did not reproduce in the retry or the 408-test local
+  shard. Reviewer acceptance is not claimed.
 
 ### UX2.REFINE-UNIFIED-TARGET-CARD-MODAL-REAL-GAME-P2-01 — Real selection paths
 
