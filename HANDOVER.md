@@ -5,35 +5,37 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2.4D-P1-REAL-ROOM-CREATION-BROWSER-PROOF-01` now has a clean server-backed
-browser path from Host Game through the product `POST /api/rooms` route, server
-test-seat creation, start, authoritative hero choices, and the real `.game-shell`
-with server-generated CurrentAction/revision. It uses neither the test seed
-route nor handcrafted action/presentation data. The focused browser spec passed
-1/1; syntax, targeted ESLint, and `git diff --check` passed. The Composure
-response regression now waits for CurrentAction-driven skill disablement before
-asserting there is no duplicate Action Row entry.
+The P2 production-routing audit and real-game browser proof remain uncommitted:
+Steal/Burning Bridge use `CurrentAction.targetCardSelection`; Retaliation/Frost
+Sword/Kirin Bow use authoritative trigger options. The shared picker does not
+require Hero Focus, Inspect, or preview proof, and no production JSX callsite
+for the legacy table picker remains.
 
-Exact pre-commit remote HEAD `544bc932e4a0a989d6a050d53ffae35599c86445` passed
-Actions run `37786601383`, attempt 2, all five jobs successful. Attempt 1 had a
-transient Browser Worker exit followed by connection-refused errors; the same-
-SHA retry passed, and local shard 1 passed 408/408. The new task commit's CI is
-pending after push. Reviewer acceptance is not claimed.
+Actions run `37790885726` for exact parent SHA
+`4ebea0b269a6deb537d39e9833beb128aae18adb` **FAILED**: Browser shard 2 failed
+the Stargazing 390×844 touch-cancel case after prior mouse drags; 410 passed,
+one failed, and shard 1 was cancelled. API and lint/fast jobs succeeded. The
+focused test repair preserves touch-cancel and order-preservation assertions,
+checks the real grip hit target, and runs cancellation alongside native touch
+operations before mouse-only drags. Under CI-mode browser configuration, the
+full Stargazing real-game spec passed 4/4; syntax and `git diff --check` passed.
+No production code was changed for this repair.
+
+CI REPAIR PUSHED — VALIDATION PENDING. Wait for the exact repair SHA to pass
+before resuming P2. The real-game P2 browser spec currently passes locally
+14/14, and target-card contract browser passes 68/68; these do not override the
+failed remote CI gate. Existing Fanjian/§6 work and the separate P2 changes
+remain outside the CI repair.
 
 ## Design checkpoint
 
 Re-fetched `origin/ux-v2`; `docs/UX2-refine.md` remains blob
-`7feb8af937b6407f3f33c3959325db8d3f188cf4`. Re-reviewed §§4C.1–4C.29 and all
-§4D tasks P1–P5 plus the Section 6 gate. Section 6 remains deferred until the
-active pre-§5 requirements close.
+`7feb8af937b6407f3f33c3959325db8d3f188cf4`. Re-reviewed §§4C.1–4C.29 and the
+§4D P2 gate. Section 6 remains deferred until all active pre-§5 gates close.
 
 ## Current / next task
 
-`UX2.REFINE-UNIFIED-TARGET-CARD-MODAL-REAL-GAME-P2-01` — make authoritative
-Steal, Burning Bridge/Dismantle, Retaliation, Frost Sword, and Kirin Bow
-decisions reach their approved shared modal in real gameplay without an
-unrelated Hero Focus/Inspect/Preview gate. Preserve CurrentAction legality,
-anonymous Hand privacy, public face-up zones, effect-specific copy/CTA, stale
-selection clearing, and prove all five server-generated paths plus a mixed-zone
-case do not fall back to the legacy picker. Preserve the existing Fanjian/§6
-uncommitted work; do not include it in pre-§5 commits.
+`UX2.CI-REPAIR-STARGAZING-TOUCH-CANCEL-01` — commit/push only the focused
+Stargazing browser-test repair and this handoff update; then hold feature work
+until the exact repair SHA is green. Resume the existing P2 production-path
+gate after that CI result. Do not include P2 or Fanjian/§6 changes in the repair.

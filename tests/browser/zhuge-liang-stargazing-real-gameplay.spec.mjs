@@ -469,6 +469,37 @@ for (const entry of [
     });
     await assertCardConservation(opened.dialog, opened.cards);
     await touchDrag({ page: opened.actorPage, cdp, dialog: opened.dialog, cards: opened.cards, cardId: dodge.id, zoneName: "bottom", index: 0 });
+
+    // Keep native touch-cancel coverage with the native touch interactions,
+    // before the later mouse-driven pointer sequences.
+    await opened.actorPage.evaluate(() => {
+      window.__stargazingPointerCancelled = false;
+      document.addEventListener("pointercancel", () => { window.__stargazingPointerCancelled = true; }, { once: true });
+    });
+    const attackGrip = cardNode(opened.dialog, attack.id).locator("[data-deck-touch-handle]");
+    const attackGripBox = await attackGrip.boundingBox();
+    expect(attackGripBox).toBeTruthy();
+    const cancelTouchStart = {
+      x: Math.round(attackGripBox.x + attackGripBox.width / 2),
+      y: Math.round(attackGripBox.y + attackGripBox.height / 2),
+    };
+    const cancelGripHit = await opened.actorPage.evaluate(({ x, y, cardId }) => {
+      const hit = document.elementFromPoint(x, y);
+      const grip = document.querySelector(`[data-deck-card-id="${cardId}"] [data-deck-touch-handle]`);
+      return Boolean(grip && (hit === grip || grip.contains(hit)));
+    }, { ...cancelTouchStart, cardId: attack.id });
+    expect(cancelGripHit).toBe(true);
+    const cancelTouchId = nextTouchIdentifier++;
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ ...cancelTouchStart, id: cancelTouchId }],
+    });
+    await expect(cardNode(opened.dialog, attack.id)).toHaveAttribute("data-dragging", "true");
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+    await expect.poll(() => opened.actorPage.evaluate(() => window.__stargazingPointerCancelled)).toBe(true);
+    expect(await orderIn(opened.dialog, "top")).toEqual([attack.id]);
+    expect(await orderIn(opened.dialog, "bottom")).toEqual([dodge.id]);
+
     await mouseDrag({ page: opened.actorPage, dialog: opened.dialog, cardId: peach.id, zoneName: "top", index: 1 });
     await mouseDrag({ page: opened.actorPage, dialog: opened.dialog, cardId: duel.id, zoneName: "bottom", index: 1 });
     expect(await orderIn(opened.dialog, "top")).toEqual([attack.id, peach.id]);
@@ -480,25 +511,7 @@ for (const entry of [
     expect(await orderIn(opened.dialog, "top")).toEqual([peach.id, attack.id]);
     expect(await orderIn(opened.dialog, "bottom")).toEqual([duel.id, dodge.id]);
 
-    // Cancelled touch and an invalid outside drop must preserve the old lists.
-    await opened.actorPage.evaluate(() => {
-      window.__stargazingPointerCancelled = false;
-      document.addEventListener("pointercancel", () => { window.__stargazingPointerCancelled = true; }, { once: true });
-    });
-    const attackGrip = cardNode(opened.dialog, attack.id).locator("[data-deck-touch-handle]");
-    const attackGripBox = await attackGrip.boundingBox();
-    expect(attackGripBox).toBeTruthy();
-    const cancelTouchId = nextTouchIdentifier++;
-    await cdp.send("Input.dispatchTouchEvent", {
-      type: "touchStart",
-      touchPoints: [{ x: Math.round(attackGripBox.x + attackGripBox.width / 2), y: Math.round(attackGripBox.y + attackGripBox.height / 2), id: cancelTouchId }],
-    });
-    await expect(cardNode(opened.dialog, attack.id)).toHaveAttribute("data-dragging", "true");
-    await cdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
-    await expect.poll(() => opened.actorPage.evaluate(() => window.__stargazingPointerCancelled)).toBe(true);
-    expect(await orderIn(opened.dialog, "top")).toEqual([peach.id, attack.id]);
-    expect(await orderIn(opened.dialog, "bottom")).toEqual([duel.id, dodge.id]);
-
+    // An invalid outside drop must preserve the old lists.
     const attackFace = cardNode(opened.dialog, attack.id).locator(".deck-reorder-card-face");
     const attackFaceBox = await attackFace.boundingBox();
     expect(attackFaceBox).toBeTruthy();
