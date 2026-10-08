@@ -18,6 +18,7 @@ export type PresentationV2Event = {
   judgement?: boolean;
   negationSettlement?: unknown;
   selfTargetAction?: unknown;
+  attackDodgeResponse?: unknown;
 };
 
 /** Server-authored public proof attached only to a successfully used self-target card event. */
@@ -170,6 +171,26 @@ export type PresentationRootAction = {
   cardKind: CardKind;
 };
 
+/** Public proof that one submitted physical Dodge blocks one exact ordinary Attack target effect. */
+export type PresentationAttackDodgeResponseProof = {
+  semantics: "PROVEN";
+  counterRelation: "BLOCKS_TARGET_EFFECT";
+  interactionId: string;
+  rootFrameId: string;
+  rootEventId: string;
+  rootResolutionId: string;
+  rootSourceId: string;
+  targetId: string;
+  responseActorId: string;
+  rootCardKind: "Attack";
+  responseCardKind: "Dodge";
+};
+
+export type PresentationAttackDodgeResponse = PresentationAttackDodgeResponseProof & {
+  responseEventId: string;
+  responseResolutionId: string;
+};
+
 /** Simultaneous Oath recovery scope; intentionally has no sequential current participant. */
 export type PresentationOathRecipientScope = {
   semantics: "PROVEN";
@@ -219,6 +240,7 @@ export type PresentationV2 = {
   negationSettlement: PresentationNegationSettlement | null;
   oathRecipientScope: PresentationOathRecipientScope | null;
   bumperHarvestProgress: PresentationBumperHarvestProgress | null;
+  attackDodgeResponses?: readonly PresentationAttackDodgeResponse[];
   groupResolution: {
     semantics: "PROVEN" | "UNPROVEN";
     resolutionSemantics: GroupResolutionSemantics | null;
@@ -1216,6 +1238,66 @@ function selfTargetActionsFor(timeline: readonly PresentationV2Event[]): Present
   });
 }
 
+function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): PresentationAttackDodgeResponse[] {
+  const eventCounts = new Map<string, number>();
+  const eventsById = new Map<string, PresentationV2Event[]>();
+  const cardIdCounts = new Map<string, number>();
+  for (const event of timeline) {
+    const eventId = stringValue(event.id);
+    if (eventId) {
+      eventCounts.set(eventId, (eventCounts.get(eventId) ?? 0) + 1);
+      const matching = eventsById.get(eventId) ?? [];
+      matching.push(event);
+      eventsById.set(eventId, matching);
+    }
+    for (const cardId of eventCardIds(event)) cardIdCounts.set(cardId, (cardIdCounts.get(cardId) ?? 0) + 1);
+  }
+  return timeline.flatMap((event) => {
+    const proof = record(event.attackDodgeResponse);
+    if (!proof) return [];
+    const eventId = stringValue(event.id);
+    const responseResolutionId = stringValue(event.resolutionId);
+    const rootEventId = stringValue(proof.rootEventId);
+    const rootResolutionId = stringValue(proof.rootResolutionId);
+    const interactionId = stringValue(proof.interactionId);
+    const rootFrameId = stringValue(proof.rootFrameId);
+    const rootSourceId = stringValue(proof.rootSourceId);
+    const targetId = stringValue(proof.targetId);
+    const responseActorId = stringValue(proof.responseActorId);
+    const rootEvent = rootEventId && eventsById.get(rootEventId)?.length === 1 ? eventsById.get(rootEventId)?.[0] : null;
+    if (!rootEventId || !rootEvent) return [];
+    const rootCard = record(rootEvent?.card);
+    const responseCard = record(event.card);
+    const rootCardId = stringValue(rootCard?.id);
+    const responseCardId = stringValue(responseCard?.id);
+    if (!eventId || eventCounts.get(eventId) !== 1 || !responseResolutionId
+      || event.type !== "card" || event.presentation === false || event.action !== "play" || event.playedAs !== undefined
+      || responseCard?.kind !== "Dodge" || !responseCardId || cardIdCounts.get(responseCardId) !== 1
+      || proof.semantics !== "PROVEN" || proof.counterRelation !== "BLOCKS_TARGET_EFFECT"
+      || rootEvent.type !== "card" || rootEvent.presentation === false || rootEvent.action !== "play" || rootEvent.playedAs !== undefined
+      || rootCard?.kind !== "Attack" || !rootCardId || cardIdCounts.get(rootCardId) !== 1
+      || rootEvent.resolutionId !== rootResolutionId || responseResolutionId !== rootResolutionId
+      || rootEventId === eventId || !rootResolutionId || !interactionId || !rootFrameId
+      || !rootSourceId || !targetId || rootSourceId === targetId || responseActorId !== targetId
+      || proof.rootCardKind !== "Attack" || proof.responseCardKind !== "Dodge") return [];
+    return [{
+      semantics: "PROVEN",
+      counterRelation: "BLOCKS_TARGET_EFFECT",
+      interactionId,
+      rootFrameId,
+      rootEventId,
+      rootResolutionId,
+      rootSourceId,
+      targetId,
+      responseActorId,
+      rootCardKind: "Attack",
+      responseCardKind: "Dodge",
+      responseEventId: eventId,
+      responseResolutionId,
+    }];
+  });
+}
+
 function participants(active: Context | null, group: RecordLike | null): PresentationParticipant[] {
   if (!active) return [];
   const map = new Map<string, Set<PresentationParticipant["roles"][number]>>();
@@ -1263,6 +1345,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
   const rootAction = singleTargetAttackRootActionFor(envelope, interactionScene, input.pending, root, rootEvent);
   const selfTargetActions = selfTargetActionsFor(input.timeline);
+  const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
   const oathRecipientScope = oathRecipientScopeFor(input.pending, envelope, interactionScene, input.oathRecipientIds);
   const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
@@ -1299,6 +1382,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     dyingBarrier,
     reactionChain,
     negationSettlement,
+    ...(attackDodgeResponses.length ? { attackDodgeResponses } : {}),
     oathRecipientScope,
     bumperHarvestProgress: projectedBumperHarvestProgress,
     groupResolution: groupCardKind ? groupPresentation(interactionScene, groupValues, projectedGroupParticipantProgress) : null,

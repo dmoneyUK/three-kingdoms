@@ -1664,6 +1664,22 @@ Only a proven regression or new Reviewer-approved design requirement does.
   104/104, engine-backed API tests 34/34, build and targeted lint passed.
   Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-B-ATTACK-DODGE-RESPONSE-PROOF-01 — submitted Dodge authority
+
+- The server now attaches typed public counter proof only to a submitted
+  physical Dodge that answers one exact ordinary Attack target effect. The
+  projector, snapshot, and client adapter require unique event/card identity,
+  matching root/response resolution, and coherent source/target/responder
+  fields; malformed or ambiguous proof fails closed. The public contract is
+  viewer-equal and carries no physical card IDs or private controls.
+- An engine-backed API route proves no response fact exists before submission,
+  then verifies the exact public Dodge proof for source, target, and observer.
+  Presentation/client/snapshot and CI-failure regression tests passed 151/151;
+  the API suite passed 34/34; the previously failing fast suite passed 236/236
+  after the optional-field guard; build, targeted ESLint, and diff check passed.
+  The subsequent Attack/Dodge visual grammar remains open. Reviewer acceptance
+  is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

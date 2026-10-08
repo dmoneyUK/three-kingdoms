@@ -196,6 +196,29 @@ test("adapter keeps explicit self-target proof public across REST and viewer cha
   assert.deepEqual(buildPresentationClientView({ ...rest, selfTargetActions: [{ ...selfTargetAction, sourceId: "B" }] }, "B").selfTargetActions, []);
 });
 
+test("adapter carries submitted Attack/Dodge counter proof viewer-equally without adding controls", () => {
+  const response = {
+    semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
+    interactionId: "attack-interaction", rootFrameId: "attack-frame",
+    rootEventId: "attack-event", rootResolutionId: "attack-resolution",
+    rootSourceId: "A", targetId: "B", responseActorId: "B",
+    rootCardKind: "Attack", responseCardKind: "Dodge",
+    responseEventId: "dodge-event", responseResolutionId: "attack-resolution",
+  };
+  const rest = snapshot({
+    identity: null, interaction: null, decision: null,
+    stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null },
+    attackDodgeResponses: [response],
+  });
+  const acting = buildPresentationClientView(rest, "B");
+  const observing = buildPresentationClientView(rest, "C");
+  assert.deepEqual(acting.attackDodgeResponses, [response]);
+  assert.deepEqual(observing.attackDodgeResponses, [response], "submitted public response is independent of viewer entitlement");
+  assert.equal("options" in acting, false);
+  assert.equal("legalActions" in acting, false);
+  assert.deepEqual(buildPresentationClientView({ ...rest, attackDodgeResponses: [{ ...response, responseResolutionId: "stale-resolution" }] }, "B").attackDodgeResponses ?? [], []);
+});
+
 test("adapter carries only a root action bound to the active public frame", () => {
   const interaction = scene({
     rootFrameId: "attack-frame",

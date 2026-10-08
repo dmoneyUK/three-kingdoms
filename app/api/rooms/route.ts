@@ -24,7 +24,7 @@ import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { projectPresentationV2, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof } from "../../../game/presentation-v2";
+import { projectPresentationV2, type PresentationAttackDodgeResponseProof, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
@@ -35,7 +35,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null; causal_envelope_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -112,6 +112,9 @@ function newToken() { return Array.from(crypto.getRandomValues(new Uint8Array(24
 async function hash(value: string) { const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)); return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join(""); }
 function parse<T>(value: string | null, fallback: T): T {
   try { return value ? JSON.parse(value) as T : fallback; } catch { return fallback; }
+}
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
 function currentHeroOptions(value: string | null): Hero[] {
@@ -610,7 +613,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}) };
 }
 function addTriggeredEffectNotice(log: string[], actor: string, label: string) {
   return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined, { effectNotice: true });
@@ -627,6 +630,46 @@ function addPrivateDrawEvent(log: string[], player: PlayerRow, card: Card, initi
 function addCardEventWithId(log: string[], player: string, card: Card, target = player, action: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" = "play", presentation = true, meta?: PresentationMeta) {
   const eventId = crypto.randomUUID();
   return { log: addCardEvent(log, player, card, target, action, presentation, meta, eventId), eventId };
+}
+function attackDodgeResponseProof(log: string[], response: ResponsePending, responderId: string): PresentationAttackDodgeResponseProof | undefined {
+  const attack = attackResponse(response);
+  if (!attack) return undefined;
+  const { continuation } = attack;
+  const causal = response.causal;
+  if (continuation.origin !== "card" || continuation.requiredDodgeCount !== 1
+    || !continuation.sourceId || continuation.sourceId === continuation.targetId
+    || response.actorId !== continuation.targetId || responderId !== continuation.targetId
+    || response.requirement.kind !== "dodge" || response.requirement.targetId !== continuation.targetId
+    || !continuation.sequenceStartCardId || !causal
+    || causal.interactionId !== continuation.causal?.interactionId || causal.frameId !== continuation.causal?.frameId
+    || !causal.interactionId || !causal.frameId) return undefined;
+
+  const publicCardEvents: Array<{ entryKind: "card" | "cards"; event: Record<string, unknown> }> = [];
+  for (const entry of log) {
+    if (!entry.startsWith("@card:") && !entry.startsWith("@cards:")) continue;
+    try {
+      publicCardEvents.push({ entryKind: entry.startsWith("@card:") ? "card" : "cards", event: JSON.parse(entry.slice(entry.startsWith("@card:") ? 6 : 7)) as RecordLike });
+    } catch { /* An unrelated malformed history entry cannot prove this response. */ }
+  }
+  const matchingRootEvents = publicCardEvents.filter(({ event }) => record(event.card)?.id === continuation.sequenceStartCardId);
+  if (matchingRootEvents.length !== 1 || matchingRootEvents[0].entryKind !== "card") return undefined;
+  const root = matchingRootEvents[0].event;
+  const rootCard = record(root.card);
+  if (typeof root.id !== "string" || !root.id || typeof root.resolutionId !== "string" || !root.resolutionId
+    || root.action !== "play" || root.presentation === false || root.playedAs !== undefined || rootCard?.kind !== "Attack") return undefined;
+  return {
+    semantics: "PROVEN",
+    counterRelation: "BLOCKS_TARGET_EFFECT",
+    interactionId: causal.interactionId,
+    rootFrameId: causal.frameId,
+    rootEventId: root.id,
+    rootResolutionId: root.resolutionId,
+    rootSourceId: continuation.sourceId,
+    targetId: continuation.targetId,
+    responseActorId: responderId,
+    rootCardKind: "Attack",
+    responseCardKind: "Dodge",
+  };
 }
 function addCardGroupEvent(log: string[], player: string, cards: Card[], action: "discard" | "reveal" | "play", presentation = true, target = player, message?: string, meta?: PresentationMeta) { return cards.length ? [...log.slice(-199), `@cards:${JSON.stringify({ id: crypto.randomUUID(), player, target, cards, action, presentation, ...presentationMeta(log, { ...meta, resolutionId: meta?.resolutionId ?? crypto.randomUUID() }, "essential"), ...(message ? { message } : {}) })}`] : log; }
 function addCardGroupEventWithId(log: string[], player: string, cards: Card[], action: "discard" | "reveal" | "play", presentation = true, target = player, message?: string, meta?: PresentationMeta) {
@@ -6023,7 +6066,16 @@ export async function POST(request: Request) {
     if (canonicalDodge) {
       const dodgeIdsSet = new Set(dodgeIds);
       hand = hand.filter((card) => !dodgeIdsSet.has(card.id)); discard.push(...dodgeCards);
-      if (dodgeCards.length === 1) log = addCardEvent(log, me.name, dodgeCards[0], source?.name ?? "Attack", "play", true, responseExecution?.playedAs ? { playedAs: responseExecution.playedAs } : undefined);
+      if (dodgeCards.length === 1) {
+        const attackDodgeResponse = dodgeCards[0].kind === "Dodge" && !responseExecution?.playedAs
+          ? attackDodgeResponseProof(log, attack.response, me.id)
+          : undefined;
+        log = addCardEvent(log, me.name, dodgeCards[0], source?.name ?? "Attack", "play", true, {
+          ...(attackDodgeResponse ? { resolutionId: attackDodgeResponse.rootResolutionId } : {}),
+          ...(responseExecution?.playedAs ? { playedAs: responseExecution.playedAs } : {}),
+          ...(attackDodgeResponse ? { attackDodgeResponse } : {}),
+        });
+      }
       else log = addLogWithId(log, `${me.name} uses ${responseExecution?.providerId ?? "a Dodge provider"}.` ).log;
       log = addLog(log, dodgeCards.length ? `${me.name} plays Dodge and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.` : `${me.name} uses ${responseExecution?.providerId ?? "a Dodge provider"} and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.`);
       const reopened = responseAfterSemanticSuccess(response)

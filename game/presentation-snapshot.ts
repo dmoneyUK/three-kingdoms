@@ -9,6 +9,7 @@ import type {
   PresentationReactionChain,
   PresentationReactionChainNode,
   PresentationRootAction,
+  PresentationAttackDodgeResponse,
   PresentationSelfTargetAction,
   PresentationStableBoundary,
   PresentationV2,
@@ -61,6 +62,7 @@ export type PresentationSnapshotGroupProgress = {
 export type PresentationSnapshotOathRecipientScope = PresentationOathRecipientScope;
 export type PresentationSnapshotBumperHarvestProgress = PresentationBumperHarvestProgress;
 export type PresentationSnapshotRootAction = PresentationRootAction;
+export type PresentationSnapshotAttackDodgeResponse = PresentationAttackDodgeResponse;
 export type PresentationSnapshotSelfTargetAction = PresentationSelfTargetAction;
 
 export type PresentationSnapshot = {
@@ -72,6 +74,7 @@ export type PresentationSnapshot = {
   bumperHarvestProgress: PresentationSnapshotBumperHarvestProgress | null;
   reactionChain: PresentationReactionChain | null;
   rootAction: PresentationSnapshotRootAction | null;
+  attackDodgeResponses?: readonly PresentationSnapshotAttackDodgeResponse[];
   selfTargetActions?: readonly PresentationSnapshotSelfTargetAction[];
   decision: PresentationSnapshotDecision | null;
   localControl: PresentationSnapshotLocalControl;
@@ -122,6 +125,43 @@ export function provenSelfTargetActions(value: unknown): PresentationSnapshotSel
     sourceId: action.sourceId,
     targetId: action.targetId,
     cardKind: "Peach",
+  }));
+}
+
+export function provenAttackDodgeResponses(value: unknown): PresentationSnapshotAttackDodgeResponse[] {
+  if (!Array.isArray(value)) return [];
+  const responses = value.filter((candidate): candidate is PresentationSnapshotAttackDodgeResponse => Boolean(candidate && typeof candidate === "object" && !Array.isArray(candidate)
+    && (candidate as PresentationSnapshotAttackDodgeResponse).semantics === "PROVEN"
+    && (candidate as PresentationSnapshotAttackDodgeResponse).counterRelation === "BLOCKS_TARGET_EFFECT"
+    && nonEmptyString((candidate as PresentationSnapshotAttackDodgeResponse).responseEventId)
+    && nonEmptyString((candidate as PresentationSnapshotAttackDodgeResponse).responseResolutionId)
+    && nonEmptyString((candidate as PresentationSnapshotAttackDodgeResponse).rootEventId)
+    && nonEmptyString((candidate as PresentationSnapshotAttackDodgeResponse).rootResolutionId)
+    && (candidate as PresentationSnapshotAttackDodgeResponse).responseResolutionId === (candidate as PresentationSnapshotAttackDodgeResponse).rootResolutionId
+    && nonEmptyString((candidate as PresentationSnapshotAttackDodgeResponse).interactionId)
+    && nonEmptyString((candidate as PresentationSnapshotAttackDodgeResponse).rootFrameId)
+    && nonEmptyString((candidate as PresentationSnapshotAttackDodgeResponse).rootSourceId)
+    && nonEmptyString((candidate as PresentationSnapshotAttackDodgeResponse).targetId)
+    && (candidate as PresentationSnapshotAttackDodgeResponse).rootSourceId !== (candidate as PresentationSnapshotAttackDodgeResponse).targetId
+    && (candidate as PresentationSnapshotAttackDodgeResponse).responseActorId === (candidate as PresentationSnapshotAttackDodgeResponse).targetId
+    && (candidate as PresentationSnapshotAttackDodgeResponse).rootCardKind === "Attack"
+    && (candidate as PresentationSnapshotAttackDodgeResponse).responseCardKind === "Dodge"));
+  const counts = new Map<string, number>();
+  responses.forEach((response) => counts.set(response.responseEventId, (counts.get(response.responseEventId) ?? 0) + 1));
+  return responses.filter((response) => counts.get(response.responseEventId) === 1).map((response) => ({
+    semantics: "PROVEN",
+    counterRelation: "BLOCKS_TARGET_EFFECT",
+    interactionId: response.interactionId,
+    rootFrameId: response.rootFrameId,
+    rootEventId: response.rootEventId,
+    rootResolutionId: response.rootResolutionId,
+    rootSourceId: response.rootSourceId,
+    targetId: response.targetId,
+    responseActorId: response.responseActorId,
+    rootCardKind: "Attack",
+    responseCardKind: "Dodge",
+    responseEventId: response.responseEventId,
+    responseResolutionId: response.responseResolutionId,
   }));
 }
 
@@ -466,6 +506,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     bumperHarvestProgress: authority ? bumperHarvestProgressFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
     reactionChain: authority ? reactionChainFor(input.presentationV2, authority.scene, authority.identity) : null,
     rootAction: authority ? rootActionFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
+    ...(input.presentationV2.attackDodgeResponses?.length ? { attackDodgeResponses: provenAttackDodgeResponses(input.presentationV2.attackDodgeResponses) } : {}),
     selfTargetActions: provenSelfTargetActions(input.presentationV2.selfTargetActions),
     decision: authority && authority.stable.kind === "CHOICE"
       ? { actorId: authority.scene.decisionActorId, stage: authority.scene.stage }

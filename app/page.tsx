@@ -2799,7 +2799,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     : null;
   const rootAction = clientPresentation.rootAction;
   const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId) : null;
-  const selfTargetCandidates = rootAction ? [] : clientPresentation.selfTargetActions.flatMap((action) => {
+  const selfTargetCandidates = rootAction ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
       || event.resolutionId !== action.resolutionId || event.card.kind !== action.cardKind

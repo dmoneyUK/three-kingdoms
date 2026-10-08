@@ -201,6 +201,47 @@ test("ordinary self-target Peach proof requires an explicit, unique public play 
   assert.deepEqual(project([selfPeach, { ...selfPeach }]).selfTargetActions, [], "duplicate event identity is ambiguous");
 });
 
+test("Attack/Dodge counter proof links one submitted physical Dodge to its exact Attack target effect", () => {
+  const root = event("attack-root-event", "attack-resolution", {
+    player: "A", target: "B", action: "play", card: card("attack-physical-card", "Attack"),
+  });
+  const proof = {
+    semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
+    interactionId: "attack-interaction", rootFrameId: "attack-frame",
+    rootEventId: root.id, rootResolutionId: root.resolutionId,
+    rootSourceId: "A", targetId: "B", responseActorId: "B",
+    rootCardKind: "Attack", responseCardKind: "Dodge",
+  };
+  const dodge = event("dodge-response-event", root.resolutionId, {
+    player: "B", target: "A", action: "play", card: card("dodge-physical-card", "Dodge"),
+    attackDodgeResponse: proof,
+  });
+  const project = (timeline) => projectPresentationV2({ pending: null, currentAction: null, actionRevision: "settled", timeline });
+
+  assert.deepEqual(project([root]).attackDodgeResponses ?? [], [], "there is no Dodge response node before submission");
+  const expected = [{
+    ...proof,
+    responseEventId: dodge.id,
+    responseResolutionId: dodge.resolutionId,
+  }];
+  assert.deepEqual(project([root, dodge]).attackDodgeResponses, expected);
+
+  for (const invalid of [
+    { timeline: [dodge], label: "missing root event" },
+    { timeline: [root, { ...dodge, attackDodgeResponse: { ...proof, rootResolutionId: "stale-resolution" } }], label: "mismatched root resolution" },
+    { timeline: [root, { ...dodge, resolutionId: "other-resolution" }], label: "response belongs to another resolution" },
+    { timeline: [root, { ...dodge, playedAs: "dodge" }], label: "converted response is not a physical Dodge" },
+    { timeline: [root, { ...dodge, card: card("dodge-physical-card", "Attack") }], label: "wrong response card kind" },
+    { timeline: [root, { ...dodge, attackDodgeResponse: { ...proof, responseActorId: "A" } }], label: "response actor differs from target" },
+    { timeline: [root, { ...dodge, attackDodgeResponse: { ...proof, targetId: "A" } }], label: "self-target relation is invalid for ordinary Attack" },
+    { timeline: [root, { ...root }, dodge], label: "duplicate root event identity" },
+    { timeline: [root, { ...event("other-event", "other-resolution", { card: card("attack-physical-card", "Dodge") }) }, dodge], label: "duplicate physical card identity" },
+    { timeline: [root, dodge, { ...dodge }], label: "duplicate response event identity" },
+  ]) {
+    assert.deepEqual(project(invalid.timeline).attackDodgeResponses ?? [], [], `${invalid.label} fails closed`);
+  }
+});
+
 test("group projection records missing authoritative semantics instead of guessing", () => {
   const projected = projectPresentationV2({ pending: flows[3].points[0].pending, currentAction: flows[3].points[0].currentAction, actionRevision: "r", timeline: flows[3].points[0].timeline });
   assert.equal(projected.groupResolution?.semantics, "UNPROVEN");

@@ -5,17 +5,17 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-Phase A now proves ordinary self-target Peach from the real Play Phase route:
-viewer-equal public source=self identity, one nearby Peach root card and tether,
-restrained same-player halo, no loop arrow/duplicate, and stable Dock geometry at
-390×844, 480×900, and 1440×900. Parent SHA `48a1140c1e99e737bcb886eb6aecf26b46cecd00`,
-Actions run `37737990790`: FAILED in Browser shard 1/2, private-draw observer
-page timed out waiting for `/api/rooms`. The privacy probe now uses an independent
-browser context; CI-mode repeat passed 4/4, full local shard passed 397/397
-before that isolation adjustment. Presentation tests 104/104, engine API tests
-34/34, build, targeted lint, and diff check passed. Fix is included in the
-current task commit; its new CI result is not yet observed. Reviewer acceptance
-is not claimed.
+Phase B now projects public proof only after one physical Dodge is submitted,
+linked to its exact ordinary Attack root/target effect and shared resolution.
+The engine-backed route proves the open window has no Dodge node and source,
+target, and observer receive identical proof without physical card IDs. The
+current remote parent `2546a85a880f620f8d5a12f756719dcebe2ece68`, Actions run
+`37740684258`, FAILED in `npm run test:fast`: the mounted group-preview test
+encountered a legacy client view without optional `selfTargetActions`. A
+null-safe production guard is included with this task. Focused projection/UI
+tests passed 151/151, engine API tests 34/34, Bumper Harvest timer geometry
+browser proof 1/1, targeted ESLint, and `git diff --check` passed. The replacement
+SHA has not yet been pushed. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
@@ -24,9 +24,10 @@ Reviewed remote `docs/UX2-refine.md`, blob
 
 ## Current / next task
 
-`UX2.6-PHASE-B-ATTACK-DODGE-RESPONSE-PROOF-01` — add server-authored public
-proof linking a submitted physical Dodge to its exact single-target Attack root
-and target effect. Project the source/counter relation viewer-equally; emit no
-response node before submission; fail closed for missing, mismatched, stale, or
-ambiguous root/response identity. This task adds semantic proof only; defer
-generic graph rendering and Negation migration.
+`UX2.6-PHASE-B-ATTACK-DODGE-RESPONSE-VISUAL-01` — render a committed Dodge only
+from the new typed public proof, adjacent to the exact incoming Attack→target
+relation; visibly interrupt that relation without drawing a false Dodge→target
+arrow. No response card before submission; preserve physical Seats and Dock.
+Prove the real server-backed Attack→Dodge flow and geometry at 390×844,
+480×900, and wide, including no overlap or horizontal overflow. Defer Negation
+migration and unrelated response types.

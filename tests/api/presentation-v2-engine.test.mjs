@@ -108,6 +108,10 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   assert.deepEqual(targetView.presentationV2.rootAction, attackRootAction, "the public root card is bound to the active frame and exact played-card event");
   assert.deepEqual(targetView.presentationSnapshot.rootAction, attackRootAction, "the accepted public snapshot carries the typed root action");
   assert.equal(JSON.stringify(targetView.presentationSnapshot.rootAction).includes(attack.id), false, "physical card IDs are not copied into the public root-action contract");
+  assert.deepEqual(targetView.presentationV2.attackDodgeResponses ?? [], [], "an open Dodge decision has no submitted-response node");
+  assert.deepEqual(targetView.presentationSnapshot.attackDodgeResponses ?? [], [], "an open Dodge decision publishes no counter proof");
+  const rootEvent = targetView.timeline.find((event) => event.id === attackRootAction.rootEventId);
+  assert.ok(rootEvent && rootEvent.card?.id === attack.id, "the root event identity points to the exact played physical Attack");
   const rootActionInput = { pending, currentAction: targetView.currentAction, actionRevision: targetView.actionRevision, timeline: targetView.timeline, causalEnvelope: attackEnvelope };
   const missingCardProof = projectPresentationV2({
     ...rootActionInput,
@@ -145,9 +149,36 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   assert.deepEqual(targetRepeat.data.presentationV2.stableBoundary, targetView.presentationV2.stableBoundary);
   assert.equal(targetRepeat.data.causalEnvelope.checkpoint.checkpointId, attackEnvelope.checkpoint.checkpointId);
   assert.equal(targetRepeat.data.causalEnvelope.presentationRevision, attackEnvelope.presentationRevision);
-  const responded = await requestAndSettle("respond", { code: game.code, token: targetMember.token, providerId: "card", cardId: dodge.id });
+  assert.equal(query(`SELECT phase FROM rooms WHERE code=${quote(game.code)}`), "response", "read-only viewer projections preserve the active response boundary");
+  const responded = await request("respond", { code: game.code, token: targetMember.token, providerId: "card", cardId: dodge.id });
   assert.equal(responded.status, 200, JSON.stringify(responded.data));
-  const settled = await assertProjectionMatchesEngine(game.code, sourceMember.token);
+  const sourceSettled = await assertProjectionMatchesEngine(game.code, sourceMember.token);
+  const targetSettled = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  const observerSettled = await assertProjectionMatchesEngine(game.code, game.members[2].token);
+  const dodgeEvent = sourceSettled.timeline.find((event) => event.type === "card" && event.card?.id === dodge.id);
+  assert.ok(dodgeEvent, "the production response route persists the submitted physical Dodge event");
+  const dodgeProof = {
+    semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
+    interactionId: attackScene.interactionId,
+    rootFrameId: attackScene.rootFrameId,
+    rootEventId: rootEvent.id,
+    rootResolutionId: rootEvent.resolutionId,
+    rootSourceId: source.id,
+    targetId: target.id,
+    responseActorId: target.id,
+    rootCardKind: "Attack",
+    responseCardKind: "Dodge",
+    responseEventId: dodgeEvent.id,
+    responseResolutionId: dodgeEvent.resolutionId,
+  };
+  assert.equal(dodgeEvent.resolutionId, rootEvent.resolutionId, "the actual Dodge and root Attack belong to one exact resolution");
+  assert.deepEqual(sourceSettled.presentationV2.attackDodgeResponses, [dodgeProof]);
+  assert.deepEqual(sourceSettled.presentationSnapshot.attackDodgeResponses, [dodgeProof]);
+  assert.deepEqual(targetSettled.presentationSnapshot.attackDodgeResponses, [dodgeProof], "target receives identical public counter proof");
+  assert.deepEqual(observerSettled.presentationSnapshot.attackDodgeResponses, [dodgeProof], "unrelated viewer receives identical public counter proof");
+  assert.equal(JSON.stringify(dodgeProof).includes(attack.id), false, "typed proof does not copy the physical Attack ID");
+  assert.equal(JSON.stringify(dodgeProof).includes(dodge.id), false, "typed proof does not copy the physical Dodge ID");
+  const settled = sourceSettled;
   assert.deepEqual(settled.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
 });
 

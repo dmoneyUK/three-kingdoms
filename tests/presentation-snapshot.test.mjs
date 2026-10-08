@@ -141,6 +141,31 @@ test("snapshot copies explicit self-target actions independently of an interacti
   }).selfTargetActions, [selfTargetAction], "malformed records are removed without discarding the valid public proof");
 });
 
+test("snapshot carries typed Attack/Dodge counter proof identically for acting and observing viewers", () => {
+  const response = {
+    semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
+    interactionId: "attack-interaction", rootFrameId: "attack-frame",
+    rootEventId: "attack-event", rootResolutionId: "attack-resolution",
+    rootSourceId: "A", targetId: "B", responseActorId: "B",
+    rootCardKind: "Attack", responseCardKind: "Dodge",
+    responseEventId: "dodge-event", responseResolutionId: "attack-resolution",
+  };
+  const publicPresentation = {
+    interactionScene: null,
+    stableBoundary: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null },
+    attackDodgeResponses: [response],
+  };
+  const acting = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "turn", actorId: "A" }, actionRevision: "action-a", viewerId: "A" });
+  const observing = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "none", actorId: null }, actionRevision: "action-b", viewerId: "C" });
+  assert.deepEqual(acting.attackDodgeResponses, [response]);
+  assert.deepEqual(observing.attackDodgeResponses, [response], "public counter proof is viewer-equal");
+  assert.equal(JSON.stringify(acting.attackDodgeResponses).includes("physical-card"), false);
+  assert.deepEqual(composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, attackDodgeResponses: [response, { ...response, responseActorId: "A" }, { ...response, responseEventId: "dodge-event" }] },
+    currentAction: null, actionRevision: "action-c", viewerId: "C",
+  }).attackDodgeResponses, [], "malformed and duplicate response identity is dropped");
+});
+
 test("single-target Negation settlement requires a typed, root-bound public occurrence", () => {
   const envelope = {
     version: 1,
