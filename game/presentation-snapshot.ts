@@ -702,8 +702,11 @@ function rootActionFor(
     && scene.participantRoles.currentParticipantId === action.targetId
     && scene.participantRoles.decisionActorId === action.targetId && scene.participantRoles.activeResolverId === action.targetId
     && scene.decisionActorId === action.targetId && scene.activeResolverId === action.targetId;
-  const dismantleScene = action.action === "STRATAGEM" && action.cardKind === "Dismantle"
-    && scene.stage === "SETTLEMENT" && scene.effect === "Burning Bridges"
+  const targetCardEffect = action.action === "STRATAGEM"
+    ? action.cardKind === "Dismantle" ? "Burning Bridges" : action.cardKind === "Steal" ? "Steal" : null
+    : null;
+  const targetCardScene = Boolean(targetCardEffect)
+    && scene.stage === "SETTLEMENT" && scene.effect === targetCardEffect
     && scene.currentParticipantId === action.targetId
     && scene.participantRoles.sourceId === action.sourceId
     && scene.participantRoles.originalTargetIds.length === 1 && scene.participantRoles.originalTargetIds[0] === action.targetId
@@ -711,7 +714,7 @@ function rootActionFor(
     && scene.participantRoles.currentParticipantId === action.targetId
     && scene.participantRoles.decisionActorId === action.sourceId && scene.participantRoles.activeResolverId === action.sourceId
     && scene.decisionActorId === action.sourceId && scene.activeResolverId === action.sourceId;
-  if (!attackScene && !dismantleScene) return null;
+  if (!attackScene && !targetCardScene) return null;
   return {
     semantics: "PROVEN",
     interactionId: identity.interactionId,

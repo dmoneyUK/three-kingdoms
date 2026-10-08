@@ -114,10 +114,6 @@ async function respondWithCard(page, playerId, cardId) {
   return JSON.parse(submitted.request().postData() ?? "{}");
 }
 
-function expectOneActivePublicCard(stage) {
-  return expect(stage.locator(".group-stage-card[data-active-head='true']")).toHaveCount(1);
-}
-
 async function expectOpenSingleTargetNegation(page) {
   const overlay = page.locator('[data-root-action-overlay="true"]');
   await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 15_000 });
@@ -197,20 +193,6 @@ function pointOnRectBorder(point, rect, tolerance = 2) {
   return withinHorizontal && withinVertical
     && (Math.abs(point.x - rect.left) <= tolerance || Math.abs(point.x - rect.right) <= tolerance
       || Math.abs(point.y - rect.top) <= tolerance || Math.abs(point.y - rect.bottom) <= tolerance);
-}
-
-async function expectNoStageDockOverlap(page, stage) {
-  const stageBox = await stage.boundingBox();
-  const guidanceBox = await page.locator(".local-player-dock .console-guidance").boundingBox();
-  const dockBox = await page.locator(".local-player-dock").boundingBox();
-  expect(stageBox).not.toBeNull();
-  expect(guidanceBox).not.toBeNull();
-  expect(dockBox).not.toBeNull();
-  const overlaps = (a, b) => Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x)
-    && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
-  expect(overlaps(stageBox, guidanceBox)).toBe(false);
-  expect(overlaps(stageBox, dockBox)).toBe(false);
-  return stageBox;
 }
 
 function negationPlayers(sourceNegation, targetNegation, targetCounterNegation, thirdNegation) {
@@ -506,21 +488,38 @@ async function runNegationScenario({ page, request, testInfo, outcome, viewport,
     targetId: target.id,
   });
   if (outcome === "ROOT_RESTORED") {
-    await expect(page.locator(`.interaction-stage[data-negation-restored-root-card="proven"][data-negation-settlement="${outcome}"]`)).toBeVisible({ timeout: 10_000 });
-    const settledStage = page.locator('.interaction-stage[data-negation-restored-root-card="proven"][data-negation-settlement="ROOT_RESTORED"]');
-    await expect(settledStage.locator(".single-target-negation-response-node")).toHaveCount(0);
-    await expect(settledStage.locator('[data-action-card-kind="Dismantle"][data-active-head="true"]')).toHaveCount(1);
-    await expect(settledStage.locator("[data-negation-causal-participant], [data-hero-focus-player-id]")).toHaveCount(0);
-    await expectOneActivePublicCard(settledStage);
+    expect(settledView.presentationSnapshot.rootAction).toMatchObject({
+      semantics: "PROVEN",
+      action: "STRATAGEM",
+      cardKind: "Dismantle",
+      sourceId: source.id,
+      targetId: target.id,
+    });
+    const settledOverlay = page.locator('[data-root-action-overlay="true"]');
+    await expect(settledOverlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 10_000 });
+    await expect(settledOverlay).toHaveAttribute("aria-label", "SOURCE played Burning Bridge targeting TARGET.");
+    await expect(settledOverlay.locator('[data-root-action-card="true"][data-root-action-card-kind="Dismantle"]')).toHaveCount(1);
+    await expect(settledOverlay.locator('[data-root-action-edge="source"]')).toHaveCount(1);
+    await expect(settledOverlay.locator('[data-root-action-edge="target"][data-root-action-target-state="active"]')).toHaveCount(1);
+    await expect(settledOverlay.locator('[data-root-action-response-card="true"]')).toHaveCount(0);
+    await expect(page.locator(".interaction-stage")).toHaveCount(0);
+    const settledGeometry = await measureNegationGraph(page);
+    expect(settledGeometry.root).not.toBeNull();
+    expect(settledGeometry.root.left).toBeGreaterThanOrEqual(settledGeometry.table.left);
+    expect(settledGeometry.root.top).toBeGreaterThanOrEqual(settledGeometry.table.top);
+    expect(settledGeometry.root.right).toBeLessThanOrEqual(settledGeometry.table.right);
+    expect(settledGeometry.root.bottom).toBeLessThanOrEqual(settledGeometry.table.bottom);
+    expect(settledGeometry.rootDockOverlap).toBe(false);
+    expect(settledGeometry.documentWidth).toBe(settledGeometry.viewportWidth);
     const targetCardModal = page.getByRole("dialog", { name: "Burning Bridge target card selection" });
     await expect(targetCardModal).toBeVisible();
-    const [stageBox, modalBox] = await Promise.all([settledStage.boundingBox(), targetCardModal.boundingBox()]);
-    expect(stageBox).not.toBeNull();
+    const [overlayBox, modalBox] = await Promise.all([settledOverlay.boundingBox(), targetCardModal.boundingBox()]);
+    expect(overlayBox).not.toBeNull();
     expect(modalBox).not.toBeNull();
-    const overlaps = (a, b) => Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x)
-      && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
-    expect(overlaps(stageBox, modalBox)).toBe(false);
-    await expectNoStageDockOverlap(page, settledStage);
+    expect(modalBox.x).toBeGreaterThanOrEqual(0);
+    expect(modalBox.x + modalBox.width).toBeLessThanOrEqual(viewport.width);
+    expect(modalBox.y).toBeGreaterThanOrEqual(0);
+    expect(modalBox.y + modalBox.height).toBeLessThanOrEqual(viewport.height);
     expect(["target_card", "trigger", "response"]).toContain(settledView.currentAction.kind);
     await attachScreenshot(testInfo, "negation-root-restored-dismantle-continuation", page);
   } else {

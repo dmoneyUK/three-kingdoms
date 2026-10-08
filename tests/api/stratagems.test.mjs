@@ -322,16 +322,52 @@ test("Steal chooses from the target's current zones only after counter-Negation"
   const hostPlayer = game.room.players.find((player) => player.name === "Host"); const alicePlayer = game.room.players.find((player) => player.name === "Alice");
   assert.ok(hostPlayer && alicePlayer);
   const spear = card("SerpentSpear", "post-negation-prize");
+  const hiddenHandCard = card("Peach", "post-negation-hidden-target");
   setHand(hostPlayer.id, [card("Steal", "post-negation"), card("Negation", "restore-steal")], 5, 5);
-  setHand(alicePlayer.id, [card("Negation", "cancel-steal")], 4, 4); setEquipment(alicePlayer.id, { weapon: spear }); setTurn(game.code, hostPlayer.seat);
+  setHand(alicePlayer.id, [card("Negation", "cancel-steal"), hiddenHandCard], 4, 4); setEquipment(alicePlayer.id, { weapon: spear }); setTurn(game.code, hostPlayer.seat);
 
   const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "steal-post-negation", targetId: alicePlayer.id });
   assert.equal(opened.data.room.pendingTargetCard, null, "target cards are not selected or exposed before Negation responses finish");
   await requestAndSettle("decline_response", { code: game.code, token: host.token });
   await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "negation-cancel-steal" });
   const restored = await requestAndSettle("respond", { code: game.code, token: host.token, cardId: "negation-restore-steal" });
-  assert.equal(restored.data.room.pendingTargetCard.targetId, alicePlayer.id); assert.equal(restored.data.room.players.find((player) => player.id === alicePlayer.id).handCount, 0);
+  assert.equal(restored.data.room.pendingTargetCard.targetId, alicePlayer.id); assert.equal(restored.data.room.players.find((player) => player.id === alicePlayer.id).handCount, 1);
   assert.equal(restored.data.room.players.find((player) => player.id === alicePlayer.id).equipmentCards[0].id, spear.id);
+  const sourceView = (await state(game.code, host.token)).data;
+  const targetView = (await state(game.code, alice.token)).data;
+  const rootAction = sourceView.presentationSnapshot.rootAction;
+  assert.equal(rootAction?.action, "STRATAGEM", "a real counter-Negation Steal decision retains a proven public root");
+  assert.deepEqual(rootAction, targetView.presentationSnapshot.rootAction, "the public Steal root is viewer-equal");
+  assert.equal(sourceView.presentationV2.interactionScene?.stage, "SETTLEMENT");
+  assert.equal(sourceView.presentationV2.interactionScene?.decisionActorId, hostPlayer.id);
+  assert.deepEqual(sourceView.currentAction.targetCardSelection, {
+    targetId: alicePlayer.id,
+    eligibleKeys: ["hand:0", spear.id],
+  });
+  assert.equal(JSON.stringify(sourceView.presentationSnapshot).includes(hiddenHandCard.id), false);
+  assert.equal(JSON.stringify(targetView.presentationSnapshot).includes(hiddenHandCard.id), false);
+  assert.equal(targetView.currentAction.targetCardSelection, undefined, "observers do not receive private Steal choices");
+  const pending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  const rootEvent = sourceView.timeline.find((event) => event.id === rootAction?.rootEventId);
+  assert.equal(rootEvent?.card?.id, pending.heldCards[0].id, "the root binds to the exact held Steal play");
+  assert.equal(JSON.stringify(rootAction).includes(pending.heldCards[0].id), false, "physical card IDs stay internal");
+  const rootInput = {
+    pending,
+    currentAction: sourceView.currentAction,
+    actionRevision: sourceView.actionRevision,
+    timeline: sourceView.timeline,
+    causalEnvelope: sourceView.causalEnvelope,
+  };
+  assert.equal(projectPresentationV2({ ...rootInput, pending: { ...pending, heldCards: pending.heldCards.filter((held) => held.kind !== "Steal") } }).rootAction, null, "the exact root card must remain held through response settlement");
+  assert.equal(projectPresentationV2({ ...rootInput, pending: { ...pending, targetId: hostPlayer.id } }).rootAction, null, "a mismatched target fails closed");
+  assert.equal(projectPresentationV2({ ...rootInput, timeline: sourceView.timeline.filter((event) => event.id !== rootAction.rootEventId) }).rootAction, null, "a missing exact public play event fails closed");
+  const mismatchedSnapshot = composePresentationSnapshot({
+    presentationV2: { ...sourceView.presentationV2, rootAction: { ...rootAction, targetId: hostPlayer.id } },
+    currentAction: sourceView.currentAction,
+    actionRevision: sourceView.actionRevision,
+    viewerId: hostPlayer.id,
+  });
+  assert.equal(mismatchedSnapshot.rootAction, null, "snapshot validation rejects a root target that conflicts with the proven scene");
   const obtained = await requestAndSettle("choose_target_card", { code: game.code, token: host.token, targetCardZone: "equipment", targetCardId: spear.id });
   assert.equal(obtained.status, 200); assert.equal(obtained.data.room.phase, "play"); assert.ok(obtained.data.room.myHand.some((held) => held.id === spear.id));
   assert.equal(obtained.data.room.players.find((player) => player.id === alicePlayer.id).equipmentCards.length, 0);

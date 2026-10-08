@@ -2713,38 +2713,37 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
       await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(discard), JSON.stringify(log), roomId).run();
     } else {
       const isDismantle = pending.effect.kind === "dismantle";
+      const targetCardKind = isDismantle ? "Dismantle" : "Steal";
+      const targetEffectName = isDismantle ? "Burning Bridges" : "Steal";
       const causal = pending.causal;
       const causalFrame = causal && resumedEnvelope?.frames.find((frame) => frame.frameId === causal.frameId);
       const rootFrames = resumedEnvelope?.frames.filter((frame) => frame.parentFrameId == null) ?? [];
-      const canProveDismantleChoice = Boolean(isDismantle && !pending.negated && pending.rootCardKind === "Dismantle"
-        && pending.cardName === "Burning Bridges" && pending.sourceId === source.id && pending.effect.targetId === target.id
-        && heldCards.length === 1 && heldCards[0].kind === "Dismantle"
+      const heldRootCards = heldCards.filter((heldCard) => heldCard.kind === targetCardKind);
+      const canProveTargetCardChoice = Boolean(!pending.negated && pending.rootCardKind === targetCardKind
+        && pending.cardName === targetEffectName && pending.sourceId === source.id && pending.effect.targetId === target.id
+        && heldRootCards.length === 1
         && causal && resumedEnvelope && resumedEnvelope.interactionId === causal.interactionId
         && resumedEnvelope.activeFrameId === causal.frameId && resumedEnvelope.checkpoint.frameId === causal.frameId
         && resumedEnvelope.checkpoint.stage === "NEGATION"
         && rootFrames.length === 1 && rootFrames[0].frameId === causal.frameId && causalFrame
         && causalFrame.parentFrameId == null && causalFrame.stage === "NEGATION"
-        && causalFrame.origin.originSourceId === source.id && causalFrame.origin.originEffect === "Burning Bridges"
+        && causalFrame.origin.originSourceId === source.id && causalFrame.origin.originEffect === targetEffectName
         && causalFrame.origin.originalTargetIds.length === 1 && causalFrame.origin.originalTargetIds[0] === target.id
-        && causalFrame.current.currentSourceId === source.id && causalFrame.current.currentEffect === "Burning Bridges"
+        && causalFrame.current.currentSourceId === source.id && causalFrame.current.currentEffect === targetEffectName
         && causalFrame.current.currentTargetIds.length === 1 && causalFrame.current.currentTargetIds[0] === target.id);
-      const dismantleEnvelope = canProveDismantleChoice && causal && resumedEnvelope
+      const targetCardEnvelope = canProveTargetCardChoice && causal && resumedEnvelope
         ? advanceCausalSemanticCheckpoint(resumedEnvelope, causal.frameId, {
           stage: "SETTLEMENT",
-          current: { currentSourceId: source.id, currentEffect: "Burning Bridges", currentTargetIds: [target.id], resolvingPlayerId: source.id },
+          current: { currentSourceId: source.id, currentEffect: targetEffectName, currentTargetIds: [target.id], resolvingPlayerId: source.id },
         })
         : null;
       const next: TargetCardPending = {
         kind: "target_card", sourceId: source.id, actorId: source.id, targetId: target.id,
         cardKind: isDismantle ? "Dismantle" : "Steal", resumePhase: pending.resumePhase,
         reason: `Choose 1 current card from ${target.name} for ${pending.cardName}`, heldCards,
-        ...(dismantleEnvelope && causal ? { causal } : {}),
+        ...(targetCardEnvelope && causal ? { causal } : {}),
       };
-      if (isDismantle) {
-        await causalRoomStateWrite(roomId, { phase: "response", pending: next, log, causalEnvelope: dismantleEnvelope }).run();
-      } else {
-        await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(next), JSON.stringify(log), roomId).run();
-      }
+      await causalRoomStateWrite(roomId, { phase: "response", pending: next, log, causalEnvelope: targetCardEnvelope }).run();
     }
   } else if (pending.effect.kind === "borrowed_sword") {
     const target = players.find((player) => player.id === pending.effect.targetId && player.alive);

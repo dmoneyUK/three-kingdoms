@@ -1941,6 +1941,25 @@ Only a proven regression or new Reviewer-approved design requirement does.
   passed. Pre-commit parent `a40cfe2068a58c1a03dd66f34fd4a3586f26be96` passed
   Actions run `37812094451`. Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-A-STEAL-ROOT-OVERLAY-01 — Steal target decision root
+
+- The real Steal target-card decision now carries a physical-seat root graph
+  bound to the unique exact public Steal play, source, target, and authoritative
+  settlement frame. API and browser proofs cover the real target-card path,
+  viewer-equal public identity, hidden-Hand privacy, selection submission, and
+  graph/modal containment at 390×844, 480×900, and 1440×900. The API set passed
+  58/58; the real-gameplay root-overlay browser set passed 20/20. Build,
+  targeted ESLint, and `git diff --check` passed.
+- The pre-commit parent `2c9f4fc6876513f4bae8c536d65f7f25c6c7a6b4` failed
+  Actions run `37814577369` in browser shard 1/2. CI-config reproduction
+  isolated the failure to Dismantle root proof rejecting the legitimate held
+  root card when Negation cards were held alongside it; the browser parity
+  assertion also still expected the superseded Stage composition. The proof
+  now requires one exact held root card of the expected kind, and the parity
+  browser test checks the physical root graph. Its focused CI-config rerun
+  passed 1/1. The repair is included with this task; CI for the resulting
+  commit is not yet observed. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

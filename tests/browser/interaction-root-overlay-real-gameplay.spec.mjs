@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 const API = "http://127.0.0.1:3137";
 const attack = { id: "root-overlay-real-attack", kind: "Attack", suit: "♠", rank: "7" };
 const dismantle = { id: "root-overlay-real-dismantle", kind: "Dismantle", suit: "♠", rank: "7" };
+const steal = { id: "root-overlay-real-steal", kind: "Steal", suit: "♠", rank: "7" };
 const dodge = { id: "root-overlay-real-dodge", kind: "Dodge", suit: "♥", rank: "3" };
 const peach = { id: "root-overlay-real-peach", kind: "Peach", suit: "♥", rank: "3" };
 
@@ -86,8 +87,8 @@ async function playAttackThroughPage(page, targetName) {
   if (!response.ok()) throw new Error(`Attack submission failed: ${await response.text()}`);
 }
 
-async function playDismantleThroughPage(page, targetName, cardId = dismantle.id) {
-  await page.locator(`[data-hand-card-id="${cardId}"] .game-card`).click();
+async function playTargetedStratagemThroughPage(page, targetName, card, actionName) {
+  await page.locator(`[data-hand-card-id="${card.id}"] .game-card`).click();
   await page.getByRole("button", { name: `Select ${targetName}`, exact: true }).click();
   const confirm = page.locator('[data-console-surface="local-operation"] button.primary');
   await expect(confirm).toBeEnabled();
@@ -98,7 +99,7 @@ async function playDismantleThroughPage(page, targetName, cardId = dismantle.id)
   });
   await confirm.click();
   const response = await responsePromise;
-  if (!response.ok()) throw new Error(`Dismantle submission failed: ${await response.text()}`);
+  if (!response.ok()) throw new Error(`${actionName} submission failed: ${await response.text()}`);
 }
 
 async function playDodgeThroughPage(page) {
@@ -551,7 +552,7 @@ for (const viewport of [
     const sourceId = seed.players[0].id;
     const targetId = seed.players[1].id;
     await openGame(page, seed, 0, viewport);
-    await playDismantleThroughPage(page, "TARGET");
+    await playTargetedStratagemThroughPage(page, "TARGET", dismantle, "Dismantle");
 
     await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot?.rootAction?.cardKind ?? null, { timeout: 20_000 }).toBe("Dismantle");
     const actorView = await roomView(request, seed, 0);
@@ -624,6 +625,94 @@ for (const viewport of [
     expect(chooseResponse.ok()).toBe(true);
     await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot?.rootAction ?? null, { timeout: 20_000 }).toBeNull();
     expect((await roomView(request, seed, 0)).discardTop.id).toBe(hiddenCard.id);
+  });
+}
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 480, height: 900 },
+  { width: 1440, height: 900 },
+]) {
+  test(`real Steal target decision carries one public physical-seat root graph at ${viewport.width}×${viewport.height}`, async ({ page, request }, testInfo) => {
+    test.setTimeout(60_000);
+    const hiddenCard = { id: `root-overlay-real-steal-hidden-${viewport.width}`, kind: "Peach", suit: "♥", rank: "3" };
+    const seed = await seedGame(request, 4, { sourceCard: steal, targetCard: hiddenCard });
+    const sourceId = seed.players[0].id;
+    const targetId = seed.players[1].id;
+    await openGame(page, seed, 0, viewport);
+    await playTargetedStratagemThroughPage(page, "TARGET", steal, "Steal");
+
+    await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot?.rootAction?.cardKind ?? null, { timeout: 20_000 }).toBe("Steal");
+    const actorView = await roomView(request, seed, 0);
+    const rootAction = actorView.presentationSnapshot.rootAction;
+    expect(actorView.currentAction).toMatchObject({ kind: "target_card", actorId: sourceId });
+    expect(actorView.currentAction.legalActions).toContain("choose_target_card");
+    expect(actorView.currentAction.targetCardSelection).toMatchObject({ targetId, eligibleKeys: ["hand:0"] });
+    expect(rootAction).toMatchObject({ semantics: "PROVEN", action: "STRATAGEM", sourceId, targetId, cardKind: "Steal" });
+    const rootEvent = actorView.timeline.find((event) => event.id === rootAction.rootEventId);
+    expect(rootEvent).toMatchObject({ type: "card", action: "play", card: { kind: "Steal", id: steal.id } });
+    expect(JSON.stringify(rootAction)).not.toContain(steal.id);
+    expect(JSON.stringify(actorView.presentationSnapshot)).not.toContain(hiddenCard.id);
+
+    const observerView = await roomView(request, seed, 2);
+    expect(observerView.presentationSnapshot.rootAction).toEqual(rootAction);
+    expect(observerView.currentAction.targetCardSelection).toBeUndefined();
+    expect(JSON.stringify(observerView.presentationSnapshot)).not.toContain(hiddenCard.id);
+
+    const dialog = page.getByRole("dialog", { name: "Steal target card selection" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator("header strong")).toHaveText("STEAL");
+    await expect(dialog.locator("header span")).toHaveText("Choose 1 card to obtain");
+    const overlay = page.locator('[data-root-action-overlay="true"]');
+    await expect(overlay).toHaveAttribute("data-root-action-enabled", "true");
+    await expect(overlay).toHaveAttribute("data-root-action-ready", "true");
+    await expect(overlay).toHaveAttribute("aria-label", "SOURCE played Steal targeting TARGET.");
+    const rootCard = page.locator('[data-root-action-card="true"]');
+    await expect(rootCard.locator("strong")).toHaveText("STEAL");
+    await expect(page.locator('[data-root-action-edge="source"]')).toHaveCount(1);
+    await expect(page.locator('[data-root-action-edge="target"]')).toHaveCount(1);
+
+    const geometry = await measure(page, sourceId, targetId);
+    const [stageBox, dockBox, dialogBox] = await Promise.all([
+      page.locator(".play-table").boundingBox(), page.locator(".local-player-dock").boundingBox(), dialog.boundingBox(),
+    ]);
+    expect(stageBox && dockBox && dialogBox).toBeTruthy();
+    expect(stageBox.y + stageBox.height).toBeLessThanOrEqual(dockBox.y + 1);
+    expect(dialogBox.x).toBeGreaterThanOrEqual(0);
+    expect(dialogBox.x + dialogBox.width).toBeLessThanOrEqual(viewport.width);
+    expect(dialogBox.y).toBeGreaterThanOrEqual(0);
+    expect(dialogBox.y + dialogBox.height).toBeLessThanOrEqual(viewport.height);
+    expect(geometry.overlayPosition).toBe("absolute");
+    expect(geometry.overlayPointerEvents).toBe("none");
+    expect(geometry.documentWidth).toBeLessThanOrEqual(viewport.width);
+    expect(geometry.card.x).toBeGreaterThanOrEqual(geometry.table.x);
+    expect(geometry.card.y).toBeGreaterThanOrEqual(geometry.table.y);
+    expect(geometry.card.right).toBeLessThanOrEqual(geometry.table.right);
+    expect(geometry.card.bottom).toBeLessThanOrEqual(geometry.table.bottom);
+    expect(geometry.sourceEdge).toMatch(/^M /);
+    expect(geometry.targetEdge).toContain("root-target-arrow-");
+    expect(geometry.connectorPoints.flatMap((edge) => edge.points).every((point) => point.x >= geometry.shell.x
+      && point.x <= geometry.shell.right && point.y >= geometry.shell.y && point.y <= geometry.shell.bottom)).toBe(true);
+    await testInfo.attach(`steal-root-${viewport.width}x${viewport.height}.json`, {
+      body: JSON.stringify({ viewport, geometry, dialog: dialogBox }, null, 2), contentType: "application/json",
+    });
+    await testInfo.attach(`steal-root-${viewport.width}x${viewport.height}.png`, { body: await page.screenshot(), contentType: "image/png" });
+
+    const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 1" });
+    await hiddenPosition.click();
+    await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+    const use = dialog.getByRole("button", { name: "Use Steal" });
+    await expect(use).toBeEnabled();
+    const choosePromise = page.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+      catch { return false; }
+    });
+    await use.click();
+    const chooseResponse = await choosePromise;
+    expect(chooseResponse.ok()).toBe(true);
+    await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot?.rootAction ?? null, { timeout: 20_000 }).toBeNull();
+    expect((await roomView(request, seed, 0)).myHand.some((held) => held.id === hiddenCard.id)).toBe(true);
   });
 }
 
