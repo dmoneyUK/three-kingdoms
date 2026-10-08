@@ -132,7 +132,6 @@ async function openRealTargetCardDecision({ page, request, kind, viewport, handC
   await openGame(page, seed, 0, viewport);
   await playCardThroughPage(page, material.id, "TARGET");
   await passEmptyResponses(request, seed);
-  await page.reload();
 
   const actorView = await roomView(request, seed, 0);
   const expectedKeys = [
@@ -170,7 +169,6 @@ for (const kind of ["Steal", "Dismantle"]) {
     await openGame(page, seed);
     await playCardThroughPage(page, material.id, "TARGET");
     await passEmptyResponses(request, seed);
-    await page.reload();
 
     const actorView = await roomView(request, seed, 0);
     expect(actorView.currentAction).toMatchObject({ kind: "target_card", actorId: seed.players[0].id });
@@ -217,7 +215,6 @@ test("real Sima Yi Retaliation reaches the modal with private Hand positions fro
   await openGame(page, seed, 1);
   await act(request, seed, 0, "play_card", { cardId: attack.id, targetId: seed.players[1].id });
   await act(request, seed, 1, "decline_response");
-  await page.reload();
 
   const reaction = await roomView(request, seed, 1);
   const option = reaction.currentAction.triggerOptions.find((entry) => entry.effectId === "sima_yi_fankui");
@@ -227,14 +224,26 @@ test("real Sima Yi Retaliation reaches the modal with private Hand positions fro
   expect(JSON.stringify(reaction.currentAction)).not.toContain(hidden[1].id);
 
   const skill = page.getByRole("button", { name: "Retaliation", exact: true });
-  await expect(skill).toBeEnabled();
+  await expect(skill).toBeEnabled({ timeout: 15_000 });
   await skill.click();
   const dialog = await expectModal(page, "Retaliation", "Choose 1 card to obtain", "Use Retaliation");
   const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 2" });
   await expect(hiddenPosition).not.toContainText(/Peach|Dodge|real-retaliation/);
   await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+  const submitPromise = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try {
+      const body = JSON.parse(response.request().postData() ?? "{}");
+      return body.action === "trigger" && body.providerId === "sima_yi_fankui";
+    } catch { return false; }
+  });
   await dialog.getByRole("button", { name: "Use Retaliation" }).click();
+  const submitted = await submitPromise;
+  expect(submitted.ok()).toBe(true);
+  expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
+    action: "trigger", providerId: "sima_yi_fankui", cardKeys: ["hand:1"],
+  });
   await expect.poll(async () => (await roomView(request, seed, 1)).myHand.map((held) => held.id)).toContain(hidden[1].id);
 });
 
@@ -254,7 +263,6 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
     await openGame(page, seed);
     await playCardThroughPage(page, attack.id, "TARGET");
     await act(request, seed, 1, "decline_response");
-    await page.reload();
 
     const current = await roomView(request, seed, 0);
     const expectedProvider = weapon === "FrostSword" ? "frost_sword_damage_about_to_apply" : "kirin_bow_damage_about_to_apply";
@@ -282,7 +290,22 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
     }
     const use = dialog.getByRole("button", { name: `Use ${actionTitle}` });
     await expect(use).toBeEnabled();
+    const submitPromise = page.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try {
+        const body = JSON.parse(response.request().postData() ?? "{}");
+        return body.action === "trigger" && body.providerId === expectedProvider;
+      } catch { return false; }
+    });
     await use.click();
+    const submitted = await submitPromise;
+    expect(submitted.ok()).toBe(true);
+    const submission = JSON.parse(submitted.request().postData() ?? "{}");
+    expect(submission.action).toBe("trigger");
+    expect(submission.providerId).toBe(expectedProvider);
+    expect(submission.cardKeys).toHaveLength(weapon === "FrostSword" ? 2 : 1);
+    expect(submission.cardKeys.every((key) => option.selection.eligibleKeys.includes(key))).toBe(true);
+    if (weapon === "FrostSword") expect(submission.cardKeys).toEqual(["hand:0", "hand:1"]);
     await expect.poll(async () => {
       const latest = await roomView(request, seed, 0);
       return latest.currentAction.kind !== "trigger";

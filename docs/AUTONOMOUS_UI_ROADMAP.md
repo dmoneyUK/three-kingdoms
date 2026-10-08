@@ -1523,16 +1523,24 @@ Only a proven regression or new Reviewer-approved design requirement does.
 
 ### UX2.REFINE-UNIFIED-TARGET-CARD-MODAL-REAL-GAME-P2-01 — Real selection paths
 
-- Supported Steal/Dismantle pending decisions and Retaliation/Frost Sword/
-  Kirin Bow CurrentAction options now route to the shared target-card modal
-  without requiring Stage Hero Focus, Inspect, or target-preview presentation.
-  The unrelated legacy table picker was removed; unsupported/missing selection
-  proof fails closed. Five real server-backed browser flows cover anonymous
-  Hand positions, public Equipment/Judgment, exact selection and resolution;
-  the focused browser specs passed 73/73 and the production build passed.
-  Pre-commit Actions run `37675406650` on exact parent SHA
-  `fa4c70fb0561ba918d4ec12f50753f5f61fcfda4` completed success. Reviewer
-  acceptance is not claimed.
+- Re-audited the current production route: Steal/Burning Bridge use
+  `CurrentAction.targetCardSelection`; Retaliation/Frost Sword/Kirin Bow use
+  authoritative trigger options. Their unified modal routes do not require
+  Stage Hero Focus, Inspect, or preview proof, and no production JSX callsite
+  for the legacy table picker remains. The real server-backed browser spec
+  retains one page from actual card/skill activation through server-generated
+  CurrentAction and modal (no reload). It verifies exact legal keys and
+  submissions, hidden-Hand privacy, action-specific copy, absence of legacy
+  UI, and shared-modal geometry; all five effect paths pass 14/14. Real Steal
+  and Burning Bridge mixed Hand/Equipment/Judgment composition passes at
+  390×844, 480×900, and wide; larger-Hand and Hand-only geometry are also
+  covered. The focused target-card contract browser passes 68/68, including
+  stale-revision and authority/fallback behavior. Syntax, targeted ESLint, and
+  `git diff --check` pass. Pre-commit remote HEAD
+  `9312dcaeb521e5734d09f99f3ab4cfcbdc25487f` passed Actions run `37793692172`
+  across lint/fast, API, both Browser shards, and deploy. This is real
+  server-backed browser proof, not a deployed-game screenshot or Reviewer
+  acceptance.
 
 ### UX2.REFINE-HERO-SKILLS-REAL-GAME-REACHABILITY-P3-01 — Roster audit
 
