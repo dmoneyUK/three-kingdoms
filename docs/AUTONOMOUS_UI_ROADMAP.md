@@ -1638,6 +1638,18 @@ Only a proven regression or new Reviewer-approved design requirement does.
   targeted ESLint, and diff checks passed. Dense 6–8 player geometry and
   remaining Section 6 phases are still open. Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-A-DENSE-ANCHOR-GEOMETRY-01 — 6–8 player tables
+
+- Extended the test-only room seeder to accept canonical Standard role sets
+  from four through eight players. Real Attack → response → Dock Skip browser
+  proof passed 7/7 across 4-player 390×844 / 480×900 / wide, 6-player 390×844,
+  and 8-player 390×844 / 480×900 / wide. Measured assertions require a root
+  card of at least 112×78 px, card containment and clearance from Seats and
+  table controls, connector containment and clearance from unrelated Seats,
+  no document overflow, and no Seat/Dock movement above 0.5 px. Target Dock
+  Skip remained clickable. Production build, targeted ESLint, and diff check
+  passed. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

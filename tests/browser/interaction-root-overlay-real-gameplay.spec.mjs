@@ -3,17 +3,33 @@ import { expect, test } from "@playwright/test";
 const API = "http://127.0.0.1:3137";
 const attack = { id: "root-overlay-real-attack", kind: "Attack", suit: "♠", rank: "7" };
 
-async function seedGame(request) {
+async function seedGame(request, playerCount = 4) {
+  const rolesByPlayerCount = {
+    4: ["Rebel", "Loyalist", "Lord", "Renegade"],
+    6: ["Rebel", "Loyalist", "Lord", "Renegade", "Rebel", "Rebel"],
+    8: ["Rebel", "Loyalist", "Lord", "Renegade", "Rebel", "Rebel", "Loyalist", "Rebel"],
+  };
+  const players = [
+    { name: "SOURCE", hero: "zhao-yun" },
+    { name: "TARGET", hero: "sun-quan" },
+    { name: "THIRD", hero: "guo-jia" },
+    { name: "FOURTH", hero: "zhou-yu" },
+    { name: "FIFTH", hero: "huang-gai" },
+    { name: "SIXTH", hero: "cao-cao" },
+    { name: "SEVENTH", hero: "simayi" },
+    { name: "EIGHTH", hero: "liu-bei" },
+  ].slice(0, playerCount).map((player, index) => ({
+    ...player,
+    role: rolesByPlayerCount[playerCount]?.[index],
+    hp: 4,
+    maxHp: 4,
+    hand: index === 0 ? [attack] : [],
+  }));
   const response = await request.post(`${API}/__test/seed-playing-game`, {
     data: {
       phase: "play",
       turnSeat: 0,
-      players: [
-        { name: "SOURCE", role: "Rebel", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [attack] },
-        { name: "TARGET", role: "Loyalist", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
-        { name: "THIRD", role: "Lord", hero: "guo-jia", hp: 4, maxHp: 4, hand: [] },
-        { name: "FOURTH", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: [] },
-      ],
+      players,
     },
   });
   if (!response.ok()) throw new Error(`seed game failed: ${await response.text()}`);
@@ -78,13 +94,30 @@ async function measure(page, sourceId, targetId) {
       .filter((element) => element.dataset.playerAnchor === id);
     const card = document.querySelector('[data-root-action-card="true"]');
     const anchors = [...document.querySelectorAll("[data-player-anchor]")];
+    const connectorSvg = document.querySelector(".interaction-root-connectors");
+    const connectorSvgBounds = connectorSvg?.getBoundingClientRect();
     return {
       source: rect(anchor(source)[0]),
       target: rect(anchor(target)[0]),
       card: rect(card),
       table: rect(document.querySelector(".play-table")),
+      shell: rect(document.querySelector(".game-shell")),
       playCenter: rect(document.querySelector(".play-center")),
-      playerAnchors: anchors.map(rect),
+      systemCluster: rect(document.querySelector(".stage-system-cluster")),
+      gameMessages: rect(document.querySelector(".game-messages")),
+      gameExit: rect(document.querySelector(".game-exit")),
+      overlayPosition: getComputedStyle(document.querySelector('[data-root-action-overlay="true"]')).position,
+      overlayPointerEvents: getComputedStyle(document.querySelector('[data-root-action-overlay="true"]')).pointerEvents,
+      playerAnchors: anchors.map((element) => ({ id: element.dataset.playerAnchor, ...rect(element) })),
+      connectorPoints: [...document.querySelectorAll("[data-root-action-edge]")].map((path) => {
+        const length = path.getTotalLength();
+        const points = [];
+        for (let distance = 5; distance < length - 5; distance += 4) {
+          const point = path.getPointAtLength(distance);
+          points.push({ x: point.x + (connectorSvgBounds?.x ?? 0), y: point.y + (connectorSvgBounds?.y ?? 0) });
+        }
+        return { edge: path.dataset.rootActionEdge, points };
+      }),
       sourceEdge: document.querySelector('[data-root-action-edge="source"]')?.getAttribute("d") ?? null,
       targetEdge: document.querySelector('[data-root-action-edge="target"]')?.getAttribute("marker-end") ?? null,
       overlayReady: document.querySelector('[data-root-action-overlay="true"]')?.dataset.rootActionReady === "true",
@@ -96,14 +129,19 @@ async function measure(page, sourceId, targetId) {
   }, { sourceId, targetId });
 }
 
-for (const viewport of [
-  { width: 390, height: 844 },
-  { width: 480, height: 900 },
-  { width: 1440, height: 900 },
+for (const scenario of [
+  { playerCount: 4, viewport: { width: 390, height: 844 } },
+  { playerCount: 4, viewport: { width: 480, height: 900 } },
+  { playerCount: 4, viewport: { width: 1440, height: 900 } },
+  { playerCount: 6, viewport: { width: 390, height: 844 } },
+  { playerCount: 8, viewport: { width: 390, height: 844 } },
+  { playerCount: 8, viewport: { width: 480, height: 900 } },
+  { playerCount: 8, viewport: { width: 1440, height: 900 } },
 ]) {
-  test(`real Attack root overlay uses physical player anchors at ${viewport.width}×${viewport.height}`, async ({ page, browser, request }, testInfo) => {
+  const { playerCount, viewport } = scenario;
+  test(`real ${playerCount}-player Attack root overlay uses physical anchors at ${viewport.width}×${viewport.height}`, async ({ page, browser, request }, testInfo) => {
     test.setTimeout(60_000);
-    const seed = await seedGame(request);
+    const seed = await seedGame(request, playerCount);
     const sourceId = seed.players[0].id;
     const targetId = seed.players[1].id;
     await openGame(page, seed, 0, viewport);
@@ -126,21 +164,46 @@ for (const viewport of [
     const after = await measure(page, sourceId, targetId);
     const before = await page.evaluate(() => window.__wtkRootOverlayPreGraphAnchors);
     expect(before, "capture the stable response scene before the graph suppresses Stage").toBeTruthy();
+    await testInfo.attach("root-overlay-geometry.json", {
+      body: JSON.stringify({ playerCount, viewport, before, after }, null, 2),
+      contentType: "application/json",
+    });
+    expect(Object.keys(before)).toHaveLength(playerCount);
+    expect(after.playerAnchors).toHaveLength(playerCount);
+    expect(after.overlayPosition).toBe("absolute");
+    expect(after.overlayPointerEvents).toBe("none");
     expect(after.documentWidth).toBeLessThanOrEqual(after.viewportWidth);
     expect(after.card.x).toBeGreaterThanOrEqual(after.table.x);
     expect(after.card.y).toBeGreaterThanOrEqual(after.table.y);
+    expect(after.card.width, "root action card remains at the 112px readable minimum").toBeGreaterThanOrEqual(112);
+    expect(after.card.height, "root action card remains at the 78px readable minimum").toBeGreaterThanOrEqual(78);
     expect(after.card.right).toBeLessThanOrEqual(after.table.right);
     expect(after.card.bottom).toBeLessThanOrEqual(after.table.bottom);
     expect(after.playerAnchors.every((anchor) => {
       return after.card.right <= anchor.x || after.card.x >= anchor.right || after.card.bottom <= anchor.y || after.card.y >= anchor.bottom;
     })).toBe(true);
     expect(after.playCenter && (after.card.right <= after.playCenter.x || after.card.x >= after.playCenter.right || after.card.bottom <= after.playCenter.y || after.card.y >= after.playCenter.bottom)).toBe(true);
+    for (const obstacle of [after.systemCluster, after.gameMessages, after.gameExit].filter(Boolean)) {
+      expect(after.card.right <= obstacle.x || after.card.x >= obstacle.right || after.card.bottom <= obstacle.y || after.card.y >= obstacle.bottom).toBe(true);
+    }
     expect(after.sourceEdge).toMatch(/^M /);
     expect(after.targetEdge).toContain("root-target-arrow-");
-    for (const key of ["source", "target"]) {
+    for (const connector of after.connectorPoints) {
+      expect(connector.points.every((point) => point.x >= after.shell.x && point.x <= after.shell.right
+        && point.y >= after.shell.y && point.y <= after.shell.bottom), `${connector.edge} remains inside the game shell`).toBe(true);
+    }
+    for (const anchor of after.playerAnchors) {
+      const baseline = before[anchor.id];
+      expect(baseline, `baseline anchor exists for ${anchor.id}`).toBeTruthy();
       for (const dimension of ["x", "y", "right", "bottom", "width", "height"]) {
-        expect(Math.abs(after[key][dimension] - before[key === "source" ? sourceId : targetId][dimension]), `${key} ${dimension} remains fixed when graph appears: ${JSON.stringify({ before: before[key === "source" ? sourceId : targetId], after: after[key] })}`).toBeLessThanOrEqual(0.5);
+        expect(Math.abs(anchor[dimension] - baseline[dimension]), `${anchor.id} ${dimension} remains fixed when graph appears`).toBeLessThanOrEqual(0.5);
       }
+    }
+    for (const connector of after.connectorPoints) {
+      const clearOfOtherSeats = connector.points.every((point) => after.playerAnchors
+        .filter((anchor) => anchor.id !== sourceId && anchor.id !== targetId)
+        .every((anchor) => point.x < anchor.x - 2 || point.x > anchor.right + 2 || point.y < anchor.y - 2 || point.y > anchor.bottom + 2));
+      expect(clearOfOtherSeats, `${connector.edge} avoids unrelated physical player anchors`).toBe(true);
     }
     expect(after.settledCardCount).toBe(0);
     await testInfo.attach("attack-root-overlay", { body: await page.screenshot(), contentType: "image/png" });

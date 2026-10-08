@@ -25,6 +25,13 @@ type FixturePlayer = Required<Pick<SeedPlayer, "name" | "role" | "hero" | "hp" |
 
 const DEFAULT_ROLES: SeedPlayer["role"][] = ["Lord", "Loyalist", "Rebel", "Renegade"];
 const DEFAULT_HEROES = ["guan-yu", "simayi", "zhao-yun", "xiahou-dun"];
+const STANDARD_ROLE_SETS: Record<number, readonly Exclude<SeedPlayer["role"], undefined>[]> = {
+  4: ["Lord", "Loyalist", "Rebel", "Renegade"],
+  5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"],
+  6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"],
+  7: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"],
+  8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"],
+};
 const SUITS = new Set<CardSuit>(["♥", "♦", "♣", "♠"]);
 const RANKS = new Set(["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]);
 const KINDS = new Set<string>(CARD_KINDS);
@@ -65,7 +72,7 @@ function normalizePlayer(input: SeedPlayer | undefined, index: number): FixtureP
   const definition = STANDARD_HEROES.find((candidate) => candidate.id === hero);
   if (!definition) fixtureError(`players[${index}].hero must be a Standard hero.`);
   const role = input?.role ?? DEFAULT_ROLES[index];
-  if (!role) fixtureError(`players[${index}].role is invalid.`);
+  if (!role || !["Lord", "Loyalist", "Rebel", "Renegade"].includes(role)) fixtureError(`players[${index}].role is invalid.`);
   const maxHp = input?.maxHp ?? definition.hp + (role === "Lord" ? 1 : 0);
   const hp = input?.hp ?? maxHp;
   if (!Number.isInteger(maxHp) || maxHp < 0 || !Number.isInteger(hp) || hp < 0 || hp > maxHp) fixtureError(`players[${index}] HP is invalid.`);
@@ -114,9 +121,13 @@ function isRoomCodeConflict(error: unknown) {
 }
 
 export async function seedPlayingGame(db: D1Database, input: SeedPlayingGameInput = {}) {
-  const players = (input.players ?? DEFAULT_HEROES.map((hero, index) => ({ hero, role: DEFAULT_ROLES[index] }))).map(normalizePlayer);
-  if (players.length !== 4) fixtureError("seedPlayingGame requires exactly four players.");
-  if (new Set(players.map((player) => player.role)).size !== 4) fixtureError("seedPlayingGame requires one of each four-player role.");
+  const playerInputs = input.players ?? DEFAULT_HEROES.map((hero, index) => ({ hero, role: DEFAULT_ROLES[index] }));
+  const expectedRoles = STANDARD_ROLE_SETS[playerInputs.length];
+  if (!expectedRoles) fixtureError("seedPlayingGame requires between four and eight players.");
+  const players = playerInputs.map(normalizePlayer);
+  if (players.map((player) => player.role).sort().join("|") !== [...expectedRoles].sort().join("|")) {
+    fixtureError(`seedPlayingGame requires a Standard ${players.length}-player role set.`);
+  }
   const turnSeat = input.turnSeat ?? 0;
   if (!Number.isInteger(turnSeat) || turnSeat < 0 || turnSeat >= players.length) fixtureError("turnSeat must identify one fixture player.");
   const phase = input.phase ?? "play";
@@ -135,8 +146,8 @@ export async function seedPlayingGame(db: D1Database, input: SeedPlayingGameInpu
   for (let attempt = 0; attempt < MAX_ROOM_CODE_ATTEMPTS; attempt += 1) {
     const code = roomCode();
     const statements = [
-      db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at, turn_seat, phase, deck_json, discard_json, log_json, pending_json, skill_state_json, last_activity_at) VALUES (?, ?, ?, 'playing', 4, ?, ?, ?, ?, ?, '[]', NULL, ?, ?)")
-        .bind(roomId, code, host.id, createdAt, turnSeat, phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify({ turnPlayerId: credentials[turnSeat].id }), createdAt),
+      db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at, turn_seat, phase, deck_json, discard_json, log_json, pending_json, skill_state_json, last_activity_at) VALUES (?, ?, ?, 'playing', ?, ?, ?, ?, ?, ?, '[]', NULL, ?, ?)")
+        .bind(roomId, code, host.id, players.length, createdAt, turnSeat, phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify({ turnPlayerId: credentials[turnSeat].id }), createdAt),
       ...credentials.map((player) => db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, role, ready, hero, hp, max_hp, hero_options_json, hand_json, judgement_json, equipment_json, alive, connected_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, '[]', ?, ?, ?, 1, ?)")
         .bind(player.id, roomId, player.name, player.tokenHash, player.seat, player.role, player.hero, player.hp, player.maxHp, JSON.stringify(player.hand), JSON.stringify(player.judgement), JSON.stringify(player.equipment), createdAt)),
     ];

@@ -5,16 +5,17 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-Phase A now renders the proven ordinary Attack as a `.game-shell` overlay with
-one source tether and one target arrow. Root event identity is carried through
-the public projection; ambiguous, missing, duplicate, or zero-size anchors keep
-the existing Stage visible. Real Attack → response → Dock Skip browser proof
-passed at 390×844, 480×900, and 1440×900 with fixed Seat/Dock geometry and no
-overflow. Engine API tests 33/33, Presentation client/snapshot tests 65/65,
-production build, targeted ESLint, browser tests 3/3, and `git diff --check`
-passed. Pre-commit Actions run `37734608981` on exact parent SHA
-`a8432b27a221544009761e50fbcee6a459631deb` succeeded; validate this task's push
-at the next commit gate. Reviewer acceptance is not claimed.
+Phase A's real Attack graph now has dense-table proof: 7/7 browser scenarios
+passed (4 players at 390×844, 480×900, wide; 6 players at 390×844; 8 players at
+390×844, 480×900, wide). The card remains at least 112×78 px, stays inside the
+table and clear of Seats/center/system/messages/exit; sampled connectors stay
+inside `.game-shell` and avoid unrelated Seats. Seat/Dock bounds shift by at
+most 0.5 px, document width does not overflow, and the target's real Dock Skip
+works. The test seeder now accepts canonical 4–8 player role sets. Production
+build, targeted ESLint, and `git diff --check` passed. Exact parent SHA
+`afb0b668fbf65fcf0a3fa2daeb0e96f68ed9ab89`, Actions run `37737075160`:
+SUCCESS. Check this task's pushed SHA at the next commit gate. Reviewer
+acceptance is not claimed.
 
 ## Design checkpoint
 
@@ -24,8 +25,9 @@ no newer design revision was found.
 
 ## Current / next task
 
-`UX2.6-PHASE-A-DENSE-ANCHOR-GEOMETRY-01` — extend the real server-backed
-ordinary Attack overlay proof to 6–8 player tables. Measure card/connector
-containment, Seat/Dock geometry stability, system/center/Seat overlap, overflow,
-and normal Dock control hit behavior at representative mobile and wide sizes.
-Keep physical player layout unchanged; fail closed when the overlay cannot fit.
+`UX2.6-PHASE-A-SELF-TARGET-PEACH-PUBLIC-PROOF-01` — add a server-owned public
+source/target identity proof for an ordinary wounded-player Play Phase Peach,
+then render its root card with a source tether and restrained same-player
+emphasis, never a loop arrow or duplicate player. Validate the real gameplay
+path, stable Seat/Dock geometry, settlement lifecycle, and fail-closed behavior;
+do not infer identity from timeline names or DOM position.
