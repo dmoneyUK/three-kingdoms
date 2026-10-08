@@ -74,7 +74,7 @@ export function isGroupParticipantProgressOutcomeAllowed(
   if (outcome === "DEFEATED") return cardKind === "RainingArrows" || cardKind === "BarbarianInvasion";
   return false;
 }
-export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; wushuangPlayerId?: string } & CausalFields;
+export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; /** Count of server-accepted Attack responses; absent on legacy persisted Duels. */ attackResponseCount?: number; wushuangPlayerId?: string } & CausalFields;
 export type NegationHistoryRecord = {
   nodeId: string;
   interactionId: string;

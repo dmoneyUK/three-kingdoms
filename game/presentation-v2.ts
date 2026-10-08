@@ -11,6 +11,7 @@ export type PresentationV2Event = {
   card?: { id?: string; kind?: string };
   cards?: readonly { id?: string; kind?: string }[];
   action?: string;
+  playedAs?: "attack" | "dodge" | "peach";
   resolutionId?: string;
   importance?: "essential" | "informational";
   finalResult?: boolean;
@@ -19,6 +20,7 @@ export type PresentationV2Event = {
   negationSettlement?: unknown;
   selfTargetAction?: unknown;
   attackDodgeResponse?: unknown;
+  duelAttackResponse?: unknown;
 };
 
 /** Server-authored public proof attached only to a successfully used self-target card event. */
@@ -200,6 +202,43 @@ export type PresentationAttackDodgeResponse = PresentationAttackDodgeResponsePro
   responseResolutionId: string;
 };
 
+/** Server-authored public proof that one accepted Attack belongs to a Duel exchange. */
+export type PresentationDuelAttackResponseProof = {
+  semantics: "PROVEN";
+  relation: "DUEL_EXCHANGE";
+  interactionId: string;
+  rootFrameId: string;
+  rootEventId: string;
+  rootResolutionId: string;
+  rootSourceId: string;
+  rootTargetId: string;
+  ordinal: number;
+  sourceId: string;
+  targetId: string;
+  decisionActorId: string;
+  /** Public player who actually submitted/paid for the response, if delegated. */
+  responseActorId: string;
+  responseCardKind: "Attack";
+};
+
+export type PresentationDuelAttackResponse = PresentationDuelAttackResponseProof & {
+  responseEventId: string;
+  responseResolutionId: string;
+};
+
+export type PresentationDuelExchange = {
+  semantics: "PROVEN";
+  interactionId: string;
+  rootFrameId: string;
+  checkpointId: string;
+  presentationRevision: number;
+  root: { eventId: string; resolutionId: string; sourceId: string; targetId: string; cardKind: "Duel" };
+  responseCount: number;
+  responses: readonly PresentationDuelAttackResponse[];
+  currentParticipantId: string;
+  decisionActorId: string | null;
+};
+
 /** Simultaneous Oath recovery scope; intentionally has no sequential current participant. */
 export type PresentationOathRecipientScope = {
   semantics: "PROVEN";
@@ -243,6 +282,7 @@ export type PresentationV2 = {
   participants: readonly PresentationParticipant[];
   interactionScene: PresentationInteractionScene | null;
   rootAction: PresentationRootAction | null;
+  duelExchange: PresentationDuelExchange | null;
   selfTargetActions?: readonly PresentationSelfTargetAction[];
   dyingBarrier: PresentationDyingBarrier | null;
   reactionChain: PresentationReactionChain | null;
@@ -1351,6 +1391,158 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
   });
 }
 
+function duelExchangeFor(
+  envelope: CausalEnvelope | null,
+  scene: PresentationInteractionScene | null,
+  pending: unknown,
+  timeline: readonly PresentationV2Event[],
+): PresentationDuelExchange | null {
+  const item = record(pending);
+  const continuation = record(item?.continuation);
+  const causal = record(item?.causal);
+  const continuationCausal = record(continuation?.causal);
+  const sourceId = stringValue(continuation?.sourceId);
+  const targetId = stringValue(continuation?.targetId);
+  const currentOpponentId = stringValue(continuation?.opponentId);
+  const responseCount = continuation?.attackResponseCount;
+  const rootCards = Array.isArray(continuation?.damageCards)
+    ? continuation.damageCards.map(record).filter((card): card is RecordLike => Boolean(card))
+    : [];
+  const rootCardsOfDuelKind = rootCards.filter((card) => card.kind === "Duel" && stringValue(card.id));
+  const frame = envelope?.frames.find(({ frameId }) => frameId === envelope.activeFrameId) ?? null;
+  const rootFrames = envelope?.frames.filter(({ parentFrameId }) => parentFrameId == null) ?? [];
+
+  if (item?.kind !== "response" || continuation?.kind !== "duel"
+    || !envelope || !frame || rootFrames.length !== 1 || frame.frameId !== rootFrames[0].frameId
+    || frame.stage !== "DUEL_EXCHANGE" || envelope.checkpoint.frameId !== frame.frameId
+    || envelope.checkpoint.stage !== "DUEL_EXCHANGE"
+    || !Number.isSafeInteger(responseCount) || (responseCount as number) < 0
+    || !sourceId || !targetId || sourceId === targetId || !currentOpponentId
+    || !causal || causal.interactionId !== envelope.interactionId || causal.frameId !== frame.frameId
+    || !continuationCausal || continuationCausal.interactionId !== envelope.interactionId || continuationCausal.frameId !== frame.frameId
+    || !scene || scene.semantics !== "PROVEN" || scene.stage !== "DUEL_EXCHANGE"
+    || scene.continuity.relation !== "ROOT_FRAME" || scene.rootFrameId !== frame.frameId || scene.activeFrameId !== frame.frameId
+    || scene.interactionId !== envelope.interactionId || scene.sourceId !== sourceId || scene.activeSourceId !== sourceId
+    || scene.effect?.toLowerCase() !== "duel"
+    || frame.origin.originSourceId !== sourceId || frame.origin.originEffect.toLowerCase() !== "duel"
+    || frame.origin.originalTargetIds.length !== 2 || !frame.origin.originalTargetIds.includes(targetId) || !frame.origin.originalTargetIds.includes(sourceId)
+    || frame.current.currentSourceId !== sourceId || frame.current.currentEffect.toLowerCase() !== "duel"
+    || frame.current.currentTargetIds.length !== 2
+    || frame.current.currentTargetIds[0] !== scene.currentParticipantId
+    || frame.current.currentTargetIds[1] !== currentOpponentId
+    || frame.current.resolvingPlayerId !== scene.currentParticipantId
+    || !scene.currentParticipantId || ![sourceId, targetId].includes(scene.currentParticipantId)
+    || currentOpponentId !== (scene.currentParticipantId === sourceId ? targetId : sourceId)
+    || scene.activeTargetIds.length !== frame.current.currentTargetIds.length
+    || scene.activeTargetIds.some((id, index) => id !== frame.current.currentTargetIds[index])
+    || scene.decisionActorId !== scene.currentParticipantId
+    || scene.participantRoles.sourceId !== sourceId
+    || !scene.participantRoles.originalTargetIds.includes(targetId) || !scene.participantRoles.originalTargetIds.includes(sourceId)
+    || scene.participantRoles.currentParticipantId !== scene.currentParticipantId
+    || scene.participantRoles.decisionActorId !== scene.currentParticipantId
+    || rootCardsOfDuelKind.length !== 1
+    || rootCards.length !== 1) return null;
+
+  const rootCardId = stringValue(rootCardsOfDuelKind[0].id);
+  if (!rootCardId) return null;
+  const rootMatches = timeline.filter((event) => eventCardIds(event).includes(rootCardId));
+  if (rootMatches.length !== 1) return null;
+  const rootEvent = rootMatches[0];
+  const rootCard = record(rootEvent.card);
+  const rootResolutionId = stringValue(rootEvent.resolutionId);
+  if (!rootResolutionId || !stringValue(rootEvent.id)
+    || rootEvent.type !== "card" || rootEvent.presentation === false || rootEvent.action !== "play"
+    || rootEvent.playedAs !== undefined || rootCard?.id !== rootCardId || rootCard.kind !== "Duel") return null;
+
+  const eventIdCounts = new Map<string, number>();
+  for (const event of timeline) {
+    const eventId = stringValue(event.id);
+    if (eventId) eventIdCounts.set(eventId, (eventIdCounts.get(eventId) ?? 0) + 1);
+  }
+  const candidateResponses = timeline.flatMap((event) => {
+    const proof = record(event.duelAttackResponse);
+    return proof && (proof.interactionId === envelope.interactionId || proof.rootEventId === rootEvent.id)
+      ? [{ event, proof }]
+      : [];
+  });
+  if (candidateResponses.length !== responseCount) return null;
+
+  const responses: PresentationDuelAttackResponse[] = [];
+  const responseEventIds = new Set<string>();
+  const responseOrdinals = new Set<number>();
+  for (const { event, proof } of candidateResponses) {
+    const eventId = stringValue(event.id);
+    const resolutionId = stringValue(event.resolutionId);
+    const interactionId = stringValue(proof.interactionId);
+    const rootFrameId = stringValue(proof.rootFrameId);
+    const rootEventId = stringValue(proof.rootEventId);
+    const proofRootResolutionId = stringValue(proof.rootResolutionId);
+    const proofRootSourceId = stringValue(proof.rootSourceId);
+    const proofRootTargetId = stringValue(proof.rootTargetId);
+    const ordinal = proof.ordinal;
+    const responseSourceId = stringValue(proof.sourceId);
+    const responseTargetId = stringValue(proof.targetId);
+    const decisionActorId = stringValue(proof.decisionActorId);
+    const responseActorId = stringValue(proof.responseActorId);
+    const responseCards = event.type === "card"
+      ? [record(event.card)]
+      : event.type === "cards" && Array.isArray(event.cards)
+        ? event.cards.map(record)
+        : [];
+    const eventIsAttackResponse = (event.type === "card" || event.type === "cards")
+      ? event.action === "play" && (event.playedAs === "attack" || responseCards.length > 0 && responseCards.every((card) => card?.kind === "Attack"))
+      : event.type === "message" && event.effectNotice === true;
+    if (!eventId || eventIdCounts.get(eventId) !== 1 || eventId === rootEvent.id
+      || !resolutionId || resolutionId !== rootResolutionId || event.presentation === false || !eventIsAttackResponse
+      || proof.semantics !== "PROVEN" || proof.relation !== "DUEL_EXCHANGE"
+      || interactionId !== envelope.interactionId || rootFrameId !== frame.frameId
+      || rootEventId !== rootEvent.id || proofRootResolutionId !== rootResolutionId
+      || proofRootSourceId !== sourceId || proofRootTargetId !== targetId
+      || !Number.isSafeInteger(ordinal) || (ordinal as number) < 1 || (ordinal as number) > responseCount
+      || !responseSourceId || !responseTargetId || responseSourceId === responseTargetId
+      || !decisionActorId || ![sourceId, targetId].includes(decisionActorId)
+      || ![sourceId, targetId].includes(responseSourceId) || ![sourceId, targetId].includes(responseTargetId)
+      || responseSourceId !== decisionActorId || !responseActorId
+      || proof.responseCardKind !== "Attack"
+      || responseEventIds.has(eventId) || responseOrdinals.has(ordinal as number)) return null;
+    responseEventIds.add(eventId);
+    responseOrdinals.add(ordinal as number);
+    responses.push({
+      semantics: "PROVEN",
+      relation: "DUEL_EXCHANGE",
+      interactionId,
+      rootFrameId,
+      rootEventId,
+      rootResolutionId,
+      rootSourceId: proofRootSourceId,
+      rootTargetId: proofRootTargetId,
+      ordinal: ordinal as number,
+      sourceId: responseSourceId,
+      targetId: responseTargetId,
+      decisionActorId,
+      responseActorId,
+      responseCardKind: "Attack",
+      responseEventId: eventId,
+      responseResolutionId: resolutionId,
+    });
+  }
+  responses.sort((left, right) => left.ordinal - right.ordinal);
+  if (responses.some((response, index) => response.ordinal !== index + 1)) return null;
+
+  return {
+    semantics: "PROVEN",
+    interactionId: envelope.interactionId,
+    rootFrameId: frame.frameId,
+    checkpointId: envelope.checkpoint.checkpointId,
+    presentationRevision: envelope.presentationRevision,
+    root: { eventId: rootEvent.id, resolutionId: rootResolutionId, sourceId, targetId, cardKind: "Duel" },
+    responseCount: responseCount as number,
+    responses,
+    currentParticipantId: scene.currentParticipantId,
+    decisionActorId: scene.decisionActorId,
+  };
+}
+
 function participants(active: Context | null, group: RecordLike | null): PresentationParticipant[] {
   if (!active) return [];
   const map = new Map<string, Set<PresentationParticipant["roles"][number]>>();
@@ -1397,6 +1589,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const groupValues = groupProjectionValues(envelope, input.pending, group);
   const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
   const rootAction = singleTargetAttackRootActionFor(envelope, interactionScene, input.pending, root, rootEvent);
+  const duelExchange = duelExchangeFor(envelope, interactionScene, input.pending, input.timeline);
   const selfTargetActions = selfTargetActionsFor(input.timeline);
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
   const oathRecipientScope = oathRecipientScopeFor(input.pending, envelope, interactionScene, input.oathRecipientIds);
@@ -1431,6 +1624,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     participants: interactionScene?.semantics === "PROVEN" ? participantsFromScene(interactionScene) : participants(active, group),
     interactionScene,
     rootAction,
+    duelExchange,
     selfTargetActions,
     dyingBarrier,
     reactionChain,

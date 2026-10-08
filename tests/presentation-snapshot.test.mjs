@@ -166,6 +166,53 @@ test("snapshot carries typed Attack/Dodge counter proof identically for acting a
   }).attackDodgeResponses, [], "malformed and duplicate response identity is dropped");
 });
 
+test("snapshot admits only a root- and scene-bound Duel exchange and strips extra card identity fields", () => {
+  const interaction = scene({
+    interactionId: "duel-interaction", rootFrameId: "duel-frame", activeFrameId: "duel-frame",
+    checkpointId: "duel-checkpoint", presentationRevision: 4, stage: "DUEL_EXCHANGE",
+    sourceId: "A", effect: "Duel", targetIds: ["B", "A"], currentParticipantId: "A",
+    decisionActorId: "A", activeResolverId: "A", activeSourceId: "A", activeTargetIds: ["A", "B"],
+    participantRoles: {
+      sourceId: "A", originalTargetIds: ["B", "A"], activeTargetIds: ["A", "B"], currentParticipantId: "A",
+      decisionActorId: "A", activeResolverId: "A", parentParticipantId: null, participantIds: [],
+    },
+  });
+  const response = {
+    semantics: "PROVEN", relation: "DUEL_EXCHANGE", interactionId: "duel-interaction", rootFrameId: "duel-frame",
+    rootEventId: "duel-root-event", rootResolutionId: "duel-root-resolution", rootSourceId: "A", rootTargetId: "B",
+    ordinal: 1, sourceId: "B", targetId: "A", decisionActorId: "B", responseActorId: "C", responseCardKind: "Attack",
+    responseEventId: "duel-response-event", responseResolutionId: "duel-root-resolution",
+    physicalCardId: "private-duel-response-card",
+  };
+  const exchange = {
+    semantics: "PROVEN", interactionId: "duel-interaction", rootFrameId: "duel-frame",
+    checkpointId: "duel-checkpoint", presentationRevision: 4,
+    root: { eventId: "duel-root-event", resolutionId: "duel-root-resolution", sourceId: "A", targetId: "B", cardKind: "Duel", physicalCardId: "private-duel-root-card" },
+    responseCount: 1, responses: [response], currentParticipantId: "A", decisionActorId: "A",
+  };
+  const boundary = coherentBoundary({ interactionId: "duel-interaction", checkpointId: "duel-checkpoint", presentationRevision: 4, decisionActorId: "A" });
+  const publicPresentation = { ...presentation(interaction, boundary), duelExchange: exchange };
+  const acting = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "response", actorId: "A" }, actionRevision: "duel-a", viewerId: "A" });
+  const observing = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "none", actorId: null }, actionRevision: "duel-b", viewerId: "C" });
+  assert.deepEqual(acting.duelExchange, observing.duelExchange, "public Duel proof remains viewer-equal");
+  assert.equal(acting.duelExchange?.responses[0].responseActorId, "C", "the public submitter is distinct from the semantic Duel decision actor");
+  assert.equal(JSON.stringify(acting.duelExchange).includes("private-duel-"), false, "unknown physical-card identity fields are not copied into the public snapshot");
+
+  for (const malformed of [
+    { ...exchange, root: { ...exchange.root, eventId: "other-root-event" } },
+    { ...exchange, currentParticipantId: "B" },
+    { ...exchange, responses: [{ ...response, sourceId: "A", decisionActorId: "B" }] },
+    { ...exchange, responses: [response, { ...response }] },
+  ]) {
+    const result = composePresentationSnapshot({
+      presentationV2: { ...publicPresentation, duelExchange: malformed },
+      currentAction: { kind: "response", actorId: "A" }, actionRevision: "duel-invalid", viewerId: "A",
+    });
+    assert.equal(result.identity?.interactionId, "duel-interaction", "unrelated public scene authority remains usable");
+    assert.equal(result.duelExchange, null, "an inconsistent Duel exchange is withheld as a whole");
+  }
+});
+
 test("snapshot keeps Negation public event links only when they align with the proven chain", () => {
   const frameId = "root-negation-frame";
   const interaction = scene({ stage: "NEGATION", rootFrameId: frameId, activeFrameId: frameId, effect: "Steal", decisionActorId: "C", activeResolverId: "C" });

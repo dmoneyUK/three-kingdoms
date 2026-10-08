@@ -309,6 +309,81 @@ test("Attack/Dodge counter proof links one submitted physical Dodge to its exact
   }
 });
 
+test("Duel exchange links one persistent root to only submitted server-directed Attack responses", () => {
+  const root = event("duel-root-event", "duel-root-resolution", {
+    player: "A", target: "B", action: "play", card: card("private-duel-root-card", "Duel"),
+  });
+  const responseProof = {
+    semantics: "PROVEN", relation: "DUEL_EXCHANGE",
+    interactionId: "duel-interaction", rootFrameId: "duel-frame",
+    rootEventId: root.id, rootResolutionId: root.resolutionId,
+    rootSourceId: "A", rootTargetId: "B", ordinal: 1,
+    sourceId: "B", targetId: "A", decisionActorId: "B", responseActorId: "B", responseCardKind: "Attack",
+  };
+  const response = event("duel-attack-event", root.resolutionId, {
+    player: "B", target: "A", action: "play", card: card("private-duel-attack-card", "Attack"), duelAttackResponse: responseProof,
+  });
+  const causalEnvelope = (participant, opponent, revision) => ({
+    version: 1,
+    interactionId: "duel-interaction",
+    frames: [{
+      frameId: "duel-frame", parentFrameId: null, stage: "DUEL_EXCHANGE",
+      origin: { originSourceId: "A", originEffect: "duel", originalTargetIds: ["B", "A"] },
+      current: { currentSourceId: "A", currentEffect: "duel", currentTargetIds: [participant, opponent], resolvingPlayerId: participant },
+    }],
+    activeFrameId: "duel-frame",
+    checkpoint: { checkpointId: `duel-checkpoint-${revision}`, frameId: "duel-frame", stage: "DUEL_EXCHANGE" },
+    presentationRevision: revision,
+  });
+  const pending = (actorId, opponentId, attackResponseCount) => ({
+    kind: "response", actorId, resolutionId: root.resolutionId, readyAfterEventId: root.id,
+    causal: { interactionId: "duel-interaction", frameId: "duel-frame" },
+    continuation: {
+      kind: "duel", sourceId: "A", targetId: "B", opponentId, resumePhase: "play",
+      damageCards: [{ id: "private-duel-root-card", kind: "Duel" }], attackResponseCount,
+      causal: { interactionId: "duel-interaction", frameId: "duel-frame" },
+    },
+  });
+  const project = (participant, opponent, count, revision, timeline) => projectPresentationV2({
+    pending: pending(participant, opponent, count),
+    currentAction: action({ actorId: participant, resolutionId: root.resolutionId, readyAfterEventId: timeline.at(-1)?.id }),
+    actionRevision: `duel-action-${revision}`,
+    timeline,
+    causalEnvelope: causalEnvelope(participant, opponent, revision),
+  });
+
+  const open = project("B", "A", 0, 0, [root]);
+  assert.deepEqual(open.duelExchange, {
+    semantics: "PROVEN", interactionId: "duel-interaction", rootFrameId: "duel-frame",
+    checkpointId: "duel-checkpoint-0", presentationRevision: 0,
+    root: { eventId: root.id, resolutionId: root.resolutionId, sourceId: "A", targetId: "B", cardKind: "Duel" },
+    responseCount: 0, responses: [], currentParticipantId: "B", decisionActorId: "B",
+  }, "an open response window contains no fabricated Attack response");
+
+  const answered = project("A", "B", 1, 1, [root, response]);
+  assert.deepEqual(answered.duelExchange?.responses, [{
+    ...responseProof, responseEventId: response.id, responseResolutionId: response.resolutionId,
+  }]);
+  assert.equal(answered.duelExchange?.root.eventId, open.duelExchange.root.eventId, "the root remains stable through the server handoff");
+  assert.equal(JSON.stringify(answered.duelExchange).includes("private-duel-root-card"), false);
+  assert.equal(JSON.stringify(answered.duelExchange).includes("private-duel-attack-card"), false);
+
+  for (const invalid of [
+    { timeline: [root], count: undefined, label: "legacy continuation has no authoritative response count" },
+    { timeline: [response], count: 1, label: "missing root event" },
+    { timeline: [root, response], count: 2, label: "missing submitted response link" },
+    { timeline: [root, { ...response, resolutionId: "stale-resolution" }], count: 1, label: "response is linked to a stale resolution" },
+    { timeline: [root, { ...response, duelAttackResponse: { ...responseProof, rootEventId: "another-root" } }], count: 1, label: "mismatched root link" },
+    { timeline: [root, { ...response, duelAttackResponse: { ...responseProof, targetId: "C" } }], count: 1, label: "response target outside Duel" },
+    { timeline: [root, { ...response, card: card("not-an-attack", "Dodge") }], count: 1, label: "linked event is not an Attack" },
+    { timeline: [root, { ...response, duelAttackResponse: { ...responseProof, responseActorId: undefined } }], count: 1, label: "missing public submitter identity" },
+    { timeline: [root, response, { ...response, id: "duel-attack-event-2", duelAttackResponse: { ...responseProof } }], count: 2, label: "duplicate response ordinal" },
+    { timeline: [root, response, { ...response }], count: 1, label: "duplicate response event identity" },
+  ]) {
+    assert.equal(project("A", "B", invalid.count, 1, invalid.timeline).duelExchange, null, `${invalid.label} fails closed`);
+  }
+});
+
 test("group projection records missing authoritative semantics instead of guessing", () => {
   const projected = projectPresentationV2({ pending: flows[3].points[0].pending, currentAction: flows[3].points[0].currentAction, actionRevision: "r", timeline: flows[3].points[0].timeline });
   assert.equal(projected.groupResolution?.semantics, "UNPROVEN");

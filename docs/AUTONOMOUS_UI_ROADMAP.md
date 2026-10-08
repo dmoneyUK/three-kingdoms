@@ -1764,6 +1764,21 @@ Only a proven regression or new Reviewer-approved design requirement does.
   parent SHA `1a8492e46c84764b6ed12cbf9c0ffc9951ca54ae`. Reviewer acceptance is
   not claimed.
 
+### UX2.6-PHASE-C-DUEL-PERSISTENT-ROOT-AUTHORITY-01 — Duel exchange proof
+
+- PresentationV2 now links the exact persistent public Duel root to each
+  accepted Attack response using the live server continuation's semantic
+  direction and a monotonic response ordinal. Snapshot and Client revalidate
+  root/frame/checkpoint/scene coherence and discard physical card IDs. The
+  server-backed physical Duel and delegated Liu Bei Jijiang → Guan Yu Attack
+  flows prove stable root identity and distinguish the semantic decision actor
+  from the actual submitter; malformed, missing, duplicate, or mismatched links
+  fail closed. Presentation/client/snapshot tests passed 112/112; focused API
+  tests passed 51/51; build, targeted ESLint, and `git diff --check` passed.
+  Before-commit parent `8ea13ff1322a18e58c2d70cffe624071bbe447a5` passed Actions
+  run `37758953873`. Duel graph rendering remains open; Reviewer acceptance is
+  not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

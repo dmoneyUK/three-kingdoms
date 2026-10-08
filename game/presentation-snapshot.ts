@@ -10,6 +10,7 @@ import type {
   PresentationReactionChainNode,
   PresentationRootAction,
   PresentationAttackDodgeResponse,
+  PresentationDuelExchange,
   PresentationSelfTargetAction,
   PresentationStableBoundary,
   PresentationV2,
@@ -63,6 +64,7 @@ export type PresentationSnapshotOathRecipientScope = PresentationOathRecipientSc
 export type PresentationSnapshotBumperHarvestProgress = PresentationBumperHarvestProgress;
 export type PresentationSnapshotRootAction = PresentationRootAction;
 export type PresentationSnapshotAttackDodgeResponse = PresentationAttackDodgeResponse;
+export type PresentationSnapshotDuelExchange = PresentationDuelExchange;
 export type PresentationSnapshotSelfTargetAction = PresentationSelfTargetAction;
 
 export type PresentationSnapshot = {
@@ -74,6 +76,7 @@ export type PresentationSnapshot = {
   bumperHarvestProgress: PresentationSnapshotBumperHarvestProgress | null;
   reactionChain: PresentationReactionChain | null;
   rootAction: PresentationSnapshotRootAction | null;
+  duelExchange: PresentationSnapshotDuelExchange | null;
   attackDodgeResponses?: readonly PresentationSnapshotAttackDodgeResponse[];
   selfTargetActions?: readonly PresentationSnapshotSelfTargetAction[];
   decision: PresentationSnapshotDecision | null;
@@ -163,6 +166,100 @@ export function provenAttackDodgeResponses(value: unknown): PresentationSnapshot
     responseEventId: response.responseEventId,
     responseResolutionId: response.responseResolutionId,
   }));
+}
+
+export function provenDuelExchange(
+  value: unknown,
+  scene?: PresentationInteractionScene | null,
+  identity?: PresentationSnapshotIdentity | null,
+  stable?: PresentationStableBoundary,
+): PresentationSnapshotDuelExchange | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const exchange = value as Record<string, unknown>;
+  const root = exchange.root && typeof exchange.root === "object" && !Array.isArray(exchange.root)
+    ? exchange.root as Record<string, unknown>
+    : null;
+  const responseCount = exchange.responseCount;
+  if (exchange.semantics !== "PROVEN" || !nonEmptyString(exchange.interactionId)
+    || !nonEmptyString(exchange.rootFrameId) || !nonEmptyString(exchange.checkpointId)
+    || !nonNegativeInteger(exchange.presentationRevision) || !root
+    || !nonEmptyString(root.eventId) || !nonEmptyString(root.resolutionId)
+    || !nonEmptyString(root.sourceId) || !nonEmptyString(root.targetId)
+    || root.sourceId === root.targetId || root.cardKind !== "Duel"
+    || !nonNegativeInteger(responseCount) || !Array.isArray(exchange.responses)
+    || exchange.responses.length !== responseCount
+    || !nonEmptyString(exchange.currentParticipantId)
+    || exchange.decisionActorId !== null && !nonEmptyString(exchange.decisionActorId)) return null;
+
+  const rootPlayers = new Set([root.sourceId, root.targetId]);
+  if (!rootPlayers.has(exchange.currentParticipantId as string)
+    || exchange.decisionActorId !== null && exchange.decisionActorId !== exchange.currentParticipantId) return null;
+  const eventIds = new Set<string>([root.eventId as string]);
+  const responses: PresentationSnapshotDuelExchange["responses"][number][] = [];
+  for (const [index, candidate] of exchange.responses.entries()) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+    const response = candidate as Record<string, unknown>;
+    if (response.semantics !== "PROVEN" || response.relation !== "DUEL_EXCHANGE"
+      || response.interactionId !== exchange.interactionId || response.rootFrameId !== exchange.rootFrameId
+      || response.rootEventId !== root.eventId || response.rootResolutionId !== root.resolutionId
+      || response.rootSourceId !== root.sourceId || response.rootTargetId !== root.targetId
+      || response.ordinal !== index + 1 || !nonEmptyString(response.responseEventId)
+      || !nonEmptyString(response.responseResolutionId) || response.responseResolutionId !== root.resolutionId
+      || !nonEmptyString(response.sourceId) || !nonEmptyString(response.targetId) || response.sourceId === response.targetId
+      || !rootPlayers.has(response.sourceId as string) || !rootPlayers.has(response.targetId as string)
+      || !nonEmptyString(response.decisionActorId) || !rootPlayers.has(response.decisionActorId as string)
+      || response.sourceId !== response.decisionActorId
+      || !nonEmptyString(response.responseActorId) || response.responseCardKind !== "Attack"
+      || eventIds.has(response.responseEventId as string)) return null;
+    eventIds.add(response.responseEventId as string);
+    responses.push({
+      semantics: "PROVEN",
+      relation: "DUEL_EXCHANGE",
+      interactionId: exchange.interactionId as string,
+      rootFrameId: exchange.rootFrameId as string,
+      rootEventId: root.eventId as string,
+      rootResolutionId: root.resolutionId as string,
+      rootSourceId: root.sourceId as string,
+      rootTargetId: root.targetId as string,
+      ordinal: index + 1,
+      sourceId: response.sourceId as string,
+      targetId: response.targetId as string,
+      decisionActorId: response.decisionActorId as string,
+      responseActorId: response.responseActorId as string,
+      responseCardKind: "Attack",
+      responseEventId: response.responseEventId as string,
+      responseResolutionId: response.responseResolutionId as string,
+    });
+  }
+
+  if (scene !== undefined || identity !== undefined || stable !== undefined) {
+    if (!scene || !identity || !stable || scene.semantics !== "PROVEN"
+      || scene.stage !== "DUEL_EXCHANGE" || stable.kind !== "CHOICE"
+      || scene.interactionId !== exchange.interactionId || identity.interactionId !== exchange.interactionId
+      || scene.rootFrameId !== exchange.rootFrameId || scene.activeFrameId !== exchange.rootFrameId
+      || identity.checkpointId !== exchange.checkpointId || scene.checkpointId !== exchange.checkpointId
+      || identity.presentationRevision !== exchange.presentationRevision || scene.presentationRevision !== exchange.presentationRevision
+      || stable.checkpointId !== identity.checkpointId || stable.presentationRevision !== identity.presentationRevision
+      || stable.decisionActorId !== scene.decisionActorId
+      || scene.sourceId !== root.sourceId || scene.currentParticipantId !== exchange.currentParticipantId
+      || scene.decisionActorId !== exchange.decisionActorId
+      || scene.participantRoles.sourceId !== root.sourceId
+      || scene.targetIds.length !== 2 || !scene.targetIds.includes(root.targetId as string) || !scene.targetIds.includes(root.sourceId as string)
+      || scene.activeTargetIds.length !== 2 || !scene.activeTargetIds.includes(root.targetId as string) || !scene.activeTargetIds.includes(root.sourceId as string)) return null;
+  }
+
+  return {
+    semantics: "PROVEN",
+    interactionId: exchange.interactionId as string,
+    rootFrameId: exchange.rootFrameId as string,
+    checkpointId: exchange.checkpointId as string,
+    presentationRevision: exchange.presentationRevision as number,
+    root: { eventId: root.eventId as string, resolutionId: root.resolutionId as string, sourceId: root.sourceId as string, targetId: root.targetId as string, cardKind: "Duel" },
+    responseCount: responseCount as number,
+    responses,
+    currentParticipantId: exchange.currentParticipantId as string,
+    decisionActorId: exchange.decisionActorId as string | null,
+  };
 }
 
 function isProvenScene(scene: PresentationInteractionScene | null): scene is PresentationInteractionScene {
@@ -540,6 +637,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     bumperHarvestProgress: authority ? bumperHarvestProgressFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
     reactionChain: authority ? reactionChainFor(input.presentationV2, authority.scene, authority.identity) : null,
     rootAction: authority ? rootActionFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
+    duelExchange: authority ? provenDuelExchange(input.presentationV2.duelExchange, authority.scene, authority.identity, authority.stable) : null,
     ...(input.presentationV2.attackDodgeResponses?.length ? { attackDodgeResponses: provenAttackDodgeResponses(input.presentationV2.attackDodgeResponses) } : {}),
     selfTargetActions: provenSelfTargetActions(input.presentationV2.selfTargetActions),
     decision: authority && authority.stable.kind === "CHOICE"

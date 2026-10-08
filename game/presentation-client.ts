@@ -1,7 +1,7 @@
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressStatus, type HarvestParticipantProgressStatus } from "./pending";
 import { CARD_KINDS, type CardKind } from "./model";
 import { CARD_DEFINITIONS } from "./cards";
-import { provenAttackDodgeResponses, provenSelfTargetActions, type PresentationSnapshot, type PresentationSnapshotAttackDodgeResponse, type PresentationSnapshotBumperHarvestProgress, type PresentationSnapshotGroupParticipantProgress, type PresentationSnapshotGroupProgress, type PresentationSnapshotOathRecipientScope, type PresentationSnapshotRootAction, type PresentationSnapshotSelfTargetAction } from "./presentation-snapshot";
+import { provenAttackDodgeResponses, provenDuelExchange, provenSelfTargetActions, type PresentationSnapshot, type PresentationSnapshotAttackDodgeResponse, type PresentationSnapshotBumperHarvestProgress, type PresentationSnapshotDuelExchange, type PresentationSnapshotGroupParticipantProgress, type PresentationSnapshotGroupProgress, type PresentationSnapshotOathRecipientScope, type PresentationSnapshotRootAction, type PresentationSnapshotSelfTargetAction } from "./presentation-snapshot";
 import type {
   InteractionSceneContinuity,
   PresentationInteractionScene,
@@ -30,6 +30,7 @@ export type PresentationClientView = {
   bumperHarvestProgress: PresentationSnapshotBumperHarvestProgress | null;
   reactionChain: PresentationSnapshot["reactionChain"];
   rootAction: PresentationSnapshotRootAction | null;
+  duelExchange: PresentationSnapshotDuelExchange | null;
   attackDodgeResponses?: readonly PresentationSnapshotAttackDodgeResponse[];
   selfTargetActions: readonly PresentationSnapshotSelfTargetAction[];
   negationSettlement?: PresentationSnapshot["settlement"];
@@ -201,6 +202,7 @@ function restView(snapshot: PresentationSnapshot | null, meId: string | null): P
     bumperHarvestProgress: null,
     reactionChain: null,
     rootAction: null,
+    duelExchange: null,
     ...(attackDodgeResponses.length ? { attackDodgeResponses } : {}),
     selfTargetActions: provenSelfTargetActions(snapshot?.selfTargetActions),
     ...(negationSettlement ? { negationSettlement } : {}),
@@ -621,6 +623,7 @@ export function buildPresentationClientView(
     bumperHarvestProgress,
     reactionChain: reactionChainForSnapshot(snapshot, scene),
     rootAction,
+    duelExchange: provenDuelExchange(snapshot.duelExchange, scene, snapshot.identity, snapshot.stable),
     ...(attackDodgeResponses.length ? { attackDodgeResponses } : {}),
     selfTargetActions: provenSelfTargetActions(snapshot.selfTargetActions),
     ...(negationSettlement ? { negationSettlement } : {}),

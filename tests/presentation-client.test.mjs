@@ -166,6 +166,7 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
     bumperHarvestProgress: null,
     reactionChain: null,
     rootAction: null,
+    duelExchange: null,
     selfTargetActions: [],
     continuity: { relation: "ROOT_FRAME", parentFrameId: null },
     parentFrameId: null,
@@ -217,6 +218,49 @@ test("adapter carries submitted Attack/Dodge counter proof viewer-equally withou
   assert.equal("options" in acting, false);
   assert.equal("legalActions" in acting, false);
   assert.deepEqual(buildPresentationClientView({ ...rest, attackDodgeResponses: [{ ...response, responseResolutionId: "stale-resolution" }] }, "B").attackDodgeResponses ?? [], []);
+});
+
+test("adapter carries a public Duel exchange while separating its decision actor from a delegated card submitter", () => {
+  const interaction = scene({
+    interactionId: "duel-interaction", rootFrameId: "duel-frame", activeFrameId: "duel-frame",
+    checkpointId: "duel-checkpoint", presentationRevision: 4, stage: "DUEL_EXCHANGE",
+    effect: "Duel", targetIds: ["B", "A"], sourceId: "A", activeSourceId: "A",
+    currentParticipantId: "A", decisionActorId: "A", activeResolverId: "A", activeTargetIds: ["A", "B"],
+    participantRoles: {
+      sourceId: "A", originalTargetIds: ["B", "A"], activeTargetIds: ["A", "B"],
+      currentParticipantId: "A", decisionActorId: "A", activeResolverId: "A",
+      parentParticipantId: null, participantIds: [],
+    },
+  });
+  const exchange = {
+    semantics: "PROVEN", interactionId: "duel-interaction", rootFrameId: "duel-frame",
+    checkpointId: "duel-checkpoint", presentationRevision: 4,
+    root: { eventId: "duel-root-event", resolutionId: "duel-root-resolution", sourceId: "A", targetId: "B", cardKind: "Duel" },
+    responseCount: 1,
+    responses: [{
+      semantics: "PROVEN", relation: "DUEL_EXCHANGE", interactionId: "duel-interaction", rootFrameId: "duel-frame",
+      rootEventId: "duel-root-event", rootResolutionId: "duel-root-resolution", rootSourceId: "A", rootTargetId: "B",
+      ordinal: 1, sourceId: "B", targetId: "A", decisionActorId: "B", responseActorId: "C", responseCardKind: "Attack",
+      responseEventId: "duel-response-event", responseResolutionId: "duel-root-resolution",
+    }],
+    currentParticipantId: "A", decisionActorId: "A",
+  };
+  const identity = { interactionId: "duel-interaction", checkpointId: "duel-checkpoint", presentationRevision: 4 };
+  const publicSnapshot = snapshot({
+    identity, interaction,
+    stable: { kind: "CHOICE", ...identity, decisionActorId: "A" },
+    decision: { actorId: "A", stage: "DUEL_EXCHANGE" },
+    duelExchange: exchange,
+  });
+  const acting = buildPresentationClientView(publicSnapshot, "A");
+  const observing = buildPresentationClientView(publicSnapshot, "C");
+  assert.deepEqual(acting.duelExchange, exchange);
+  assert.deepEqual(observing.duelExchange, exchange, "the public exchange does not vary with viewer entitlement");
+  assert.equal(acting.duelExchange.responses[0].decisionActorId, "B");
+  assert.equal(acting.duelExchange.responses[0].responseActorId, "C");
+  assert.equal("options" in acting, false);
+  assert.equal("legalActions" in acting, false);
+  assert.equal(buildPresentationClientView({ ...publicSnapshot, duelExchange: { ...exchange, currentParticipantId: "C" } }, "A").duelExchange, null);
 });
 
 test("adapter carries only a root action bound to the active public frame", () => {

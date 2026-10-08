@@ -1037,6 +1037,21 @@ test("engine-backed Duel alternates response actors without changing the root co
   const first = await assertProjectionMatchesEngine(game.code, alice.token);
   const firstRoot = first.presentationV2.rootContext;
   const firstRevision = first.actionRevision;
+  const rootDuelEvent = first.timeline.find((event) => event.card?.id === duel.id);
+  assert.ok(rootDuelEvent, "the public root Duel card event is present");
+  assert.deepEqual(first.presentationV2.duelExchange, {
+    semantics: "PROVEN",
+    interactionId: first.presentationV2.interactionScene.interactionId,
+    rootFrameId: first.presentationV2.interactionScene.rootFrameId,
+    checkpointId: first.presentationV2.interactionScene.checkpointId,
+    presentationRevision: first.presentationV2.interactionScene.presentationRevision,
+    root: { eventId: rootDuelEvent.id, resolutionId: rootDuelEvent.resolutionId, sourceId: source.id, targetId: target.id, cardKind: "Duel" },
+    responseCount: 0,
+    responses: [],
+    currentParticipantId: target.id,
+    decisionActorId: target.id,
+  }, "an open Duel proves its persistent root without inventing a response node");
+  assert.deepEqual(first.presentationSnapshot.duelExchange, first.presentationV2.duelExchange, "the route snapshot preserves the accepted public exchange");
   assert.equal(first.currentAction.actorId, target.id);
   assert.equal(authoritativePending(game.code).continuation.kind, "duel");
   assert.equal(first.presentationV2.interactionScene?.semantics, "PROVEN");
@@ -1050,6 +1065,7 @@ test("engine-backed Duel alternates response actors without changing the root co
   assert.equal(first.presentationV2.stableBoundary.decisionActorId, target.id);
   const firstOtherViewer = await state(game.code, host.token);
   assert.deepEqual(firstOtherViewer.data.presentationV2.interactionScene, first.presentationV2.interactionScene, "Duel public scene is equal across the first response checkpoint");
+  assert.deepEqual(firstOtherViewer.data.presentationV2.duelExchange, first.presentationV2.duelExchange, "Duel root authority is public and viewer-equal");
   assert.equal(firstOtherViewer.data.presentationV2.interactionScene?.decisionActorId, target.id);
   const firstRepeat = await state(game.code, alice.token);
   assert.deepEqual(firstRepeat.data.presentationV2.interactionScene, first.presentationV2.interactionScene, "repeated Duel reads do not create a new public scene");
@@ -1063,7 +1079,31 @@ test("engine-backed Duel alternates response actors without changing the root co
   assert.notEqual(second.actionRevision, firstRevision);
   assert.equal(second.presentationV2.rootContext?.sourceId, firstRoot?.sourceId, "actor alternation preserves the root source");
   assert.equal(second.presentationV2.rootContext?.kind, firstRoot?.kind, "actor alternation preserves the root kind");
-  assert.notEqual(second.presentationV2.rootContext?.resolutionId, firstRoot?.resolutionId, "Duel response transitions currently allocate a new legacy resolution reference");
+  assert.equal(second.presentationV2.duelExchange?.root.resolutionId, rootDuelEvent.resolutionId, "typed Duel root retains the original resolution across response handoff");
+  const firstDuelResponseEvent = second.timeline.find((event) => event.duelAttackResponse?.ordinal === 1);
+  assert.ok(firstDuelResponseEvent, "the submitted Attack is linked to the exact Duel exchange");
+  assert.deepEqual(second.presentationV2.duelExchange?.responses, [{
+    semantics: "PROVEN",
+    relation: "DUEL_EXCHANGE",
+    interactionId: first.presentationV2.duelExchange.interactionId,
+    rootFrameId: first.presentationV2.duelExchange.rootFrameId,
+    rootEventId: rootDuelEvent.id,
+    rootResolutionId: rootDuelEvent.resolutionId,
+    rootSourceId: source.id,
+    rootTargetId: target.id,
+    ordinal: 1,
+    sourceId: target.id,
+    targetId: source.id,
+    decisionActorId: target.id,
+    responseActorId: target.id,
+    responseCardKind: "Attack",
+    responseEventId: firstDuelResponseEvent.id,
+    responseResolutionId: rootDuelEvent.resolutionId,
+  }]);
+  assert.deepEqual(second.presentationV2.duelExchange?.root, first.presentationV2.duelExchange.root, "the public root identity remains stable across actor handoff");
+  assert.equal(JSON.stringify(second.presentationV2.duelExchange).includes(duel.id), false, "public Duel proof omits physical card IDs");
+  assert.equal(JSON.stringify(second.presentationV2.duelExchange).includes(firstAttack.id), false, "public response proof omits physical Attack card IDs");
+  assert.deepEqual(second.presentationSnapshot.duelExchange, second.presentationV2.duelExchange, "the snapshot carries the same server-proven exchange");
   assert.equal(second.presentationV2.activeContext?.kind, "duel");
   assert.deepEqual(second.presentationV2.activeContext?.currentTargetIds, [target.id]);
   assert.equal(second.presentationV2.interactionScene?.semantics, "PROVEN");
@@ -1080,8 +1120,20 @@ test("engine-backed Duel alternates response actors without changing the root co
   assert.equal(second.presentationV2.stableBoundary.presentationRevision, (first.presentationV2.stableBoundary.presentationRevision ?? 0) + 1);
   const secondOtherViewer = await state(game.code, alice.token);
   assert.deepEqual(secondOtherViewer.data.presentationV2.interactionScene, second.presentationV2.interactionScene, "Duel public scene remains equal after response handoff");
+  assert.deepEqual(secondOtherViewer.data.presentationV2.duelExchange, second.presentationV2.duelExchange, "Duel response proof remains viewer-equal");
+  assert.deepEqual(secondOtherViewer.data.presentationSnapshot.duelExchange, second.presentationSnapshot.duelExchange, "both viewers receive identical public snapshot links");
   assert.equal(secondOtherViewer.data.presentationV2.interactionScene?.decisionActorId, source.id);
   assert.equal(secondOtherViewer.data.currentAction.options, undefined, "the second Duel response options remain private to the acting viewer");
+
+  const returned = await request("respond", { code: game.code, token: host.token, providerId: "card", cardId: secondAttack.id });
+  assert.equal(returned.status, 200, JSON.stringify(returned.data));
+  const third = await assertProjectionMatchesEngine(game.code, alice.token);
+  assert.equal(third.currentAction.actorId, target.id);
+  assert.equal(third.presentationV2.duelExchange?.root.eventId, rootDuelEvent.id);
+  assert.deepEqual(third.presentationV2.duelExchange?.responses.map(({ ordinal, sourceId, targetId, decisionActorId, responseCardKind }) => ({ ordinal, sourceId, targetId, decisionActorId, responseCardKind })), [
+    { ordinal: 1, sourceId: target.id, targetId: source.id, decisionActorId: target.id, responseCardKind: "Attack" },
+    { ordinal: 2, sourceId: source.id, targetId: target.id, decisionActorId: source.id, responseCardKind: "Attack" },
+  ], "each response direction comes from the server-owned Duel continuation");
 });
 
 test("engine-backed Duel damage opens a child Dying frame and clears after rescue", { timeout: 30_000 }, async () => {

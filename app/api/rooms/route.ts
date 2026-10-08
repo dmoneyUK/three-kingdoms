@@ -24,7 +24,7 @@ import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { projectPresentationV2, type PresentationAttackDodgeResponseProof, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof } from "../../../game/presentation-v2";
+import { projectPresentationV2, type PresentationAttackDodgeResponseProof, type PresentationDuelAttackResponseProof, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
@@ -35,7 +35,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null; causal_envelope_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -613,7 +613,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}) };
 }
 function addTriggeredEffectNotice(log: string[], actor: string, label: string) {
   return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined, { effectNotice: true });
@@ -669,6 +669,59 @@ function attackDodgeResponseProof(log: string[], response: ResponsePending, resp
     responseActorId: responderId,
     rootCardKind: "Attack",
     responseCardKind: "Dodge",
+  };
+}
+function duelAttackResponseProof(
+  log: string[],
+  response: ResponsePending,
+  submittedById: string,
+  responseTargetId: string,
+  decisionActorId: string,
+  ordinal: number,
+): PresentationDuelAttackResponseProof | undefined {
+  if (response.continuation.kind !== "duel" || !Number.isSafeInteger(ordinal) || ordinal < 1) return undefined;
+  const continuation = response.continuation;
+  const causal = response.causal;
+  const rootCards = continuation.damageCards ?? [];
+  if (rootCards.length !== 1 || rootCards[0].kind !== "Duel" || !causal
+    || !causal.interactionId || !causal.frameId
+    || continuation.causal?.interactionId !== causal.interactionId || continuation.causal.frameId !== causal.frameId
+    || semanticResponseActor(response) !== decisionActorId
+    || continuation.opponentId !== responseTargetId
+    || ![continuation.sourceId, continuation.targetId].includes(decisionActorId)
+    || decisionActorId === responseTargetId || responseTargetId === decisionActorId) return undefined;
+
+  const publicCardEvents: Array<{ entryKind: "card" | "cards"; event: Record<string, unknown> }> = [];
+  for (const entry of log) {
+    if (!entry.startsWith("@card:") && !entry.startsWith("@cards:")) continue;
+    try {
+      const marker = entry.startsWith("@card:") ? "@card:" : "@cards:";
+      publicCardEvents.push({ entryKind: marker === "@card:" ? "card" : "cards", event: JSON.parse(entry.slice(marker.length)) as RecordLike });
+    } catch { /* Unrelated malformed history cannot prove this Duel response. */ }
+  }
+  const rootMatches = publicCardEvents.filter(({ event }) => record(event.card)?.id === rootCards[0].id);
+  if (rootMatches.length !== 1 || rootMatches[0].entryKind !== "card") return undefined;
+  const rootEvent = rootMatches[0].event;
+  const rootCard = record(rootEvent.card);
+  const rootEventId = typeof rootEvent.id === "string" && rootEvent.id ? rootEvent.id : undefined;
+  const rootResolutionId = typeof rootEvent.resolutionId === "string" && rootEvent.resolutionId ? rootEvent.resolutionId : undefined;
+  if (!rootEventId || !rootResolutionId || rootEvent.action !== "play" || rootEvent.presentation === false
+    || rootEvent.playedAs !== undefined || rootCard?.kind !== "Duel" || rootCard.id !== rootCards[0].id) return undefined;
+  return {
+    semantics: "PROVEN",
+    relation: "DUEL_EXCHANGE",
+    interactionId: causal.interactionId,
+    rootFrameId: causal.frameId,
+    rootEventId,
+    rootResolutionId,
+    rootSourceId: continuation.sourceId,
+    rootTargetId: continuation.targetId,
+    ordinal,
+    sourceId: decisionActorId,
+    targetId: responseTargetId,
+    decisionActorId,
+    responseActorId: submittedById,
+    responseCardKind: "Attack",
   };
 }
 function addCardGroupEvent(log: string[], player: string, cards: Card[], action: "discard" | "reveal" | "play", presentation = true, target = player, message?: string, meta?: PresentationMeta) { return cards.length ? [...log.slice(-199), `@cards:${JSON.stringify({ id: crypto.randomUUID(), player, target, cards, action, presentation, ...presentationMeta(log, { ...meta, resolutionId: meta?.resolutionId ?? crypto.randomUUID() }, "essential"), ...(message ? { message } : {}) })}`] : log; }
@@ -2078,7 +2131,7 @@ function duelResponseDecision(sourceId: string, targetId: string, opponentId: st
   const requiredAttackCount = wushuangPlayerId && targetId !== wushuangPlayerId ? 2 : 1;
   const root = createCausalRoot({ stage: "DUEL_EXCHANGE", origin: { originSourceId: sourceId, originEffect: "duel", originalTargetIds: [targetId, opponentId] }, current: { currentSourceId: sourceId, currentEffect: "duel", currentTargetIds: [targetId, opponentId], resolvingPlayerId: targetId } });
   const causal = root.context;
-  return { value: { kind: "response", actorId: targetId, causal, requirement: { kind: "attack", sourceId, actorId: targetId, count: requiredAttackCount, context: "duel" }, reason, deadline, continuation: { kind: "duel", sourceId, targetId, opponentId, resumePhase, causal, ...(resumePlayerId ? { resumePlayerId } : {}), requiredAttackCount, ...(wushuangPlayerId ? { wushuangPlayerId } : {}), ...(damageCards ? { damageCards } : {}) } }, createdEnvelope: root.envelope };
+  return { value: { kind: "response", actorId: targetId, causal, requirement: { kind: "attack", sourceId, actorId: targetId, count: requiredAttackCount, context: "duel" }, reason, deadline, continuation: { kind: "duel", sourceId, targetId, opponentId, resumePhase, causal, attackResponseCount: 0, ...(resumePlayerId ? { resumePlayerId } : {}), requiredAttackCount, ...(wushuangPlayerId ? { wushuangPlayerId } : {}), ...(damageCards ? { damageCards } : {}) } }, createdEnvelope: root.envelope };
 }
 
 /** Starts Lust after its cost and any Equipment-loss reactions have settled. */
@@ -5921,21 +5974,34 @@ export async function POST(request: Request) {
       await resolveDuelLoss(liveRoom, pending, semanticActor, opponent, discard, log);
     } else {
       const attackIds = new Set(attackCards.map((card) => card.id)); hand = hand.filter((card) => !attackIds.has(card.id)); discard.push(...attackCards);
+      const responseOrdinal = Number.isSafeInteger(pending.continuation.attackResponseCount)
+        ? (pending.continuation.attackResponseCount as number) + 1
+        : null;
+      const responseForNext: ResponsePending = responseOrdinal === null
+        ? pending.response
+        : { ...pending.response, continuation: { ...pending.continuation, attackResponseCount: responseOrdinal } };
+      const duelProof = responseOrdinal === null
+        ? undefined
+        : duelAttackResponseProof(log, pending.response, me.id, opponent.id, semanticActor.id, responseOrdinal);
+      const responseMeta: PresentationMeta = {
+        ...(responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : {}),
+        ...(duelProof ? { resolutionId: duelProof.rootResolutionId, duelAttackResponse: duelProof } : {}),
+      };
       const presentation = attackCards.length === 1
-        ? addCardEventWithId(log, me.name, attackCards[0], opponent.name, "play", true, responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : undefined)
+        ? addCardEventWithId(log, me.name, attackCards[0], opponent.name, "play", true, responseMeta)
         : attackCards.length > 1
-          ? addCardGroupEventWithId(log, me.name, attackCards, "play", true, opponent.name)
-          : addLogWithId(log, `${me.name} provides an Attack on ${semanticActor.name}'s behalf in the Duel.`, undefined);
-      const remaining = responseAfterSemanticSuccess(pending.response);
+          ? addCardGroupEventWithId(log, me.name, attackCards, "play", true, opponent.name, undefined, responseMeta)
+          : addLogWithId(log, `${me.name} provides an Attack on ${semanticActor.name}'s behalf in the Duel.`, undefined, { ...responseMeta, effectNotice: true });
+      const remaining = responseAfterSemanticSuccess(responseForNext);
       log = addLog(presentation.log, `${me.name} provides an Attack on ${semanticActor.name}'s behalf in the Duel. ${remaining ? `${semanticActor.name} must provide another Attack.` : `Action passes to ${opponent.name}.`}`);
       const reopened = remaining
-        ? reopenSemanticResponse(pending.response, semanticActor, log, `${semanticActor.name} must provide another Attack.`)
+        ? reopenSemanticResponse(responseForNext, semanticActor, log, `${semanticActor.name} must provide another Attack.`)
         : null;
       const nextPending = reopened
         ? reopened.pending
         : attackCards.length
-          ? withPresentationBarrier(nextDuelResponse(pending.response, pending.continuation, opponent.id, semanticActor.id, nextResponseDeadline(opponent)), log, presentation.eventId)
-          : nextDuelResponse(pending.response, pending.continuation, opponent.id, semanticActor.id, nextResponseDeadline(opponent));
+          ? withPresentationBarrier(nextDuelResponse(responseForNext, responseForNext.continuation, opponent.id, semanticActor.id, nextResponseDeadline(opponent)), log, presentation.eventId)
+          : nextDuelResponse(responseForNext, responseForNext.continuation, opponent.id, semanticActor.id, nextResponseDeadline(opponent));
       const nextLog = reopened?.log ?? log;
       const nextActor = reopened ? semanticActor : opponent;
       const nextOpponentId = nextActor.id === opponent.id ? semanticActor.id : opponent.id;
