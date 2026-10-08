@@ -100,7 +100,23 @@ for (const viewport of [
 
     for (const [history, expectedNodes] of [["single", 1], ["double", 2]]) {
       const submitted = await measure(history);
+      const publicProof = await page.evaluate(() => {
+        const room = window.__browserRoom;
+        const chain = room.presentationSnapshot.reactionChain;
+        return {
+          nodeCount: chain.nodes.length,
+          linkedEvents: chain.publicNodeEventLinks.map((link, index) => {
+            const node = chain.nodes[index];
+            const matches = room.timeline.filter((event) => event.id === link.eventId);
+            return link.nodeId === node.nodeId && matches.length === 1
+              && matches[0].type === "card" && matches[0].action === "play"
+              && matches[0].card?.kind === "Negation"
+              && matches[0].resolutionId === link.resolutionId;
+          }),
+        };
+      });
       expectCompositionClearOfPiles(submitted.pileClearance, `Bumper Harvest ${viewport.width}x${viewport.height} ${history}`);
+      expect(publicProof).toEqual({ nodeCount: expectedNodes, linkedEvents: Array(expectedNodes).fill(true) });
       expect(submitted.branchPresent).toBe(true);
       expect(submitted.branchCount).toBe(expectedNodes);
       for (const region of ["source", "root", "participants"]) {

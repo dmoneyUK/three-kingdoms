@@ -171,7 +171,7 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
       interactionId,
       frameId: negationHistoryCase === "frame-mismatch" ? `${activeFrameId}-other` : activeFrameId,
       nodes: negationNodes,
-      ...(state.startsWith("oath-negation") ? {
+      ...(state.startsWith("oath-negation") || state.startsWith("bumper-harvest") && childFrame ? {
         rootCard: null,
         publicNodeEventLinks: negationNodes.map((node, index) => ({
           nodeId: node.nodeId,
@@ -826,6 +826,24 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     isHost: index === 0,
     role: index === 0 ? "Lord" : "Rebel",
   }));
+  const bumperHarvestProgress = presentationSnapshot?.bumperHarvestProgress;
+  const bumperHarvestNegationLinks = presentationSnapshot?.reactionChain?.publicNodeEventLinks ?? [];
+  const bumperHarvestNegationTimeline = bumperHarvestFixture && bumperHarvestProgress ? [
+    ...bumperHarvestNegationLinks.map((link, index) => {
+      const node = presentationSnapshot?.reactionChain?.nodes[index];
+      const actor = players.find((player) => player.id === node?.actorId);
+      return {
+        id: link.eventId,
+        type: "card",
+        player: actor?.name ?? "Unknown player",
+        target: players.find((player) => player.id === bumperHarvestProgress.currentParticipantId)?.name ?? "Unknown player",
+        card: card(`browser-${state}-negation-card-${index + 1}`, "Negation"),
+        action: "play",
+        presentation: true,
+        resolutionId: link.resolutionId,
+      };
+    }),
+  ] : [];
   const pendingDying = dyingFixture ? { kind: "dying", sourceId: huaTuoFirstAidFixture ? "p4" : "p1", targetId: dyingTargetId, origin: "Attack", recoveryNeeded: 1, deadline: Date.now() + 60_000 } : null;
   return normalizeRoomData({
     code: `UI19${String(count).padStart(2, "0")}`,
@@ -843,7 +861,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     deckCount: 20,
     discardTop: null,
     log: [],
-    timeline: [],
+    timeline: bumperHarvestNegationTimeline,
     isMyTurn: state === "normal" || state === "interaction" || state === "group" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" || state === "stargazing-offer" || state.startsWith("zhou-yu-sowing-distrust") || state.startsWith("liu-bei-benevolence") || state.startsWith("lady-gan-") || borrowedSwordFixture,
     actionPlayerId: currentAction?.actorId ?? null,
     actionReason: currentAction?.reason ?? "Waiting for the next legal action",

@@ -5,31 +5,27 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2.6-ATTACK-ROOT-GRAPH-LEGACY-ROUTING-01` closes the ordinary proven-Attack
-transition gap: once the authoritative root graph is ready, the legacy Stage
-and duplicate table reveal are removed. Attack connectors are straight, the
-source tether is 3.2px, target arrow 4.8px with a 14px arrowhead, and the exact
-target portrait receives a 3px gold halo. Real server-backed Attack/Dodge
-browser proof passed 10/10; the two Bumper §12.9 fixtures failed on base
-`fc65e3c` / Actions `37830537625` because their proven progress omitted the
-required root event/resolution/card identities and child effect state. Those
-fixture fields are repaired without weakening assertions; Bumper cases pass
-2/2. Build, overlay ESLint, browser-spec syntax, and `git diff --check` passed.
-`app/page.tsx` ESLint was attempted but exited on Node heap OOM. CI for the
-combined repair/task push is not yet observed. Reviewer acceptance is not
-claimed.
+Attack graph task commit `fb8556b44190dbbda29b0a6f586c566e7785c55c` is on
+`origin/ux-v2`. Exact Actions run `37832882294` (#914) failed Browser shard 1:
+four Bumper Harvest Negation-layout cases lacked `publicNodeEventLinks` and
+their matching public Negation timeline events in the browser fixture. This is
+a stale fixture contract, not a production failure. The fixture now carries
+those exact links/events and the browser regression checks their identity and
+resolution mapping. `bumper-harvest-composition.spec.mjs` passed 10/10 locally;
+`git diff --check` passed. Repair changes are not yet committed or pushed.
+
+Attack’s ordinary server-backed graph proof passed 10/10 across 4/6/8 players
+and 390×844, 480×900, 1440×900. Its exact-push CI was not green because of the
+fixture failures above; reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
-Latest `origin/ux-v2:docs/UX2-refine.md` blob reviewed at the task boundary:
-`7feb8af937b6407f3f33c3959325db8d3f188cf4`. §6.7, §6.9, §6.17–§6.26 reviewed.
+Latest `origin/ux-v2:docs/UX2-refine.md` is unchanged at blob
+`7feb8af937b6407f3f33c3959325db8d3f188cf4`. Re-read §§6.7, 6.9, 6.24–6.26.
 
-## Current / next task
+## Current task
 
-`UX2.6-FINAL-AOE-PHYSICAL-SEAT-GRAPH-REVALIDATION-01` — revalidate the final
-Group/AOE visual language after the physical-seat graph work: Raining Arrows,
-Barbarian Invasion, Oath, and Bumper Harvest across phone, 480px portrait, and
-wide layouts; include representative open/response/settlement or participant
-advance states, fresh screenshots, branch/root geometry, Stage/Dock containment,
-and no horizontal overflow. Keep all causal facts server-proven; do not claim
-Reviewer acceptance.
+`UX2-CI-REPAIR-BUMPER-NEGATION-EVENT-PROOF-01` — keep the existing branch,
+geometry, and pile-clearance assertions; repair only the browser fixture’s
+public Negation event proof; commit/push the focused repair; then require the
+exact repair SHA’s Actions result before resuming feature work.
