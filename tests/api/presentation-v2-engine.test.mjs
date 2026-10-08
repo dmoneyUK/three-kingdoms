@@ -2230,6 +2230,11 @@ test("engine-backed Oath exposes a viewer-equal living wounded recipient scope a
 
   const responderView = await assertProjectionMatchesEngine(game.code, woundedMember.token);
   const scope = responderView.presentationV2.oathRecipientScope;
+  const oathRootMatches = responderView.timeline.filter((event) => event.type === "card"
+    && event.action === "play" && event.card?.kind === "Oath"
+    && event.resolutionId === pending.continuation.resolutionId);
+  assert.equal(oathRootMatches.length, 1, "the live Oath continuation resolves to exactly one public root-card play");
+  const oathRootEvent = oathRootMatches[0];
   assert.deepEqual(scope, {
     semantics: "PROVEN",
     cardKind: "Oath",
@@ -2238,16 +2243,37 @@ test("engine-backed Oath exposes a viewer-equal living wounded recipient scope a
     activeFrameId: responderView.causalEnvelope.activeFrameId,
     checkpointId: responderView.causalEnvelope.checkpoint.checkpointId,
     presentationRevision: responderView.causalEnvelope.presentationRevision,
+    rootEventId: oathRootEvent.id,
+    rootResolutionId: pending.continuation.resolutionId,
+    effectState: "ACTIVE",
     sourceId: source.id,
     recipientIds: [source.id, wounded.id],
   });
+  const oathRootEvents = responderView.timeline.filter((event) => event.id === scope.rootEventId);
+  assert.equal(oathRootEvents.length, 1);
+  assert.equal(oathRootEvents[0].type, "card");
+  assert.equal(oathRootEvents[0].action, "play");
+  assert.equal(oathRootEvents[0].card.kind, "Oath");
+  assert.equal(oathRootEvents[0].resolutionId, scope.rootResolutionId);
   assert.deepEqual(responderView.presentationSnapshot.oathRecipientScope, scope);
   assert.equal(responderView.presentationSnapshot.reactionChain?.rootCard, null, "Oath continues using its separate recipient-scope contract");
+  assert.deepEqual(responderView.presentationSnapshot.reactionChain?.publicNodeEventLinks, [], "the Oath root remains distinct while an open window has no submitted Negation nodes");
   assert.deepEqual(responderView.presentationSnapshot.oathRecipientScope.recipientIds, [source.id, wounded.id], "the wounded source participates while full-health and defeated characters do not");
   assert.deepEqual(responderView.presentationV2.interactionScene.targetIds, [source.id], "the causal root's self-target does not replace Oath's separate all-wounded recipient scope");
   assert.equal("currentParticipantId" in scope, false, "simultaneous Oath recovery does not invent sequential progress");
   assert.equal("participantProgress" in scope, false);
   assert.equal(JSON.stringify(scope).includes("oath-scope-negation"), false, "private physical response-card identity is absent");
+
+  const oathProjectionInput = {
+    pending,
+    currentAction: responderView.currentAction,
+    actionRevision: responderView.actionRevision,
+    timeline: responderView.timeline,
+    causalEnvelope: responderView.causalEnvelope,
+    oathRecipientIds: oathRecipientIds(responderView.players.map((player) => ({ id: player.id, alive: player.alive, hp: player.hp, maxHp: player.maxHp }))),
+  };
+  assert.equal(projectPresentationV2({ ...oathProjectionInput, timeline: responderView.timeline.filter((event) => event.id !== scope.rootEventId) }).oathRecipientScope, null, "the Oath scope fails closed when its exact public root event is absent");
+  assert.equal(projectPresentationV2({ ...oathProjectionInput, pending: { ...pending, continuation: { ...pending.continuation, resolutionId: "unlinked-oath-resolution" } } }).oathRecipientScope, null, "the Oath scope cannot attach to an event by card kind alone");
 
   const sourceView = await assertProjectionMatchesEngine(game.code, sourceMember.token);
   assert.deepEqual(publicSnapshot(sourceView.presentationSnapshot), publicSnapshot(responderView.presentationSnapshot), "Oath scope is identical across viewers");

@@ -607,12 +607,24 @@ test("Oath recipient view preserves simultaneous projected membership without pa
     activeFrameId: interaction.activeFrameId,
     checkpointId: interaction.checkpointId,
     presentationRevision: interaction.presentationRevision,
+    rootEventId: "oath-root-event",
+    rootResolutionId: "oath-root-resolution",
+    effectState: "ACTIVE",
     sourceId: "A",
     recipientIds: ["A", "C"],
+  };
+  const reactionChain = {
+    semantics: "PROVEN",
+    interactionId: interaction.interactionId,
+    frameId: interaction.activeFrameId,
+    rootCard: null,
+    nodes: [],
+    publicNodeEventLinks: [],
   };
   const client = buildPresentationClientView(snapshot({
     interaction,
     oathRecipientScope,
+    reactionChain,
     stable: { ...snapshot().stable, decisionActorId: null },
     decision: null,
   }), "C");
@@ -744,14 +756,26 @@ test("adapter exposes only identity-coherent Oath recipient scope and no invente
     activeFrameId: oathInteraction.activeFrameId,
     checkpointId: oathInteraction.checkpointId,
     presentationRevision: oathInteraction.presentationRevision,
+    rootEventId: "oath-root-event",
+    rootResolutionId: "oath-root-resolution",
+    effectState: "ACTIVE",
     sourceId: oathInteraction.sourceId,
     recipientIds: ["A", "C"],
   };
-  const projected = buildPresentationClientView(snapshot({ interaction: oathInteraction, oathRecipientScope }), "B");
+  const reactionChain = {
+    semantics: "PROVEN",
+    interactionId: oathInteraction.interactionId,
+    frameId: oathInteraction.activeFrameId,
+    rootCard: null,
+    nodes: [],
+    publicNodeEventLinks: [],
+  };
+  const projected = buildPresentationClientView(snapshot({ interaction: oathInteraction, oathRecipientScope, reactionChain }), "B");
   assert.deepEqual(projected.oathRecipientScope, oathRecipientScope);
   assert.equal("currentParticipantId" in projected.oathRecipientScope, false);
-  assert.deepEqual(buildPresentationClientView(snapshot({ interaction: oathInteraction, oathRecipientScope: { ...oathRecipientScope, interactionId: "stale" } }), "B").oathRecipientScope, null);
-  assert.deepEqual(buildPresentationClientView(snapshot({ interaction: oathInteraction, oathRecipientScope: { ...oathRecipientScope, recipientIds: ["A", "A"] } }), "B").oathRecipientScope, null);
+  assert.deepEqual(buildPresentationClientView(snapshot({ interaction: oathInteraction, oathRecipientScope: { ...oathRecipientScope, interactionId: "stale" }, reactionChain }), "B").oathRecipientScope, null);
+  assert.deepEqual(buildPresentationClientView(snapshot({ interaction: oathInteraction, oathRecipientScope: { ...oathRecipientScope, recipientIds: ["A", "A"] }, reactionChain }), "B").oathRecipientScope, null);
+  assert.deepEqual(buildPresentationClientView(snapshot({ interaction: oathInteraction, oathRecipientScope, reactionChain: { ...reactionChain, publicNodeEventLinks: undefined } }), "B").oathRecipientScope, null);
 });
 
 test("Bumper Harvest composition consumes only the proven ordered root and keeps a source-viewer copy Dock-only", () => {

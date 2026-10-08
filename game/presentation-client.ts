@@ -481,6 +481,7 @@ function groupProgressForSnapshot(
 function oathRecipientScopeForSnapshot(
   snapshot: PresentationSnapshot,
   scene: PresentationInteractionScene,
+  reactionChain: PresentationSnapshot["reactionChain"],
 ): PresentationSnapshotOathRecipientScope | null {
   const scope = snapshot.oathRecipientScope;
   const identity = snapshot.identity;
@@ -489,8 +490,21 @@ function oathRecipientScopeForSnapshot(
     || scope.interactionId !== identity.interactionId || scope.interactionId !== scene.interactionId
     || scope.rootFrameId !== scene.rootFrameId || scope.activeFrameId !== scene.activeFrameId
     || scope.checkpointId !== identity.checkpointId || scope.presentationRevision !== identity.presentationRevision
+    || !isString(scope.rootEventId) || !isString(scope.rootResolutionId)
+    || scope.effectState !== "ACTIVE" && scope.effectState !== "BLOCKED"
     || scope.sourceId !== scene.sourceId || scope.sourceId !== scene.participantRoles.sourceId
     || !Array.isArray(scope.recipientIds)) return null;
+  if (!reactionChain || reactionChain.semantics !== "PROVEN" || reactionChain.rootCard !== null
+    || reactionChain.interactionId !== scope.interactionId || reactionChain.frameId !== scope.activeFrameId
+    || !Array.isArray(reactionChain.nodes) || !Array.isArray(reactionChain.publicNodeEventLinks)
+    || reactionChain.publicNodeEventLinks.length !== reactionChain.nodes.length
+    || scope.effectState !== (reactionChain.nodes.length % 2 === 0 ? "ACTIVE" : "BLOCKED")) return null;
+  const linkedEventIds = reactionChain.publicNodeEventLinks.map(({ eventId }) => eventId);
+  const linkedResolutionIds = reactionChain.publicNodeEventLinks.map(({ resolutionId }) => resolutionId);
+  if (linkedEventIds.some((eventId) => !isString(eventId) || eventId === scope.rootEventId)
+    || new Set(linkedEventIds).size !== linkedEventIds.length
+    || linkedResolutionIds.some((resolutionId) => !isString(resolutionId) || resolutionId === scope.rootResolutionId)
+    || new Set(linkedResolutionIds).size !== linkedResolutionIds.length) return null;
   const seen = new Set<string>();
   for (const recipientId of scope.recipientIds) {
     if (!isString(recipientId) || seen.has(recipientId)) return null;
@@ -692,7 +706,8 @@ export function buildPresentationClientView(
     && snapshot.localControl.actorId
     && snapshot.localControl.actorId === meId);
   const groupProgress = groupProgressForSnapshot(snapshot, scene);
-  const oathScope = oathRecipientScopeForSnapshot(snapshot, scene);
+  const reactionChain = reactionChainForSnapshot(snapshot, scene, groupProgress);
+  const oathScope = oathRecipientScopeForSnapshot(snapshot, scene, reactionChain);
   const bumperHarvestProgress = bumperHarvestProgressForSnapshot(snapshot, scene);
   const negationSettlement = negationSettlementForScene(snapshot, scene);
   const rootAction = rootActionForSnapshot(snapshot, scene);
@@ -717,7 +732,7 @@ export function buildPresentationClientView(
     groupParticipantProgress: groupProgress?.resolutionSemantics === "GROUP" ? groupProgress.participants : [],
     oathRecipientScope: oathScope,
     bumperHarvestProgress,
-    reactionChain: reactionChainForSnapshot(snapshot, scene, groupProgress),
+    reactionChain,
     rootAction,
     skillEffectAction: provenSkillEffectAction(snapshot.skillEffectAction),
     skillEffectSettlements: provenSkillEffectSettlements(snapshot.skillEffectSettlements),

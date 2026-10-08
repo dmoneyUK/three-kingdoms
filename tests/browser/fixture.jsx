@@ -162,11 +162,19 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
         return { playerId, order: index + 1, status, ...(status === "RESOLVED" && outcome ? { outcome } : {}) };
       }),
     } : null,
-    reactionChain: negationNodeCount > 0 || state === "active-negation-open" ? {
+    reactionChain: negationNodeCount > 0 || state === "active-negation-open" || state.startsWith("oath-negation") ? {
       semantics: "PROVEN",
       interactionId,
       frameId: negationHistoryCase === "frame-mismatch" ? `${activeFrameId}-other` : activeFrameId,
       nodes: negationNodes,
+      ...(state.startsWith("oath-negation") ? {
+        rootCard: null,
+        publicNodeEventLinks: negationNodes.map((node, index) => ({
+          nodeId: node.nodeId,
+          eventId: `browser-${state}-negation-event-${index + 1}`,
+          resolutionId: `browser-${state}-negation-resolution-${index + 1}`,
+        })),
+      } : {}),
       ...(state === "active-negation-open" && !rootCardMissing ? { rootCard: { interactionId, frameId: activeFrameId, sourceId, targetId: targetIds[0], cardKind: sourceId === targetIds[0] ? "DrawTwo" : "Dismantle" } } : {}),
     } : null,
     settlement: negationSettlementOutcome ? {
@@ -759,6 +767,9 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
       activeFrameId: presentationSnapshot.interaction.activeFrameId,
       checkpointId: presentationSnapshot.identity.checkpointId,
       presentationRevision: presentationSnapshot.identity.presentationRevision,
+      rootEventId: `browser-${state}-oath-root-event`,
+      rootResolutionId: `browser-${state}-oath-root-resolution`,
+      effectState: negationNodeCount % 2 === 0 ? "ACTIVE" : "BLOCKED",
       sourceId: "p1",
       recipientIds: playerIds.filter((id) => id === "p1" || id === "p2" || denseOathScope && Number(id.slice(1)) >= 5),
     };

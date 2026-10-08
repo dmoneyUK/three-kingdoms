@@ -5,16 +5,18 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-§6.25 Phase A now carries the physical-seat root graph through real Steal
-target-card selection, bound to the exact public Steal event, source, target,
-and settlement frame. The current changeset also repairs the reproduced
-Dismantle counter-Negation root-proof regression and its stale Stage assertion.
-The latest remote parent `2c9f4fc6876513f4bae8c536d65f7f25c6c7a6b4` failed
-Actions run `37814577369` in browser shard 1/2; the focused real Dismantle
-reproduction now passes. API 58/58, real-gameplay browser 20/20 across
-390×844, 480×900, and 1440×900, build, targeted ESLint, and `git diff --check`
-passed. CI for this changeset has not yet been observed. Reviewer acceptance
-is not claimed.
+The Oath root graph now binds its simultaneous wounded-recipient scope and
+exact public Oath event to one stable physical-seat graph. Source self-recovery
+uses a Dock halo, not a loop or sequential participant; exact public Negation
+counter-links and active/blocked states are preserved. Oath browser geometry
+passed at 390×844, 480×900, and 1440×900; Presentation/API suites passed
+114/114 and 36/36; generic root-graph browser regressions passed 37/37; build,
+targeted ESLint, and `git diff --check` passed. Remote base
+`67853334984d7aaf91018570f6011f4e9a71b35c` failed run `37818587607` in Browser
+shard 2/2: 416/417 passed; the Sowing Distrust test checked a 600ms transient
+class after it had already been removed. A MutationObserver transition/timing
+repair passed its focused browser test; CI for this changeset is pending.
+Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
@@ -25,11 +27,10 @@ acceptance has not been asserted.
 
 ## Current / next task
 
-`UX2.6-PHASE-C-OATH-SIMULTANEOUS-ROOT-GRAPH-01` — route the existing
-authoritative Oath recipient scope and exact public Oath play into the physical-
-seat root graph during its Negation interaction. Render one stable Oath root
-with simultaneous recipient branches; represent a wounded source-recipient
-without a target-arrow loop or invented sequential participant. Preserve exact
-Negation counter relationships, privacy, and fail-closed behavior. Prove the
-real server-backed path and responsive graph geometry; do not broaden to other
-multi-target effects.
+`UX2.6-PHASE-C-BUMPER-HARVEST-ORDERED-ROOT-GRAPH-01` — carry Bumper Harvest's
+proven root and ordered participant progress into the physical-seat graph
+during sequential choice and its Negation branch. Keep the root spatially
+stable, highlight only the server-proven current participant, and preserve the
+Local Dock chooser/timer, exact counter links, privacy, and fail-closed
+behavior. Prove one real server-backed sequence and responsive geometry; do not
+broaden to other event families.

@@ -247,13 +247,23 @@ test("real Sowing Distrust holds its exact settled Effect node for 600ms, then r
   await expect(useButton).toBeEnabled();
 
   await page.evaluate(() => {
-    window.__fanjianSettlementTiming = { shownAt: null, exitingAt: null, removedAt: null };
+    window.__fanjianSettlementTiming = {
+      shownAt: null,
+      exitingAt: null,
+      removedAt: null,
+      exitClassObserved: false,
+      exitAttributeObserved: false,
+    };
     const capture = () => {
       const timing = window.__fanjianSettlementTiming;
       const overlay = document.querySelector('[data-root-action-overlay="true"]');
       const node = overlay?.querySelector('[data-root-action-settled="true"]');
       if (node && overlay?.dataset.rootActionReady === "true" && timing.shownAt === null) timing.shownAt = performance.now();
-      if (node?.classList.contains("is-settlement-exiting") && timing.exitingAt === null) timing.exitingAt = performance.now();
+      if (node?.classList.contains("is-settlement-exiting")) {
+        timing.exitClassObserved = true;
+        if (timing.exitingAt === null) timing.exitingAt = performance.now();
+      }
+      if (overlay?.dataset.rootActionSettlementExiting === "true") timing.exitAttributeObserved = true;
       if (!node && timing.shownAt !== null && timing.removedAt === null) timing.removedAt = performance.now();
     };
     new MutationObserver(capture).observe(document.body, {
@@ -324,11 +334,14 @@ test("real Sowing Distrust holds its exact settled Effect node for 600ms, then r
 
   const screenshot = await page.screenshot({ path: testInfo.outputPath("fanjian-effect-settled-390.png"), animations: "disabled" });
   await testInfo.attach("fanjian-effect-settled-390", { body: screenshot, contentType: "image/png" });
-  await expect(settledNode).toHaveClass(/is-settlement-exiting/);
-  await expect(overlay).toHaveAttribute("data-root-action-settlement-exiting", "true");
+  await expect.poll(() => page.evaluate(() => Boolean(window.__fanjianSettlementTiming?.exitClassObserved))).toBe(true);
+  await expect.poll(() => page.evaluate(() => Boolean(window.__fanjianSettlementTiming?.exitAttributeObserved))).toBe(true);
+  await expect.poll(() => page.evaluate(() => Boolean(window.__fanjianSettlementTiming?.removedAt))).toBe(true);
   await expect(overlay).toHaveCount(0);
   const timing = await page.evaluate(() => window.__fanjianSettlementTiming);
   expect(timing.shownAt).not.toBeNull();
+  expect(timing.exitClassObserved).toBe(true);
+  expect(timing.exitAttributeObserved).toBe(true);
   expect(timing.exitingAt).not.toBeNull();
   expect(timing.removedAt).not.toBeNull();
   expect(timing.exitingAt - timing.shownAt).toBeGreaterThanOrEqual(400);

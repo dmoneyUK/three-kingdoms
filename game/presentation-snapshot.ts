@@ -431,6 +431,7 @@ function oathRecipientScopeFor(
   presentationV2: PresentationV2,
   scene: PresentationInteractionScene,
   identity: PresentationSnapshotIdentity,
+  reactionChain: PresentationReactionChain | null,
 ): PresentationSnapshotOathRecipientScope | null {
   const scope = presentationV2.oathRecipientScope;
   if (!scope || scope.semantics !== "PROVEN" || scope.cardKind !== "Oath"
@@ -441,8 +442,21 @@ function oathRecipientScopeFor(
     || scope.activeFrameId !== scene.activeFrameId
     || scope.checkpointId !== identity.checkpointId
     || scope.presentationRevision !== identity.presentationRevision
+    || !nonEmptyString(scope.rootEventId) || !nonEmptyString(scope.rootResolutionId)
+    || scope.effectState !== "ACTIVE" && scope.effectState !== "BLOCKED"
     || scope.sourceId !== scene.sourceId || scope.sourceId !== scene.participantRoles.sourceId
     || !Array.isArray(scope.recipientIds)) return null;
+  if (!reactionChain || reactionChain.semantics !== "PROVEN" || reactionChain.rootCard !== null
+    || reactionChain.interactionId !== scope.interactionId || reactionChain.frameId !== scope.activeFrameId
+    || !Array.isArray(reactionChain.nodes) || !Array.isArray(reactionChain.publicNodeEventLinks)
+    || reactionChain.publicNodeEventLinks.length !== reactionChain.nodes.length
+    || scope.effectState !== (reactionChain.nodes.length % 2 === 0 ? "ACTIVE" : "BLOCKED")) return null;
+  const linkedEventIds = reactionChain.publicNodeEventLinks.map(({ eventId }) => eventId);
+  const linkedResolutionIds = reactionChain.publicNodeEventLinks.map(({ resolutionId }) => resolutionId);
+  if (linkedEventIds.some((eventId) => !nonEmptyString(eventId) || eventId === scope.rootEventId)
+    || new Set(linkedEventIds).size !== linkedEventIds.length
+    || linkedResolutionIds.some((resolutionId) => !nonEmptyString(resolutionId) || resolutionId === scope.rootResolutionId)
+    || new Set(linkedResolutionIds).size !== linkedResolutionIds.length) return null;
   const seen = new Set<string>();
   for (const recipientId of scope.recipientIds) {
     if (typeof recipientId !== "string" || recipientId.length === 0 || seen.has(recipientId)) return null;
@@ -763,14 +777,17 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
   const groupParticipantProgress = authority
     ? groupParticipantProgressFor(input.presentationV2, authority.scene, authority.identity)
     : null;
+  const reactionChain = authority
+    ? reactionChainFor(input.presentationV2, authority.scene, authority.identity, groupParticipantProgress)
+    : null;
   return {
     identity: authority?.identity ?? null,
     stable: authority?.stable ?? REST_BOUNDARY,
     interaction: authority?.scene ?? null,
     groupParticipantProgress,
-    oathRecipientScope: authority ? oathRecipientScopeFor(input.presentationV2, authority.scene, authority.identity) : null,
+    oathRecipientScope: authority ? oathRecipientScopeFor(input.presentationV2, authority.scene, authority.identity, reactionChain) : null,
     bumperHarvestProgress: authority ? bumperHarvestProgressFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
-    reactionChain: authority ? reactionChainFor(input.presentationV2, authority.scene, authority.identity, groupParticipantProgress) : null,
+    reactionChain,
     rootAction: authority ? rootActionFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
     skillEffectAction: provenSkillEffectAction(input.presentationV2.skillEffectAction),
     skillEffectSettlements: provenSkillEffectSettlements(input.presentationV2.skillEffectSettlements),

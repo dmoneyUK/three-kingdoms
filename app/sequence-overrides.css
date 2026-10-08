@@ -539,6 +539,13 @@
   vector-effect: non-scaling-stroke;
 }
 
+.interaction-root-self-target-halo.is-negation-blocked {
+  fill: #8b858005;
+  stroke: #8b8580;
+  stroke-dasharray: 5 5;
+  opacity: .38;
+}
+
 .interaction-root-target-arrow {
   stroke: #b85a4c;
   stroke-width: 2.8px;
@@ -549,6 +556,26 @@
   stroke: #918a7c;
   stroke-width: 1.8px;
   opacity: .48;
+}
+
+.interaction-root-simultaneous-target-edge {
+  stroke: #d06b58;
+  stroke-width: 2.4px;
+  opacity: .9;
+}
+
+.interaction-root-simultaneous-target-branch.is-blocked .interaction-root-simultaneous-target-edge {
+  stroke: #8b8580;
+  stroke-width: 2px;
+  stroke-dasharray: 6 6;
+  opacity: .34;
+}
+
+.interaction-root-oath-recipient-block-mark {
+  stroke: #eee4d4;
+  stroke-width: 3px;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
 }
 
 .interaction-root-group-target-branch.status-pending .interaction-root-group-target-edge {

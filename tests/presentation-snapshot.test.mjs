@@ -405,11 +405,22 @@ test("snapshot admits only identity-coherent simultaneous Oath recipient scope",
     activeFrameId: interaction.activeFrameId,
     checkpointId: interaction.checkpointId,
     presentationRevision: interaction.presentationRevision,
+    rootEventId: "oath-root-event",
+    rootResolutionId: "oath-root-resolution",
+    effectState: "ACTIVE",
     sourceId: interaction.sourceId,
     recipientIds: ["A", "C"],
   };
+  const reactionChain = {
+    semantics: "PROVEN",
+    interactionId: interaction.interactionId,
+    frameId: interaction.activeFrameId,
+    rootCard: null,
+    nodes: [],
+    publicNodeEventLinks: [],
+  };
   const accepted = composePresentationSnapshot({
-    presentationV2: { ...presentation(interaction), oathRecipientScope },
+    presentationV2: { ...presentation(interaction), oathRecipientScope, reactionChain },
     currentAction: { kind: "response", actorId: "B" },
     actionRevision: "oath-1",
     viewerId: "B",

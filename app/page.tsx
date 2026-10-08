@@ -2918,6 +2918,66 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const singleTargetNegationGraphCandidate = singleTargetNegationGraphCandidates.length === 1
     ? singleTargetNegationGraphCandidates[0]
     : null;
+  const oathSimultaneousRootGraphCandidate = (() => {
+    const scope = clientPresentation.oathRecipientScope;
+    const chain = clientPresentation.reactionChain;
+    if (!clientPresentation.hasInteraction || clientPresentation.stage !== "NEGATION" || !scope || !chain
+      || scope.semantics !== "PROVEN" || scope.cardKind !== "Oath"
+      || scope.interactionId !== clientPresentation.interactionId
+      || scope.rootFrameId !== clientPresentation.rootFrameId || scope.activeFrameId !== clientPresentation.activeFrameId
+      || scope.checkpointId !== clientPresentation.checkpointId || scope.presentationRevision !== clientPresentation.presentationRevision
+      || scope.sourceId !== clientPresentation.sourceId || scope.effectState !== (chain.nodes.length % 2 === 0 ? "ACTIVE" : "BLOCKED")
+      || chain.semantics !== "PROVEN" || chain.rootCard !== null
+      || chain.interactionId !== scope.interactionId || chain.frameId !== scope.activeFrameId
+      || !Array.isArray(scope.recipientIds) || !scope.recipientIds.length
+      || new Set(scope.recipientIds).size !== scope.recipientIds.length
+      || !Array.isArray(chain.nodes) || !Array.isArray(chain.publicNodeEventLinks)
+      || chain.publicNodeEventLinks.length !== chain.nodes.length) return null;
+    const rootMatches = room.timeline.filter((event) => event.id === scope.rootEventId);
+    if (rootMatches.length !== 1) return null;
+    const rootEvent = rootMatches[0];
+    if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
+      || rootEvent.playedAs !== undefined || rootEvent.card?.kind !== "Oath"
+      || rootEvent.resolutionId !== scope.rootResolutionId) return null;
+    const source = room.players.find((player) => player.id === scope.sourceId);
+    if (!source?.name) return null;
+    const recipients = scope.recipientIds.map((playerId) => {
+      const player = room.players.find((candidate) => candidate.id === playerId);
+      return player?.name ? { playerId, playerName: player.name } : null;
+    });
+    if (recipients.some((recipient) => recipient === null)) return null;
+    const responses = chain.nodes.map((node, index) => {
+      const link = chain.publicNodeEventLinks?.[index];
+      const matches = link ? room.timeline.filter((event) => event.id === link.eventId) : [];
+      const event = matches.length === 1 ? matches[0] : null;
+      const actor = room.players.find((player) => player.id === node.actorId);
+      if (!link || link.nodeId !== node.nodeId || !event || !actor?.name
+        || node.causedByNodeId !== (index === 0 ? null : chain.nodes[index - 1]?.nodeId)
+        || event.type !== "card" || event.action !== "play" || event.presentation === false
+        || event.playedAs !== undefined || event.card?.kind !== "Negation"
+        || event.resolutionId !== link.resolutionId || event.id === rootEvent.id
+        || event.resolutionId === scope.rootResolutionId
+        || chain.publicNodeEventLinks?.slice(0, index).some((previous) => previous.eventId === event.id || previous.resolutionId === event.resolutionId)) return null;
+      return {
+        index,
+        eventId: event.id,
+        actorId: actor.id,
+        actorName: actor.name,
+        cardLabel: "NEGATION",
+        ariaLabel: `${actor.name} played Negation to counter ${index === 0 ? "Oath of the Peach Garden" : `Negation ${index}`}`,
+        counterTarget: index === 0 ? { kind: "ROOT" as const } : { kind: "RESPONSE" as const, index: index - 1 },
+      };
+    });
+    if (responses.some((response) => response === null)) return null;
+    return {
+      scope,
+      chain,
+      rootEvent,
+      source,
+      recipients: recipients as { playerId: string; playerName: string }[],
+      responses: responses as NonNullable<(typeof responses)[number]>[],
+    };
+  })();
   const groupTargetBranchGraphCandidate = (() => {
     const group = clientPresentation.groupResolution;
     const rootOrigin = clientPresentation.rootOrigin;
@@ -3077,8 +3137,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     return { action: settlement, rootEvent, settlementEvent, source, target, exiting: activeSkillEffectSettlement?.exiting === true };
   })();
   const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId)
-    : groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeGraphCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
-  const selfTargetCandidates = rootAction || groupTargetBranchGraphCandidate || skillEffectActionCandidate || duelExchangeGraphCandidate || attackDodgeGraphCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
+    : oathSimultaneousRootGraphCandidate?.rootEvent ?? groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeGraphCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
+  const selfTargetCandidates = rootAction || oathSimultaneousRootGraphCandidate || groupTargetBranchGraphCandidate || skillEffectActionCandidate || duelExchangeGraphCandidate || attackDodgeGraphCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
       || event.resolutionId !== action.resolutionId || event.card.kind !== action.cardKind
@@ -3093,7 +3153,23 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     return [{ action, event, source }];
   });
   const selfTargetCandidate = selfTargetCandidates.length === 1 ? selfTargetCandidates[0] : null;
-  const rootActionOverlayAction: InteractionRootOverlayAction | null = groupTargetBranchGraphCandidate
+  const rootActionOverlayAction: InteractionRootOverlayAction | null = oathSimultaneousRootGraphCandidate
+    ? {
+      key: ["oath", oathSimultaneousRootGraphCandidate.scope.interactionId, oathSimultaneousRootGraphCandidate.scope.rootFrameId, oathSimultaneousRootGraphCandidate.rootEvent.id].join(":"),
+      rootEventId: oathSimultaneousRootGraphCandidate.rootEvent.id,
+      rootPlacementKey: ["oath-root", oathSimultaneousRootGraphCandidate.scope.interactionId, oathSimultaneousRootGraphCandidate.scope.rootFrameId, oathSimultaneousRootGraphCandidate.rootEvent.id].join(":"),
+      sourceId: oathSimultaneousRootGraphCandidate.scope.sourceId,
+      targetId: null,
+      simultaneousTargets: oathSimultaneousRootGraphCandidate.recipients,
+      cardKind: "Oath",
+      cardLabel: cardDefinition("Oath").name.toUpperCase(),
+      ariaLabel: `${oathSimultaneousRootGraphCandidate.source.name} played Oath of the Peach Garden. Simultaneous recovery recipients: ${oathSimultaneousRootGraphCandidate.recipients.map((target) => target.playerName).join(", ")}.`,
+      mode: "simultaneous",
+      compactRoot: true,
+      rootEffectState: oathSimultaneousRootGraphCandidate.scope.effectState,
+      ...(oathSimultaneousRootGraphCandidate.responses.length ? { responses: oathSimultaneousRootGraphCandidate.responses } : {}),
+    }
+    : groupTargetBranchGraphCandidate
     ? {
       key: ["group", groupTargetBranchGraphCandidate.group.interactionId, groupTargetBranchGraphCandidate.group.groupFrameId, groupTargetBranchGraphCandidate.rootEvent.id].join(":"),
       rootEventId: groupTargetBranchGraphCandidate.rootEvent.id,
@@ -3254,14 +3330,17 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const rootActionAwaitingReveal = Boolean(
     !attackDodgeGraphCandidate && rootAction && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || groupTargetBranchGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
+    || oathSimultaneousRootGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || skillEffectActionCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || skillEffectSettlementCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || singleTargetNegationGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations),
   );
   const rootGroupTargetNamesKnown = Boolean(rootActionOverlayAction?.groupTargets?.length
     && rootActionOverlayAction.groupTargets.every((target) => target.playerName));
+  const rootSimultaneousTargetNamesKnown = Boolean(rootActionOverlayAction?.simultaneousTargets?.length
+    && rootActionOverlayAction.simultaneousTargets.every((target) => target.playerName));
   const rootActionOverlayEnabled = Boolean(rootActionOverlayAction && rootActionSource?.name
-    && (rootGroupTargetNamesKnown || rootActionOverlayAction.mode === "self-target" || rootActionTarget?.name)
+    && (rootGroupTargetNamesKnown || rootSimultaneousTargetNamesKnown || rootActionOverlayAction.mode === "self-target" || rootActionTarget?.name)
     && !rootActionTemporarilyBlocked && !rootActionAwaitingReveal);
   const rootActionOverlayVisible = Boolean(rootActionOverlayEnabled && rootActionOverlayAction && rootActionOverlayReadyKey === rootActionOverlayAction.key);
   const activeOverlaySettlementEventId = rootActionOverlayAction?.settlement?.eventId ?? null;
@@ -3322,7 +3401,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       && !duelExchangeEventIds.has(event.id)
       && (!rootActionCardId || !eventCards(event).some((card) => card.id === rootActionCardId))
       && (!attackDodgeResponseCandidate || !eventCards(event).some((card) => card.id === attackDodgeResponseCandidate.responseEvent.card.id))
-      && (!singleTargetNegationGraphCandidate?.responseEvent || !eventCards(event).some((card) => card.id === singleTargetNegationGraphCandidate.responseEvent!.card.id)))
+      && (!singleTargetNegationGraphCandidate?.responseEvent || !eventCards(event).some((card) => card.id === singleTargetNegationGraphCandidate.responseEvent!.card.id))
+      && !oathSimultaneousRootGraphCandidate?.responses.some((response) => event.id === response.eventId || eventCards(event).some((card) => card.id === room.timeline.find((candidate) => candidate.id === response.eventId)?.card?.id)))
     : completedAttackDodgeSequenceCandidate
       ? sequenceEvents.filter((event) => event.id !== completedAttackDodgeSequenceCandidate.proof.rootEventId
         && event.id !== completedAttackDodgeSequenceCandidate.proof.responseEventId

@@ -302,6 +302,9 @@ export type PresentationOathRecipientScope = {
   activeFrameId: string;
   checkpointId: string;
   presentationRevision: number;
+  rootEventId: string;
+  rootResolutionId: string;
+  effectState: "ACTIVE" | "BLOCKED";
   sourceId: string;
   recipientIds: readonly string[];
 };
@@ -853,6 +856,8 @@ function oathRecipientScopeFor(
   envelope: CausalEnvelope | null,
   scene: PresentationInteractionScene | null,
   recipientIds: readonly string[] | null | undefined,
+  timeline: readonly PresentationV2Event[],
+  reactionChain: PresentationReactionChain | null,
 ): PresentationOathRecipientScope | null {
   const response = record(pending);
   const continuation = record(response?.continuation);
@@ -867,7 +872,22 @@ function oathRecipientScopeFor(
   const activeFrame = envelope.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
   const rootFrames = envelope.frames.filter((frame) => frame.parentFrameId === null || frame.parentFrameId === undefined);
   const rootFrame = rootFrames.length === 1 ? rootFrames[0] : null;
-  if (!sourceId || !activeFrame || !rootFrame || rootFrame.frameId !== activeFrame.frameId
+  const targetId = stringValue(continuation.effectTargetId);
+  const rootResolutionId = stringValue(continuation.resolutionId);
+  const chainDepth = continuation.chainDepth;
+  const rootEventLink = rootResolutionId ? publicCardEventForResolution(timeline, rootResolutionId, "Oath") : null;
+  const rootEvent = rootEventLink ? timeline.find((event) => event.id === rootEventLink.eventId) ?? null : null;
+  const responseLinks = reactionChain?.publicNodeEventLinks;
+  if (!sourceId || targetId !== sourceId || continuation.rootCardKind !== "Oath"
+    || !rootResolutionId || !rootEvent?.id || rootEvent.resolutionId !== rootResolutionId
+    || !reactionChain || reactionChain.semantics !== "PROVEN"
+    || reactionChain.interactionId !== envelope?.interactionId || reactionChain.frameId !== activeFrame?.frameId
+    || reactionChain.rootCard !== null || reactionChain.nodes.length !== chainDepth
+    || !Array.isArray(responseLinks) || responseLinks.length !== reactionChain.nodes.length
+    || typeof continuation.negated !== "boolean" || typeof chainDepth !== "number"
+    || !Number.isSafeInteger(chainDepth) || chainDepth < 0
+    || continuation.negated !== (chainDepth % 2 === 1)
+    || !activeFrame || !rootFrame || rootFrame.frameId !== activeFrame.frameId
     || activeFrame.stage !== "NEGATION" || activeFrame.parentFrameId != null
     || envelope.checkpoint.frameId !== activeFrame.frameId || envelope.checkpoint.stage !== "NEGATION"
     || responseCausal?.interactionId !== envelope.interactionId || responseCausal.frameId !== activeFrame.frameId
@@ -884,6 +904,16 @@ function oathRecipientScopeFor(
     || rootFrame.current.currentEffect !== rootFrame.origin.originEffect
     || scene.effect !== rootFrame.origin.originEffect) return null;
 
+  for (let index = 0; index < reactionChain.nodes.length; index += 1) {
+    const node = reactionChain.nodes[index];
+    const link = responseLinks[index];
+    if (!node || !link || link.nodeId !== node.nodeId || !link.eventId || !link.resolutionId
+      || node.causedByNodeId !== (index === 0 ? null : reactionChain.nodes[index - 1]?.nodeId)
+      || link.eventId === rootEvent.id || link.resolutionId.length === 0
+      || link.resolutionId === rootResolutionId
+      || responseLinks.slice(0, index).some((previous) => previous.eventId === link.eventId || previous.resolutionId === link.resolutionId)) return null;
+  }
+
   const recipients: string[] = [];
   const seen = new Set<string>();
   for (const recipientId of recipientIds) {
@@ -899,6 +929,9 @@ function oathRecipientScopeFor(
     activeFrameId: activeFrame.frameId,
     checkpointId: envelope.checkpoint.checkpointId,
     presentationRevision: envelope.presentationRevision,
+    rootEventId: rootEvent.id,
+    rootResolutionId,
+    effectState: continuation.negated ? "BLOCKED" : "ACTIVE",
     sourceId,
     recipientIds: recipients,
   };
@@ -1273,6 +1306,25 @@ function reactionChainFor(
     && chainDepth === nodes.length && continuation.negated === (chainDepth % 2 === 1)
     ? continuation.negated ? "BLOCKED" as const : "ACTIVE" as const
     : undefined;
+  const oathRootResolutionId = stringValue(continuation.resolutionId);
+  const oathRootEventLink = effect?.kind === "oath" && rootCardKind === "Oath" && sourceId && sourceId === targetId
+    && oathRootResolutionId
+    ? publicCardEventForResolution(timeline, oathRootResolutionId, "Oath")
+    : null;
+  const oathRootFrame = envelope.frames.find(({ frameId }) => frameId === scene.rootFrameId);
+  const oathChainStateIsProven = Boolean(effect?.kind === "oath" && oathRootEventLink
+    && sourceId && targetId === sourceId && oathRootFrame?.frameId === frame.frameId
+    && scene.continuity.relation === "ROOT_FRAME" && scene.rootFrameId === scene.activeFrameId
+    && oathRootFrame.stage === "NEGATION" && oathRootFrame.parentFrameId == null
+    && oathRootFrame.origin.originSourceId === sourceId && oathRootFrame.current.currentSourceId === sourceId
+    && oathRootFrame.origin.originalTargetIds.length === 1 && oathRootFrame.origin.originalTargetIds[0] === sourceId
+    && oathRootFrame.current.currentTargetIds.length === 1 && oathRootFrame.current.currentTargetIds[0] === sourceId
+    && cardName !== null && oathRootFrame.origin.originEffect === cardName && oathRootFrame.current.currentEffect === cardName
+    && scene.effect === cardName && continuation.rootCardKind === "Oath"
+    && typeof continuation.negated === "boolean" && typeof chainDepth === "number"
+    && Number.isSafeInteger(chainDepth) && chainDepth >= 0 && chainDepth === nodes.length
+    && continuation.negated === (chainDepth % 2 === 1)
+    && publicNodeEventLinks !== undefined && publicNodeEventLinks.length === nodes.length);
   const groupChainStateIsProven = groupTargetEffectScopeIdentity
     && typeof continuation.negated === "boolean"
     && typeof chainDepth === "number" && Number.isSafeInteger(chainDepth) && chainDepth >= 0
@@ -1290,6 +1342,7 @@ function reactionChainFor(
     semantics: "PROVEN", interactionId: scene.interactionId, frameId: scene.activeFrameId, rootCard, nodes,
     ...(groupTargetEffectScope ? { groupTargetEffectScope } : {}),
     ...(groupTargetEffectScope && publicNodeEventLinks ? { publicNodeEventLinks } : {}),
+    ...(oathChainStateIsProven && publicNodeEventLinks ? { publicNodeEventLinks } : {}),
     ...(publicEventLinks ? { publicEventLinks } : {}),
     ...(rootEffectState ? { rootEffectState } : {}),
   };
@@ -1403,6 +1456,17 @@ function stableBoundaryFor(
 }
 
 function eventCardIds(event: PresentationV2Event): string[] { return unique([event.card?.id, ...(event.cards ?? []).map((card) => card.id ?? null)]); }
+function publicCardEventForResolution(
+  timeline: readonly PresentationV2Event[],
+  resolutionId: string,
+  cardKind: CardKind,
+): { eventId: string; resolutionId: string } | null {
+  const matches = timeline.filter((event) => event.type === "card" && event.action === "play"
+    && event.presentation !== false && event.card?.kind === cardKind && event.resolutionId === resolutionId
+    && typeof event.id === "string" && event.id.length > 0);
+  if (matches.length !== 1 || timeline.filter((event) => event.id === matches[0].id).length !== 1) return null;
+  return { eventId: matches[0].id, resolutionId };
+}
 function eventForContext(context: Context | null, timeline: readonly PresentationV2Event[], barrierId: string | null): PresentationV2Event | null {
   if (!context) return null;
   if (context.sequenceStartCardId) {
@@ -1906,11 +1970,11 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const duelExchange = duelExchangeFor(envelope, interactionScene, input.pending, input.timeline);
   const selfTargetActions = selfTargetActionsFor(input.timeline);
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
-  const oathRecipientScope = oathRecipientScopeFor(input.pending, envelope, interactionScene, input.oathRecipientIds);
   const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
   const dyingBarrier = dyingBarrierFor(envelope, input.pending);
   const reactionChain = reactionChainFor(input.timeline, envelope, input.pending, interactionScene, projectedBumperHarvestProgress, groupValues, projectedGroupParticipantProgress);
+  const oathRecipientScope = oathRecipientScopeFor(input.pending, envelope, interactionScene, input.oathRecipientIds, input.timeline, reactionChain);
   const negationSettlement = negationSettlementFor(input.timeline, envelope, input.pending);
   // The typed interactionScene below is the causal authority. These legacy
   // context objects intentionally retain Pending-first kind/target shapes for

@@ -1960,6 +1960,25 @@ Only a proven regression or new Reviewer-approved design requirement does.
   passed 1/1. The repair is included with this task; CI for the resulting
   commit is not yet observed. Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-C-OATH-SIMULTANEOUS-ROOT-GRAPH-01 — Oath simultaneous root
+
+- Oath's proven wounded-recipient scope and exact public root event now render
+  as one stable physical-seat root with simultaneous branches. A wounded source
+  is represented by a Dock halo, with no target-arrow loop or invented ordered
+  participant; exact public Negation/counter-Negation links and branch
+  active/blocked states remain authoritative. Real server-backed browser proof
+  covers the full Oath → Negation → counter-Negation path and responsive
+  geometry at 390×844, 480×900, and 1440×900. Presentation/API suites passed
+  114/114 and 36/36; generic root-overlay browser regressions passed 37/37;
+  build, targeted ESLint, and `git diff --check` passed.
+- The pre-commit remote base `67853334984d7aaf91018570f6011f4e9a71b35c` failed
+  Actions run `37818587607`: Browser shard 2/2 had 416/417 passing, with a
+  timing-sensitive Sowing Distrust exit-state assertion failing after its
+  transient node had been removed. Replaced the instantaneous DOM-state check
+  with MutationObserver proof of the exit class/attribute, removal, and the
+  same bounded lifecycle durations; focused browser reproduction passed 1/1.
+  CI for the resulting commit is pending. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
