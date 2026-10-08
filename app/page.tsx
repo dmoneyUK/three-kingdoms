@@ -3032,6 +3032,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     };
   })();
   const rootAction = clientPresentation.rootAction;
+  const rootActionName = rootAction?.action === "ATTACK" ? "Attack"
+    : rootAction?.cardKind === "Dismantle" ? "Burning Bridge"
+      : rootAction ? cardDefinition(rootAction.cardKind).name : null;
   const skillEffectActionCandidate = (() => {
     const action = clientPresentation.skillEffectAction;
     if (!action || action.semantics !== "PROVEN" || action.effectId !== "zhou_yu_fanjian"
@@ -3172,8 +3175,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       sourceId: rootAction.sourceId,
       targetId: rootAction.targetId,
       cardKind: rootAction.cardKind,
-      cardLabel: "ATTACK",
-      ariaLabel: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "Unknown player"} played Attack targeting ${room.players.find((player) => player.id === rootAction.targetId)?.name ?? "unknown player"}`,
+      cardLabel: rootActionName?.toUpperCase() ?? "ACTION",
+      ariaLabel: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "Unknown player"} played ${rootActionName ?? "an action"} targeting ${room.players.find((player) => player.id === rootAction.targetId)?.name ?? "unknown player"}`,
       mode: "targeted",
     }
     : attackDodgeGraphCandidate

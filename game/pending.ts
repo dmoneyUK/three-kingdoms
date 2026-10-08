@@ -22,7 +22,7 @@ export type HarvestParticipantProgress = {
   participants: Array<{ playerId: string; status: HarvestParticipantProgressStatus; outcome?: HarvestParticipantProgressOutcome }>;
 };
 export type HarvestPending = CausalFields & { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; availableIds?: string[]; choices?: HarvestChoice[]; participantProgress?: HarvestParticipantProgress; previewCardId?: string; choiceDeadlineAt?: number; completeAt?: number; resumePhase: string; reason: string; heldCards?: Card[] };
-export type TargetCardPending = { kind: "target_card"; sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal"; resumePhase: string; reason: string; heldCards?: Card[] };
+export type TargetCardPending = CausalFields & { kind: "target_card"; sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal"; resumePhase: string; reason: string; heldCards?: Card[] };
 export type BorrowedSwordPending = CausalFields & { kind: "borrowed_sword"; sourceId: string; actorId: string; targetId: string; holderId: string; resumePhase: string; reason: string; deadline?: number; weaponId?: string; stage: "choose_target" | "force_attack" };
 export type BorrowedSwordAttackContinuation = CausalFields & { kind: "borrowed_sword_attack"; sourceId: string; holderId: string; targetId: string; resumePhase: string; resumePlayerId: string; weaponId: string; origin: "borrowed_sword" };
 export type DeferredStratagem =

@@ -676,7 +676,7 @@ function rootActionFor(
   stable: PresentationStableBoundary,
 ): PresentationSnapshotRootAction | null {
   const action = presentationV2.rootAction;
-  if (!action || action.semantics !== "PROVEN" || action.action !== "ATTACK"
+  if (!action || action.semantics !== "PROVEN"
     || stable.kind !== "CHOICE"
     || action.interactionId !== identity.interactionId
     || action.interactionId !== scene.interactionId
@@ -687,20 +687,31 @@ function rootActionFor(
     || !nonEmptyString(action.rootEventId)
     || scene.continuity.relation !== "ROOT_FRAME"
     || scene.rootFrameId !== scene.activeFrameId
-    || scene.stage !== "ATTACK_RESPONSE"
     || !nonEmptyString(action.sourceId) || action.sourceId === action.targetId
     || action.sourceId !== scene.sourceId || action.sourceId !== scene.activeSourceId
     || !nonEmptyString(action.targetId)
     || scene.targetIds.length !== 1 || scene.targetIds[0] !== action.targetId
     || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== action.targetId
-    || scene.currentParticipantId !== action.targetId
-    || scene.participantRoles.sourceId !== action.sourceId
-    || scene.participantRoles.originalTargetIds.length !== 1 || scene.participantRoles.originalTargetIds[0] !== action.targetId
-    || scene.participantRoles.activeTargetIds.length !== 1 || scene.participantRoles.activeTargetIds[0] !== action.targetId
-    || scene.participantRoles.currentParticipantId !== action.targetId
-    || scene.participantRoles.decisionActorId !== action.targetId || scene.participantRoles.activeResolverId !== action.targetId
-    || scene.decisionActorId !== action.targetId || scene.activeResolverId !== action.targetId
     || !CARD_KINDS.includes(action.cardKind)) return null;
+  const attackScene = action.action === "ATTACK" && action.cardKind === "Attack"
+    && scene.stage === "ATTACK_RESPONSE"
+    && scene.currentParticipantId === action.targetId
+    && scene.participantRoles.sourceId === action.sourceId
+    && scene.participantRoles.originalTargetIds.length === 1 && scene.participantRoles.originalTargetIds[0] === action.targetId
+    && scene.participantRoles.activeTargetIds.length === 1 && scene.participantRoles.activeTargetIds[0] === action.targetId
+    && scene.participantRoles.currentParticipantId === action.targetId
+    && scene.participantRoles.decisionActorId === action.targetId && scene.participantRoles.activeResolverId === action.targetId
+    && scene.decisionActorId === action.targetId && scene.activeResolverId === action.targetId;
+  const dismantleScene = action.action === "STRATAGEM" && action.cardKind === "Dismantle"
+    && scene.stage === "SETTLEMENT" && scene.effect === "Burning Bridges"
+    && scene.currentParticipantId === action.targetId
+    && scene.participantRoles.sourceId === action.sourceId
+    && scene.participantRoles.originalTargetIds.length === 1 && scene.participantRoles.originalTargetIds[0] === action.targetId
+    && scene.participantRoles.activeTargetIds.length === 1 && scene.participantRoles.activeTargetIds[0] === action.targetId
+    && scene.participantRoles.currentParticipantId === action.targetId
+    && scene.participantRoles.decisionActorId === action.sourceId && scene.participantRoles.activeResolverId === action.sourceId
+    && scene.decisionActorId === action.sourceId && scene.activeResolverId === action.sourceId;
+  if (!attackScene && !dismantleScene) return null;
   return {
     semantics: "PROVEN",
     interactionId: identity.interactionId,

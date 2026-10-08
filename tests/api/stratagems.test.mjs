@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { projectPresentationV2 } from "../../game/presentation-v2.ts";
+import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
 import {
   assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -373,7 +375,53 @@ test("target-card CurrentAction projects anonymous eligible positions only to it
   assert.equal(actorActionJson.includes(populated.hidden[0].id), false, "hand eligibility never includes concealed card identities");
   assert.equal(actorActionJson.includes(populated.hidden[1].id), false, "all concealed identities stay private");
 
+  const dismantleScene = actorView.presentationV2.interactionScene;
+  assert.equal(dismantleScene?.semantics, "PROVEN");
+  assert.equal(dismantleScene?.stage, "SETTLEMENT");
+  assert.equal(dismantleScene?.sourceId, populated.source.id);
+  assert.deepEqual(dismantleScene?.targetIds, [populated.target.id]);
+  assert.equal(dismantleScene?.decisionActorId, populated.source.id);
+  const storedPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(populated.game.code)}`));
+  const publicDismantlePlays = actorView.timeline.filter((event) => event.type === "card" && event.action === "play" && event.card?.kind === "Dismantle");
+  assert.equal(publicDismantlePlays.length, 1);
+  const rootAction = actorView.presentationSnapshot.rootAction;
+  assert.deepEqual(rootAction, {
+    semantics: "PROVEN",
+    interactionId: dismantleScene.interactionId,
+    rootFrameId: dismantleScene.rootFrameId,
+    activeFrameId: dismantleScene.activeFrameId,
+    checkpointId: dismantleScene.checkpointId,
+    presentationRevision: dismantleScene.presentationRevision,
+    rootEventId: publicDismantlePlays[0].id,
+    action: "STRATAGEM",
+    sourceId: populated.source.id,
+    targetId: populated.target.id,
+    cardKind: "Dismantle",
+  }, "the public Dismantle root binds the active choice to its exact public play event");
+  assert.equal(publicDismantlePlays[0].card.id, storedPending.heldCards[0].id, "the server-held Dismantle matches the exact public play event");
+  assert.equal(JSON.stringify(rootAction).includes("target-projection-populated"), false, "the root contract omits the physical-card ID");
+
+  const rootInput = {
+    pending: storedPending,
+    currentAction: actorView.currentAction,
+    actionRevision: actorView.actionRevision,
+    timeline: actorView.timeline,
+    causalEnvelope: actorView.causalEnvelope,
+  };
+  assert.equal(projectPresentationV2({ ...rootInput, pending: { ...storedPending, heldCards: [] } }).rootAction, null, "missing held-card linkage fails closed");
+  assert.equal(projectPresentationV2({ ...rootInput, pending: { ...storedPending, targetId: populated.source.id } }).rootAction, null, "pending and causal target disagreement fails closed");
+  assert.equal(projectPresentationV2({ ...rootInput, timeline: actorView.timeline.filter((event) => event.id !== rootAction.rootEventId) }).rootAction, null, "a missing exact public play event fails closed");
+  const mismatchedSnapshot = composePresentationSnapshot({
+    presentationV2: { ...actorView.presentationV2, rootAction: { ...rootAction, targetId: populated.source.id } },
+    currentAction: actorView.currentAction,
+    actionRevision: actorView.actionRevision,
+    viewerId: populated.source.id,
+  });
+  assert.equal(mismatchedSnapshot.rootAction, null, "snapshot validation rejects a root target that conflicts with the proven scene");
+
   const observerView = (await state(populated.game.code, populated.targetMember.token)).data;
+  assert.deepEqual(observerView.presentationSnapshot.rootAction, rootAction, "the graph proof is public and viewer-equal");
+  assert.deepEqual(observerView.presentationV2.interactionScene, dismantleScene);
   assert.equal(Object.hasOwn(observerView.currentAction, "targetCardSelection"), false, "non-actors do not receive target-card eligibility");
   assert.equal(JSON.stringify(observerView.currentAction).includes("hand:0"), false);
   assert.equal(JSON.stringify(observerView.currentAction).includes(populated.hidden[0].id), false);

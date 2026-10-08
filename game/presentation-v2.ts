@@ -218,7 +218,7 @@ export type PresentationReactionChain = {
   rootEffectState?: "ACTIVE" | "BLOCKED";
 };
 
-export type PresentationRootAction = {
+type PresentationRootActionBase = {
   semantics: "PROVEN";
   interactionId: string;
   rootFrameId: string;
@@ -227,11 +227,14 @@ export type PresentationRootAction = {
   presentationRevision: number;
   /** Public timeline identity for deduplicating the graph node from the reveal layer. */
   rootEventId: string;
-  action: "ATTACK";
   sourceId: string;
   targetId: string;
   cardKind: CardKind;
 };
+
+export type PresentationRootAction =
+  | (PresentationRootActionBase & { action: "ATTACK" })
+  | (PresentationRootActionBase & { action: "STRATAGEM"; cardKind: "Dismantle" });
 
 /** Public proof that one submitted physical Dodge blocks one exact ordinary Attack target effect. */
 export type PresentationAttackDodgeResponseProof = {
@@ -580,6 +583,22 @@ function semanticDecisionActorId(envelope: CausalEnvelope | null, pending: unkno
   }
   if (!envelope || !activeFrame || !item || !actorId || !causal || causal.interactionId !== envelope.interactionId
     || causal.frameId !== activeFrame.frameId) return null;
+  if (item.kind === "target_card" && item.cardKind === "Dismantle") {
+    const sourceId = stringValue(item.sourceId);
+    const targetId = stringValue(item.targetId);
+    const rootFrames = envelope.frames.filter(({ parentFrameId }) => parentFrameId == null);
+    if (actorId === sourceId && sourceId && targetId && sourceId !== targetId
+      && envelope.activeFrameId === activeFrame.frameId && envelope.checkpoint.frameId === activeFrame.frameId
+      && envelope.checkpoint.stage === "SETTLEMENT" && activeFrame.stage === "SETTLEMENT"
+      && activeFrame.parentFrameId == null && rootFrames.length === 1 && rootFrames[0].frameId === activeFrame.frameId
+      && causal.frameId === activeFrame.frameId
+      && activeFrame.origin.originSourceId === sourceId && activeFrame.origin.originEffect === "Burning Bridges"
+      && activeFrame.origin.originalTargetIds.length === 1 && activeFrame.origin.originalTargetIds[0] === targetId
+      && activeFrame.current.currentSourceId === sourceId && activeFrame.current.currentEffect === "Burning Bridges"
+      && activeFrame.current.currentTargetIds.length === 1 && activeFrame.current.currentTargetIds[0] === targetId
+      && activeFrame.current.resolvingPlayerId === sourceId) return sourceId;
+    return null;
+  }
   if (item.kind === "response" && RESPONSE_DECISION_CONTINUATIONS.has(continuationKind ?? "")) return activeFrame.current.resolvingPlayerId === actorId ? actorId : null;
   const sourceOwnedActorId = sourceOwnedTriggerDecisionActorId(envelope, pending, activeFrame);
   if (sourceOwnedActorId) return sourceOwnedActorId;
@@ -1458,6 +1477,66 @@ function singleTargetAttackRootActionFor(
   };
 }
 
+function singleTargetDismantleRootActionFor(
+  envelope: CausalEnvelope | null,
+  scene: PresentationInteractionScene | null,
+  pending: unknown,
+  timeline: readonly PresentationV2Event[],
+): PresentationRootAction | null {
+  const item = record(pending);
+  const causal = record(item?.causal);
+  const sourceId = stringValue(item?.sourceId);
+  const actorId = stringValue(item?.actorId);
+  const targetId = stringValue(item?.targetId);
+  const heldCards = Array.isArray(item?.heldCards) ? item.heldCards.map(record) : [];
+  const heldCard = heldCards.length === 1 ? heldCards[0] : null;
+  const physicalCardId = stringValue(heldCard?.id);
+  const frame = envelope?.frames.find(({ frameId }) => frameId === envelope.activeFrameId) ?? null;
+  const rootFrames = envelope?.frames.filter(({ parentFrameId }) => parentFrameId == null) ?? [];
+  if (item?.kind !== "target_card" || item.cardKind !== "Dismantle"
+    || !envelope || !frame || rootFrames.length !== 1 || !scene
+    || scene.semantics !== "PROVEN" || scene.continuity.relation !== "ROOT_FRAME"
+    || scene.rootFrameId !== frame.frameId || scene.activeFrameId !== frame.frameId
+    || scene.stage !== "SETTLEMENT" || frame.stage !== "SETTLEMENT" || frame.parentFrameId != null
+    || envelope.activeFrameId !== frame.frameId || envelope.checkpoint.frameId !== frame.frameId || envelope.checkpoint.stage !== "SETTLEMENT"
+    || causal?.interactionId !== envelope.interactionId || causal.frameId !== frame.frameId
+    || !sourceId || actorId !== sourceId || !targetId || sourceId === targetId
+    || heldCard?.kind !== "Dismantle" || !physicalCardId
+    || frame.origin.originSourceId !== sourceId || frame.origin.originEffect !== "Burning Bridges"
+    || frame.origin.originalTargetIds.length !== 1 || frame.origin.originalTargetIds[0] !== targetId
+    || frame.current.currentSourceId !== sourceId || frame.current.currentEffect !== "Burning Bridges"
+    || frame.current.currentTargetIds.length !== 1 || frame.current.currentTargetIds[0] !== targetId
+    || frame.current.resolvingPlayerId !== sourceId
+    || scene.effect !== "Burning Bridges" || scene.sourceId !== sourceId || scene.activeSourceId !== sourceId
+    || scene.targetIds.length !== 1 || scene.targetIds[0] !== targetId
+    || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== targetId
+    || scene.currentParticipantId !== targetId
+    || scene.participantRoles.sourceId !== sourceId
+    || scene.participantRoles.originalTargetIds.length !== 1 || scene.participantRoles.originalTargetIds[0] !== targetId
+    || scene.participantRoles.activeTargetIds.length !== 1 || scene.participantRoles.activeTargetIds[0] !== targetId
+    || scene.participantRoles.currentParticipantId !== targetId
+    || scene.participantRoles.decisionActorId !== sourceId || scene.participantRoles.activeResolverId !== sourceId
+    || scene.decisionActorId !== sourceId || scene.activeResolverId !== sourceId) return null;
+
+  const rootEvents = timeline.filter((event) => event.presentation !== false && event.type === "card"
+    && event.action === "play" && event.card?.id === physicalCardId && event.card.kind === "Dismantle");
+  if (rootEvents.length !== 1 || timeline.filter((event) => event.id === rootEvents[0].id).length !== 1) return null;
+  const rootEvent = rootEvents[0];
+  return {
+    semantics: "PROVEN",
+    interactionId: envelope.interactionId,
+    rootFrameId: frame.frameId,
+    activeFrameId: frame.frameId,
+    checkpointId: envelope.checkpoint.checkpointId,
+    presentationRevision: envelope.presentationRevision,
+    rootEventId: rootEvent.id,
+    action: "STRATAGEM",
+    sourceId,
+    targetId,
+    cardKind: "Dismantle",
+  };
+}
+
 function selfTargetActionsFor(timeline: readonly PresentationV2Event[]): PresentationSelfTargetAction[] {
   const eventIdCounts = new Map<string, number>();
   for (const event of timeline) {
@@ -1815,7 +1894,8 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const groupCardKind = group ? firstString(group.cardKind, group.kind === "group" ? "group" : null) : null;
   const groupValues = groupProjectionValues(envelope, input.pending, group);
   const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
-  const rootAction = singleTargetAttackRootActionFor(envelope, interactionScene, input.pending, root, rootEvent);
+  const rootAction = singleTargetAttackRootActionFor(envelope, interactionScene, input.pending, root, rootEvent)
+    ?? singleTargetDismantleRootActionFor(envelope, interactionScene, input.pending, input.timeline);
   const skillEffectAction = skillEffectActionFor(input);
   const skillEffectSettlements = skillEffectSettlementsFor(input);
   const duelExchange = duelExchangeFor(envelope, interactionScene, input.pending, input.timeline);

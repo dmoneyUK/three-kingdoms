@@ -1925,6 +1925,22 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Settlement hold/exit remains the next bounded lifecycle task; Reviewer
   acceptance is not claimed.
 
+### UX2.6-PHASE-A-DISMANTLE-ROOT-OVERLAY-01 — Dismantle target decision root
+
+- The real Burning Bridges target-card decision now retains a root causal frame
+  only when the authoritative source, target, exact held Dismantle, Negation
+  settlement, and causal envelope agree. PresentationV2, Snapshot, and Client
+  bind the root node to the unique exact public played-card event; absent or
+  mismatched proof fails closed. Public proof is viewer-equal and excludes
+  physical-card IDs and hidden target-Hand identities. The approved Burning
+  Bridge picker remains above the graph per §6.18 layering.
+- Focused API passed 22/22, PresentationV2 engine passed 36/36, and real-gameplay
+  browser passed 17/17, including 390×844, 480×900, and 1440×900 geometry,
+  Stage/Dock containment, source/target connectors, modal selection, and
+  fail-closed/privacy assertions. Build, targeted ESLint, and `git diff --check`
+  passed. Pre-commit parent `a40cfe2068a58c1a03dd66f34fd4a3586f26be96` passed
+  Actions run `37812094451`. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
