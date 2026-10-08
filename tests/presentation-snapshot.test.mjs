@@ -249,6 +249,59 @@ test("snapshot keeps Negation public event links only when they align with the p
   }).reactionChain?.rootEffectState, undefined, "root disposition is withheld when exact public card links are absent");
 });
 
+test("snapshot carries only Group Negation scope bound to the active target effect", () => {
+  const baseScene = groupScene();
+  const interaction = {
+    ...baseScene,
+    stage: "NEGATION",
+    continuity: { relation: "SAME_FRAME", parentFrameId: null },
+  };
+  const targetEffectScope = {
+    semantics: "PROVEN",
+    relation: "GROUP_TARGET_EFFECT",
+    interactionId: interaction.interactionId,
+    groupFrameId: interaction.rootFrameId,
+    activeFrameId: interaction.activeFrameId,
+    checkpointId: interaction.checkpointId,
+    presentationRevision: interaction.presentationRevision,
+    sourceId: "A",
+    cardKind: "RainingArrows",
+    targetId: "B",
+  };
+  const reactionChain = {
+    semantics: "PROVEN", interactionId: interaction.interactionId, frameId: interaction.activeFrameId,
+    rootCard: null, nodes: [], groupTargetEffectScope: targetEffectScope,
+  };
+  const publicPresentation = {
+    ...presentation(interaction, coherentBoundary({ decisionActorId: "B" })),
+    groupResolution: groupResolution(interaction),
+    reactionChain,
+  };
+  const compose = (chain) => composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, reactionChain: chain },
+    currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "group-negation",
+    viewerId: "C",
+  });
+  const valid = compose(reactionChain);
+  assert.deepEqual(valid.reactionChain?.groupTargetEffectScope, targetEffectScope);
+
+  for (const malformed of [
+    { ...targetEffectScope, targetId: "C" },
+    { ...targetEffectScope, groupFrameId: "other-frame" },
+    { ...targetEffectScope, activeFrameId: "child-frame" },
+    { ...targetEffectScope, checkpointId: "other-checkpoint" },
+    { ...targetEffectScope, presentationRevision: targetEffectScope.presentationRevision + 1 },
+    { ...targetEffectScope, sourceId: "other-source" },
+    { ...targetEffectScope, cardKind: "BarbarianInvasion" },
+  ]) {
+    assert.equal(compose({ ...reactionChain, groupTargetEffectScope: malformed }).reactionChain, null,
+      "a target/frame/checkpoint/revision/source/card mismatch withholds the reaction chain");
+  }
+  assert.equal(compose({ ...reactionChain, groupTargetEffectScope: undefined }).reactionChain, null,
+    "a Group Negation chain without target-effect scope fails closed");
+});
+
 test("single-target Negation settlement requires a typed, root-bound public occurrence", () => {
   const envelope = {
     version: 1,

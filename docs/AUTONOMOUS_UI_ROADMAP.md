@@ -1806,6 +1806,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `3fe0592c56b861138ccfc05ba14f8f2b97bb634e` passed all five Actions jobs in
   run `37767512338`. Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-C-GROUP-TARGET-EFFECT-SCOPE-AUTHORITY-01 — Scoped Group Negation proof
+
+- PresentationV2 now exposes a `GROUP_TARGET_EFFECT` scope only when the
+  server-owned Negation `effectTargetId` agrees with the Group frame's sole
+  active target branch, its `CURRENT` participant proof, source/card identity,
+  interaction, checkpoint, and presentation revision. Snapshot and Client
+  independently revalidate it and preserve viewer equality; malformed or
+  missing Group proof fails closed, while ordinary single-target Negation
+  remains compatible. The real API suite passed 34/34, PresentationV2 / Snapshot
+  / Client suites passed 114/114, and build, targeted ESLint, and `git diff
+  --check` passed. No new browser geometry was introduced. Exact pre-commit
+  parent `c0e7921b2ac29ddb34847dd16227c853a6b0c3cd` passed all five Actions jobs
+  in run `37770799050`. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

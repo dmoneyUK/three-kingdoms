@@ -1,5 +1,6 @@
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
+import { CARD_DEFINITIONS } from "./cards";
 import { CARD_KINDS, type CardKind } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type NegationHistoryRecord } from "./pending";
 
@@ -155,12 +156,28 @@ export type PresentationReactionChainPublicEventLinks = {
   nodes: readonly { nodeId: string; eventId: string; resolutionId: string }[];
 };
 
+/** A Group target-effect identity is the public tuple (interaction, Group frame, target). */
+export type PresentationGroupTargetEffectScope = {
+  semantics: "PROVEN";
+  relation: "GROUP_TARGET_EFFECT";
+  interactionId: string;
+  groupFrameId: string;
+  activeFrameId: string;
+  checkpointId: string;
+  presentationRevision: number;
+  sourceId: string;
+  cardKind: "RainingArrows" | "BarbarianInvasion";
+  targetId: string;
+};
+
 export type PresentationReactionChain = {
   semantics: "PROVEN";
   interactionId: string;
   frameId: string;
   rootCard: PresentationReactionChainRootCard | null;
   nodes: readonly PresentationReactionChainNode[];
+  /** Present only when a Group Negation chain is proven to scope one target branch. */
+  groupTargetEffectScope?: PresentationGroupTargetEffectScope;
   /** Exact public timeline references for graph consumers; absent when any link is unproven. */
   publicEventLinks?: PresentationReactionChainPublicEventLinks;
   /** Current single-target root effect state; absent unless its public card chain is complete. */
@@ -989,12 +1006,83 @@ function groupParticipantProgress(
   return { resolutionSemantics, participants };
 }
 
+function groupTargetEffectScopeFor(
+  envelope: CausalEnvelope | null,
+  pending: unknown,
+  scene: PresentationInteractionScene | null,
+  groupValues: GroupProjectionValues | null,
+  participantProgress: ReturnType<typeof groupParticipantProgress>,
+): PresentationGroupTargetEffectScope | null {
+  const item = record(pending);
+  const continuation = record(item?.continuation);
+  const effect = record(continuation?.effect);
+  const effectPending = record(effect?.pending);
+  const nestedGroup = record(effectPending?.continuation);
+  const group = typedGroupContinuation(pending);
+  const groupCausal = record(group?.causal);
+  const progress = record(group?.participantProgress);
+  const responseCausal = record(item?.causal);
+  const continuationCausal = record(continuation?.causal);
+  const targetId = stringValue(continuation?.effectTargetId);
+  const sourceId = stringValue(continuation?.sourceId);
+  const root = groupValues?.groupFrame;
+  const active = groupValues?.activeFrame;
+  const groupCardName = groupValues && (groupValues.cardKind === "RainingArrows" || groupValues.cardKind === "BarbarianInvasion")
+    ? CARD_DEFINITIONS[groupValues.cardKind].name
+    : null;
+  if (item?.kind !== "response" || continuation?.kind !== "negation" || effect?.kind !== "group"
+    || effectPending?.kind !== "response" || nestedGroup?.kind !== "group" || group !== nestedGroup
+    || !envelope || !scene || scene.semantics !== "PROVEN" || scene.stage !== "NEGATION"
+    || scene.continuity.relation !== "SAME_FRAME" || !groupValues || !participantProgress
+    || participantProgress.resolutionSemantics !== "GROUP"
+    || !root || !active || root.frameId !== active.frameId || root.parentFrameId !== null
+    || root.stage !== "NEGATION" || active.stage !== "NEGATION"
+    || envelope.activeFrameId !== root.frameId || envelope.checkpoint.frameId !== root.frameId
+    || envelope.checkpoint.stage !== "NEGATION"
+    || scene.interactionId !== envelope.interactionId || scene.rootFrameId !== root.frameId
+    || scene.activeFrameId !== root.frameId || scene.checkpointId !== envelope.checkpoint.checkpointId
+    || scene.presentationRevision !== envelope.presentationRevision
+    || responseCausal?.interactionId !== envelope.interactionId || responseCausal.frameId !== root.frameId
+    || continuationCausal?.interactionId !== envelope.interactionId || continuationCausal.frameId !== root.frameId
+    || groupCausal?.interactionId !== envelope.interactionId || groupCausal.frameId !== root.frameId
+    || progress?.version !== 1 || progress.interactionId !== envelope.interactionId
+    || progress.groupFrameId !== root.frameId || progress.resolutionSemantics !== "GROUP"
+    || !targetId || !sourceId || continuation.effectTargetId !== targetId
+    || groupValues.cardKind !== "RainingArrows" && groupValues.cardKind !== "BarbarianInvasion"
+    || group.cardKind !== groupValues.cardKind || group.sourceId !== sourceId
+    || root.origin.originEffect !== groupValues.cardKind || root.origin.originSourceId !== sourceId
+    || root.current.currentSourceId !== sourceId || root.current.currentEffect !== groupCardName
+    || root.current.currentTargetIds.length !== 1 || root.current.currentTargetIds[0] !== targetId
+    || scene.sourceId !== sourceId || scene.activeSourceId !== sourceId
+    || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== targetId
+    || scene.participantRoles.sourceId !== sourceId
+    || !root.origin.originalTargetIds.includes(targetId)
+    || participantProgress.participants.filter(({ status }) => status === "CURRENT" || status === "PAUSED").length !== 1
+    || participantProgress.participants.find(({ playerId }) => playerId === targetId)?.status !== "CURRENT"
+    || item.actorId !== active.current.resolvingPlayerId) return null;
+
+  return {
+    semantics: "PROVEN",
+    relation: "GROUP_TARGET_EFFECT",
+    interactionId: envelope.interactionId,
+    groupFrameId: root.frameId,
+    activeFrameId: active.frameId,
+    checkpointId: envelope.checkpoint.checkpointId,
+    presentationRevision: envelope.presentationRevision,
+    sourceId,
+    cardKind: groupValues.cardKind,
+    targetId,
+  };
+}
+
 function reactionChainFor(
   timeline: readonly PresentationV2Event[],
   envelope: CausalEnvelope | null,
   pending: unknown,
   scene: PresentationInteractionScene | null,
   bumperProgress: PresentationBumperHarvestProgress | null,
+  groupValues: GroupProjectionValues | null,
+  groupProgress: ReturnType<typeof groupParticipantProgress>,
 ): PresentationReactionChain | null {
   const item = record(pending);
   const continuation = record(item?.continuation);
@@ -1020,6 +1108,10 @@ function reactionChainFor(
       || bumperProgress.activeFrameId !== frame.frameId
       || scene.decisionActorId !== null || scene.activeResolverId !== null) return null;
   } else if (!stringValue(scene.decisionActorId) || item.actorId !== scene.decisionActorId) return null;
+  const groupTargetEffectScope = effect?.kind === "group"
+    ? groupTargetEffectScopeFor(envelope, pending, scene, groupValues, groupProgress)
+    : null;
+  if (effect?.kind === "group" && !groupTargetEffectScope) return null;
   const rawHistory: unknown = continuation.negationHistory;
   if (rawHistory !== undefined && !Array.isArray(rawHistory)) return null;
   const history = (rawHistory ?? []) as unknown[];
@@ -1121,6 +1213,7 @@ function reactionChainFor(
     : undefined;
   return {
     semantics: "PROVEN", interactionId: scene.interactionId, frameId: scene.activeFrameId, rootCard, nodes,
+    ...(groupTargetEffectScope ? { groupTargetEffectScope } : {}),
     ...(publicEventLinks ? { publicEventLinks } : {}),
     ...(rootEffectState ? { rootEffectState } : {}),
   };
@@ -1596,7 +1689,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
   const dyingBarrier = dyingBarrierFor(envelope, input.pending);
-  const reactionChain = reactionChainFor(input.timeline, envelope, input.pending, interactionScene, projectedBumperHarvestProgress);
+  const reactionChain = reactionChainFor(input.timeline, envelope, input.pending, interactionScene, projectedBumperHarvestProgress, groupValues, projectedGroupParticipantProgress);
   const negationSettlement = negationSettlementFor(input.timeline, envelope, input.pending);
   // The typed interactionScene below is the causal authority. These legacy
   // context objects intentionally retain Pending-first kind/target shapes for

@@ -3,6 +3,7 @@ import { CARD_KINDS, type CardKind } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestParticipantProgressStatus } from "./pending";
 import type {
   PresentationBumperHarvestProgress,
+  PresentationGroupTargetEffectScope,
   PresentationInteractionScene,
   PresentationNegationSettlement,
   PresentationOathRecipientScope,
@@ -458,10 +459,52 @@ function bumperHarvestProgressFor(
   return { ...progress, targetIds: [...progress.targetIds], participants };
 }
 
+function groupTargetEffectScopeForSnapshot(
+  value: unknown,
+  scene: PresentationInteractionScene,
+  identity: PresentationSnapshotIdentity,
+  groupProgress: PresentationSnapshotGroupProgress | null,
+): PresentationGroupTargetEffectScope | null {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !groupProgress) return null;
+  const scope = value as Partial<PresentationGroupTargetEffectScope>;
+  const targetId = scope.targetId;
+  const cardKind = scope.cardKind;
+  const active = groupProgress.participants.filter(({ status }) => status === "CURRENT" || status === "PAUSED");
+  if (scope.semantics !== "PROVEN" || scope.relation !== "GROUP_TARGET_EFFECT"
+    || !nonEmptyString(scope.interactionId) || scope.interactionId !== identity.interactionId
+    || !nonEmptyString(scope.groupFrameId) || scope.groupFrameId !== groupProgress.groupFrameId
+    || scope.groupFrameId !== scene.rootFrameId || !nonEmptyString(scope.activeFrameId)
+    || scope.activeFrameId !== groupProgress.activeFrameId || scope.activeFrameId !== scene.activeFrameId
+    || scope.activeFrameId !== scope.groupFrameId || !nonEmptyString(scope.checkpointId) || scope.checkpointId !== identity.checkpointId
+    || !nonNegativeInteger(scope.presentationRevision) || scope.presentationRevision !== identity.presentationRevision
+    || !nonEmptyString(scope.sourceId) || scope.sourceId !== scene.sourceId
+    || (cardKind !== "RainingArrows" && cardKind !== "BarbarianInvasion") || cardKind !== groupProgress.cardKind
+    || !nonEmptyString(targetId)
+    || scene.stage !== "NEGATION" || scene.continuity.relation !== "SAME_FRAME"
+    || scene.rootFrameId !== scene.activeFrameId || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== targetId
+    || scene.participantRoles.sourceId !== scope.sourceId
+    || groupProgress.resolutionSemantics !== "GROUP"
+    || !groupProgress.targetIds.includes(targetId) || active.length !== 1 || active[0].playerId !== targetId
+    || active[0].status !== "CURRENT") return null;
+  return {
+    semantics: "PROVEN",
+    relation: "GROUP_TARGET_EFFECT",
+    interactionId: identity.interactionId,
+    groupFrameId: scope.groupFrameId,
+    activeFrameId: scope.activeFrameId,
+    checkpointId: identity.checkpointId,
+    presentationRevision: identity.presentationRevision,
+    sourceId: scope.sourceId,
+    cardKind,
+    targetId,
+  };
+}
+
 function reactionChainFor(
   presentationV2: PresentationV2,
   scene: PresentationInteractionScene,
   identity: PresentationSnapshotIdentity,
+  groupProgress: PresentationSnapshotGroupProgress | null,
 ): PresentationReactionChain | null {
   const chain = presentationV2.reactionChain;
   if (scene.stage !== "NEGATION" || !chain || chain.semantics !== "PROVEN"
@@ -544,8 +587,18 @@ function reactionChainFor(
     && (rawRootEffectState === "ACTIVE" || rawRootEffectState === "BLOCKED")
     ? rawRootEffectState
     : undefined;
+  const rawGroupTargetEffectScope = (chain as { groupTargetEffectScope?: unknown }).groupTargetEffectScope;
+  const groupNegation = scene.stage === "NEGATION" && scene.continuity.relation === "SAME_FRAME"
+    && groupProgress?.resolutionSemantics === "GROUP" && groupProgress.groupFrameId === scene.rootFrameId
+    && groupProgress.activeFrameId === scene.activeFrameId;
+  const groupTargetEffectScope = rawGroupTargetEffectScope !== undefined
+    ? groupTargetEffectScopeForSnapshot(rawGroupTargetEffectScope, scene, identity, groupProgress)
+    : null;
+  if ((groupNegation && !groupTargetEffectScope)
+    || (rawGroupTargetEffectScope !== undefined && (!groupTargetEffectScope || rootCard !== null))) return null;
   return {
     semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes,
+    ...(groupTargetEffectScope ? { groupTargetEffectScope } : {}),
     ...(publicEventLinks ? { publicEventLinks } : {}),
     ...(rootEffectState ? { rootEffectState } : {}),
   };
@@ -628,14 +681,17 @@ function coherentPublicAuthority(presentationV2: PresentationV2): PublicAuthorit
  */
 export function composePresentationSnapshot(input: PresentationSnapshotInput): PresentationSnapshot {
   const authority = coherentPublicAuthority(input.presentationV2);
+  const groupParticipantProgress = authority
+    ? groupParticipantProgressFor(input.presentationV2, authority.scene, authority.identity)
+    : null;
   return {
     identity: authority?.identity ?? null,
     stable: authority?.stable ?? REST_BOUNDARY,
     interaction: authority?.scene ?? null,
-    groupParticipantProgress: authority ? groupParticipantProgressFor(input.presentationV2, authority.scene, authority.identity) : null,
+    groupParticipantProgress,
     oathRecipientScope: authority ? oathRecipientScopeFor(input.presentationV2, authority.scene, authority.identity) : null,
     bumperHarvestProgress: authority ? bumperHarvestProgressFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
-    reactionChain: authority ? reactionChainFor(input.presentationV2, authority.scene, authority.identity) : null,
+    reactionChain: authority ? reactionChainFor(input.presentationV2, authority.scene, authority.identity, groupParticipantProgress) : null,
     rootAction: authority ? rootActionFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
     duelExchange: authority ? provenDuelExchange(input.presentationV2.duelExchange, authority.scene, authority.identity, authority.stable) : null,
     ...(input.presentationV2.attackDodgeResponses?.length ? { attackDodgeResponses: provenAttackDodgeResponses(input.presentationV2.attackDodgeResponses) } : {}),

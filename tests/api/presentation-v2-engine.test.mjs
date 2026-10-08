@@ -1324,6 +1324,18 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
       kind: "CARD_PLAY",
       object: { type: "card", cardKind: "Negation" },
     }],
+    groupTargetEffectScope: {
+      semantics: "PROVEN",
+      relation: "GROUP_TARGET_EFFECT",
+      interactionId: root.interactionId,
+      groupFrameId: root.activeFrameId,
+      activeFrameId: root.activeFrameId,
+      checkpointId: counter.data.causalEnvelope.checkpoint.checkpointId,
+      presentationRevision: counter.data.causalEnvelope.presentationRevision,
+      sourceId: opened.source.id,
+      cardKind: "RainingArrows",
+      targetId: opened.target.id,
+    },
   }, "a submitted Negation in the Group continuation is bound to its proven Group frame");
   const counterOtherViewer = await assertProjectionMatchesEngine(opened.code, opened.sourceMember.token);
   assert.deepEqual(publicSnapshot(counterOtherViewer.presentationSnapshot), publicSnapshot(counter.data.presentationSnapshot), "the nested Group Negation history is viewer-equal");
@@ -1389,6 +1401,18 @@ test("UX2.7 Group Negated outcome is scoped to an authoritative AOE cancellation
     const openWindow = await assertProjectionMatchesEngine(opened.code, opened.targetMember.token);
     assert.equal(openWindow.currentAction.actorId, opened.target.id);
     assert.equal(authoritativePending(opened.code).continuation.negated, true);
+    assert.deepEqual(openWindow.presentationV2.reactionChain?.groupTargetEffectScope, {
+      semantics: "PROVEN",
+      relation: "GROUP_TARGET_EFFECT",
+      interactionId: openWindow.causalEnvelope.interactionId,
+      groupFrameId: openWindow.presentationV2.groupResolution.groupFrameId,
+      activeFrameId: openWindow.presentationV2.groupResolution.activeFrameId,
+      checkpointId: openWindow.causalEnvelope.checkpoint.checkpointId,
+      presentationRevision: openWindow.causalEnvelope.presentationRevision,
+      sourceId: opened.source.id,
+      cardKind: kind,
+      targetId: opened.target.id,
+    }, `${kind}: the public counter chain is scoped to the exact current target effect`);
     assert.deepEqual(openWindow.presentationV2.groupResolution?.participantProgress?.[0], { playerId: opened.target.id, order: 1, status: "CURRENT" }, "the pending Negation is not public as a completed outcome");
     const passed = await requestAndSettle("decline_response", { code: opened.code, token: opened.targetMember.token, preserveResponse: true });
     assert.equal(passed.status, 200, `${kind}: ${JSON.stringify(passed.data)}`);
@@ -1426,6 +1450,9 @@ test("UX2.7 mismatched Group Negation target remains outcome-free", { timeout: 3
     ...livePending,
     continuation: { ...livePending.continuation, effectTargetId: opened.bob.id },
   }))} WHERE code=${quote(opened.code)}`);
+
+  const malformedActiveWindow = await assertProjectionMatchesEngine(opened.code, opened.targetMember.token);
+  assert.equal(malformedActiveWindow.presentationV2.reactionChain, null, "a mismatched effectTargetId withholds the public target-scoped counter chain");
 
   const passed = await requestAndSettle("decline_response", { code: opened.code, token: opened.targetMember.token, preserveResponse: true });
   assert.equal(passed.status, 200, JSON.stringify(passed.data));

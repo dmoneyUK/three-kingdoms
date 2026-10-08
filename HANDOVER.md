@@ -5,37 +5,36 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2.6-PHASE-C-GROUP-TARGET-BRANCH-GRAPH-01` is implemented locally. Real
-server-backed Raining Arrows and Barbarian Invasion graphs passed at
-390×844, 480×900, and 1440×900, including participant advancement, stable
-root/Seat geometry, source/branch endpoints within 1.5px of their authoritative
-physical anchors, no card/Seat/Dock overlap or horizontal overflow, private-Hand
-exclusion, and fail-closed fallback. Eight focused production-path browser
-cases, 18 root/Duel regression cases, build, targeted ESLint, and
-`git diff --check` passed. Before-commit parent `3fe0592c56b861138ccfc05ba14f8f2b97bb634e`
-passed all five Actions jobs in run `37767512338`; the task commit's run is
-pending verification at the next commit boundary. Reviewer acceptance is not
-claimed.
+`UX2.6-PHASE-C-GROUP-TARGET-EFFECT-SCOPE-AUTHORITY-01` is implemented. The
+server-backed API suite passed 34/34; PresentationV2, Snapshot, and Client
+tests passed 114/114; build, targeted ESLint, and `git diff --check` passed.
+This was an authority-only change; no new browser geometry was introduced.
+Exact pre-commit parent `c0e7921b2ac29ddb34847dd16227c853a6b0c3cd` passed all
+five Actions jobs in run `37770799050`. Inspect this task commit's exact-SHA CI
+before the next commit. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
 Re-fetched remote `docs/UX2-refine.md`, blob
-`7feb8af937b6407f3f33c3959325db8d3f188cf4`, and reviewed §§6.9–6.11,
-6.16–6.20, and 6.24–6.26. The public Group graph now keeps one root fixed and
-switches only the proven active target branch. Group Negation currently has a
-server-owned `effectTargetId`, but the public reaction-chain contract does not
-explicitly link that chain to its target-effect branch.
+`7feb8af937b6407f3f33c3959325db8d3f188cf4`; it is unchanged from the last
+reviewed revision. Re-read §§6.10, 6.13, and 6.24–6.26, including the §4D gate
+and its completed P1–P5 / §4A / §4.10 roadmap evidence. The new typed scope now
+identifies one proven Group target-effect branch; the existing physical-seat
+graph still renders only during Group resolution, so committed Group Negation
+and counter-Negation have no branch-attached graph yet.
 
 ## Current / next task
 
-`UX2.6-PHASE-C-GROUP-TARGET-EFFECT-SCOPE-AUTHORITY-01` — add a typed public
-presentation proof associating an in-progress Group Negation/counter-Negation
-chain with exactly one target-effect instance, only when the existing
-server-owned `effectTargetId`, Group root frame/current target, interaction,
-checkpoint, and presentation revision agree. Carry and revalidate the proof
-through PresentationV2, Snapshot, and Client; fail closed on mismatch and keep
-it viewer-equal without exposing private response options. Prove real
-Raining Arrows and Barbarian Invasion API chains, including counter-Negation,
-malformed target mismatch, and ordinary single-target Negation compatibility.
-Do not change gameplay rules or render new counter geometry in this task; stop
-after the authoritative contract and focused proof are complete.
+`UX2.6-PHASE-C-GROUP-TARGET-EFFECT-COUNTER-GRAPH-01` — keep the authoritative
+Group root and target branches visible during a proven Group Negation chain;
+render only committed public Negation nodes, tether each to its proven actor,
+and attach the first counter relation to the exact target-effect branch named
+by `groupTargetEffectScope`, with later counter-Negations attached to the
+preceding Negation. Only that branch may appear blocked/reactivated; preserve
+the root and unaffected branches, fail closed on missing/mismatched proof, and
+show no private responder placeholder. Extend the typed projection with
+branch effect state only as required to represent authoritative `negated` /
+`chainDepth` coherently. Prove real Raining Arrows and Barbarian Invasion open,
+first-Negation, and counter-Negation browser paths with branch/root geometry,
+containment, and no horizontal overflow; retain ordinary single-target graph
+regressions. Do not change gameplay rules or globally cancel the Group root.

@@ -3,6 +3,7 @@ import { CARD_KINDS, type CardKind } from "./model";
 import { CARD_DEFINITIONS } from "./cards";
 import { provenAttackDodgeResponses, provenDuelExchange, provenSelfTargetActions, type PresentationSnapshot, type PresentationSnapshotAttackDodgeResponse, type PresentationSnapshotBumperHarvestProgress, type PresentationSnapshotDuelExchange, type PresentationSnapshotGroupParticipantProgress, type PresentationSnapshotGroupProgress, type PresentationSnapshotOathRecipientScope, type PresentationSnapshotRootAction, type PresentationSnapshotSelfTargetAction } from "./presentation-snapshot";
 import type {
+  PresentationGroupTargetEffectScope,
   InteractionSceneContinuity,
   PresentationInteractionScene,
   PresentationStableBoundaryKind,
@@ -86,6 +87,7 @@ export type InteractionStageView = {
   reactionChainRootCard: NonNullable<PresentationSnapshot["reactionChain"]>["rootCard"];
   reactionChainPublicEventLinks: NonNullable<PresentationSnapshot["reactionChain"]>["publicEventLinks"] | null;
   reactionChainRootEffectState: NonNullable<PresentationSnapshot["reactionChain"]>["rootEffectState"] | null;
+  reactionChainGroupTargetEffectScope: PresentationGroupTargetEffectScope | null;
   rootOrigin?: {
     frameId: string;
     stage: PresentationInteractionScene["stage"];
@@ -123,6 +125,7 @@ export type ReactionChainView = {
   negationNodes: readonly ReactionChainNegationNodeView[];
   publicEventLinks: { root: { eventId: string; resolutionId: string }; nodes: readonly { eventId: string; resolutionId: string }[] } | null;
   rootEffectState: "ACTIVE" | "BLOCKED" | null;
+  groupTargetEffectScope: PresentationGroupTargetEffectScope | null;
   root: {
     effect: string;
     cardKind: CardKind | null;
@@ -266,9 +269,51 @@ function isStringArray(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every(isString);
 }
 
+function groupTargetEffectScopeForClient(
+  value: unknown,
+  scene: PresentationInteractionScene,
+  identity: NonNullable<PresentationSnapshot["identity"]>,
+  groupProgress: PresentationSnapshotGroupProgress | null,
+): PresentationGroupTargetEffectScope | null {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !groupProgress) return null;
+  const scope = value as Partial<PresentationGroupTargetEffectScope>;
+  const targetId = scope.targetId;
+  const cardKind = scope.cardKind;
+  const active = groupProgress.participants.filter(({ status }) => status === "CURRENT" || status === "PAUSED");
+  if (scope.semantics !== "PROVEN" || scope.relation !== "GROUP_TARGET_EFFECT"
+    || !isString(scope.interactionId) || scope.interactionId !== identity.interactionId
+    || !isString(scope.groupFrameId) || scope.groupFrameId !== groupProgress.groupFrameId
+    || scope.groupFrameId !== scene.rootFrameId || !isString(scope.activeFrameId)
+    || scope.activeFrameId !== groupProgress.activeFrameId || scope.activeFrameId !== scene.activeFrameId
+    || scope.activeFrameId !== scope.groupFrameId || !isString(scope.checkpointId) || scope.checkpointId !== identity.checkpointId
+    || !isInteger(scope.presentationRevision) || scope.presentationRevision !== identity.presentationRevision
+    || !isString(scope.sourceId) || scope.sourceId !== scene.sourceId
+    || (cardKind !== "RainingArrows" && cardKind !== "BarbarianInvasion") || cardKind !== groupProgress.cardKind
+    || !isString(targetId)
+    || scene.stage !== "NEGATION" || scene.continuity.relation !== "SAME_FRAME"
+    || scene.rootFrameId !== scene.activeFrameId || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== targetId
+    || scene.participantRoles.sourceId !== scope.sourceId
+    || groupProgress.resolutionSemantics !== "GROUP"
+    || !groupProgress.targetIds.includes(targetId) || active.length !== 1 || active[0].playerId !== targetId
+    || active[0].status !== "CURRENT") return null;
+  return {
+    semantics: "PROVEN",
+    relation: "GROUP_TARGET_EFFECT",
+    interactionId: identity.interactionId,
+    groupFrameId: scope.groupFrameId,
+    activeFrameId: scope.activeFrameId,
+    checkpointId: identity.checkpointId,
+    presentationRevision: identity.presentationRevision,
+    sourceId: scope.sourceId,
+    cardKind,
+    targetId,
+  };
+}
+
 function reactionChainForSnapshot(
   snapshot: PresentationSnapshot,
   scene: PresentationInteractionScene,
+  groupProgress: PresentationSnapshotGroupProgress | null,
 ): PresentationSnapshot["reactionChain"] {
   const chain = snapshot.reactionChain;
   const identity = snapshot.identity;
@@ -348,8 +393,18 @@ function reactionChainForSnapshot(
     && (chain.rootEffectState === "ACTIVE" || chain.rootEffectState === "BLOCKED")
     ? chain.rootEffectState
     : undefined;
+  const rawGroupTargetEffectScope = (chain as { groupTargetEffectScope?: unknown }).groupTargetEffectScope;
+  const groupNegation = scene.stage === "NEGATION" && scene.continuity.relation === "SAME_FRAME"
+    && groupProgress?.resolutionSemantics === "GROUP" && groupProgress.groupFrameId === scene.rootFrameId
+    && groupProgress.activeFrameId === scene.activeFrameId;
+  const groupTargetEffectScope = rawGroupTargetEffectScope !== undefined
+    ? groupTargetEffectScopeForClient(rawGroupTargetEffectScope, scene, identity, groupProgress)
+    : null;
+  if ((groupNegation && !groupTargetEffectScope)
+    || (rawGroupTargetEffectScope !== undefined && (!groupTargetEffectScope || rootCard !== null))) return null;
   return {
     semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes,
+    ...(groupTargetEffectScope ? { groupTargetEffectScope } : {}),
     ...(publicEventLinks ? { publicEventLinks } : {}),
     ...(rootEffectState ? { rootEffectState } : {}),
   };
@@ -621,7 +676,7 @@ export function buildPresentationClientView(
     groupParticipantProgress: groupProgress?.resolutionSemantics === "GROUP" ? groupProgress.participants : [],
     oathRecipientScope: oathScope,
     bumperHarvestProgress,
-    reactionChain: reactionChainForSnapshot(snapshot, scene),
+    reactionChain: reactionChainForSnapshot(snapshot, scene, groupProgress),
     rootAction,
     duelExchange: provenDuelExchange(snapshot.duelExchange, scene, snapshot.identity, snapshot.stable),
     ...(attackDodgeResponses.length ? { attackDodgeResponses } : {}),
@@ -747,6 +802,7 @@ export function buildInteractionStageView(
     reactionChainRootCard: view.stage === "NEGATION" ? view.reactionChain?.rootCard ?? null : null,
     reactionChainPublicEventLinks: view.stage === "NEGATION" ? view.reactionChain?.publicEventLinks ?? null : null,
     reactionChainRootEffectState: view.stage === "NEGATION" ? view.reactionChain?.rootEffectState ?? null : null,
+    reactionChainGroupTargetEffectScope: view.stage === "NEGATION" ? view.reactionChain?.groupTargetEffectScope ?? null : null,
     ...(view.rootOrigin ? {
       rootOrigin: {
         frameId: view.rootOrigin.frameId,
@@ -773,7 +829,7 @@ export function buildInteractionStageView(
  */
 export function buildReactionChainView(stage: InteractionStageView): ReactionChainView {
   if (!stage.visible || stage.stage !== "NEGATION" || !stage.effect || !stage.source.id) {
-    return { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, rootEffectState: null, root: null, active: null };
+    return { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, rootEffectState: null, groupTargetEffectScope: null, root: null, active: null };
   }
   return {
     visible: true,
@@ -784,6 +840,7 @@ export function buildReactionChainView(stage: InteractionStageView): ReactionCha
       nodes: stage.reactionChainPublicEventLinks.nodes.map(({ eventId, resolutionId }) => ({ eventId, resolutionId })),
     } : null,
     rootEffectState: stage.reactionChainRootEffectState,
+    groupTargetEffectScope: stage.reactionChainGroupTargetEffectScope ? { ...stage.reactionChainGroupTargetEffectScope } : null,
     root: {
       effect: stage.effect,
       cardKind: stage.reactionChainRootCard?.cardKind ?? null,

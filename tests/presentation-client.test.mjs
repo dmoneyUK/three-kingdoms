@@ -468,6 +468,56 @@ test("adapter carries only a proven, linked Negation history without adding UI c
   assert.equal(invalidDisposition.reactionChain?.rootEffectState, undefined);
 });
 
+test("adapter preserves Group Negation target-effect scope only for the current public branch", () => {
+  const base = groupProgressSnapshot();
+  const interaction = {
+    ...base.interaction,
+    stage: "NEGATION",
+    continuity: { relation: "SAME_FRAME", parentFrameId: null },
+  };
+  const scope = {
+    semantics: "PROVEN",
+    relation: "GROUP_TARGET_EFFECT",
+    interactionId: interaction.interactionId,
+    groupFrameId: interaction.rootFrameId,
+    activeFrameId: interaction.activeFrameId,
+    checkpointId: interaction.checkpointId,
+    presentationRevision: interaction.presentationRevision,
+    sourceId: "A",
+    cardKind: "RainingArrows",
+    targetId: "B",
+  };
+  const reactionChain = {
+    semantics: "PROVEN", interactionId: interaction.interactionId, frameId: interaction.activeFrameId,
+    rootCard: null, nodes: [], groupTargetEffectScope: scope,
+  };
+  const snapshotValue = snapshot({
+    interaction,
+    stable: { ...base.stable, decisionActorId: "B" },
+    groupParticipantProgress: base.groupParticipantProgress,
+    reactionChain,
+    decision: { actorId: "B", stage: "NEGATION" },
+  });
+  const acting = buildPresentationClientView(snapshotValue, "B");
+  const observer = buildPresentationClientView({
+    ...snapshotValue,
+    localControl: { ...snapshotValue.localControl, actorId: null, entitled: false },
+  }, "C");
+  assert.deepEqual(acting.reactionChain?.groupTargetEffectScope, scope);
+  assert.deepEqual(observer.reactionChain?.groupTargetEffectScope, scope, "the public branch relation is viewer-equal");
+  const stage = buildInteractionStageView(acting, resolveDisplayName);
+  assert.deepEqual(stage.reactionChainGroupTargetEffectScope, scope);
+  assert.deepEqual(buildReactionChainView(stage).groupTargetEffectScope, scope);
+
+  for (const malformedScope of [undefined, { ...scope, targetId: "C" }, { ...scope, groupFrameId: "other-frame" }, { ...scope, presentationRevision: 4 }]) {
+    const malformed = buildPresentationClientView({
+      ...snapshotValue,
+      reactionChain: { ...reactionChain, groupTargetEffectScope: malformedScope },
+    }, "B");
+    assert.equal(malformed.reactionChain, null, "missing or mismatched target-effect scope fails closed");
+  }
+});
+
 test("adapter carries validated ordered Standard AOE progress through root and child frames", () => {
   for (const child of [false, true]) {
     const view = buildPresentationClientView(groupProgressSnapshot({ child }), "D");
@@ -1475,6 +1525,7 @@ test("Reaction Chain projects only a proven Negation root and active response", 
     negationNodes: [],
     publicEventLinks: null,
     rootEffectState: null,
+    groupTargetEffectScope: null,
     root: {
       effect: "Dismantle",
       cardKind: null,
@@ -1502,8 +1553,8 @@ test("Reaction Chain stays viewer-equal and cannot derive counter history from l
 test("Reaction Chain fails closed outside a proven Negation scene", () => {
   const attack = buildReactionChainView(buildInteractionStageView(buildPresentationClientView(snapshot(), "B"), resolveDisplayName));
   const malformed = buildReactionChainView(buildInteractionStageView(buildPresentationClientView(snapshot({ interaction: scene({ stage: "NEGATION", effect: null }) }), "B"), resolveDisplayName));
-  assert.deepEqual(attack, { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, rootEffectState: null, root: null, active: null });
-  assert.deepEqual(malformed, { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, rootEffectState: null, root: null, active: null });
+  assert.deepEqual(attack, { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, rootEffectState: null, groupTargetEffectScope: null, root: null, active: null });
+  assert.deepEqual(malformed, { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, rootEffectState: null, groupTargetEffectScope: null, root: null, active: null });
 });
 
 test("Dying handoff keeps the dying participant public and the rescue actor bounded", () => {

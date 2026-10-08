@@ -170,7 +170,7 @@ test("single-target Negation exposes only an authoritative root card identity", 
   assert.equal(project({ frame: { origin: { ...baseFrame.origin, originalTargetIds: ["other-target"] } } }).reactionChain?.rootCard, null, "frame/target mismatch fails closed");
   assert.equal(project({ continuation: { causal: { interactionId, frameId: "other-frame" } } }).reactionChain, null, "continuation frame mismatch rejects the chain");
   assert.equal(project({ continuation: { effect: { kind: "oath" }, rootCardKind: "Oath" } }).reactionChain?.rootCard, null, "multi-target Oath does not use the single-target root contract");
-  assert.equal(project({ continuation: { effect: { kind: "group", pending: {} }, rootCardKind: "BarbarianInvasion" } }).reactionChain?.rootCard, null, "Group/AOE keeps its existing presentation contract");
+  assert.equal(project({ continuation: { effect: { kind: "group", pending: {} }, rootCardKind: "BarbarianInvasion" } }).reactionChain, null, "an unproven Group target-effect association withholds the reaction chain");
 });
 
 test("single-target Negation event links bind exact public card events without copying physical card IDs", () => {
