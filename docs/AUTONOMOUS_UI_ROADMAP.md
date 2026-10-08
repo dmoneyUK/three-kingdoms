@@ -1999,25 +1999,21 @@ Only a proven regression or new Reviewer-approved design requirement does.
 
 ### UX2.6-ATTACK-ROOT-GRAPH-LEGACY-ROUTING-01 — Attack reveal convergence and visual clarity
 
-- On the real server-backed ordinary Attack path, the exact proven root card no
-  longer waits for unrelated reveal/event queues before the physical-seat graph
-  can become ready, and the same Attack event is not simultaneously shown as a
-  table reveal. The safe legacy Stage remains when root proof is absent. Attack
-  source/target paths are straight; measured styling is 3.2px source, 4.8px
-  target, 14px arrowhead, and a 3px gold halo aligned 5px outside the target
-  portrait. Server-backed Attack/Dodge browser cases passed 10/10 over 4/6/8
-  players and 390×844, 480×900, and 1440×900. The base `fc65e3c` Actions run
-  `37830537625` failed Browser shard 2/2 because the Bumper visual-gate fixture
-  omitted newly required root event/resolution/card identities and child effect
-  state; those contract fields were restored and the two failing Bumper cases
-  pass 2/2 without assertion changes. Build, overlay ESLint, browser-spec
-  syntax, and diff checks passed; `app/page.tsx` targeted ESLint exited on local
-  Node heap OOM. The resulting branch, including CI repair, passed exact SHA
-  `84cfe44d1506f2a486d14da27259734440875231` in Actions run `37839750886`
-  (#918): API, lint/fast, both browser shards, deploy, Worker deploy, and
-  production smoke test succeeded. This is not a manual gameplay screenshot or
-  Reviewer acceptance; intermittent legacy-versus-graph Attack presentation
-  and perceived connector legibility remain the next bounded audit.
+- Ordinary Attack now keeps the legacy composition visible until its exact
+  server-proven graph is geometrically ready, then atomically removes the Stage
+  and table reveal. RAF traces record proof/event/source/target, display mode,
+  visible root card, and the Inspect/geometry fallback gate; both fallbacks
+  restore the graph when cleared. A real server-backed 4/6/8-player matrix
+  passed 11/11 across 390×844, 480×900, and 1440×900, including submitted
+  Dodge and reduced-motion settlement. Browser measurements confirmed straight
+  source/target paths, 4.8px source tether, 6.5px target arrow, 20px marker,
+  and 4.5px gold halo; proof-to-graph was bounded to ≤250ms. `npm run build`,
+  split targeted ESLint, and `git diff --check` passed. One initial two-worker
+  run had two 8-player target-page sessions remain at the lobby; those exact
+  layouts and the complete two-worker 11/11 matrix passed on rerun. Latest
+  pre-commit Actions run `37839750886` (#918) succeeded on code SHA
+  `84cfe44d1506f2a486d14da27259734440875231`; no post-deploy screenshot or
+  Reviewer acceptance is claimed.
 
 ## Known deferred semantic gaps
 

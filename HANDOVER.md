@@ -5,28 +5,28 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-Stargazing invalid-drop CI failure is repaired without weakening its assertions.
-The browser test now hovers/hit-tests the card before measuring and starting the
-drag; the workflow lets both browser shards finish after a failure. Focused
-390×844 real-gameplay test passed 5/5 locally; targeted ESLint and
-`git diff --check` passed. Exact SHA
-`84cfe44d1506f2a486d14da27259734440875231`, Actions run `37839750886` (#918),
-passed API, lint/fast, both browser shards, deploy, Worker deploy, and production
-smoke test. No manual post-deploy gameplay screenshot or Reviewer acceptance is
-claimed.
+`UX2.6-ATTACK-ROOT-GRAPH-ROUTING-LEGIBILITY-01` is implemented. Real
+server-backed RAF evidence proves the Attack graph handoff, mutually exclusive
+Stage/reveal fallback, Inspect/geometry fallback and recovery. Browser geometry
+measured straight connectors, 4.8px source tether, 6.5px target arrow, 20px
+arrowhead, and 4.5px gold target halo. Final focused matrix passed 11/11.
+
+Pre-commit latest relevant Actions run `37839750886` (#918) succeeded on code
+SHA `84cfe44d1506f2a486d14da27259734440875231`; current remote HEAD
+`4f0b0a5bb3c99ce8125e964e51b5859f290c1a2a` adds docs only. Task commit/CI and
+post-deploy screenshot are pending; Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
-Latest `origin/ux-v2:docs/UX2-refine.md` blob reviewed:
-`7feb8af937b6407f3f33c3959325db8d3f188cf4`; §§6.15–6.20 and 6.24–6.26
-rechecked. Reviewer acceptance is not claimed.
+Latest remote `docs/UX2-refine.md` blob:
+`7feb8af937b6407f3f33c3959325db8d3f188cf4` (unchanged). §§4.10, 4A–4D, and
+6.1–6.26 reviewed at the planning boundary.
 
 ## Current task
 
-`UX2.6-ATTACK-ROOT-GRAPH-ROUTING-LEGIBILITY-01` — use real server-backed
-ordinary Attack flows to determine why the safe legacy Stage is sometimes
-visible, and ensure the proven Attack converges to one root-card graph without
-duplicate/stale composition. Preserve fallback when authority or measured
-geometry is unavailable. Verify straight source→Attack→target connectors and
-measurable line, arrowhead, and target-highlight legibility at mobile and wide
-sizes; attach fresh screenshots and geometry evidence.
+`UX2.6-FINAL-AOE-POST-ATTACK-ROUTING-REVALIDATION-01` — revalidate real
+server-backed Group/Raining Arrows, Oath, and Bumper Harvest compositions
+after the graph handoff change. Measure root/Seat stability, active-branch
+semantics, Stage/Dock containment, and overflow at approved mobile/wide sizes;
+attach fresh screenshots for Reviewer inspection. Repair only a proven
+in-scope regression; do not claim Reviewer acceptance.

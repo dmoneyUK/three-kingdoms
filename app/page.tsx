@@ -23,6 +23,7 @@ import { InteractionRootOverlay, interactionRootActionKey, type InteractionRootO
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
 type ActiveAttackDodgeSettlement = { eventId: string; phase: "exiting" | "complete" };
+type RootActionOverlayLayoutReadiness = { key: string; state: "measuring" | "ready" | "unavailable" } | null;
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
 type PresentationImportance = "essential" | "informational";
 type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof };
@@ -1914,9 +1915,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   // visible dock while preserving the existing card IDs and callbacks.
   // Legacy seat semantics retain presence-dot, started-player, and play-seat terminology.
   const [messagesCollapsed, setMessagesCollapsed] = useState(true);
-  const [rootActionOverlayReadyKey, setRootActionOverlayReadyKey] = useState<string | null>(null);
-  const onRootActionOverlayReadyChange = useCallback((key: string | null) => {
-    setRootActionOverlayReadyKey((current) => current === key ? current : key);
+  const [rootActionOverlayLayoutReadiness, setRootActionOverlayLayoutReadiness] = useState<RootActionOverlayLayoutReadiness>(null);
+  const onRootActionOverlayLayoutReadinessChange = useCallback((next: RootActionOverlayLayoutReadiness) => {
+    setRootActionOverlayLayoutReadiness((current) => current?.key === next?.key && current?.state === next?.state ? current : next);
   }, []);
   const [effectNotice, setEffectNotice] = useState<string | null>(null);
   const [infoCard, setInfoCard] = useState<Card | null>(null);
@@ -3454,11 +3455,28 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const rootActionOverlayEnabled = Boolean(rootActionOverlayAction && rootActionSource?.name
     && (rootGroupTargetNamesKnown || rootOrderedTargetNamesKnown || rootSimultaneousTargetNamesKnown || rootActionOverlayAction.mode === "self-target" || rootActionTarget?.name)
     && !rootActionTemporarilyBlocked && !rootActionAwaitingReveal);
-  const rootActionOverlayVisible = Boolean(rootActionOverlayEnabled && rootActionOverlayAction && rootActionOverlayReadyKey === rootActionOverlayAction.key);
+  const rootActionLayoutState = rootActionOverlayAction && rootActionOverlayLayoutReadiness?.key === rootActionOverlayAction.key
+    ? rootActionOverlayLayoutReadiness.state
+    : null;
+  const rootActionOverlayGraphReady = Boolean(rootActionOverlayEnabled && rootActionLayoutState === "ready");
+  const rootActionOverlayMeasuring = Boolean(rootActionOverlayEnabled && (rootActionLayoutState === null || rootActionLayoutState === "measuring"));
+  const rootActionOverlayGeometryUnavailable = Boolean(rootActionOverlayEnabled && rootActionLayoutState === "unavailable");
+  // Keep the current Stage/reveal composition intact until geometry is proven.
+  // The graph and its removal of legacy composition switch in the same render;
+  // if measurement fails, the legacy presentation remains the safe fallback.
+  const rootActionOverlayVisible = rootActionOverlayGraphReady;
+  const rootActionOverlayOwnsComposition = rootActionOverlayGraphReady;
+  const rootActionOverlayDisplayMode = rootActionOverlayGraphReady ? "graph" : rootActionOverlayMeasuring ? "measuring" : "fallback";
+  const rootActionOverlayFallbackReason = rootActionOverlayDisplayMode !== "fallback" ? undefined
+    : !rootActionOverlayAction ? "no-proven-root"
+      : rootActionAwaitingReveal ? "awaiting-public-reveal"
+        : rootActionTemporarilyBlocked ? "local-presentation-precedence"
+          : !rootActionOverlayEnabled ? "overlay-prerequisite-unavailable"
+            : rootActionOverlayGeometryUnavailable ? "geometry-unavailable" : undefined;
   const activeOverlaySettlementEventId = rootActionOverlayAction?.settlement?.eventId ?? null;
   const activeOverlaySettlementExiting = rootActionOverlayAction?.settlement?.exiting === true;
   useEffect(() => {
-    if (!activeOverlaySettlementEventId || !rootActionOverlayVisible || activeSkillEffectSettlement?.eventId !== activeOverlaySettlementEventId || activeSkillEffectSettlement.exiting) return;
+    if (!activeOverlaySettlementEventId || !rootActionOverlayGraphReady || activeSkillEffectSettlement?.eventId !== activeOverlaySettlementEventId || activeSkillEffectSettlement.exiting) return;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const timer = window.setTimeout(() => {
       setActiveSkillEffectSettlement((current) => current?.eventId === activeOverlaySettlementEventId
@@ -3466,7 +3484,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         : current);
     }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
-  }, [activeOverlaySettlementEventId, activeSkillEffectSettlement?.eventId, activeSkillEffectSettlement?.exiting, rootActionOverlayVisible]);
+  }, [activeOverlaySettlementEventId, activeSkillEffectSettlement?.eventId, activeSkillEffectSettlement?.exiting, rootActionOverlayGraphReady]);
   useEffect(() => {
     if (!activeOverlaySettlementExiting || !activeOverlaySettlementEventId || activeSkillEffectSettlement?.eventId !== activeOverlaySettlementEventId) return;
     const timer = window.setTimeout(() => setActiveSkillEffectSettlement((current) => current?.eventId === activeOverlaySettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
@@ -3476,7 +3494,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     ? rootActionOverlayAction.settlement.eventId
     : null;
   useEffect(() => {
-    if (!activeAttackDodgeSettlementEventId || !rootActionOverlayVisible
+    if (!activeAttackDodgeSettlementEventId || !rootActionOverlayGraphReady
       || activeAttackDodgeSettlement?.eventId === activeAttackDodgeSettlementEventId
       || attackDodgeSettlementTimerEventId.current === activeAttackDodgeSettlementEventId) return;
     attackDodgeSettlementTimerEventId.current = activeAttackDodgeSettlementEventId;
@@ -3488,7 +3506,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       window.clearTimeout(timer);
       if (attackDodgeSettlementTimerEventId.current === activeAttackDodgeSettlementEventId) attackDodgeSettlementTimerEventId.current = null;
     };
-  }, [activeAttackDodgeSettlement?.eventId, activeAttackDodgeSettlementEventId, rootActionOverlayVisible]);
+  }, [activeAttackDodgeSettlement?.eventId, activeAttackDodgeSettlementEventId, rootActionOverlayGraphReady]);
   useEffect(() => {
     if (activeAttackDodgeSettlement?.phase !== "exiting") return;
     const timer = window.setTimeout(() => {
@@ -3507,7 +3525,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     && attackDodgeResponseCandidate?.proof.responseEventId === activeAttackDodgeSettlement.eventId
     ? attackDodgeResponseCandidate
     : null;
-  const displayedSequenceEvents = rootActionOverlayVisible && rootActionOverlayAction
+  const displayedSequenceEvents = rootActionOverlayOwnsComposition && rootActionOverlayAction
     ? sequenceEvents.filter((event) => event.id !== rootActionOverlayAction.rootEventId
       && event.id !== rootActionOverlayAction.response?.eventId
       && !duelExchangeEventIds.has(event.id)
@@ -3522,11 +3540,11 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         && !eventCards(event).some((card) => card.id === completedAttackDodgeSequenceCandidate.rootEvent.card.id
           || card.id === completedAttackDodgeSequenceCandidate.responseEvent.card.id))
     : sequenceEvents;
-  const activeRootSelfTargetEvent = rootActionOverlayVisible && rootActionOverlayAction?.mode === "self-target"
+  const activeRootSelfTargetEvent = rootActionOverlayOwnsComposition && rootActionOverlayAction?.mode === "self-target"
     && rootActionCardId && displayedEvent && eventCards(displayedEvent).some((card) => card.id === rootActionCardId);
-  const activeRootAttackEvent = rootActionOverlayVisible && rootAction?.action === "ATTACK" && rootActionCardId && displayedEvent
+  const activeRootAttackEvent = rootActionOverlayOwnsComposition && rootActionOverlayAction?.cardKind === "Attack" && rootActionCardId && displayedEvent
     && eventCards(displayedEvent).some((card) => card.id === rootActionCardId);
-  const activeRootResponseEvent = rootActionOverlayVisible && rootActionOverlayAction?.response && displayedEvent
+  const activeRootResponseEvent = rootActionOverlayOwnsComposition && rootActionOverlayAction?.response && displayedEvent
     && (displayedEvent.id === rootActionOverlayAction.response.eventId
       || duelExchangeGraphCandidate?.responseEvent && displayedEvent.id === duelExchangeGraphCandidate.responseEvent.id
       || attackDodgeGraphCandidate && eventCards(displayedEvent).some((card) => card.id === attackDodgeGraphCandidate.responseEvent.card.id)
@@ -3692,7 +3710,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       <div className="player-board" aria-label="Players" data-player-count={room.players.length} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}>{room.players.filter((player) => player.id !== room.meId).map((player) => { const index = room.players.findIndex((candidate) => candidate.id === player.id); const relativeIndex = (index - myTableIndex + room.players.length) % room.players.length; const selectedTargetCardKind = selectedCanPlayAsAttack ? "Attack" : card?.kind; const cardTargetLegal = Boolean(card && (card.kind === "BorrowedSword" ? borrowedSwordPlayTargetIds.includes(player.id) : selectedTargetCardKind && canTargetCharacter({ sourceId: room.meId, targetId: player.id, targetHero: player.hero, targetHandCount: player.handCount, cardKind: selectedTargetCardKind }))); const targetablePlayer = Boolean((borrowedSwordTargetSelectionActive && borrowedSwordEligibleTargetIds.includes(player.id) && player.alive) || (activeSkillTargetMode && activeSkillTargetIds.includes(player.id) && player.alive) || (triggerTargetSelection?.targetIds.includes(player.id) && triggerTargetMode) || (serpentMode && canPlay) || (card && cardTargetLegal && (selectedCanPlayAsAttack || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "BorrowedSword" || card.kind === "Overindulgence" || card.kind === "RationsDepleted"))); return <OpponentPlayerCard key={`square-${player.id}`} totalPlayers={room.players.length} player={player} viewerId={room.meId} playerHero={heroDefinition(player.hero)} relativeIndex={relativeIndex} isTurn={player.seat === room.turnSeat} isActionPlayer={clientPresentation.stage !== "NEGATION" && player.id === room.actionPlayerId} isSelectedTarget={borrowedSwordTargetId === player.id || targetIds.includes(player.id)} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(player.id)} interactionRoles={projectInteractionSeatRoles(clientPresentation, player.id)} targetSelectionActive={targetSelectionActive} targetablePlayer={targetablePlayer} onTarget={() => { if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id); else { setTarget(player.id); setTargetCardIndex(null); } }} onInspect={() => setExpandedOpponentId((currentId) => currentId === player.id ? null : player.id)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} judgementInFlight={judgementInFlight} serpentSelected={serpentSelected} triggerResponse={triggerResponse} triggerSelectionUsesCards={triggerSelectionUsesCards} responseDecisionReady={responseDecisionReady} triggerCardOption={triggerCardOption} onToggleEquipment={(cardId) => setSerpentSelected((ids) => ids.includes(cardId) ? ids.filter((id) => id !== cardId) : ids.length < (triggerResponse && triggerSelectionUsesCards ? triggerSelectionMax : 2) ? [...ids, cardId] : ids)} />; })}</div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
     </section>
-    <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} onReadyChange={onRootActionOverlayReadyChange} />
+    <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} displayMode={rootActionOverlayDisplayMode} layoutReadiness={rootActionLayoutState} fallbackReason={rootActionOverlayFallbackReason} onLayoutReadinessChange={onRootActionOverlayLayoutReadinessChange} />
     <footer className="play-command">
     <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight}
       heroSkillControl={

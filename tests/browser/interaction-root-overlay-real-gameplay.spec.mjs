@@ -49,28 +49,55 @@ async function openGame(page, seed, playerIndex, viewport) {
   await page.addInitScript(() => {
     const original = HTMLElement.prototype.getBoundingClientRect;
     window.__wtkRootOverlayPreGraphAnchors = null;
-    window.__wtkAttackCompositionStates = [];
-    const captureComposition = () => {
-      const overlay = document.querySelector('[data-root-action-overlay="true"]');
-      const stage = document.querySelector('.interaction-stage[data-stage="ATTACK_RESPONSE"]');
-      const activeReveal = document.querySelector(".active-table-reveal .game-card");
-      const state = {
-        enabled: overlay?.dataset.rootActionEnabled === "true",
-        ready: overlay?.dataset.rootActionReady === "true",
-        attackStage: Boolean(stage),
-        activeReveal: Boolean(activeReveal),
+    window.__wtkAttackVisibleFrames = [];
+    window.__wtkAttackFrameSamplingComplete = false;
+    window.__wtkStartAttackVisibleFrameSampling = () => {
+      window.__wtkAttackVisibleFrames = [];
+      window.__wtkAttackFrameSamplingComplete = false;
+      const startedAt = performance.now();
+      let frameNumber = 0;
+      const isVisible = (element) => {
+        if (!element) return false;
+        const style = getComputedStyle(element);
+        const bounds = element.getBoundingClientRect();
+        return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0
+          && bounds.width > 0 && bounds.height > 0;
       };
-      const states = window.__wtkAttackCompositionStates;
-      const previous = states.at(-1);
-      if (!previous || Object.keys(state).some((key) => previous[key] !== state[key])) states.push(state);
+      const sample = () => {
+        const overlay = document.querySelector('[data-root-action-overlay="true"]');
+        const stage = document.querySelector(".interaction-stage");
+        const attackStage = document.querySelector('.interaction-stage[data-stage="ATTACK_RESPONSE"]');
+        const rootCard = overlay?.querySelector('[data-root-action-card="true"]');
+        const activeRevealCards = [...document.querySelectorAll(".active-table-reveal .game-card, .table-resolution-layer .table-played-card")]
+          .filter(isVisible);
+        const interactionStageVisible = isVisible(stage);
+        const attackResponseStageVisible = isVisible(attackStage);
+        const rootEventId = overlay?.dataset.rootActionEventId ?? null;
+        if (rootEventId || interactionStageVisible || activeRevealCards.length) {
+          window.__wtkAttackVisibleFrames.push({
+            frameNumber: frameNumber++,
+            elapsedMs: Math.round(performance.now() - startedAt),
+            mode: overlay?.dataset.rootActionDisplayMode ?? (interactionStageVisible ? "fallback" : "inactive"),
+            fallbackGate: overlay?.dataset.rootActionFallbackReason ?? (rootEventId ? null : "no-proven-root"),
+            layoutState: overlay?.dataset.rootActionLayoutState ?? null,
+            rootEventId,
+            sourceId: overlay?.dataset.rootActionSourceId ?? null,
+            targetId: overlay?.dataset.rootActionTargetId ?? null,
+            rootCardKind: overlay?.dataset.rootActionCardKind ?? null,
+            rootCardVisible: isVisible(rootCard),
+            interactionStageVisible,
+            attackResponseStageVisible,
+            activeTableRevealCardCount: activeRevealCards.length,
+          });
+        }
+        window.__wtkAttackFrameSamplingRequest = requestAnimationFrame(sample);
+      };
+      window.__wtkAttackFrameSamplingRequest = requestAnimationFrame(sample);
     };
-    new MutationObserver(captureComposition).observe(document, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["class", "data-root-action-enabled", "data-root-action-ready", "data-stage", "data-current-effect"],
-    });
-    captureComposition();
+    window.__wtkStopAttackVisibleFrameSampling = () => {
+      cancelAnimationFrame(window.__wtkAttackFrameSamplingRequest);
+      window.__wtkAttackFrameSamplingComplete = true;
+    };
     HTMLElement.prototype.getBoundingClientRect = function (...args) {
       const overlay = document.querySelector('[data-root-action-overlay="true"]');
       if (this.hasAttribute("data-player-anchor") && !window.__wtkRootOverlayPreGraphAnchors && overlay?.dataset.rootActionReady === "false") {
@@ -258,6 +285,7 @@ for (const scenario of [
     const sourceId = seed.players[0].id;
     const targetId = seed.players[1].id;
     await openGame(page, seed, 0, viewport);
+    await page.evaluate(() => window.__wtkStartAttackVisibleFrameSampling());
     await playAttackThroughPage(page, "TARGET");
 
     await expect.poll(async () => (await roomView(request, seed, 1)).presentationSnapshot?.rootAction?.rootEventId ?? null, { timeout: 20_000 }).not.toBeNull();
@@ -275,20 +303,42 @@ for (const scenario of [
     await expect(page.locator(".interaction-stage")).toHaveCount(0);
     await expect(page.locator(".active-table-reveal .game-card")).toHaveCount(0);
     await expect(page.locator(".stage-system-cluster")).toBeVisible();
+    try {
+      await expect.poll(() => page.evaluate(() => window.__wtkAttackVisibleFrames.some((frame) => frame.mode === "graph" && frame.rootCardVisible)), {
+        message: "RAF sampler observes the graph after the rendered proof state",
+      }).toBe(true);
+    } catch (error) {
+      const diagnostic = await page.evaluate(() => ({
+        samplingComplete: window.__wtkAttackFrameSamplingComplete,
+        frameCount: window.__wtkAttackVisibleFrames.length,
+        recentFrames: window.__wtkAttackVisibleFrames.slice(-8),
+        liveOverlay: (() => {
+          const overlay = document.querySelector('[data-root-action-overlay="true"]');
+          const card = overlay?.querySelector('[data-root-action-card="true"]');
+          const style = card ? getComputedStyle(card) : null;
+          const bounds = card?.getBoundingClientRect();
+          return overlay ? {
+            mode: overlay.dataset.rootActionDisplayMode,
+            ready: overlay.dataset.rootActionReady,
+            eventId: overlay.dataset.rootActionEventId,
+            rootCardVisible: Boolean(card && style?.display !== "none" && style?.visibility !== "hidden"
+              && Number(style?.opacity) > 0 && bounds && bounds.width > 0 && bounds.height > 0),
+          } : null;
+        })(),
+      }));
+      await testInfo.attach("attack-frame-sampler-failure.json", { body: JSON.stringify(diagnostic, null, 2), contentType: "application/json" });
+      throw new Error(`${error.message}\nRAF diagnostic: ${JSON.stringify(diagnostic)}`);
+    }
     const after = await measure(page, sourceId, targetId);
-    const compositionStates = await page.evaluate(() => window.__wtkAttackCompositionStates);
-    await testInfo.attach("attack-composition-states.json", { body: JSON.stringify(compositionStates, null, 2), contentType: "application/json" });
-    expect(compositionStates.some((state) => state.attackStage && !state.ready), "the response Stage can appear only before the ready root graph replaces it").toBe(true);
-    expect(compositionStates.at(-1)).toMatchObject({ enabled: true, ready: true, attackStage: false, activeReveal: false });
     expect(after.sourcePath, JSON.stringify({ cardKind: after.overlayCardKind, responseCount: after.responseCount, path: after.sourcePath })).toMatch(/^M \S+ \S+ L \S+ \S+$/);
     expect(after.targetPath).toMatch(/^M \S+ \S+ L \S+ \S+$/);
-    expect(after.sourceStrokeWidth).toBeGreaterThanOrEqual(3);
-    expect(after.targetStrokeWidth).toBeGreaterThanOrEqual(4.5);
+    expect(after.sourceStrokeWidth).toBeGreaterThanOrEqual(4.5);
+    expect(after.targetStrokeWidth).toBeGreaterThanOrEqual(6);
     expect(after.sourceStrokeColor).toBe("rgb(227, 223, 201)");
     expect(after.targetStrokeColor).toBe("rgb(255, 209, 102)");
     expect(after.targetOpacity).toBe("1");
-    expect(after.targetMarkerWidth).toBe("14");
-    expect(after.targetMarkerHeight).toBe("14");
+    expect(after.targetMarkerWidth).toBe("20");
+    expect(after.targetMarkerHeight).toBe("20");
     expect(after.targetHighlight).not.toBeNull();
     expect(after.targetPortrait).not.toBeNull();
     expect(Math.abs(after.targetHighlight.x - (after.targetPortrait.x - 5))).toBeLessThanOrEqual(0.5);
@@ -297,10 +347,10 @@ for (const scenario of [
     expect(Math.abs(after.targetHighlight.height - (after.targetPortrait.height + 10))).toBeLessThanOrEqual(0.5);
     expect(after.targetHighlightPlayerId).toBe(targetId);
     expect(after.targetHighlightStrokeColor).toBe("rgb(255, 224, 138)");
-    expect(after.targetHighlightFill).toBe("rgba(255, 209, 102, 0.22)");
+    expect(after.targetHighlightFill).toBe("rgba(255, 209, 102, 0.36)");
     expect(after.targetHighlightFilter).toContain("drop-shadow");
     expect(after.overlayCardKind).toBe("Attack");
-    expect(after.targetHighlightStrokeWidth).toBeGreaterThanOrEqual(3);
+    expect(after.targetHighlightStrokeWidth).toBeGreaterThanOrEqual(4.5);
     const before = await page.evaluate(() => window.__wtkRootOverlayPreGraphAnchors);
     expect(before, "capture the stable response scene before the graph suppresses Stage").toBeTruthy();
     await testInfo.attach("root-overlay-geometry.json", {
@@ -347,19 +397,78 @@ for (const scenario of [
     expect(after.settledCardCount).toBe(0);
     await testInfo.attach("attack-root-overlay", { body: await page.screenshot(), contentType: "image/png" });
 
+    const inspectTarget = page.locator(`[data-player-anchor="${targetId}"] .opponent-hero-target`);
+    await expect(inspectTarget).toHaveAttribute("aria-label", "Inspect TARGET");
+    await inspectTarget.click();
+    const inspectOverlay = page.locator('[data-root-action-overlay="true"]');
+    await expect(inspectOverlay).toHaveAttribute("data-root-action-display-mode", "fallback");
+    await expect(inspectOverlay).toHaveAttribute("data-root-action-fallback-reason", "local-presentation-precedence");
+    await expect(inspectOverlay).toHaveAttribute("aria-hidden", "true");
+    await expect(page.locator('.interaction-stage[data-local-ui-mode="INSPECT"]')).toBeVisible();
+    await testInfo.attach("attack-inspect-fallback", { body: await page.screenshot(), contentType: "image/png" });
+    await expect.poll(() => page.evaluate((rootEventId) => window.__wtkAttackVisibleFrames.some((frame) => frame.rootEventId === rootEventId
+      && frame.mode === "fallback" && frame.fallbackGate === "local-presentation-precedence"
+      && !frame.rootCardVisible && frame.interactionStageVisible), rootAction.rootEventId), {
+      message: "RAF trace records Inspect as the explicit safe fallback",
+    }).toBe(true);
+    const inspectFallbackFrame = await page.evaluate((rootEventId) => window.__wtkAttackVisibleFrames.find((frame) => frame.rootEventId === rootEventId
+      && frame.mode === "fallback" && frame.fallbackGate === "local-presentation-precedence"
+      && !frame.rootCardVisible && frame.interactionStageVisible), rootAction.rootEventId);
+    await page.getByRole("button", { name: "Close TARGET inspection", exact: true }).click();
+    await expect(inspectOverlay).toHaveAttribute("data-root-action-ready", "true");
+    await expect(page.locator(".interaction-stage")).toHaveCount(0);
+    await expect.poll(() => page.evaluate(({ rootEventId, afterFrame }) => window.__wtkAttackVisibleFrames.some((frame) => frame.rootEventId === rootEventId
+      && frame.frameNumber > afterFrame && frame.mode === "graph" && frame.rootCardVisible), { rootEventId: rootAction.rootEventId, afterFrame: inspectFallbackFrame.frameNumber }), {
+      message: "RAF trace records return to the graph after Inspect closes",
+    }).toBe(true);
+    await page.evaluate(() => window.__wtkStopAttackVisibleFrameSampling());
+    const visibleFrames = await page.evaluate(() => window.__wtkAttackVisibleFrames);
+    const rootFrames = visibleFrames.filter((frame) => frame.rootEventId === rootAction.rootEventId);
+    const firstProvenFrame = rootFrames[0];
+    const firstGraphFrame = rootFrames.find((frame) => frame.mode === "graph" && frame.rootCardVisible);
+    await testInfo.attach("attack-visible-frames.json", { body: JSON.stringify(visibleFrames, null, 2), contentType: "application/json" });
+    expect(firstProvenFrame, "RAF trace observes the server-proven root event").toBeTruthy();
+    expect(firstProvenFrame).toMatchObject({ sourceId, targetId, rootCardKind: "Attack" });
+    expect(firstGraphFrame, "RAF trace observes the graph as a visible composition").toBeTruthy();
+    expect(firstGraphFrame.elapsedMs - firstProvenFrame.elapsedMs, "graph handoff is bounded from the first rendered proof frame").toBeLessThanOrEqual(250);
+    expect(inspectFallbackFrame).toMatchObject({ rootEventId: rootAction.rootEventId, sourceId, targetId, rootCardKind: "Attack", mode: "fallback", fallbackGate: "local-presentation-precedence", rootCardVisible: false, interactionStageVisible: true });
+    expect(rootFrames.every((frame) => !(frame.rootCardVisible
+      && (frame.interactionStageVisible || frame.activeTableRevealCardCount > 0))), "no sampled frame mixes the graph with legacy Stage/reveal cards").toBe(true);
+    expect(rootFrames.filter((frame) => frame.mode === "graph").every((frame) => frame.rootCardVisible
+      && !frame.interactionStageVisible && !frame.attackResponseStageVisible && frame.activeTableRevealCardCount === 0), "every graph frame contains only the root-card composition").toBe(true);
+
     const targetPage = await browser.newPage({ viewport });
     try {
       await openGame(targetPage, seed, 1, viewport);
-      await expect(targetPage.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+      const targetOverlay = targetPage.locator('[data-root-action-overlay="true"]');
+      await expect(targetOverlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+      await targetPage.evaluate(() => window.__wtkStartAttackVisibleFrameSampling());
       const dock = targetPage.locator(`.local-player-dock[data-player-anchor="${targetId}"]`);
       const hiddenAnchorStyle = await targetPage.addStyleTag({ content: `.local-player-dock[data-player-anchor="${targetId}"] { display: none !important; }` });
       await expect(dock).toBeHidden();
       await targetPage.evaluate(() => window.dispatchEvent(new Event("resize")));
       await expect(targetPage.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-ready", "false");
+      await expect(targetPage.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-display-mode", "fallback");
+      await expect(targetPage.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-layout-state", "unavailable");
+      await expect(targetPage.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-fallback-reason", "geometry-unavailable");
+      await expect(targetPage.locator('[data-root-action-card="true"]')).toBeHidden();
       await expect(targetPage.locator(".interaction-stage")).toHaveCount(1);
+      await expect.poll(() => targetPage.evaluate((rootEventId) => window.__wtkAttackVisibleFrames.some((frame) => frame.rootEventId === rootEventId
+        && frame.mode === "fallback" && frame.fallbackGate === "geometry-unavailable"
+        && !frame.rootCardVisible && frame.interactionStageVisible), rootAction.rootEventId), {
+        message: "RAF trace records geometry failure and its safe Stage fallback",
+      }).toBe(true);
+      const geometryFallbackFrame = await targetPage.evaluate((rootEventId) => window.__wtkAttackVisibleFrames.find((frame) => frame.rootEventId === rootEventId
+        && frame.mode === "fallback" && frame.fallbackGate === "geometry-unavailable"
+        && !frame.rootCardVisible && frame.interactionStageVisible), rootAction.rootEventId);
       await hiddenAnchorStyle.evaluate((style) => style.remove());
       await expect(targetPage.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-ready", "true");
+      await expect(targetPage.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-display-mode", "graph");
       await expect(targetPage.locator(".interaction-stage")).toHaveCount(0);
+      await expect.poll(() => targetPage.evaluate(({ rootEventId, afterFrame }) => window.__wtkAttackVisibleFrames.some((frame) => frame.rootEventId === rootEventId
+        && frame.frameNumber > afterFrame && frame.mode === "graph" && frame.rootCardVisible), { rootEventId: rootAction.rootEventId, afterFrame: geometryFallbackFrame.frameNumber }), {
+        message: "RAF trace records return to graph after geometry recovers",
+      }).toBe(true);
       const skip = dock.locator('[data-action-slot="decline"] button');
       await expect(skip).toHaveText("Skip");
       await expect(skip).toBeEnabled();
@@ -371,6 +480,11 @@ for (const scenario of [
       await skip.click();
       expect((await skipResponse).ok()).toBe(true);
       await expect(targetPage.locator('[data-root-action-overlay="true"]')).toHaveCount(0, { timeout: 10_000 });
+      await targetPage.evaluate(() => window.__wtkStopAttackVisibleFrameSampling());
+      const targetFrames = await targetPage.evaluate(() => window.__wtkAttackVisibleFrames);
+      await testInfo.attach("attack-geometry-fallback-visible-frames.json", { body: JSON.stringify(targetFrames, null, 2), contentType: "application/json" });
+      expect(geometryFallbackFrame).toMatchObject({ rootEventId: rootAction.rootEventId, sourceId, targetId, rootCardKind: "Attack", mode: "fallback", fallbackGate: "geometry-unavailable", rootCardVisible: false, interactionStageVisible: true });
+      expect(targetFrames.some((frame) => frame.rootEventId === rootAction.rootEventId && frame.mode === "graph" && frame.rootCardVisible)).toBe(true);
     } finally {
       await targetPage.close();
     }

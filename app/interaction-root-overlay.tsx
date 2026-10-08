@@ -1042,13 +1042,19 @@ export function InteractionRootOverlay({
   enabled,
   sourceName,
   targetName,
-  onReadyChange,
+  displayMode,
+  layoutReadiness,
+  fallbackReason,
+  onLayoutReadinessChange,
 }: {
   action: InteractionRootOverlayAction | null;
   enabled: boolean;
   sourceName: string | null;
   targetName: string | null;
-  onReadyChange: (key: string | null) => void;
+  displayMode: "graph" | "measuring" | "fallback";
+  layoutReadiness: "measuring" | "ready" | "unavailable" | null;
+  fallbackReason?: string;
+  onLayoutReadinessChange: (readiness: { key: string; state: "measuring" | "ready" | "unavailable" } | null) => void;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -1067,7 +1073,7 @@ export function InteractionRootOverlay({
   const responseCountersRoot = action?.response?.countersRoot === true;
   const responseTargetsPlayer = Boolean(responseTargetId);
   const markerId = key ? `root-target-arrow-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}` : "root-target-arrow";
-  const targetMarkerSize = action?.cardKind === "Attack" ? 14 : 8;
+  const targetMarkerSize = action?.cardKind === "Attack" ? 20 : 8;
   const counterMarkerId = key ? `root-counter-arrow-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}` : "root-counter-arrow";
 
   useLayoutEffect(() => {
@@ -1079,19 +1085,22 @@ export function InteractionRootOverlay({
     const card = cardRef.current;
     const shell = layer?.closest<HTMLElement>(".game-shell");
     const initialAction = actionRef.current;
-    if (!enabled || !initialAction?.sourceId
-      || (!initialAction.targetId && !initialAction.groupTargets?.length && !initialAction.orderedTargets?.length && !initialAction.simultaneousTargets?.length)
-      || !initialAction.key || !layer || !card || !shell) {
-      setLayout(null);
-      onReadyChange(null);
+    if (!enabled) {
+      onLayoutReadinessChange(null);
       return;
     }
+    if (!initialAction?.sourceId
+      || (!initialAction.targetId && !initialAction.groupTargets?.length && !initialAction.orderedTargets?.length && !initialAction.simultaneousTargets?.length)
+      || !initialAction.key || !layer || !card || !shell) {
+      onLayoutReadinessChange(initialAction?.key ? { key: initialAction.key, state: "unavailable" } : null);
+      return;
+    }
+    onLayoutReadinessChange({ key: initialAction.key, state: "measuring" });
 
     const measure = () => {
       const currentAction = actionRef.current;
-      if (!currentAction) {
-        setLayout(null);
-        onReadyChange(null);
+      if (!currentAction?.key) {
+        onLayoutReadinessChange(null);
         return;
       }
       const currentSourceId = currentAction.sourceId;
@@ -1104,8 +1113,7 @@ export function InteractionRootOverlay({
       const currentVisibleResponses = currentResponsePresentation?.nodes ?? [];
       const currentHistoryCount = currentResponsePresentation?.collapsedCount ?? 0;
       if (currentAction.responses && !currentResponsePresentation) {
-        setLayout(null);
-        onReadyChange(null);
+        onLayoutReadinessChange({ key: currentAction.key, state: "unavailable" });
         return;
       }
       const responseCard = currentAction.response ? responseCardRef.current : null;
@@ -1178,7 +1186,12 @@ export function InteractionRootOverlay({
           && JSON.stringify(current.selfHalo) === JSON.stringify(nextLayout.selfHalo);
         return unchanged ? current : nextLayout;
       });
-      onReadyChange(nextLayout ? currentAction.key : null);
+      const accessiblePartsValid = Boolean(currentAction.ariaLabel.trim())
+        && (!currentAction.response || Boolean(currentAction.response.ariaLabel.trim()))
+        && currentVisibleResponses.every((response) => Boolean(response.ariaLabel.trim()));
+      onLayoutReadinessChange(nextLayout && accessiblePartsValid
+        ? { key: currentAction.key, state: "ready" }
+        : { key: currentAction.key, state: "unavailable" });
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -1190,9 +1203,9 @@ export function InteractionRootOverlay({
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", measure);
-      onReadyChange(null);
+      onLayoutReadinessChange(null);
     };
-  }, [actionSignature, enabled, onReadyChange]);
+  }, [actionSignature, enabled, onLayoutReadinessChange]);
 
   if (!action) return null;
   const groupNamesKnown = Boolean(action.groupTargets?.length && action.groupTargets.every((target) => target.playerName.trim()));
@@ -1210,7 +1223,7 @@ export function InteractionRootOverlay({
   const accessiblePartsValid = Boolean(action.ariaLabel.trim())
     && (!action.response || Boolean(action.response.ariaLabel.trim()))
     && visibleResponses.every((response) => Boolean(response.ariaLabel.trim()));
-  const visible = enabled && Boolean(layout) && accessiblePartsValid
+  const visible = enabled && displayMode === "graph" && layoutReadiness === "ready" && Boolean(layout) && accessiblePartsValid
     && Boolean(sourceName && (groupNamesKnown || orderedNamesKnown || simultaneousNamesKnown || action.mode === "self-target" || targetName));
   const responseChainRootBlocked = Boolean(action.responses?.length && action.rootEffectState === "BLOCKED");
   return <div
@@ -1219,6 +1232,9 @@ export function InteractionRootOverlay({
     data-root-action-overlay="true"
     data-root-action-enabled={enabled ? "true" : "false"}
     data-root-action-ready={visible ? "true" : "false"}
+    data-root-action-display-mode={displayMode}
+    data-root-action-layout-state={layoutReadiness ?? undefined}
+    data-root-action-fallback-reason={displayMode === "fallback" ? fallbackReason : undefined}
     data-root-action-event-id={action.rootEventId}
     data-root-action-source-id={action.sourceId}
     data-root-action-target-id={action.groupTargets?.length || action.orderedTargets?.length || action.simultaneousTargets?.length ? undefined : action.targetId ?? undefined}
