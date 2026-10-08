@@ -521,6 +521,9 @@ for (const entry of [
 
     // An invalid outside drop must preserve the old lists.
     const attackFace = cardNode(opened.dialog, attack.id).locator(".deck-reorder-card-face");
+    // Let Playwright move onto a stable, hit-testable face before sampling its
+    // coordinates; earlier pointer sequences can leave a transient row hit-test.
+    await attackFace.hover();
     const attackFaceBox = await attackFace.boundingBox();
     expect(attackFaceBox).toBeTruthy();
     const attackFaceHit = await opened.actorPage.evaluate(({ x, y, cardId }) => {
@@ -538,11 +541,51 @@ for (const entry of [
       x: attackFaceBox.x + attackFaceBox.width / 2,
       y: attackFaceBox.y + attackFaceBox.height / 2,
     };
-    await opened.actorPage.mouse.move(attackFaceCenter.x, attackFaceCenter.y);
+    await opened.actorPage.evaluate((cardId) => {
+      const trace = [];
+      const record = (phase) => (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        const card = document.querySelector(`[data-deck-card-id="${cardId}"]`);
+        trace.push({
+          phase,
+          type: event.type,
+          pointerId: event.pointerId,
+          pointerType: event.pointerType,
+          isPrimary: event.isPrimary,
+          button: event.button,
+          buttons: event.buttons,
+          x: event.clientX,
+          y: event.clientY,
+          targetCardId: target?.closest("[data-deck-card-id]")?.getAttribute("data-deck-card-id") ?? null,
+          targetClass: typeof target?.className === "string" ? target.className : target?.tagName ?? null,
+          dragging: card?.getAttribute("data-dragging") ?? null,
+        });
+      };
+      for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel", "lostpointercapture"]) {
+        document.addEventListener(type, record("capture"), true);
+        document.addEventListener(type, record("bubble"));
+      }
+      window.__stargazingInvalidDropPointerTrace = trace;
+    }, attack.id);
+    // hover() has already positioned the real mouse at this stable face center.
     await opened.actorPage.mouse.down();
-    // Deliver multiple pointer moves well beyond the 5px activation threshold;
-    // a single small jump was intermittently not observed in headless CI.
+    // Sample movement beyond the 5px drag-activation threshold.
     await opened.actorPage.mouse.move(attackFaceCenter.x + 14, attackFaceCenter.y + 3, { steps: 3 });
+    const dragStateBeforeAssertion = await cardNode(opened.dialog, attack.id).getAttribute("data-dragging");
+    if (dragStateBeforeAssertion !== "true") {
+      const pointerTrace = await opened.actorPage.evaluate((cardId) => {
+        const card = document.querySelector(`[data-deck-card-id="${cardId}"]`);
+        const trace = window.__stargazingInvalidDropPointerTrace ?? [];
+        const pointerId = trace.findLast((event) => event.type === "pointerdown")?.pointerId;
+        let hasPointerCapture = null;
+        if (typeof pointerId === "number") {
+          const face = card?.querySelector(".deck-reorder-card-face");
+          hasPointerCapture = face?.hasPointerCapture(pointerId) ?? false;
+        }
+        return { trace, dragging: card?.getAttribute("data-dragging") ?? null, hasPointerCapture };
+      }, attack.id);
+      console.log("[Stargazing invalid-drop pointer diagnostic]", JSON.stringify(pointerTrace));
+    }
     await expect(cardNode(opened.dialog, attack.id)).toHaveAttribute("data-dragging", "true");
     await opened.actorPage.mouse.move(2, 2, { steps: 6 });
     await opened.actorPage.mouse.up();
