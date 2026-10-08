@@ -545,6 +545,25 @@
   opacity: .96;
 }
 
+.interaction-root-counter-relation {
+  stroke: #b85a4c;
+  stroke-width: 2.8px;
+  stroke-dasharray: 7 5;
+  opacity: .96;
+}
+
+.interaction-root-block-mark {
+  stroke: #edc975;
+  stroke-width: 3px;
+  opacity: .98;
+}
+
+.interaction-root-response-source-tether {
+  stroke: #8ba89a;
+  stroke-width: 1.7px;
+  opacity: .9;
+}
+
 .interaction-root-target-arrow + marker path,
 .interaction-root-connectors marker path {
   fill: #d06b58;
@@ -582,6 +601,24 @@
 .interaction-root-action-card > strong {
   font: 700 15px/1 Georgia, serif;
   letter-spacing: .12em;
+}
+
+.interaction-root-response-card {
+  width: clamp(82px, 24vw, 100px);
+  min-height: 68px;
+  padding: 9px 8px;
+  border-color: #c98669;
+  background: linear-gradient(145deg, #33231f 0%, #1d1715 72%, #12110f 100%);
+  box-shadow: 0 7px 22px #0009, 0 0 0 1px #c9866940, 0 0 14px #b85a4c35;
+}
+
+.interaction-root-response-card > small {
+  color: #db9b80;
+  letter-spacing: .12em;
+}
+
+.interaction-root-response-card > strong {
+  font-size: 13px;
 }
 
 .game-shell .play-table {

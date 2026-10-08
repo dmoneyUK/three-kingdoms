@@ -2797,9 +2797,27 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       }),
     }
     : null;
+  const attackDodgeResponseCandidates = (clientPresentation.attackDodgeResponses ?? []).flatMap((proof) => {
+    const rootEvents = room.timeline.filter((event) => event.id === proof.rootEventId);
+    const responseEvents = room.timeline.filter((event) => event.id === proof.responseEventId);
+    const rootSequenceEvents = sequenceEvents.filter((event) => event.id === proof.rootEventId);
+    const responseSequenceEvents = sequenceEvents.filter((event) => event.id === proof.responseEventId);
+    if (rootEvents.length !== 1 || responseEvents.length !== 1 || rootSequenceEvents.length !== 1 || responseSequenceEvents.length !== 1) return [];
+    const rootEvent = rootEvents[0];
+    const responseEvent = responseEvents[0];
+    if (rootEvent.type !== "card" || responseEvent.type !== "card"
+      || rootEvent.action !== "play" || responseEvent.action !== "play"
+      || rootEvent.presentation === false || responseEvent.presentation === false
+      || rootEvent.playedAs !== undefined || responseEvent.playedAs !== undefined
+      || rootEvent.card.kind !== "Attack" || responseEvent.card.kind !== "Dodge"
+      || rootEvent.resolutionId !== proof.rootResolutionId || responseEvent.resolutionId !== proof.responseResolutionId
+      || proof.responseActorId !== proof.targetId) return [];
+    return [{ proof, rootEvent, responseEvent }];
+  });
+  const attackDodgeResponseCandidate = attackDodgeResponseCandidates.length === 1 ? attackDodgeResponseCandidates[0] : null;
   const rootAction = clientPresentation.rootAction;
-  const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId) : null;
-  const selfTargetCandidates = rootAction ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
+  const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId) : attackDodgeResponseCandidate?.rootEvent ?? null;
+  const selfTargetCandidates = rootAction || attackDodgeResponseCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
       || event.resolutionId !== action.resolutionId || event.card.kind !== action.cardKind
@@ -2825,6 +2843,23 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       ariaLabel: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "Unknown player"} played Attack targeting ${room.players.find((player) => player.id === rootAction.targetId)?.name ?? "unknown player"}`,
       mode: "targeted",
     }
+    : attackDodgeResponseCandidate
+      ? {
+        key: [attackDodgeResponseCandidate.proof.interactionId, attackDodgeResponseCandidate.proof.rootFrameId, attackDodgeResponseCandidate.proof.rootEventId, attackDodgeResponseCandidate.proof.responseEventId].join(":"),
+        rootEventId: attackDodgeResponseCandidate.proof.rootEventId,
+        sourceId: attackDodgeResponseCandidate.proof.rootSourceId,
+        targetId: attackDodgeResponseCandidate.proof.targetId,
+        cardKind: "Attack",
+        cardLabel: "ATTACK",
+        ariaLabel: `${room.players.find((player) => player.id === attackDodgeResponseCandidate.proof.rootSourceId)?.name ?? "Unknown player"} played Attack targeting ${room.players.find((player) => player.id === attackDodgeResponseCandidate.proof.targetId)?.name ?? "unknown player"}`,
+        mode: "targeted",
+        response: {
+          eventId: attackDodgeResponseCandidate.proof.responseEventId,
+          actorId: attackDodgeResponseCandidate.proof.responseActorId,
+          cardLabel: "DODGE",
+          ariaLabel: `${room.players.find((player) => player.id === attackDodgeResponseCandidate.proof.responseActorId)?.name ?? "Unknown player"} played Dodge to block ${room.players.find((player) => player.id === attackDodgeResponseCandidate.proof.rootSourceId)?.name ?? "Unknown player"}'s Attack against ${room.players.find((player) => player.id === attackDodgeResponseCandidate.proof.targetId)?.name ?? "an opponent"}`,
+        },
+      }
     : selfTargetCandidate
       ? {
         key: ["self", selfTargetCandidate.action.rootEventId, selfTargetCandidate.action.resolutionId, selfTargetCandidate.action.sourceId].join(":"),
@@ -2840,7 +2875,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const rootActionSource = rootActionOverlayAction ? room.players.find((player) => player.id === rootActionOverlayAction.sourceId) : null;
   const rootActionTarget = rootActionOverlayAction ? room.players.find((player) => player.id === rootActionOverlayAction.targetId) : null;
   const rootActionTemporarilyBlocked = Boolean(targetPreviewPresentation || opponentInspectionPresentation || targetCardPickerSelectableDetail || expandedOpponentId || groupScopePreview.active);
-  const rootActionAwaitingReveal = Boolean(rootAction && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations));
+  const rootActionAwaitingReveal = Boolean(!attackDodgeResponseCandidate && rootAction && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations));
   const rootActionOverlayEnabled = Boolean(rootActionOverlayAction && rootActionSource?.name
     && (rootActionOverlayAction.mode === "self-target" || rootActionTarget?.name)
     && !rootActionTemporarilyBlocked && !rootActionAwaitingReveal);
@@ -2849,11 +2884,15 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     : selfTargetCandidate?.event.card.id ?? null;
   const displayedSequenceEvents = rootActionOverlayVisible && rootActionOverlayAction
     ? sequenceEvents.filter((event) => event.id !== rootActionOverlayAction.rootEventId
-      && (!rootActionCardId || !eventCards(event).some((card) => card.id === rootActionCardId)))
+      && event.id !== rootActionOverlayAction.response?.eventId
+      && (!rootActionCardId || !eventCards(event).some((card) => card.id === rootActionCardId))
+      && (!attackDodgeResponseCandidate || !eventCards(event).some((card) => card.id === attackDodgeResponseCandidate.responseEvent.card.id)))
     : sequenceEvents;
   const activeRootSelfTargetEvent = rootActionOverlayVisible && rootActionOverlayAction?.mode === "self-target"
     && rootActionCardId && displayedEvent && eventCards(displayedEvent).some((card) => card.id === rootActionCardId);
-  const displayedTableEvent = activeRootSelfTargetEvent ? null : displayedEvent;
+  const activeRootResponseEvent = rootActionOverlayVisible && rootActionOverlayAction?.response && attackDodgeResponseCandidate
+    && displayedEvent && eventCards(displayedEvent).some((card) => card.id === attackDodgeResponseCandidate.responseEvent.card.id);
+  const displayedTableEvent = activeRootSelfTargetEvent || activeRootResponseEvent ? null : displayedEvent;
   const tablePresentationVisible = displayedSequenceEvents.length > 0 || Boolean(displayedTableEvent && eventCards(displayedTableEvent).length);
   const localEquipmentSelection = activeSkillSelection
     ? { eligibleIds: activeSkillSelection.eligibleCardIds, selectedIds: activeSkillSelectedCardIds, max: activeSkillSelection.max, disabled: busy || presentationBusy, onToggle: (cardId: string) => setActiveSkillSelectionState((state) => { if (!state || !activeSkillStateIsCurrent) return state; const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)); return validIds.includes(cardId) ? { ...state, cardIds: validIds.filter((id) => id !== cardId) } : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, cardId] } : { ...state, cardIds: validIds }; }) }

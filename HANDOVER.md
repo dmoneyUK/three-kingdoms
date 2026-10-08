@@ -5,17 +5,15 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-Phase B now projects public proof only after one physical Dodge is submitted,
-linked to its exact ordinary Attack root/target effect and shared resolution.
-The engine-backed route proves the open window has no Dodge node and source,
-target, and observer receive identical proof without physical card IDs. The
-current remote parent `2546a85a880f620f8d5a12f756719dcebe2ece68`, Actions run
-`37740684258`, FAILED in `npm run test:fast`: the mounted group-preview test
-encountered a legacy client view without optional `selfTargetActions`. A
-null-safe production guard is included with this task. Focused projection/UI
-tests passed 151/151, engine API tests 34/34, Bumper Harvest timer geometry
-browser proof 1/1, targeted ESLint, and `git diff --check` passed. The replacement
-SHA has not yet been pushed. Reviewer acceptance is not claimed.
+Phase B renders the committed Dodge from typed public proof beside its exact
+Attack target effect; the incoming relation is interrupted and no Dodge-to-target
+arrow is drawn. Real server-backed browser proof passed 13/13 across 4/6/8-player
+physical-anchor layouts, Attack→Dodge at 390×844, 480×900, and 1440×900, and
+self-target Peach layouts. PresentationV2 contract tests passed 38/38; targeted
+ESLint and `git diff --check` passed. Pre-commit remote parent
+`80ae488d4520d763e9c5383a35b588b846c7e4e6`, Actions run `37742834438`, was
+observed `success`; this local change has not yet been pushed. Reviewer
+acceptance is not claimed.
 
 ## Design checkpoint
 
@@ -24,10 +22,10 @@ Reviewed remote `docs/UX2-refine.md`, blob
 
 ## Current / next task
 
-`UX2.6-PHASE-B-ATTACK-DODGE-RESPONSE-VISUAL-01` — render a committed Dodge only
-from the new typed public proof, adjacent to the exact incoming Attack→target
-relation; visibly interrupt that relation without drawing a false Dodge→target
-arrow. No response card before submission; preserve physical Seats and Dock.
-Prove the real server-backed Attack→Dodge flow and geometry at 390×844,
-480×900, and wide, including no overlap or horizontal overflow. Defer Negation
-migration and unrelated response types.
+`UX2.6-PHASE-B-NEGATION-EXACT-PUBLIC-EVENT-PROOF-01` — extend the existing
+server-owned single-target Negation chain proof to link the root action and each
+submitted Negation to its exact public timeline event, preserving causal parent
+links and exposing no physical card IDs or private controls. Prove a real
+Steal→Negation→counter-Negation route for source, responders, and observer;
+missing or mismatched event links must fail closed. Do not change graph rendering
+in this task.

@@ -2,9 +2,10 @@ import { expect, test } from "@playwright/test";
 
 const API = "http://127.0.0.1:3137";
 const attack = { id: "root-overlay-real-attack", kind: "Attack", suit: "♠", rank: "7" };
+const dodge = { id: "root-overlay-real-dodge", kind: "Dodge", suit: "♥", rank: "3" };
 const peach = { id: "root-overlay-real-peach", kind: "Peach", suit: "♥", rank: "3" };
 
-async function seedGame(request, playerCount = 4, { sourceCard = attack, sourceHp = 4 } = {}) {
+async function seedGame(request, playerCount = 4, { sourceCard = attack, sourceHp = 4, targetCard = null } = {}) {
   const rolesByPlayerCount = {
     4: ["Rebel", "Loyalist", "Lord", "Renegade"],
     6: ["Rebel", "Loyalist", "Lord", "Renegade", "Rebel", "Rebel"],
@@ -24,7 +25,7 @@ async function seedGame(request, playerCount = 4, { sourceCard = attack, sourceH
     role: rolesByPlayerCount[playerCount]?.[index],
     hp: index === 0 ? sourceHp : 4,
     maxHp: 4,
-    hand: index === 0 ? [sourceCard] : [],
+    hand: index === 0 ? [sourceCard] : index === 1 && targetCard ? [targetCard] : [],
   }));
   const response = await request.post(`${API}/__test/seed-playing-game`, {
     data: {
@@ -82,6 +83,23 @@ async function playAttackThroughPage(page, targetName) {
   await confirm.click();
   const response = await responsePromise;
   if (!response.ok()) throw new Error(`Attack submission failed: ${await response.text()}`);
+}
+
+async function playDodgeThroughPage(page) {
+  const dodgeButton = page.locator(`[data-hand-card-id="${dodge.id}"] .game-card`);
+  await expect(dodgeButton).toBeEnabled();
+  await dodgeButton.click();
+  await expect(dodgeButton).toHaveClass(/selected/);
+  const confirm = page.locator('[data-console-surface="local-operation"] button.primary');
+  await expect(confirm).toBeEnabled();
+  const responsePromise = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").action === "respond"; }
+    catch { return false; }
+  });
+  await confirm.click();
+  const response = await responsePromise;
+  if (!response.ok()) throw new Error(`Dodge submission failed: ${await response.text()}`);
 }
 
 async function playPeachThroughPage(page) {
@@ -247,6 +265,178 @@ for (const scenario of [
       await skip.click();
       expect((await skipResponse).ok()).toBe(true);
       await expect(targetPage.locator('[data-root-action-overlay="true"]')).toHaveCount(0, { timeout: 10_000 });
+    } finally {
+      await targetPage.close();
+    }
+  });
+}
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
+  test(`real Attack→Dodge graph visibly blocks the exact target relation at ${viewport.width}×${viewport.height}`, async ({ page, browser, request }, testInfo) => {
+    test.setTimeout(60_000);
+    const seed = await seedGame(request, 4, { targetCard: dodge });
+    const sourceId = seed.players[0].id;
+    const targetId = seed.players[1].id;
+    await openGame(page, seed, 0, viewport);
+    await playAttackThroughPage(page, "TARGET");
+    await expect.poll(async () => (await roomView(request, seed, 1)).presentationSnapshot?.rootAction?.rootEventId ?? null, { timeout: 20_000 }).not.toBeNull();
+    const rootAction = (await roomView(request, seed, 1)).presentationSnapshot.rootAction;
+
+    const targetPage = await browser.newPage({ viewport });
+    try {
+      await openGame(targetPage, seed, 1, viewport);
+      const openOverlay = targetPage.locator('[data-root-action-overlay="true"]');
+      await expect(openOverlay).toHaveAttribute("data-root-action-enabled", "true");
+      await expect(openOverlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+      await expect(targetPage.locator('[data-root-action-response-card="true"]')).toHaveCount(0);
+      await expect.poll(async () => {
+        const view = await roomView(request, seed, 1);
+        return view.currentAction?.kind === "response" && view.currentAction.deadline > Date.now();
+      }, { timeout: 20_000 }).toBe(true);
+      const openView = await roomView(request, seed, 1);
+      expect(openView.currentAction.kind).toBe("response");
+      expect(openView.currentAction.actorId).toBe(targetId);
+      expect(openView.currentAction.deadline).toBeGreaterThan(Date.now());
+      expect(openView.currentAction.legalActions).toContain("respond");
+      expect(openView.currentAction.options).toEqual(expect.arrayContaining([
+        expect.objectContaining({ providerId: "card", activation: "implicit", satisfies: "dodge", selection: expect.objectContaining({ eligibleCardIds: [dodge.id] }) }),
+      ]));
+      expect(openView.presentationSnapshot.attackDodgeResponses ?? []).toEqual([]);
+      const before = await targetPage.evaluate(() => window.__wtkRootOverlayPreGraphAnchors);
+      expect(before, "capture physical anchors before Dodge submission").toBeTruthy();
+
+      await playDodgeThroughPage(targetPage);
+      await expect.poll(async () => (await roomView(request, seed, 2)).presentationSnapshot?.attackDodgeResponses?.length ?? 0, { timeout: 20_000 }).toBe(1);
+      const observerView = await roomView(request, seed, 2);
+      const proof = observerView.presentationSnapshot.attackDodgeResponses[0];
+      expect(proof).toMatchObject({
+        semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
+        rootEventId: rootAction.rootEventId, rootSourceId: sourceId,
+        targetId, responseActorId: targetId,
+        rootCardKind: "Attack", responseCardKind: "Dodge",
+      });
+      expect(JSON.stringify(proof)).not.toContain(attack.id);
+      expect(JSON.stringify(proof)).not.toContain(dodge.id);
+      const targetViewAfterDodge = await roomView(request, seed, 1);
+      expect(targetViewAfterDodge.presentationSnapshot.attackDodgeResponses).toEqual([proof]);
+
+      const overlay = targetPage.locator('[data-root-action-overlay="true"]');
+      const rootCard = targetPage.locator('[data-root-action-card="true"]');
+      const dodgeCard = targetPage.locator('[data-root-action-response-card="true"]');
+      await expect(overlay).toHaveAttribute("data-root-action-enabled", "true");
+      try {
+        await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+      } catch (error) {
+        await testInfo.attach("attack-dodge-layout-failure.json", {
+          body: JSON.stringify(await targetPage.evaluate(() => {
+            const bounds = (element) => {
+              if (!element) return null;
+              const rect = element.getBoundingClientRect();
+              return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
+            };
+            return {
+              overlay: { ready: document.querySelector('[data-root-action-overlay="true"]')?.dataset.rootActionReady, mode: document.querySelector('[data-root-action-overlay="true"]')?.dataset.rootActionMode },
+              root: bounds(document.querySelector('[data-root-action-card="true"]')),
+              response: bounds(document.querySelector('[data-root-action-response-card="true"]')),
+              table: bounds(document.querySelector('.play-table')),
+              anchors: [...document.querySelectorAll('[data-player-anchor]')].map((element) => ({ id: element.dataset.playerAnchor, ...bounds(element) })),
+              obstacles: [...document.querySelectorAll('.play-center, .stage-system-cluster, .game-messages, .game-exit')].map((element) => ({ className: element.className, ...bounds(element) })),
+            };
+          }), null, 2), contentType: "application/json",
+        });
+        throw error;
+      }
+      await expect(dodgeCard).toBeVisible({ timeout: 20_000 });
+      await expect(dodgeCard).toHaveAttribute("data-response-event-id", proof.responseEventId);
+      await expect(dodgeCard).toHaveAttribute("aria-label", "TARGET played Dodge to block SOURCE's Attack against TARGET");
+      await expect(rootCard).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET");
+      await expect(targetPage.locator('[data-root-action-edge="target"]')).toHaveCount(0);
+      await expect(targetPage.locator('[data-root-action-edge="target-blocked"]')).toHaveCount(1);
+      await expect(targetPage.locator('[data-root-action-edge="response-source"]')).toHaveCount(1);
+      await expect(targetPage.locator('[data-root-action-blocked="true"]')).toHaveCount(1);
+      await expect(targetPage.locator('.table-resolution-layer .table-played-card')).toHaveCount(0);
+
+      const geometry = await targetPage.evaluate(({ source, target }) => {
+        const bounds = (element) => {
+          if (!element) return null;
+          const rect = element.getBoundingClientRect();
+          return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
+        };
+        const sourceSeat = [...document.querySelectorAll("[data-player-anchor]")].find((element) => element.dataset.playerAnchor === source);
+        const targetSeat = [...document.querySelectorAll("[data-player-anchor]")].find((element) => element.dataset.playerAnchor === target);
+        const root = document.querySelector('[data-root-action-card="true"]');
+        const response = document.querySelector('[data-root-action-response-card="true"]');
+        const connector = document.querySelector(".interaction-root-connectors");
+        const connectorRect = connector.getBoundingClientRect();
+        const pointSamples = [...document.querySelectorAll('[data-root-action-edge="source"], [data-root-action-edge="target-blocked"], [data-root-action-edge="response-source"], [data-root-action-blocked="true"]')].map((path) => {
+          const length = path.getTotalLength();
+          const points = [];
+          for (let distance = 4; distance < length - 4; distance += 4) {
+            const point = path.getPointAtLength(distance);
+            points.push({ x: point.x + connectorRect.x, y: point.y + connectorRect.y });
+          }
+          return { edge: path.dataset.rootActionEdge ?? "blocked-mark", markerEnd: path.getAttribute("marker-end"), points };
+        });
+        const project = (point, start, end) => {
+          const dx = end.x - start.x;
+          const dy = end.y - start.y;
+          return ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy || 1);
+        };
+        const sourceRect = bounds(sourceSeat);
+        const targetRect = bounds(targetSeat);
+        const sourceCenter = { x: sourceRect.x + sourceRect.width / 2, y: sourceRect.y + sourceRect.height / 2 };
+        const targetCenter = { x: targetRect.x + targetRect.width / 2, y: targetRect.y + targetRect.height / 2 };
+        const rootRect = bounds(root);
+        const responseRect = bounds(response);
+        const rootCenter = { x: rootRect.x + rootRect.width / 2, y: rootRect.y + rootRect.height / 2 };
+        const responseCenter = { x: responseRect.x + responseRect.width / 2, y: responseRect.y + responseRect.height / 2 };
+        return {
+          source: sourceRect, target: targetRect, root: rootRect, response: responseRect,
+          table: bounds(document.querySelector(".play-table")), shell: bounds(document.querySelector(".game-shell")),
+          anchors: [...document.querySelectorAll("[data-player-anchor]")].map((element) => ({ id: element.dataset.playerAnchor, ...bounds(element) })),
+          obstacles: [...document.querySelectorAll("[data-player-anchor], .play-center, .stage-system-cluster, .game-messages, .game-exit")].map(bounds).filter(Boolean),
+          projection: { root: project(rootCenter, sourceCenter, targetCenter), response: project(responseCenter, sourceCenter, targetCenter) },
+          edges: pointSamples,
+          pointerEvents: getComputedStyle(document.querySelector('[data-root-action-overlay="true"]')).pointerEvents,
+          documentWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth,
+        };
+      }, { source: sourceId, target: targetId });
+      await testInfo.attach("attack-dodge-block-geometry.json", { body: JSON.stringify({ viewport, before, geometry }, null, 2), contentType: "application/json" });
+      await testInfo.attach("attack-dodge-block-graph", { body: await targetPage.screenshot(), contentType: "image/png" });
+      expect(geometry.pointerEvents).toBe("none");
+      expect(geometry.documentWidth).toBeLessThanOrEqual(viewport.width);
+      expect(geometry.root.x).toBeGreaterThanOrEqual(geometry.table.x);
+      expect(geometry.root.y).toBeGreaterThanOrEqual(geometry.table.y);
+      expect(geometry.response.x).toBeGreaterThanOrEqual(geometry.table.x);
+      expect(geometry.response.y).toBeGreaterThanOrEqual(geometry.table.y);
+      expect(geometry.root.right).toBeLessThanOrEqual(geometry.table.right);
+      expect(geometry.root.bottom).toBeLessThanOrEqual(geometry.table.bottom);
+      expect(geometry.response.right).toBeLessThanOrEqual(geometry.table.right);
+      expect(geometry.response.bottom).toBeLessThanOrEqual(geometry.table.bottom);
+      expect(geometry.root.right <= geometry.response.x || geometry.response.right <= geometry.root.x
+        || geometry.root.bottom <= geometry.response.y || geometry.response.bottom <= geometry.root.y).toBe(true);
+      expect(geometry.projection.response).toBeGreaterThan(geometry.projection.root);
+      expect(geometry.projection.response).toBeLessThan(1);
+      expect(geometry.obstacles.every((obstacle) => {
+        return (geometry.root.right <= obstacle.x || geometry.root.x >= obstacle.right || geometry.root.bottom <= obstacle.y || geometry.root.y >= obstacle.bottom)
+          && (geometry.response.right <= obstacle.x || geometry.response.x >= obstacle.right || geometry.response.bottom <= obstacle.y || geometry.response.y >= obstacle.bottom);
+      })).toBe(true);
+      expect(geometry.edges.every((edge) => edge.markerEnd === null), "blocked relation and source tether have no false arrowhead").toBe(true);
+      expect(geometry.edges.flatMap((edge) => edge.points).every((point) => point.x >= geometry.shell.x && point.x <= geometry.shell.right
+        && point.y >= geometry.shell.y && point.y <= geometry.shell.bottom)).toBe(true);
+      expect(geometry.anchors).toHaveLength(4);
+      for (const anchor of geometry.anchors.filter((candidate) => candidate.id !== targetId)) {
+        const baseline = before[anchor.id];
+        expect(baseline, `baseline anchor exists for ${anchor.id}`).toBeTruthy();
+        for (const dimension of ["x", "y", "right", "bottom", "width", "height"]) {
+          expect(Math.abs(anchor[dimension] - baseline[dimension]), `${anchor.id} ${dimension} remains stable`).toBeLessThanOrEqual(.5);
+        }
+      }
+      const dockBefore = before[targetId];
+      expect(dockBefore, "the viewer Dock baseline is present before Dodge").toBeTruthy();
+      expect(Math.abs(geometry.target.x - dockBefore.x), "viewer Dock keeps its horizontal anchor").toBeLessThanOrEqual(.5);
+      expect(Math.abs(geometry.target.right - dockBefore.right), "viewer Dock keeps its horizontal extent").toBeLessThanOrEqual(.5);
+      expect(Math.abs(geometry.target.bottom - dockBefore.bottom), "viewer Dock remains bottom-anchored as its hand changes").toBeLessThanOrEqual(.5);
     } finally {
       await targetPage.close();
     }

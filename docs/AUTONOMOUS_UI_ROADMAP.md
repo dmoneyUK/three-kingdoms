@@ -1680,6 +1680,17 @@ Only a proven regression or new Reviewer-approved design requirement does.
   The subsequent Attack/Dodge visual grammar remains open. Reviewer acceptance
   is not claimed.
 
+### UX2.6-PHASE-B-ATTACK-DODGE-RESPONSE-VISUAL-01 — Attack/Dodge counter graph
+
+- A submitted Dodge now renders from its typed public proof beside the exact
+  Attack target effect, with a visible interruption mark, a source tether, and
+  no false Dodge-to-target arrow. Real server-backed browser proof passed 13/13
+  across physical-anchor layouts, all three required viewports, and self-target
+  Peach regression cases; PresentationV2 tests passed 38/38 and targeted lint
+  passed without warnings. Remote parent `80ae488d4520d763e9c5383a35b588b846c7e4e6`
+  Actions run `37742834438` was success before this task commit. Reviewer
+  acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
