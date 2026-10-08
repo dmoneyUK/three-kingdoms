@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 const API = "http://127.0.0.1:3137";
 const viewports = [
+  { width: 320, height: 740 },
   { width: 390, height: 844 },
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
@@ -85,11 +86,19 @@ async function measure(page) {
     const dock = document.querySelector(".local-player-dock");
     const guidance = dock?.querySelector(".console-guidance");
     const choice = document.querySelector(".harvest-choice-stage > div");
+    const harvestRow = choice?.querySelector(".harvest-card-row");
+    const harvestChoices = [...(choice?.querySelectorAll(".harvest-card-choice") ?? [])];
     const piles = ["[data-draw-anchor='true']", "[data-discard-anchor='true']"]
       .map((selector) => bounds(document.querySelector(selector)));
     return {
       cluster: bounds(cluster), timer: bounds(timer), menu: bounds(menu), table: bounds(table),
-      dock: bounds(dock), guidance: bounds(guidance), choice: bounds(choice), piles,
+      dock: bounds(dock), guidance: bounds(guidance), choice: bounds(choice),
+      harvestRow: bounds(harvestRow), harvestRowClientWidth: harvestRow?.clientWidth ?? 0,
+      harvestRowScrollWidth: harvestRow?.scrollWidth ?? 0,
+      harvestRowClipLeft: harvestRow ? harvestRow.getBoundingClientRect().left + harvestRow.clientLeft : 0,
+      harvestRowClipRight: harvestRow ? harvestRow.getBoundingClientRect().left + harvestRow.clientLeft + harvestRow.clientWidth : 0,
+      harvestRowOverflowX: harvestRow ? getComputedStyle(harvestRow).overflowX : null,
+      harvestChoiceCount: harvestChoices.length, harvestChoices: harvestChoices.map(bounds), piles,
       timerLabel: timer?.getAttribute("aria-label") ?? null,
       timerText: timer?.innerText.trim() ?? null,
       timerPointerEvents: timer ? getComputedStyle(timer).pointerEvents : null,
@@ -135,6 +144,28 @@ test("real Bumper Harvest gives each active chooser a server-owned 60-second Sta
   await expect(timer).toHaveText(/^(?:60|5[0-9])s$/);
   await expect(page.locator(".harvest-choice-stage")).toBeVisible();
 
+  const narrowViewport = { width: 320, height: 740 };
+  await page.setViewportSize(narrowViewport);
+  await expect(page.locator(".harvest-choice-stage > div")).toBeVisible();
+  const localChoiceGeometry = await measure(page);
+  const localChoiceContext = JSON.stringify({ viewport: narrowViewport, geometry: localChoiceGeometry });
+  expect(localChoiceGeometry.choice.left, localChoiceContext).toBeGreaterThanOrEqual(8);
+  expect(localChoiceGeometry.choice.right, localChoiceContext).toBeLessThanOrEqual(narrowViewport.width - 8);
+  expect(localChoiceGeometry.harvestChoiceCount, localChoiceContext).toBe(4);
+  for (const card of localChoiceGeometry.harvestChoices) {
+    expect(card.left, localChoiceContext).toBeGreaterThanOrEqual(localChoiceGeometry.harvestRowClipLeft - 1);
+    expect(card.right, localChoiceContext).toBeLessThanOrEqual(localChoiceGeometry.harvestRowClipRight + 1);
+    expect(card.right - card.left, localChoiceContext).toBeGreaterThanOrEqual(44);
+  }
+  await expect(page.locator(".harvest-confirm-row button.primary")).toBeVisible();
+  const localScreenshot = testInfo.outputPath("bumper-harvest-local-choice-320.png");
+  await page.screenshot({ path: localScreenshot, animations: "disabled" });
+  await testInfo.attach("bumper-harvest-local-choice-320", { path: localScreenshot, contentType: "image/png" });
+  await testInfo.attach("bumper-harvest-local-choice-320-geometry", {
+    body: JSON.stringify({ viewport: narrowViewport, geometry: localChoiceGeometry }, null, 2),
+    contentType: "application/json",
+  });
+
   const firstCard = page.locator(".harvest-choice-stage .harvest-card-choice:not([disabled])").first();
   await expect(firstCard).toBeEnabled();
   await firstCard.click();
@@ -176,6 +207,19 @@ test("real Bumper Harvest gives each active chooser a server-owned 60-second Sta
     const geometry = await measure(page);
     const context = JSON.stringify({ viewport, geometry, prior, firstDeadline, nextDeadline });
     expect(geometry.pageWidth, context).toBeLessThanOrEqual(viewport.width);
+    expect(geometry.choice.left, context).toBeGreaterThanOrEqual(8);
+    expect(geometry.choice.right, context).toBeLessThanOrEqual(viewport.width - 8);
+    expect(geometry.harvestRow.left, context).toBeGreaterThanOrEqual(geometry.choice.left);
+    expect(geometry.harvestRow.right, context).toBeLessThanOrEqual(geometry.choice.right);
+    expect(geometry.harvestRowOverflowX, context).toMatch(/auto|scroll/);
+    expect(geometry.harvestChoiceCount, context).toBe(4);
+    expect(geometry.harvestRowScrollWidth, context).toBeGreaterThanOrEqual(geometry.harvestRowClientWidth);
+    for (const card of geometry.harvestChoices) {
+      expect(card.left, context).toBeGreaterThanOrEqual(geometry.harvestRowClipLeft - 1);
+      expect(card.right, context).toBeLessThanOrEqual(geometry.harvestRowClipRight + 1);
+      expect(card.left, context).toBeGreaterThanOrEqual(8);
+      expect(card.right, context).toBeLessThanOrEqual(viewport.width - 8);
+    }
     expect(geometry.timer.width, context).toBeGreaterThanOrEqual(52);
     expect(geometry.timer.width, context).toBeLessThanOrEqual(68);
     expect(geometry.timer.height, context).toBeGreaterThanOrEqual(36);
@@ -191,10 +235,22 @@ test("real Bumper Harvest gives each active chooser a server-owned 60-second Sta
     expect(geometry.guidance.top - geometry.cluster.bottom, context).toBeLessThanOrEqual(12);
     expect(geometry.timerPointerEvents, context).toBe("none");
     expect(geometry.table.bottom, context).toBeLessThanOrEqual(geometry.dock.top + 1);
-    expect(overlaps(geometry.timer, geometry.choice), context).toBe(false);
+    expect(overlaps(geometry.timer, viewport.width === 320 ? geometry.harvestRow : geometry.choice), context).toBe(false);
     expect(geometry.timerLabel, context).toMatch(/^Choosing \d+ seconds$/);
     expect(geometry.timerText, context).toMatch(/^\d+s$/);
-    if (viewport.width === 390 || viewport.width === 1440) {
+    const lastChoice = await page.locator(".harvest-card-row").evaluate((row) => {
+      row.scrollLeft = row.scrollWidth;
+      const rowRect = row.getBoundingClientRect();
+      const clipLeft = rowRect.left + row.clientLeft;
+      const clipRight = clipLeft + row.clientWidth;
+      const lastRect = row.querySelector(".harvest-card-choice:last-child").getBoundingClientRect();
+      const result = { left: lastRect.left, right: lastRect.right, clipLeft, clipRight };
+      row.scrollLeft = 0;
+      return result;
+    });
+    expect(lastChoice.left, context).toBeGreaterThanOrEqual(lastChoice.clipLeft - 1);
+    expect(lastChoice.right, context).toBeLessThanOrEqual(lastChoice.clipRight + 1);
+    if (viewport.width === 320 || viewport.width === 390 || viewport.width === 1440) {
       const screenshotPath = testInfo.outputPath(`bumper-harvest-real-timer-${viewport.width}.png`);
       await page.screenshot({ path: screenshotPath, animations: "disabled" });
       await testInfo.attach(`bumper-harvest-real-timer-${viewport.width}`, { path: screenshotPath, contentType: "image/png" });

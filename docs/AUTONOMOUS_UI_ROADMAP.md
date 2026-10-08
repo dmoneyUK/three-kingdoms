@@ -1864,9 +1864,26 @@ Only a proven regression or new Reviewer-approved design requirement does.
 - Focused browser spec passed 1/1; `node --check`, targeted ESLint, and
   `git diff --check` passed. Exact pre-commit head
   `3486caee8e7555aa979d676ef4e06f318658118b` passed Actions run `37782474909`.
-  The live-path measurement also found the active choice panel is wider than a
-  390px viewport; that remains the sole next bounded task in HANDOVER.
-  Reviewer acceptance is not claimed.
+  The live-path measurement also found the active choice panel was wider than a
+  390px viewport; that gap was closed by the bounded fit task below. Reviewer
+  acceptance is not claimed.
+
+### UX2.4A-BUMPER-HARVEST-MOBILE-CHOOSER-FIT-01 — Active choice containment
+
+- The real server-backed chooser exposed a 459px panel at a 390px viewport.
+  The grid item retained its min-content width from the four-card row. The
+  panel now has a shrinkable viewport cap; the mobile card row adapts its card
+  scale and spacing so four choices fit together, while larger sets retain
+  contained horizontal scrolling. At 320×740 the panel measured 296px wide
+  (12px side margins), and all four 52px cards plus the local Confirm control
+  remained visible and inside the row.
+- The focused production-path browser spec passed 1/1 at 320×740, 390×844,
+  480×900, and 1440×900; panel/card containment, timer,
+  menu, Guidance/Dock, and page-overflow assertions passed. `npm run build`,
+  `node --check`, targeted ESLint, and `git diff --check` passed. Exact
+  pre-commit HEAD `a68472626272680e67c53b6a4e2cfb67e16a90e1` passed Actions run
+  `37784998759` with all five jobs successful. No manual screenshot acceptance
+  is claimed.
 
 ## Known deferred semantic gaps
 
