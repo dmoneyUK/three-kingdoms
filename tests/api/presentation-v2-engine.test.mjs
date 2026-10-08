@@ -293,10 +293,66 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   assert.deepEqual(sourceSettled.presentationSnapshot.attackDodgeResponses, [dodgeProof]);
   assert.deepEqual(targetSettled.presentationSnapshot.attackDodgeResponses, [dodgeProof], "target receives identical public counter proof");
   assert.deepEqual(observerSettled.presentationSnapshot.attackDodgeResponses, [dodgeProof], "unrelated viewer receives identical public counter proof");
+  assert.deepEqual(sourceSettled.presentationSnapshot.attackHitSettlements, [], "a blocked Attack never publishes a damage-hit settlement");
   assert.equal(JSON.stringify(dodgeProof).includes(attack.id), false, "typed proof does not copy the physical Attack ID");
   assert.equal(JSON.stringify(dodgeProof).includes(dodge.id), false, "typed proof does not copy the physical Dodge ID");
   const settled = sourceSettled;
   assert.deepEqual(settled.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
+});
+
+test("engine-backed direct Attack decline publishes only the exact applied-damage settlement", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [source, target] = game.room.players;
+  const [sourceMember, targetMember, observerMember] = game.members;
+  const attack = card("Attack", "engine-projector-hit-settlement");
+  setHand(source.id, [attack], 4, 4);
+  setHand(target.id, [], 4, 4);
+  setTurn(game.code, source.seat);
+
+  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetId: target.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const before = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  const root = before.presentationSnapshot.rootAction;
+  assert.equal(root?.action, "ATTACK");
+  assert.deepEqual(before.presentationSnapshot.attackHitSettlements, [], "an open response is not yet a damage result");
+
+  const declined = await requestAndSettle("decline_response", { code: game.code, token: targetMember.token, preserveResponse: true });
+  assert.equal(declined.status, 200, JSON.stringify(declined.data));
+  const settled = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  const observer = await assertProjectionMatchesEngine(game.code, observerMember.token);
+  assert.equal(settled.players.find((player) => player.id === target.id)?.hp, 3, "the server applied one point of Attack damage");
+  const event = settled.timeline.find((candidate) => candidate.publicAttackHitSettlement);
+  const proof = {
+    semantics: "PROVEN",
+    eventId: event?.id,
+    rootEventId: root.rootEventId,
+    rootResolutionId: settled.timeline.find((candidate) => candidate.id === root.rootEventId)?.resolutionId,
+    sourceId: source.id,
+    targetId: target.id,
+    outcome: "ATTACK_DAMAGE_APPLIED",
+  };
+  assert.deepEqual(settled.presentationV2.attackHitSettlements, [proof]);
+  assert.deepEqual(settled.presentationSnapshot.attackHitSettlements, [proof]);
+  assert.deepEqual(observer.presentationSnapshot.attackHitSettlements, [proof], "all viewers receive the same public semantic proof");
+  assert.deepEqual(buildPresentationClientView(settled.presentationSnapshot, target.id).attackHitSettlements, [proof]);
+  assert.equal(event?.type, "message");
+  assert.equal(event?.importance, "essential");
+  assert.equal(event?.finalResult, true);
+  assert.equal(event?.resolutionId, proof.rootResolutionId);
+  assert.equal(event?.publicAttackHitSettlement?.rootEventId, root.rootEventId);
+  assert.equal(JSON.stringify(proof).includes(attack.id), false, "public result proof excludes physical card identity");
+
+  const projectionInput = {
+    pending: null,
+    currentAction: settled.currentAction,
+    actionRevision: settled.actionRevision,
+    timeline: settled.timeline,
+    causalEnvelope: settled.causalEnvelope,
+  };
+  assert.deepEqual(projectPresentationV2(projectionInput).attackHitSettlements, [proof]);
+  assert.deepEqual(projectPresentationV2({ ...projectionInput, timeline: settled.timeline.filter((candidate) => candidate.id !== root.rootEventId) }).attackHitSettlements, [], "missing exact Attack root fails closed");
+  assert.deepEqual(projectPresentationV2({ ...projectionInput, timeline: [...settled.timeline, event] }).attackHitSettlements, [], "duplicate settlement event ID fails closed");
+  assert.deepEqual(projectPresentationV2({ ...projectionInput, timeline: settled.timeline.map((candidate) => candidate.id === event.id ? { ...candidate, resolutionId: "wrong-resolution" } : candidate) }).attackHitSettlements, [], "mismatched root resolution fails closed");
 });
 
 test("engine-backed ordinary wounded-player Peach publishes an exact viewer-equal self-target proof", { timeout: 30_000 }, async () => {

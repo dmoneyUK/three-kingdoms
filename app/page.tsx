@@ -11,7 +11,7 @@ import { canUseAction, type CurrentAction, type GameplayAction, type TriggerOpti
 import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
-import type { PresentationDismantleSettlementProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
+import type { PresentationAttackHitSettlementProof, PresentationDismantleSettlementProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, isProvenBorrowedSwordForcedAttack, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildPresentationTransition, type PresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupSourceForViewer, projectGroupTargetScopeForViewer, projectOathRecipientScopeForStage, projectBumperHarvestStageCompositionForViewer, type BumperHarvestStageCompositionView, type GroupSourceView, type GroupTargetScopeView, type HeroFocusPlayerDisplay, type HeroFocusView, type MediumParticipantView, type OathRecipientScopeView } from "../game/hero-focus";
@@ -26,7 +26,7 @@ type ActiveAttackDodgeSettlement = { eventId: string; phase: "exiting" | "comple
 type RootActionOverlayLayoutReadiness = { key: string; state: "measuring" | "ready" | "unavailable" } | null;
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
 type PresentationImportance = "essential" | "informational";
-type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof };
+type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof };
 type CardEvent = PresentationEventMeta & { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" | "draw"; drawPlayerId?: string; presentation?: boolean };
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
 
@@ -165,6 +165,7 @@ const UI_TIMING = {
 const NO_SKILL_EFFECT_SETTLEMENTS = [] as const;
 const NO_DISMANTLE_SETTLEMENTS = [] as const;
 const NO_STEAL_SETTLEMENTS = [] as const;
+const NO_ATTACK_HIT_SETTLEMENTS = [] as const;
 
 async function readApiJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -1762,9 +1763,13 @@ type LocalPlayerDockProps = {
   equipmentSelection?: { eligibleIds: string[]; selectedIds: string[]; max: number; disabled: boolean; onToggle: (cardId: string) => void } | null;
   hiddenCardIds?: ReadonlySet<string>;
   isGroupPreview?: boolean;
+  preserveGuidanceHeight?: boolean;
 };
 
-export function LocalPlayerDock({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), isGroupPreview = false }: LocalPlayerDockProps) {
+export function LocalPlayerDock({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), isGroupPreview = false, preserveGuidanceHeight = false }: LocalPlayerDockProps) {
+  const dockRef = useRef<HTMLElement | null>(null);
+  const guidanceHeightRef = useRef<number | null>(null);
+  const preserveGuidanceHeightRef = useRef(preserveGuidanceHeight);
   const judgementRailRef = useRef<HTMLDivElement | null>(null);
   const [judgementRailWidth, setJudgementRailWidth] = useState(0);
   const [judgementCardWidth, setJudgementCardWidth] = useState(34);
@@ -1792,6 +1797,27 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
     observer.observe(rail);
     return () => observer.disconnect();
   }, [player?.id]);
+  useLayoutEffect(() => {
+    preserveGuidanceHeightRef.current = preserveGuidanceHeight;
+    const guidanceNode = dockRef.current?.querySelector<HTMLElement>(".console-guidance");
+    if (!guidanceNode) return;
+    const height = guidanceHeightRef.current;
+    if (preserveGuidanceHeight && height !== null) guidanceNode.style.minHeight = `${height}px`;
+    else guidanceNode.style.removeProperty("min-height");
+  }, [preserveGuidanceHeight]);
+  useLayoutEffect(() => {
+    const guidanceNode = dockRef.current?.querySelector<HTMLElement>(".console-guidance");
+    if (!guidanceNode) return;
+    const measure = () => {
+      if (preserveGuidanceHeightRef.current) return;
+      const height = guidanceNode.getBoundingClientRect().height;
+      if (height > 0) guidanceHeightRef.current = height;
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(guidanceNode);
+    return () => observer.disconnect();
+  }, [player?.id]);
   const judgementCardLayout = useMemo(() => {
     const cardWidth = judgementCardWidth;
     const count = judgementCards.length;
@@ -1815,7 +1841,7 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
     {selectable ? <button type="button" className="local-zone-card-button" aria-label={`Select ${cardDefinition(card.kind).name}`} aria-pressed={selected} disabled={!equipmentSelection || equipmentSelection.disabled || !equipmentSelection.eligibleIds.includes(card.id)} onClick={() => equipmentSelection?.onToggle(card.id)} /> : <button type="button" className="local-zone-card-button" aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={() => onInfoCard(card)} />}
     <button type="button" className="zone-info-button" aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(card); }}>i</button>
   </div>;
-  return <section className={`local-player-dock${isGroupPreview ? " local-group-preview" : ""}${interactionRoleClasses ? ` ${interactionRoleClasses}` : ""}`} data-player-anchor={player?.id ?? undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined} aria-label="Your player area">
+  return <section ref={dockRef} className={`local-player-dock${isGroupPreview ? " local-group-preview" : ""}${interactionRoleClasses ? ` ${interactionRoleClasses}` : ""}`} data-player-anchor={player?.id ?? undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-guidance-height-preserved={preserveGuidanceHeight ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined} aria-label="Your player area">
     {guidance}
     <div className="local-dock-identity">
       <div className="local-hero-anchor">
@@ -1886,6 +1912,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const skillEffectSettlements = clientPresentation.skillEffectSettlements ?? NO_SKILL_EFFECT_SETTLEMENTS;
   const dismantleSettlements = clientPresentation.dismantleSettlements ?? NO_DISMANTLE_SETTLEMENTS;
   const stealSettlements = clientPresentation.stealSettlements ?? NO_STEAL_SETTLEMENTS;
+  const attackHitSettlements = clientPresentation.attackHitSettlements ?? NO_ATTACK_HIT_SETTLEMENTS;
   const [presentationTransitionStore] = useState(() => createPresentationTransitionStore(clientPresentation));
   const presentationTransition = useSyncExternalStore(presentationTransitionStore.subscribe, presentationTransitionStore.getSnapshot, presentationTransitionStore.getSnapshot);
   useEffect(() => {
@@ -1939,6 +1966,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const [activeSkillEffectSettlement, setActiveSkillEffectSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeDismantleSettlement, setActiveDismantleSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeStealSettlement, setActiveStealSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
+  const [activeAttackHitSettlement, setActiveAttackHitSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeAttackDodgeSettlement, setActiveAttackDodgeSettlement] = useState<ActiveAttackDodgeSettlement | null>(null);
   const attackDodgeSettlementTimerEventId = useRef<string | null>(null);
   // Events already present when the screen mounts have no new animation to
@@ -2608,6 +2636,19 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         : [];
     });
     if (freshStealSettlements.length === 1) setActiveStealSettlement({ eventId: freshStealSettlements[0].eventId, exiting: false });
+    const freshAttackHitSettlements = fresh.flatMap((event) => {
+      if (event.type !== "message") return [];
+      const proofs = attackHitSettlements.filter((proof) => proof.eventId === event.id);
+      if (proofs.length !== 1) return [];
+      const proof = proofs[0];
+      const eventProof = event.publicAttackHitSettlement;
+      return eventProof?.semantics === proof.semantics && eventProof.rootEventId === proof.rootEventId
+        && eventProof.rootResolutionId === proof.rootResolutionId && eventProof.sourceId === proof.sourceId
+        && eventProof.targetId === proof.targetId && eventProof.outcome === proof.outcome
+        ? [proof]
+        : [];
+    });
+    if (freshAttackHitSettlements.length === 1) setActiveAttackHitSettlement({ eventId: freshAttackHitSettlements[0].eventId, exiting: false });
     const effect = fresh.find((event) => event.type === "message" && event.effectNotice);
     if (effect?.type === "message") {
       setEffectNotice(effect.message);
@@ -2643,7 +2684,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       } else setEventQueue((queue) => coalescePresentationQueue(queue, visible));
     }
     setProcessedTimelineKey(timelineKey);
-  }, [room.timeline, timelineKey, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements]);
+  }, [room.timeline, timelineKey, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements]);
   useEffect(() => { if (!optimisticPlay) return; const timer = setTimeout(() => setOptimisticPlay(null), UI_TIMING.playedCard); return () => clearTimeout(timer); }, [optimisticPlay]);
   useEffect(() => { if (!livePendingStartId || livePendingStartId === sequenceScopeStartId) return; const timer = setTimeout(() => setSequenceScopeStartId(livePendingStartId), 0); return () => clearTimeout(timer); }, [livePendingStartId, sequenceScopeStartId]);
   useEffect(() => { if (!harvestSubmitting || room.pendingHarvest?.actorId === harvestSubmitting.playerId && !room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId)) return; const timer = setTimeout(() => setHarvestSubmitting(null), 0); return () => clearTimeout(timer); }, [harvestSubmitting, room.pendingHarvest]);
@@ -3305,9 +3346,34 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     if (!source?.name || !target?.name || source.id === target.id) return null;
     return { action: settlement, rootEvent, settlementEvent, source, target, exiting: activeStealSettlement?.exiting === true };
   })();
+  const attackHitSettlementCandidate = (() => {
+    const settlement = attackHitSettlements.find((candidate) => candidate.eventId === activeAttackHitSettlement?.eventId);
+    if (!settlement || settlement.semantics !== "PROVEN" || settlement.outcome !== "ATTACK_DAMAGE_APPLIED") return null;
+    const rootEvents = room.timeline.filter((event) => event.id === settlement.rootEventId);
+    const settlementEvents = room.timeline.filter((event) => event.id === settlement.eventId);
+    if (rootEvents.length !== 1 || settlementEvents.length !== 1) return null;
+    const rootEvent = rootEvents[0];
+    const settlementEvent = settlementEvents[0];
+    if (rootEvent.type !== "card" || rootEvent.presentation === false || rootEvent.action !== "play"
+      || rootEvent.card.kind !== "Attack" || rootEvent.playedAs !== undefined
+      || rootEvent.resolutionId !== settlement.rootResolutionId
+      || settlementEvent.type !== "message" || settlementEvent.presentation === false
+      || settlementEvent.importance !== "essential" || settlementEvent.finalResult !== true
+      || settlementEvent.resolutionId !== settlement.rootResolutionId
+      || settlementEvent.publicAttackHitSettlement?.semantics !== settlement.semantics
+      || settlementEvent.publicAttackHitSettlement.rootEventId !== settlement.rootEventId
+      || settlementEvent.publicAttackHitSettlement.rootResolutionId !== settlement.rootResolutionId
+      || settlementEvent.publicAttackHitSettlement.sourceId !== settlement.sourceId
+      || settlementEvent.publicAttackHitSettlement.targetId !== settlement.targetId
+      || settlementEvent.publicAttackHitSettlement.outcome !== settlement.outcome) return null;
+    const source = room.players.find((player) => player.id === settlement.sourceId);
+    const target = room.players.find((player) => player.id === settlement.targetId);
+    if (!source?.name || !target?.name || source.id === target.id) return null;
+    return { action: settlement, rootEvent, settlementEvent, source, target, exiting: activeAttackHitSettlement?.exiting === true };
+  })();
   const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId)
-    : oathSimultaneousRootGraphCandidate?.rootEvent ?? bumperHarvestRootGraphCandidate?.rootEvent ?? groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? dismantleSettlementCandidate?.rootEvent ?? stealSettlementCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeGraphCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
-  const selfTargetCandidates = rootAction || oathSimultaneousRootGraphCandidate || bumperHarvestRootGraphCandidate || groupTargetBranchGraphCandidate || skillEffectActionCandidate || skillEffectSettlementCandidate || dismantleSettlementCandidate || stealSettlementCandidate || duelExchangeGraphCandidate || attackDodgeGraphCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
+    : oathSimultaneousRootGraphCandidate?.rootEvent ?? bumperHarvestRootGraphCandidate?.rootEvent ?? groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? dismantleSettlementCandidate?.rootEvent ?? stealSettlementCandidate?.rootEvent ?? attackHitSettlementCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeGraphCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
+  const selfTargetCandidates = rootAction || oathSimultaneousRootGraphCandidate || bumperHarvestRootGraphCandidate || groupTargetBranchGraphCandidate || skillEffectActionCandidate || skillEffectSettlementCandidate || dismantleSettlementCandidate || stealSettlementCandidate || attackHitSettlementCandidate || duelExchangeGraphCandidate || attackDodgeGraphCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
       || event.resolutionId !== action.resolutionId || event.card.kind !== action.cardKind
@@ -3435,6 +3501,19 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       mode: "targeted",
       settlement: { eventId: stealSettlementCandidate.action.eventId, outcome: stealSettlementCandidate.action.outcome, exiting: stealSettlementCandidate.exiting },
     }
+    : attackHitSettlementCandidate
+    ? {
+      key: ["attack-hit-settlement", attackHitSettlementCandidate.action.rootEventId, attackHitSettlementCandidate.action.eventId].join(":"),
+      rootPlacementKey: attackHitSettlementCandidate.action.rootEventId,
+      rootEventId: attackHitSettlementCandidate.action.rootEventId,
+      sourceId: attackHitSettlementCandidate.action.sourceId,
+      targetId: attackHitSettlementCandidate.action.targetId,
+      cardKind: "Attack",
+      cardLabel: "ATTACK",
+      ariaLabel: `${attackHitSettlementCandidate.source.name} played Attack targeting ${attackHitSettlementCandidate.target.name}`,
+      mode: "targeted",
+      settlement: { eventId: attackHitSettlementCandidate.action.eventId, outcome: attackHitSettlementCandidate.action.outcome, exiting: attackHitSettlementCandidate.exiting },
+    }
     : duelExchangeGraphCandidate
     ? {
       key: ["duel", duelExchangeGraphCandidate.exchange.interactionId, duelExchangeGraphCandidate.exchange.rootFrameId, duelExchangeGraphCandidate.exchange.root.eventId, duelExchangeGraphCandidate.exchange.root.sourceId, duelExchangeGraphCandidate.exchange.root.targetId].join(":"),
@@ -3552,6 +3631,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     || skillEffectSettlementCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || dismantleSettlementCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || stealSettlementCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
+    || attackHitSettlementCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || singleTargetNegationGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations),
   );
   const rootGroupTargetNamesKnown = Boolean(rootActionOverlayAction?.groupTargets?.length
@@ -3642,6 +3722,28 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     const timer = window.setTimeout(() => setActiveStealSettlement((current) => current?.eventId === activeStealSettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
   }, [activeStealSettlement?.eventId, activeStealSettlementExiting, activeStealSettlementEventId]);
+  const activeAttackHitSettlementEventId = rootActionOverlayAction?.settlement?.outcome === "ATTACK_DAMAGE_APPLIED"
+    ? rootActionOverlayAction.settlement.eventId
+    : null;
+  const activeAttackHitSettlementExiting = rootActionOverlayAction?.settlement?.outcome === "ATTACK_DAMAGE_APPLIED"
+    && rootActionOverlayAction.settlement.exiting;
+  useEffect(() => {
+    if (!activeAttackHitSettlementEventId || !rootActionOverlayGraphReady
+      || activeAttackHitSettlement?.eventId !== activeAttackHitSettlementEventId || activeAttackHitSettlement.exiting) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setTimeout(() => {
+      setActiveAttackHitSettlement((current) => current?.eventId === activeAttackHitSettlementEventId
+        ? reducedMotion ? null : { ...current, exiting: true }
+        : current);
+    }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
+    return () => window.clearTimeout(timer);
+  }, [activeAttackHitSettlement?.eventId, activeAttackHitSettlement?.exiting, activeAttackHitSettlementEventId, rootActionOverlayGraphReady]);
+  useEffect(() => {
+    if (!activeAttackHitSettlementExiting || !activeAttackHitSettlementEventId
+      || activeAttackHitSettlement?.eventId !== activeAttackHitSettlementEventId) return;
+    const timer = window.setTimeout(() => setActiveAttackHitSettlement((current) => current?.eventId === activeAttackHitSettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
+    return () => window.clearTimeout(timer);
+  }, [activeAttackHitSettlement?.eventId, activeAttackHitSettlementExiting, activeAttackHitSettlementEventId]);
   const activeAttackDodgeSettlementEventId = rootActionOverlayAction?.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE"
     ? rootActionOverlayAction.settlement.eventId
     : null;
@@ -3865,7 +3967,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     </section>
     <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} displayMode={rootActionOverlayDisplayMode} layoutReadiness={rootActionLayoutState} fallbackReason={rootActionOverlayFallbackReason} onLayoutReadinessChange={onRootActionOverlayLayoutReadinessChange} />
     <footer className="play-command">
-    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight}
+    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
       heroSkillControl={
         <section className="hero-skills local-hero-skills" aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => skill.passive

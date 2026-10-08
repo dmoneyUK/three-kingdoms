@@ -2063,6 +2063,25 @@ Only a proven regression or new Reviewer-approved design requirement does.
   passed Actions run `37849530213` (#921), all five jobs. CI for the Steal
   changeset remains pending after push. Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-D-ORDINARY-ATTACK-HIT-SETTLEMENT-01 — Ordinary Attack hit
+
+- A direct, single-target ordinary Attack that applies damage without a Dodge
+  or intervening response now receives a fail-closed public settlement proof
+  bound to the exact root event, resolution, source, and target. The resolved
+  root graph remains visible for the designed brief interval while Local Dock
+  Guidance keeps stable geometry; reduced-motion users receive the shorter
+  non-animated path. Prevented, zero-damage, Dying, delegated, and Group paths
+  do not receive this proof.
+- Real server-backed API coverage passed 37/37; Presentation/client and
+  room-safety coverage passed 65/65; the real Attack browser path passed 4/4
+  at 390×844, 480×900, and 1440×900 plus reduced motion, measuring Seat, Stage,
+  and Dock geometry. Production build and targeted ESLint passed. The exact
+  pre-commit parent `0e5546ef800d345256f6024b631169cd1da6b605` failed Actions
+  run `37851251438` (#922) in both browser shards on the Wrangler ProxyWorker
+  `Network connection lost.` failure. A capped CI-only recovery with focused
+  policy tests is included in the task changeset; its Actions result is
+  pending. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

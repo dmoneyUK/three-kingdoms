@@ -56,6 +56,24 @@ test("preserves only the privacy-safe Steal settlement proof fields", () => {
   assert.equal(normalizeTimeline([{ ...event, publicStealSettlement: { ...proof, outcome: "DISMANTLE_RESOLVED" } }])[0].publicStealSettlement, undefined);
 });
 
+test("preserves only the privacy-safe direct Attack hit settlement fields", () => {
+  const proof = {
+    semantics: "PROVEN", rootEventId: "attack-root-event", rootResolutionId: "attack-resolution",
+    sourceId: "source", targetId: "target", outcome: "ATTACK_DAMAGE_APPLIED", physicalCardId: "private-card-id",
+  };
+  const event = normalizeTimeline([{
+    type: "message", id: "attack-hit-event", message: "TARGET takes 1 damage.", presentation: true,
+    importance: "essential", finalResult: true, resolutionId: "attack-resolution",
+    publicAttackHitSettlement: proof,
+  }])[0];
+  assert.deepEqual(event.publicAttackHitSettlement, {
+    semantics: "PROVEN", rootEventId: "attack-root-event", rootResolutionId: "attack-resolution",
+    sourceId: "source", targetId: "target", outcome: "ATTACK_DAMAGE_APPLIED",
+  });
+  assert.equal(JSON.stringify(event.publicAttackHitSettlement).includes("private-card-id"), false);
+  assert.equal(normalizeTimeline([{ ...event, publicAttackHitSettlement: { ...proof, outcome: "ATTACK_BLOCKED_BY_DODGE" } }])[0].publicAttackHitSettlement, undefined);
+});
+
 test("handles missing collections and rejects malformed items while preserving valid data", () => {
   const empty = normalizeRoomData({ code: "SAFE1", status: "lobby", players: [], myHand: [], timeline: [] });
   assert.deepEqual(empty.players, []); assert.deepEqual(empty.myHand, []); assert.deepEqual(empty.timeline, []);

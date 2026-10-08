@@ -4,10 +4,12 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 const port = Number(process.env.GAME_TEST_PORT ?? 3137);
 const inspectorPort = Number(process.env.GAME_TEST_INSPECTOR_PORT ?? (port + 6000));
 const url = process.env.GAME_TEST_URL ?? `http://localhost:${port}`;
+const wranglerCli = fileURLToPath(new URL("../node_modules/wrangler/bin/wrangler.js", import.meta.url));
 let server = null;
 let output = "";
 const testStatePath = mkdtempSync(join(tmpdir(), "three-kingdoms-test-state-"));
@@ -21,13 +23,13 @@ const apiTestFiles = requestedApiTestFiles?.length ? requestedApiTestFiles : dis
 // Apply the same tracked migrations the production deploy uses before the API
 // suite creates a room. Every run gets a fresh OS temp directory and never
 // touches a developer's persistent .wrangler database.
-const migration = spawnSync("npx", ["wrangler", "d1", "migrations", "apply", "three-kingdoms-db", "--local", "--persist-to", testStatePath, "-c", "dist/server/wrangler.json"], { cwd: new URL("../", import.meta.url), env: { ...process.env }, encoding: "utf8" });
+const migration = spawnSync(process.execPath, [wranglerCli, "d1", "migrations", "apply", "three-kingdoms-db", "--local", "--persist-to", testStatePath, "-c", "dist/server/wrangler.json"], { cwd: new URL("../", import.meta.url), env: { ...process.env }, encoding: "utf8" });
 if (migration.status !== 0) {
   rmSync(testStatePath, { recursive: true, force: true });
   throw new Error(`Failed to initialize local D1 for tests.\n${migration.stdout}\n${migration.stderr}`);
 }
 
-server = spawn("npx", ["wrangler", "dev", "-c", "dist/server/wrangler.json", "--assets", "dist/client", "--port", String(port), "--inspector-port", String(inspectorPort), "--local", "--persist-to", testStatePath, "--var", "WTK_TEST_CAPABILITIES:1", "--show-interactive-dev-session=false"], { cwd: new URL("../", import.meta.url), env: { ...process.env, GAME_TEST_STATE_PATH: testStatePath }, stdio: ["ignore", "pipe", "pipe"] });
+server = spawn(process.execPath, [wranglerCli, "dev", "-c", "dist/server/wrangler.json", "--assets", "dist/client", "--port", String(port), "--inspector-port", String(inspectorPort), "--local", "--persist-to", testStatePath, "--var", "WTK_TEST_CAPABILITIES:1", "--show-interactive-dev-session=false"], { cwd: new URL("../", import.meta.url), env: { ...process.env, GAME_TEST_STATE_PATH: testStatePath }, stdio: ["ignore", "pipe", "pipe"] });
 server.stdout.on("data", (chunk) => { output += chunk; });
 server.stderr.on("data", (chunk) => { output += chunk; });
 

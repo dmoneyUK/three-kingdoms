@@ -70,6 +70,22 @@ function normalizePresentationMeta(entry) {
       outcome: "STEAL_RESOLVED",
     };
   }
+  if (isRecord(entry.publicAttackHitSettlement)
+    && entry.publicAttackHitSettlement.semantics === "PROVEN"
+    && typeof entry.publicAttackHitSettlement.rootEventId === "string"
+    && typeof entry.publicAttackHitSettlement.rootResolutionId === "string"
+    && typeof entry.publicAttackHitSettlement.sourceId === "string"
+    && typeof entry.publicAttackHitSettlement.targetId === "string"
+    && entry.publicAttackHitSettlement.outcome === "ATTACK_DAMAGE_APPLIED") {
+    metadata.publicAttackHitSettlement = {
+      semantics: "PROVEN",
+      rootEventId: entry.publicAttackHitSettlement.rootEventId,
+      rootResolutionId: entry.publicAttackHitSettlement.rootResolutionId,
+      sourceId: entry.publicAttackHitSettlement.sourceId,
+      targetId: entry.publicAttackHitSettlement.targetId,
+      outcome: "ATTACK_DAMAGE_APPLIED",
+    };
+  }
   return metadata;
 }
 
@@ -77,6 +93,7 @@ function normalizeTimelineEvent(entry) {
   const event = { ...entry };
   delete event.publicDismantleSettlement;
   delete event.publicStealSettlement;
+  delete event.publicAttackHitSettlement;
   return { ...event, ...normalizePresentationMeta(entry) };
 }
 

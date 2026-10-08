@@ -191,6 +191,30 @@ async function observeAttackDodgeSettlement(page) {
   });
 }
 
+async function observeAttackHitSettlement(page) {
+  await page.evaluate(() => {
+    const timing = window.__wtkAttackHitSettlementTiming = { shownAt: null, exitingAt: null, removedAt: null, outcome: null, overlayLabel: null };
+    const capture = () => {
+      const overlay = document.querySelector('[data-root-action-overlay="true"]');
+      const node = overlay?.querySelector('[data-root-action-settled="true"]');
+      if (node && overlay?.dataset.rootActionReady === "true" && timing.shownAt === null) {
+        timing.shownAt = performance.now();
+        timing.outcome = node.dataset.rootActionSettlementOutcome ?? null;
+        timing.overlayLabel = overlay.getAttribute("aria-label");
+      }
+      if (node?.classList.contains("is-settlement-exiting") && timing.exitingAt === null) timing.exitingAt = performance.now();
+      if (!node && timing.shownAt !== null && timing.removedAt === null) timing.removedAt = performance.now();
+    };
+    new MutationObserver(capture).observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "data-root-action-ready", "data-root-action-settled", "data-root-action-settlement-outcome", "data-root-action-settlement-exiting"],
+    });
+    capture();
+  });
+}
+
 async function observeDismantleSettlement(page) {
   await page.evaluate(() => {
     const timing = window.__wtkDismantleSettlementTiming = { shownAt: null, exitingAt: null, removedAt: null, outcome: null };
@@ -807,6 +831,162 @@ test("real Attack→Dodge settlement shortens without an exit animation under re
     await expect(overlay.locator('[data-root-action-card="true"]')).toHaveCount(0);
     await expect(targetPage.locator('.table-resolution-layer .table-played-card')).toHaveCount(0);
     expect(proof.counterRelation).toBe("BLOCKS_TARGET_EFFECT");
+  } finally {
+    await targetPage.close();
+  }
+});
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
+  test(`real declined direct Attack shows the exact damage settlement without moving seats at ${viewport.width}×${viewport.height}`, async ({ page, browser, request }, testInfo) => {
+    test.setTimeout(60_000);
+    const seed = await seedGame(request, 4);
+    const sourceId = seed.players[0].id;
+    const targetId = seed.players[1].id;
+    await openGame(page, seed, 0, viewport);
+    await playAttackThroughPage(page, "TARGET");
+    await expect.poll(async () => (await roomView(request, seed, 1)).presentationSnapshot?.rootAction?.rootEventId ?? null, { timeout: 20_000 }).not.toBeNull();
+
+    const targetPage = await browser.newPage({ viewport });
+    try {
+      await openGame(targetPage, seed, 1, viewport);
+      const overlay = targetPage.locator('[data-root-action-overlay="true"]');
+      await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+      await expect.poll(async () => {
+        const view = await roomView(request, seed, 1);
+        return view.currentAction?.kind === "response" && view.currentAction.actorId === targetId && view.currentAction.deadline > Date.now();
+      }, { timeout: 20_000 }).toBe(true);
+      const rootView = await roomView(request, seed, 1);
+      const rootAction = rootView.presentationSnapshot.rootAction;
+      expect(rootAction).toMatchObject({ semantics: "PROVEN", action: "ATTACK", sourceId, targetId, cardKind: "Attack" });
+      expect(rootView.presentationSnapshot.attackHitSettlements).toEqual([]);
+      const before = await targetPage.evaluate(() => window.__wtkRootOverlayPreGraphAnchors);
+      expect(before, "capture fixed seat anchors while the Dodge decision is open").toBeTruthy();
+      const beforeDockLayout = await targetPage.evaluate((id) => {
+        const dock = document.querySelector(`[data-player-anchor="${id}"].local-player-dock`);
+        const rect = (element) => {
+          if (!element) return null;
+          const bounds = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, display: style.display, gridArea: style.gridArea, gridTemplateRows: style.gridTemplateRows };
+        };
+        return Object.fromEntries([".console-guidance", ".local-dock-identity", ".local-dock-zones", ".local-hand-section", ".local-operation-console"]
+          .map((selector) => [selector, rect(dock?.querySelector(selector) ?? null)]).concat([[".local-player-dock", rect(dock)]]));
+      }, targetId);
+      await targetPage.emulateMedia({ reducedMotion: "no-preference" });
+      await observeAttackHitSettlement(targetPage);
+
+      const skip = targetPage.locator('[data-action-slot="decline"] button');
+      await expect(skip).toHaveText("Skip");
+      await expect(skip).toBeEnabled();
+      const skipResponse = targetPage.waitForResponse((response) => {
+        if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+        try { return JSON.parse(response.request().postData() ?? "{}").action === "decline_response"; }
+        catch { return false; }
+      });
+      await skip.click();
+      expect((await skipResponse).ok()).toBe(true);
+      await expect.poll(async () => (await roomView(request, seed, 2)).presentationSnapshot?.attackHitSettlements?.length ?? 0, { timeout: 20_000 }).toBe(1);
+      const publicView = await roomView(request, seed, 2);
+      const proof = publicView.presentationSnapshot.attackHitSettlements[0];
+      expect(proof).toMatchObject({
+        semantics: "PROVEN", outcome: "ATTACK_DAMAGE_APPLIED",
+        rootEventId: rootAction.rootEventId, sourceId, targetId,
+      });
+      expect(JSON.stringify(proof)).not.toContain(attack.id);
+      expect((await roomView(request, seed, 1)).players.find((player) => player.id === targetId)?.hp).toBe(3);
+      await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+      await expect(overlay).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET. Attack damage applied.");
+      const rootCard = targetPage.locator('[data-root-action-card="true"]');
+      await expect(rootCard).toHaveAttribute("data-root-action-settled", "true");
+      await expect(targetPage.locator(`[data-player-anchor="${targetId}"].local-player-dock`)).toHaveAttribute("data-guidance-height-preserved", "true");
+      await expect(rootCard).toHaveAttribute("data-root-action-settlement-event-id", proof.eventId);
+      await expect(rootCard).toHaveAttribute("data-root-action-settlement-outcome", "ATTACK_DAMAGE_APPLIED");
+      await expect(rootCard.locator("small")).toHaveText("RESOLVED");
+      await expect(targetPage.locator(".interaction-stage")).toHaveCount(0);
+      await expect(targetPage.locator(".table-resolution-layer .table-played-card")).toHaveCount(0);
+
+      const geometry = await measure(targetPage, sourceId, targetId);
+      const afterDockLayout = await targetPage.evaluate((id) => {
+        const dock = document.querySelector(`[data-player-anchor="${id}"].local-player-dock`);
+        const rect = (element) => {
+          if (!element) return null;
+          const bounds = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, display: style.display, gridArea: style.gridArea, gridTemplateRows: style.gridTemplateRows };
+        };
+        return Object.fromEntries([".console-guidance", ".local-dock-identity", ".local-dock-zones", ".local-hand-section", ".local-operation-console"]
+          .map((selector) => [selector, rect(dock?.querySelector(selector) ?? null)]).concat([[".local-player-dock", rect(dock)]]));
+      }, targetId);
+      expect(Math.abs(afterDockLayout[".console-guidance"].height - beforeDockLayout[".console-guidance"].height), "Local Dock Guidance keeps its measured row height for the hit-settlement frame").toBeLessThanOrEqual(.5);
+      expect(geometry.documentWidth).toBeLessThanOrEqual(viewport.width);
+      expect(geometry.overlayReady).toBe(true);
+      expect(geometry.card).toBeTruthy();
+      expect(geometry.sourceEdge).toMatch(/^M /);
+      expect(geometry.targetEdge).toContain("root-target-arrow-");
+      expect(geometry.playerAnchors).toHaveLength(4);
+      for (const anchor of geometry.playerAnchors) {
+        const baseline = before[anchor.id];
+        expect(baseline, `baseline anchor exists for ${anchor.id}`).toBeTruthy();
+        for (const dimension of ["x", "y", "right", "bottom", "width", "height"]) {
+          const playerName = seed.players.find((player) => player.id === anchor.id)?.name ?? "unknown player";
+          expect(Math.abs(anchor[dimension] - baseline[dimension]), `${playerName} (${anchor.id}) ${dimension} stays fixed through settlement at ${viewport.width}×${viewport.height}`).toBeLessThanOrEqual(.5);
+        }
+      }
+      expect(geometry.card.x).toBeGreaterThanOrEqual(geometry.table.x);
+      expect(geometry.card.y).toBeGreaterThanOrEqual(geometry.table.y);
+      expect(geometry.card.right).toBeLessThanOrEqual(geometry.table.right);
+      expect(geometry.card.bottom).toBeLessThanOrEqual(geometry.table.bottom);
+      expect(geometry.connectorPoints.flatMap((connector) => connector.points).every((point) => point.x >= geometry.shell.x && point.x <= geometry.shell.right
+        && point.y >= geometry.shell.y && point.y <= geometry.shell.bottom)).toBe(true);
+      const settlementScreenshot = await targetPage.screenshot();
+      await testInfo.attach("attack-hit-settlement.png", { body: settlementScreenshot, contentType: "image/png" });
+      await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackHitSettlementTiming?.removedAt ?? null), { timeout: 3_000 }).not.toBeNull();
+      const timing = await targetPage.evaluate(() => window.__wtkAttackHitSettlementTiming);
+      expect(timing.outcome).toBe("ATTACK_DAMAGE_APPLIED");
+      expect(timing.exitingAt - timing.shownAt).toBeGreaterThanOrEqual(350);
+      expect(timing.exitingAt - timing.shownAt).toBeLessThanOrEqual(750);
+      expect(timing.removedAt - timing.exitingAt).toBeGreaterThanOrEqual(100);
+      expect(timing.removedAt - timing.exitingAt).toBeLessThanOrEqual(350);
+      await testInfo.attach("attack-hit-settlement.json", { body: JSON.stringify({ viewport, proof, geometry, timing }, null, 2), contentType: "application/json" });
+    } finally {
+      await targetPage.close();
+    }
+  });
+}
+
+test("real direct Attack hit settlement shortens under reduced motion", async ({ page, browser, request }) => {
+  test.setTimeout(60_000);
+  const viewport = { width: 390, height: 844 };
+  const seed = await seedGame(request, 4);
+  await openGame(page, seed, 0, viewport);
+  await playAttackThroughPage(page, "TARGET");
+  await expect.poll(async () => (await roomView(request, seed, 1)).presentationSnapshot?.rootAction?.rootEventId ?? null, { timeout: 20_000 }).not.toBeNull();
+
+  const targetPage = await browser.newPage({ viewport });
+  try {
+    await targetPage.emulateMedia({ reducedMotion: "reduce" });
+    await openGame(targetPage, seed, 1, viewport);
+    const overlay = targetPage.locator('[data-root-action-overlay="true"]');
+    await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+    await observeAttackHitSettlement(targetPage);
+    const skip = targetPage.locator('[data-action-slot="decline"] button');
+    await expect(skip).toHaveText("Skip");
+    await expect(skip).toBeEnabled();
+    const skipResponse = targetPage.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "decline_response"; }
+      catch { return false; }
+    });
+    await skip.click();
+    expect((await skipResponse).ok()).toBe(true);
+    await expect.poll(async () => (await roomView(request, seed, 2)).presentationSnapshot?.attackHitSettlements?.length ?? 0, { timeout: 20_000 }).toBe(1);
+    await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackHitSettlementTiming?.removedAt ?? null), { timeout: 3_000 }).not.toBeNull();
+    const timing = await targetPage.evaluate(() => window.__wtkAttackHitSettlementTiming);
+    expect(timing.outcome).toBe("ATTACK_DAMAGE_APPLIED");
+    expect(timing.exitingAt).toBeNull();
+    expect(timing.removedAt - timing.shownAt).toBeGreaterThanOrEqual(70);
+    expect(timing.removedAt - timing.shownAt).toBeLessThanOrEqual(350);
+    await expect(overlay.locator('[data-root-action-card="true"]')).toHaveCount(0);
   } finally {
     await targetPage.close();
   }

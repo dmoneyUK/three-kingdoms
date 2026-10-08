@@ -12,6 +12,7 @@ import type {
   PresentationRootAction,
   PresentationDismantleSettlement,
   PresentationStealSettlement,
+  PresentationAttackHitSettlement,
   PresentationSkillEffectAction,
   PresentationSkillEffectSettlement,
   PresentationAttackDodgeResponse,
@@ -72,6 +73,7 @@ export type PresentationSnapshotSkillEffectAction = PresentationSkillEffectActio
 export type PresentationSnapshotSkillEffectSettlement = PresentationSkillEffectSettlement;
 export type PresentationSnapshotDismantleSettlement = PresentationDismantleSettlement;
 export type PresentationSnapshotStealSettlement = PresentationStealSettlement;
+export type PresentationSnapshotAttackHitSettlement = PresentationAttackHitSettlement;
 export type PresentationSnapshotAttackDodgeResponse = PresentationAttackDodgeResponse;
 export type PresentationSnapshotDuelExchange = PresentationDuelExchange;
 export type PresentationSnapshotSelfTargetAction = PresentationSelfTargetAction;
@@ -89,6 +91,7 @@ export type PresentationSnapshot = {
   skillEffectSettlements: readonly PresentationSnapshotSkillEffectSettlement[];
   dismantleSettlements: readonly PresentationSnapshotDismantleSettlement[];
   stealSettlements: readonly PresentationSnapshotStealSettlement[];
+  attackHitSettlements: readonly PresentationSnapshotAttackHitSettlement[];
   duelExchange: PresentationSnapshotDuelExchange | null;
   attackDodgeResponses?: readonly PresentationSnapshotAttackDodgeResponse[];
   selfTargetActions?: readonly PresentationSnapshotSelfTargetAction[];
@@ -237,6 +240,35 @@ export function provenStealSettlements(value: unknown): PresentationSnapshotStea
     sourceId: settlement.sourceId,
     targetId: settlement.targetId,
     outcome: "STEAL_RESOLVED",
+  }));
+}
+
+export function provenAttackHitSettlements(value: unknown): PresentationSnapshotAttackHitSettlement[] {
+  if (!Array.isArray(value)) return [];
+  const settlements = value.filter((candidate): candidate is PresentationSnapshotAttackHitSettlement => Boolean(candidate && typeof candidate === "object" && !Array.isArray(candidate)
+    && (candidate as PresentationSnapshotAttackHitSettlement).semantics === "PROVEN"
+    && nonEmptyString((candidate as PresentationSnapshotAttackHitSettlement).eventId)
+    && nonEmptyString((candidate as PresentationSnapshotAttackHitSettlement).rootEventId)
+    && (candidate as PresentationSnapshotAttackHitSettlement).eventId !== (candidate as PresentationSnapshotAttackHitSettlement).rootEventId
+    && nonEmptyString((candidate as PresentationSnapshotAttackHitSettlement).rootResolutionId)
+    && nonEmptyString((candidate as PresentationSnapshotAttackHitSettlement).sourceId)
+    && nonEmptyString((candidate as PresentationSnapshotAttackHitSettlement).targetId)
+    && (candidate as PresentationSnapshotAttackHitSettlement).sourceId !== (candidate as PresentationSnapshotAttackHitSettlement).targetId
+    && (candidate as PresentationSnapshotAttackHitSettlement).outcome === "ATTACK_DAMAGE_APPLIED"));
+  const eventCounts = new Map<string, number>();
+  const rootCounts = new Map<string, number>();
+  settlements.forEach((settlement) => {
+    eventCounts.set(settlement.eventId, (eventCounts.get(settlement.eventId) ?? 0) + 1);
+    rootCounts.set(settlement.rootEventId, (rootCounts.get(settlement.rootEventId) ?? 0) + 1);
+  });
+  return settlements.filter((settlement) => eventCounts.get(settlement.eventId) === 1 && rootCounts.get(settlement.rootEventId) === 1).map((settlement) => ({
+    semantics: "PROVEN",
+    eventId: settlement.eventId,
+    rootEventId: settlement.rootEventId,
+    rootResolutionId: settlement.rootResolutionId,
+    sourceId: settlement.sourceId,
+    targetId: settlement.targetId,
+    outcome: "ATTACK_DAMAGE_APPLIED",
   }));
 }
 
@@ -860,6 +892,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     skillEffectSettlements: provenSkillEffectSettlements(input.presentationV2.skillEffectSettlements),
     dismantleSettlements: provenDismantleSettlements(input.presentationV2.dismantleSettlements),
     stealSettlements: provenStealSettlements(input.presentationV2.stealSettlements),
+    attackHitSettlements: provenAttackHitSettlements(input.presentationV2.attackHitSettlements),
     duelExchange: authority ? provenDuelExchange(input.presentationV2.duelExchange, authority.scene, authority.identity, authority.stable) : null,
     ...(input.presentationV2.attackDodgeResponses?.length ? { attackDodgeResponses: provenAttackDodgeResponses(input.presentationV2.attackDodgeResponses) } : {}),
     selfTargetActions: provenSelfTargetActions(input.presentationV2.selfTargetActions),
