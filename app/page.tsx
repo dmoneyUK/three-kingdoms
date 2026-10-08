@@ -3437,7 +3437,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     || targetCardPickerSelectableDetail && !skillEffectActionCandidate
     || expandedOpponentId || groupScopePreview.active);
   const rootActionAwaitingReveal = Boolean(
-    !attackDodgeGraphCandidate && rootAction && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
+    !attackDodgeGraphCandidate && rootAction && rootAction.action !== "ATTACK" && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || groupTargetBranchGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || oathSimultaneousRootGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || bumperHarvestRootGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
@@ -3524,6 +3524,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     : sequenceEvents;
   const activeRootSelfTargetEvent = rootActionOverlayVisible && rootActionOverlayAction?.mode === "self-target"
     && rootActionCardId && displayedEvent && eventCards(displayedEvent).some((card) => card.id === rootActionCardId);
+  const activeRootAttackEvent = rootActionOverlayVisible && rootAction?.action === "ATTACK" && rootActionCardId && displayedEvent
+    && eventCards(displayedEvent).some((card) => card.id === rootActionCardId);
   const activeRootResponseEvent = rootActionOverlayVisible && rootActionOverlayAction?.response && displayedEvent
     && (displayedEvent.id === rootActionOverlayAction.response.eventId
       || duelExchangeGraphCandidate?.responseEvent && displayedEvent.id === duelExchangeGraphCandidate.responseEvent.id
@@ -3531,7 +3533,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       || singleTargetNegationGraphCandidate?.responseEvent && eventCards(displayedEvent).some((card) => card.id === singleTargetNegationGraphCandidate.responseEvent.card.id));
   const completedAttackDodgeResponseEvent = completedAttackDodgeSequenceCandidate && displayedEvent
     && eventCards(displayedEvent).some((card) => card.id === completedAttackDodgeSequenceCandidate.responseEvent.card.id);
-  const displayedTableEvent = activeRootSelfTargetEvent || activeRootResponseEvent || completedAttackDodgeResponseEvent ? null : displayedEvent;
+  const displayedTableEvent = activeRootAttackEvent || activeRootSelfTargetEvent || activeRootResponseEvent || completedAttackDodgeResponseEvent ? null : displayedEvent;
   const tablePresentationVisible = displayedSequenceEvents.length > 0 || Boolean(displayedTableEvent && eventCards(displayedTableEvent).length);
   const localEquipmentSelection = activeSkillSelection
     ? { eligibleIds: activeSkillSelection.eligibleCardIds, selectedIds: activeSkillSelectedCardIds, max: activeSkillSelection.max, disabled: busy || presentationBusy, onToggle: (cardId: string) => setActiveSkillSelectionState((state) => { if (!state || !activeSkillStateIsCurrent) return state; const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)); return validIds.includes(cardId) ? { ...state, cardIds: validIds.filter((id) => id !== cardId) } : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, cardId] } : { ...state, cardIds: validIds }; }) }

@@ -552,6 +552,28 @@
   opacity: .96;
 }
 
+.interaction-root-overlay[data-root-action-card-kind="Attack"] .interaction-root-source-tether {
+  stroke: #e3dfc9;
+  stroke-width: 3.2px;
+  opacity: 1;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Attack"] .interaction-root-target-arrow {
+  stroke: #ffd166;
+  stroke-width: 4.8px;
+  opacity: 1;
+  filter: drop-shadow(0 0 4px #ffd166cc);
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Attack"] .interaction-root-target-halo {
+  fill: #ffd16638;
+  stroke: #ffe08a;
+  stroke-width: 3px;
+  opacity: 1;
+  filter: drop-shadow(0 0 7px #ffd166cc);
+  vector-effect: non-scaling-stroke;
+}
+
 .interaction-root-group-target-edge {
   stroke: #918a7c;
   stroke-width: 1.8px;
@@ -707,6 +729,12 @@
   fill: #d06b58;
   stroke: #4a211b;
   stroke-width: .6px;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Attack"] .interaction-root-connectors marker[id^="root-target-arrow"] path {
+  fill: #ffd166;
+  stroke: #513b12;
+  stroke-width: 1px;
 }
 
 .interaction-root-action-card {

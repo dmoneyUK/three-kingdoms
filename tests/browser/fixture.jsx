@@ -148,8 +148,12 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
       checkpointId,
       presentationRevision: 1,
       sourceId,
+      rootEventId: `browser-${state}-bumper-root-event`,
+      rootResolutionId: `browser-${state}-bumper-root-resolution`,
+      rootCardId: `browser-${state}-bumper-root-card`,
       targetIds: [...(bumperHarvestTargetIds ?? originalTargetIds)],
       currentParticipantId,
+      ...(childFrame ? { currentEffectState: "ACTIVE" } : {}),
       participants: (bumperHarvestTargetIds ?? originalTargetIds).map((playerId, index, participantIds) => {
         const currentIndex = participantIds.indexOf(currentParticipantId);
         const complete = bumperHarvestProgressCase === "complete";

@@ -27,6 +27,7 @@ type RootActionLayout = {
   simultaneousTargetPaths?: readonly { playerId: string; path: string; blockPath: string | null }[];
   selfHaloBlocked?: boolean;
   selfHalo: Rect | null;
+  targetHalo?: Rect | null;
 };
 
 type InteractionRootOverlayGroupTarget = PresentationSnapshotGroupParticipantProgress & { playerName: string };
@@ -128,6 +129,7 @@ function rectangleEdge(rect: Rect, toward: Point): Point {
 }
 
 function pathBetween(start: Point, end: Point, curve: number): string {
+  if (Math.abs(curve) < .01) return `M ${start.x.toFixed(1)} ${start.y.toFixed(1)} L ${end.x.toFixed(1)} ${end.y.toFixed(1)}`;
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const length = Math.hypot(dx, dy) || 1;
@@ -635,7 +637,7 @@ function layoutSimultaneousRootAction(
   };
 }
 
-function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, responseElement: HTMLElement | null, responseElements: readonly HTMLElement[], historySummaryElement: HTMLElement | null, action: Pick<InteractionRootOverlayAction, "sourceId" | "targetId" | "mode" | "rootEffectState" | "response"> & ResponseLayout, preferredRootCard: Rect | null): RootActionLayout | null {
+function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, responseElement: HTMLElement | null, responseElements: readonly HTMLElement[], historySummaryElement: HTMLElement | null, action: Pick<InteractionRootOverlayAction, "sourceId" | "targetId" | "cardKind" | "mode" | "rootEffectState" | "response"> & ResponseLayout, preferredRootCard: Rect | null): RootActionLayout | null {
   const table = shell.querySelector<HTMLElement>(".play-table");
   const shellBounds = shell.getBoundingClientRect();
   const cardBounds = cardElement.getBoundingClientRect();
@@ -673,6 +675,18 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const tableRect = relativeRect(table, shellBounds);
   const sourceRect = relativeRect(sourceElement, shellBounds);
   const targetRect = relativeRect(targetElement, shellBounds);
+  const targetPortrait = action.cardKind === "Attack"
+    ? targetElement.querySelector<HTMLElement>(".opponent-hero-portrait, .local-hero-card") ?? targetElement
+    : null;
+  const targetPortraitRect = targetPortrait ? relativeRect(targetPortrait, shellBounds) : null;
+  const targetHalo = targetPortraitRect ? {
+    left: targetPortraitRect.left - 5,
+    top: targetPortraitRect.top - 5,
+    right: targetPortraitRect.right + 5,
+    bottom: targetPortraitRect.bottom + 5,
+    width: targetPortraitRect.width + 10,
+    height: targetPortraitRect.height + 10,
+  } : null;
   const responseSourceRect = responseSourceElement ? relativeRect(responseSourceElement, shellBounds) : null;
   const responseTargetRect = responseTargetElement ? relativeRect(responseTargetElement, shellBounds) : null;
   const cardWidth = cardBounds.width;
@@ -740,6 +754,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       responseSourcePaths: [],
       responseCounterPaths: [],
       selfHalo,
+      targetHalo: null,
     };
   }
 
@@ -804,6 +819,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   if (!card) return null;
 
   const cardCenter = center(card);
+  const rootPathCurve = action.cardKind === "Attack" ? 0 : Math.min(24, lineLength * .035);
   const sourceStart = rectangleEdge(sourceRect, cardCenter);
   const sourceEnd = rectangleEdge(card, sourceCenter);
   const historySummaryBounds = historySummaryElement?.getBoundingClientRect();
@@ -887,8 +903,8 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       width: shellBounds.width,
       height: shellBounds.height,
       card,
-      sourcePath: pathBetween(sourceStart, sourceEnd, Math.min(24, lineLength * .035)),
-      targetPath: pathBetween(rectangleEdge(card, targetCenter), rectangleEdge(targetRect, cardCenter), Math.min(34, lineLength * .05)),
+      sourcePath: pathBetween(sourceStart, sourceEnd, rootPathCurve),
+      targetPath: pathBetween(rectangleEdge(card, targetCenter), rectangleEdge(targetRect, cardCenter), action.cardKind === "Attack" ? 0 : Math.min(34, lineLength * .05)),
       responseTargetPath: null,
       targetBlockPath,
       responseCard: null,
@@ -900,6 +916,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       responseCounterPaths,
       historySummary,
       selfHalo: null,
+      targetHalo,
     };
   }
   if (action.response) {
@@ -959,16 +976,16 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     const responseSourceStart = rectangleEdge(responseSourceRect, responseCenter);
     const responseSourceEnd = rectangleEdge(responseCard, responseSourceCenter);
     const responseTargetPath = responseTargetRect && responseTargetCenter
-      ? pathBetween(rectangleEdge(responseCard, responseTargetCenter), rectangleEdge(responseTargetRect, responseCenter), Math.min(28, Math.hypot(responseTargetCenter.x - responseCenter.x, responseTargetCenter.y - responseCenter.y) * .045))
+      ? pathBetween(rectangleEdge(responseCard, responseTargetCenter), rectangleEdge(responseTargetRect, responseCenter), action.cardKind === "Attack" ? 0 : Math.min(28, Math.hypot(responseTargetCenter.x - responseCenter.x, responseTargetCenter.y - responseCenter.y) * .045))
       : null;
     let targetPath: string | null = targetsPlayer
-      ? pathBetween(rectangleEdge(card, targetCenter), rectangleEdge(targetRect, cardCenter), Math.min(34, lineLength * .05))
+      ? pathBetween(rectangleEdge(card, targetCenter), rectangleEdge(targetRect, cardCenter), action.cardKind === "Attack" ? 0 : Math.min(34, lineLength * .05))
       : null;
     let targetBlockPath: string | null = null;
     if (countersRoot) {
       const targetStart = rectangleEdge(card, targetCenter);
       const targetEnd = rectangleEdge(targetRect, cardCenter);
-      targetPath = pathBetween(targetStart, targetEnd, Math.min(34, lineLength * .05));
+      targetPath = pathBetween(targetStart, targetEnd, action.cardKind === "Attack" ? 0 : Math.min(34, lineLength * .05));
       const targetLength = Math.hypot(targetEnd.x - targetStart.x, targetEnd.y - targetStart.y) || 1;
       const targetNormal = { x: -(targetEnd.y - targetStart.y) / targetLength, y: (targetEnd.x - targetStart.x) / targetLength };
       const targetMiddle = { x: (targetStart.x + targetEnd.x) / 2, y: (targetStart.y + targetEnd.y) / 2 };
@@ -979,7 +996,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       width: shellBounds.width,
       height: shellBounds.height,
       card,
-      sourcePath: pathBetween(sourceStart, sourceEnd, Math.min(24, lineLength * .035)),
+      sourcePath: pathBetween(sourceStart, sourceEnd, rootPathCurve),
       targetPath,
       responseTargetPath,
       targetBlockPath,
@@ -991,6 +1008,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       responseSourcePaths: [],
       responseCounterPaths: [],
       selfHalo: null,
+      targetHalo,
     };
   }
   const targetStart = rectangleEdge(card, targetCenter);
@@ -999,8 +1017,8 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     width: shellBounds.width,
     height: shellBounds.height,
     card,
-    sourcePath: pathBetween(sourceStart, sourceEnd, Math.min(24, lineLength * .035)),
-    targetPath: pathBetween(targetStart, targetEnd, Math.min(34, lineLength * .05)),
+    sourcePath: pathBetween(sourceStart, sourceEnd, rootPathCurve),
+    targetPath: pathBetween(targetStart, targetEnd, action.cardKind === "Attack" ? 0 : Math.min(34, lineLength * .05)),
     responseTargetPath: null,
     targetBlockPath: null,
     responseCard: null,
@@ -1011,6 +1029,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     responseSourcePaths: [],
     responseCounterPaths: [],
     selfHalo: null,
+    targetHalo,
   };
 }
 
@@ -1048,6 +1067,7 @@ export function InteractionRootOverlay({
   const responseCountersRoot = action?.response?.countersRoot === true;
   const responseTargetsPlayer = Boolean(responseTargetId);
   const markerId = key ? `root-target-arrow-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}` : "root-target-arrow";
+  const targetMarkerSize = action?.cardKind === "Attack" ? 14 : 8;
   const counterMarkerId = key ? `root-counter-arrow-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}` : "root-counter-arrow";
 
   useLayoutEffect(() => {
@@ -1122,6 +1142,7 @@ export function InteractionRootOverlay({
         : currentTargetId ? layoutRootAction(shell, card, responseCard, responseElements, historySummaryElement, {
           sourceId: currentSourceId,
           targetId: currentTargetId,
+          cardKind: currentAction.cardKind,
           mode: currentMode ?? "targeted",
           rootEffectState: currentAction.rootEffectState,
           response: currentAction.response,
@@ -1208,6 +1229,7 @@ export function InteractionRootOverlay({
     data-root-action-oath-simultaneous-graph={action.simultaneousTargets?.length ? "true" : undefined}
     data-oath-recipient-count={action.simultaneousTargets?.length ?? undefined}
     data-root-action-mode={action.mode}
+    data-root-action-card-kind={action.cardKind}
     data-root-action-settlement-event-id={action.settlement?.eventId}
     data-root-action-settlement-exiting={action.settlement?.exiting ? "true" : undefined}
     data-root-effect-state={action.rootEffectState ?? undefined}
@@ -1225,8 +1247,8 @@ export function InteractionRootOverlay({
   >
     {layout && <svg className="interaction-root-connectors" width="100%" height="100%" viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" aria-hidden="true">
       <defs>
-        <marker id={markerId} markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
-          <path d="M0 0 L8 4 L0 8 Z" />
+        <marker id={markerId} markerWidth={targetMarkerSize} markerHeight={targetMarkerSize} refX={targetMarkerSize} refY={targetMarkerSize / 2} orient="auto" markerUnits="userSpaceOnUse">
+          <path d={`M0 0 L${targetMarkerSize} ${targetMarkerSize / 2} L0 ${targetMarkerSize} Z`} />
         </marker>
         <marker id={counterMarkerId} markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
           <path d="M0 0 L8 4 L0 8 Z" />
@@ -1242,6 +1264,16 @@ export function InteractionRootOverlay({
         width={layout.selfHalo.width}
         height={layout.selfHalo.height}
         rx="7"
+      />}
+      {layout.targetHalo && <rect
+        className="interaction-root-target-halo"
+        data-root-action-target-highlight="true"
+        data-root-action-target-highlight-player-id={action.targetId ?? undefined}
+        x={layout.targetHalo.left}
+        y={layout.targetHalo.top}
+        width={layout.targetHalo.width}
+        height={layout.targetHalo.height}
+        rx="9"
       />}
       <path className="interaction-root-source-tether" data-root-action-edge="source" d={layout.sourcePath} />
       {layout.targetPath && <path className={responseTargetsPlayer ? "interaction-root-target-context" : responseCountersRoot || responseChainRootBlocked ? "interaction-root-target-subdued" : "interaction-root-target-arrow"} data-root-action-edge={responseTargetsPlayer ? "root-target-context" : responseCountersRoot || responseChainRootBlocked ? "root-target-blocked" : "target"} data-root-action-target-state={responseTargetsPlayer ? "context" : responseCountersRoot || responseChainRootBlocked ? "blocked" : "active"} d={layout.targetPath} markerEnd={responseCountersRoot || responseChainRootBlocked ? undefined : `url(#${markerId})`} />}

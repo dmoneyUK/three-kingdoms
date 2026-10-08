@@ -1997,6 +1997,24 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `37824882092` only on the two Oath visual-gate fixture crashes; CI for the
   repair-and-feature changeset is pending. Reviewer acceptance is not claimed.
 
+### UX2.6-ATTACK-ROOT-GRAPH-LEGACY-ROUTING-01 — Attack reveal convergence and visual clarity
+
+- On the real server-backed ordinary Attack path, the exact proven root card no
+  longer waits for unrelated reveal/event queues before the physical-seat graph
+  can become ready, and the same Attack event is not simultaneously shown as a
+  table reveal. The safe legacy Stage remains when root proof is absent. Attack
+  source/target paths are straight; measured styling is 3.2px source, 4.8px
+  target, 14px arrowhead, and a 3px gold halo aligned 5px outside the target
+  portrait. Server-backed Attack/Dodge browser cases passed 10/10 over 4/6/8
+  players and 390×844, 480×900, and 1440×900. The base `fc65e3c` Actions run
+  `37830537625` failed Browser shard 2/2 because the Bumper visual-gate fixture
+  omitted newly required root event/resolution/card identities and child effect
+  state; those contract fields were restored and the two failing Bumper cases
+  pass 2/2 without assertion changes. Build, overlay ESLint, browser-spec
+  syntax, and diff checks passed; `app/page.tsx` targeted ESLint exited on local
+  Node heap OOM. Resulting push CI is not yet observed. Reviewer acceptance is
+  not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

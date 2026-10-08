@@ -49,6 +49,28 @@ async function openGame(page, seed, playerIndex, viewport) {
   await page.addInitScript(() => {
     const original = HTMLElement.prototype.getBoundingClientRect;
     window.__wtkRootOverlayPreGraphAnchors = null;
+    window.__wtkAttackCompositionStates = [];
+    const captureComposition = () => {
+      const overlay = document.querySelector('[data-root-action-overlay="true"]');
+      const stage = document.querySelector('.interaction-stage[data-stage="ATTACK_RESPONSE"]');
+      const activeReveal = document.querySelector(".active-table-reveal .game-card");
+      const state = {
+        enabled: overlay?.dataset.rootActionEnabled === "true",
+        ready: overlay?.dataset.rootActionReady === "true",
+        attackStage: Boolean(stage),
+        activeReveal: Boolean(activeReveal),
+      };
+      const states = window.__wtkAttackCompositionStates;
+      const previous = states.at(-1);
+      if (!previous || Object.keys(state).some((key) => previous[key] !== state[key])) states.push(state);
+    };
+    new MutationObserver(captureComposition).observe(document, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "data-root-action-enabled", "data-root-action-ready", "data-stage", "data-current-effect"],
+    });
+    captureComposition();
     HTMLElement.prototype.getBoundingClientRect = function (...args) {
       const overlay = document.querySelector('[data-root-action-overlay="true"]');
       if (this.hasAttribute("data-player-anchor") && !window.__wtkRootOverlayPreGraphAnchors && overlay?.dataset.rootActionReady === "false") {
@@ -193,6 +215,24 @@ async function measure(page, sourceId, targetId) {
       }),
       sourceEdge: document.querySelector('[data-root-action-edge="source"]')?.getAttribute("d") ?? null,
       targetEdge: document.querySelector('[data-root-action-edge="target"]')?.getAttribute("marker-end") ?? null,
+      sourcePath: document.querySelector('[data-root-action-edge="source"]')?.getAttribute("d") ?? null,
+      targetPath: document.querySelector('[data-root-action-edge="target"]')?.getAttribute("d") ?? null,
+      sourceStrokeWidth: Number.parseFloat(getComputedStyle(document.querySelector('[data-root-action-edge="source"]') ?? document.documentElement).strokeWidth),
+      targetStrokeWidth: Number.parseFloat(getComputedStyle(document.querySelector('[data-root-action-edge="target"]') ?? document.documentElement).strokeWidth),
+      sourceStrokeColor: getComputedStyle(document.querySelector('[data-root-action-edge="source"]') ?? document.documentElement).stroke,
+      targetStrokeColor: getComputedStyle(document.querySelector('[data-root-action-edge="target"]') ?? document.documentElement).stroke,
+      targetOpacity: getComputedStyle(document.querySelector('[data-root-action-edge="target"]') ?? document.documentElement).opacity,
+      targetMarkerWidth: document.querySelector('.interaction-root-connectors marker[id^="root-target-arrow-"]')?.getAttribute("markerWidth") ?? null,
+      targetMarkerHeight: document.querySelector('.interaction-root-connectors marker[id^="root-target-arrow-"]')?.getAttribute("markerHeight") ?? null,
+      targetHighlight: rect(document.querySelector('[data-root-action-target-highlight="true"]')),
+      targetPortrait: rect(document.querySelector(`[data-player-anchor="${target}"] .opponent-hero-portrait, [data-player-anchor="${target}"] .local-hero-card`)),
+      targetHighlightStrokeWidth: Number.parseFloat(getComputedStyle(document.querySelector('[data-root-action-target-highlight="true"]') ?? document.documentElement).strokeWidth),
+      targetHighlightPlayerId: document.querySelector('[data-root-action-target-highlight="true"]')?.dataset.rootActionTargetHighlightPlayerId ?? null,
+      targetHighlightStrokeColor: getComputedStyle(document.querySelector('[data-root-action-target-highlight="true"]') ?? document.documentElement).stroke,
+      targetHighlightFill: getComputedStyle(document.querySelector('[data-root-action-target-highlight="true"]') ?? document.documentElement).fill,
+      targetHighlightFilter: getComputedStyle(document.querySelector('[data-root-action-target-highlight="true"]') ?? document.documentElement).filter,
+      overlayCardKind: document.querySelector('[data-root-action-overlay="true"]')?.dataset.rootActionCardKind ?? null,
+      responseCount: document.querySelector('[data-root-action-overlay="true"]')?.dataset.rootActionResponseCount ?? null,
       overlayReady: document.querySelector('[data-root-action-overlay="true"]')?.dataset.rootActionReady === "true",
       stageCount: document.querySelectorAll(".interaction-stage").length,
       settledCardCount: document.querySelectorAll(".table-resolution-layer .table-played-card").length,
@@ -224,7 +264,7 @@ for (const scenario of [
     const targetServerView = await roomView(request, seed, 1);
     const rootAction = targetServerView.presentationSnapshot.rootAction;
     expect(targetServerView.currentAction.kind).toBe("response");
-    expect(rootAction).toMatchObject({ semantics: "PROVEN", action: "ATTACK", sourceId, targetId });
+    expect(rootAction).toMatchObject({ semantics: "PROVEN", action: "ATTACK", cardKind: "Attack", sourceId, targetId });
     expect(targetServerView.timeline.some((event) => event.id === rootAction.rootEventId && event.action === "play" && event.card?.kind === "Attack")).toBe(true);
     expect(JSON.stringify(rootAction)).not.toContain(attack.id);
 
@@ -233,8 +273,34 @@ for (const scenario of [
     await expect(rootCard).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET");
     await expect(page.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-ready", "true");
     await expect(page.locator(".interaction-stage")).toHaveCount(0);
+    await expect(page.locator(".active-table-reveal .game-card")).toHaveCount(0);
     await expect(page.locator(".stage-system-cluster")).toBeVisible();
     const after = await measure(page, sourceId, targetId);
+    const compositionStates = await page.evaluate(() => window.__wtkAttackCompositionStates);
+    await testInfo.attach("attack-composition-states.json", { body: JSON.stringify(compositionStates, null, 2), contentType: "application/json" });
+    expect(compositionStates.some((state) => state.attackStage && !state.ready), "the response Stage can appear only before the ready root graph replaces it").toBe(true);
+    expect(compositionStates.at(-1)).toMatchObject({ enabled: true, ready: true, attackStage: false, activeReveal: false });
+    expect(after.sourcePath, JSON.stringify({ cardKind: after.overlayCardKind, responseCount: after.responseCount, path: after.sourcePath })).toMatch(/^M \S+ \S+ L \S+ \S+$/);
+    expect(after.targetPath).toMatch(/^M \S+ \S+ L \S+ \S+$/);
+    expect(after.sourceStrokeWidth).toBeGreaterThanOrEqual(3);
+    expect(after.targetStrokeWidth).toBeGreaterThanOrEqual(4.5);
+    expect(after.sourceStrokeColor).toBe("rgb(227, 223, 201)");
+    expect(after.targetStrokeColor).toBe("rgb(255, 209, 102)");
+    expect(after.targetOpacity).toBe("1");
+    expect(after.targetMarkerWidth).toBe("14");
+    expect(after.targetMarkerHeight).toBe("14");
+    expect(after.targetHighlight).not.toBeNull();
+    expect(after.targetPortrait).not.toBeNull();
+    expect(Math.abs(after.targetHighlight.x - (after.targetPortrait.x - 5))).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(after.targetHighlight.y - (after.targetPortrait.y - 5))).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(after.targetHighlight.width - (after.targetPortrait.width + 10))).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(after.targetHighlight.height - (after.targetPortrait.height + 10))).toBeLessThanOrEqual(0.5);
+    expect(after.targetHighlightPlayerId).toBe(targetId);
+    expect(after.targetHighlightStrokeColor).toBe("rgb(255, 224, 138)");
+    expect(after.targetHighlightFill).toBe("rgba(255, 209, 102, 0.22)");
+    expect(after.targetHighlightFilter).toContain("drop-shadow");
+    expect(after.overlayCardKind).toBe("Attack");
+    expect(after.targetHighlightStrokeWidth).toBeGreaterThanOrEqual(3);
     const before = await page.evaluate(() => window.__wtkRootOverlayPreGraphAnchors);
     expect(before, "capture the stable response scene before the graph suppresses Stage").toBeTruthy();
     await testInfo.attach("root-overlay-geometry.json", {
