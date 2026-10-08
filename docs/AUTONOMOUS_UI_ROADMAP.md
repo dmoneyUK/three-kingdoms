@@ -2079,8 +2079,25 @@ Only a proven regression or new Reviewer-approved design requirement does.
   pre-commit parent `0e5546ef800d345256f6024b631169cd1da6b605` failed Actions
   run `37851251438` (#922) in both browser shards on the Wrangler ProxyWorker
   `Network connection lost.` failure. A capped CI-only recovery with focused
-  policy tests is included in the task changeset; its Actions result is
-  pending. Reviewer acceptance is not claimed.
+  policy tests was bundled into commit `457d12444ae41da2e264344f79ee212cb1fcaa0d`;
+  that exact SHA passed all five Actions jobs in run `37855563197` (#923).
+  Reviewer acceptance is not claimed.
+
+### UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01 — Real drag/drop completion
+
+- The real server-backed Stargazing proof now covers touch reassignment between
+  Top/Bottom and back to Revealed Cards, exact zone order and card conservation,
+  lost-pointer-capture cancellation, keyboard Enter operation of the Move menu,
+  the resulting live announcement/focus restoration, compact empty Revealed
+  geometry, and stale completion-payload rejection after the server has already
+  accepted the arrangement. Drag coordinates re-resolve after scrolling; no
+  arbitrary waits, forced interactions, or production/API changes were added.
+- The focused real-gameplay browser spec passed 4/4 across 390×844, 480×900,
+  320×640, and 1440×900. Targeted ESLint, `node --check`, and `git diff --check`
+  passed. Pre-commit parent SHA
+  `457d12444ae41da2e264344f79ee212cb1fcaa0d` passed Actions run
+  `37855563197` (#923); CI for this task's outgoing SHA is pending. Reviewer
+  acceptance is not claimed.
 
 ## Known deferred semantic gaps
 

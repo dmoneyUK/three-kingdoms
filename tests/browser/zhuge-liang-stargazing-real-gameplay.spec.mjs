@@ -268,6 +268,7 @@ async function insertionPoint(dialog, zoneName, index, movingId) {
 
 async function touchDrag({ page, cdp, dialog, cards, cardId, zoneName, index, screenshotName, testInfo }) {
   const grip = cardNode(dialog, cardId).locator("[data-deck-touch-handle]");
+  await grip.scrollIntoViewIfNeeded();
   const gripBounds = await grip.boundingBox();
   expect(gripBounds).toBeTruthy();
   const touchId = nextTouchIdentifier++;
@@ -514,10 +515,28 @@ for (const entry of [
     expect(await orderIn(opened.dialog, "bottom")).toEqual([dodge.id, duel.id]);
 
     // Drag reorder within both assigned lists uses visible insertion points.
+    await opened.actorPage.evaluate((cardId) => {
+      window.__stargazingAttackNode = document.querySelector(`[data-deck-card-id="${cardId}"]`);
+    }, attack.id);
     await mouseDrag({ page: opened.actorPage, dialog: opened.dialog, cardId: attack.id, zoneName: "top", index: 1 });
     await mouseDrag({ page: opened.actorPage, dialog: opened.dialog, cardId: dodge.id, zoneName: "bottom", index: 1 });
     expect(await orderIn(opened.dialog, "top")).toEqual([peach.id, attack.id]);
     expect(await orderIn(opened.dialog, "bottom")).toEqual([duel.id, dodge.id]);
+    expect(await opened.actorPage.evaluate((cardId) => window.__stargazingAttackNode === document.querySelector(`[data-deck-card-id="${cardId}"]`), attack.id)).toBe(true);
+
+    // Assigned cards can be touch-dragged across zones and back to the center;
+    // all moves remain local, conserve one card per ID, and keep exact order.
+    await touchDrag({ page: opened.actorPage, cdp, dialog: opened.dialog, cards: opened.cards, cardId: attack.id, zoneName: "bottom", index: 1 });
+    expect(await orderIn(opened.dialog, "top")).toEqual([peach.id]);
+    expect(await orderIn(opened.dialog, "bottom")).toEqual([duel.id, attack.id, dodge.id]);
+    await assertCardConservation(opened.dialog, opened.cards);
+    await touchDrag({ page: opened.actorPage, cdp, dialog: opened.dialog, cards: opened.cards, cardId: attack.id, zoneName: "unassigned", index: 0 });
+    expect(await orderIn(opened.dialog, "unassigned")).toEqual([attack.id]);
+    expect(await orderIn(opened.dialog, "bottom")).toEqual([duel.id, dodge.id]);
+    await assertCardConservation(opened.dialog, opened.cards);
+    await touchDrag({ page: opened.actorPage, cdp, dialog: opened.dialog, cards: opened.cards, cardId: attack.id, zoneName: "top", index: 1 });
+    expect(await orderIn(opened.dialog, "top")).toEqual([peach.id, attack.id]);
+    await assertCardConservation(opened.dialog, opened.cards);
 
     // An invalid outside drop must preserve the old lists.
     const attackFace = cardNode(opened.dialog, attack.id).locator(".deck-reorder-card-face");
@@ -592,13 +611,47 @@ for (const entry of [
     expect(await orderIn(opened.dialog, "top")).toEqual(oldTop);
     await assertCardConservation(opened.dialog, opened.cards);
 
+    // Explicitly losing pointer capture is also a cancellation, never a move.
+    await attackFace.hover();
+    const beforeLostCapture = await orderIn(opened.dialog, "top");
+    const lostCaptureFaceBounds = await attackFace.boundingBox();
+    expect(lostCaptureFaceBounds).toBeTruthy();
+    const lostCaptureStart = {
+      x: lostCaptureFaceBounds.x + lostCaptureFaceBounds.width / 2,
+      y: lostCaptureFaceBounds.y + lostCaptureFaceBounds.height / 2,
+    };
+    await opened.actorPage.mouse.down();
+    await opened.actorPage.mouse.move(lostCaptureStart.x + 9, lostCaptureStart.y + 2, { steps: 2 });
+    await expect(cardNode(opened.dialog, attack.id)).toHaveAttribute("data-dragging", "true");
+    const capturedPointerId = await opened.actorPage.evaluate(() => {
+      const trace = window.__stargazingInvalidDropPointerTrace ?? [];
+      return trace.findLast((event) => event.type === "pointerdown")?.pointerId;
+    });
+    expect(typeof capturedPointerId).toBe("number");
+    const captureWasHeld = await opened.actorPage.evaluate(({ cardId, pointerId }) => {
+      const face = document.querySelector(`[data-deck-card-id="${cardId}"] .deck-reorder-card-face`);
+      return face?.hasPointerCapture(pointerId) ?? false;
+    }, { cardId: attack.id, pointerId: capturedPointerId });
+    expect(captureWasHeld).toBe(true);
+    await opened.actorPage.evaluate(({ cardId, pointerId }) => {
+      document.querySelector(`[data-deck-card-id="${cardId}"] .deck-reorder-card-face`).releasePointerCapture(pointerId);
+    }, { cardId: attack.id, pointerId: capturedPointerId });
+    await expect.poll(() => opened.actorPage.evaluate(() => (window.__stargazingInvalidDropPointerTrace ?? []).some((event) => event.type === "lostpointercapture"))).toBe(true);
+    await expect(cardNode(opened.dialog, attack.id)).toHaveAttribute("data-dragging", "false");
+    await opened.actorPage.mouse.up();
+    expect(await orderIn(opened.dialog, "top")).toEqual(beforeLostCapture);
+    await assertCardConservation(opened.dialog, opened.cards);
+
     // The compact per-card Move menu is the keyboard/screen-reader fallback,
     // including cross-zone reassignment, undo to center, and within-zone order.
-    await cardNode(opened.dialog, dodge.id).getByRole("button", { name: "Move Dodge" }).click();
+    const dodgeMoveButton = cardNode(opened.dialog, dodge.id).getByRole("button", { name: "Move Dodge" });
+    await dodgeMoveButton.press("Enter");
     await expect(opened.dialog.locator(`[data-deck-reorder-menu-for="${dodge.id}"]`)).toBeVisible();
-    await opened.dialog.getByRole("button", { name: "Move Dodge to top of deck" }).click();
+    await opened.dialog.getByRole("button", { name: "Move Dodge to top of deck" }).press("Enter");
     expect(await orderIn(opened.dialog, "top")).toEqual([peach.id, attack.id, dodge.id]);
     expect(await orderIn(opened.dialog, "bottom")).toEqual([duel.id]);
+    await expect(opened.dialog.locator(".deck-reorder-live")).toHaveText("Dodge moved to Top of Deck, position 3.");
+    await expect(dodgeMoveButton).toBeFocused();
     await cardNode(opened.dialog, dodge.id).getByRole("button", { name: "Move Dodge" }).click();
     await opened.dialog.getByRole("button", { name: "Return Dodge to revealed cards" }).click();
     expect(await orderIn(opened.dialog, "unassigned")).toEqual([dodge.id]);
@@ -612,6 +665,9 @@ for (const entry of [
     await opened.dialog.getByRole("button", { name: "Move Dodge to bottom of deck" }).click();
     expect(await orderIn(opened.dialog, "bottom")).toEqual([duel.id, dodge.id]);
     await assertCardConservation(opened.dialog, opened.cards);
+    const emptyRevealedBounds = await zone(opened.dialog, "unassigned").boundingBox();
+    expect(emptyRevealedBounds).toBeTruthy();
+    expect(emptyRevealedBounds.height).toBeLessThan(60);
 
     const arrangementScreenshot = testInfo.outputPath("stargazing-real-mixed-arrangement.png");
     await opened.actorPage.screenshot({ path: arrangementScreenshot, animations: "disabled" });
@@ -640,12 +696,19 @@ for (const entry of [
     const drawnBody = await drawn.json();
     expect(drawnBody.drawnCards.map((item) => item.id)).toEqual([peach.id, attack.id]);
     expect(drawnBody.room.myHand.map((item) => item.id)).toEqual([peach.id, attack.id]);
+    const completedPayload = JSON.parse(completed.request().postData() ?? "{}");
+    expect(completedPayload.context?.actionRevision).toBe(revisionBeforeSubmit);
+    const staleReplay = await request.post(`${API}/api/rooms`, { data: completedPayload });
+    expect(staleReplay.status()).toBe(409);
+    const staleReplayBody = await staleReplay.json();
+    expect(staleReplayBody.stale).toBe(true);
     expect(actorActions).toEqual(["trigger", "draw"], "only Complete submits the exact arrangement before the normal Draw action");
     await expect(opened.dialog).toHaveCount(0);
     const resumed = await roomView(request, opened.seed, 1);
     expect(resumed.actionRevision).not.toBe(revisionBeforeSubmit);
     expect(resumed.currentAction.kind).not.toBe("deck_reorder");
     expect(resumed.myHand.map((item) => item.id)).toEqual([peach.id, attack.id]);
+    expect((await roomView(request, opened.seed, 1)).myHand.map((item) => item.id)).toEqual([peach.id, attack.id]);
     opened.actorPage.off("request", recordActorAction);
     await cdp.detach();
     await observerPage.close();

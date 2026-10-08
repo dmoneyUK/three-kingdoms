@@ -5,12 +5,17 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2.6-PHASE-D-ORDINARY-ATTACK-HIT-SETTLEMENT-01` is implemented and locally
-validated. The exact pre-commit remote HEAD `0e5546ef800d345256f6024b631169cd1da6b605`
-failed Actions run `37851251438` (#922): both browser shards lost the Wrangler
-ProxyWorker connection; the API and lint/fast jobs succeeded. A bounded
-CI-only recovery for that exact worker failure is included with this task's
-changeset; the outgoing SHA has not yet been validated by Actions.
+`UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01` is implemented and
+locally validated: the real server-backed browser spec passed 4/4 across
+390×844, 480×900, 320×640, and 1440×900. It proves touch reassignment between
+zones and back to Revealed Cards, card conservation/order, lost-pointer-capture
+cancellation, keyboard Move-menu operation and announcement, and stale replay
+rejection after completion. Targeted ESLint, `node --check`, and
+`git diff --check` passed. The exact pre-commit remote HEAD
+`457d12444ae41da2e264344f79ee212cb1fcaa0d` passed Actions run `37855563197`
+(#923), including API, lint/fast, both browser shards, and deploy. The outgoing
+task SHA has not yet been validated by Actions. No Stargazing production/API
+behavior changed; Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
@@ -21,13 +26,8 @@ the planning boundary.
 ## Current task
 
 `UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01` — close the single
-reopened §4.10 refinement against real server-backed play. Preserve the current
-three-zone implementation; add or fix the missing production proof for
-cross-zone drag/reassignment and return to Revealed Cards, stale-revision
-rejection, and keyboard operation of the accessible Move menu. Recheck the
-existing §4.10 acceptance matrix (exact ordering/submission, conservation,
-privacy, cancellation, 390×844/480×900/320px-class/wide layout and Dock/Seat
-stability). Do not change Stargazing rules/API or Interaction Stage geometry.
-Before each commit, inspect the latest relevant CI for the exact remote HEAD;
-repair a real failure without weakening coverage. Reviewer acceptance remains
-human-owned.
+Ready for its scoped commit/push. Preserve the current three-zone
+implementation; do not change Stargazing rules/API or Interaction Stage
+geometry. Acceptance is the real-path interaction/geometry evidence above plus
+the existing exact ordering/submission, conservation, privacy, cancellation,
+and Dock/Seat stability proof. Reviewer acceptance remains human-owned.
