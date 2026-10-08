@@ -454,6 +454,14 @@ for (const entry of [
     await expect(opened.turnPage.getByRole("dialog", { name: "Stargazing deck reorder" })).toHaveCount(0);
     await expect(opened.turnPage.locator(".deck-reorder-card")).toHaveCount(0);
 
+    const actorActions = [];
+    const recordActorAction = (request) => {
+      if (request.url() !== `${API}/api/rooms` || request.method() !== "POST") return;
+      try { actorActions.push(JSON.parse(request.postData() ?? "{}").action); }
+      catch { actorActions.push("invalid-request"); }
+    };
+    opened.actorPage.on("request", recordActorAction);
+
     const cdp = await opened.actorPage.context().newCDPSession(opened.actorPage);
     const [attack, dodge, peach, duel] = opened.cards;
     await touchDrag({
@@ -555,8 +563,10 @@ for (const entry of [
     const submitBounds = await submit.boundingBox();
     expect(submitBounds).toBeTruthy();
     expect(submitBounds.y + submitBounds.height).toBeLessThanOrEqual(viewport.height);
+    expect(actorActions).toEqual([], "dragging, reordering, and menu actions stay local until explicit completion");
     const revisionBeforeSubmit = opened.actorView.actionRevision;
     const completionResponse = postedAction(opened.actorPage, "trigger");
+    const drawResponse = postedAction(opened.actorPage, "draw");
     await submit.click();
     const completed = await completionResponse;
     expect(completed.ok()).toBeTruthy();
@@ -566,10 +576,18 @@ for (const entry of [
       topCardIds: [peach.id, attack.id],
       bottomCardIds: [duel.id, dodge.id],
     });
+    const drawn = await drawResponse;
+    expect(drawn.ok()).toBeTruthy();
+    const drawnBody = await drawn.json();
+    expect(drawnBody.drawnCards.map((item) => item.id)).toEqual([peach.id, attack.id]);
+    expect(drawnBody.room.myHand.map((item) => item.id)).toEqual([peach.id, attack.id]);
+    expect(actorActions).toEqual(["trigger", "draw"], "only Complete submits the exact arrangement before the normal Draw action");
     await expect(opened.dialog).toHaveCount(0);
     const resumed = await roomView(request, opened.seed, 1);
     expect(resumed.actionRevision).not.toBe(revisionBeforeSubmit);
     expect(resumed.currentAction.kind).not.toBe("deck_reorder");
+    expect(resumed.myHand.map((item) => item.id)).toEqual([peach.id, attack.id]);
+    opened.actorPage.off("request", recordActorAction);
     await cdp.detach();
     await observerPage.close();
     await observerContext.close();

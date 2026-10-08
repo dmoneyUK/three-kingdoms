@@ -1775,8 +1775,13 @@ Only a proven regression or new Reviewer-approved design requirement does.
   privacy, geometry, cancellation, and exact submitted/deck order. The focused
   Stargazing API suite passed 8/8; build, targeted ESLint, and `git diff
   --check` passed. Pre-commit Actions run `37754303907` succeeded on exact
-  parent SHA `1a8492e46c84764b6ed12cbf9c0ffc9951ca54ae`. Reviewer acceptance is
-  not claimed.
+  parent SHA `1a8492e46c84764b6ed12cbf9c0ffc9951ca54ae`. The 8 Oct reviewer
+  re-opened this same task for production-path ordering proof; follow-up browser
+  assertions now verify no POST during local arrangement and that the exact
+  visible Top order is submitted and drawn by the server. That browser suite
+  passed 4/4; API passed 8/8, targeted ESLint and `git diff --check` passed.
+  Pre-commit remote SHA `9ac6f5042e1405375dd7046d59ac10a1a2964b9a` passed run
+  `37809951259`. Reviewer acceptance is not claimed.
 
 ### UX2.6-PHASE-C-DUEL-PERSISTENT-ROOT-AUTHORITY-01 — Duel exchange proof
 
