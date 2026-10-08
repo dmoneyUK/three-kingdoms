@@ -2012,8 +2012,12 @@ Only a proven regression or new Reviewer-approved design requirement does.
   state; those contract fields were restored and the two failing Bumper cases
   pass 2/2 without assertion changes. Build, overlay ESLint, browser-spec
   syntax, and diff checks passed; `app/page.tsx` targeted ESLint exited on local
-  Node heap OOM. Resulting push CI is not yet observed. Reviewer acceptance is
-  not claimed.
+  Node heap OOM. The resulting branch, including CI repair, passed exact SHA
+  `84cfe44d1506f2a486d14da27259734440875231` in Actions run `37839750886`
+  (#918): API, lint/fast, both browser shards, deploy, Worker deploy, and
+  production smoke test succeeded. This is not a manual gameplay screenshot or
+  Reviewer acceptance; intermittent legacy-versus-graph Attack presentation
+  and perceived connector legibility remain the next bounded audit.
 
 ## Known deferred semantic gaps
 

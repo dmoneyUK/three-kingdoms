@@ -5,31 +5,28 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-Attack graph implementation is on `origin/ux-v2` at
-`fb8556b44190dbbda29b0a6f586c566e7785c55c`. CI repair
-`c613ca56563178230166a599a3f58a65ee333d94` failed in Actions run
-`37836986678` (#916): API and lint/fast passed; browser shard 2 had 417
-passes and one Stargazing invalid-drop drag-start failure; shard 1 was
-cancelled by matrix `fail-fast`. This repair verifies the card hit target,
-uses sampled pointer movement beyond the drag threshold, and lets both shards
-finish. The failing 390×844 test passed 3/3 repeated locally; targeted ESLint
-and `git diff --check` pass. Repair `ecc31267578da469d250a704fd4d2975b5d1f3a4`
-failed in Actions run `37838239973` (#917): API/lint and browser shard 1 passed;
-shard 2 again failed the same Stargazing drag-start assertion (417/418 passed).
-local pointer trace reproduced it: actual pointerdown/move hit the card row, not
-the card, despite an earlier hit check. This repair hovers the card through
-Playwright's stable actionability check before measuring/pressing; the test
-passed 5/5 locally. The worker's teardown reset is not implicated.
+Stargazing invalid-drop CI failure is repaired without weakening its assertions.
+The browser test now hovers/hit-tests the card before measuring and starting the
+drag; the workflow lets both browser shards finish after a failure. Focused
+390×844 real-gameplay test passed 5/5 locally; targeted ESLint and
+`git diff --check` passed. Exact SHA
+`84cfe44d1506f2a486d14da27259734440875231`, Actions run `37839750886` (#918),
+passed API, lint/fast, both browser shards, deploy, Worker deploy, and production
+smoke test. No manual post-deploy gameplay screenshot or Reviewer acceptance is
+claimed.
 
 ## Design checkpoint
 
 Latest `origin/ux-v2:docs/UX2-refine.md` blob reviewed:
-`7feb8af937b6407f3f33c3959325db8d3f188cf4`; rechecked §§6.7, 6.9, 6.18–6.19,
-and 6.24–6.26. Reviewer acceptance is not claimed.
+`7feb8af937b6407f3f33c3959325db8d3f188cf4`; §§6.15–6.20 and 6.24–6.26
+rechecked. Reviewer acceptance is not claimed.
 
 ## Current task
 
-`UX2-CI-REPAIR-STARGAZING-STALE-POINTER-HIT-01` — preserve real Stargazing
-invalid-drop behavior using a stable, actually hit-tested mouse start; retain
-failure-only pointer-event diagnostics and both-shard completion; require the
-exact pushed SHA to pass CI before feature work resumes.
+`UX2.6-ATTACK-ROOT-GRAPH-ROUTING-LEGIBILITY-01` — use real server-backed
+ordinary Attack flows to determine why the safe legacy Stage is sometimes
+visible, and ensure the proven Attack converges to one root-card graph without
+duplicate/stale composition. Preserve fallback when authority or measured
+geometry is unavailable. Verify straight source→Attack→target connectors and
+measurable line, arrowhead, and target-highlight legibility at mobile and wide
+sizes; attach fresh screenshots and geometry evidence.
