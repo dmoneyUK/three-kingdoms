@@ -1750,6 +1750,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   run `37750629004` succeeded on `3a9db67561ad2af3866056085bad205c5ffa72eb`.
   Reviewer acceptance is not claimed.
 
+### UX2.4.10-STARGAZING-DRAG-DROP-01 — Three-zone private deck arrangement
+
+- Real server-triggered Stargazing now presents ordered Top / Revealed / Bottom
+  zones with hold-to-drag touch/pointer input, visible insertion feedback,
+  keyboard/screen-reader Move controls, and contained edge auto-scroll. Card
+  ownership and order remain exact; completion submits the existing
+  `topCardIds` / `bottomCardIds` contract. The real gameplay browser suite
+  passed 4/4 at 320×640, 390×844, 480×900, and 1440×900, including viewer
+  privacy, geometry, cancellation, and exact submitted/deck order. The focused
+  Stargazing API suite passed 8/8; build, targeted ESLint, and `git diff
+  --check` passed. Pre-commit Actions run `37754303907` succeeded on exact
+  parent SHA `1a8492e46c84764b6ed12cbf9c0ffc9951ca54ae`. Reviewer acceptance is
+  not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

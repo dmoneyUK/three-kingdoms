@@ -8,8 +8,14 @@ const revealedCards = [
   card("Peach", "real-stargazing-peach", "♥", "Q"),
   card("Duel", "real-stargazing-duel", "♦", "K"),
 ];
+const fifthRevealedCard = card("Dismantle", "real-stargazing-dismantle", "♣", "9");
+const allRevealedCards = [...revealedCards, fifthRevealedCard];
+const displayName = (kind) => kind === "Dismantle" ? "Burning Bridges" : kind;
+let nextTouchIdentifier = 0;
 
-async function seedStargazingRoom(request) {
+test.use({ hasTouch: true });
+
+async function seedStargazingRoom(request, playerCount = 4) {
   const response = await request.post(`${API}/__test/seed-playing-game`, {
     data: {
       phase: "play",
@@ -18,10 +24,11 @@ async function seedStargazingRoom(request) {
         { name: "TURN PLAYER", role: "Lord", hero: "guan-yu", hp: 4, maxHp: 4, hand: [] },
         { name: "ZHU GE LIANG", role: "Loyalist", hero: "zhuge-liang", hp: 3, maxHp: 3, hand: [] },
         { name: "OBSERVER", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
-        { name: "FOURTH", role: "Renegade", hero: "xiahou-dun", hp: 4, maxHp: 4, hand: [] },
-      ],
+        { name: "FOURTH", role: playerCount === 4 ? "Renegade" : "Rebel", hero: "xiahou-dun", hp: 4, maxHp: 4, hand: [] },
+        ...(playerCount > 4 ? [{ name: "FIFTH", role: "Renegade", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [] }] : []),
+      ].slice(0, playerCount),
       deck: [
-        ...revealedCards,
+        ...allRevealedCards.slice(0, playerCount),
         card("Negation", "real-stargazing-next-a", "♠", "5"),
         card("Attack", "real-stargazing-next-b", "♥", "8"),
       ],
@@ -57,9 +64,10 @@ function postedAction(page, action) {
   });
 }
 
-async function openRealStargazingDecision({ page, request, viewport }) {
-  const seed = await seedStargazingRoom(request);
-  const turnPage = page;
+async function openRealStargazingDecision({ page, request, browser, viewport, playerCount = 4 }) {
+  const seed = await seedStargazingRoom(request, playerCount);
+  const turnContext = await browser.newContext({ viewport, hasTouch: true });
+  const turnPage = await turnContext.newPage();
   const turnPlayer = await openPlayer(turnPage, seed, 0, viewport);
   const turnDock = turnPage.locator(`.local-player-dock[data-player-anchor="${turnPlayer.id}"]`);
   const turn = await roomView(request, seed, 0);
@@ -71,7 +79,7 @@ async function openRealStargazingDecision({ page, request, viewport }) {
   const ended = await endTurnResponse;
   expect(ended.ok()).toBeTruthy();
 
-  const actorPage = await page.context().newPage();
+  const actorPage = page;
   const actor = await openPlayer(actorPage, seed, 1, viewport);
   const offered = await roomView(request, seed, 1);
   expect(offered.isMyAction).toBe(true);
@@ -91,13 +99,28 @@ async function openRealStargazingDecision({ page, request, viewport }) {
   });
 
   const actorView = await roomView(request, seed, 1);
+  const cards = allRevealedCards.slice(0, playerCount);
   expect(actorView.isMyAction).toBe(true);
   expect(actorView.currentAction).toMatchObject({ kind: "deck_reorder", actorId: actor.id });
-  expect(actorView.currentAction.deckReorder.cards.map((item) => item.id)).toEqual(revealedCards.map((item) => item.id));
+  expect(actorView.currentAction.deckReorder.cards.map((item) => item.id)).toEqual(cards.map((item) => item.id));
   const dialog = actorPage.getByRole("dialog", { name: "Stargazing deck reorder" });
   await expect(dialog).toBeVisible();
   await expect.poll(() => dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
-  return { seed, turnPage, actorPage, actor, actorDock, actorView, dialog };
+  return { seed, turnContext, turnPage, actorPage, actor, actorDock, actorView, dialog, cards };
+}
+
+const zone = (dialog, name) => dialog.locator(`[data-deck-zone="${name}"]`);
+const cardNode = (dialog, id) => dialog.locator(`[data-deck-card-id="${id}"]`);
+
+async function orderIn(dialog, zoneName) {
+  return zone(dialog, zoneName).locator("[data-deck-card-id]").evaluateAll((items) => items.map((item) => item.dataset.deckCardId));
+}
+
+async function assertCardConservation(dialog, cards) {
+  const ids = await dialog.locator("[data-deck-card-id]").evaluateAll((items) => items.map((item) => item.dataset.deckCardId));
+  expect(ids).toHaveLength(cards.length);
+  expect(new Set(ids).size).toBe(cards.length);
+  expect([...ids].sort()).toEqual(cards.map((item) => item.id).sort());
 }
 
 async function waitBeyondGenericCardAnimation(page) {
@@ -107,35 +130,43 @@ async function waitBeyondGenericCardAnimation(page) {
     return amount * (value.endsWith("ms") ? 1 : 1000);
   });
   expect(durationMs).toBeGreaterThan(0);
-  // This wait is tied to the app's actual generic played-card duration: the
-  // design specifically requires checking persistence after that animation.
+  // This is tied to the production card-display duration: §4.10 requires
+  // confirming that revealed faces persist after the generic animation.
   await page.waitForTimeout(durationMs + 120);
 }
 
-async function assertResponsiveComposition({ page, dialog, viewport, screenshotName, testInfo }) {
+async function assertResponsiveInitialState({ page, dialog, viewport, cards, testInfo }) {
   await waitBeyondGenericCardAnimation(page);
-  const groups = dialog.locator(".deck-reorder-group");
-  await expect(groups).toHaveCount(2);
-  await expect(dialog.locator('[data-deck-sequence="top"]')).toBeVisible();
-  await expect(dialog.locator('[data-deck-sequence="bottom"]')).toBeVisible();
-  await expect(dialog.locator(".deck-reorder-empty")).toHaveText("No cards placed here yet.");
+  await expect(zone(dialog, "top")).toHaveAttribute("data-card-count", "0");
+  await expect(zone(dialog, "bottom")).toHaveAttribute("data-card-count", "0");
+  await expect(zone(dialog, "unassigned")).toHaveAttribute("data-card-count", String(cards.length));
+  await expect(dialog.locator('[data-deck-reorder-progress="true"]')).toHaveText(`0 / ${cards.length} arranged`);
+  await expect(dialog.locator("[data-deck-reorder-submit]")).toBeDisabled();
+  await expect(dialog.locator(".deck-reorder-card-actions")).toHaveCount(0);
+  await expect(dialog.locator(".deck-reorder-menu-toggle")).toHaveCount(cards.length);
+  await assertCardConservation(dialog, cards);
 
   const composition = await dialog.evaluate((element) => {
     const panel = element.getBoundingClientRect();
-    const row = element.querySelector('[data-deck-reorder-sequence="bottom"]');
-    const rowBox = row.getBoundingClientRect();
-    const empty = element.querySelector(".deck-reorder-empty").getBoundingClientRect();
-    const faces = [...element.querySelectorAll(".deck-reorder-card")].map((item) => {
+    const readZone = (name) => {
+      const root = element.querySelector(`[data-deck-zone="${name}"]`);
+      const row = root.querySelector("[data-deck-zone-items]");
+      const box = root.getBoundingClientRect();
+      return {
+        x: box.x, y: box.y, right: box.right, bottom: box.bottom, height: box.height,
+        width: row.clientWidth, scrollWidth: row.scrollWidth,
+      };
+    };
+    const faces = [...element.querySelectorAll('[data-deck-zone="unassigned"] [data-deck-card-id]')].map((item) => {
       const face = item.querySelector(".played-card");
       const box = face.getBoundingClientRect();
       const style = getComputedStyle(face);
       return {
-        id: item.getAttribute("data-deck-card-id"),
+        id: item.dataset.deckCardId,
         width: box.width,
         height: box.height,
         opacity: Number(style.opacity),
         animation: style.animationName,
-        transform: style.transform,
         transformIdentity: new DOMMatrixReadOnly(style.transform).isIdentity,
         name: face.querySelector(".card-name-mark")?.textContent?.trim(),
         rankAndSuit: face.querySelector("i")?.textContent?.replaceAll("\n", "").replaceAll(" ", ""),
@@ -143,9 +174,10 @@ async function assertResponsiveComposition({ page, dialog, viewport, screenshotN
     });
     const completion = element.querySelector("[data-deck-reorder-submit]").getBoundingClientRect();
     return {
-      panel: { x: panel.x, y: panel.y, right: panel.right, bottom: panel.bottom, height: panel.height },
-      emptyHeight: empty.height,
-      row: { left: rowBox.left, right: rowBox.right, width: row.clientWidth, scrollWidth: row.scrollWidth },
+      panel: { x: panel.x, y: panel.y, right: panel.right, bottom: panel.bottom },
+      top: readZone("top"),
+      revealed: readZone("unassigned"),
+      bottom: readZone("bottom"),
       faces,
       completion: { x: completion.x, y: completion.y, right: completion.right, bottom: completion.bottom, height: completion.height },
       viewport: { width: innerWidth, height: innerHeight, documentWidth: document.documentElement.scrollWidth },
@@ -156,13 +188,14 @@ async function assertResponsiveComposition({ page, dialog, viewport, screenshotN
   expect(composition.panel.y).toBeGreaterThanOrEqual(0);
   expect(composition.panel.right).toBeLessThanOrEqual(viewport.width);
   expect(composition.panel.bottom).toBeLessThanOrEqual(viewport.height);
-  expect(composition.emptyHeight).toBeLessThan(40);
-  expect(composition.faces.map((face) => face.id)).toEqual(revealedCards.map((item) => item.id));
-  expect(composition.faces.every((face) => face.width >= 68 && face.height >= 90)).toBe(true);
+  expect(composition.top.height).toBeGreaterThanOrEqual(70);
+  expect(composition.top.height).toBeLessThan(130);
+  expect(composition.bottom.height).toBeGreaterThanOrEqual(70);
+  expect(composition.bottom.height).toBeLessThan(130);
+  expect(composition.faces.map((face) => face.id)).toEqual(cards.map((item) => item.id));
+  expect(composition.faces.every((face) => face.width >= 60 && face.height >= 84)).toBe(true);
   expect(composition.faces.every((face) => face.opacity === 1 && face.animation === "none" && face.transformIdentity)).toBe(true);
-  expect(composition.faces.map((face) => [face.name, face.rankAndSuit])).toEqual([
-    ["Attack", "A♠"], ["Dodge", "2♣"], ["Peach", "Q♥"], ["Duel", "K♦"],
-  ]);
+  expect(composition.faces.map((face) => [face.name, face.rankAndSuit])).toEqual(cards.map((item) => [displayName(item.kind), `${item.rank}${item.suit}`]));
   expect(composition.viewport.documentWidth).toBeLessThanOrEqual(viewport.width);
   expect(composition.completion.x).toBeGreaterThanOrEqual(0);
   expect(composition.completion.y).toBeGreaterThanOrEqual(0);
@@ -171,134 +204,344 @@ async function assertResponsiveComposition({ page, dialog, viewport, screenshotN
   expect(composition.completion.height).toBeGreaterThanOrEqual(44);
 
   if (viewport.width === 320) {
-    expect(composition.row.scrollWidth).toBeGreaterThan(composition.row.width);
-    const scrollHint = dialog.locator('.deck-reorder-group[data-card-count="4"] .deck-reorder-scroll-hint');
-    await expect(scrollHint).toBeVisible();
-    const beforeScroll = await page.evaluate(() => scrollY);
-    const firstCard = dialog.locator('[data-deck-card-id="real-stargazing-attack"] .deck-reorder-card-face');
-    const initialFirstCardBox = await firstCard.boundingBox();
-    const initialRowBox = await dialog.locator('[data-deck-reorder-sequence="bottom"]').boundingBox();
-    expect(initialFirstCardBox && initialRowBox).toBeTruthy();
-    expect(initialFirstCardBox.x).toBeGreaterThanOrEqual(initialRowBox.x - 1);
-    expect(initialFirstCardBox.x + initialFirstCardBox.width).toBeLessThanOrEqual(initialRowBox.x + initialRowBox.width + 1);
-    await dialog.locator('[data-deck-card-id="real-stargazing-duel"]').scrollIntoViewIfNeeded();
-    expect(await page.evaluate(() => scrollY)).toBe(beforeScroll);
-    const finalCard = dialog.locator('[data-deck-card-id="real-stargazing-duel"] .deck-reorder-card-face');
-    const finalCardBox = await finalCard.boundingBox();
-    const rowBox = await dialog.locator('[data-deck-reorder-sequence="bottom"]').boundingBox();
-    expect(finalCardBox && rowBox).toBeTruthy();
-    expect(finalCardBox.x).toBeGreaterThanOrEqual(rowBox.x - 1);
-    expect(finalCardBox.x + finalCardBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
-    await dialog.locator('[data-deck-reorder-sequence="bottom"]').evaluate((row) => { row.scrollLeft = 0; });
-  } else {
-    expect(composition.row.scrollWidth).toBeLessThanOrEqual(composition.row.width);
-    for (const face of composition.faces) {
-      expect(face.width).toBeGreaterThanOrEqual(70);
+    expect(composition.revealed.scrollWidth).toBeGreaterThan(composition.revealed.width);
+    await expect(zone(dialog, "unassigned").locator("header span")).toContainText("Swipe");
+    const beforePageScroll = await page.evaluate(() => scrollY);
+    for (const id of [cards[0].id, cards.at(-1).id]) {
+      const item = cardNode(dialog, id);
+      await item.scrollIntoViewIfNeeded();
+      const bounds = await item.locator(".deck-reorder-card-face").boundingBox();
+      const row = await zone(dialog, "unassigned").locator("[data-deck-zone-items]").boundingBox();
+      expect(bounds && row).toBeTruthy();
+      expect(bounds.x).toBeGreaterThanOrEqual(row.x - 1);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(row.x + row.width + 1);
     }
+    expect(await page.evaluate(() => scrollY)).toBe(beforePageScroll);
+    const row = zone(dialog, "unassigned").locator("[data-deck-zone-items]");
+    const firstFace = cardNode(dialog, cards[0].id).locator(".deck-reorder-card-face");
+    await firstFace.scrollIntoViewIfNeeded();
+    await row.evaluate((element) => { element.scrollLeft = 0; });
+    const faceBounds = await firstFace.boundingBox();
+    const rowBounds = await row.boundingBox();
+    expect(faceBounds && rowBounds).toBeTruthy();
+    const touchStart = { x: Math.round(rowBounds.x + rowBounds.width - 20), y: Math.round(faceBounds.y + faceBounds.height * 0.6) };
+    const beforeHorizontalScroll = await row.evaluate((element) => element.scrollLeft);
+    const cdp = await page.context().newCDPSession(page);
+    const touchId = nextTouchIdentifier++;
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...touchStart, id: touchId }] });
+    for (let step = 1; step <= 6; step += 1) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: touchStart.x - step * 16, y: touchStart.y, id: touchId }],
+      });
+    }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await expect.poll(() => row.evaluate((element) => element.scrollLeft)).toBeGreaterThan(beforeHorizontalScroll);
+    expect(await page.evaluate(() => scrollY)).toBe(beforePageScroll);
+    await cdp.detach();
+    await row.evaluate((element) => { element.scrollLeft = 0; });
+  } else {
+    expect(composition.revealed.scrollWidth).toBeLessThanOrEqual(composition.revealed.width + 1);
   }
 
-  await page.screenshot({ path: testInfo.outputPath(`${screenshotName}.png`), animations: "disabled" });
-  await testInfo.attach(screenshotName, { path: testInfo.outputPath(`${screenshotName}.png`), contentType: "image/png" });
+  const name = `stargazing-real-${viewport.width}x${viewport.height}`;
+  const path = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path, animations: "disabled" });
+  await testInfo.attach(name, { path, contentType: "image/png" });
   return composition;
 }
 
-for (const viewport of [
-  { width: 390, height: 844 },
-  { width: 480, height: 900 },
-  { width: 320, height: 640 },
-  { width: 1440, height: 900 },
+async function insertionPoint(dialog, zoneName, index, movingId) {
+  return zone(dialog, zoneName).locator("[data-deck-zone-items]").evaluate((row, { index, movingId }) => {
+    const cards = [...row.querySelectorAll("[data-deck-card-id]")].filter((item) => item.dataset.deckCardId !== movingId);
+    const rowBounds = row.getBoundingClientRect();
+    const y = rowBounds.top + rowBounds.height / 2;
+    if (cards.length === 0) return { x: rowBounds.left + rowBounds.width / 2, y };
+    if (index >= cards.length) {
+      const last = cards.at(-1).getBoundingClientRect();
+      return { x: last.right - 2, y };
+    }
+    const next = cards[index].getBoundingClientRect();
+    return { x: next.left + 2, y };
+  }, { index, movingId });
+}
+
+async function touchDrag({ page, cdp, dialog, cards, cardId, zoneName, index, screenshotName, testInfo }) {
+  const grip = cardNode(dialog, cardId).locator("[data-deck-touch-handle]");
+  const gripBounds = await grip.boundingBox();
+  expect(gripBounds).toBeTruthy();
+  const touchId = nextTouchIdentifier++;
+  const start = { x: Math.round(gripBounds.x + gripBounds.width / 2), y: Math.round(gripBounds.y + gripBounds.height / 2) };
+  const gripHit = await page.evaluate(({ x, y, cardId }) => {
+    const hit = document.elementFromPoint(x, y);
+    const grip = document.querySelector(`[data-deck-card-id="${cardId}"] [data-deck-touch-handle]`);
+    return Boolean(grip && (hit === grip || grip.contains(hit)));
+  }, { ...start, cardId });
+  expect(gripHit).toBe(true);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...start, id: touchId }] });
+  await expect(cardNode(dialog, cardId)).toHaveAttribute("data-dragging", "true");
+  const preview = page.locator(`.deck-reorder-overlay [data-deck-drag-preview="${cardId}"]`);
+  await expect(preview).toBeVisible();
+  await assertCardConservation(dialog, cards);
+
+  const target = await insertionPoint(dialog, zoneName, index, cardId);
+  for (let step = 1; step <= 8; step += 1) {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{
+        x: Math.round(start.x + ((target.x - start.x) * step) / 8),
+        y: Math.round(start.y + ((target.y - start.y) * step) / 8),
+        id: touchId,
+      }],
+    });
+  }
+  await expect(zone(dialog, zoneName)).toHaveAttribute("data-drop-active", "true");
+  await expect(zone(dialog, zoneName)).toHaveAttribute("data-drop-eligible", "true");
+  await expect(dialog.locator('[data-drop-eligible="true"]')).toHaveCount(3);
+  const eligibleBorders = await dialog.locator('[data-drop-eligible="true"]').evaluateAll((zones) => zones.map((item) => getComputedStyle(item).borderTopColor));
+  expect(eligibleBorders.every((color) => color !== "rgba(0, 0, 0, 0)" && color !== "transparent")).toBe(true);
+  const indicator = dialog.locator('[data-deck-insertion-indicator="true"]');
+  await expect(indicator).toBeVisible();
+  await expect(indicator).toHaveAttribute("data-insertion-index", String(index));
+  const previewBounds = await preview.boundingBox();
+  expect(previewBounds).toBeTruthy();
+  expect(previewBounds.x).toBeGreaterThanOrEqual(0);
+  expect(previewBounds.y).toBeGreaterThanOrEqual(0);
+  expect(previewBounds.x + previewBounds.width).toBeLessThanOrEqual(390);
+  expect(previewBounds.y + previewBounds.height).toBeLessThanOrEqual(844);
+  if (screenshotName) {
+    const path = testInfo.outputPath(`${screenshotName}.png`);
+    await page.screenshot({ path, animations: "disabled" });
+    await testInfo.attach(screenshotName, { path, contentType: "image/png" });
+  }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect(cardNode(dialog, cardId)).toHaveAttribute("data-deck-zone-name", zoneName);
+  return target;
+}
+
+async function mouseDrag({ page, dialog, cardId, zoneName, index }) {
+  const face = cardNode(dialog, cardId).locator(".deck-reorder-card-face");
+  const faceBounds = await face.boundingBox();
+  expect(faceBounds).toBeTruthy();
+  const start = { x: faceBounds.x + faceBounds.width / 2, y: faceBounds.y + faceBounds.height / 2 };
+  const faceHit = await page.evaluate(({ x, y, cardId }) => {
+    const hit = document.elementFromPoint(x, y);
+    const face = document.querySelector(`[data-deck-card-id="${cardId}"] .deck-reorder-card-face`);
+    return Boolean(face && (hit === face || face.contains(hit)));
+  }, { ...start, cardId });
+  expect(faceHit).toBe(true);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 8, start.y + 2);
+  await expect(cardNode(dialog, cardId)).toHaveAttribute("data-dragging", "true");
+  const target = await insertionPoint(dialog, zoneName, index, cardId);
+  await page.mouse.move(target.x, target.y, { steps: 8 });
+  await expect(zone(dialog, zoneName)).toHaveAttribute("data-drop-active", "true");
+  await expect(dialog.locator('[data-deck-insertion-indicator="true"]')).toHaveAttribute("data-insertion-index", String(index));
+  await page.mouse.up();
+  await expect(cardNode(dialog, cardId)).toHaveAttribute("data-deck-zone-name", zoneName);
+}
+
+async function assertDockStaysPut(page, dialog, actorId) {
+  const geometry = await page.evaluate(async ({ actorId }) => {
+    const overlay = document.querySelector(".deck-reorder-overlay");
+    const dock = document.querySelector(`.local-player-dock[data-player-anchor="${actorId}"]`);
+    const center = document.querySelector(".play-center");
+    const board = document.querySelector(".player-board");
+    const seats = [...document.querySelectorAll(".opponent-player-card")];
+    if (!overlay || !dock || !center || !board || !seats.length) return null;
+    const originalDisplay = overlay.style.display;
+    const readRect = (element) => {
+      const { x, y, width, height } = element.getBoundingClientRect();
+      return { x, y, width, height };
+    };
+    const measure = () => ({ center: readRect(center), board: readRect(board), dock: readRect(dock), seats: seats.map(readRect) });
+    const visible = measure();
+    const position = getComputedStyle(overlay).position;
+    overlay.style.display = "none";
+    await new Promise(requestAnimationFrame);
+    const hidden = measure();
+    overlay.style.display = originalDisplay;
+    await new Promise(requestAnimationFrame);
+    return { visible, hidden, restored: measure(), position };
+  }, { actorId });
+  expect(geometry).toBeTruthy();
+  expect(geometry.position).toBe("fixed");
+  for (const part of ["center", "board", "dock", ...geometry.visible.seats.map((_, index) => `seat-${index}`)]) {
+    const index = part.startsWith("seat-") ? Number(part.slice(5)) : null;
+    const visible = index === null ? geometry.visible[part] : geometry.visible.seats[index];
+    const hidden = index === null ? geometry.hidden[part] : geometry.hidden.seats[index];
+    const restored = index === null ? geometry.restored[part] : geometry.restored.seats[index];
+    for (const key of ["x", "y", "width", "height"]) {
+      expect(Math.abs(visible[key] - hidden[key])).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(visible[key] - restored[key])).toBeLessThanOrEqual(0.5);
+    }
+  }
+  await expect(dialog).toBeVisible();
+}
+
+for (const entry of [
+  { viewport: { width: 390, height: 844 }, playerCount: 4 },
+  { viewport: { width: 480, height: 900 }, playerCount: 4 },
+  { viewport: { width: 320, height: 640 }, playerCount: 5 },
+  { viewport: { width: 1440, height: 900 }, playerCount: 5 },
 ]) {
-  test(`real four-card Stargazing stays readable and ordered at ${viewport.width}×${viewport.height}`, async ({ page, request }, testInfo) => {
-    const opened = await openRealStargazingDecision({ page, request, viewport });
-    await assertResponsiveComposition({
+  const { viewport, playerCount } = entry;
+  test(`real ${playerCount}-card Stargazing layout at ${viewport.width}×${viewport.height}`, async ({ page, request, browser }, testInfo) => {
+    const opened = await openRealStargazingDecision({ page, request, browser, viewport, playerCount });
+    const composition = await assertResponsiveInitialState({
       page: opened.actorPage,
       dialog: opened.dialog,
       viewport,
-      screenshotName: `stargazing-real-${viewport.width}x${viewport.height}`,
+      cards: opened.cards,
       testInfo,
     });
+    expect(composition.viewport.documentWidth).toBeLessThanOrEqual(viewport.width);
+    await assertDockStaysPut(opened.actorPage, opened.dialog, opened.actor.id);
 
-    const dockGeometry = await opened.actorPage.evaluate(async (actorId) => {
-      const overlay = document.querySelector(".deck-reorder-overlay");
-      const dock = document.querySelector(`.local-player-dock[data-player-anchor="${actorId}"]`);
-      if (!overlay || !dock) return null;
-      const originalDisplay = overlay.style.display;
-      const measure = () => {
-        const { x, y, width, height } = dock.getBoundingClientRect();
-        return { x, y, width, height };
-      };
-      const visible = measure();
-      const overlayPosition = getComputedStyle(overlay).position;
-      overlay.style.display = "none";
-      await new Promise(requestAnimationFrame);
-      const hidden = measure();
-      overlay.style.display = originalDisplay;
-      await new Promise(requestAnimationFrame);
-      const restored = measure();
-      return { visible, hidden, restored, overlayPosition };
-    }, opened.actor.id);
-    expect(dockGeometry).toBeTruthy();
-    expect(dockGeometry.overlayPosition).toBe("fixed");
-    for (const key of ["x", "y", "width", "height"]) {
-      expect(Math.abs(dockGeometry.visible[key] - dockGeometry.hidden[key])).toBeLessThanOrEqual(0.5);
-      expect(Math.abs(dockGeometry.visible[key] - dockGeometry.restored[key])).toBeLessThanOrEqual(0.5);
+    if (viewport.width !== 390) {
+      if (viewport.width === 320) {
+        for (const item of opened.cards) {
+          const name = displayName(item.kind);
+          await cardNode(opened.dialog, item.id).getByRole("button", { name: `Move ${name}` }).click();
+          await opened.dialog.getByRole("button", { name: `Move ${name} to top of deck` }).click();
+        }
+        expect(await orderIn(opened.dialog, "top")).toEqual(opened.cards.map((item) => item.id));
+        const topRow = zone(opened.dialog, "top").locator("[data-deck-zone-items]");
+        const firstFace = cardNode(opened.dialog, opened.cards[0].id).locator(".deck-reorder-card-face");
+        await firstFace.scrollIntoViewIfNeeded();
+        await topRow.evaluate((row) => { row.scrollLeft = 0; });
+        const firstBounds = await firstFace.boundingBox();
+        const rowBounds = await topRow.boundingBox();
+        expect(firstBounds && rowBounds).toBeTruthy();
+        const start = { x: firstBounds.x + firstBounds.width / 2, y: firstBounds.y + firstBounds.height / 2 };
+        await opened.actorPage.mouse.move(start.x, start.y);
+        await opened.actorPage.mouse.down();
+        await opened.actorPage.mouse.move(start.x + 8, start.y + 2);
+        await expect(cardNode(opened.dialog, opened.cards[0].id)).toHaveAttribute("data-dragging", "true");
+        const edgePoint = { x: rowBounds.x + rowBounds.width - 8, y: rowBounds.y + rowBounds.height / 2 };
+        await opened.actorPage.mouse.move(edgePoint.x, edgePoint.y, { steps: 6 });
+        const maxScroll = await topRow.evaluate((row) => row.scrollWidth - row.clientWidth);
+        expect(maxScroll).toBeGreaterThan(0);
+        await expect.poll(() => topRow.evaluate((row) => row.scrollLeft)).toBeGreaterThan(0);
+        await expect.poll(() => topRow.evaluate((row) => row.scrollLeft >= row.scrollWidth - row.clientWidth - 1)).toBe(true);
+        await expect(opened.dialog.locator('[data-deck-insertion-indicator="true"]')).toHaveAttribute("data-insertion-index", String(opened.cards.length - 1));
+        await opened.actorPage.mouse.up();
+        expect(await orderIn(opened.dialog, "top")).toEqual([...opened.cards.slice(1).map((item) => item.id), opened.cards[0].id]);
+        await assertCardConservation(opened.dialog, opened.cards);
+      }
+      await opened.actorPage.close();
+      await opened.turnPage.close();
+      await opened.turnContext.close();
+      return;
     }
 
-    if (viewport.width !== 390) return;
-
-    const focusableButtons = opened.dialog.locator("button:not(:disabled)");
-    const firstFocusable = focusableButtons.first();
-    const lastFocusable = focusableButtons.last();
-    await firstFocusable.focus();
-    await opened.actorPage.keyboard.press("Shift+Tab");
-    await expect(lastFocusable).toBeFocused();
-    await opened.actorPage.keyboard.press("Tab");
-    await expect(firstFocusable).toBeFocused();
-    const backgroundControl = opened.actorPage.getByRole("button", { name: /Inspect/ }).first();
-    const backgroundBox = await backgroundControl.boundingBox();
-    expect(backgroundBox).toBeTruthy();
-    const intercepted = await opened.actorPage.evaluate(({ x, y }) => {
-      const hit = document.elementFromPoint(x, y);
-      return Boolean(hit?.closest(".deck-reorder-overlay"));
-    }, { x: backgroundBox.x + backgroundBox.width / 2, y: backgroundBox.y + backgroundBox.height / 2 });
-    expect(intercepted).toBe(true);
-
-    // A non-acting real player receives the same public room but no private
-    // Stargazing cards or reorder controls.
+    // The ordinary top-level player and a real observer do not receive the
+    // actor's private decision or revealed card identities.
     const observer = await roomView(request, opened.seed, 2);
     expect(observer.currentAction.kind).toBe("deck_reorder");
     expect(observer.currentAction.deckReorder).toBeUndefined();
-    const observerJson = JSON.stringify(observer.currentAction);
-    for (const item of revealedCards) expect(observerJson).not.toContain(item.id);
+    const observerJson = JSON.stringify(observer);
+    const observerContext = await browser.newContext({ viewport, hasTouch: true });
+    const observerPage = await observerContext.newPage();
+    await openPlayer(observerPage, opened.seed, 2, viewport);
+    await expect(observerPage.getByRole("dialog", { name: "Stargazing deck reorder" })).toHaveCount(0);
+    const observerMarkup = await observerPage.locator("body").innerHTML();
+    for (const item of opened.cards) {
+      expect(observerMarkup).not.toContain(item.id);
+      expect(observerJson).not.toContain(item.id);
+    }
     await expect(opened.turnPage.getByRole("dialog", { name: "Stargazing deck reorder" })).toHaveCount(0);
     await expect(opened.turnPage.locator(".deck-reorder-card")).toHaveCount(0);
-    const observerMarkup = await opened.turnPage.locator("body").innerHTML();
-    for (const item of revealedCards) expect(observerMarkup).not.toContain(item.id);
 
-    const bottom = opened.dialog.locator('[data-deck-reorder-sequence="bottom"]');
-    const order = async (sequence) => sequence.locator("[data-deck-card-id]").evaluateAll((items) => items.map((item) => item.getAttribute("data-deck-card-id")));
-    expect(await order(bottom)).toEqual(revealedCards.map((item) => item.id));
-    await expect(bottom.locator('[data-deck-card-id="real-stargazing-attack"] button[aria-label="Move Attack earlier"]')).toBeDisabled();
-    await expect(bottom.locator('[data-deck-card-id="real-stargazing-duel"] button[aria-label="Move Duel later"]')).toBeDisabled();
+    const cdp = await opened.actorPage.context().newCDPSession(opened.actorPage);
+    const [attack, dodge, peach, duel] = opened.cards;
+    await touchDrag({
+      page: opened.actorPage,
+      cdp,
+      dialog: opened.dialog,
+      cards: opened.cards,
+      cardId: attack.id,
+      zoneName: "top",
+      index: 0,
+      screenshotName: "stargazing-real-touch-drag-active",
+      testInfo,
+    });
+    await assertCardConservation(opened.dialog, opened.cards);
+    await touchDrag({ page: opened.actorPage, cdp, dialog: opened.dialog, cards: opened.cards, cardId: dodge.id, zoneName: "bottom", index: 0 });
+    await mouseDrag({ page: opened.actorPage, dialog: opened.dialog, cardId: peach.id, zoneName: "top", index: 1 });
+    await mouseDrag({ page: opened.actorPage, dialog: opened.dialog, cardId: duel.id, zoneName: "bottom", index: 1 });
+    expect(await orderIn(opened.dialog, "top")).toEqual([attack.id, peach.id]);
+    expect(await orderIn(opened.dialog, "bottom")).toEqual([dodge.id, duel.id]);
 
-    await bottom.locator('[data-deck-card-id="real-stargazing-attack"] button[aria-label="Move Attack later"]').click();
-    expect(await order(bottom)).toEqual([
-      "real-stargazing-dodge", "real-stargazing-attack", "real-stargazing-peach", "real-stargazing-duel",
-    ]);
-    await bottom.locator('[data-deck-card-id="real-stargazing-duel"] button[aria-label="Move Duel earlier"]').click();
-    expect(await order(bottom)).toEqual([
-      "real-stargazing-dodge", "real-stargazing-attack", "real-stargazing-duel", "real-stargazing-peach",
-    ]);
-    await bottom.locator('[data-deck-card-id="real-stargazing-dodge"] button[aria-label="Move Dodge to top of deck"]').click();
-    const top = opened.dialog.locator('[data-deck-reorder-sequence="top"]');
-    expect(await order(top)).toEqual(["real-stargazing-dodge"]);
-    expect(await order(bottom)).toEqual(["real-stargazing-attack", "real-stargazing-duel", "real-stargazing-peach"]);
+    // Drag reorder within both assigned lists uses visible insertion points.
+    await mouseDrag({ page: opened.actorPage, dialog: opened.dialog, cardId: attack.id, zoneName: "top", index: 1 });
+    await mouseDrag({ page: opened.actorPage, dialog: opened.dialog, cardId: dodge.id, zoneName: "bottom", index: 1 });
+    expect(await orderIn(opened.dialog, "top")).toEqual([peach.id, attack.id]);
+    expect(await orderIn(opened.dialog, "bottom")).toEqual([duel.id, dodge.id]);
 
+    // Cancelled touch and an invalid outside drop must preserve the old lists.
+    await opened.actorPage.evaluate(() => {
+      window.__stargazingPointerCancelled = false;
+      document.addEventListener("pointercancel", () => { window.__stargazingPointerCancelled = true; }, { once: true });
+    });
+    const attackGrip = cardNode(opened.dialog, attack.id).locator("[data-deck-touch-handle]");
+    const attackGripBox = await attackGrip.boundingBox();
+    expect(attackGripBox).toBeTruthy();
+    const cancelTouchId = nextTouchIdentifier++;
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: Math.round(attackGripBox.x + attackGripBox.width / 2), y: Math.round(attackGripBox.y + attackGripBox.height / 2), id: cancelTouchId }],
+    });
+    await expect(cardNode(opened.dialog, attack.id)).toHaveAttribute("data-dragging", "true");
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+    await expect.poll(() => opened.actorPage.evaluate(() => window.__stargazingPointerCancelled)).toBe(true);
+    expect(await orderIn(opened.dialog, "top")).toEqual([peach.id, attack.id]);
+    expect(await orderIn(opened.dialog, "bottom")).toEqual([duel.id, dodge.id]);
+
+    const attackFace = cardNode(opened.dialog, attack.id).locator(".deck-reorder-card-face");
+    const attackFaceBox = await attackFace.boundingBox();
+    expect(attackFaceBox).toBeTruthy();
+    const oldTop = await orderIn(opened.dialog, "top");
+    await opened.actorPage.mouse.move(attackFaceBox.x + attackFaceBox.width / 2, attackFaceBox.y + attackFaceBox.height / 2);
+    await opened.actorPage.mouse.down();
+    await opened.actorPage.mouse.move(attackFaceBox.x + attackFaceBox.width / 2 + 8, attackFaceBox.y + attackFaceBox.height / 2 + 2);
+    await expect(cardNode(opened.dialog, attack.id)).toHaveAttribute("data-dragging", "true");
+    await opened.actorPage.mouse.move(2, 2, { steps: 6 });
+    await opened.actorPage.mouse.up();
+    expect(await orderIn(opened.dialog, "top")).toEqual(oldTop);
+    await assertCardConservation(opened.dialog, opened.cards);
+
+    // The compact per-card Move menu is the keyboard/screen-reader fallback,
+    // including cross-zone reassignment, undo to center, and within-zone order.
+    await cardNode(opened.dialog, dodge.id).getByRole("button", { name: "Move Dodge" }).click();
+    await expect(opened.dialog.locator(`[data-deck-reorder-menu-for="${dodge.id}"]`)).toBeVisible();
+    await opened.dialog.getByRole("button", { name: "Move Dodge to top of deck" }).click();
+    expect(await orderIn(opened.dialog, "top")).toEqual([peach.id, attack.id, dodge.id]);
+    expect(await orderIn(opened.dialog, "bottom")).toEqual([duel.id]);
+    await cardNode(opened.dialog, dodge.id).getByRole("button", { name: "Move Dodge" }).click();
+    await opened.dialog.getByRole("button", { name: "Return Dodge to revealed cards" }).click();
+    expect(await orderIn(opened.dialog, "unassigned")).toEqual([dodge.id]);
+    await cardNode(opened.dialog, peach.id).getByRole("button", { name: "Move Peach" }).click();
+    await opened.dialog.getByRole("button", { name: "Move Peach later" }).click();
+    expect(await orderIn(opened.dialog, "top")).toEqual([attack.id, peach.id]);
+    await cardNode(opened.dialog, peach.id).getByRole("button", { name: "Move Peach" }).click();
+    await opened.dialog.getByRole("button", { name: "Move Peach earlier" }).click();
+    expect(await orderIn(opened.dialog, "top")).toEqual([peach.id, attack.id]);
+    await cardNode(opened.dialog, dodge.id).getByRole("button", { name: "Move Dodge" }).click();
+    await opened.dialog.getByRole("button", { name: "Move Dodge to bottom of deck" }).click();
+    expect(await orderIn(opened.dialog, "bottom")).toEqual([duel.id, dodge.id]);
+    await assertCardConservation(opened.dialog, opened.cards);
+
+    const arrangementScreenshot = testInfo.outputPath("stargazing-real-mixed-arrangement.png");
+    await opened.actorPage.screenshot({ path: arrangementScreenshot, animations: "disabled" });
+    await testInfo.attach("stargazing-real-mixed-arrangement", { path: arrangementScreenshot, contentType: "image/png" });
+    await expect(opened.dialog.locator("[data-deck-reorder-progress]")).toHaveText("4 / 4 arranged");
     const submit = opened.dialog.locator("[data-deck-reorder-submit]");
     await expect(submit).toBeEnabled();
-    const submitBox = await submit.boundingBox();
-    expect(submitBox).toBeTruthy();
-    expect(submitBox.y + submitBox.height).toBeLessThanOrEqual(viewport.height);
+    const submitBounds = await submit.boundingBox();
+    expect(submitBounds).toBeTruthy();
+    expect(submitBounds.y + submitBounds.height).toBeLessThanOrEqual(viewport.height);
     const revisionBeforeSubmit = opened.actorView.actionRevision;
     const completionResponse = postedAction(opened.actorPage, "trigger");
     await submit.click();
@@ -307,13 +550,18 @@ for (const viewport of [
     expect(JSON.parse(completed.request().postData() ?? "{}")).toMatchObject({
       action: "trigger",
       providerId: "private_deck_reorder",
-      topCardIds: ["real-stargazing-dodge"],
-      bottomCardIds: ["real-stargazing-attack", "real-stargazing-duel", "real-stargazing-peach"],
+      topCardIds: [peach.id, attack.id],
+      bottomCardIds: [duel.id, dodge.id],
     });
     await expect(opened.dialog).toHaveCount(0);
     const resumed = await roomView(request, opened.seed, 1);
     expect(resumed.actionRevision).not.toBe(revisionBeforeSubmit);
-    for (const item of revealedCards) expect(JSON.stringify(observer.currentAction)).not.toContain(item.id);
+    expect(resumed.currentAction.kind).not.toBe("deck_reorder");
+    await cdp.detach();
+    await observerPage.close();
+    await observerContext.close();
     await opened.actorPage.close();
+    await opened.turnPage.close();
+    await opened.turnContext.close();
   });
 }
