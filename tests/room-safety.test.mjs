@@ -74,6 +74,44 @@ test("preserves only the privacy-safe direct Attack hit settlement fields", () =
   assert.equal(normalizeTimeline([{ ...event, publicAttackHitSettlement: { ...proof, outcome: "ATTACK_BLOCKED_BY_DODGE" } }])[0].publicAttackHitSettlement, undefined);
 });
 
+test("preserves only ordered public Raining Arrows settlement fields", () => {
+  const proof = {
+    semantics: "PROVEN",
+    rootEventId: "raining-root-event",
+    rootResolutionId: "raining-resolution",
+    interactionId: "raining-interaction",
+    groupFrameId: "raining-frame",
+    sourceId: "source",
+    cardKind: "RainingArrows",
+    participants: [
+      { playerId: "first", order: 1, status: "RESOLVED", outcome: "AVOIDED", privateCardId: "hidden" },
+      { playerId: "second", order: 2, status: "NO_LONGER_APPLICABLE" },
+    ],
+    privateResolverOrder: ["secret"],
+  };
+  const event = normalizeTimeline([{
+    type: "message", id: "raining-settlement-event", message: "Raining Arrows finishes resolving.",
+    importance: "essential", finalResult: true, resolutionId: "raining-resolution",
+    publicRainingArrowsSettlement: proof,
+  }])[0];
+  assert.deepEqual(event.publicRainingArrowsSettlement, {
+    semantics: "PROVEN",
+    rootEventId: "raining-root-event",
+    rootResolutionId: "raining-resolution",
+    interactionId: "raining-interaction",
+    groupFrameId: "raining-frame",
+    sourceId: "source",
+    cardKind: "RainingArrows",
+    participants: [
+      { playerId: "first", order: 1, status: "RESOLVED", outcome: "AVOIDED" },
+      { playerId: "second", order: 2, status: "NO_LONGER_APPLICABLE" },
+    ],
+  });
+  assert.equal(JSON.stringify(event.publicRainingArrowsSettlement).includes("hidden"), false);
+  assert.equal(JSON.stringify(event.publicRainingArrowsSettlement).includes("privateResolverOrder"), false);
+  assert.equal(normalizeTimeline([{ ...event, publicRainingArrowsSettlement: { ...proof, cardKind: "BarbarianInvasion" } }])[0].publicRainingArrowsSettlement, undefined);
+});
+
 test("handles missing collections and rejects malformed items while preserving valid data", () => {
   const empty = normalizeRoomData({ code: "SAFE1", status: "lobby", players: [], myHand: [], timeline: [] });
   assert.deepEqual(empty.players, []); assert.deepEqual(empty.myHand, []); assert.deepEqual(empty.timeline, []);

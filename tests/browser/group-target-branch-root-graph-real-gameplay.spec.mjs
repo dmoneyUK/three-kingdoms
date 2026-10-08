@@ -112,7 +112,44 @@ async function reachFirstParticipant(request, seed, targetId, requirement) {
   throw new Error(`The real ${requirement} response did not reach the first Group participant.`);
 }
 
-async function graphGeometry(page, seed, viewport, testInfo, label = "group-root-graph") {
+async function finishRainingArrowsWithDamageResponses(request, seed) {
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const views = await Promise.all(seed.players.map((_, index) => roomView(request, seed, index)));
+    if (views.some((view) => view.presentationSnapshot.rainingArrowsSettlements?.length === 1)) return;
+    const actorIndex = views.findIndex((view) => view.isMyAction);
+    const actor = views[actorIndex];
+    if (!actor || !actor.currentAction) throw new Error("The real Raining Arrows sequence has no authoritative current action.");
+    if (actor.currentAction.kind === "response" && actor.currentAction.requirement === "dodge") {
+      await apiAction(request, seed, actorIndex, "decline_response");
+      continue;
+    }
+    if (actor.currentAction.kind === "response" && actor.currentAction.requirement === "negate") {
+      await apiAction(request, seed, actorIndex, "decline_response");
+      continue;
+    }
+    if (actor.currentAction.kind === "trigger" && actor.currentAction.legalActions.includes("decline_trigger")) {
+      await apiAction(request, seed, actorIndex, "decline_trigger");
+      continue;
+    }
+    const diagnostics = views.map((view) => ({
+      isMyAction: view.isMyAction,
+      phase: view.phase,
+      action: view.currentAction && {
+        kind: view.currentAction.kind,
+        actorId: view.currentAction.actorId,
+        requirement: view.currentAction.requirement,
+        legalActions: view.currentAction.legalActions,
+      },
+      groupProgress: view.presentationSnapshot.groupParticipantProgress?.participants?.map(({ playerId, status, outcome }) => ({ playerId, status, outcome })) ?? null,
+      settlementCount: view.presentationSnapshot.rainingArrowsSettlements?.length ?? 0,
+      latestEvents: view.timeline.slice(-4).map(({ id, type, action, player, resolutionId, finalResult, publicRainingArrowsSettlement }) => ({ id, type, action, player, resolutionId, finalResult, publicRainingArrowsSettlement })),
+    }));
+    throw new Error(`Unexpected authoritative action ${actor.currentAction.kind} while finishing Raining Arrows: ${JSON.stringify(diagnostics)}`);
+  }
+  throw new Error("The real Raining Arrows sequence did not reach its final settlement proof.");
+}
+
+async function graphGeometry(page, seed, viewport, testInfo, label = "group-root-graph", expectedCurrentBranchCount = 1) {
   const overlay = page.locator('[data-root-action-overlay="true"][data-root-action-group-target-graph="true"]');
   try {
     await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
@@ -344,7 +381,7 @@ async function graphGeometry(page, seed, viewport, testInfo, label = "group-root
   expect(geometry.anchors).toHaveLength(seed.players.length);
   expect(geometry.branches.map(({ playerId }) => playerId)).toEqual(geometry.expectedIds);
   expect(geometry.uniqueBranchIds).toBe(geometry.expectedIds.length);
-  expect(geometry.currentBranchCount).toBe(1);
+  expect(geometry.currentBranchCount).toBe(expectedCurrentBranchCount);
   expect(geometry.sourceDistanceToAnchor, "the root source tether starts at the proven source's physical seat").toBeLessThanOrEqual(1.5);
   expect(geometry.branches.every(({ distanceToTarget }) => distanceToTarget <= 1.5), "each semantic branch ends at its matching fixed physical seat").toBe(true);
   expect(geometry.card.left).toBeGreaterThanOrEqual(geometry.table.left);
@@ -462,6 +499,163 @@ for (const { cardKind, viewport } of [
       await secondAnchor.evaluate((element) => { element.style.display = ""; });
       await expect(rootGraph).toHaveAttribute("data-root-action-ready", "true");
       await expect(page.locator(".interaction-stage")).toHaveCount(0);
+    }
+  });
+}
+
+for (const { viewport, reducedMotion } of [
+  { viewport: { width: 390, height: 844 }, reducedMotion: false },
+  { viewport: { width: 1440, height: 900 }, reducedMotion: true },
+]) {
+  test(`Raining Arrows real settlement keeps the final target graph for the designed hold at ${viewport.width}×${viewport.height}${reducedMotion ? " with reduced motion" : ""}`, async ({ page, request }, testInfo) => {
+    test.setTimeout(90_000);
+    await page.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
+    await page.addInitScript(() => {
+      window.__wtkRainingArrowsSettlementTrace = { eventId: null, readyAt: null, hiddenAt: null, geometry: null };
+      const inspect = () => {
+        const trace = window.__wtkRainingArrowsSettlementTrace;
+        const overlay = document.querySelector('[data-root-action-overlay="true"][data-root-action-group-target-graph="true"]');
+        const eventId = overlay?.getAttribute("data-root-action-settlement-event-id");
+        if (eventId && overlay?.getAttribute("data-root-action-ready") === "true") {
+          if (trace.eventId !== eventId) {
+            trace.eventId = eventId;
+            trace.readyAt = performance.now();
+            trace.hiddenAt = null;
+            trace.geometry = null;
+          }
+          if (trace.geometry === null) {
+            const bounds = (element) => {
+              const rect = element?.getBoundingClientRect();
+              return rect ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height } : null;
+            };
+            const svg = document.querySelector(".interaction-root-connectors");
+            const screenPoint = (path, atEnd) => {
+              if (!path || !svg) return null;
+              const point = path.getPointAtLength(atEnd ? path.getTotalLength() : 0);
+              const svgPoint = svg.createSVGPoint();
+              svgPoint.x = point.x;
+              svgPoint.y = point.y;
+              const matrix = path.getScreenCTM();
+              return matrix ? svgPoint.matrixTransform(matrix) : null;
+            };
+            const distanceToRect = (point, rect) => point && rect
+              ? Math.hypot(Math.max(rect.left - point.x, 0, point.x - rect.right), Math.max(rect.top - point.y, 0, point.y - rect.bottom))
+              : Number.POSITIVE_INFINITY;
+            const anchors = [...document.querySelectorAll("[data-player-anchor]")];
+            const sourceId = overlay.getAttribute("data-root-action-source-id");
+            const source = anchors.find((anchor) => anchor.getAttribute("data-player-anchor") === sourceId);
+            const branches = [...document.querySelectorAll('[data-root-action-edge="group-target"][data-group-target-branch-player-id]')];
+            const card = document.querySelector('[data-root-action-card="true"][data-group-root-action="RainingArrows"]');
+            const dock = document.querySelector(".local-player-dock");
+            const root = bounds(card);
+            const dockBounds = bounds(dock);
+            trace.geometry = {
+              ready: overlay.getAttribute("data-root-action-ready"),
+              settlementEventId: eventId,
+              rootEventId: overlay.getAttribute("data-root-action-event-id"),
+              root,
+              sourceDistance: distanceToRect(screenPoint(document.querySelector('[data-root-action-edge="source"]'), false), bounds(source)),
+              branches: branches.map((path) => ({
+                playerId: path.getAttribute("data-group-target-branch-player-id"),
+                status: path.getAttribute("data-group-target-status"),
+                outcome: path.getAttribute("data-group-target-outcome"),
+                distanceToSeat: distanceToRect(screenPoint(path, true), bounds(anchors.find((anchor) => anchor.getAttribute("data-player-anchor") === path.getAttribute("data-group-target-branch-player-id")))),
+              })),
+              anchors: anchors.map((anchor) => ({ id: anchor.getAttribute("data-player-anchor"), ...bounds(anchor) })),
+              dock: dockBounds,
+              cardOverlapsDock: Boolean(root && dockBounds && root.left < dockBounds.right && root.right > dockBounds.left && root.top < dockBounds.bottom && root.bottom > dockBounds.top),
+              documentWidth: document.documentElement.scrollWidth,
+              viewportWidth: innerWidth,
+            };
+          }
+        } else if (trace.eventId && trace.hiddenAt === null) trace.hiddenAt = performance.now();
+      };
+      new MutationObserver(inspect).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-root-action-ready", "data-root-action-settlement-event-id"] });
+      document.addEventListener("DOMContentLoaded", inspect);
+    });
+    const seed = await seedGroupGame(request, "RainingArrows");
+    await openGame(page, seed, 0, viewport);
+    await playGroupCard(page, seed.root);
+    const firstView = await reachFirstParticipant(request, seed, seed.players[1].id, "dodge");
+    expect(firstView.presentationSnapshot.groupParticipantProgress?.participants.map(({ status }) => status)).toEqual(["CURRENT", "PENDING", "PENDING"]);
+    const activeOverlay = page.locator('[data-root-action-overlay="true"][data-root-action-group-target-graph="true"]');
+    await expect(activeOverlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+    const activeGeometry = await graphGeometry(page, seed, viewport, testInfo, "raining-arrows-before-final-settlement");
+
+    await finishRainingArrowsWithDamageResponses(request, seed);
+    const sourceView = await roomView(request, seed, 0);
+    await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot.rainingArrowsSettlements?.length ?? 0, { timeout: 20_000 }).toBe(1);
+    const publicProof = (await roomView(request, seed, 0)).presentationSnapshot.rainingArrowsSettlements[0];
+    expect(publicProof).toMatchObject({
+      semantics: "PROVEN",
+      rootEventId: activeGeometry.rootEventId,
+      rootResolutionId: sourceView.timeline.find((event) => event.id === activeGeometry.rootEventId)?.resolutionId,
+      interactionId: firstView.presentationSnapshot.groupParticipantProgress.interactionId,
+      groupFrameId: firstView.presentationSnapshot.groupParticipantProgress.groupFrameId,
+      sourceId: seed.players[0].id,
+      cardKind: "RainingArrows",
+      participants: seed.players.slice(1).map((player, index) => ({ playerId: player.id, order: index + 1, status: "RESOLVED", outcome: "DAMAGED" })),
+    });
+    for (let viewer = 1; viewer < seed.players.length; viewer += 1) {
+      const view = await roomView(request, seed, viewer);
+      expect(view.presentationSnapshot.rainingArrowsSettlements).toEqual([publicProof], `viewer ${viewer} receives the same public result`);
+      const { myHand, ...publicView } = view;
+      for (const [hiddenIndex, hiddenCard] of seed.hidden.entries()) {
+        expect(myHand.some(({ id }) => id === hiddenCard.id)).toBe(viewer === hiddenIndex + 1);
+        expect(JSON.stringify(publicView)).not.toContain(hiddenCard.id);
+      }
+    }
+
+    await expect.poll(() => page.evaluate((eventId) => {
+      const trace = window.__wtkRainingArrowsSettlementTrace;
+      return trace.eventId === eventId && trace.geometry !== null;
+    }, publicProof.eventId), { timeout: 20_000 }).toBe(true);
+    const settledGeometry = await page.evaluate(() => window.__wtkRainingArrowsSettlementTrace.geometry);
+    await testInfo.attach(`raining-arrows-settlement-${viewport.width}x${viewport.height}.json`, { body: JSON.stringify(settledGeometry, null, 2), contentType: "application/json" });
+    expect(settledGeometry.ready).toBe("true");
+    expect(settledGeometry.settlementEventId).toBe(publicProof.eventId);
+    expect(settledGeometry.rootEventId).toBe(activeGeometry.rootEventId);
+    expect(settledGeometry.branches.map(({ playerId }) => playerId)).toEqual(publicProof.participants.map(({ playerId }) => playerId));
+    expect(settledGeometry.branches.map(({ status, outcome }) => ({ status, outcome }))).toEqual(publicProof.participants.map(({ status, outcome }) => ({ status, outcome })));
+    expect(settledGeometry.sourceDistance).toBeLessThanOrEqual(1.5);
+    expect(settledGeometry.branches.every(({ distanceToSeat }) => distanceToSeat <= 1.5)).toBe(true);
+    expect(settledGeometry.cardOverlapsDock).toBe(false);
+    expect(settledGeometry.documentWidth).toBeLessThanOrEqual(settledGeometry.viewportWidth);
+    expect(settledGeometry.root.left).toBeCloseTo(activeGeometry.card.left, 0);
+    expect(settledGeometry.root.top).toBeCloseTo(activeGeometry.card.top, 0);
+    for (const anchor of settledGeometry.anchors.filter(({ id }) => id !== seed.players[0].id)) {
+      const initial = activeGeometry.anchors.find(({ id }) => id === anchor.id);
+      expect(initial).toBeTruthy();
+      for (const key of ["left", "top", "right", "bottom"]) expect(Math.abs(anchor[key] - initial[key])).toBeLessThanOrEqual(1);
+    }
+    expect(settledGeometry.dock.left).toBeCloseTo(activeGeometry.dock.left, 0);
+    expect(settledGeometry.dock.bottom).toBeCloseTo(activeGeometry.dock.bottom, 0);
+    if (!reducedMotion) await testInfo.attach(`raining-arrows-settlement-${viewport.width}x${viewport.height}.png`, { body: await page.screenshot({ animations: "disabled" }), contentType: "image/png" });
+
+    if (reducedMotion) {
+      await page.waitForFunction((eventId) => {
+        const trace = window.__wtkRainingArrowsSettlementTrace;
+        return trace.eventId === eventId && trace.readyAt !== null && trace.hiddenAt !== null;
+      }, publicProof.eventId, { timeout: 2_000 });
+      const elapsed = await page.evaluate(() => window.__wtkRainingArrowsSettlementTrace.hiddenAt - window.__wtkRainingArrowsSettlementTrace.readyAt);
+      expect(elapsed).toBeGreaterThan(0);
+      expect(elapsed).toBeLessThan(400);
+    } else {
+      const trace = await page.evaluate(() => window.__wtkRainingArrowsSettlementTrace);
+      expect(trace.eventId).toBe(publicProof.eventId);
+      await page.waitForFunction((eventId) => {
+        const current = document.querySelector('[data-root-action-overlay="true"][data-root-action-group-target-graph="true"]');
+        const trace = window.__wtkRainingArrowsSettlementTrace;
+        return trace.eventId === eventId && trace.readyAt !== null && performance.now() - trace.readyAt >= 300
+          && current?.getAttribute("data-root-action-ready") === "true";
+      }, publicProof.eventId, { timeout: 1_000, polling: 20 });
+      await page.waitForFunction((eventId) => {
+        const trace = window.__wtkRainingArrowsSettlementTrace;
+        return trace.eventId === eventId && trace.hiddenAt !== null;
+      }, publicProof.eventId, { timeout: 1_500 });
+      const elapsed = await page.evaluate(() => window.__wtkRainingArrowsSettlementTrace.hiddenAt - window.__wtkRainingArrowsSettlementTrace.readyAt);
+      expect(elapsed).toBeGreaterThanOrEqual(400);
+      expect(elapsed).toBeLessThanOrEqual(800);
     }
   });
 }

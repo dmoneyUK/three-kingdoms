@@ -11,7 +11,7 @@ import { canUseAction, type CurrentAction, type GameplayAction, type TriggerOpti
 import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
-import type { PresentationAttackHitSettlementProof, PresentationDismantleSettlementProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
+import type { PresentationAttackHitSettlementProof, PresentationDismantleSettlementProof, PresentationRainingArrowsSettlementProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, isProvenBorrowedSwordForcedAttack, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildPresentationTransition, type PresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupSourceForViewer, projectGroupTargetScopeForViewer, projectOathRecipientScopeForStage, projectBumperHarvestStageCompositionForViewer, type BumperHarvestStageCompositionView, type GroupSourceView, type GroupTargetScopeView, type HeroFocusPlayerDisplay, type HeroFocusView, type MediumParticipantView, type OathRecipientScopeView } from "../game/hero-focus";
@@ -26,7 +26,7 @@ type ActiveAttackDodgeSettlement = { eventId: string; phase: "exiting" | "comple
 type RootActionOverlayLayoutReadiness = { key: string; state: "measuring" | "ready" | "unavailable" } | null;
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
 type PresentationImportance = "essential" | "informational";
-type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof };
+type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicRainingArrowsSettlement?: PresentationRainingArrowsSettlementProof };
 type CardEvent = PresentationEventMeta & { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" | "draw"; drawPlayerId?: string; presentation?: boolean };
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
 
@@ -1967,6 +1967,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const [activeDismantleSettlement, setActiveDismantleSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeStealSettlement, setActiveStealSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeAttackHitSettlement, setActiveAttackHitSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
+  const [activeRainingArrowsSettlement, setActiveRainingArrowsSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeAttackDodgeSettlement, setActiveAttackDodgeSettlement] = useState<ActiveAttackDodgeSettlement | null>(null);
   const attackDodgeSettlementTimerEventId = useRef<string | null>(null);
   // Events already present when the screen mounts have no new animation to
@@ -2649,6 +2650,21 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         : [];
     });
     if (freshAttackHitSettlements.length === 1) setActiveAttackHitSettlement({ eventId: freshAttackHitSettlements[0].eventId, exiting: false });
+    const freshRainingArrowsSettlements = fresh.flatMap((event) => {
+      if (event.type !== "message") return [];
+      const proofs = clientPresentation.rainingArrowsSettlements.filter((proof) => proof.eventId === event.id);
+      if (proofs.length !== 1) return [];
+      const proof = proofs[0];
+      const eventProof = event.publicRainingArrowsSettlement;
+      return eventProof?.semantics === proof.semantics && eventProof.rootEventId === proof.rootEventId
+        && eventProof.rootResolutionId === proof.rootResolutionId && eventProof.interactionId === proof.interactionId
+        && eventProof.groupFrameId === proof.groupFrameId && eventProof.sourceId === proof.sourceId
+        && eventProof.cardKind === proof.cardKind
+        && JSON.stringify(eventProof.participants) === JSON.stringify(proof.participants)
+        ? [proof]
+        : [];
+    });
+    if (freshRainingArrowsSettlements.length === 1) setActiveRainingArrowsSettlement({ eventId: freshRainingArrowsSettlements[0].eventId, exiting: false });
     const effect = fresh.find((event) => event.type === "message" && event.effectNotice);
     if (effect?.type === "message") {
       setEffectNotice(effect.message);
@@ -2684,7 +2700,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       } else setEventQueue((queue) => coalescePresentationQueue(queue, visible));
     }
     setProcessedTimelineKey(timelineKey);
-  }, [room.timeline, timelineKey, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements]);
+  }, [room.timeline, timelineKey, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, clientPresentation.rainingArrowsSettlements]);
   useEffect(() => { if (!optimisticPlay) return; const timer = setTimeout(() => setOptimisticPlay(null), UI_TIMING.playedCard); return () => clearTimeout(timer); }, [optimisticPlay]);
   useEffect(() => { if (!livePendingStartId || livePendingStartId === sequenceScopeStartId) return; const timer = setTimeout(() => setSequenceScopeStartId(livePendingStartId), 0); return () => clearTimeout(timer); }, [livePendingStartId, sequenceScopeStartId]);
   useEffect(() => { if (!harvestSubmitting || room.pendingHarvest?.actorId === harvestSubmitting.playerId && !room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId)) return; const timer = setTimeout(() => setHarvestSubmitting(null), 0); return () => clearTimeout(timer); }, [harvestSubmitting, room.pendingHarvest]);
@@ -3253,6 +3269,44 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       responses: responses as NonNullable<(typeof responses)[number]>[],
     };
   })();
+  const rainingArrowsSettlementCandidate = (() => {
+    const settlement = clientPresentation.rainingArrowsSettlements.find((candidate) => candidate.eventId === activeRainingArrowsSettlement?.eventId);
+    if (!settlement || settlement.semantics !== "PROVEN" || settlement.cardKind !== "RainingArrows") return null;
+    const rootEvents = room.timeline.filter((event) => event.id === settlement.rootEventId);
+    const settlementEvents = room.timeline.filter((event) => event.id === settlement.eventId);
+    if (rootEvents.length !== 1 || settlementEvents.length !== 1) return null;
+    const rootEvent = rootEvents[0];
+    const settlementEvent = settlementEvents[0];
+    if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
+      || rootEvent.playedAs !== undefined || rootEvent.card.kind !== "RainingArrows"
+      || rootEvent.resolutionId !== settlement.rootResolutionId
+      || settlementEvent.type !== "message" || settlementEvent.presentation === false
+      || settlementEvent.importance !== "essential" || settlementEvent.finalResult !== true
+      || settlementEvent.resolutionId !== settlement.rootResolutionId
+      || settlementEvent.publicRainingArrowsSettlement?.semantics !== settlement.semantics
+      || settlementEvent.publicRainingArrowsSettlement.rootEventId !== settlement.rootEventId
+      || settlementEvent.publicRainingArrowsSettlement.rootResolutionId !== settlement.rootResolutionId
+      || settlementEvent.publicRainingArrowsSettlement.interactionId !== settlement.interactionId
+      || settlementEvent.publicRainingArrowsSettlement.groupFrameId !== settlement.groupFrameId
+      || settlementEvent.publicRainingArrowsSettlement.sourceId !== settlement.sourceId
+      || settlementEvent.publicRainingArrowsSettlement.cardKind !== settlement.cardKind
+      || JSON.stringify(settlementEvent.publicRainingArrowsSettlement.participants) !== JSON.stringify(settlement.participants)) return null;
+    const source = room.players.find((player) => player.id === settlement.sourceId);
+    if (!source?.name || rootEvent.player !== source.name) return null;
+    const targets = settlement.participants.map((participant) => {
+      const player = room.players.find(({ id }) => id === participant.playerId);
+      return player?.name ? { ...participant, playerName: player.name } : null;
+    });
+    if (targets.some((target) => target === null)) return null;
+    return {
+      settlement,
+      rootEvent,
+      settlementEvent,
+      source,
+      targets: targets as NonNullable<(typeof targets)[number]>[],
+      exiting: activeRainingArrowsSettlement?.exiting === true,
+    };
+  })();
   const rootAction = clientPresentation.rootAction;
   const rootActionName = rootAction?.action === "ATTACK" ? "Attack"
     : rootAction?.cardKind === "Dismantle" ? "Burning Bridge"
@@ -3372,8 +3426,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     return { action: settlement, rootEvent, settlementEvent, source, target, exiting: activeAttackHitSettlement?.exiting === true };
   })();
   const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId)
-    : oathSimultaneousRootGraphCandidate?.rootEvent ?? bumperHarvestRootGraphCandidate?.rootEvent ?? groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? dismantleSettlementCandidate?.rootEvent ?? stealSettlementCandidate?.rootEvent ?? attackHitSettlementCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeGraphCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
-  const selfTargetCandidates = rootAction || oathSimultaneousRootGraphCandidate || bumperHarvestRootGraphCandidate || groupTargetBranchGraphCandidate || skillEffectActionCandidate || skillEffectSettlementCandidate || dismantleSettlementCandidate || stealSettlementCandidate || attackHitSettlementCandidate || duelExchangeGraphCandidate || attackDodgeGraphCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
+    : oathSimultaneousRootGraphCandidate?.rootEvent ?? bumperHarvestRootGraphCandidate?.rootEvent ?? groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? dismantleSettlementCandidate?.rootEvent ?? stealSettlementCandidate?.rootEvent ?? attackHitSettlementCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeGraphCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? rainingArrowsSettlementCandidate?.rootEvent ?? null;
+  const selfTargetCandidates = rootAction || oathSimultaneousRootGraphCandidate || bumperHarvestRootGraphCandidate || groupTargetBranchGraphCandidate || skillEffectActionCandidate || skillEffectSettlementCandidate || dismantleSettlementCandidate || stealSettlementCandidate || attackHitSettlementCandidate || duelExchangeGraphCandidate || attackDodgeGraphCandidate || singleTargetNegationGraphCandidate || rainingArrowsSettlementCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
       || event.resolutionId !== action.resolutionId || event.card.kind !== action.cardKind
@@ -3388,7 +3442,22 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     return [{ action, event, source }];
   });
   const selfTargetCandidate = selfTargetCandidates.length === 1 ? selfTargetCandidates[0] : null;
-  const rootActionOverlayAction: InteractionRootOverlayAction | null = oathSimultaneousRootGraphCandidate
+  const rootActionOverlayAction: InteractionRootOverlayAction | null = rainingArrowsSettlementCandidate
+    ? {
+      key: ["group", rainingArrowsSettlementCandidate.settlement.interactionId, rainingArrowsSettlementCandidate.settlement.groupFrameId, rainingArrowsSettlementCandidate.rootEvent.id].join(":"),
+      rootEventId: rainingArrowsSettlementCandidate.rootEvent.id,
+      rootPlacementKey: ["group-root", rainingArrowsSettlementCandidate.settlement.interactionId, rainingArrowsSettlementCandidate.settlement.groupFrameId, rainingArrowsSettlementCandidate.rootEvent.id].join(":"),
+      sourceId: rainingArrowsSettlementCandidate.settlement.sourceId,
+      targetId: rainingArrowsSettlementCandidate.targets[0].playerId,
+      groupTargets: rainingArrowsSettlementCandidate.targets,
+      cardKind: "RainingArrows",
+      cardLabel: cardDefinition("RainingArrows").name.toUpperCase(),
+      ariaLabel: `${rainingArrowsSettlementCandidate.source.name} played Raining Arrows. ${rainingArrowsSettlementCandidate.targets.map((target) => `${target.playerName}: ${groupParticipantStatusLabel(target.status)}${target.outcome ? `, ${groupParticipantOutcomeLabel(target.outcome)}` : ""}`).join(". ")}`,
+      mode: "targeted",
+      compactRoot: true,
+      settlement: { eventId: rainingArrowsSettlementCandidate.settlement.eventId, outcome: "GROUP_RESOLVED", exiting: rainingArrowsSettlementCandidate.exiting },
+    }
+    : oathSimultaneousRootGraphCandidate
     ? {
       key: ["oath", oathSimultaneousRootGraphCandidate.scope.interactionId, oathSimultaneousRootGraphCandidate.scope.rootFrameId, oathSimultaneousRootGraphCandidate.rootEvent.id].join(":"),
       rootEventId: oathSimultaneousRootGraphCandidate.rootEvent.id,
@@ -3632,7 +3701,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     || dismantleSettlementCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || stealSettlementCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || attackHitSettlementCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
-    || singleTargetNegationGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations),
+    || singleTargetNegationGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
+    || rainingArrowsSettlementCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations),
   );
   const rootGroupTargetNamesKnown = Boolean(rootActionOverlayAction?.groupTargets?.length
     && rootActionOverlayAction.groupTargets.every((target) => target.playerName));
@@ -3744,6 +3814,28 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     const timer = window.setTimeout(() => setActiveAttackHitSettlement((current) => current?.eventId === activeAttackHitSettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
   }, [activeAttackHitSettlement?.eventId, activeAttackHitSettlementExiting, activeAttackHitSettlementEventId]);
+  const activeRainingArrowsSettlementEventId = rootActionOverlayAction?.settlement?.outcome === "GROUP_RESOLVED"
+    ? rootActionOverlayAction.settlement.eventId
+    : null;
+  const activeRainingArrowsSettlementExiting = rootActionOverlayAction?.settlement?.outcome === "GROUP_RESOLVED"
+    && rootActionOverlayAction.settlement.exiting;
+  useEffect(() => {
+    if (!activeRainingArrowsSettlementEventId || !rootActionOverlayGraphReady
+      || activeRainingArrowsSettlement?.eventId !== activeRainingArrowsSettlementEventId || activeRainingArrowsSettlement.exiting) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setTimeout(() => {
+      setActiveRainingArrowsSettlement((current) => current?.eventId === activeRainingArrowsSettlementEventId
+        ? reducedMotion ? null : { ...current, exiting: true }
+        : current);
+    }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
+    return () => window.clearTimeout(timer);
+  }, [activeRainingArrowsSettlement?.eventId, activeRainingArrowsSettlement?.exiting, activeRainingArrowsSettlementEventId, rootActionOverlayGraphReady]);
+  useEffect(() => {
+    if (!activeRainingArrowsSettlementExiting || !activeRainingArrowsSettlementEventId
+      || activeRainingArrowsSettlement?.eventId !== activeRainingArrowsSettlementEventId) return;
+    const timer = window.setTimeout(() => setActiveRainingArrowsSettlement((current) => current?.eventId === activeRainingArrowsSettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
+    return () => window.clearTimeout(timer);
+  }, [activeRainingArrowsSettlement?.eventId, activeRainingArrowsSettlementExiting, activeRainingArrowsSettlementEventId]);
   const activeAttackDodgeSettlementEventId = rootActionOverlayAction?.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE"
     ? rootActionOverlayAction.settlement.eventId
     : null;
@@ -3967,7 +4059,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     </section>
     <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} displayMode={rootActionOverlayDisplayMode} layoutReadiness={rootActionLayoutState} fallbackReason={rootActionOverlayFallbackReason} onLayoutReadinessChange={onRootActionOverlayLayoutReadinessChange} />
     <footer className="play-command">
-    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
+    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeRainingArrowsSettlement || clientPresentation.rainingArrowsSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
       heroSkillControl={
         <section className="hero-skills local-hero-skills" aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => skill.passive

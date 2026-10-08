@@ -27,6 +27,7 @@ export type PresentationV2Event = {
   publicDismantleSettlement?: unknown;
   publicStealSettlement?: unknown;
   publicAttackHitSettlement?: unknown;
+  publicRainingArrowsSettlement?: unknown;
   bumperHarvestRoot?: { semantics?: unknown; sourceId?: unknown; cardId?: unknown };
 };
 
@@ -92,6 +93,29 @@ export type PresentationAttackHitSettlementProof = {
 };
 
 export type PresentationAttackHitSettlement = PresentationAttackHitSettlementProof & {
+  eventId: string;
+};
+
+export type PresentationRainingArrowsSettlementParticipant = {
+  playerId: string;
+  order: number;
+  status: "RESOLVED" | "NO_LONGER_APPLICABLE";
+  outcome?: GroupParticipantProgressOutcome;
+};
+
+/** Server-authored terminal progress for one completed Raining Arrows root. */
+export type PresentationRainingArrowsSettlementProof = {
+  semantics: "PROVEN";
+  rootEventId: string;
+  rootResolutionId: string;
+  interactionId: string;
+  groupFrameId: string;
+  sourceId: string;
+  cardKind: "RainingArrows";
+  participants: readonly PresentationRainingArrowsSettlementParticipant[];
+};
+
+export type PresentationRainingArrowsSettlement = PresentationRainingArrowsSettlementProof & {
   eventId: string;
 };
 
@@ -394,6 +418,7 @@ export type PresentationV2 = {
   dismantleSettlements: readonly PresentationDismantleSettlement[];
   stealSettlements: readonly PresentationStealSettlement[];
   attackHitSettlements: readonly PresentationAttackHitSettlement[];
+  rainingArrowsSettlements: readonly PresentationRainingArrowsSettlement[];
   duelExchange: PresentationDuelExchange | null;
   selfTargetActions?: readonly PresentationSelfTargetAction[];
   dyingBarrier: PresentationDyingBarrier | null;
@@ -1911,6 +1936,63 @@ function attackHitSettlementsFor(timeline: readonly PresentationV2Event[]): Pres
   });
 }
 
+function rainingArrowsSettlementsFor(timeline: readonly PresentationV2Event[]): PresentationRainingArrowsSettlement[] {
+  const eventIdCounts = new Map<string, number>();
+  const rootIdCounts = new Map<string, number>();
+  for (const event of timeline) {
+    const eventId = stringValue(event.id);
+    if (eventId) eventIdCounts.set(eventId, (eventIdCounts.get(eventId) ?? 0) + 1);
+    const proof = record(event.publicRainingArrowsSettlement);
+    const rootEventId = stringValue(proof?.rootEventId);
+    if (rootEventId) rootIdCounts.set(rootEventId, (rootIdCounts.get(rootEventId) ?? 0) + 1);
+  }
+
+  return timeline.flatMap((event) => {
+    const proof = record(event.publicRainingArrowsSettlement);
+    const eventId = stringValue(event.id);
+    const rootEventId = stringValue(proof?.rootEventId);
+    const rootResolutionId = stringValue(proof?.rootResolutionId);
+    const interactionId = stringValue(proof?.interactionId);
+    const groupFrameId = stringValue(proof?.groupFrameId);
+    const sourceId = stringValue(proof?.sourceId);
+    const rawParticipants = proof?.participants;
+    if (!proof || !eventId || eventIdCounts.get(eventId) !== 1
+      || !rootEventId || rootEventId === eventId || rootIdCounts.get(rootEventId) !== 1
+      || !rootResolutionId || !interactionId || !groupFrameId || !sourceId
+      || proof.semantics !== "PROVEN" || proof.cardKind !== "RainingArrows"
+      || !Array.isArray(rawParticipants) || rawParticipants.length === 0
+      || event.type !== "message" || event.presentation === false || !stringValue(event.message)
+      || event.importance !== "essential" || event.finalResult !== true
+      || event.resolutionId !== rootResolutionId) return [];
+
+    const roots = timeline.filter((candidate) => candidate.id === rootEventId);
+    const rootEvent = roots.length === 1 ? roots[0] : null;
+    const rootCard = record(rootEvent?.card);
+    if (!rootEvent || rootEvent.type !== "card" || rootEvent.presentation === false
+      || rootEvent.action !== "play" || rootEvent.playedAs !== undefined
+      || rootEvent.resolutionId !== rootResolutionId
+      || rootCard?.kind !== "RainingArrows" || !stringValue(rootCard.id)) return [];
+
+    const participants: PresentationRainingArrowsSettlementParticipant[] = [];
+    const participantIds = new Set<string>();
+    for (let index = 0; index < rawParticipants.length; index += 1) {
+      const participant = record(rawParticipants[index]);
+      const playerId = stringValue(participant?.playerId);
+      const status = participant?.status;
+      const outcome = participant?.outcome;
+      if (!playerId || participantIds.has(playerId) || participant?.order !== index + 1
+        || (status !== "RESOLVED" && status !== "NO_LONGER_APPLICABLE")
+        || status === "RESOLVED" && (outcome !== "AVOIDED" && outcome !== "DAMAGED" && outcome !== "NEGATED" && outcome !== "DEFEATED")
+        || status === "NO_LONGER_APPLICABLE" && outcome !== undefined
+        || outcome !== undefined && !isGroupParticipantProgressOutcomeAllowed("RainingArrows", "GROUP", status as GroupParticipantProgressStatus, outcome as GroupParticipantProgressOutcome)) return [];
+      participantIds.add(playerId);
+      participants.push({ playerId, order: index + 1, status, ...(outcome ? { outcome } : {}) });
+    }
+
+    return [{ semantics: "PROVEN", eventId, rootEventId, rootResolutionId, interactionId, groupFrameId, sourceId, cardKind: "RainingArrows", participants }];
+  });
+}
+
 function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): PresentationAttackDodgeResponse[] {
   const eventCounts = new Map<string, number>();
   const eventsById = new Map<string, PresentationV2Event[]>();
@@ -2176,6 +2258,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const dismantleSettlements = dismantleSettlementsFor(input.timeline);
   const stealSettlements = stealSettlementsFor(input.timeline);
   const attackHitSettlements = attackHitSettlementsFor(input.timeline);
+  const rainingArrowsSettlements = rainingArrowsSettlementsFor(input.timeline);
   const duelExchange = duelExchangeFor(envelope, interactionScene, input.pending, input.timeline);
   const selfTargetActions = selfTargetActionsFor(input.timeline);
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
@@ -2216,6 +2299,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     dismantleSettlements,
     stealSettlements,
     attackHitSettlements,
+    rainingArrowsSettlements,
     duelExchange,
     selfTargetActions,
     dyingBarrier,

@@ -1095,3 +1095,56 @@ test("C6 keeps reserved SETTLEMENT out of every current projector boundary", () 
     assert.notEqual(projected.stableBoundary.kind, "SETTLEMENT");
   }
 });
+
+test("Raining Arrows settlement projection requires one exact root and complete ordered terminal progress", () => {
+  const proof = {
+    semantics: "PROVEN",
+    rootEventId: "raining-root-event",
+    rootResolutionId: "raining-root-resolution",
+    interactionId: "raining-interaction",
+    groupFrameId: "raining-group-frame",
+    sourceId: "A",
+    cardKind: "RainingArrows",
+    participants: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "AVOIDED", internalNote: "must not copy" },
+      { playerId: "C", order: 2, status: "RESOLVED", outcome: "DAMAGED" },
+      { playerId: "D", order: 3, status: "NO_LONGER_APPLICABLE" },
+    ],
+  };
+  const timeline = [
+    { type: "card", id: "raining-root-event", player: "SOURCE", action: "play", resolutionId: "raining-root-resolution", card: { id: "physical-raining-card", kind: "RainingArrows" } },
+    { type: "message", id: "raining-settlement-event", message: "Raining Arrows finishes resolving.", importance: "essential", finalResult: true, resolutionId: "raining-root-resolution", publicRainingArrowsSettlement: proof },
+  ];
+  const project = (events = timeline) => projectPresentationV2({ pending: null, currentAction: null, actionRevision: "settled", timeline: events });
+  const projected = project();
+  assert.deepEqual(projected.rainingArrowsSettlements, [{
+    semantics: "PROVEN",
+    eventId: "raining-settlement-event",
+    rootEventId: "raining-root-event",
+    rootResolutionId: "raining-root-resolution",
+    interactionId: "raining-interaction",
+    groupFrameId: "raining-group-frame",
+    sourceId: "A",
+    cardKind: "RainingArrows",
+    participants: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "AVOIDED" },
+      { playerId: "C", order: 2, status: "RESOLVED", outcome: "DAMAGED" },
+      { playerId: "D", order: 3, status: "NO_LONGER_APPLICABLE" },
+    ],
+  }]);
+  assert.equal(JSON.stringify(projected.rainingArrowsSettlements).includes("physical-raining-card"), false);
+  assert.equal(JSON.stringify(projected.rainingArrowsSettlements).includes("internalNote"), false);
+
+  for (const [label, malformed] of [
+    ["pending participant", { ...proof, participants: [{ ...proof.participants[0], status: "PENDING" }, ...proof.participants.slice(1)] }],
+    ["duplicate participant", { ...proof, participants: [proof.participants[0], { ...proof.participants[1], playerId: "B" }, proof.participants[2]] }],
+    ["out-of-order targets", { ...proof, participants: [...proof.participants].reverse() }],
+    ["outcome on inapplicable participant", { ...proof, participants: [...proof.participants.slice(0, 2), { ...proof.participants[2], outcome: "DEFEATED" }] }],
+    ["wrong card kind", { ...proof, cardKind: "BarbarianInvasion" }],
+  ]) {
+    const events = timeline.map((event) => event.id === "raining-settlement-event" ? { ...event, publicRainingArrowsSettlement: malformed } : event);
+    assert.deepEqual(project(events).rainingArrowsSettlements, [], `${label} fails closed`);
+  }
+  assert.deepEqual(project([...timeline, { ...timeline[0] }]).rainingArrowsSettlements, [], "ambiguous physical root fails closed");
+  assert.deepEqual(project(timeline.map((event) => event.id === "raining-settlement-event" ? { ...event, resolutionId: "stale-resolution" } : event)).rainingArrowsSettlements, [], "stale settlement resolution fails closed");
+});

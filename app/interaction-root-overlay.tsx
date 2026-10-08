@@ -98,7 +98,7 @@ export type InteractionRootOverlayAction = {
   groupTargetEffectState?: { targetId: string; state: "ACTIVE" | "BLOCKED" };
   orderedTargetEffectState?: { targetId: string; state: "ACTIVE" | "BLOCKED" };
   rootEffectState?: "ACTIVE" | "BLOCKED";
-  settlement?: { eventId: string; outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE" | "ATTACK_DAMAGE_APPLIED" | "DISMANTLE_RESOLVED" | "STEAL_RESOLVED"; exiting: boolean };
+  settlement?: { eventId: string; outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE" | "ATTACK_DAMAGE_APPLIED" | "DISMANTLE_RESOLVED" | "STEAL_RESOLVED" | "GROUP_RESOLVED"; exiting: boolean };
   response?: { eventId: string; actorId: string; actorName: string; cardLabel: string; ariaLabel: string; countersRoot?: boolean; targetId?: string; decisionActorId?: string };
   responses?: readonly InteractionRootOverlayResponseNode[];
 };
@@ -204,7 +204,7 @@ function layoutGroupRootAction(
   cardElement: HTMLElement,
   responseElements: readonly HTMLElement[],
   historySummaryElement: HTMLElement | null,
-  action: Pick<InteractionRootOverlayAction, "sourceId" | "groupTargets" | "orderedTargets" | "groupTargetEffectState" | "orderedTargetEffectState"> & ResponseLayout,
+  action: Pick<InteractionRootOverlayAction, "sourceId" | "groupTargets" | "orderedTargets" | "groupTargetEffectState" | "orderedTargetEffectState" | "settlement"> & ResponseLayout,
   preferredRootCard: Rect | null,
 ): RootActionLayout | null {
   const fail = (): null => null;
@@ -215,7 +215,10 @@ function layoutGroupRootAction(
   const targetEffectState = action.groupTargetEffectState ?? action.orderedTargetEffectState;
   if (!table || !targets?.length || new Set(targets.map(({ playerId }) => playerId)).size !== targets.length
     || targets.some((target, index) => target.order !== index + 1)) return fail();
-  if (targets.filter(({ status }) => status === "CURRENT" || status === "PAUSED").length !== 1) return fail();
+  const settledGroup = action.settlement?.outcome === "GROUP_RESOLVED";
+  if (settledGroup
+    ? targets.some(({ status }) => status !== "RESOLVED" && status !== "NO_LONGER_APPLICABLE")
+    : targets.filter(({ status }) => status === "CURRENT" || status === "PAUSED").length !== 1) return fail();
   if (targetEffectState
     && (!targets.some(({ playerId, status }) => playerId === targetEffectState.targetId && status === "CURRENT")
       || targetEffectState.state !== "ACTIVE" && targetEffectState.state !== "BLOCKED")) return fail();
@@ -1144,6 +1147,7 @@ export function InteractionRootOverlay({
           ...(currentOrderedTargets?.length ? { orderedTargets: currentOrderedTargets } : {}),
           groupTargetEffectState: currentAction.groupTargetEffectState,
           orderedTargetEffectState: currentAction.orderedTargetEffectState,
+          settlement: currentAction.settlement,
           responses: currentAction.responses ? currentVisibleResponses : undefined,
           historyCount: currentHistoryCount,
         }, preferredRootCard)
@@ -1220,6 +1224,7 @@ export function InteractionRootOverlay({
     ...(action.settlement?.outcome === "ATTACK_DAMAGE_APPLIED" ? ["Attack damage applied"] : []),
     ...(action.settlement?.outcome === "DISMANTLE_RESOLVED" ? ["Dismantle resolved"] : []),
     ...(action.settlement?.outcome === "STEAL_RESOLVED" ? ["Steal resolved"] : []),
+    ...(action.settlement?.outcome === "GROUP_RESOLVED" ? ["Raining Arrows group effect resolved"] : []),
   ].map((sentence) => sentence.trim().replace(/[.!?]+$/u, ""))
     .filter(Boolean)
     .join(". ");

@@ -621,6 +621,41 @@ test("snapshot fails closed for malformed or absent public causal proof", () => 
   }
 });
 
+test("snapshot exposes the identical ordered Raining Arrows settlement to actor and observer", () => {
+  const settlement = {
+    semantics: "PROVEN",
+    eventId: "raining-final-event",
+    rootEventId: "raining-root-event",
+    rootResolutionId: "raining-resolution",
+    interactionId: "raining-interaction",
+    groupFrameId: "raining-frame",
+    sourceId: "A",
+    cardKind: "RainingArrows",
+    participants: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "AVOIDED" },
+      { playerId: "C", order: 2, status: "RESOLVED", outcome: "DAMAGED" },
+      { playerId: "D", order: 3, status: "NO_LONGER_APPLICABLE" },
+    ],
+  };
+  const publicPresentation = { ...presentation(scene()), rainingArrowsSettlements: [settlement] };
+  const actor = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "none", actorId: null }, actionRevision: "actor", viewerId: "A" });
+  const observer = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "none", actorId: null }, actionRevision: "observer", viewerId: "D" });
+  assert.deepEqual(actor.rainingArrowsSettlements, [settlement]);
+  assert.deepEqual(actor.rainingArrowsSettlements, observer.rainingArrowsSettlements, "settlement is public and viewer-equal");
+
+  for (const malformed of [
+    { ...settlement, participants: [...settlement.participants, { playerId: "D", order: 4, status: "RESOLVED", outcome: "DAMAGED" }] },
+    { ...settlement, participants: [settlement.participants[0], { ...settlement.participants[1], status: "PENDING" }, settlement.participants[2]] },
+    { ...settlement, participants: [settlement.participants[0], settlement.participants[1], { ...settlement.participants[2], outcome: "DEFEATED" }] },
+  ]) {
+    assert.deepEqual(composePresentationSnapshot({
+      presentationV2: { ...publicPresentation, rainingArrowsSettlements: [malformed] },
+      currentAction: null,
+      actionRevision: "malformed",
+    }).rainingArrowsSettlements, [], "malformed terminal proof is withheld as a whole");
+  }
+});
+
 test("snapshot fails closed atomically for every scene-boundary coherence mismatch", () => {
   const cases = [
     ["interaction", { interactionId: "other-interaction" }],

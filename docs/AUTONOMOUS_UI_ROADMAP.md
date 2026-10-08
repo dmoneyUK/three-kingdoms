@@ -2083,6 +2083,29 @@ Only a proven regression or new Reviewer-approved design requirement does.
   that exact SHA passed all five Actions jobs in run `37855563197` (#923).
   Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-C-RAINING-ARROWS-SETTLEMENT-HOLD-01 — Raining Arrows settlement
+
+- Added a server-authored, fail-closed Raining Arrows final settlement proof
+  bound to the exact played root, resolution, causal frame, source, and ordered
+  terminal participants. Viewer snapshots remain equal and privacy-safe. The
+  physical-seat graph takes priority over a still-present progress projection
+  during the brief resolved hold, then exits; reduced motion uses the shorter
+  no-exit path. A real server-backed browser check measures root position,
+  opponent-seat geometry, Dock boundary/connector, branch outcomes,
+  containment, and hidden-hand privacy.
+- The focused settlement browser cases passed 2/2 at 390×844 and 1440×900
+  reduced motion; the complete related Group graph spec passed 14/14 with two
+  workers. Attack root revalidation passed 7/7; projection/snapshot passed
+  59/59; room-safety/supervisor passed 11/11. Build, targeted ESLint, and
+  `git diff --check` passed. An initial four-worker run had four page-open
+  failures that remained at the lobby; the full file passed on the two-worker
+  rerun. Parent Actions run `37858015569` (#924), exact SHA
+  `bcfda64df7ea5fb860cc4aeea80cf73ae7d5cb1b`, failed only browser shard 1 after
+  Wrangler's known ProxyWorker network disconnect. The supervisor mismatch
+  (`exitCode` versus the caller's `code`) is repaired with a focused regression
+  in the same changeset; outgoing CI is pending. Reviewer acceptance is not
+  claimed.
+
 ### UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01 — Real drag/drop completion
 
 - The real server-backed Stargazing proof now covers touch reassignment between
@@ -2104,9 +2127,9 @@ Only a proven regression or new Reviewer-approved design requirement does.
 These remain incomplete; where authoritative projection does not exist,
 behavior must continue to fail closed:
 
-- Public AOE outcomes beyond Raining Arrows `Avoided`, Raining Arrows / Barbarian
-  Invasion `Damaged`, and Raining Arrows / Barbarian Invasion `Negated`, plus
-  unrelated Group semantics, remain deferred.
+- Barbarian Invasion final settlement presentation and unrelated Group
+  semantics remain deferred; Raining Arrows settlement now has a bounded
+  server proof and browser-backed hold.
 - Cross-frame and post-settlement Reaction Chain history beyond the active
   Negation continuation's proven linked nodes.
 - Settlement/transition history that would require new authoritative public

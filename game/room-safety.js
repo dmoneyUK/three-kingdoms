@@ -86,6 +86,37 @@ function normalizePresentationMeta(entry) {
       outcome: "ATTACK_DAMAGE_APPLIED",
     };
   }
+  if (isRecord(entry.publicRainingArrowsSettlement)
+    && entry.publicRainingArrowsSettlement.semantics === "PROVEN"
+    && typeof entry.publicRainingArrowsSettlement.rootEventId === "string"
+    && typeof entry.publicRainingArrowsSettlement.rootResolutionId === "string"
+    && typeof entry.publicRainingArrowsSettlement.interactionId === "string"
+    && typeof entry.publicRainingArrowsSettlement.groupFrameId === "string"
+    && typeof entry.publicRainingArrowsSettlement.sourceId === "string"
+    && entry.publicRainingArrowsSettlement.cardKind === "RainingArrows"
+    && Array.isArray(entry.publicRainingArrowsSettlement.participants)
+    && entry.publicRainingArrowsSettlement.participants.length > 0
+    && entry.publicRainingArrowsSettlement.participants.every((participant, index) => isRecord(participant)
+      && typeof participant.playerId === "string"
+      && participant.order === index + 1
+      && (participant.status === "RESOLVED" && ["AVOIDED", "DAMAGED", "NEGATED", "DEFEATED"].includes(participant.outcome)
+        || participant.status === "NO_LONGER_APPLICABLE" && participant.outcome === undefined))) {
+    metadata.publicRainingArrowsSettlement = {
+      semantics: "PROVEN",
+      rootEventId: entry.publicRainingArrowsSettlement.rootEventId,
+      rootResolutionId: entry.publicRainingArrowsSettlement.rootResolutionId,
+      interactionId: entry.publicRainingArrowsSettlement.interactionId,
+      groupFrameId: entry.publicRainingArrowsSettlement.groupFrameId,
+      sourceId: entry.publicRainingArrowsSettlement.sourceId,
+      cardKind: "RainingArrows",
+      participants: entry.publicRainingArrowsSettlement.participants.map((participant) => ({
+        playerId: participant.playerId,
+        order: participant.order,
+        status: participant.status,
+        ...(participant.outcome ? { outcome: participant.outcome } : {}),
+      })),
+    };
+  }
   return metadata;
 }
 
@@ -94,6 +125,7 @@ function normalizeTimelineEvent(entry) {
   delete event.publicDismantleSettlement;
   delete event.publicStealSettlement;
   delete event.publicAttackHitSettlement;
+  delete event.publicRainingArrowsSettlement;
   return { ...event, ...normalizePresentationMeta(entry) };
 }
 

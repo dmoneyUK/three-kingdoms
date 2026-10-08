@@ -18,13 +18,13 @@ import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
 import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
 import { deckReorderCount, rebuildDeckForReorder } from "../../../game/decisions/deck-reorder";
-import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupParticipantProgressOutcome, type GroupResolutionSemantics, type GroupResponsePending, type HarvestParticipantProgress, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type HarvestPending, type HeroChoiceTriggerContinuation, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
+import { asTriggerPending, isGroupParticipantProgressOutcomeAllowed, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupParticipantProgressOutcome, type GroupResolutionSemantics, type GroupResponsePending, type HarvestParticipantProgress, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type HarvestPending, type HeroChoiceTriggerContinuation, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
 import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { projectPresentationV2, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof } from "../../../game/presentation-v2";
+import { projectPresentationV2, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationNegationSettlementProof, type PresentationRainingArrowsSettlementProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
@@ -35,7 +35,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string } };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicRainingArrowsSettlement?: PresentationRainingArrowsSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string } };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null; causal_envelope_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -619,7 +619,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicRainingArrowsSettlement ? { publicRainingArrowsSettlement: meta.publicRainingArrowsSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
 function dismantleSettlementProofFor(room: RoomRow, pending: TargetCardPending, log: string[]): PresentationDismantleSettlementProof | undefined {
   if (pending.cardKind !== "Dismantle") return undefined;
@@ -3876,6 +3876,73 @@ async function beginGroupTarget(room: RoomRow, response: ResponsePending, contin
   await advanceNegation(room.id);
 }
 
+function rainingArrowsSettlementProofFor(room: RoomRow, response: ResponsePending, continuation: GroupContinuation, completed: GroupContinuation, players: PlayerRow[], log: string[]): PresentationRainingArrowsSettlementProof | undefined {
+  const progress = completed.participantProgress;
+  const causal = completed.causal;
+  const responseCausal = response.causal;
+  const envelope = parseCausalEnvelope(room.causal_envelope_json);
+  if (completed.cardKind !== "RainingArrows" || continuation.cardKind !== "RainingArrows"
+    || completed.requiredKind !== "Dodge" || !progress || progress.version !== 1
+    || progress.resolutionSemantics !== "GROUP" || !causal || !responseCausal
+    || causal.interactionId !== progress.interactionId || causal.frameId !== progress.groupFrameId
+    || responseCausal.interactionId !== causal.interactionId || responseCausal.frameId !== causal.frameId
+    || !envelope || envelope.interactionId !== causal.interactionId || envelope.activeFrameId !== causal.frameId
+    || envelope.checkpoint.frameId !== causal.frameId
+    || (envelope.checkpoint.stage !== "GROUP_RESOLUTION" && envelope.checkpoint.stage !== "NEGATION")) return undefined;
+
+  const groupFrames = envelope.frames.filter((frame) => frame.frameId === causal.frameId);
+  const frame = groupFrames.length === 1 ? groupFrames[0] : null;
+  const targetIds = frame?.origin.originalTargetIds;
+  if (!frame || frame.parentFrameId !== null
+    || (frame.stage !== "GROUP_RESOLUTION" && frame.stage !== "NEGATION")
+    || frame.stage !== envelope.checkpoint.stage
+    || frame.origin.originSourceId !== completed.sourceId
+    || frame.origin.originEffect !== "RainingArrows"
+    || frame.current.currentSourceId !== completed.sourceId
+    || frame.current.currentEffect !== "RainingArrows"
+    || frame.current.currentTargetIds.length !== 1
+    || frame.current.currentTargetIds[0] !== response.actorId
+    || frame.current.resolvingPlayerId !== response.actorId
+    || !targetIds?.length || !completed.sequenceStartCardId
+    || progress.participants.length !== targetIds.length
+    || progress.participants.some((participant, index) => participant.playerId !== targetIds[index]
+      || participant.status !== "RESOLVED" && participant.status !== "NO_LONGER_APPLICABLE"
+      || participant.status === "RESOLVED" && (!participant.outcome
+        || !isGroupParticipantProgressOutcomeAllowed("RainingArrows", "GROUP", participant.status, participant.outcome))
+      || participant.status === "NO_LONGER_APPLICABLE" && participant.outcome !== undefined)) return undefined;
+
+  const roots = gameTimeline(log).filter((event) => {
+    const card = event.card && typeof event.card === "object" ? event.card as { id?: unknown } : null;
+    return card?.id === completed.sequenceStartCardId;
+  });
+  const root = roots.length === 1 ? roots[0] : null;
+  const rootCard = root?.card && typeof root.card === "object" ? root.card as { id?: unknown; kind?: unknown } : null;
+  const source = players.find((player) => player.id === completed.sourceId);
+  const rootResolutionId = root && typeof root.resolutionId === "string" ? root.resolutionId : "";
+  if (!root || root.type !== "card" || root.presentation === false || root.action !== "play"
+    || root.playedAs !== undefined || rootCard?.id !== completed.sequenceStartCardId
+    || rootCard.kind !== "RainingArrows" || root.player !== source?.name
+    || !rootResolutionId || response.resolutionId !== rootResolutionId
+    || continuation.resolutionId && continuation.resolutionId !== rootResolutionId
+    || completed.resolutionId && completed.resolutionId !== rootResolutionId) return undefined;
+
+  return {
+    semantics: "PROVEN",
+    rootEventId: root.id as string,
+    rootResolutionId,
+    interactionId: causal.interactionId,
+    groupFrameId: causal.frameId,
+    sourceId: completed.sourceId,
+    cardKind: "RainingArrows",
+    participants: progress.participants.map((participant, index) => ({
+      playerId: participant.playerId,
+      order: index + 1,
+      status: participant.status as "RESOLVED" | "NO_LONGER_APPLICABLE",
+      ...(participant.outcome ? { outcome: participant.outcome } : {}),
+    })),
+  };
+}
+
 async function finishGroupStep(room: RoomRow, response: ResponsePending, continuation: GroupContinuation, players: PlayerRow[], discard: Card[], log: string[], writes: D1PreparedStatement[] = [], outcome?: GroupParticipantProgressOutcome) {
   const participantOutcome = outcome ?? pendingGroupDamageOutcomeFor(continuation, response.actorId, players);
   const completedContinuation = finishGroupParticipant(continuation, response.actorId, players, participantOutcome);
@@ -3887,7 +3954,14 @@ async function finishGroupStep(room: RoomRow, response: ResponsePending, continu
     await beginGroupTarget(room, nextResponse, nextResponse.continuation as GroupContinuation, players, discard, presentation.log, writes);
     return;
   }
-  writes.push(causalRoomStateWrite(room.id, { phase: completedContinuation.resumePhase, pending: null, discard: commitHeldGroupCards(discard, completedContinuation), log: addFinalResult(log, `${groupCardName(completedContinuation.cardKind)} finishes resolving.`, undefined, response.resolutionId), causalEnvelope: null }));
+  const settlementProof = rainingArrowsSettlementProofFor(room, response, continuation, completedContinuation, players, log);
+  const finalResult = addLogWithId(log, `${groupCardName(completedContinuation.cardKind)} finishes resolving.`, undefined, {
+    resolutionId: response.resolutionId,
+    importance: "essential",
+    finalResult: true,
+    ...(settlementProof ? { publicRainingArrowsSettlement: settlementProof } : {}),
+  }).log;
+  writes.push(causalRoomStateWrite(room.id, { phase: completedContinuation.resumePhase, pending: null, discard: commitHeldGroupCards(discard, completedContinuation), log: finalResult, causalEnvelope: null }));
   if (writes.length) await db().batch(writes);
   await continueAfterDying(room.id, completedContinuation.sourceId);
 }
