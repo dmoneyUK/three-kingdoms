@@ -1596,6 +1596,22 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(choice.presentationV2.interactionScene?.stage, "SEQUENTIAL_CHOICE");
   assert.equal(choice.presentationV2.stableBoundary.kind, "CHOICE");
   assert.equal(choice.presentationSnapshot.bumperHarvestProgress?.participants[0].outcome, "NEGATED");
+  const activeChoicePending = authoritativePending(game.code);
+  assert.equal(activeChoicePending.kind, "harvest");
+  assert.ok(activeChoicePending.choiceDeadlineAt - Date.now() <= 60_000 && activeChoicePending.choiceDeadlineAt - Date.now() > 59_000, "the server starts a fresh 60-second deadline when the chooser becomes active");
+  assert.equal(choice.pendingHarvest.countdownUntil, activeChoicePending.choiceDeadlineAt, "the viewer projection exposes the same server-owned chooser deadline");
+  const publicChoice = (await state(game.code, host.token)).data;
+  assert.equal(publicChoice.pendingHarvest.countdownUntil, activeChoicePending.choiceDeadlineAt, "the public countdown is consistent for a non-chooser viewer");
+
+  const availableBeforeExpiry = [...activeChoicePending.availableIds];
+  const expiredChoicePending = { ...activeChoicePending, choiceDeadlineAt: Date.now() - 1 };
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(expiredChoicePending))} WHERE code=${quote(game.code)}`);
+  const expiredChoice = await request("advance_timers", { code: game.code, token: host.token });
+  assert.equal(expiredChoice.status, 200, JSON.stringify(expiredChoice.data));
+  assert.equal(expiredChoice.data.room.pendingHarvest.complete, false);
+  assert.equal(expiredChoice.data.room.pendingHarvest.actorId, first.id, "expiry does not skip the active chooser");
+  assert.equal(expiredChoice.data.room.currentAction.actorId, first.id, "the same server-owned chooser decision remains active at zero");
+  assert.deepEqual(authoritativePending(game.code).availableIds, availableBeforeExpiry, "expiry does not silently take or discard a revealed card");
 
   const chosen = authoritativePending(game.code).availableIds[0];
   const picked = await requestAndSettle("choose_harvest", { code: game.code, token: alice.token, cardId: chosen });
@@ -1611,6 +1627,9 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(finalNegationPassed.status, 200, JSON.stringify(finalNegationPassed.data));
   const finalChoice = await assertProjectionMatchesEngine(game.code, bob.token);
   assert.equal(finalChoice.currentAction.actorId, second.id);
+  const finalChoicePending = authoritativePending(game.code);
+  assert.ok(finalChoicePending.choiceDeadlineAt - Date.now() <= 60_000 && finalChoicePending.choiceDeadlineAt - Date.now() > 59_000, "each next active chooser gets a new 60-second window");
+  assert.equal(finalChoice.pendingHarvest.countdownUntil, finalChoicePending.choiceDeadlineAt);
   const finalCardId = authoritativePending(game.code).availableIds[0];
   const finalPicked = await requestAndSettle("choose_harvest", { code: game.code, token: bob.token, cardId: finalCardId });
   assert.equal(finalPicked.status, 200, JSON.stringify(finalPicked.data));
@@ -1626,6 +1645,7 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(complete.presentationV2.stableBoundary.kind, "SPECIAL");
   const completedPending = authoritativePending(game.code);
   assert.equal(completedPending.completeAt > 0, true);
+  assert.equal(completedPending.choiceDeadlineAt, undefined, "the active-choice deadline is cleared before the distinct closing hold");
   assert.deepEqual(completedPending.remainingIds, [], "the terminal public checkpoint has no unresolved remaining actors");
 
   const duePending = { ...completedPending, completeAt: Date.now() - 1 };

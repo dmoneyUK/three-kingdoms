@@ -40,7 +40,7 @@ const VIS_04B_ACTIVE_STATES = [
 const VIS_04C_VIEWPORTS = [
   { width: 1440, height: 900, boardInset: 68, seat: { width: 180, height: 108 }, seatLefts: [10, 630, 1250] },
   { width: 650, height: 900, boardInset: 60, seat: { width: 112, height: 88 }, seatLefts: [21.5, 269, 516.5] },
-  { width: 480, height: 900, boardInset: 55, seat: { width: 100, height: 78 }, seatLefts: [15.5, 190, 364.5] },
+  { width: 480, height: 900, boardInset: 6, seat: { width: 100, height: 78 }, seatLefts: [15.5, 190, 364.5] },
 ];
 
 function expectedVis12bSeatWidth(boardWidth) {

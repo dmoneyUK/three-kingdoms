@@ -4796,16 +4796,17 @@
   }
 }
 
-/* UX2 P5: the former board-status row is not rendered, so mobile top-row
-   Seats should use the play-table's actual top edge instead of reserving it. */
-@media (max-width: 700px) {
-  .game-shell .play-table[data-seat-topology="top-row"] > .player-board {
-    inset: 6px 5px 10px;
+/* UX2 P5: reclaim the unused phone-width status band without changing the
+   board's size or horizontal seat tracks. Move the board and safe-zone top
+   together so the freed space enlarges the interaction corridor, not the gap
+   between Seats and Stage. */
+@media (min-height: 701px) and (max-width: 480px) {
+  .game-shell .play-table[data-seat-topology="top-row"] {
+    --interaction-safe-top: 100px;
   }
-}
 
-@media (max-width: 480px) {
   .game-shell .play-table[data-seat-topology="top-row"] > .player-board {
-    inset: 6px 3px 7px;
+    top: 6px;
+    bottom: 56px;
   }
 }

@@ -252,6 +252,32 @@ test("Bumper Harvest closing countdown joins the lower-right System Cluster with
     expect(geometry.table.bottom, context).toBeLessThanOrEqual(geometry.dock.top + 1);
     expect(boxesOverlap(geometry.timer, geometry.panel), context).toBe(false);
     for (const card of geometry.cards) expect(boxesOverlap(geometry.timer, card), context).toBe(false);
+
+    await page.goto(`/tests/browser/fixture.html?state=bumper-harvest-choosing&count=4`);
+    const choosingTimer = page.locator('.stage-system-cluster > .visible-countdown-event');
+    const choosingPanel = page.locator(".harvest-choice-stage > div");
+    await expect(choosingPanel).toBeVisible();
+    await expect(choosingPanel).toContainText("Player 2 is choosing");
+    await expect(page.locator(".stage-system-menu-trigger")).toBeVisible();
+    await expect(choosingTimer).toBeVisible();
+    await expect(choosingTimer).toHaveAttribute("role", "timer");
+    await expect(choosingTimer).toHaveAttribute("aria-label", "Choosing 60 seconds");
+    await expect(choosingTimer).toHaveText("60s");
+    const choosingGeometry = await measure();
+    const choosingContext = JSON.stringify({ viewport, choosingGeometry, prior });
+    expect(choosingGeometry.pageWidth, choosingContext).toBeLessThanOrEqual(viewport.width);
+    expect(choosingGeometry.timer.width, choosingContext).toBeGreaterThanOrEqual(52);
+    expect(choosingGeometry.timer.width, choosingContext).toBeLessThanOrEqual(68);
+    expect(choosingGeometry.timer.height, choosingContext).toBeGreaterThanOrEqual(36);
+    expect(choosingGeometry.timer.height, choosingContext).toBeLessThanOrEqual(44);
+    expect(Math.abs(choosingGeometry.timer.right + 8 - choosingGeometry.menu.left), choosingContext).toBeLessThanOrEqual(1);
+    expect(Math.abs(choosingGeometry.menu.left - prior.menu.left), choosingContext).toBeLessThanOrEqual(2);
+    expect(Math.abs(choosingGeometry.menu.top - prior.menu.top), choosingContext).toBeLessThanOrEqual(2);
+    expect(Math.abs(choosingGeometry.guidance.top - prior.guidance.top), choosingContext).toBeLessThanOrEqual(2);
+    expect(choosingGeometry.guidance.top - choosingGeometry.cluster.bottom, choosingContext).toBeGreaterThanOrEqual(8);
+    expect(choosingGeometry.guidance.top - choosingGeometry.cluster.bottom, choosingContext).toBeLessThanOrEqual(12);
+    expect(boxesOverlap(choosingGeometry.timer, choosingGeometry.panel), choosingContext).toBe(false);
+    for (const card of choosingGeometry.cards) expect(boxesOverlap(choosingGeometry.timer, card), choosingContext).toBe(false);
   }
 });
 

@@ -47,6 +47,7 @@ const LORD_GENERAL_IDS = new Set(["cao-cao", "liu-bei", "sun-quan"]);
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 const publicRoleName = (role: string | null | undefined) => role === "Renegade" ? "Spy" : role ?? null;
 const HARVEST_CHOICE_HOLD_MS = 1400;
+const HARVEST_CHOICE_DURATION_MS = 60_000;
 const HUMAN_RESPONSE_TIMEOUT_MS = 30_000;
 const ROOM_IDLE_TIMEOUT_MS = 5 * 60_000;
 // Human decisions do not begin their clock until the client has finished the
@@ -2541,7 +2542,7 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
     return [];
   }
   if (pending.effect.kind === "harvest_target") {
-    const harvest = { ...pending.effect.pending, heldCards: pending.heldCards ?? pending.effect.pending.heldCards } satisfies HarvestPending;
+    const harvest = { ...pending.effect.pending, heldCards: pending.heldCards ?? pending.effect.pending.heldCards, choiceDeadlineAt: Date.now() + HARVEST_CHOICE_DURATION_MS } satisfies HarvestPending;
     const causalEnvelope = harvestChoiceEnvelope(resumedRoom, harvest, harvest.actorId);
     await causalRoomStateWrite(roomId, { phase: "response", pending: harvest, deck, discard, log, causalEnvelope }).run();
     await advanceHarvest(roomId);
@@ -3744,7 +3745,7 @@ function advanceHarvestPending(pending: HarvestPending, players: PlayerRow[]) {
   const actorId = aliveIds[0];
   if (!actorId) return { pending: { ...updated, participantProgress: updated.participantProgress ? { ...updated.participantProgress, currentParticipantId: null } : undefined }, next: null };
   updated = updateHarvestParticipant(updated, actorId, "CURRENT");
-  const next = { ...updated, actorId, remainingIds: aliveIds.slice(1), previewCardId: undefined, completeAt: undefined, reason: "Choose 1 revealed card from Bumper Harvest" } satisfies HarvestPending;
+  const next = { ...updated, actorId, remainingIds: aliveIds.slice(1), previewCardId: undefined, choiceDeadlineAt: undefined, completeAt: undefined, reason: "Choose 1 revealed card from Bumper Harvest" } satisfies HarvestPending;
   return { pending: next, next };
 }
 
@@ -3784,7 +3785,7 @@ async function queueHarvestCompletion(room: RoomRow, pending: HarvestPending, de
     if (participant.status === "CURRENT" || participant.status === "PENDING") terminal = updateHarvestParticipant(terminal, participant.playerId, "NO_LONGER_APPLICABLE");
   }
   if (terminal.participantProgress) terminal = { ...terminal, participantProgress: { ...terminal.participantProgress, currentParticipantId: null } };
-  const complete = { ...terminal, remainingIds: [], previewCardId: undefined, completeAt: Date.now() + HARVEST_CHOICE_HOLD_MS, reason: "Showing the final Bumper Harvest result" } satisfies HarvestPending;
+  const complete = { ...terminal, remainingIds: [], previewCardId: undefined, choiceDeadlineAt: undefined, completeAt: Date.now() + HARVEST_CHOICE_HOLD_MS, reason: "Showing the final Bumper Harvest result" } satisfies HarvestPending;
   const causalEnvelope = harvestChoiceEnvelope(room, complete, null, createdEnvelope);
   writes.push(causalRoomStateWrite(room.id, { phase: "response", pending: complete, deck, discard, log, causalEnvelope }));
   if (writes.length) await db().batch(writes);
@@ -3806,7 +3807,7 @@ async function beginHarvestTarget(room: RoomRow, pending: HarvestPending, player
   const rootChoiceEnvelope = harvestChoiceEnvelope(room, pending, actor.id, createdEnvelope);
   const responders = playersInNegationOrder(players, actor.seat);
   if (!responders.length) {
-    const ready = { ...pending, reason: "Choose 1 revealed card from Bumper Harvest" } satisfies HarvestPending;
+    const ready = { ...pending, choiceDeadlineAt: Date.now() + HARVEST_CHOICE_DURATION_MS, reason: "Choose 1 revealed card from Bumper Harvest" } satisfies HarvestPending;
     writes.push(causalRoomStateWrite(room.id, { phase: "response", pending: ready, deck, discard, log, causalEnvelope: rootChoiceEnvelope }));
     if (writes.length) await db().batch(writes);
     await advanceHarvest(room.id);
@@ -4062,7 +4063,7 @@ async function roomState(code: string, token?: string) {
     // Keep it on these projected public shapes too; otherwise a valid server
     // response is mistaken for an unknown state and its controls disappear.
     pendingNegation,
-    pendingHarvest: pending?.kind === "harvest" ? { kind: "harvest", sourceId: pending.sourceId, actorId: pending.actorId, revealed: pending.revealed, availableIds: harvestAvailableIds(pending), choices: harvestChoices(pending), previewCardId: pending.previewCardId ?? null, complete: Boolean(pending.completeAt), countdownUntil: pending.completeAt ?? 0 } : null,
+    pendingHarvest: pending?.kind === "harvest" ? { kind: "harvest", sourceId: pending.sourceId, actorId: pending.actorId, revealed: pending.revealed, availableIds: harvestAvailableIds(pending), choices: harvestChoices(pending), previewCardId: pending.previewCardId ?? null, complete: Boolean(pending.completeAt), countdownUntil: pending.completeAt ?? pending.choiceDeadlineAt ?? 0 } : null,
     pendingTargetCard: pending?.kind === "target_card" ? { kind: "target_card", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, cardKind: pending.cardKind } : null,
     pendingBorrowedSword: pending?.kind === "borrowed_sword" ? { kind: "borrowed_sword", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, holderId: pending.holderId, stage: pending.stage, weaponId: pending.weaponId ?? null, eligibleTargetIds: pending.stage === "choose_target" ? borrowedSwordForcedTargetIds(players, pending.sourceId, pending.holderId) : [] } : responsePending?.continuation.kind === "borrowed_sword_attack" ? { kind: "borrowed_sword", sourceId: responsePending.continuation.sourceId, actorId: responsePending.actorId, targetId: responsePending.continuation.targetId, holderId: responsePending.continuation.holderId, stage: "force_attack", weaponId: responsePending.continuation.weaponId, eligibleTargetIds: [] } : null,
     pendingDying: pending?.kind === "dying" ? { kind: "dying", sourceId: pending.sourceId, targetId: pending.targetId, origin: pending.origin ?? null, recoveryNeeded: recoveryNeeded(players.find((player) => player.id === pending.targetId)?.hp ?? 0), deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,

@@ -1110,6 +1110,12 @@ Requirements:
 
 Bumper Harvest and similar event-specific countdowns should use the same lower-right timer location.
 
+Each Bumper Harvest participant receives a server-owned 60-second countdown
+when their card-choice decision becomes active. It is presentation timing only:
+reaching zero does not choose a card, skip the participant, or settle the
+effect. The authoritative choice remains available until the server accepts a
+legal selection or another game event invalidates it.
+
 Labels such as:
 
 - `Choosing`;
@@ -1182,6 +1188,7 @@ Acceptance:
 | System Menu | Remains in the same lower-right anchor |
 | Timer visibility | No placeholder space before timer becomes visible |
 | Event content | Title/cards fully visible |
+| Bumper Harvest choice | Fresh server-owned 60-second countdown for each active chooser; expiry does not auto-select or skip |
 | Event trailing gap | Lowest event content to system cluster normally ≤ 24px |
 | System cluster to Guidance | Preferred 8–12px |
 | Guidance/Dock | No overlap |

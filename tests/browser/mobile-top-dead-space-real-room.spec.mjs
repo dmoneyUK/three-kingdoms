@@ -49,6 +49,7 @@ for (const viewport of [
       };
       const table = document.querySelector(".play-table");
       const playerBoard = document.querySelector('.player-board[data-seat-topology="top-row"][data-player-count="4"]');
+      const safeZone = document.querySelector(".interaction-safe-zone");
       const seats = [...playerBoard.querySelectorAll(":scope > .opponent-player-card")].map((seat) => {
         const target = seat.querySelector(".opponent-hero-target");
         const targetBox = bounds(target);
@@ -66,6 +67,7 @@ for (const viewport of [
       return {
         table: bounds(table),
         board: bounds(playerBoard),
+        safeZone: bounds(safeZone),
         seats,
         systemCluster: menu ? bounds(menu) : null,
         statusCount: document.querySelectorAll(".player-board-status").length,
@@ -80,6 +82,9 @@ for (const viewport of [
     expect(Math.max(...geometry.seats.map(({ top }) => top)) - Math.min(...geometry.seats.map(({ top }) => top))).toBeLessThanOrEqual(1);
     expect(geometry.seats.every(({ playerName, heroName, hp, imageLoaded, targetHitSafe }) => playerName && heroName && hp && imageLoaded && targetHitSafe), JSON.stringify(geometry.seats)).toBe(true);
     expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+    const seatToStageGap = geometry.safeZone.top - Math.max(...geometry.seats.map(({ bottom }) => bottom));
+    expect(seatToStageGap, "moving Seats upward also moves the interaction corridor, without creating a new blank band").toBeGreaterThanOrEqual(6);
+    expect(seatToStageGap, "the Stage remains close to the mobile opponent row").toBeLessThanOrEqual(24);
 
     const ordered = [...geometry.seats].sort((left, right) => left.left - right.left);
     const minimumSeatWidth = viewport.width === 480 ? 136 : 108;

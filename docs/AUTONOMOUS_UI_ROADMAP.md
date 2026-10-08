@@ -1593,8 +1593,23 @@ Only a proven regression or new Reviewer-approved design requirement does.
   no visible board-status row. Mobile CSS now places the board within 12px of
   the play-table top; real-room geometry proof preserves seat alignment,
   readable card bounds, target-center hit ownership, system-cluster clearance,
-  and zero horizontal overflow at 390×844 and 480×900. Focused P5 browser
-  proof passed 2/2. Reviewer acceptance is not claimed.
+  and zero horizontal overflow at 390×844 and 480×900. The subsequent CI run
+  exposed that the initial inset shorthand also changed board height and left
+  the Stage safe zone behind; the correction moves both top edges together,
+  preserves horizontal seat tracks, and measures a 6–24px Seat-to-Stage gap.
+  Reviewer acceptance is not claimed.
+
+### UX2.REFINE-BUMPER-HARVEST-ACTIVE-CHOOSER-TIMER-4A-02 — 60-second choice clock
+
+- Each active Bumper Harvest chooser now receives a fresh server-owned
+  60-second deadline, projected consistently to viewers and rendered beside
+  the lower-right System Menu. Expiry is display-only: it does not select a
+  card, skip a chooser, or settle Harvest. Engine-backed API proof verifies
+  expiry and deadline renewal; compact timer geometry is covered at 390×844,
+  480×900, and wide. The 33-test API suite, 29-test focused browser batch,
+  production build, targeted lint, and diff check passed. CI repair for the
+  previous P5 failure is included with this task's change; Reviewer acceptance
+  is not claimed.
 
 ## Known deferred semantic gaps
 

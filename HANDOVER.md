@@ -5,31 +5,31 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-P5: real four-player production rooms now place top-row Seats within 12px of
-the mobile table top (baseline gap was 55px), with aligned/readable cards,
-normal hit targets, system-cluster clearance, and no horizontal overflow at
-390×844 and 480×900. Focused P5 browser proof passed 2/2. The prior exact-HEAD
-Actions run `37699362227` on parent SHA
-`6d051a5bfbf810894aca90da620614612fe15b01` failed in browser job
-`113058832306`: Private Draw's `openPlayer` did not find `.game-shell` within
-the default 5s before interaction. The test now waits for and checks the real
-room-projection response, then the rendered shell; focused CI-mode regression
-passed 4/4 with both P5 viewports. This P5 commit includes that narrow test
-repair. No green CI is claimed for the new commit. §4A Harvest chooser timing
-remains unresolved. Reviewer acceptance is not claimed.
+§4A now projects a fresh server-owned 60-second deadline for each active
+Bumper Harvest chooser; expiry only changes the displayed countdown and never
+selects, skips, or settles. Engine-backed API proof, compact timer geometry at
+390×844 / 480×900 / wide, production build, targeted lint, and diff check
+passed. The previous exact remote HEAD `6489817cba5d628678203e0a568158a357bc4ba3`
+Actions run `37701079914` failed in browser shard 2 on the P5 seat/safe-zone
+geometry regression. This change corrects the board/safe-zone movement and
+includes the failed geometry scenarios in a 29/29 focused browser pass. The
+new commit's exact-SHA Actions state is not yet observed. Reviewer acceptance
+is not claimed.
 
 ## Design checkpoint
 
-Reviewed the complete current remote `docs/UX2-refine.md`, blob
-`58100b7b1f14d2ff0b1b98e6f79ee1701daa74b4`.
+Reviewed current `docs/UX2-refine.md`, blob
+`516fc7d673b0dfcc7e1e01ba8572cd97cdcf6784` (including the user-directed
+60-second §4A rule). Pre-§5 refinements and §4D P1–P5 are otherwise closed;
+Section 6 is now authorized under §5.4.
 
-## Current task
+## Current / next task
 
-`BLOCKED — USER INPUT REQUIRED` — next task:
-`UX2.REFINE-BUMPER-HARVEST-ACTIVE-CHOOSER-TIMER-4A-02`, to complete §4A's
-active-choice countdown. `app/api/rooms/route.ts` projects `completeAt` as
-`countdownUntil` only after Harvest completes; choosing has no server-owned
-deadline. Decide whether to add an authoritative chooser deadline (including
-its duration/expiry behavior) or defer the countdown until those rules are
-specified. Do not invent a client timer or automatic choice. Section 6 remains
-gated by this and the other §4D prerequisites.
+`UX2.6-PHASE-A-ROOT-ACTION-PROJECTION-01` — add the first typed, public,
+fail-closed root-action proof for one ordinary single-target card interaction,
+linking authoritative interaction/frame identity, source, root-card identity,
+and target. Do not derive semantics from timeline order, `actionPlayerId`, or
+DOM/seat position. Prove a real server-generated case and mismatched/missing
+proof rejection. This task establishes Phase A's semantic input contract; the
+top-level physical-seat overlay and graph rendering remain for a later bounded
+task. Section 6 must continue one bounded task at a time.
