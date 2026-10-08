@@ -1779,6 +1779,19 @@ Only a proven regression or new Reviewer-approved design requirement does.
   run `37758953873`. Duel graph rendering remains open; Reviewer acceptance is
   not claimed.
 
+### UX2.6-PHASE-C-DUEL-EXCHANGE-GRAPH-01 — Persistent Duel graph
+
+- The physical-seat overlay keeps one stable Duel root and shows only the
+  latest server-proven Attack response. The response submitter's physical
+  source tether is distinct from the semantic decision actor and authoritative
+  response target arrow, including delegated Liu Bei Jijiang. Server-backed
+  physical and delegated browser scenarios passed 5/5 at 390×844, 480×900, and
+  1440×900; the existing Attack/Dodge graph regression passed 13/13. Build,
+  targeted ESLint, and `git diff --check` passed. Exact pre-commit parent
+  `e2761413c5f60f78ffdbb6285f752509a063963f` Actions run `37762264558` had one
+  initial synthetic-touch Stargazing failure; the same-SHA rerun passed all
+  five jobs. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

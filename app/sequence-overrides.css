@@ -552,6 +552,13 @@
   opacity: .34;
 }
 
+.interaction-root-target-context {
+  stroke: #b85a4c;
+  stroke-width: 2px;
+  stroke-dasharray: 5 6;
+  opacity: .43;
+}
+
 .interaction-root-target-block-mark {
   opacity: .98;
 }
@@ -582,6 +589,12 @@
   stroke: #8ba89a;
   stroke-width: 1.7px;
   opacity: .9;
+}
+
+.interaction-root-response-target-arrow {
+  stroke: #e4a170;
+  stroke-width: 3px;
+  opacity: 1;
 }
 
 .interaction-root-target-arrow + marker path,
@@ -623,10 +636,22 @@
   letter-spacing: .12em;
 }
 
+.interaction-root-action-card[data-root-action-compact-root="true"] {
+  min-height: 68px;
+  padding: 8px 10px;
+  gap: 5px;
+}
+
 .interaction-root-action-card.is-blocked {
   opacity: .62;
   filter: saturate(.58) brightness(.82);
   box-shadow: 0 4px 12px #0008, 0 0 0 1px #d8b86e22;
+}
+
+.interaction-root-action-card.is-contextual {
+  opacity: .68;
+  filter: saturate(.7) brightness(.9);
+  box-shadow: 0 4px 12px #0008, 0 0 0 1px #d8b86e24;
 }
 
 .interaction-root-response-card {
@@ -644,7 +669,8 @@
 }
 
 .interaction-root-response-card[data-response-relation="COUNTERS_ROOT"] > small,
-.interaction-root-response-card[data-response-relation="COUNTERS_RESPONSE"] > small {
+.interaction-root-response-card[data-response-relation="COUNTERS_RESPONSE"] > small,
+.interaction-root-response-card[data-response-relation="TARGETS_PLAYER"] > small {
   max-width: 100%;
   overflow: hidden;
   font-size: 6px;

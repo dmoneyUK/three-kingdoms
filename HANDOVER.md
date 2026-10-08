@@ -5,33 +5,36 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2.6-PHASE-C-DUEL-PERSISTENT-ROOT-AUTHORITY-01` is implemented locally:
-PresentationV2, Snapshot, and Client now carry exact viewer-equal links from a
-persistent Duel root to each accepted Attack, including server-directed source
-and target plus distinct delegated decision/submitter identities. Physical and
-delegated real API flows passed; projection tests passed 112/112, the two
-focused API files passed 51/51, build, targeted ESLint, and `git diff --check`
-passed. Before-commit remote parent `8ea13ff1322a18e58c2d70cffe624071bbe447a5`
-passed Actions run `37758953873`. Task commit/CI status is pending. Reviewer
-acceptance is not claimed.
+`UX2.6-PHASE-C-DUEL-EXCHANGE-GRAPH-01` is implemented locally: the physical-seat
+graph keeps one stable Duel root and renders only the latest authoritative
+Attack response, with the actual card submitter tether distinct from the
+semantic decision actor/target arrow. Server-backed physical and delegated
+browser flows passed 5/5 across 390×844, 480×900, and 1440×900; the existing
+Attack/Dodge graph regression passed 13/13. Build, targeted ESLint, and
+`git diff --check` passed. Exact pre-commit parent
+`e2761413c5f60f78ffdbb6285f752509a063963f` Actions run `37762264558`: attempt 1
+failed one synthetic-touch Stargazing assertion; exact-SHA attempt 2 completed
+all five jobs successfully. The new task commit's CI is pending after push.
+Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
 Re-fetched and reviewed remote `docs/UX2-refine.md`, blob
 `7feb8af937b6407f3f33c3959325db8d3f188cf4`, including §4.10, §4A–§4D, and
-§6.1–§6.26. The pre-Section-6 gates and Phase A/B work are complete. The next
-bounded item is the Phase-C Duel graph, using the now-proven persistent root
-and response links.
+§6.1–§6.26. The pre-Section-6 gates and Phase A/B work are complete. Duel root
+and exchange-graph work in Phase C is now implemented; the next bounded item
+is the authoritative multi-target active-branch graph.
 
 ## Current / next task
 
-`UX2.6-PHASE-C-DUEL-EXCHANGE-GRAPH-01` — render the stable Duel root and only
-the latest submitted Attack response from typed Duel proof, with the exact
-physical submitter tether distinct from the server-proven semantic source and
-target direction; expose that distinction in the accessible description when
-the response is delegated. Keep the root spatially stable across handoffs,
-make the current response dominant without accumulating old Attack nodes, and
-preserve safe fallback when proof/anchors are missing. Prove real physical and
-delegated Duel browser paths, anchor/card geometry, responsive containment, no
-Seat/Dock movement, and private-control separation. Do not infer graph links
-from timeline order or seat order.
+`UX2.6-PHASE-C-GROUP-TARGET-BRANCH-GRAPH-01` — for proven `GROUP` semantic
+continuations only, render one persistent root card with physical-seat-anchored
+branches for authoritative participants; only the server-proven current
+participant is strongly active, and the root/seats stay fixed as progress
+advances. Preserve only projection-proven statuses/outcomes and fail closed to
+the existing safe Stage when proof or anchors are incomplete. Exclude ordered
+Halberd progress, Negation branches, and target-specific counter/effect graphs.
+Prove real server-backed Raining Arrows participant advancement (and Barbarian
+Invasion where supported), 390×844 / 480×900 / wide geometry, no Seat/Dock
+movement or overlap/overflow, privacy, and safe fallback. Do not infer active
+branches from participant-array order, timeline, HP, or DOM position.

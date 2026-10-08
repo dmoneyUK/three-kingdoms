@@ -2815,6 +2815,48 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     return [{ proof, rootEvent, responseEvent }];
   });
   const attackDodgeResponseCandidate = attackDodgeResponseCandidates.length === 1 ? attackDodgeResponseCandidates[0] : null;
+  const duelExchangeGraphCandidate = (() => {
+    const exchange = clientPresentation.duelExchange;
+    if (!exchange || exchange.semantics !== "PROVEN" || exchange.responseCount !== exchange.responses.length
+      || exchange.root.cardKind !== "Duel" || exchange.root.sourceId === exchange.root.targetId) return null;
+    const rootMatches = room.timeline.filter((event) => event.id === exchange.root.eventId);
+    if (rootMatches.length !== 1) return null;
+    const rootEvent = rootMatches[0];
+    if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
+      || rootEvent.playedAs !== undefined || rootEvent.card.kind !== "Duel"
+      || rootEvent.resolutionId !== exchange.root.resolutionId) return null;
+    const source = room.players.find((player) => player.id === exchange.root.sourceId);
+    const target = room.players.find((player) => player.id === exchange.root.targetId);
+    if (!source?.name || !target?.name) return null;
+    const response = exchange.responses.at(-1) ?? null;
+    if (!response) return { exchange, rootEvent, source, target, response: null, responseEvent: null, responseActor: null, decisionActor: null, responseTarget: null };
+    if (response.ordinal !== exchange.responseCount || response.relation !== "DUEL_EXCHANGE"
+      || response.rootEventId !== exchange.root.eventId || response.rootResolutionId !== exchange.root.resolutionId
+      || response.rootSourceId !== exchange.root.sourceId || response.rootTargetId !== exchange.root.targetId
+      || response.responseCardKind !== "Attack" || response.sourceId !== response.decisionActorId
+      || response.sourceId === response.targetId
+      || ![exchange.root.sourceId, exchange.root.targetId].includes(response.sourceId)
+      || ![exchange.root.sourceId, exchange.root.targetId].includes(response.targetId)) return null;
+    const responseMatches = room.timeline.filter((event) => event.id === response.responseEventId);
+    if (responseMatches.length !== 1) return null;
+    const responseEvent = responseMatches[0];
+    const eventProof = responseEvent.type === "card" ? responseEvent.duelAttackResponse : undefined;
+    if (responseEvent.type !== "card" || responseEvent.action !== "play" || responseEvent.presentation === false
+      || responseEvent.resolutionId !== response.responseResolutionId
+      || responseEvent.card.kind !== "Attack" && responseEvent.playedAs?.toLowerCase() !== "attack"
+      || !eventProof || eventProof.interactionId !== exchange.interactionId
+      || eventProof.rootFrameId !== exchange.rootFrameId || eventProof.rootEventId !== exchange.root.eventId
+      || eventProof.rootResolutionId !== exchange.root.resolutionId
+      || eventProof.rootSourceId !== exchange.root.sourceId || eventProof.rootTargetId !== exchange.root.targetId
+      || eventProof.ordinal !== response.ordinal || eventProof.sourceId !== response.sourceId
+      || eventProof.targetId !== response.targetId || eventProof.decisionActorId !== response.decisionActorId
+      || eventProof.responseActorId !== response.responseActorId || eventProof.responseCardKind !== "Attack") return null;
+    const responseActor = room.players.find((player) => player.id === response.responseActorId);
+    const decisionActor = room.players.find((player) => player.id === response.decisionActorId);
+    const responseTarget = room.players.find((player) => player.id === response.targetId);
+    if (!responseActor?.name || !decisionActor?.name || !responseTarget?.name) return null;
+    return { exchange, rootEvent, source, target, response, responseEvent, responseActor, decisionActor, responseTarget };
+  })();
   const singleTargetNegationGraphCandidates = (() => {
     const negationStage = buildInteractionStageView(clientPresentation, (playerId) => room.players.find((player) => player.id === playerId)?.name ?? null);
     const chain = buildReactionChainView(negationStage);
@@ -2854,8 +2896,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     : null;
   const rootAction = clientPresentation.rootAction;
   const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId)
-    : attackDodgeResponseCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
-  const selfTargetCandidates = rootAction || attackDodgeResponseCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
+    : duelExchangeGraphCandidate?.rootEvent ?? attackDodgeResponseCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
+  const selfTargetCandidates = rootAction || duelExchangeGraphCandidate || attackDodgeResponseCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
       || event.resolutionId !== action.resolutionId || event.card.kind !== action.cardKind
@@ -2870,7 +2912,32 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     return [{ action, event, source }];
   });
   const selfTargetCandidate = selfTargetCandidates.length === 1 ? selfTargetCandidates[0] : null;
-  const rootActionOverlayAction: InteractionRootOverlayAction | null = rootAction
+  const rootActionOverlayAction: InteractionRootOverlayAction | null = duelExchangeGraphCandidate
+    ? {
+      key: ["duel", duelExchangeGraphCandidate.exchange.interactionId, duelExchangeGraphCandidate.exchange.rootFrameId, duelExchangeGraphCandidate.exchange.root.eventId, duelExchangeGraphCandidate.exchange.root.sourceId, duelExchangeGraphCandidate.exchange.root.targetId].join(":"),
+      rootEventId: duelExchangeGraphCandidate.exchange.root.eventId,
+      sourceId: duelExchangeGraphCandidate.exchange.root.sourceId,
+      targetId: duelExchangeGraphCandidate.exchange.root.targetId,
+      cardKind: "Duel",
+      cardLabel: "DUEL",
+      ariaLabel: `${duelExchangeGraphCandidate.source.name} played Duel targeting ${duelExchangeGraphCandidate.target.name}`,
+      mode: "targeted",
+      compactRoot: true,
+      ...(duelExchangeGraphCandidate.response && duelExchangeGraphCandidate.responseEvent && duelExchangeGraphCandidate.responseActor && duelExchangeGraphCandidate.decisionActor && duelExchangeGraphCandidate.responseTarget ? {
+        response: {
+          eventId: duelExchangeGraphCandidate.response.responseEventId,
+          actorId: duelExchangeGraphCandidate.response.responseActorId,
+          actorName: duelExchangeGraphCandidate.responseActor.name,
+          decisionActorId: duelExchangeGraphCandidate.response.decisionActorId,
+          targetId: duelExchangeGraphCandidate.response.targetId,
+          cardLabel: "ATTACK",
+          ariaLabel: duelExchangeGraphCandidate.response.responseActorId === duelExchangeGraphCandidate.response.decisionActorId
+            ? `${duelExchangeGraphCandidate.responseActor.name} played Attack targeting ${duelExchangeGraphCandidate.responseTarget.name} in ${duelExchangeGraphCandidate.source.name}'s Duel against ${duelExchangeGraphCandidate.target.name}`
+            : `${duelExchangeGraphCandidate.responseActor.name} provided Attack for ${duelExchangeGraphCandidate.decisionActor.name}, targeting ${duelExchangeGraphCandidate.responseTarget.name}, in ${duelExchangeGraphCandidate.source.name}'s Duel against ${duelExchangeGraphCandidate.target.name}`,
+        },
+      } : {}),
+    }
+    : rootAction
     ? {
       key: interactionRootActionKey(rootAction),
       rootEventId: rootAction.rootEventId,
@@ -2955,9 +3022,13 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const rootActionOverlayVisible = Boolean(rootActionOverlayEnabled && rootActionOverlayAction && rootActionOverlayReadyKey === rootActionOverlayAction.key);
   const rootActionCardId = rootActionEvent?.type === "card" ? rootActionEvent.card.id
     : selfTargetCandidate?.event.card.id ?? null;
+  const duelExchangeEventIds = new Set(duelExchangeGraphCandidate
+    ? [duelExchangeGraphCandidate.exchange.root.eventId, ...duelExchangeGraphCandidate.exchange.responses.map((response) => response.responseEventId)]
+    : []);
   const displayedSequenceEvents = rootActionOverlayVisible && rootActionOverlayAction
     ? sequenceEvents.filter((event) => event.id !== rootActionOverlayAction.rootEventId
       && event.id !== rootActionOverlayAction.response?.eventId
+      && !duelExchangeEventIds.has(event.id)
       && (!rootActionCardId || !eventCards(event).some((card) => card.id === rootActionCardId))
       && (!attackDodgeResponseCandidate || !eventCards(event).some((card) => card.id === attackDodgeResponseCandidate.responseEvent.card.id))
       && (!singleTargetNegationGraphCandidate?.responseEvent || !eventCards(event).some((card) => card.id === singleTargetNegationGraphCandidate.responseEvent!.card.id)))
@@ -2966,6 +3037,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     && rootActionCardId && displayedEvent && eventCards(displayedEvent).some((card) => card.id === rootActionCardId);
   const activeRootResponseEvent = rootActionOverlayVisible && rootActionOverlayAction?.response && displayedEvent
     && (displayedEvent.id === rootActionOverlayAction.response.eventId
+      || duelExchangeGraphCandidate?.responseEvent && displayedEvent.id === duelExchangeGraphCandidate.responseEvent.id
       || attackDodgeResponseCandidate && eventCards(displayedEvent).some((card) => card.id === attackDodgeResponseCandidate.responseEvent.card.id)
       || singleTargetNegationGraphCandidate?.responseEvent && eventCards(displayedEvent).some((card) => card.id === singleTargetNegationGraphCandidate.responseEvent.card.id));
   const displayedTableEvent = activeRootSelfTargetEvent || activeRootResponseEvent ? null : displayedEvent;
