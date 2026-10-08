@@ -1,7 +1,7 @@
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressStatus, type HarvestParticipantProgressStatus } from "./pending";
 import { CARD_KINDS, type CardKind } from "./model";
 import { CARD_DEFINITIONS } from "./cards";
-import type { PresentationSnapshot, PresentationSnapshotBumperHarvestProgress, PresentationSnapshotGroupParticipantProgress, PresentationSnapshotGroupProgress, PresentationSnapshotOathRecipientScope } from "./presentation-snapshot";
+import type { PresentationSnapshot, PresentationSnapshotBumperHarvestProgress, PresentationSnapshotGroupParticipantProgress, PresentationSnapshotGroupProgress, PresentationSnapshotOathRecipientScope, PresentationSnapshotRootAction } from "./presentation-snapshot";
 import type {
   InteractionSceneContinuity,
   PresentationInteractionScene,
@@ -29,6 +29,7 @@ export type PresentationClientView = {
   oathRecipientScope: PresentationSnapshotOathRecipientScope | null;
   bumperHarvestProgress: PresentationSnapshotBumperHarvestProgress | null;
   reactionChain: PresentationSnapshot["reactionChain"];
+  rootAction: PresentationSnapshotRootAction | null;
   negationSettlement?: PresentationSnapshot["settlement"];
   rootOrigin?: NonNullable<PresentationInteractionScene["rootOrigin"]>;
   continuity: InteractionSceneContinuity;
@@ -190,6 +191,7 @@ function restView(snapshot: PresentationSnapshot | null, meId: string | null): P
     oathRecipientScope: null,
     bumperHarvestProgress: null,
     reactionChain: null,
+    rootAction: null,
     ...(negationSettlement ? { negationSettlement } : {}),
     continuity: REST_CONTINUITY,
     parentFrameId: null,
@@ -495,6 +497,45 @@ function isCoherentSnapshot(snapshot: PresentationSnapshot | null): snapshot is 
     && isStringArray(roles.participantIds);
 }
 
+function rootActionForSnapshot(
+  snapshot: PresentationSnapshot,
+  scene: PresentationInteractionScene,
+): PresentationSnapshotRootAction | null {
+  const action = snapshot.rootAction;
+  const identity = snapshot.identity;
+  if (!action || !identity || action.semantics !== "PROVEN" || action.action !== "ATTACK"
+    || snapshot.stable.kind !== "CHOICE"
+    || action.interactionId !== identity.interactionId || action.interactionId !== scene.interactionId
+    || action.rootFrameId !== scene.rootFrameId || action.activeFrameId !== scene.activeFrameId
+    || action.checkpointId !== identity.checkpointId || action.presentationRevision !== identity.presentationRevision
+    || scene.continuity.relation !== "ROOT_FRAME" || scene.rootFrameId !== scene.activeFrameId
+    || scene.stage !== "ATTACK_RESPONSE"
+    || !isString(action.sourceId) || action.sourceId === action.targetId
+    || action.sourceId !== scene.sourceId || action.sourceId !== scene.activeSourceId
+    || !isString(action.targetId) || scene.targetIds.length !== 1 || scene.targetIds[0] !== action.targetId
+    || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== action.targetId
+    || scene.currentParticipantId !== action.targetId
+    || scene.participantRoles.sourceId !== action.sourceId
+    || scene.participantRoles.originalTargetIds.length !== 1 || scene.participantRoles.originalTargetIds[0] !== action.targetId
+    || scene.participantRoles.activeTargetIds.length !== 1 || scene.participantRoles.activeTargetIds[0] !== action.targetId
+    || scene.participantRoles.currentParticipantId !== action.targetId
+    || scene.participantRoles.decisionActorId !== action.targetId || scene.participantRoles.activeResolverId !== action.targetId
+    || scene.decisionActorId !== action.targetId || scene.activeResolverId !== action.targetId
+    || !CARD_KINDS.includes(action.cardKind)) return null;
+  return {
+    semantics: "PROVEN",
+    interactionId: identity.interactionId,
+    rootFrameId: action.rootFrameId,
+    activeFrameId: action.activeFrameId,
+    checkpointId: identity.checkpointId,
+    presentationRevision: identity.presentationRevision,
+    action: action.action,
+    sourceId: action.sourceId,
+    targetId: action.targetId,
+    cardKind: action.cardKind,
+  };
+}
+
 export function buildPresentationClientView(
   snapshot: PresentationSnapshot | null,
   meId: string | null,
@@ -510,6 +551,7 @@ export function buildPresentationClientView(
   const oathScope = oathRecipientScopeForSnapshot(snapshot, scene);
   const bumperHarvestProgress = bumperHarvestProgressForSnapshot(snapshot, scene);
   const negationSettlement = negationSettlementForScene(snapshot, scene);
+  const rootAction = rootActionForSnapshot(snapshot, scene);
   return {
     hasInteraction: true,
     interactionId: snapshot.identity?.interactionId ?? null,
@@ -531,6 +573,7 @@ export function buildPresentationClientView(
     oathRecipientScope: oathScope,
     bumperHarvestProgress,
     reactionChain: reactionChainForSnapshot(snapshot, scene),
+    rootAction,
     ...(negationSettlement ? { negationSettlement } : {}),
     ...(scene.rootOrigin ? { rootOrigin: { ...scene.rootOrigin, targetIds: [...scene.rootOrigin.targetIds] } } : {}),
     continuity: { ...scene.continuity },

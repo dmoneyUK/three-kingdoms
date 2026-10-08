@@ -1611,6 +1611,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   previous P5 failure is included with this task's change; Reviewer acceptance
   is not claimed.
 
+### UX2.6-PHASE-A-ROOT-ACTION-PROJECTION-01 — Ordinary Attack root proof
+
+- Added a viewer-equal public `rootAction` for an ordinary Attack only when
+  Pending's typed continuation, active causal frame/checkpoint, single target,
+  and exact linked public played-card event agree. Snapshot and client adapters
+  independently reject mismatched proof; the public contract carries no
+  physical card ID.
+- An engine-backed Attack/Dodge room route proves projection for all viewers;
+  stale card linkage, target mismatch, missing envelope, malformed snapshot,
+  and incoherent client proof fail closed. Presentation/client tests passed
+  101/101, targeted API tests 33/33, production build, targeted lint, and
+  `git diff --check` passed. The physical-seat overlay and graph renderer remain
+  open; Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

@@ -165,6 +165,7 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
     oathRecipientScope: null,
     bumperHarvestProgress: null,
     reactionChain: null,
+    rootAction: null,
     continuity: { relation: "ROOT_FRAME", parentFrameId: null },
     parentFrameId: null,
     stableKind: "CHOICE",
@@ -175,6 +176,51 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
   assert.equal("options" in view, false);
   assert.equal("legalActions" in view, false);
   assert.equal("providers" in view, false);
+});
+
+test("adapter carries only a root action bound to the active public frame", () => {
+  const interaction = scene({
+    rootFrameId: "attack-frame",
+    activeFrameId: "attack-frame",
+    activeResolverId: "B",
+    participantRoles: {
+      sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B",
+      decisionActorId: "B", activeResolverId: "B", parentParticipantId: null, participantIds: ["A", "B"],
+    },
+  });
+  const rootAction = {
+    semantics: "PROVEN",
+    interactionId: "interaction-1",
+    rootFrameId: "attack-frame",
+    activeFrameId: "attack-frame",
+    checkpointId: "checkpoint-1",
+    presentationRevision: 3,
+    action: "ATTACK",
+    sourceId: "A",
+    targetId: "B",
+    cardKind: "Attack",
+  };
+  const accepted = snapshot({ interaction, rootAction });
+  const local = buildPresentationClientView(accepted, "B");
+  const observer = buildPresentationClientView({
+    ...accepted,
+    localControl: { ...accepted.localControl, actorId: null, entitled: false },
+  }, "C");
+  assert.deepEqual(local.rootAction, rootAction);
+  assert.deepEqual(observer.rootAction, rootAction, "public root action does not vary with viewer entitlement");
+
+  for (const malformed of [
+    { ...rootAction, interactionId: "stale-interaction" },
+    { ...rootAction, rootFrameId: "other-frame" },
+    { ...rootAction, sourceId: "B" },
+    { ...rootAction, targetId: "A" },
+    { ...rootAction, cardKind: "unknown-card" },
+  ]) {
+    const view = buildPresentationClientView(snapshot({ interaction, rootAction: malformed }), "B");
+    assert.equal(view.hasInteraction, true, "invalid root card proof does not erase an independently proven scene");
+    assert.equal(view.rootAction, null, "mismatched root card proof fails closed");
+  }
+  assert.equal(buildPresentationClientView(snapshot({ interaction }), "B").rootAction, null, "absence of root action proof stays empty");
 });
 
 test("adapter carries ordered Bumper Harvest progress without exposing the private Negation scanner", () => {

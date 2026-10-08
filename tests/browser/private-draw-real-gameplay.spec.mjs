@@ -56,18 +56,18 @@ async function roomView(request, seed, playerIndex) {
   return response.json();
 }
 
-async function openPlayer(page, seed, playerIndex, viewport) {
+async function openPlayer(page, seed, playerIndex, viewport, readinessTimeout = 15_000) {
   const member = seed.players[playerIndex];
   await page.setViewportSize(viewport);
   await page.addInitScript(({ code, token, name }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
   }, { code: seed.code, token: member.token, name: member.name });
   const projectedRoom = page.waitForResponse((response) => response.url().startsWith(`${API}/api/rooms?`)
-    && response.request().method() === "GET", { timeout: 15_000 });
+    && response.request().method() === "GET", { timeout: readinessTimeout });
   await page.goto(`${API}/`);
   const roomResponse = await projectedRoom;
   expect(roomResponse.ok(), `room projection returned HTTP ${roomResponse.status()}`).toBeTruthy();
-  await expect(page.locator(".game-shell")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(".game-shell")).toBeVisible({ timeout: readinessTimeout });
   return member;
 }
 
@@ -93,6 +93,8 @@ async function clickCardAtExposedPoint(cardButton) {
 }
 
 test("real draw-phase gameplay shows private cards and the compact timer without moving the System Menu", async ({ page, request }) => {
+  // Keep the real browser-room projection bounded while allowing headroom under CI shard load.
+  test.setTimeout(60_000);
   await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
   const seeded = await request.post(`${API}/__test/seed-playing-game`, {
     data: {
@@ -130,7 +132,7 @@ test("real draw-phase gameplay shows private cards and the compact timer without
     await route.continue();
   });
 
-  const drawer = await openPlayer(page, seed, 0, viewports[0]);
+  const drawer = await openPlayer(page, seed, 0, viewports[0], 30_000);
   const drawRequest = await drawRequestIntercepted;
   expect(drawRequest.postDataJSON()).toMatchObject({ action: "draw", code: seed.code, token: drawer.token });
 

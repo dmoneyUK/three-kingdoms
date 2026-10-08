@@ -92,6 +92,41 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   assert.equal(attackScene?.activeResolverId, target.id);
   assert.equal(attackScene?.decisionActorId, target.id);
   assert.deepEqual(attackScene?.participantRoles, { sourceId: source.id, originalTargetIds: [target.id], activeTargetIds: [target.id], currentParticipantId: target.id, decisionActorId: target.id, activeResolverId: target.id, parentParticipantId: null, participantIds: [] });
+  const attackRootAction = {
+    semantics: "PROVEN",
+    interactionId: attackEnvelope.interactionId,
+    rootFrameId: attackScene.rootFrameId,
+    activeFrameId: attackScene.activeFrameId,
+    checkpointId: attackScene.checkpointId,
+    presentationRevision: attackScene.presentationRevision,
+    action: "ATTACK",
+    sourceId: source.id,
+    targetId: target.id,
+    cardKind: "Attack",
+  };
+  assert.deepEqual(targetView.presentationV2.rootAction, attackRootAction, "the public root card is bound to the active frame and exact played-card event");
+  assert.deepEqual(targetView.presentationSnapshot.rootAction, attackRootAction, "the accepted public snapshot carries the typed root action");
+  assert.equal(JSON.stringify(targetView.presentationSnapshot.rootAction).includes(attack.id), false, "physical card IDs are not copied into the public root-action contract");
+  const rootActionInput = { pending, currentAction: targetView.currentAction, actionRevision: targetView.actionRevision, timeline: targetView.timeline, causalEnvelope: attackEnvelope };
+  const missingCardProof = projectPresentationV2({
+    ...rootActionInput,
+    pending: { ...pending, continuation: { ...pending.continuation, sequenceStartCardId: "unlinked-card" } },
+  });
+  assert.equal(missingCardProof.rootAction, null, "an unlinked physical card position fails closed");
+  const mismatchedTargetProof = projectPresentationV2({
+    ...rootActionInput,
+    pending: { ...pending, continuation: { ...pending.continuation, targetId: source.id } },
+  });
+  assert.equal(mismatchedTargetProof.rootAction, null, "pending and causal target disagreement fails closed");
+  const missingEnvelopeProof = projectPresentationV2({ ...rootActionInput, causalEnvelope: null });
+  assert.equal(missingEnvelopeProof.rootAction, null, "a missing public causal envelope fails closed");
+  const mismatchedSnapshot = composePresentationSnapshot({
+    presentationV2: { ...targetView.presentationV2, rootAction: { ...attackRootAction, targetId: source.id } },
+    currentAction: targetView.currentAction,
+    actionRevision: targetView.actionRevision,
+    viewerId: target.id,
+  });
+  assert.equal(mismatchedSnapshot.rootAction, null, "snapshot composition rejects a root action whose target differs from its proven scene");
   assert.deepEqual(targetView.presentationV2.stableBoundary, { kind: "CHOICE", interactionId: attackScene?.interactionId, checkpointId: attackScene?.checkpointId, presentationRevision: attackScene?.presentationRevision, decisionActorId: target.id });
   const otherView = (await state(game.code, game.members[2].token)).data;
   assert.deepEqual(otherView.presentationV2.rootContext, targetView.presentationV2.rootContext);
@@ -100,6 +135,7 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   assert.deepEqual(otherView.presentationV2.interactionScene, attackScene);
   assert.deepEqual(otherView.presentationV2.stableBoundary, targetView.presentationV2.stableBoundary);
   assert.deepEqual(publicSnapshot(otherView.presentationSnapshot), publicSnapshot(targetView.presentationSnapshot), "Attack public snapshot is viewer-equal");
+  assert.deepEqual(otherView.presentationSnapshot.rootAction, attackRootAction, "the public root action is identical for every room viewer");
   assert.equal(targetView.presentationSnapshot.localControl.entitled, true);
   assert.equal(otherView.presentationSnapshot.localControl.entitled, false);
   const targetRepeat = await state(game.code, targetMember.token);

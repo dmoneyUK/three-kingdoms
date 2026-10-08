@@ -8,6 +8,7 @@ import type {
   PresentationOathRecipientScope,
   PresentationReactionChain,
   PresentationReactionChainNode,
+  PresentationRootAction,
   PresentationStableBoundary,
   PresentationV2,
 } from "./presentation-v2";
@@ -58,6 +59,7 @@ export type PresentationSnapshotGroupProgress = {
 
 export type PresentationSnapshotOathRecipientScope = PresentationOathRecipientScope;
 export type PresentationSnapshotBumperHarvestProgress = PresentationBumperHarvestProgress;
+export type PresentationSnapshotRootAction = PresentationRootAction;
 
 export type PresentationSnapshot = {
   identity: PresentationSnapshotIdentity | null;
@@ -67,6 +69,7 @@ export type PresentationSnapshot = {
   oathRecipientScope: PresentationSnapshotOathRecipientScope | null;
   bumperHarvestProgress: PresentationSnapshotBumperHarvestProgress | null;
   reactionChain: PresentationReactionChain | null;
+  rootAction: PresentationSnapshotRootAction | null;
   decision: PresentationSnapshotDecision | null;
   localControl: PresentationSnapshotLocalControl;
   /** Explicit public Negation disposition; legacy final-result hints never populate it. */
@@ -353,6 +356,51 @@ function reactionChainFor(
   return { semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes };
 }
 
+function rootActionFor(
+  presentationV2: PresentationV2,
+  scene: PresentationInteractionScene,
+  identity: PresentationSnapshotIdentity,
+  stable: PresentationStableBoundary,
+): PresentationSnapshotRootAction | null {
+  const action = presentationV2.rootAction;
+  if (!action || action.semantics !== "PROVEN" || action.action !== "ATTACK"
+    || stable.kind !== "CHOICE"
+    || action.interactionId !== identity.interactionId
+    || action.interactionId !== scene.interactionId
+    || action.rootFrameId !== scene.rootFrameId
+    || action.activeFrameId !== scene.activeFrameId
+    || action.checkpointId !== identity.checkpointId
+    || action.presentationRevision !== identity.presentationRevision
+    || scene.continuity.relation !== "ROOT_FRAME"
+    || scene.rootFrameId !== scene.activeFrameId
+    || scene.stage !== "ATTACK_RESPONSE"
+    || !nonEmptyString(action.sourceId) || action.sourceId === action.targetId
+    || action.sourceId !== scene.sourceId || action.sourceId !== scene.activeSourceId
+    || !nonEmptyString(action.targetId)
+    || scene.targetIds.length !== 1 || scene.targetIds[0] !== action.targetId
+    || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== action.targetId
+    || scene.currentParticipantId !== action.targetId
+    || scene.participantRoles.sourceId !== action.sourceId
+    || scene.participantRoles.originalTargetIds.length !== 1 || scene.participantRoles.originalTargetIds[0] !== action.targetId
+    || scene.participantRoles.activeTargetIds.length !== 1 || scene.participantRoles.activeTargetIds[0] !== action.targetId
+    || scene.participantRoles.currentParticipantId !== action.targetId
+    || scene.participantRoles.decisionActorId !== action.targetId || scene.participantRoles.activeResolverId !== action.targetId
+    || scene.decisionActorId !== action.targetId || scene.activeResolverId !== action.targetId
+    || !CARD_KINDS.includes(action.cardKind)) return null;
+  return {
+    semantics: "PROVEN",
+    interactionId: identity.interactionId,
+    rootFrameId: action.rootFrameId,
+    activeFrameId: action.activeFrameId,
+    checkpointId: identity.checkpointId,
+    presentationRevision: identity.presentationRevision,
+    action: action.action,
+    sourceId: action.sourceId,
+    targetId: action.targetId,
+    cardKind: action.cardKind,
+  };
+}
+
 function sameIds(left: readonly string[], right: readonly string[]) {
   return left.length === right.length && left.every((id, index) => id === right[index]);
 }
@@ -391,6 +439,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     oathRecipientScope: authority ? oathRecipientScopeFor(input.presentationV2, authority.scene, authority.identity) : null,
     bumperHarvestProgress: authority ? bumperHarvestProgressFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
     reactionChain: authority ? reactionChainFor(input.presentationV2, authority.scene, authority.identity) : null,
+    rootAction: authority ? rootActionFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
     decision: authority && authority.stable.kind === "CHOICE"
       ? { actorId: authority.scene.decisionActorId, stage: authority.scene.stage }
       : null,

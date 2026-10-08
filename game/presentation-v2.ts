@@ -140,6 +140,19 @@ export type PresentationReactionChain = {
   nodes: readonly PresentationReactionChainNode[];
 };
 
+export type PresentationRootAction = {
+  semantics: "PROVEN";
+  interactionId: string;
+  rootFrameId: string;
+  activeFrameId: string;
+  checkpointId: string;
+  presentationRevision: number;
+  action: "ATTACK";
+  sourceId: string;
+  targetId: string;
+  cardKind: CardKind;
+};
+
 /** Simultaneous Oath recovery scope; intentionally has no sequential current participant. */
 export type PresentationOathRecipientScope = {
   semantics: "PROVEN";
@@ -182,6 +195,7 @@ export type PresentationV2 = {
   parentContext: { kind: string | null; sourceId: string | null; targetIds: readonly string[]; resumeKind: string | null } | null;
   participants: readonly PresentationParticipant[];
   interactionScene: PresentationInteractionScene | null;
+  rootAction: PresentationRootAction | null;
   dyingBarrier: PresentationDyingBarrier | null;
   reactionChain: PresentationReactionChain | null;
   negationSettlement: PresentationNegationSettlement | null;
@@ -1097,6 +1111,70 @@ function eventForContext(context: Context | null, timeline: readonly Presentatio
   return null;
 }
 
+function singleTargetAttackRootActionFor(
+  envelope: CausalEnvelope | null,
+  scene: PresentationInteractionScene | null,
+  pending: unknown,
+  rootContext: Context | null,
+  rootEvent: PresentationV2Event | null,
+): PresentationRootAction | null {
+  const item = record(pending);
+  const continuation = record(item?.continuation);
+  const causal = record(item?.causal);
+  const continuationCausal = record(continuation?.causal);
+  const sourceId = stringValue(continuation?.sourceId);
+  const targetId = stringValue(continuation?.targetId);
+  const sequenceStartCardId = stringValue(continuation?.sequenceStartCardId);
+  const readyAfterEventId = stringValue(item?.readyAfterEventId);
+  const frame = envelope?.frames.find(({ frameId }) => frameId === envelope.activeFrameId) ?? null;
+  const rootFrames = envelope?.frames.filter(({ parentFrameId }) => parentFrameId == null) ?? [];
+  const card = rootEvent?.card;
+
+  if (item?.kind !== "response" || continuation?.kind !== "attack"
+    || !envelope || !frame || rootFrames.length !== 1 || !scene
+    || scene.semantics !== "PROVEN" || scene.continuity.relation !== "ROOT_FRAME"
+    || scene.rootFrameId !== frame.frameId || scene.activeFrameId !== frame.frameId
+    || scene.stage !== "ATTACK_RESPONSE" || frame.stage !== "ATTACK_RESPONSE"
+    || frame.parentFrameId != null
+    || envelope.checkpoint.frameId !== frame.frameId || envelope.checkpoint.stage !== frame.stage
+    || causal?.interactionId !== envelope.interactionId || causal.frameId !== frame.frameId
+    || continuationCausal?.interactionId !== envelope.interactionId || continuationCausal.frameId !== frame.frameId
+    || !sourceId || !targetId || sourceId === targetId || item.actorId !== targetId
+    || frame.origin.originSourceId !== sourceId || frame.current.currentSourceId !== sourceId
+    || frame.current.currentEffect !== frame.origin.originEffect || scene.effect !== frame.origin.originEffect
+    || frame.origin.originalTargetIds.length !== 1 || frame.origin.originalTargetIds[0] !== targetId
+    || frame.current.currentTargetIds.length !== 1 || frame.current.currentTargetIds[0] !== targetId
+    || frame.current.resolvingPlayerId !== targetId
+    || scene.sourceId !== sourceId || scene.activeSourceId !== sourceId
+    || scene.targetIds.length !== 1 || scene.targetIds[0] !== targetId
+    || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== targetId
+    || scene.currentParticipantId !== targetId
+    || scene.participantRoles.sourceId !== sourceId
+    || scene.participantRoles.originalTargetIds.length !== 1 || scene.participantRoles.originalTargetIds[0] !== targetId
+    || scene.participantRoles.activeTargetIds.length !== 1 || scene.participantRoles.activeTargetIds[0] !== targetId
+    || scene.participantRoles.currentParticipantId !== targetId
+    || scene.participantRoles.decisionActorId !== targetId || scene.participantRoles.activeResolverId !== targetId
+    || scene.decisionActorId !== targetId || scene.activeResolverId !== targetId
+    || rootContext?.kind !== "response" || rootContext.sourceId !== sourceId
+    || rootContext.targetIds.length !== 1 || rootContext.targetIds[0] !== targetId || !sequenceStartCardId
+    || !readyAfterEventId || rootEvent?.id !== readyAfterEventId
+    || rootEvent.type !== "card" || rootEvent.presentation === false || rootEvent.action !== "play"
+    || !card || card.id !== sequenceStartCardId || !CARD_KINDS.includes(card.kind as CardKind)) return null;
+
+  return {
+    semantics: "PROVEN",
+    interactionId: envelope.interactionId,
+    rootFrameId: frame.frameId,
+    activeFrameId: frame.frameId,
+    checkpointId: envelope.checkpoint.checkpointId,
+    presentationRevision: envelope.presentationRevision,
+    action: "ATTACK",
+    sourceId,
+    targetId,
+    cardKind: card.kind as CardKind,
+  };
+}
+
 function participants(active: Context | null, group: RecordLike | null): PresentationParticipant[] {
   if (!active) return [];
   const map = new Map<string, Set<PresentationParticipant["roles"][number]>>();
@@ -1142,6 +1220,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const groupCardKind = group ? firstString(group.cardKind, group.kind === "group" ? "group" : null) : null;
   const groupValues = groupProjectionValues(envelope, input.pending, group);
   const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
+  const rootAction = singleTargetAttackRootActionFor(envelope, interactionScene, input.pending, root, rootEvent);
   const oathRecipientScope = oathRecipientScopeFor(input.pending, envelope, interactionScene, input.oathRecipientIds);
   const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
@@ -1173,6 +1252,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     parentContext,
     participants: interactionScene?.semantics === "PROVEN" ? participantsFromScene(interactionScene) : participants(active, group),
     interactionScene,
+    rootAction,
     dyingBarrier,
     reactionChain,
     negationSettlement,
