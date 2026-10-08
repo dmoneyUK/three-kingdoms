@@ -442,7 +442,16 @@ function reactionChainFor(
       nodes: links.map((link) => ({ nodeId: link!.nodeId as string, eventId: link!.eventId as string, resolutionId: link!.resolutionId as string })),
     };
   }
-  return { semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes, ...(publicEventLinks ? { publicEventLinks } : {}) };
+  const rawRootEffectState: unknown = (chain as { rootEffectState?: unknown }).rootEffectState;
+  const rootEffectState = rootCard && publicEventLinks
+    && (rawRootEffectState === "ACTIVE" || rawRootEffectState === "BLOCKED")
+    ? rawRootEffectState
+    : undefined;
+  return {
+    semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes,
+    ...(publicEventLinks ? { publicEventLinks } : {}),
+    ...(rootEffectState ? { rootEffectState } : {}),
+  };
 }
 
 function rootActionFor(

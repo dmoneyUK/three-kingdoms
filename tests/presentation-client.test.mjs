@@ -353,6 +353,7 @@ test("adapter carries only a proven, linked Negation history without adding UI c
       { nodeId: "negation-1", interactionId: interaction.interactionId, frameId: rootFrameId, causedByNodeId: null, actorId: "B", kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } },
       { nodeId: "negation-2", interactionId: interaction.interactionId, frameId: rootFrameId, causedByNodeId: "negation-1", actorId: "A", kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } },
     ],
+    rootEffectState: "ACTIVE",
     publicEventLinks: {
       root: { eventId: "steal-event", resolutionId: "steal-resolution" },
       nodes: [
@@ -379,6 +380,7 @@ test("adapter carries only a proven, linked Negation history without adding UI c
     root: reactionChain.publicEventLinks.root,
     nodes: reactionChain.publicEventLinks.nodes.map(({ eventId, resolutionId }) => ({ eventId, resolutionId })),
   });
+  assert.equal(chain.rootEffectState, "ACTIVE");
   assert.deepEqual(chain.negationNodes.map(({ actor, cardKind }) => [actor.name, cardKind]), [
     ["Zhao Yun", "Negation"], ["Ma Chao", "Negation"],
   ], "the linked public order is retained for Stage rendering");
@@ -412,8 +414,11 @@ test("adapter carries only a proven, linked Negation history without adding UI c
   ]) {
     const unlinked = buildPresentationClientView({ ...snapshotValue, reactionChain: { ...reactionChain, publicEventLinks } }, "B");
     assert.equal(unlinked.reactionChain?.publicEventLinks, undefined, "malformed public event links do not reach a graph consumer");
+    assert.equal(unlinked.reactionChain?.rootEffectState, undefined, "root disposition is withheld with malformed card links");
     assert.deepEqual(buildReactionChainView(buildInteractionStageView(unlinked, resolveDisplayName)).publicEventLinks, null);
   }
+  const invalidDisposition = buildPresentationClientView({ ...snapshotValue, reactionChain: { ...reactionChain, rootEffectState: "CANCELLED" } }, "B");
+  assert.equal(invalidDisposition.reactionChain?.rootEffectState, undefined);
 });
 
 test("adapter carries validated ordered Standard AOE progress through root and child frames", () => {
@@ -1422,6 +1427,7 @@ test("Reaction Chain projects only a proven Negation root and active response", 
     interactionId: "interaction-1",
     negationNodes: [],
     publicEventLinks: null,
+    rootEffectState: null,
     root: {
       effect: "Dismantle",
       cardKind: null,
@@ -1449,8 +1455,8 @@ test("Reaction Chain stays viewer-equal and cannot derive counter history from l
 test("Reaction Chain fails closed outside a proven Negation scene", () => {
   const attack = buildReactionChainView(buildInteractionStageView(buildPresentationClientView(snapshot(), "B"), resolveDisplayName));
   const malformed = buildReactionChainView(buildInteractionStageView(buildPresentationClientView(snapshot({ interaction: scene({ stage: "NEGATION", effect: null }) }), "B"), resolveDisplayName));
-  assert.deepEqual(attack, { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, root: null, active: null });
-  assert.deepEqual(malformed, { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, root: null, active: null });
+  assert.deepEqual(attack, { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, rootEffectState: null, root: null, active: null });
+  assert.deepEqual(malformed, { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, rootEffectState: null, root: null, active: null });
 });
 
 test("Dying handoff keeps the dying participant public and the rescue actor bounded", () => {

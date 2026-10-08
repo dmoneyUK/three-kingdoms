@@ -1704,8 +1704,21 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Presentation tests passed 109/109, the focused engine API file 34/34, and
   build, targeted ESLint, and `git diff --check` passed. The pre-commit exact
   remote head `a55d9b6cdd43f6fe47afe9db2442ce722b57fa66` passed Actions run
-  `37745870122`; this task's CI remains pending. Reviewer acceptance is not
-  claimed.
+  `37745870122`; task commit `2ad5c51d83499b815f7e6d5b275d1d69402c0ebe`
+  passed Actions run `37747526386` across all five jobs. Reviewer acceptance is
+  not claimed.
+
+### UX2.6-PHASE-B-NEGATION-ROOT-DISPOSITION-AUTHORITY-01 — Root effect state
+
+- Projected the server-owned single-target Negation disposition as `ACTIVE` or
+  `BLOCKED` through PresentationV2, Snapshot, and Client only when the root and
+  every public response have exact event links and continuation depth/state
+  agree. Engine-backed Steal → Negation → counter-Negation asserts ACTIVE →
+  BLOCKED → ACTIVE for all viewers; malformed, missing, or unlinked authority
+  withholds the disposition. Presentation tests passed 109/109, the focused
+  engine API file 34/34, build, targeted ESLint, and `git diff --check` passed.
+  Pre-commit parent `2ad5c51d83499b815f7e6d5b275d1d69402c0ebe` passed Actions
+  run `37747526386`. Reviewer acceptance is not claimed.
 
 ## Known deferred semantic gaps
 

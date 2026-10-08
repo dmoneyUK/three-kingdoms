@@ -1453,6 +1453,7 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
     semantics: "PROVEN", interactionId: first.causalEnvelope.interactionId,
     frameId: first.causalEnvelope.activeFrameId, rootCard, nodes: [],
     publicEventLinks: { root: { eventId: rootEvent.id, resolutionId: rootEvent.resolutionId }, nodes: [] },
+    rootEffectState: "ACTIVE",
   }, "a pass opens no public Reaction Chain card node");
   assert.equal(authoritativePending(game.code).continuation.cardName, "Steal");
   assert.equal(authoritativePending(game.code).continuation.rootCardKind, "Steal", "root identity is retained from the server-owned effective card, not reverse-mapped from its display name");
@@ -1508,6 +1509,7 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
     root: { eventId: rootEvent.id, resolutionId: rootEvent.resolutionId },
     nodes: [{ nodeId: counter.presentationSnapshot.reactionChain.nodes[0].nodeId, eventId: publicFirstNegation.id, resolutionId: publicFirstNegation.resolutionId }],
   });
+  assert.equal(counter.presentationSnapshot.reactionChain.rootEffectState, "BLOCKED", "the first successful Negation blocks the single-target root");
   assert.equal(JSON.stringify(counter.presentationSnapshot.reactionChain.publicEventLinks).includes(firstCard.id), false, "public event links never expose physical card IDs");
   const counterOtherViewer = await assertProjectionMatchesEngine(game.code, alice.token);
   assert.deepEqual(publicSnapshot(counterOtherViewer.presentationSnapshot), publicSnapshot(counter.presentationSnapshot), "submitted card history is viewer-equal");
@@ -1546,6 +1548,7 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(thirdCounter.currentAction.actorId, target.id);
   assert.equal(thirdCounter.presentationSnapshot.reactionChain.nodes.length, 2);
   assert.equal(thirdCounter.presentationSnapshot.reactionChain.nodes[1].causedByNodeId, thirdCounter.presentationSnapshot.reactionChain.nodes[0].nodeId);
+  assert.equal(thirdCounter.presentationSnapshot.reactionChain.rootEffectState, "ACTIVE", "counter-Negation restores the root from server-owned continuation state");
   assert.equal(thirdCounter.presentationSnapshot.reactionChain.publicEventLinks.nodes.length, 2);
   assert.deepEqual(thirdCounter.presentationSnapshot.reactionChain.publicEventLinks.nodes.map(({ nodeId }) => nodeId), thirdCounter.presentationSnapshot.reactionChain.nodes.map(({ nodeId }) => nodeId));
   const thirdNegation = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: secondCard.id, preserveResponse: true });
@@ -1579,6 +1582,7 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.ok(eventMismatch.presentationSnapshot.reactionChain?.rootCard, "the semantic root remains available to the safe fallback");
   assert.equal(eventMismatch.presentationV2.reactionChain.publicEventLinks, undefined, "an unmatched private Negation card cannot link to a guessed timeline event");
   assert.equal(eventMismatch.presentationSnapshot.reactionChain.publicEventLinks, undefined, "the public snapshot withholds the complete graph-link proof");
+  assert.equal(eventMismatch.presentationSnapshot.reactionChain.rootEffectState, undefined, "root disposition is withheld with a missing response event link");
   sql(`UPDATE rooms SET pending_json=${quote(pendingWithHistory)} WHERE code=${quote(game.code)}`);
 
   const wrongRootEventPending = JSON.parse(pendingWithHistory);
@@ -1589,6 +1593,7 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.ok(rootEventMismatch.presentationSnapshot.reactionChain?.rootCard, "typed root semantics remain available to the safe fallback");
   assert.equal(rootEventMismatch.presentationV2.reactionChain.publicEventLinks, undefined, "an unmatched private root card cannot link to a guessed timeline event");
   assert.equal(rootEventMismatch.presentationSnapshot.reactionChain.publicEventLinks, undefined, "missing root linkage withholds the complete graph proof");
+  assert.equal(rootEventMismatch.presentationSnapshot.reactionChain.rootEffectState, undefined, "root disposition is withheld with a missing root event link");
   sql(`UPDATE rooms SET pending_json=${quote(pendingWithHistory)} WHERE code=${quote(game.code)}`);
 
   const pendingBeforeStaleReplay = query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`);

@@ -84,6 +84,7 @@ export type InteractionStageView = {
   reactionChainNegationNodes: readonly ReactionChainNegationNodeView[];
   reactionChainRootCard: NonNullable<PresentationSnapshot["reactionChain"]>["rootCard"];
   reactionChainPublicEventLinks: NonNullable<PresentationSnapshot["reactionChain"]>["publicEventLinks"] | null;
+  reactionChainRootEffectState: NonNullable<PresentationSnapshot["reactionChain"]>["rootEffectState"] | null;
   rootOrigin?: {
     frameId: string;
     stage: PresentationInteractionScene["stage"];
@@ -120,6 +121,7 @@ export type ReactionChainView = {
   interactionId: string | null;
   negationNodes: readonly ReactionChainNegationNodeView[];
   publicEventLinks: { root: { eventId: string; resolutionId: string }; nodes: readonly { eventId: string; resolutionId: string }[] } | null;
+  rootEffectState: "ACTIVE" | "BLOCKED" | null;
   root: {
     effect: string;
     cardKind: CardKind | null;
@@ -338,7 +340,15 @@ function reactionChainForSnapshot(
       nodes: links.map((link) => ({ nodeId: link!.nodeId as string, eventId: link!.eventId as string, resolutionId: link!.resolutionId as string })),
     };
   }
-  return { semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes, ...(publicEventLinks ? { publicEventLinks } : {}) };
+  const rootEffectState = rootCard && publicEventLinks
+    && (chain.rootEffectState === "ACTIVE" || chain.rootEffectState === "BLOCKED")
+    ? chain.rootEffectState
+    : undefined;
+  return {
+    semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, rootCard, nodes,
+    ...(publicEventLinks ? { publicEventLinks } : {}),
+    ...(rootEffectState ? { rootEffectState } : {}),
+  };
 }
 
 function groupProgressForSnapshot(
@@ -718,6 +728,7 @@ export function buildInteractionStageView(
       : [],
     reactionChainRootCard: view.stage === "NEGATION" ? view.reactionChain?.rootCard ?? null : null,
     reactionChainPublicEventLinks: view.stage === "NEGATION" ? view.reactionChain?.publicEventLinks ?? null : null,
+    reactionChainRootEffectState: view.stage === "NEGATION" ? view.reactionChain?.rootEffectState ?? null : null,
     ...(view.rootOrigin ? {
       rootOrigin: {
         frameId: view.rootOrigin.frameId,
@@ -746,7 +757,7 @@ export function buildInteractionStageView(
  */
 export function buildReactionChainView(stage: InteractionStageView): ReactionChainView {
   if (!stage.visible || stage.stage !== "NEGATION" || !stage.effect || !stage.source.id) {
-    return { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, root: null, active: null };
+    return { visible: false, interactionId: null, negationNodes: [], publicEventLinks: null, rootEffectState: null, root: null, active: null };
   }
   return {
     visible: true,
@@ -756,6 +767,7 @@ export function buildReactionChainView(stage: InteractionStageView): ReactionCha
       root: { ...stage.reactionChainPublicEventLinks.root },
       nodes: stage.reactionChainPublicEventLinks.nodes.map(({ eventId, resolutionId }) => ({ eventId, resolutionId })),
     } : null,
+    rootEffectState: stage.reactionChainRootEffectState,
     root: {
       effect: stage.effect,
       cardKind: stage.reactionChainRootCard?.cardKind ?? null,

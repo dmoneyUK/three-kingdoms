@@ -173,6 +173,7 @@ test("snapshot keeps Negation public event links only when they align with the p
     semantics: "PROVEN", interactionId: interaction.interactionId, frameId,
     rootCard: { interactionId: interaction.interactionId, frameId, sourceId: "A", targetId: "B", cardKind: "Steal" },
     nodes: [{ nodeId: "negation-1", interactionId: interaction.interactionId, frameId, causedByNodeId: null, actorId: "C", kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } }],
+    rootEffectState: "BLOCKED",
     publicEventLinks: {
       root: { eventId: "steal-event", resolutionId: "steal-resolution" },
       nodes: [{ nodeId: "negation-1", eventId: "negation-event", resolutionId: "negation-resolution" }],
@@ -181,6 +182,7 @@ test("snapshot keeps Negation public event links only when they align with the p
   const publicPresentation = { ...presentation(interaction, coherentBoundary({ decisionActorId: "C" })), reactionChain };
   const snapshotValue = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "response", actorId: "C" }, actionRevision: "negation", viewerId: "C" });
   assert.deepEqual(snapshotValue.reactionChain?.publicEventLinks, reactionChain.publicEventLinks);
+  assert.equal(snapshotValue.reactionChain?.rootEffectState, "BLOCKED");
   assert.deepEqual(composePresentationSnapshot({
     presentationV2: { ...publicPresentation, reactionChain: { ...reactionChain, publicEventLinks: { ...reactionChain.publicEventLinks, nodes: [{ ...reactionChain.publicEventLinks.nodes[0], nodeId: "unlinked-node" }] } } },
     currentAction: { kind: "response", actorId: "C" }, actionRevision: "negation", viewerId: "C",
@@ -189,6 +191,15 @@ test("snapshot keeps Negation public event links only when they align with the p
     presentationV2: { ...publicPresentation, reactionChain: { ...reactionChain, publicEventLinks: { ...reactionChain.publicEventLinks, nodes: [{ ...reactionChain.publicEventLinks.nodes[0], eventId: "steal-event" }] } } },
     currentAction: { kind: "response", actorId: "C" }, actionRevision: "negation", viewerId: "C",
   }).reactionChain?.publicEventLinks, undefined, "one public event cannot identify both the root and a response");
+  const malformedDisposition = composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, reactionChain: { ...reactionChain, rootEffectState: "CANCELLED" } },
+    currentAction: { kind: "response", actorId: "C" }, actionRevision: "negation", viewerId: "C",
+  }).reactionChain;
+  assert.equal(malformedDisposition?.rootEffectState, undefined, "unknown root disposition labels are not accepted");
+  assert.equal(composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, reactionChain: { ...reactionChain, publicEventLinks: undefined } },
+    currentAction: { kind: "response", actorId: "C" }, actionRevision: "negation", viewerId: "C",
+  }).reactionChain?.rootEffectState, undefined, "root disposition is withheld when exact public card links are absent");
 });
 
 test("single-target Negation settlement requires a typed, root-bound public occurrence", () => {

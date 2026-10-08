@@ -161,6 +161,8 @@ export type PresentationReactionChain = {
   nodes: readonly PresentationReactionChainNode[];
   /** Exact public timeline references for graph consumers; absent when any link is unproven. */
   publicEventLinks?: PresentationReactionChainPublicEventLinks;
+  /** Current single-target root effect state; absent unless its public card chain is complete. */
+  rootEffectState?: "ACTIVE" | "BLOCKED";
 };
 
 export type PresentationRootAction = {
@@ -1071,7 +1073,17 @@ function reactionChainFor(
     && new Set(eventIds).size === eventIds.length
     ? { root: rootEvent, nodes: linkedNodeEvents }
     : undefined;
-  return { semantics: "PROVEN", interactionId: scene.interactionId, frameId: scene.activeFrameId, rootCard, nodes, ...(publicEventLinks ? { publicEventLinks } : {}) };
+  const chainDepth = continuation.chainDepth;
+  const rootEffectState = !bumperWindow && rootCard && publicEventLinks && typeof continuation.negated === "boolean"
+    && typeof chainDepth === "number" && Number.isSafeInteger(chainDepth) && chainDepth >= 0
+    && chainDepth === nodes.length && continuation.negated === (chainDepth % 2 === 1)
+    ? continuation.negated ? "BLOCKED" as const : "ACTIVE" as const
+    : undefined;
+  return {
+    semantics: "PROVEN", interactionId: scene.interactionId, frameId: scene.activeFrameId, rootCard, nodes,
+    ...(publicEventLinks ? { publicEventLinks } : {}),
+    ...(rootEffectState ? { rootEffectState } : {}),
+  };
 }
 
 function negationSettlementFor(
