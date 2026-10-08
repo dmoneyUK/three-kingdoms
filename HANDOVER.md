@@ -5,30 +5,29 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2.6-PHASE-D-SOWING-DISTRUST-SETTLEMENT-LIFECYCLE-01` is implemented and
-locally validated. Sowing Distrust now retains an exact public Effect root
-through authoritative settlement, shows the terminal state briefly, and
-removes the transient graph without exposing the hidden card. Reduced motion
-uses a shorter hold. The failed CI at prior HEAD `6cb6a757d6946081fdbe2b2c406d33e476230182`
-was run `37797631764` (lint/fast and Browser shard 1 failed; API and Browser
-shard 2 passed). The repair is included here: timer-only response deadlines no
-longer invalidate the same decision revision, and response-card controls are
-disabled while a request is busy. This commit's Actions result is not yet
-available.
-
-Local evidence: build passed; fast tests 244/244; focused API 36/36; Browser
-shard 1 414/414; Sowing Distrust real-gameplay browser tests 5/5; Duel
-regression repeat 8/8; targeted ESLint and `git diff --check` passed.
+Prior result `63ae1abcb72aaa972199e26ac7bd2bdf2811e22a` is pushed. Exact
+Actions run `37805584866` failed in Browser shard 2 (shard 1 cancelled; Lint/
+fast and API passed). GitHub logs return 403. Exact-SHA local shard 2 passed
+412 tests with one flaky first attempt in the 650px Hand-anchor test. Its
+scroll-to-mutation event race is fixed by waiting for the real scroll event;
+30/30 focused repetitions passed without weakening geometry assertions. This
+repair will ship with the active feature change per the current commit cadence.
+The active §6.20 graph narration composes only the proven root, submitted
+responses, and collapsed public history. Local evidence: build, targeted
+ESLint, diff check, and real-gameplay Browser tests 9/9 passed; the Hand
+membership-change group passed 4/4 with the repaired event barrier.
 
 ## Design checkpoint
 
-Latest `origin/ux-v2:docs/UX2-refine.md` reviewed at blob
-`7feb8af937b6407f3f33c3959325db8d3f188cf4`. Section 6 Phase D remains active;
-§4A timer work is closed. Reviewer acceptance has not been asserted.
+Latest `origin/ux-v2:docs/UX2-refine.md` remains blob
+`7feb8af937b6407f3f33c3959325db8d3f188cf4`. Section 6 Phase D is active;
+Reviewer acceptance has not been asserted.
 
 ## Current / next task
 
-`UX2.6-PHASE-D-SOWING-DISTRUST-SETTLEMENT-LIFECYCLE-01` — implementation,
-focused regressions, and repair of the observed prior-CI failures are complete;
-commit and push this bounded change, then check the exact pushed SHA's Actions
-result at the next commit boundary.
+`UX2.6-PHASE-D-PUBLIC-GRAPH-SCREENREADER-NARRATION-01` — provide one concise
+accessible description from the visible graph's proven root, submitted
+responses, and collapsed public-history count. Keep private responder/legal
+data out, fail closed with the visual graph, and prove real Attack→Dodge,
+Negation-chain, and Sowing Distrust paths. These changes and the focused CI
+test-race repair are ready for the same commit and push.

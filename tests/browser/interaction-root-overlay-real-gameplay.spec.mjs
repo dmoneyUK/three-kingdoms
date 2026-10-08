@@ -288,6 +288,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       const openOverlay = targetPage.locator('[data-root-action-overlay="true"]');
       await expect(openOverlay).toHaveAttribute("data-root-action-enabled", "true");
       await expect(openOverlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+      await expect(openOverlay).toHaveAttribute("role", "img");
+      await expect(openOverlay).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET.");
+      await expect(targetPage.getByRole("img", { name: /SOURCE played Attack targeting TARGET/ })).toHaveCount(1);
+      await expect(openOverlay.getByRole("img")).toHaveCount(0);
       await expect(targetPage.locator('[data-root-action-response-card="true"]')).toHaveCount(0);
       await expect.poll(async () => {
         const view = await roomView(request, seed, 1);
@@ -350,6 +354,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       await expect(dodgeCard).toHaveAttribute("data-response-event-id", proof.responseEventId);
       await expect(dodgeCard).toHaveAttribute("aria-label", "TARGET played Dodge to block SOURCE's Attack against TARGET");
       await expect(rootCard).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET");
+      await expect(overlay).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET. TARGET played Dodge to block SOURCE's Attack against TARGET.");
+      await expect(targetPage.getByRole("img", { name: /SOURCE played Attack targeting TARGET.*TARGET played Dodge to block SOURCE's Attack against TARGET/ })).toHaveCount(1);
+      await expect(overlay.getByRole("img")).toHaveCount(0);
       await expect(targetPage.locator('[data-root-action-edge="target"]')).toHaveCount(0);
       await expect(targetPage.locator('[data-root-action-edge="target-blocked"]')).toHaveCount(1);
       await expect(targetPage.locator('[data-root-action-edge="response-source"]')).toHaveCount(1);

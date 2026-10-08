@@ -219,6 +219,11 @@ async function measureCompactedGraph(page) {
 async function expectCompactedGraphGeometry(page, expected, testInfo, screenshotName) {
   const overlay = page.locator('[data-root-action-overlay="true"]');
   await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+  if (expected.accessibleDescription) {
+    await expect(overlay).toHaveAttribute("aria-label", expected.accessibleDescription);
+    await expect(page.getByRole("img", { name: /SOURCE played Burning Bridges targeting TARGET.*4 earlier committed Negation responses collapsed.*FIFTH played Negation to counter Negation 4/ })).toHaveCount(1);
+    await expect(overlay.getByRole("img")).toHaveCount(0);
+  }
   await expect(overlay).toHaveAttribute("data-root-action-response-count", "5");
   await expect(overlay).toHaveAttribute("data-root-action-visible-response-count", "1");
   await expect(overlay).toHaveAttribute("data-root-action-collapsed-response-count", "4");
@@ -307,6 +312,7 @@ for (const viewport of viewports) {
       rootEffectState: "BLOCKED",
       blockedRootMarks: 1,
       blockedGroupMarks: 0,
+      accessibleDescription: "SOURCE played Burning Bridges targeting TARGET. 4 earlier committed Negation responses collapsed. FIFTH played Negation to counter Negation 4.",
     }, testInfo, `single-target-negation-five-compact-${viewport.width}`);
     const rootBeforeEdges = {
       left: rootBefore.x,

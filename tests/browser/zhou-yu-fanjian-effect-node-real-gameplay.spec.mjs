@@ -150,6 +150,13 @@ for (const viewport of viewports) {
 
     const overlay = page.locator('[data-root-action-overlay="true"]');
     await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+    await expect(overlay).toHaveAttribute("role", "img");
+    await expect(overlay).toHaveAttribute("aria-label", "ZHOU YU used Sowing Distrust targeting TARGET.");
+    await expect(page.getByRole("img", { name: /ZHOU YU used Sowing Distrust targeting TARGET/ })).toHaveCount(1);
+    await expect(overlay.getByRole("img")).toHaveCount(0);
+    const accessibleGraph = await overlay.getAttribute("aria-label");
+    expect(accessibleGraph).not.toContain(hiddenCard.id);
+    expect(accessibleGraph).not.toContain(hiddenCard.kind);
     const node = overlay.locator('[data-root-action-card="true"]');
     await expect(node).toHaveAttribute("data-root-action-node-type", "EFFECT");
     await expect(node).toHaveAttribute("data-root-action-effect-id", "zhou_yu_fanjian");
@@ -295,6 +302,8 @@ test("real Sowing Distrust holds its exact settled Effect node for 600ms, then r
   await expect(settledNode).toHaveAttribute("data-root-action-settlement-outcome", "SUITS_DIFFERED");
   await expect(settledNode.locator("small")).toHaveText("RESOLVED");
   await expect(settledNode).toHaveAttribute("aria-label", /Resolved: suits differed/);
+  await expect(overlay).toHaveAttribute("aria-label", "ZHOU YU used Sowing Distrust targeting TARGET. Resolved: suits differed.");
+  await expect(page.getByRole("img", { name: /ZHOU YU used Sowing Distrust targeting TARGET.*Resolved: suits differed/ })).toHaveCount(1);
   const settledGeometry = await measureEffectGraph(page, source.id, target.id);
   expect(settledGeometry.ready).toBe("true");
   expect(settledGeometry.nodeInsideTable).toBe(true);

@@ -51,7 +51,8 @@ type ResponseLayout = {
 
 function compactResponseGraph(responses: readonly InteractionRootOverlayResponseNode[]) {
   if (responses.some((response, index) => response.index !== index
-    || !response.eventId || !response.actorId || !response.actorName.trim())
+    || !response.eventId || !response.actorId || !response.actorName.trim()
+    || !response.cardLabel.trim() || !response.ariaLabel.trim())
     || new Set(responses.map((response) => response.eventId)).size !== responses.length) return null;
   for (let index = 0; index < responses.length; index += 1) {
     const counterTarget = responses[index].counterTarget;
@@ -945,7 +946,19 @@ export function InteractionRootOverlay({
 
   if (!action) return null;
   const groupNamesKnown = Boolean(action.groupTargets?.length && action.groupTargets.every((target) => target.playerName.trim()));
-  const visible = enabled && Boolean(layout) && Boolean(sourceName && (groupNamesKnown || action.mode === "self-target" || targetName));
+  const accessibleDescription = [
+    action.ariaLabel,
+    ...(historyCount > 0 ? [`${historyCount} earlier committed Negation response${historyCount === 1 ? "" : "s"} collapsed`] : []),
+    ...(action.response ? [action.response.ariaLabel] : []),
+    ...visibleResponses.map((response) => response.ariaLabel),
+  ].map((sentence) => sentence.trim().replace(/[.!?]+$/u, ""))
+    .filter(Boolean)
+    .join(". ");
+  const accessiblePartsValid = Boolean(action.ariaLabel.trim())
+    && (!action.response || Boolean(action.response.ariaLabel.trim()))
+    && visibleResponses.every((response) => Boolean(response.ariaLabel.trim()));
+  const visible = enabled && Boolean(layout) && accessiblePartsValid
+    && Boolean(sourceName && (groupNamesKnown || action.mode === "self-target" || targetName));
   const responseChainRootBlocked = Boolean(action.responses?.length && action.rootEffectState === "BLOCKED");
   return <div
     ref={layerRef}
@@ -967,6 +980,8 @@ export function InteractionRootOverlay({
     data-root-action-collapsed-response-count={historyCount || undefined}
     data-group-target-effect-player-id={action.groupTargetEffectState?.targetId}
     data-group-target-effect-state={action.groupTargetEffectState?.state}
+    role="img"
+    aria-label={`${accessibleDescription}.`}
     aria-hidden={!visible}
     style={{ visibility: visible ? "visible" : "hidden" }}
   >
@@ -1084,6 +1099,7 @@ export function InteractionRootOverlay({
       data-root-effect-state={action.rootEffectState ?? undefined}
       role="img"
       aria-label={action.ariaLabel}
+      aria-hidden="true"
       style={layout ? { left: layout.card.left, top: layout.card.top, transform: "none" } : undefined}
     >
       <small>{action.settlement ? "RESOLVED" : action.nodeType === "EFFECT" ? "HERO SKILL" : action.rootEffectState === "BLOCKED" ? "BLOCKED EFFECT" : "ROOT ACTION"}</small>
@@ -1096,6 +1112,7 @@ export function InteractionRootOverlay({
       data-collapsed-response-count={historyCount}
       role="img"
       aria-label={`${historyCount} earlier committed Negation response${historyCount === 1 ? "" : "s"}`}
+      aria-hidden="true"
       style={layout?.historySummary ? { left: layout.historySummary.left, top: layout.historySummary.top, transform: "none" } : undefined}
     >
       +{historyCount}
@@ -1111,6 +1128,7 @@ export function InteractionRootOverlay({
       data-response-relation={action.response.targetId ? "TARGETS_PLAYER" : action.response.countersRoot ? "COUNTERS_ROOT" : undefined}
       role="img"
       aria-label={action.response.ariaLabel}
+      aria-hidden="true"
       style={layout?.responseCard ? { left: layout.responseCard.left, top: layout.responseCard.top, transform: "none" } : undefined}
     >
       <small>{action.response.targetId || action.response.countersRoot ? `FROM ${action.response.actorName}` : "BLOCKED"}</small>
@@ -1137,6 +1155,7 @@ export function InteractionRootOverlay({
         data-counter-target-history={response.counterTarget.kind === "HISTORY" ? "true" : undefined}
         role="img"
         aria-label={response.ariaLabel}
+        aria-hidden="true"
         style={box ? { left: box.left, top: box.top, transform: "none" } : undefined}
       >
         <small>{response.actorName}</small>

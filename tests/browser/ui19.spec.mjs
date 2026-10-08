@@ -54,6 +54,18 @@ async function loadFixture(page, { state = "normal", count = 4, width, height, r
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
+async function scrollHandRailTo(rail, fraction) {
+  await rail.evaluate((element, ratio) => new Promise((resolve) => {
+    const target = (element.scrollWidth - element.clientWidth) * ratio;
+    if (Math.abs(element.scrollLeft - target) < 0.5) {
+      resolve();
+      return;
+    }
+    element.addEventListener("scroll", () => resolve(), { once: true });
+    element.scrollLeft = target;
+  }), fraction);
+}
+
 async function readHandViewport(rail) {
   return rail.evaluate((element) => {
     const viewport = element.getBoundingClientRect();
@@ -278,7 +290,7 @@ test.describe("UX2.0VIS-09C preserve the Hand viewport across membership changes
       await loadFixture(page, { width, height: 900, handSize: 25 });
       const rail = page.locator(".local-hand-rail");
       await expect(rail).toHaveAttribute("data-hand-layout", "measured");
-      await rail.evaluate((element) => { element.scrollLeft = (element.scrollWidth - element.clientWidth) * 0.45; });
+      await scrollHandRailTo(rail, 0.45);
       await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBeGreaterThan(30);
 
       const initial = await readHandViewport(rail);
@@ -313,7 +325,7 @@ test.describe("UX2.0VIS-09C preserve the Hand viewport across membership changes
       await loadFixture(page, { width, height: 900, handSize: 25 });
       const rail = page.locator(".local-hand-rail");
       await expect(rail).toHaveAttribute("data-hand-layout", "measured");
-      await rail.evaluate((element) => { element.scrollLeft = (element.scrollWidth - element.clientWidth) * 0.5; });
+      await scrollHandRailTo(rail, 0.5);
       await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBeGreaterThan(30);
 
       const initial = await readHandViewport(rail);
