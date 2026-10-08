@@ -1899,6 +1899,27 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `37784998759` with all five jobs successful. No manual screenshot acceptance
   is claimed.
 
+### UX2.6-PHASE-D-SOWING-DISTRUST-EFFECT-NODE-01 — Public skill source graph
+
+- A real Sowing Distrust activation now carries source/target/effect identity
+  on its exact public event, with the matching event ID preserved in the
+  authoritative hero-choice continuation. PresentationV2 requires the exact
+  unique root, matching public metadata, current decision actor, and ready-after
+  barrier; Snapshot/Client preserve the proof and malformed or duplicate proof
+  fails closed. The Stage renders one compact `HERO SKILL — SOWING DISTRUST`
+  node with a physical-seat tether and target arrow, without a physical-card
+  identity or hidden-Hand leakage.
+- A no-reload, server-backed two-player browser path activates the skill, then
+  submits its suit choice and reaches the anonymous `hand:0` picker. Geometry
+  stayed stable within 1px across the choice transition; the node remained in
+  the Stage, clear of Seats/Dock, with connectors attached to the source and
+  target anchors and no horizontal overflow at 390×844, 480×900, and 1440×900.
+  Screenshots were retained for all three sizes. API passed 35/35, browser 3/3,
+  build, targeted ESLint, and `git diff --check` passed. Exact pre-commit parent
+  `f8f0f52d2bcd99286ace78e98b15227353dd03e9` passed Actions run `37795579452`.
+  Settlement hold/exit remains the next bounded lifecycle task; Reviewer
+  acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

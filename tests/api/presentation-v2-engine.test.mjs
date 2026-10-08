@@ -1,6 +1,7 @@
 import test from "node:test";
 import { projectPresentationV2 } from "../../game/presentation-v2.ts";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
+import { buildPresentationClientView } from "../../game/presentation-client.ts";
 import { oathRecipientIds } from "../../game/oath.ts";
 import {
   assert, card, createHumanGame, openBorrowedSwordScenario, openGanglieGroup, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setTurn, sql, state, waitForState,
@@ -55,6 +56,53 @@ function publicSnapshot(snapshot) {
   delete publicPart.localControl;
   return publicPart;
 }
+
+test("engine-backed Sowing Distrust exposes only its exact public Effect root across both target choices", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [source, target] = game.room.players;
+  const [sourceMember, targetMember, observerMember] = game.members;
+  const hiddenCard = card("Peach", "fanjian-public-effect-hidden-card", "♦");
+  sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(source.id)}`);
+  setHand(source.id, [hiddenCard], 3, 3);
+  setHand(target.id, [], 4, 4);
+  setTurn(game.code, source.seat);
+
+  const started = await request("trigger", { code: game.code, token: sourceMember.token, providerId: "zhou_yu_fanjian", targetId: target.id });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  const suitView = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  const rootPending = authoritativePending(game.code);
+  const effectAction = {
+    semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId: rootPending.continuation.effectRoot.rootEventId,
+    sourceId: source.id, targetId: target.id,
+  };
+  assert.deepEqual(suitView.presentationV2.skillEffectAction, effectAction);
+  assert.deepEqual(suitView.presentationSnapshot.skillEffectAction, effectAction);
+  assert.equal(suitView.currentAction.actorId, target.id);
+  assert.equal(suitView.currentAction.triggerOptions[0].selection.choices.length, 4);
+  assert.equal(suitView.timeline.find((event) => event.id === effectAction.rootEventId)?.publicSkillEffect?.effectId, "zhou_yu_fanjian");
+  assert.equal(JSON.stringify(effectAction).includes(hiddenCard.id), false, "the public effect node carries no source Hand identity");
+
+  const observerView = (await state(game.code, observerMember.token)).data;
+  assert.deepEqual(observerView.presentationV2.skillEffectAction, effectAction);
+  assert.deepEqual(publicSnapshot(observerView.presentationSnapshot), publicSnapshot(suitView.presentationSnapshot));
+  assert.deepEqual(observerView.currentAction.triggerOptions, [], "private suit controls remain restricted to the decision viewer");
+  const observerClient = buildPresentationClientView(observerView.presentationSnapshot, observerView.meId);
+  assert.equal(observerClient.hasInteraction, false, "the skill proof does not fabricate a causal scene");
+  assert.deepEqual(observerClient.skillEffectAction, effectAction, "the standalone public Effect proof survives the REST fallback");
+
+  const input = { pending: rootPending, currentAction: suitView.currentAction, actionRevision: suitView.actionRevision, timeline: suitView.timeline, causalEnvelope: null };
+  assert.equal(projectPresentationV2({ ...input, pending: { ...rootPending, continuation: { ...rootPending.continuation, effectRoot: { ...rootPending.continuation.effectRoot, rootEventId: "missing" } } } }).skillEffectAction, null);
+  assert.equal(projectPresentationV2({ ...input, pending: { ...rootPending, continuation: { ...rootPending.continuation, targetId: source.id } } }).skillEffectAction, null);
+  assert.equal(projectPresentationV2({ ...input, currentAction: { ...suitView.currentAction, actorId: source.id } }).skillEffectAction, null);
+  assert.equal(projectPresentationV2({ ...input, timeline: [...suitView.timeline, suitView.timeline.find((event) => event.id === effectAction.rootEventId)] }).skillEffectAction, null);
+
+  const choseSuit = await request("trigger", { code: game.code, token: targetMember.token, providerId: "zhou_yu_fanjian_choice", choice: "♥" });
+  assert.equal(choseSuit.status, 200, JSON.stringify(choseSuit.data));
+  const cardView = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  assert.deepEqual(cardView.presentationSnapshot.skillEffectAction, effectAction, "the root Effect persists while the hidden-card decision is active");
+  assert.deepEqual(cardView.currentAction.triggerOptions[0].selection.eligibleKeys, ["hand:0"]);
+  assert.equal(JSON.stringify(cardView.presentationSnapshot.skillEffectAction).includes(hiddenCard.id), false);
+});
 
 test("engine-backed Attack/Dodge exposes authoritative decision and legacy resolution reference", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();

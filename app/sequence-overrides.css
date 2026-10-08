@@ -703,6 +703,21 @@
   text-align: center;
 }
 
+.interaction-root-action-card.is-effect-node {
+  width: clamp(108px, 29vw, 132px);
+  min-height: 52px;
+  padding: 8px 12px;
+  border-color: #91baa6;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #22312a 0%, #17211c 72%, #111712 100%);
+  box-shadow: 0 5px 16px #0008, 0 0 0 1px #91baa633;
+}
+
+.interaction-root-action-card.is-effect-node > small {
+  color: #a9c8b5;
+  letter-spacing: .15em;
+}
+
 .interaction-root-action-card > small {
   color: #c4aa72;
   font: 700 7px/1 Arial, sans-serif;

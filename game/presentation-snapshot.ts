@@ -10,6 +10,7 @@ import type {
   PresentationReactionChain,
   PresentationReactionChainNode,
   PresentationRootAction,
+  PresentationSkillEffectAction,
   PresentationAttackDodgeResponse,
   PresentationDuelExchange,
   PresentationSelfTargetAction,
@@ -64,6 +65,7 @@ export type PresentationSnapshotGroupProgress = {
 export type PresentationSnapshotOathRecipientScope = PresentationOathRecipientScope;
 export type PresentationSnapshotBumperHarvestProgress = PresentationBumperHarvestProgress;
 export type PresentationSnapshotRootAction = PresentationRootAction;
+export type PresentationSnapshotSkillEffectAction = PresentationSkillEffectAction;
 export type PresentationSnapshotAttackDodgeResponse = PresentationAttackDodgeResponse;
 export type PresentationSnapshotDuelExchange = PresentationDuelExchange;
 export type PresentationSnapshotSelfTargetAction = PresentationSelfTargetAction;
@@ -77,6 +79,7 @@ export type PresentationSnapshot = {
   bumperHarvestProgress: PresentationSnapshotBumperHarvestProgress | null;
   reactionChain: PresentationReactionChain | null;
   rootAction: PresentationSnapshotRootAction | null;
+  skillEffectAction: PresentationSnapshotSkillEffectAction | null;
   duelExchange: PresentationSnapshotDuelExchange | null;
   attackDodgeResponses?: readonly PresentationSnapshotAttackDodgeResponse[];
   selfTargetActions?: readonly PresentationSnapshotSelfTargetAction[];
@@ -130,6 +133,16 @@ export function provenSelfTargetActions(value: unknown): PresentationSnapshotSel
     targetId: action.targetId,
     cardKind: "Peach",
   }));
+}
+
+export function provenSkillEffectAction(value: unknown): PresentationSnapshotSkillEffectAction | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const action = value as Partial<PresentationSnapshotSkillEffectAction>;
+  return action.semantics === "PROVEN" && action.effectId === "zhou_yu_fanjian"
+    && nonEmptyString(action.rootEventId) && nonEmptyString(action.sourceId)
+    && nonEmptyString(action.targetId) && action.sourceId !== action.targetId
+    ? { semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId: action.rootEventId, sourceId: action.sourceId, targetId: action.targetId }
+    : null;
 }
 
 export function provenAttackDodgeResponses(value: unknown): PresentationSnapshotAttackDodgeResponse[] {
@@ -714,6 +727,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     bumperHarvestProgress: authority ? bumperHarvestProgressFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
     reactionChain: authority ? reactionChainFor(input.presentationV2, authority.scene, authority.identity, groupParticipantProgress) : null,
     rootAction: authority ? rootActionFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
+    skillEffectAction: provenSkillEffectAction(input.presentationV2.skillEffectAction),
     duelExchange: authority ? provenDuelExchange(input.presentationV2.duelExchange, authority.scene, authority.identity, authority.stable) : null,
     ...(input.presentationV2.attackDodgeResponses?.length ? { attackDodgeResponses: provenAttackDodgeResponses(input.presentationV2.attackDodgeResponses) } : {}),
     selfTargetActions: provenSelfTargetActions(input.presentationV2.selfTargetActions),

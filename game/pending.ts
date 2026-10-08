@@ -244,6 +244,8 @@ export type HeroChoiceTriggerContinuation = {
   sourceId: string;
   targetId: string;
   stage: "suit" | "card";
+  /** Exact public action root; absent on legacy or non-Fanjian hero choices. */
+  effectRoot?: { effectId: "zhou_yu_fanjian"; rootEventId: string };
   guess?: string;
   resumePhase: string;
 };

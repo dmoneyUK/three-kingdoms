@@ -22,7 +22,18 @@ export type PresentationV2Event = {
   selfTargetAction?: unknown;
   attackDodgeResponse?: unknown;
   duelAttackResponse?: unknown;
+  publicSkillEffect?: { effectId?: unknown; sourceId?: unknown; targetId?: unknown };
 };
+
+export type PresentationSkillEffectAction = {
+  semantics: "PROVEN";
+  effectId: "zhou_yu_fanjian";
+  rootEventId: string;
+  sourceId: string;
+  targetId: string;
+};
+
+export type PresentationSkillEffectActionEvent = Pick<PresentationSkillEffectAction, "effectId" | "sourceId" | "targetId">;
 
 /** Server-authored public proof attached only to a successfully used self-target card event. */
 export type PresentationSelfTargetActionProof = {
@@ -308,6 +319,7 @@ export type PresentationV2 = {
   participants: readonly PresentationParticipant[];
   interactionScene: PresentationInteractionScene | null;
   rootAction: PresentationRootAction | null;
+  skillEffectAction: PresentationSkillEffectAction | null;
   duelExchange: PresentationDuelExchange | null;
   selfTargetActions?: readonly PresentationSelfTargetAction[];
   dyingBarrier: PresentationDyingBarrier | null;
@@ -1453,6 +1465,34 @@ function selfTargetActionsFor(timeline: readonly PresentationV2Event[]): Present
   });
 }
 
+function skillEffectActionFor(input: PresentationV2Input): PresentationSkillEffectAction | null {
+  const pending = record(input.pending);
+  const continuation = record(pending?.continuation);
+  const effectRoot = record(continuation?.effectRoot);
+  const sourceId = stringValue(continuation?.sourceId);
+  const targetId = stringValue(continuation?.targetId);
+  const rootEventId = stringValue(effectRoot?.rootEventId);
+  const barrierEventId = stringValue(input.currentAction?.presentation?.readyAfterEventId);
+  const rootEvents = rootEventId ? input.timeline.filter((event) => event.id === rootEventId) : [];
+  const barrierEvents = barrierEventId ? input.timeline.filter((event) => event.id === barrierEventId) : [];
+  const rootEvent = rootEvents.length === 1 ? rootEvents[0] : null;
+  const barrierEvent = barrierEvents.length === 1 ? barrierEvents[0] : null;
+  const publicEffect = record(rootEvent?.publicSkillEffect);
+
+  if (pending?.kind !== "trigger" || pending.event !== "hero_choice"
+    || continuation?.kind !== "hero_choice_event"
+    || effectRoot?.effectId !== "zhou_yu_fanjian"
+    || (continuation.stage !== "suit" && continuation.stage !== "card")
+    || input.currentAction?.kind !== "trigger" || !sourceId || !targetId
+    || sourceId === targetId || pending.actorId !== targetId || input.currentAction.actorId !== targetId
+    || !rootEventId || !rootEvent || rootEvent.type !== "message" || rootEvent.presentation === false
+    || publicEffect?.effectId !== "zhou_yu_fanjian"
+    || publicEffect.sourceId !== sourceId || publicEffect.targetId !== targetId
+    || !barrierEventId || !barrierEvent || barrierEvent.presentation === false) return null;
+
+  return { semantics: "PROVEN", effectId: "zhou_yu_fanjian", rootEventId, sourceId, targetId };
+}
+
 function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): PresentationAttackDodgeResponse[] {
   const eventCounts = new Map<string, number>();
   const eventsById = new Map<string, PresentationV2Event[]>();
@@ -1711,6 +1751,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const groupValues = groupProjectionValues(envelope, input.pending, group);
   const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
   const rootAction = singleTargetAttackRootActionFor(envelope, interactionScene, input.pending, root, rootEvent);
+  const skillEffectAction = skillEffectActionFor(input);
   const duelExchange = duelExchangeFor(envelope, interactionScene, input.pending, input.timeline);
   const selfTargetActions = selfTargetActionsFor(input.timeline);
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
@@ -1746,6 +1787,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     participants: interactionScene?.semantics === "PROVEN" ? participantsFromScene(interactionScene) : participants(active, group),
     interactionScene,
     rootAction,
+    skillEffectAction,
     duelExchange,
     selfTargetActions,
     dyingBarrier,

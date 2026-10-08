@@ -3006,9 +3006,25 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     };
   })();
   const rootAction = clientPresentation.rootAction;
+  const skillEffectActionCandidate = (() => {
+    const action = clientPresentation.skillEffectAction;
+    if (!action || action.semantics !== "PROVEN" || action.effectId !== "zhou_yu_fanjian"
+      || action.sourceId === action.targetId) return null;
+    const rootEvents = room.timeline.filter((event) => event.id === action.rootEventId);
+    if (rootEvents.length !== 1) return null;
+    const rootEvent = rootEvents[0];
+    if (rootEvent.type !== "message" || rootEvent.presentation === false
+      || rootEvent.publicSkillEffect?.effectId !== action.effectId
+      || rootEvent.publicSkillEffect.sourceId !== action.sourceId
+      || rootEvent.publicSkillEffect.targetId !== action.targetId) return null;
+    const source = room.players.find((player) => player.id === action.sourceId);
+    const target = room.players.find((player) => player.id === action.targetId);
+    if (!source?.name || !target?.name) return null;
+    return { action, rootEvent, source, target };
+  })();
   const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId)
-    : groupTargetBranchGraphCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeResponseCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
-  const selfTargetCandidates = rootAction || groupTargetBranchGraphCandidate || duelExchangeGraphCandidate || attackDodgeResponseCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
+    : groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeResponseCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
+  const selfTargetCandidates = rootAction || groupTargetBranchGraphCandidate || skillEffectActionCandidate || duelExchangeGraphCandidate || attackDodgeResponseCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
       || event.resolutionId !== action.resolutionId || event.card.kind !== action.cardKind
@@ -3041,6 +3057,19 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       cardKind: groupTargetBranchGraphCandidate.group.cardKind,
       cardLabel: cardDefinition(groupTargetBranchGraphCandidate.group.cardKind).name.toUpperCase(),
       ariaLabel: `${groupTargetBranchGraphCandidate.source.name} played ${cardDefinition(groupTargetBranchGraphCandidate.group.cardKind).name}. ${groupTargetBranchGraphCandidate.targets.map((target) => `${target.playerName}: ${groupParticipantStatusLabel(target.status)}${target.outcome ? `, ${groupParticipantOutcomeLabel(target.outcome)}` : ""}`).join(". ")}`,
+      mode: "targeted",
+      compactRoot: true,
+    }
+    : skillEffectActionCandidate
+    ? {
+      key: ["effect", skillEffectActionCandidate.action.effectId, skillEffectActionCandidate.action.rootEventId, skillEffectActionCandidate.action.sourceId, skillEffectActionCandidate.action.targetId].join(":"),
+      rootEventId: skillEffectActionCandidate.action.rootEventId,
+      sourceId: skillEffectActionCandidate.action.sourceId,
+      targetId: skillEffectActionCandidate.action.targetId,
+      nodeType: "EFFECT",
+      effectId: skillEffectActionCandidate.action.effectId,
+      cardLabel: "SOWING DISTRUST",
+      ariaLabel: `${skillEffectActionCandidate.source.name} used Sowing Distrust targeting ${skillEffectActionCandidate.target.name}`,
       mode: "targeted",
       compactRoot: true,
     }
@@ -3143,10 +3172,13 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       : null;
   const rootActionSource = rootActionOverlayAction ? room.players.find((player) => player.id === rootActionOverlayAction.sourceId) : null;
   const rootActionTarget = rootActionOverlayAction ? room.players.find((player) => player.id === rootActionOverlayAction.targetId) : null;
-  const rootActionTemporarilyBlocked = Boolean(targetPreviewPresentation || opponentInspectionPresentation || targetCardPickerSelectableDetail || expandedOpponentId || groupScopePreview.active);
+  const rootActionTemporarilyBlocked = Boolean(targetPreviewPresentation || opponentInspectionPresentation
+    || targetCardPickerSelectableDetail && !skillEffectActionCandidate
+    || expandedOpponentId || groupScopePreview.active);
   const rootActionAwaitingReveal = Boolean(
     !attackDodgeResponseCandidate && rootAction && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || groupTargetBranchGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
+    || skillEffectActionCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || singleTargetNegationGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations),
   );
   const rootGroupTargetNamesKnown = Boolean(rootActionOverlayAction?.groupTargets?.length

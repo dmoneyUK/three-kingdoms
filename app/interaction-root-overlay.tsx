@@ -79,7 +79,9 @@ export type InteractionRootOverlayAction = {
   rootPlacementKey?: string;
   sourceId: string;
   targetId: string;
-  cardKind: CardKind;
+  cardKind?: CardKind;
+  nodeType?: "CARD" | "EFFECT";
+  effectId?: string;
   cardLabel: string;
   ariaLabel: string;
   mode: "targeted" | "self-target";
@@ -1065,9 +1067,11 @@ export function InteractionRootOverlay({
     </svg>}
     <div
       ref={cardRef}
-      className={`interaction-root-action-card${action.rootEffectState === "BLOCKED" ? " is-blocked" : ""}${responseTargetsPlayer ? " is-contextual" : ""}`}
+      className={`interaction-root-action-card${action.nodeType === "EFFECT" ? " is-effect-node" : ""}${action.rootEffectState === "BLOCKED" ? " is-blocked" : ""}${responseTargetsPlayer ? " is-contextual" : ""}`}
       data-root-action-card="true"
       data-root-action-card-kind={action.cardKind}
+      data-root-action-node-type={action.nodeType ?? "CARD"}
+      data-root-action-effect-id={action.nodeType === "EFFECT" ? action.effectId : undefined}
       data-root-action-compact-root={action.compactRoot ? "true" : undefined}
       data-group-root-action={action.groupTargets?.length ? action.cardKind : undefined}
       data-root-action-contextual={responseTargetsPlayer ? "true" : undefined}
@@ -1076,7 +1080,7 @@ export function InteractionRootOverlay({
       aria-label={action.ariaLabel}
       style={layout ? { left: layout.card.left, top: layout.card.top, transform: "none" } : undefined}
     >
-      <small>{action.rootEffectState === "BLOCKED" ? "BLOCKED EFFECT" : "ROOT ACTION"}</small>
+      <small>{action.nodeType === "EFFECT" ? "HERO SKILL" : action.rootEffectState === "BLOCKED" ? "BLOCKED EFFECT" : "ROOT ACTION"}</small>
       <strong>{action.cardLabel}</strong>
     </div>
     {historyCount > 0 && <div
