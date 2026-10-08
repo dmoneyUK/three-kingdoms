@@ -5,36 +5,34 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2.6-PHASE-D-NEGATION-CHAIN-COMPACTION-01` is implemented: real
-server-backed single-target and Raining Arrows Group chains each passed at
-390×844, 480×900, and 1440×900 (6/6). Assertions cover the stable root,
-latest response and source tether, `+4` history/counter relation, scoped Group
-branch disposition, public/private separation, containment, and no horizontal
-overflow. Production build, targeted ESLint on the changed TSX/browser spec,
-`node --check`, and `git diff --check` passed. One earlier combined lint
-process hit Node's default heap limit; isolated checks then passed. Screenshots
-were captured by Playwright, not manually reviewed. Before-commit parent
-`21c055269182590b450e65477cc84ed2d0519d75` passed push Actions run
-`37777442409`. This task commit's CI has not yet been checked; check the exact
-new remote SHA before the next commit. Reviewer acceptance is not claimed.
+`UX2.4A-BUMPER-HARVEST-60S-REAL-GAMEPLAY-PROOF-01` is complete. The
+server-backed browser path played Bumper Harvest through the real chooser
+sequence and verified a fresh server deadline and visible compact timer for
+each active chooser. Geometry assertions passed at 390×844, 480×900, and
+1440×900, including an isolated timer visibility delta, menu/Guidance stability,
+no timer overlap, and no horizontal page overflow. The timer implementation
+already existed; this adds production-path proof. `node --check`, targeted
+ESLint, the focused browser spec (1/1), and `git diff --check` passed. Exact
+pre-commit remote head `3486caee8e7555aa979d676ef4e06f318658118b` passed Actions
+run `37782474909`. The task commit's CI is pending verification after push.
+Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
-Re-fetched `origin/ux-v2`; `docs/UX2-refine.md` is blob
-`7feb8af937b6407f3f33c3959325db8d3f188cf4`. Re-read §§6.14–6.26 at the
-planning boundary. Phase D still authorizes public Hero-skill/non-card effect
-nodes; Section 6.24 requires server-backed semantic and responsive evidence.
-Pre-§5 §4D remains closed.
+Re-fetched `origin/ux-v2`; `docs/UX2-refine.md` remains blob
+`7feb8af937b6407f3f33c3959325db8d3f188cf4`. Re-read §§4.10, 4A.7–4A.10, and
+the §4D Section 6 gate. Section 6 remains deferred until the listed pre-§5
+requirements close. During the real timer path, the active choice panel measured
+459px wide at a 390px viewport and extends beyond the right edge.
 
 ## Current / next task
 
-`UX2.6-PHASE-D-FANJIAN-EFFECT-NODE-01` — project one real Zhou Yu Sowing
-Distrust activation from its server-owned continuation into a compact public
-Effect node (not a fake physical card), with proven source and target relations
-while the target makes the active suit/card choices. Keep all legal/private
-choices in the Local Player Dock; expose no hidden card identity or private
-eligibility. Require an exact public root-event link and fail closed on missing
-or mismatched proof. Add a real server-backed browser path from skill
-activation through the target decision, proving node reachability, responsive
-geometry, privacy, and stable Seats/Dock. Do not infer causality from log text
-or alter gameplay rules.
+`UX2.4A-BUMPER-HARVEST-MOBILE-CHOOSER-FIT-01` — contain the real active
+Bumper Harvest choice panel and its cards within 390×844 and 480×900 portrait
+viewports (include a narrow-width check), with no clipping or horizontal
+overflow. Preserve the compact timer beside the System Menu, stable Guidance
+and Dock geometry, and prove the production server-backed chooser path.
+
+Previously started Fanjian/§6 changes remain uncommitted and preserved in the
+worktree; keep them out of pre-§5 commits. Resume §6 only after the §4D gate is
+actually closed. Do not discard or overwrite those local changes.

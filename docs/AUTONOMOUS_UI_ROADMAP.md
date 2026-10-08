@@ -1852,6 +1852,22 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `37777442409`. Playwright captured screenshots; no manual visual acceptance
   is claimed.
 
+### UX2.4A-BUMPER-HARVEST-60S-REAL-GAMEPLAY-PROOF-01 — Active chooser timer
+
+- The existing production path already assigns each active Bumper Harvest
+  chooser a server-owned 60-second deadline and projects it to the compact
+  lower-right timer. Added a real server-backed browser path that starts the
+  card from the Local Dock, verifies the first chooser, submits a legal choice,
+  and verifies the next chooser receives a fresh deadline. Responsive geometry
+  passed at 390×844, 480×900, and 1440×900, including the timer-only visibility
+  delta, System Menu/Guidance stability, and no timer overlap or page overflow.
+- Focused browser spec passed 1/1; `node --check`, targeted ESLint, and
+  `git diff --check` passed. Exact pre-commit head
+  `3486caee8e7555aa979d676ef4e06f318658118b` passed Actions run `37782474909`.
+  The live-path measurement also found the active choice panel is wider than a
+  390px viewport; that remains the sole next bounded task in HANDOVER.
+  Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
