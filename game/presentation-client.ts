@@ -508,6 +508,7 @@ function rootActionForSnapshot(
     || action.interactionId !== identity.interactionId || action.interactionId !== scene.interactionId
     || action.rootFrameId !== scene.rootFrameId || action.activeFrameId !== scene.activeFrameId
     || action.checkpointId !== identity.checkpointId || action.presentationRevision !== identity.presentationRevision
+    || !isString(action.rootEventId)
     || scene.continuity.relation !== "ROOT_FRAME" || scene.rootFrameId !== scene.activeFrameId
     || scene.stage !== "ATTACK_RESPONSE"
     || !isString(action.sourceId) || action.sourceId === action.targetId
@@ -529,6 +530,7 @@ function rootActionForSnapshot(
     activeFrameId: action.activeFrameId,
     checkpointId: identity.checkpointId,
     presentationRevision: identity.presentationRevision,
+    rootEventId: action.rootEventId,
     action: action.action,
     sourceId: action.sourceId,
     targetId: action.targetId,

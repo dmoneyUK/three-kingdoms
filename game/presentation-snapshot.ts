@@ -371,6 +371,7 @@ function rootActionFor(
     || action.activeFrameId !== scene.activeFrameId
     || action.checkpointId !== identity.checkpointId
     || action.presentationRevision !== identity.presentationRevision
+    || !nonEmptyString(action.rootEventId)
     || scene.continuity.relation !== "ROOT_FRAME"
     || scene.rootFrameId !== scene.activeFrameId
     || scene.stage !== "ATTACK_RESPONSE"
@@ -394,6 +395,7 @@ function rootActionFor(
     activeFrameId: action.activeFrameId,
     checkpointId: identity.checkpointId,
     presentationRevision: identity.presentationRevision,
+    rootEventId: action.rootEventId,
     action: action.action,
     sourceId: action.sourceId,
     targetId: action.targetId,

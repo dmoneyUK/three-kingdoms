@@ -147,6 +147,8 @@ export type PresentationRootAction = {
   activeFrameId: string;
   checkpointId: string;
   presentationRevision: number;
+  /** Public timeline identity for deduplicating the graph node from the reveal layer. */
+  rootEventId: string;
   action: "ATTACK";
   sourceId: string;
   targetId: string;
@@ -1168,6 +1170,7 @@ function singleTargetAttackRootActionFor(
     activeFrameId: frame.frameId,
     checkpointId: envelope.checkpoint.checkpointId,
     presentationRevision: envelope.presentationRevision,
+    rootEventId: rootEvent.id,
     action: "ATTACK",
     sourceId,
     targetId,

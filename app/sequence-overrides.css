@@ -495,6 +495,85 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+  isolation: isolate;
+}
+
+/* Phase A: the public graph spans the table and Local Dock without owning
+   layout or pointer input. The card is placed only after real player anchors
+   and clear battle-space geometry have been measured. */
+.interaction-root-overlay {
+  position: absolute;
+  z-index: 8;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.interaction-root-connectors {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.interaction-root-connectors path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.interaction-root-source-tether {
+  stroke: #8ba89a;
+  stroke-width: 1.7px;
+  opacity: .78;
+}
+
+.interaction-root-target-arrow {
+  stroke: #b85a4c;
+  stroke-width: 2.8px;
+  opacity: .96;
+}
+
+.interaction-root-target-arrow + marker path,
+.interaction-root-connectors marker path {
+  fill: #d06b58;
+  stroke: #4a211b;
+  stroke-width: .6px;
+}
+
+.interaction-root-action-card {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 7px;
+  width: clamp(112px, 32vw, 146px);
+  min-height: 78px;
+  padding: 10px 12px;
+  transform: translate(-50%, -50%);
+  border: 1px solid #d8b86e;
+  border-radius: 7px;
+  background: linear-gradient(145deg, #29291f 0%, #171912 70%, #11140f 100%);
+  box-shadow: 0 7px 22px #0009, 0 0 0 1px #d8b86e38, 0 0 16px #d1ad5730;
+  color: #f4e6c2;
+  text-align: center;
+}
+
+.interaction-root-action-card > small {
+  color: #c4aa72;
+  font: 700 7px/1 Arial, sans-serif;
+  letter-spacing: .19em;
+}
+
+.interaction-root-action-card > strong {
+  font: 700 15px/1 Georgia, serif;
+  letter-spacing: .12em;
 }
 
 .game-shell .play-table {

@@ -5,31 +5,27 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-§4A's Bumper Harvest chooser now has a fresh server-owned 60-second deadline
-for each chooser; expiry only updates the display. Phase A now projects a typed,
-public root `ATTACK` card only when Pending continuation, causal frame, target,
-and the exact linked public play event agree. Snapshot/client adapters recheck
-that proof and fail closed; no physical card ID is exposed. Engine-backed API,
-presentation/client tests, production build, targeted lint, and diff checks
-passed. Actions run `37733553911` on parent SHA
-`a59988b5fee795a766edb343ef8383306dfa128e` failed one browser case before its
-UI assertions: the real-room page GET was not observed within 15s (391 passed;
-other shard passed). This change keeps the GET/success/shell assertions and
-extends only that case's bounded readiness window to 30s; focused serial rerun
-passed 3/3. Verify this pushed SHA's Actions before any further commit. Reviewer
-acceptance is not claimed.
+Phase A now renders the proven ordinary Attack as a `.game-shell` overlay with
+one source tether and one target arrow. Root event identity is carried through
+the public projection; ambiguous, missing, duplicate, or zero-size anchors keep
+the existing Stage visible. Real Attack → response → Dock Skip browser proof
+passed at 390×844, 480×900, and 1440×900 with fixed Seat/Dock geometry and no
+overflow. Engine API tests 33/33, Presentation client/snapshot tests 65/65,
+production build, targeted ESLint, browser tests 3/3, and `git diff --check`
+passed. Pre-commit Actions run `37734608981` on exact parent SHA
+`a8432b27a221544009761e50fbcee6a459631deb` succeeded; validate this task's push
+at the next commit gate. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
-Reviewed latest `docs/UX2-refine.md`, blob
+Reviewed remote `docs/UX2-refine.md`, blob
 `516fc7d673b0dfcc7e1e01ba8572cd97cdcf6784`, through §6.26. Section 6 is active;
-Phase A graph rendering remains incomplete.
+no newer design revision was found.
 
 ## Current / next task
 
-`UX2.6-PHASE-A-ROOT-ACTION-OVERLAY-01` — render the proven ordinary Attack root
-action in one `.game-shell` overlay, attached to existing `data-player-anchor`
-Seats/Dock with one source tether and one target arrow. Fail closed without the
-typed root proof. Keep physical Seat/Dock geometry and controls unchanged; prove
-server-backed rendering, 390×844 / 480×900 / wide containment, and no page
-overflow. Do not add central player portraits or infer edges in React.
+`UX2.6-PHASE-A-DENSE-ANCHOR-GEOMETRY-01` — extend the real server-backed
+ordinary Attack overlay proof to 6–8 player tables. Measure card/connector
+containment, Seat/Dock geometry stability, system/center/Seat overlap, overflow,
+and normal Dock control hit behavior at representative mobile and wide sizes.
+Keep physical player layout unchanged; fail closed when the overlay cannot fit.

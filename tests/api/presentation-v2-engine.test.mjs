@@ -99,6 +99,7 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
     activeFrameId: attackScene.activeFrameId,
     checkpointId: attackScene.checkpointId,
     presentationRevision: attackScene.presentationRevision,
+    rootEventId: targetView.currentAction.presentation.readyAfterEventId,
     action: "ATTACK",
     sourceId: source.id,
     targetId: target.id,

@@ -195,6 +195,7 @@ test("adapter carries only a root action bound to the active public frame", () =
     activeFrameId: "attack-frame",
     checkpointId: "checkpoint-1",
     presentationRevision: 3,
+    rootEventId: "public-attack-event",
     action: "ATTACK",
     sourceId: "A",
     targetId: "B",
@@ -214,6 +215,7 @@ test("adapter carries only a root action bound to the active public frame", () =
     { ...rootAction, rootFrameId: "other-frame" },
     { ...rootAction, sourceId: "B" },
     { ...rootAction, targetId: "A" },
+    { ...rootAction, rootEventId: "" },
     { ...rootAction, cardKind: "unknown-card" },
   ]) {
     const view = buildPresentationClientView(snapshot({ interaction, rootAction: malformed }), "B");

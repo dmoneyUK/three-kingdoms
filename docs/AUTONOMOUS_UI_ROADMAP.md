@@ -1625,6 +1625,19 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `git diff --check` passed. The physical-seat overlay and graph renderer remain
   open; Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-A-ROOT-ACTION-OVERLAY-01 — Physical-seat Attack graph
+
+- The proven ordinary Attack now renders as one `.game-shell` card node with a
+  source tether and target arrow attached to existing player anchors. Missing,
+  ambiguous, or zero-size anchors preserve the safe Interaction Stage fallback;
+  the exact root event is removed from the settled-card layer only while its
+  graph is ready. Real server-backed Attack → response → Dock Skip browser proof
+  passed at 390×844, 480×900, and 1440×900 with no anchor movement, card/anchor
+  overlap, or horizontal overflow. The focused browser group passed 3/3;
+  Presentation client/snapshot tests 65/65; engine API tests 33/33; build,
+  targeted ESLint, and diff checks passed. Dense 6–8 player geometry and
+  remaining Section 6 phases are still open. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
