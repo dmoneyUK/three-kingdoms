@@ -1,7 +1,7 @@
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressStatus, type HarvestParticipantProgressStatus } from "./pending";
 import { CARD_KINDS, type CardKind } from "./model";
 import { CARD_DEFINITIONS } from "./cards";
-import type { PresentationSnapshot, PresentationSnapshotBumperHarvestProgress, PresentationSnapshotGroupParticipantProgress, PresentationSnapshotGroupProgress, PresentationSnapshotOathRecipientScope, PresentationSnapshotRootAction } from "./presentation-snapshot";
+import { provenSelfTargetActions, type PresentationSnapshot, type PresentationSnapshotBumperHarvestProgress, type PresentationSnapshotGroupParticipantProgress, type PresentationSnapshotGroupProgress, type PresentationSnapshotOathRecipientScope, type PresentationSnapshotRootAction, type PresentationSnapshotSelfTargetAction } from "./presentation-snapshot";
 import type {
   InteractionSceneContinuity,
   PresentationInteractionScene,
@@ -30,6 +30,7 @@ export type PresentationClientView = {
   bumperHarvestProgress: PresentationSnapshotBumperHarvestProgress | null;
   reactionChain: PresentationSnapshot["reactionChain"];
   rootAction: PresentationSnapshotRootAction | null;
+  selfTargetActions: readonly PresentationSnapshotSelfTargetAction[];
   negationSettlement?: PresentationSnapshot["settlement"];
   rootOrigin?: NonNullable<PresentationInteractionScene["rootOrigin"]>;
   continuity: InteractionSceneContinuity;
@@ -192,6 +193,7 @@ function restView(snapshot: PresentationSnapshot | null, meId: string | null): P
     bumperHarvestProgress: null,
     reactionChain: null,
     rootAction: null,
+    selfTargetActions: provenSelfTargetActions(snapshot?.selfTargetActions),
     ...(negationSettlement ? { negationSettlement } : {}),
     continuity: REST_CONTINUITY,
     parentFrameId: null,
@@ -576,6 +578,7 @@ export function buildPresentationClientView(
     bumperHarvestProgress,
     reactionChain: reactionChainForSnapshot(snapshot, scene),
     rootAction,
+    selfTargetActions: provenSelfTargetActions(snapshot.selfTargetActions),
     ...(negationSettlement ? { negationSettlement } : {}),
     ...(scene.rootOrigin ? { rootOrigin: { ...scene.rootOrigin, targetIds: [...scene.rootOrigin.targetIds] } } : {}),
     continuity: { ...scene.continuity },

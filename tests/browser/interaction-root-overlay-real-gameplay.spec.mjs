@@ -2,8 +2,9 @@ import { expect, test } from "@playwright/test";
 
 const API = "http://127.0.0.1:3137";
 const attack = { id: "root-overlay-real-attack", kind: "Attack", suit: "♠", rank: "7" };
+const peach = { id: "root-overlay-real-peach", kind: "Peach", suit: "♥", rank: "3" };
 
-async function seedGame(request, playerCount = 4) {
+async function seedGame(request, playerCount = 4, { sourceCard = attack, sourceHp = 4 } = {}) {
   const rolesByPlayerCount = {
     4: ["Rebel", "Loyalist", "Lord", "Renegade"],
     6: ["Rebel", "Loyalist", "Lord", "Renegade", "Rebel", "Rebel"],
@@ -21,9 +22,9 @@ async function seedGame(request, playerCount = 4) {
   ].slice(0, playerCount).map((player, index) => ({
     ...player,
     role: rolesByPlayerCount[playerCount]?.[index],
-    hp: 4,
+    hp: index === 0 ? sourceHp : 4,
     maxHp: 4,
-    hand: index === 0 ? [attack] : [],
+    hand: index === 0 ? [sourceCard] : [],
   }));
   const response = await request.post(`${API}/__test/seed-playing-game`, {
     data: {
@@ -81,6 +82,20 @@ async function playAttackThroughPage(page, targetName) {
   await confirm.click();
   const response = await responsePromise;
   if (!response.ok()) throw new Error(`Attack submission failed: ${await response.text()}`);
+}
+
+async function playPeachThroughPage(page) {
+  await page.locator(`[data-hand-card-id="${peach.id}"] .game-card`).click();
+  const play = page.locator('[data-console-surface="local-operation"] button.primary');
+  await expect(play).toBeEnabled();
+  const responsePromise = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").action === "play_card"; }
+    catch { return false; }
+  });
+  await play.click();
+  const response = await responsePromise;
+  if (!response.ok()) throw new Error(`Peach submission failed: ${await response.text()}`);
 }
 
 async function measure(page, sourceId, targetId) {
@@ -235,5 +250,99 @@ for (const scenario of [
     } finally {
       await targetPage.close();
     }
+  });
+}
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
+  test(`real wounded-player Peach uses a self-target root card at ${viewport.width}×${viewport.height}`, async ({ page, request }, testInfo) => {
+    test.setTimeout(60_000);
+    const seed = await seedGame(request, 4, { sourceCard: peach, sourceHp: 3 });
+    const sourceId = seed.players[0].id;
+    await openGame(page, seed, 0, viewport);
+    const before = await page.evaluate((playerId) => {
+      const rect = document.querySelector(`.local-player-dock[data-player-anchor="${playerId}"]`).getBoundingClientRect();
+      return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
+    }, sourceId);
+    await playPeachThroughPage(page);
+
+    await expect.poll(async () => (await roomView(request, seed, 1)).presentationSnapshot?.selfTargetActions?.length ?? 0, { timeout: 20_000 }).toBe(1);
+    const observerView = await roomView(request, seed, 1);
+    const proof = observerView.presentationSnapshot.selfTargetActions[0];
+    expect(proof).toMatchObject({ semantics: "PROVEN", sourceId, targetId: sourceId, cardKind: "Peach" });
+    expect(observerView.timeline.some((event) => event.id === proof.rootEventId && event.card?.kind === "Peach" && event.action === "play")).toBe(true);
+
+    const rootCard = page.locator('[data-root-action-card="true"]');
+    await expect(page.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-mode", "self-target");
+    await expect(page.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-ready", "true");
+    await expect(rootCard).toBeVisible({ timeout: 20_000 });
+    await expect(rootCard).toHaveAttribute("aria-label", "SOURCE used Peach on self");
+    await expect(page.locator('[data-root-action-self-target-halo="true"]')).toHaveCount(1);
+    await expect(page.locator('[data-root-action-edge="source"]')).toHaveCount(1);
+    await expect(page.locator('[data-root-action-edge="target"]')).toHaveCount(0);
+    await expect(page.locator('[data-root-action-overlay="true"]')).toHaveAttribute("aria-hidden", "false");
+
+    const geometry = await page.evaluate((playerId) => {
+      const bounds = (element) => {
+        if (!element) return null;
+        const rect = element.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
+      };
+      const card = document.querySelector('[data-root-action-card="true"]');
+      const anchor = document.querySelector(`.local-player-dock[data-player-anchor="${playerId}"]`);
+      const hero = anchor?.querySelector(".local-hero-card");
+      const table = document.querySelector(".play-table");
+      const shell = document.querySelector(".game-shell");
+      const shellBounds = shell.getBoundingClientRect();
+      const connector = document.querySelector(".interaction-root-connectors");
+      const connectorBounds = connector?.getBoundingClientRect();
+      return {
+        card: bounds(card), anchor: bounds(anchor), hero: bounds(hero), table: bounds(table),
+        shell: bounds(shell), center: bounds(document.querySelector(".play-center")), system: bounds(document.querySelector(".stage-system-cluster")),
+        messages: bounds(document.querySelector(".game-messages")), exit: bounds(document.querySelector(".game-exit")),
+        anchors: [...document.querySelectorAll("[data-player-anchor]")].map((element) => ({ id: element.dataset.playerAnchor, ...bounds(element) })),
+        halo: bounds(document.querySelector('[data-root-action-self-target-halo="true"]')),
+        pointerEvents: getComputedStyle(document.querySelector('[data-root-action-overlay="true"]')).pointerEvents,
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: innerWidth,
+        sourceCardDuplicates: document.querySelectorAll(".active-table-reveal .game-card, .table-resolution-layer .table-played-card .game-card").length,
+        sourceTetherPoints: [...document.querySelectorAll('[data-root-action-edge="source"]')].flatMap((path) => {
+          const length = path.getTotalLength();
+          const points = [];
+          for (let distance = 5; distance < length - 5; distance += 4) {
+            const point = path.getPointAtLength(distance);
+            points.push({ x: point.x + (connectorBounds?.x ?? 0), y: point.y + (connectorBounds?.y ?? 0) });
+          }
+          return points;
+        }),
+        shellBounds: { x: shellBounds.x, y: shellBounds.y, right: shellBounds.right, bottom: shellBounds.bottom },
+        settledCardCount: document.querySelectorAll(".table-resolution-layer .table-played-card").length,
+      };
+    }, sourceId);
+    await testInfo.attach("self-target-root-overlay-geometry.json", { body: JSON.stringify({ viewport, before, ...geometry }, null, 2), contentType: "application/json" });
+    expect(geometry.pointerEvents).toBe("none");
+    expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+    expect(geometry.card.x).toBeGreaterThanOrEqual(geometry.table.x);
+    expect(geometry.card.y).toBeGreaterThanOrEqual(geometry.table.y);
+    expect(geometry.card.width).toBeGreaterThanOrEqual(112);
+    expect(geometry.card.height).toBeGreaterThanOrEqual(78);
+    expect(geometry.card.right).toBeLessThanOrEqual(geometry.table.right);
+    expect(geometry.card.bottom).toBeLessThanOrEqual(geometry.table.bottom);
+    expect(geometry.halo.x).toBeLessThan(geometry.hero.x);
+    expect(geometry.halo.right).toBeGreaterThan(geometry.hero.right);
+    expect(geometry.anchors.filter((anchor) => anchor.id === sourceId)).toHaveLength(1);
+    expect(geometry.anchors.every((anchor) => geometry.card.right <= anchor.x || geometry.card.x >= anchor.right || geometry.card.bottom <= anchor.y || geometry.card.y >= anchor.bottom)).toBe(true);
+    for (const obstacle of [geometry.center, geometry.system, geometry.messages, geometry.exit].filter(Boolean)) {
+      expect(geometry.card.right <= obstacle.x || geometry.card.x >= obstacle.right || geometry.card.bottom <= obstacle.y || geometry.card.y >= obstacle.bottom).toBe(true);
+    }
+    expect(geometry.sourceTetherPoints.every((point) => point.x >= geometry.shellBounds.x && point.x <= geometry.shellBounds.right
+      && point.y >= geometry.shellBounds.y && point.y <= geometry.shellBounds.bottom)).toBe(true);
+    expect(geometry.sourceTetherPoints.every((point) => point.x < geometry.center.x - 2 || point.x > geometry.center.right + 2 || point.y < geometry.center.y - 2 || point.y > geometry.center.bottom + 2)).toBe(true);
+    expect(geometry.sourceCardDuplicates).toBe(0);
+    expect(geometry.settledCardCount).toBe(0);
+    for (const dimension of ["x", "y", "right", "bottom", "width", "height"]) {
+      expect(Math.abs(geometry.anchor[dimension] - before[dimension]), `Local Dock ${dimension} remains stable`).toBeLessThanOrEqual(0.5);
+    }
+    await testInfo.attach("self-target-root-overlay", { body: await page.screenshot(), contentType: "image/png" });
+    await expect(page.locator('[data-root-action-overlay="true"]')).toHaveCount(0, { timeout: 15_000 });
   });
 }

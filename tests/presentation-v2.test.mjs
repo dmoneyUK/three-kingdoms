@@ -173,6 +173,34 @@ test("single-target Negation exposes only an authoritative root card identity", 
   assert.equal(project({ continuation: { effect: { kind: "group", pending: {} }, rootCardKind: "BarbarianInvasion" } }).reactionChain?.rootCard, null, "Group/AOE keeps its existing presentation contract");
 });
 
+test("ordinary self-target Peach proof requires an explicit, unique public play event", () => {
+  const proof = { semantics: "PROVEN", sourceId: "A", targetId: "A", cardKind: "Peach" };
+  const selfPeach = event("self-peach-event", "self-peach-resolution", {
+    player: "A", target: "A", action: "play", card: card("self-peach-card", "Peach"),
+    selfTargetAction: proof,
+  });
+  const project = (timeline) => projectPresentationV2({ pending: null, currentAction: null, actionRevision: "rest", timeline });
+  assert.deepEqual(project([selfPeach]).selfTargetActions, [{
+    semantics: "PROVEN", rootEventId: "self-peach-event", resolutionId: "self-peach-resolution",
+    sourceId: "A", targetId: "A", cardKind: "Peach",
+  }]);
+
+  for (const invalid of [
+    { ...selfPeach, selfTargetAction: undefined },
+    { ...selfPeach, presentation: false },
+    { ...selfPeach, playedAs: "peach" },
+    { ...selfPeach, playedAs: "attack" },
+    { ...selfPeach, card: card("not-peach-card", "Attack") },
+    { ...selfPeach, selfTargetAction: { ...proof, targetId: "B" } },
+    { ...selfPeach, selfTargetAction: { ...proof, sourceId: "" } },
+    { ...selfPeach, resolutionId: "" },
+    { ...selfPeach, selfTargetAction: { ...proof, semantics: "INFERRED" } },
+  ]) {
+    assert.deepEqual(project([invalid]).selfTargetActions, [], "missing or mismatched public proof fails closed");
+  }
+  assert.deepEqual(project([selfPeach, { ...selfPeach }]).selfTargetActions, [], "duplicate event identity is ambiguous");
+});
+
 test("group projection records missing authoritative semantics instead of guessing", () => {
   const projected = projectPresentationV2({ pending: flows[3].points[0].pending, currentAction: flows[3].points[0].currentAction, actionRevision: "r", timeline: flows[3].points[0].timeline });
   assert.equal(projected.groupResolution?.semantics, "UNPROVEN");

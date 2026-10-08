@@ -121,6 +121,26 @@ test("snapshot composes proven identity and public scene while keeping CurrentAc
   assert.deepEqual(acting.transitionEvents, []);
 });
 
+test("snapshot copies explicit self-target actions independently of an interaction scene", () => {
+  const selfTargetAction = {
+    semantics: "PROVEN", rootEventId: "peach-event", resolutionId: "peach-resolution",
+    sourceId: "A", targetId: "A", cardKind: "Peach",
+  };
+  const publicPresentation = {
+    interactionScene: null,
+    stableBoundary: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null },
+    selfTargetActions: [selfTargetAction],
+  };
+  const acting = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "turn", actorId: "A" }, actionRevision: "action-a", viewerId: "A" });
+  const waiting = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "none", actorId: null }, actionRevision: "action-b", viewerId: "B" });
+  assert.deepEqual(acting.selfTargetActions, [selfTargetAction]);
+  assert.deepEqual(waiting.selfTargetActions, [selfTargetAction], "public self-target proof is viewer-equal");
+  assert.deepEqual(composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, selfTargetActions: [selfTargetAction, { ...selfTargetAction, sourceId: "B" }] },
+    currentAction: null, actionRevision: "action-c", viewerId: "B",
+  }).selfTargetActions, [selfTargetAction], "malformed records are removed without discarding the valid public proof");
+});
+
 test("single-target Negation settlement requires a typed, root-bound public occurrence", () => {
   const envelope = {
     version: 1,

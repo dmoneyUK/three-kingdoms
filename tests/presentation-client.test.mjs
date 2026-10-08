@@ -166,6 +166,7 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
     bumperHarvestProgress: null,
     reactionChain: null,
     rootAction: null,
+    selfTargetActions: [],
     continuity: { relation: "ROOT_FRAME", parentFrameId: null },
     parentFrameId: null,
     stableKind: "CHOICE",
@@ -176,6 +177,23 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
   assert.equal("options" in view, false);
   assert.equal("legalActions" in view, false);
   assert.equal("providers" in view, false);
+});
+
+test("adapter keeps explicit self-target proof public across REST and viewer changes", () => {
+  const selfTargetAction = {
+    semantics: "PROVEN", rootEventId: "peach-event", resolutionId: "peach-resolution",
+    sourceId: "A", targetId: "A", cardKind: "Peach",
+  };
+  const rest = snapshot({
+    identity: null,
+    interaction: null,
+    decision: null,
+    stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null },
+    selfTargetActions: [selfTargetAction],
+  });
+  assert.deepEqual(buildPresentationClientView(rest, "A").selfTargetActions, [selfTargetAction]);
+  assert.deepEqual(buildPresentationClientView(rest, "B").selfTargetActions, [selfTargetAction]);
+  assert.deepEqual(buildPresentationClientView({ ...rest, selfTargetActions: [{ ...selfTargetAction, sourceId: "B" }] }, "B").selfTargetActions, []);
 });
 
 test("adapter carries only a root action bound to the active public frame", () => {

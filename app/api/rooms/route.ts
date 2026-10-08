@@ -24,7 +24,7 @@ import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { projectPresentationV2, type PresentationNegationSettlementProof } from "../../../game/presentation-v2";
+import { projectPresentationV2, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
@@ -35,7 +35,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null; causal_envelope_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -610,7 +610,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}) };
 }
 function addTriggeredEffectNotice(log: string[], actor: string, label: string) {
   return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined, { effectNotice: true });
@@ -6204,7 +6204,7 @@ export async function POST(request: Request) {
         const beforeHp = me.hp ?? 0;
         const maxHp = me.max_hp ?? beforeHp;
         const amountRecovered = recoveredAmount(beforeHp, maxHp, 1);
-        log = addCardEvent(log, me.name, card); log = addLog(log, `${me.name} plays Peach and recovers ${amountRecovered} HP.`);
+        log = addCardEvent(log, me.name, card, me.name, "play", true, { selfTargetAction: { semantics: "PROVEN", sourceId: me.id, targetId: me.id, cardKind: "Peach" } }); log = addLog(log, `${me.name} plays Peach and recovers ${amountRecovered} HP.`);
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), applyRecovery(beforeHp, amountRecovered, maxHp), me.id),
           db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), room.id),

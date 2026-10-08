@@ -5,29 +5,28 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-Phase A's real Attack graph now has dense-table proof: 7/7 browser scenarios
-passed (4 players at 390×844, 480×900, wide; 6 players at 390×844; 8 players at
-390×844, 480×900, wide). The card remains at least 112×78 px, stays inside the
-table and clear of Seats/center/system/messages/exit; sampled connectors stay
-inside `.game-shell` and avoid unrelated Seats. Seat/Dock bounds shift by at
-most 0.5 px, document width does not overflow, and the target's real Dock Skip
-works. The test seeder now accepts canonical 4–8 player role sets. Production
-build, targeted ESLint, and `git diff --check` passed. Exact parent SHA
-`afb0b668fbf65fcf0a3fa2daeb0e96f68ed9ab89`, Actions run `37737075160`:
-SUCCESS. Check this task's pushed SHA at the next commit gate. Reviewer
-acceptance is not claimed.
+Phase A now proves ordinary self-target Peach from the real Play Phase route:
+viewer-equal public source=self identity, one nearby Peach root card and tether,
+restrained same-player halo, no loop arrow/duplicate, and stable Dock geometry at
+390×844, 480×900, and 1440×900. Parent SHA `48a1140c1e99e737bcb886eb6aecf26b46cecd00`,
+Actions run `37737990790`: FAILED in Browser shard 1/2, private-draw observer
+page timed out waiting for `/api/rooms`. The privacy probe now uses an independent
+browser context; CI-mode repeat passed 4/4, full local shard passed 397/397
+before that isolation adjustment. Presentation tests 104/104, engine API tests
+34/34, build, targeted lint, and diff check passed. Fix is included in the
+current task commit; its new CI result is not yet observed. Reviewer acceptance
+is not claimed.
 
 ## Design checkpoint
 
 Reviewed remote `docs/UX2-refine.md`, blob
-`516fc7d673b0dfcc7e1e01ba8572cd97cdcf6784`, through §6.26. Section 6 is active;
-no newer design revision was found.
+`516fc7d673b0dfcc7e1e01ba8572cd97cdcf6784`, through §6.26. No newer revision.
 
 ## Current / next task
 
-`UX2.6-PHASE-A-SELF-TARGET-PEACH-PUBLIC-PROOF-01` — add a server-owned public
-source/target identity proof for an ordinary wounded-player Play Phase Peach,
-then render its root card with a source tether and restrained same-player
-emphasis, never a loop arrow or duplicate player. Validate the real gameplay
-path, stable Seat/Dock geometry, settlement lifecycle, and fail-closed behavior;
-do not infer identity from timeline names or DOM position.
+`UX2.6-PHASE-B-ATTACK-DODGE-RESPONSE-PROOF-01` — add server-authored public
+proof linking a submitted physical Dodge to its exact single-target Attack root
+and target effect. Project the source/counter relation viewer-equally; emit no
+response node before submission; fail closed for missing, mismatched, stale, or
+ambiguous root/response identity. This task adds semantic proof only; defer
+generic graph rendering and Negation migration.

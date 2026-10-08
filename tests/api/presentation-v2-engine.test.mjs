@@ -151,6 +151,31 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   assert.deepEqual(settled.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
 });
 
+test("engine-backed ordinary wounded-player Peach publishes an exact viewer-equal self-target proof", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [source] = game.room.players;
+  const [sourceMember, observerMember] = game.members;
+  const peach = card("Peach", "self-target-public-proof");
+  setHand(source.id, [peach], 3, 4);
+  setTurn(game.code, source.seat);
+
+  const played = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: peach.id });
+  assert.equal(played.status, 200, JSON.stringify(played.data));
+  const actorView = await assertProjectionMatchesEngine(game.code, sourceMember.token);
+  const observerView = await assertProjectionMatchesEngine(game.code, observerMember.token);
+  const peachEvent = actorView.timeline.find((event) => event.type === "card" && event.card?.id === peach.id);
+  assert.ok(peachEvent, "the normal Play Phase route persists the exact played Peach event");
+  const proof = {
+    semantics: "PROVEN", rootEventId: peachEvent.id, resolutionId: peachEvent.resolutionId,
+    sourceId: source.id, targetId: source.id, cardKind: "Peach",
+  };
+  assert.deepEqual(actorView.presentationV2.selfTargetActions, [proof]);
+  assert.deepEqual(actorView.presentationSnapshot.selfTargetActions, [proof]);
+  assert.deepEqual(observerView.presentationSnapshot.selfTargetActions, [proof], "the public proof is identical for a non-acting viewer");
+  assert.equal(JSON.stringify(proof).includes(peach.id), false, "the public identity contract does not copy the physical card ID");
+  assert.equal(actorView.players.find((player) => player.id === source.id)?.hp, 4, "the ordinary Peach effect resolves normally");
+});
+
 test("engine-backed Borrowed Sword preserves forced Attack continuation and timer barrier", { timeout: 30_000 }, async () => {
   const scenario = await openBorrowedSwordScenario({ choose: false });
   const chosen = await request("choose_borrowed_sword_target", { code: scenario.game.code, token: scenario.host.token, targetId: scenario.target.id });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
+import type { CardKind } from "../game/model";
 import type { PresentationSnapshotRootAction } from "../game/presentation-snapshot";
 
 type Point = { x: number; y: number };
@@ -10,7 +11,19 @@ type RootActionLayout = {
   height: number;
   card: Rect;
   sourcePath: string;
-  targetPath: string;
+  targetPath: string | null;
+  selfHalo: Rect | null;
+};
+
+export type InteractionRootOverlayAction = {
+  key: string;
+  rootEventId: string;
+  sourceId: string;
+  targetId: string;
+  cardKind: CardKind;
+  cardLabel: string;
+  ariaLabel: string;
+  mode: "targeted" | "self-target";
 };
 
 function relativeRect(element: HTMLElement, root: DOMRect): Rect {
@@ -54,7 +67,7 @@ function overlaps(left: Rect, right: Rect, padding = 0): boolean {
     && left.top < right.bottom + padding && left.bottom > right.top - padding;
 }
 
-function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, action: Pick<PresentationSnapshotRootAction, "sourceId" | "targetId">): RootActionLayout | null {
+function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, action: Pick<InteractionRootOverlayAction, "sourceId" | "targetId" | "mode">): RootActionLayout | null {
   const table = shell.querySelector<HTMLElement>(".play-table");
   const shellBounds = shell.getBoundingClientRect();
   const cardBounds = cardElement.getBoundingClientRect();
@@ -66,8 +79,10 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, action: 
     return matches.length === 1 ? matches[0] : null;
   };
   const sourceElement = anchorFor(action.sourceId);
-  const targetElement = anchorFor(action.targetId);
-  if (!sourceElement || !targetElement || sourceElement === targetElement) return null;
+  const isSelfTarget = action.mode === "self-target";
+  const targetElement = isSelfTarget ? sourceElement : anchorFor(action.targetId);
+  if (!sourceElement || !targetElement || isSelfTarget !== (sourceElement === targetElement)
+    || isSelfTarget !== (action.sourceId === action.targetId)) return null;
   const sourceBounds = sourceElement.getBoundingClientRect();
   const targetBounds = targetElement.getBoundingClientRect();
   if (!sourceElement.isConnected || !targetElement.isConnected
@@ -84,6 +99,59 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, action: 
   if (tableRect.width < cardWidth + margin * 2 || tableRect.height < cardHeight + margin * 2) return null;
 
   const sourceCenter = center(sourceRect);
+  if (action.mode === "self-target") {
+    const tableCenter = center(tableRect);
+    const inwardDelta = { x: tableCenter.x - sourceCenter.x, y: tableCenter.y - sourceCenter.y };
+    const inwardLength = Math.hypot(inwardDelta.x, inwardDelta.y) || 1;
+    const inward = { x: inwardDelta.x / inwardLength, y: inwardDelta.y / inwardLength };
+    const tangent = { x: -inward.y, y: inward.x };
+    const sourceExtent = Math.abs(inward.x) * sourceRect.width / 2 + Math.abs(inward.y) * sourceRect.height / 2;
+    const preferred = {
+      x: sourceCenter.x + inward.x * (sourceExtent + cardWidth / 2 + 24),
+      y: sourceCenter.y + inward.y * (sourceExtent + cardHeight / 2 + 24),
+    };
+    // Wider portrait boards can put the local Dock's inward projection behind
+    // the central deck/discard object. Include a full card-width sidestep so
+    // the self-target card can remain near the source without covering it.
+    const candidateCenters = [0, -72, 72, -44, 44, -104, 104, -152, 152].map((offset) => ({
+      x: preferred.x + tangent.x * offset,
+      y: preferred.y + tangent.y * offset,
+    })).concat([0, -54, 54].flatMap((advance) => [0, -44, 44].map((offset) => ({
+      x: preferred.x + inward.x * advance + tangent.x * offset,
+      y: preferred.y + inward.y * advance + tangent.y * offset,
+    }))));
+    const obstacles = [
+      ...Array.from(shell.querySelectorAll<HTMLElement>("[data-player-anchor]")),
+      ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .game-messages, .game-exit")),
+    ].filter((element) => element.getClientRects().length > 0)
+      .map((element) => relativeRect(element, shellBounds));
+    const candidates = candidateCenters.flatMap((candidate) => {
+      const left = Math.max(tableRect.left + margin, Math.min(candidate.x - cardWidth / 2, tableRect.right - margin - cardWidth));
+      const top = Math.max(tableRect.top + margin, Math.min(candidate.y - cardHeight / 2, tableRect.bottom - margin - cardHeight));
+      const card: Rect = { left, top, right: left + cardWidth, bottom: top + cardHeight, width: cardWidth, height: cardHeight };
+      if (obstacles.some((obstacle) => overlaps(card, obstacle, 8))) return [];
+      return [{ card, score: Math.hypot(left + cardWidth / 2 - preferred.x, top + cardHeight / 2 - preferred.y) }];
+    }).sort((left, right) => left.score - right.score);
+    const card = candidates[0]?.card;
+    if (!card) return null;
+    const emphasisElement = sourceElement.classList.contains("local-player-dock")
+      ? sourceElement.querySelector<HTMLElement>(".local-hero-card") ?? sourceElement
+      : sourceElement;
+    const emphasis = relativeRect(emphasisElement, shellBounds);
+    const selfHalo = { left: emphasis.left - 3, top: emphasis.top - 3, right: emphasis.right + 3, bottom: emphasis.bottom + 3, width: emphasis.width + 6, height: emphasis.height + 6 };
+    const cardCenter = center(card);
+    const sourceStart = rectangleEdge(sourceRect, cardCenter);
+    const sourceEnd = rectangleEdge(card, sourceCenter);
+    return {
+      width: shellBounds.width,
+      height: shellBounds.height,
+      card,
+      sourcePath: pathBetween(sourceStart, sourceEnd, Math.min(24, Math.hypot(cardCenter.x - sourceCenter.x, cardCenter.y - sourceCenter.y) * .035)),
+      targetPath: null,
+      selfHalo,
+    };
+  }
+
   const targetCenter = center(targetRect);
   const lineX = targetCenter.x - sourceCenter.x;
   const lineY = targetCenter.y - sourceCenter.y;
@@ -131,6 +199,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, action: 
     card,
     sourcePath: pathBetween(sourceStart, sourceEnd, Math.min(24, lineLength * .035)),
     targetPath: pathBetween(targetStart, targetEnd, Math.min(34, lineLength * .05)),
+    selfHalo: null,
   };
 }
 
@@ -145,7 +214,7 @@ export function InteractionRootOverlay({
   targetName,
   onReadyChange,
 }: {
-  action: PresentationSnapshotRootAction | null;
+  action: InteractionRootOverlayAction | null;
   enabled: boolean;
   sourceName: string | null;
   targetName: string | null;
@@ -154,9 +223,10 @@ export function InteractionRootOverlay({
   const layerRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<RootActionLayout | null>(null);
-  const key = action ? interactionRootActionKey(action) : null;
+  const key = action?.key ?? null;
   const sourceId = action?.sourceId ?? null;
   const targetId = action?.targetId ?? null;
+  const mode = action?.mode ?? null;
   const markerId = key ? `root-target-arrow-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}` : "root-target-arrow";
 
   useLayoutEffect(() => {
@@ -170,14 +240,15 @@ export function InteractionRootOverlay({
     }
 
     const measure = () => {
-      const nextLayout = layoutRootAction(shell, card, { sourceId, targetId });
+      const nextLayout = layoutRootAction(shell, card, { sourceId, targetId, mode: mode ?? "targeted" });
       setLayout((current) => {
         if (!nextLayout || !current) return nextLayout;
         const unchanged = Math.abs(current.width - nextLayout.width) < .5
           && Math.abs(current.height - nextLayout.height) < .5
           && Math.abs(current.card.left - nextLayout.card.left) < .5
           && Math.abs(current.card.top - nextLayout.card.top) < .5
-          && current.sourcePath === nextLayout.sourcePath && current.targetPath === nextLayout.targetPath;
+          && current.sourcePath === nextLayout.sourcePath && current.targetPath === nextLayout.targetPath
+          && JSON.stringify(current.selfHalo) === JSON.stringify(nextLayout.selfHalo);
         return unchanged ? current : nextLayout;
       });
       onReadyChange(nextLayout ? key : null);
@@ -194,10 +265,10 @@ export function InteractionRootOverlay({
       window.removeEventListener("resize", measure);
       onReadyChange(null);
     };
-  }, [enabled, key, onReadyChange, sourceId, targetId]);
+  }, [enabled, key, mode, onReadyChange, sourceId, targetId]);
 
   if (!action) return null;
-  const visible = enabled && Boolean(layout) && Boolean(sourceName && targetName);
+  const visible = enabled && Boolean(layout) && Boolean(sourceName && (action.mode === "self-target" || targetName));
   return <div
     ref={layerRef}
     className="interaction-root-overlay"
@@ -206,6 +277,7 @@ export function InteractionRootOverlay({
     data-root-action-event-id={action.rootEventId}
     data-root-action-source-id={action.sourceId}
     data-root-action-target-id={action.targetId}
+    data-root-action-mode={action.mode}
     aria-hidden={!visible}
     style={{ visibility: visible ? "visible" : "hidden" }}
   >
@@ -215,8 +287,17 @@ export function InteractionRootOverlay({
           <path d="M0 0 L8 4 L0 8 Z" />
         </marker>
       </defs>
+      {layout.selfHalo && <rect
+        className="interaction-root-self-target-halo"
+        data-root-action-self-target-halo="true"
+        x={layout.selfHalo.left}
+        y={layout.selfHalo.top}
+        width={layout.selfHalo.width}
+        height={layout.selfHalo.height}
+        rx="7"
+      />}
       <path className="interaction-root-source-tether" data-root-action-edge="source" d={layout.sourcePath} />
-      <path className="interaction-root-target-arrow" data-root-action-edge="target" d={layout.targetPath} markerEnd={`url(#${markerId})`} />
+      {layout.targetPath && <path className="interaction-root-target-arrow" data-root-action-edge="target" d={layout.targetPath} markerEnd={`url(#${markerId})`} />}
     </svg>}
     <div
       ref={cardRef}
@@ -224,11 +305,11 @@ export function InteractionRootOverlay({
       data-root-action-card="true"
       data-root-action-card-kind={action.cardKind}
       role="img"
-      aria-label={`${sourceName ?? "Unknown player"} played Attack targeting ${targetName ?? "unknown player"}`}
+      aria-label={action.ariaLabel}
       style={layout ? { left: layout.card.left, top: layout.card.top, transform: "none" } : undefined}
     >
       <small>ROOT ACTION</small>
-      <strong>ATTACK</strong>
+      <strong>{action.cardLabel}</strong>
     </div>
   </div>;
 }

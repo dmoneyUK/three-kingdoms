@@ -17,6 +17,21 @@ export type PresentationV2Event = {
   presentation?: boolean;
   judgement?: boolean;
   negationSettlement?: unknown;
+  selfTargetAction?: unknown;
+};
+
+/** Server-authored public proof attached only to a successfully used self-target card event. */
+export type PresentationSelfTargetActionProof = {
+  semantics: "PROVEN";
+  sourceId: string;
+  targetId: string;
+  cardKind: "Peach";
+};
+
+/** Event-scoped public self-target action; unlike a response root, it has no causal frame. */
+export type PresentationSelfTargetAction = PresentationSelfTargetActionProof & {
+  rootEventId: string;
+  resolutionId: string;
 };
 
 export type PresentationNegationSettlementProof = {
@@ -198,6 +213,7 @@ export type PresentationV2 = {
   participants: readonly PresentationParticipant[];
   interactionScene: PresentationInteractionScene | null;
   rootAction: PresentationRootAction | null;
+  selfTargetActions?: readonly PresentationSelfTargetAction[];
   dyingBarrier: PresentationDyingBarrier | null;
   reactionChain: PresentationReactionChain | null;
   negationSettlement: PresentationNegationSettlement | null;
@@ -1178,6 +1194,28 @@ function singleTargetAttackRootActionFor(
   };
 }
 
+function selfTargetActionsFor(timeline: readonly PresentationV2Event[]): PresentationSelfTargetAction[] {
+  const eventIdCounts = new Map<string, number>();
+  for (const event of timeline) {
+    const eventId = stringValue(event.id);
+    if (eventId) eventIdCounts.set(eventId, (eventIdCounts.get(eventId) ?? 0) + 1);
+  }
+  return timeline.flatMap((event) => {
+    const proof = record(event.selfTargetAction);
+    const card = record(event.card);
+    const eventId = stringValue(event.id);
+    const resolutionId = stringValue(event.resolutionId);
+    const sourceId = stringValue(proof?.sourceId);
+    const targetId = stringValue(proof?.targetId);
+    if (!eventId || eventIdCounts.get(eventId) !== 1 || !resolutionId
+      || event.type !== "card" || event.presentation === false || event.action !== "play"
+      || event.playedAs !== undefined || card?.kind !== "Peach" || !stringValue(card.id)
+      || proof?.semantics !== "PROVEN" || proof.cardKind !== "Peach"
+      || !sourceId || sourceId !== targetId) return [];
+    return [{ semantics: "PROVEN", rootEventId: eventId, resolutionId, sourceId, targetId, cardKind: "Peach" }];
+  });
+}
+
 function participants(active: Context | null, group: RecordLike | null): PresentationParticipant[] {
   if (!active) return [];
   const map = new Map<string, Set<PresentationParticipant["roles"][number]>>();
@@ -1224,6 +1262,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const groupValues = groupProjectionValues(envelope, input.pending, group);
   const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
   const rootAction = singleTargetAttackRootActionFor(envelope, interactionScene, input.pending, root, rootEvent);
+  const selfTargetActions = selfTargetActionsFor(input.timeline);
   const oathRecipientScope = oathRecipientScopeFor(input.pending, envelope, interactionScene, input.oathRecipientIds);
   const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
@@ -1256,6 +1295,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     participants: interactionScene?.semantics === "PROVEN" ? participantsFromScene(interactionScene) : participants(active, group),
     interactionScene,
     rootAction,
+    selfTargetActions,
     dyingBarrier,
     reactionChain,
     negationSettlement,

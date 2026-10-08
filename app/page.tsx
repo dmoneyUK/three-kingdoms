@@ -18,7 +18,7 @@ import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForVi
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
-import { InteractionRootOverlay, interactionRootActionKey } from "./interaction-root-overlay";
+import { InteractionRootOverlay, interactionRootActionKey, type InteractionRootOverlayAction } from "./interaction-root-overlay";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -2798,17 +2798,63 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     }
     : null;
   const rootAction = clientPresentation.rootAction;
-  const rootActionSource = rootAction ? room.players.find((player) => player.id === rootAction.sourceId) : null;
-  const rootActionTarget = rootAction ? room.players.find((player) => player.id === rootAction.targetId) : null;
-  const rootActionKey = rootAction ? interactionRootActionKey(rootAction) : null;
+  const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId) : null;
+  const selfTargetCandidates = rootAction ? [] : clientPresentation.selfTargetActions.flatMap((action) => {
+    const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
+    if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
+      || event.resolutionId !== action.resolutionId || event.card.kind !== action.cardKind
+      || action.sourceId !== action.targetId) return [];
+    const matchingSequenceEvents = sequenceEvents.filter((candidate) => eventCards(candidate).some((card) => card.id === event.card.id));
+    if (matchingSequenceEvents.length !== 1) return [];
+    const isDisplayedEvent = Boolean(displayedEvent && eventCards(displayedEvent).some((card) => card.id === event.card.id));
+    const isSettledEvent = !displayedEvent && eventQueue.length === 0 && !hasUnseenPresentations;
+    if (eventQueue.length > 0 || !isDisplayedEvent && !isSettledEvent) return [];
+    const source = room.players.find((player) => player.id === action.sourceId);
+    if (!source) return [];
+    return [{ action, event, source }];
+  });
+  const selfTargetCandidate = selfTargetCandidates.length === 1 ? selfTargetCandidates[0] : null;
+  const rootActionOverlayAction: InteractionRootOverlayAction | null = rootAction
+    ? {
+      key: interactionRootActionKey(rootAction),
+      rootEventId: rootAction.rootEventId,
+      sourceId: rootAction.sourceId,
+      targetId: rootAction.targetId,
+      cardKind: rootAction.cardKind,
+      cardLabel: "ATTACK",
+      ariaLabel: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "Unknown player"} played Attack targeting ${room.players.find((player) => player.id === rootAction.targetId)?.name ?? "unknown player"}`,
+      mode: "targeted",
+    }
+    : selfTargetCandidate
+      ? {
+        key: ["self", selfTargetCandidate.action.rootEventId, selfTargetCandidate.action.resolutionId, selfTargetCandidate.action.sourceId].join(":"),
+        rootEventId: selfTargetCandidate.action.rootEventId,
+        sourceId: selfTargetCandidate.action.sourceId,
+        targetId: selfTargetCandidate.action.targetId,
+        cardKind: "Peach",
+        cardLabel: "PEACH",
+        ariaLabel: `${selfTargetCandidate.source.name} used Peach on self`,
+        mode: "self-target",
+      }
+      : null;
+  const rootActionSource = rootActionOverlayAction ? room.players.find((player) => player.id === rootActionOverlayAction.sourceId) : null;
+  const rootActionTarget = rootActionOverlayAction ? room.players.find((player) => player.id === rootActionOverlayAction.targetId) : null;
   const rootActionTemporarilyBlocked = Boolean(targetPreviewPresentation || opponentInspectionPresentation || targetCardPickerSelectableDetail || expandedOpponentId || groupScopePreview.active);
   const rootActionAwaitingReveal = Boolean(rootAction && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations));
-  const rootActionOverlayEnabled = Boolean(rootAction && rootActionSource?.name && rootActionTarget?.name && !rootActionTemporarilyBlocked && !rootActionAwaitingReveal);
-  const rootActionOverlayVisible = Boolean(rootActionOverlayEnabled && rootActionKey && rootActionOverlayReadyKey === rootActionKey);
-  const displayedSequenceEvents = rootActionOverlayVisible && rootAction
-    ? sequenceEvents.filter((event) => event.id !== rootAction.rootEventId)
+  const rootActionOverlayEnabled = Boolean(rootActionOverlayAction && rootActionSource?.name
+    && (rootActionOverlayAction.mode === "self-target" || rootActionTarget?.name)
+    && !rootActionTemporarilyBlocked && !rootActionAwaitingReveal);
+  const rootActionOverlayVisible = Boolean(rootActionOverlayEnabled && rootActionOverlayAction && rootActionOverlayReadyKey === rootActionOverlayAction.key);
+  const rootActionCardId = rootActionEvent?.type === "card" ? rootActionEvent.card.id
+    : selfTargetCandidate?.event.card.id ?? null;
+  const displayedSequenceEvents = rootActionOverlayVisible && rootActionOverlayAction
+    ? sequenceEvents.filter((event) => event.id !== rootActionOverlayAction.rootEventId
+      && (!rootActionCardId || !eventCards(event).some((card) => card.id === rootActionCardId)))
     : sequenceEvents;
-  const tablePresentationVisible = displayedSequenceEvents.length > 0 || Boolean(displayedEvent && eventCards(displayedEvent).length);
+  const activeRootSelfTargetEvent = rootActionOverlayVisible && rootActionOverlayAction?.mode === "self-target"
+    && rootActionCardId && displayedEvent && eventCards(displayedEvent).some((card) => card.id === rootActionCardId);
+  const displayedTableEvent = activeRootSelfTargetEvent ? null : displayedEvent;
+  const tablePresentationVisible = displayedSequenceEvents.length > 0 || Boolean(displayedTableEvent && eventCards(displayedTableEvent).length);
   const localEquipmentSelection = activeSkillSelection
     ? { eligibleIds: activeSkillSelection.eligibleCardIds, selectedIds: activeSkillSelectedCardIds, max: activeSkillSelection.max, disabled: busy || presentationBusy, onToggle: (cardId: string) => setActiveSkillSelectionState((state) => { if (!state || !activeSkillStateIsCurrent) return state; const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)); return validIds.includes(cardId) ? { ...state, cardIds: validIds.filter((id) => id !== cardId) } : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, cardId] } : { ...state, cardIds: validIds }; }) }
     : targetCardPickerInLocalDock && targetCardPickerSelection && targetCardPickerTarget
@@ -2955,7 +3001,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       {privateDrawVisible && <div className="played-card-stage private-draw-stage" role="status"><div className="private-draw-content"><div className="card-action-title"><b>PRIVATE DRAW</b><span>Only you can see these cards</span></div><div className="private-draw-row" role="region" aria-label="Private drawn cards; scroll horizontally to view all" tabIndex={privateDrawCards.length > 3 ? 0 : undefined}>{privateDrawCards.map((drawn) => <CardFace card={drawn} key={drawn.id} />)}</div></div></div>}
       {privateDistribution && !presentationBusy && <PrivateCardDistributionDialog key={room.actionRevision} cards={privateDistribution.cards} players={room.players.filter((player) => privateDistribution.eligibleRecipientIds.includes(player.id) && player.alive)} disabled={busy} error={error} onSubmit={(assignments) => onAction("trigger", { providerId: "private_card_distribution", assignments })} />}
       {privateDeckReorder && <PrivateDeckReorderDialog key={room.actionRevision} cards={privateDeckReorder.cards} minTop={privateDeckReorder.minTop} maxTop={privateDeckReorder.maxTop} disabled={busy} error={error} onSubmit={(topCardIds, bottomCardIds) => onAction("trigger", { providerId: "private_deck_reorder", topCardIds, bottomCardIds })} />}
-      {tablePresentationVisible && <TableResolutionSequence events={displayedSequenceEvents} activeEvent={displayedEvent} players={room.players} myTableIndex={myTableIndex} concluding={resolutionClosing} />}
+      {tablePresentationVisible && <TableResolutionSequence events={displayedSequenceEvents} activeEvent={displayedTableEvent} players={room.players} myTableIndex={myTableIndex} concluding={resolutionClosing} />}
       {room.pendingHarvest && !presentationBusy && <div className="game-event-stage harvest-choice-stage" role="dialog" aria-label="Bumper Harvest card choice"><div><span>BUMPER HARVEST</span><b>{room.pendingHarvest.complete ? "All choices complete" : harvestSubmitting ? "Your choice is submitted" : canChooseHarvest ? "Your turn — choose one card" : `${actor?.name ?? "The next player"} is choosing`}</b><small>{room.pendingHarvest.complete ? "The final shaded card remains visible before Bumper Harvest closes." : harvestSubmitting ? "Your card is shaded immediately while the next choice is prepared." : canChooseHarvest ? "Tap any available card to change your selection, then confirm. Selection changes are instant." : "Watch the current player's card rise, then become shaded when confirmed."}</small><div className="harvest-card-row">{room.pendingHarvest.revealed.map((choice) => { const takenBy = room.pendingHarvest?.choices.find((entry) => entry.cardId === choice.id); const submittedByMe = harvestSubmitting?.cardId === choice.id; const available = room.pendingHarvest?.availableIds.includes(choice.id); const awaitingConfirmation = !submittedByMe && activeHarvestSelection === choice.id; return <button type="button" className={`harvest-card-choice ${takenBy || submittedByMe ? "taken" : ""} ${awaitingConfirmation ? "pending-choice" : ""}`} disabled={!canChooseHarvest || Boolean(harvestSubmitting) || busy || !available} aria-pressed={awaitingConfirmation} aria-label={takenBy ? `${cardDefinition(choice.kind).name}, taken by ${takenBy.playerName}` : submittedByMe ? `${cardDefinition(choice.kind).name}, choice submitted by ${harvestSubmitting?.playerName ?? "ME"}` : `${cardDefinition(choice.kind).name}, ${awaitingConfirmation ? `selected by ${actor?.name ?? "current player"}, awaiting confirmation` : "available"}`} key={choice.id} onClick={() => { const nextCardId = activeHarvestSelection === choice.id ? "" : choice.id; setHarvestSelected(nextCardId); void publishHarvestPreview(nextCardId); }}><CardFace card={choice} />{takenBy && <strong className="harvest-taken-label">Taken by {takenBy.playerName}</strong>}{submittedByMe && !takenBy && <strong className="harvest-taken-label">Chosen by {harvestSubmitting?.playerName ?? "ME"}</strong>}{awaitingConfirmation && <strong className="harvest-pending-label">Selected by {actor?.name ?? "player"}</strong>}</button>; })}</div>{canChooseHarvest && (harvestSubmitting ? <div className="harvest-confirm-row"><small>Choice submitted · moving to the next player</small></div> : <div className="harvest-confirm-row"><small>{harvestSelectedCard ? `${cardDefinition(harvestSelectedCard.kind).name} selected` : "Select a card before confirming"}</small><button type="button" className="primary" disabled={busy || !harvestSelectedCard} onClick={async () => { if (!harvestSelectedCard || !me) return; const submission = { cardId: harvestSelectedCard.id, playerId: me.id, playerName: me.name }; queuedHarvestPreview.current = null; setHarvestSubmitting(submission); setHarvestSelected(""); const accepted = await onAction("choose_harvest", { cardId: submission.cardId }); if (!accepted) setHarvestSubmitting(null); }}>Confirm choice</button></div>)}</div></div>}
       <div className="play-center" aria-label="Card piles"><div className="draw-stack" data-draw-anchor="true" aria-label={`Draw pile, ${room.deckCount} cards`}><b>{room.deckCount}</b><span>DECK</span></div><div className="discard-stack" data-discard-anchor="true" data-discard-kind={visibleDiscardTop?.kind} aria-label={visibleDiscardTop ? `Discard pile, ${cardDefinition(visibleDiscardTop.kind).name}` : "Discard pile, empty"}>{visibleDiscardTop ? <CardFace card={visibleDiscardTop} /> : <b className="discard-empty">—</b>}<span>DISCARD</span></div></div>
       {pendingTargetCardUsesUnifiedModal && pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget && supportsAuthoritativeTargetCardSelection(pendingTargetCardSelectableSelection, pendingTargetCardSelectableTarget) && room.pendingTargetCard && pendingTargetCardActionName && <TargetCardPicker option={null} presentationCopy={{ title: pendingTargetCardActionName, accessibleName: `${pendingTargetCardActionName} target card selection`, instruction: room.pendingTargetCard.cardKind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard", actionLabel: `Use ${pendingTargetCardActionName}` }} selection={pendingTargetCardSelectableSelection} target={pendingTargetCardSelectableTarget} selectedKeys={pendingTargetCardSelectedKeys} disabled={busy || presentationBusy || !canUseAction(room.currentAction, "choose_target_card")} canDecline={false} showCancel error={error} onToggle={togglePendingTargetCardSelection} onUse={submitPendingTargetCardPicker} onCancel={clearPendingTargetCardSelection} onDecline={() => undefined} />}
@@ -2966,7 +3012,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       <div className="player-board" aria-label="Players" data-player-count={room.players.length} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}>{room.players.filter((player) => player.id !== room.meId).map((player) => { const index = room.players.findIndex((candidate) => candidate.id === player.id); const relativeIndex = (index - myTableIndex + room.players.length) % room.players.length; const selectedTargetCardKind = selectedCanPlayAsAttack ? "Attack" : card?.kind; const cardTargetLegal = Boolean(card && (card.kind === "BorrowedSword" ? borrowedSwordPlayTargetIds.includes(player.id) : selectedTargetCardKind && canTargetCharacter({ sourceId: room.meId, targetId: player.id, targetHero: player.hero, targetHandCount: player.handCount, cardKind: selectedTargetCardKind }))); const targetablePlayer = Boolean((borrowedSwordTargetSelectionActive && borrowedSwordEligibleTargetIds.includes(player.id) && player.alive) || (activeSkillTargetMode && activeSkillTargetIds.includes(player.id) && player.alive) || (triggerTargetSelection?.targetIds.includes(player.id) && triggerTargetMode) || (serpentMode && canPlay) || (card && cardTargetLegal && (selectedCanPlayAsAttack || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "BorrowedSword" || card.kind === "Overindulgence" || card.kind === "RationsDepleted"))); return <OpponentPlayerCard key={`square-${player.id}`} totalPlayers={room.players.length} player={player} viewerId={room.meId} playerHero={heroDefinition(player.hero)} relativeIndex={relativeIndex} isTurn={player.seat === room.turnSeat} isActionPlayer={clientPresentation.stage !== "NEGATION" && player.id === room.actionPlayerId} isSelectedTarget={borrowedSwordTargetId === player.id || targetIds.includes(player.id)} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(player.id)} interactionRoles={projectInteractionSeatRoles(clientPresentation, player.id)} targetSelectionActive={targetSelectionActive} targetablePlayer={targetablePlayer} onTarget={() => { if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id); else { setTarget(player.id); setTargetCardIndex(null); } }} onInspect={() => setExpandedOpponentId((currentId) => currentId === player.id ? null : player.id)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} judgementInFlight={judgementInFlight} serpentSelected={serpentSelected} triggerResponse={triggerResponse} triggerSelectionUsesCards={triggerSelectionUsesCards} responseDecisionReady={responseDecisionReady} triggerCardOption={triggerCardOption} onToggleEquipment={(cardId) => setSerpentSelected((ids) => ids.includes(cardId) ? ids.filter((id) => id !== cardId) : ids.length < (triggerResponse && triggerSelectionUsesCards ? triggerSelectionMax : 2) ? [...ids, cardId] : ids)} />; })}</div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
     </section>
-    <InteractionRootOverlay action={rootAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} onReadyChange={onRootActionOverlayReadyChange} />
+    <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} onReadyChange={onRootActionOverlayReadyChange} />
     <footer className="play-command">
     <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight}
       heroSkillControl={

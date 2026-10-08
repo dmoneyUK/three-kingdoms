@@ -9,6 +9,7 @@ import type {
   PresentationReactionChain,
   PresentationReactionChainNode,
   PresentationRootAction,
+  PresentationSelfTargetAction,
   PresentationStableBoundary,
   PresentationV2,
 } from "./presentation-v2";
@@ -60,6 +61,7 @@ export type PresentationSnapshotGroupProgress = {
 export type PresentationSnapshotOathRecipientScope = PresentationOathRecipientScope;
 export type PresentationSnapshotBumperHarvestProgress = PresentationBumperHarvestProgress;
 export type PresentationSnapshotRootAction = PresentationRootAction;
+export type PresentationSnapshotSelfTargetAction = PresentationSelfTargetAction;
 
 export type PresentationSnapshot = {
   identity: PresentationSnapshotIdentity | null;
@@ -70,6 +72,7 @@ export type PresentationSnapshot = {
   bumperHarvestProgress: PresentationSnapshotBumperHarvestProgress | null;
   reactionChain: PresentationReactionChain | null;
   rootAction: PresentationSnapshotRootAction | null;
+  selfTargetActions?: readonly PresentationSnapshotSelfTargetAction[];
   decision: PresentationSnapshotDecision | null;
   localControl: PresentationSnapshotLocalControl;
   /** Explicit public Negation disposition; legacy final-result hints never populate it. */
@@ -99,6 +102,27 @@ function nonEmptyString(value: unknown): value is string {
 
 function nonNegativeInteger(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) >= 0;
+}
+
+export function provenSelfTargetActions(value: unknown): PresentationSnapshotSelfTargetAction[] {
+  if (!Array.isArray(value)) return [];
+  const actions = value.filter((candidate): candidate is PresentationSnapshotSelfTargetAction => Boolean(candidate && typeof candidate === "object" && !Array.isArray(candidate)
+    && (candidate as PresentationSnapshotSelfTargetAction).semantics === "PROVEN"
+    && nonEmptyString((candidate as PresentationSnapshotSelfTargetAction).rootEventId)
+    && nonEmptyString((candidate as PresentationSnapshotSelfTargetAction).resolutionId)
+    && nonEmptyString((candidate as PresentationSnapshotSelfTargetAction).sourceId)
+    && (candidate as PresentationSnapshotSelfTargetAction).sourceId === (candidate as PresentationSnapshotSelfTargetAction).targetId
+    && (candidate as PresentationSnapshotSelfTargetAction).cardKind === "Peach"));
+  const counts = new Map<string, number>();
+  actions.forEach((action) => counts.set(action.rootEventId, (counts.get(action.rootEventId) ?? 0) + 1));
+  return actions.filter((action) => counts.get(action.rootEventId) === 1).map((action) => ({
+    semantics: "PROVEN",
+    rootEventId: action.rootEventId,
+    resolutionId: action.resolutionId,
+    sourceId: action.sourceId,
+    targetId: action.targetId,
+    cardKind: "Peach",
+  }));
 }
 
 function isProvenScene(scene: PresentationInteractionScene | null): scene is PresentationInteractionScene {
@@ -442,6 +466,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     bumperHarvestProgress: authority ? bumperHarvestProgressFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
     reactionChain: authority ? reactionChainFor(input.presentationV2, authority.scene, authority.identity) : null,
     rootAction: authority ? rootActionFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
+    selfTargetActions: provenSelfTargetActions(input.presentationV2.selfTargetActions),
     decision: authority && authority.stable.kind === "CHOICE"
       ? { actorId: authority.scene.decisionActorId, stage: authority.scene.stage }
       : null,

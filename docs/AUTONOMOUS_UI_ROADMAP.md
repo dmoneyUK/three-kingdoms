@@ -1650,6 +1650,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Skip remained clickable. Production build, targeted ESLint, and diff check
   passed. Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-A-SELF-TARGET-PEACH-PUBLIC-PROOF-01 — ordinary Peach self-target
+
+- The normal wounded-player Play Phase Peach route now attaches explicit public
+  source=self target proof to its exact played-card event. PresentationV2,
+  Snapshot, and Client preserve viewer-equal proof without exposing a physical
+  card ID; mismatched or ambiguous proof fails closed. The existing root-card
+  overlay renders a single Peach near the real Local Dock with a source tether
+  and restrained self halo, but no loop arrow or duplicate player/card.
+- Real-gameplay browser proof passed at 390×844, 480×900, and 1440×900 with
+  measured table containment, obstacle/tether clearance, no horizontal
+  overflow, and Seat/Dock stability within 0.5 px. Presentation tests passed
+  104/104, engine-backed API tests 34/34, build and targeted lint passed.
+  Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

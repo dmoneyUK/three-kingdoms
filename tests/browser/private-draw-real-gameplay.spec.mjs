@@ -92,7 +92,7 @@ async function clickCardAtExposedPoint(cardButton) {
   await cardButton.click({ position });
 }
 
-test("real draw-phase gameplay shows private cards and the compact timer without moving the System Menu", async ({ page, request }) => {
+test("real draw-phase gameplay shows private cards and the compact timer without moving the System Menu", async ({ page, request, browser }) => {
   // Keep the real browser-room projection bounded while allowing headroom under CI shard load.
   test.setTimeout(60_000);
   await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
@@ -214,12 +214,17 @@ test("real draw-phase gameplay shows private cards and the compact timer without
   expect(observerView.myHand).toEqual([]);
   expect(observerView.timeline.some((event) => event.type === "card" && event.action === "draw")).toBe(false);
 
-  const observerPage = await page.context().newPage();
-  await openPlayer(observerPage, seed, 1, viewports[0]);
-  await expect(observerPage.locator(".private-draw-stage")).toHaveCount(0);
-  await expect(observerPage.locator(".stage-system-cluster > .visible-countdown-event")).toHaveCount(0);
-  for (const drawn of drawerView.myHand) await expect(observerPage.locator("body")).not.toContainText(drawn.kind);
-  await observerPage.close();
+  // Keep the observer's privacy projection independent from the drawer's frozen clock and request routing.
+  const observerContext = await browser.newContext();
+  try {
+    const observerPage = await observerContext.newPage();
+    await openPlayer(observerPage, seed, 1, viewports[0]);
+    await expect(observerPage.locator(".private-draw-stage")).toHaveCount(0);
+    await expect(observerPage.locator(".stage-system-cluster > .visible-countdown-event")).toHaveCount(0);
+    for (const drawn of drawerView.myHand) await expect(observerPage.locator("body")).not.toContainText(drawn.kind);
+  } finally {
+    await observerContext.close();
+  }
 });
 
 test("real multi-card Equilibrium draw keeps every private card reachable in the compact event", async ({ page, request }) => {
