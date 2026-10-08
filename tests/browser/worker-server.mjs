@@ -12,7 +12,18 @@ if (migration.status !== 0) {
   process.exit(migration.status ?? 1);
 }
 
-const worker = spawn("npx", ["wrangler", "dev", "-c", "dist/server/wrangler.json", "--assets", "dist/client", "--port", "3137", "--inspector-port", "9137", "--local", "--persist-to", statePath, "--var", "WTK_TEST_CAPABILITIES:1", "--show-interactive-dev-session=false"], { cwd: root, env: { ...process.env, GAME_TEST_STATE_PATH: statePath }, stdio: "inherit" });
+const worker = spawn("npx", ["wrangler", "dev", "-c", "dist/server/wrangler.json", "--assets", "dist/client", "--port", "3137", "--inspector-port", "9137", "--local", "--persist-to", statePath, "--var", "WTK_TEST_CAPABILITIES:1", "--show-interactive-dev-session=false"], {
+  cwd: root,
+  env: { ...process.env, GAME_TEST_STATE_PATH: statePath, WRANGLER_LOG_PATH: join(root, ".wrangler", "browser-worker.log") },
+  stdio: "inherit",
+});
+let shuttingDown = false;
+worker.on("error", (error) => console.error(`[browser-worker] Failed to start Wrangler: ${error.stack ?? error.message}`));
+worker.on("exit", (code, signal) => {
+  if (!shuttingDown && (code !== 0 || signal)) {
+    console.error(`[browser-worker] Wrangler exited unexpectedly (code=${code ?? "null"}, signal=${signal ?? "none"}).`);
+  }
+});
 
 async function waitForWorker() {
   for (let attempt = 0; attempt < 120; attempt += 1) {
@@ -30,6 +41,7 @@ async function waitForWorker() {
 }
 
 function stop(signal = "SIGTERM") {
+  shuttingDown = true;
   if (worker.exitCode === null) worker.kill(signal);
   rmSync(statePath, { recursive: true, force: true });
 }

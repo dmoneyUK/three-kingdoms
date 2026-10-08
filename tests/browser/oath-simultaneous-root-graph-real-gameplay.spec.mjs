@@ -208,6 +208,15 @@ async function graphGeometry(page, sourceId, expectedState, expectedResponses) {
   }, sourceId);
 }
 
+async function waitForSelfHaloToFollowHero(page, sourceId) {
+  await expect.poll(() => page.evaluate((playerId) => {
+    const halo = document.querySelector(`[data-root-action-oath-self-recipient-id='${playerId}']`)?.getBoundingClientRect();
+    const hero = document.querySelector(`.local-player-dock[data-player-anchor='${playerId}'] .local-hero-card`)?.getBoundingClientRect();
+    return Boolean(halo && hero && halo.left <= hero.left && halo.top <= hero.top
+      && halo.right >= hero.right && halo.bottom >= hero.bottom);
+  }, sourceId), { timeout: 20_000 }).toBe(true);
+}
+
 test("real Oath Negation uses the physical-seat simultaneous root graph and exact counter links", { timeout: 120_000 }, async ({ page, request }, testInfo) => {
   const seed = await seedOathGame(request);
   const availableNegations = new Map(seed.negations);
@@ -237,6 +246,7 @@ test("real Oath Negation uses the physical-seat simultaneous root graph and exac
   let blockedGeometry = null;
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
+    await waitForSelfHaloToFollowHero(page, seed.players[0].id);
     const geometry = await graphGeometry(page, seed.players[0].id, "BLOCKED", 1);
     expect(geometry.ready, JSON.stringify(geometry, null, 2)).toBe("true");
     expect(geometry.mode).toBe("simultaneous");
