@@ -27,6 +27,8 @@ export type PresentationV2Event = {
   publicDismantleSettlement?: unknown;
   publicStealSettlement?: unknown;
   publicAttackHitSettlement?: unknown;
+  publicGroupSettlement?: unknown;
+  /** Legacy persisted Raining Arrows metadata; normalized into groupSettlement. */
   publicRainingArrowsSettlement?: unknown;
   bumperHarvestRoot?: { semantics?: unknown; sourceId?: unknown; cardId?: unknown };
 };
@@ -96,26 +98,28 @@ export type PresentationAttackHitSettlement = PresentationAttackHitSettlementPro
   eventId: string;
 };
 
-export type PresentationRainingArrowsSettlementParticipant = {
+export type PresentationGroupSettlementCardKind = "BarbarianInvasion" | "RainingArrows";
+
+export type PresentationGroupSettlementParticipant = {
   playerId: string;
   order: number;
   status: "RESOLVED" | "NO_LONGER_APPLICABLE";
   outcome?: GroupParticipantProgressOutcome;
 };
 
-/** Server-authored terminal progress for one completed Raining Arrows root. */
-export type PresentationRainingArrowsSettlementProof = {
+/** Server-authored terminal progress for one completed GROUP root. */
+export type PresentationGroupSettlementProof = {
   semantics: "PROVEN";
   rootEventId: string;
   rootResolutionId: string;
   interactionId: string;
   groupFrameId: string;
   sourceId: string;
-  cardKind: "RainingArrows";
-  participants: readonly PresentationRainingArrowsSettlementParticipant[];
+  cardKind: PresentationGroupSettlementCardKind;
+  participants: readonly PresentationGroupSettlementParticipant[];
 };
 
-export type PresentationRainingArrowsSettlement = PresentationRainingArrowsSettlementProof & {
+export type PresentationGroupSettlement = PresentationGroupSettlementProof & {
   eventId: string;
 };
 
@@ -418,7 +422,7 @@ export type PresentationV2 = {
   dismantleSettlements: readonly PresentationDismantleSettlement[];
   stealSettlements: readonly PresentationStealSettlement[];
   attackHitSettlements: readonly PresentationAttackHitSettlement[];
-  rainingArrowsSettlements: readonly PresentationRainingArrowsSettlement[];
+  groupSettlements: readonly PresentationGroupSettlement[];
   duelExchange: PresentationDuelExchange | null;
   selfTargetActions?: readonly PresentationSelfTargetAction[];
   dyingBarrier: PresentationDyingBarrier | null;
@@ -1936,19 +1940,19 @@ function attackHitSettlementsFor(timeline: readonly PresentationV2Event[]): Pres
   });
 }
 
-function rainingArrowsSettlementsFor(timeline: readonly PresentationV2Event[]): PresentationRainingArrowsSettlement[] {
+function groupSettlementsFor(timeline: readonly PresentationV2Event[]): PresentationGroupSettlement[] {
   const eventIdCounts = new Map<string, number>();
   const rootIdCounts = new Map<string, number>();
   for (const event of timeline) {
     const eventId = stringValue(event.id);
     if (eventId) eventIdCounts.set(eventId, (eventIdCounts.get(eventId) ?? 0) + 1);
-    const proof = record(event.publicRainingArrowsSettlement);
+    const proof = record(event.publicGroupSettlement === undefined ? event.publicRainingArrowsSettlement : event.publicGroupSettlement);
     const rootEventId = stringValue(proof?.rootEventId);
     if (rootEventId) rootIdCounts.set(rootEventId, (rootIdCounts.get(rootEventId) ?? 0) + 1);
   }
 
   return timeline.flatMap((event) => {
-    const proof = record(event.publicRainingArrowsSettlement);
+    const proof = record(event.publicGroupSettlement === undefined ? event.publicRainingArrowsSettlement : event.publicGroupSettlement);
     const eventId = stringValue(event.id);
     const rootEventId = stringValue(proof?.rootEventId);
     const rootResolutionId = stringValue(proof?.rootResolutionId);
@@ -1959,7 +1963,7 @@ function rainingArrowsSettlementsFor(timeline: readonly PresentationV2Event[]): 
     if (!proof || !eventId || eventIdCounts.get(eventId) !== 1
       || !rootEventId || rootEventId === eventId || rootIdCounts.get(rootEventId) !== 1
       || !rootResolutionId || !interactionId || !groupFrameId || !sourceId
-      || proof.semantics !== "PROVEN" || proof.cardKind !== "RainingArrows"
+      || proof.semantics !== "PROVEN" || proof.cardKind !== "RainingArrows" && proof.cardKind !== "BarbarianInvasion"
       || !Array.isArray(rawParticipants) || rawParticipants.length === 0
       || event.type !== "message" || event.presentation === false || !stringValue(event.message)
       || event.importance !== "essential" || event.finalResult !== true
@@ -1971,9 +1975,9 @@ function rainingArrowsSettlementsFor(timeline: readonly PresentationV2Event[]): 
     if (!rootEvent || rootEvent.type !== "card" || rootEvent.presentation === false
       || rootEvent.action !== "play" || rootEvent.playedAs !== undefined
       || rootEvent.resolutionId !== rootResolutionId
-      || rootCard?.kind !== "RainingArrows" || !stringValue(rootCard.id)) return [];
+      || rootCard?.kind !== proof.cardKind || !stringValue(rootCard.id)) return [];
 
-    const participants: PresentationRainingArrowsSettlementParticipant[] = [];
+    const participants: PresentationGroupSettlementParticipant[] = [];
     const participantIds = new Set<string>();
     for (let index = 0; index < rawParticipants.length; index += 1) {
       const participant = record(rawParticipants[index]);
@@ -1984,12 +1988,12 @@ function rainingArrowsSettlementsFor(timeline: readonly PresentationV2Event[]): 
         || (status !== "RESOLVED" && status !== "NO_LONGER_APPLICABLE")
         || status === "RESOLVED" && (outcome !== "AVOIDED" && outcome !== "DAMAGED" && outcome !== "NEGATED" && outcome !== "DEFEATED")
         || status === "NO_LONGER_APPLICABLE" && outcome !== undefined
-        || outcome !== undefined && !isGroupParticipantProgressOutcomeAllowed("RainingArrows", "GROUP", status as GroupParticipantProgressStatus, outcome as GroupParticipantProgressOutcome)) return [];
+        || outcome !== undefined && !isGroupParticipantProgressOutcomeAllowed(proof.cardKind as "RainingArrows" | "BarbarianInvasion", "GROUP", status as GroupParticipantProgressStatus, outcome as GroupParticipantProgressOutcome)) return [];
       participantIds.add(playerId);
       participants.push({ playerId, order: index + 1, status, ...(outcome ? { outcome } : {}) });
     }
 
-    return [{ semantics: "PROVEN", eventId, rootEventId, rootResolutionId, interactionId, groupFrameId, sourceId, cardKind: "RainingArrows", participants }];
+    return [{ semantics: "PROVEN", eventId, rootEventId, rootResolutionId, interactionId, groupFrameId, sourceId, cardKind: proof.cardKind, participants }];
   });
 }
 
@@ -2258,7 +2262,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const dismantleSettlements = dismantleSettlementsFor(input.timeline);
   const stealSettlements = stealSettlementsFor(input.timeline);
   const attackHitSettlements = attackHitSettlementsFor(input.timeline);
-  const rainingArrowsSettlements = rainingArrowsSettlementsFor(input.timeline);
+  const groupSettlements = groupSettlementsFor(input.timeline);
   const duelExchange = duelExchangeFor(envelope, interactionScene, input.pending, input.timeline);
   const selfTargetActions = selfTargetActionsFor(input.timeline);
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
@@ -2299,7 +2303,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     dismantleSettlements,
     stealSettlements,
     attackHitSettlements,
-    rainingArrowsSettlements,
+    groupSettlements,
     duelExchange,
     selfTargetActions,
     dyingBarrier,

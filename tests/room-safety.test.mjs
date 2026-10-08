@@ -74,7 +74,7 @@ test("preserves only the privacy-safe direct Attack hit settlement fields", () =
   assert.equal(normalizeTimeline([{ ...event, publicAttackHitSettlement: { ...proof, outcome: "ATTACK_BLOCKED_BY_DODGE" } }])[0].publicAttackHitSettlement, undefined);
 });
 
-test("preserves only ordered public Raining Arrows settlement fields", () => {
+test("preserves only ordered public Group settlement fields", () => {
   const proof = {
     semantics: "PROVEN",
     rootEventId: "raining-root-event",
@@ -92,9 +92,9 @@ test("preserves only ordered public Raining Arrows settlement fields", () => {
   const event = normalizeTimeline([{
     type: "message", id: "raining-settlement-event", message: "Raining Arrows finishes resolving.",
     importance: "essential", finalResult: true, resolutionId: "raining-resolution",
-    publicRainingArrowsSettlement: proof,
+    publicGroupSettlement: proof,
   }])[0];
-  assert.deepEqual(event.publicRainingArrowsSettlement, {
+  assert.deepEqual(event.publicGroupSettlement, {
     semantics: "PROVEN",
     rootEventId: "raining-root-event",
     rootResolutionId: "raining-resolution",
@@ -107,9 +107,16 @@ test("preserves only ordered public Raining Arrows settlement fields", () => {
       { playerId: "second", order: 2, status: "NO_LONGER_APPLICABLE" },
     ],
   });
-  assert.equal(JSON.stringify(event.publicRainingArrowsSettlement).includes("hidden"), false);
-  assert.equal(JSON.stringify(event.publicRainingArrowsSettlement).includes("privateResolverOrder"), false);
-  assert.equal(normalizeTimeline([{ ...event, publicRainingArrowsSettlement: { ...proof, cardKind: "BarbarianInvasion" } }])[0].publicRainingArrowsSettlement, undefined);
+  assert.equal(JSON.stringify(event.publicGroupSettlement).includes("hidden"), false);
+  assert.equal(JSON.stringify(event.publicGroupSettlement).includes("privateResolverOrder"), false);
+  const { publicGroupSettlement, ...legacyEvent } = event;
+  const normalizedLegacyEvent = normalizeTimeline([{ ...legacyEvent, publicRainingArrowsSettlement: proof }])[0];
+  assert.deepEqual(normalizedLegacyEvent.publicGroupSettlement, publicGroupSettlement, "persisted Raining Arrows proofs normalize to the shared Group contract");
+  assert.equal("publicRainingArrowsSettlement" in normalizedLegacyEvent, false, "legacy metadata does not pass through unsanitized");
+  const barbarianProof = { ...proof, cardKind: "BarbarianInvasion", participants: [{ ...proof.participants[0], outcome: "DAMAGED" }, proof.participants[1]] };
+  assert.equal(normalizeTimeline([{ ...event, publicGroupSettlement: barbarianProof }])[0].publicGroupSettlement.cardKind, "BarbarianInvasion");
+  assert.equal(normalizeTimeline([{ ...event, publicGroupSettlement: { ...barbarianProof, participants: [{ ...barbarianProof.participants[0], outcome: "AVOIDED" }, barbarianProof.participants[1]] } }])[0].publicGroupSettlement, undefined);
+  assert.equal(normalizeTimeline([{ ...event, publicGroupSettlement: { ...proof, cardKind: "Attack" } }])[0].publicGroupSettlement, undefined);
 });
 
 test("handles missing collections and rejects malformed items while preserving valid data", () => {

@@ -2106,6 +2106,22 @@ Only a proven regression or new Reviewer-approved design requirement does.
   in the same changeset; outgoing CI is pending. Reviewer acceptance is not
   claimed.
 
+### UX2.6-PHASE-C-BARBARIAN-INVASION-SETTLEMENT-HOLD-01 — Barbarian Invasion settlement
+
+- Extended the server-authored Group settlement proof to Barbarian Invasion,
+  binding exact root event/resolution/frame, source, and ordered terminal
+  participant outcomes. Viewer snapshots remain equal and privacy-safe; malformed
+  and stale proof fails closed. Real server-backed browser coverage measures the
+  settled graph, branch outcomes, fixed Seats, Dock containment, hidden-Hand
+  privacy, and reduced-motion exit at 390×844 and 1440×900. The related Group
+  graph spec passed 16/16; the repeated lost-pointer-capture regression passed
+  3/3; `npm run test:fast` passed 252/252; build, targeted ESLint, and
+  `git diff --check` passed. Parent Actions run `37860968183` (#925), exact SHA
+  `07c2d5dd8e0f827d0b3e6d7408cf15ffbb0def0f`, failed in fast tests on two stale
+  `groupSettlements` fixtures/assertions and browser shard 2 on lost-pointer-
+  capture cancellation. Both are repaired with focused proof in this changeset;
+  outgoing Actions remain pending. Reviewer acceptance is not claimed.
+
 ### UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01 — Real drag/drop completion
 
 - The real server-backed Stargazing proof now covers touch reassignment between
@@ -2127,9 +2143,9 @@ Only a proven regression or new Reviewer-approved design requirement does.
 These remain incomplete; where authoritative projection does not exist,
 behavior must continue to fail closed:
 
-- Barbarian Invasion final settlement presentation and unrelated Group
-  semantics remain deferred; Raining Arrows settlement now has a bounded
-  server proof and browser-backed hold.
+- Bumper Harvest final settlement hold and unrelated Group semantics remain
+  deferred; Raining Arrows and Barbarian Invasion now share a bounded,
+  server-authored settlement proof and browser-backed hold.
 - Cross-frame and post-settlement Reaction Chain history beyond the active
   Negation continuation's proven linked nodes.
 - Settlement/transition history that would require new authoritative public

@@ -247,7 +247,7 @@ function groupScopeRoom(cardKind, { actionRevision = `${cardKind}-scope-1`, pres
 }
 
 function groupPresentationView() {
-  return { hasInteraction: true, interactionId: "real-group", checkpointId: "real-checkpoint", presentationRevision: 1, stage: "AWAITING_RESPONSE", effect: "GROUP", sourceId: "p1", originalTargetIds: ["p2", "p3"], activeTargetIds: ["p2"], currentParticipantId: "p2", decisionActorId: "p2", activeResolverId: null, participantIds: ["p2", "p3"], groupParticipantProgress: [], continuity: { relation: "ROOT_FRAME", parentFrameId: null }, parentFrameId: null, stableKind: "DECISION", isLocalDecisionActor: false, hasLocalControl: false, localActionRevision: null };
+  return { hasInteraction: true, interactionId: "real-group", checkpointId: "real-checkpoint", presentationRevision: 1, stage: "AWAITING_RESPONSE", effect: "GROUP", sourceId: "p1", originalTargetIds: ["p2", "p3"], activeTargetIds: ["p2"], currentParticipantId: "p2", decisionActorId: "p2", activeResolverId: null, participantIds: ["p2", "p3"], groupParticipantProgress: [], groupSettlements: [], continuity: { relation: "ROOT_FRAME", parentFrameId: null }, parentFrameId: null, stableKind: "DECISION", isLocalDecisionActor: false, hasLocalControl: false, localActionRevision: null };
 }
 
 function duelResponseRoom({ meId = "p2", actorId = "p2", actionRevision = "duel-response-1", presentationSnapshot } = {}) {

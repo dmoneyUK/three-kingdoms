@@ -1096,7 +1096,7 @@ test("C6 keeps reserved SETTLEMENT out of every current projector boundary", () 
   }
 });
 
-test("Raining Arrows settlement projection requires one exact root and complete ordered terminal progress", () => {
+test("Group settlement projection requires one exact root and complete ordered terminal progress", () => {
   const proof = {
     semantics: "PROVEN",
     rootEventId: "raining-root-event",
@@ -1113,11 +1113,11 @@ test("Raining Arrows settlement projection requires one exact root and complete 
   };
   const timeline = [
     { type: "card", id: "raining-root-event", player: "SOURCE", action: "play", resolutionId: "raining-root-resolution", card: { id: "physical-raining-card", kind: "RainingArrows" } },
-    { type: "message", id: "raining-settlement-event", message: "Raining Arrows finishes resolving.", importance: "essential", finalResult: true, resolutionId: "raining-root-resolution", publicRainingArrowsSettlement: proof },
+    { type: "message", id: "raining-settlement-event", message: "Raining Arrows finishes resolving.", importance: "essential", finalResult: true, resolutionId: "raining-root-resolution", publicGroupSettlement: proof },
   ];
   const project = (events = timeline) => projectPresentationV2({ pending: null, currentAction: null, actionRevision: "settled", timeline: events });
   const projected = project();
-  assert.deepEqual(projected.rainingArrowsSettlements, [{
+  assert.deepEqual(projected.groupSettlements, [{
     semantics: "PROVEN",
     eventId: "raining-settlement-event",
     rootEventId: "raining-root-event",
@@ -1132,19 +1132,33 @@ test("Raining Arrows settlement projection requires one exact root and complete 
       { playerId: "D", order: 3, status: "NO_LONGER_APPLICABLE" },
     ],
   }]);
-  assert.equal(JSON.stringify(projected.rainingArrowsSettlements).includes("physical-raining-card"), false);
-  assert.equal(JSON.stringify(projected.rainingArrowsSettlements).includes("internalNote"), false);
+  assert.equal(JSON.stringify(projected.groupSettlements).includes("physical-raining-card"), false);
+  assert.equal(JSON.stringify(projected.groupSettlements).includes("internalNote"), false);
 
   for (const [label, malformed] of [
     ["pending participant", { ...proof, participants: [{ ...proof.participants[0], status: "PENDING" }, ...proof.participants.slice(1)] }],
     ["duplicate participant", { ...proof, participants: [proof.participants[0], { ...proof.participants[1], playerId: "B" }, proof.participants[2]] }],
     ["out-of-order targets", { ...proof, participants: [...proof.participants].reverse() }],
     ["outcome on inapplicable participant", { ...proof, participants: [...proof.participants.slice(0, 2), { ...proof.participants[2], outcome: "DEFEATED" }] }],
-    ["wrong card kind", { ...proof, cardKind: "BarbarianInvasion" }],
+    ["wrong card kind", { ...proof, cardKind: "Attack" }],
   ]) {
-    const events = timeline.map((event) => event.id === "raining-settlement-event" ? { ...event, publicRainingArrowsSettlement: malformed } : event);
-    assert.deepEqual(project(events).rainingArrowsSettlements, [], `${label} fails closed`);
+    const events = timeline.map((event) => event.id === "raining-settlement-event" ? { ...event, publicGroupSettlement: malformed } : event);
+    assert.deepEqual(project(events).groupSettlements, [], `${label} fails closed`);
   }
-  assert.deepEqual(project([...timeline, { ...timeline[0] }]).rainingArrowsSettlements, [], "ambiguous physical root fails closed");
-  assert.deepEqual(project(timeline.map((event) => event.id === "raining-settlement-event" ? { ...event, resolutionId: "stale-resolution" } : event)).rainingArrowsSettlements, [], "stale settlement resolution fails closed");
+  assert.deepEqual(project([...timeline, { ...timeline[0] }]).groupSettlements, [], "ambiguous physical root fails closed");
+  assert.deepEqual(project(timeline.map((event) => event.id === "raining-settlement-event" ? { ...event, resolutionId: "stale-resolution" } : event)).groupSettlements, [], "stale settlement resolution fails closed");
+
+  const barbarianProof = { ...proof, rootEventId: "barbarian-root-event", rootResolutionId: "barbarian-resolution", interactionId: "barbarian-interaction", groupFrameId: "barbarian-frame", cardKind: "BarbarianInvasion", participants: [
+    { playerId: "B", order: 1, status: "RESOLVED", outcome: "DAMAGED" },
+    { playerId: "C", order: 2, status: "RESOLVED", outcome: "DEFEATED" },
+  ] };
+  const barbarianTimeline = [
+    { type: "card", id: "barbarian-root-event", player: "SOURCE", action: "play", resolutionId: "barbarian-resolution", card: { id: "physical-barbarian-card", kind: "BarbarianInvasion" } },
+    { type: "message", id: "barbarian-settlement-event", message: "Barbarian Invasion finishes resolving.", importance: "essential", finalResult: true, resolutionId: "barbarian-resolution", publicGroupSettlement: barbarianProof },
+  ];
+  assert.deepEqual(projectPresentationV2({ pending: null, currentAction: null, actionRevision: "barbarian-settled", timeline: barbarianTimeline }).groupSettlements[0], {
+    semantics: "PROVEN", eventId: "barbarian-settlement-event", rootEventId: "barbarian-root-event", rootResolutionId: "barbarian-resolution",
+    interactionId: "barbarian-interaction", groupFrameId: "barbarian-frame", sourceId: "A", cardKind: "BarbarianInvasion", participants: barbarianProof.participants,
+  });
+  assert.deepEqual(projectPresentationV2({ pending: null, currentAction: null, actionRevision: "barbarian-invalid", timeline: barbarianTimeline.map((event) => event.id === "barbarian-settlement-event" ? { ...event, publicGroupSettlement: { ...barbarianProof, participants: [{ ...barbarianProof.participants[0], outcome: "AVOIDED" }, barbarianProof.participants[1]] } } : event) }).groupSettlements, [], "Barbarian Invasion cannot claim a Dodge avoidance outcome");
 });

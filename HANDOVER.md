@@ -5,36 +5,35 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2.6-PHASE-C-RAINING-ARROWS-SETTLEMENT-HOLD-01` is implemented locally.
-Production browser coverage passed 14/14 for Group root/Negation paths at
-390×844, 480×900, and 1440×900 with two workers; the settlement hold passed
-2/2, including reduced motion. Presentation/snapshot passed 59/59,
-room-safety/supervisor 11/11, Attack root geometry 7/7, build, targeted
-ESLint, and `git diff --check` passed. Remote HEAD `bcfda64` Actions #924
-(`37858015569`) failed only browser shard 1 after Wrangler's known
-`Network connection lost`; diagnosis found the restart policy read `exitCode`
-while its caller supplied `code`. The focused supervisor repair is included
-with this feature; outgoing Actions validation is pending. Reviewer acceptance
+`UX2.6-PHASE-C-BARBARIAN-INVASION-SETTLEMENT-HOLD-01` is implemented locally.
+The shared server-authored settlement proof now covers ordered terminal
+Raining Arrows and Barbarian Invasion outcomes, with exact root/resolution
+binding, viewer-equal public projection, privacy sanitization, and a measured
+root-graph hold. CI repair for parent `07c2d5dd8e0f827d0b3e6d7408cf15ffbb0def0f`
+is included: two stale `groupSettlements` fixture/assertions and a lost-pointer-
+capture cancellation handler. Parent Actions run `37860968183` (#925) completed
+failed in fast tests and browser shard 2; API and browser shard 1 succeeded.
+Focused local checks passed; outgoing Actions are pending. Reviewer acceptance
 is not claimed.
 
 ## Design checkpoint
 
 Latest remote `docs/UX2-refine.md` blob:
-`7feb8af937b6407f3f33c3959325db8d3f188cf4` (unchanged); §6.23–6.26 and the
-§6.25 phase sequence were reread after the task boundary. The pre-§5 gate is
-satisfied. Current Attack real-path revalidation confirms straight connectors
-and the measured strong Attack treatment; intentional safe fallbacks remain
-for Inspect and unavailable geometry.
+`7feb8af937b6407f3f33c3959325db8d3f188cf4` (unchanged). At this boundary,
+§6.9, §6.17, §6.19–6.26 were re-read. The Phase C multi-target criteria remain
+active; Bumper Harvest has ordered root/branch proof but no final root-graph
+settlement hold.
 
 ## Current task
 
-`UX2.6-PHASE-C-BARBARIAN-INVASION-SETTLEMENT-HOLD-01` — add the matching
-server-authoritative final settlement proof and brief root-graph hold for one
-real Barbarian Invasion. Bind ordered terminal participant outcomes to the
-exact root/resolution; prove viewer-equal public facts, hidden-hand privacy,
-malformed/stale fail-closed behavior, fixed opponent Seats, Dock containment,
-and reduced-motion removal through a real API/browser path. Reuse the shared
-Group grammar; do not broaden to unrelated Group cards, gameplay rules, or
-cross-frame history. Before committing, inspect Actions for the exact current
-remote `ux-v2` HEAD; repair a failure with this bounded change.
+`UX2.6-PHASE-C-BUMPER-HARVEST-SETTLEMENT-HOLD-01` — add a fail-closed,
+server-authoritative terminal settlement proof for one real Bumper Harvest,
+bound to its exact root event/resolution/frame and ordered participant
+outcomes. Keep the physical-seat root graph visible for the designed brief
+settlement interval, then remove it; preserve viewer-equal public facts,
+private-card privacy, stale/malformed fail-closed behavior, fixed Seats,
+Dock containment, and reduced-motion behavior through real API/browser proof.
+Reuse existing Bumper Harvest progress authority; do not expand to Oath or
+other card/gameplay semantics. Before the next commit, verify the exact current
+remote `ux-v2` CI state and follow the commit-time CI gate.
 Reviewer acceptance remains human-owned.

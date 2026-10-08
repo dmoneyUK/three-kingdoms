@@ -13,7 +13,7 @@ import type {
   PresentationDismantleSettlement,
   PresentationStealSettlement,
   PresentationAttackHitSettlement,
-  PresentationRainingArrowsSettlement,
+  PresentationGroupSettlement,
   PresentationSkillEffectAction,
   PresentationSkillEffectSettlement,
   PresentationAttackDodgeResponse,
@@ -75,7 +75,7 @@ export type PresentationSnapshotSkillEffectSettlement = PresentationSkillEffectS
 export type PresentationSnapshotDismantleSettlement = PresentationDismantleSettlement;
 export type PresentationSnapshotStealSettlement = PresentationStealSettlement;
 export type PresentationSnapshotAttackHitSettlement = PresentationAttackHitSettlement;
-export type PresentationSnapshotRainingArrowsSettlement = PresentationRainingArrowsSettlement;
+export type PresentationSnapshotGroupSettlement = PresentationGroupSettlement;
 export type PresentationSnapshotAttackDodgeResponse = PresentationAttackDodgeResponse;
 export type PresentationSnapshotDuelExchange = PresentationDuelExchange;
 export type PresentationSnapshotSelfTargetAction = PresentationSelfTargetAction;
@@ -94,7 +94,7 @@ export type PresentationSnapshot = {
   dismantleSettlements: readonly PresentationSnapshotDismantleSettlement[];
   stealSettlements: readonly PresentationSnapshotStealSettlement[];
   attackHitSettlements: readonly PresentationSnapshotAttackHitSettlement[];
-  rainingArrowsSettlements: readonly PresentationSnapshotRainingArrowsSettlement[];
+  groupSettlements: readonly PresentationSnapshotGroupSettlement[];
   duelExchange: PresentationSnapshotDuelExchange | null;
   attackDodgeResponses?: readonly PresentationSnapshotAttackDodgeResponse[];
   selfTargetActions?: readonly PresentationSnapshotSelfTargetAction[];
@@ -275,20 +275,20 @@ export function provenAttackHitSettlements(value: unknown): PresentationSnapshot
   }));
 }
 
-export function provenRainingArrowsSettlements(value: unknown): PresentationSnapshotRainingArrowsSettlement[] {
+export function provenGroupSettlements(value: unknown): PresentationSnapshotGroupSettlement[] {
   if (!Array.isArray(value)) return [];
-  const candidates = value.filter((candidate): candidate is PresentationSnapshotRainingArrowsSettlement => Boolean(candidate && typeof candidate === "object" && !Array.isArray(candidate)
-    && (candidate as PresentationSnapshotRainingArrowsSettlement).semantics === "PROVEN"
-    && nonEmptyString((candidate as PresentationSnapshotRainingArrowsSettlement).eventId)
-    && nonEmptyString((candidate as PresentationSnapshotRainingArrowsSettlement).rootEventId)
-    && (candidate as PresentationSnapshotRainingArrowsSettlement).eventId !== (candidate as PresentationSnapshotRainingArrowsSettlement).rootEventId
-    && nonEmptyString((candidate as PresentationSnapshotRainingArrowsSettlement).rootResolutionId)
-    && nonEmptyString((candidate as PresentationSnapshotRainingArrowsSettlement).interactionId)
-    && nonEmptyString((candidate as PresentationSnapshotRainingArrowsSettlement).groupFrameId)
-    && nonEmptyString((candidate as PresentationSnapshotRainingArrowsSettlement).sourceId)
-    && (candidate as PresentationSnapshotRainingArrowsSettlement).cardKind === "RainingArrows"
-    && Array.isArray((candidate as PresentationSnapshotRainingArrowsSettlement).participants)
-    && (candidate as PresentationSnapshotRainingArrowsSettlement).participants.length > 0));
+  const candidates = value.filter((candidate): candidate is PresentationSnapshotGroupSettlement => Boolean(candidate && typeof candidate === "object" && !Array.isArray(candidate)
+    && (candidate as PresentationSnapshotGroupSettlement).semantics === "PROVEN"
+    && nonEmptyString((candidate as PresentationSnapshotGroupSettlement).eventId)
+    && nonEmptyString((candidate as PresentationSnapshotGroupSettlement).rootEventId)
+    && (candidate as PresentationSnapshotGroupSettlement).eventId !== (candidate as PresentationSnapshotGroupSettlement).rootEventId
+    && nonEmptyString((candidate as PresentationSnapshotGroupSettlement).rootResolutionId)
+    && nonEmptyString((candidate as PresentationSnapshotGroupSettlement).interactionId)
+    && nonEmptyString((candidate as PresentationSnapshotGroupSettlement).groupFrameId)
+    && nonEmptyString((candidate as PresentationSnapshotGroupSettlement).sourceId)
+    && ((candidate as PresentationSnapshotGroupSettlement).cardKind === "RainingArrows" || (candidate as PresentationSnapshotGroupSettlement).cardKind === "BarbarianInvasion")
+    && Array.isArray((candidate as PresentationSnapshotGroupSettlement).participants)
+    && (candidate as PresentationSnapshotGroupSettlement).participants.length > 0));
   const eventCounts = new Map<string, number>();
   const rootCounts = new Map<string, number>();
   candidates.forEach((candidate) => {
@@ -302,12 +302,12 @@ export function provenRainingArrowsSettlements(value: unknown): PresentationSnap
         || (participant.status !== "RESOLVED" && participant.status !== "NO_LONGER_APPLICABLE")
         || participant.status === "RESOLVED" && (participant.outcome !== "AVOIDED" && participant.outcome !== "DAMAGED" && participant.outcome !== "NEGATED" && participant.outcome !== "DEFEATED")
         || participant.status === "NO_LONGER_APPLICABLE" && participant.outcome !== undefined
-        || participant.outcome !== undefined && !isGroupParticipantProgressOutcomeAllowed("RainingArrows", "GROUP", participant.status, participant.outcome)) return [];
+        || participant.outcome !== undefined && !isGroupParticipantProgressOutcomeAllowed(candidate.cardKind, "GROUP", participant.status, participant.outcome)) return [];
       ids.add(participant.playerId);
       return [{ playerId: participant.playerId, order: participant.order, status: participant.status, ...(participant.outcome ? { outcome: participant.outcome } : {}) }];
     });
     return participants.length === candidate.participants.length
-      ? [{ semantics: "PROVEN", eventId: candidate.eventId, rootEventId: candidate.rootEventId, rootResolutionId: candidate.rootResolutionId, interactionId: candidate.interactionId, groupFrameId: candidate.groupFrameId, sourceId: candidate.sourceId, cardKind: "RainingArrows" as const, participants }]
+      ? [{ semantics: "PROVEN", eventId: candidate.eventId, rootEventId: candidate.rootEventId, rootResolutionId: candidate.rootResolutionId, interactionId: candidate.interactionId, groupFrameId: candidate.groupFrameId, sourceId: candidate.sourceId, cardKind: candidate.cardKind, participants }]
       : [];
   });
 }
@@ -933,7 +933,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     dismantleSettlements: provenDismantleSettlements(input.presentationV2.dismantleSettlements),
     stealSettlements: provenStealSettlements(input.presentationV2.stealSettlements),
     attackHitSettlements: provenAttackHitSettlements(input.presentationV2.attackHitSettlements),
-    rainingArrowsSettlements: provenRainingArrowsSettlements(input.presentationV2.rainingArrowsSettlements),
+    groupSettlements: provenGroupSettlements(input.presentationV2.groupSettlements),
     duelExchange: authority ? provenDuelExchange(input.presentationV2.duelExchange, authority.scene, authority.identity, authority.stable) : null,
     ...(input.presentationV2.attackDodgeResponses?.length ? { attackDodgeResponses: provenAttackDodgeResponses(input.presentationV2.attackDodgeResponses) } : {}),
     selfTargetActions: provenSelfTargetActions(input.presentationV2.selfTargetActions),

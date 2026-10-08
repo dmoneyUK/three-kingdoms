@@ -31,6 +31,7 @@ function normalizeHeroes(value) {
 
 function normalizePresentationMeta(entry) {
   const metadata = {};
+  const publicGroupSettlement = Object.prototype.hasOwnProperty.call(entry, "publicGroupSettlement") ? entry.publicGroupSettlement : entry.publicRainingArrowsSettlement;
   if (typeof entry.resolutionId === "string" && entry.resolutionId.length > 0) metadata.resolutionId = entry.resolutionId;
   if (entry.importance === "essential" || entry.importance === "informational") metadata.importance = entry.importance;
   if (entry.finalResult === true) metadata.finalResult = true;
@@ -86,30 +87,32 @@ function normalizePresentationMeta(entry) {
       outcome: "ATTACK_DAMAGE_APPLIED",
     };
   }
-  if (isRecord(entry.publicRainingArrowsSettlement)
-    && entry.publicRainingArrowsSettlement.semantics === "PROVEN"
-    && typeof entry.publicRainingArrowsSettlement.rootEventId === "string"
-    && typeof entry.publicRainingArrowsSettlement.rootResolutionId === "string"
-    && typeof entry.publicRainingArrowsSettlement.interactionId === "string"
-    && typeof entry.publicRainingArrowsSettlement.groupFrameId === "string"
-    && typeof entry.publicRainingArrowsSettlement.sourceId === "string"
-    && entry.publicRainingArrowsSettlement.cardKind === "RainingArrows"
-    && Array.isArray(entry.publicRainingArrowsSettlement.participants)
-    && entry.publicRainingArrowsSettlement.participants.length > 0
-    && entry.publicRainingArrowsSettlement.participants.every((participant, index) => isRecord(participant)
+  if (isRecord(publicGroupSettlement)
+    && publicGroupSettlement.semantics === "PROVEN"
+    && typeof publicGroupSettlement.rootEventId === "string"
+    && typeof publicGroupSettlement.rootResolutionId === "string"
+    && typeof publicGroupSettlement.interactionId === "string"
+    && typeof publicGroupSettlement.groupFrameId === "string"
+    && typeof publicGroupSettlement.sourceId === "string"
+    && (publicGroupSettlement.cardKind === "RainingArrows" || publicGroupSettlement.cardKind === "BarbarianInvasion")
+    && Array.isArray(publicGroupSettlement.participants)
+    && publicGroupSettlement.participants.length > 0
+    && publicGroupSettlement.participants.every((participant, index) => isRecord(participant)
       && typeof participant.playerId === "string"
       && participant.order === index + 1
-      && (participant.status === "RESOLVED" && ["AVOIDED", "DAMAGED", "NEGATED", "DEFEATED"].includes(participant.outcome)
+      && (participant.status === "RESOLVED" && (publicGroupSettlement.cardKind === "RainingArrows"
+        ? ["AVOIDED", "DAMAGED", "NEGATED", "DEFEATED"].includes(participant.outcome)
+        : ["DAMAGED", "NEGATED", "DEFEATED"].includes(participant.outcome))
         || participant.status === "NO_LONGER_APPLICABLE" && participant.outcome === undefined))) {
-    metadata.publicRainingArrowsSettlement = {
+    metadata.publicGroupSettlement = {
       semantics: "PROVEN",
-      rootEventId: entry.publicRainingArrowsSettlement.rootEventId,
-      rootResolutionId: entry.publicRainingArrowsSettlement.rootResolutionId,
-      interactionId: entry.publicRainingArrowsSettlement.interactionId,
-      groupFrameId: entry.publicRainingArrowsSettlement.groupFrameId,
-      sourceId: entry.publicRainingArrowsSettlement.sourceId,
-      cardKind: "RainingArrows",
-      participants: entry.publicRainingArrowsSettlement.participants.map((participant) => ({
+      rootEventId: publicGroupSettlement.rootEventId,
+      rootResolutionId: publicGroupSettlement.rootResolutionId,
+      interactionId: publicGroupSettlement.interactionId,
+      groupFrameId: publicGroupSettlement.groupFrameId,
+      sourceId: publicGroupSettlement.sourceId,
+      cardKind: publicGroupSettlement.cardKind,
+      participants: publicGroupSettlement.participants.map((participant) => ({
         playerId: participant.playerId,
         order: participant.order,
         status: participant.status,
@@ -125,6 +128,7 @@ function normalizeTimelineEvent(entry) {
   delete event.publicDismantleSettlement;
   delete event.publicStealSettlement;
   delete event.publicAttackHitSettlement;
+  delete event.publicGroupSettlement;
   delete event.publicRainingArrowsSettlement;
   return { ...event, ...normalizePresentationMeta(entry) };
 }

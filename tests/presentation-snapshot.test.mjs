@@ -621,7 +621,7 @@ test("snapshot fails closed for malformed or absent public causal proof", () => 
   }
 });
 
-test("snapshot exposes the identical ordered Raining Arrows settlement to actor and observer", () => {
+test("snapshot exposes identical ordered Group settlement proofs to actor and observer", () => {
   const settlement = {
     semantics: "PROVEN",
     eventId: "raining-final-event",
@@ -637,11 +637,11 @@ test("snapshot exposes the identical ordered Raining Arrows settlement to actor 
       { playerId: "D", order: 3, status: "NO_LONGER_APPLICABLE" },
     ],
   };
-  const publicPresentation = { ...presentation(scene()), rainingArrowsSettlements: [settlement] };
+  const publicPresentation = { ...presentation(scene()), groupSettlements: [settlement] };
   const actor = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "none", actorId: null }, actionRevision: "actor", viewerId: "A" });
   const observer = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "none", actorId: null }, actionRevision: "observer", viewerId: "D" });
-  assert.deepEqual(actor.rainingArrowsSettlements, [settlement]);
-  assert.deepEqual(actor.rainingArrowsSettlements, observer.rainingArrowsSettlements, "settlement is public and viewer-equal");
+  assert.deepEqual(actor.groupSettlements, [settlement]);
+  assert.deepEqual(actor.groupSettlements, observer.groupSettlements, "settlement is public and viewer-equal");
 
   for (const malformed of [
     { ...settlement, participants: [...settlement.participants, { playerId: "D", order: 4, status: "RESOLVED", outcome: "DAMAGED" }] },
@@ -649,11 +649,35 @@ test("snapshot exposes the identical ordered Raining Arrows settlement to actor 
     { ...settlement, participants: [settlement.participants[0], settlement.participants[1], { ...settlement.participants[2], outcome: "DEFEATED" }] },
   ]) {
     assert.deepEqual(composePresentationSnapshot({
-      presentationV2: { ...publicPresentation, rainingArrowsSettlements: [malformed] },
+      presentationV2: { ...publicPresentation, groupSettlements: [malformed] },
       currentAction: null,
       actionRevision: "malformed",
-    }).rainingArrowsSettlements, [], "malformed terminal proof is withheld as a whole");
+    }).groupSettlements, [], "malformed terminal proof is withheld as a whole");
   }
+
+  const barbarianSettlement = {
+    ...settlement,
+    eventId: "barbarian-final-event",
+    rootEventId: "barbarian-root-event",
+    rootResolutionId: "barbarian-resolution",
+    interactionId: "barbarian-interaction",
+    groupFrameId: "barbarian-frame",
+    cardKind: "BarbarianInvasion",
+    participants: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "DAMAGED" },
+      { playerId: "C", order: 2, status: "RESOLVED", outcome: "DEFEATED" },
+    ],
+  };
+  const barbarianPresentation = { ...presentation(scene()), groupSettlements: [barbarianSettlement] };
+  const barbarianActor = composePresentationSnapshot({ presentationV2: barbarianPresentation, currentAction: null, actionRevision: "barbarian-actor", viewerId: "A" });
+  const barbarianObserver = composePresentationSnapshot({ presentationV2: barbarianPresentation, currentAction: null, actionRevision: "barbarian-observer", viewerId: "D" });
+  assert.deepEqual(barbarianActor.groupSettlements, [barbarianSettlement]);
+  assert.deepEqual(barbarianActor.groupSettlements, barbarianObserver.groupSettlements, "Barbarian settlement is public and viewer-equal");
+  assert.deepEqual(composePresentationSnapshot({
+    presentationV2: { ...barbarianPresentation, groupSettlements: [{ ...barbarianSettlement, participants: [{ ...barbarianSettlement.participants[0], outcome: "AVOIDED" }, barbarianSettlement.participants[1]] }] },
+    currentAction: null,
+    actionRevision: "barbarian-malformed",
+  }).groupSettlements, [], "Barbarian settlement rejects a Raining Arrows-only outcome");
 });
 
 test("snapshot fails closed atomically for every scene-boundary coherence mismatch", () => {
