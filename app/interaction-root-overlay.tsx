@@ -17,7 +17,20 @@ type RootActionLayout = {
   responseSourcePath: string | null;
   counterPath: string | null;
   blockPath: string | null;
+  responseCards: readonly Rect[];
+  responseSourcePaths: readonly string[];
+  responseCounterPaths: readonly string[];
   selfHalo: Rect | null;
+};
+
+type InteractionRootOverlayResponseNode = {
+  index: number;
+  eventId: string;
+  actorId: string;
+  actorName: string;
+  cardLabel: string;
+  ariaLabel: string;
+  counterTarget: { kind: "ROOT" } | { kind: "RESPONSE"; index: number };
 };
 
 export type InteractionRootOverlayAction = {
@@ -31,6 +44,7 @@ export type InteractionRootOverlayAction = {
   mode: "targeted" | "self-target";
   rootEffectState?: "ACTIVE" | "BLOCKED";
   response?: { eventId: string; actorId: string; actorName: string; cardLabel: string; ariaLabel: string; countersRoot?: boolean };
+  responses?: readonly InteractionRootOverlayResponseNode[];
 };
 
 function relativeRect(element: HTMLElement, root: DOMRect): Rect {
@@ -74,7 +88,7 @@ function overlaps(left: Rect, right: Rect, padding = 0): boolean {
     && left.top < right.bottom + padding && left.bottom > right.top - padding;
 }
 
-function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, responseElement: HTMLElement | null, action: Pick<InteractionRootOverlayAction, "sourceId" | "targetId" | "mode" | "rootEffectState" | "response">): RootActionLayout | null {
+function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, responseElement: HTMLElement | null, responseElements: readonly HTMLElement[], action: Pick<InteractionRootOverlayAction, "sourceId" | "targetId" | "mode" | "rootEffectState" | "response" | "responses">, preferredRootCard: Rect | null): RootActionLayout | null {
   const table = shell.querySelector<HTMLElement>(".play-table");
   const shellBounds = shell.getBoundingClientRect();
   const cardBounds = cardElement.getBoundingClientRect();
@@ -89,9 +103,12 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const isSelfTarget = action.mode === "self-target";
   const targetElement = isSelfTarget ? sourceElement : anchorFor(action.targetId);
   const responseSourceElement = action.response ? anchorFor(action.response.actorId) : null;
+  const responseChainSources = (action.responses ?? []).map((response) => anchorFor(response.actorId));
   if (!sourceElement || !targetElement || isSelfTarget !== (sourceElement === targetElement)
     || isSelfTarget !== (action.sourceId === action.targetId)
-    || action.response && !responseSourceElement) return null;
+    || action.response && !responseSourceElement
+    || action.responses && (responseElements.length !== action.responses.length
+      || responseChainSources.some((element) => !element))) return null;
   const sourceBounds = sourceElement.getBoundingClientRect();
   const targetBounds = targetElement.getBoundingClientRect();
   if (!sourceElement.isConnected || !targetElement.isConnected
@@ -163,6 +180,9 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       responseSourcePath: null,
       counterPath: null,
       blockPath: null,
+      responseCards: [],
+      responseSourcePaths: [],
+      responseCounterPaths: [],
       selfHalo,
     };
   }
@@ -199,12 +219,102 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     const distance = Math.hypot(left + cardWidth / 2 - preferred.x, top + cardHeight / 2 - preferred.y);
     return [{ card, score: distance + Math.abs(candidate.fraction - sourceBiasedFraction) * 80 + Math.abs(candidate.offset) * .12 }];
   }).sort((left, right) => left.score - right.score);
-  const card = candidates[0]?.card;
+  const cachedRootFits = preferredRootCard
+    && preferredRootCard.left >= tableRect.left + margin && preferredRootCard.top >= tableRect.top + margin
+    && preferredRootCard.right <= tableRect.right - margin && preferredRootCard.bottom <= tableRect.bottom - margin
+    && !obstacles.some((obstacle) => overlaps(preferredRootCard, obstacle, 8));
+  const card = cachedRootFits ? preferredRootCard : candidates[0]?.card;
   if (!card) return null;
 
   const cardCenter = center(card);
   const sourceStart = rectangleEdge(sourceRect, cardCenter);
   const sourceEnd = rectangleEdge(card, sourceCenter);
+  if (action.responses?.length) {
+    if (action.responses.some((response, index) => response.index !== index)) return null;
+    const responseCards: Rect[] = [];
+    const responseSourcePaths: string[] = [];
+    const responseCounterPaths: string[] = [];
+    for (let index = 0; index < action.responses.length; index += 1) {
+      const response = action.responses[index];
+      const responseElement = responseElements[index];
+      const actorElement = responseChainSources[index];
+      if (!responseElement || !actorElement || !actorElement.isConnected || actorElement.getClientRects().length !== 1) return null;
+      const actorBounds = actorElement.getBoundingClientRect();
+      const responseBounds = responseElement.getBoundingClientRect();
+      if (actorBounds.width <= 0 || actorBounds.height <= 0 || responseBounds.width <= 0 || responseBounds.height <= 0) return null;
+      const actorRect = relativeRect(actorElement, shellBounds);
+      const actorCenter = center(actorRect);
+      const targetResponse = response.counterTarget.kind === "RESPONSE"
+        ? responseCards[response.counterTarget.index]
+        : null;
+      if (response.counterTarget.kind === "RESPONSE"
+        && (response.counterTarget.index < 0 || response.counterTarget.index >= index || !targetResponse)) return null;
+      const counterTargetRect = targetResponse ?? card;
+      const counterTargetCenter = center(counterTargetRect);
+      const responseLineX = counterTargetCenter.x - actorCenter.x;
+      const responseLineY = counterTargetCenter.y - actorCenter.y;
+      const responseLineLength = Math.hypot(responseLineX, responseLineY) || 1;
+      const responseNormal = { x: -responseLineY / responseLineLength, y: responseLineX / responseLineLength };
+      const responseWidth = responseBounds.width;
+      const responseHeight = responseBounds.height;
+      const preferredFraction = .62;
+      const responsePreferred = {
+        x: actorCenter.x + responseLineX * preferredFraction,
+        y: actorCenter.y + responseLineY * preferredFraction,
+      };
+      const responseObstacles = [...obstacles, card, ...responseCards];
+      const fractions = [.5, .62, .74, .84];
+      const offsets = [0, -38, 38, -64, 64, -92, 92];
+      const candidatesForResponse = fractions.flatMap((fraction) => offsets.flatMap((offset) => {
+        const candidate = {
+          x: actorCenter.x + responseLineX * fraction + responseNormal.x * offset,
+          y: actorCenter.y + responseLineY * fraction + responseNormal.y * offset,
+        };
+        const left = Math.max(tableRect.left + margin, Math.min(candidate.x - responseWidth / 2, tableRect.right - margin - responseWidth));
+        const top = Math.max(tableRect.top + margin, Math.min(candidate.y - responseHeight / 2, tableRect.bottom - margin - responseHeight));
+        const responseRect: Rect = { left, top, right: left + responseWidth, bottom: top + responseHeight, width: responseWidth, height: responseHeight };
+        if (responseObstacles.some((obstacle) => overlaps(responseRect, obstacle, 8))) return [];
+        const distance = Math.hypot(left + responseWidth / 2 - responsePreferred.x, top + responseHeight / 2 - responsePreferred.y);
+        return [{ responseRect, score: distance + Math.abs(fraction - preferredFraction) * 80 + Math.abs(offset) * .12 }];
+      })).sort((left, right) => left.score - right.score);
+      const responseRect = candidatesForResponse[0]?.responseRect;
+      if (!responseRect) return null;
+      const responseCenter = center(responseRect);
+      const counterStart = rectangleEdge(responseRect, counterTargetCenter);
+      const counterEnd = rectangleEdge(counterTargetRect, responseCenter);
+      const responseSourceStart = rectangleEdge(actorRect, responseCenter);
+      const responseSourceEnd = rectangleEdge(responseRect, actorCenter);
+      responseCards.push(responseRect);
+      responseSourcePaths.push(pathBetween(responseSourceStart, responseSourceEnd, Math.min(20, Math.hypot(responseSourceEnd.x - responseSourceStart.x, responseSourceEnd.y - responseSourceStart.y) * .025)));
+      responseCounterPaths.push(pathBetween(counterStart, counterEnd, 0));
+    }
+    let targetBlockPath: string | null = null;
+    if (action.rootEffectState === "BLOCKED") {
+      const targetStart = rectangleEdge(card, targetCenter);
+      const targetEnd = rectangleEdge(targetRect, cardCenter);
+      const targetLength = Math.hypot(targetEnd.x - targetStart.x, targetEnd.y - targetStart.y) || 1;
+      const targetNormal = { x: -(targetEnd.y - targetStart.y) / targetLength, y: (targetEnd.x - targetStart.x) / targetLength };
+      const targetMiddle = { x: (targetStart.x + targetEnd.x) / 2, y: (targetStart.y + targetEnd.y) / 2 };
+      const targetBlockHalf = 8;
+      targetBlockPath = `M ${(targetMiddle.x - targetNormal.x * targetBlockHalf).toFixed(1)} ${(targetMiddle.y - targetNormal.y * targetBlockHalf).toFixed(1)} L ${(targetMiddle.x + targetNormal.x * targetBlockHalf).toFixed(1)} ${(targetMiddle.y + targetNormal.y * targetBlockHalf).toFixed(1)}`;
+    }
+    return {
+      width: shellBounds.width,
+      height: shellBounds.height,
+      card,
+      sourcePath: pathBetween(sourceStart, sourceEnd, Math.min(24, lineLength * .035)),
+      targetPath: pathBetween(rectangleEdge(card, targetCenter), rectangleEdge(targetRect, cardCenter), Math.min(34, lineLength * .05)),
+      targetBlockPath,
+      responseCard: null,
+      responseSourcePath: null,
+      counterPath: null,
+      blockPath: null,
+      responseCards,
+      responseSourcePaths,
+      responseCounterPaths,
+      selfHalo: null,
+    };
+  }
   if (action.response) {
     if (!responseElement || !responseSourceElement || !responseSourceRect) return null;
     const responseSourceBounds = responseSourceElement.getBoundingClientRect();
@@ -273,6 +383,9 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       responseSourcePath: pathBetween(responseSourceStart, responseSourceEnd, Math.min(20, lineLength * .025)),
       counterPath: pathBetween(counterStart, counterEnd, 0),
       blockPath,
+      responseCards: [],
+      responseSourcePaths: [],
+      responseCounterPaths: [],
       selfHalo: null,
     };
   }
@@ -289,6 +402,9 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     responseSourcePath: null,
     counterPath: null,
     blockPath: null,
+    responseCards: [],
+    responseSourcePaths: [],
+    responseCounterPaths: [],
     selfHalo: null,
   };
 }
@@ -313,6 +429,7 @@ export function InteractionRootOverlay({
   const layerRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const responseCardRef = useRef<HTMLDivElement>(null);
+  const stableRootPlacementRef = useRef<{ rootEventId: string; width: number; height: number; card: Rect } | null>(null);
   const [layout, setLayout] = useState<RootActionLayout | null>(null);
   const key = action?.key ?? null;
   const sourceId = action?.sourceId ?? null;
@@ -335,13 +452,30 @@ export function InteractionRootOverlay({
     }
 
     const measure = () => {
-      const nextLayout = layoutRootAction(shell, card, responseCard, {
+      const responseElements = action?.responses?.length
+        ? Array.from(layer.querySelectorAll<HTMLElement>("[data-root-action-response-node]"))
+        : responseCard ? [responseCard] : [];
+      const shellBounds = shell.getBoundingClientRect();
+      const rememberedRoot = stableRootPlacementRef.current;
+      const preferredRootCard = rememberedRoot?.rootEventId === action?.rootEventId
+        && Math.abs(rememberedRoot.width - shellBounds.width) < .5
+        && Math.abs(rememberedRoot.height - shellBounds.height) < .5
+        ? rememberedRoot.card
+        : null;
+      const nextLayout = layoutRootAction(shell, card, responseCard, responseElements, {
         sourceId,
         targetId,
         mode: mode ?? "targeted",
         rootEffectState: action?.rootEffectState,
         response: action?.response,
-      });
+        responses: action?.responses,
+      }, preferredRootCard);
+      if (nextLayout && action?.rootEventId) stableRootPlacementRef.current = {
+        rootEventId: action.rootEventId,
+        width: nextLayout.width,
+        height: nextLayout.height,
+        card: nextLayout.card,
+      };
       setLayout((current) => {
         if (!nextLayout || !current) return nextLayout;
         const unchanged = Math.abs(current.width - nextLayout.width) < .5
@@ -353,6 +487,9 @@ export function InteractionRootOverlay({
           && JSON.stringify(current.responseCard) === JSON.stringify(nextLayout.responseCard)
           && current.responseSourcePath === nextLayout.responseSourcePath
           && current.counterPath === nextLayout.counterPath && current.blockPath === nextLayout.blockPath
+          && JSON.stringify(current.responseCards) === JSON.stringify(nextLayout.responseCards)
+          && JSON.stringify(current.responseSourcePaths) === JSON.stringify(nextLayout.responseSourcePaths)
+          && JSON.stringify(current.responseCounterPaths) === JSON.stringify(nextLayout.responseCounterPaths)
           && JSON.stringify(current.selfHalo) === JSON.stringify(nextLayout.selfHalo);
         return unchanged ? current : nextLayout;
       });
@@ -374,6 +511,7 @@ export function InteractionRootOverlay({
 
   if (!action) return null;
   const visible = enabled && Boolean(layout) && Boolean(sourceName && (action.mode === "self-target" || targetName));
+  const responseChainRootBlocked = Boolean(action.responses?.length && action.rootEffectState === "BLOCKED");
   return <div
     ref={layerRef}
     className="interaction-root-overlay"
@@ -407,11 +545,32 @@ export function InteractionRootOverlay({
         rx="7"
       />}
       <path className="interaction-root-source-tether" data-root-action-edge="source" d={layout.sourcePath} />
-      {layout.targetPath && <path className={responseCountersRoot ? "interaction-root-target-subdued" : "interaction-root-target-arrow"} data-root-action-edge={responseCountersRoot ? "root-target-blocked" : "target"} data-root-action-target-state={responseCountersRoot ? "blocked" : "active"} d={layout.targetPath} markerEnd={responseCountersRoot ? undefined : `url(#${markerId})`} />}
+      {layout.targetPath && <path className={responseCountersRoot || responseChainRootBlocked ? "interaction-root-target-subdued" : "interaction-root-target-arrow"} data-root-action-edge={responseCountersRoot || responseChainRootBlocked ? "root-target-blocked" : "target"} data-root-action-target-state={responseCountersRoot || responseChainRootBlocked ? "blocked" : "active"} d={layout.targetPath} markerEnd={responseCountersRoot || responseChainRootBlocked ? undefined : `url(#${markerId})`} />}
       {layout.targetBlockPath && <path className="interaction-root-block-mark interaction-root-target-block-mark" data-root-action-root-blocked="true" d={layout.targetBlockPath} />}
       {layout.counterPath && <path className={responseCountersRoot ? "interaction-root-counter-relation interaction-root-negation-counter" : "interaction-root-counter-relation"} data-root-action-edge={responseCountersRoot ? "negation-counters-root" : "target-blocked"} d={layout.counterPath} markerEnd={responseCountersRoot ? `url(#${counterMarkerId})` : undefined} />}
       {layout.blockPath && <path className="interaction-root-block-mark" data-root-action-blocked="true" d={layout.blockPath} />}
       {layout.responseSourcePath && <path className="interaction-root-response-source-tether" data-root-action-edge="response-source" d={layout.responseSourcePath} />}
+      {layout.responseSourcePaths.map((path, index) => <path
+        key={`response-source-${index}`}
+        className="interaction-root-response-source-tether"
+        data-root-action-edge="response-source"
+        data-response-node-index={index}
+        d={path}
+      />)}
+      {layout.responseCounterPaths.map((path, index) => {
+        const counterTarget = action.responses?.[index]?.counterTarget;
+        const active = index === (action.responses?.length ?? 0) - 1;
+        return <path
+          key={`response-counter-${index}`}
+          className={`interaction-root-counter-relation interaction-root-negation-counter${active ? "" : " is-subdued"}`}
+          data-root-action-edge={counterTarget?.kind === "ROOT" ? "negation-counters-root" : "negation-counters-response"}
+          data-response-node-index={index}
+          data-response-active={active ? "true" : "false"}
+          data-counter-target-index={counterTarget?.kind === "RESPONSE" ? counterTarget.index : undefined}
+          d={path}
+          markerEnd={`url(#${counterMarkerId})`}
+        />;
+      })}
     </svg>}
     <div
       ref={cardRef}
@@ -440,5 +599,27 @@ export function InteractionRootOverlay({
       <small>{action.response.countersRoot ? `FROM ${action.response.actorName}` : "BLOCKED"}</small>
       <strong>{action.response.cardLabel}</strong>
     </div>}
+    {action.responses?.map((response, index) => {
+      const active = index === action.responses!.length - 1;
+      const box = layout?.responseCards[index];
+      return <div
+        key={response.eventId}
+        className={`interaction-root-action-card interaction-root-response-card${active ? " is-active" : " is-subdued"}`}
+        data-root-action-response-card="true"
+        data-root-action-response-node="true"
+        data-response-node-index={index}
+        data-response-event-id={response.eventId}
+        data-response-actor-id={response.actorId}
+        data-response-active={active ? "true" : "false"}
+        data-response-relation={response.counterTarget.kind === "ROOT" ? "COUNTERS_ROOT" : "COUNTERS_RESPONSE"}
+        data-counter-target-index={response.counterTarget.kind === "RESPONSE" ? response.counterTarget.index : undefined}
+        role="img"
+        aria-label={response.ariaLabel}
+        style={box ? { left: box.left, top: box.top, transform: "none" } : undefined}
+      >
+        <small>{response.actorName}</small>
+        <strong>{response.cardLabel}</strong>
+      </div>;
+    })}
   </div>;
 }

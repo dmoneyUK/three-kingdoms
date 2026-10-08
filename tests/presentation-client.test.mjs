@@ -372,9 +372,9 @@ test("adapter carries only a proven, linked Negation history without adding UI c
   assert.equal("legalActions" in acting, false);
   const stage = buildInteractionStageView(acting, resolveDisplayName);
   assert.deepEqual(stage.reactionChainNegationNodes, [
-    { actor: { id: "B", name: "Zhao Yun", known: true }, cardKind: "Negation" },
-    { actor: { id: "A", name: "Ma Chao", known: true }, cardKind: "Negation" },
-  ]);
+    { actor: { id: "B", name: "Zhao Yun", known: true }, cardKind: "Negation", counterTarget: { kind: "ROOT" } },
+    { actor: { id: "A", name: "Ma Chao", known: true }, cardKind: "Negation", counterTarget: { kind: "NEGATION_NODE", index: 0 } },
+  ], "validated server causal links become display-safe counter targets without graph IDs");
   const chain = buildReactionChainView(stage);
   assert.deepEqual(chain.publicEventLinks, {
     root: reactionChain.publicEventLinks.root,
@@ -384,6 +384,9 @@ test("adapter carries only a proven, linked Negation history without adding UI c
   assert.deepEqual(chain.negationNodes.map(({ actor, cardKind }) => [actor.name, cardKind]), [
     ["Zhao Yun", "Negation"], ["Ma Chao", "Negation"],
   ], "the linked public order is retained for Stage rendering");
+  assert.deepEqual(chain.negationNodes.map(({ counterTarget }) => counterTarget), [
+    { kind: "ROOT" }, { kind: "NEGATION_NODE", index: 0 },
+  ]);
   assert.equal(chain.root.cardKind, "Dismantle", "the proven logical card identity is available without inferring from its display name");
   const observerChain = buildReactionChainView(buildInteractionStageView(observer, resolveDisplayName));
   assert.deepEqual(observerChain.negationNodes, chain.negationNodes);

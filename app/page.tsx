@@ -2822,25 +2822,32 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     const links = chain?.publicEventLinks;
     if (!chain?.visible || !root || !links || !chain.interactionId || !root.cardKind
       || !root.source.id || root.targets.length !== 1 || !root.targets[0]?.id
-      || chain.negationNodes.length !== links.nodes.length) return [];
+      || chain.negationNodes.length !== links.nodes.length || chain.negationNodes.length > 2) return [];
     const openRoot = chain.rootEffectState === "ACTIVE" && chain.negationNodes.length === 0;
     const firstNegation = chain.rootEffectState === "BLOCKED" && chain.negationNodes.length === 1;
-    if (!openRoot && !firstNegation) return [];
+    const counterNegation = chain.rootEffectState === "ACTIVE" && chain.negationNodes.length === 2;
+    if (!openRoot && !firstNegation && !counterNegation) return [];
     const rootEvents = room.timeline.filter((event) => event.id === links.root.eventId);
     if (rootEvents.length !== 1) return [];
     const rootEvent = rootEvents[0];
     if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
       || rootEvent.playedAs !== undefined || rootEvent.card?.kind !== root.cardKind
       || rootEvent.resolutionId !== links.root.resolutionId) return [];
-    const responseLink = firstNegation ? links.nodes[0] : null;
-    const responseNode = firstNegation ? chain.negationNodes[0] : null;
-    const responseEvents = responseLink ? room.timeline.filter((event) => event.id === responseLink.eventId) : [];
-    const responseEvent = responseEvents.length === 1 ? responseEvents[0] : null;
-    if (firstNegation && (!responseLink || !responseNode?.actor.id || !responseEvent
-      || responseEvent.type !== "card" || responseEvent.action !== "play" || responseEvent.presentation === false
-      || responseEvent.playedAs !== undefined || responseEvent.card?.kind !== "Negation"
-      || responseEvent.resolutionId !== responseLink.resolutionId)) return [];
-    return [{ chain, root, rootEvent, responseEvent, responseNode }];
+    const responseNodes = chain.negationNodes.flatMap((node, index) => {
+      const responseLink = links.nodes[index];
+      const expectedCounterTarget = index === 0
+        ? node.counterTarget?.kind === "ROOT"
+        : node.counterTarget?.kind === "NEGATION_NODE" && node.counterTarget.index === index - 1;
+      const responseEvents = responseLink ? room.timeline.filter((event) => event.id === responseLink.eventId) : [];
+      const responseEvent = responseEvents.length === 1 ? responseEvents[0] : null;
+      if (!responseLink || !expectedCounterTarget || !node.actor.id || !responseEvent
+        || responseEvent.type !== "card" || responseEvent.action !== "play" || responseEvent.presentation === false
+        || responseEvent.playedAs !== undefined || responseEvent.card?.kind !== "Negation"
+        || responseEvent.resolutionId !== responseLink.resolutionId) return [];
+      return [{ node, event: responseEvent }];
+    });
+    if (responseNodes.length !== chain.negationNodes.length) return [];
+    return [{ chain, root, rootEvent, responseNodes }];
   })();
   const singleTargetNegationGraphCandidate = singleTargetNegationGraphCandidates.length === 1
     ? singleTargetNegationGraphCandidates[0]
@@ -2894,7 +2901,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       }
     : singleTargetNegationGraphCandidate
       ? {
-        key: [singleTargetNegationGraphCandidate.chain.interactionId, singleTargetNegationGraphCandidate.chain.publicEventLinks?.root.eventId, singleTargetNegationGraphCandidate.chain.rootEffectState, singleTargetNegationGraphCandidate.responseEvent?.id ?? "open", singleTargetNegationGraphCandidate.responseNode?.actor.id ?? ""].join(":"),
+        key: [singleTargetNegationGraphCandidate.chain.interactionId, singleTargetNegationGraphCandidate.chain.publicEventLinks?.root.eventId, singleTargetNegationGraphCandidate.chain.rootEffectState, ...singleTargetNegationGraphCandidate.responseNodes.flatMap(({ event, node }) => [event.id, node.actor.id ?? ""])].join(":"),
         rootEventId: singleTargetNegationGraphCandidate.rootEvent.id,
         sourceId: singleTargetNegationGraphCandidate.root.source.id!,
         targetId: singleTargetNegationGraphCandidate.root.targets[0]!.id!,
@@ -2903,15 +2910,24 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         ariaLabel: `${singleTargetNegationGraphCandidate.root.source.name} played ${cardDefinition(singleTargetNegationGraphCandidate.root.cardKind!).name} targeting ${singleTargetNegationGraphCandidate.root.targets[0]!.name}`,
         mode: "targeted",
         rootEffectState: singleTargetNegationGraphCandidate.chain.rootEffectState ?? undefined,
-        ...(singleTargetNegationGraphCandidate.responseEvent && singleTargetNegationGraphCandidate.responseNode?.actor.id ? {
-          response: {
-            eventId: singleTargetNegationGraphCandidate.responseEvent.id,
-            actorId: singleTargetNegationGraphCandidate.responseNode.actor.id,
-            actorName: singleTargetNegationGraphCandidate.responseNode.actor.name,
-            cardLabel: "NEGATION",
-            ariaLabel: `${singleTargetNegationGraphCandidate.responseNode.actor.name} played Negation to counter ${cardDefinition(singleTargetNegationGraphCandidate.root.cardKind!).name} from ${singleTargetNegationGraphCandidate.root.source.name}`,
-            countersRoot: true,
-          },
+        ...(singleTargetNegationGraphCandidate.responseNodes.length ? {
+          responses: singleTargetNegationGraphCandidate.responseNodes.map(({ event, node }, index) => {
+            const counterTarget = node.counterTarget;
+            const counterLabel = counterTarget?.kind === "ROOT"
+              ? cardDefinition(singleTargetNegationGraphCandidate.root.cardKind!).name
+              : `Negation ${index}`;
+            return {
+              index,
+              eventId: event.id,
+              actorId: node.actor.id!,
+              actorName: node.actor.name,
+              cardLabel: "NEGATION",
+              ariaLabel: `${node.actor.name} played Negation to counter ${counterLabel}`,
+              counterTarget: counterTarget?.kind === "ROOT"
+                ? { kind: "ROOT" as const }
+                : { kind: "RESPONSE" as const, index: counterTarget?.index ?? -1 },
+            };
+          }),
         } : {}),
       }
     : selfTargetCandidate

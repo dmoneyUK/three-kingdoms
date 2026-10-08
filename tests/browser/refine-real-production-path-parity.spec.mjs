@@ -138,7 +138,9 @@ async function measureNegationGraph(page, responderId = null) {
       return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height };
     };
     const overlay = document.querySelector('[data-root-action-overlay="true"]');
-    const response = document.querySelector('[data-root-action-response-card="true"]');
+    const responseElements = [...document.querySelectorAll('[data-root-action-response-card="true"]')];
+    const responseBoxes = responseElements.map(rect);
+    const response = responseElements.at(-1) ?? null;
     const table = document.querySelector(".play-table");
     const dock = document.querySelector(".local-player-dock");
     const root = document.querySelector('[data-root-action-card="true"]');
@@ -158,6 +160,8 @@ async function measureNegationGraph(page, responderId = null) {
       }
       return {
         edge: path.dataset.rootActionEdge ?? (path.hasAttribute("data-root-action-root-blocked") ? "root-block" : "block"),
+        nodeIndex: path.dataset.responseNodeIndex === undefined ? null : Number(path.dataset.responseNodeIndex),
+        targetIndex: path.dataset.counterTargetIndex === undefined ? null : Number(path.dataset.counterTargetIndex),
         points,
         start: absolutePoint(0),
         end: absolutePoint(length),
@@ -170,11 +174,15 @@ async function measureNegationGraph(page, responderId = null) {
       responder: rect(anchor(responseActorId ?? expectedResponderId)),
       root: rect(root),
       response: rect(response),
+      responses: responseBoxes,
+      responseActors: responseElements.map((element) => element.dataset.responseActorId),
+      responseActorBoxes: responseElements.map((element) => rect(anchor(element.dataset.responseActorId))),
+      seatBoxes: [...document.querySelectorAll("[data-player-anchor]")].map(rect),
       table: rect(table),
       shell: rect(document.querySelector(".game-shell")),
       dock: rect(dock),
       rootDockOverlap: boxesOverlap(rect(root), rect(dock)),
-      responseDockOverlap: boxesOverlap(rect(response), rect(dock)),
+      responseDockOverlap: responseBoxes.some((box) => boxesOverlap(box, rect(dock))),
       connectorPoints,
       documentWidth: document.documentElement.scrollWidth,
       viewportWidth: innerWidth,
@@ -278,6 +286,7 @@ async function runNegationScenario({ page, request, testInfo, outcome, viewport,
   const thirdPage = await page.context().newPage();
   await openGame(thirdPage, seed, 2, { width: 390, height: 844 });
   await expectOpenSingleTargetNegation(thirdPage);
+  const thirdOpenGeometry = await measureNegationGraph(thirdPage, third.id);
   await expect(thirdPage.locator(`.local-player-dock[data-player-anchor="${third.id}"] .console-guidance .decision-status strong`)).toHaveText("Play Negation or Skip.");
   const firstPayload = await respondWithCard(thirdPage, third.id, thirdNegation.id);
   expect(firstPayload).toMatchObject({ action: "respond", cardId: thirdNegation.id });
@@ -352,6 +361,10 @@ async function runNegationScenario({ page, request, testInfo, outcome, viewport,
   expect(pointOnRectBorder(responseSourceTether.end, targetGeometry.response)).toBe(true);
   expect(targetGeometry.stageCount).toBe(0);
   await attachScreenshot(testInfo, "negation-first-response-graph-480", targetPage);
+  const thirdBlockedGeometry = await measureNegationGraph(thirdPage, third.id);
+  expect(thirdBlockedGeometry.responseDockOverlap).toBe(false);
+  expect(thirdBlockedGeometry.documentWidth).toBe(thirdBlockedGeometry.viewportWidth);
+  expect(thirdBlockedGeometry.stageCount).toBe(0);
 
   const hiddenResponderAnchor = await targetPage.addStyleTag({ content: `.play-table [data-player-anchor="${third.id}"] { display: none !important; }` });
   await targetPage.evaluate(() => window.dispatchEvent(new Event("resize")));
@@ -374,16 +387,95 @@ async function runNegationScenario({ page, request, testInfo, outcome, viewport,
     expect(targetCounterWindow.currentAction.actorId).toBe(target.id);
     expect(targetCounterWindow.currentAction.options.some((option) => option.providerId === "negation_card"
       && option.selection?.eligibleCardIds?.includes(targetCounterNegation.id))).toBe(true);
-    const counterBranch = targetPage.locator('.interaction-stage[data-negation-counter-branch-composition="proven"]');
-    await expect(counterBranch).toBeVisible();
-    const nodes = counterBranch.locator(".single-target-negation-response-node");
-    await expect(nodes).toHaveCount(2);
-    await expect(nodes.nth(0)).toHaveAttribute("data-active-head", "false");
-    await expect(nodes.nth(1)).toHaveAttribute("data-active-head", "true");
-    await expectOneActivePublicCard(counterBranch);
-    await expectNoStageDockOverlap(targetPage, counterBranch);
-    expect(await targetPage.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(480);
-    await attachScreenshot(testInfo, "negation-counter-branch-480", targetPage);
+    const counterViews = await Promise.all([0, 1, 2, 3].map((index) => roomView(request, seed, index)));
+    const counterProof = counterViews[0].presentationSnapshot.reactionChain;
+    expect(counterProof).toMatchObject({
+      rootEffectState: "ACTIVE",
+      nodes: [
+        { actorId: third.id, causedByNodeId: null },
+        { actorId: source.id, causedByNodeId: expect.any(String) },
+      ],
+      publicEventLinks: { nodes: [{ eventId: expect.any(String) }, { eventId: expect.any(String) }] },
+    });
+    expect(counterProof.nodes[1].causedByNodeId).toBe(counterProof.nodes[0].nodeId);
+    expect(counterProof.publicEventLinks.nodes.map(({ nodeId }) => nodeId)).toEqual(counterProof.nodes.map(({ nodeId }) => nodeId));
+    expect(counterViews[1].presentationSnapshot.reactionChain).toEqual(counterProof);
+    for (const view of counterViews) {
+      expect(view.presentationSnapshot.reactionChain).toEqual(counterProof);
+      expect(JSON.stringify(view.presentationSnapshot.reactionChain)).not.toContain(thirdNegation.id);
+      expect(JSON.stringify(view.presentationSnapshot.reactionChain)).not.toContain(sourceNegation.id);
+    }
+    const negationGraphPages = [page, targetPage, thirdPage];
+    for (const graphPage of negationGraphPages) {
+      const overlay = graphPage.locator('[data-root-action-overlay="true"]');
+      await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 15_000 });
+      await expect(overlay).toHaveAttribute("data-root-effect-state", "ACTIVE");
+      await expect(overlay.locator('[data-root-action-edge="target"][data-root-action-target-state="active"]')).toHaveCount(1);
+      await expect(overlay.locator('[data-root-action-edge="root-target-blocked"]')).toHaveCount(0);
+      const responses = overlay.locator('[data-root-action-response-card="true"]');
+      await expect(responses).toHaveCount(2);
+      await expect(responses.nth(0)).toHaveAttribute("data-response-event-id", counterProof.publicEventLinks.nodes[0].eventId);
+      await expect(responses.nth(0)).toHaveAttribute("data-response-actor-id", third.id);
+      await expect(responses.nth(0)).toHaveAttribute("data-response-active", "false");
+      await expect(responses.nth(0)).toHaveAttribute("data-response-relation", "COUNTERS_ROOT");
+      await expect(responses.nth(1)).toHaveAttribute("data-response-event-id", counterProof.publicEventLinks.nodes[1].eventId);
+      await expect(responses.nth(1)).toHaveAttribute("data-response-actor-id", source.id);
+      await expect(responses.nth(1)).toHaveAttribute("data-response-active", "true");
+      await expect(responses.nth(1)).toHaveAttribute("data-response-relation", "COUNTERS_RESPONSE");
+      await expect(responses.nth(1)).toHaveAttribute("data-counter-target-index", "0");
+      await expect(overlay.locator('[data-root-action-edge="response-source"]')).toHaveCount(2);
+      await expect(overlay.locator('[data-root-action-edge="negation-counters-root"]')).toHaveCount(1);
+      await expect(overlay.locator('[data-root-action-edge="negation-counters-root"][data-response-active="false"]')).toHaveCount(1);
+      await expect(overlay.locator('[data-root-action-edge="negation-counters-response"][data-counter-target-index="0"][data-response-active="true"]')).toHaveCount(1);
+      await expect(graphPage.locator(".interaction-stage")).toHaveCount(0);
+
+      const geometry = await measureNegationGraph(graphPage, source.id);
+      const cards = [geometry.root, ...geometry.responses];
+      for (const cardBox of cards) {
+        expect(cardBox.left).toBeGreaterThanOrEqual(geometry.table.left);
+        expect(cardBox.top).toBeGreaterThanOrEqual(geometry.table.top);
+        expect(cardBox.right).toBeLessThanOrEqual(geometry.table.right);
+        expect(cardBox.bottom).toBeLessThanOrEqual(geometry.table.bottom);
+      }
+      const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      for (let left = 0; left < cards.length; left += 1) {
+        for (let right = left + 1; right < cards.length; right += 1) expect(overlaps(cards[left], cards[right])).toBe(false);
+      }
+      for (const cardBox of cards) {
+        for (const seatBox of geometry.seatBoxes) expect(overlaps(cardBox, seatBox)).toBe(false);
+      }
+      expect(geometry.rootDockOverlap).toBe(false);
+      expect(geometry.responseDockOverlap).toBe(false);
+      expect(geometry.documentWidth).toBe(geometry.viewportWidth);
+      expect(geometry.connectorPoints.every(({ points }) => points.every((point) => point.x >= geometry.shell.left
+        && point.x <= geometry.shell.right && point.y >= geometry.shell.top && point.y <= geometry.shell.bottom))).toBe(true);
+      expect(geometry.responseActors).toEqual([third.id, source.id]);
+      geometry.responseActorBoxes.forEach((actorBox, index) => {
+        const tether = geometry.connectorPoints.find(({ edge, nodeIndex }) => edge === "response-source" && nodeIndex === index);
+        expect(tether).toBeDefined();
+        expect(pointOnRectBorder(tether.start, actorBox)).toBe(true);
+        expect(pointOnRectBorder(tether.end, geometry.responses[index])).toBe(true);
+        const counter = geometry.connectorPoints.find(({ edge, nodeIndex }) => edge.startsWith("negation-counters-") && nodeIndex === index);
+        expect(counter).toBeDefined();
+        expect(pointOnRectBorder(counter.start, geometry.responses[index])).toBe(true);
+        const counterTarget = index === 0 ? geometry.root : geometry.responses[0];
+        expect(pointOnRectBorder(counter.end, counterTarget)).toBe(true);
+      });
+      if (graphPage === page) {
+        for (const edge of ["left", "top", "width", "height"]) {
+          expect(Math.abs(geometry.root[edge] - openGeometry.root[edge]), `wide root ${edge} remains fixed: ${JSON.stringify({ before: { root: openGeometry.root, table: openGeometry.table, source: openGeometry.source, target: openGeometry.target, responder: openGeometry.responder }, after: { root: geometry.root, table: geometry.table, source: geometry.source, target: geometry.target, responder: geometry.responder } })}`).toBeLessThanOrEqual(2);
+        }
+      } else if (graphPage === targetPage) {
+        for (const edge of ["left", "top", "width", "height"]) {
+          expect(Math.abs(geometry.root[edge] - targetOpenGeometry.root[edge])).toBeLessThanOrEqual(2);
+        }
+      } else {
+        for (const edge of ["left", "top", "width", "height"]) {
+          expect(Math.abs(geometry.root[edge] - thirdOpenGeometry.root[edge])).toBeLessThanOrEqual(2);
+        }
+      }
+      await attachScreenshot(testInfo, `negation-counter-graph-${geometry.viewportWidth}`, graphPage);
+    }
     const targetDecline = await declineThroughPage(targetPage, target.id);
     expect(targetDecline.action).toBe("decline_response");
   } else {

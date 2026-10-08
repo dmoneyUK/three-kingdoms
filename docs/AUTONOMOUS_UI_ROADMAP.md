@@ -1735,6 +1735,21 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `1e2ca29a339ff357afe4a11474b9d03a15699625` passed Actions run `37748618291`.
   Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-B-NEGATION-COUNTER-CHAIN-GRAPH-01 — Counter-Negation graph
+
+- The public single-target Negation graph now renders each server-proven
+  response node with a display-safe counter target, tether to its actual
+  physical actor, and an explicit edge to the exact root/previous response.
+  Older responses are subdued; the root-to-target relation is active only for
+  authoritative `ACTIVE` state. A real Dismantle → open Negation → Negation →
+  counter-Negation browser path passed 2/2 with public viewer-equal causal
+  proof, fixed root geometry, seat/card/connector containment, no Stage/Dock
+  overlap, and no horizontal overflow at 390×844, 480×900, and wide. The
+  Attack/Dodge regression passed 3/3, presentation-client tests 55/55, build,
+  targeted ESLint, and `git diff --check` passed. The pre-commit latest Actions
+  run `37750629004` succeeded on `3a9db67561ad2af3866056085bad205c5ffa72eb`.
+  Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

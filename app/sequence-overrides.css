@@ -568,6 +568,10 @@
   stroke-dasharray: 5 4;
 }
 
+.interaction-root-negation-counter.is-subdued {
+  opacity: .38;
+}
+
 .interaction-root-block-mark {
   stroke: #edc975;
   stroke-width: 3px;
@@ -639,13 +643,25 @@
   letter-spacing: .12em;
 }
 
-.interaction-root-response-card[data-response-relation="COUNTERS_ROOT"] > small {
+.interaction-root-response-card[data-response-relation="COUNTERS_ROOT"] > small,
+.interaction-root-response-card[data-response-relation="COUNTERS_RESPONSE"] > small {
   max-width: 100%;
   overflow: hidden;
   font-size: 6px;
   letter-spacing: .04em;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.interaction-root-response-card.is-subdued {
+  opacity: .48;
+  filter: saturate(.48) brightness(.82);
+  box-shadow: 0 3px 9px #0008, 0 0 0 1px #c9866920;
+}
+
+.interaction-root-response-card.is-active {
+  opacity: 1;
+  box-shadow: 0 7px 22px #0009, 0 0 0 1px #df9d7a66, 0 0 16px #b85a4c55;
 }
 
 .interaction-root-response-card > strong {

@@ -139,6 +139,8 @@ export type ReactionChainView = {
 export type ReactionChainNegationNodeView = {
   actor: PresentationDisplayIdentity;
   cardKind: "Negation";
+  /** Validated public causal target, remapped from the server node link without exposing its graph ID. */
+  counterTarget: { kind: "ROOT" } | { kind: "NEGATION_NODE"; index: number } | null;
 };
 
 export type DyingHandoffView = {
@@ -721,10 +723,23 @@ export function buildInteractionStageView(
       participants: view.bumperHarvestProgress.participants.map((participant) => ({ ...participant })),
     } : null,
     reactionChainNegationNodes: view.stage === "NEGATION"
-      ? (view.reactionChain?.nodes ?? []).map((node) => ({
-        actor: displayIdentity(node.actorId, "Unknown player", resolvePlayerName),
-        cardKind: "Negation" as const,
-      }))
+      ? (view.reactionChain?.nodes ?? []).map((node, index) => {
+        const previousIndex = node.causedByNodeId === null
+          ? -1
+          : (view.reactionChain?.nodes ?? []).findIndex((candidate) => candidate.nodeId === node.causedByNodeId);
+        const counterTarget = view.reactionChain?.rootCard
+          ? node.causedByNodeId === null
+            ? { kind: "ROOT" as const }
+            : previousIndex >= 0 && previousIndex < index
+              ? { kind: "NEGATION_NODE" as const, index: previousIndex }
+              : null
+          : null;
+        return {
+          actor: displayIdentity(node.actorId, "Unknown player", resolvePlayerName),
+          cardKind: "Negation" as const,
+          counterTarget,
+        };
+      })
       : [],
     reactionChainRootCard: view.stage === "NEGATION" ? view.reactionChain?.rootCard ?? null : null,
     reactionChainPublicEventLinks: view.stage === "NEGATION" ? view.reactionChain?.publicEventLinks ?? null : null,
@@ -749,11 +764,9 @@ export function buildInteractionStageView(
 }
 
 /**
- * The reaction chain is deliberately bounded to facts in the public typed
- * scene: a Negation root and its active response window. The snapshot does
- * not preserve an independently proven history for counter providers or
- * declines, so this model must not manufacture intermediate nodes from
- * timelines, compatibility fields, revisions, or CurrentAction.
+ * The reaction chain contains only server-projected, submitted public cards.
+ * Its causal links are remapped to validated display indices; private response
+ * opportunities and passes never manufacture graph nodes.
  */
 export function buildReactionChainView(stage: InteractionStageView): ReactionChainView {
   if (!stage.visible || stage.stage !== "NEGATION" || !stage.effect || !stage.source.id) {
