@@ -2894,10 +2894,64 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const singleTargetNegationGraphCandidate = singleTargetNegationGraphCandidates.length === 1
     ? singleTargetNegationGraphCandidates[0]
     : null;
+  const groupTargetBranchGraphCandidate = (() => {
+    const group = clientPresentation.groupResolution;
+    const rootOrigin = clientPresentation.rootOrigin;
+    if (!clientPresentation.hasInteraction || clientPresentation.stage !== "GROUP_RESOLUTION"
+      || clientPresentation.continuity.relation !== "ROOT_FRAME"
+      || !group || group.resolutionSemantics !== "GROUP"
+      || (group.cardKind !== "RainingArrows" && group.cardKind !== "BarbarianInvasion")
+      || group.interactionId !== clientPresentation.interactionId
+      || group.groupFrameId !== clientPresentation.rootFrameId
+      || group.activeFrameId !== clientPresentation.activeFrameId
+      || group.activeFrameId !== group.groupFrameId
+      || group.checkpointId !== clientPresentation.checkpointId
+      || group.presentationRevision !== clientPresentation.presentationRevision
+      || group.currentParticipantId !== clientPresentation.currentParticipantId
+      || !clientPresentation.sourceId) return null;
+
+    // A root GROUP scene is itself the authoritative source/target contract;
+    // unlike child scenes, it need not carry a separate rootOrigin. If one is
+    // present, require it to corroborate rather than override that contract.
+    if (rootOrigin && (rootOrigin.frameId !== group.groupFrameId || rootOrigin.stage !== "GROUP_RESOLUTION"
+      || rootOrigin.effect !== group.cardKind || rootOrigin.source.id !== clientPresentation.sourceId
+      || !rootOrigin.source.known || rootOrigin.targets.length !== group.targetIds.length
+      || rootOrigin.targets.some((target, index) => target.id !== group.targetIds[index]))) return null;
+
+    const participants = group.participants;
+    if (!group.targetIds.length || group.targetIds.length !== participants.length
+      || clientPresentation.groupParticipantProgress.length !== participants.length
+      || participants.filter(({ status }) => status === "CURRENT").length !== 1
+      || participants.some((participant, index) => participant.playerId !== group.targetIds[index]
+        || participant.order !== index + 1
+        || participant.playerId !== clientPresentation.groupParticipantProgress[index]?.playerId
+        || participant.status !== clientPresentation.groupParticipantProgress[index]?.status
+        || participant.outcome !== clientPresentation.groupParticipantProgress[index]?.outcome)) return null;
+
+    // The group projection proves source, target set and participant state.
+    // The compatibility rootContext contributes only a timeline identity; it
+    // is accepted only when that exact public event is the played physical
+    // root card named by the independently validated Group projection.
+    const rootEventId = room.presentationV2?.rootContext?.eventId;
+    if (!rootEventId) return null;
+    const rootEvents = room.timeline.filter((event) => event.id === rootEventId);
+    if (rootEvents.length !== 1) return null;
+    const rootEvent = rootEvents[0];
+    if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
+      || rootEvent.playedAs !== undefined || rootEvent.card.kind !== group.cardKind) return null;
+    const source = room.players.find((player) => player.id === clientPresentation.sourceId);
+    if (!source?.name) return null;
+    const targets = participants.map((participant) => {
+      const player = room.players.find(({ id }) => id === participant.playerId);
+      return player?.name ? { ...participant, playerName: player.name } : null;
+    });
+    if (targets.some((target) => target === null)) return null;
+    return { group, rootEvent, source, targets: targets as NonNullable<(typeof targets)[number]>[] };
+  })();
   const rootAction = clientPresentation.rootAction;
   const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId)
-    : duelExchangeGraphCandidate?.rootEvent ?? attackDodgeResponseCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
-  const selfTargetCandidates = rootAction || duelExchangeGraphCandidate || attackDodgeResponseCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
+    : groupTargetBranchGraphCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeResponseCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? null;
+  const selfTargetCandidates = rootAction || groupTargetBranchGraphCandidate || duelExchangeGraphCandidate || attackDodgeResponseCandidate || singleTargetNegationGraphCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
       || event.resolutionId !== action.resolutionId || event.card.kind !== action.cardKind
@@ -2912,7 +2966,21 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     return [{ action, event, source }];
   });
   const selfTargetCandidate = selfTargetCandidates.length === 1 ? selfTargetCandidates[0] : null;
-  const rootActionOverlayAction: InteractionRootOverlayAction | null = duelExchangeGraphCandidate
+  const rootActionOverlayAction: InteractionRootOverlayAction | null = groupTargetBranchGraphCandidate
+    ? {
+      key: ["group", groupTargetBranchGraphCandidate.group.interactionId, groupTargetBranchGraphCandidate.group.groupFrameId, groupTargetBranchGraphCandidate.rootEvent.id].join(":"),
+      rootEventId: groupTargetBranchGraphCandidate.rootEvent.id,
+      rootPlacementKey: ["group-root", groupTargetBranchGraphCandidate.group.interactionId, groupTargetBranchGraphCandidate.group.groupFrameId, groupTargetBranchGraphCandidate.rootEvent.id].join(":"),
+      sourceId: clientPresentation.sourceId!,
+      targetId: groupTargetBranchGraphCandidate.targets[0].playerId,
+      groupTargets: groupTargetBranchGraphCandidate.targets,
+      cardKind: groupTargetBranchGraphCandidate.group.cardKind,
+      cardLabel: cardDefinition(groupTargetBranchGraphCandidate.group.cardKind).name.toUpperCase(),
+      ariaLabel: `${groupTargetBranchGraphCandidate.source.name} played ${cardDefinition(groupTargetBranchGraphCandidate.group.cardKind).name}. ${groupTargetBranchGraphCandidate.targets.map((target) => `${target.playerName}: ${groupParticipantStatusLabel(target.status)}${target.outcome ? `, ${groupParticipantOutcomeLabel(target.outcome)}` : ""}`).join(". ")}`,
+      mode: "targeted",
+      compactRoot: true,
+    }
+    : duelExchangeGraphCandidate
     ? {
       key: ["duel", duelExchangeGraphCandidate.exchange.interactionId, duelExchangeGraphCandidate.exchange.rootFrameId, duelExchangeGraphCandidate.exchange.root.eventId, duelExchangeGraphCandidate.exchange.root.sourceId, duelExchangeGraphCandidate.exchange.root.targetId].join(":"),
       rootEventId: duelExchangeGraphCandidate.exchange.root.eventId,
@@ -3014,10 +3082,13 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const rootActionTemporarilyBlocked = Boolean(targetPreviewPresentation || opponentInspectionPresentation || targetCardPickerSelectableDetail || expandedOpponentId || groupScopePreview.active);
   const rootActionAwaitingReveal = Boolean(
     !attackDodgeResponseCandidate && rootAction && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
+    || groupTargetBranchGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || singleTargetNegationGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations),
   );
+  const rootGroupTargetNamesKnown = Boolean(rootActionOverlayAction?.groupTargets?.length
+    && rootActionOverlayAction.groupTargets.every((target) => target.playerName));
   const rootActionOverlayEnabled = Boolean(rootActionOverlayAction && rootActionSource?.name
-    && (rootActionOverlayAction.mode === "self-target" || rootActionTarget?.name)
+    && (rootGroupTargetNamesKnown || rootActionOverlayAction.mode === "self-target" || rootActionTarget?.name)
     && !rootActionTemporarilyBlocked && !rootActionAwaitingReveal);
   const rootActionOverlayVisible = Boolean(rootActionOverlayEnabled && rootActionOverlayAction && rootActionOverlayReadyKey === rootActionOverlayAction.key);
   const rootActionCardId = rootActionEvent?.type === "card" ? rootActionEvent.card.id

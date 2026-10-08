@@ -1792,6 +1792,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   initial synthetic-touch Stargazing failure; the same-SHA rerun passed all
   five jobs. Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-C-GROUP-TARGET-BRANCH-GRAPH-01 — Multi-target root graph
+
+- The physical-seat overlay now keeps one Group root card stable while public
+  target branches reflect authoritative Raining Arrows / Barbarian Invasion
+  participant progress. Real server-backed browser paths passed 6/6 across
+  390×844, 480×900, and 1440×900, including participant advancement, seat/root
+  stability within 1px, source/target branch endpoints within 1.5px of their
+  physical anchors, no card/Seat/Dock overlap or horizontal overflow, private
+  Hand exclusion, and fail-closed fallback. Real Dock damage/Dodge paths passed
+  2/2; the Duel/root graph regression passed 18/18. Build, targeted ESLint, and
+  `git diff --check` passed. Before-commit parent
+  `3fe0592c56b861138ccfc05ba14f8f2b97bb634e` passed all five Actions jobs in
+  run `37767512338`. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

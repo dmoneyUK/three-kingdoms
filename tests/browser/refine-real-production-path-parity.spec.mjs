@@ -588,7 +588,10 @@ test("real Raining Arrows without Dodge offers only TAKE DAMAGE and advances ser
     return latest.currentAction?.actorId === target.id && latest.currentAction?.requirement === "dodge";
   }).toBe(true);
 
-  await expect(targetPage.locator('.interaction-stage[data-stage="GROUP_RESOLUTION"] [data-group-root-action="RainingArrows"]')).toBeVisible();
+  const targetGroupGraph = targetPage.locator('[data-root-action-overlay="true"][data-root-action-group-target-graph="true"]');
+  await expect(targetGroupGraph).toHaveAttribute("data-root-action-ready", "true");
+  await expect(targetGroupGraph.locator('[data-group-root-action="RainingArrows"]')).toBeVisible();
+  await expect(targetPage.locator(".interaction-stage")).toHaveCount(0);
   const dock = targetPage.locator(`.local-player-dock[data-player-anchor="${target.id}"]`);
   await expect(dock.locator('[data-action-slot="decline"] button')).toHaveText("TAKE DAMAGE");
   await expect(dock.locator('[data-action-slot="decline"] button')).toBeEnabled();
@@ -597,7 +600,7 @@ test("real Raining Arrows without Dodge offers only TAKE DAMAGE and advances ser
   await expect(dock.getByRole("button", { name: "TAKE DAMAGE", exact: true })).toHaveCount(1);
   await expect(dock.locator(".console-guidance .decision-status strong")).toHaveText("Respond to Raining Arrows.");
   await expect(dock).not.toContainText("Group Resolution");
-  await expect(targetPage.locator('.interaction-stage[data-stage="GROUP_RESOLUTION"]')).not.toContainText("TAKE DAMAGE");
+  await expect(targetPage.locator(".interaction-stage")).toHaveCount(0);
   await attachScreenshot(testInfo, "raining-arrows-no-dodge-take-damage-480", targetPage);
 
   const progressBefore = view.presentationV2.groupResolution.participantProgress.find((entry) => entry.playerId === target.id);
@@ -630,7 +633,10 @@ test("real Raining Arrows exposes Zhen Ji's authoritative Dodge provider in Skil
     satisfies: "dodge",
     selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [blackCard.id] },
   });
-  await expect(targetPage.locator('.interaction-stage[data-stage="GROUP_RESOLUTION"] [data-group-root-action="RainingArrows"]')).toBeVisible();
+  const targetGroupGraph = targetPage.locator('[data-root-action-overlay="true"][data-root-action-group-target-graph="true"]');
+  await expect(targetGroupGraph).toHaveAttribute("data-root-action-ready", "true");
+  await expect(targetGroupGraph.locator('[data-group-root-action="RainingArrows"]')).toBeVisible();
+  await expect(targetPage.locator(".interaction-stage")).toHaveCount(0);
 
   const dock = targetPage.locator(`.local-player-dock[data-player-anchor="${target.id}"]`);
   const skill = dock.locator(".local-hero-skills").getByRole("button", { name: "Empress Dowager", exact: true });

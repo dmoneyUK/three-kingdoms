@@ -545,6 +545,61 @@
   opacity: .96;
 }
 
+.interaction-root-group-target-edge {
+  stroke: #918a7c;
+  stroke-width: 1.8px;
+  opacity: .48;
+}
+
+.interaction-root-group-target-branch.status-pending .interaction-root-group-target-edge {
+  stroke-dasharray: 4 6;
+}
+
+.interaction-root-group-target-branch.status-current .interaction-root-group-target-edge {
+  stroke: #f2ca73;
+  stroke-width: 3.6px;
+  opacity: 1;
+  filter: drop-shadow(0 0 4px #f2ca7388);
+}
+
+.interaction-root-group-target-branch.status-paused .interaction-root-group-target-edge {
+  stroke: #e4a170;
+  stroke-width: 3px;
+  stroke-dasharray: 2 4;
+  opacity: .94;
+}
+
+.interaction-root-group-target-branch.status-resolved .interaction-root-group-target-edge {
+  stroke: #8eae8d;
+  stroke-width: 1.7px;
+  opacity: .42;
+}
+
+.interaction-root-group-target-branch.status-no-longer-applicable .interaction-root-group-target-edge {
+  stroke-dasharray: 2 7;
+  opacity: .28;
+}
+
+.interaction-root-group-target-marker {
+  fill: #f1e8d1;
+  font-size: 9px;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: #15120f;
+  stroke-linejoin: round;
+  stroke-width: 2.5px;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.interaction-root-group-target-branch.status-current .interaction-root-group-target-marker {
+  fill: #ffe39a;
+}
+
+.interaction-root-group-target-branch.status-resolved .interaction-root-group-target-marker {
+  fill: #b4d4ae;
+}
+
 .interaction-root-target-subdued {
   stroke: #b85a4c;
   stroke-width: 2.4px;
