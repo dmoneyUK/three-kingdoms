@@ -3695,3 +3695,29 @@ The Coding Agent should extract **separate small tasks** at the next planning/ha
 - Verify actor/responder privacy, stale/rejected response proof, browser reconnect, polling, touch-like viewport changes, reduced motion, new authoritative root preemption, and that server timers are unaffected.
 - **No final UX Reviewer acceptance is implied by green CI.** Do not reopen completed §4D work or change \`HANDOVER.md\` on the UX Reviewer side. The Coding Agent owns task selection/results in \`HANDOVER.md\`; this document is the design source of truth.
 
+### 6.30 User-approved CI gate policy: maximum six minutes, minimal tests, visual tests only after acceptance (2026-10-09)
+
+**This policy overrides any earlier §§6.27–6.29 wording that would make long, unapproved UX/browser tests mandatory on each push.** This is a process and CI requirement, not a claim that any visual feature is accepted.
+
+**Hard limit:** Ordinary \`ux-v2\` push CI, including the required checks and production deployment/smoke step, must finish within **6:00 wall-clock minutes** in a successful normal run. Track actual workflow start-to-finish time. Do not call a 6-minute browser shard a 6-minute pipeline.
+
+**Test admission is controlled by the user:**
+- Before the user explicitly approves a feature from the **actual rendered game**, do **not** add its long UX tests, repeated multi-scene assertions, 10-game loops, 12-second frame samples, or 6/8-player geometry matrices to required per-push CI.
+- A new feature's **smallest useful, short correctness test** may run locally during implementation. It does not automatically enter the required push suite. After visual acceptance, obtain the user's approval before adding that feature's tests to routine CI.
+- Previously added, long or unapproved UX tests must be **removed from the required per-push selection**, not deleted from the repository. They may run locally or by manual workflow dispatch; do not use them to block routine deployment before acceptance.
+- Tests that claim a successful public Attack relationship while accepting \`geometry-unavailable\`, old Stage fallback or merely a private target Preview are **not valid positive UX acceptance tests**. Retain any useful negative fallback/safety cases separately, without misrepresenting them as user-visible proof.
+
+**Minimum required fast CI:** keep a small, reliable set of **build/typecheck, lint, fast game-rule/API/privacy and core startup/interaction smoke** checks. Run jobs concurrently and measure their duration. Use the smallest representative browser set necessary to detect app boot, room creation and fundamental control/API breakage. Do not run the entire existing Playwright collection on every push. Move broad Hero roster, AOE/Duel/Attack dense layouts, Negation chains and lengthy repeated scenarios into **manual or post-acceptance validation**, unless the user separately approves a short gate. Preserve correctness and private-information safeguards.
+
+**Honest result:** Never use \`|| true\`, forced success, skipped failing required assertions, or changed expected values merely to paint CI green. Genuine failures in the deliberately small required gate must remain failures and be repaired. The instruction that CI “must not fail” means **eliminate unreliable, redundant, unapproved UX gates and maintain a stable minimal CI**, not suppress real errors.
+
+**UX release status is independent of CI:** A green fast CI means the chosen technical checks passed. It does **not** mean Attack/Dodge, AOE or any other card passed visual acceptance. The user's real-device observation of missing Attack lines remains **UX REJECTED / OPEN** until the user examines a working implementation.
+
+**Agent's next isolated execution task — \`UX2-CI-MINIMAL-6MIN-01\`:**
+1. Inventory required CI tests, execution time and false-positive UX tests. Identify the current long Attack/Dodge and dense 6/8-player cases that have **not been accepted by the user**.
+2. Change workflow and test selection so those long UX cases **do not run on push**. Keep their source files and make a separate manually triggered runner for diagnostics; do not modify game presentation while doing this CI-only task.
+3. Retain only the bounded build/lint, essential rules/API/privacy and basic browser journey checks on push. Remove redundant setup/build where safe; measure cold/warm timings, retries and runner consumption.
+4. Push one bounded CI change, demonstrate **three successful ordinary CI runs each no longer than 6:00 end-to-end**, with accurate checks, no swallowed failures, and honest deployment verification. If the limit is not yet reached, report the exact remaining slow stage and continue optimizing this CI task rather than broadening UX scope.
+5. Update Coding Agent-owned \`HANDOVER.md\` and **stop for the user's next instruction**. Do not claim Reviewer visual approval or enroll unapproved long UX tests.
+
+**Priority:** This CI-gate correction comes before starting another card type. Subsequent implementation is **one card, one user-visible feature, one user approval at a time**. Long-term regression coverage should be admitted only after that acceptance and must be designed to respect the six-minute push budget.
