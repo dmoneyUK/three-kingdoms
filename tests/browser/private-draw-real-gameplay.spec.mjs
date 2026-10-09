@@ -285,6 +285,7 @@ test("real multi-card Equilibrium draw keeps every private card reachable in the
   expect(submitted.ok()).toBeTruthy();
   expect(submitted.request().postDataJSON()).toMatchObject({ action: "trigger", providerId: "sun_quan_zhiheng" });
   expect(submitted.request().postDataJSON().cardIds).toEqual(equilibriumHand.map((card) => card.id));
+  await expect(dock.locator('[data-action-extras="true"]').getByRole("button", { name: /Equilibrium/i })).toHaveCount(0);
 
   const eventStage = page.locator(".private-draw-stage");
   await expect(eventStage).toBeVisible({ timeout: 20_000 });

@@ -33,19 +33,22 @@ async function selectAssaultTargets(page, request, viewport, targetCount = 2) {
   await page.locator(".game-shell").waitFor();
 
   const assault = page.getByRole("button", { name: "Assault" });
+  const duplicate = page.locator('[data-action-extras="true"]').getByRole("button", { name: /Assault/ });
   await expect(assault).toBeVisible();
   await expect(assault).toBeEnabled();
+  await expect(duplicate).toHaveCount(0);
   await assault.click();
   await expect(assault).toHaveAttribute("aria-pressed", "true");
+  await expect(duplicate).toHaveCount(0);
   await page.getByRole("button", { name: "Select TARGET ONE" }).click();
   if (targetCount === 2) await page.getByRole("button", { name: "Select TARGET TWO" }).click();
   await expect.poll(() => gameplayActions.some((action) => action.action === "start_response_timer")).toBeTruthy();
-  return { seed, gameplayActions, assault };
+  return { seed, gameplayActions, assault, duplicate };
 }
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }]) {
   test(`mobile Assault controls stay visible after two targets at ${viewport.width}px`, async ({ page, request }) => {
-    const { seed, gameplayActions, assault } = await selectAssaultTargets(page, request, viewport);
+    const { seed, gameplayActions, assault, duplicate } = await selectAssaultTargets(page, request, viewport);
     const diagnostic = await page.evaluate(() => {
       const consoleSurface = document.querySelector('[data-console-surface="local-operation"]');
       const guidance = document.querySelector('[data-console-guidance="true"]');
@@ -80,6 +83,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     await expect.poll(() => gameplayActions.filter((action) => action.action === "trigger")).toHaveLength(1);
     expect(gameplayActions.find((action) => action.action === "trigger")).toMatchObject({ action: "trigger", providerId: "zhang_liao_assault", targetIds: [seed.players[1].id, seed.players[2].id] });
     expect(gameplayActions.filter((action) => action.action === "decline_trigger")).toHaveLength(0);
+    await expect(duplicate).toHaveCount(0);
   });
 }
 

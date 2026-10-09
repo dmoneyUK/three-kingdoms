@@ -5,35 +5,29 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-§4D P2 production-path proof is closed: the real server-backed target-card
-browser spec passed 14/14 for Steal, Burning Bridge, Retaliation, Frost Sword,
-and Kirin Bow, including hidden-Hand privacy, public zones, exact submissions,
-and mixed-zone geometry. During P3, real Da Qiao Deflection gameplay passed
-2/2 at 390px and 1440px: server-generated CurrentAction enabled the Skills
-button, the browser submitted the exact card/target payload once, and the
-redirected player received the Dodge decision. Focused local browser command:
-`npm run test:browser -- daqiao-deflection-real-gameplay.spec.mjs`.
-Latest observed Actions run #941 (`37895174379`) passed on
-`b55ca795e85b612fa5a320426f9686b298f69e29`; remote HEAD
-`0aa1eb3a13057591caf6a11ee255d312ac44f972` has no newer run listed. Per direct
-user instruction, the empty current-HEAD CI state is treated as success.
-Reviewer acceptance is not claimed.
+§4D P3 real server-to-Skills audit is complete: 51 focused browser tests passed
+across the mapped 37 unique provider IDs and a 25-Hero no-authority matrix.
+They verify CurrentAction routing, exact activation/continuation payloads,
+stable disabled controls without authority, and no duplicate Action Row entry.
+Latest observed parent Actions run `37899520578` on `2052b7926a5a7fb5e3c6e21527df7f411e04a8c3` failed only ESLint for an unused `attacker` local in
+`daqiao-deflection-real-gameplay.spec.mjs:45`; API tests, build, and both
+browser shards passed. The unused local is removed in this task commit; its
+Actions validation is pending. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
 Latest remote `docs/UX2-refine.md` blob:
-`4c56947d9965cde28a7c888e19f5d5fa0612112e`. Re-reviewed §4C.15 and §4D P2/P3/
-§4D.3. The §4C.15 Burning Bridge visible-name amendment (`a8f0ec65`) is later
-than the §4D P2 wording (`268c4f85`); follow Burning Bridge for all player-
-visible copy and retain internal `Dismantle` identifiers.
+`4c56947d9965cde28a7c888e19f5d5fa0612112e`; no newer design change since the
+last checkpoint. Re-reviewed §1.10 and §4D P3/P4/§4D.3. The §4C.15 Burning
+Bridge visible-name amendment (`a8f0ec65`) remains later than the §4D P2
+wording (`268c4f85`); follow Burning Bridge for visible copy and retain
+internal `Dismantle` identifiers.
 
 ## Current task
 
-`UX2-4D-P3-HERO-SKILLS-REAL-GAME-REACHABILITY-01` — audit every implemented
-actionable/optional/response Hero capability through the real server-projected
-path to the Local Skills band. For each, prove provider/option authority,
-enabled/disabled routing, activation payload and any continuation in a real
-server-backed browser flow; verify no duplicate generic Action Row activation
-and that absent authority stays unavailable/passive. Fix production gaps found;
-fixture/API coverage supplements but does not replace real-path proof. Keep
-scope to P3; §4D P4/P5 and Section 6 remain later gates.
+`UX2-4D-P4-REAL-PRODUCTION-PATH-PARITY-01` — verify the approved Negation
+open/first/counter/settlement path, Raining Arrows with and without Dodge, and
+Opponent Inspect public Hero/skill/equipment/judgment plus concealed-Hand
+projection through server-generated rooms and the production page. Repair any
+real-path mismatch; fixture/API evidence is supplementary. Section 6 and P5
+remain gated until their own bounded tasks close.

@@ -42,7 +42,6 @@ async function roomView(request, seed, playerIndex) {
 for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
   test(`real Da Qiao Deflection uses the Skills band and redirects the Attack at ${viewport.width}px`, async ({ browser, page, request }) => {
     const seed = await seedGame(request);
-    const attacker = seed.players[0];
     const daQiao = seed.players[1];
     const replacement = seed.players[2];
     const attackerPage = await browser.newPage({ viewport });

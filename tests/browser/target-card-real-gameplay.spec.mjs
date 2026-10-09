@@ -224,8 +224,12 @@ test("real Sima Yi Retaliation reaches the modal with private Hand positions fro
   expect(JSON.stringify(reaction.currentAction)).not.toContain(hidden[1].id);
 
   const skill = page.getByRole("button", { name: "Retaliation", exact: true });
+  const dock = page.locator(`.local-player-dock[data-player-anchor="${seed.players[1].id}"]`);
+  const duplicate = dock.locator('[data-action-extras="true"]').getByRole("button", { name: /Retaliation/ });
   await expect(skill).toBeEnabled({ timeout: 15_000 });
+  await expect(duplicate).toHaveCount(0);
   await skill.click();
+  await expect(skill).toHaveAttribute("aria-pressed", "true");
   const dialog = await expectModal(page, "Retaliation", "Choose 1 card to obtain", "Use Retaliation");
   const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 2" });
   await expect(hiddenPosition).not.toContainText(/Peach|Dodge|real-retaliation/);
@@ -244,6 +248,7 @@ test("real Sima Yi Retaliation reaches the modal with private Hand positions fro
   expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
     action: "trigger", providerId: "sima_yi_fankui", cardKeys: ["hand:1"],
   });
+  await expect(duplicate).toHaveCount(0);
   await expect.poll(async () => (await roomView(request, seed, 1)).myHand.map((held) => held.id)).toContain(hidden[1].id);
 });
 

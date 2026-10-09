@@ -83,9 +83,13 @@ async function submitAttackResponse(page, cardId) {
 
 async function activateInfluencing(page) {
   const skill = page.locator('.local-player-dock[data-player-anchor] .local-hero-skills').getByRole("button", { name: "Influencing", exact: true });
+  const duplicate = page.locator('.local-player-dock[data-player-anchor] [data-action-extras="true"]').getByRole("button", { name: /Influencing/ });
   await expect(skill).toBeVisible();
   await expect(skill).toBeEnabled({ timeout: 20_000 });
+  await expect(duplicate).toHaveCount(0);
   await skill.click();
+  await expect(skill).toHaveAttribute("aria-pressed", "true");
+  await expect(duplicate).toHaveCount(0);
   const confirm = page.locator('[data-action-slot="primary"] button.primary');
   await expect(confirm).toHaveText("Confirm");
   await expect(confirm).toBeEnabled();
@@ -97,6 +101,7 @@ async function activateInfluencing(page) {
   await confirm.click();
   const response = await submitted;
   if (!response.ok()) throw new Error(`Influencing activation failed: ${await response.text()}`);
+  await expect(duplicate).toHaveCount(0);
 }
 
 async function snapshotGeometry(page, playerIds) {

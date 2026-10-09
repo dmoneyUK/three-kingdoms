@@ -46,8 +46,12 @@ async function roomView(request, seed, playerIndex) {
 async function activateFanjian(page, source, target) {
   const dock = page.locator(`.local-player-dock[data-player-anchor="${source.id}"]`);
   const skill = dock.locator(".local-hero-skills").getByRole("button", { name: "Sowing Distrust", exact: true });
+  const duplicate = dock.locator('[data-action-extras="true"]').getByRole("button", { name: /Sowing Distrust/ });
   await expect(skill).toBeEnabled();
+  await expect(duplicate).toHaveCount(0);
   await skill.click();
+  await expect(skill).toHaveAttribute("aria-pressed", "true");
+  await expect(duplicate).toHaveCount(0);
   const targetButton = page.locator(`[data-player-anchor="${target.id}"] .opponent-hero-target`);
   await expect(targetButton).toBeEnabled();
   await targetButton.click();
@@ -62,6 +66,7 @@ async function activateFanjian(page, source, target) {
   await confirm.click();
   const result = await submitted;
   if (!result.ok()) throw new Error(`Sowing Distrust failed: ${await result.text()}`);
+  await expect(duplicate).toHaveCount(0);
 }
 
 async function measureEffectGraph(page, sourceId, targetId) {

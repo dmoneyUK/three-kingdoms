@@ -2376,6 +2376,19 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `30d145b24090bc5cc8d2ff26fef0b608429acf7f`; outgoing task CI is not yet
   observed. Reviewer acceptance is not claimed.
 
+### UX2-4D-P3-HERO-SKILLS-REAL-GAME-REACHABILITY-01 — Real roster reachability
+
+- Audited all 37 unique actionable/optional/response provider IDs mapped into
+  the Local Hero Skills band across 25 Hero rows. Real server-seeded browser
+  flows proved offered authority, Skills-band activation, exact payloads and
+  required continuations; a server-backed non-actor matrix proved every mapped
+  control remains disabled without viewer authority. Duplicate Action Row
+  activation was checked in the real paths. No production routing gap was
+  found.
+- Focused real-gameplay browser runs passed 28/28 and 23/23. Evidence is
+  server projection plus production-page interaction, not deployed-game
+  screenshot or Reviewer acceptance.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

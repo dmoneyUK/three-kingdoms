@@ -1051,9 +1051,12 @@ test("real Longdan physical Dodge-as-Attack reaches the defender with its proven
   expect(sourceBefore.currentAction).toMatchObject({ kind: "turn", actorId: sourceId, canDeclareAttack: true });
   expect(sourceBefore.currentAction.playPhaseActions).toContainEqual(expect.objectContaining({ cardId: longdanDodge.id, canPlayAs: "attack" }));
   const braveheart = page.getByRole("button", { name: "Braveheart", exact: true });
+  const braveheartDuplicate = page.locator('[data-action-extras="true"]').getByRole("button", { name: /Braveheart/ });
   await expect(braveheart).toBeEnabled();
+  await expect(braveheartDuplicate).toHaveCount(0);
   await braveheart.click();
   await expect(braveheart).toHaveClass(/active/);
+  await expect(braveheartDuplicate).toHaveCount(0);
 
   const selectedDodge = page.locator(`[data-hand-card-id="${longdanDodge.id}"] .game-card`);
   await expect(selectedDodge).toBeEnabled();
@@ -1139,9 +1142,12 @@ test("real Guan Yu red Peach-as-Attack preserves its physical root card for both
 
   await openGame(page, seed, 0, viewport);
   const godOfWar = page.getByRole("button", { name: "God of War", exact: true });
+  const godOfWarDuplicate = page.locator('[data-action-extras="true"]').getByRole("button", { name: /God of War/ });
   await expect(godOfWar).toBeEnabled();
+  await expect(godOfWarDuplicate).toHaveCount(0);
   await godOfWar.click();
   await expect(godOfWar).toHaveClass(/active/);
+  await expect(godOfWarDuplicate).toHaveCount(0);
   const selectedPeach = page.locator(`[data-hand-card-id="${redPeach.id}"] .game-card`);
   const blackPeachInHand = page.locator(`[data-hand-card-id="${blackPeach.id}"] .game-card`);
   await expect(selectedPeach).toBeEnabled();
