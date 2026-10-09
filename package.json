@@ -12,6 +12,7 @@
     "test:fast": "node tests/run-fast-tests.mjs",
     "test:api": "node tests/run-api-suite.mjs",
     "test:browser": "playwright test --config tests/browser/playwright.config.mjs",
+    "test:browser:smoke": "playwright test --config tests/browser/playwright.config.mjs tests/browser/room-creation-real-gameplay.spec.mjs --workers=1",
     "test:all": "npm run build && npm run test:fast && npm run test:api",
     "test": "npm run test:all",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
