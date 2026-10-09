@@ -8,6 +8,43 @@ import { CardFace } from "./card-face";
 
 type Point = { x: number; y: number };
 type Rect = { left: number; top: number; right: number; bottom: number; width: number; height: number };
+type AttackGeometryFitDiagnostic = {
+  rootEventId: string;
+  phase: "root" | "dodge-response" | "other-response";
+  fitStep: string;
+  viewport: { width: number; height: number };
+  cause: "missing-table-or-card-rect" | "missing-or-invalid-player-anchor" | "missing-dodge-response-card" | "dodge-interception-point-unavailable" | "table-smaller-than-card-margin" | "no-attack-root-candidate" | "no-reserved-dodge-candidate" | "no-dodge-interception-candidate";
+  candidateCount?: number;
+  rootFitCandidateCount?: number;
+  rootFitWithDodgeSlotCount?: number;
+  rootRejectedBySeatOrDock?: number;
+  rootRejectedByControl?: number;
+  rootFitWithoutDodgeSlotCount?: number;
+  dodgeRejectedOutsideSafeRegion?: number;
+  dodgeRejectedByRootCard?: number;
+  dodgeRejectedBySeatOrDock?: number;
+  dodgeRejectedByControl?: number;
+  dodgeRejectedOffAttackPath?: number;
+  validDodgeSlotCount?: number;
+  dodgeDirectCandidateCount?: number;
+  dodgeDirectFitCandidateCount?: number;
+  dodgeDirectRejectedBySafeRegion?: number;
+  dodgeDirectRejectedByRootCard?: number;
+  dodgeDirectRejectedBySeatOrDock?: number;
+  dodgeDirectRejectedByControl?: number;
+  dodgeDirectRejectedByProjection?: number;
+  dodgeDirectRejectedWithoutPathIntersection?: number;
+  dodgeAdjacentCandidateCount?: number;
+  dodgeAdjacentFitCandidateCount?: number;
+  dodgeAdjacentRejectedBySafeRegion?: number;
+  dodgeAdjacentRejectedByRootCard?: number;
+  dodgeAdjacentRejectedBySeatOrDock?: number;
+  dodgeAdjacentRejectedByControl?: number;
+  dodgeAdjacentRejectedByProjection?: number;
+  dodgeAdjacentRejectedByPathIntersection?: number;
+  dodgeAdjacentRejectedByEdgeGap?: number;
+};
+type AttackGeometryFitDiagnosticReporter = (diagnostic: AttackGeometryFitDiagnostic) => void;
 type RootActionLayout = {
   width: number;
   height: number;
@@ -706,11 +743,25 @@ function layoutSimultaneousRootAction(
   };
 }
 
-function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, responseElement: HTMLElement | null, responseElements: readonly HTMLElement[], historySummaryElement: HTMLElement | null, action: Pick<InteractionRootOverlayAction, "sourceId" | "targetId" | "cardKind" | "cardFace" | "mode" | "rootEffectState" | "settlement" | "response"> & ResponseLayout, preferredRootCard: Rect | null, preferredResponseCard: Rect | null): RootActionLayout | null {
+function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, responseElement: HTMLElement | null, responseElements: readonly HTMLElement[], historySummaryElement: HTMLElement | null, action: Pick<InteractionRootOverlayAction, "rootEventId" | "sourceId" | "targetId" | "cardKind" | "cardFace" | "mode" | "rootEffectState" | "settlement" | "response"> & ResponseLayout, preferredRootCard: Rect | null, preferredResponseCard: Rect | null, diagnosticReporter?: AttackGeometryFitDiagnosticReporter): RootActionLayout | null {
   const table = shell.querySelector<HTMLElement>(".play-table");
   const shellBounds = shell.getBoundingClientRect();
   const cardBounds = cardElement.getBoundingClientRect();
-  if (!table || shellBounds.width <= 0 || shellBounds.height <= 0 || cardBounds.width <= 0 || cardBounds.height <= 0) return null;
+  const reportFitDiagnostic = (cause: AttackGeometryFitDiagnostic["cause"], detail: Omit<AttackGeometryFitDiagnostic, "rootEventId" | "phase" | "fitStep" | "viewport" | "cause"> = {}) => {
+    if (action.cardKind !== "Attack" || !action.targetId || !diagnosticReporter) return;
+    diagnosticReporter({
+      rootEventId: action.rootEventId,
+      phase: action.response?.cardFace?.kind === "Dodge" ? "dodge-response" : action.response ? "other-response" : "root",
+      fitStep: cardElement.closest<HTMLElement>("[data-root-action-card-fit-step]")?.dataset.rootActionCardFitStep ?? "target",
+      viewport: { width: Math.round(shellBounds.width), height: Math.round(shellBounds.height) },
+      cause,
+      ...detail,
+    });
+  };
+  if (!table || shellBounds.width <= 0 || shellBounds.height <= 0 || cardBounds.width <= 0 || cardBounds.height <= 0) {
+    reportFitDiagnostic("missing-table-or-card-rect");
+    return null;
+  }
 
   const anchorFor = (playerId: string) => {
     const matches = Array.from(shell.querySelectorAll<HTMLElement>("[data-player-anchor]"))
@@ -728,17 +779,26 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     || action.response && !responseSourceElement
     || action.response?.targetId && !responseTargetElement
     || action.responses && (responseElements.length !== action.responses.length
-      || responseChainSources.some((element) => !element))) return null;
+      || responseChainSources.some((element) => !element))) {
+    reportFitDiagnostic("missing-or-invalid-player-anchor");
+    return null;
+  }
   const sourceBounds = sourceElement.getBoundingClientRect();
   const targetBounds = targetElement.getBoundingClientRect();
   if (!sourceElement.isConnected || !targetElement.isConnected
     || sourceElement.getClientRects().length !== 1 || targetElement.getClientRects().length !== 1
     || sourceBounds.width <= 0 || sourceBounds.height <= 0
-    || targetBounds.width <= 0 || targetBounds.height <= 0) return null;
+    || targetBounds.width <= 0 || targetBounds.height <= 0) {
+    reportFitDiagnostic("missing-or-invalid-player-anchor");
+    return null;
+  }
   if (action.response?.targetId) {
     const responseTargetBounds = responseTargetElement?.getBoundingClientRect();
     if (!responseTargetElement?.isConnected || responseTargetElement.getClientRects().length !== 1
-      || !responseTargetBounds || responseTargetBounds.width <= 0 || responseTargetBounds.height <= 0) return null;
+      || !responseTargetBounds || responseTargetBounds.width <= 0 || responseTargetBounds.height <= 0) {
+      reportFitDiagnostic("missing-or-invalid-player-anchor");
+      return null;
+    }
   }
 
   const tableRect = relativeRect(table, shellBounds);
@@ -750,7 +810,10 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const cardWidth = cardBounds.width;
   const cardHeight = cardBounds.height;
   const margin = 12;
-  if (tableRect.width < cardWidth + margin * 2 || tableRect.height < cardHeight + margin * 2) return null;
+  if (tableRect.width < cardWidth + margin * 2 || tableRect.height < cardHeight + margin * 2) {
+    reportFitDiagnostic("table-smaller-than-card-margin");
+    return null;
+  }
 
   const sourceCenter = center(sourceRect);
   if (action.mode === "self-target") {
@@ -859,12 +922,33 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .game-messages, .game-exit")),
   ].filter((element) => element.getClientRects().length > 0)
   const obstacles = obstacleElements.map((element) => relativeRect(element, shellBounds));
+  const fitCounts = {
+    rootFitCandidateCount: 0,
+    rootRejectedBySeatOrDock: 0,
+    rootRejectedByControl: 0,
+    rootFitWithoutDodgeSlotCount: 0,
+    rootFitWithDodgeSlotCount: 0,
+    dodgeRejectedOutsideSafeRegion: 0,
+    dodgeRejectedByRootCard: 0,
+    dodgeRejectedBySeatOrDock: 0,
+    dodgeRejectedByControl: 0,
+    dodgeRejectedOffAttackPath: 0,
+    validDodgeSlotCount: 0,
+  };
   const candidates = candidateCenters.flatMap((candidate) => {
     const left = Math.max(tableRect.left + margin, Math.min(candidate.x - cardWidth / 2, tableRect.right - margin - cardWidth));
     const top = Math.max(tableRect.top + margin, Math.min(candidate.y - cardHeight / 2, tableRect.bottom - margin - cardHeight));
     const card: Rect = { left, top, right: left + cardWidth, bottom: top + cardHeight, width: cardWidth, height: cardHeight };
-    if (obstacleElements.some((element) => overlaps(card, relativeRect(element, shellBounds),
-      isUnansweredAttackRoot && anchorObstacleSet.has(element) ? 22 : 8))) return [];
+    const rootOverlapsSeatOrDock = obstacleElements.some((element) => anchorObstacleSet.has(element)
+      && overlaps(card, relativeRect(element, shellBounds), isUnansweredAttackRoot ? 22 : 8));
+    const rootOverlapsControl = obstacleElements.some((element) => !anchorObstacleSet.has(element)
+      && overlaps(card, relativeRect(element, shellBounds), 8));
+    if (rootOverlapsSeatOrDock || rootOverlapsControl) {
+      if (rootOverlapsSeatOrDock) fitCounts.rootRejectedBySeatOrDock += 1;
+      if (rootOverlapsControl) fitCounts.rootRejectedByControl += 1;
+      return [];
+    }
+    fitCounts.rootFitCandidateCount += 1;
     let reservedDodge: Rect | null = null;
     if (reservedDodgeSize) {
       const nearbySlots = [
@@ -883,21 +967,47 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       const attackStart = rectangleEdge(card, targetCenter);
       const attackEnd = rectangleEdge(targetRect, center(card));
       const idealPoint = { x: attackStart.x + (attackEnd.x - attackStart.x) * .52, y: attackStart.y + (attackEnd.y - attackStart.y) * .52 };
-      const reserveCandidates = nearbySlots.filter((candidateRect) => candidateRect.left >= tableRect.left + margin
-        && candidateRect.right <= tableRect.right - margin
-        && candidateRect.top >= tableRect.top + margin
-        && candidateRect.bottom <= stableStageBottom - margin
-        && !overlaps(card, candidateRect, 8)
-        && !obstacleElements.some((element) => overlaps(candidateRect, relativeRect(element, shellBounds),
-          isUnansweredAttackRoot && anchorObstacleSet.has(element) ? 22 : 8))
-        && segmentNearRect(attackStart, attackEnd, candidateRect, 20))
+      const reserveCandidates = nearbySlots.filter((candidateRect) => {
+        const insideSafeRegion = candidateRect.left >= tableRect.left + margin
+          && candidateRect.right <= tableRect.right - margin
+          && candidateRect.top >= tableRect.top + margin
+          && candidateRect.bottom <= stableStageBottom - margin;
+        if (!insideSafeRegion) {
+          fitCounts.dodgeRejectedOutsideSafeRegion += 1;
+          return false;
+        }
+        if (overlaps(card, candidateRect, 8)) {
+          fitCounts.dodgeRejectedByRootCard += 1;
+          return false;
+        }
+        const overlapsSeatOrDock = obstacleElements.some((element) => anchorObstacleSet.has(element)
+          && overlaps(candidateRect, relativeRect(element, shellBounds), 22));
+        const overlapsControl = obstacleElements.some((element) => !anchorObstacleSet.has(element)
+          && overlaps(candidateRect, relativeRect(element, shellBounds), 8));
+        if (overlapsSeatOrDock || overlapsControl) {
+          if (overlapsSeatOrDock) fitCounts.dodgeRejectedBySeatOrDock += 1;
+          if (overlapsControl) fitCounts.dodgeRejectedByControl += 1;
+          return false;
+        }
+        if (!segmentNearRect(attackStart, attackEnd, candidateRect, 20)) {
+          fitCounts.dodgeRejectedOffAttackPath += 1;
+          return false;
+        }
+        fitCounts.validDodgeSlotCount += 1;
+        return true;
+      })
         .sort((leftRect, rightRect) => Math.hypot(center(leftRect).x - idealPoint.x, center(leftRect).y - idealPoint.y)
           - Math.hypot(center(rightRect).x - idealPoint.x, center(rightRect).y - idealPoint.y));
       reservedDodge = reserveCandidates[0] ?? null;
-      if (!reservedDodge) return [];
+      if (!reservedDodge) {
+        fitCounts.rootFitWithoutDodgeSlotCount += 1;
+      } else {
+        fitCounts.rootFitWithDodgeSlotCount += 1;
+      }
     }
     const distance = Math.hypot(left + cardWidth / 2 - preferred.x, top + cardHeight / 2 - preferred.y);
-    return [{ card, reservedDodge, score: distance + Math.abs(candidate.fraction - sourceBiasedFraction) * 80 + Math.abs(candidate.offset) * .12 }];
+    const responseReservationPenalty = reservedDodgeSize && !reservedDodge ? 1_000 : 0;
+    return [{ card, reservedDodge, score: distance + Math.abs(candidate.fraction - sourceBiasedFraction) * 80 + Math.abs(candidate.offset) * .12 + responseReservationPenalty }];
   }).sort((left, right) => left.score - right.score);
   // A CurrentAction handoff can grow the local Dock slightly. Preserve the
   // cached root and apply only the minimum upward clearance needed to keep it
@@ -923,7 +1033,20 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     : candidates[0];
   const card = selectedCandidate?.card;
   const reservedDodgeCard = selectedCandidate?.reservedDodge ?? null;
-  if (!card) return null;
+  if (!card) {
+    reportFitDiagnostic("no-attack-root-candidate", {
+      candidateCount: candidateCenters.length,
+      ...fitCounts,
+    });
+    return null;
+  }
+  if (reservedDodgeSize && !reservedDodgeCard && fitCounts.rootFitCandidateCount > 0
+    && fitCounts.rootFitWithDodgeSlotCount === 0) {
+    reportFitDiagnostic("no-reserved-dodge-candidate", {
+      candidateCount: candidateCenters.length,
+      ...fitCounts,
+    });
+  }
 
   const cardCenter = center(card);
   const rootPathCurve = action.cardKind === "Attack" ? 0 : Math.min(24, lineLength * .035);
@@ -1027,7 +1150,12 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     };
   }
   if (action.response) {
-    if (!responseElement || !responseSourceElement || !responseSourceRect) return null;
+    if (!responseElement || !responseSourceElement || !responseSourceRect) {
+      if (!responseElement && action.cardKind === "Attack" && action.response.cardFace?.kind === "Dodge") {
+        reportFitDiagnostic("missing-dodge-response-card");
+      }
+      return null;
+    }
     if (action.response.targetId && !responseTargetRect) return null;
     const responseSourceBounds = responseSourceElement.getBoundingClientRect();
     const responseBounds = responseElement.getBoundingClientRect();
@@ -1072,14 +1200,54 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       && preferredResponseCard.top >= tableRect.top + margin
       && preferredResponseCard.bottom <= stableStageBottom - margin
       && !responseObstacles.some((obstacle) => overlaps(preferredResponseCard, obstacle, 8));
-    const responseFits = (responseCard: Rect) => responseCard.left >= tableRect.left + margin
-      && responseCard.right <= tableRect.right - margin
-      && responseCard.top >= tableRect.top + margin
-      && responseCard.bottom <= stableStageBottom - margin
-      && !responseObstacles.some((obstacle) => overlaps(responseCard, obstacle, 8));
+    const responseFitFailure = (responseCard: Rect): "safe-region" | "root-card" | "seat-or-dock" | "control" | null => {
+      if (responseCard.left < tableRect.left + margin || responseCard.right > tableRect.right - margin
+        || responseCard.top < tableRect.top + margin || responseCard.bottom > stableStageBottom - margin) return "safe-region";
+      if (overlaps(responseCard, card, 8)) return "root-card";
+      if (obstacleElements.some((element, index) => anchorObstacleSet.has(element)
+        && overlaps(responseCard, obstacles[index]!, 8))) return "seat-or-dock";
+      if (obstacleElements.some((element, index) => !anchorObstacleSet.has(element)
+        && overlaps(responseCard, obstacles[index]!, 8))) return "control";
+      return null;
+    };
     let dodgeInterceptionFallback = false;
     let responseCandidates: { responseCard: Rect; score: number }[];
     if (attackDodgeIntercepted) {
+      const dodgeFitCounts = {
+        dodgeDirectCandidateCount: 0,
+        dodgeDirectFitCandidateCount: 0,
+        dodgeDirectRejectedBySafeRegion: 0,
+        dodgeDirectRejectedByRootCard: 0,
+        dodgeDirectRejectedBySeatOrDock: 0,
+        dodgeDirectRejectedByControl: 0,
+        dodgeDirectRejectedByProjection: 0,
+        dodgeDirectRejectedWithoutPathIntersection: 0,
+        dodgeAdjacentCandidateCount: 0,
+        dodgeAdjacentFitCandidateCount: 0,
+        dodgeAdjacentRejectedBySafeRegion: 0,
+        dodgeAdjacentRejectedByRootCard: 0,
+        dodgeAdjacentRejectedBySeatOrDock: 0,
+        dodgeAdjacentRejectedByControl: 0,
+        dodgeAdjacentRejectedByProjection: 0,
+        dodgeAdjacentRejectedByPathIntersection: 0,
+        dodgeAdjacentRejectedByEdgeGap: 0,
+      };
+      const recordFitFailure = (phase: "direct" | "adjacent", failure: ReturnType<typeof responseFitFailure>) => {
+        const isDirect = phase === "direct";
+        if (failure === "safe-region") {
+          if (isDirect) dodgeFitCounts.dodgeDirectRejectedBySafeRegion += 1;
+          else dodgeFitCounts.dodgeAdjacentRejectedBySafeRegion += 1;
+        } else if (failure === "root-card") {
+          if (isDirect) dodgeFitCounts.dodgeDirectRejectedByRootCard += 1;
+          else dodgeFitCounts.dodgeAdjacentRejectedByRootCard += 1;
+        } else if (failure === "seat-or-dock") {
+          if (isDirect) dodgeFitCounts.dodgeDirectRejectedBySeatOrDock += 1;
+          else dodgeFitCounts.dodgeAdjacentRejectedBySeatOrDock += 1;
+        } else if (failure === "control") {
+          if (isDirect) dodgeFitCounts.dodgeDirectRejectedByControl += 1;
+          else dodgeFitCounts.dodgeAdjacentRejectedByControl += 1;
+        }
+      };
       const attackPathStart = rectangleEdge(card, targetCenter);
       const attackPathEnd = rectangleEdge(targetRect, cardCenter);
       const attackDx = attackPathEnd.x - attackPathStart.x;
@@ -1102,13 +1270,27 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
         const projection = projectPointToSegment(attackPathStart, attackPathEnd, center(responseCard));
         return projection.fraction >= .38 && projection.fraction <= .68 ? projection : null;
       };
-      const directCandidates = [
+      const directCandidateRects = [
         ...(preferredResponseFits && preferredResponseCard ? [preferredResponseCard] : []),
         ...[.5, .45, .55, .4, .6, .65, .38, .68].flatMap((fraction) => [0, -8, 8, -16, 16, -24, 24, -32, 32, -40, 40, -48, 48].map((offset) => rectAt(attackCenterAt(fraction, offset)))),
-      ].flatMap((responseCard, index) => {
-        if (!responseFits(responseCard)) return [];
+      ];
+      dodgeFitCounts.dodgeDirectCandidateCount = directCandidateRects.length;
+      const directCandidates = directCandidateRects.flatMap((responseCard, index) => {
+        const fitFailure = responseFitFailure(responseCard);
+        if (fitFailure) {
+          recordFitFailure("direct", fitFailure);
+          return [];
+        }
+        dodgeFitCounts.dodgeDirectFitCandidateCount += 1;
         const projection = acceptableProjection(responseCard);
-        if (!projection || !segmentIntersectsRect(attackPathStart, attackPathEnd, responseCard)) return [];
+        if (!projection) {
+          dodgeFitCounts.dodgeDirectRejectedByProjection += 1;
+          return [];
+        }
+        if (!segmentIntersectsRect(attackPathStart, attackPathEnd, responseCard)) {
+          dodgeFitCounts.dodgeDirectRejectedWithoutPathIntersection += 1;
+          return [];
+        }
         const fractionPenalty = Math.abs(projection.fraction - .5) * 100;
         return [{ responseCard, score: (index === 0 && preferredResponseFits ? -1_000_000 : 0) + fractionPenalty + projection.distance }];
       }).sort((left, right) => left.score - right.score);
@@ -1117,16 +1299,35 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       } else {
         const normalRadius = Math.abs(attackNormal.x) * responseWidth / 2 + Math.abs(attackNormal.y) * responseHeight / 2;
         const offsets = [normalRadius + 14, normalRadius + 20, -normalRadius - 14, -normalRadius - 20];
-        responseCandidates = [.5, .45, .55, .4, .6, .65, .38, .68].flatMap((fraction) => offsets.map((offset) => rectAt(attackCenterAt(fraction, offset))))
-          .flatMap((responseCard) => {
-            if (!responseFits(responseCard)) return [];
+        const adjacentCandidateRects = [.5, .45, .55, .4, .6, .65, .38, .68].flatMap((fraction) => offsets.map((offset) => rectAt(attackCenterAt(fraction, offset))));
+        dodgeFitCounts.dodgeAdjacentCandidateCount = adjacentCandidateRects.length;
+        responseCandidates = adjacentCandidateRects.flatMap((responseCard) => {
+            const fitFailure = responseFitFailure(responseCard);
+            if (fitFailure) {
+              recordFitFailure("adjacent", fitFailure);
+              return [];
+            }
+            dodgeFitCounts.dodgeAdjacentFitCandidateCount += 1;
             const projection = acceptableProjection(responseCard);
-            if (!projection || segmentIntersectsRect(attackPathStart, attackPathEnd, responseCard)) return [];
+            if (!projection) {
+              dodgeFitCounts.dodgeAdjacentRejectedByProjection += 1;
+              return [];
+            }
+            if (segmentIntersectsRect(attackPathStart, attackPathEnd, responseCard)) {
+              dodgeFitCounts.dodgeAdjacentRejectedByPathIntersection += 1;
+              return [];
+            }
             const edgeDistance = pointRectDistance(projection.point, responseCard);
-            if (edgeDistance < 12 || edgeDistance > 20 || !segmentNearRect(attackPathStart, attackPathEnd, responseCard, 20)) return [];
+            if (edgeDistance < 12 || edgeDistance > 20 || !segmentNearRect(attackPathStart, attackPathEnd, responseCard, 20)) {
+              dodgeFitCounts.dodgeAdjacentRejectedByEdgeGap += 1;
+              return [];
+            }
             return [{ responseCard, score: Math.abs(projection.fraction - .5) * 100 + edgeDistance }];
           }).sort((left, right) => left.score - right.score);
         dodgeInterceptionFallback = responseCandidates.length > 0;
+      }
+      if (!responseCandidates.length) {
+        reportFitDiagnostic("no-dodge-interception-candidate", { ...dodgeFitCounts });
       }
     } else {
       responseCandidates = [
@@ -1174,7 +1375,10 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       const intercept = dodgeInterceptionFallback
         ? projectPointToSegment(attackPathStart, attackPathEnd, responseCenter).point
         : segmentRectEntryPoint(attackPathStart, attackPathEnd, responseCard);
-      if (!intercept) return null;
+      if (!intercept) {
+        reportFitDiagnostic("dodge-interception-point-unavailable");
+        return null;
+      }
       const markPoint = dodgeInterceptionFallback
         ? intercept
         : { x: intercept.x - attackTangent.x * 4, y: intercept.y - attackTangent.y * 4 };
@@ -1353,6 +1557,9 @@ export function InteractionRootOverlay({
       const initialFitStepIndex = canScaleAttackCard && window.innerHeight <= 700
         ? fitSteps.length - 1
         : Math.max(0, preferredFitStepIndex);
+      const diagnosticReporter = (window as Window & {
+        __wtkCaptureAttackFitDiagnostic?: AttackGeometryFitDiagnosticReporter;
+      }).__wtkCaptureAttackFitDiagnostic;
       const layoutForCurrentAction = () => currentSimultaneousTargets?.length
         ? layoutSimultaneousRootAction(shell, card, responseElements, historySummaryElement, {
           sourceId: currentSourceId,
@@ -1373,6 +1580,7 @@ export function InteractionRootOverlay({
           historyCount: currentHistoryCount,
         }, preferredRootCard)
         : currentTargetId ? layoutRootAction(shell, card, responseCard, responseElements, historySummaryElement, {
+          rootEventId: currentAction.rootEventId,
           sourceId: currentSourceId,
           targetId: currentTargetId,
           cardKind: currentAction.cardKind,
@@ -1383,7 +1591,7 @@ export function InteractionRootOverlay({
           response: currentAction.response,
           responses: currentAction.responses ? currentVisibleResponses : undefined,
           historyCount: currentHistoryCount,
-        }, preferredRootCard, preferredResponseCard) : null;
+        }, preferredRootCard, preferredResponseCard, diagnosticReporter) : null;
       let nextLayout: RootActionLayout | null = null;
       let selectedFitStep = fitSteps[initialFitStepIndex] ?? "target";
       for (let fitStepIndex = initialFitStepIndex; fitStepIndex < fitSteps.length; fitStepIndex += 1) {

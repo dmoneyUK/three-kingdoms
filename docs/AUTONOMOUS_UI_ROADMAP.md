@@ -2491,3 +2491,24 @@ HANDOVER" wording here after the handoff has moved on.
   measured remaining dense-layout limitation; it does not establish that every
   such scene is impossible. Preserve the fallback unless a collision-free
   root/response fit is proven. Reviewer visual acceptance is not claimed.
+
+### UX2-6.27-DENSE-ATTACK-GEOMETRY-INVESTIGATION-01 — Fit diagnosis
+
+- Added opt-in test-only fit snapshots for the Attack root and an actually
+  submitted Dodge. They separate missing anchors, sampled root-candidate
+  failures, absent root-adjacent pre-reservations, and direct/adjacent Dodge
+  interception candidates; attached browser evidence includes the measured
+  Seat/Dock and control rectangles. The pre-reservation result is not treated
+  as proof that no actual Dodge interception slot exists.
+- Real server-backed 6/8-player runs at 390×844 and 480×900 found no collision-
+  free root placement in the current 108-point path-based sample for the local
+  attacker at any fit size. Defender roots had collision-free candidates and
+  display the graph even when the small root-adjacent response reservation is
+  absent. On actual Dodge submission, 6-player 480×900 fits at minimum card
+  size; the other three dense sizes have zero current direct/adjacent response
+  candidates after Seat/Dock, control, and safe-region checks. Safe Stage
+  fallback remains in those cases; these measurements do not prove that a
+  broader root/response search could never find a valid placement.
+- The four focused dense Attack→Dodge browser cases passed 4/4. The real
+  ten-window Attack continuity regression passed 1/1. `npm run build`, targeted
+  ESLint, and `git diff --check` passed. No Reviewer acceptance is claimed.

@@ -239,6 +239,11 @@ async function openGame(page, seed, playerIndex, viewport) {
     window.__wtkRootOverlayPreGraphAnchors = null;
     window.__wtkAttackVisibleFrames = [];
     window.__wtkAttackFrameSamplingComplete = false;
+    window.__wtkAttackFitDiagnostics = [];
+    window.__wtkCaptureAttackFitDiagnostic = (diagnostic) => {
+      window.__wtkAttackFitDiagnostics.push({ ...diagnostic, capturedAt: performance.now() });
+      if (window.__wtkAttackFitDiagnostics.length > 400) window.__wtkAttackFitDiagnostics.shift();
+    };
     window.__wtkStartAttackVisibleFrameSampling = () => {
       window.__wtkAttackVisibleFrames = [];
       window.__wtkAttackFrameSamplingComplete = false;
@@ -1512,6 +1517,22 @@ for (const scenario of [
       await openGame(targetPage, seed, 1, viewport);
       const actorLayout = await assertAttackGraphOrSafeFallback(page, viewport, `${playerCount}p ${viewport.width}px attacker`);
       const targetLayout = await assertAttackGraphOrSafeFallback(targetPage, viewport, `${playerCount}p ${viewport.width}px defender`);
+      actorLayout.fitDiagnostics = await page.evaluate((rootEventId) => window.__wtkAttackFitDiagnostics
+        .filter((diagnostic) => diagnostic.rootEventId === rootEventId), rootAction.rootEventId);
+      targetLayout.fitDiagnostics = await targetPage.evaluate((rootEventId) => window.__wtkAttackFitDiagnostics
+        .filter((diagnostic) => diagnostic.rootEventId === rootEventId), rootAction.rootEventId);
+      for (const [role, layout] of [["attacker", actorLayout], ["defender", targetLayout]]) {
+        if (layout.mode !== "fallback") continue;
+        const fitDiagnostic = layout.fitDiagnostics.at(-1);
+        expect(fitDiagnostic, `${playerCount}p ${viewport.width}px ${role}: fallback has a measured fit cause`).toBeTruthy();
+        expect(fitDiagnostic.cause).toMatch(/^(missing-table-or-card-rect|missing-or-invalid-player-anchor|table-smaller-than-card-margin|no-attack-root-candidate)$/);
+        if (fitDiagnostic.cause === "no-attack-root-candidate") {
+          expect(fitDiagnostic.candidateCount, `${role}: diagnostic records the attempted path-based candidate set`).toBeGreaterThan(0);
+          expect(fitDiagnostic.rootFitCandidateCount, `${role}: no sampled root rectangle clears all measured obstacles`).toBe(0);
+          expect(fitDiagnostic.rootRejectedBySeatOrDock + fitDiagnostic.rootRejectedByControl,
+            `${role}: all rejected roots are attributed to measured seat/dock or control collisions`).toBeGreaterThan(0);
+        }
+      }
       await testInfo.attach(`dense-attack-layout-${playerCount}p-${viewport.width}px.json`, {
         body: JSON.stringify({ actorLayout, targetLayout }, null, 2), contentType: "application/json",
       });
@@ -1532,9 +1553,15 @@ for (const scenario of [
         message: `${playerCount}p ${viewport.width}px Dodge response reaches measured layout`,
       }).toMatch(/^(ready|unavailable)$/);
       const responseLayout = await captureAttackOverlayDiagnostics(targetPage);
+      responseLayout.fitDiagnostics = await targetPage.evaluate((rootEventId) => window.__wtkAttackFitDiagnostics
+        .filter((diagnostic) => diagnostic.rootEventId === rootEventId), rootAction.rootEventId);
       await testInfo.attach(`dense-attack-layout-${playerCount}p-${viewport.width}px-after-dodge.json`, {
         body: JSON.stringify(responseLayout, null, 2),
         contentType: "application/json",
+      });
+      await testInfo.attach(`dense-attack-layout-${playerCount}p-${viewport.width}px-after-dodge.png`, {
+        body: await targetPage.screenshot(),
+        contentType: "image/png",
       });
       if (responseLayout.overlay?.layout === "ready" && responseLayout.overlay.mode === "graph") {
         expect(targetLayout.mode, "Dodge cannot promote a previously unsupported root to a shifted graph").toBe("graph");
@@ -1563,6 +1590,36 @@ for (const scenario of [
       } else {
         expect(responseLayout.overlay?.layout).toBe("unavailable");
         expect(responseLayout.overlay?.mode).toBe("fallback");
+        const dodgeFitDiagnostic = responseLayout.fitDiagnostics
+          .filter((diagnostic) => diagnostic.phase === "dodge-response").at(-1);
+        expect(dodgeFitDiagnostic, "safe Dodge fallback records a test-only geometry cause for the same proven root").toBeTruthy();
+        expect(dodgeFitDiagnostic.cause).toMatch(/^(missing-table-or-card-rect|missing-or-invalid-player-anchor|missing-dodge-response-card|dodge-interception-point-unavailable|table-smaller-than-card-margin|no-attack-root-candidate|no-dodge-interception-candidate)$/);
+        if (dodgeFitDiagnostic.cause === "no-dodge-interception-candidate") {
+          expect(dodgeFitDiagnostic.dodgeDirectCandidateCount + dodgeFitDiagnostic.dodgeAdjacentCandidateCount,
+            "the actual Dodge was checked against direct and adjacent interception placements").toBeGreaterThan(0);
+          expect(dodgeFitDiagnostic.dodgeDirectCandidateCount).toBe(
+            dodgeFitDiagnostic.dodgeDirectRejectedBySafeRegion
+              + dodgeFitDiagnostic.dodgeDirectRejectedByRootCard
+              + dodgeFitDiagnostic.dodgeDirectRejectedBySeatOrDock
+              + dodgeFitDiagnostic.dodgeDirectRejectedByControl
+              + dodgeFitDiagnostic.dodgeDirectFitCandidateCount,
+          );
+          expect(dodgeFitDiagnostic.dodgeAdjacentCandidateCount).toBe(
+            dodgeFitDiagnostic.dodgeAdjacentRejectedBySafeRegion
+              + dodgeFitDiagnostic.dodgeAdjacentRejectedByRootCard
+              + dodgeFitDiagnostic.dodgeAdjacentRejectedBySeatOrDock
+              + dodgeFitDiagnostic.dodgeAdjacentRejectedByControl
+              + dodgeFitDiagnostic.dodgeAdjacentFitCandidateCount,
+          );
+          expect(dodgeFitDiagnostic.dodgeDirectFitCandidateCount).toBe(
+            dodgeFitDiagnostic.dodgeDirectRejectedByProjection + dodgeFitDiagnostic.dodgeDirectRejectedWithoutPathIntersection,
+          );
+          expect(dodgeFitDiagnostic.dodgeAdjacentFitCandidateCount).toBe(
+            dodgeFitDiagnostic.dodgeAdjacentRejectedByProjection
+              + dodgeFitDiagnostic.dodgeAdjacentRejectedByPathIntersection
+              + dodgeFitDiagnostic.dodgeAdjacentRejectedByEdgeGap,
+          );
+        }
         await expect(defenderOverlay).toHaveAttribute("data-root-action-ready", "false");
         expect(await targetPage.locator(".interaction-stage").count(), "safe fallback never duplicates the public stage").toBeLessThanOrEqual(1);
         expect(await targetPage.locator('[data-root-action-card="true"]').evaluate((element) => getComputedStyle(element).visibility)).toBe("hidden");
@@ -2888,11 +2945,23 @@ test("real 6/8-player mobile Attack presentation stays stable for attacker and d
         const geometry = entry.layout.mode === "graph"
           ? await captureAttackGraphGeometry(entry.page, sourceId, targetId, playerCount, viewport, label + " " + entry.role)
           : await captureAttackFallbackAnchorStability(entry.page, playerCount, viewport, label + " " + entry.role);
+        const fitDiagnostics = await entry.page.evaluate((rootEventId) => window.__wtkAttackFitDiagnostics
+          .filter((diagnostic) => diagnostic.rootEventId === rootEventId), rootAction.rootEventId);
+        const latestFitDiagnostic = fitDiagnostics.at(-1);
+        if (latestFitDiagnostic?.cause === "no-reserved-dodge-candidate") {
+          expect(latestFitDiagnostic.rootFitCandidateCount, label + " " + entry.role + ": Attack has a collision-free root placement").toBeGreaterThan(0);
+          expect(latestFitDiagnostic.rootFitWithDodgeSlotCount, label + " " + entry.role + ": the only missing fit is an optional future Dodge reservation").toBe(0);
+          expect(entry.layout.mode, label + " " + entry.role + ": missing future Dodge slot does not hide the ready Attack graph").toBe("graph");
+        }
+        if (entry.layout.mode === "fallback") {
+          expect(fitDiagnostics.length, label + " " + entry.role + ": test-only layout fit diagnostics identify the geometry failure").toBeGreaterThan(0);
+          expect(latestFitDiagnostic.cause).toMatch(/^(missing-table-or-card-rect|missing-or-invalid-player-anchor|table-smaller-than-card-margin|no-attack-root-candidate)$/);
+        }
         frameEvidence.push({ label, role: entry.role, mode: entry.layout.mode, rootAction, frames });
-        geometryEvidence.push({ label, role: entry.role, mode: entry.layout.mode, geometry });
+        geometryEvidence.push({ label, role: entry.role, mode: entry.layout.mode, geometry, fitDiagnostics });
         pollEvidence.push({ label, role: entry.role, polls: matchingPolls });
         await testInfo.attach("dense-attack-" + index + "-" + entry.role + "-layout.json", {
-          body: Buffer.from(JSON.stringify({ layout: entry.layout, rootAction }, null, 2)),
+          body: Buffer.from(JSON.stringify({ layout: entry.layout, rootAction, fitDiagnostics }, null, 2)),
           contentType: "application/json",
         });
         await testInfo.attach("dense-attack-" + index + "-" + entry.role + "-frames.json", {
