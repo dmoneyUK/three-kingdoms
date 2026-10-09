@@ -3566,7 +3566,7 @@ async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, targe
     if (writes.length) await db().batch(writes);
     return;
   }
-  writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(resumePhase, JSON.stringify(discard), JSON.stringify(log), room.id));
+  writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ?, causal_envelope_json = NULL WHERE id = ?").bind(resumePhase, JSON.stringify(discard), JSON.stringify(log), room.id));
   if (writes.length) await db().batch(writes);
   if (resumePlayerId ?? source?.id) await continueAfterDying(room.id, resumePlayerId ?? source!.id);
 }

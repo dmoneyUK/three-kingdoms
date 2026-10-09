@@ -132,6 +132,296 @@ async function respondWithNegation(page, request, seed, playerIndex, cardId) {
   return JSON.parse(response.request().postData() ?? "{}");
 }
 
+async function skipNegationFromDock(page, seed, playerIndex) {
+  const playerId = seed.players[playerIndex].id;
+  const dock = page.locator(`.local-player-dock[data-player-anchor="${playerId}"]`);
+  const skip = dock.locator('[data-action-slot="decline"] button');
+  await expect(skip).toHaveText("Skip");
+  await expect(skip).toBeEnabled();
+  const submitted = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+    && response.request().method() === "POST"
+    && JSON.parse(response.request().postData() ?? "{}").action === "decline_response");
+  await skip.click();
+  const response = await submitted;
+  if (!response.ok()) throw new Error(`Negation Skip failed: ${await response.text()}`);
+}
+
+async function startNegationReadWindowSampling(page, expected) {
+  return page.evaluate(({ firstEventId, secondEventId, latestEventId, rootEventId }) => {
+    const timing = window.__wtkNegationReadWindow = {
+      startedAt: null,
+      done: false,
+      frames: [],
+    };
+    const offsets = [0, 1000, 2900, 3050, 3300];
+    const hasCompleteGraph = () => {
+      const overlay = document.querySelector('[data-root-action-overlay="true"]');
+      const responseIds = [...(overlay?.querySelectorAll('[data-root-action-response-node="true"]') ?? [])]
+        .map((node) => node.getAttribute("data-response-event-id"));
+      return overlay?.dataset.rootActionReady === "true"
+        && overlay.dataset.rootActionCardKind === "Dismantle"
+        && overlay.dataset.publicCounterReadEventId === latestEventId
+        && responseIds.includes(firstEventId) && responseIds.includes(secondEventId)
+        && overlay.querySelector('[data-root-action-edge="source"]')
+        && overlay.querySelector('[data-root-action-edge="response-source"][data-response-node-index="0"]')
+        && overlay.querySelector('[data-root-action-edge="response-source"][data-response-node-index="1"]')
+        && overlay.querySelector('[data-root-action-edge="negation-counters-root"][data-response-node-index="0"]')
+        && overlay.querySelector('[data-root-action-edge="negation-counters-response"][data-response-node-index="1"][data-counter-target-index="0"]');
+    };
+    const capture = (scheduledOffsetMs) => {
+      const overlay = document.querySelector('[data-root-action-overlay="true"]');
+      const stage = document.querySelector('.interaction-stage');
+      const effectiveOpacity = (element) => {
+        let opacity = 1;
+        for (let current = element; current instanceof HTMLElement || current instanceof SVGElement; current = current.parentElement) {
+          opacity *= Number(getComputedStyle(current).opacity || 1);
+        }
+        return opacity;
+      };
+      const rect = (element) => {
+        if (!element) return null;
+        const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+        return { left, top, right, bottom, width, height };
+      };
+      const root = overlay?.querySelector('[data-root-action-card="true"]') ?? null;
+      const nodes = [...(overlay?.querySelectorAll('[data-root-action-response-node="true"]') ?? [])];
+      const paths = [...(overlay?.querySelectorAll('.interaction-root-connectors [data-root-action-edge]') ?? [])];
+      const response = (eventId) => {
+        const node = nodes.find((candidate) => candidate.getAttribute("data-response-event-id") === eventId);
+        const opacity = node ? effectiveOpacity(node) : 0;
+        const style = node ? getComputedStyle(node) : null;
+        return {
+          visible: Boolean(node && style?.visibility !== "hidden" && opacity > 0.3),
+          opacity,
+          rect: rect(node),
+          actorId: node?.getAttribute("data-response-actor-id") ?? null,
+          relation: node?.getAttribute("data-response-relation") ?? null,
+        };
+      };
+      const edges = paths.map((path) => {
+        return {
+          edge: path.getAttribute("data-root-action-edge"),
+          responseIndex: path.getAttribute("data-response-node-index"),
+          counterTargetIndex: path.getAttribute("data-counter-target-index"),
+          visible: effectiveOpacity(path) > 0.3 && path.getAttribute("d") !== "",
+          opacity: effectiveOpacity(path),
+        };
+      });
+      timing.frames.push({
+        scheduledOffsetMs,
+        elapsedMs: performance.now() - timing.startedAt,
+        overlayReady: overlay?.dataset.rootActionReady === "true",
+        rootEventId: overlay?.dataset.rootActionEventId ?? null,
+        overlayInteractionId: overlay?.dataset.rootActionInteractionId ?? null,
+        overlayRootFrameId: overlay?.dataset.rootActionRootFrameId ?? null,
+        stage: stage?.dataset.stage ?? null,
+        stageInteractionId: stage?.dataset.interactionId ?? null,
+        rootCardKind: overlay?.dataset.rootActionCardKind ?? null,
+        counterReadEventId: overlay?.dataset.publicCounterReadEventId ?? null,
+        counterReadExiting: overlay?.dataset.publicCounterReadExiting === "true",
+        counterReadLive: overlay?.dataset.publicCounterReadLive === "true",
+        counterReadSettled: overlay?.dataset.publicCounterReadSettled === "true",
+        rootCard: {
+          visible: Boolean(root && getComputedStyle(root).visibility !== "hidden" && effectiveOpacity(root) > 0.3),
+          opacity: root ? effectiveOpacity(root) : 0,
+          kind: root?.getAttribute("data-root-action-card-face-kind") ?? null,
+          rect: rect(root),
+        },
+        firstResponse: response(firstEventId),
+        latestResponse: response(secondEventId),
+        edges,
+      });
+    };
+    let nextOffset = 0;
+    const frame = () => {
+      if (timing.startedAt === null) {
+        if (hasCompleteGraph()) {
+          timing.startedAt = performance.now();
+          capture(offsets[nextOffset]);
+          nextOffset += 1;
+        }
+        if (nextOffset < offsets.length) requestAnimationFrame(frame);
+        return;
+      }
+      const elapsed = performance.now() - timing.startedAt;
+      while (nextOffset < offsets.length && elapsed >= offsets[nextOffset]) {
+        capture(offsets[nextOffset]);
+        nextOffset += 1;
+      }
+      if (nextOffset === offsets.length) timing.done = true;
+      else requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+    return { latestEventId, rootEventId };
+  }, expected);
+}
+
+test("real server-backed Negation and counter-Negation retain the complete graph for three seconds without delaying Skip", async ({ browser, page, request }, testInfo) => {
+  test.setTimeout(90_000);
+  // Wide geometry isolates the timing contract from the separate mobile
+  // multi-node placement limit; mobile counter-chain fit remains covered by
+  // the dedicated Negation composition tests.
+  const viewport = { width: 1440, height: 900 };
+  const seed = await seedSingleTargetGame(request);
+  const observerIndex = 3;
+  const observerPage = page;
+  const sourcePage = await browser.newPage({ viewport });
+  const counterPage = await browser.newPage({ viewport });
+  const nextResponderPage = await browser.newPage({ viewport });
+  try {
+    await openGame(observerPage, seed, observerIndex, viewport);
+    await openGame(sourcePage, seed, 0, viewport);
+    await playDismantle(sourcePage, seed.root, seed.players[1]);
+
+    const firstResponder = await waitForNegationActor(request, seed, 0, 0);
+    expect(firstResponder.currentAction.legalActions).toContain("respond");
+    await respondWithNegation(sourcePage, request, seed, 0, seed.negations[0].id);
+
+    const counterResponder = await waitForNegationActor(request, seed, 1, 1);
+    expect(counterResponder.currentAction.legalActions).toContain("respond");
+    await openGame(counterPage, seed, 1, viewport);
+    await respondWithNegation(counterPage, request, seed, 1, seed.negations[1].id);
+
+    const nextResponder = await waitForNegationActor(request, seed, 2, 2);
+    expect(nextResponder.currentAction.legalActions).toContain("decline_response");
+    await openGame(nextResponderPage, seed, 2, viewport);
+    const negationGuidance = nextResponderPage.locator(`.local-player-dock[data-player-anchor="${seed.players[2].id}"] .console-guidance .decision-status`);
+    await expect(negationGuidance.locator("strong")).toHaveText("Play Negation or Skip.");
+    const skip = nextResponderPage.locator(`.local-player-dock[data-player-anchor="${seed.players[2].id}"] [data-action-slot="decline"] button`);
+    await expect(skip).toHaveText("Skip");
+    await expect(skip).toBeEnabled();
+
+    const observerView = await roomView(request, seed, observerIndex);
+    const chain = observerView.presentationV2.reactionChain;
+    expect(chain).toMatchObject({ semantics: "PROVEN" });
+    expect(chain.nodes).toHaveLength(2);
+    expect(chain.publicEventLinks.nodes).toHaveLength(2);
+    const responseEventIds = chain.publicEventLinks.nodes.map(({ eventId }) => eventId);
+    expect(new Set(responseEventIds).size).toBe(2);
+    for (const eventId of responseEventIds) {
+      expect(observerView.timeline.filter((event) => event.id === eventId && event.type === "card" && event.card.kind === "Negation")).toHaveLength(1);
+    }
+    expect(observerView.currentAction?.options).toBeUndefined();
+    expect(JSON.stringify(observerView)).not.toContain(seed.negations[2].id);
+    await testInfo.attach("negation-counter-server-proof-routing.json", {
+      body: JSON.stringify({
+        clientFields: {
+          interaction: observerView.presentationSnapshot?.interaction,
+          rootAction: observerView.presentationSnapshot?.rootAction,
+          reactionChain: observerView.presentationSnapshot?.reactionChain,
+          v2Chain: observerView.presentationV2?.reactionChain,
+        },
+        responseEvents: responseEventIds.map((eventId) => observerView.timeline.find((event) => event.id === eventId)),
+      }, null, 2),
+      contentType: "application/json",
+    });
+
+    // This viewer joins after both public responses have committed. The local
+    // three-second clock therefore starts from its own first complete graph,
+    // not the server event's earlier timestamp.
+    await observerPage.reload();
+    await expect(observerPage.locator(".game-shell")).toBeVisible();
+    const renderedBeforeSampling = await observerPage.evaluate(() => ({
+      stage: Object.fromEntries(Array.from(document.querySelector('.interaction-stage')?.attributes ?? []).map(({ name, value }) => [name, value])),
+      overlay: document.querySelector('[data-root-action-overlay="true"]')?.outerHTML.slice(0, 2000) ?? null,
+    }));
+    await testInfo.attach("negation-counter-rendered-routing.json", {
+      body: JSON.stringify(renderedBeforeSampling, null, 2),
+      contentType: "application/json",
+    });
+    const latestEventId = responseEventIds.at(-1);
+    const firstEventId = responseEventIds[0];
+    const latestActorId = seed.players[1].id;
+    const sampling = await startNegationReadWindowSampling(observerPage, {
+      firstEventId,
+      secondEventId: latestEventId,
+      latestEventId,
+      rootEventId: chain.publicEventLinks.root.eventId,
+    });
+    await expect.poll(() => observerPage.evaluate(() => window.__wtkNegationReadWindow?.frames.length ?? 0), { timeout: 20_000 }).toBeGreaterThanOrEqual(1);
+    const screenshotAtZero = await observerPage.screenshot({ animations: "disabled" });
+    await testInfo.attach("negation-counter-public-read-0ms.png", { body: screenshotAtZero, contentType: "image/png" });
+
+    // The next authoritative responder can submit Skip immediately; the public
+    // read window is not a server-side response delay.
+    await skipNegationFromDock(nextResponderPage, seed, 2);
+    await expect.poll(async () => (await activeNegationActor(request, seed))?.playerIndex ?? null, { timeout: 10_000 }).toBe(3);
+    const afterSkipProjection = await roomView(request, seed, observerIndex);
+    expect(afterSkipProjection.presentationSnapshot?.interaction).toMatchObject({
+      semantics: "PROVEN",
+      interactionId: chain.interactionId,
+      rootFrameId: chain.frameId,
+      stage: "NEGATION",
+    });
+    expect(afterSkipProjection.presentationSnapshot?.reactionChain?.publicEventLinks).toEqual(chain.publicEventLinks);
+    await testInfo.attach("negation-counter-after-skip-projection.json", {
+      body: JSON.stringify({
+        interaction: afterSkipProjection.presentationSnapshot?.interaction,
+        chain: afterSkipProjection.presentationSnapshot?.reactionChain,
+        settlement: afterSkipProjection.presentationSnapshot?.settlement,
+      }, null, 2),
+      contentType: "application/json",
+    });
+
+    await expect.poll(() => observerPage.evaluate(() => window.__wtkNegationReadWindow?.frames.length ?? 0), { timeout: 2_000 }).toBeGreaterThanOrEqual(2);
+    const screenshotAtOneSecond = await observerPage.screenshot({ animations: "disabled" });
+    await testInfo.attach("negation-counter-public-read-1000ms.png", { body: screenshotAtOneSecond, contentType: "image/png" });
+    await expect.poll(() => observerPage.evaluate(() => window.__wtkNegationReadWindow?.frames.length ?? 0), { timeout: 3_000 }).toBeGreaterThanOrEqual(3);
+    const screenshotAt2900 = await observerPage.screenshot({ animations: "disabled" });
+    await testInfo.attach("negation-counter-public-read-2900ms.png", { body: screenshotAt2900, contentType: "image/png" });
+    await expect.poll(() => observerPage.evaluate(() => window.__wtkNegationReadWindow?.done ?? false), { timeout: 2_000 }).toBe(true);
+
+    const timing = await observerPage.evaluate(() => window.__wtkNegationReadWindow);
+    await testInfo.attach("negation-counter-public-read-timing.json", {
+      body: JSON.stringify({ sampling, responseEventIds, frames: timing.frames }, null, 2),
+      contentType: "application/json",
+    });
+    expect(timing.frames.map(({ scheduledOffsetMs }) => scheduledOffsetMs)).toEqual([0, 1000, 2900, 3050, 3300]);
+    for (const frame of timing.frames.slice(0, 3)) {
+      expect(frame.elapsedMs).toBeGreaterThanOrEqual(frame.scheduledOffsetMs - 50);
+      expect(frame.elapsedMs).toBeLessThanOrEqual(frame.scheduledOffsetMs + 200);
+      expect(frame).toMatchObject({
+        overlayReady: true,
+        rootEventId: chain.publicEventLinks.root.eventId,
+        rootCardKind: "Dismantle",
+        counterReadEventId: latestEventId,
+        rootCard: { visible: true, kind: "Dismantle" },
+        firstResponse: { visible: true, actorId: seed.players[0].id, relation: "COUNTERS_ROOT" },
+        latestResponse: { visible: true, actorId: latestActorId, relation: "COUNTERS_RESPONSE" },
+      });
+      expect(frame.rootCard.rect.width).toBeGreaterThan(0);
+      expect(frame.firstResponse.rect.width).toBeGreaterThan(0);
+      expect(frame.latestResponse.rect.width).toBeGreaterThan(0);
+      expect(frame.edges).toEqual(expect.arrayContaining([
+        expect.objectContaining({ edge: "source", visible: true }),
+        expect.objectContaining({ edge: "response-source", responseIndex: "0", visible: true }),
+        expect.objectContaining({ edge: "response-source", responseIndex: "1", visible: true }),
+        expect.objectContaining({ edge: "negation-counters-root", responseIndex: "0", visible: true }),
+        expect.objectContaining({ edge: "negation-counters-response", responseIndex: "1", counterTargetIndex: "0", visible: true }),
+      ]));
+    }
+    expect(timing.frames[2].counterReadExiting).toBe(false);
+    for (const frame of timing.frames.slice(3)) {
+      expect(frame.counterReadExiting, "an unresolved Negation window keeps its readable public graph instead of fading on a timer").toBe(false);
+      expect(frame.counterReadSettled).toBe(false);
+      expect(frame).toMatchObject({
+        overlayReady: true,
+        rootEventId: chain.publicEventLinks.root.eventId,
+        counterReadEventId: latestEventId,
+        rootCard: { visible: true },
+        firstResponse: { visible: true },
+        latestResponse: { visible: true },
+      });
+      expect(frame.edges.every(({ visible }) => visible)).toBe(true);
+    }
+    const afterSkipView = await roomView(request, seed, 3);
+    expect(afterSkipView.currentAction).toMatchObject({ kind: "response", requirement: "negate" });
+    await expect(observerPage.locator(`[data-root-action-overlay="true"][data-public-counter-read-event-id="${latestEventId}"]`)).toHaveCount(1);
+  } finally {
+    await Promise.all([sourcePage.close(), counterPage.close(), nextResponderPage.close()]);
+  }
+});
+
 async function measureCompactedGraph(page) {
   return page.evaluate(() => {
     const rect = (element) => {

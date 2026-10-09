@@ -24,6 +24,7 @@ import { InteractionRootOverlay, interactionRootActionKey, type InteractionRootO
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
 type ActiveAttackDodgeSettlement = { eventId: string; phase: "exiting" | "complete" };
+type ActivePublicNegationRead = { key: string; action: InteractionRootOverlayAction; expiresAt: number; phase: "reading" | "elapsed" | "live" | "settlement-pending" | "exiting" };
 type RootActionOverlayLayoutReadiness = { key: string; state: "measuring" | "ready" | "unavailable" } | null;
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
 type PresentationImportance = "essential" | "informational";
@@ -162,6 +163,9 @@ const UI_TIMING = {
   interactionSettlement: 600,
   interactionSettlementReduced: 120,
   interactionSettlementFade: 150,
+  publicCounterRead: 3000,
+  publicCounterSettlementConfirm: 120,
+  publicCounterFade: 180,
 } as const;
 const NO_SKILL_EFFECT_SETTLEMENTS = [] as const;
 const NO_DISMANTLE_SETTLEMENTS = [] as const;
@@ -189,9 +193,11 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [pageVisible, setPageVisible] = useState(true);
+  const [publicCounterReadUntil, setPublicCounterReadUntil] = useState(0);
   const stateEpoch = useRef(0);
   const mutationInFlight = useRef<string | null>(null);
   const latestAppliedMutation = useRef(0);
+  const lastPublicCounterReadIdentity = useRef<string | null>(null);
 
   const fetchRoom = useCallback(async (roomCode: string, playerToken: string, quiet = false) => {
     const epoch = stateEpoch.current;
@@ -210,6 +216,12 @@ export default function Home() {
       if (!quiet) setError(cause instanceof Error ? cause.message : "Could not reach the room.");
       return false;
     }
+  }, []);
+
+  const notePublicCounterReadVisible = useCallback((identity: string) => {
+    if (!identity || lastPublicCounterReadIdentity.current === identity) return;
+    lastPublicCounterReadIdentity.current = identity;
+    setPublicCounterReadUntil((current) => Math.max(current, Date.now() + UI_TIMING.publicCounterRead));
   }, []);
 
   useEffect(() => {
@@ -233,10 +245,20 @@ export default function Home() {
   const roomCode = room?.code;
   useEffect(() => {
     if (!roomCode || !token || busy) return;
-    const interval = !pageVisible ? UI_TIMING.hiddenPoll : room?.phase === "response" || room?.phase === "dying" ? UI_TIMING.activePoll : UI_TIMING.roomPoll;
+    const publicReadActive = publicCounterReadUntil > Date.now();
+    const interval = !pageVisible ? UI_TIMING.hiddenPoll
+      : room?.phase === "response" || room?.phase === "dying" || publicReadActive
+        ? UI_TIMING.activePoll
+        : UI_TIMING.roomPoll;
     const timer = setInterval(() => fetchRoom(roomCode, token, true), interval);
     return () => clearInterval(timer);
-  }, [roomCode, token, busy, pageVisible, fetchRoom, room?.phase]);
+  }, [roomCode, token, busy, pageVisible, fetchRoom, room?.phase, publicCounterReadUntil]);
+  useEffect(() => {
+    if (!publicCounterReadUntil) return;
+    const timer = setTimeout(() => setPublicCounterReadUntil((current) => current === publicCounterReadUntil ? 0 : current),
+      Math.max(0, publicCounterReadUntil - Date.now()));
+    return () => clearTimeout(timer);
+  }, [publicCounterReadUntil]);
 
   async function send(action: "create" | "join" | "start" | "add_test_players" | "choose_hero" | "heartbeat" | "expire_inactive_room" | GameplayAction, extra: Record<string, unknown> = {}) {
     const backgroundPreview = action === "preview_harvest" || action === "heartbeat";
@@ -308,12 +330,12 @@ export default function Home() {
   }, [roomCode, token, pageVisible, negationDeadline]);
 
   function leave() {
-    stateEpoch.current += 1; setRoom(null); setError("");
+    stateEpoch.current += 1; setRoom(null); setError(""); setPublicCounterReadUntil(0); lastPublicCounterReadIdentity.current = null;
   }
 
   const presentationView = room ? buildPresentationClientView(room.presentationSnapshot, room.meId) : null;
 
-  if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <GameRoomErrorBoundary room={room} onRecover={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy} error={error} onAction={send} onLeave={leave} /></GameRoomErrorBoundary>;
+  if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <GameRoomErrorBoundary room={room} onRecover={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy} error={error} onAction={send} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} /></GameRoomErrorBoundary>;
   if (room?.status === "heroes") return <HeroSelection room={room} busy={busy} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} />;
   if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onAddTestPlayers={() => send("add_test_players")} onLeave={leave} />;
 
@@ -1906,7 +1928,7 @@ function captureHandViewportSnapshot(rail: HTMLElement, viewerId: string | null)
   };
 }
 
-export function GameRoom({ room, presentationView, busy, error, onAction, onLeave }: { room: Room; presentationView?: PresentationClientView; busy: boolean; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void }) {
+export function GameRoom({ room, presentationView, busy, error, onAction, onLeave, onPublicCounterReadVisible }: { room: Room; presentationView?: PresentationClientView; busy: boolean; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void; onPublicCounterReadVisible: (identity: string) => void }) {
   const initialPendingSequence = pendingTimelineSequence(room);
   const initialHeldCardIds = new Set(initialPendingSequence.flatMap(eventCards).map((item) => item.id));
   const clientPresentation = useMemo(() => presentationView ?? buildPresentationClientView(room.presentationSnapshot ?? null, room.meId), [presentationView, room.presentationSnapshot, room.meId]);
@@ -1972,6 +1994,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const [activeBumperHarvestSettlement, setActiveBumperHarvestSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeAttackDodgeSettlement, setActiveAttackDodgeSettlement] = useState<ActiveAttackDodgeSettlement | null>(null);
   const attackDodgeSettlementTimerEventId = useRef<string | null>(null);
+  const [activePublicNegationRead, setActivePublicNegationRead] = useState<ActivePublicNegationRead | null>(null);
   // Events already present when the screen mounts have no new animation to
   // wait for. New event IDs enter this set only after their presentation ends.
   const [presentedEventIds, setPresentedEventIds] = useState<Set<string>>(() => new Set((room.timeline ?? []).map((event) => event.id)));
@@ -2928,9 +2951,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const attackDodgeResponseCandidates = (clientPresentation.attackDodgeResponses ?? []).flatMap((proof) => {
     const rootEvents = room.timeline.filter((event) => event.id === proof.rootEventId);
     const responseEvents = room.timeline.filter((event) => event.id === proof.responseEventId);
-    const rootSequenceEvents = sequenceEvents.filter((event) => event.id === proof.rootEventId);
-    const responseSequenceEvents = sequenceEvents.filter((event) => event.id === proof.responseEventId);
-    if (rootEvents.length !== 1 || responseEvents.length !== 1 || rootSequenceEvents.length !== 1 || responseSequenceEvents.length !== 1) return [];
+    if (rootEvents.length !== 1 || responseEvents.length !== 1
+      || !presentedEventIds.has(proof.rootEventId) || !presentedEventIds.has(proof.responseEventId)) return [];
     const rootEvent = rootEvents[0];
     const responseEvent = responseEvents[0];
     if (rootEvent.type !== "card" || responseEvent.type !== "card"
@@ -3026,6 +3048,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   })();
   const singleTargetNegationGraphCandidate = singleTargetNegationGraphCandidates.length === 1
     ? singleTargetNegationGraphCandidates[0]
+    : null;
+  const singleTargetNegationGraphActionKey = singleTargetNegationGraphCandidate
+    ? [singleTargetNegationGraphCandidate.chain.interactionId, singleTargetNegationGraphCandidate.chain.publicEventLinks?.root.eventId, singleTargetNegationGraphCandidate.chain.rootEffectState, ...singleTargetNegationGraphCandidate.responseNodes.flatMap(({ event, node }) => [event.id, node.actor.id ?? ""])].join(":")
     : null;
   const oathSimultaneousRootGraphCandidate = (() => {
     const scope = clientPresentation.oathRecipientScope;
@@ -3549,7 +3574,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const rootActionCardFace = rootAction?.action === "ATTACK" && rootActionEvent?.type === "card"
     && rootActionEvent.id === rootAction.rootEventId && rootActionEvent.action === "play"
     && rootActionEvent.presentation !== false && rootActionEvent.playedAs === rootAction.playedAs
-    && rootActionEvent.card.kind === rootAction.physicalCardKind
+      && rootActionEvent.card.kind === rootAction.physicalCardKind
     ? rootActionEvent.card : null;
   const selfTargetCandidates = rootAction || oathSimultaneousRootGraphCandidate || bumperHarvestRootGraphCandidate || halberdOrderedRootGraphCandidate || groupTargetBranchGraphCandidate || skillEffectActionCandidate || skillEffectSettlementCandidate || dismantleSettlementCandidate || stealSettlementCandidate || attackHitSettlementCandidate || duelExchangeGraphCandidate || attackDodgeGraphCandidate || singleTargetNegationGraphCandidate || groupSettlementCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
@@ -3566,7 +3591,93 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     return [{ action, event, source }];
   });
   const selfTargetCandidate = selfTargetCandidates.length === 1 ? selfTargetCandidates[0] : null;
-  const rootActionOverlayAction: InteractionRootOverlayAction | null = groupSettlementCandidate
+  const activeNegationReadIdentityMatches = Boolean(activePublicNegationRead
+    && (!clientPresentation.interactionId || clientPresentation.interactionId === activePublicNegationRead.action.interactionId)
+    && (!clientPresentation.rootFrameId || clientPresentation.rootFrameId === activePublicNegationRead.action.rootFrameId)
+    && (!rootAction || rootAction.rootEventId === activePublicNegationRead.action.rootEventId));
+  const activeNegationReadSettled = Boolean(activePublicNegationRead
+    && room.presentationSnapshot?.interaction?.stage !== "NEGATION"
+    && clientPresentation.negationSettlement?.semantics === "PROVEN"
+    && clientPresentation.negationSettlement.interactionId === activePublicNegationRead.action.interactionId
+    && clientPresentation.negationSettlement.rootFrameId === activePublicNegationRead.action.rootFrameId
+    && clientPresentation.negationSettlement.rootCardKind === activePublicNegationRead.action.cardKind
+    && clientPresentation.negationSettlement.sourceId === activePublicNegationRead.action.sourceId
+    && clientPresentation.negationSettlement.targetId === activePublicNegationRead.action.targetId
+    && room.timeline.some((event) => event.id === activePublicNegationRead.action.rootEventId
+      && event.type === "card" && event.resolutionId === clientPresentation.negationSettlement?.resolutionId));
+  const activeNegationReadStillLive = Boolean(activePublicNegationRead
+    && room.presentationSnapshot?.interaction?.semantics === "PROVEN"
+    && room.presentationSnapshot.interaction.stage === "NEGATION"
+    && room.presentationSnapshot.interaction.interactionId === activePublicNegationRead.action.interactionId
+    && room.presentationSnapshot.interaction.rootFrameId === activePublicNegationRead.action.rootFrameId
+    && room.presentationSnapshot.reactionChain?.semantics === "PROVEN"
+    && room.presentationSnapshot.reactionChain.interactionId === activePublicNegationRead.action.interactionId
+    && room.presentationSnapshot.reactionChain.frameId === activePublicNegationRead.action.rootFrameId
+    && room.presentationSnapshot.reactionChain.publicEventLinks?.root.eventId === activePublicNegationRead.action.rootEventId);
+  const heldPublicNegationReadAction = activeNegationReadIdentityMatches && activePublicNegationRead
+    && (!singleTargetNegationGraphActionKey || singleTargetNegationGraphActionKey === activePublicNegationRead.key)
+    ? {
+      ...activePublicNegationRead.action,
+      publicCounterRead: {
+        eventId: activePublicNegationRead.action.publicCounterRead!.eventId,
+        exiting: activePublicNegationRead.phase === "exiting" && activeNegationReadSettled,
+        live: activeNegationReadStillLive,
+        settled: activeNegationReadSettled,
+      },
+    }
+    : null;
+  const singleTargetNegationRootOverlayAction: InteractionRootOverlayAction | null = singleTargetNegationGraphCandidate
+    ? {
+      key: singleTargetNegationGraphActionKey ?? "negation-graph",
+      interactionId: clientPresentation.interactionId ?? undefined,
+      rootFrameId: clientPresentation.rootFrameId ?? undefined,
+      checkpointId: clientPresentation.checkpointId ?? undefined,
+      presentationRevision: clientPresentation.presentationRevision ?? undefined,
+      rootEventId: singleTargetNegationGraphCandidate.rootEvent.id,
+      sourceId: singleTargetNegationGraphCandidate.root.source.id!,
+      targetId: singleTargetNegationGraphCandidate.root.targets[0]!.id!,
+      cardKind: singleTargetNegationGraphCandidate.root.cardKind!,
+      cardFace: singleTargetNegationGraphCandidate.rootEvent.card,
+      cardLabel: cardDefinition(singleTargetNegationGraphCandidate.root.cardKind!).name.toUpperCase(),
+      ariaLabel: `${singleTargetNegationGraphCandidate.root.source.name} played ${cardDefinition(singleTargetNegationGraphCandidate.root.cardKind!).name} targeting ${singleTargetNegationGraphCandidate.root.targets[0]!.name}`,
+      mode: "targeted",
+      rootEffectState: singleTargetNegationGraphCandidate.chain.rootEffectState ?? undefined,
+      ...(singleTargetNegationGraphCandidate.responseNodes.length ? {
+        publicCounterRead: {
+          eventId: singleTargetNegationGraphCandidate.responseNodes.at(-1)!.event.id,
+          exiting: activePublicNegationRead?.key === singleTargetNegationGraphActionKey
+            && activePublicNegationRead.phase === "exiting" && activeNegationReadSettled,
+          live: activeNegationReadStillLive,
+          settled: activeNegationReadSettled,
+        },
+      } : {}),
+      ...(singleTargetNegationGraphCandidate.responseNodes.length ? {
+        responses: singleTargetNegationGraphCandidate.responseNodes.map(({ event, node }, index) => {
+          const counterTarget = node.counterTarget;
+          const counterLabel = counterTarget?.kind === "ROOT"
+            ? cardDefinition(singleTargetNegationGraphCandidate.root.cardKind!).name
+            : `Negation ${index}`;
+          return {
+            index,
+            eventId: event.id,
+            actorId: node.actor.id!,
+            actorName: node.actor.name,
+            cardFace: event.card,
+            cardLabel: "NEGATION",
+            ariaLabel: `${node.actor.name} played Negation to counter ${counterLabel}`,
+            counterTarget: counterTarget?.kind === "ROOT"
+              ? { kind: "ROOT" as const }
+              : { kind: "RESPONSE" as const, index: counterTarget?.index ?? -1 },
+          };
+        }),
+      } : {}),
+    }
+    : null;
+  const committedSingleTargetNegationGraphOwnsRoot = Boolean(singleTargetNegationGraphCandidate?.responseNodes.length
+    && (!rootAction || rootAction.rootEventId === singleTargetNegationGraphCandidate.rootEvent.id));
+  const rootActionOverlayAction: InteractionRootOverlayAction | null = heldPublicNegationReadAction
+    ? heldPublicNegationReadAction
+    : groupSettlementCandidate
     ? {
       key: ["group", groupSettlementCandidate.settlement.interactionId, groupSettlementCandidate.settlement.groupFrameId, groupSettlementCandidate.rootEvent.id].join(":"),
       rootEventId: groupSettlementCandidate.rootEvent.id,
@@ -3766,6 +3877,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         },
       } : {}),
     }
+    : committedSingleTargetNegationGraphOwnsRoot
+    ? singleTargetNegationRootOverlayAction
     : rootAction
     ? rootAction.action === "ATTACK" && !rootActionCardFace ? null : {
       key: interactionRootActionKey(rootAction),
@@ -3786,6 +3899,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       ? {
         key: [attackDodgeGraphCandidate.proof.interactionId, attackDodgeGraphCandidate.proof.rootFrameId, attackDodgeGraphCandidate.proof.rootEventId, attackDodgeGraphCandidate.proof.responseEventId].join(":"),
         rootPlacementKey: attackDodgeGraphCandidate.proof.rootEventId,
+        interactionId: attackDodgeGraphCandidate.proof.interactionId,
+        rootFrameId: attackDodgeGraphCandidate.proof.rootFrameId,
         rootEventId: attackDodgeGraphCandidate.proof.rootEventId,
         sourceId: attackDodgeGraphCandidate.proof.rootSourceId,
         targetId: attackDodgeGraphCandidate.proof.targetId,
@@ -3811,37 +3926,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         },
       }
     : singleTargetNegationGraphCandidate
-      ? {
-        key: [singleTargetNegationGraphCandidate.chain.interactionId, singleTargetNegationGraphCandidate.chain.publicEventLinks?.root.eventId, singleTargetNegationGraphCandidate.chain.rootEffectState, ...singleTargetNegationGraphCandidate.responseNodes.flatMap(({ event, node }) => [event.id, node.actor.id ?? ""])].join(":"),
-        rootEventId: singleTargetNegationGraphCandidate.rootEvent.id,
-        sourceId: singleTargetNegationGraphCandidate.root.source.id!,
-        targetId: singleTargetNegationGraphCandidate.root.targets[0]!.id!,
-        cardKind: singleTargetNegationGraphCandidate.root.cardKind!,
-        cardLabel: cardDefinition(singleTargetNegationGraphCandidate.root.cardKind!).name.toUpperCase(),
-        ariaLabel: `${singleTargetNegationGraphCandidate.root.source.name} played ${cardDefinition(singleTargetNegationGraphCandidate.root.cardKind!).name} targeting ${singleTargetNegationGraphCandidate.root.targets[0]!.name}`,
-        mode: "targeted",
-        rootEffectState: singleTargetNegationGraphCandidate.chain.rootEffectState ?? undefined,
-        ...(singleTargetNegationGraphCandidate.responseNodes.length ? {
-          responses: singleTargetNegationGraphCandidate.responseNodes.map(({ event, node }, index) => {
-            const counterTarget = node.counterTarget;
-            const counterLabel = counterTarget?.kind === "ROOT"
-              ? cardDefinition(singleTargetNegationGraphCandidate.root.cardKind!).name
-              : `Negation ${index}`;
-            return {
-              index,
-              eventId: event.id,
-              actorId: node.actor.id!,
-              actorName: node.actor.name,
-              cardLabel: "NEGATION",
-              ariaLabel: `${node.actor.name} played Negation to counter ${counterLabel}`,
-              counterTarget: counterTarget?.kind === "ROOT"
-                ? { kind: "ROOT" as const }
-                : { kind: "RESPONSE" as const, index: counterTarget?.index ?? -1 },
-            };
-          }),
-        } : {}),
-      }
-    : selfTargetCandidate
+      ? singleTargetNegationRootOverlayAction
+      : selfTargetCandidate
       ? {
         key: ["self", selfTargetCandidate.action.rootEventId, selfTargetCandidate.action.resolutionId, selfTargetCandidate.action.sourceId].join(":"),
         rootEventId: selfTargetCandidate.action.rootEventId,
@@ -3901,6 +3987,91 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
             : rootActionOverlayGeometryUnavailable ? "geometry-unavailable" : undefined;
   const activeOverlaySettlementEventId = rootActionOverlayAction?.settlement?.eventId ?? null;
   const activeOverlaySettlementExiting = rootActionOverlayAction?.settlement?.exiting === true;
+  const visibleNegationReadAction = singleTargetNegationGraphActionKey
+    && rootActionOverlayAction?.key === singleTargetNegationGraphActionKey
+    && rootActionOverlayAction.publicCounterRead?.eventId
+    ? rootActionOverlayAction
+    : null;
+  const visibleNegationReadActionRef = useRef<InteractionRootOverlayAction | null>(null);
+  useEffect(() => {
+    visibleNegationReadActionRef.current = visibleNegationReadAction;
+  }, [visibleNegationReadAction]);
+  const visibleNegationReadActionKey = visibleNegationReadAction?.key ?? null;
+  const visibleNegationReadEventId = visibleNegationReadAction?.publicCounterRead?.eventId ?? null;
+  useEffect(() => {
+    if (!visibleNegationReadActionKey || !visibleNegationReadEventId || !rootActionOverlayGraphReady
+      || activePublicNegationRead?.key === visibleNegationReadActionKey) return;
+    const timer = window.setTimeout(() => {
+      const action = visibleNegationReadActionRef.current;
+      if (!action || action.key !== visibleNegationReadActionKey
+        || action.publicCounterRead?.eventId !== visibleNegationReadEventId) return;
+      onPublicCounterReadVisible(`negation:${visibleNegationReadActionKey}:${visibleNegationReadEventId}`);
+      const next: ActivePublicNegationRead = {
+        key: visibleNegationReadActionKey,
+        action,
+        expiresAt: Date.now() + UI_TIMING.publicCounterRead,
+        phase: "reading",
+      };
+      setActivePublicNegationRead((current) => current?.key === next.key ? current : next);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [activePublicNegationRead?.key, onPublicCounterReadVisible, rootActionOverlayGraphReady, visibleNegationReadActionKey, visibleNegationReadEventId]);
+  useEffect(() => {
+    if (!activePublicNegationRead) return;
+    const activeKey = activePublicNegationRead.key;
+    const activePhase = activePublicNegationRead.phase;
+    if (!activeNegationReadIdentityMatches) {
+      const timer = window.setTimeout(() => {
+        setActivePublicNegationRead((current) => current?.key === activeKey ? null : current);
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+    if (activePhase === "elapsed" || activePhase === "live"
+      || activePhase === "settlement-pending" || activePhase === "exiting") {
+      if (!activeNegationReadSettled) {
+        if (activePhase !== "live") {
+          const timer = window.setTimeout(() => {
+            setActivePublicNegationRead((current) => current?.key === activeKey && current.phase === activePhase
+              ? { ...current, phase: "live" }
+              : current);
+          }, 0);
+          return () => window.clearTimeout(timer);
+        }
+        return;
+      }
+      if (activePhase === "exiting" || activePhase === "settlement-pending") return;
+      const timer = window.setTimeout(() => {
+        setActivePublicNegationRead((current) => current?.key === activeKey && current.phase === activePhase
+          ? { ...current, phase: "settlement-pending" }
+          : current);
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+    if (activePhase !== "reading") return;
+    const timer = window.setTimeout(() => {
+      setActivePublicNegationRead((current) => current?.key === activeKey
+        ? { ...current, phase: "elapsed" }
+        : current);
+    }, Math.max(0, activePublicNegationRead.expiresAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [activeNegationReadIdentityMatches, activeNegationReadSettled, activePublicNegationRead]);
+  useEffect(() => {
+    if (!activePublicNegationRead || activePublicNegationRead.phase !== "settlement-pending"
+      || !activeNegationReadIdentityMatches || !activeNegationReadSettled) return;
+    const timer = window.setTimeout(() => {
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      setActivePublicNegationRead((current) => current?.key === activePublicNegationRead.key
+        && current.phase === "settlement-pending"
+        ? reducedMotion ? null : { ...current, phase: "exiting" }
+        : current);
+    }, UI_TIMING.publicCounterSettlementConfirm);
+    return () => window.clearTimeout(timer);
+  }, [activeNegationReadIdentityMatches, activeNegationReadSettled, activePublicNegationRead]);
+  useEffect(() => {
+    if (activePublicNegationRead?.phase !== "exiting" || !activeNegationReadSettled) return;
+    const timer = window.setTimeout(() => setActivePublicNegationRead((current) => current?.key === activePublicNegationRead.key ? null : current), UI_TIMING.publicCounterFade);
+    return () => window.clearTimeout(timer);
+  }, [activeNegationReadSettled, activePublicNegationRead]);
   useEffect(() => {
     if (!activeOverlaySettlementEventId || !rootActionOverlayGraphReady || activeSkillEffectSettlement?.eventId !== activeOverlaySettlementEventId || activeSkillEffectSettlement.exiting) return;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -4033,23 +4204,24 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     if (!activeAttackDodgeSettlementEventId || !rootActionOverlayGraphReady
       || activeAttackDodgeSettlement?.eventId === activeAttackDodgeSettlementEventId
       || attackDodgeSettlementTimerEventId.current === activeAttackDodgeSettlementEventId) return;
+    onPublicCounterReadVisible(`attack-dodge:${activeAttackDodgeSettlementEventId}`);
     attackDodgeSettlementTimerEventId.current = activeAttackDodgeSettlementEventId;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const timer = window.setTimeout(() => {
       setActiveAttackDodgeSettlement({ eventId: activeAttackDodgeSettlementEventId, phase: reducedMotion ? "complete" : "exiting" });
-    }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
+    }, UI_TIMING.publicCounterRead);
     return () => {
       window.clearTimeout(timer);
       if (attackDodgeSettlementTimerEventId.current === activeAttackDodgeSettlementEventId) attackDodgeSettlementTimerEventId.current = null;
     };
-  }, [activeAttackDodgeSettlement?.eventId, activeAttackDodgeSettlementEventId, rootActionOverlayGraphReady]);
+  }, [activeAttackDodgeSettlement?.eventId, activeAttackDodgeSettlementEventId, onPublicCounterReadVisible, rootActionOverlayGraphReady]);
   useEffect(() => {
     if (activeAttackDodgeSettlement?.phase !== "exiting") return;
     const timer = window.setTimeout(() => {
       setActiveAttackDodgeSettlement((current) => current?.eventId === activeAttackDodgeSettlement.eventId && current.phase === "exiting"
         ? { ...current, phase: "complete" }
         : current);
-    }, UI_TIMING.interactionSettlementFade);
+    }, UI_TIMING.publicCounterFade);
     return () => window.clearTimeout(timer);
   }, [activeAttackDodgeSettlement?.eventId, activeAttackDodgeSettlement?.phase]);
   const rootActionCardId = rootActionEvent?.type === "card" ? rootActionEvent.card.id
@@ -4066,6 +4238,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       && event.id !== rootActionOverlayAction.settlement?.eventId
       && event.id !== rootActionOverlayAction.response?.eventId
       && !duelExchangeEventIds.has(event.id)
+      && (!rootActionOverlayAction.cardFace || !eventCards(event).some((card) => card.id === rootActionOverlayAction.cardFace!.id))
+      && !rootActionOverlayAction.responses?.some((response) => event.id === response.eventId
+        || response.cardFace && eventCards(event).some((card) => card.id === response.cardFace!.id))
       && (!rootActionCardId || !eventCards(event).some((card) => card.id === rootActionCardId))
       && (!attackDodgeResponseCandidate || !eventCards(event).some((card) => card.id === attackDodgeResponseCandidate.responseEvent.card.id))
       && (!singleTargetNegationGraphCandidate?.responseEvent || !eventCards(event).some((card) => card.id === singleTargetNegationGraphCandidate.responseEvent!.card.id))

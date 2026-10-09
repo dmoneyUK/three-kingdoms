@@ -896,12 +896,30 @@
 .interaction-root-action-card.is-settlement-exiting {
   opacity: .18;
   filter: saturate(.45);
-  transition: opacity 150ms ease-out, filter 150ms ease-out;
+  transition: opacity 180ms ease-out, filter 180ms ease-out;
 }
 
 .interaction-root-overlay[data-root-action-settlement-exiting="true"] .interaction-root-connectors {
   opacity: .08;
-  transition: opacity 150ms ease-out;
+  transition: opacity 180ms ease-out;
+}
+
+.interaction-root-overlay[data-root-action-settlement-exiting="true"] .interaction-root-response-card {
+  opacity: .18;
+  filter: saturate(.45);
+  transition: opacity 180ms ease-out, filter 180ms ease-out;
+}
+
+.interaction-root-overlay[data-public-counter-read-exiting="true"] .interaction-root-action-card,
+.interaction-root-overlay[data-public-counter-read-exiting="true"] .interaction-root-history-summary {
+  opacity: .18;
+  filter: saturate(.45);
+  transition: opacity 180ms ease-out, filter 180ms ease-out;
+}
+
+.interaction-root-overlay[data-public-counter-read-exiting="true"] .interaction-root-connectors {
+  opacity: .08;
+  transition: opacity 180ms ease-out;
 }
 
 .interaction-root-action-card > small {
@@ -5650,11 +5668,12 @@
 @media (min-width: 360px) and (max-width: 400px) and (min-height: 701px) {
   .game-shell:has(> .interaction-root-overlay[data-root-action-card-kind="Attack"])
     .play-table[data-seat-topology="side-column"]:has(> .player-board[data-player-count="8"]) > .play-center {
-    top: calc(clamp(270px, 66%, 460px) - 186px);
+    top: calc(clamp(270px, 66%, 460px) - 202px);
   }
 
   .game-shell:has(> .interaction-root-overlay[data-root-action-card-kind="Attack"])
     .play-table.sequence-active:not(.sequence-concluding)[data-seat-topology="side-column"]:has(> .player-board[data-player-count="8"]) > .play-center {
+    top: calc(clamp(270px, 66%, 460px) - 202px);
     opacity: 1;
     visibility: visible;
   }
