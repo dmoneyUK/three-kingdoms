@@ -1609,7 +1609,7 @@ function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuin
   </div>;
 }
 
-function StageSystemCluster({ responseTimer, eventTimer, onLeave }: { responseTimer?: ReactNode; eventTimer?: ReactNode; onLeave: () => void }) {
+function StageSystemCluster({ publicResponseTimerPending, responseTimer, eventTimer, onLeave }: { publicResponseTimerPending: boolean; responseTimer?: ReactNode; eventTimer?: ReactNode; onLeave: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const confirmExit = () => {
@@ -1623,7 +1623,7 @@ function StageSystemCluster({ responseTimer, eventTimer, onLeave }: { responseTi
     }
   };
 
-  return <div className="stage-system-cluster" data-stage-system-cluster="true">
+  return <div className="stage-system-cluster" data-stage-system-cluster="true" data-public-response-timer-pending={publicResponseTimerPending ? "true" : undefined}>
     {responseTimer}
     {eventTimer}
     <div className="stage-system-menu">
@@ -4228,7 +4228,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         if (!player) return null;
         const hero = heroDefinition(player.hero);
         return { name: player.name, heroId: hero?.id ?? player.hero, heroName: hero?.name ?? (player.hero ? heroName(player.hero) : null), hp: player.hp, maxHp: player.maxHp };
-      }} previewPlayer={targetPreviewPresentation} previewSubmission={submittedTargetPreview} inspectPlayer={opponentInspectionPresentation} selectableDetail={targetCardPickerSelectableDetail} judgementInFlight={judgementInFlight} onCloseInspect={() => setExpandedOpponentId(null)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} />}<StageSystemCluster onLeave={onLeave} responseTimer={seatCountdown?.kind === "response" ? <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} responseTimer /> : null} eventTimer={<>{privateDrawTimer}{harvestEventTimer}</>} /></div>
+      }} previewPlayer={targetPreviewPresentation} previewSubmission={submittedTargetPreview} inspectPlayer={opponentInspectionPresentation} selectableDetail={targetCardPickerSelectableDetail} judgementInFlight={judgementInFlight} onCloseInspect={() => setExpandedOpponentId(null)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} />}<StageSystemCluster onLeave={onLeave} publicResponseTimerPending={seatCountdown?.kind === "response"} responseTimer={seatCountdown?.kind === "response" ? <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} responseTimer /> : null} eventTimer={<>{privateDrawTimer}{harvestEventTimer}</>} /></div>
       <aside className={`game-messages ${messagesCollapsed ? "collapsed" : ""}`} aria-label="Game Messages"><header><button type="button" onClick={() => setMessagesCollapsed((collapsed) => !collapsed)} aria-label={messagesCollapsed ? "Expand game messages" : "Collapse game messages"} aria-expanded={!messagesCollapsed}>{messagesCollapsed ? "▣" : "—"}</button></header>{!messagesCollapsed && <div aria-live="polite">{gameMessages.length ? gameMessages.map((entry, index) => <p className={index === gameMessages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div>}</aside>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
       {effectNotice && <div className="turn-notice effect-notice" role="status"><span>EFFECT TRIGGERED</span><b>{effectNotice}</b></div>}

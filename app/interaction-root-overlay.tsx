@@ -45,6 +45,13 @@ type AttackGeometryFitDiagnostic = {
   placementFieldSearch?: AttackRootPlacementFieldSearch;
   dodgePlacementFieldSearch?: AttackDodgePlacementFieldSearch;
   placementSearchEligibility?: { attempted: boolean; unansweredAttackRoot: boolean; viewportWidth: number; pathCandidateCount: number };
+  rootPlacementGeometry?: {
+    sourcePath: Rect;
+    sourceAnchor: Rect;
+    target: Rect;
+    reservedResponseTimer: Rect | null;
+    obstacles: readonly Rect[];
+  };
   placementIdentity?: { currentRootPlacementKey: string; rememberedRootKey: string | null; hasStableRootForInteraction: boolean };
   dodgeGeometry?: {
     table: Rect;
@@ -958,7 +965,12 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   // authoritative card can keep its 12px table inset without moving on Dodge.
   const rootPlacementBottom = tableRect.bottom - margin
     - (isUnansweredAttackRoot && hasEightPlayerPhoneLayout ? 12 : 0);
-  const placementFieldSampleStep = shellBounds.width <= 400 ? 1 : 4;
+  // Root placement checks several card sizes synchronously before the first
+  // visible frame. A 1px exhaustive scan at phone widths can block response
+  // presentation for >1s; 4px keeps the full collision/path proof while
+  // bounding initial layout work. Response-card placement remains separately
+  // measured against exact card geometry.
+  const placementFieldSampleStep = 4;
   const localDockElement = shell.querySelector<HTMLElement>(".local-player-dock");
   const localDockRect = localDockElement?.getClientRects().length ? relativeRect(localDockElement, shellBounds) : null;
   const stableStageBottom = localDockRect && localDockRect.top >= tableRect.bottom ? localDockRect.top : tableRect.bottom;
@@ -990,6 +1002,35 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .game-messages, .game-exit")),
   ].filter((element) => element.getClientRects().length > 0)
   const obstacles = obstacleElements.map((element) => relativeRect(element, shellBounds));
+  const stageSystemElement = shell.querySelector<HTMLElement>(".stage-system-cluster");
+  const responseTimerVisible = Boolean(stageSystemElement?.querySelector(".visible-countdown-response"));
+  const hiddenPendingPublicResponseTimer = isUnansweredAttackRoot
+    && stageSystemElement?.dataset.publicResponseTimerPending === "true"
+    && !responseTimerVisible
+    ? (() => {
+      const stageRect = relativeRect(stageSystemElement, shellBounds);
+      const menuButton = stageSystemElement.querySelector<HTMLElement>(".stage-system-menu-trigger");
+      const menuWidth = menuButton?.getBoundingClientRect().width ?? 44;
+      const gap = Number.parseFloat(getComputedStyle(stageSystemElement).gap) || 8;
+      const reservedWidth = Math.max(stageRect.width, menuWidth + gap + 64);
+      return {
+        ...stageRect,
+        left: stageRect.right - reservedWidth,
+        width: reservedWidth,
+      };
+    })()
+    : null;
+  const allObstacles = hiddenPendingPublicResponseTimer ? [...obstacles, hiddenPendingPublicResponseTimer] : obstacles;
+  const rootPlacementGeometry = isUnansweredAttackRoot ? {
+    sourcePath: sourceRect,
+    sourceAnchor: relativeRect(sourceElement, shellBounds),
+    target: targetRect,
+    reservedResponseTimer: hiddenPendingPublicResponseTimer,
+    obstacles: allObstacles,
+  } : undefined;
+  const pathIntersectsObstacle = (start: Point, end: Point, ignoredElement: HTMLElement, clearance: number) => allObstacles.some((obstacle, index) =>
+    obstacleElements[index] !== ignoredElement
+      && segmentIntersectsRect(start, end, expandRect(obstacle, clearance)));
   const fitCounts = {
     rootFitCandidateCount: 0,
     rootRejectedBySeatOrDock: 0,
@@ -1010,7 +1051,8 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     const rootOverlapsSeatOrDock = obstacleElements.some((element) => anchorObstacleSet.has(element)
       && overlaps(card, relativeRect(element, shellBounds), isUnansweredAttackRoot ? 12 : 8));
     const rootOverlapsControl = obstacleElements.some((element) => !anchorObstacleSet.has(element)
-      && overlaps(card, relativeRect(element, shellBounds), 8));
+      && overlaps(card, relativeRect(element, shellBounds), 8))
+      || Boolean(hiddenPendingPublicResponseTimer && overlaps(card, hiddenPendingPublicResponseTimer, 8));
     if (rootOverlapsSeatOrDock || rootOverlapsControl) {
       if (rootOverlapsSeatOrDock) fitCounts.rootRejectedBySeatOrDock += 1;
       if (rootOverlapsControl) fitCounts.rootRejectedByControl += 1;
@@ -1064,7 +1106,8 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
         const overlapsSeatOrDock = obstacleElements.some((element) => anchorObstacleSet.has(element)
           && overlaps(candidateRect, relativeRect(element, shellBounds), 8));
         const overlapsControl = obstacleElements.some((element) => !anchorObstacleSet.has(element)
-          && overlaps(candidateRect, relativeRect(element, shellBounds), 8));
+          && overlaps(candidateRect, relativeRect(element, shellBounds), 8))
+          || Boolean(hiddenPendingPublicResponseTimer && overlaps(candidateRect, hiddenPendingPublicResponseTimer, 8));
         if (overlapsSeatOrDock || overlapsControl) {
           if (overlapsSeatOrDock) fitCounts.dodgeRejectedBySeatOrDock += 1;
           if (overlapsControl) fitCounts.dodgeRejectedByControl += 1;
@@ -1138,7 +1181,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
         && responseRect.top >= tableRect.top + margin
         && responseRect.bottom <= stableStageBottom - margin
         && !overlaps(responseRect, card, 8)
-        && !obstacles.some((obstacle) => overlaps(responseRect, obstacle, 8));
+        && !allObstacles.some((obstacle) => overlaps(responseRect, obstacle, 8));
       const directCandidates = [.4, .45, .46, .465, .47, .5, .55, .6, .65].flatMap((fraction) => [0, -16, 16, -32, 32, -40, 40, -48, 48]
         .flatMap((offset) => {
           const responseRect = responseRectAt(fraction, offset);
@@ -1174,7 +1217,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       const safeRight = tableRect.right - margin - reservedDodgeSize.width;
       const safeTop = tableRect.top + margin;
       const safeBottom = stableStageBottom - margin - reservedDodgeSize.height;
-      const placementObstacles = [...obstacles, card];
+      const placementObstacles = [...allObstacles, card];
       const candidateLefts = new Set([safeLeft, safeRight]);
       const candidateTops = new Set([safeTop, safeBottom]);
       for (const obstacle of placementObstacles) {
@@ -1234,17 +1277,15 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
           const projection = ((cardCenter.x - sourceCenter.x) * lineX + (cardCenter.y - sourceCenter.y) * lineY) / lineLengthSquared;
           if (projection < .16 || projection > .92) continue;
           positionsInRelationBand += 1;
-          if (obstacles.some((obstacle) => overlaps(card, obstacle, clearance))) continue;
+          if (allObstacles.some((obstacle) => overlaps(card, obstacle, clearance))) continue;
           cardClearCount += 1;
 
           const sourceStart = rectangleEdge(sourceRect, cardCenter);
           const sourceEnd = rectangleEdge(card, sourceCenter);
           const targetStart = rectangleEdge(card, targetCenter);
           const targetEnd = rectangleEdge(targetRect, cardCenter);
-          const sourcePathBlocked = obstacleElements.some((element, index) => element !== sourceElement
-            && segmentIntersectsRect(sourceStart, sourceEnd, expandRect(obstacles[index]!, clearance)));
-          const targetPathBlocked = obstacleElements.some((element, index) => element !== targetElement
-            && segmentIntersectsRect(targetStart, targetEnd, expandRect(obstacles[index]!, clearance)));
+          const sourcePathBlocked = pathIntersectsObstacle(sourceStart, sourceEnd, sourceElement, clearance);
+          const targetPathBlocked = pathIntersectsObstacle(targetStart, targetEnd, targetElement, clearance);
           if (sourcePathBlocked || targetPathBlocked) continue;
           connectorClearCount += 1;
           if (projection >= .30 && projection <= .42) preferredBandConnectorClearCount += 1;
@@ -1317,7 +1358,8 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     && stableRootCard.left >= tableRect.left + margin && stableRootCard.top >= tableRect.top + margin
     && stableRootCard.right <= tableRect.right - margin
     && stableRootCard.bottom <= (hasEightPlayerPhoneLayout ? tableRect.bottom - margin : stableStageBottom)
-    && !obstacleElements.some((element) => overlaps(stableRootCard, relativeRect(element, shellBounds), element.classList.contains("local-player-dock") ? 0 : 8));
+    && !obstacleElements.some((element) => overlaps(stableRootCard, relativeRect(element, shellBounds), element.classList.contains("local-player-dock") ? 0 : 8))
+    && !(hiddenPendingPublicResponseTimer && overlaps(stableRootCard, hiddenPendingPublicResponseTimer, 8));
   const selectedCandidate = cachedRootFits && stableRootCard
     ? { card: stableRootCard, reservedDodge: preferredResponseCard, score: 0 }
     : candidates[0];
@@ -1331,6 +1373,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     reportFitDiagnostic("no-reserved-dodge-candidate", {
       candidateCount: candidateCenters.length,
       ...fitCounts,
+      ...(rootPlacementGeometry ? { rootPlacementGeometry } : {}),
       placementSearchEligibility: {
         attempted: Boolean(placementFieldSearch),
         unansweredAttackRoot: isUnansweredAttackRoot,
@@ -1349,6 +1392,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     reportFitDiagnostic(rootCandidatesLackDodgeSlot ? "no-reserved-dodge-candidate" : "no-attack-root-candidate", {
       candidateCount: candidateCenters.length,
       ...fitCounts,
+      ...(rootPlacementGeometry ? { rootPlacementGeometry } : {}),
       placementSearchEligibility: {
         attempted: Boolean(placementFieldSearch),
         unansweredAttackRoot: isUnansweredAttackRoot,
@@ -1380,6 +1424,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     reportFitDiagnostic("placement-field-root-selected", {
       candidateCount: candidateCenters.length,
       placementFieldSearch,
+      ...(rootPlacementGeometry ? { rootPlacementGeometry } : {}),
     });
   }
   if (reservedDodgeSize && !reservedDodgeCard && fitCounts.rootFitCandidateCount > 0
@@ -1396,7 +1441,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const sourceEnd = rectangleEdge(card, sourceCenter);
   const historySummaryBounds = historySummaryElement?.getBoundingClientRect();
   const historySummary = action.historyCount > 0 && historySummaryBounds && historySummaryBounds.width > 0 && historySummaryBounds.height > 0
-    ? placeHistorySummary(tableRect, card, { width: historySummaryBounds.width, height: historySummaryBounds.height }, [...obstacles, card], margin)
+    ? placeHistorySummary(tableRect, card, { width: historySummaryBounds.width, height: historySummaryBounds.height }, [...allObstacles, card], margin)
     : null;
   if (action.historyCount > 0 && !historySummary) return null;
   if (action.responses?.length) {

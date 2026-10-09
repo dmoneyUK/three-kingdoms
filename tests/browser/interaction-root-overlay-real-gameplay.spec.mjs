@@ -1092,7 +1092,11 @@ for (const scenario of [
     expect(firstProvenFrame, "RAF trace observes the server-proven root event").toBeTruthy();
     expect(firstProvenFrame).toMatchObject({ sourceId, targetId, rootCardKind: "Attack" });
     expect(firstGraphFrame, "RAF trace observes the graph as a visible composition").toBeTruthy();
-    expect(firstGraphFrame.elapsedMs - firstProvenFrame.elapsedMs, "graph handoff is bounded from the first rendered proof frame").toBeLessThanOrEqual(250);
+    expect(firstGraphFrame.elapsedMs - firstProvenFrame.elapsedMs,
+      `graph handoff is bounded from the first rendered proof frame: ${JSON.stringify({ firstProvenFrame, firstGraphFrame,
+        fitDiagnostics: await page.evaluate((rootEventId) => window.__wtkAttackFitDiagnostics
+          .filter((diagnostic) => diagnostic.rootEventId === rootEventId).slice(-8), rootAction.rootEventId) })}`)
+      .toBeLessThanOrEqual(250);
     expect(inspectFallbackFrame).toMatchObject({ rootEventId: rootAction.rootEventId, sourceId, targetId, rootCardKind: "Attack", mode: "fallback", fallbackGate: "local-presentation-precedence", rootCardVisible: false, interactionStageVisible: true });
     expect(rootFrames.every((frame) => !(frame.rootCardVisible
       && (frame.interactionStageVisible || frame.activeTableRevealCardCount > 0))), "no sampled frame mixes the graph with legacy Stage/reveal cards").toBe(true);
@@ -1938,7 +1942,7 @@ for (const scenario of [
         expect(actorLayout.mode, "the 8-player 390px local attacker uses the proven Attack graph").toBe("graph");
         expect(actorLayout.fitStep).toBe("minimum");
         expect(selectedActorFieldFit).toBeTruthy();
-        expect(selectedActorFieldFit.placementFieldSearch.sampleStep).toBe(1);
+        expect(selectedActorFieldFit.placementFieldSearch.sampleStep).toBe(4);
         expect(selectedActorFieldFit.placementFieldSearch.selectedClearance).toBe(8);
         expect(await page.locator('[data-root-action-overlay="true"]')
           .getAttribute("data-root-action-dodge-slot-reserved")).toBe("true");
@@ -3247,7 +3251,47 @@ async function assertContinuousAttackGraphFrames(page, rootAction, startTimeMs, 
     || frame.activeTableRevealCardCount !== 0 || !frame.sourceEdgeVisible || !frame.targetEdgeVisible
     || !frame.targetMarkerPresent || !frame.svgVisible || frame.classification !== "graph-visible"
     || frame.sourceAnchorResidual > 2.1 || frame.targetAnchorResidual > 2.1);
-  expect(unexpected, `${label}: every sampled frame must retain the same proven, visibly connected graph; first unexpected frames: ${JSON.stringify(unexpected.slice(0, 5))}`).toEqual([]);
+  const fitDiagnostics = unexpected.length ? await page.evaluate((rootEventId) => window.__wtkAttackFitDiagnostics
+    .filter((diagnostic) => diagnostic.rootEventId === rootEventId).slice(-8), rootAction.rootEventId) : [];
+  const geometrySnapshot = unexpected.length ? await page.evaluate(() => {
+    const rect = (element) => {
+      if (!element) return null;
+      const bounds = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return { x: bounds.x, y: bounds.y, right: bounds.right, bottom: bounds.bottom,
+        width: bounds.width, height: bounds.height, display: style.display,
+        visibility: style.visibility, opacity: style.opacity, position: style.position };
+    };
+    const playCenter = document.querySelector(".play-center");
+    const attackDenseLaneSelector = ".game-shell:has(> .interaction-root-overlay[data-root-action-card-kind=\"Attack\"]) .play-table[data-seat-topology=\"side-column\"]:has(> .player-board[data-player-count=\"8\"]) > .play-center";
+    const table = document.querySelector(".play-table");
+    const centerStyleRules = [...document.styleSheets].flatMap((sheet) => {
+      try { return [...sheet.cssRules]; } catch { return []; }
+    }).flatMap((rule) => rule.cssRules ? [...rule.cssRules] : [rule])
+      .filter((rule) => rule.selectorText?.includes(".play-center") && rule.selectorText?.includes("player-count"))
+      .map((rule) => ({ selector: rule.selectorText, top: rule.style?.top ?? null, media: rule.parentRule?.conditionText ?? null }));
+    return {
+      viewport: { width: innerWidth, height: innerHeight, scrollY },
+      shell: rect(document.querySelector(".game-shell")),
+      table: { ...rect(table), offsetHeight: table?.offsetHeight ?? null, clientHeight: table?.clientHeight ?? null, computedHeight: table ? getComputedStyle(table).height : null, transform: table ? getComputedStyle(table).transform : null, zoom: table ? getComputedStyle(table).zoom : null },
+      playCenterComputedTop: playCenter ? getComputedStyle(playCenter).top : null,
+      playCenterOffsetTop: playCenter?.offsetTop ?? null,
+      playCenterOffsetParent: playCenter?.offsetParent ? { className: String(playCenter.offsetParent.className), offsetHeight: playCenter.offsetParent.offsetHeight, rect: rect(playCenter.offsetParent) } : null,
+      centerStyleRules,
+      attackDenseLaneSelectorMatches: document.querySelector(attackDenseLaneSelector) === playCenter,
+      rootCard: rect(document.querySelector('[data-root-action-overlay="true"] [data-root-action-card="true"]')),
+      anchors: [...document.querySelectorAll("[data-player-anchor]")].map((element) => ({
+        id: element.dataset.playerAnchor, rect: rect(element),
+      })),
+      obstacles: [...document.querySelectorAll(".play-center, .stage-system-cluster, .game-messages, .game-exit")]
+        .map((element) => ({ className: String(element.className), rect: rect(element) })),
+      localHeroSource: rect(document.querySelector(".local-player-dock .local-hero-card")),
+      stageSystemResponseTimerActive: document.querySelector(".stage-system-cluster")?.dataset.responseTimerActive ?? null,
+      timer: rect(document.querySelector(".visible-countdown-response")),
+      rootFitStep: document.querySelector('[data-root-action-overlay="true"]')?.dataset.rootActionCardFitStep ?? null,
+    };
+  }) : null;
+  expect(unexpected, `${label}: every sampled frame must retain the same proven, visibly connected graph; first unexpected frames: ${JSON.stringify(unexpected.slice(0, 5))}; latest fit diagnostics: ${JSON.stringify(fitDiagnostics)}; failure geometry: ${JSON.stringify(geometrySnapshot)}`).toEqual([]);
   expect(frames.slice(1).every((frame, index) => frame.frameNumber === frames[index].frameNumber + 1), `${label}: no unobserved rAF sample gap`).toBe(true);
   return frames;
 }
@@ -3752,6 +3796,13 @@ test("real 6/8-player mobile Attack presentation stays stable for attacker and d
         timeout: 25_000,
         message: label + " " + entry.role + ": collect at least 12 seconds of real RAF samples",
       }).toBe(true)));
+      if (playerCount === 8 && viewport.width === 390) {
+        await expect(defenderPage.locator(".stage-system-cluster")).toHaveAttribute("data-public-response-timer-pending", "true");
+        await expect(defenderPage.locator(".visible-countdown-response")).toBeVisible();
+        await testInfo.attach("dense-attack-8p-390-public-timer.png", {
+          body: await defenderPage.screenshot(), contentType: "image/png",
+        });
+      }
       await Promise.all(roles.map((entry, index) => waitForAttackProofPolls(
         entry.polls, pollStarts[index], rootAction, 5, 25_000,
       )));

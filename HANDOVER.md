@@ -5,34 +5,12 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2-6.27-8P-390-ATTACK-DODGE-GEOMETRY-01` now fits the server-backed 8-player
-390×844 Attack/Dodge graph at the §6.27.1 minimum sizes: Attack 96×144 at
-(99,356), Dodge 88×132 at (203,326), with a stable root, direct path
-interception, 8px obstacle clearance, and 12px table inset. The dense 6/8-player
-390/480 browser matrix passed 4/4; the focused 8p/390 screenshot rerun passed.
-Focused ESLint, `git diff --check`, and `npm run build` passed. Remote docs-only
-HEAD `7907b5f6937c57f55edd06670bf90441bcc76ecd` has no associated Actions run or
-status checks (empty status treated as success per reviewer policy); its
-predecessor `81a92dc004bb0b40c629e169d12aa1168cedbae2` passed all five jobs in
-run `37934495952`. New task push validation is pending. Reviewer acceptance is
-not claimed.
+The latest relevant Actions run, `37943726091` for `06e9c5b8f75462c2701c9f011202d04d4752fa7a`, failed Browser shard 1 (job `113864425947`); 444 tests passed and two Attack graph tests failed. The 6-player/390×844 graph handoff measured 273ms and 405ms against 250ms. The 8-player/390×844 graph later fell to `geometry-unavailable` at about 14.98s while the server root identity remained unchanged. Other workflow jobs passed. Current remote docs-only HEAD `f6139f6bf345b2bcdd29c7931dcafed3c256e692` has no status checks. A CI-only repair is prepared locally; exact repair-SHA validation is pending. No Reviewer acceptance is claimed.
 
 ## Design checkpoint
 
-Latest remote `docs/UX2-refine.md` blob:
-`d1164425c938e9d68611f43d2dbafa621e17dbc5`. §§6.27.1–6.27.4 and new §6.28
-were reviewed; §6.28 Task A is the next P0 task. §4D / §5 prerequisites remain
-closed.
+Latest remote `docs/UX2-refine.md` blob `88c73eb523b6e14f769fc10eee5a5ad40b8f93ba` reviewed, including §§6.28–6.29. Current Task A covers four-player Attack/Dodge graph continuity and the complete 3,000ms public Dodge/Negation counter hold. §6.29.5's global 5–6px active source tether and later AOE tasks remain separate follow-up scope.
 
 ## Current task
 
-`UX2-6.28-4P-ATTACK-GRAPH-RELIABILITY-01` — reproduce and fix the §6.28.1
-four-player production Attack scene that loses its source/target connectors
-during an unsubmitted Dodge choice. Use real server-created games and browser
-controls at 390×844 and 480×900, including ordinary and converted Attacks,
-selection/unselection, both attacker and defender views, repeated authoritative
-polls, and at least ten independently seeded response windows. Record privacy-
-safe proof, phase, layout, SVG visibility, and event identity for missing-link
-frames. Preserve server authority, fixed Seats/Dock, card sizes, controls, and
-fail-closed behavior; keep the separate §6.28.2 three-second hold out of this
-task.
+`UX2-6.29-A-ATTACK-DODGE-CONTINUITY-AND-HOLD-01` — after the CI-repair SHA is green, complete the server-backed four-player Attack graph reproduction and repair: 10 independently seeded windows, ordinary/converted Attacks, attacker/defender/observer views, 390×844, 480×900, and 1440×900; sample private Dodge select/unselect without exposing it; preserve root identity, source/target links, and whole-Dock emphasis through polls and remeasurement; then prove browser-submitted Dodge and Negation/counter-Negation complete causal graphs remain readable for 3,000ms without delaying gameplay. Include reduced motion, reconnect/polling, timeout/Skip, screenshots and timestamped DOM traces. Keep later AOE ownership/projection/progress and expired-link styling out of this task.

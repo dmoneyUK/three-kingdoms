@@ -5650,7 +5650,7 @@
 @media (min-width: 360px) and (max-width: 400px) and (min-height: 701px) {
   .game-shell:has(> .interaction-root-overlay[data-root-action-card-kind="Attack"])
     .play-table[data-seat-topology="side-column"]:has(> .player-board[data-player-count="8"]) > .play-center {
-    top: calc(clamp(270px, 66%, 460px) - 62px);
+    top: calc(clamp(270px, 66%, 460px) - 186px);
   }
 
   .game-shell:has(> .interaction-root-overlay[data-root-action-card-kind="Attack"])
