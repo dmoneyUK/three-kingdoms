@@ -396,6 +396,9 @@ async function openGame(page, seed, playerIndex, viewport) {
         const stage = document.querySelector(".interaction-stage");
         const attackStage = document.querySelector('.interaction-stage[data-stage="ATTACK_RESPONSE"]');
         const rootCard = overlay?.querySelector('[data-root-action-card="true"]');
+        const responseCard = overlay?.querySelector('[data-root-action-response-card="true"]');
+        const attackDodgePath = overlay?.querySelector('[data-root-action-edge="attack-dodge-interception"]');
+        const dodgeSourcePath = overlay?.querySelector('[data-root-action-edge="response-source"]');
         const activeRevealCards = [...document.querySelectorAll(".active-table-reveal .game-card, .table-resolution-layer .table-played-card")]
           .filter(isVisible);
         const interactionStageVisible = isVisible(stage);
@@ -442,7 +445,18 @@ async function openGame(page, seed, playerIndex, viewport) {
           presentationRevision: overlay?.dataset.rootActionPresentationRevision ?? null,
           rootCardKind: overlay?.dataset.rootActionCardKind ?? null,
           rootCardVisible: isVisible(rootCard),
+          rootCardX: rootCard?.getBoundingClientRect().x ?? null,
+          rootCardY: rootCard?.getBoundingClientRect().y ?? null,
+          responseCardVisible: isVisible(responseCard),
+          responseEventId: responseCard?.dataset.responseEventId ?? null,
+          responseActorId: responseCard?.dataset.responseActorId ?? null,
+          responseCardKind: responseCard?.dataset.responseCardFaceKind ?? null,
+          responseInterceptionMode: responseCard?.dataset.rootActionDodgeInterception ?? null,
+          attackDodgePathVisible: isVisible(attackDodgePath),
+          dodgeSourcePathVisible: isVisible(dodgeSourcePath),
+          settled: Boolean(overlay?.querySelector('[data-root-action-settled="true"]')),
           interactionStageVisible,
+          interactionStageCount: document.querySelectorAll(".interaction-stage").length,
           attackResponseStageVisible,
           localUiMode: stage?.dataset.localUiMode ?? null,
           stagePresentationTransition: stage?.dataset.presentationTransition ?? null,
@@ -683,6 +697,11 @@ async function observeAttackDodgeSettlement(page, sourceId = null, targetId = nu
           const attackSegment = edgeState("attack-dodge-interception");
           const markerPoint = markPoints?.middle;
           window.__wtkAttackDodgeSettlementVisual = {
+            rootIdentity: {
+              rootEventId: overlay.dataset.rootActionEventId ?? null,
+              interactionId: overlay.dataset.rootActionInteractionId ?? null,
+              rootFrameId: overlay.dataset.rootActionRootFrameId ?? null,
+            },
             overlay: {
               ready: overlay.dataset.rootActionReady,
               enabled: overlay.dataset.rootActionEnabled,
@@ -755,6 +774,64 @@ async function observeAttackDodgeSettlement(page, sourceId = null, targetId = nu
     });
     capture();
   }, { sourceId, targetId });
+}
+
+async function assertAttackDodgeSettlementCleanup(page, { rootAction, responseProof, baselineRoot, label }) {
+  await expect.poll(() => page.evaluate((responseEventId) =>
+    window.__wtkAttackDodgeSettlementVisual?.response?.dataset.responseEventId === responseEventId,
+  responseProof.responseEventId), {
+    timeout: 5_000,
+    message: `${label}: the same public Dodge graph enters settlement`,
+  }).toBe(true);
+  const visual = await page.evaluate(() => window.__wtkAttackDodgeSettlementVisual);
+  expect(visual.rootIdentity).toMatchObject({ rootEventId: rootAction.rootEventId });
+  expect(visual.root.dataset).toMatchObject({
+    rootActionCardFaceKind: "Attack",
+    rootActionSettlementEventId: responseProof.responseEventId,
+    rootActionSettlementOutcome: "ATTACK_BLOCKED_BY_DODGE",
+  });
+  expect(visual.response.dataset).toMatchObject({
+    responseEventId: responseProof.responseEventId,
+    responseActorId: responseProof.responseActorId,
+    responseCardFaceKind: "Dodge",
+  });
+  expect(Math.abs(visual.root.rect.x - baselineRoot.x), `${label}: Attack root x remains stable during settlement`).toBeLessThanOrEqual(1);
+  expect(Math.abs(visual.root.rect.y - baselineRoot.y), `${label}: Attack root y remains stable during settlement`).toBeLessThanOrEqual(1);
+  await expect.poll(() => page.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.removedAt ?? null), {
+    timeout: 5_000,
+    message: `${label}: completed Dodge settlement node is removed`,
+  }).not.toBeNull();
+  const timing = await page.evaluate(() => window.__wtkAttackDodgeSettlementTiming);
+  expect(timing.outcome).toBe("ATTACK_BLOCKED_BY_DODGE");
+  expect(timing.exitingAt - timing.shownAt).toBeGreaterThanOrEqual(350);
+  expect(timing.exitingAt - timing.shownAt).toBeLessThanOrEqual(750);
+  expect(timing.removedAt - timing.exitingAt).toBeGreaterThanOrEqual(100);
+  expect(timing.removedAt - timing.exitingAt).toBeLessThanOrEqual(350);
+  const cleanup = await page.evaluate(() => {
+    const overlay = document.querySelector('[data-root-action-overlay="true"]');
+    const visible = (element) => {
+      if (!element) return false;
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0
+        && rect.width > 0 && rect.height > 0;
+    };
+    return {
+      rootCardVisible: visible(overlay?.querySelector('[data-root-action-card="true"]')),
+      responseCardVisible: visible(overlay?.querySelector('[data-root-action-response-card="true"]')),
+      visibleEdgeCount: [...(overlay?.querySelectorAll("[data-root-action-edge]") ?? [])].filter(visible).length,
+      settlementNodeCount: overlay?.querySelectorAll('[data-root-action-settled="true"]').length ?? 0,
+      tablePlayedCardCount: document.querySelectorAll(".table-resolution-layer .table-played-card").length,
+    };
+  });
+  expect(cleanup, `${label}: the completed Attack/Dodge graph does not linger`).toEqual({
+    rootCardVisible: false,
+    responseCardVisible: false,
+    visibleEdgeCount: 0,
+    settlementNodeCount: 0,
+    tablePlayedCardCount: 0,
+  });
+  return { visual, timing, cleanup };
 }
 
 async function observeAttackHitSettlement(page) {
@@ -1650,6 +1727,7 @@ for (const scenario of [
     const targetPage = await browser.newPage({ viewport });
     try {
       await openGame(targetPage, seed, 1, viewport);
+      await Promise.all([page, targetPage].map((participantPage) => participantPage.evaluate(() => window.__wtkStartAttackVisibleFrameSampling())));
       const actorLayout = await assertAttackGraphOrSafeFallback(page, viewport, `${playerCount}p ${viewport.width}px attacker`);
       const targetLayout = await assertAttackGraphOrSafeFallback(targetPage, viewport, `${playerCount}p ${viewport.width}px defender`);
       actorLayout.placementFieldScan = actorLayout.mode === "fallback"
@@ -1722,7 +1800,12 @@ for (const scenario of [
       await testInfo.attach(`dense-attack-layout-${playerCount}p-${viewport.width}px-attacker.png`, { body: await page.screenshot(), contentType: "image/png" });
       await testInfo.attach(`dense-attack-layout-${playerCount}p-${viewport.width}px-defender.png`, { body: await targetPage.screenshot(), contentType: "image/png" });
 
-      const defenderOverlay = targetPage.locator('[data-root-action-overlay="true"]');
+      const attackerDodgeFrameStart = await page.evaluate(() => window.__wtkAttackVisibleFrames.length);
+      const defenderDodgeFrameStart = await targetPage.evaluate(() => window.__wtkAttackVisibleFrames.length);
+      await Promise.all([
+        observeAttackDodgeSettlement(page, sourceId, targetId),
+        observeAttackDodgeSettlement(targetPage, sourceId, targetId),
+      ]);
       await playDodgeThroughPage(targetPage);
       await expect.poll(async () => (await roomView(request, seed, 2)).presentationSnapshot?.attackDodgeResponses?.length ?? 0, { timeout: 20_000 }).toBe(1);
       const responseProof = (await roomView(request, seed, 2)).presentationSnapshot.attackDodgeResponses[0];
@@ -1732,16 +1815,138 @@ for (const scenario of [
         targetId, responseActorId: targetId,
         rootCardKind: "Attack", responseCardKind: "Dodge",
       });
+      const readDefenderDodgeOutcome = () => targetPage.evaluate(({ start, rootEventId, responseEventId }) => {
+        const frames = window.__wtkAttackVisibleFrames.slice(start);
+        const responseFrame = frames.find((frame) => frame.responseCardVisible
+          && frame.rootEventId === rootEventId && frame.responseEventId === responseEventId);
+        if (responseFrame) return { kind: "rendered", responseFrame };
+        const fitDiagnostic = window.__wtkAttackFitDiagnostics.filter((diagnostic) => diagnostic.rootEventId === rootEventId
+          && diagnostic.phase === "dodge-response").at(-1) ?? null;
+        const fallbackFrame = frames.find((frame) => frame.rootEventId === rootEventId
+          && frame.mode === "fallback" && frame.layoutState === "unavailable" && frame.fallbackGate === "geometry-unavailable");
+        if (fitDiagnostic && fallbackFrame) return { kind: "geometry-unavailable", fallbackFrame, fitDiagnostic };
+        return { kind: "pending", latestFrame: frames.at(-1) ?? null, fitDiagnostic };
+      }, { start: defenderDodgeFrameStart, rootEventId: rootAction.rootEventId, responseEventId: responseProof.responseEventId });
+      await expect.poll(async () => (await readDefenderDodgeOutcome()).kind, {
+        timeout: 8_000,
+        message: `${playerCount}p ${viewport.width}px defender captures the proven Dodge graph or measured geometry fallback`,
+      }).toMatch(/^(rendered|geometry-unavailable)$/);
+      const defenderDodgeOutcome = await readDefenderDodgeOutcome();
+      const defenderResponseFrame = defenderDodgeOutcome.kind === "rendered" ? defenderDodgeOutcome.responseFrame : null;
+      let responseLayout = await captureAttackOverlayDiagnostics(targetPage);
+      const defenderInterceptionAtFirstFrame = defenderResponseFrame
+        ? await captureAttackDodgeInterceptionGeometry(targetPage)
+        : null;
+      responseLayout.fitDiagnostics = await targetPage.evaluate((rootEventId) => window.__wtkAttackFitDiagnostics
+        .filter((diagnostic) => diagnostic.rootEventId === rootEventId), rootAction.rootEventId);
+      await testInfo.attach(`dense-attack-dodge-${playerCount}p-${viewport.width}px-defender-first-response.png`, {
+        body: await targetPage.screenshot(),
+        contentType: "image/png",
+      });
+      const attackerAndDefenderViews = await Promise.all([0, 1].map(async (playerIndex) => {
+        const view = await roomView(request, seed, playerIndex);
+        return {
+          playerIndex,
+          currentActionKind: view.currentAction?.kind ?? null,
+          currentActionActorId: view.currentAction?.actorId ?? null,
+          rootAction: view.presentationSnapshot?.rootAction ? {
+            interactionId: view.presentationSnapshot.rootAction.interactionId,
+            rootFrameId: view.presentationSnapshot.rootAction.rootFrameId,
+            rootEventId: view.presentationSnapshot.rootAction.rootEventId,
+            sourceId: view.presentationSnapshot.rootAction.sourceId,
+            targetId: view.presentationSnapshot.rootAction.targetId,
+            action: view.presentationSnapshot.rootAction.action,
+          } : null,
+          attackDodgeResponses: (view.presentationSnapshot?.attackDodgeResponses ?? []).map((proof) => ({
+            semantics: proof.semantics,
+            counterRelation: proof.counterRelation,
+            interactionId: proof.interactionId,
+            rootFrameId: proof.rootFrameId,
+            rootEventId: proof.rootEventId,
+            responseEventId: proof.responseEventId,
+            responseActorId: proof.responseActorId,
+            rootResolutionId: proof.rootResolutionId,
+            responseResolutionId: proof.responseResolutionId,
+          })),
+          linkedTimelineEvents: view.timeline.filter((event) => [rootAction.rootEventId, responseProof.responseEventId].includes(event.id))
+            .map((event) => ({ id: event.id, action: event.action, presentation: event.presentation ?? null, resolutionId: event.resolutionId,
+              cardKind: event.type === "card" ? event.card.kind : null, playedAs: event.type === "card" ? event.playedAs ?? null : null })),
+        };
+      }));
+      const responseProofShape = {
+        semantics: responseProof.semantics,
+        counterRelation: responseProof.counterRelation,
+        interactionId: responseProof.interactionId,
+        rootFrameId: responseProof.rootFrameId,
+        rootEventId: responseProof.rootEventId,
+        responseEventId: responseProof.responseEventId,
+        responseActorId: responseProof.responseActorId,
+        rootResolutionId: responseProof.rootResolutionId,
+        responseResolutionId: responseProof.responseResolutionId,
+      };
+      for (const view of attackerAndDefenderViews) {
+        expect(view.attackDodgeResponses, `player ${view.playerIndex} receives the same server-proven public Dodge relation`).toEqual([responseProofShape]);
+        expect(view.linkedTimelineEvents.map(({ id, action, resolutionId, cardKind, playedAs }) => ({ id, action, resolutionId, cardKind, playedAs }))).toEqual([
+          { id: rootAction.rootEventId, action: "play", resolutionId: responseProof.rootResolutionId, cardKind: "Attack", playedAs: null },
+          { id: responseProof.responseEventId, action: "play", resolutionId: responseProof.responseResolutionId, cardKind: "Dodge", playedAs: null },
+        ]);
+      }
+      let actorDodgeOutcome = null;
       if (actorLayout.mode === "graph") {
-        const actorOverlay = page.locator('[data-root-action-overlay="true"]');
-        await expect.poll(() => actorOverlay.getAttribute("data-root-action-layout-state"), {
-          message: `${playerCount}p ${viewport.width}px attacker keeps its proven graph through Dodge`,
-        }).toBe("ready");
-        await expect(actorOverlay).toHaveAttribute("data-root-action-display-mode", "graph");
+        const readActorDodgeOutcome = () => page.evaluate(({ start, rootEventId, responseEventId }) => {
+          const responseFrame = window.__wtkAttackVisibleFrames.slice(start).find((frame) => frame.responseCardVisible
+            && frame.rootEventId === rootEventId && frame.responseEventId === responseEventId);
+          if (responseFrame) return { kind: "rendered", responseFrame };
+          const overlay = document.querySelector('[data-root-action-overlay="true"]');
+          const fitDiagnostic = window.__wtkAttackFitDiagnostics.filter((diagnostic) => diagnostic.rootEventId === rootEventId
+            && diagnostic.phase === "dodge-response").at(-1) ?? null;
+          const rootCard = overlay?.querySelector('[data-root-action-card="true"]');
+          if (overlay?.dataset.rootActionLayoutState === "unavailable"
+            && overlay.dataset.rootActionFallbackReason === "geometry-unavailable"
+            && fitDiagnostic?.cause === "no-dodge-interception-candidate") {
+            return { kind: "geometry-unavailable", overlay: {
+              layout: overlay.dataset.rootActionLayoutState,
+              mode: overlay.dataset.rootActionDisplayMode,
+              fallbackReason: overlay.dataset.rootActionFallbackReason,
+            }, rootCardVisible: Boolean(rootCard && getComputedStyle(rootCard).visibility !== "hidden"
+              && getComputedStyle(rootCard).display !== "none" && Number(getComputedStyle(rootCard).opacity) > 0),
+            edgeCount: overlay.querySelectorAll("[data-root-action-edge]").length, fitDiagnostic };
+          }
+          return { kind: "pending", overlay: overlay ? {
+            layout: overlay.dataset.rootActionLayoutState ?? null,
+            mode: overlay.dataset.rootActionDisplayMode ?? null,
+            fallbackReason: overlay.dataset.rootActionFallbackReason ?? null,
+          } : null, fitDiagnostic };
+        }, { start: attackerDodgeFrameStart, rootEventId: rootAction.rootEventId, responseEventId: responseProof.responseEventId });
+        const expectedAttackerDodgeOutcome = viewport.width === 390 ? "geometry-unavailable" : "rendered";
+        await expect.poll(async () => (await readActorDodgeOutcome()).kind, {
+          timeout: 8_000,
+          message: `${playerCount}p ${viewport.width}px attacker presents the proven Dodge or records exhausted legal geometry`,
+        }).toBe(expectedAttackerDodgeOutcome);
+        actorDodgeOutcome = await readActorDodgeOutcome();
         const actorResponseLayout = await captureAttackOverlayDiagnostics(page);
-        expect(actorResponseLayout.rootCard).toBeTruthy();
-        expect(Math.abs(actorResponseLayout.rootCard.x - actorLayout.root.x), "local attacker's selected root stays fixed when Dodge appears").toBeLessThanOrEqual(1);
-        expect(Math.abs(actorResponseLayout.rootCard.y - actorLayout.root.y), "local attacker's selected root stays fixed when Dodge appears").toBeLessThanOrEqual(1);
+        actorResponseLayout.fitDiagnostics = await page.evaluate((rootEventId) => window.__wtkAttackFitDiagnostics
+          .filter((diagnostic) => diagnostic.rootEventId === rootEventId), rootAction.rootEventId);
+        actorResponseLayout.dodgeOutcome = actorDodgeOutcome;
+        if (actorDodgeOutcome.kind === "rendered") {
+          expect(actorDodgeOutcome.responseFrame).toMatchObject({
+            mode: "graph", layoutState: "ready", rootEventId: rootAction.rootEventId,
+            rootCardVisible: true,
+            responseActorId: targetId, responseCardKind: "Dodge", attackDodgePathVisible: true,
+            dodgeSourcePathVisible: true,
+          });
+          expect(Math.abs(actorDodgeOutcome.responseFrame.rootCardX - actorLayout.root.x)).toBeLessThanOrEqual(1);
+          expect(Math.abs(actorDodgeOutcome.responseFrame.rootCardY - actorLayout.root.y)).toBeLessThanOrEqual(1);
+        } else {
+          const fitDiagnostic = actorDodgeOutcome.fitDiagnostic;
+          expect(actorDodgeOutcome.overlay).toEqual({ layout: "unavailable", mode: "fallback", fallbackReason: "geometry-unavailable" });
+          expect(actorDodgeOutcome.rootCardVisible).toBe(false);
+          expect(actorDodgeOutcome.edgeCount).toBe(0);
+          expect(fitDiagnostic?.cause).toBe("no-dodge-interception-candidate");
+          expect(fitDiagnostic.dodgePlacementFieldSearch?.selected).toBeUndefined();
+          expect(fitDiagnostic.dodgePlacementFieldSearch?.directPathIntersectionCount).toBe(0);
+          expect(fitDiagnostic.dodgePlacementFieldSearch?.adjacentEdgeGapCount).toBe(0);
+        }
         await testInfo.attach(`dense-attack-layout-${playerCount}p-${viewport.width}px-attacker-after-dodge.json`, {
           body: JSON.stringify(actorResponseLayout, null, 2),
           contentType: "application/json",
@@ -1751,12 +1956,51 @@ for (const scenario of [
           contentType: "image/png",
         });
       }
-      await expect.poll(() => defenderOverlay.getAttribute("data-root-action-layout-state"), {
-        message: `${playerCount}p ${viewport.width}px Dodge response reaches measured layout`,
-      }).toMatch(/^(ready|unavailable)$/);
-      const responseLayout = await captureAttackOverlayDiagnostics(targetPage);
-      responseLayout.fitDiagnostics = await targetPage.evaluate((rootEventId) => window.__wtkAttackFitDiagnostics
-        .filter((diagnostic) => diagnostic.rootEventId === rootEventId), rootAction.rootEventId);
+      const [actorSettlement, defenderSettlement] = await Promise.all([
+        actorDodgeOutcome?.kind === "rendered"
+          ? assertAttackDodgeSettlementCleanup(page, {
+            rootAction, responseProof, baselineRoot: actorLayout.root,
+            label: `${playerCount}p ${viewport.width}px attacker`,
+          })
+          : Promise.resolve(null),
+        defenderResponseFrame
+          ? assertAttackDodgeSettlementCleanup(targetPage, {
+            rootAction, responseProof, baselineRoot: targetLayout.root,
+            label: `${playerCount}p ${viewport.width}px defender`,
+          })
+          : Promise.resolve(null),
+      ]);
+      if (defenderSettlement) {
+        const { visual } = defenderSettlement;
+        responseLayout = {
+          ...responseLayout,
+          overlay: {
+            ready: visual.overlay.ready,
+            mode: visual.overlay.mode,
+            layout: visual.overlay.layout,
+            fitStep: visual.overlay.cardFitStep,
+            fallbackReason: visual.overlay.fallbackReason,
+          },
+          table: visual.bounds.table,
+          shell: visual.bounds.shell,
+          rootCard: visual.bounds.root,
+          responseCard: visual.bounds.response,
+          anchors: visual.bounds.anchors,
+          obstacles: visual.bounds.obstacles,
+          documentWidth: visual.geometry.documentWidth,
+          viewportWidth: visual.geometry.viewportWidth,
+        };
+      }
+      if (responseLayout.overlay?.layout === "ready" && responseLayout.overlay.mode === "graph") {
+        expect(defenderDodgeOutcome.kind).toBe("rendered");
+        expect(defenderResponseFrame).toMatchObject({
+          mode: "graph", layoutState: "ready", rootEventId: rootAction.rootEventId,
+          rootCardVisible: true, responseActorId: targetId, responseCardKind: "Dodge",
+          attackDodgePathVisible: true, dodgeSourcePathVisible: true,
+        });
+        expect(Math.abs(defenderResponseFrame.rootCardX - targetLayout.root.x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(defenderResponseFrame.rootCardY - targetLayout.root.y)).toBeLessThanOrEqual(1);
+      }
       await testInfo.attach(`dense-attack-layout-${playerCount}p-${viewport.width}px-after-dodge.json`, {
         body: JSON.stringify(responseLayout, null, 2),
         contentType: "application/json",
@@ -1765,22 +2009,40 @@ for (const scenario of [
         body: await targetPage.screenshot(),
         contentType: "image/png",
       });
-      if (responseLayout.overlay?.layout === "ready" && responseLayout.overlay.mode === "graph") {
+      if (defenderResponseFrame) {
         expect(targetLayout.mode, "Dodge cannot promote a previously unsupported root to a shifted graph").toBe("graph");
-        await expect(defenderOverlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
-        const rootCard = targetPage.locator('[data-root-action-card="true"]');
-        const responseCard = targetPage.locator('[data-root-action-response-card="true"]');
-        await expect(rootCard).toHaveAttribute("data-root-action-card-face-kind", "Attack");
-        await expect(responseCard).toHaveAttribute("data-response-card-face-kind", "Dodge");
-        const interception = await captureAttackDodgeInterceptionGeometry(targetPage);
-        expect(interception).not.toBeNull();
+        const visual = defenderSettlement.visual;
+        expect(visual.overlay).toMatchObject({ ready: "true", mode: "graph", layout: "ready" });
+        expect(visual.root.dataset.rootActionCardFaceKind).toBe("Attack");
+        expect(visual.root.faceVisible).toBe(true);
+        expect(visual.response.dataset).toMatchObject({
+          responseEventId: responseProof.responseEventId,
+          responseActorId: targetId,
+          responseCardFaceKind: "Dodge",
+        });
+        expect(visual.response.faceVisible).toBe(true);
+        expect(visual.geometry.stageCount).toBe(0);
+        expect(visual.geometry.documentWidth).toBeLessThanOrEqual(visual.geometry.viewportWidth);
+        const interception = defenderInterceptionAtFirstFrame ?? {
+          mode: visual.geometry.interception.mode,
+          fraction: visual.geometry.interception.centerFraction,
+          lineIntersectsCard: visual.geometry.interception.lineIntersectsCard,
+          edgeGap: visual.geometry.interception.nearestPathToCardEdge,
+          pathEndpointToMark: visual.geometry.interception.pathEndpointToMarkCenter,
+          markerEnd: visual.geometry.edges.find((edge) => edge.edge === "attack-dodge-interception")?.markerEnd ?? null,
+          falseCounterArrows: visual.geometry.edges.filter((edge) => edge.edge === "negation-counters-root").length,
+        };
         expect(interception.mode).toMatch(/^(direct|adjacent)$/);
         expect(interception.fraction).toBeGreaterThanOrEqual(.35);
         expect(interception.fraction).toBeLessThanOrEqual(.70);
         expect(interception.pathEndpointToMark).toBeLessThanOrEqual(2.1);
         expect(interception.markerEnd).toBeNull();
         expect(interception.falseCounterArrows).toBe(0);
-        const { fitStep, bounds: dodgeBounds } = await expectAttackCardFaceGeometry(defenderOverlay, responseCard, viewport, "Dodge");
+        const fitStep = responseLayout.overlay.fitStep;
+        const dodgeBounds = visual.response.rect;
+        const expectedDodgeSize = expectedAttackCardFaceSize(viewport, "Dodge", fitStep);
+        expect(dodgeBounds.width).toBeCloseTo(expectedDodgeSize.width, 1);
+        expect(dodgeBounds.height).toBeCloseTo(expectedDodgeSize.height, 1);
         expect(dodgeBounds.width / dodgeBounds.height).toBeCloseTo(2 / 3, 2);
         const dodgeRight = dodgeBounds.x + dodgeBounds.width;
         const dodgeBottom = dodgeBounds.y + dodgeBounds.height;
@@ -1832,10 +2094,14 @@ for (const scenario of [
           expect(fitStep).toBe(responseLayout.overlay.fitStep);
         }
       } else {
-        expect(responseLayout.overlay?.layout).toBe("unavailable");
-        expect(responseLayout.overlay?.mode).toBe("fallback");
-        const dodgeFitDiagnostic = responseLayout.fitDiagnostics
-          .filter((diagnostic) => diagnostic.phase === "dodge-response").at(-1);
+        expect(defenderDodgeOutcome.kind).toBe("geometry-unavailable");
+        expect(defenderDodgeOutcome.fallbackFrame).toMatchObject({
+          mode: "fallback", layoutState: "unavailable", fallbackGate: "geometry-unavailable",
+          rootCardVisible: false, responseCardVisible: false,
+          sourceEdgeVisible: false, targetEdgeVisible: false, attackDodgePathVisible: false,
+        });
+        expect(defenderDodgeOutcome.fallbackFrame.interactionStageCount).toBeLessThanOrEqual(1);
+        const dodgeFitDiagnostic = defenderDodgeOutcome.fitDiagnostic;
         expect(dodgeFitDiagnostic, "safe Dodge fallback records a test-only geometry cause for the same proven root").toBeTruthy();
         expect(dodgeFitDiagnostic.cause).toMatch(/^(missing-table-or-card-rect|missing-or-invalid-player-anchor|missing-dodge-response-card|dodge-interception-point-unavailable|table-smaller-than-card-margin|no-attack-root-candidate|no-dodge-interception-candidate)$/);
         if (playerCount === 6 && viewport.width === 390) {
@@ -1879,11 +2145,67 @@ for (const scenario of [
           expect(search.adjacentEdgeGapCount, "no collision-free full Dodge card satisfies the adjacent 12–20px contact band").toBe(0);
           expect(search.selected).toBeUndefined();
         }
-        await expect(defenderOverlay).toHaveAttribute("data-root-action-ready", "false");
-        expect(await targetPage.locator(".interaction-stage").count(), "safe fallback never duplicates the public stage").toBeLessThanOrEqual(1);
-        expect(await targetPage.locator('[data-root-action-card="true"]').evaluate((element) => getComputedStyle(element).visibility)).toBe("hidden");
-        await expect(defenderOverlay.locator("[data-root-action-edge]")).toHaveCount(0);
       }
+      const settlementEvidence = [];
+      if (actorSettlement) {
+        settlementEvidence.push({
+          role: "attacker",
+          outcome: "rendered-and-cleaned",
+          ...actorSettlement,
+        });
+      } else {
+        settlementEvidence.push({
+          role: "attacker",
+          outcome: actorDodgeOutcome?.kind ?? actorLayout.mode,
+          fitCause: actorDodgeOutcome?.fitDiagnostic?.cause ?? actorLayout.fitDiagnostics.at(-1)?.cause ?? null,
+        });
+      }
+      if (defenderResponseFrame) {
+        settlementEvidence.push({
+          role: "defender",
+          outcome: "rendered-and-cleaned",
+          ...defenderSettlement,
+        });
+      } else {
+        settlementEvidence.push({
+          role: "defender", outcome: defenderDodgeOutcome.kind,
+          fitCause: defenderDodgeOutcome.fitDiagnostic?.cause ?? null,
+        });
+      }
+      const dodgeWindowFrames = await Promise.all([
+        page.evaluate((start) => window.__wtkAttackVisibleFrames.slice(start), attackerDodgeFrameStart),
+        targetPage.evaluate((start) => window.__wtkAttackVisibleFrames.slice(start), defenderDodgeFrameStart),
+      ]);
+      const dodgeWindowEvidence = {
+        playerCount,
+        viewport,
+        rootEventId: rootAction.rootEventId,
+        responseEventId: responseProof.responseEventId,
+        responseProof,
+        attackerAndDefenderViews,
+        actorDodgeOutcome,
+        defenderDodgeOutcome,
+        defenderResponseFrame,
+        settlementEvidence,
+        attacker: {
+          initialMode: actorLayout.mode,
+          rootBeforeResponse: actorLayout.root,
+          frames: dodgeWindowFrames[0],
+        },
+        defender: {
+          initialMode: targetLayout.mode,
+          responseMode: responseLayout.overlay?.mode ?? null,
+          responseLayout: responseLayout.overlay?.layout ?? null,
+          fallbackReason: responseLayout.overlay?.fallbackReason ?? null,
+          rootBeforeResponse: targetLayout.root,
+          rootAfterResponse: responseLayout.rootCard,
+          frames: dodgeWindowFrames[1],
+        },
+      };
+      await testInfo.attach(`dense-attack-dodge-${playerCount}p-${viewport.width}px-window-frames.json`, {
+        body: JSON.stringify(dodgeWindowEvidence, null, 2),
+        contentType: "application/json",
+      });
     } finally {
       await targetPage.close();
     }

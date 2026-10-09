@@ -2553,3 +2553,16 @@ HANDOVER" wording here after the handoff has moved on.
   --check` passed. Pre-commit `ffde77740c75ee974355ad68cf15fe4c5b6bfd1e`
   passed Actions run `37915411584`; outgoing task commit is pending. No Reviewer
   acceptance is claimed.
+
+### UX2-6.27-ATTACKER-DODGE-GRAPH-CONTINUITY-01 — Dense response parity
+
+- Extended the real server-backed 6/8-player 390/480 Attack→Dodge matrix to
+  sample the first proven response frame for both local attacker and defender,
+  compare their public causal projection, retain the Attack root position,
+  measure safe geometry fallbacks, and verify the rendered settlement graph is
+  removed. At 480px both roles render the intercepted graph; unsupported dense
+  390px placements remain explicitly fail-closed rather than inventing edges.
+- The focused browser matrix passed 4/4; targeted ESLint and `git diff
+  --check` passed. Pre-commit SHA `1ec040679ae0e354394aa1db96312e39904734e8`
+  passed Actions run `37917467356`. Outgoing task CI is pending; Reviewer
+  acceptance is not claimed.
