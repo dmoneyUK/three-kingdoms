@@ -26,7 +26,10 @@ jobs:
           node-version: "22.13.0"
           cache: "npm"
       - run: npm ci
-      - run: npm run lint
+      - name: Run ESLint with full React Compiler rule coverage
+        run: npm run lint
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
       - name: Build for rendered HTML coverage
         run: npm run build
       - run: npm run test:fast

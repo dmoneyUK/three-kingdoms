@@ -5,19 +5,16 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2.6-PHASE-C-HALBERD-ORDERED-ROOT-GRAPH-01` now renders the typed physical
-Attack root with server-ordered Halberd branches through response advance and
-child-Dying hold. Snapshot/client validation preserves root order while
-allowing a child frame to foreground its paused participant; root-origin checks
-use the actual `sourceId` / `targetIds` contract. Real server-backed browser
-proof passed at 390×844 and 1440×900, including ≤1 CSS px root stability,
-≤3px connector-to-seat/source alignment, and no horizontal overflow. Focused
-tests: client 59/59, snapshot 20/20; `npm run build` passed. Focused ESLint did
-not complete because Node exhausted the heap at both 2GB and 4GB.
-
-Pre-commit remote HEAD `5914a660b5d4f1a3e67bcdbf6d7d08e96cd05a76` has Actions
-run `37890639566` completed successfully. This task's commit/push validation
-has not yet been observed. Reviewer acceptance is not claimed.
+P2's real server-generated Steal, Dismantle, Retaliation, Frost Sword, and
+Kirin Bow production-page browser proof passed 14/14 locally, including mixed
+Hand/Equipment/Judgment privacy and modal geometry. Exact remote HEAD
+`d44805190d0238c041ab34d7a178b05a11f1a9dd` Actions run `37893195651` completed
+with API and both Browser shards successful; Lint/fast failed because ESLint
+exhausted its 4GB Node heap before Build/fast tests, so deploy was skipped.
+The CI-only repair raises the lint-step heap to 8GB without changing rules or
+coverage. ESLint over all tracked JS/TS-family files passed locally with 0
+errors (2 ignored-file warnings). Repair commit/push and exact-SHA validation
+are pending. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
@@ -26,7 +23,7 @@ Latest remote `docs/UX2-refine.md` blob:
 §6.25, and §6.27.4. The real Host Game → playing-page browser proof and green
 run satisfy the §4D P1 entry gate; §6 remains deferred by §4D.3.
 
-## Next task
+## Current task
 
 `UX2-4D-P2-UNIFIED-TARGET-CARD-PRODUCTION-PATH-01` — finish §4C for real
 server-generated Steal, Dismantle, Sima Yi Retaliation, Frost Sword, and Kirin
