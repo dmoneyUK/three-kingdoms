@@ -460,6 +460,12 @@ function groupProgressForSnapshot(
   const identity = snapshot.identity;
   if (!progress || !identity || !Array.isArray(progress.targetIds) || !Array.isArray(progress.participants)) return null;
   const resolutionSemantics = progress.resolutionSemantics;
+  const participantRoleTargetIds = scene.participantRoles.originalTargetIds;
+  const participantRoleTargetsMatch = scene.continuity.relation === "CHILD_FRAME"
+    ? participantRoleTargetIds.length === scene.targetIds.length
+      && new Set(participantRoleTargetIds).size === scene.targetIds.length
+      && scene.targetIds.every((targetId) => participantRoleTargetIds.includes(targetId))
+    : sameStringIds(participantRoleTargetIds, scene.targetIds);
   if ((progress.cardKind !== "BarbarianInvasion" && progress.cardKind !== "RainingArrows" && progress.cardKind !== "SkyPiercingHalberdAttack")
     || (resolutionSemantics !== "GROUP" && resolutionSemantics !== "ORDERED")
     || progress.interactionId !== identity.interactionId
@@ -471,7 +477,7 @@ function groupProgressForSnapshot(
     || !isStringArray(progress.targetIds)
     || !isStringArray(scene.targetIds)
     || !sameStringIds(progress.targetIds, scene.targetIds)
-    || !sameStringIds(scene.participantRoles.originalTargetIds, scene.targetIds)
+    || !participantRoleTargetsMatch
     || progress.participants.length !== scene.targetIds.length) return null;
 
   const validStatuses = new Set<GroupParticipantProgressStatus>(["PENDING", "CURRENT", "PAUSED", "RESOLVED", "NO_LONGER_APPLICABLE"]);

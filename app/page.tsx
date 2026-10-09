@@ -3173,6 +3173,67 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       responses,
     };
   })();
+  const halberdOrderedRootGraphCandidate = (() => {
+    const group = clientPresentation.groupResolution;
+    const rootProof = group?.orderedAttackRoot;
+    const isRootResponse = clientPresentation.stage === "GROUP_RESOLUTION"
+      && clientPresentation.continuity.relation === "ROOT_FRAME";
+    const isChildDying = clientPresentation.stage === "DYING"
+      && clientPresentation.continuity.relation === "CHILD_FRAME";
+    if (!clientPresentation.hasInteraction || (!isRootResponse && !isChildDying)
+      || !group || group.cardKind !== "SkyPiercingHalberdAttack" || group.resolutionSemantics !== "ORDERED"
+      || group.interactionId !== clientPresentation.interactionId
+      || group.groupFrameId !== clientPresentation.rootFrameId
+      || group.activeFrameId !== clientPresentation.activeFrameId
+      || group.checkpointId !== clientPresentation.checkpointId
+      || group.presentationRevision !== clientPresentation.presentationRevision
+      || group.currentParticipantId !== clientPresentation.currentParticipantId
+      || !clientPresentation.sourceId || !rootProof
+      || rootProof.semantics !== "PROVEN" || rootProof.relation !== "ORDERED_ATTACK_ROOT"
+      || rootProof.cardKind !== "Attack" || rootProof.resolutionSemantics !== "ORDERED"
+      || rootProof.interactionId !== group.interactionId || rootProof.groupFrameId !== group.groupFrameId
+      || rootProof.sourceId !== clientPresentation.sourceId
+      || rootProof.targetIds.length !== group.targetIds.length
+      || rootProof.targetIds.some((targetId, index) => targetId !== group.targetIds[index])) return null;
+
+    if (clientPresentation.rootOrigin && (clientPresentation.rootOrigin.frameId !== group.groupFrameId
+      || clientPresentation.rootOrigin.stage !== "GROUP_RESOLUTION"
+      || clientPresentation.rootOrigin.effect !== "SkyPiercingHalberdAttack"
+      || clientPresentation.rootOrigin.sourceId !== clientPresentation.sourceId
+      || clientPresentation.rootOrigin.targetIds.length !== group.targetIds.length
+      || clientPresentation.rootOrigin.targetIds.some((targetId, index) => targetId !== group.targetIds[index]))) return null;
+
+    const activeStatus = isChildDying ? "PAUSED" : "CURRENT";
+    const activeParticipants = group.participants.filter(({ status }) => status === "CURRENT" || status === "PAUSED");
+    if (!group.targetIds.length || group.targetIds.length !== group.participants.length
+      || new Set(group.targetIds).size !== group.targetIds.length
+      || activeParticipants.length !== 1 || activeParticipants[0]?.status !== activeStatus
+      || activeParticipants[0]?.playerId !== group.currentParticipantId
+      || group.participants.some((participant, index) => participant.playerId !== group.targetIds[index]
+        || participant.order !== index + 1)) return null;
+
+    const rootEvents = room.timeline.filter((event) => event.id === rootProof.rootEventId);
+    if (rootEvents.length !== 1) return null;
+    const rootEvent = rootEvents[0];
+    if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
+      || rootEvent.id !== rootProof.rootEventId || rootEvent.resolutionId !== rootProof.rootEventResolutionId
+      || rootEvent.card?.id !== rootProof.rootCardId || rootEvent.card.kind !== rootProof.physicalCardKind
+      || rootEvent.playedAs !== rootProof.playedAs) return null;
+    const source = room.players.find((player) => player.id === rootProof.sourceId);
+    if (!source?.name || rootEvent.player !== source.name) return null;
+    const targets = group.participants.map((participant) => {
+      const player = room.players.find(({ id }) => id === participant.playerId);
+      return player?.name ? { ...participant, playerName: player.name } : null;
+    });
+    if (targets.some((target) => target === null)) return null;
+    return {
+      group,
+      rootProof,
+      rootEvent,
+      source,
+      targets: targets as NonNullable<(typeof targets)[number]>[],
+    };
+  })();
   const groupTargetBranchGraphCandidate = (() => {
     const group = clientPresentation.groupResolution;
     const rootOrigin = clientPresentation.rootOrigin;
@@ -3482,13 +3543,13 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   })();
   const rootActionEvents = rootAction ? room.timeline.filter((event) => event.id === rootAction.rootEventId) : [];
   const rootActionEvent = rootAction ? rootActionEvents.length === 1 ? rootActionEvents[0] : null
-    : oathSimultaneousRootGraphCandidate?.rootEvent ?? bumperHarvestRootGraphCandidate?.rootEvent ?? groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? dismantleSettlementCandidate?.rootEvent ?? stealSettlementCandidate?.rootEvent ?? attackHitSettlementCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeGraphCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? groupSettlementCandidate?.rootEvent ?? null;
+    : oathSimultaneousRootGraphCandidate?.rootEvent ?? bumperHarvestRootGraphCandidate?.rootEvent ?? halberdOrderedRootGraphCandidate?.rootEvent ?? groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? dismantleSettlementCandidate?.rootEvent ?? stealSettlementCandidate?.rootEvent ?? attackHitSettlementCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeGraphCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? groupSettlementCandidate?.rootEvent ?? null;
   const rootActionCardFace = rootAction?.action === "ATTACK" && rootActionEvent?.type === "card"
     && rootActionEvent.id === rootAction.rootEventId && rootActionEvent.action === "play"
     && rootActionEvent.presentation !== false && rootActionEvent.playedAs === rootAction.playedAs
     && rootActionEvent.card.kind === rootAction.physicalCardKind
     ? rootActionEvent.card : null;
-  const selfTargetCandidates = rootAction || oathSimultaneousRootGraphCandidate || bumperHarvestRootGraphCandidate || groupTargetBranchGraphCandidate || skillEffectActionCandidate || skillEffectSettlementCandidate || dismantleSettlementCandidate || stealSettlementCandidate || attackHitSettlementCandidate || duelExchangeGraphCandidate || attackDodgeGraphCandidate || singleTargetNegationGraphCandidate || groupSettlementCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
+  const selfTargetCandidates = rootAction || oathSimultaneousRootGraphCandidate || bumperHarvestRootGraphCandidate || halberdOrderedRootGraphCandidate || groupTargetBranchGraphCandidate || skillEffectActionCandidate || skillEffectSettlementCandidate || dismantleSettlementCandidate || stealSettlementCandidate || attackHitSettlementCandidate || duelExchangeGraphCandidate || attackDodgeGraphCandidate || singleTargetNegationGraphCandidate || groupSettlementCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
       || event.resolutionId !== action.resolutionId || event.card.kind !== action.cardKind
@@ -3567,6 +3628,25 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       cardKind: "BumperHarvest",
       cardLabel: cardDefinition("BumperHarvest").name.toUpperCase(),
       ariaLabel: `${bumperHarvestRootGraphCandidate.source.name} played Bumper Harvest. ${bumperHarvestRootGraphCandidate.targets.map((target) => `${target.order}. ${target.playerName}: ${target.status}${target.outcome ? `, ${target.outcome}` : ""}`).join(". ")}`,
+      mode: "targeted",
+      compactRoot: true,
+    }
+    : halberdOrderedRootGraphCandidate
+    ? {
+      key: ["halberd-ordered-attack", halberdOrderedRootGraphCandidate.rootProof.interactionId, halberdOrderedRootGraphCandidate.rootProof.groupFrameId, halberdOrderedRootGraphCandidate.rootProof.rootEventId].join(":"),
+      rootEventId: halberdOrderedRootGraphCandidate.rootProof.rootEventId,
+      rootPlacementKey: ["halberd-ordered-root", halberdOrderedRootGraphCandidate.rootProof.interactionId, halberdOrderedRootGraphCandidate.rootProof.groupFrameId, halberdOrderedRootGraphCandidate.rootProof.rootEventId].join(":"),
+      interactionId: halberdOrderedRootGraphCandidate.rootProof.interactionId,
+      rootFrameId: halberdOrderedRootGraphCandidate.rootProof.groupFrameId,
+      checkpointId: clientPresentation.checkpointId ?? undefined,
+      presentationRevision: clientPresentation.presentationRevision ?? undefined,
+      sourceId: halberdOrderedRootGraphCandidate.rootProof.sourceId,
+      targetId: null,
+      orderedTargets: halberdOrderedRootGraphCandidate.targets,
+      cardFace: halberdOrderedRootGraphCandidate.rootEvent.card,
+      cardKind: "Attack",
+      cardLabel: "ATTACK",
+      ariaLabel: `${halberdOrderedRootGraphCandidate.source.name} played Attack. Ordered targets: ${halberdOrderedRootGraphCandidate.targets.map((target) => `${target.order}. ${target.playerName}: ${groupParticipantStatusLabel(target.status)}`).join("; ")}.`,
       mode: "targeted",
       compactRoot: true,
     }
@@ -3778,6 +3858,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     || expandedOpponentId || groupScopePreview.active);
   const rootActionAwaitingReveal = Boolean(
     !attackDodgeGraphCandidate && rootAction && rootAction.action !== "ATTACK" && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
+    || halberdOrderedRootGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || groupTargetBranchGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || oathSimultaneousRootGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || bumperHarvestRootGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)

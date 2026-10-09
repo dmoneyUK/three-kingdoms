@@ -457,6 +457,78 @@ test("snapshot preserves explicit ORDERED Halberd semantics and target order", (
   ]);
 });
 
+test("snapshot keeps Halberd target order when a child frame foregrounds its paused target", () => {
+  const root = groupScene({ child: true, currentParticipantId: "C", effect: "Sky Piercing Halberd Attack" });
+  const interaction = {
+    ...root,
+    stage: "DYING",
+    participantRoles: {
+      ...root.participantRoles,
+      originalTargetIds: ["C", "B", "D"],
+    },
+  };
+  const targetIds = ["B", "C", "D"];
+  const orderedAttackRoot = {
+    semantics: "PROVEN",
+    relation: "ORDERED_ATTACK_ROOT",
+    resolutionSemantics: "ORDERED",
+    interactionId: interaction.interactionId,
+    groupFrameId: interaction.rootFrameId,
+    rootEventId: "halberd-child-root-event",
+    rootEventResolutionId: "halberd-child-root-resolution",
+    rootCardId: "halberd-child-physical-attack",
+    sourceId: "A",
+    cardKind: "Attack",
+    physicalCardKind: "Attack",
+    targetIds,
+  };
+  const orderedGroup = groupResolution(interaction, {
+    cardKind: "SkyPiercingHalberdAttack",
+    effect: "Sky Piercing Halberd Attack",
+    resolutionSemantics: "ORDERED",
+    currentParticipantId: "C",
+    participantProgress: [
+      { playerId: "B", order: 1, status: "RESOLVED" },
+      { playerId: "C", order: 2, status: "PAUSED" },
+      { playerId: "D", order: 3, status: "PENDING" },
+    ],
+    orderedAttackRoot,
+  });
+  const basePresentation = {
+    ...presentation(interaction),
+    groupResolution: orderedGroup,
+  };
+  const snapshot = composePresentationSnapshot({
+    presentationV2: basePresentation,
+    currentAction: { kind: "dying", actorId: "B" },
+    actionRevision: "halberd-child-dying",
+    viewerId: "B",
+  });
+  assert.deepEqual(snapshot.groupParticipantProgress?.targetIds, targetIds);
+  assert.deepEqual(snapshot.groupParticipantProgress?.participants.map(({ playerId, status }) => ({ playerId, status })), [
+    { playerId: "B", status: "RESOLVED" },
+    { playerId: "C", status: "PAUSED" },
+    { playerId: "D", status: "PENDING" },
+  ]);
+  assert.deepEqual(snapshot.groupParticipantProgress?.orderedAttackRoot, orderedAttackRoot);
+
+  for (const originalTargetIds of [["C", "B"], ["C", "B", "E"], ["C", "B", "B"]]) {
+    const malformed = composePresentationSnapshot({
+      presentationV2: {
+        ...basePresentation,
+        interactionScene: {
+          ...interaction,
+          participantRoles: { ...interaction.participantRoles, originalTargetIds },
+        },
+      },
+      currentAction: { kind: "dying", actorId: "B" },
+      actionRevision: "halberd-child-dying-malformed-roles",
+      viewerId: "B",
+    });
+    assert.equal(malformed.groupParticipantProgress, null, "missing, extra, or duplicate role identities fail closed");
+  }
+});
+
 test("snapshot drops AOE progress on root identity, order, participant, or status mismatch", () => {
   const interaction = groupScene();
   const base = groupResolution(interaction);

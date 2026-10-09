@@ -34,7 +34,7 @@ type RootActionLayout = {
 };
 
 type InteractionRootOverlayGroupTarget = PresentationSnapshotGroupParticipantProgress & { playerName: string };
-type InteractionRootOverlayOrderedTarget = PresentationSnapshotBumperHarvestProgress["participants"][number] & { playerName: string };
+type InteractionRootOverlayOrderedTarget = (PresentationSnapshotBumperHarvestProgress["participants"][number] | PresentationSnapshotGroupParticipantProgress) & { playerName: string };
 type InteractionRootOverlayBranchTarget = InteractionRootOverlayGroupTarget | InteractionRootOverlayOrderedTarget;
 
 type InteractionRootOverlayResponseNode = {
@@ -1701,7 +1701,8 @@ export function InteractionRootOverlay({
       data-root-action-settlement-outcome={action.settlement?.outcome}
       data-root-action-compact-root={action.compactRoot ? "true" : undefined}
       data-group-root-action={action.groupTargets?.length ? action.cardKind : undefined}
-      data-bumper-harvest-root-action={action.orderedTargets?.length ? action.cardKind : undefined}
+      data-bumper-harvest-root-action={action.orderedTargets?.length && action.cardKind === "BumperHarvest" ? action.cardKind : undefined}
+      data-halberd-ordered-root-action={action.orderedTargets?.length && action.cardKind === "Attack" ? "SkyPiercingHalberdAttack" : undefined}
       data-oath-root-action={action.simultaneousTargets?.length ? action.cardKind : undefined}
       data-root-action-contextual={responseTargetsPlayer ? "true" : undefined}
       data-root-effect-state={action.rootEffectState ?? undefined}

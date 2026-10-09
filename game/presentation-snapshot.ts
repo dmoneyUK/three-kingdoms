@@ -557,6 +557,12 @@ function groupParticipantProgressFor(
   const targetIds = scene.targetIds;
   const progress = group?.participantProgress;
   const resolutionSemantics = group?.resolutionSemantics;
+  const participantRoleTargetIds = scene.participantRoles.originalTargetIds;
+  const participantRoleTargetsMatch = scene.continuity.relation === "CHILD_FRAME"
+    ? participantRoleTargetIds.length === targetIds.length
+      && new Set(participantRoleTargetIds).size === targetIds.length
+      && targetIds.every((targetId) => participantRoleTargetIds.includes(targetId))
+    : sameIds(participantRoleTargetIds, targetIds);
   if (!group || group.semantics !== "PROVEN"
     || (group.cardKind !== "BarbarianInvasion" && group.cardKind !== "RainingArrows" && group.cardKind !== "SkyPiercingHalberdAttack")
     || (resolutionSemantics !== "GROUP" && resolutionSemantics !== "ORDERED")
@@ -571,7 +577,7 @@ function groupParticipantProgressFor(
     || group.sourceId !== scene.sourceId
     || group.currentParticipantId !== scene.currentParticipantId
     || !sameIds(group.targetIds, targetIds)
-    || !sameIds(scene.participantRoles.originalTargetIds, targetIds)
+    || !participantRoleTargetsMatch
     || progress.length !== targetIds.length) return null;
 
   const validStatuses = new Set<GroupParticipantProgressStatus>(["PENDING", "CURRENT", "PAUSED", "RESOLVED", "NO_LONGER_APPLICABLE"]);

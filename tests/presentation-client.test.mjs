@@ -802,6 +802,58 @@ test("adapter preserves only a Halberd root link that matches ordered progress",
   }
 });
 
+test("adapter keeps ordered Halberd progress when child Dying foregrounds its paused target", () => {
+  const base = groupProgressSnapshot({ child: true, cardKind: "SkyPiercingHalberdAttack" });
+  const targetIds = [...base.groupParticipantProgress.targetIds];
+  const rootProof = {
+    semantics: "PROVEN",
+    relation: "ORDERED_ATTACK_ROOT",
+    resolutionSemantics: "ORDERED",
+    interactionId: base.identity.interactionId,
+    groupFrameId: base.groupParticipantProgress.groupFrameId,
+    rootEventId: "halberd-child-root-event",
+    rootEventResolutionId: "halberd-child-root-resolution",
+    rootCardId: "halberd-child-physical-attack",
+    sourceId: "A",
+    cardKind: "Attack",
+    physicalCardKind: "Attack",
+    targetIds,
+  };
+  const childDying = snapshot({
+    ...base,
+    interaction: {
+      ...base.interaction,
+      stage: "DYING",
+      effect: "SkyPiercingHalberdAttack",
+      participantRoles: { ...base.interaction.participantRoles, originalTargetIds: ["B", "C", "E", "D"] },
+    },
+    groupParticipantProgress: {
+      ...base.groupParticipantProgress,
+      resolutionSemantics: "ORDERED",
+      orderedAttackRoot: rootProof,
+    },
+  });
+  const view = buildPresentationClientView(childDying, "B");
+  assert.deepEqual(view.groupResolution?.participants.map(({ playerId, status }) => ({ playerId, status })), [
+    { playerId: "C", status: "RESOLVED" },
+    { playerId: "B", status: "PAUSED" },
+    { playerId: "E", status: "PENDING" },
+    { playerId: "D", status: "PENDING" },
+  ]);
+  assert.deepEqual(view.groupResolution?.orderedAttackRoot, rootProof);
+
+  for (const originalTargetIds of [["B", "C", "E"], ["B", "C", "E", "X"], ["B", "C", "E", "E"]]) {
+    const malformed = buildPresentationClientView({
+      ...childDying,
+      interaction: {
+        ...childDying.interaction,
+        participantRoles: { ...childDying.interaction.participantRoles, originalTargetIds },
+      },
+    }, "B");
+    assert.equal(malformed.groupResolution, null, "missing, extra, or duplicate role identities fail closed");
+  }
+});
+
 test("adapter drops AOE progress when its frame, identity, scope, order, or status is incoherent", () => {
   const valid = groupProgressSnapshot();
   const progress = valid.groupParticipantProgress;
