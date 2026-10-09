@@ -14,6 +14,8 @@ concurrency:
   group: cloudflare-deploy-${{ github.ref }}
   queue: max
 
+# Keep required push browser validation to the server-backed room/startup smoke.
+# Broad UX diagnostics remain manual until the user accepts the rendered behavior.
 jobs:
   lint-fast:
     name: Lint and fast tests
@@ -49,7 +51,7 @@ jobs:
       - run: npm run test:api
 
   browser-smoke:
-    name: Browser startup and room smoke
+    name: Browser startup and room smoke (1 test)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
