@@ -1523,24 +1523,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
 
 ### UX2.REFINE-UNIFIED-TARGET-CARD-MODAL-REAL-GAME-P2-01 — Real selection paths
 
-- Re-audited the current production route: Steal/Burning Bridge use
-  `CurrentAction.targetCardSelection`; Retaliation/Frost Sword/Kirin Bow use
-  authoritative trigger options. Their unified modal routes do not require
-  Stage Hero Focus, Inspect, or preview proof, and no production JSX callsite
-  for the legacy table picker remains. The real server-backed browser spec
-  retains one page from actual card/skill activation through server-generated
-  CurrentAction and modal (no reload). It verifies exact legal keys and
-  submissions, hidden-Hand privacy, action-specific copy, absence of legacy
-  UI, and shared-modal geometry; all five effect paths pass 14/14. Real Steal
-  and Burning Bridge mixed Hand/Equipment/Judgment composition passes at
-  390×844, 480×900, and wide; larger-Hand and Hand-only geometry are also
-  covered. The focused target-card contract browser passes 68/68, including
-  stale-revision and authority/fallback behavior. Syntax, targeted ESLint, and
-  `git diff --check` pass. Pre-commit remote HEAD
-  `9312dcaeb521e5734d09f99f3ab4cfcbdc25487f` passed Actions run `37793692172`
-  across lint/fast, API, both Browser shards, and deploy. This is real
-  server-backed browser proof, not a deployed-game screenshot or Reviewer
-  acceptance.
+- The real server-backed browser spec retains one production page from actual
+  Steal/Burning Bridge play or Hero/equipment trigger through server-generated
+  CurrentAction, unified modal, and exact submission (no reload). It proves
+  all five flows—Steal, Burning Bridge, Retaliation, Frost Sword, and Kirin
+  Bow—at 14/14, including opaque Hand privacy, public Equipment/Judgment,
+  effect-specific actions, no legacy picker, and mixed-zone geometry at
+  390×844, 480×900, and wide. Grouped-Hand compatibility remains inside the
+  same picker language. Visible Burning Bridge copy follows the later §4C.15
+  naming amendment (`a8f0ec65`), which postdates the §4D P2 wording
+  (`268c4f85`); internal `Dismantle` identifiers remain unchanged. The code
+  proof was covered by Actions run #941 (`37895174379`), successful on exact
+  validation SHA `b55ca795e85b612fa5a320426f9686b298f69e29`, including both
+  Browser shards. This is real server-backed browser proof, not a deployed-game
+  screenshot or Reviewer acceptance.
 
 ### UX2.REFINE-HERO-SKILLS-REAL-GAME-REACHABILITY-P3-01 — Roster audit
 
