@@ -3458,6 +3458,15 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const rootActionName = rootAction?.action === "ATTACK" ? "Attack"
     : rootAction?.cardKind === "Dismantle" ? "Burning Bridge"
     : rootAction ? cardDefinition(rootAction.cardKind).name : null;
+  // A server-proven public Dodge owns this exact Attack root's visual
+  // lifecycle, including the end of its read window. Do not let the still-live
+  // CurrentAction replace the combined graph or resurrect a bare Attack.
+  const attackDodgeResponseOwnsCurrentRoot = Boolean(attackDodgeResponseCandidate && rootAction?.action === "ATTACK"
+    && rootAction.rootEventId === attackDodgeResponseCandidate.proof.rootEventId
+    && rootAction.interactionId === attackDodgeResponseCandidate.proof.interactionId
+    && rootAction.rootFrameId === attackDodgeResponseCandidate.proof.rootFrameId
+    && rootAction.sourceId === attackDodgeResponseCandidate.proof.rootSourceId
+    && rootAction.targetId === attackDodgeResponseCandidate.proof.targetId);
   const skillEffectActionCandidate = (() => {
     const action = clientPresentation.skillEffectAction;
     if (!action || action.semantics !== "PROVEN" || action.effectId !== "zhou_yu_fanjian"
@@ -3883,7 +3892,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     }
     : committedSingleTargetNegationGraphOwnsRoot
     ? singleTargetNegationRootOverlayAction
-    : rootAction
+    : rootAction && !attackDodgeResponseOwnsCurrentRoot
     ? rootAction.action === "ATTACK" && !rootActionCardFace ? null : {
       key: interactionRootActionKey(rootAction),
       interactionId: rootAction.interactionId,

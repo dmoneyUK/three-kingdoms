@@ -2198,9 +2198,13 @@ export function InteractionRootOverlay({
       }
       const rememberedFitStep = rememberedPlacementMatches ? rememberedRoot.fitStep : null;
       const preferredFitStepIndex = rememberedFitStep ? fitSteps.indexOf(rememberedFitStep) : -1;
-      const initialFitStepIndex = canScaleAttackCard && window.innerHeight <= 700
-        ? fitSteps.length - 1
-        : Math.max(0, preferredFitStepIndex);
+      // Keep an already-rendered root at its measured size when its public
+      // Dodge arrives. New narrow-phone Attacks start at the existing minimum
+      // fit; wider mobile Attacks start compact to reduce the oversized card.
+      const initialFitStepIndex = preferredFitStepIndex >= 0 ? preferredFitStepIndex
+        : canScaleAttackCard && (window.innerHeight <= 700 || shellBounds.width < 430)
+          ? fitSteps.length - 1
+          : canScaleAttackCard && shellBounds.width < 900 ? 1 : 0;
       const layoutForCurrentAction = () => currentSimultaneousTargets?.length
         ? layoutSimultaneousRootAction(shell, card, responseElements, historySummaryElement, {
           sourceId: currentSourceId,
