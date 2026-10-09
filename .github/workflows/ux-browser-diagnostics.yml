@@ -1,4 +1,4 @@
-name: UX Browser Diagnostics (manual)
+name: UX Browser Diagnostics (manual, not visual acceptance)
 
 on:
   workflow_dispatch:
