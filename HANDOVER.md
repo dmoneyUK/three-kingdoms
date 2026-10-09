@@ -5,32 +5,29 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2-6.27-GUAN-YU-CONVERTED-ATTACK-DODGE-INTERCEPTION-01` is implemented
-locally. Real Guan Yu red-Peach-as-Attack now reaches an actual defender Dodge;
-API/browser proof covers viewer-equal public causality, physical Peach identity,
-stable root position, Dodge interception and settlement cleanup in both views.
-API: 39/39; Guan browser: 1/1 after immediate response-frame screenshot capture;
-full browser shard 1/2: 443 passed, 2 flaky, and those two Group Negation cases
-passed isolated 6/6. Build, targeted ESLint, syntax and diff checks passed.
-
-Remote `ux-v2` SHA `b325d905bf485caa6ef35117371f07ac7fb1ddd9`, Actions run
-`37923975635`: lint/fast, API, and browser shard 2/2 succeeded; browser shard
-1/2 failed. GitHub exposes only the failing step without sign-in; no exact test
-log is available. Local reruns did not reproduce a final failure. Outgoing
-commit validation remains pending; Reviewer acceptance is not claimed.
+`UX2-FINAL-AOE-MULTI-TARGET-REVALIDATION-03` passed its 23-case production-path
+browser matrix; the Oath screenshot expansion passed a separate 1/1 rerun.
+Coverage includes Raining Arrows, Barbarian Invasion, Oath, Bumper Harvest, and
+ordered Halberd Attack at 390×844, 480×900, and wide, plus dense 8-player Group
+scenes. Fresh major-state screenshots were inspected; focused ESLint and diff
+checks passed. Exact pre-commit base `fa48e33cf11376f127536d10209c8652b140a1f1`
+passed all five Actions jobs, including deploy, in run `37932531424`. This
+revalidation changeset is ready to commit. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
 Latest remote `docs/UX2-refine.md` blob:
-`4c56947d9965cde28a7c888e19f5d5fa0612112e`. The complete current document was
-re-read at the planning boundary; the roadmap records the §4D / §5 prerequisites
-closed for Section 6.
+`4c56947d9965cde28a7c888e19f5d5fa0612112e` (unchanged at this boundary).
+Section 6 and §6.27.4 were re-read; §4D / §5 prerequisites remain closed.
 
-## Next task
+## Current task
 
-`UX2-FINAL-AOE-MULTI-TARGET-REVALIDATION-03` — rerun production-path Raining
-Arrows, Barbarian Invasion, Oath, Bumper Harvest, and ordered Halberd Attack
-coverage against the post-§6.27 code. Measure 390×844, 480×900, wide, and
-supported dense 8-player layouts; verify viewer parity, authoritative branches,
-stable root/Seat geometry, settlement, containment, and fresh screenshots.
-Preserve fail-closed behavior; do not invent missing semantic proof.
+`UX2-6.27-8P-390-ATTACK-DODGE-GEOMETRY-01` — investigate the measured
+fail-closed Attack→Dodge layout for the local attacker at 8 players / 390×844.
+Using real server-backed Attack and Dodge proof in attacker and defender views,
+seek a collision-free placement at the §6.27.1 minimum card sizes and stated
+table/control clearances; prove stable root, actual interception, and no Seat,
+Dock, control, or overflow collision. Do not shrink below the approved minimum,
+move physical Seats, or fabricate links. If those constraints leave no fit,
+preserve fail-closed behavior, attach exact geometry evidence, and stop for the
+smallest required product decision.

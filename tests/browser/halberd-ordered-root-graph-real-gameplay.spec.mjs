@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 const API = "http://127.0.0.1:3137";
 const viewports = [
   { width: 390, height: 844 },
+  { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ];
 

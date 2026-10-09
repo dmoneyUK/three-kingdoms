@@ -525,45 +525,47 @@ for (const { cardKind, viewport } of [
   });
 }
 
-test("8-player Raining Arrows keeps every physical-seat branch inside the dense mobile table", async ({ page, request }, testInfo) => {
-  test.setTimeout(60_000);
-  const viewport = { width: 390, height: 844 };
-  const seed = await seedGroupGame(request, "RainingArrows", { playerCount: 8 });
-  const source = seed.players[0];
-  const first = seed.players[1];
-  await openGame(page, seed, 0, viewport);
-  await playGroupCard(page, seed.root);
+for (const cardKind of ["RainingArrows", "BarbarianInvasion"]) {
+  test(`8-player ${cardKind} keeps every physical-seat branch inside the dense mobile table`, async ({ page, request }, testInfo) => {
+    test.setTimeout(60_000);
+    const viewport = { width: 390, height: 844 };
+    const seed = await seedGroupGame(request, cardKind, { playerCount: 8 });
+    const source = seed.players[0];
+    const first = seed.players[1];
+    await openGame(page, seed, 0, viewport);
+    await playGroupCard(page, seed.root);
 
-  const firstView = await reachFirstParticipant(request, seed, first.id, "dodge");
-  expect(firstView.presentationSnapshot.groupParticipantProgress?.targetIds).toEqual(seed.players.slice(1).map(({ id }) => id));
-  expect(firstView.presentationSnapshot.groupParticipantProgress?.participants.map(({ status }) => status)).toEqual([
-    "CURRENT", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING",
-  ]);
+    const firstView = await reachFirstParticipant(request, seed, first.id, cardKind === "RainingArrows" ? "dodge" : "attack");
+    expect(firstView.presentationSnapshot.groupParticipantProgress?.targetIds).toEqual(seed.players.slice(1).map(({ id }) => id));
+    expect(firstView.presentationSnapshot.groupParticipantProgress?.participants.map(({ status }) => status)).toEqual([
+      "CURRENT", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING",
+    ]);
 
-  const before = await graphGeometry(page, seed, viewport, testInfo, "raining-arrows-8-player-open");
-  expect(before.sourceId).toBe(source.id);
-  expect(before.anchors).toHaveLength(8);
-  expect(before.branches).toHaveLength(7);
-  expect(before.branches.map(({ status }) => status)).toEqual([
-    "CURRENT", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING",
-  ]);
+    const before = await graphGeometry(page, seed, viewport, testInfo, `${cardKind}-8-player-open`);
+    expect(before.sourceId).toBe(source.id);
+    expect(before.anchors).toHaveLength(8);
+    expect(before.branches).toHaveLength(7);
+    expect(before.branches.map(({ status }) => status)).toEqual([
+      "CURRENT", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING",
+    ]);
 
-  await apiAction(request, seed, 1, "decline_response");
-  await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot.groupParticipantProgress?.participants.map(({ status }) => status) ?? [])
-    .toEqual(["RESOLVED", "CURRENT", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING"]);
-  await expect.poll(() => page.locator('[data-group-target-branch-player-id]').nth(0).getAttribute("data-group-target-status"))
-    .toBe("RESOLVED");
-  await expect.poll(() => page.locator('[data-group-target-branch-player-id]').nth(1).getAttribute("data-group-target-status"))
-    .toBe("CURRENT");
-  const after = await graphGeometry(page, seed, viewport, testInfo, "raining-arrows-8-player-next-target");
-  expect(after.rootEventId).toBe(before.rootEventId);
-  expect(after.branches.map(({ status }) => status)).toEqual([
-    "RESOLVED", "CURRENT", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING",
-  ]);
-  for (const key of ["left", "top", "right", "bottom"]) {
-    expect(Math.abs(after.card[key] - before.card[key])).toBeLessThanOrEqual(1);
-  }
-});
+    await apiAction(request, seed, 1, "decline_response");
+    await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot.groupParticipantProgress?.participants.map(({ status }) => status) ?? [])
+      .toEqual(["RESOLVED", "CURRENT", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING"]);
+    await expect.poll(() => page.locator('[data-group-target-branch-player-id]').nth(0).getAttribute("data-group-target-status"))
+      .toBe("RESOLVED");
+    await expect.poll(() => page.locator('[data-group-target-branch-player-id]').nth(1).getAttribute("data-group-target-status"))
+      .toBe("CURRENT");
+    const after = await graphGeometry(page, seed, viewport, testInfo, `${cardKind}-8-player-next-target`);
+    expect(after.rootEventId).toBe(before.rootEventId);
+    expect(after.branches.map(({ status }) => status)).toEqual([
+      "RESOLVED", "CURRENT", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING",
+    ]);
+    for (const key of ["left", "top", "right", "bottom"]) {
+      expect(Math.abs(after.card[key] - before.card[key])).toBeLessThanOrEqual(1);
+    }
+  });
+}
 
 for (const { cardKind, viewport, reducedMotion } of [
   ...["RainingArrows", "BarbarianInvasion"].flatMap((cardKind) => [

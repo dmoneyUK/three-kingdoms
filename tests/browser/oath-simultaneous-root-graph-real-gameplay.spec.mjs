@@ -282,7 +282,7 @@ test("real Oath Negation uses the physical-seat simultaneous root graph and exac
     expect(await page.locator(`.local-player-dock[data-player-anchor="${seed.players[0].id}"]`).count()).toBe(1);
     await expect(page.locator("[data-root-action-response-node]")).toHaveAttribute("data-response-relation", "COUNTERS_ROOT");
     if (viewport.width === viewports[0].width) blockedGeometry = geometry;
-    if (viewport.width === 390 || viewport.width === 1440) {
+    if (viewport.width === 390 || viewport.width === 480 || viewport.width === 1440) {
       const path = testInfo.outputPath(`oath-simultaneous-blocked-${viewport.width}x${viewport.height}.png`);
       await page.screenshot({ path, animations: "disabled" });
       await testInfo.attach(`oath-simultaneous-blocked-${viewport.width}x${viewport.height}`, { path });
@@ -321,7 +321,7 @@ test("real Oath Negation uses the physical-seat simultaneous root graph and exac
       expect(Math.abs(restoredGeometry.root.left - blockedGeometry.root.left)).toBeLessThanOrEqual(1);
       expect(Math.abs(restoredGeometry.root.top - blockedGeometry.root.top)).toBeLessThanOrEqual(1);
     }
-    if (viewport.width === 390 || viewport.width === 1440) {
+    if (viewport.width === 390 || viewport.width === 480 || viewport.width === 1440) {
       const path = testInfo.outputPath(`oath-simultaneous-active-${viewport.width}x${viewport.height}.png`);
       await page.screenshot({ path, animations: "disabled" });
       await testInfo.attach(`oath-simultaneous-active-${viewport.width}x${viewport.height}`, { path });

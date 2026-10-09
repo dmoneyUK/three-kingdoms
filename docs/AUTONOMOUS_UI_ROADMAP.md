@@ -2597,3 +2597,17 @@ HANDOVER" wording here after the handoff has moved on.
   two Group Negation cases were flaky on the full run but passed isolated 6/6.
   Build, targeted ESLint, syntax, and `git diff --check` passed. Reviewer
   acceptance is not claimed.
+
+### UX2-FINAL-AOE-MULTI-TARGET-REVALIDATION-03 — Post-§6.27 AOE matrix
+
+- Revalidated real server-backed Raining Arrows, Barbarian Invasion, Oath,
+  Bumper Harvest, and ordered Halberd Attack after §6.27 changes. The focused
+  browser matrix passed 23/23 serially at 390×844, 480×900, and 1440×900,
+  including dense 8-player Raining Arrows and Barbarian Invasion. Halberd now
+  includes the 480×900 viewport; Oath blocked/active screenshots cover all
+  three widths. A follow-up Oath capture run passed 1/1. Fresh Group, Oath,
+  Bumper Harvest, and Halberd screenshots were inspected; measured branch/Seat
+  endpoints, root stability, settlement, Dock containment, and overflow checks
+  passed. Focused ESLint and `git diff --check` passed.
+- Exact pre-commit base `fa48e33cf11376f127536d10209c8652b140a1f1` passed all
+  five Actions jobs in run `37932531424`. Reviewer acceptance is not claimed.
