@@ -2141,6 +2141,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   and the outgoing Actions result is not yet observed. Reviewer acceptance is
   not claimed.
 
+### UX2.6-PHASE-D-ATTACK-GRAPH-ROUTING-CONSISTENCY-01 — Attack mode diagnosis
+
+- Real production-path Attack tests found no routing defect: after public root
+  proof and anchor measurement, graph mode owns the composition; missing
+  geometry and Inspect intentionally restore the safe Stage. Ordinary Attack
+  paths measured straight with 4.8px source, 6.5px target, 20px marker, and
+  4.5px target halo; the server-proof-to-graph handoff remained within 250ms.
+  The matrix passed 26/26 before route assertions and 14/14 after asserting
+  `display-mode`, `layout-state`, and absence of fallback reason through Attack,
+  Dodge, and settlement. Parent Actions run `37865225311` failed on a stale
+  fast-test client-view fixture and a browser lost-pointer-capture event not
+  observed until native pointer input; both focused repairs are in the outgoing
+  changeset. Reviewer acceptance is not claimed.
+
 ### UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01 — Real drag/drop completion
 
 - The real server-backed Stargazing proof now covers touch reassignment between

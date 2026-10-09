@@ -373,7 +373,11 @@ for (const scenario of [
     const rootCard = page.locator('[data-root-action-card="true"]');
     await expect(rootCard).toBeVisible({ timeout: 20_000 });
     await expect(rootCard).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET");
-    await expect(page.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-ready", "true");
+    const overlay = page.locator('[data-root-action-overlay="true"]');
+    await expect(overlay).toHaveAttribute("data-root-action-ready", "true");
+    await expect(overlay).toHaveAttribute("data-root-action-display-mode", "graph");
+    await expect(overlay).toHaveAttribute("data-root-action-layout-state", "ready");
+    expect(await overlay.getAttribute("data-root-action-fallback-reason")).toBeNull();
     await expect(page.locator(".interaction-stage")).toHaveCount(0);
     await expect(page.locator(".active-table-reveal .game-card")).toHaveCount(0);
     await expect(page.locator(".stage-system-cluster")).toBeVisible();
@@ -490,6 +494,9 @@ for (const scenario of [
       && !frame.rootCardVisible && frame.interactionStageVisible), rootAction.rootEventId);
     await page.getByRole("button", { name: "Close TARGET inspection", exact: true }).click();
     await expect(inspectOverlay).toHaveAttribute("data-root-action-ready", "true");
+    await expect(inspectOverlay).toHaveAttribute("data-root-action-display-mode", "graph");
+    await expect(inspectOverlay).toHaveAttribute("data-root-action-layout-state", "ready");
+    expect(await inspectOverlay.getAttribute("data-root-action-fallback-reason")).toBeNull();
     await expect(page.locator(".interaction-stage")).toHaveCount(0);
     await expect.poll(() => page.evaluate(({ rootEventId, afterFrame }) => window.__wtkAttackVisibleFrames.some((frame) => frame.rootEventId === rootEventId
       && frame.frameNumber > afterFrame && frame.mode === "graph" && frame.rootCardVisible), { rootEventId: rootAction.rootEventId, afterFrame: inspectFallbackFrame.frameNumber }), {
@@ -624,6 +631,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       const openOverlay = targetPage.locator('[data-root-action-overlay="true"]');
       await expect(openOverlay).toHaveAttribute("data-root-action-enabled", "true");
       await expect(openOverlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+      await expect(openOverlay).toHaveAttribute("data-root-action-display-mode", "graph");
+      await expect(openOverlay).toHaveAttribute("data-root-action-layout-state", "ready");
+      expect(await openOverlay.getAttribute("data-root-action-fallback-reason")).toBeNull();
+      await expect(targetPage.locator(".interaction-stage")).toHaveCount(0);
       await expect(openOverlay).toHaveAttribute("role", "img");
       await expect(openOverlay).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET.");
       await expect(targetPage.getByRole("img", { name: /SOURCE played Attack targeting TARGET/ })).toHaveCount(1);
@@ -688,6 +699,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
         });
         throw error;
       }
+      await expect(overlay).toHaveAttribute("data-root-action-display-mode", "graph");
+      await expect(overlay).toHaveAttribute("data-root-action-layout-state", "ready");
+      expect(await overlay.getAttribute("data-root-action-fallback-reason")).toBeNull();
+      await expect(targetPage.locator(".interaction-stage")).toHaveCount(0);
       await expect(dodgeCard).toBeVisible({ timeout: 20_000 });
       await expect(rootCard).toHaveAttribute("data-root-action-settled", "true");
       await expect(rootCard).toHaveAttribute("data-root-action-settlement-event-id", proof.responseEventId);
@@ -814,6 +829,9 @@ test("real Attack→Dodge settlement shortens without an exit animation under re
     await openGame(targetPage, seed, 1, viewport);
     const overlay = targetPage.locator('[data-root-action-overlay="true"]');
     await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+    await expect(overlay).toHaveAttribute("data-root-action-display-mode", "graph");
+    await expect(overlay).toHaveAttribute("data-root-action-layout-state", "ready");
+    expect(await overlay.getAttribute("data-root-action-fallback-reason")).toBeNull();
     await expect.poll(async () => (await roomView(request, seed, 1)).currentAction?.kind ?? null, { timeout: 20_000 }).toBe("response");
     await targetPage.emulateMedia({ reducedMotion: "reduce" });
     await observeAttackDodgeSettlement(targetPage);
@@ -895,6 +913,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       expect(JSON.stringify(proof)).not.toContain(attack.id);
       expect((await roomView(request, seed, 1)).players.find((player) => player.id === targetId)?.hp).toBe(3);
       await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+      await expect(overlay).toHaveAttribute("data-root-action-display-mode", "graph");
+      await expect(overlay).toHaveAttribute("data-root-action-layout-state", "ready");
+      expect(await overlay.getAttribute("data-root-action-fallback-reason")).toBeNull();
       await expect(overlay).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET. Attack damage applied.");
       const rootCard = targetPage.locator('[data-root-action-card="true"]');
       await expect(rootCard).toHaveAttribute("data-root-action-settled", "true");

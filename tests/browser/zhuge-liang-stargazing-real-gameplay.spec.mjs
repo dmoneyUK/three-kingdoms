@@ -639,6 +639,9 @@ for (const entry of [
     await opened.actorPage.evaluate(({ cardId, pointerId }) => {
       document.querySelector(`[data-deck-card-id="${cardId}"] .deck-reorder-card-face`).releasePointerCapture(pointerId);
     }, { cardId: attack.id, pointerId: capturedPointerId });
+    // Pointer capture loss is delivered before the next native pointer event;
+    // move one pixel to flush the browser's pending capture transition.
+    await opened.actorPage.mouse.move(lostCaptureStart.x + 10, lostCaptureStart.y + 2, { steps: 1 });
     await expect.poll(() => opened.actorPage.evaluate(({ pointerId, previousCount }) =>
       (window.__stargazingInvalidDropPointerTrace ?? []).filter((event) => event.type === "lostpointercapture" && event.pointerId === pointerId).length > previousCount,
     { pointerId: capturedPointerId, previousCount: lostCaptureCountBeforeRelease })).toBe(true);
