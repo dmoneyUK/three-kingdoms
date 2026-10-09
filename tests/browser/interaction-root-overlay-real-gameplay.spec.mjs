@@ -2270,6 +2270,83 @@ async function assertContinuousAttackGraphFrames(page, rootAction, startTimeMs, 
   return frames;
 }
 
+async function assertAttackFallbackFrames(page, rootAction, startTimeMs, endTimeMs, label) {
+  const frames = await page.evaluate(({ start, end }) => window.__wtkAttackVisibleFrames
+    .filter((frame) => frame.sampleTimeMs >= start && frame.sampleTimeMs <= end), { start: startTimeMs, end: endTimeMs });
+  expect(frames.length, label + ": rAF trace covers the observation interval").toBeGreaterThan(10);
+  expect(frames.at(-1).sampleTimeMs - frames[0].sampleTimeMs, label + ": measured frame coverage")
+    .toBeGreaterThanOrEqual(endTimeMs - startTimeMs - 50);
+  const revealCounts = frames.map((frame) => frame.activeTableRevealCardCount);
+  expect(revealCounts.every((count) => count === 0 || count === 1),
+    label + ": at most one ordinary Attack reveal is visible").toBe(true);
+  const unexpected = frames.filter((frame) => frame.rootEventId !== rootAction.rootEventId
+    || frame.interactionId !== rootAction.interactionId
+    || frame.rootFrameId !== rootAction.rootFrameId
+    || frame.checkpointId !== rootAction.checkpointId
+    || frame.presentationRevision !== String(rootAction.presentationRevision)
+    || frame.sourceId !== rootAction.sourceId || frame.targetId !== rootAction.targetId
+    || frame.rootCardKind !== "Attack" || frame.mode !== "fallback" || frame.layoutState !== "unavailable"
+    || frame.fallbackGate !== "geometry-unavailable" || frame.rootCardVisible || !frame.interactionStageVisible
+    || frame.localUiMode !== null || frame.activeTableRevealCardCount > 1
+    || frame.sourceEdgeVisible || frame.targetEdgeVisible
+    || frame.classification !== "geometry-unavailable");
+  expect(unexpected.map((frame) => ({
+    frameNumber: frame.frameNumber,
+    classification: frame.classification,
+    mode: frame.mode,
+    layoutState: frame.layoutState,
+    fallbackGate: frame.fallbackGate,
+    activeTableRevealCardCount: frame.activeTableRevealCardCount,
+    rootEventId: frame.rootEventId,
+    interactionId: frame.interactionId,
+  })).slice(0, 5), label + ": every sampled frame stays in explicit geometry-safe fallback").toEqual([]);
+  expect(frames.slice(1).every((frame, index) => frame.frameNumber === frames[index].frameNumber + 1),
+    label + ": no unobserved rAF sample gap").toBe(true);
+  return frames;
+}
+
+async function expectAttackPresentationIdentity(page, rootAction, mode, label) {
+  const overlay = page.locator('[data-root-action-overlay="true"]');
+  await expect(overlay).toHaveAttribute("data-root-action-event-id", rootAction.rootEventId);
+  await expect(overlay).toHaveAttribute("data-root-action-interaction-id", rootAction.interactionId);
+  await expect(overlay).toHaveAttribute("data-root-action-root-frame-id", rootAction.rootFrameId);
+  await expect(overlay).toHaveAttribute("data-root-action-checkpoint-id", rootAction.checkpointId);
+  await expect(overlay).toHaveAttribute("data-root-action-presentation-revision", String(rootAction.presentationRevision));
+  await expect(overlay).toHaveAttribute("data-root-action-source-id", rootAction.sourceId);
+  await expect(overlay).toHaveAttribute("data-root-action-target-id", rootAction.targetId);
+  await expect(overlay).toHaveAttribute("data-root-action-card-kind", "Attack");
+  await expect(overlay).toHaveAttribute("data-root-action-display-mode", mode);
+  if (mode === "graph") {
+    await expectAttackGraphIdentity(page, rootAction);
+    return;
+  }
+  await expect(overlay).toHaveAttribute("data-root-action-ready", "false");
+  await expect(overlay).toHaveAttribute("data-root-action-layout-state", "unavailable");
+  await expect(overlay).toHaveAttribute("data-root-action-fallback-reason", "geometry-unavailable");
+  await expect(overlay.locator('[data-root-action-card="true"]')).toBeHidden();
+  await expect(overlay.locator("[data-root-action-edge]")).toHaveCount(0);
+  await expect(page.locator(".interaction-stage")).toHaveCount(1);
+  expect(label.length).toBeGreaterThan(0);
+}
+
+async function captureAttackFallbackAnchorStability(page, playerCount, viewport, label) {
+  const before = await page.evaluate(() => window.__wtkRootOverlayPreGraphAnchors);
+  const after = await captureAttackOverlayDiagnostics(page);
+  expect(before, label + ": capture physical seats before graph ownership").toBeTruthy();
+  expect(Object.keys(before)).toHaveLength(playerCount);
+  expect(after.anchors).toHaveLength(playerCount);
+  expect(after.documentWidth).toBeLessThanOrEqual(after.viewportWidth);
+  for (const anchor of after.anchors) {
+    const baseline = before[anchor.id];
+    expect(baseline, label + ": baseline exists for physical player " + anchor.id).toBeTruthy();
+    for (const dimension of ["x", "y", "right", "bottom", "width", "height"]) {
+      expect(Math.abs(anchor[dimension] - baseline[dimension]), label + ": " + anchor.id + " " + dimension + " stays fixed")
+        .toBeLessThanOrEqual(0.5);
+    }
+  }
+  return { playerCount, viewport, before, after };
+}
+
 async function captureAttackGraphGeometry(page, sourceId, targetId, playerCount, viewport, label) {
   const before = await page.evaluate(() => window.__wtkRootOverlayPreGraphAnchors);
   const after = await measure(page, sourceId, targetId);
@@ -2397,6 +2474,168 @@ test("ten real Attack windows retain one proven visible graph through room polli
   await testInfo.attach("attack-continuity-rAF-traces.json", { body: JSON.stringify(frameTraces, null, 2), contentType: "application/json" });
   await testInfo.attach("attack-continuity-public-projection-polls.json", { body: JSON.stringify(projectionPollTraces, null, 2), contentType: "application/json" });
   await testInfo.attach("attack-continuity-geometry.json", { body: JSON.stringify(geometryEvidence, null, 2), contentType: "application/json" });
+});
+
+test("real 6/8-player mobile Attack presentation stays stable for attacker and defender", async ({ browser, request }, testInfo) => {
+  test.setTimeout(240_000);
+  const scenarios = [
+    { playerCount: 6, viewport: { width: 390, height: 844 } },
+    { playerCount: 6, viewport: { width: 480, height: 900 } },
+    { playerCount: 8, viewport: { width: 390, height: 844 } },
+    { playerCount: 8, viewport: { width: 480, height: 900 } },
+  ];
+  const rootEventIds = new Set();
+  const frameEvidence = [];
+  const pollEvidence = [];
+  const geometryEvidence = [];
+
+  for (const [index, scenario] of scenarios.entries()) {
+    const playerCount = scenario.playerCount;
+    const viewport = scenario.viewport;
+    const sourceCard = { ...attack, id: "attack-dense-continuity-" + index };
+    const targetCard = { ...dodge, id: "dodge-dense-continuity-" + index };
+    const seed = await seedGame(request, playerCount, { sourceCard, targetCard });
+    const sourceId = seed.players[0].id;
+    const targetId = seed.players[1].id;
+    const attackerPage = await browser.newPage({ viewport });
+    const defenderPage = await browser.newPage({ viewport });
+    const attackerPolls = observePublicAttackProofPolls(attackerPage);
+    const defenderPolls = observePublicAttackProofPolls(defenderPage);
+    const label = playerCount + " players / " + viewport.width + "x" + viewport.height;
+    try {
+      await Promise.all([
+        openGame(attackerPage, seed, 0, viewport),
+        openGame(defenderPage, seed, 1, viewport),
+      ]);
+      await Promise.all([
+        attackerPage.evaluate(() => window.__wtkStartAttackVisibleFrameSampling()),
+        defenderPage.evaluate(() => window.__wtkStartAttackVisibleFrameSampling()),
+      ]);
+      await playAttackThroughPage(attackerPage, "TARGET", sourceCard);
+      await expect.poll(async () => (await roomView(request, seed, 1)).presentationSnapshot?.rootAction?.rootEventId ?? null, {
+        timeout: 20_000,
+        message: label + ": server creates the public Attack root",
+      }).not.toBeNull();
+      const targetView = await roomView(request, seed, 1);
+      const rootAction = targetView.presentationSnapshot.rootAction;
+      expect(targetView.currentAction.kind).toBe("response");
+      expect(rootAction).toMatchObject({
+        semantics: "PROVEN", action: "ATTACK", cardKind: "Attack",
+        physicalCardKind: "Attack", sourceId, targetId,
+      });
+      expect(targetView.timeline.some((event) => event.id === rootAction.rootEventId
+        && event.action === "play" && event.card?.kind === "Attack")).toBe(true);
+      expect(JSON.stringify(rootAction)).not.toContain(sourceCard.id);
+      expect(rootEventIds.has(rootAction.rootEventId), "independent seeded windows have distinct server root events").toBe(false);
+      rootEventIds.add(rootAction.rootEventId);
+
+      await Promise.all([
+        [attackerPage, "attacker"], [defenderPage, "defender"],
+      ].map(([page, role]) => expect.poll(() => page.locator('[data-root-action-overlay="true"]').getAttribute("data-root-action-layout-state"), {
+        timeout: 20_000,
+        message: label + " " + role + ": wait for the room poll to deliver the proven root and layout measurement",
+      }).toMatch(/^(ready|unavailable)$/)));
+      const layouts = await Promise.all([
+        assertAttackGraphOrSafeFallback(attackerPage, viewport, label + " attacker"),
+        assertAttackGraphOrSafeFallback(defenderPage, viewport, label + " defender"),
+      ]);
+      const roles = [
+        { role: "attacker", page: attackerPage, polls: attackerPolls, layout: layouts[0] },
+        { role: "defender", page: defenderPage, polls: defenderPolls, layout: layouts[1] },
+      ];
+      for (const entry of roles) {
+        await expectAttackPresentationIdentity(entry.page, rootAction, entry.layout.mode, label + " " + entry.role);
+      }
+
+      const pollStarts = roles.map((entry) => entry.polls.length);
+      const observationStartedAt = Date.now();
+      const observations = await Promise.all(roles.map(async (entry) => ({
+        entry,
+        start: await entry.page.evaluate(() => performance.now()),
+      })));
+      await Promise.all(observations.map(({ entry, start }) => expect.poll(() => entry.page.evaluate(({ startTime, rootEventId }) =>
+        window.__wtkAttackVisibleFrames.some((frame) => frame.sampleTimeMs >= startTime + 12_000
+          && frame.rootEventId === rootEventId),
+      { startTime: start, rootEventId: rootAction.rootEventId }), {
+        timeout: 25_000,
+        message: label + " " + entry.role + ": collect at least 12 seconds of real RAF samples",
+      }).toBe(true)));
+      await Promise.all(roles.map((entry, index) => waitForAttackProofPolls(
+        entry.polls, pollStarts[index], rootAction, 5, 25_000,
+      )));
+      const observationEndedAt = Date.now();
+      const ends = await Promise.all(roles.map((entry) => entry.page.evaluate(() => performance.now())));
+
+      for (const [index, entry] of roles.entries()) {
+        const start = observations[index].start;
+        const end = ends[index];
+        expect(end - start, label + " " + entry.role + ": observation spans 12 seconds").toBeGreaterThanOrEqual(12_000);
+        const frames = entry.layout.mode === "graph"
+          ? await assertContinuousAttackGraphFrames(entry.page, rootAction, start, end, label + " " + entry.role)
+          : await assertAttackFallbackFrames(entry.page, rootAction, start, end, label + " " + entry.role);
+        const matchingPolls = entry.polls.slice(pollStarts[index]).filter((sample) =>
+          sample.observedAt >= observationStartedAt && sample.observedAt <= observationEndedAt);
+        expect(matchingPolls.length, label + " " + entry.role + ": repeated room projection polls were observed").toBeGreaterThanOrEqual(5);
+        expect(matchingPolls.every((sample) => attackPollMatches(sample, rootAction)),
+          label + " " + entry.role + ": every observed response poll retained the same authoritative root").toBe(true);
+        expect(matchingPolls.at(-1).observedAt - matchingPolls[0].observedAt,
+          label + " " + entry.role + ": matching polls span the observation window").toBeGreaterThanOrEqual(9_000);
+
+        const geometry = entry.layout.mode === "graph"
+          ? await captureAttackGraphGeometry(entry.page, sourceId, targetId, playerCount, viewport, label + " " + entry.role)
+          : await captureAttackFallbackAnchorStability(entry.page, playerCount, viewport, label + " " + entry.role);
+        frameEvidence.push({ label, role: entry.role, mode: entry.layout.mode, rootAction, frames });
+        geometryEvidence.push({ label, role: entry.role, mode: entry.layout.mode, geometry });
+        pollEvidence.push({ label, role: entry.role, polls: matchingPolls });
+        await testInfo.attach("dense-attack-" + index + "-" + entry.role + "-layout.json", {
+          body: Buffer.from(JSON.stringify({ layout: entry.layout, rootAction }, null, 2)),
+          contentType: "application/json",
+        });
+        await testInfo.attach("dense-attack-" + index + "-" + entry.role + "-frames.json", {
+          body: Buffer.from(JSON.stringify(frames, null, 2)),
+          contentType: "application/json",
+        });
+        if (entry.layout.mode === "fallback") {
+          const revealTransitions = frames
+            .filter((frame, frameIndex) => frameIndex === 0
+              || frame.activeTableRevealCardCount !== frames[frameIndex - 1].activeTableRevealCardCount)
+            .map((frame) => ({
+              frameNumber: frame.frameNumber,
+              elapsedMs: frame.elapsedMs,
+              activeTableRevealCardCount: frame.activeTableRevealCardCount,
+              fallbackGate: frame.fallbackGate,
+            }));
+          const revealVisibleRuns = revealTransitions.filter((transition, transitionIndex) =>
+            transition.activeTableRevealCardCount === 1
+              && (transitionIndex === 0 || revealTransitions[transitionIndex - 1].activeTableRevealCardCount === 0)).length;
+          expect(revealVisibleRuns, label + " " + entry.role + ": one authoritative reveal may appear once, without repeated flashes; transitions: "
+            + JSON.stringify(revealTransitions)).toBeLessThanOrEqual(1);
+        }
+        await testInfo.attach("dense-attack-" + index + "-" + entry.role + "-projection-polls.json", {
+          body: Buffer.from(JSON.stringify(matchingPolls, null, 2)),
+          contentType: "application/json",
+        });
+        await testInfo.attach("dense-attack-" + index + "-" + entry.role + "-screenshot.png", {
+          body: await entry.page.screenshot(),
+          contentType: "image/png",
+        });
+      }
+    } finally {
+      await attackerPage.close();
+      await defenderPage.close();
+    }
+  }
+
+  expect(rootEventIds.size).toBe(4);
+  await testInfo.attach("dense-attack-continuity-rAF.json", {
+    body: Buffer.from(JSON.stringify(frameEvidence, null, 2)), contentType: "application/json",
+  });
+  await testInfo.attach("dense-attack-continuity-polls.json", {
+    body: Buffer.from(JSON.stringify(pollEvidence, null, 2)), contentType: "application/json",
+  });
+  await testInfo.attach("dense-attack-continuity-geometry.json", {
+    body: Buffer.from(JSON.stringify(geometryEvidence, null, 2)), contentType: "application/json",
+  });
 });
 
 test("real mobile Attack graph remeasures after visual viewport height changes and preserves page-scroll safety", async ({ browser, request }, testInfo) => {

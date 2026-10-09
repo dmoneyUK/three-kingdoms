@@ -2293,6 +2293,21 @@ Only a proven regression or new Reviewer-approved design requirement does.
   broad type/environment errors and is not a configured CI job. Reviewer
   acceptance is not claimed.
 
+### UX2.6-PHASE-D-ATTACK-DENSE-CONTINUITY-01 — Dense mobile Attack continuity
+
+- Real server-backed 6/8-player Attack windows were observed at 390×844 and
+  480×900 for both attacker and defender. Across all eight views, the exact
+  public root identity remained stable during 12.1–13.0 seconds of consecutive
+  RAF sampling and 11.0–12.0 seconds of repeated room polling (12–13 polls per
+  view). Current geometry was explicitly classified as
+  `geometry-unavailable`; the safe Stage remained exclusive, with no fabricated
+  graph and no recurring reveal flash. All eight real screenshots and detailed
+  layout/frame/poll JSON evidence are attached to the local Playwright HTML
+  report. The focused browser test passed 1/1; `node --check`, targeted
+  ESLint, and `git diff --check` passed. Exact parent SHA
+  `365634de7d0ebd79384bab0ecc0a820eeba4419a` passed Actions run
+  `37885948819` (4/4 jobs). Reviewer acceptance is not claimed.
+
 ### UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01 — Real drag/drop completion
 
 - The real server-backed Stargazing proof now covers touch reassignment between
