@@ -16,6 +16,7 @@ type RootActionLayout = {
   responseTargetPath: string | null;
   targetBlockPath: string | null;
   responseCard: Rect | null;
+  dodgeInterceptionFallback?: boolean;
   responseSourcePath: string | null;
   counterPath: string | null;
   blockPath: string | null;
@@ -187,6 +188,47 @@ function segmentNearRect(start: Point, end: Point, rect: Rect, clearance: number
   const normalRadius = Math.abs(normal.x) * rect.width / 2 + Math.abs(normal.y) * rect.height / 2;
   return along + tangentRadius >= 0 && along - tangentRadius <= length
     && normalDistance <= normalRadius + clearance;
+}
+
+function segmentRectEntryPoint(start: Point, end: Point, rect: Rect): Point | null {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  let startAt = 0;
+  let endAt = 1;
+  const clips: readonly [number, number][] = [
+    [-dx, start.x - rect.left],
+    [dx, rect.right - start.x],
+    [-dy, start.y - rect.top],
+    [dy, rect.bottom - start.y],
+  ];
+  for (const [direction, distance] of clips) {
+    if (direction === 0) {
+      if (distance < 0) return null;
+      continue;
+    }
+    const crossing = distance / direction;
+    if (direction < 0) startAt = Math.max(startAt, crossing);
+    else endAt = Math.min(endAt, crossing);
+    if (startAt > endAt) return null;
+  }
+  return { x: start.x + dx * startAt, y: start.y + dy * startAt };
+}
+
+function segmentIntersectsRect(start: Point, end: Point, rect: Rect): boolean {
+  return segmentRectEntryPoint(start, end, rect) !== null;
+}
+
+function projectPointToSegment(start: Point, end: Point, point: Point): { fraction: number; point: Point; distance: number } {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy || 1;
+  const fraction = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+  const projected = { x: start.x + dx * fraction, y: start.y + dy * fraction };
+  return { fraction, point: projected, distance: Math.hypot(point.x - projected.x, point.y - projected.y) };
+}
+
+function pointRectDistance(point: Point, rect: Rect): number {
+  return Math.hypot(Math.max(rect.left - point.x, 0, point.x - rect.right), Math.max(rect.top - point.y, 0, point.y - rect.bottom));
 }
 
 function placeHistorySummary(
@@ -663,7 +705,7 @@ function layoutSimultaneousRootAction(
   };
 }
 
-function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, responseElement: HTMLElement | null, responseElements: readonly HTMLElement[], historySummaryElement: HTMLElement | null, action: Pick<InteractionRootOverlayAction, "sourceId" | "targetId" | "cardKind" | "cardFace" | "mode" | "rootEffectState" | "response"> & ResponseLayout, preferredRootCard: Rect | null, preferredResponseCard: Rect | null): RootActionLayout | null {
+function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, responseElement: HTMLElement | null, responseElements: readonly HTMLElement[], historySummaryElement: HTMLElement | null, action: Pick<InteractionRootOverlayAction, "sourceId" | "targetId" | "cardKind" | "cardFace" | "mode" | "rootEffectState" | "settlement" | "response"> & ResponseLayout, preferredRootCard: Rect | null, preferredResponseCard: Rect | null): RootActionLayout | null {
   const table = shell.querySelector<HTMLElement>(".play-table");
   const shellBounds = shell.getBoundingClientRect();
   const cardBounds = cardElement.getBoundingClientRect();
@@ -994,7 +1036,12 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       || responseBounds.width <= 0 || responseBounds.height <= 0) return null;
     const responseWidth = responseBounds.width;
     const responseHeight = responseBounds.height;
-    const countersRoot = action.response.countersRoot === true && action.rootEffectState === "BLOCKED";
+    const dodgeSettlementConfirmsBlock = action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE";
+    const countersRoot = action.response.countersRoot === true
+      && (action.rootEffectState === "BLOCKED" || dodgeSettlementConfirmsBlock);
+    const attackDodgeIntercepted = action.cardKind === "Attack"
+      && action.response.cardFace?.kind === "Dodge"
+      && countersRoot;
     const responseSourceCenter = center(responseSourceRect);
     const responseTargetCenter = responseTargetRect ? center(responseTargetRect) : null;
     const targetsPlayer = Boolean(responseTargetCenter);
@@ -1025,9 +1072,66 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       && preferredResponseCard.top >= tableRect.top + margin
       && preferredResponseCard.bottom <= stableStageBottom - margin
       && !responseObstacles.some((obstacle) => overlaps(preferredResponseCard, obstacle, 8));
-    const responseCandidates = [
-      ...(preferredResponseFits && preferredResponseCard ? [{ responseCard: preferredResponseCard, score: -1_000_000 }] : []),
-      ...responseFractions.flatMap((fraction) => responseOffsets.flatMap((offset) => {
+    const responseFits = (responseCard: Rect) => responseCard.left >= tableRect.left + margin
+      && responseCard.right <= tableRect.right - margin
+      && responseCard.top >= tableRect.top + margin
+      && responseCard.bottom <= stableStageBottom - margin
+      && !responseObstacles.some((obstacle) => overlaps(responseCard, obstacle, 8));
+    let dodgeInterceptionFallback = false;
+    let responseCandidates: { responseCard: Rect; score: number }[];
+    if (attackDodgeIntercepted) {
+      const attackPathStart = rectangleEdge(card, targetCenter);
+      const attackPathEnd = rectangleEdge(targetRect, cardCenter);
+      const attackDx = attackPathEnd.x - attackPathStart.x;
+      const attackDy = attackPathEnd.y - attackPathStart.y;
+      const attackLength = Math.hypot(attackDx, attackDy) || 1;
+      const attackNormal = { x: -attackDy / attackLength, y: attackDx / attackLength };
+      const attackCenterAt = (fraction: number, offset = 0) => ({
+        x: attackPathStart.x + attackDx * fraction + attackNormal.x * offset,
+        y: attackPathStart.y + attackDy * fraction + attackNormal.y * offset,
+      });
+      const rectAt = (point: Point): Rect => ({
+        left: point.x - responseWidth / 2,
+        top: point.y - responseHeight / 2,
+        right: point.x + responseWidth / 2,
+        bottom: point.y + responseHeight / 2,
+        width: responseWidth,
+        height: responseHeight,
+      });
+      const acceptableProjection = (responseCard: Rect) => {
+        const projection = projectPointToSegment(attackPathStart, attackPathEnd, center(responseCard));
+        return projection.fraction >= .38 && projection.fraction <= .68 ? projection : null;
+      };
+      const directCandidates = [
+        ...(preferredResponseFits && preferredResponseCard ? [preferredResponseCard] : []),
+        ...[.5, .45, .55, .4, .6, .65, .38, .68].flatMap((fraction) => [0, -8, 8, -16, 16, -24, 24, -32, 32, -40, 40, -48, 48].map((offset) => rectAt(attackCenterAt(fraction, offset)))),
+      ].flatMap((responseCard, index) => {
+        if (!responseFits(responseCard)) return [];
+        const projection = acceptableProjection(responseCard);
+        if (!projection || !segmentIntersectsRect(attackPathStart, attackPathEnd, responseCard)) return [];
+        const fractionPenalty = Math.abs(projection.fraction - .5) * 100;
+        return [{ responseCard, score: (index === 0 && preferredResponseFits ? -1_000_000 : 0) + fractionPenalty + projection.distance }];
+      }).sort((left, right) => left.score - right.score);
+      if (directCandidates.length) {
+        responseCandidates = directCandidates;
+      } else {
+        const normalRadius = Math.abs(attackNormal.x) * responseWidth / 2 + Math.abs(attackNormal.y) * responseHeight / 2;
+        const offsets = [normalRadius + 14, normalRadius + 20, -normalRadius - 14, -normalRadius - 20];
+        responseCandidates = [.5, .45, .55, .4, .6, .65, .38, .68].flatMap((fraction) => offsets.map((offset) => rectAt(attackCenterAt(fraction, offset))))
+          .flatMap((responseCard) => {
+            if (!responseFits(responseCard)) return [];
+            const projection = acceptableProjection(responseCard);
+            if (!projection || segmentIntersectsRect(attackPathStart, attackPathEnd, responseCard)) return [];
+            const edgeDistance = pointRectDistance(projection.point, responseCard);
+            if (edgeDistance < 12 || edgeDistance > 20 || !segmentNearRect(attackPathStart, attackPathEnd, responseCard, 20)) return [];
+            return [{ responseCard, score: Math.abs(projection.fraction - .5) * 100 + edgeDistance }];
+          }).sort((left, right) => left.score - right.score);
+        dodgeInterceptionFallback = responseCandidates.length > 0;
+      }
+    } else {
+      responseCandidates = [
+        ...(preferredResponseFits && preferredResponseCard ? [{ responseCard: preferredResponseCard, score: -1_000_000 }] : []),
+        ...responseFractions.flatMap((fraction) => responseOffsets.flatMap((offset) => {
       const candidate = {
         x: responseOrigin.x + responseLineX * fraction + responseNormal.x * offset,
         y: responseOrigin.y + responseLineY * fraction + responseNormal.y * offset,
@@ -1039,14 +1143,15 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       const distance = Math.hypot(left + responseWidth / 2 - responsePreferred.x, top + responseHeight / 2 - responsePreferred.y);
       return [{ responseCard, score: distance + Math.abs(fraction - responseFraction) * 80 + Math.abs(offset) * .12 }];
       }))
-    ].sort((left, right) => left.score - right.score);
+      ].sort((left, right) => left.score - right.score);
+    }
     const responseCard = responseCandidates[0]?.responseCard;
     if (!responseCard) return null;
     const responseCenter = center(responseCard);
     const counterStart = targetsPlayer ? null : countersRoot ? rectangleEdge(responseCard, cardCenter) : rectangleEdge(card, responseCenter);
     const counterEnd = targetsPlayer ? null : countersRoot ? rectangleEdge(card, responseCenter) : rectangleEdge(responseCard, cardCenter);
     let blockPath: string | null = null;
-    if (counterStart && counterEnd) {
+    if (!attackDodgeIntercepted && counterStart && counterEnd) {
       const counterLength = Math.hypot(counterEnd.x - counterStart.x, counterEnd.y - counterStart.y) || 1;
       const blockNormal = { x: -(counterEnd.y - counterStart.y) / counterLength, y: (counterEnd.x - counterStart.x) / counterLength };
       const blockHalf = 7;
@@ -1054,14 +1159,29 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     }
     const responseSourceStart = rectangleEdge(responseSourceRect, responseCenter);
     const responseSourceEnd = rectangleEdge(responseCard, responseSourceCenter);
-    const responseTargetPath = responseTargetRect && responseTargetCenter
+    const responseTargetPath = !attackDodgeIntercepted && responseTargetRect && responseTargetCenter
       ? pathBetween(rectangleEdge(responseCard, responseTargetCenter), rectangleEdge(responseTargetRect, responseCenter), action.cardKind === "Attack" ? 0 : Math.min(28, Math.hypot(responseTargetCenter.x - responseCenter.x, responseTargetCenter.y - responseCenter.y) * .045))
       : null;
     let targetPath: string | null = targetsPlayer
       ? pathBetween(rectangleEdge(card, targetCenter), rectangleEdge(targetRect, cardCenter), action.cardKind === "Attack" ? 0 : Math.min(34, lineLength * .05))
       : null;
     let targetBlockPath: string | null = null;
-    if (countersRoot) {
+    if (attackDodgeIntercepted) {
+      const attackPathStart = rectangleEdge(card, targetCenter);
+      const attackPathEnd = rectangleEdge(targetRect, cardCenter);
+      const attackLength = Math.hypot(attackPathEnd.x - attackPathStart.x, attackPathEnd.y - attackPathStart.y) || 1;
+      const attackTangent = { x: (attackPathEnd.x - attackPathStart.x) / attackLength, y: (attackPathEnd.y - attackPathStart.y) / attackLength };
+      const intercept = dodgeInterceptionFallback
+        ? projectPointToSegment(attackPathStart, attackPathEnd, responseCenter).point
+        : segmentRectEntryPoint(attackPathStart, attackPathEnd, responseCard);
+      if (!intercept) return null;
+      const markPoint = dodgeInterceptionFallback
+        ? intercept
+        : { x: intercept.x - attackTangent.x * 4, y: intercept.y - attackTangent.y * 4 };
+      const pathEnd = { x: markPoint.x - attackTangent.x * 2, y: markPoint.y - attackTangent.y * 2 };
+      targetPath = pathBetween(attackPathStart, pathEnd, 0);
+      targetBlockPath = crossMarkAt(markPoint, attackTangent, 8);
+    } else if (countersRoot) {
       const targetStart = rectangleEdge(card, targetCenter);
       const targetEnd = rectangleEdge(targetRect, cardCenter);
       targetPath = pathBetween(targetStart, targetEnd, action.cardKind === "Attack" ? 0 : Math.min(34, lineLength * .05));
@@ -1080,12 +1200,13 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       responseTargetPath,
       targetBlockPath,
       responseCard,
+      dodgeInterceptionFallback,
       responseSourcePath: pathBetween(
         responseSourceStart,
         responseSourceEnd,
         action.cardKind === "Attack" && action.response.cardFace?.kind === "Dodge" ? 0 : Math.min(20, lineLength * .025),
       ),
-      counterPath: counterStart && counterEnd ? pathBetween(counterStart, counterEnd, 0) : null,
+      counterPath: !attackDodgeIntercepted && counterStart && counterEnd ? pathBetween(counterStart, counterEnd, 0) : null,
       blockPath,
       responseCards: [],
       responseSourcePaths: [],
@@ -1154,6 +1275,10 @@ export function InteractionRootOverlay({
   const responseActorId = action?.response?.actorId ?? null;
   const responseTargetId = action?.response?.targetId ?? null;
   const responseCountersRoot = action?.response?.countersRoot === true;
+  const attackDodgeInterception = action?.cardKind === "Attack"
+    && action.response?.cardFace?.kind === "Dodge"
+    && responseCountersRoot
+    && (action.rootEffectState === "BLOCKED" || action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE");
   const responseTargetsPlayer = Boolean(responseTargetId);
   const markerId = key ? `root-target-arrow-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}` : "root-target-arrow";
   const targetMarkerWidth = action?.cardKind === "Attack" ? 30 : 8;
@@ -1254,6 +1379,7 @@ export function InteractionRootOverlay({
           cardFace: currentAction.cardFace,
           mode: currentMode ?? "targeted",
           rootEffectState: currentAction.rootEffectState,
+          settlement: currentAction.settlement,
           response: currentAction.response,
           responses: currentAction.responses ? currentVisibleResponses : undefined,
           historyCount: currentHistoryCount,
@@ -1284,6 +1410,7 @@ export function InteractionRootOverlay({
           && current.responseTargetPath === nextLayout.responseTargetPath
           && current.targetBlockPath === nextLayout.targetBlockPath
           && JSON.stringify(current.responseCard) === JSON.stringify(nextLayout.responseCard)
+          && current.dodgeInterceptionFallback === nextLayout.dodgeInterceptionFallback
           && current.responseSourcePath === nextLayout.responseSourcePath
           && current.counterPath === nextLayout.counterPath && current.blockPath === nextLayout.blockPath
           && JSON.stringify(current.responseCards) === JSON.stringify(nextLayout.responseCards)
@@ -1416,7 +1543,13 @@ export function InteractionRootOverlay({
         rx="9"
       />}
       <path className="interaction-root-source-tether" data-root-action-edge="source" d={layout.sourcePath} />
-      {layout.targetPath && <path className={responseTargetsPlayer ? "interaction-root-target-context" : responseCountersRoot || responseChainRootBlocked ? "interaction-root-target-subdued" : "interaction-root-target-arrow"} data-root-action-edge={responseTargetsPlayer ? "root-target-context" : responseCountersRoot || responseChainRootBlocked ? "root-target-blocked" : "target"} data-root-action-target-state={responseTargetsPlayer ? "context" : responseCountersRoot || responseChainRootBlocked ? "blocked" : "active"} d={layout.targetPath} markerEnd={responseCountersRoot || responseChainRootBlocked ? undefined : `url(#${markerId})`} />}
+      {layout.targetPath && <path
+        className={attackDodgeInterception ? "interaction-root-target-arrow interaction-root-dodge-interception-path" : responseTargetsPlayer ? "interaction-root-target-context" : responseCountersRoot || responseChainRootBlocked ? "interaction-root-target-subdued" : "interaction-root-target-arrow"}
+        data-root-action-edge={attackDodgeInterception ? "attack-dodge-interception" : responseTargetsPlayer ? "root-target-context" : responseCountersRoot || responseChainRootBlocked ? "root-target-blocked" : "target"}
+        data-root-action-target-state={attackDodgeInterception ? "intercepted" : responseTargetsPlayer ? "context" : responseCountersRoot || responseChainRootBlocked ? "blocked" : "active"}
+        d={layout.targetPath}
+        markerEnd={attackDodgeInterception || responseCountersRoot || responseChainRootBlocked ? undefined : `url(#${markerId})`}
+      />}
       {layout.groupTargetPaths?.map((branch) => {
         const target = action.groupTargets?.find(({ playerId }) => playerId === branch.playerId)
           ?? action.orderedTargets?.find(({ playerId }) => playerId === branch.playerId);
@@ -1485,7 +1618,13 @@ export function InteractionRootOverlay({
           d={branch.blockPath}
         />}
       </g>)}
-      {layout.targetBlockPath && <path className="interaction-root-block-mark interaction-root-target-block-mark" data-root-action-root-blocked="true" d={layout.targetBlockPath} />}
+      {layout.targetBlockPath && <path
+        className={`interaction-root-block-mark interaction-root-target-block-mark${attackDodgeInterception ? " interaction-root-dodge-interception-mark" : ""}`}
+        data-root-action-root-blocked="true"
+        data-root-action-blocked={attackDodgeInterception ? "true" : undefined}
+        data-root-action-dodge-interception-mark={attackDodgeInterception ? "true" : undefined}
+        d={layout.targetBlockPath}
+      />}
       {layout.counterPath && <path className={responseCountersRoot ? "interaction-root-counter-relation interaction-root-negation-counter" : "interaction-root-counter-relation"} data-root-action-edge={responseCountersRoot ? "negation-counters-root" : "target-blocked"} d={layout.counterPath} markerEnd={responseCountersRoot ? `url(#${counterMarkerId})` : undefined} />}
       {layout.blockPath && <path className="interaction-root-block-mark" data-root-action-blocked="true" d={layout.blockPath} />}
       {layout.responseSourcePath && <path className="interaction-root-response-source-tether" data-root-action-edge="response-source" data-response-actor-id={responseActorId ?? undefined} data-response-card-face-kind={action.response?.cardFace?.kind} d={layout.responseSourcePath} />}
@@ -1576,6 +1715,7 @@ export function InteractionRootOverlay({
       data-response-decision-actor-id={action.response.decisionActorId ?? undefined}
       data-response-target-id={action.response.targetId ?? undefined}
       data-response-relation={action.response.targetId ? "TARGETS_PLAYER" : action.response.countersRoot ? "COUNTERS_ROOT" : undefined}
+      data-root-action-dodge-interception={attackDodgeInterception ? layout?.dodgeInterceptionFallback ? "adjacent" : "direct" : undefined}
       role="img"
       aria-label={action.response.ariaLabel}
       aria-hidden="true"

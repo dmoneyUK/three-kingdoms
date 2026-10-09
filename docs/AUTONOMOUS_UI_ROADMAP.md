@@ -2222,6 +2222,22 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Actions run and outgoing validation are recorded in HANDOVER. Reviewer
   acceptance is not claimed.
 
+### UX2.6-PHASE-D-ATTACK-DODGE-CARD-INTERCEPTION-01 — Physical Dodge interception
+
+- The real server-proven Dodge now physically intercepts the incoming red
+  Attack path, while its actual player's green source tether remains
+  arrowless. The Attack root remains stable; placement checks collision,
+  path projection, and the card/path contact, with a measured adjacent-contact
+  fallback or fail-closed Stage when no safe position exists. No Dodge-to-target
+  arrow, counter triangle, or misleading Dodge status is rendered.
+- Real server-backed interception geometry passed 7/7 at 390×844, 480×900,
+  1440×900, and dense 6/8-player scenes; unsupported dense placement safely
+  falls back. The §6.27.4 stability regression passed 1/1 across ten distinct
+  ordinary Attack rooms, both participants, repeated public room polling, and
+  continuous RAF samples including a 13-second mobile observation. Build,
+  targeted ESLint, `git diff --check`, and visual screenshot review passed.
+  Reviewer acceptance is not claimed.
+
 ### UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01 — Real drag/drop completion
 
 - The real server-backed Stargazing proof now covers touch reassignment between

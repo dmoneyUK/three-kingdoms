@@ -2939,6 +2939,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       || rootEvent.playedAs !== undefined || responseEvent.playedAs !== undefined
       || rootEvent.card.kind !== "Attack" || responseEvent.card.kind !== "Dodge"
       || rootEvent.resolutionId !== proof.rootResolutionId || responseEvent.resolutionId !== proof.responseResolutionId
+      || proof.counterRelation !== "BLOCKS_TARGET_EFFECT"
       || proof.responseActorId !== proof.targetId) return [];
     return [{ proof, rootEvent, responseEvent }];
   });
@@ -3720,6 +3721,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
           actorName: room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.responseActorId)?.name ?? "Unknown player",
           cardFace: attackDodgeGraphCandidate.responseEvent.card,
           cardLabel: "DODGE",
+          countersRoot: attackDodgeGraphCandidate.proof.counterRelation === "BLOCKS_TARGET_EFFECT",
           ariaLabel: `${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.responseActorId)?.name ?? "Unknown player"} played Dodge to block ${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.rootSourceId)?.name ?? "Unknown player"}'s Attack against ${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.targetId)?.name ?? "an opponent"}`,
         },
       }
