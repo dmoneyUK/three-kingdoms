@@ -2936,8 +2936,10 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     if (rootEvent.type !== "card" || responseEvent.type !== "card"
       || rootEvent.action !== "play" || responseEvent.action !== "play"
       || rootEvent.presentation === false || responseEvent.presentation === false
-      || rootEvent.playedAs !== undefined || responseEvent.playedAs !== undefined
-      || rootEvent.card.kind !== "Attack" || responseEvent.card.kind !== "Dodge"
+      || (rootEvent.playedAs === undefined
+        ? rootEvent.card.kind !== "Attack"
+        : rootEvent.playedAs !== "attack" || rootEvent.card.kind === "Attack")
+      || responseEvent.playedAs !== undefined || responseEvent.card.kind !== "Dodge"
       || rootEvent.resolutionId !== proof.rootResolutionId || responseEvent.resolutionId !== proof.responseResolutionId
       || proof.counterRelation !== "BLOCKS_TARGET_EFFECT"
       || proof.responseActorId !== proof.targetId) return [];

@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { cardDefinition, effectivePhysicalSuit, isAttackCard, makeDeck, shuffle } from "../../../game/cards";
-import type { Card, EquipmentZone } from "../../../game/model";
+import { CARD_KINDS, type Card, type EquipmentZone } from "../../../game/model";
 import { canDeclareAttack as canDeclareAttackFor, effectiveDistanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 import { canRespondWithNegation, getAttackCardProvider, getPlayPhaseActions, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
@@ -810,8 +810,11 @@ function attackDodgeResponseProof(log: string[], response: ResponsePending, resp
   if (matchingRootEvents.length !== 1 || matchingRootEvents[0].entryKind !== "card") return undefined;
   const root = matchingRootEvents[0].event;
   const rootCard = record(root.card);
+  const ordinaryAttackRoot = root.playedAs === undefined && rootCard?.kind === "Attack";
+  const convertedAttackRoot = root.playedAs === "attack" && typeof rootCard?.kind === "string"
+    && CARD_KINDS.includes(rootCard.kind as Card["kind"]) && rootCard.kind !== "Attack";
   if (typeof root.id !== "string" || !root.id || typeof root.resolutionId !== "string" || !root.resolutionId
-    || root.action !== "play" || root.presentation === false || root.playedAs !== undefined || rootCard?.kind !== "Attack") return undefined;
+    || root.action !== "play" || root.presentation === false || (!ordinaryAttackRoot && !convertedAttackRoot)) return undefined;
   return {
     semantics: "PROVEN",
     counterRelation: "BLOCKS_TARGET_EFFECT",

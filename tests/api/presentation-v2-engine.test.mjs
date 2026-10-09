@@ -377,6 +377,36 @@ test("engine-backed Longdan Dodge-as-Attack preserves semantic root and physical
   assert.deepEqual(publicSnapshot(observerView.presentationSnapshot), publicSnapshot(targetView.presentationSnapshot),
     "the converted public root proof is viewer-equal");
   assert.equal(observerView.currentAction.options, undefined, "the target's private response providers remain private");
+
+  const responded = await request("respond", {
+    code: game.code, token: targetMember.token, providerId: "card", cardId: targetDodge.id,
+  });
+  assert.equal(responded.status, 200, JSON.stringify(responded.data));
+  const sourceSettled = await assertProjectionMatchesEngine(game.code, sourceMember.token);
+  const targetSettled = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  const observerSettled = await assertProjectionMatchesEngine(game.code, observerMember.token);
+  const responseEvent = sourceSettled.timeline.find((event) => event.type === "card" && event.card?.id === targetDodge.id);
+  assert.ok(responseEvent, "the production response persists the defender's physical Dodge event");
+  assert.deepEqual(responseEvent.attackDodgeResponse, {
+    semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
+    interactionId: rootAction.interactionId, rootFrameId: rootAction.rootFrameId,
+    rootEventId: rootEvent.id, rootResolutionId: rootEvent.resolutionId,
+    rootSourceId: source.id, targetId: target.id, responseActorId: target.id,
+    rootCardKind: "Attack", responseCardKind: "Dodge",
+  }, "server attaches a typed semantic Attack/Dodge link without physical card identities");
+  assert.equal(responseEvent.resolutionId, rootEvent.resolutionId, "the converted root and Dodge share one resolution");
+  const convertedDodgeResponseProof = sourceSettled.presentationV2.attackDodgeResponses[0];
+  assert.equal(sourceSettled.presentationV2.attackDodgeResponses.length, 1);
+  assert.deepEqual(sourceSettled.presentationSnapshot.attackDodgeResponses, [convertedDodgeResponseProof]);
+  assert.deepEqual(targetSettled.presentationSnapshot.attackDodgeResponses, [convertedDodgeResponseProof]);
+  assert.deepEqual(observerSettled.presentationSnapshot.attackDodgeResponses, [convertedDodgeResponseProof]);
+  assert.equal(JSON.stringify(convertedDodgeResponseProof).includes(longdanDodge.id), false);
+  assert.equal(JSON.stringify(convertedDodgeResponseProof).includes(targetDodge.id), false);
+  const missingConversionMarker = sourceSettled.timeline.map((event) => event.id === rootEvent.id
+    ? { ...event, playedAs: undefined }
+    : event);
+  assert.deepEqual(projectPresentationV2({ pending: null, currentAction: null, actionRevision: "settled", timeline: missingConversionMarker }).attackDodgeResponses ?? [], [],
+    "a converted root without its exact Attack marker cannot prove the public Dodge relation");
 });
 
 test("engine-backed Guan Yu red Peach-as-Attack preserves its public physical-card proof", { timeout: 30_000 }, async () => {

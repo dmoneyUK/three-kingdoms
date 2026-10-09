@@ -41,10 +41,11 @@ type AttackGeometryFitDiagnostic = {
   phase: "root" | "dodge-response" | "other-response";
   fitStep: string;
   viewport: { width: number; height: number };
-  cause: "missing-table-or-card-rect" | "missing-or-invalid-player-anchor" | "missing-dodge-response-card" | "dodge-interception-point-unavailable" | "table-smaller-than-card-margin" | "no-attack-root-candidate" | "no-reserved-dodge-candidate" | "no-dodge-interception-candidate" | "placement-field-root-selected" | "placement-field-dodge-selected";
+  cause: "missing-table-or-card-rect" | "missing-or-invalid-player-anchor" | "missing-dodge-response-card" | "dodge-interception-point-unavailable" | "table-smaller-than-card-margin" | "no-attack-root-candidate" | "no-reserved-dodge-candidate" | "no-dodge-interception-candidate" | "placement-field-root-selected" | "placement-field-dodge-selected" | "dodge-response-without-stable-root";
   placementFieldSearch?: AttackRootPlacementFieldSearch;
   dodgePlacementFieldSearch?: AttackDodgePlacementFieldSearch;
   placementSearchEligibility?: { attempted: boolean; unansweredAttackRoot: boolean; viewportWidth: number; pathCandidateCount: number };
+  placementIdentity?: { currentRootPlacementKey: string; rememberedRootKey: string | null; hasStableRootForInteraction: boolean };
   candidateCount?: number;
   rootFitCandidateCount?: number;
   rootFitWithDodgeSlotCount?: number;
@@ -993,23 +994,36 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     fitCounts.rootFitCandidateCount += 1;
     let reservedDodge: Rect | null = null;
     if (reservedDodgeSize) {
-      const nearbySlots = [
-        { left: card.left + (card.width - reservedDodgeSize.width) / 2, top: card.bottom + 8 },
-        { left: card.left + (card.width - reservedDodgeSize.width) / 2, top: card.top - 8 - reservedDodgeSize.height },
-        { left: card.right + 8, top: card.top + (card.height - reservedDodgeSize.height) / 2 },
-        { left: card.left - 8 - reservedDodgeSize.width, top: card.top + (card.height - reservedDodgeSize.height) / 2 },
-      ].map(({ left, top }): Rect => ({
-        left,
-        top,
-        right: left + reservedDodgeSize.width,
-        bottom: top + reservedDodgeSize.height,
-        width: reservedDodgeSize.width,
-        height: reservedDodgeSize.height,
-      }));
       const attackStart = rectangleEdge(card, targetCenter);
       const attackEnd = rectangleEdge(targetRect, center(card));
-      const idealPoint = { x: attackStart.x + (attackEnd.x - attackStart.x) * .52, y: attackStart.y + (attackEnd.y - attackStart.y) * .52 };
-      const reserveCandidates = nearbySlots.filter((candidateRect) => {
+      const attackLength = Math.hypot(attackEnd.x - attackStart.x, attackEnd.y - attackStart.y) || 1;
+      const attackNormal = { x: -(attackEnd.y - attackStart.y) / attackLength, y: (attackEnd.x - attackStart.x) / attackLength };
+      const attackPointAt = (fraction: number, offset: number) => ({
+        x: attackStart.x + (attackEnd.x - attackStart.x) * fraction + attackNormal.x * offset,
+        y: attackStart.y + (attackEnd.y - attackStart.y) * fraction + attackNormal.y * offset,
+      });
+      const responseRectAt = (point: Point): Rect => ({
+        left: point.x - reservedDodgeSize.width / 2,
+        top: point.y - reservedDodgeSize.height / 2,
+        right: point.x + reservedDodgeSize.width / 2,
+        bottom: point.y + reservedDodgeSize.height / 2,
+        width: reservedDodgeSize.width,
+        height: reservedDodgeSize.height,
+      });
+      const reservationCandidates = [
+        ...[.4, .45, .5, .55, .6, .65].flatMap((fraction) => [0, -12, 12, -24, 24, -36, 36].map((offset) => ({
+          rect: responseRectAt(attackPointAt(fraction, offset)),
+          mode: "direct" as const,
+          preferredFraction: fraction,
+        }))),
+        ...[.4, .45, .5, .55, .6, .65].flatMap((fraction) => [14, 18, 20].flatMap((gap) => [1, -1].map((side) => ({
+          rect: responseRectAt(attackPointAt(fraction, side * (Math.abs(attackNormal.x) * reservedDodgeSize.width / 2
+            + Math.abs(attackNormal.y) * reservedDodgeSize.height / 2 + gap))),
+          mode: "adjacent" as const,
+          preferredFraction: fraction,
+        })))),
+      ];
+      const reserveCandidates = reservationCandidates.flatMap(({ rect: candidateRect, mode, preferredFraction }) => {
         const insideSafeRegion = candidateRect.left >= tableRect.left + margin
           && candidateRect.right <= tableRect.right - margin
           && candidateRect.top >= tableRect.top + margin
@@ -1020,7 +1034,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
         }
         if (overlaps(card, candidateRect, 8)) {
           fitCounts.dodgeRejectedByRootCard += 1;
-          return false;
+          return [];
         }
         const overlapsSeatOrDock = obstacleElements.some((element) => anchorObstacleSet.has(element)
           && overlaps(candidateRect, relativeRect(element, shellBounds), 22));
@@ -1029,18 +1043,26 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
         if (overlapsSeatOrDock || overlapsControl) {
           if (overlapsSeatOrDock) fitCounts.dodgeRejectedBySeatOrDock += 1;
           if (overlapsControl) fitCounts.dodgeRejectedByControl += 1;
-          return false;
+          return [];
         }
-        if (!segmentNearRect(attackStart, attackEnd, candidateRect, 20)) {
+        const projection = projectPointToSegment(attackStart, attackEnd, center(candidateRect));
+        if (projection.fraction < .35 || projection.fraction > .70
+          || (mode === "direct" ? !segmentIntersectsRect(attackStart, attackEnd, candidateRect)
+            : segmentIntersectsRect(attackStart, attackEnd, candidateRect)
+              || projection.distance < 12 || projection.distance > 20
+              || !segmentNearRect(attackStart, attackEnd, candidateRect, 20))) {
           fitCounts.dodgeRejectedOffAttackPath += 1;
-          return false;
+          return [];
         }
         fitCounts.validDodgeSlotCount += 1;
-        return true;
+        return [{
+          rect: candidateRect,
+          score: (mode === "direct" ? 0 : 500) + Math.abs(projection.fraction - .52) * 100
+            + projection.distance + Math.abs(preferredFraction - .52) * 20,
+        }];
       })
-        .sort((leftRect, rightRect) => Math.hypot(center(leftRect).x - idealPoint.x, center(leftRect).y - idealPoint.y)
-          - Math.hypot(center(rightRect).x - idealPoint.x, center(rightRect).y - idealPoint.y));
-      reservedDodge = reserveCandidates[0] ?? null;
+        .sort((left, right) => left.score - right.score);
+      reservedDodge = reserveCandidates[0]?.rect ?? null;
       if (!reservedDodge) {
         fitCounts.rootFitWithoutDodgeSlotCount += 1;
       } else {
@@ -1054,7 +1076,9 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   let candidates = pathCandidates;
   let placementFieldSearch: AttackRootPlacementFieldSearch | undefined;
   let usedPlacementFieldSearch = false;
-  if (isUnansweredAttackRoot && pathCandidates.length === 0 && shellBounds.width <= 600) {
+  const noViablePathRoot = pathCandidates.length === 0
+    || Boolean(reservedDodgeSize && pathCandidates.every((candidate) => !candidate.reservedDodge));
+  if (isUnansweredAttackRoot && noViablePathRoot && shellBounds.width <= 600) {
     const passes: NonNullable<AttackRootPlacementFieldSearch["passes"]>[number][] = [];
     let selectedCandidates: typeof pathCandidates = [];
     let selectedClearance: number | undefined;
@@ -1086,11 +1110,40 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
           if (sourcePathBlocked || targetPathBlocked) continue;
           connectorClearCount += 1;
           if (projection >= .30 && projection <= .42) preferredBandConnectorClearCount += 1;
+          const cardSourceStart = rectangleEdge(card, targetCenter);
+          const cardTargetEnd = rectangleEdge(targetRect, cardCenter);
+          const responseStart = reservedDodgeSize ? rectangleEdge(card, center(card)) : null;
+          const responseEnd = reservedDodgeSize ? rectangleEdge(targetRect, center(card)) : null;
+          const fieldReservedDodge = reservedDodgeSize && responseStart && responseEnd
+            ? [0, -16, 16, -32, 32].flatMap((offset) => [.4, .45, .5, .55, .6, .65].map((fraction) => {
+              const point = {
+                x: responseStart.x + (responseEnd.x - responseStart.x) * fraction + normal.x * offset,
+                y: responseStart.y + (responseEnd.y - responseStart.y) * fraction + normal.y * offset,
+              };
+              const responseRect: Rect = {
+                left: point.x - reservedDodgeSize.width / 2,
+                top: point.y - reservedDodgeSize.height / 2,
+                right: point.x + reservedDodgeSize.width / 2,
+                bottom: point.y + reservedDodgeSize.height / 2,
+                width: reservedDodgeSize.width,
+                height: reservedDodgeSize.height,
+              };
+              const safe = responseRect.left >= tableRect.left + margin && responseRect.right <= tableRect.right - margin
+                && responseRect.top >= tableRect.top + margin && responseRect.bottom <= stableStageBottom - margin;
+              const clear = safe && !overlaps(responseRect, card, 8)
+                && !obstacles.some((obstacle) => overlaps(responseRect, obstacle, 8));
+              const onPath = projectPointToSegment(cardSourceStart, cardTargetEnd, center(responseRect)).fraction >= .35
+                && projectPointToSegment(cardSourceStart, cardTargetEnd, center(responseRect)).fraction <= .70
+                && segmentIntersectsRect(cardSourceStart, cardTargetEnd, responseRect);
+              return clear && onPath ? [{ responseRect, score: Math.abs(fraction - .52) * 100 + Math.abs(offset) }] : [];
+            })).sort((left, right) => left.score - right.score)[0]?.responseRect ?? null
+            : null;
+          if (reservedDodgeSize && !fieldReservedDodge) continue;
           const lateral = Math.abs((cardCenter.x - sourceCenter.x) * -lineY + (cardCenter.y - sourceCenter.y) * lineX) / Math.sqrt(lineLengthSquared);
           const distance = Math.hypot(cardCenter.x - preferred.x, cardCenter.y - preferred.y);
           fieldCandidates.push({
             card,
-            reservedDodge: null,
+            reservedDodge: fieldReservedDodge,
             score: distance + Math.abs(projection - sourceBiasedFraction) * 80 + lateral * .12,
           });
         }
@@ -1762,6 +1815,18 @@ export function InteractionRootOverlay({
       const canScaleAttackCard = currentAction.cardKind === "Attack";
       const fitSteps = canScaleAttackCard ? ["target", "compact", "minimum"] as const : ["target"] as const;
       if (canScaleAttackCard && currentAction.response?.cardFace?.kind === "Dodge" && !hasStableRootForInteraction) {
+        if (diagnosticReporter) diagnosticReporter({
+          rootEventId: currentAction.rootEventId,
+          phase: "dodge-response",
+          fitStep: layer.dataset.rootActionCardFitStep ?? "target",
+          viewport: { width: Math.round(shellBounds.width), height: Math.round(shellBounds.height) },
+          cause: "dodge-response-without-stable-root",
+          placementIdentity: {
+            currentRootPlacementKey,
+            rememberedRootKey: rememberedRoot?.rootKey ?? null,
+            hasStableRootForInteraction,
+          },
+        });
         setLayout(null);
         onLayoutReadinessChange({ key: currentAction.key, state: "unavailable" });
         return;
@@ -1940,6 +2005,8 @@ export function InteractionRootOverlay({
     data-oath-recipient-count={action.simultaneousTargets?.length ?? undefined}
     data-root-action-mode={action.mode}
     data-root-action-card-kind={action.cardKind}
+    data-root-action-dodge-slot-reserved={action.cardKind === "Attack" && !action.response && !action.responses?.length
+      ? layout?.responseCard ? "true" : "false" : undefined}
     data-root-action-settlement-event-id={action.settlement?.eventId}
     data-root-action-settlement-exiting={action.settlement?.exiting ? "true" : undefined}
     data-root-effect-state={action.rootEffectState ?? undefined}

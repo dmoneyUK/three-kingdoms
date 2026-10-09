@@ -2566,3 +2566,19 @@ HANDOVER" wording here after the handoff has moved on.
   --check` passed. Pre-commit SHA `1ec040679ae0e354394aa1db96312e39904734e8`
   passed Actions run `37917467356`. Outgoing task CI is pending; Reviewer
   acceptance is not claimed.
+
+### UX2-6.27-CONVERTED-ATTACK-DODGE-PUBLIC-PROOF-01 — Longdan root response
+
+- Extended the server-authored Attack→Dodge relation to a uniquely linked
+  physical card explicitly converted with `playedAs: attack`; unmarked or
+  malformed conversions fail closed. The public relation remains viewer-equal
+  and excludes physical card IDs. A real Longdan browser flow now reaches an
+  actual defender Dodge in attacker and defender views, preserves the physical
+  Dodge root face and root position, reserves interception geometry before the
+  response, and removes the graph after settlement.
+- The focused engine-backed API case passed within 39/39 tests; the Longdan
+  browser case passed 2/2 repeats. Build, test syntax, focused ESLint on the
+  route/projection/overlay/specs, and `git diff --check` passed. ESLint on the
+  large `app/page.tsx` exceeded the local 4GB Node heap. Pre-commit SHA
+  `2ef038005ab4375a416c89fcfa2b0391479a1e86` passed Actions run `37921622267`;
+  outgoing task CI is pending. No Reviewer acceptance is claimed.

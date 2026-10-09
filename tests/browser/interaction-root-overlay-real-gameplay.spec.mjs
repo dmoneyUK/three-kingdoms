@@ -776,7 +776,7 @@ async function observeAttackDodgeSettlement(page, sourceId = null, targetId = nu
   }, { sourceId, targetId });
 }
 
-async function assertAttackDodgeSettlementCleanup(page, { rootAction, responseProof, baselineRoot, label }) {
+async function assertAttackDodgeSettlementCleanup(page, { rootAction, responseProof, baselineRoot, rootCardFaceKind = "Attack", label }) {
   await expect.poll(() => page.evaluate((responseEventId) =>
     window.__wtkAttackDodgeSettlementVisual?.response?.dataset.responseEventId === responseEventId,
   responseProof.responseEventId), {
@@ -786,7 +786,7 @@ async function assertAttackDodgeSettlementCleanup(page, { rootAction, responsePr
   const visual = await page.evaluate(() => window.__wtkAttackDodgeSettlementVisual);
   expect(visual.rootIdentity).toMatchObject({ rootEventId: rootAction.rootEventId });
   expect(visual.root.dataset).toMatchObject({
-    rootActionCardFaceKind: "Attack",
+    rootActionCardFaceKind: rootCardFaceKind,
     rootActionSettlementEventId: responseProof.responseEventId,
     rootActionSettlementOutcome: "ATTACK_BLOCKED_BY_DODGE",
   });
@@ -1257,7 +1257,7 @@ for (const scenario of [
   });
 }
 
-test("real Longdan physical Dodge-as-Attack reaches the defender with its proven Attack graph and card face", async ({ page, browser, request }, testInfo) => {
+test("real Longdan Dodge-as-Attack is intercepted by a real Dodge in both viewers", async ({ page, browser, request }, testInfo) => {
   test.setTimeout(60_000);
   const seed = await seedGame(request, 4, { sourceCard: longdanDodge, targetCard: dodge });
   const sourceId = seed.players[0].id;
@@ -1324,6 +1324,7 @@ test("real Longdan physical Dodge-as-Attack reaches the defender with its proven
   await expect(sourceRootCard).toHaveAttribute("data-root-action-card-face-kind", "Dodge");
   await expect(sourceRootCard.locator(".played-card.dodge")).toBeVisible();
   await expect(page.locator(".interaction-stage")).toHaveCount(0);
+  await expect(page.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-dodge-slot-reserved", "true");
 
   const defenderPage = await browser.newPage();
   try {
@@ -1335,9 +1336,124 @@ test("real Longdan physical Dodge-as-Attack reaches the defender with its proven
     await expect(defenderRootCard).toHaveAttribute("data-root-action-card-face-kind", "Dodge");
     await expect(defenderRootCard.locator(".played-card.dodge")).toBeVisible();
     await expect(defenderPage.locator(".interaction-stage")).toHaveCount(0);
+    await expect(defenderPage.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-dodge-slot-reserved", "true");
     await testInfo.attach("longdan-physical-dodge-attack-defender.png", {
       body: await defenderPage.screenshot(), contentType: "image/png",
     });
+
+    const sourceBaseline = await sourceRootCard.boundingBox();
+    const defenderBaseline = await defenderRootCard.boundingBox();
+    const viewers = [page, defenderPage];
+    const frameStarts = await Promise.all(viewers.map((viewer) => viewer.evaluate(() => {
+      window.__wtkStartAttackVisibleFrameSampling();
+      return window.__wtkAttackVisibleFrames.length;
+    })));
+    await Promise.all(viewers.map((viewer) => observeAttackDodgeSettlement(viewer, sourceId, targetId)));
+    await playDodgeThroughPage(defenderPage, dodge);
+    await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot?.attackDodgeResponses?.length ?? 0, {
+      timeout: 20_000,
+      message: "server publishes the actual defender Dodge against the Longdan Attack root",
+    }).toBe(1);
+
+    const [sourceAfterDodge, defenderAfterDodge] = await Promise.all([
+      roomView(request, seed, 0), roomView(request, seed, 1),
+    ]);
+    const responseProof = defenderAfterDodge.presentationSnapshot.attackDodgeResponses[0];
+    expect(sourceAfterDodge.presentationSnapshot.attackDodgeResponses).toEqual(defenderAfterDodge.presentationSnapshot.attackDodgeResponses);
+    expect(responseProof).toMatchObject({
+      semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
+      interactionId: rootAction.interactionId, rootFrameId: rootAction.rootFrameId,
+      rootEventId: rootAction.rootEventId, rootSourceId: sourceId, targetId,
+      responseActorId: targetId, rootCardKind: "Attack", responseCardKind: "Dodge",
+    });
+    expect(JSON.stringify(responseProof)).not.toContain(longdanDodge.id);
+    expect(JSON.stringify(responseProof)).not.toContain(dodge.id);
+    for (const view of [sourceAfterDodge, defenderAfterDodge]) {
+      expect(view.timeline.find((event) => event.id === rootAction.rootEventId)).toMatchObject({
+        action: "play", playedAs: "attack", card: { id: longdanDodge.id, kind: "Dodge" },
+      });
+      expect(view.timeline.find((event) => event.id === responseProof.responseEventId)).toMatchObject({
+        action: "play", card: { id: dodge.id, kind: "Dodge" },
+      });
+    }
+
+    const readResponseFrame = (viewer, start) => viewer.evaluate(({ frameStart, rootEventId, responseEventId }) =>
+      window.__wtkAttackVisibleFrames.slice(frameStart).find((frame) => frame.rootEventId === rootEventId
+        && frame.responseEventId === responseEventId && frame.responseCardVisible) ?? null,
+    { frameStart: start, rootEventId: rootAction.rootEventId, responseEventId: responseProof.responseEventId });
+    try {
+      await Promise.all(viewers.map(async (viewer, index) => expect.poll(
+        () => readResponseFrame(viewer, frameStarts[index]), {
+          timeout: 8_000,
+          message: `viewer ${index} captures the Longdan-root Dodge graph before settlement cleanup`,
+        },
+      ).toBeTruthy()));
+    } catch (error) {
+      const diagnostics = await Promise.all(viewers.map((viewer, index) => viewer.evaluate(({ frameStart, expectedRootEventId, expectedResponseEventId }) => {
+        const overlay = document.querySelector('[data-root-action-overlay="true"]');
+        const relevantFrames = window.__wtkAttackVisibleFrames.slice(frameStart)
+          .filter((frame) => frame.rootEventId === expectedRootEventId || frame.responseEventId === expectedResponseEventId);
+        return {
+          viewport: { width: innerWidth, height: innerHeight },
+          overlay: overlay ? { ...overlay.dataset } : null,
+          relevantFrames: relevantFrames.slice(-20),
+          latestFrames: window.__wtkAttackVisibleFrames.slice(-5),
+          fitDiagnostics: window.__wtkAttackFitDiagnostics.slice(-30),
+          rootCards: [...document.querySelectorAll('[data-root-action-card="true"]')].map((card) => ({ ...card.dataset, visible: card.getBoundingClientRect().width > 0 })),
+          responseCards: [...document.querySelectorAll('[data-root-action-response-card="true"]')].map((card) => ({ ...card.dataset, visible: card.getBoundingClientRect().width > 0 })),
+        };
+      }, { frameStart: frameStarts[index], expectedRootEventId: rootAction.rootEventId, expectedResponseEventId: responseProof.responseEventId })));
+      await testInfo.attach("longdan-response-frame-diagnostics.json", {
+        body: JSON.stringify(diagnostics, null, 2), contentType: "application/json",
+      });
+      throw error;
+    }
+    const responseFrames = await Promise.all(viewers.map((viewer, index) => readResponseFrame(viewer, frameStarts[index])));
+    for (const [index, frame] of responseFrames.entries()) {
+      expect(frame).toMatchObject({
+        mode: "graph", layoutState: "ready", rootEventId: rootAction.rootEventId,
+        rootCardVisible: true, responseActorId: targetId, responseCardKind: "Dodge",
+        attackDodgePathVisible: true, dodgeSourcePathVisible: true,
+      });
+      expect(Math.abs(frame.rootCardX - (index === 0 ? sourceBaseline.x : defenderBaseline.x))).toBeLessThanOrEqual(1);
+      expect(Math.abs(frame.rootCardY - (index === 0 ? sourceBaseline.y : defenderBaseline.y))).toBeLessThanOrEqual(1);
+      expect(await viewers[index].locator(".interaction-stage").count()).toBe(0);
+      await testInfo.attach(`longdan-attack-dodge-${index === 0 ? "attacker" : "defender"}-response.png`, {
+        body: await viewers[index].screenshot(), contentType: "image/png",
+      });
+    }
+
+    const [sourceSettlement, defenderSettlement] = await Promise.all([
+      assertAttackDodgeSettlementCleanup(page, {
+        rootAction, responseProof, baselineRoot: sourceBaseline, rootCardFaceKind: "Dodge", label: "Longdan attacker",
+      }),
+      assertAttackDodgeSettlementCleanup(defenderPage, {
+        rootAction, responseProof, baselineRoot: defenderBaseline, rootCardFaceKind: "Dodge", label: "Longdan defender",
+      }),
+    ]);
+    for (const [label, settlement] of [["attacker", sourceSettlement], ["defender", defenderSettlement]]) {
+      expect(settlement.visual.root.dataset.rootActionCardFaceKind, `${label}: Attack root keeps its physical Longdan Dodge face`).toBe("Dodge");
+      expect(settlement.visual.root.faceVisible).toBe(true);
+      expect(settlement.visual.response.dataset).toMatchObject({
+        responseEventId: responseProof.responseEventId,
+        responseActorId: targetId,
+        responseCardFaceKind: "Dodge",
+      });
+      expect(settlement.visual.response.faceVisible).toBe(true);
+      expect(settlement.visual.geometry.stageCount).toBe(0);
+      expect(settlement.visual.geometry.documentWidth).toBeLessThanOrEqual(settlement.visual.geometry.viewportWidth);
+      expect(settlement.visual.geometry.interception.mode).toMatch(/^(direct|adjacent)$/);
+      expect(settlement.visual.geometry.interception.centerFraction).toBeGreaterThanOrEqual(.35);
+      expect(settlement.visual.geometry.interception.centerFraction).toBeLessThanOrEqual(.70);
+      expect(settlement.visual.geometry.interception.pathEndpointToMarkCenter).toBeLessThanOrEqual(2.1);
+      expect(settlement.visual.geometry.edges.map((edge) => edge.edge)).toEqual(expect.arrayContaining([
+        "source", "attack-dodge-interception", "response-source", "interception-mark",
+      ]));
+      expect(settlement.visual.geometry.edges.every((edge) => edge.markerEnd === null)).toBe(true);
+      await testInfo.attach(`longdan-attack-dodge-${label}-settlement.json`, {
+        body: JSON.stringify(settlement, null, 2), contentType: "application/json",
+      });
+    }
   } finally {
     await defenderPage.close();
   }

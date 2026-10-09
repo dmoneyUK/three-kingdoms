@@ -2260,8 +2260,12 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
       || event.type !== "card" || event.presentation === false || event.action !== "play" || event.playedAs !== undefined
       || responseCard?.kind !== "Dodge" || !responseCardId || cardIdCounts.get(responseCardId) !== 1
       || proof.semantics !== "PROVEN" || proof.counterRelation !== "BLOCKS_TARGET_EFFECT"
-      || rootEvent.type !== "card" || rootEvent.presentation === false || rootEvent.action !== "play" || rootEvent.playedAs !== undefined
-      || rootCard?.kind !== "Attack" || !rootCardId || cardIdCounts.get(rootCardId) !== 1
+      || rootEvent.type !== "card" || rootEvent.presentation === false || rootEvent.action !== "play"
+      || !rootCardId || cardIdCounts.get(rootCardId) !== 1
+      || (rootEvent.playedAs === undefined
+        ? rootCard?.kind !== "Attack"
+        : rootEvent.playedAs !== "attack" || typeof rootCard?.kind !== "string" || rootCard.kind === "Attack"
+          || !CARD_KINDS.includes(rootCard.kind as CardKind))
       || rootEvent.resolutionId !== rootResolutionId || responseResolutionId !== rootResolutionId
       || rootEventId === eventId || !rootResolutionId || !interactionId || !rootFrameId
       || !rootSourceId || !targetId || rootSourceId === targetId || responseActorId !== targetId
