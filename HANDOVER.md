@@ -5,9 +5,9 @@ Mode: `USER-DIRECTED UX REPAIR`
 
 ## Latest result / CI
 
-Attack→Dodge response routing now binds a public Dodge proof to the exact current Attack root (event, interaction, frame, source, target), instead of rejecting it when the room contains multiple historical Dodge proofs. The exact active settlement event remains the hold identity. No test files were added or changed.
+Attack→Dodge now retains the captured, server-proven root + Dodge graph for 3,000ms of actual graph-ready visibility per viewer. Temporary proof/layout gaps no longer discard the held graph or reset its remaining visible time; a different authoritative root supersedes it immediately. No test files were added or changed.
 
-Existing server-backed browser spec passed 1/1: `real Attack→Dodge keeps its 3-second public graph without an exit animation under reduced motion`; `git diff --check` passed. Pre-change remote HEAD `6575eae88d1d48184b3bd01f750989f59cd06217` had Actions run `38001261734` Success, including deploy. The follow-up commit's CI has not yet been observed.
+Three existing server-backed browser specs passed: four-player Attack→Dodge, reduced-motion three-second hold, and immediate superseding Attack. `git diff --check` passed. Targeted ESLint could not complete: Node ran out of heap at both default and 4GB limits. Current remote HEAD `7f7f979e8b5e09c3ab692c57a9a442f2a3c2e3b3`, Actions run `38002051167` (#967), was observed Success before this change; this change's CI/deploy is pending.
 
 ## Design checkpoint
 
@@ -15,4 +15,4 @@ Latest `docs/UX2-refine.md` blob `6ad42a6f4522be67bd492a20aa1564e420aeffe2` revi
 
 ## Current task
 
-`UX2-6.29.1-ATTACK-DODGE-HISTORY-BOUND-RESPONSE-02` — deliver only the response-proof routing correction and this handoff, with no test changes. Then re-check the user's real four-player Dodge response screenshot; keep §6.29.1 open until the relationship graph is visibly confirmed.
+`UX2-6.29.1-ATTACK-DODGE-3S-VISIBLE-HOLD-03` — verify the pushed change in the real four-player Attack→Dodge path, including the complete graph remaining readable for three seconds; keep §6.29.1 open until the user's visual confirmation and remaining acceptance are complete.

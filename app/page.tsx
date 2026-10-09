@@ -23,7 +23,12 @@ import { InteractionRootOverlay, interactionRootActionKey, type InteractionRootO
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
-type ActiveAttackDodgeSettlement = { eventId: string; phase: "exiting" | "complete" };
+type ActiveAttackDodgeSettlement = {
+  eventId: string;
+  action: InteractionRootOverlayAction;
+  phase: "reading" | "exiting" | "complete";
+  remainingMs: number;
+};
 type ActivePublicNegationRead = { key: string; action: InteractionRootOverlayAction; expiresAt: number; phase: "reading" | "elapsed" | "live" | "settlement-pending" | "exiting" };
 type RootActionOverlayLayoutReadiness = { key: string; state: "measuring" | "ready" | "unavailable" } | null;
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
@@ -1997,7 +2002,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const [activeGroupSettlement, setActiveGroupSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeBumperHarvestSettlement, setActiveBumperHarvestSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeAttackDodgeSettlement, setActiveAttackDodgeSettlement] = useState<ActiveAttackDodgeSettlement | null>(null);
-  const attackDodgeSettlementTimerEventId = useRef<string | null>(null);
+  const attackDodgeSettlementCapturedEventIds = useRef(new Set<string>());
   const [activePublicNegationRead, setActivePublicNegationRead] = useState<ActivePublicNegationRead | null>(null);
   // Events already present when the screen mounts have no new animation to
   // wait for. New event IDs enter this set only after their presentation ends.
@@ -3710,7 +3715,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     : null;
   const committedSingleTargetNegationGraphOwnsRoot = Boolean(singleTargetNegationGraphCandidate?.responseNodes.length
     && (!rootAction || rootAction.rootEventId === singleTargetNegationGraphCandidate.rootEvent.id));
-  const rootActionOverlayAction: InteractionRootOverlayAction | null = heldPublicNegationReadAction
+  const liveRootActionOverlayAction: InteractionRootOverlayAction | null = heldPublicNegationReadAction
     ? heldPublicNegationReadAction
     : groupSettlementCandidate
     ? {
@@ -3962,7 +3967,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       }
     : singleTargetNegationGraphCandidate
       ? singleTargetNegationRootOverlayAction
-      : selfTargetCandidate
+    : selfTargetCandidate
       ? {
         key: ["self", selfTargetCandidate.action.rootEventId, selfTargetCandidate.action.resolutionId, selfTargetCandidate.action.sourceId].join(":"),
         rootEventId: selfTargetCandidate.action.rootEventId,
@@ -3974,6 +3979,42 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         mode: "self-target",
       }
       : null;
+  const attackDodgeRootIdentity = rootAction ? {
+    rootEventId: rootAction.rootEventId,
+    interactionId: rootAction.interactionId,
+    rootFrameId: rootAction.rootFrameId,
+    sourceId: rootAction.sourceId,
+    targetId: rootAction.targetId,
+  } : null;
+  const sameAttackDodgeRoot = (
+    candidate: Pick<InteractionRootOverlayAction, "rootEventId" | "interactionId" | "rootFrameId" | "sourceId" | "targetId"> | null,
+    held: InteractionRootOverlayAction,
+  ) => Boolean(candidate
+    && candidate.rootEventId === held.rootEventId
+    && candidate.interactionId === held.interactionId
+    && candidate.rootFrameId === held.rootFrameId
+    && candidate.sourceId === held.sourceId
+    && candidate.targetId === held.targetId);
+  const attackDodgeHoldSuperseded = Boolean(activeAttackDodgeSettlement
+    && activeAttackDodgeSettlement.phase !== "complete"
+    && (attackDodgeRootIdentity && !sameAttackDodgeRoot(attackDodgeRootIdentity, activeAttackDodgeSettlement.action)
+      || liveRootActionOverlayAction && !sameAttackDodgeRoot(liveRootActionOverlayAction, activeAttackDodgeSettlement.action)));
+  const heldAttackDodgeReadAction = activeAttackDodgeSettlement
+    && activeAttackDodgeSettlement.phase !== "complete"
+    && !attackDodgeHoldSuperseded
+    && activeAttackDodgeSettlement.action.settlement?.eventId === activeAttackDodgeSettlement.eventId
+    && activeAttackDodgeSettlement.action.response?.eventId === activeAttackDodgeSettlement.eventId
+    ? {
+      ...activeAttackDodgeSettlement.action,
+      settlement: {
+        ...activeAttackDodgeSettlement.action.settlement,
+        exiting: activeAttackDodgeSettlement.phase === "exiting",
+      },
+    }
+    : null;
+  const rootActionOverlayAction: InteractionRootOverlayAction | null = heldPublicNegationReadAction
+    ?? heldAttackDodgeReadAction
+    ?? liveRootActionOverlayAction;
   const rootActionSource = rootActionOverlayAction ? room.players.find((player) => player.id === rootActionOverlayAction.sourceId) : null;
   const rootActionTarget = rootActionOverlayAction ? room.players.find((player) => player.id === rootActionOverlayAction.targetId) : null;
   const rootActionTemporarilyBlocked = Boolean(targetPreviewPresentation || opponentInspectionPresentation
@@ -4236,20 +4277,42 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     ? rootActionOverlayAction.settlement.eventId
     : null;
   useEffect(() => {
+    if (!activeAttackDodgeSettlement || !attackDodgeHoldSuperseded) return;
+    setActiveAttackDodgeSettlement((current) => current?.eventId === activeAttackDodgeSettlement.eventId ? null : current);
+  }, [activeAttackDodgeSettlement?.eventId, attackDodgeHoldSuperseded]);
+  useEffect(() => {
+    const action = rootActionOverlayAction;
     if (!activeAttackDodgeSettlementEventId || !rootActionOverlayGraphReady
+      || !action?.response || action.response.eventId !== activeAttackDodgeSettlementEventId
       || activeAttackDodgeSettlement?.eventId === activeAttackDodgeSettlementEventId
-      || attackDodgeSettlementTimerEventId.current === activeAttackDodgeSettlementEventId) return;
+      || attackDodgeSettlementCapturedEventIds.current.has(activeAttackDodgeSettlementEventId)) return;
     onPublicCounterReadVisible(`attack-dodge:${activeAttackDodgeSettlementEventId}`);
-    attackDodgeSettlementTimerEventId.current = activeAttackDodgeSettlementEventId;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    attackDodgeSettlementCapturedEventIds.current.add(activeAttackDodgeSettlementEventId);
+    setActiveAttackDodgeSettlement({
+      eventId: activeAttackDodgeSettlementEventId,
+      action,
+      phase: "reading",
+      remainingMs: UI_TIMING.publicCounterRead,
+    });
+  }, [activeAttackDodgeSettlement?.eventId, activeAttackDodgeSettlementEventId, onPublicCounterReadVisible, rootActionOverlayAction, rootActionOverlayGraphReady]);
+  useEffect(() => {
+    if (activeAttackDodgeSettlement?.phase !== "reading" || !rootActionOverlayGraphReady) return;
+    const eventId = activeAttackDodgeSettlement.eventId;
+    const visibleSince = performance.now();
     const timer = window.setTimeout(() => {
-      setActiveAttackDodgeSettlement({ eventId: activeAttackDodgeSettlementEventId, phase: reducedMotion ? "complete" : "exiting" });
-    }, UI_TIMING.publicCounterRead);
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      setActiveAttackDodgeSettlement((current) => current?.eventId === eventId && current.phase === "reading"
+        ? { ...current, phase: reducedMotion ? "complete" : "exiting", remainingMs: 0 }
+        : current);
+    }, Math.max(0, activeAttackDodgeSettlement.remainingMs));
     return () => {
       window.clearTimeout(timer);
-      if (attackDodgeSettlementTimerEventId.current === activeAttackDodgeSettlementEventId) attackDodgeSettlementTimerEventId.current = null;
+      const visibleMs = performance.now() - visibleSince;
+      setActiveAttackDodgeSettlement((current) => current?.eventId === eventId && current.phase === "reading"
+        ? { ...current, remainingMs: Math.max(0, current.remainingMs - visibleMs) }
+        : current);
     };
-  }, [activeAttackDodgeSettlement?.eventId, activeAttackDodgeSettlementEventId, onPublicCounterReadVisible, rootActionOverlayGraphReady]);
+  }, [activeAttackDodgeSettlement?.eventId, activeAttackDodgeSettlement?.phase, activeAttackDodgeSettlement?.remainingMs, rootActionOverlayGraphReady]);
   useEffect(() => {
     if (activeAttackDodgeSettlement?.phase !== "exiting") return;
     const timer = window.setTimeout(() => {
