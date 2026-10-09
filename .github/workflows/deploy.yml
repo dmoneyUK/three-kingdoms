@@ -68,6 +68,16 @@ jobs:
       - run: npm run build
       - name: Run browser shard
         run: npm run test:browser -- --shard=${{ matrix.shard }}/2
+      - name: Upload Playwright browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-shard-${{ matrix.shard }}-playwright-report
+          path: |
+            tests/browser/playwright-report/
+            tests/browser/test-results/browser/
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Upload Wrangler browser-worker log
         if: failure()
         uses: actions/upload-artifact@v4

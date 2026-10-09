@@ -1406,10 +1406,13 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     };
   }
   // A CurrentAction handoff can grow the local Dock slightly. Preserve the
-  // cached root and apply only the minimum upward correction needed to keep
-  // the required 8px Seat/Dock clearance, rather than re-routing the root.
+  // cached root and apply the extra 8px clearance only for a single-target
+  // Attack whose proven target is this viewer's Dock; other root graphs keep
+  // their existing stable bottom boundary.
+  const stableTargetDockInset = action.cardKind === "Attack" && action.mode === "targeted"
+    && targetElement.classList.contains("local-player-dock") ? 8 : 0;
   const stableRootBottomCorrection = preferredRootCard
-    ? Math.max(0, preferredRootCard.bottom - (stableStageBottom - 8))
+    ? Math.max(0, preferredRootCard.bottom - (stableStageBottom - stableTargetDockInset))
     : 0;
   const stableRootCard = preferredRootCard ? {
     ...preferredRootCard,
