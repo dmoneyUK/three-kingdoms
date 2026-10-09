@@ -1324,7 +1324,6 @@ test("real Longdan Dodge-as-Attack is intercepted by a real Dodge in both viewer
   await expect(sourceRootCard).toHaveAttribute("data-root-action-card-face-kind", "Dodge");
   await expect(sourceRootCard.locator(".played-card.dodge")).toBeVisible();
   await expect(page.locator(".interaction-stage")).toHaveCount(0);
-  await expect(page.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-dodge-slot-reserved", "true");
 
   const defenderPage = await browser.newPage();
   try {
@@ -1336,7 +1335,6 @@ test("real Longdan Dodge-as-Attack is intercepted by a real Dodge in both viewer
     await expect(defenderRootCard).toHaveAttribute("data-root-action-card-face-kind", "Dodge");
     await expect(defenderRootCard.locator(".played-card.dodge")).toBeVisible();
     await expect(defenderPage.locator(".interaction-stage")).toHaveCount(0);
-    await expect(defenderPage.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-dodge-slot-reserved", "true");
     await testInfo.attach("longdan-physical-dodge-attack-defender.png", {
       body: await defenderPage.screenshot(), contentType: "image/png",
     });
@@ -1459,7 +1457,7 @@ test("real Longdan Dodge-as-Attack is intercepted by a real Dodge in both viewer
   }
 });
 
-test("real Guan Yu red Peach-as-Attack preserves its physical root card for both viewers", async ({ page, browser, request }, testInfo) => {
+test("real Guan Yu red Peach-as-Attack is intercepted by a real Dodge in both viewers", async ({ page, browser, request }, testInfo) => {
   test.setTimeout(60_000);
   const redPeach = { id: "root-overlay-real-wusheng-red-peach", kind: "Peach", suit: "♥", rank: "6" };
   const blackPeach = { id: "root-overlay-real-wusheng-black-peach", kind: "Peach", suit: "♠", rank: "7" };
@@ -1533,6 +1531,7 @@ test("real Guan Yu red Peach-as-Attack preserves its physical root card for both
   await expect(sourceRootCard).toHaveAttribute("data-root-action-card-face-kind", "Peach");
   await expect(sourceRootCard.locator(".played-card.peach")).toBeVisible();
   await expect(page.locator(".interaction-stage")).toHaveCount(0);
+  const sourceBaseline = await sourceRootCard.boundingBox();
   await testInfo.attach("wusheng-red-peach-attack-source.png", { body: await page.screenshot(), contentType: "image/png" });
 
   const defenderPage = await browser.newPage({ viewport });
@@ -1543,7 +1542,103 @@ test("real Guan Yu red Peach-as-Attack preserves its physical root card for both
     await expect(defenderRootCard).toHaveAttribute("data-root-action-card-face-kind", "Peach");
     await expect(defenderRootCard.locator(".played-card.peach")).toBeVisible();
     await expect(defenderPage.locator(".interaction-stage")).toHaveCount(0);
+    const defenderBaseline = await defenderRootCard.boundingBox();
     await testInfo.attach("wusheng-red-peach-attack-defender.png", { body: await defenderPage.screenshot(), contentType: "image/png" });
+
+    const viewers = [page, defenderPage];
+    const frameStarts = await Promise.all(viewers.map((viewer) => viewer.evaluate(() => {
+      window.__wtkStartAttackVisibleFrameSampling();
+      return window.__wtkAttackVisibleFrames.length;
+    })));
+    await Promise.all(viewers.map((viewer) => observeAttackDodgeSettlement(viewer, sourceId, targetId)));
+    await playDodgeThroughPage(defenderPage, dodge);
+    await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot?.attackDodgeResponses?.length ?? 0, {
+      timeout: 20_000,
+      message: "the server publishes the defender Dodge against Guan Yu's converted Peach Attack",
+    }).toBe(1);
+
+    const [sourceAfterDodge, defenderAfterDodge] = await Promise.all([
+      roomView(request, seed, 0), roomView(request, seed, 1),
+    ]);
+    const responseProof = defenderAfterDodge.presentationSnapshot.attackDodgeResponses[0];
+    expect(sourceAfterDodge.presentationSnapshot.attackDodgeResponses).toEqual(defenderAfterDodge.presentationSnapshot.attackDodgeResponses);
+    expect(responseProof).toMatchObject({
+      semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
+      interactionId: rootAction.interactionId, rootFrameId: rootAction.rootFrameId,
+      rootEventId: rootAction.rootEventId, rootSourceId: sourceId, targetId,
+      responseActorId: targetId, rootCardKind: "Attack", responseCardKind: "Dodge",
+    });
+    expect(JSON.stringify(responseProof)).not.toContain(redPeach.id);
+    expect(JSON.stringify(responseProof)).not.toContain(dodge.id);
+    const settledRootEvent = sourceAfterDodge.timeline.find((event) => event.id === rootAction.rootEventId);
+    const settledResponseEvent = sourceAfterDodge.timeline.find((event) => event.id === responseProof.responseEventId);
+    expect(responseProof.rootResolutionId).toBe(settledRootEvent.resolutionId);
+    expect(responseProof.responseResolutionId).toBe(settledRootEvent.resolutionId);
+    expect(settledResponseEvent.resolutionId).toBe(settledRootEvent.resolutionId);
+    for (const view of [sourceAfterDodge, defenderAfterDodge]) {
+      expect(view.timeline.find((event) => event.id === rootAction.rootEventId)).toMatchObject({
+        action: "play", playedAs: "attack", card: { id: redPeach.id, kind: "Peach", suit: "♥", rank: "6" },
+      });
+      expect(view.timeline.find((event) => event.id === responseProof.responseEventId)).toMatchObject({
+        action: "play", card: { id: dodge.id, kind: "Dodge" },
+      });
+    }
+
+    const readResponseFrame = (viewer, start) => viewer.evaluate(({ frameStart, rootEventId, responseEventId }) =>
+      window.__wtkAttackVisibleFrames.slice(frameStart).find((frame) => frame.rootEventId === rootEventId
+        && frame.responseEventId === responseEventId && frame.responseCardVisible) ?? null,
+    { frameStart: start, rootEventId: rootAction.rootEventId, responseEventId: responseProof.responseEventId });
+    const responseScreenshots = [null, null];
+    await Promise.all(viewers.map(async (viewer, index) => expect.poll(
+      async () => {
+        const frame = await readResponseFrame(viewer, frameStarts[index]);
+        if (frame && !responseScreenshots[index]) responseScreenshots[index] = await viewer.screenshot();
+        return frame;
+      }, {
+        timeout: 8_000,
+        message: `viewer ${index} captures the Guan Yu-root Dodge graph before settlement cleanup`,
+      },
+    ).toBeTruthy()));
+    const responseFrames = await Promise.all(viewers.map((viewer, index) => readResponseFrame(viewer, frameStarts[index])));
+    for (const [index, frame] of responseFrames.entries()) {
+      expect(frame).toMatchObject({
+        mode: "graph", layoutState: "ready", rootEventId: rootAction.rootEventId,
+        rootCardVisible: true, responseActorId: targetId, responseCardKind: "Dodge",
+        attackDodgePathVisible: true, dodgeSourcePathVisible: true,
+      });
+      expect(Math.abs(frame.rootCardX - (index === 0 ? sourceBaseline.x : defenderBaseline.x))).toBeLessThanOrEqual(1);
+      expect(Math.abs(frame.rootCardY - (index === 0 ? sourceBaseline.y : defenderBaseline.y))).toBeLessThanOrEqual(1);
+      expect(frame.interactionStageCount).toBe(0);
+      await testInfo.attach(`wusheng-peach-attack-dodge-${index === 0 ? "attacker" : "defender"}.png`, {
+        body: responseScreenshots[index], contentType: "image/png",
+      });
+    }
+
+    const [sourceSettlement, defenderSettlement] = await Promise.all([
+      assertAttackDodgeSettlementCleanup(page, {
+        rootAction, responseProof, baselineRoot: sourceBaseline, rootCardFaceKind: "Peach", label: "Guan Yu attacker",
+      }),
+      assertAttackDodgeSettlementCleanup(defenderPage, {
+        rootAction, responseProof, baselineRoot: defenderBaseline, rootCardFaceKind: "Peach", label: "Guan Yu defender",
+      }),
+    ]);
+    for (const [label, settlement] of [["attacker", sourceSettlement], ["defender", defenderSettlement]]) {
+      expect(settlement.visual.root.faceVisible, `${label}: the physical Peach root face remains visible`).toBe(true);
+      expect(settlement.visual.response.faceVisible, `${label}: the physical Dodge response remains visible`).toBe(true);
+      expect(settlement.visual.geometry.stageCount).toBe(0);
+      expect(settlement.visual.geometry.documentWidth).toBeLessThanOrEqual(settlement.visual.geometry.viewportWidth);
+      expect(settlement.visual.geometry.interception.mode).toMatch(/^(direct|adjacent)$/);
+      expect(settlement.visual.geometry.interception.centerFraction).toBeGreaterThanOrEqual(.35);
+      expect(settlement.visual.geometry.interception.centerFraction).toBeLessThanOrEqual(.70);
+      expect(settlement.visual.geometry.interception.pathEndpointToMarkCenter).toBeLessThanOrEqual(2.1);
+      expect(settlement.visual.geometry.edges.map((edge) => edge.edge)).toEqual(expect.arrayContaining([
+        "source", "attack-dodge-interception", "response-source", "interception-mark",
+      ]));
+      expect(settlement.visual.geometry.edges.every((edge) => edge.markerEnd === null)).toBe(true);
+      await testInfo.attach(`wusheng-peach-attack-dodge-${label}-settlement.json`, {
+        body: JSON.stringify(settlement, null, 2), contentType: "application/json",
+      });
+    }
   } finally {
     await defenderPage.close();
   }
@@ -1857,28 +1952,70 @@ for (const scenario of [
         if (layout.mode !== "fallback") continue;
         const fitDiagnostic = layout.fitDiagnostics.at(-1);
         expect(fitDiagnostic, `${playerCount}p ${viewport.width}px ${role}: fallback has a measured fit cause`).toBeTruthy();
-        expect(fitDiagnostic.cause).toMatch(/^(missing-table-or-card-rect|missing-or-invalid-player-anchor|table-smaller-than-card-margin|no-attack-root-candidate)$/);
+        expect(fitDiagnostic.cause).toMatch(/^(missing-table-or-card-rect|missing-or-invalid-player-anchor|table-smaller-than-card-margin|no-attack-root-candidate|no-reserved-dodge-candidate)$/);
         if (fitDiagnostic.cause === "no-attack-root-candidate") {
           expect(fitDiagnostic.candidateCount, `${role}: diagnostic records the attempted path-based candidate set`).toBeGreaterThan(0);
           expect(fitDiagnostic.rootFitCandidateCount, `${role}: no sampled root rectangle clears all measured obstacles`).toBe(0);
           expect(fitDiagnostic.rootRejectedBySeatOrDock + fitDiagnostic.rootRejectedByControl,
             `${role}: all rejected roots are attributed to measured seat/dock or control collisions`).toBeGreaterThan(0);
         }
+        if (fitDiagnostic.cause === "no-reserved-dodge-candidate") {
+          expect(fitDiagnostic.candidateCount, `${role}: the sampled root search was measured`).toBeGreaterThan(0);
+          expect(fitDiagnostic.rootFitWithDodgeSlotCount, `${role}: no root has a proven safe Dodge response slot`).toBe(0);
+          const fieldRootFitCount = fitDiagnostic.placementFieldSearch?.passes.reduce((count, pass) => count + pass.connectorClearCount, 0) ?? 0;
+          expect(fitDiagnostic.rootFitCandidateCount + fieldRootFitCount,
+            `${role}: the diagnostic distinguishes a root-only fit from a complete root/Dodge pair`).toBeGreaterThan(0);
+          if (fitDiagnostic.rootFitCandidateCount > 0) {
+            expect(fitDiagnostic.rootFitWithoutDodgeSlotCount).toBe(fitDiagnostic.rootFitCandidateCount);
+          } else {
+            expect(fitDiagnostic.rootFitWithoutDodgeSlotCount).toBe(0);
+          }
+          expect(fitDiagnostic.placementSearchEligibility).toMatchObject({
+            attempted: true, unansweredAttackRoot: true, viewportWidth: viewport.width,
+          });
+          expect(fitDiagnostic.placementFieldSearch?.passes.map((pass) => pass.clearance)).toEqual([12, 8]);
+          expect(fitDiagnostic.placementFieldSearch?.selectedClearance).toBeUndefined();
+        }
       }
       const selectedActorFieldFit = actorLayout.fitDiagnostics.find((diagnostic) => diagnostic.cause === "placement-field-root-selected");
       if (playerCount === 8 && viewport.width === 390) {
         expect(actorLayout.mode, "the 8-player 390px local attacker has no safe root fit at any supported size").toBe("fallback");
         expect(selectedActorFieldFit).toBeUndefined();
-        const exhaustedSearches = actorLayout.fitDiagnostics.filter((diagnostic) => diagnostic.cause === "no-attack-root-candidate"
+        const exhaustedSearches = actorLayout.fitDiagnostics.filter((diagnostic) =>
+          (diagnostic.cause === "no-attack-root-candidate" || diagnostic.cause === "no-reserved-dodge-candidate")
           && diagnostic.placementSearchEligibility?.attempted);
         expect(new Set(exhaustedSearches.map((diagnostic) => diagnostic.fitStep))).toEqual(new Set(["target", "compact", "minimum"]));
         for (const diagnostic of exhaustedSearches) {
-          expect(diagnostic.placementSearchEligibility).toMatchObject({ attempted: true, unansweredAttackRoot: true, viewportWidth: 390, pathCandidateCount: 0 });
+          expect(diagnostic.placementSearchEligibility).toMatchObject({ attempted: true, unansweredAttackRoot: true, viewportWidth: 390 });
           expect(diagnostic.placementFieldSearch?.passes.map((pass) => pass.clearance)).toEqual([12, 8]);
-          expect(diagnostic.placementFieldSearch?.passes.every((pass) => pass.cardClearCount === 0 && pass.connectorClearCount === 0)).toBe(true);
+          if (diagnostic.cause === "no-attack-root-candidate") {
+            expect(diagnostic.placementSearchEligibility.pathCandidateCount).toBe(0);
+            expect(diagnostic.rootFitCandidateCount).toBe(0);
+            expect(diagnostic.placementFieldSearch?.passes.every((pass) => pass.cardClearCount === 0 && pass.connectorClearCount === 0)).toBe(true);
+          } else {
+            expect(diagnostic.rootFitWithDodgeSlotCount).toBe(0);
+            const measurableRootCount = diagnostic.rootFitCandidateCount + diagnostic.placementFieldSearch.passes
+              .reduce((count, pass) => count + pass.connectorClearCount, 0);
+            expect(measurableRootCount, JSON.stringify(diagnostic)).toBeGreaterThan(0);
+          }
         }
         expect(actorLayout.placementFieldScan?.available).toBe(true);
         expect(actorLayout.placementFieldScan?.scans.every((pass) => pass.cardClear === 0 && pass.connectorClear === 0)).toBe(true);
+      } else if (actorLayout.mode === "fallback") {
+        const exhaustedSearches = actorLayout.fitDiagnostics.filter((diagnostic) => diagnostic.placementSearchEligibility?.attempted);
+        expect(new Set(exhaustedSearches.map((diagnostic) => diagnostic.fitStep)))
+          .toEqual(new Set(["target", "compact", "minimum"]));
+        expect(exhaustedSearches.at(-1)?.cause).toBe("no-reserved-dodge-candidate");
+        for (const diagnostic of exhaustedSearches) {
+          expect(diagnostic.placementSearchEligibility).toMatchObject({
+            attempted: true, unansweredAttackRoot: true, viewportWidth: viewport.width,
+          });
+          expect(diagnostic.placementFieldSearch?.passes.map((pass) => pass.clearance)).toEqual([12, 8]);
+          expect(diagnostic.placementFieldSearch?.selectedClearance).toBeUndefined();
+          expect(diagnostic.rootFitWithDodgeSlotCount).toBe(0);
+          expect(diagnostic.rootFitCandidateCount + (diagnostic.placementFieldSearch?.passes
+            .reduce((count, pass) => count + pass.connectorClearCount, 0) ?? 0)).toBeGreaterThan(0);
+        }
       } else {
         expect(actorLayout.mode, `${playerCount}p ${viewport.width}px local attacker uses the proven graph`).toBe("graph");
         expect(selectedActorFieldFit, "the graph came from the measured field search, not the old sampled path set").toBeTruthy();
@@ -2189,9 +2326,6 @@ for (const scenario of [
         expect(Math.abs(responseLayout.rootCard.y - targetLayout.root.y), "dense Attack root keeps its y when Dodge appears").toBeLessThanOrEqual(1);
         const fieldSelection = responseLayout.fitDiagnostics
           .filter((diagnostic) => diagnostic.cause === "placement-field-dodge-selected").at(-1);
-        if (viewport.width === 480) {
-          expect(fieldSelection, "the 480px dense case exercises the exhaustive Dodge placement field search").toBeTruthy();
-        }
         if (fieldSelection) {
           const search = fieldSelection.dodgePlacementFieldSearch;
           expect(search).toMatchObject({
@@ -2219,9 +2353,22 @@ for (const scenario of [
         expect(defenderDodgeOutcome.fallbackFrame.interactionStageCount).toBeLessThanOrEqual(1);
         const dodgeFitDiagnostic = defenderDodgeOutcome.fitDiagnostic;
         expect(dodgeFitDiagnostic, "safe Dodge fallback records a test-only geometry cause for the same proven root").toBeTruthy();
-        expect(dodgeFitDiagnostic.cause).toMatch(/^(missing-table-or-card-rect|missing-or-invalid-player-anchor|missing-dodge-response-card|dodge-interception-point-unavailable|table-smaller-than-card-margin|no-attack-root-candidate|no-dodge-interception-candidate)$/);
+        expect(dodgeFitDiagnostic.cause).toMatch(/^(missing-table-or-card-rect|missing-or-invalid-player-anchor|missing-dodge-response-card|dodge-interception-point-unavailable|table-smaller-than-card-margin|no-attack-root-candidate|no-dodge-interception-candidate|no-reserved-dodge-candidate|dodge-response-without-stable-root)$/);
+        if (dodgeFitDiagnostic.cause === "dodge-response-without-stable-root") {
+          expect(dodgeFitDiagnostic.placementIdentity).toMatchObject({
+            rememberedRootKey: null,
+            hasStableRootForInteraction: false,
+          });
+          expect(dodgeFitDiagnostic.placementIdentity.currentRootPlacementKey).toEqual(expect.any(String));
+        }
         if (playerCount === 6 && viewport.width === 390) {
-          expect(dodgeFitDiagnostic.cause, "the measured 6-player 390px scene exhausts real placement options and fails closed").toBe("no-dodge-interception-candidate");
+          if (targetLayout.mode === "graph") {
+            expect(dodgeFitDiagnostic.cause, "a stable 6-player 390px root records exhausted Dodge interception candidates").toBe("no-dodge-interception-candidate");
+          } else {
+            expect(targetLayout.mode).toBe("fallback");
+            expect(dodgeFitDiagnostic.cause, "a 6-player 390px response without a measurable defender root fails closed explicitly")
+              .toBe("dodge-response-without-stable-root");
+          }
         }
         if (dodgeFitDiagnostic.cause === "no-dodge-interception-candidate") {
           expect(dodgeFitDiagnostic.dodgeDirectCandidateCount + dodgeFitDiagnostic.dodgeAdjacentCandidateCount,

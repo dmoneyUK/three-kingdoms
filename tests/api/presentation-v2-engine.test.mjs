@@ -409,7 +409,7 @@ test("engine-backed Longdan Dodge-as-Attack preserves semantic root and physical
     "a converted root without its exact Attack marker cannot prove the public Dodge relation");
 });
 
-test("engine-backed Guan Yu red Peach-as-Attack preserves its public physical-card proof", { timeout: 30_000 }, async () => {
+test("engine-backed Guan Yu Peach-as-Attack preserves its physical root through a real Dodge", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [source, target] = game.room.players;
   const [sourceMember, targetMember, observerMember] = game.members;
@@ -498,6 +498,36 @@ test("engine-backed Guan Yu red Peach-as-Attack preserves its public physical-ca
   assert.deepEqual(publicSnapshot(observerView.presentationSnapshot), publicSnapshot(targetView.presentationSnapshot),
     "the converted public Attack root is viewer-equal");
   assert.equal(observerView.currentAction.options, undefined, "the target's private Dodge providers remain private");
+
+  const responded = await request("respond", {
+    code: game.code, token: targetMember.token, providerId: "card", cardId: targetDodge.id,
+  });
+  assert.equal(responded.status, 200, JSON.stringify(responded.data));
+  const sourceSettled = await assertProjectionMatchesEngine(game.code, sourceMember.token);
+  const targetSettled = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  const observerSettled = await assertProjectionMatchesEngine(game.code, observerMember.token);
+  const responseEvent = sourceSettled.timeline.find((event) => event.type === "card" && event.card?.id === targetDodge.id);
+  assert.ok(responseEvent, "the production response persists the defender's physical Dodge event");
+  assert.deepEqual(responseEvent.attackDodgeResponse, {
+    semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
+    interactionId: rootAction.interactionId, rootFrameId: rootAction.rootFrameId,
+    rootEventId: rootEvent.id, rootResolutionId: rootEvent.resolutionId,
+    rootSourceId: source.id, targetId: target.id, responseActorId: target.id,
+    rootCardKind: "Attack", responseCardKind: "Dodge",
+  }, "the server links the real Dodge to the converted Peach Attack without card identities");
+  assert.equal(responseEvent.resolutionId, rootEvent.resolutionId);
+  const peachDodgeProof = sourceSettled.presentationV2.attackDodgeResponses[0];
+  assert.equal(sourceSettled.presentationV2.attackDodgeResponses.length, 1);
+  assert.deepEqual(sourceSettled.presentationSnapshot.attackDodgeResponses, [peachDodgeProof]);
+  assert.deepEqual(targetSettled.presentationSnapshot.attackDodgeResponses, [peachDodgeProof]);
+  assert.deepEqual(observerSettled.presentationSnapshot.attackDodgeResponses, [peachDodgeProof]);
+  assert.equal(JSON.stringify(peachDodgeProof).includes(redPeach.id), false);
+  assert.equal(JSON.stringify(peachDodgeProof).includes(targetDodge.id), false);
+  for (const view of [sourceSettled, targetSettled, observerSettled]) {
+    assert.deepEqual(view.timeline.find((event) => event.id === rootEvent.id)?.card, redPeach,
+      "all public views retain the physical Peach event as the semantic Attack root");
+    assert.equal(view.timeline.find((event) => event.id === rootEvent.id)?.playedAs, "attack");
+  }
 });
 
 test("engine-backed direct Attack decline publishes only the exact applied-damage settlement", { timeout: 30_000 }, async () => {

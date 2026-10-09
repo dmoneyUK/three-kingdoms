@@ -2582,3 +2582,18 @@ HANDOVER" wording here after the handoff has moved on.
   large `app/page.tsx` exceeded the local 4GB Node heap. Pre-commit SHA
   `2ef038005ab4375a416c89fcfa2b0391479a1e86` passed Actions run `37921622267`;
   outgoing task CI is pending. No Reviewer acceptance is claimed.
+
+### UX2-6.27-WUSHENG-ATTACK-DODGE-INTERCEPTION-01 — Guan Yu real response
+
+- Extended the real Guan Yu red-Peach-as-Attack production flow through an
+  actual defender Dodge. Engine-backed API proof and both browser viewers
+  confirm viewer-equal, card-ID-free public causality while preserving the
+  physical Peach root and Dodge response; the root stays within 1px, the Dodge
+  directly/adjacently intercepts the red path, and the graph cleans up after
+  settlement. Fresh attacker/defender screenshots capture the response graph
+  on its first measured visible frame.
+- The API file passed 39/39; the focused Guan browser path passed 1/1 after the
+  screenshot-timing regression was added. Browser shard 1/2 passed 443 tests;
+  two Group Negation cases were flaky on the full run but passed isolated 6/6.
+  Build, targeted ESLint, syntax, and `git diff --check` passed. Reviewer
+  acceptance is not claimed.
