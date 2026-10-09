@@ -2459,3 +2459,19 @@ HANDOVER" wording here after the handoff has moved on.
   base SHA `b98834674e32ecdd8faa6bccdcd64e699a4d93b6` passed all five jobs in
   Actions run `37902249037`; this task's outgoing SHA remains pending CI.
   Reviewer acceptance is not claimed.
+
+### UX2-6.24-ATTACK-RECONNECT-FAIL-CLOSED-PROOF-01 — Attack root lifecycle
+
+- Added a real server-backed browser lifecycle proof: ordinary Attack is played
+  through the production page, both attacker and defender reload during the
+  open response, and each restores the same authoritative root event and
+  interaction. Sampled source/target connector residuals remain within 2.1px;
+  every physical Seat/Dock anchor and root-card rectangle stays within 1px
+  across reload. The graph is absent while the public root proof is withheld
+  from the defender's room response, then the same root graph returns when the
+  proof is restored. A real Skip advances the server; subsequent reloads do
+  not revive the old root or its connectors.
+- Focused browser case passed 1/1 at 390×844; targeted ESLint and
+  `git diff --check` passed. Screenshots for both roles, missing-proof fallback,
+  and proof recovery are attached to the Playwright report. This supplements,
+  rather than replaces, the existing ten-window polling stability matrix.

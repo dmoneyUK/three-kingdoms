@@ -2462,6 +2462,43 @@ async function captureAttackGraphGeometry(page, sourceId, targetId, playerCount,
   return { playerCount, viewport, before, after };
 }
 
+async function captureReconnectAttackGraph(page, rootAction, playerCount, viewport, label) {
+  await expectAttackGraphIdentity(page, rootAction);
+  await expect.poll(() => page.evaluate(({ rootEventId, interactionId }) => {
+    const frame = window.__wtkAttackVisibleFrames.at(-1);
+    return frame?.rootEventId === rootEventId && frame?.interactionId === interactionId
+      && frame.mode === "graph" && frame.layoutState === "ready"
+      && frame.sourceEdgeVisible && frame.targetEdgeVisible && frame.targetMarkerPresent && frame.svgVisible
+      && frame.sourceAnchorResidual <= 2.1 && frame.targetAnchorResidual <= 2.1;
+  }, { rootEventId: rootAction.rootEventId, interactionId: rootAction.interactionId }), {
+    timeout: 20_000,
+    message: `${label}: a sampled frame confirms both connectors reach the same proven source/root/target anchors`,
+  }).toBe(true);
+
+  const frame = await page.evaluate(() => window.__wtkAttackVisibleFrames.at(-1));
+  const geometry = await captureAttackGraphGeometry(page, rootAction.sourceId, rootAction.targetId, playerCount, viewport, label);
+  expect(geometry.after.stageCount, `${label}: graph does not duplicate the legacy Interaction Stage`).toBe(0);
+  expect(geometry.after.documentWidth, `${label}: no horizontal overflow`).toBeLessThanOrEqual(viewport.width);
+  return { frame, geometry };
+}
+
+function expectReconnectGeometryStable(before, after, label) {
+  const priorAnchors = new Map(before.geometry.after.playerAnchors.map((anchor) => [anchor.id, anchor]));
+  expect(after.geometry.after.playerAnchors).toHaveLength(priorAnchors.size);
+  for (const anchor of after.geometry.after.playerAnchors) {
+    const prior = priorAnchors.get(anchor.id);
+    expect(prior, `${label}: existing physical Seat/Dock ${anchor.id} is present before and after reload`).toBeTruthy();
+    for (const dimension of ["x", "y", "right", "bottom", "width", "height"]) {
+      expect(Math.abs(anchor[dimension] - prior[dimension]), `${label}: ${anchor.id} ${dimension} is stable across reload`)
+        .toBeLessThanOrEqual(1);
+    }
+  }
+  for (const dimension of ["x", "y", "right", "bottom", "width", "height"]) {
+    expect(Math.abs(after.geometry.after.card[dimension] - before.geometry.after.card[dimension]),
+      `${label}: the same Attack card ${dimension} is stable across reload`).toBeLessThanOrEqual(1);
+  }
+}
+
 test("ten real Attack windows retain one proven visible graph through room polling for both participants", async ({ browser, request }, testInfo) => {
   test.setTimeout(240_000);
   const scenarios = [
@@ -2567,6 +2604,179 @@ test("ten real Attack windows retain one proven visible graph through room polli
   await testInfo.attach("attack-continuity-rAF-traces.json", { body: JSON.stringify(frameTraces, null, 2), contentType: "application/json" });
   await testInfo.attach("attack-continuity-public-projection-polls.json", { body: JSON.stringify(projectionPollTraces, null, 2), contentType: "application/json" });
   await testInfo.attach("attack-continuity-geometry.json", { body: JSON.stringify(geometryEvidence, null, 2), contentType: "application/json" });
+});
+
+test("real Attack reconnect restores the same proven graph and fails closed without root proof", async ({ browser, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const viewport = { width: 390, height: 844 };
+  const sourceCard = { ...attack, id: `attack-reconnect-${Date.now()}` };
+  const targetCard = { ...dodge, id: `dodge-reconnect-${Date.now()}` };
+  const seed = await seedGame(request, 4, { sourceCard, targetCard });
+  const sourceId = seed.players[0].id;
+  const targetId = seed.players[1].id;
+  const attackerPage = await browser.newPage({ viewport });
+  const defenderPage = await browser.newPage({ viewport });
+  const attackerPolls = observePublicAttackProofPolls(attackerPage);
+  const defenderPolls = observePublicAttackProofPolls(defenderPage);
+
+  try {
+    await Promise.all([
+      openGame(attackerPage, seed, 0, viewport),
+      openGame(defenderPage, seed, 1, viewport),
+    ]);
+    await playAttackThroughPage(attackerPage, "TARGET", sourceCard);
+    await expect.poll(async () => (await roomView(request, seed, 1)).presentationSnapshot?.rootAction?.rootEventId ?? null, {
+      timeout: 20_000,
+      message: "real play_card creates an authoritative Attack root before reconnect",
+    }).not.toBeNull();
+
+    const openView = await roomView(request, seed, 1);
+    const rootAction = openView.presentationSnapshot.rootAction;
+    expect(openView.currentAction).toMatchObject({ kind: "response", actorId: targetId });
+    expect(rootAction).toMatchObject({
+      semantics: "PROVEN", action: "ATTACK", cardKind: "Attack", physicalCardKind: "Attack",
+      sourceId, targetId,
+    });
+    expect(openView.timeline.some((event) => event.id === rootAction.rootEventId
+      && event.action === "play" && event.card?.kind === "Attack")).toBe(true);
+    expect(JSON.stringify(rootAction)).not.toContain(sourceCard.id);
+
+    const pages = [attackerPage, defenderPage];
+    await Promise.all(pages.map((page) => page.evaluate(() => window.__wtkStartAttackVisibleFrameSampling())));
+    await Promise.all(pages.map((page) => expectAttackGraphIdentity(page, rootAction)));
+    const beforeReload = await Promise.all(pages.map((page, index) => captureReconnectAttackGraph(
+      page, rootAction, 4, viewport, index === 0 ? "attacker before reload" : "defender before reload",
+    )));
+    for (const [index, page] of pages.entries()) {
+      await testInfo.attach(`attack-reconnect-${index === 0 ? "attacker" : "defender"}-before.png`, {
+        body: await page.screenshot(), contentType: "image/png",
+      });
+    }
+
+    await Promise.all(pages.map((page) => page.reload({ waitUntil: "domcontentloaded" })));
+    await Promise.all(pages.map((page) => expect(page.locator(".game-shell")).toBeVisible()));
+    await Promise.all(pages.map((page) => page.evaluate(() => window.__wtkStartAttackVisibleFrameSampling())));
+    await Promise.all(pages.map((page) => expectAttackGraphIdentity(page, rootAction)));
+    const afterReload = await Promise.all(pages.map((page, index) => captureReconnectAttackGraph(
+      page, rootAction, 4, viewport, index === 0 ? "attacker after reload" : "defender after reload",
+    )));
+    for (const [index, page] of pages.entries()) {
+      expectReconnectGeometryStable(beforeReload[index], afterReload[index], `${index === 0 ? "attacker" : "defender"} reconnect`);
+      await testInfo.attach(`attack-reconnect-${index === 0 ? "attacker" : "defender"}-after.png`, {
+        body: await page.screenshot(), contentType: "image/png",
+      });
+    }
+    expect(afterReload.map(({ frame }) => ({
+      rootEventId: frame.rootEventId,
+      interactionId: frame.interactionId,
+      sourceAnchorResidual: frame.sourceAnchorResidual,
+      targetAnchorResidual: frame.targetAnchorResidual,
+      sourceEdgeVisible: frame.sourceEdgeVisible,
+      targetEdgeVisible: frame.targetEdgeVisible,
+      targetMarkerPresent: frame.targetMarkerPresent,
+    }))).toEqual(pages.map(() => ({
+      rootEventId: rootAction.rootEventId,
+      interactionId: rootAction.interactionId,
+      sourceAnchorResidual: expect.any(Number),
+      targetAnchorResidual: expect.any(Number),
+      sourceEdgeVisible: true,
+      targetEdgeVisible: true,
+      targetMarkerPresent: true,
+    })));
+
+    const roomViewMatcher = (url) => url.origin === API && url.pathname === "/api/rooms";
+    const strippedViews = [];
+    const stripRootProof = async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      const response = await route.fetch();
+      const view = await response.json();
+      if (view.presentationSnapshot?.rootAction?.rootEventId !== rootAction.rootEventId) {
+        return route.fulfill({ response });
+      }
+      const presentationSnapshot = { ...view.presentationSnapshot };
+      delete presentationSnapshot.rootAction;
+      strippedViews.push({
+        phase: view.phase,
+        currentAction: view.currentAction,
+        rootActionPresent: Object.hasOwn(presentationSnapshot, "rootAction"),
+      });
+      await route.fulfill({ response, json: { ...view, presentationSnapshot } });
+    };
+    await defenderPage.route(roomViewMatcher, stripRootProof);
+    await expect.poll(() => strippedViews.length, {
+      timeout: 25_000,
+      message: "test transport withholds only the public root proof while the server response decision remains live",
+    }).toBeGreaterThan(0);
+    await expect(defenderPage.locator('[data-root-action-overlay="true"]')).toHaveCount(0, { timeout: 25_000 });
+    await expect(defenderPage.locator(".interaction-root-connectors")).toHaveCount(0);
+    await expect(defenderPage.locator('[data-root-action-card="true"]')).toHaveCount(0);
+    await expect(defenderPage.locator(".interaction-stage")).toHaveCount(1);
+    expect(strippedViews.some(({ currentAction, rootActionPresent }) => currentAction?.kind === "response"
+      && currentAction.actorId === targetId && rootActionPresent === false)).toBe(true);
+    const serverProofRemains = await roomView(request, seed, 1);
+    expect(serverProofRemains.currentAction).toMatchObject({ kind: "response", actorId: targetId });
+    expect(serverProofRemains.presentationSnapshot.rootAction.rootEventId).toBe(rootAction.rootEventId);
+    await testInfo.attach("attack-reconnect-missing-proof-fails-closed.png", {
+      body: await defenderPage.screenshot(), contentType: "image/png",
+    });
+
+    await defenderPage.unroute(roomViewMatcher, stripRootProof);
+    await expectAttackGraphIdentity(defenderPage, rootAction);
+    await defenderPage.evaluate(() => window.__wtkStartAttackVisibleFrameSampling());
+    const proofRestored = await captureReconnectAttackGraph(defenderPage, rootAction, 4, viewport, "defender proof restored");
+    expectReconnectGeometryStable(afterReload[1], proofRestored, "defender proof recovery");
+    await testInfo.attach("attack-reconnect-same-root-restored.png", {
+      body: await defenderPage.screenshot(), contentType: "image/png",
+    });
+
+    const skip = defenderPage.locator(`.local-player-dock[data-player-anchor="${targetId}"] [data-action-slot="decline"] button`);
+    await expect(skip).toHaveText("Skip");
+    await expect(skip).toBeEnabled();
+    const skipResponse = defenderPage.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "decline_response"; }
+      catch { return false; }
+    });
+    await skip.click();
+    const decisionResponse = await skipResponse;
+    if (!decisionResponse.ok()) throw new Error(`Real Attack Skip failed (${decisionResponse.status()}): ${await decisionResponse.text()}`);
+
+    await expect.poll(async () => {
+      const views = await Promise.all([roomView(request, seed, 0), roomView(request, seed, 1)]);
+      return views.every((view) => view.presentationSnapshot?.rootAction?.rootEventId !== rootAction.rootEventId);
+    }, { timeout: 20_000, message: "server decision advances and retires the original Attack root" }).toBe(true);
+    const pollStarts = [attackerPolls.length, defenderPolls.length];
+    await Promise.all(pages.map((page) => page.reload({ waitUntil: "domcontentloaded" })));
+    await Promise.all(pages.map((page) => expect(page.locator(".game-shell")).toBeVisible()));
+    await Promise.all(pages.map((page, index) => expect.poll(() => {
+      const samples = (index === 0 ? attackerPolls : defenderPolls).slice(pollStarts[index]);
+      return samples.some((sample) => sample.rootAction === null && sample.currentActionKind !== "response");
+    }, {
+      timeout: 25_000,
+      message: `${index === 0 ? "attacker" : "defender"} reconnect receives the advanced server state without the old root`,
+    }).toBe(true)));
+    await Promise.all(pages.map((page) => expect(page.locator('[data-root-action-overlay="true"]')).toHaveCount(0)));
+    await Promise.all(pages.map((page) => expect(page.locator(".interaction-root-connectors")).toHaveCount(0)));
+    expect(attackerPolls.slice(pollStarts[0]).some((sample) => sample.rootAction?.rootEventId === rootAction.rootEventId)).toBe(false);
+    expect(defenderPolls.slice(pollStarts[1]).some((sample) => sample.rootAction?.rootEventId === rootAction.rootEventId)).toBe(false);
+
+    await testInfo.attach("attack-reconnect-lifecycle.json", {
+      body: JSON.stringify({
+        rootAction,
+        beforeReload,
+        afterReload,
+        strippedViews,
+        proofRestored,
+        settledPolls: {
+          attacker: attackerPolls.slice(pollStarts[0]),
+          defender: defenderPolls.slice(pollStarts[1]),
+        },
+      }, null, 2),
+      contentType: "application/json",
+    });
+  } finally {
+    await Promise.all([attackerPage.close(), defenderPage.close()]);
+  }
 });
 
 test("real 6/8-player mobile Attack presentation stays stable for attacker and defender", async ({ browser, request }, testInfo) => {

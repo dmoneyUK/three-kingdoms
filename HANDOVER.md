@@ -5,29 +5,28 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-Final multi-target revalidation passed 21/21 real server-backed browser cases,
-including an 8-player Raining Arrows graph at 390×844; the focused
-PresentationV2 engine file passed 39/39. Build, targeted ESLint, and
-`git diff --check` passed. The unchanged remote base SHA
-`b98834674e32ecdd8faa6bccdcd64e699a4d93b6` passed all five jobs in Actions run
-`37902249037`; the outgoing task SHA is not yet validated. No Reviewer
-acceptance is claimed.
+Final AOE matrix revalidation was pushed as `3a8f5146f52071aef5d46b75aea83a5a86ceccd8`.
+Actions run `37905309525` for that exact SHA completed successfully across all
+five jobs. Attack reconnect proof now passes locally 1/1 with targeted ESLint
+and `git diff --check`; these changes are not yet committed. Reviewer
+acceptance is not claimed.
 
 ## Design checkpoint
 
 Latest remote `docs/UX2-refine.md` blob: `4c56947d9965cde28a7c888e19f5d5fa0612112e`.
-Re-reviewed §6.24 dense-table and stale/reconnect acceptance, §6.25–6.27, and
-§5.4. P1–P5, §4A/§4B, Phase A, and the §6.27 Attack/Dodge stability/visual
-work have focused evidence; do not redo them. The new eight-seat AOE scene
-closes the final matrix update required after the Halberd ordered-root render.
+Re-reviewed §6.24.11 and §6.27.4 at the reconnect task boundary. The real
+production root survives attacker/defender reload unchanged; if the root proof
+is absent, the browser correctly shows no inferred graph and returns to the
+safe Stage. Existing 10-window polling evidence remains separate from this
+reconnect proof. The next review must inspect fresh screenshots, not infer
+visual quality from geometry assertions alone.
 
 ## Current task
 
-`UX2-6.24-ATTACK-RECONNECT-FAIL-CLOSED-PROOF-01` — add real server-backed
-ordinary-Attack reload/reconnect proof for attacker and defender. During one
-open response, reload each client and verify it restores only the same
-authoritative root event/interaction with both measured connectors ready; then
-advance the real server decision and verify the stale root cannot reappear.
-Measure no duplicate Stage, no Seat/Dock movement, and fail-closed behavior if
-the exact proof is absent. Keep this to reconnect/stale lifecycle; do not widen
-into another card or graph redesign.
+`UX2-6.27-ATTACK-DODGE-FRESH-SCREENSHOT-AUDIT-01` — capture and inspect actual
+server-backed Attack-open and Dodge-block screenshots for local/opponent views
+at 390×844, 480×900, and 1440×900, plus supported dense 6/8-player mobile
+scenes. Check the approved green source tether, thick red arrow/marker, full
+Seat/Dock highlight, authentic card size, direct Dodge interception, no
+duplicate Stage, and containment. Record only visually verified gaps; do not
+claim Reviewer acceptance or widen into unrelated graph work.
