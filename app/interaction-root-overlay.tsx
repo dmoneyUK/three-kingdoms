@@ -21,13 +21,29 @@ type AttackRootPlacementFieldSearch = {
   selectedClearance?: number;
   selected?: { left: number; top: number; projection: number; lateral: number };
 };
+type AttackDodgePlacementFieldSearch = {
+  sampleStep: number;
+  relationBand: [number, number];
+  preferredFractionBand: [number, number];
+  inspectedPositions: number;
+  clearRectCount: number;
+  directPathIntersectionCount: number;
+  preferredDirectPathIntersectionCount: number;
+  adjacentEdgeGapCount: number;
+  preferredAdjacentEdgeGapCount: number;
+  rejectedByRootCard: number;
+  rejectedBySeatOrDock: number;
+  rejectedByControl: number;
+  selected?: { mode: "direct" | "adjacent"; left: number; top: number; projection: number; distance: number; edgeGap: number; preferred: boolean };
+};
 type AttackGeometryFitDiagnostic = {
   rootEventId: string;
   phase: "root" | "dodge-response" | "other-response";
   fitStep: string;
   viewport: { width: number; height: number };
-  cause: "missing-table-or-card-rect" | "missing-or-invalid-player-anchor" | "missing-dodge-response-card" | "dodge-interception-point-unavailable" | "table-smaller-than-card-margin" | "no-attack-root-candidate" | "no-reserved-dodge-candidate" | "no-dodge-interception-candidate" | "placement-field-root-selected";
+  cause: "missing-table-or-card-rect" | "missing-or-invalid-player-anchor" | "missing-dodge-response-card" | "dodge-interception-point-unavailable" | "table-smaller-than-card-margin" | "no-attack-root-candidate" | "no-reserved-dodge-candidate" | "no-dodge-interception-candidate" | "placement-field-root-selected" | "placement-field-dodge-selected";
   placementFieldSearch?: AttackRootPlacementFieldSearch;
+  dodgePlacementFieldSearch?: AttackDodgePlacementFieldSearch;
   placementSearchEligibility?: { attempted: boolean; unansweredAttackRoot: boolean; viewportWidth: number; pathCandidateCount: number };
   candidateCount?: number;
   rootFitCandidateCount?: number;
@@ -1436,7 +1452,96 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
         dodgeInterceptionFallback = responseCandidates.length > 0;
       }
       if (!responseCandidates.length) {
-        reportFitDiagnostic("no-dodge-interception-candidate", { ...dodgeFitCounts });
+        const sampleStep = 2;
+        const relationBand: [number, number] = [.05, .95];
+        const preferredFractionBand: [number, number] = [.35, .70];
+        const fieldSearch: AttackDodgePlacementFieldSearch = {
+          sampleStep,
+          relationBand,
+          preferredFractionBand,
+          inspectedPositions: 0,
+          clearRectCount: 0,
+          directPathIntersectionCount: 0,
+          preferredDirectPathIntersectionCount: 0,
+          adjacentEdgeGapCount: 0,
+          preferredAdjacentEdgeGapCount: 0,
+          rejectedByRootCard: 0,
+          rejectedBySeatOrDock: 0,
+          rejectedByControl: 0,
+        };
+        let bestDirect: { responseCard: Rect; score: number; projection: number; distance: number; preferred: boolean } | null = null;
+        let bestAdjacent: { responseCard: Rect; score: number; projection: number; distance: number; edgeGap: number; preferred: boolean } | null = null;
+        const safeLeft = tableRect.left + margin;
+        const safeTop = tableRect.top + margin;
+        const safeRight = tableRect.right - margin - responseWidth;
+        const safeBottom = stableStageBottom - margin - responseHeight;
+        for (let top = safeTop; top <= safeBottom; top += sampleStep) {
+          for (let left = safeLeft; left <= safeRight; left += sampleStep) {
+            const responseCard: Rect = {
+              left,
+              top,
+              right: left + responseWidth,
+              bottom: top + responseHeight,
+              width: responseWidth,
+              height: responseHeight,
+            };
+            const projection = projectPointToSegment(attackPathStart, attackPathEnd, center(responseCard));
+            if (projection.fraction < relationBand[0] || projection.fraction > relationBand[1]) continue;
+            fieldSearch.inspectedPositions += 1;
+            const fitFailure = responseFitFailure(responseCard);
+            if (fitFailure) {
+              if (fitFailure === "root-card") fieldSearch.rejectedByRootCard += 1;
+              else if (fitFailure === "seat-or-dock") fieldSearch.rejectedBySeatOrDock += 1;
+              else if (fitFailure === "control") fieldSearch.rejectedByControl += 1;
+              continue;
+            }
+            fieldSearch.clearRectCount += 1;
+            const intersectsAttackPath = segmentIntersectsRect(attackPathStart, attackPathEnd, responseCard);
+            const edgeGap = pointRectDistance(projection.point, responseCard);
+            const projectionIsPreferred = projection.fraction >= preferredFractionBand[0]
+              && projection.fraction <= preferredFractionBand[1];
+            if (intersectsAttackPath) {
+              fieldSearch.directPathIntersectionCount += 1;
+              if (projectionIsPreferred) fieldSearch.preferredDirectPathIntersectionCount += 1;
+              const score = (projectionIsPreferred ? 0 : 500) + Math.abs(projection.fraction - .5) * 100 + projection.distance;
+              if (!bestDirect || score < bestDirect.score) {
+                bestDirect = { responseCard, score, projection: projection.fraction, distance: projection.distance, preferred: projectionIsPreferred };
+              }
+            } else if (edgeGap >= 12 && edgeGap <= 20 && segmentNearRect(attackPathStart, attackPathEnd, responseCard, 20)) {
+              fieldSearch.adjacentEdgeGapCount += 1;
+              if (projectionIsPreferred) fieldSearch.preferredAdjacentEdgeGapCount += 1;
+              const score = (projectionIsPreferred ? 0 : 500) + Math.abs(projection.fraction - .5) * 100 + Math.abs(edgeGap - 16);
+              if (!bestAdjacent || score < bestAdjacent.score) {
+                bestAdjacent = { responseCard, score, projection: projection.fraction, distance: projection.distance, edgeGap, preferred: projectionIsPreferred };
+              }
+            }
+          }
+        }
+        const selectedFieldCandidate = bestDirect
+          ? { ...bestDirect, mode: "direct" as const, edgeGap: 0 }
+          : bestAdjacent ? { ...bestAdjacent, mode: "adjacent" as const } : null;
+        if (selectedFieldCandidate) {
+          responseCandidates = [{ responseCard: selectedFieldCandidate.responseCard, score: selectedFieldCandidate.score }];
+          dodgeInterceptionFallback = selectedFieldCandidate.mode === "adjacent";
+          fieldSearch.selected = {
+            mode: selectedFieldCandidate.mode,
+            left: selectedFieldCandidate.responseCard.left,
+            top: selectedFieldCandidate.responseCard.top,
+            projection: selectedFieldCandidate.projection,
+            distance: selectedFieldCandidate.distance,
+            edgeGap: selectedFieldCandidate.edgeGap,
+            preferred: selectedFieldCandidate.preferred,
+          };
+          reportFitDiagnostic("placement-field-dodge-selected", {
+            ...dodgeFitCounts,
+            dodgePlacementFieldSearch: fieldSearch,
+          });
+        } else {
+          reportFitDiagnostic("no-dodge-interception-candidate", {
+            ...dodgeFitCounts,
+            dodgePlacementFieldSearch: fieldSearch,
+          });
+        }
       }
     } else {
       responseCandidates = [

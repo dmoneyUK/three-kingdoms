@@ -270,12 +270,24 @@ async function captureAttackDodgeInterceptionGeometry(page) {
     const markPoint = mark.getPointAtLength(mark.getTotalLength() / 2);
     const attackEnd = { x: attackPathEnd.x + connectorRect.x, y: attackPathEnd.y + connectorRect.y };
     const markCenter = { x: markPoint.x + connectorRect.x, y: markPoint.y + connectorRect.y };
-    const closest = { x: start.x + dx * fraction, y: start.y + dy * fraction };
-    const edgeGap = Math.hypot(Math.max(responseRect.x - closest.x, 0, closest.x - responseRect.right), Math.max(responseRect.y - closest.y, 0, closest.y - responseRect.bottom));
+    const pointRectGap = (point) => Math.hypot(
+      Math.max(responseRect.x - point.x, 0, point.x - responseRect.right),
+      Math.max(responseRect.y - point.y, 0, point.y - responseRect.bottom),
+    );
+    const pointSegmentGap = (point) => {
+      const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+      return Math.hypot(point.x - (start.x + dx * t), point.y - (start.y + dy * t));
+    };
+    const corners = [
+      { x: responseRect.x, y: responseRect.y }, { x: responseRect.right, y: responseRect.y },
+      { x: responseRect.right, y: responseRect.bottom }, { x: responseRect.x, y: responseRect.bottom },
+    ];
+    const lineIntersectsCard = low <= high;
+    const edgeGap = lineIntersectsCard ? 0 : Math.min(pointRectGap(start), pointRectGap(end), ...corners.map(pointSegmentGap));
     return {
       mode: response.dataset.rootActionDodgeInterception,
       fraction,
-      lineIntersectsCard: low <= high,
+      lineIntersectsCard,
       edgeGap,
       pathEndpointToMark: Math.hypot(attackEnd.x - markCenter.x, attackEnd.y - markCenter.y),
       markerEnd: attackPath.getAttribute("marker-end"),
@@ -1768,6 +1780,26 @@ for (const scenario of [
         expect(interception.pathEndpointToMark).toBeLessThanOrEqual(2.1);
         expect(interception.markerEnd).toBeNull();
         expect(interception.falseCounterArrows).toBe(0);
+        const { fitStep, bounds: dodgeBounds } = await expectAttackCardFaceGeometry(defenderOverlay, responseCard, viewport, "Dodge");
+        expect(dodgeBounds.width / dodgeBounds.height).toBeCloseTo(2 / 3, 2);
+        const dodgeRight = dodgeBounds.x + dodgeBounds.width;
+        const dodgeBottom = dodgeBounds.y + dodgeBounds.height;
+        const table = responseLayout.table;
+        const targetAnchorTop = Math.max(...responseLayout.anchors.filter((anchor) => anchor.id === targetId).map((anchor) => anchor.y));
+        const stableStageBottom = Math.max(table.bottom, targetAnchorTop);
+        expect(dodgeBounds.x).toBeGreaterThanOrEqual(table.x + 11);
+        expect(dodgeBounds.y).toBeGreaterThanOrEqual(table.y + 11);
+        expect(dodgeRight).toBeLessThanOrEqual(table.right - 11);
+        expect(dodgeBottom).toBeLessThanOrEqual(stableStageBottom - 11);
+        const dodgeObstacles = [...responseLayout.anchors, ...responseLayout.obstacles];
+        for (const obstacle of dodgeObstacles) {
+          expect(dodgeRight <= obstacle.x - 8 || dodgeBounds.x >= obstacle.right + 8
+            || dodgeBottom <= obstacle.y - 8 || dodgeBounds.y >= obstacle.bottom + 8,
+          `Dodge card clears ${obstacle.label ?? obstacle.className ?? obstacle.id ?? "stage control"} by 8px`).toBe(true);
+        }
+        expect(dodgeRight <= responseLayout.rootCard.x - 8 || dodgeBounds.x >= responseLayout.rootCard.right + 8
+          || dodgeBottom <= responseLayout.rootCard.y - 8 || dodgeBounds.y >= responseLayout.rootCard.bottom + 8,
+        "Dodge card clears the stable Attack root by 8px").toBe(true);
         if (interception.mode === "direct") expect(interception.lineIntersectsCard).toBe(true);
         else {
           expect(interception.lineIntersectsCard).toBe(false);
@@ -1777,6 +1809,28 @@ for (const scenario of [
         expect(responseLayout.rootCard, "the captured Dodge graph includes the Attack root").toBeTruthy();
         expect(Math.abs(responseLayout.rootCard.x - targetLayout.root.x), "dense Attack root keeps its x when Dodge appears").toBeLessThanOrEqual(1);
         expect(Math.abs(responseLayout.rootCard.y - targetLayout.root.y), "dense Attack root keeps its y when Dodge appears").toBeLessThanOrEqual(1);
+        const fieldSelection = responseLayout.fitDiagnostics
+          .filter((diagnostic) => diagnostic.cause === "placement-field-dodge-selected").at(-1);
+        if (viewport.width === 480) {
+          expect(fieldSelection, "the 480px dense case exercises the exhaustive Dodge placement field search").toBeTruthy();
+        }
+        if (fieldSelection) {
+          const search = fieldSelection.dodgePlacementFieldSearch;
+          expect(search).toMatchObject({
+            sampleStep: 2,
+            relationBand: [.05, .95],
+            preferredFractionBand: [.35, .70],
+          });
+          expect(search.selected).toMatchObject({ mode: interception.mode });
+          expect(Math.abs(search.selected.projection - interception.fraction)).toBeLessThanOrEqual(.01);
+          expect(Math.abs(search.selected.left - (dodgeBounds.x - responseLayout.shell.x))).toBeLessThanOrEqual(1);
+          expect(Math.abs(search.selected.top - (dodgeBounds.y - responseLayout.shell.y))).toBeLessThanOrEqual(1);
+          expect(search.inspectedPositions).toBe(search.clearRectCount + search.rejectedByRootCard
+            + search.rejectedBySeatOrDock + search.rejectedByControl);
+          expect(search.directPathIntersectionCount).toBeLessThanOrEqual(search.clearRectCount);
+          expect(search.adjacentEdgeGapCount).toBeLessThanOrEqual(search.clearRectCount);
+          expect(fitStep).toBe(responseLayout.overlay.fitStep);
+        }
       } else {
         expect(responseLayout.overlay?.layout).toBe("unavailable");
         expect(responseLayout.overlay?.mode).toBe("fallback");
@@ -1784,6 +1838,9 @@ for (const scenario of [
           .filter((diagnostic) => diagnostic.phase === "dodge-response").at(-1);
         expect(dodgeFitDiagnostic, "safe Dodge fallback records a test-only geometry cause for the same proven root").toBeTruthy();
         expect(dodgeFitDiagnostic.cause).toMatch(/^(missing-table-or-card-rect|missing-or-invalid-player-anchor|missing-dodge-response-card|dodge-interception-point-unavailable|table-smaller-than-card-margin|no-attack-root-candidate|no-dodge-interception-candidate)$/);
+        if (playerCount === 6 && viewport.width === 390) {
+          expect(dodgeFitDiagnostic.cause, "the measured 6-player 390px scene exhausts real placement options and fails closed").toBe("no-dodge-interception-candidate");
+        }
         if (dodgeFitDiagnostic.cause === "no-dodge-interception-candidate") {
           expect(dodgeFitDiagnostic.dodgeDirectCandidateCount + dodgeFitDiagnostic.dodgeAdjacentCandidateCount,
             "the actual Dodge was checked against direct and adjacent interception placements").toBeGreaterThan(0);
@@ -1809,6 +1866,18 @@ for (const scenario of [
               + dodgeFitDiagnostic.dodgeAdjacentRejectedByPathIntersection
               + dodgeFitDiagnostic.dodgeAdjacentRejectedByEdgeGap,
           );
+          const search = dodgeFitDiagnostic.dodgePlacementFieldSearch;
+          expect(search, "failed placement also records the exhaustive field search").toBeTruthy();
+          expect(search).toMatchObject({
+            sampleStep: 2,
+            relationBand: [.05, .95],
+            preferredFractionBand: [.35, .70],
+          });
+          expect(search.inspectedPositions).toBe(search.clearRectCount + search.rejectedByRootCard
+            + search.rejectedBySeatOrDock + search.rejectedByControl);
+          expect(search.directPathIntersectionCount, "no collision-free full Dodge card intersects the Attack path").toBe(0);
+          expect(search.adjacentEdgeGapCount, "no collision-free full Dodge card satisfies the adjacent 12–20px contact band").toBe(0);
+          expect(search.selected).toBeUndefined();
         }
         await expect(defenderOverlay).toHaveAttribute("data-root-action-ready", "false");
         expect(await targetPage.locator(".interaction-stage").count(), "safe fallback never duplicates the public stage").toBeLessThanOrEqual(1);

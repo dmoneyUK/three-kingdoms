@@ -2533,3 +2533,23 @@ HANDOVER" wording here after the handoff has moved on.
   pre-commit base `4ba3673cd31def3a4926c4a538c34e652dbddd34` passed all five
   Actions jobs in run `37911187593`; the outgoing revision is pending. No
   Reviewer acceptance is claimed.
+
+### UX2-6.27-DODGE-INTERCEPTION-FIT-SEARCH-01 — Dense Dodge placement field
+
+- Added a 2px full-card placement-field search only after the measured direct
+  and adjacent candidate sets are exhausted. It retains the 12px table margin,
+  avoids the Attack root, Seats/Dock, and controls with the required clearance,
+  prefers the §6.27.2 35–70% segment, and records the complete search or a
+  quantified fail-closed result.
+- Real server-backed 6/8-player 480×900 Dodge responses use the field search to
+  place the genuine 2:3 Dodge card directly on the Attack path. At 6-player
+  390×844, the full scan found no collision-free direct or 12–20px adjacent
+  position and the safe Stage remains. Rendered screenshots show the red path
+  terminating at the interception mark; the Attack root remains stable within
+  1px.
+- Dense 6/8-player 390/480 browser matrix passed 4/4 after assertions for
+  rendered size, table/obstacle/root clearance, selected-field-to-DOM agreement,
+  and exhaustive-search accounting. Build, targeted ESLint, and `git diff
+  --check` passed. Pre-commit `ffde77740c75ee974355ad68cf15fe4c5b6bfd1e`
+  passed Actions run `37915411584`; outgoing task commit is pending. No Reviewer
+  acceptance is claimed.

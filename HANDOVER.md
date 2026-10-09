@@ -5,14 +5,15 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2-6.27-ATTACKER-ROOT-FIT-SEARCH-01` is implemented locally. Exhaustive
-4px search finds safe attacker roots at 6p 390/480 and 8p 480; 8p 390 remains
-fail-closed after both 12px and 8px clearance scans find no solution. Base
-`4ba3673cd31def3a4926c4a538c34e652dbddd34` passed Actions run `37911187593`,
-all five jobs. Outgoing SHA/CI are not yet available. Build, targeted ESLint,
-four dense Attack→Dodge cases, ten-window continuity, and 10-window RAF/poll
-continuity passed locally. Reviewer acceptance is not claimed.
-Reviewer acceptance is not claimed.
+`UX2-6.27-DODGE-INTERCEPTION-FIT-SEARCH-01` is implemented locally. The
+2px full-card field search finds real direct Dodge placements in dense 6/8p
+480×900 scenes; the 6p 390×844 proof exhausts legal geometry and remains
+fail-closed. Tests verify rendered 2:3 card bounds, 12px table margin, 8px
+obstacle/root clearance, 35–70% placement, interception mark, and root stability
+within 1px. Fresh screenshots were inspected. `ffde77740c75ee974355ad68cf15fe4c5b6bfd1e`
+passed Actions run `37915411584`. Build, targeted ESLint, diff check, and dense
+real-gameplay browser matrix passed. Outgoing SHA/CI will be recorded after
+push. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
@@ -22,10 +23,11 @@ the planning boundary; no intervening design change.
 
 ## Next task
 
-`UX2-6.27-DODGE-INTERCEPTION-FIT-SEARCH-01` — for real server-backed Attack
-roots that reach `ready`, search for a full portrait Dodge placement directly
-on the root-to-target segment or, when impossible, nearest to it with the
-§6.27.2 12–20px edge gap and a short proven interception mark. Preserve the
-Attack root within 1px, keep connectors unobscured, and fail closed with
-quantified geometry when no safe position exists. Validate 6/8-player mobile
-scenes where a root graph is proven; do not alter Seats, Dock, or gameplay.
+`UX2-6.27-ATTACKER-DODGE-GRAPH-CONTINUITY-01` — on real server-backed dense
+6/8-player mobile Attack→Dodge flows, prove that the local attacker receives
+and renders the same public Dodge response graph as the defender while its
+Attack root remains stable. Capture first visible response state, root/response
+identity, connectors, readiness/fallback transitions, and settlement cleanup;
+classify any absent/intermittent response without inferring from timeline order.
+Keep the change within presentation/test coverage and §6.27.4 authority/privacy
+rules; do not change gameplay semantics.
