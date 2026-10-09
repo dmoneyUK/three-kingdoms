@@ -326,12 +326,39 @@ type PresentationRootActionBase = {
   rootEventId: string;
   sourceId: string;
   targetId: string;
-  cardKind: CardKind;
 };
 
 export type PresentationRootAction =
-  | (PresentationRootActionBase & { action: "ATTACK" })
+  | (PresentationRootActionBase & {
+    action: "ATTACK";
+    /** Semantic root action; distinct from the physical card used to play it. */
+    cardKind: "Attack";
+    physicalCardKind: "Attack";
+    playedAs?: never;
+  })
+  | (PresentationRootActionBase & {
+    action: "ATTACK";
+    cardKind: "Attack";
+    physicalCardKind: "Dodge";
+    playedAs: "attack";
+  })
   | (PresentationRootActionBase & { action: "STRATAGEM"; cardKind: "Dismantle" | "Steal" });
+
+/** Validate the public root-action/physical-card pairing at every projection boundary. */
+export function isProvenRootActionCardProof(value: unknown): value is PresentationRootAction {
+  const action = record(value);
+  if (!action) return false;
+  if (action.action === "ATTACK") {
+    return action.cardKind === "Attack"
+      && (action.physicalCardKind === "Attack" && action.playedAs === undefined
+        || action.physicalCardKind === "Dodge" && action.playedAs === "attack");
+  }
+  if (action.action === "STRATAGEM") {
+    return (action.cardKind === "Dismantle" || action.cardKind === "Steal")
+      && action.physicalCardKind === undefined && action.playedAs === undefined;
+  }
+  return false;
+}
 
 /** Public proof that one submitted physical Dodge blocks one exact ordinary Attack target effect. */
 export type PresentationAttackDodgeResponseProof = {
@@ -1641,6 +1668,11 @@ function singleTargetAttackRootActionFor(
   const frame = envelope?.frames.find(({ frameId }) => frameId === envelope.activeFrameId) ?? null;
   const rootFrames = envelope?.frames.filter(({ parentFrameId }) => parentFrameId == null) ?? [];
   const card = rootEvent?.card;
+  const physicalCardProof = card?.kind === "Attack" && rootEvent?.playedAs === undefined
+    ? { physicalCardKind: "Attack" as const }
+    : card?.kind === "Dodge" && rootEvent?.playedAs === "attack"
+      ? { physicalCardKind: "Dodge" as const, playedAs: "attack" as const }
+      : null;
 
   if (item?.kind !== "response" || continuation?.kind !== "attack"
     || !envelope || !frame || rootFrames.length !== 1 || !scene
@@ -1671,7 +1703,7 @@ function singleTargetAttackRootActionFor(
     || rootContext.targetIds.length !== 1 || rootContext.targetIds[0] !== targetId || !sequenceStartCardId
     || !readyAfterEventId || rootEvent?.id !== readyAfterEventId
     || rootEvent.type !== "card" || rootEvent.presentation === false || rootEvent.action !== "play"
-    || !card || card.id !== sequenceStartCardId || !CARD_KINDS.includes(card.kind as CardKind)) return null;
+    || !card || card.id !== sequenceStartCardId || !physicalCardProof) return null;
 
   return {
     semantics: "PROVEN",
@@ -1684,7 +1716,8 @@ function singleTargetAttackRootActionFor(
     action: "ATTACK",
     sourceId,
     targetId,
-    cardKind: card.kind as CardKind,
+    cardKind: "Attack",
+    ...physicalCardProof,
   };
 }
 

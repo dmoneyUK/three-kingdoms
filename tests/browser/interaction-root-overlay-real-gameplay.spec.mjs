@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 const API = "http://127.0.0.1:3137";
 const attack = { id: "root-overlay-real-attack", kind: "Attack", suit: "♠", rank: "7" };
+const longdanDodge = { id: "root-overlay-real-longdan-dodge", kind: "Dodge", suit: "♣", rank: "6" };
 const dismantle = { id: "root-overlay-real-dismantle", kind: "Dismantle", suit: "♠", rank: "7" };
 const steal = { id: "root-overlay-real-steal", kind: "Steal", suit: "♠", rank: "7" };
 const dodge = { id: "root-overlay-real-dodge", kind: "Dodge", suit: "♥", rank: "3" };
@@ -383,6 +384,8 @@ function observePublicAttackProofPolls(page) {
           targetId: root.targetId,
           action: root.action,
           cardKind: root.cardKind,
+          physicalCardKind: root.physicalCardKind,
+          playedAs: root.playedAs,
         } : null,
       });
     } catch { /* Ignore non-JSON or expired room responses in this test-only observer. */ }
@@ -824,7 +827,7 @@ for (const scenario of [
     const targetServerView = await roomView(request, seed, 1);
     const rootAction = targetServerView.presentationSnapshot.rootAction;
     expect(targetServerView.currentAction.kind).toBe("response");
-    expect(rootAction).toMatchObject({ semantics: "PROVEN", action: "ATTACK", cardKind: "Attack", sourceId, targetId });
+    expect(rootAction).toMatchObject({ semantics: "PROVEN", action: "ATTACK", cardKind: "Attack", physicalCardKind: "Attack", sourceId, targetId });
     expect(targetServerView.timeline.some((event) => event.id === rootAction.rootEventId && event.action === "play" && event.card?.kind === "Attack")).toBe(true);
     expect(JSON.stringify(rootAction)).not.toContain(attack.id);
 
@@ -1035,6 +1038,89 @@ for (const scenario of [
     }
   });
 }
+
+test("real Longdan physical Dodge-as-Attack reaches the defender with its proven Attack graph and card face", async ({ page, browser, request }, testInfo) => {
+  test.setTimeout(60_000);
+  const seed = await seedGame(request, 4, { sourceCard: longdanDodge, targetCard: dodge });
+  const sourceId = seed.players[0].id;
+  const targetId = seed.players[1].id;
+  const viewport = { width: 390, height: 844 };
+  await openGame(page, seed, 0, viewport);
+
+  const sourceBefore = await roomView(request, seed, 0);
+  expect(sourceBefore.currentAction).toMatchObject({ kind: "turn", actorId: sourceId, canDeclareAttack: true });
+  expect(sourceBefore.currentAction.playPhaseActions).toContainEqual(expect.objectContaining({ cardId: longdanDodge.id, canPlayAs: "attack" }));
+  const braveheart = page.getByRole("button", { name: "Braveheart", exact: true });
+  await expect(braveheart).toBeEnabled();
+  await braveheart.click();
+  await expect(braveheart).toHaveClass(/active/);
+
+  const selectedDodge = page.locator(`[data-hand-card-id="${longdanDodge.id}"] .game-card`);
+  await expect(selectedDodge).toBeEnabled();
+  await selectedDodge.click();
+  await expect(selectedDodge).toHaveClass(/selected/);
+  await page.getByRole("button", { name: "Select TARGET", exact: true }).click();
+  const selectedTargetSeat = page.locator(`[data-player-anchor="${targetId}"]`);
+  await expect(selectedTargetSeat).toHaveClass(/selected-target/);
+  const confirm = page.locator('[data-console-surface="local-operation"] button.primary');
+  await expect(confirm).toBeEnabled();
+  const playRequest = page.waitForRequest((candidate) => {
+    if (candidate.url() !== `${API}/api/rooms` || candidate.method() !== "POST") return false;
+    try { return JSON.parse(candidate.postData() ?? "{}").action === "play_card"; }
+    catch { return false; }
+  });
+  await confirm.click();
+  const submitted = JSON.parse((await playRequest).postData() ?? "{}");
+  expect(submitted).toMatchObject({ action: "play_card", cardId: longdanDodge.id, playAs: "attack", targetId });
+
+  await expect.poll(async () => {
+    const view = await roomView(request, seed, 1);
+    return {
+      actionKind: view.currentAction?.kind,
+      actorId: view.currentAction?.actorId,
+      requirement: view.currentAction?.requirement,
+      rootAction: view.presentationSnapshot?.rootAction ?? null,
+    };
+  }, { timeout: 20_000, message: "the real defender projection receives this converted single-target Attack" }).toMatchObject({
+    actionKind: "response", actorId: targetId, requirement: "dodge",
+    rootAction: {
+      semantics: "PROVEN", action: "ATTACK", cardKind: "Attack", physicalCardKind: "Dodge", playedAs: "attack",
+      sourceId, targetId,
+    },
+  });
+
+  const defenderView = await roomView(request, seed, 1);
+  const rootAction = defenderView.presentationSnapshot.rootAction;
+  expect(defenderView.currentAction.legalActions).toContain("respond");
+  expect(defenderView.timeline.filter((event) => event.id === rootAction.rootEventId)).toHaveLength(1);
+  expect(defenderView.timeline.find((event) => event.id === rootAction.rootEventId)).toMatchObject({
+    action: "play", playedAs: "attack", card: { id: longdanDodge.id, kind: "Dodge" },
+  });
+  expect(JSON.stringify(rootAction)).not.toContain(longdanDodge.id);
+
+  await expectAttackGraphIdentity(page, rootAction);
+  const sourceRootCard = page.locator('[data-root-action-card="true"]');
+  await expect(sourceRootCard).toHaveAttribute("data-root-action-card-face-kind", "Dodge");
+  await expect(sourceRootCard.locator(".played-card.dodge")).toBeVisible();
+  await expect(page.locator(".interaction-stage")).toHaveCount(0);
+
+  const defenderPage = await browser.newPage();
+  try {
+    await openGame(defenderPage, seed, 1, viewport);
+    const defenderHandDodge = defenderPage.locator(`[data-hand-card-id="${dodge.id}"] .game-card`);
+    await expect(defenderHandDodge).toBeEnabled();
+    await expectAttackGraphIdentity(defenderPage, rootAction);
+    const defenderRootCard = defenderPage.locator('[data-root-action-card="true"]');
+    await expect(defenderRootCard).toHaveAttribute("data-root-action-card-face-kind", "Dodge");
+    await expect(defenderRootCard.locator(".played-card.dodge")).toBeVisible();
+    await expect(defenderPage.locator(".interaction-stage")).toHaveCount(0);
+    await testInfo.attach("longdan-physical-dodge-attack-defender.png", {
+      body: await defenderPage.screenshot(), contentType: "image/png",
+    });
+  } finally {
+    await defenderPage.close();
+  }
+});
 
 test("real Steal settlement keeps its semantic result under reduced motion without revealing the acquired card", async ({ page, request }, testInfo) => {
   test.setTimeout(60_000);
@@ -2151,7 +2237,8 @@ function attackPollMatches(sample, rootAction) {
     && sample.rootAction?.rootEventId === rootAction.rootEventId
     && sample.rootAction?.sourceId === rootAction.sourceId
     && sample.rootAction?.targetId === rootAction.targetId
-    && sample.rootAction?.action === "ATTACK" && sample.rootAction?.cardKind === "Attack";
+    && sample.rootAction?.action === "ATTACK" && sample.rootAction?.cardKind === "Attack"
+    && sample.rootAction?.physicalCardKind === "Attack" && sample.rootAction?.playedAs === undefined;
 }
 
 async function waitForAttackProofPolls(samples, fromIndex, rootAction, count, timeout = 10_000) {

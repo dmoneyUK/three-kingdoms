@@ -2276,6 +2276,23 @@ Only a proven regression or new Reviewer-approved design requirement does.
   and does not change the separate 60-second Bumper Harvest chooser timer.
   Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-D-ATTACK-CONVERTED-CARD-ROOT-PROOF-01 — Longdan physical Dodge as Attack
+
+- The public root contract now records semantic `Attack` separately from the
+  real physical `Dodge` plus `playedAs: attack`. Snapshot/client boundaries
+  reject malformed pairings; React requires one unique matching public root
+  event before rendering the authentic card face. A real Longdan browser path
+  exposed and fixed both the console's denial of a CurrentAction-authorized
+  Dodge-as-Attack and mobile geometry that incorrectly keyed fit/reservation
+  to the physical face. The engine-backed proof is viewer-equal and carries no
+  private physical card ID.
+- Focused Longdan browser proof passed 1/1 for source and defender, ordinary
+  Attack timeout regression 1/1 (48.7s), PresentationClient 57/57, and
+  `tests/api/presentation-v2-engine.test.mjs` 38/38. Build, targeted ESLint,
+  and `git diff --check` passed. Repo-wide `tsc --noEmit` is non-green with
+  broad type/environment errors and is not a configured CI job. Reviewer
+  acceptance is not claimed.
+
 ### UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01 — Real drag/drop completion
 
 - The real server-backed Stargazing proof now covers touch reassignment between

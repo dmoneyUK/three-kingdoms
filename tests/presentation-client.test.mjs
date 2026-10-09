@@ -292,6 +292,7 @@ test("adapter carries only a root action bound to the active public frame", () =
     sourceId: "A",
     targetId: "B",
     cardKind: "Attack",
+    physicalCardKind: "Attack",
   };
   const accepted = snapshot({ interaction, rootAction });
   const local = buildPresentationClientView(accepted, "B");
@@ -302,6 +303,13 @@ test("adapter carries only a root action bound to the active public frame", () =
   assert.deepEqual(local.rootAction, rootAction);
   assert.deepEqual(observer.rootAction, rootAction, "public root action does not vary with viewer entitlement");
 
+  const convertedRootAction = { ...rootAction, physicalCardKind: "Dodge", playedAs: "attack" };
+  const converted = snapshot({ interaction, rootAction: convertedRootAction });
+  assert.deepEqual(buildPresentationClientView(converted, "B").rootAction, convertedRootAction,
+    "an exactly proven physical Dodge played as Attack remains a semantic Attack root");
+  assert.deepEqual(buildPresentationClientView(converted, "C").rootAction, convertedRootAction,
+    "converted root-card proof is public and viewer-equal");
+
   for (const malformed of [
     { ...rootAction, interactionId: "stale-interaction" },
     { ...rootAction, rootFrameId: "other-frame" },
@@ -309,6 +317,11 @@ test("adapter carries only a root action bound to the active public frame", () =
     { ...rootAction, targetId: "A" },
     { ...rootAction, rootEventId: "" },
     { ...rootAction, cardKind: "unknown-card" },
+    { ...rootAction, physicalCardKind: undefined },
+    { ...rootAction, physicalCardKind: "Dodge" },
+    { ...rootAction, playedAs: "attack" },
+    { ...convertedRootAction, playedAs: "dodge" },
+    { ...convertedRootAction, cardKind: "Dodge" },
   ]) {
     const view = buildPresentationClientView(snapshot({ interaction, rootAction: malformed }), "B");
     assert.equal(view.hasInteraction, true, "invalid root card proof does not erase an independently proven scene");

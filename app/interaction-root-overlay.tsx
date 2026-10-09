@@ -827,8 +827,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     y: sourceCenter.y + lineY * sourceBiasedFraction,
   };
   const lateralDistance = Math.min(92, Math.max(42, Math.min(tableRect.width, tableRect.height) * .14));
-  const isUnansweredAttackCardFace = action.cardKind === "Attack" && action.cardFace?.kind === "Attack"
-    && !action.response && !action.responses?.length;
+  const isUnansweredAttackRoot = action.cardKind === "Attack" && !action.response && !action.responses?.length;
   const localDockElement = shell.querySelector<HTMLElement>(".local-player-dock");
   const localDockRect = localDockElement?.getClientRects().length ? relativeRect(localDockElement, shellBounds) : null;
   const stableStageBottom = localDockRect && localDockRect.top >= tableRect.bottom ? localDockRect.top : tableRect.bottom;
@@ -838,10 +837,10 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     : shellBounds.width < 900
       ? step === "minimum" ? { width: 94, height: 141 } : step === "compact" ? { width: 104, height: 156 } : { width: 116, height: 174 }
       : step === "minimum" ? { width: 106, height: 159 } : step === "compact" ? { width: 119, height: 179 } : { width: 132, height: 198 };
-  const reservedDodgeSize = isUnansweredAttackCardFace && shellBounds.width < 900 ? dodgeFaceSize(fitStep) : null;
+  const reservedDodgeSize = isUnansweredAttackRoot && shellBounds.width < 900 ? dodgeFaceSize(fitStep) : null;
   const baseOffsets = [0, -lateralDistance, lateralDistance, -lateralDistance * 1.65, lateralDistance * 1.65];
-  const candidateOffsets = isUnansweredAttackCardFace ? [...baseOffsets, -124, 124, -150, 150] : baseOffsets;
-  const candidateFractions = isUnansweredAttackCardFace
+  const candidateOffsets = isUnansweredAttackRoot ? [...baseOffsets, -124, 124, -150, 150] : baseOffsets;
+  const candidateFractions = isUnansweredAttackRoot
     ? [.16, .2, .24, .28, .36, .44, .52, .6, .68, .76, .84, .92]
     : [.28, .36, .44, .52];
   const candidateCenters = [
@@ -865,7 +864,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     const top = Math.max(tableRect.top + margin, Math.min(candidate.y - cardHeight / 2, tableRect.bottom - margin - cardHeight));
     const card: Rect = { left, top, right: left + cardWidth, bottom: top + cardHeight, width: cardWidth, height: cardHeight };
     if (obstacleElements.some((element) => overlaps(card, relativeRect(element, shellBounds),
-      isUnansweredAttackCardFace && anchorObstacleSet.has(element) ? 22 : 8))) return [];
+      isUnansweredAttackRoot && anchorObstacleSet.has(element) ? 22 : 8))) return [];
     let reservedDodge: Rect | null = null;
     if (reservedDodgeSize) {
       const nearbySlots = [
@@ -890,7 +889,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
         && candidateRect.bottom <= stableStageBottom - margin
         && !overlaps(card, candidateRect, 8)
         && !obstacleElements.some((element) => overlaps(candidateRect, relativeRect(element, shellBounds),
-          isUnansweredAttackCardFace && anchorObstacleSet.has(element) ? 22 : 8))
+          isUnansweredAttackRoot && anchorObstacleSet.has(element) ? 22 : 8))
         && segmentNearRect(attackStart, attackEnd, candidateRect, 20))
         .sort((leftRect, rightRect) => Math.hypot(center(leftRect).x - idealPoint.x, center(leftRect).y - idealPoint.y)
           - Math.hypot(center(rightRect).x - idealPoint.x, center(rightRect).y - idealPoint.y));
@@ -1342,7 +1341,7 @@ export function InteractionRootOverlay({
         ? rememberedRoot.card
         : null;
       const preferredResponseCard = rememberedPlacementMatches ? rememberedRoot.reservedResponseCard : null;
-      const canScaleAttackCard = currentAction.cardFace?.kind === "Attack";
+      const canScaleAttackCard = currentAction.cardKind === "Attack";
       const fitSteps = canScaleAttackCard ? ["target", "compact", "minimum"] as const : ["target"] as const;
       if (canScaleAttackCard && currentAction.response?.cardFace?.kind === "Dodge" && !hasStableRootForInteraction) {
         setLayout(null);

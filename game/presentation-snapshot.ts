@@ -1,6 +1,7 @@
 import type { CurrentAction } from "./protocol";
 import { CARD_KINDS, type CardKind } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestParticipantProgressStatus } from "./pending";
+import { isProvenRootActionCardProof } from "./presentation-v2";
 import type {
   PresentationBumperHarvestProgress,
   PresentationGroupTargetEffectScope,
@@ -868,6 +869,7 @@ function rootActionFor(
 ): PresentationSnapshotRootAction | null {
   const action = presentationV2.rootAction;
   if (!action || action.semantics !== "PROVEN"
+    || !isProvenRootActionCardProof(action)
     || stable.kind !== "CHOICE"
     || action.interactionId !== identity.interactionId
     || action.interactionId !== scene.interactionId
@@ -884,7 +886,7 @@ function rootActionFor(
     || scene.targetIds.length !== 1 || scene.targetIds[0] !== action.targetId
     || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== action.targetId
     || !CARD_KINDS.includes(action.cardKind)) return null;
-  const attackScene = action.action === "ATTACK" && action.cardKind === "Attack"
+  const attackScene = action.action === "ATTACK"
     && scene.stage === "ATTACK_RESPONSE"
     && scene.currentParticipantId === action.targetId
     && scene.participantRoles.sourceId === action.sourceId
@@ -906,19 +908,24 @@ function rootActionFor(
     && scene.participantRoles.decisionActorId === action.sourceId && scene.participantRoles.activeResolverId === action.sourceId
     && scene.decisionActorId === action.sourceId && scene.activeResolverId === action.sourceId;
   if (!attackScene && !targetCardScene) return null;
-  return {
-    semantics: "PROVEN",
+  const common = {
+    semantics: "PROVEN" as const,
     interactionId: identity.interactionId,
     rootFrameId: action.rootFrameId,
     activeFrameId: action.activeFrameId,
     checkpointId: identity.checkpointId,
     presentationRevision: identity.presentationRevision,
     rootEventId: action.rootEventId,
-    action: action.action,
     sourceId: action.sourceId,
     targetId: action.targetId,
-    cardKind: action.cardKind,
   };
+  if (action.action === "ATTACK" && action.physicalCardKind === "Attack") return {
+    ...common, action: "ATTACK", cardKind: "Attack", physicalCardKind: "Attack",
+  };
+  if (action.action === "ATTACK") return {
+    ...common, action: "ATTACK", cardKind: "Attack", physicalCardKind: "Dodge", playedAs: "attack",
+  };
+  return { ...common, action: "STRATAGEM", cardKind: action.cardKind };
 }
 
 function sameIds(left: readonly string[], right: readonly string[]) {

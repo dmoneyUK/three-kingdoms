@@ -1,6 +1,7 @@
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressStatus, type HarvestParticipantProgressStatus } from "./pending";
 import { CARD_KINDS, type CardKind } from "./model";
 import { CARD_DEFINITIONS } from "./cards";
+import { isProvenRootActionCardProof } from "./presentation-v2";
 import { provenAttackDodgeResponses, provenAttackHitSettlements, provenBumperHarvestSettlements, provenDismantleSettlements, provenDuelExchange, provenGroupSettlements, provenSelfTargetActions, provenSkillEffectAction, provenSkillEffectSettlements, provenStealSettlements, type PresentationSnapshot, type PresentationSnapshotAttackDodgeResponse, type PresentationSnapshotAttackHitSettlement, type PresentationSnapshotBumperHarvestProgress, type PresentationSnapshotBumperHarvestSettlement, type PresentationSnapshotDismantleSettlement, type PresentationSnapshotDuelExchange, type PresentationSnapshotGroupParticipantProgress, type PresentationSnapshotGroupProgress, type PresentationSnapshotGroupSettlement, type PresentationSnapshotOathRecipientScope, type PresentationSnapshotRootAction, type PresentationSnapshotSelfTargetAction, type PresentationSnapshotSkillEffectAction, type PresentationSnapshotSkillEffectSettlement, type PresentationSnapshotStealSettlement } from "./presentation-snapshot";
 import type {
   PresentationGroupTargetEffectScope,
@@ -663,6 +664,7 @@ function rootActionForSnapshot(
   const action = snapshot.rootAction;
   const identity = snapshot.identity;
   if (!action || !identity || action.semantics !== "PROVEN"
+    || !isProvenRootActionCardProof(action)
     || snapshot.stable.kind !== "CHOICE"
     || action.interactionId !== identity.interactionId || action.interactionId !== scene.interactionId
     || action.rootFrameId !== scene.rootFrameId || action.activeFrameId !== scene.activeFrameId
@@ -674,7 +676,7 @@ function rootActionForSnapshot(
     || !isString(action.targetId) || scene.targetIds.length !== 1 || scene.targetIds[0] !== action.targetId
     || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== action.targetId
     || !CARD_KINDS.includes(action.cardKind)) return null;
-  const attackScene = action.action === "ATTACK" && action.cardKind === "Attack"
+  const attackScene = action.action === "ATTACK"
     && scene.stage === "ATTACK_RESPONSE"
     && scene.currentParticipantId === action.targetId
     && scene.participantRoles.sourceId === action.sourceId
@@ -696,19 +698,24 @@ function rootActionForSnapshot(
     && scene.participantRoles.decisionActorId === action.sourceId && scene.participantRoles.activeResolverId === action.sourceId
     && scene.decisionActorId === action.sourceId && scene.activeResolverId === action.sourceId;
   if (!attackScene && !targetCardScene) return null;
-  return {
-    semantics: "PROVEN",
+  const common = {
+    semantics: "PROVEN" as const,
     interactionId: identity.interactionId,
     rootFrameId: action.rootFrameId,
     activeFrameId: action.activeFrameId,
     checkpointId: identity.checkpointId,
     presentationRevision: identity.presentationRevision,
     rootEventId: action.rootEventId,
-    action: action.action,
     sourceId: action.sourceId,
     targetId: action.targetId,
-    cardKind: action.cardKind,
   };
+  if (action.action === "ATTACK" && action.physicalCardKind === "Attack") return {
+    ...common, action: "ATTACK", cardKind: "Attack", physicalCardKind: "Attack",
+  };
+  if (action.action === "ATTACK") return {
+    ...common, action: "ATTACK", cardKind: "Attack", physicalCardKind: "Dodge", playedAs: "attack",
+  };
+  return { ...common, action: "STRATAGEM", cardKind: action.cardKind };
 }
 
 export function buildPresentationClientView(

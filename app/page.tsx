@@ -3480,8 +3480,14 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     if (!source?.name || !target?.name || source.id === target.id) return null;
     return { action: settlement, rootEvent, settlementEvent, source, target, exiting: activeAttackHitSettlement?.exiting === true };
   })();
-  const rootActionEvent = rootAction ? room.timeline.find((event) => event.id === rootAction.rootEventId)
+  const rootActionEvents = rootAction ? room.timeline.filter((event) => event.id === rootAction.rootEventId) : [];
+  const rootActionEvent = rootAction ? rootActionEvents.length === 1 ? rootActionEvents[0] : null
     : oathSimultaneousRootGraphCandidate?.rootEvent ?? bumperHarvestRootGraphCandidate?.rootEvent ?? groupTargetBranchGraphCandidate?.rootEvent ?? skillEffectActionCandidate?.rootEvent ?? skillEffectSettlementCandidate?.rootEvent ?? dismantleSettlementCandidate?.rootEvent ?? stealSettlementCandidate?.rootEvent ?? attackHitSettlementCandidate?.rootEvent ?? duelExchangeGraphCandidate?.rootEvent ?? attackDodgeGraphCandidate?.rootEvent ?? singleTargetNegationGraphCandidate?.rootEvent ?? groupSettlementCandidate?.rootEvent ?? null;
+  const rootActionCardFace = rootAction?.action === "ATTACK" && rootActionEvent?.type === "card"
+    && rootActionEvent.id === rootAction.rootEventId && rootActionEvent.action === "play"
+    && rootActionEvent.presentation !== false && rootActionEvent.playedAs === rootAction.playedAs
+    && rootActionEvent.card.kind === rootAction.physicalCardKind
+    ? rootActionEvent.card : null;
   const selfTargetCandidates = rootAction || oathSimultaneousRootGraphCandidate || bumperHarvestRootGraphCandidate || groupTargetBranchGraphCandidate || skillEffectActionCandidate || skillEffectSettlementCandidate || dismantleSettlementCandidate || stealSettlementCandidate || attackHitSettlementCandidate || duelExchangeGraphCandidate || attackDodgeGraphCandidate || singleTargetNegationGraphCandidate || groupSettlementCandidate ? [] : (clientPresentation.selfTargetActions ?? []).flatMap((action) => {
     const event = room.timeline.find((candidate) => candidate.id === action.rootEventId);
     if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
@@ -3679,7 +3685,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       } : {}),
     }
     : rootAction
-    ? {
+    ? rootAction.action === "ATTACK" && !rootActionCardFace ? null : {
       key: interactionRootActionKey(rootAction),
       interactionId: rootAction.interactionId,
       rootFrameId: rootAction.rootFrameId,
@@ -3689,10 +3695,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       sourceId: rootAction.sourceId,
       targetId: rootAction.targetId,
       cardKind: rootAction.cardKind,
-      ...(rootAction.action === "ATTACK" && rootActionEvent?.type === "card"
-        && rootActionEvent.id === rootAction.rootEventId && rootActionEvent.action === "play"
-        && rootActionEvent.presentation !== false && rootActionEvent.playedAs === undefined
-        && rootActionEvent.card.kind === "Attack" ? { cardFace: rootActionEvent.card } : {}),
+      ...(rootAction.action === "ATTACK" && rootActionCardFace ? { cardFace: rootActionCardFace } : {}),
       cardLabel: rootActionName?.toUpperCase() ?? "ACTION",
       ariaLabel: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "Unknown player"} played ${rootActionName ?? "an action"} targeting ${room.players.find((player) => player.id === rootAction.targetId)?.name ?? "unknown player"}`,
       mode: "targeted",
@@ -4056,7 +4059,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     ...(dyingFirstAidSelectionActive ? [{ id: "first-aid", label: "Confirm", enabled: canUseAction(room.currentAction, "respond") && responseSelectionComplete, priority: 65 }] : []),
     ...(rescueDecisionReady && !canRespond ? [{ id: "rescue", label: "Peach", enabled: canUseAction(room.currentAction, "give_peach") && card?.kind === "Peach", priority: 60 }] : []),
     ...(room.isMyTurn && room.phase === "discard" && currentActionOwnedByViewer ? [{ id: "discard", label: `Discard ${excessCards} selected`, enabled: canUseAction(room.currentAction, "discard_cards") && discardSelected.length === excessCards, priority: 60 }] : []),
-    ...(room.isMyTurn && canPlay && currentActionOwnedByViewer ? [{ id: "turn", label: serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play", enabled: (canUseAction(room.currentAction, "play_card") || canUseAction(room.currentAction, "serpent_spear_attack")) && (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack && attackTargetsValid) && !(["Dodge", "Negation"].includes(card?.kind ?? ""))), priority: 40 }] : []),
+    ...(room.isMyTurn && canPlay && currentActionOwnedByViewer ? [{ id: "turn", label: serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play", enabled: (canUseAction(room.currentAction, "play_card") || canUseAction(room.currentAction, "serpent_spear_attack")) && (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack && attackTargetsValid) && (!(["Dodge", "Negation"].includes(card?.kind ?? "")) || selectedCanPlayAsAttack)), priority: 40 }] : []),
   ];
   const consoleIsDecisionActor = currentActionOwnedByViewer;
   const rainingArrowsDamageDecline = Boolean(

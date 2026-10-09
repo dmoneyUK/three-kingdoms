@@ -5,23 +5,21 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2.6-PHASE-D-ATTACK-RESPONSE-TIMEOUT-CLEANUP-01` is implemented locally.
-With no Skip click, the real browser waited for the server-owned 30-second
-ordinary response deadline and automatically submitted `decline_response`.
-The server published one `ATTACK_DAMAGE_APPLIED` proof for the same root,
-reduced target HP from 4 to 3, and the graph showed the settlement before
-clearing; no stale card or duplicate Stage remained. Pre-commit Actions run
-`37882419728` for exact parent SHA `13b5641bd9a108c2a5eda39cb9df9e4cc9946910`
-failed only in Browser shard 1: the real Attack→Dodge spec queried a 600ms
-settlement graph through sequential browser calls and lost it under suite
-load. The test now records actual DOM/style/geometry at the first settlement
-frame and keeps semantic, geometry, and exit assertions; CSS transition
-measurements allow at most 0.01px stroke and 0.005 opacity rounding. The CI
-repair is included with this task. Local focused browser validation passed
-4/4 across 390×844, 480×900, 1440×900, and the real 30-second timeout path;
-the 1440px case also passed 3/3 repeats with 2 workers. Targeted ESLint,
-`node --check`, and `git diff --check` passed. Outgoing Actions status is
-pending after push. Reviewer acceptance is not claimed.
+`UX2.6-PHASE-D-ATTACK-CONVERTED-CARD-ROOT-PROOF-01` is implemented locally.
+The engine, snapshot, and client preserve semantic Attack separately from a
+physical Dodge played as Attack; React links the face only to the unique,
+matching public root event. Real Longdan gameplay exposed two routing defects:
+the console rejected a CurrentAction-authorized Dodge-as-Attack, and the graph
+layout keyed fit/reserved-response geometry to the physical face instead of
+Attack semantics. Both are fixed without client-side legality inference. The
+server-backed Longdan browser path passed 1/1 for attacker and defender; the
+ordinary Attack timeout regression passed 1/1 (48.7s). API projection file
+passed 38/38, PresentationClient passed 57/57, build and targeted ESLint
+passed, and `git diff --check` passed. Repo-wide `tsc --noEmit` remains
+non-green with broad environment/type errors; it is not a configured CI job.
+Pre-commit parent Actions run `37884026647` succeeded for exact SHA
+`1747464555e334c75940dfdeb234b45af6422067`; this commit's outgoing run has
+not yet been observed. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
@@ -31,11 +29,10 @@ checkpoint. Re-fetched and reviewed §6.27.1–§6.27.4 at this task boundary.
 
 ## Next task
 
-`UX2.6-PHASE-D-ATTACK-CONVERTED-CARD-ROOT-PROOF-01` — audit and, if needed,
-extend typed public root proof for exactly one real single-target converted
-Attack: Zhao Yun's Longdan physical Dodge played as Attack. Preserve exact
-server-proven source, target, frame/checkpoint, and physical card identity/type;
-render the real card face without inferring Attack causality in React. Add a
-server-backed browser proof from skill activation through target response.
-Keep multi-target Attack out of scope; malformed or missing conversion proof
-must fail closed.
+`UX2.6-PHASE-D-ATTACK-DENSE-CONTINUITY-01` — extend §6.27.4 real Attack
+stability evidence to supported 6/8-player mobile scenes at 390×844 and
+480×900. Cover both local attacker and defender, preserve the exact server root
+identity through a 12-second RAF observation and repeated room polls, and
+classify unsupported geometry only through the explicit fail-closed reason.
+Attach actual screenshots/frame evidence. Do not change card sizes, connector
+styling, gameplay rules, or dense layouts merely to force graph readiness.
