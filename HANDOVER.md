@@ -8,11 +8,16 @@ Mode: `AUTONOMOUS UI RUN`
 §4D P2 production-path proof is closed: the real server-backed target-card
 browser spec passed 14/14 for Steal, Burning Bridge, Retaliation, Frost Sword,
 and Kirin Bow, including hidden-Hand privacy, public zones, exact submissions,
-and mixed-zone geometry. Actions run #941 (`37895174379`) passed all jobs on
-validation SHA `b55ca795e85b612fa5a320426f9686b298f69e29`. Latest remote HEAD
-`848ef06cd7a08fa7118f5dcb9dd8381d30039f5b` is a HANDOVER-only commit with no
-push-triggered run listed; per direct user instruction, an empty CI state is
-treated as success. Reviewer acceptance is not claimed.
+and mixed-zone geometry. During P3, real Da Qiao Deflection gameplay passed
+2/2 at 390px and 1440px: server-generated CurrentAction enabled the Skills
+button, the browser submitted the exact card/target payload once, and the
+redirected player received the Dodge decision. Focused local browser command:
+`npm run test:browser -- daqiao-deflection-real-gameplay.spec.mjs`.
+Latest observed Actions run #941 (`37895174379`) passed on
+`b55ca795e85b612fa5a320426f9686b298f69e29`; remote HEAD
+`0aa1eb3a13057591caf6a11ee255d312ac44f972` has no newer run listed. Per direct
+user instruction, the empty current-HEAD CI state is treated as success.
+Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
