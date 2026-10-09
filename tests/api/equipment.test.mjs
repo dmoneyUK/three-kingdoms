@@ -520,6 +520,24 @@ test("Sky Piercing Halberd expands a last-hand Attack to up to three ordered Dod
     { playerId: carolPlayer.id, order: 3, status: "PENDING" },
   ]);
   assert.equal(launched.data.room.presentationSnapshot.groupParticipantProgress.resolutionSemantics, "ORDERED");
+  const rootEvent = launched.data.room.timeline.find((event) => event.type === "card" && event.action === "play" && event.card?.id === "attack-last");
+  const orderedAttackRoot = launched.data.room.presentationV2.groupResolution.orderedAttackRoot;
+  assert.ok(rootEvent, "the public physical Attack event exists for the server-held root card");
+  assert.deepEqual(orderedAttackRoot, {
+    semantics: "PROVEN",
+    relation: "ORDERED_ATTACK_ROOT",
+    resolutionSemantics: "ORDERED",
+    interactionId: launched.data.room.causalEnvelope.interactionId,
+    groupFrameId: launched.data.room.causalEnvelope.frames[0].frameId,
+    rootEventId: rootEvent.id,
+    rootEventResolutionId: rootEvent.resolutionId,
+    rootCardId: "attack-last",
+    sourceId: hostPlayer.id,
+    cardKind: "Attack",
+    physicalCardKind: "Attack",
+    targetIds: [alicePlayer.id, bobPlayer.id, carolPlayer.id],
+  });
+  assert.deepEqual(launched.data.room.presentationSnapshot.groupParticipantProgress.orderedAttackRoot, orderedAttackRoot);
   assert.deepEqual(discardIds(game.code), [], "the final-hand Attack remains held until every Halberd target has resolved");
   const aliceDodge = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "dodge-alice" });
   assert.equal(aliceDodge.status, 200); assert.equal(aliceDodge.data.room.currentAction.actorId, carolPlayer.id, "the target without Dodge takes damage immediately and the next eligible seat becomes active");
@@ -531,6 +549,7 @@ test("Sky Piercing Halberd expands a last-hand Attack to up to three ordered Dod
     { playerId: bobPlayer.id, order: 2, status: "RESOLVED" },
     { playerId: carolPlayer.id, order: 3, status: "CURRENT" },
   ]);
+  assert.deepEqual(aliceDodge.data.room.presentationSnapshot.groupParticipantProgress.orderedAttackRoot, orderedAttackRoot, "ordered target progress stays linked to the same public root after participant advance");
   const observerProgress = (await state(game.code, alice.token)).data.presentationSnapshot.groupParticipantProgress;
   assert.deepEqual(observerProgress, aliceDodge.data.room.presentationSnapshot.groupParticipantProgress, "ordered public progress is viewer-equal");
   const bobDamage = { status: 200, data: { room: (await state(game.code, bob.token)).data } };
@@ -579,6 +598,11 @@ test("Sky Piercing Halberd keeps ORDERED progress through child Dying and resume
   ]);
   assert.equal(dyingView.presentationV2.groupResolution.resolutionSemantics, "ORDERED");
   assert.equal(dyingView.presentationSnapshot.groupParticipantProgress.resolutionSemantics, "ORDERED");
+  const dyingRootProof = dyingView.presentationSnapshot.groupParticipantProgress.orderedAttackRoot;
+  assert.equal(dyingRootProof.rootCardId, attack.id);
+  assert.deepEqual(dyingRootProof.targetIds, [first.id, second.id, third.id]);
+  const dyingObserver = (await state(game.code, thirdMember.token)).data;
+  assert.deepEqual(dyingObserver.presentationSnapshot.groupParticipantProgress.orderedAttackRoot, dyingRootProof, "the child-Dying root link is public and viewer-equal");
 
   const dyingPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
   const dyingActorId = dyingPending.actorId;

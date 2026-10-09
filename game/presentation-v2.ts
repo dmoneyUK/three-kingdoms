@@ -344,6 +344,40 @@ export type PresentationRootAction =
   })
   | (PresentationRootActionBase & { action: "STRATAGEM"; cardKind: "Dismantle" | "Steal" });
 
+/** Exact public physical-card link for an ORDERED Halberd Attack root. */
+export type PresentationOrderedAttackRootProof = {
+  semantics: "PROVEN";
+  relation: "ORDERED_ATTACK_ROOT";
+  resolutionSemantics: "ORDERED";
+  interactionId: string;
+  groupFrameId: string;
+  rootEventId: string;
+  rootEventResolutionId: string;
+  rootCardId: string;
+  sourceId: string;
+  cardKind: "Attack";
+  physicalCardKind: CardKind;
+  playedAs?: "attack";
+  /** Root-frame target order, cross-checked against the public progress list. */
+  targetIds: readonly string[];
+};
+
+export function isProvenOrderedAttackRootProof(value: unknown): value is PresentationOrderedAttackRootProof {
+  const proof = record(value);
+  if (!proof || proof.semantics !== "PROVEN" || proof.relation !== "ORDERED_ATTACK_ROOT"
+    || proof.resolutionSemantics !== "ORDERED" || proof.cardKind !== "Attack"
+    || !stringValue(proof.interactionId) || !stringValue(proof.groupFrameId)
+    || !stringValue(proof.rootEventId) || !stringValue(proof.rootEventResolutionId)
+    || !stringValue(proof.rootCardId) || !stringValue(proof.sourceId)
+    || typeof proof.physicalCardKind !== "string" || !CARD_KINDS.includes(proof.physicalCardKind as CardKind)
+    || !Array.isArray(proof.targetIds) || proof.targetIds.length === 0
+    || proof.targetIds.some((targetId) => typeof targetId !== "string" || targetId.length === 0)
+    || new Set(proof.targetIds).size !== proof.targetIds.length) return false;
+  return proof.physicalCardKind === "Attack"
+    ? proof.playedAs === undefined
+    : proof.playedAs === "attack";
+}
+
 /** Validate the public root-action/physical-card pairing at every projection boundary. */
 export function isProvenRootActionCardProof(value: unknown): value is PresentationRootAction {
   const action = record(value);
@@ -506,6 +540,7 @@ export type PresentationV2 = {
     participantIds: readonly string[];
     activeParticipantId: string | null;
     participantProgress: readonly { playerId: string; order: number; status: GroupParticipantProgressStatus; outcome?: GroupParticipantProgressOutcome }[] | null;
+    orderedAttackRoot?: PresentationOrderedAttackRootProof;
   } | null;
   decision: { kind: CurrentAction["kind"] | null; actorId: string | null; actionRevision: string; resolutionId: string | null; readyAfterEventId: string | null; deadline: number } | null;
   settlement: { eventId: string; resolutionId: string | null } | null;
@@ -962,6 +997,7 @@ function groupPresentation(
     resolutionSemantics: GroupResolutionSemantics;
     participants: Array<{ playerId: string; order: number; status: GroupParticipantProgressStatus; outcome?: GroupParticipantProgressOutcome }>;
   } | null,
+  orderedAttackRoot: PresentationOrderedAttackRootProof | null,
 ) {
   if (!scene || !groupValues) return null;
   return {
@@ -986,6 +1022,7 @@ function groupPresentation(
     participantIds: scene.participantIds,
     activeParticipantId: groupValues.activeParticipantId,
     participantProgress: participantProgress?.participants ?? null,
+    ...(orderedAttackRoot ? { orderedAttackRoot } : {}),
   };
 }
 
@@ -1256,6 +1293,74 @@ function groupParticipantProgress(
     if (ancestor?.frameId !== root.frameId || activeParticipants[0].status !== "PAUSED") return null;
   }
   return { resolutionSemantics, participants };
+}
+
+function orderedAttackRootProofFor(
+  envelope: CausalEnvelope | null,
+  group: RecordLike | null,
+  values: GroupProjectionValues | null,
+  scene: PresentationInteractionScene | null,
+  participantProgress: ReturnType<typeof groupParticipantProgress>,
+  timeline: readonly PresentationV2Event[],
+): PresentationOrderedAttackRootProof | null {
+  const causal = record(group?.causal);
+  const progress = record(group?.participantProgress);
+  const root = values?.groupFrame;
+  const active = values?.activeFrame;
+  const sourceId = values?.sourceId;
+  const rootCardId = stringValue(group?.sequenceStartCardId);
+  const heldCards = Array.isArray(group?.heldCards) ? group.heldCards.map(record) : [];
+  const heldRootCards = heldCards.filter((heldCard) => heldCard?.id === rootCardId);
+  const heldRootCard = heldRootCards.length === 1 ? heldRootCards[0] : null;
+  const rootEvents = rootCardId
+    ? timeline.filter((event) => event.type === "card" && event.action === "play" && event.presentation !== false && event.card?.id === rootCardId)
+    : [];
+  const rootEvent = rootEvents.length === 1 ? rootEvents[0] : null;
+  const physicalCardKind = typeof rootEvent?.card?.kind === "string" && CARD_KINDS.includes(rootEvent.card.kind as CardKind)
+    ? rootEvent.card.kind as CardKind
+    : null;
+
+  if (!envelope || !group || !values || group.kind !== "group" || group.cardKind !== "SkyPiercingHalberdAttack"
+    || group.requiredKind !== "Dodge" || !participantProgress || participantProgress.resolutionSemantics !== "ORDERED"
+    || progress?.version !== 1 || progress.resolutionSemantics !== "ORDERED"
+    || !causal || causal.interactionId !== envelope.interactionId
+    || !root || !active || root.parentFrameId !== null || root.stage !== "GROUP_RESOLUTION"
+    || root.origin.originEffect !== "SkyPiercingHalberdAttack"
+    || !root.origin.originSourceId || root.origin.originSourceId !== sourceId || !sourceId
+    || causal.frameId !== root.frameId || progress.interactionId !== envelope.interactionId
+    || progress.groupFrameId !== root.frameId
+    || envelope.frames.filter((frame) => frame.parentFrameId === null).length !== 1
+    || envelope.frames.filter((frame) => frame.parentFrameId === null)[0]?.frameId !== root.frameId
+    || scene?.semantics !== "PROVEN" || scene.interactionId !== envelope.interactionId
+    || scene.rootFrameId !== root.frameId || scene.activeFrameId !== active.frameId
+    || scene.sourceId !== sourceId || scene.stage !== active.stage
+    || scene.targetIds.length !== values.targetIds.length
+    || scene.targetIds.some((targetId, index) => targetId !== values.targetIds[index])
+    || !rootCardId || !heldRootCard || !physicalCardKind
+    || heldRootCard.kind !== physicalCardKind
+    || !rootEvent || !stringValue(rootEvent.id) || !stringValue(rootEvent.resolutionId)
+    || timeline.filter((event) => event.id === rootEvent.id).length !== 1) return null;
+
+  const physicalCardProof = physicalCardKind === "Attack"
+    ? rootEvent.playedAs === undefined ? { physicalCardKind: "Attack" as const } : null
+    : rootEvent.playedAs === "attack" ? { physicalCardKind, playedAs: "attack" as const } : null;
+  if (!physicalCardProof) return null;
+
+  const proof: PresentationOrderedAttackRootProof = {
+    semantics: "PROVEN",
+    relation: "ORDERED_ATTACK_ROOT",
+    resolutionSemantics: "ORDERED",
+    interactionId: envelope.interactionId,
+    groupFrameId: root.frameId,
+    rootEventId: rootEvent.id,
+    rootEventResolutionId: rootEvent.resolutionId,
+    rootCardId,
+    sourceId,
+    cardKind: "Attack",
+    ...physicalCardProof,
+    targetIds: [...participantProgress.participants.map(({ playerId }) => playerId)],
+  };
+  return isProvenOrderedAttackRootProof(proof) ? proof : null;
 }
 
 function groupTargetEffectScopeFor(
@@ -2391,6 +2496,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
   const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene, input.timeline);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
+  const orderedAttackRoot = orderedAttackRootProofFor(envelope, group, groupValues, interactionScene, projectedGroupParticipantProgress, input.timeline);
   const dyingBarrier = dyingBarrierFor(envelope, input.pending);
   const reactionChain = reactionChainFor(input.timeline, envelope, input.pending, interactionScene, projectedBumperHarvestProgress, groupValues, projectedGroupParticipantProgress);
   const oathRecipientScope = oathRecipientScopeFor(input.pending, envelope, interactionScene, input.oathRecipientIds, input.timeline, reactionChain);
@@ -2436,7 +2542,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     ...(attackDodgeResponses.length ? { attackDodgeResponses } : {}),
     oathRecipientScope,
     bumperHarvestProgress: projectedBumperHarvestProgress,
-    groupResolution: groupCardKind ? groupPresentation(interactionScene, groupValues, projectedGroupParticipantProgress) : null,
+    groupResolution: groupCardKind ? groupPresentation(interactionScene, groupValues, projectedGroupParticipantProgress, orderedAttackRoot) : null,
     decision: input.currentAction ? { kind: input.currentAction.kind, actorId: isBumperHarvestNegationPending(input.pending) ? null : input.currentAction.actorId, actionRevision: input.actionRevision, resolutionId: input.currentAction.presentation?.resolutionId ?? null, readyAfterEventId: barrierId, deadline: input.currentAction.deadline } : null,
     settlement: settlementEvent ? { eventId: settlementEvent.id, resolutionId: settlementEvent.resolutionId ?? null } : null,
     transitionEvents: input.timeline.filter((event) => event.presentation !== false && relevantIds.includes(event.id)).map((event) => ({ eventId: event.id, type: event.type, resolutionId: event.resolutionId ?? null })),

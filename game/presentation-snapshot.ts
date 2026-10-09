@@ -1,7 +1,7 @@
 import type { CurrentAction } from "./protocol";
 import { CARD_KINDS, type CardKind } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestParticipantProgressStatus } from "./pending";
-import { isProvenRootActionCardProof } from "./presentation-v2";
+import { isProvenOrderedAttackRootProof, isProvenRootActionCardProof } from "./presentation-v2";
 import type {
   PresentationBumperHarvestProgress,
   PresentationGroupTargetEffectScope,
@@ -20,6 +20,7 @@ import type {
   PresentationSkillEffectSettlement,
   PresentationAttackDodgeResponse,
   PresentationDuelExchange,
+  PresentationOrderedAttackRootProof,
   PresentationSelfTargetAction,
   PresentationStableBoundary,
   PresentationV2,
@@ -67,6 +68,7 @@ export type PresentationSnapshotGroupProgress = {
   targetIds: readonly string[];
   currentParticipantId: string;
   participants: readonly PresentationSnapshotGroupParticipantProgress[];
+  orderedAttackRoot?: PresentationOrderedAttackRootProof;
 };
 
 export type PresentationSnapshotOathRecipientScope = PresentationOathRecipientScope;
@@ -588,6 +590,16 @@ function groupParticipantProgressFor(
   } else if (active[0].status !== "PAUSED" || scene.continuity.relation !== "CHILD_FRAME") {
     return null;
   }
+  const rootProof = group.orderedAttackRoot;
+  const orderedAttackRoot = group.cardKind === "SkyPiercingHalberdAttack" && resolutionSemantics === "ORDERED"
+    && isProvenOrderedAttackRootProof(rootProof)
+    && rootProof.interactionId === group.interactionId
+    && rootProof.groupFrameId === group.groupFrameId
+    && rootProof.sourceId === group.sourceId
+    && sameIds(rootProof.targetIds, targetIds)
+    ? { ...rootProof, targetIds: [...rootProof.targetIds] }
+    : undefined;
+
   return {
     cardKind: group.cardKind,
     resolutionSemantics: group.resolutionSemantics,
@@ -599,6 +611,7 @@ function groupParticipantProgressFor(
     targetIds: [...targetIds],
     currentParticipantId: group.currentParticipantId,
     participants: copied,
+    ...(orderedAttackRoot ? { orderedAttackRoot } : {}),
   };
 }
 

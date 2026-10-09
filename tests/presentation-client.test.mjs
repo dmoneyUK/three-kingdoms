@@ -753,6 +753,55 @@ test("adapter carries explicit ORDERED Halberd progress without deriving it from
   ]);
 });
 
+test("adapter preserves only a Halberd root link that matches ordered progress", () => {
+  const base = groupProgressSnapshot();
+  const rootProof = {
+    semantics: "PROVEN",
+    relation: "ORDERED_ATTACK_ROOT",
+    resolutionSemantics: "ORDERED",
+    interactionId: base.identity.interactionId,
+    groupFrameId: base.groupParticipantProgress.groupFrameId,
+    rootEventId: "halberd-root-event",
+    rootEventResolutionId: "halberd-root-resolution",
+    rootCardId: "physical-attack-card",
+    sourceId: "A",
+    cardKind: "Attack",
+    physicalCardKind: "Attack",
+    targetIds: [...base.groupParticipantProgress.targetIds],
+  };
+  const halberd = snapshot({
+    ...base,
+    interaction: { ...base.interaction, effect: "Attack" },
+    groupParticipantProgress: {
+      ...base.groupParticipantProgress,
+      cardKind: "SkyPiercingHalberdAttack",
+      resolutionSemantics: "ORDERED",
+      orderedAttackRoot: rootProof,
+    },
+  });
+  const acting = buildPresentationClientView(halberd, "B");
+  const observer = buildPresentationClientView({
+    ...halberd,
+    localControl: { ...halberd.localControl, actorId: null, entitled: false },
+  }, "A");
+  assert.deepEqual(acting.groupResolution?.orderedAttackRoot, rootProof);
+  assert.deepEqual(observer.groupResolution?.orderedAttackRoot, rootProof, "root proof is public and viewer-equal");
+
+  for (const orderedAttackRoot of [
+    { ...rootProof, interactionId: "stale-interaction" },
+    { ...rootProof, targetIds: [...rootProof.targetIds].reverse() },
+    { ...rootProof, groupFrameId: "other-group-frame" },
+    { ...rootProof, physicalCardKind: "Dodge" },
+  ]) {
+    const view = buildPresentationClientView({
+      ...halberd,
+      groupParticipantProgress: { ...halberd.groupParticipantProgress, orderedAttackRoot },
+    }, "B");
+    assert.ok(view.groupResolution, "ordered progress remains available to existing consumers");
+    assert.equal(view.groupResolution.orderedAttackRoot, undefined, "mismatched root link fails closed at the client boundary");
+  }
+});
+
 test("adapter drops AOE progress when its frame, identity, scope, order, or status is incoherent", () => {
   const valid = groupProgressSnapshot();
   const progress = valid.groupParticipantProgress;

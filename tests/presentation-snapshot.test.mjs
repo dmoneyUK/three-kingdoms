@@ -597,6 +597,62 @@ test("snapshot preserves resolved Barbarian Invasion damage but rejects avoidanc
   assert.equal(defeated.groupParticipantProgress?.participants[0].outcome, "DEFEATED");
 });
 
+test("snapshot carries only a Halberd root proof bound to ORDERED target progress", () => {
+  const interaction = groupScene({ effect: "Sky Piercing Halberd Attack" });
+  const targetIds = [...interaction.targetIds];
+  const rootProof = {
+    semantics: "PROVEN",
+    relation: "ORDERED_ATTACK_ROOT",
+    resolutionSemantics: "ORDERED",
+    interactionId: interaction.interactionId,
+    groupFrameId: interaction.rootFrameId,
+    rootEventId: "halberd-root-event",
+    rootEventResolutionId: "halberd-root-resolution",
+    rootCardId: "physical-attack-card",
+    sourceId: "A",
+    cardKind: "Attack",
+    physicalCardKind: "Attack",
+    targetIds,
+  };
+  const progress = groupResolution(interaction, {
+    cardKind: "SkyPiercingHalberdAttack",
+    resolutionSemantics: "ORDERED",
+    effect: "Sky Piercing Halberd Attack",
+    participantProgress: [
+      { playerId: "B", order: 1, status: "CURRENT" },
+      { playerId: "C", order: 2, status: "PENDING" },
+      { playerId: "D", order: 3, status: "PENDING" },
+    ],
+    orderedAttackRoot: rootProof,
+  });
+  const presentationV2 = { ...presentation(interaction, coherentBoundary()), groupResolution: progress };
+  const accepted = composePresentationSnapshot({
+    presentationV2,
+    currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "halberd-root",
+    viewerId: "B",
+  });
+  assert.deepEqual(accepted.groupParticipantProgress?.orderedAttackRoot, rootProof);
+
+  const invalidProofs = [
+    { ...rootProof, groupFrameId: "stale-group-frame" },
+    { ...rootProof, targetIds: [...targetIds].reverse() },
+    { ...rootProof, physicalCardKind: "Dodge" },
+    { ...rootProof, physicalCardKind: "Peach", playedAs: undefined },
+    { ...rootProof, rootEventResolutionId: "" },
+  ];
+  for (const orderedAttackRoot of invalidProofs) {
+    const result = composePresentationSnapshot({
+      presentationV2: { ...presentationV2, groupResolution: { ...progress, orderedAttackRoot } },
+      currentAction: { kind: "response", actorId: "B" },
+      actionRevision: "halberd-root-invalid",
+      viewerId: "B",
+    });
+    assert.ok(result.groupParticipantProgress, "independent ordered progress remains available");
+    assert.equal(result.groupParticipantProgress.orderedAttackRoot, undefined, "mismatched root proof is withheld");
+  }
+});
+
 test("snapshot fails closed for malformed or absent public causal proof", () => {
   const malformed = composePresentationSnapshot({
     presentationV2: presentation(scene({ checkpointId: null }), { kind: "SETTLEMENT", interactionId: "interaction-1", checkpointId: "checkpoint-1", presentationRevision: 3, decisionActorId: null }),

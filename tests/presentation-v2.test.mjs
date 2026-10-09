@@ -729,6 +729,109 @@ test("AOE participant progress fails closed on scope, identity, ordering, or sta
   assert.equal(guessed.groupResolution?.participantProgress, null, "Halberd target order is not inferred when Engine-owned semantics are absent");
 });
 
+test("Halberd ordered root proof binds one exact played physical Attack to server target order", () => {
+  const interactionId = "halberd-root-proof-interaction";
+  const frameId = "halberd-root-proof-frame";
+  const cardId = "halberd-root-proof-card";
+  const targetIds = ["B", "C", "D"];
+  const pending = {
+    kind: "response",
+    actorId: "B",
+    causal: { interactionId, frameId },
+    continuation: {
+      kind: "group",
+      cardKind: "SkyPiercingHalberdAttack",
+      sourceId: "A",
+      remainingIds: ["C", "D"],
+      requiredKind: "Dodge",
+      sequenceStartCardId: cardId,
+      heldCards: [{ id: cardId, kind: "Attack" }],
+      causal: { interactionId, frameId },
+      participantProgress: {
+        version: 1,
+        interactionId,
+        groupFrameId: frameId,
+        resolutionSemantics: "ORDERED",
+        participants: [
+          { playerId: "B", status: "CURRENT" },
+          { playerId: "C", status: "PENDING" },
+          { playerId: "D", status: "PENDING" },
+        ],
+      },
+    },
+  };
+  const frame = {
+    frameId,
+    parentFrameId: null,
+    stage: "GROUP_RESOLUTION",
+    origin: { originSourceId: "A", originEffect: "SkyPiercingHalberdAttack", originalTargetIds: targetIds },
+    current: { currentSourceId: "A", currentEffect: "SkyPiercingHalberdAttack", currentTargetIds: ["B"], resolvingPlayerId: "B" },
+  };
+  const causalEnvelope = {
+    version: 1,
+    interactionId,
+    frames: [frame],
+    activeFrameId: frameId,
+    checkpoint: { checkpointId: "halberd-root-checkpoint", frameId, stage: frame.stage },
+    presentationRevision: 1,
+  };
+  const rootEvent = {
+    id: "halberd-root-event",
+    type: "card",
+    action: "play",
+    player: "A",
+    target: "B, C, D",
+    card: { id: cardId, kind: "Attack" },
+    resolutionId: "halberd-root-resolution",
+    importance: "essential",
+  };
+  const project = (timeline = [rootEvent], candidate = pending, envelope = causalEnvelope) => projectPresentationV2({
+    pending: candidate,
+    currentAction: action({ actorId: "B", resolutionId: "halberd-root-resolution", readyAfterEventId: rootEvent.id }),
+    actionRevision: "halberd-root-proof",
+    timeline,
+    causalEnvelope: envelope,
+  });
+
+  const projected = project();
+  assert.deepEqual(projected.groupResolution?.orderedAttackRoot, {
+    semantics: "PROVEN",
+    relation: "ORDERED_ATTACK_ROOT",
+    resolutionSemantics: "ORDERED",
+    interactionId,
+    groupFrameId: frameId,
+    rootEventId: rootEvent.id,
+    rootEventResolutionId: rootEvent.resolutionId,
+    rootCardId: cardId,
+    sourceId: "A",
+    cardKind: "Attack",
+    physicalCardKind: "Attack",
+    targetIds,
+  });
+
+  const convertedCardId = "halberd-root-proof-converted-card";
+  const convertedPending = {
+    ...pending,
+    continuation: { ...pending.continuation, sequenceStartCardId: convertedCardId, heldCards: [{ id: convertedCardId, kind: "Peach" }] },
+  };
+  const convertedEvent = { ...rootEvent, card: { id: convertedCardId, kind: "Peach" }, playedAs: "attack" };
+  const convertedProof = project([convertedEvent], convertedPending).groupResolution?.orderedAttackRoot;
+  assert.equal(convertedProof?.physicalCardKind, "Peach");
+  assert.equal(convertedProof?.playedAs, "attack");
+  assert.equal(convertedProof?.cardKind, "Attack");
+
+  for (const [timeline, candidate, envelope] of [
+    [[], pending, causalEnvelope],
+    [[rootEvent, { ...rootEvent, id: "duplicate-root-event" }], pending, causalEnvelope],
+    [[{ ...rootEvent, card: { id: "different-physical-card", kind: "Attack" } }], pending, causalEnvelope],
+    [[{ ...rootEvent, playedAs: "attack" }], pending, causalEnvelope],
+    [[rootEvent], { ...pending, continuation: { ...pending.continuation, heldCards: [{ id: cardId, kind: "Dodge" }] } }, causalEnvelope],
+    [[rootEvent], pending, { ...causalEnvelope, frames: [{ ...frame, origin: { ...frame.origin, originalTargetIds: ["C", "B", "D"] } }] }],
+  ]) {
+    assert.equal(project(timeline, candidate, envelope).groupResolution?.orderedAttackRoot, undefined, "unlinked or inconsistent root proof fails closed");
+  }
+});
+
 test("C5 does not infer Group authority from arbitrary nested data or frame stage", () => {
   const pending = {
     kind: "trigger",

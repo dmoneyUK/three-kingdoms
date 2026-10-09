@@ -2363,6 +2363,23 @@ Only a proven regression or new Reviewer-approved design requirement does.
   rerunning through `tests/run-tests.mjs` produced the 20/20 result. Reviewer
   acceptance is not claimed.
 
+### UX2.6-PHASE-D-HALBERD-ORDERED-ATTACK-ROOT-PROJECTION-01 — Typed public root proof
+
+- PresentationV2 now links the exact held physical Halberd Attack (or a
+  server-authored physical card with `playedAs: attack`) to its unique public
+  play event, root causal frame, source, and server-ordered targets. Snapshot
+  and client projections preserve the viewer-equal link only when it matches
+  ordered progress; missing, duplicate, stale, or mismatched evidence fails
+  closed. This is data authority only; graph rendering and terminal settlement
+  remain separate work.
+- Focused PresentationV2/Snapshot/Client tests passed 120/120, including direct
+  and converted physical-card cases; real Halberd equipment API tests passed
+  20/20 across response advance and child-Dying pause/resume. `npm run build`,
+  targeted ESLint, and `git diff --check` passed. Parent Actions run
+  `37888311102` succeeded 4/4 on SHA
+  `30d145b24090bc5cc8d2ff26fef0b608429acf7f`; outgoing task CI is not yet
+  observed. Reviewer acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

@@ -1,7 +1,7 @@
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressStatus, type HarvestParticipantProgressStatus } from "./pending";
 import { CARD_KINDS, type CardKind } from "./model";
 import { CARD_DEFINITIONS } from "./cards";
-import { isProvenRootActionCardProof } from "./presentation-v2";
+import { isProvenOrderedAttackRootProof, isProvenRootActionCardProof } from "./presentation-v2";
 import { provenAttackDodgeResponses, provenAttackHitSettlements, provenBumperHarvestSettlements, provenDismantleSettlements, provenDuelExchange, provenGroupSettlements, provenSelfTargetActions, provenSkillEffectAction, provenSkillEffectSettlements, provenStealSettlements, type PresentationSnapshot, type PresentationSnapshotAttackDodgeResponse, type PresentationSnapshotAttackHitSettlement, type PresentationSnapshotBumperHarvestProgress, type PresentationSnapshotBumperHarvestSettlement, type PresentationSnapshotDismantleSettlement, type PresentationSnapshotDuelExchange, type PresentationSnapshotGroupParticipantProgress, type PresentationSnapshotGroupProgress, type PresentationSnapshotGroupSettlement, type PresentationSnapshotOathRecipientScope, type PresentationSnapshotRootAction, type PresentationSnapshotSelfTargetAction, type PresentationSnapshotSkillEffectAction, type PresentationSnapshotSkillEffectSettlement, type PresentationSnapshotStealSettlement } from "./presentation-snapshot";
 import type {
   PresentationGroupTargetEffectScope,
@@ -490,7 +490,21 @@ function groupProgressForSnapshot(
   } else if (active[0].status !== "PAUSED" || scene.continuity.relation !== "CHILD_FRAME") {
     return null;
   }
-  return { ...progress, targetIds: [...progress.targetIds], participants };
+  const rootProof = progress.orderedAttackRoot;
+  const orderedAttackRoot = progress.cardKind === "SkyPiercingHalberdAttack" && resolutionSemantics === "ORDERED"
+    && isProvenOrderedAttackRootProof(rootProof)
+    && rootProof.interactionId === progress.interactionId
+    && rootProof.groupFrameId === progress.groupFrameId
+    && rootProof.sourceId === scene.sourceId
+    && sameStringIds(rootProof.targetIds, progress.targetIds)
+    ? { ...rootProof, targetIds: [...rootProof.targetIds] }
+    : undefined;
+  return {
+    ...progress,
+    targetIds: [...progress.targetIds],
+    participants,
+    orderedAttackRoot,
+  };
 }
 
 function oathRecipientScopeForSnapshot(
