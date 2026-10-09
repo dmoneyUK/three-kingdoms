@@ -310,6 +310,13 @@ test("adapter carries only a root action bound to the active public frame", () =
   assert.deepEqual(buildPresentationClientView(converted, "C").rootAction, convertedRootAction,
     "converted root-card proof is public and viewer-equal");
 
+  const wushengRootAction = { ...rootAction, physicalCardKind: "Peach", playedAs: "attack" };
+  const wushengRoot = snapshot({ interaction, rootAction: wushengRootAction });
+  assert.deepEqual(buildPresentationClientView(wushengRoot, "B").rootAction, wushengRootAction,
+    "an authoritative physical Peach played as Attack remains an Attack root");
+  assert.deepEqual(buildPresentationClientView(wushengRoot, "C").rootAction, wushengRootAction,
+    "the converted physical-card identity remains viewer-equal");
+
   for (const malformed of [
     { ...rootAction, interactionId: "stale-interaction" },
     { ...rootAction, rootFrameId: "other-frame" },
@@ -322,6 +329,9 @@ test("adapter carries only a root action bound to the active public frame", () =
     { ...rootAction, playedAs: "attack" },
     { ...convertedRootAction, playedAs: "dodge" },
     { ...convertedRootAction, cardKind: "Dodge" },
+    { ...wushengRootAction, playedAs: undefined },
+    { ...wushengRootAction, physicalCardKind: "unknown-card" },
+    { ...wushengRootAction, physicalCardKind: "Attack" },
   ]) {
     const view = buildPresentationClientView(snapshot({ interaction, rootAction: malformed }), "B");
     assert.equal(view.hasInteraction, true, "invalid root card proof does not erase an independently proven scene");

@@ -923,7 +923,7 @@ function rootActionFor(
     ...common, action: "ATTACK", cardKind: "Attack", physicalCardKind: "Attack",
   };
   if (action.action === "ATTACK") return {
-    ...common, action: "ATTACK", cardKind: "Attack", physicalCardKind: "Dodge", playedAs: "attack",
+    ...common, action: "ATTACK", cardKind: "Attack", physicalCardKind: action.physicalCardKind, playedAs: "attack",
   };
   return { ...common, action: "STRATAGEM", cardKind: action.cardKind };
 }

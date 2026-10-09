@@ -379,6 +379,97 @@ test("engine-backed Longdan Dodge-as-Attack preserves semantic root and physical
   assert.equal(observerView.currentAction.options, undefined, "the target's private response providers remain private");
 });
 
+test("engine-backed Guan Yu red Peach-as-Attack preserves its public physical-card proof", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [source, target] = game.room.players;
+  const [sourceMember, targetMember, observerMember] = game.members;
+  sql(`UPDATE players SET hero='guan-yu' WHERE id=${quote(source.id)}`);
+  const redPeach = { ...card("Peach", "engine-wusheng-root-peach"), suit: "♥", rank: "6" };
+  const blackPeach = { ...card("Peach", "engine-wusheng-root-black-peach"), suit: "♠", rank: "7" };
+  const targetDodge = card("Dodge", "engine-wusheng-root-response-dodge");
+  setHand(source.id, [redPeach, blackPeach], 4, 4);
+  setHand(target.id, [targetDodge], 4, 4);
+  setTurn(game.code, source.seat);
+
+  const sourceBefore = (await state(game.code, sourceMember.token)).data;
+  assert.deepEqual(sourceBefore.currentAction.playPhaseActions, [{ cardId: redPeach.id, canPlayAs: "attack" }],
+    "CurrentAction privately authorizes the red Peach, but not the black Peach, as Attack");
+  assert.equal((await state(game.code, targetMember.token)).data.currentAction.playPhaseActions, undefined,
+    "the target cannot inspect Guan Yu's private convertible-card list");
+  assert.equal((await state(game.code, observerMember.token)).data.currentAction.playPhaseActions, undefined,
+    "an observer cannot inspect Guan Yu's private convertible-card list");
+  const rejectedBlack = await request("play_card", {
+    code: game.code, token: sourceMember.token, cardId: blackPeach.id, playAs: "attack", targetId: target.id,
+  });
+  assert.equal(rejectedBlack.status, 409, "the server rejects a black card even if the client forges the Attack intent");
+  const submitted = await request("play_card", {
+    code: game.code, token: sourceMember.token, cardId: redPeach.id, playAs: "attack", targetId: target.id,
+  });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
+
+  const targetView = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  const pending = authoritativePending(game.code);
+  assert.equal(pending.kind, "response");
+  assert.equal(targetView.currentAction.kind, "response");
+  assert.equal(targetView.currentAction.actorId, target.id);
+  assert.equal(targetView.currentAction.requirement, "dodge");
+  const rootEventId = targetView.currentAction.presentation.readyAfterEventId;
+  const rootEvent = targetView.timeline.find((event) => event.id === rootEventId);
+  assert.ok(rootEvent);
+  assert.equal(rootEvent.action, "play");
+  assert.deepEqual(rootEvent.card, redPeach, "the public event retains the actual physical card, suit, and rank");
+  assert.equal(rootEvent.playedAs, "attack");
+  const scene = targetView.presentationV2.interactionScene;
+  const rootAction = {
+    semantics: "PROVEN",
+    interactionId: targetView.causalEnvelope.interactionId,
+    rootFrameId: scene.rootFrameId,
+    activeFrameId: scene.activeFrameId,
+    checkpointId: scene.checkpointId,
+    presentationRevision: scene.presentationRevision,
+    rootEventId,
+    action: "ATTACK",
+    sourceId: source.id,
+    targetId: target.id,
+    cardKind: "Attack",
+    physicalCardKind: "Peach",
+    playedAs: "attack",
+  };
+  assert.deepEqual(targetView.presentationV2.rootAction, rootAction,
+    "the engine projection preserves semantic Attack and physical Peach separately");
+  assert.deepEqual(targetView.presentationSnapshot.rootAction, rootAction,
+    "the atomic public snapshot preserves the converted-card proof");
+  assert.equal(JSON.stringify(rootAction).includes(redPeach.id), false,
+    "the root proof links through the exact public event without copying the physical card ID");
+
+  const input = {
+    pending, currentAction: targetView.currentAction, actionRevision: targetView.actionRevision,
+    timeline: targetView.timeline, causalEnvelope: targetView.causalEnvelope,
+  };
+  for (const playedAs of [undefined, "dodge"]) {
+    const timeline = targetView.timeline.map((event) => event.id === rootEventId ? { ...event, playedAs } : event);
+    assert.equal(projectPresentationV2({ ...input, timeline }).rootAction, null,
+      `a physical Peach without the exact Attack conversion marker (${String(playedAs)}) fails closed`);
+  }
+  for (const physicalProof of [
+    { ...rootAction, playedAs: undefined },
+    { ...rootAction, physicalCardKind: "Attack" },
+    { ...rootAction, physicalCardKind: "unknown-card" },
+  ]) {
+    const malformedSnapshot = composePresentationSnapshot({
+      presentationV2: { ...targetView.presentationV2, rootAction: physicalProof },
+      currentAction: targetView.currentAction,
+      actionRevision: targetView.actionRevision,
+      viewerId: target.id,
+    });
+    assert.equal(malformedSnapshot.rootAction, null, "snapshot composition rejects an invalid converted physical-card proof");
+  }
+  const observerView = (await assertProjectionMatchesEngine(game.code, observerMember.token));
+  assert.deepEqual(publicSnapshot(observerView.presentationSnapshot), publicSnapshot(targetView.presentationSnapshot),
+    "the converted public Attack root is viewer-equal");
+  assert.equal(observerView.currentAction.options, undefined, "the target's private Dodge providers remain private");
+});
+
 test("engine-backed direct Attack decline publishes only the exact applied-damage settlement", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [source, target] = game.room.players;

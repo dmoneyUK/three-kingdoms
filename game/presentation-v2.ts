@@ -339,7 +339,7 @@ export type PresentationRootAction =
   | (PresentationRootActionBase & {
     action: "ATTACK";
     cardKind: "Attack";
-    physicalCardKind: "Dodge";
+    physicalCardKind: Exclude<CardKind, "Attack">;
     playedAs: "attack";
   })
   | (PresentationRootActionBase & { action: "STRATAGEM"; cardKind: "Dismantle" | "Steal" });
@@ -349,9 +349,11 @@ export function isProvenRootActionCardProof(value: unknown): value is Presentati
   const action = record(value);
   if (!action) return false;
   if (action.action === "ATTACK") {
-    return action.cardKind === "Attack"
-      && (action.physicalCardKind === "Attack" && action.playedAs === undefined
-        || action.physicalCardKind === "Dodge" && action.playedAs === "attack");
+    if (action.cardKind !== "Attack") return false;
+    if (action.physicalCardKind === "Attack") return action.playedAs === undefined;
+    return typeof action.physicalCardKind === "string"
+      && CARD_KINDS.includes(action.physicalCardKind as CardKind)
+      && action.playedAs === "attack";
   }
   if (action.action === "STRATAGEM") {
     return (action.cardKind === "Dismantle" || action.cardKind === "Steal")
@@ -1668,10 +1670,13 @@ function singleTargetAttackRootActionFor(
   const frame = envelope?.frames.find(({ frameId }) => frameId === envelope.activeFrameId) ?? null;
   const rootFrames = envelope?.frames.filter(({ parentFrameId }) => parentFrameId == null) ?? [];
   const card = rootEvent?.card;
-  const physicalCardProof = card?.kind === "Attack" && rootEvent?.playedAs === undefined
+  const physicalCardKind = typeof card?.kind === "string" && CARD_KINDS.includes(card.kind as CardKind)
+    ? card.kind as CardKind
+    : null;
+  const physicalCardProof = physicalCardKind === "Attack" && rootEvent?.playedAs === undefined
     ? { physicalCardKind: "Attack" as const }
-    : card?.kind === "Dodge" && rootEvent?.playedAs === "attack"
-      ? { physicalCardKind: "Dodge" as const, playedAs: "attack" as const }
+    : physicalCardKind && physicalCardKind !== "Attack" && rootEvent?.playedAs === "attack"
+      ? { physicalCardKind, playedAs: "attack" as const }
       : null;
 
   if (item?.kind !== "response" || continuation?.kind !== "attack"

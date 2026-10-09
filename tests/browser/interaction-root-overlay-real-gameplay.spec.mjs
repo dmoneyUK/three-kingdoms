@@ -195,14 +195,14 @@ async function assertAttackGraphOrSafeFallback(page, viewport, label) {
   return { mode: "fallback", fitStep: diagnostics.overlay.fitStep, diagnostics };
 }
 
-async function seedGame(request, playerCount = 4, { sourceCard = attack, sourceCards = null, sourceHp = 4, targetCard = null, targetCards = null } = {}) {
+async function seedGame(request, playerCount = 4, { sourceCard = attack, sourceCards = null, sourceHp = 4, sourceHero = "zhao-yun", targetCard = null, targetCards = null } = {}) {
   const rolesByPlayerCount = {
     4: ["Rebel", "Loyalist", "Lord", "Renegade"],
     6: ["Rebel", "Loyalist", "Lord", "Renegade", "Rebel", "Rebel"],
     8: ["Rebel", "Loyalist", "Lord", "Renegade", "Rebel", "Rebel", "Loyalist", "Rebel"],
   };
   const players = [
-    { name: "SOURCE", hero: "zhao-yun" },
+    { name: "SOURCE", hero: sourceHero },
     { name: "TARGET", hero: "sun-quan" },
     { name: "THIRD", hero: "guo-jia" },
     { name: "FOURTH", hero: "zhou-yu" },
@@ -1117,6 +1117,93 @@ test("real Longdan physical Dodge-as-Attack reaches the defender with its proven
     await testInfo.attach("longdan-physical-dodge-attack-defender.png", {
       body: await defenderPage.screenshot(), contentType: "image/png",
     });
+  } finally {
+    await defenderPage.close();
+  }
+});
+
+test("real Guan Yu red Peach-as-Attack preserves its physical root card for both viewers", async ({ page, browser, request }, testInfo) => {
+  test.setTimeout(60_000);
+  const redPeach = { id: "root-overlay-real-wusheng-red-peach", kind: "Peach", suit: "♥", rank: "6" };
+  const blackPeach = { id: "root-overlay-real-wusheng-black-peach", kind: "Peach", suit: "♠", rank: "7" };
+  const seed = await seedGame(request, 4, { sourceCards: [redPeach, blackPeach], sourceHero: "guan-yu", targetCard: dodge });
+  const sourceId = seed.players[0].id;
+  const targetId = seed.players[1].id;
+  const viewport = { width: 390, height: 844 };
+
+  const sourceBefore = await roomView(request, seed, 0);
+  expect(sourceBefore.currentAction).toMatchObject({ kind: "turn", actorId: sourceId, canDeclareAttack: true });
+  expect(sourceBefore.currentAction.playPhaseActions).toEqual([{ cardId: redPeach.id, canPlayAs: "attack" }]);
+  const otherBefore = await roomView(request, seed, 1);
+  expect(otherBefore.currentAction.playPhaseActions).toBeUndefined();
+
+  await openGame(page, seed, 0, viewport);
+  const godOfWar = page.getByRole("button", { name: "God of War", exact: true });
+  await expect(godOfWar).toBeEnabled();
+  await godOfWar.click();
+  await expect(godOfWar).toHaveClass(/active/);
+  const selectedPeach = page.locator(`[data-hand-card-id="${redPeach.id}"] .game-card`);
+  const blackPeachInHand = page.locator(`[data-hand-card-id="${blackPeach.id}"] .game-card`);
+  await expect(selectedPeach).toBeEnabled();
+  await expect(blackPeachInHand).toBeDisabled();
+  await selectedPeach.click();
+  await expect(selectedPeach).toHaveClass(/selected/);
+  await page.getByRole("button", { name: "Select TARGET", exact: true }).click();
+  const confirm = page.locator('[data-console-surface="local-operation"] button.primary');
+  await expect(confirm).toBeEnabled();
+  const playRequest = page.waitForRequest((candidate) => {
+    if (candidate.url() !== `${API}/api/rooms` || candidate.method() !== "POST") return false;
+    try { return JSON.parse(candidate.postData() ?? "{}").action === "play_card"; }
+    catch { return false; }
+  });
+  await confirm.click();
+  const submitted = JSON.parse((await playRequest).postData() ?? "{}");
+  expect(submitted).toMatchObject({ action: "play_card", cardId: redPeach.id, playAs: "attack", targetId });
+
+  await expect.poll(async () => {
+    const view = await roomView(request, seed, 1);
+    return {
+      actionKind: view.currentAction?.kind,
+      actorId: view.currentAction?.actorId,
+      requirement: view.currentAction?.requirement,
+      rootAction: view.presentationSnapshot?.rootAction ?? null,
+    };
+  }, { timeout: 20_000, message: "the server projects Guan Yu's red Peach as the exact semantic Attack for its defender" }).toMatchObject({
+    actionKind: "response", actorId: targetId, requirement: "dodge",
+    rootAction: {
+      semantics: "PROVEN", action: "ATTACK", cardKind: "Attack", physicalCardKind: "Peach", playedAs: "attack",
+      sourceId, targetId,
+    },
+  });
+
+  const targetView = await roomView(request, seed, 1);
+  const sourceView = await roomView(request, seed, 0);
+  const rootAction = targetView.presentationSnapshot.rootAction;
+  expect(sourceView.presentationSnapshot.rootAction).toEqual(rootAction);
+  expect(targetView.currentAction.legalActions).toContain("respond");
+  expect(targetView.currentAction.playPhaseActions).toBeUndefined();
+  expect(targetView.timeline.filter((event) => event.id === rootAction.rootEventId)).toHaveLength(1);
+  expect(targetView.timeline.find((event) => event.id === rootAction.rootEventId)).toMatchObject({
+    action: "play", playedAs: "attack", card: { id: redPeach.id, kind: "Peach", suit: "♥", rank: "6" },
+  });
+  expect(JSON.stringify(rootAction)).not.toContain(redPeach.id);
+
+  await expectAttackGraphIdentity(page, rootAction);
+  const sourceRootCard = page.locator('[data-root-action-card="true"]');
+  await expect(sourceRootCard).toHaveAttribute("data-root-action-card-face-kind", "Peach");
+  await expect(sourceRootCard.locator(".played-card.peach")).toBeVisible();
+  await expect(page.locator(".interaction-stage")).toHaveCount(0);
+  await testInfo.attach("wusheng-red-peach-attack-source.png", { body: await page.screenshot(), contentType: "image/png" });
+
+  const defenderPage = await browser.newPage({ viewport });
+  try {
+    await openGame(defenderPage, seed, 1, viewport);
+    await expectAttackGraphIdentity(defenderPage, rootAction);
+    const defenderRootCard = defenderPage.locator('[data-root-action-card="true"]');
+    await expect(defenderRootCard).toHaveAttribute("data-root-action-card-face-kind", "Peach");
+    await expect(defenderRootCard.locator(".played-card.peach")).toBeVisible();
+    await expect(defenderPage.locator(".interaction-stage")).toHaveCount(0);
+    await testInfo.attach("wusheng-red-peach-attack-defender.png", { body: await defenderPage.screenshot(), contentType: "image/png" });
   } finally {
     await defenderPage.close();
   }

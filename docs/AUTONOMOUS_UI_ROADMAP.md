@@ -2308,6 +2308,23 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `365634de7d0ebd79384bab0ecc0a820eeba4419a` passed Actions run
   `37885948819` (4/4 jobs). Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-D-ATTACK-WUSHENG-ROOT-PROOF-01 — Guan Yu converted Attack root
+
+- Typed public root proof now preserves a valid non-Attack physical CardKind
+  only when the exact root event carries server-authored
+  `playedAs: attack`; the semantic action remains Attack and physical card ID
+  is not copied into the root contract. Real Guan Yu play-phase flow proved
+  CurrentAction exposes only the red Peach, rejects a forged black-Peach
+  Attack with 409, and publishes the same Peach physical-card root for attacker
+  and defender. Both pages showed the existing ready Attack graph with the
+  authentic Peach face; attacker/defender screenshots are in the local
+  Playwright HTML report. Engine projection passed 39/39, client/snapshot
+  passed 75/75, and the real browser path passed 1/1; build, targeted ESLint,
+  syntax checks, and `git diff --check` passed. Parent Actions run
+  `37887836857` for exact SHA `f4c9574fbf7c6115e8d332292530062014bfcd13`
+  had Lint/fast and API successful while both browser shards were still
+  running (0/2); deploy had not started. Reviewer acceptance is not claimed.
+
 ### UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01 — Real drag/drop completion
 
 - The real server-backed Stargazing proof now covers touch reassignment between
