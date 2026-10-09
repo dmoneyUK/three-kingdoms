@@ -2174,6 +2174,24 @@ Only a proven regression or new Reviewer-approved design requirement does.
   SHA; this task's outgoing SHA is not yet validated. Reviewer acceptance is
   not claimed.
 
+### UX2.6-PHASE-D-ATTACK-CONNECTOR-VISIBILITY-01 — Distinct Attack ribbons
+
+- Ordinary Attack authorship now uses a straight 4px green source ribbon with
+  no arrow; direction uses a straight 7px red target ribbon with a 30×22px
+  marker. A successful Dodge's public source tether is straight green at
+  3.5px. Screenshot review covered 390×844, 480×900, wide, and supported dense
+  graphs. Browser evidence checks path shape, computed strokes, marker size,
+  containment, and card geometry.
+- Repairing CI exposed stale pre-CardFace dimensions, dense cases that asserted
+  graph visibility despite approved safe fallback, unsupported layouts inside
+  the repeated-graph-only matrix, and a Dodge helper waiting on a client
+  response instead of the subsequent server proof. Assertions now reflect the
+  approved size/fallback contract; Dodge observation waits for the submitted
+  request while the existing authoritative room projection remains the
+  success proof. Build, targeted ESLint, `git diff --check`, and the focused
+  server-backed browser matrix passed 12/12. Reviewer acceptance is not
+  claimed.
+
 ### UX2.6-PHASE-D-ATTACK-CARD-FACE-SCALE-01 — Authentic Attack/Dodge cards
 
 - The real server-backed Attack root and successful Dodge now render genuine

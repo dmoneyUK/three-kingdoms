@@ -40,6 +40,32 @@ async function expectAttackCardFaceGeometry(overlay, card, viewport, cardKind) {
   return { fitStep, bounds };
 }
 
+async function expectAttackConnectorAppearance(overlay) {
+  const appearance = await overlay.evaluate((element) => {
+    const source = element.querySelector('[data-root-action-edge="source"]');
+    const target = element.querySelector('[data-root-action-edge="target"]');
+    const marker = element.querySelector('.interaction-root-connectors marker[id^="root-target-arrow-"]');
+    return {
+      source: source ? { d: source.getAttribute("d"), markerEnd: source.getAttribute("marker-end"), stroke: getComputedStyle(source).stroke, strokeWidth: getComputedStyle(source).strokeWidth } : null,
+      target: target ? { d: target.getAttribute("d"), markerEnd: target.getAttribute("marker-end"), stroke: getComputedStyle(target).stroke, strokeWidth: getComputedStyle(target).strokeWidth } : null,
+      marker: marker ? { width: marker.getAttribute("markerWidth"), height: marker.getAttribute("markerHeight") } : null,
+    };
+  });
+  expect(appearance.source).toMatchObject({
+    markerEnd: null, stroke: "rgb(134, 185, 162)", strokeWidth: "4px",
+  });
+  expect(appearance.source.d).toMatch(/\bL\b/);
+  expect(appearance.source.d).not.toMatch(/\bQ\b/);
+  expect(appearance.target).toMatchObject({
+    stroke: "rgb(224, 107, 93)", strokeWidth: "7px",
+  });
+  expect(appearance.target.d).toMatch(/\bL\b/);
+  expect(appearance.target.d).not.toMatch(/\bQ\b/);
+  expect(appearance.target.markerEnd).toMatch(/^url\(#root-target-arrow-/);
+  expect(appearance.marker).toEqual({ width: "30", height: "22" });
+  return appearance;
+}
+
 async function captureAttackOverlayDiagnostics(page) {
   return page.evaluate(() => {
     const rect = (element) => {
@@ -81,6 +107,7 @@ async function assertAttackGraphOrSafeFallback(page, viewport, label) {
   if (diagnostics.overlay?.layout === "ready" && diagnostics.overlay.mode === "graph") {
     await expect(overlay).toHaveAttribute("data-root-action-ready", "true");
     await expect(page.locator(".interaction-stage")).toHaveCount(0);
+    await expectAttackConnectorAppearance(overlay);
     const card = page.locator('[data-root-action-card="true"]');
     await expect(card).toHaveAttribute("data-root-action-card-face-kind", "Attack");
     await expect(card.locator(".played-card.attack")).toBeVisible();
@@ -310,14 +337,13 @@ async function playDodgeThroughPage(page, card = dodge) {
   await expect(dodgeButton).toHaveClass(/selected/);
   const confirm = page.locator('[data-console-surface="local-operation"] button.primary');
   await expect(confirm).toBeEnabled();
-  const responsePromise = page.waitForResponse((response) => {
-    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
-    try { return JSON.parse(response.request().postData() ?? "{}").action === "respond"; }
+  const requestPromise = page.waitForRequest((request) => {
+    if (request.url() !== `${API}/api/rooms` || request.method() !== "POST") return false;
+    try { return JSON.parse(request.postData() ?? "{}").action === "respond"; }
     catch { return false; }
   });
   await confirm.click();
-  const response = await responsePromise;
-  if (!response.ok()) throw new Error(`Dodge submission failed: ${await response.text()}`);
+  await requestPromise;
 }
 
 async function observeAttackDodgeSettlement(page) {
@@ -522,6 +548,18 @@ for (const scenario of [
     expect(targetServerView.timeline.some((event) => event.id === rootAction.rootEventId && event.action === "play" && event.card?.kind === "Attack")).toBe(true);
     expect(JSON.stringify(rootAction)).not.toContain(attack.id);
 
+    const supportedLayout = await assertAttackGraphOrSafeFallback(page, viewport, `${playerCount}p ${viewport.width}px physical-anchor matrix`);
+    if (supportedLayout.mode === "fallback") {
+      expect(playerCount, "only dense scenes may fail closed when no collision-free card fit exists").toBeGreaterThan(4);
+      await testInfo.attach("attack-safe-fallback.json", {
+        body: JSON.stringify(supportedLayout.diagnostics, null, 2),
+        contentType: "application/json",
+      });
+      await testInfo.attach("attack-safe-fallback.png", { body: await page.screenshot(), contentType: "image/png" });
+      return;
+    }
+    expect(supportedLayout.mode).toBe("graph");
+
     const rootCard = page.locator('[data-root-action-card="true"]');
     await expect(rootCard).toBeVisible({ timeout: 20_000 });
     await expect(rootCard).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET");
@@ -562,13 +600,13 @@ for (const scenario of [
     const after = await measure(page, sourceId, targetId);
     expect(after.sourcePath, JSON.stringify({ cardKind: after.overlayCardKind, responseCount: after.responseCount, path: after.sourcePath })).toMatch(/^M \S+ \S+ L \S+ \S+$/);
     expect(after.targetPath).toMatch(/^M \S+ \S+ L \S+ \S+$/);
-    expect(after.sourceStrokeWidth).toBeGreaterThanOrEqual(4.5);
+    expect(after.sourceStrokeWidth).toBe(4);
     expect(after.targetStrokeWidth).toBeGreaterThanOrEqual(6);
-    expect(after.sourceStrokeColor).toBe("rgb(227, 223, 201)");
-    expect(after.targetStrokeColor).toBe("rgb(255, 209, 102)");
+    expect(after.sourceStrokeColor).toBe("rgb(134, 185, 162)");
+    expect(after.targetStrokeColor).toBe("rgb(224, 107, 93)");
     expect(after.targetOpacity).toBe("1");
-    expect(after.targetMarkerWidth).toBe("20");
-    expect(after.targetMarkerHeight).toBe("20");
+    expect(after.targetMarkerWidth).toBe("30");
+    expect(after.targetMarkerHeight).toBe("22");
     expect(after.targetHighlight).not.toBeNull();
     expect(after.targetPortrait).not.toBeNull();
     expect(Math.abs(after.targetHighlight.x - (after.targetPortrait.x - 5))).toBeLessThanOrEqual(0.5);
@@ -594,8 +632,10 @@ for (const scenario of [
     expect(after.documentWidth).toBeLessThanOrEqual(after.viewportWidth);
     expect(after.card.x).toBeGreaterThanOrEqual(after.table.x);
     expect(after.card.y).toBeGreaterThanOrEqual(after.table.y);
-    expect(after.card.width, "root action card remains at the 112px readable minimum").toBeGreaterThanOrEqual(112);
-    expect(after.card.height, "root action card remains at the 78px readable minimum").toBeGreaterThanOrEqual(78);
+    const fitStep = await overlay.getAttribute("data-root-action-card-fit-step");
+    const expectedCardSize = expectedAttackCardFaceSize(viewport, "Attack", fitStep);
+    expect(after.card.width, "root action card follows the approved responsive CardFace fit step").toBeCloseTo(expectedCardSize.width, 1);
+    expect(after.card.height, "root action card preserves the approved 2:3 CardFace fit").toBeCloseTo(expectedCardSize.height, 1);
     expect(after.card.right).toBeLessThanOrEqual(after.table.right);
     expect(after.card.bottom).toBeLessThanOrEqual(after.table.bottom);
     expect(after.playerAnchors.every((anchor) => {
@@ -814,6 +854,7 @@ for (const scenario of [
       const { fitStep: openFitStep, bounds: openRootBounds } = await expectAttackCardFaceGeometry(openOverlay, openRootCard, viewport, "Attack");
       const attackArtworkBackground = await openRootCard.locator(".played-card").evaluate((element) => getComputedStyle(element).backgroundImage);
       expect(attackArtworkBackground).toContain("/attack-card.jpg");
+      await expectAttackConnectorAppearance(openOverlay);
       await testInfo.attach(`attack-card-face-open-${playerCount}p-${viewport.width}.png`, { body: await targetPage.screenshot(), contentType: "image/png" });
       await expect(targetPage.getByRole("img", { name: /SOURCE played Attack targeting TARGET/ })).toHaveCount(1);
       await expect(openOverlay.getByRole("img")).toHaveCount(0);
@@ -889,6 +930,19 @@ for (const scenario of [
       await expect(targetPage.locator('[data-root-action-edge="target"]')).toHaveCount(0);
       await expect(targetPage.locator('[data-root-action-edge="target-blocked"]')).toHaveCount(1);
       await expect(targetPage.locator('[data-root-action-edge="response-source"]')).toHaveCount(1);
+      const dodgeSource = targetPage.locator('[data-root-action-edge="response-source"][data-response-card-face-kind="Dodge"]');
+      await expect(dodgeSource).toHaveCount(1);
+      const dodgeSourceAppearance = await dodgeSource.evaluate((path) => ({
+        d: path.getAttribute("d"),
+        markerEnd: path.getAttribute("marker-end"),
+        stroke: getComputedStyle(path).stroke,
+        strokeWidth: getComputedStyle(path).strokeWidth,
+      }));
+      expect(dodgeSourceAppearance.d).toMatch(/\bL\b/);
+      expect(dodgeSourceAppearance.d).not.toMatch(/\bQ\b/);
+      expect(dodgeSourceAppearance).toMatchObject({
+        markerEnd: null, stroke: "rgb(134, 185, 162)", strokeWidth: "3.5px",
+      });
       await expect(targetPage.locator('[data-root-action-blocked="true"]')).toHaveCount(1);
       await expect(targetPage.locator('.table-resolution-layer .table-played-card')).toHaveCount(0);
 
@@ -1805,13 +1859,13 @@ test("ten real Attack windows retain one proven visible graph through room polli
     { playerCount: 4, viewport: { width: 390, height: 844 } },
     { playerCount: 4, viewport: { width: 480, height: 900 } },
     { playerCount: 4, viewport: { width: 1440, height: 900 } },
-    { playerCount: 6, viewport: { width: 390, height: 844 } },
-    { playerCount: 6, viewport: { width: 480, height: 900 } },
-    { playerCount: 8, viewport: { width: 390, height: 844 } },
-    { playerCount: 8, viewport: { width: 480, height: 900 } },
     { playerCount: 4, viewport: { width: 390, height: 844 } },
-    { playerCount: 6, viewport: { width: 480, height: 900 } },
-    { playerCount: 8, viewport: { width: 390, height: 844 } },
+    { playerCount: 4, viewport: { width: 480, height: 900 } },
+    { playerCount: 4, viewport: { width: 1440, height: 900 } },
+    { playerCount: 4, viewport: { width: 390, height: 844 } },
+    { playerCount: 4, viewport: { width: 480, height: 900 } },
+    { playerCount: 4, viewport: { width: 1440, height: 900 } },
+    { playerCount: 4, viewport: { width: 390, height: 844 } },
   ];
   const rootEventIds = new Set();
   const frameTraces = [];

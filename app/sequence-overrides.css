@@ -559,17 +559,29 @@
 }
 
 .interaction-root-overlay[data-root-action-card-kind="Attack"] .interaction-root-source-tether {
-  stroke: #e3dfc9;
-  stroke-width: 4.8px;
+  stroke: #86b9a2;
+  stroke-width: 4px;
   opacity: 1;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 2px #86b9a288);
   vector-effect: non-scaling-stroke;
 }
 
 .interaction-root-overlay[data-root-action-card-kind="Attack"] .interaction-root-target-arrow {
-  stroke: #ffd166;
-  stroke-width: 6.5px;
+  stroke: #e06b5d;
+  stroke-width: 7px;
   opacity: 1;
-  filter: drop-shadow(0 0 6px #ffd166ee);
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px #e06b5d99);
+  vector-effect: non-scaling-stroke;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Attack"] .interaction-root-response-source-tether[data-response-card-face-kind="Dodge"] {
+  stroke: #86b9a2;
+  stroke-width: 3.5px;
+  opacity: 1;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 2px #86b9a288);
   vector-effect: non-scaling-stroke;
 }
 
@@ -740,9 +752,9 @@
 }
 
 .interaction-root-overlay[data-root-action-card-kind="Attack"] .interaction-root-connectors marker[id^="root-target-arrow"] path {
-  fill: #ffd166;
-  stroke: #513b12;
-  stroke-width: 1.5px;
+  fill: #e06b5d;
+  stroke: #4a211b;
+  stroke-width: 1.2px;
 }
 
 .interaction-root-action-card {

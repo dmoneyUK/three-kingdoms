@@ -1091,7 +1091,11 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       responseTargetPath,
       targetBlockPath,
       responseCard,
-      responseSourcePath: pathBetween(responseSourceStart, responseSourceEnd, Math.min(20, lineLength * .025)),
+      responseSourcePath: pathBetween(
+        responseSourceStart,
+        responseSourceEnd,
+        action.cardKind === "Attack" && action.response.cardFace?.kind === "Dodge" ? 0 : Math.min(20, lineLength * .025),
+      ),
       counterPath: counterStart && counterEnd ? pathBetween(counterStart, counterEnd, 0) : null,
       blockPath,
       responseCards: [],
@@ -1163,7 +1167,8 @@ export function InteractionRootOverlay({
   const responseCountersRoot = action?.response?.countersRoot === true;
   const responseTargetsPlayer = Boolean(responseTargetId);
   const markerId = key ? `root-target-arrow-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}` : "root-target-arrow";
-  const targetMarkerSize = action?.cardKind === "Attack" ? 20 : 8;
+  const targetMarkerWidth = action?.cardKind === "Attack" ? 30 : 8;
+  const targetMarkerHeight = action?.cardKind === "Attack" ? 22 : 8;
   const counterMarkerId = key ? `root-counter-arrow-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}` : "root-counter-arrow";
 
   useLayoutEffect(() => {
@@ -1390,8 +1395,8 @@ export function InteractionRootOverlay({
   >
     {layout && <svg className="interaction-root-connectors" width="100%" height="100%" viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" aria-hidden="true">
       <defs>
-        <marker id={markerId} markerWidth={targetMarkerSize} markerHeight={targetMarkerSize} refX={targetMarkerSize} refY={targetMarkerSize / 2} orient="auto" markerUnits="userSpaceOnUse">
-          <path d={`M0 0 L${targetMarkerSize} ${targetMarkerSize / 2} L0 ${targetMarkerSize} Z`} />
+        <marker id={markerId} markerWidth={targetMarkerWidth} markerHeight={targetMarkerHeight} refX={targetMarkerWidth} refY={targetMarkerHeight / 2} orient="auto" markerUnits="userSpaceOnUse">
+          <path d={`M0 0 L${targetMarkerWidth} ${targetMarkerHeight / 2} L0 ${targetMarkerHeight} Z`} />
         </marker>
         <marker id={counterMarkerId} markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
           <path d="M0 0 L8 4 L0 8 Z" />
@@ -1491,7 +1496,7 @@ export function InteractionRootOverlay({
       {layout.targetBlockPath && <path className="interaction-root-block-mark interaction-root-target-block-mark" data-root-action-root-blocked="true" d={layout.targetBlockPath} />}
       {layout.counterPath && <path className={responseCountersRoot ? "interaction-root-counter-relation interaction-root-negation-counter" : "interaction-root-counter-relation"} data-root-action-edge={responseCountersRoot ? "negation-counters-root" : "target-blocked"} d={layout.counterPath} markerEnd={responseCountersRoot ? `url(#${counterMarkerId})` : undefined} />}
       {layout.blockPath && <path className="interaction-root-block-mark" data-root-action-blocked="true" d={layout.blockPath} />}
-      {layout.responseSourcePath && <path className="interaction-root-response-source-tether" data-root-action-edge="response-source" data-response-actor-id={responseActorId ?? undefined} d={layout.responseSourcePath} />}
+      {layout.responseSourcePath && <path className="interaction-root-response-source-tether" data-root-action-edge="response-source" data-response-actor-id={responseActorId ?? undefined} data-response-card-face-kind={action.response?.cardFace?.kind} d={layout.responseSourcePath} />}
       {layout.responseTargetPath && <path
         className="interaction-root-response-target-arrow"
         data-root-action-edge="duel-response-target"
