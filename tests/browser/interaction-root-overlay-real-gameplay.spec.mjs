@@ -99,6 +99,129 @@ async function captureAttackOverlayDiagnostics(page) {
   });
 }
 
+async function scanAttackRootPlacementField(page, sourceId, targetId) {
+  return page.evaluate(({ sourceId: requestedSourceId, targetId: requestedTargetId }) => {
+    const rect = (element) => {
+      const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+      return { left, top, right, bottom, width, height };
+    };
+    const shell = document.querySelector(".game-shell");
+    const table = document.querySelector(".play-table");
+    const cardElement = document.querySelector('[data-root-action-card="true"]');
+    const sourceElement = [...document.querySelectorAll("[data-player-anchor]")]
+      .find((element) => element.dataset.playerAnchor === requestedSourceId);
+    const targetElement = [...document.querySelectorAll("[data-player-anchor]")]
+      .find((element) => element.dataset.playerAnchor === requestedTargetId);
+    if (!shell || !table || !cardElement || !sourceElement || !targetElement) return { available: false };
+
+    const tableRect = rect(table);
+    const cardBounds = rect(cardElement);
+    const cardWidth = cardBounds.width;
+    const cardHeight = cardBounds.height;
+    const source = rect(sourceElement);
+    const target = rect(targetElement);
+    const sourceCenter = { x: source.left + source.width / 2, y: source.top + source.height / 2 };
+    const targetCenter = { x: target.left + target.width / 2, y: target.top + target.height / 2 };
+    const line = { x: targetCenter.x - sourceCenter.x, y: targetCenter.y - sourceCenter.y };
+    const lineLengthSquared = line.x * line.x + line.y * line.y || 1;
+    const preferred = { x: sourceCenter.x + line.x * .36, y: sourceCenter.y + line.y * .36 };
+    const anchors = [...document.querySelectorAll("[data-player-anchor]")]
+      .filter((element) => element.getClientRects().length > 0)
+      .map((element) => ({ id: element.dataset.playerAnchor, rect: rect(element) }));
+    const controls = [...document.querySelectorAll(".play-center, .stage-system-cluster, .game-messages, .game-exit")]
+      .filter((element) => element.getClientRects().length > 0)
+      .map((element) => ({ name: String(element.className), rect: rect(element) }));
+    const obstacles = [...anchors.map((item) => ({ ...item, kind: "anchor" })), ...controls.map((item) => ({ ...item, id: null, kind: "control" }))];
+    const expand = (box, clearance) => ({
+      left: box.left - clearance,
+      top: box.top - clearance,
+      right: box.right + clearance,
+      bottom: box.bottom + clearance,
+    });
+    const overlaps = (left, right) => left.left < right.right && left.right > right.left
+      && left.top < right.bottom && left.bottom > right.top;
+    const edgePoint = (box, toward) => {
+      const center = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+      const dx = toward.x - center.x;
+      const dy = toward.y - center.y;
+      const scale = Math.min(
+        dx ? box.width / 2 / Math.abs(dx) : Number.POSITIVE_INFINITY,
+        dy ? box.height / 2 / Math.abs(dy) : Number.POSITIVE_INFINITY,
+      );
+      return { x: center.x + dx * scale, y: center.y + dy * scale };
+    };
+    const segmentIntersects = (start, end, box) => {
+      let low = 0;
+      let high = 1;
+      for (const [origin, delta, min, max] of [
+        [start.x, end.x - start.x, box.left, box.right],
+        [start.y, end.y - start.y, box.top, box.bottom],
+      ]) {
+        if (Math.abs(delta) < .001) {
+          if (origin < min || origin > max) return false;
+          continue;
+        }
+        const first = (min - origin) / delta;
+        const second = (max - origin) / delta;
+        low = Math.max(low, Math.min(first, second));
+        high = Math.min(high, Math.max(first, second));
+        if (low > high) return false;
+      }
+      return high >= 0 && low <= 1;
+    };
+    const safe = { left: tableRect.left + 12, top: tableRect.top + 12, right: tableRect.right - 12, bottom: tableRect.bottom - 12 };
+    const scans = [8, 12].map((clearance) => {
+      let inRelationBand = 0;
+      let cardClear = 0;
+      let connectorClear = 0;
+      let preferredBandCount = 0;
+      const best = [];
+      let minimumLateral = null;
+      for (let top = safe.top; top + cardHeight <= safe.bottom; top += 4) {
+        for (let left = safe.left; left + cardWidth <= safe.right; left += 4) {
+          const candidate = { left, top, right: left + cardWidth, bottom: top + cardHeight, width: cardWidth, height: cardHeight };
+          const center = { x: left + cardWidth / 2, y: top + cardHeight / 2 };
+          const projection = ((center.x - sourceCenter.x) * line.x + (center.y - sourceCenter.y) * line.y) / lineLengthSquared;
+          if (projection < .16 || projection > .92) continue;
+          inRelationBand += 1;
+          if (projection >= .30 && projection <= .42) preferredBandCount += 1;
+          if (obstacles.some((obstacle) => overlaps(candidate, expand(obstacle.rect, clearance)))) continue;
+          cardClear += 1;
+          const sourceStart = edgePoint(source, center);
+          const sourceEnd = edgePoint(candidate, sourceCenter);
+          const targetStart = edgePoint(candidate, targetCenter);
+          const targetEnd = edgePoint(target, center);
+          const sourceBlocked = obstacles.some((obstacle) => obstacle.id !== requestedSourceId
+            && segmentIntersects(sourceStart, sourceEnd, expand(obstacle.rect, clearance)));
+          const targetBlocked = obstacles.some((obstacle) => obstacle.id !== requestedTargetId
+            && segmentIntersects(targetStart, targetEnd, expand(obstacle.rect, clearance)));
+          if (sourceBlocked || targetBlocked) continue;
+          connectorClear += 1;
+          const lateral = Math.abs((center.x - sourceCenter.x) * -line.y + (center.y - sourceCenter.y) * line.x) / Math.sqrt(lineLengthSquared);
+          if (minimumLateral === null || lateral < minimumLateral.lateral) {
+            minimumLateral = { x: left, y: top, projection, lateral: Math.round(lateral) };
+          }
+          const score = Math.hypot(center.x - preferred.x, center.y - preferred.y)
+            + Math.abs(projection - .36) * 80 + lateral * .12;
+          best.push({ x: left, y: top, width: cardWidth, height: cardHeight, projection, lateral: Math.round(lateral), score: Math.round(score * 100) / 100 });
+        }
+      }
+      best.sort((a, b) => a.score - b.score);
+      return { clearance, sampleStep: 4, relationBand: [.16, .92], preferredFractionBand: [.30, .42], inRelationBand, cardClear, connectorClear, preferredBandCount, minimumLateral, best: best.slice(0, 8) };
+    });
+    return {
+      available: true,
+      card: { width: cardWidth, height: cardHeight },
+      table: tableRect,
+      source: { id: requestedSourceId, rect: source },
+      target: { id: requestedTargetId, rect: target },
+      controls,
+      anchors,
+      scans,
+    };
+  }, { sourceId, targetId });
+}
+
 async function captureAttackDodgeInterceptionGeometry(page) {
   return page.evaluate(() => {
     const rect = (element) => {
@@ -1517,6 +1640,9 @@ for (const scenario of [
       await openGame(targetPage, seed, 1, viewport);
       const actorLayout = await assertAttackGraphOrSafeFallback(page, viewport, `${playerCount}p ${viewport.width}px attacker`);
       const targetLayout = await assertAttackGraphOrSafeFallback(targetPage, viewport, `${playerCount}p ${viewport.width}px defender`);
+      actorLayout.placementFieldScan = actorLayout.mode === "fallback"
+        ? await scanAttackRootPlacementField(page, sourceId, targetId)
+        : null;
       actorLayout.fitDiagnostics = await page.evaluate((rootEventId) => window.__wtkAttackFitDiagnostics
         .filter((diagnostic) => diagnostic.rootEventId === rootEventId), rootAction.rootEventId);
       targetLayout.fitDiagnostics = await targetPage.evaluate((rootEventId) => window.__wtkAttackFitDiagnostics
@@ -1531,6 +1657,51 @@ for (const scenario of [
           expect(fitDiagnostic.rootFitCandidateCount, `${role}: no sampled root rectangle clears all measured obstacles`).toBe(0);
           expect(fitDiagnostic.rootRejectedBySeatOrDock + fitDiagnostic.rootRejectedByControl,
             `${role}: all rejected roots are attributed to measured seat/dock or control collisions`).toBeGreaterThan(0);
+        }
+      }
+      const selectedActorFieldFit = actorLayout.fitDiagnostics.find((diagnostic) => diagnostic.cause === "placement-field-root-selected");
+      if (playerCount === 8 && viewport.width === 390) {
+        expect(actorLayout.mode, "the 8-player 390px local attacker has no safe root fit at any supported size").toBe("fallback");
+        expect(selectedActorFieldFit).toBeUndefined();
+        const exhaustedSearches = actorLayout.fitDiagnostics.filter((diagnostic) => diagnostic.cause === "no-attack-root-candidate"
+          && diagnostic.placementSearchEligibility?.attempted);
+        expect(new Set(exhaustedSearches.map((diagnostic) => diagnostic.fitStep))).toEqual(new Set(["target", "compact", "minimum"]));
+        for (const diagnostic of exhaustedSearches) {
+          expect(diagnostic.placementSearchEligibility).toMatchObject({ attempted: true, unansweredAttackRoot: true, viewportWidth: 390, pathCandidateCount: 0 });
+          expect(diagnostic.placementFieldSearch?.passes.map((pass) => pass.clearance)).toEqual([12, 8]);
+          expect(diagnostic.placementFieldSearch?.passes.every((pass) => pass.cardClearCount === 0 && pass.connectorClearCount === 0)).toBe(true);
+        }
+        expect(actorLayout.placementFieldScan?.available).toBe(true);
+        expect(actorLayout.placementFieldScan?.scans.every((pass) => pass.cardClear === 0 && pass.connectorClear === 0)).toBe(true);
+      } else {
+        expect(actorLayout.mode, `${playerCount}p ${viewport.width}px local attacker uses the proven graph`).toBe("graph");
+        expect(selectedActorFieldFit, "the graph came from the measured field search, not the old sampled path set").toBeTruthy();
+        const search = selectedActorFieldFit.placementFieldSearch;
+        expect([8, 12]).toContain(search.selectedClearance);
+        expect(search.selected?.projection).toBeGreaterThanOrEqual(.16);
+        expect(search.selected?.projection).toBeLessThanOrEqual(.92);
+        expect(Math.abs(search.selected.left - (actorLayout.root.x - actorLayout.diagnostics.shell.x))).toBeLessThanOrEqual(1);
+        expect(Math.abs(search.selected.top - (actorLayout.root.y - actorLayout.diagnostics.shell.y))).toBeLessThanOrEqual(1);
+
+        const actorGeometry = await measure(page, sourceId, targetId);
+        const causalConnectors = actorGeometry.connectorPoints.filter(({ edge }) => edge === "source" || edge === "target");
+        expect(causalConnectors.map(({ edge }) => edge).sort()).toEqual(["source", "target"]);
+        for (const connector of causalConnectors) {
+          expect(connector.points.length, `${connector.edge} connector is sampled from the rendered SVG`).toBeGreaterThan(1);
+          for (const point of connector.points) {
+            expect(point.x).toBeGreaterThanOrEqual(actorGeometry.shell.x - 1);
+            expect(point.x).toBeLessThanOrEqual(actorGeometry.shell.right + 1);
+            expect(point.y).toBeGreaterThanOrEqual(actorGeometry.shell.y - 1);
+            expect(point.y).toBeLessThanOrEqual(actorGeometry.shell.bottom + 1);
+            for (const anchor of actorGeometry.playerAnchors.filter(({ id }) => id !== sourceId && id !== targetId)) {
+              expect(point.x < anchor.x - 2 || point.x > anchor.right + 2 || point.y < anchor.y - 2 || point.y > anchor.bottom + 2,
+                `${connector.edge} remains unobscured by unrelated player ${anchor.id}`).toBe(true);
+            }
+            for (const obstacle of [actorGeometry.playCenter, actorGeometry.systemCluster, actorGeometry.gameMessages, actorGeometry.gameExit].filter(Boolean)) {
+              expect(point.x < obstacle.x - 2 || point.x > obstacle.right + 2 || point.y < obstacle.y - 2 || point.y > obstacle.bottom + 2,
+                `${connector.edge} remains unobscured by ${obstacle}`).toBe(true);
+            }
+          }
         }
       }
       await testInfo.attach(`dense-attack-layout-${playerCount}p-${viewport.width}px.json`, {
@@ -1549,6 +1720,25 @@ for (const scenario of [
         targetId, responseActorId: targetId,
         rootCardKind: "Attack", responseCardKind: "Dodge",
       });
+      if (actorLayout.mode === "graph") {
+        const actorOverlay = page.locator('[data-root-action-overlay="true"]');
+        await expect.poll(() => actorOverlay.getAttribute("data-root-action-layout-state"), {
+          message: `${playerCount}p ${viewport.width}px attacker keeps its proven graph through Dodge`,
+        }).toBe("ready");
+        await expect(actorOverlay).toHaveAttribute("data-root-action-display-mode", "graph");
+        const actorResponseLayout = await captureAttackOverlayDiagnostics(page);
+        expect(actorResponseLayout.rootCard).toBeTruthy();
+        expect(Math.abs(actorResponseLayout.rootCard.x - actorLayout.root.x), "local attacker's selected root stays fixed when Dodge appears").toBeLessThanOrEqual(1);
+        expect(Math.abs(actorResponseLayout.rootCard.y - actorLayout.root.y), "local attacker's selected root stays fixed when Dodge appears").toBeLessThanOrEqual(1);
+        await testInfo.attach(`dense-attack-layout-${playerCount}p-${viewport.width}px-attacker-after-dodge.json`, {
+          body: JSON.stringify(actorResponseLayout, null, 2),
+          contentType: "application/json",
+        });
+        await testInfo.attach(`dense-attack-layout-${playerCount}p-${viewport.width}px-attacker-after-dodge.png`, {
+          body: await page.screenshot(),
+          contentType: "image/png",
+        });
+      }
       await expect.poll(() => defenderOverlay.getAttribute("data-root-action-layout-state"), {
         message: `${playerCount}p ${viewport.width}px Dodge response reaches measured layout`,
       }).toMatch(/^(ready|unavailable)$/);
@@ -1584,9 +1774,9 @@ for (const scenario of [
           expect(interception.edgeGap).toBeGreaterThanOrEqual(12);
           expect(interception.edgeGap).toBeLessThanOrEqual(20);
         }
-        const root = await rootCard.boundingBox();
-        expect(Math.abs(root.x - targetLayout.root.x), "dense Attack root keeps its x when Dodge appears").toBeLessThanOrEqual(1);
-        expect(Math.abs(root.y - targetLayout.root.y), "dense Attack root keeps its y when Dodge appears").toBeLessThanOrEqual(1);
+        expect(responseLayout.rootCard, "the captured Dodge graph includes the Attack root").toBeTruthy();
+        expect(Math.abs(responseLayout.rootCard.x - targetLayout.root.x), "dense Attack root keeps its x when Dodge appears").toBeLessThanOrEqual(1);
+        expect(Math.abs(responseLayout.rootCard.y - targetLayout.root.y), "dense Attack root keeps its y when Dodge appears").toBeLessThanOrEqual(1);
       } else {
         expect(responseLayout.overlay?.layout).toBe("unavailable");
         expect(responseLayout.overlay?.mode).toBe("fallback");

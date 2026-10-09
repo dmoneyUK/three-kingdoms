@@ -2512,3 +2512,24 @@ HANDOVER" wording here after the handoff has moved on.
 - The four focused dense Attack→Dodge browser cases passed 4/4. The real
   ten-window Attack continuity regression passed 1/1. `npm run build`, targeted
   ESLint, and `git diff --check` passed. No Reviewer acceptance is claimed.
+
+### UX2-6.27-ATTACKER-ROOT-FIT-SEARCH-01 — Dense local root placement
+
+- Extended the 108-point path sample with a measured 4px placement-field scan
+  for unanswered mobile Attack roots. Candidates stay within the table's 12px
+  margin, the authored source→target relation range, and 12px then 8px
+  obstacle-clearance passes; both source and target connector segments must
+  remain clear of Seats, Dock, and controls. The existing fail-closed path is
+  retained when no candidate qualifies.
+- On the production server-backed build, the local attacker found a collision-
+  free root at 6p 390×844 (compact fit, 12px), 6p 480×900 (target fit, 12px),
+  and 8p 480×900 (minimum fit, 8px). At 8p 390×844, target/compact/minimum
+  scans found zero card-clear/connector-clear placements at either clearance;
+  safe Stage fallback remains. Selected root geometry stays within 1px when
+  Dodge appears.
+- Focused dense Attack→Dodge browser cases passed 4/4; dense attacker/defender
+  stability passed 1/1; ten real Attack windows with RAF and room polling passed
+  1/1. `npm run build`, targeted ESLint, and `git diff --check` passed. The
+  pre-commit base `4ba3673cd31def3a4926c4a538c34e652dbddd34` passed all five
+  Actions jobs in run `37911187593`; the outgoing revision is pending. No
+  Reviewer acceptance is claimed.

@@ -8,12 +8,27 @@ import { CardFace } from "./card-face";
 
 type Point = { x: number; y: number };
 type Rect = { left: number; top: number; right: number; bottom: number; width: number; height: number };
+type AttackRootPlacementFieldSearch = {
+  sampleStep: number;
+  relationBand: [number, number];
+  passes: readonly {
+    clearance: number;
+    positionsInRelationBand: number;
+    cardClearCount: number;
+    connectorClearCount: number;
+    preferredBandConnectorClearCount: number;
+  }[];
+  selectedClearance?: number;
+  selected?: { left: number; top: number; projection: number; lateral: number };
+};
 type AttackGeometryFitDiagnostic = {
   rootEventId: string;
   phase: "root" | "dodge-response" | "other-response";
   fitStep: string;
   viewport: { width: number; height: number };
-  cause: "missing-table-or-card-rect" | "missing-or-invalid-player-anchor" | "missing-dodge-response-card" | "dodge-interception-point-unavailable" | "table-smaller-than-card-margin" | "no-attack-root-candidate" | "no-reserved-dodge-candidate" | "no-dodge-interception-candidate";
+  cause: "missing-table-or-card-rect" | "missing-or-invalid-player-anchor" | "missing-dodge-response-card" | "dodge-interception-point-unavailable" | "table-smaller-than-card-margin" | "no-attack-root-candidate" | "no-reserved-dodge-candidate" | "no-dodge-interception-candidate" | "placement-field-root-selected";
+  placementFieldSearch?: AttackRootPlacementFieldSearch;
+  placementSearchEligibility?: { attempted: boolean; unansweredAttackRoot: boolean; viewportWidth: number; pathCandidateCount: number };
   candidateCount?: number;
   rootFitCandidateCount?: number;
   rootFitWithDodgeSlotCount?: number;
@@ -210,6 +225,17 @@ function crossMarkAt(point: Point, direction: Point, half = 8): string {
 function overlaps(left: Rect, right: Rect, padding = 0): boolean {
   return left.left < right.right + padding && left.right > right.left - padding
     && left.top < right.bottom + padding && left.bottom > right.top - padding;
+}
+
+function expandRect(rect: Rect, padding: number): Rect {
+  return {
+    left: rect.left - padding,
+    top: rect.top - padding,
+    right: rect.right + padding,
+    bottom: rect.bottom + padding,
+    width: rect.width + padding * 2,
+    height: rect.height + padding * 2,
+  };
 }
 
 function segmentNearRect(start: Point, end: Point, rect: Rect, clearance: number): boolean {
@@ -935,7 +961,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     dodgeRejectedOffAttackPath: 0,
     validDodgeSlotCount: 0,
   };
-  const candidates = candidateCenters.flatMap((candidate) => {
+  const pathCandidates: { card: Rect; reservedDodge: Rect | null; score: number }[] = candidateCenters.flatMap((candidate) => {
     const left = Math.max(tableRect.left + margin, Math.min(candidate.x - cardWidth / 2, tableRect.right - margin - cardWidth));
     const top = Math.max(tableRect.top + margin, Math.min(candidate.y - cardHeight / 2, tableRect.bottom - margin - cardHeight));
     const card: Rect = { left, top, right: left + cardWidth, bottom: top + cardHeight, width: cardWidth, height: cardHeight };
@@ -1009,6 +1035,66 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     const responseReservationPenalty = reservedDodgeSize && !reservedDodge ? 1_000 : 0;
     return [{ card, reservedDodge, score: distance + Math.abs(candidate.fraction - sourceBiasedFraction) * 80 + Math.abs(candidate.offset) * .12 + responseReservationPenalty }];
   }).sort((left, right) => left.score - right.score);
+  let candidates = pathCandidates;
+  let placementFieldSearch: AttackRootPlacementFieldSearch | undefined;
+  let usedPlacementFieldSearch = false;
+  if (isUnansweredAttackRoot && pathCandidates.length === 0 && shellBounds.width <= 600) {
+    const passes: NonNullable<AttackRootPlacementFieldSearch["passes"]>[number][] = [];
+    let selectedCandidates: typeof pathCandidates = [];
+    let selectedClearance: number | undefined;
+    const lineLengthSquared = lineX * lineX + lineY * lineY || 1;
+    for (const clearance of [12, 8]) {
+      let positionsInRelationBand = 0;
+      let cardClearCount = 0;
+      let connectorClearCount = 0;
+      let preferredBandConnectorClearCount = 0;
+      const fieldCandidates: typeof pathCandidates = [];
+      for (let top = tableRect.top + margin; top + cardHeight <= tableRect.bottom - margin; top += 4) {
+        for (let left = tableRect.left + margin; left + cardWidth <= tableRect.right - margin; left += 4) {
+          const card: Rect = { left, top, right: left + cardWidth, bottom: top + cardHeight, width: cardWidth, height: cardHeight };
+          const cardCenter = center(card);
+          const projection = ((cardCenter.x - sourceCenter.x) * lineX + (cardCenter.y - sourceCenter.y) * lineY) / lineLengthSquared;
+          if (projection < .16 || projection > .92) continue;
+          positionsInRelationBand += 1;
+          if (obstacles.some((obstacle) => overlaps(card, obstacle, clearance))) continue;
+          cardClearCount += 1;
+
+          const sourceStart = rectangleEdge(sourceRect, cardCenter);
+          const sourceEnd = rectangleEdge(card, sourceCenter);
+          const targetStart = rectangleEdge(card, targetCenter);
+          const targetEnd = rectangleEdge(targetRect, cardCenter);
+          const sourcePathBlocked = obstacleElements.some((element, index) => element !== sourceElement
+            && segmentIntersectsRect(sourceStart, sourceEnd, expandRect(obstacles[index]!, clearance)));
+          const targetPathBlocked = obstacleElements.some((element, index) => element !== targetElement
+            && segmentIntersectsRect(targetStart, targetEnd, expandRect(obstacles[index]!, clearance)));
+          if (sourcePathBlocked || targetPathBlocked) continue;
+          connectorClearCount += 1;
+          if (projection >= .30 && projection <= .42) preferredBandConnectorClearCount += 1;
+          const lateral = Math.abs((cardCenter.x - sourceCenter.x) * -lineY + (cardCenter.y - sourceCenter.y) * lineX) / Math.sqrt(lineLengthSquared);
+          const distance = Math.hypot(cardCenter.x - preferred.x, cardCenter.y - preferred.y);
+          fieldCandidates.push({
+            card,
+            reservedDodge: null,
+            score: distance + Math.abs(projection - sourceBiasedFraction) * 80 + lateral * .12,
+          });
+        }
+      }
+      passes.push({ clearance, positionsInRelationBand, cardClearCount, connectorClearCount, preferredBandConnectorClearCount });
+      if (fieldCandidates.length > 0) {
+        selectedCandidates = fieldCandidates.sort((left, right) => left.score - right.score);
+        selectedClearance = clearance;
+        break;
+      }
+    }
+    candidates = selectedCandidates;
+    usedPlacementFieldSearch = selectedCandidates.length > 0;
+    placementFieldSearch = {
+      sampleStep: 4,
+      relationBand: [.16, .92],
+      passes,
+      ...(selectedClearance !== undefined ? { selectedClearance } : {}),
+    };
+  }
   // A CurrentAction handoff can grow the local Dock slightly. Preserve the
   // cached root and apply only the minimum upward clearance needed to keep it
   // out of the Dock, rather than re-routing the root across the table.
@@ -1037,8 +1123,31 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     reportFitDiagnostic("no-attack-root-candidate", {
       candidateCount: candidateCenters.length,
       ...fitCounts,
+      placementSearchEligibility: {
+        attempted: Boolean(placementFieldSearch),
+        unansweredAttackRoot: isUnansweredAttackRoot,
+        viewportWidth: shellBounds.width,
+        pathCandidateCount: pathCandidates.length,
+      },
+      ...(placementFieldSearch ? { placementFieldSearch } : {}),
     });
     return null;
+  }
+  if (usedPlacementFieldSearch && placementFieldSearch) {
+    const selectedProjection = projectPointToSegment(sourceCenter, targetCenter, center(card));
+    placementFieldSearch = {
+      ...placementFieldSearch,
+      selected: {
+        left: card.left,
+        top: card.top,
+        projection: selectedProjection.fraction,
+        lateral: selectedProjection.distance,
+      },
+    };
+    reportFitDiagnostic("placement-field-root-selected", {
+      candidateCount: candidateCenters.length,
+      placementFieldSearch,
+    });
   }
   if (reservedDodgeSize && !reservedDodgeCard && fitCounts.rootFitCandidateCount > 0
     && fitCounts.rootFitWithDodgeSlotCount === 0) {

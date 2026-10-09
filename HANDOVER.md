@@ -5,15 +5,13 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-The four-player Attack/Dodge screenshot audit is pushed as
-`e0d87cb3af2532dc26b14398c04c9cd0c2ed5556`. Actions run `37908137423` for
-that exact SHA is SUCCESS, all five jobs including deploy smoke test.
-
-Dense geometry diagnosis is complete locally: build, targeted ESLint, four
-real 6/8-player Attack→Dodge cases, and the ten-window ordinary Attack
-continuity test passed. The current 108-point root search finds no collision-
-free candidate for the local attacker in the tested dense matrix; this does not
-prove no broader placement exists. Actual Dodge fit is measured separately.
+`UX2-6.27-ATTACKER-ROOT-FIT-SEARCH-01` is implemented locally. Exhaustive
+4px search finds safe attacker roots at 6p 390/480 and 8p 480; 8p 390 remains
+fail-closed after both 12px and 8px clearance scans find no solution. Base
+`4ba3673cd31def3a4926c4a538c34e652dbddd34` passed Actions run `37911187593`,
+all five jobs. Outgoing SHA/CI are not yet available. Build, targeted ESLint,
+four dense Attack→Dodge cases, ten-window continuity, and 10-window RAF/poll
+continuity passed locally. Reviewer acceptance is not claimed.
 Reviewer acceptance is not claimed.
 
 ## Design checkpoint
@@ -24,13 +22,10 @@ the planning boundary; no intervening design change.
 
 ## Next task
 
-`UX2-6.27-ATTACKER-ROOT-FIT-SEARCH-01` — determine whether the 6/8-player
-390×844 and 480×900 local-attacker scenes have a collision-free, visibly
-traceable Attack-root placement beyond the current 108 path-based candidates.
-Use measured production Seat/Dock/control geometry and existing approved card
-fit steps; favor the §6.27.1 source→target placement band while allowing safe
-lateral routing. Keep at least 12px table margin and 8–12px obstacle clearance,
-and reject connector routes obscured by Seats, Dock, or controls. Implement
-only placements proven by browser geometry; otherwise retain the safe fallback
-with a quantified reason. Do not move Seats/Dock, change gameplay, or infer
-public semantics.
+`UX2-6.27-DODGE-INTERCEPTION-FIT-SEARCH-01` — for real server-backed Attack
+roots that reach `ready`, search for a full portrait Dodge placement directly
+on the root-to-target segment or, when impossible, nearest to it with the
+§6.27.2 12–20px edge gap and a short proven interception mark. Preserve the
+Attack root within 1px, keep connectors unobscured, and fail closed with
+quantified geometry when no safe position exists. Validate 6/8-player mobile
+scenes where a root graph is proven; do not alter Seats, Dock, or gameplay.
