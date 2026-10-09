@@ -1,9 +1,9 @@
 # CI Test Optimization Handover
 
-Status: Phase 1 complete and measured; Phase 2 representative reduction pushed, CI measurement pending
+Status: Phase 1 complete and measured; Phase 2 representative reduction measured in CI
 Branch: `ux-v2`
 Task authority: `docs/CI_TEST_OPTIMIZATION.md`
-Updated: 2026-10-07
+Updated: 2026-10-09
 
 ## Current baseline
 
@@ -62,15 +62,22 @@ Playwright list mode confirms `ui19.spec.mjs` now contains 376 cases, down from 
 
 The reduction and this handover were committed as `d23d6ad` (`test: reduce repeated hand-size matrix cases`) and pushed to `origin/ux-v2`. Only the two optimization-owned paths were included; the concurrent feature-agent changes remained in the working tree.
 
-## Next bounded task: record CI measurement for Phase 2
+## Completed bounded task: measure the Phase 2 Hand matrix reduction
 
-1. Inspect the GitHub Actions run for commit `d23d6ad` and record its test count, browser shard durations, and validation result.
-2. Do not begin another deletion until this change is measured. Keep CI-first validation; no full local suite was run.
+- GitHub Actions run [#37653756286](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37653756286) for `d23d6ad32ba954af8c58aef9a6450480ab3dfc65` succeeded. Lint/fast, API, both browser shards, deploy, and production smoke all passed.
+- A Playwright list-only discovery against the exact commit, with `CI=1`, found 733 browser cases: shard 1/2 has 367 and shard 2/2 has 366. No local browser tests were executed. The public Actions job pages confirm both shards passed but require sign-in to view detailed logs, so these counts come from exact-commit discovery rather than copied log summaries.
+- GitHub reports browser shard job durations of 3m 17s and 4m 30s, including setup. The `Run browser shard` steps took 2m 32s and 3m 30s, respectively.
+- The workflow took 13m 29s from trigger to completion. Its first validation jobs started 7m 45s after the trigger; the validation critical path was 4m 31s and deploy took 1m 08s. The first-job-to-deploy-completion interval was 5m 42s. Keep queue/scheduling delay separate from execution time; this single run does not isolate a speedup from the 22-case reduction.
+- The reduced matrix remains at 8 cases from 30, with the separate clipped-edge, native-touch, and membership tests unchanged. No other `ui19` cases were removed.
+
+## Next bounded task: audit one more browser-coverage candidate
+
+Use `docs/CI_TEST_OPTIMIZATION.md` §§10–12 to perform a read-only contract-level audit of one candidate matrix in `tests/browser/ui19.spec.mjs`. Record its invariant, overlapping dedicated coverage, viewports, privacy/stale-safety assertions, and canonical surviving test before proposing any further membership change. Keep concurrent feature work untouched.
 
 ## Concurrent feature work to preserve
 
-At the latest status check, another agent has pending changes in `HANDOVER.md`, `docs/AUTONOMOUS_UI_ROADMAP.md`, `tests/browser/fixture.jsx`, and an untracked Cao Cao skill spec. Do not touch or include them. Recheck status before editing or committing.
+The checkout was synchronized with `origin/ux-v2` and clean before this handover update. Only `docs/CI_TEST_OPTIMIZATION_HANDOVER.md` is modified for this task. Recheck status before the next task to preserve any new concurrent work.
 
 ## Validation state
 
-No tests have been run locally. Phase 1 Playwright list, JavaScript syntax checks, YAML parsing, `git diff --check`, and Actions run #37649255906 were recorded above. For Phase 2, Playwright list mode reports 376 `ui19` cases after the reduction (398 before); `node --check` and `git diff --check` passed. The Actions result for `d23d6ad` has not yet been recorded.
+No test suites were run locally. Phase 1 Playwright list, JavaScript syntax checks, YAML parsing, `git diff --check`, and Actions run #37649255906 were recorded above. For Phase 2, the exact-commit Playwright list reports 733 total cases split 367/366 across the two shards; `ui19.spec.mjs` has 376 cases after the reduction (398 before). The Actions run for `d23d6ad` passed both shards and the full deploy workflow as recorded above.
