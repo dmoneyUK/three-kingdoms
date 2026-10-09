@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { hasKnownProxyDisconnect, MAX_KNOWN_PROXY_RESTARTS, shouldRestartAfterKnownProxyDisconnect } from "./wrangler-worker-restart-policy.mjs";
+import { hasKnownProxyDisconnect, shouldRestartAfterKnownProxyDisconnect } from "./wrangler-worker-restart-policy.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const statePath = mkdtempSync(join(tmpdir(), "wtk-browser-worker-"));
@@ -68,14 +68,15 @@ async function superviseWorker() {
   while (!shuttingDown) {
     const result = await runWorkerUntilExit();
     if (shuttingDown) return;
-    if (process.env.CI && shouldRestartAfterKnownProxyDisconnect({ ...result, restartCount })) {
+    // The browser CI job timeout bounds recovery from Wrangler's known client-abort fault.
+    if (process.env.CI && shouldRestartAfterKnownProxyDisconnect(result)) {
       restartCount += 1;
-      console.error(`[browser-worker] Restarting Wrangler after known ProxyWorker network disconnect (${restartCount}/${MAX_KNOWN_PROXY_RESTARTS}).`);
+      console.error(`[browser-worker] Restarting Wrangler after known ProxyWorker network disconnect (restart ${restartCount}).`);
       continue;
     }
     const knownProxyDisconnect = hasKnownProxyDisconnect(result.log);
     const failureContext = knownProxyDisconnect
-      ? ` after the known ProxyWorker network disconnect; restart cap is ${MAX_KNOWN_PROXY_RESTARTS}`
+      ? ` after the known ProxyWorker network disconnect; restarts attempted: ${restartCount}`
       : "";
     console.error(`[browser-worker] Wrangler exited unexpectedly${failureContext} (code=${result.code ?? "null"}, signal=${result.signal ?? "none"}).`);
     process.exitCode = 1;

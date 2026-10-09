@@ -2174,6 +2174,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   SHA; this task's outgoing SHA is not yet validated. Reviewer acceptance is
   not claimed.
 
+### UX2.6-PHASE-D-ATTACK-CARD-FACE-SCALE-01 — Authentic Attack/Dodge cards
+
+- The real server-backed Attack root and successful Dodge now render genuine
+  portrait `CardFace` artwork. Collision-aware sizing keeps the root stable
+  (≤1 CSS px) as Dodge appears; unsupported dense geometry fails closed rather
+  than forcing overlap. The focused browser matrix passed 7/7 at 390×844,
+  480×900, 1440×900, and dense 6/8-player layouts; build, targeted ESLint,
+  `git diff --check`, and Wrangler supervisor tests (3/3) passed. The exact
+  pre-commit Actions run `37869008461` failed only Browser shard 1 after the
+  known ready ProxyWorker network-disconnect caused port 3137 refusals and 71
+  cascading failures. A bounded restart-policy repair is included with this
+  task; outgoing Actions validation remains pending. Reviewer acceptance is
+  not claimed.
+
 ### UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01 — Real drag/drop completion
 
 - The real server-backed Stargazing proof now covers touch reassignment between

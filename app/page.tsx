@@ -18,6 +18,7 @@ import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForVi
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
+import { CardFace } from "./card-face";
 import { InteractionRootOverlay, interactionRootActionKey, type InteractionRootOverlayAction } from "./interaction-root-overlay";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
@@ -3687,6 +3688,10 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       sourceId: rootAction.sourceId,
       targetId: rootAction.targetId,
       cardKind: rootAction.cardKind,
+      ...(rootAction.action === "ATTACK" && rootActionEvent?.type === "card"
+        && rootActionEvent.id === rootAction.rootEventId && rootActionEvent.action === "play"
+        && rootActionEvent.presentation !== false && rootActionEvent.playedAs === undefined
+        && rootActionEvent.card.kind === "Attack" ? { cardFace: rootActionEvent.card } : {}),
       cardLabel: rootActionName?.toUpperCase() ?? "ACTION",
       ariaLabel: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "Unknown player"} played ${rootActionName ?? "an action"} targeting ${room.players.find((player) => player.id === rootAction.targetId)?.name ?? "unknown player"}`,
       mode: "targeted",
@@ -3694,10 +3699,12 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     : attackDodgeGraphCandidate
       ? {
         key: [attackDodgeGraphCandidate.proof.interactionId, attackDodgeGraphCandidate.proof.rootFrameId, attackDodgeGraphCandidate.proof.rootEventId, attackDodgeGraphCandidate.proof.responseEventId].join(":"),
+        rootPlacementKey: attackDodgeGraphCandidate.proof.rootEventId,
         rootEventId: attackDodgeGraphCandidate.proof.rootEventId,
         sourceId: attackDodgeGraphCandidate.proof.rootSourceId,
         targetId: attackDodgeGraphCandidate.proof.targetId,
         cardKind: "Attack",
+        cardFace: attackDodgeGraphCandidate.rootEvent.card,
         cardLabel: "ATTACK",
         ariaLabel: `${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.rootSourceId)?.name ?? "Unknown player"} played Attack targeting ${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.targetId)?.name ?? "unknown player"}`,
         mode: "targeted",
@@ -3711,6 +3718,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
           eventId: attackDodgeGraphCandidate.proof.responseEventId,
           actorId: attackDodgeGraphCandidate.proof.responseActorId,
           actorName: room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.responseActorId)?.name ?? "Unknown player",
+          cardFace: attackDodgeGraphCandidate.responseEvent.card,
           cardLabel: "DODGE",
           ariaLabel: `${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.responseActorId)?.name ?? "Unknown player"} played Dodge to block ${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.rootSourceId)?.name ?? "Unknown player"}'s Attack against ${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.targetId)?.name ?? "an opponent"}`,
         },
@@ -4909,11 +4917,6 @@ function TableResolutionSequence({ events, activeEvent, players, myTableIndex, c
       return <div className={`player-played-cards ${equipmentOnly ? "equipment-only" : ""}`} data-player-settlement-id={player.id} key={player.id}><span>{publicPlayerName(player.name)}</span><div>{playerCards.map(({ card, key }, index) => activeCardIds.has(card.id) ? null : <div className="table-played-card settled" key={key}><em>{index + 1}</em><CardFace card={card} /></div>)}</div></div>;
     })}
   </div>;
-}
-
-function CardFace({ card }: { card: Card }) {
-  const definition = cardDefinition(card.kind);
-  return <div className={`played-card ${card.kind.toLowerCase()} ${suitColorClass(card.suit)}`}><i>{card.rank}<small>{card.suit}</small></i><b className="card-name-mark">{definition.name}</b><strong>{definition.category} card</strong></div>;
 }
 
 function describeEvent(event: GameEvent) {

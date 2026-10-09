@@ -7,6 +7,104 @@ const steal = { id: "root-overlay-real-steal", kind: "Steal", suit: "♠", rank:
 const dodge = { id: "root-overlay-real-dodge", kind: "Dodge", suit: "♥", rank: "3" };
 const peach = { id: "root-overlay-real-peach", kind: "Peach", suit: "♥", rank: "3" };
 
+function expectedAttackCardFaceSize(viewport, cardKind, fitStep) {
+  const large = viewport.width >= 900;
+  const medium = viewport.width >= 430 && !large;
+  const sizes = {
+    target: large
+      ? { Attack: { width: 150, height: 225 }, Dodge: { width: 132, height: 198 } }
+      : medium
+        ? { Attack: { width: 132, height: 198 }, Dodge: { width: 116, height: 174 } }
+        : { Attack: { width: 120, height: 180 }, Dodge: { width: 108, height: 162 } },
+    compact: large
+      ? { Attack: { width: 135, height: 203 }, Dodge: { width: 119, height: 179 } }
+      : medium
+        ? { Attack: { width: 120, height: 180 }, Dodge: { width: 104, height: 156 } }
+        : { Attack: { width: 108, height: 162 }, Dodge: { width: 98, height: 147 } },
+    minimum: large
+      ? { Attack: { width: 120, height: 180 }, Dodge: { width: 106, height: 159 } }
+      : medium
+        ? { Attack: { width: 106, height: 159 }, Dodge: { width: 94, height: 141 } }
+        : { Attack: { width: 96, height: 144 }, Dodge: { width: 88, height: 132 } },
+  };
+  return sizes[viewport.height <= 700 ? "minimum" : fitStep][cardKind];
+}
+
+async function expectAttackCardFaceGeometry(overlay, card, viewport, cardKind) {
+  const fitStep = await overlay.getAttribute("data-root-action-card-fit-step");
+  expect(["target", "compact", "minimum"]).toContain(fitStep);
+  const bounds = await card.boundingBox();
+  const expected = expectedAttackCardFaceSize(viewport, cardKind, fitStep);
+  expect(bounds.width).toBeCloseTo(expected.width, 1);
+  expect(bounds.height).toBeCloseTo(expected.height, 1);
+  return { fitStep, bounds };
+}
+
+async function captureAttackOverlayDiagnostics(page) {
+  return page.evaluate(() => {
+    const rect = (element) => {
+      if (!element) return null;
+      const { x, y, right, bottom, width, height } = element.getBoundingClientRect();
+      return { x, y, right, bottom, width, height };
+    };
+    const overlay = document.querySelector('[data-root-action-overlay="true"]');
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      overlay: overlay ? {
+        ready: overlay.dataset.rootActionReady,
+        mode: overlay.dataset.rootActionDisplayMode,
+        layout: overlay.dataset.rootActionLayoutState,
+        fitStep: overlay.dataset.rootActionCardFitStep,
+        fallbackReason: overlay.dataset.rootActionFallbackReason,
+        sourceId: overlay.dataset.rootActionSourceId,
+        targetId: overlay.dataset.rootActionTargetId,
+      } : null,
+      table: rect(document.querySelector(".play-table")),
+      shell: rect(document.querySelector(".game-shell")),
+      rootCard: rect(document.querySelector('[data-root-action-card="true"]')),
+      responseCard: rect(document.querySelector('[data-root-action-response-card="true"]')),
+      anchors: [...document.querySelectorAll("[data-player-anchor]")].map((element) => ({ id: element.dataset.playerAnchor, label: element.innerText.trim().slice(0, 100), ...rect(element) })),
+      obstacles: [...document.querySelectorAll(".play-center, .stage-system-cluster, .game-messages, .game-exit")]
+        .map((element) => ({ className: String(element.className), ...rect(element) })),
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: innerWidth,
+    };
+  });
+}
+
+async function assertAttackGraphOrSafeFallback(page, viewport, label) {
+  const overlay = page.locator('[data-root-action-overlay="true"]');
+  await expect.poll(() => overlay.getAttribute("data-root-action-layout-state"), { message: `${label}: layout reaches a measured terminal state` })
+    .toMatch(/^(ready|unavailable)$/);
+  const diagnostics = await captureAttackOverlayDiagnostics(page);
+  expect(diagnostics.documentWidth, `${label}: no horizontal overflow`).toBeLessThanOrEqual(diagnostics.viewportWidth);
+  if (diagnostics.overlay?.layout === "ready" && diagnostics.overlay.mode === "graph") {
+    await expect(overlay).toHaveAttribute("data-root-action-ready", "true");
+    await expect(page.locator(".interaction-stage")).toHaveCount(0);
+    const card = page.locator('[data-root-action-card="true"]');
+    await expect(card).toHaveAttribute("data-root-action-card-face-kind", "Attack");
+    await expect(card.locator(".played-card.attack")).toBeVisible();
+    const { fitStep, bounds } = await expectAttackCardFaceGeometry(overlay, card, viewport, "Attack");
+    for (const obstacle of [...diagnostics.anchors, ...diagnostics.obstacles]) {
+      expect(bounds.x + bounds.width <= obstacle.x - 8 || bounds.x >= obstacle.right + 8
+        || bounds.y + bounds.height <= obstacle.y - 8 || bounds.y >= obstacle.bottom + 8,
+      `${label}: Attack card clears ${obstacle.label ?? obstacle.className ?? obstacle.id}`).toBe(true);
+    }
+    return { mode: "graph", fitStep, root: bounds, diagnostics };
+  }
+
+  expect(diagnostics.overlay?.layout, `${label}: unsupported dense geometry fails closed`).toBe("unavailable");
+  expect(diagnostics.overlay?.mode).toBe("fallback");
+  expect(diagnostics.overlay?.fallbackReason).toBe("geometry-unavailable");
+  await expect(overlay).toHaveAttribute("data-root-action-ready", "false");
+  await expect(page.locator(".interaction-stage")).toHaveCount(1);
+  const rootCard = page.locator('[data-root-action-card="true"]');
+  await expect(rootCard).toHaveCount(1);
+  expect(await rootCard.evaluate((element) => getComputedStyle(element).visibility)).toBe("hidden");
+  await expect(overlay.locator("[data-root-action-edge]")).toHaveCount(0);
+  return { mode: "fallback", fitStep: diagnostics.overlay.fitStep, diagnostics };
+}
+
 async function seedGame(request, playerCount = 4, { sourceCard = attack, sourceCards = null, sourceHp = 4, targetCard = null, targetCards = null } = {}) {
   const rolesByPlayerCount = {
     4: ["Rebel", "Loyalist", "Lord", "Renegade"],
@@ -668,16 +766,35 @@ test("real Steal settlement keeps its semantic result under reduced motion witho
   await testInfo.attach("steal-reduced-motion-settlement.json", { body: JSON.stringify({ timing, settlement: settledView.presentationSnapshot.stealSettlements[0] }, null, 2), contentType: "application/json" });
 });
 
-for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
-  test(`real Attack→Dodge graph visibly blocks the exact target relation at ${viewport.width}×${viewport.height}`, async ({ page, browser, request }, testInfo) => {
+for (const scenario of [
+  { playerCount: 4, viewport: { width: 390, height: 844 } },
+  { playerCount: 4, viewport: { width: 480, height: 900 } },
+  { playerCount: 4, viewport: { width: 1440, height: 900 } },
+]) {
+  const { playerCount, viewport } = scenario;
+  test(`real ${playerCount}-player Attack→Dodge graph uses card faces at ${viewport.width}×${viewport.height}`, async ({ page, browser, request }, testInfo) => {
     test.setTimeout(60_000);
-    const seed = await seedGame(request, 4, { targetCard: dodge });
+    const seed = await seedGame(request, playerCount, { targetCard: dodge });
     const sourceId = seed.players[0].id;
     const targetId = seed.players[1].id;
     await openGame(page, seed, 0, viewport);
     await playAttackThroughPage(page, "TARGET");
     await expect.poll(async () => (await roomView(request, seed, 1)).presentationSnapshot?.rootAction?.rootEventId ?? null, { timeout: 20_000 }).not.toBeNull();
     const rootAction = (await roomView(request, seed, 1)).presentationSnapshot.rootAction;
+    const attackerOverlay = page.locator('[data-root-action-overlay="true"]');
+    const attackerRootCard = page.locator('[data-root-action-card="true"]');
+    try {
+      await expect(attackerOverlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+    } catch (error) {
+      await testInfo.attach(`attack-card-fit-failure-${playerCount}p-${viewport.width}px-attacker.json`, {
+        body: JSON.stringify(await captureAttackOverlayDiagnostics(page), null, 2),
+        contentType: "application/json",
+      });
+      throw error;
+    }
+    await expect(attackerRootCard).toHaveAttribute("data-root-action-card-face-kind", "Attack");
+    await expect(attackerRootCard.locator(".played-card.attack")).toBeVisible();
+    await expectAttackCardFaceGeometry(attackerOverlay, attackerRootCard, viewport, "Attack");
 
     const targetPage = await browser.newPage({ viewport });
     try {
@@ -691,6 +808,13 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       await expect(targetPage.locator(".interaction-stage")).toHaveCount(0);
       await expect(openOverlay).toHaveAttribute("role", "img");
       await expect(openOverlay).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET.");
+      const openRootCard = targetPage.locator('[data-root-action-card="true"]');
+      await expect(openRootCard).toHaveAttribute("data-root-action-card-face-kind", "Attack");
+      await expect(openRootCard.locator(".played-card.attack")).toBeVisible();
+      const { fitStep: openFitStep, bounds: openRootBounds } = await expectAttackCardFaceGeometry(openOverlay, openRootCard, viewport, "Attack");
+      const attackArtworkBackground = await openRootCard.locator(".played-card").evaluate((element) => getComputedStyle(element).backgroundImage);
+      expect(attackArtworkBackground).toContain("/attack-card.jpg");
+      await testInfo.attach(`attack-card-face-open-${playerCount}p-${viewport.width}.png`, { body: await targetPage.screenshot(), contentType: "image/png" });
       await expect(targetPage.getByRole("img", { name: /SOURCE played Attack targeting TARGET/ })).toHaveCount(1);
       await expect(openOverlay.getByRole("img")).toHaveCount(0);
       await expect(targetPage.locator('[data-root-action-response-card="true"]')).toHaveCount(0);
@@ -731,25 +855,13 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       const rootCard = targetPage.locator('[data-root-action-card="true"]');
       const dodgeCard = targetPage.locator('[data-root-action-response-card="true"]');
       await expect(overlay).toHaveAttribute("data-root-action-enabled", "true");
+      await expect(dodgeCard).toHaveCount(1, { timeout: 20_000 });
+      const responseLayoutAtRender = await captureAttackOverlayDiagnostics(targetPage);
       try {
         await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
       } catch (error) {
         await testInfo.attach("attack-dodge-layout-failure.json", {
-          body: JSON.stringify(await targetPage.evaluate(() => {
-            const bounds = (element) => {
-              if (!element) return null;
-              const rect = element.getBoundingClientRect();
-              return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
-            };
-            return {
-              overlay: { ready: document.querySelector('[data-root-action-overlay="true"]')?.dataset.rootActionReady, mode: document.querySelector('[data-root-action-overlay="true"]')?.dataset.rootActionMode },
-              root: bounds(document.querySelector('[data-root-action-card="true"]')),
-              response: bounds(document.querySelector('[data-root-action-response-card="true"]')),
-              table: bounds(document.querySelector('.play-table')),
-              anchors: [...document.querySelectorAll('[data-player-anchor]')].map((element) => ({ id: element.dataset.playerAnchor, ...bounds(element) })),
-              obstacles: [...document.querySelectorAll('.play-center, .stage-system-cluster, .game-messages, .game-exit')].map((element) => ({ className: element.className, ...bounds(element) })),
-            };
-          }), null, 2), contentType: "application/json",
+          body: JSON.stringify(responseLayoutAtRender, null, 2), contentType: "application/json",
         });
         throw error;
       }
@@ -758,10 +870,16 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       expect(await overlay.getAttribute("data-root-action-fallback-reason")).toBeNull();
       await expect(targetPage.locator(".interaction-stage")).toHaveCount(0);
       await expect(dodgeCard).toBeVisible({ timeout: 20_000 });
+      await expect(rootCard).toHaveAttribute("data-root-action-card-face-kind", "Attack");
+      await expect(rootCard.locator(".played-card.attack")).toBeVisible();
+      await expect(dodgeCard).toHaveAttribute("data-response-card-face-kind", "Dodge");
+      await expect(dodgeCard.locator(".played-card.dodge")).toBeVisible();
+      const dodgeArtworkBackground = await dodgeCard.locator(".played-card").evaluate((element) => getComputedStyle(element).backgroundImage);
+      expect(dodgeArtworkBackground).toContain("/dodge-card.jpg");
       await expect(rootCard).toHaveAttribute("data-root-action-settled", "true");
       await expect(rootCard).toHaveAttribute("data-root-action-settlement-event-id", proof.responseEventId);
       await expect(rootCard).toHaveAttribute("data-root-action-settlement-outcome", "ATTACK_BLOCKED_BY_DODGE");
-      await expect(rootCard.locator("small")).toHaveText("RESOLVED");
+      expect(await rootCard.locator(":scope > small").count()).toBe(0);
       await expect(dodgeCard).toHaveAttribute("data-response-event-id", proof.responseEventId);
       await expect(dodgeCard).toHaveAttribute("aria-label", "TARGET played Dodge to block SOURCE's Attack against TARGET");
       await expect(rootCard).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET");
@@ -823,6 +941,16 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       await testInfo.attach("attack-dodge-block-graph", { body: await targetPage.screenshot(), contentType: "image/png" });
       expect(geometry.pointerEvents).toBe("none");
       expect(geometry.documentWidth).toBeLessThanOrEqual(viewport.width);
+      const { fitStep: blockedFitStep } = await expectAttackCardFaceGeometry(overlay, rootCard, viewport, "Attack");
+      const blockedFitStepIndex = ["target", "compact", "minimum"].indexOf(blockedFitStep);
+      expect(blockedFitStepIndex).toBeGreaterThanOrEqual(["target", "compact", "minimum"].indexOf(openFitStep));
+      const expectedDodgeSize = expectedAttackCardFaceSize(viewport, "Dodge", blockedFitStep);
+      expect(geometry.root.width).toBeCloseTo(expectedAttackCardFaceSize(viewport, "Attack", blockedFitStep).width, 1);
+      expect(geometry.root.height).toBeCloseTo(expectedAttackCardFaceSize(viewport, "Attack", blockedFitStep).height, 1);
+      expect(geometry.response.width).toBeCloseTo(expectedDodgeSize.width, 1);
+      expect(geometry.response.height).toBeCloseTo(expectedDodgeSize.height, 1);
+      expect(Math.abs(geometry.root.x - openRootBounds.x), "Attack root x remains stable when Dodge appears").toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.root.y - openRootBounds.y), "Attack root y remains stable when Dodge appears").toBeLessThanOrEqual(1);
       expect(geometry.root.x).toBeGreaterThanOrEqual(geometry.table.x);
       expect(geometry.root.y).toBeGreaterThanOrEqual(geometry.table.y);
       expect(geometry.response.x).toBeGreaterThanOrEqual(geometry.table.x);
@@ -842,7 +970,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       expect(geometry.edges.every((edge) => edge.markerEnd === null), "blocked relation and source tether have no false arrowhead").toBe(true);
       expect(geometry.edges.flatMap((edge) => edge.points).every((point) => point.x >= geometry.shell.x && point.x <= geometry.shell.right
         && point.y >= geometry.shell.y && point.y <= geometry.shell.bottom)).toBe(true);
-      expect(geometry.anchors).toHaveLength(4);
+      expect(geometry.anchors).toHaveLength(playerCount);
       for (const anchor of geometry.anchors.filter((candidate) => candidate.id !== targetId)) {
         const baseline = before[anchor.id];
         expect(baseline, `baseline anchor exists for ${anchor.id}`).toBeTruthy();
@@ -864,6 +992,74 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       expect(settlementTiming.removedAt - settlementTiming.exitingAt).toBeGreaterThanOrEqual(100);
       expect(settlementTiming.removedAt - settlementTiming.exitingAt).toBeLessThanOrEqual(350);
       await expect(targetPage.locator('.table-resolution-layer .table-played-card')).toHaveCount(0);
+    } finally {
+      await targetPage.close();
+    }
+  });
+}
+
+for (const scenario of [
+  { playerCount: 6, viewport: { width: 390, height: 844 } },
+  { playerCount: 6, viewport: { width: 480, height: 900 } },
+  { playerCount: 8, viewport: { width: 390, height: 844 } },
+  { playerCount: 8, viewport: { width: 480, height: 900 } },
+]) {
+  const { playerCount, viewport } = scenario;
+  test(`dense ${playerCount}-player Attack card placement is measurable or fails closed at ${viewport.width}×${viewport.height}`, async ({ page, browser, request }, testInfo) => {
+    test.setTimeout(90_000);
+    const seed = await seedGame(request, playerCount, { targetCard: dodge });
+    const sourceId = seed.players[0].id;
+    const targetId = seed.players[1].id;
+    await openGame(page, seed, 0, viewport);
+    await playAttackThroughPage(page, "TARGET");
+    await expect.poll(async () => (await roomView(request, seed, 1)).presentationSnapshot?.rootAction?.rootEventId ?? null, { timeout: 20_000 }).not.toBeNull();
+    const rootAction = (await roomView(request, seed, 1)).presentationSnapshot.rootAction;
+    expect(rootAction).toMatchObject({ semantics: "PROVEN", action: "ATTACK", cardKind: "Attack", sourceId, targetId });
+
+    const targetPage = await browser.newPage({ viewport });
+    try {
+      await openGame(targetPage, seed, 1, viewport);
+      const actorLayout = await assertAttackGraphOrSafeFallback(page, viewport, `${playerCount}p ${viewport.width}px attacker`);
+      const targetLayout = await assertAttackGraphOrSafeFallback(targetPage, viewport, `${playerCount}p ${viewport.width}px defender`);
+      await testInfo.attach(`dense-attack-layout-${playerCount}p-${viewport.width}px.json`, {
+        body: JSON.stringify({ actorLayout, targetLayout }, null, 2), contentType: "application/json",
+      });
+      await testInfo.attach(`dense-attack-layout-${playerCount}p-${viewport.width}px-attacker.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await testInfo.attach(`dense-attack-layout-${playerCount}p-${viewport.width}px-defender.png`, { body: await targetPage.screenshot(), contentType: "image/png" });
+
+      const defenderOverlay = targetPage.locator('[data-root-action-overlay="true"]');
+      await playDodgeThroughPage(targetPage);
+      await expect.poll(async () => (await roomView(request, seed, 2)).presentationSnapshot?.attackDodgeResponses?.length ?? 0, { timeout: 20_000 }).toBe(1);
+      const responseProof = (await roomView(request, seed, 2)).presentationSnapshot.attackDodgeResponses[0];
+      expect(responseProof).toMatchObject({
+        semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
+        rootEventId: rootAction.rootEventId, rootSourceId: rootAction.sourceId,
+        targetId, responseActorId: targetId,
+        rootCardKind: "Attack", responseCardKind: "Dodge",
+      });
+      await expect.poll(() => defenderOverlay.getAttribute("data-root-action-layout-state"), {
+        message: `${playerCount}p ${viewport.width}px Dodge response reaches measured layout`,
+      }).toMatch(/^(ready|unavailable)$/);
+      await testInfo.attach(`dense-attack-layout-${playerCount}p-${viewport.width}px-after-dodge.json`, {
+        body: JSON.stringify(await captureAttackOverlayDiagnostics(targetPage), null, 2),
+        contentType: "application/json",
+      });
+      if (targetLayout.mode === "graph") {
+        await expect(defenderOverlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+        const rootCard = targetPage.locator('[data-root-action-card="true"]');
+        const responseCard = targetPage.locator('[data-root-action-response-card="true"]');
+        await expect(rootCard).toHaveAttribute("data-root-action-card-face-kind", "Attack");
+        await expect(responseCard).toHaveAttribute("data-response-card-face-kind", "Dodge");
+        const root = await rootCard.boundingBox();
+        expect(Math.abs(root.x - targetLayout.root.x), "dense Attack root keeps its x when Dodge appears").toBeLessThanOrEqual(1);
+        expect(Math.abs(root.y - targetLayout.root.y), "dense Attack root keeps its y when Dodge appears").toBeLessThanOrEqual(1);
+      } else {
+        const remainingMode = await defenderOverlay.getAttribute("data-root-action-display-mode").catch(() => null);
+        if (remainingMode !== null) {
+          expect(remainingMode).toBe("fallback");
+          expect(await targetPage.locator('[data-root-action-card="true"]').evaluate((element) => getComputedStyle(element).visibility)).toBe("hidden");
+        }
+      }
     } finally {
       await targetPage.close();
     }
