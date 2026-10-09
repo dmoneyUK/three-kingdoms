@@ -701,18 +701,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const tableRect = relativeRect(table, shellBounds);
   const sourceRect = relativeRect(sourceElement, shellBounds);
   const targetRect = relativeRect(targetElement, shellBounds);
-  const targetPortrait = action.cardKind === "Attack"
-    ? targetElement.querySelector<HTMLElement>(".opponent-hero-portrait, .local-hero-card") ?? targetElement
-    : null;
-  const targetPortraitRect = targetPortrait ? relativeRect(targetPortrait, shellBounds) : null;
-  const targetHalo = targetPortraitRect ? {
-    left: targetPortraitRect.left - 5,
-    top: targetPortraitRect.top - 5,
-    right: targetPortraitRect.right + 5,
-    bottom: targetPortraitRect.bottom + 5,
-    width: targetPortraitRect.width + 10,
-    height: targetPortraitRect.height + 10,
-  } : null;
+  const targetHalo = action.cardKind === "Attack" ? { ...targetRect } : null;
   const responseSourceRect = responseSourceElement ? relativeRect(responseSourceElement, shellBounds) : null;
   const responseTargetRect = responseTargetElement ? relativeRect(responseTargetElement, shellBounds) : null;
   const cardWidth = cardBounds.width;
@@ -1350,6 +1339,8 @@ export function InteractionRootOverlay({
   const accessiblePartsValid = Boolean(action.ariaLabel.trim())
     && (!action.response || Boolean(action.response.ariaLabel.trim()))
     && visibleResponses.every((response) => Boolean(response.ariaLabel.trim()));
+  const targetEffectBlocked = action.rootEffectState === "BLOCKED"
+    || action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE";
   const visible = enabled && displayMode === "graph" && layoutReadiness === "ready" && Boolean(layout) && accessiblePartsValid
     && Boolean(sourceName && (groupNamesKnown || orderedNamesKnown || simultaneousNamesKnown || action.mode === "self-target" || targetName));
   const responseChainRootBlocked = Boolean(action.responses?.length && action.rootEffectState === "BLOCKED");
@@ -1414,9 +1405,10 @@ export function InteractionRootOverlay({
         rx="7"
       />}
       {layout.targetHalo && <rect
-        className="interaction-root-target-halo"
+        className={`interaction-root-target-halo${targetEffectBlocked ? " is-blocked" : ""}`}
         data-root-action-target-highlight="true"
         data-root-action-target-highlight-player-id={action.targetId ?? undefined}
+        data-root-action-target-highlight-state={targetEffectBlocked ? "blocked" : "active"}
         x={layout.targetHalo.left}
         y={layout.targetHalo.top}
         width={layout.targetHalo.width}

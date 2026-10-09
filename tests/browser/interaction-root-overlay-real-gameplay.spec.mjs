@@ -504,12 +504,19 @@ async function measure(page, sourceId, targetId) {
       targetMarkerWidth: document.querySelector('.interaction-root-connectors marker[id^="root-target-arrow-"]')?.getAttribute("markerWidth") ?? null,
       targetMarkerHeight: document.querySelector('.interaction-root-connectors marker[id^="root-target-arrow-"]')?.getAttribute("markerHeight") ?? null,
       targetHighlight: rect(document.querySelector('[data-root-action-target-highlight="true"]')),
-      targetPortrait: rect(document.querySelector(`[data-player-anchor="${target}"] .opponent-hero-portrait, [data-player-anchor="${target}"] .local-hero-card`)),
+      targetHighlightGeometry: (() => {
+        const highlight = document.querySelector('[data-root-action-target-highlight="true"]');
+        if (!highlight) return null;
+        return Object.fromEntries(["x", "y", "width", "height"].map((key) => [key, Number.parseFloat(highlight.getAttribute(key) ?? "NaN")]));
+      })(),
+      targetHighlightState: document.querySelector('[data-root-action-target-highlight="true"]')?.dataset.rootActionTargetHighlightState ?? null,
       targetHighlightStrokeWidth: Number.parseFloat(getComputedStyle(document.querySelector('[data-root-action-target-highlight="true"]') ?? document.documentElement).strokeWidth),
       targetHighlightPlayerId: document.querySelector('[data-root-action-target-highlight="true"]')?.dataset.rootActionTargetHighlightPlayerId ?? null,
       targetHighlightStrokeColor: getComputedStyle(document.querySelector('[data-root-action-target-highlight="true"]') ?? document.documentElement).stroke,
       targetHighlightFill: getComputedStyle(document.querySelector('[data-root-action-target-highlight="true"]') ?? document.documentElement).fill,
       targetHighlightFilter: getComputedStyle(document.querySelector('[data-root-action-target-highlight="true"]') ?? document.documentElement).filter,
+      targetHighlightOpacity: getComputedStyle(document.querySelector('[data-root-action-target-highlight="true"]') ?? document.documentElement).opacity,
+      targetHighlightPointerEvents: getComputedStyle(document.querySelector('[data-root-action-target-highlight="true"]') ?? document.documentElement).pointerEvents,
       overlayCardKind: document.querySelector('[data-root-action-overlay="true"]')?.dataset.rootActionCardKind ?? null,
       responseCount: document.querySelector('[data-root-action-overlay="true"]')?.dataset.rootActionResponseCount ?? null,
       overlayReady: document.querySelector('[data-root-action-overlay="true"]')?.dataset.rootActionReady === "true",
@@ -519,6 +526,34 @@ async function measure(page, sourceId, targetId) {
       viewportWidth: innerWidth,
     };
   }, { sourceId, targetId });
+}
+
+function expectAttackTargetHighlightCoversAnchor(measurement, targetId, state) {
+  const { target, shell, targetHighlightGeometry: highlight } = measurement;
+  expect(highlight, "the proven Attack target has a measured SVG highlight").not.toBeNull();
+  for (const [dimension, expected] of Object.entries({
+    x: target.x - shell.x,
+    y: target.y - shell.y,
+    width: target.width,
+    height: target.height,
+  })) {
+    expect(Math.abs(highlight[dimension] - expected), `highlight ${dimension} matches the complete player anchor: ${JSON.stringify({ actual: highlight[dimension], expected, target, shell })}`).toBeLessThanOrEqual(0.5);
+  }
+  expect(measurement.targetHighlightPlayerId).toBe(targetId);
+  expect(measurement.targetHighlightState).toBe(state);
+  expect(measurement.targetHighlightFill).toBe("rgba(0, 0, 0, 0)");
+  expect(measurement.targetHighlightPointerEvents).toBe("none");
+  if (state === "active") {
+    expect(measurement.targetHighlightStrokeWidth).toBe(3.5);
+    expect(measurement.targetHighlightStrokeColor).toBe("rgb(255, 151, 133)");
+    expect(measurement.targetHighlightOpacity).toBe("0.98");
+    expect(measurement.targetHighlightFilter).toContain("18px");
+  } else {
+    expect(measurement.targetHighlightStrokeWidth).toBe(2);
+    expect(measurement.targetHighlightStrokeColor).toBe("rgb(167, 170, 165)");
+    expect(measurement.targetHighlightOpacity).toBe("0.4");
+    expect(measurement.targetHighlightFilter).toContain("8px");
+  }
 }
 
 for (const scenario of [
@@ -608,17 +643,8 @@ for (const scenario of [
     expect(after.targetMarkerWidth).toBe("30");
     expect(after.targetMarkerHeight).toBe("22");
     expect(after.targetHighlight).not.toBeNull();
-    expect(after.targetPortrait).not.toBeNull();
-    expect(Math.abs(after.targetHighlight.x - (after.targetPortrait.x - 5))).toBeLessThanOrEqual(0.5);
-    expect(Math.abs(after.targetHighlight.y - (after.targetPortrait.y - 5))).toBeLessThanOrEqual(0.5);
-    expect(Math.abs(after.targetHighlight.width - (after.targetPortrait.width + 10))).toBeLessThanOrEqual(0.5);
-    expect(Math.abs(after.targetHighlight.height - (after.targetPortrait.height + 10))).toBeLessThanOrEqual(0.5);
-    expect(after.targetHighlightPlayerId).toBe(targetId);
-    expect(after.targetHighlightStrokeColor).toBe("rgb(255, 224, 138)");
-    expect(after.targetHighlightFill).toBe("rgba(255, 209, 102, 0.36)");
-    expect(after.targetHighlightFilter).toContain("drop-shadow");
+    expectAttackTargetHighlightCoversAnchor(after, targetId, "active");
     expect(after.overlayCardKind).toBe("Attack");
-    expect(after.targetHighlightStrokeWidth).toBeGreaterThanOrEqual(4.5);
     const before = await page.evaluate(() => window.__wtkRootOverlayPreGraphAnchors);
     expect(before, "capture the stable response scene before the graph suppresses Stage").toBeTruthy();
     await testInfo.attach("root-overlay-geometry.json", {
@@ -665,7 +691,8 @@ for (const scenario of [
       expect(clearOfOtherSeats, `${connector.edge} avoids unrelated physical player anchors`).toBe(true);
     }
     expect(after.settledCardCount).toBe(0);
-    await testInfo.attach("attack-root-overlay", { body: await page.screenshot(), contentType: "image/png" });
+    const opponentSeatScreenshot = await page.screenshot({ path: testInfo.outputPath("attack-opponent-seat-active-highlight.png") });
+    await testInfo.attach("attack-opponent-seat-active-highlight", { body: opponentSeatScreenshot, contentType: "image/png" });
 
     const inspectTarget = page.locator(`[data-player-anchor="${targetId}"] .opponent-hero-target`);
     await expect(inspectTarget).toHaveAttribute("aria-label", "Inspect TARGET");
@@ -874,6 +901,10 @@ for (const scenario of [
       expect(openView.presentationSnapshot.attackDodgeResponses ?? []).toEqual([]);
       const before = await targetPage.evaluate(() => window.__wtkRootOverlayPreGraphAnchors);
       expect(before, "capture physical anchors before Dodge submission").toBeTruthy();
+      const openDockHighlight = await measure(targetPage, sourceId, targetId);
+      expectAttackTargetHighlightCoversAnchor(openDockHighlight, targetId, "active");
+      const activeDockScreenshot = await targetPage.screenshot({ path: testInfo.outputPath(`attack-local-dock-active-highlight-${viewport.width}.png`) });
+      await testInfo.attach(`attack-local-dock-active-highlight-${viewport.width}`, { body: activeDockScreenshot, contentType: "image/png" });
       await targetPage.emulateMedia({ reducedMotion: "no-preference" });
       await observeAttackDodgeSettlement(targetPage);
 
@@ -946,6 +977,13 @@ for (const scenario of [
       await expect(targetPage.locator('[data-root-action-blocked="true"]')).toHaveCount(1);
       await expect(targetPage.locator('.table-resolution-layer .table-played-card')).toHaveCount(0);
 
+      await expect.poll(() => targetPage.locator('[data-root-action-target-highlight="true"]')
+        .evaluate((highlight) => Number.parseFloat(getComputedStyle(highlight).strokeWidth)), {
+        message: "the target ring finishes its authored transition to the neutral blocked style",
+      }).toBe(2);
+      const blockedDockHighlight = await measure(targetPage, sourceId, targetId);
+      expectAttackTargetHighlightCoversAnchor(blockedDockHighlight, targetId, "blocked");
+
       const geometry = await targetPage.evaluate(({ source, target }) => {
         const bounds = (element) => {
           if (!element) return null;
@@ -992,7 +1030,8 @@ for (const scenario of [
         };
       }, { source: sourceId, target: targetId });
       await testInfo.attach("attack-dodge-block-geometry.json", { body: JSON.stringify({ viewport, before, geometry }, null, 2), contentType: "application/json" });
-      await testInfo.attach("attack-dodge-block-graph", { body: await targetPage.screenshot(), contentType: "image/png" });
+      const blockedDockScreenshot = await targetPage.screenshot({ path: testInfo.outputPath(`attack-local-dock-blocked-highlight-${viewport.width}.png`) });
+      await testInfo.attach("attack-local-dock-blocked-highlight", { body: blockedDockScreenshot, contentType: "image/png" });
       expect(geometry.pointerEvents).toBe("none");
       expect(geometry.documentWidth).toBeLessThanOrEqual(viewport.width);
       const { fitStep: blockedFitStep } = await expectAttackCardFaceGeometry(overlay, rootCard, viewport, "Attack");

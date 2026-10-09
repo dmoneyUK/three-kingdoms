@@ -586,12 +586,21 @@
 }
 
 .interaction-root-overlay[data-root-action-card-kind="Attack"] .interaction-root-target-halo {
-  fill: #ffd1665c;
-  stroke: #ffe08a;
-  stroke-width: 4.5px;
-  opacity: 1;
-  filter: drop-shadow(0 0 10px #ffd166ee);
+  fill: transparent;
+  stroke: #ff9785;
+  stroke-width: 3.5px;
+  opacity: .98;
+  filter: drop-shadow(0 0 18px #e06b5d99);
+  pointer-events: none;
+  transition: stroke 140ms ease-out, stroke-width 140ms ease-out, opacity 140ms ease-out, filter 140ms ease-out;
   vector-effect: non-scaling-stroke;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Attack"] .interaction-root-target-halo.is-blocked {
+  stroke: #a7aaa5;
+  stroke-width: 2px;
+  opacity: .4;
+  filter: drop-shadow(0 0 8px #a7aaa566);
 }
 
 .interaction-root-group-target-edge {

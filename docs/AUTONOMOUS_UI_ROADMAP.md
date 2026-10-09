@@ -2206,6 +2206,22 @@ Only a proven regression or new Reviewer-approved design requirement does.
   task; outgoing Actions validation remains pending. Reviewer acceptance is
   not claimed.
 
+### UX2.6-PHASE-D-ATTACK-WHOLE-SEAT-DOCK-HIGHLIGHT-01 — Full Attack target emphasis
+
+- Attack target emphasis now follows the authoritative physical player anchor
+  and covers the complete opponent Seat or local Dock, rather than only the
+  Hero portrait. The active ring is 3.5px with an 18px restrained red glow;
+  the public, proof-backed Dodge-blocked state reduces it to a neutral 2px
+  ring/8px glow at 40% opacity. The SVG overlay remains pointer-transparent
+  and does not change Seat/Dock geometry.
+- Six real server-backed browser cases passed at 390×844, 480×900, and
+  1440×900, measuring full-anchor coverage for opponent and local targets,
+  stable layout, normal Inspect/Dodge/Confirm interaction, and active-to-blocked
+  state. Fresh active/blocked screenshots were visually reviewed. Build,
+  targeted ESLint, and `git diff --check` passed. The exact pre-commit parent
+  Actions run and outgoing validation are recorded in HANDOVER. Reviewer
+  acceptance is not claimed.
+
 ### UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01 — Real drag/drop completion
 
 - The real server-backed Stargazing proof now covers touch reassignment between
