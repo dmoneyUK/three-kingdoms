@@ -984,6 +984,13 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const hasEightPlayerPhoneLayout = shellBounds.width >= 360 && shellBounds.width <= 400
     && shellBounds.height >= 701 && table.dataset.seatTopology === "side-column"
     && Boolean(table.querySelector(':scope > .player-board[data-player-count="8"]'));
+  const hasEightPlayerCompactLayout = shellBounds.width > 400 && shellBounds.width <= 600
+    && shellBounds.height >= 701 && table.dataset.seatTopology === "side-column"
+    && Boolean(table.querySelector(':scope > .player-board[data-player-count="8"]'));
+  // In the measured eight-player 480px layout, the viewer Dock rises by 10px
+  // when Dodge appears. Reserve 18px only there so the cached root keeps an
+  // 8px gap through handoff; other layouts retain the established 12px fit.
+  const unansweredAttackDockClearance = hasEightPlayerCompactLayout ? 18 : 12;
   // At 8p/390 the real source Dock grows by 10px after the response handoff.
   // Reserve that observed growth before displaying the Attack root so the
   // authoritative card can keep its 12px table inset without moving on Dodge.
@@ -1085,13 +1092,17 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     const left = Math.max(tableRect.left + margin, Math.min(candidate.x - cardWidth / 2, tableRect.right - margin - cardWidth));
     const top = Math.max(tableRect.top + margin, Math.min(candidate.y - cardHeight / 2, rootPlacementBottom - cardHeight));
     const card: Rect = { left, top, right: left + cardWidth, bottom: top + cardHeight, width: cardWidth, height: cardHeight };
+    const rootOverlapsGrowingLocalDock = Boolean(isUnansweredAttackRoot && localDockRect
+      && overlaps(card, localDockRect, unansweredAttackDockClearance));
     const rootOverlapsSeatOrDock = obstacleElements.some((element) => anchorObstacleSet.has(element)
-      && overlaps(card, relativeRect(element, shellBounds), isUnansweredAttackRoot ? 12 : 8));
+      && overlaps(card, relativeRect(element, shellBounds), isUnansweredAttackRoot
+        ? element.classList.contains("local-player-dock") ? unansweredAttackDockClearance : 12
+        : 8));
     const rootOverlapsControl = obstacleElements.some((element) => !anchorObstacleSet.has(element)
       && overlaps(card, relativeRect(element, shellBounds), 8))
       || Boolean(hiddenPendingPublicResponseTimer && overlaps(card, hiddenPendingPublicResponseTimer, 8));
-    if (rootOverlapsSeatOrDock || rootOverlapsControl) {
-      if (rootOverlapsSeatOrDock) fitCounts.rootRejectedBySeatOrDock += 1;
+    if (rootOverlapsSeatOrDock || rootOverlapsGrowingLocalDock || rootOverlapsControl) {
+      if (rootOverlapsSeatOrDock || rootOverlapsGrowingLocalDock) fitCounts.rootRejectedBySeatOrDock += 1;
       if (rootOverlapsControl) fitCounts.rootRejectedByControl += 1;
       return [];
     }
@@ -1321,12 +1332,17 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
         // between the side Seats on a 390px eight-player board. Add exact
         // obstacle-boundary placements for the root card without turning the
         // whole layout into a blocking one-pixel scan.
-        for (const obstacle of allObstacles) {
-          fieldLefts.add(obstacle.right + clearance);
-          fieldLefts.add(obstacle.left - clearance - cardWidth);
-          fieldTops.add(obstacle.bottom + clearance);
-          fieldTops.add(obstacle.top - clearance - cardHeight);
-        }
+        allObstacles.forEach((obstacle, index) => {
+          const isLocalDockObstacle = isUnansweredAttackRoot
+            && obstacleElements[index]?.classList.contains("local-player-dock");
+          const obstacleClearance = isLocalDockObstacle
+            ? Math.max(clearance, unansweredAttackDockClearance)
+            : clearance;
+          fieldLefts.add(obstacle.right + obstacleClearance);
+          fieldLefts.add(obstacle.left - obstacleClearance - cardWidth);
+          fieldTops.add(obstacle.bottom + obstacleClearance);
+          fieldTops.add(obstacle.top - obstacleClearance - cardHeight);
+        });
         fieldLefts.add(tableRect.left + margin);
         fieldLefts.add(tableRect.right - margin - cardWidth);
         fieldTops.add(tableRect.top + margin);
@@ -1343,7 +1359,16 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
           const projection = ((cardCenter.x - sourceCenter.x) * lineX + (cardCenter.y - sourceCenter.y) * lineY) / lineLengthSquared;
           if (projection < .16 || projection > .92) continue;
           positionsInRelationBand += 1;
-          if (allObstacles.some((obstacle) => overlaps(card, obstacle, clearance))) continue;
+          if ((isUnansweredAttackRoot && localDockRect
+            && overlaps(card, localDockRect, unansweredAttackDockClearance))
+            || allObstacles.some((obstacle, index) => {
+            const isLocalDockObstacle = isUnansweredAttackRoot
+              && obstacleElements[index]?.classList.contains("local-player-dock");
+            const obstacleClearance = isLocalDockObstacle
+              ? Math.max(clearance, unansweredAttackDockClearance)
+              : clearance;
+            return overlaps(card, obstacle, obstacleClearance);
+          })) continue;
           cardClearCount += 1;
 
           const sourceStart = rectangleEdge(sourceRect, cardCenter);
@@ -1427,7 +1452,14 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     && stableRootCard.left >= tableRect.left + margin && stableRootCard.top >= tableRect.top + margin
     && stableRootCard.right <= tableRect.right - margin
     && stableRootCard.bottom <= (hasEightPlayerPhoneLayout ? tableRect.bottom - margin : stableStageBottom)
-    && !obstacleElements.some((element) => overlaps(stableRootCard, relativeRect(element, shellBounds), element.classList.contains("local-player-dock") ? 0 : 8))
+    && !obstacleElements.some((element) => {
+      const requiredClearance = element.classList.contains("local-player-dock")
+        ? isUnansweredAttackRoot ? unansweredAttackDockClearance : 0
+        : 8;
+      return overlaps(stableRootCard, relativeRect(element, shellBounds), requiredClearance);
+    })
+    && !(isUnansweredAttackRoot && localDockRect
+      && overlaps(stableRootCard, localDockRect, unansweredAttackDockClearance))
     && !(hiddenPendingPublicResponseTimer && overlaps(stableRootCard, hiddenPendingPublicResponseTimer, 8));
   const selectedCandidate = cachedRootFits && stableRootCard
     ? { card: stableRootCard, reservedDodge: preferredResponseCard, score: 0 }

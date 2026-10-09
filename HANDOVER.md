@@ -5,7 +5,7 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-Task A commit `b06fa59e4a2517f9dbb60ce844073142fc8c8743` failed Browser shard 1 in run `37985293129` (API/Lint and shard 2 passed). Local shard reproduction found Duel at 1440×900 shifted 13.6875px because the new 8px Dock correction affected every root type; the repair now scopes it to single-target Attack→Local Dock. Added per-shard Playwright report/trace artifact upload (14-day retention). After the repair, build, exact Duel geometry, and four-player Attack Dock-endpoint tests pass. The local shard was stopped after 142 passed, this one failure, and two interrupted; 304 did not run. Actions annotations remain generic; unauthenticated log/artifact downloads returned 403/401.
+Remote `ux-v2` HEAD `e92512360514cf63b9cc4181d0dd80b3124aa2fb` failed run `37987317069`: API/Lint and Browser shard 2 passed; Browser shard 1 failed the dense 8-player Attack geometry test at 480×900. Exact job log `114012430663` shows the Attack root is less than 8px clear of a player Seat/Dock; shard report and worker-log artifacts are present (`11644615343`, `11644630363`). Local repair reserves 18px only for the 8-player side-column compact layout (401–600px), covering the measured 10px Dock growth on Dodge handoff. `npm run build`, focused geometry browser tests (4/4: 6/8 players at 390/480px), targeted ESLint, and `git diff --check` pass. CI repair is prepared locally; push and exact-HEAD CI validation remain pending.
 
 ## Design checkpoint
 
@@ -13,4 +13,4 @@ Latest remote `docs/UX2-refine.md` blob `88c73eb523b6e14f769fc10eee5a5ad40b8f93b
 
 ## Current task
 
-`UX2-6.29-A-ATTACK-DODGE-CONTINUITY-AND-HOLD-01` — repair commit ready; check latest remote CI before commit. Close only when the exact repair SHA is green and its shard-specific Playwright report artifacts are present. Then re-fetch/re-read the design and plan Task B. No Reviewer acceptance is claimed.
+`UX2-6.29-A-ATTACK-DODGE-CONTINUITY-AND-HOLD-01` — CI repair for the 8-player 480×900 Attack root/Dock clearance regression. Commit and push only this repair; do not resume UX work until the exact pushed HEAD is green. After CI completes, stop and await the user's next instruction. No Reviewer acceptance is claimed.

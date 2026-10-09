@@ -3140,7 +3140,8 @@ for (const scenario of [
             expect(card.right, `${name} stays inside the playable table`).toBeLessThanOrEqual(actorResponseGeometry.table.right - requiredTableInset);
             expect(card.bottom, `${name} stays inside the playable table`).toBeLessThanOrEqual(actorResponseGeometry.table.bottom - requiredTableInset);
             for (const anchor of actorResponseGeometry.anchors) {
-              expect(separatedBy(card, anchor.rect, 8), `${name} clears player Seat/Dock ${anchor.id} by 8px`).toBe(true);
+              const anchorRole = anchor.id === sourceId ? "source" : anchor.id === targetId ? "target" : "other";
+              expect(separatedBy(card, anchor.rect, 8), `${name} clears ${anchorRole} Seat/Dock ${anchor.id} by 8px; card=${JSON.stringify(card)} anchor=${JSON.stringify(anchor.rect)}`).toBe(true);
             }
             for (const obstacle of actorResponseGeometry.obstacles) {
               expect(separatedBy(card, obstacle.rect, 8), `${name} clears ${obstacle.label} by 8px`).toBe(true);
