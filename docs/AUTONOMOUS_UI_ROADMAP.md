@@ -2341,6 +2341,28 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `37855563197` (#923); CI for this task's outgoing SHA is pending. Reviewer
   acceptance is not claimed.
 
+### UX2.6-PHASE-D-ATTACK-MULTI-TARGET-PROOF-AUDIT-01 — Halberd ordered-root audit
+
+- Real API equipment tests passed 20/20. They prove the server stores one
+  held physical Attack, an ORDERED causal target list, public participant
+  progress, response order, and child-Dying pause/resume. The existing
+  Halberd ordered-progress browser test passed 1/1 but is fixture-only; there
+  is no real server-backed Halberd browser proof.
+- PresentationV2's typed group progress omits root event/physical-card identity;
+  `rootContext` is compatibility data. `singleTargetAttackRootActionFor`
+  requires one `attack` continuation/target, while the page's active group
+  graph candidate accepts only GROUP Raining Arrows/Barbarian Invasion, not
+  Halberd ORDERED. Group terminal proof also excludes Halberd, and the generic
+  Attack-hit proof rejects child group frames. Therefore the legacy Stage
+  fallback for this path is an explicit proof/rendering gap, not evidence that
+  an authoritative Halberd graph is intermittently ready. A typed ordered-root
+  projection is the smallest prerequisite; do not infer branches from timeline
+  order, seat positions, or card display.
+- Focused API harness: 20/20; existing fixture browser proof: 1/1. The first
+  bare `node --test` invocation had no API server and was not a product failure;
+  rerunning through `tests/run-tests.mjs` produced the 20/20 result. Reviewer
+  acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
