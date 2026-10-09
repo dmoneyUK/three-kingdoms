@@ -2971,7 +2971,29 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       || proof.responseActorId !== proof.targetId) return [];
     return [{ proof, rootEvent, responseEvent }];
   });
-  const attackDodgeResponseCandidate = attackDodgeResponseCandidates.length === 1 ? attackDodgeResponseCandidates[0] : null;
+  const currentAttackRoot = clientPresentation.rootAction?.action === "ATTACK" ? clientPresentation.rootAction : null;
+  const attackDodgeResponsesForCurrentRoot = currentAttackRoot
+    ? attackDodgeResponseCandidates.filter(({ proof }) => proof.rootEventId === currentAttackRoot.rootEventId
+      && proof.interactionId === currentAttackRoot.interactionId
+      && proof.rootFrameId === currentAttackRoot.rootFrameId
+      && proof.rootSourceId === currentAttackRoot.sourceId
+      && proof.targetId === currentAttackRoot.targetId)
+    : [];
+  const attackDodgeResponsesForActiveSettlement = activeAttackDodgeSettlement
+    ? attackDodgeResponseCandidates.filter(({ proof }) => proof.responseEventId === activeAttackDodgeSettlement.eventId)
+    : [];
+  // A room may contain many historical, server-proven Dodge responses. Select
+  // only the response tied to the live root or the exact locally held event;
+  // global history cardinality must not hide a valid current relation.
+  const attackDodgeResponseCandidate = attackDodgeResponsesForCurrentRoot.length === 1
+    ? attackDodgeResponsesForCurrentRoot[0]
+    : attackDodgeResponsesForCurrentRoot.length > 1
+      ? null
+      : attackDodgeResponsesForActiveSettlement.length === 1
+        ? attackDodgeResponsesForActiveSettlement[0]
+        : attackDodgeResponsesForActiveSettlement.length > 1
+          ? null
+          : attackDodgeResponseCandidates.length === 1 ? attackDodgeResponseCandidates[0] : null;
   const attackDodgeGraphCandidate = activeAttackDodgeSettlement?.phase === "complete"
     && attackDodgeResponseCandidate?.proof.responseEventId === activeAttackDodgeSettlement.eventId
     ? null
