@@ -5,38 +5,37 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2.6-PHASE-D-ATTACK-MOBILE-GEOMETRY-REMEASURE-01` is implemented locally.
-The real mobile Attack graph now remeasures on window and visual-viewport
-resize/scroll and observes responsive root/response card dimensions. Both
-attacker and defender retain the same server-proven root across 390×844 and
-480×900 viewport changes; graph endpoints remain within 2.1 CSS px when
-geometry is ready. At 390×724 the solver explicitly fails closed with
-`geometry-unavailable`; restoring 390×844 restores the same graph, while
-480×780 remains graph-ready. No duplicate Stage or horizontal overflow was
-observed. The page has no natural document-scroll range at these sizes, so no
-artificial overflow was introduced; real-device/address-bar validation is
-not claimed.
-
-Focused browser runs passed: mobile viewport remeasurement 1/1 (25.9s) and
-10 independently seeded Attack windows 1/1 (2.0m). `npm run build`, targeted
-ESLint, `node --check`, and `git diff --check` passed. Pre-commit Actions run
-`37879295636` for exact parent SHA
-`224915c6c6e9d139ac66e5628fe033740ede11f9` completed successfully. This
-task's outgoing Actions status is pending after push. Reviewer acceptance is
-not claimed.
+`UX2.6-PHASE-D-ATTACK-RESPONSE-TIMEOUT-CLEANUP-01` is implemented locally.
+With no Skip click, the real browser waited for the server-owned 30-second
+ordinary response deadline and automatically submitted `decline_response`.
+The server published one `ATTACK_DAMAGE_APPLIED` proof for the same root,
+reduced target HP from 4 to 3, and the graph showed the settlement before
+clearing; no stale card or duplicate Stage remained. Pre-commit Actions run
+`37882419728` for exact parent SHA `13b5641bd9a108c2a5eda39cb9df9e4cc9946910`
+failed only in Browser shard 1: the real Attack→Dodge spec queried a 600ms
+settlement graph through sequential browser calls and lost it under suite
+load. The test now records actual DOM/style/geometry at the first settlement
+frame and keeps semantic, geometry, and exit assertions; CSS transition
+measurements allow at most 0.01px stroke and 0.005 opacity rounding. The CI
+repair is included with this task. Local focused browser validation passed
+4/4 across 390×844, 480×900, 1440×900, and the real 30-second timeout path;
+the 1440px case also passed 3/3 repeats with 2 workers. Targeted ESLint,
+`node --check`, and `git diff --check` passed. Outgoing Actions status is
+pending after push. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
 Latest remote `docs/UX2-refine.md` blob:
 `4c56947d9965cde28a7c888e19f5d5fa0612112e`; unchanged from the prior
-checkpoint. Reviewed §6.27.1–§6.27.4 at this boundary.
+checkpoint. Re-fetched and reviewed §6.27.1–§6.27.4 at this task boundary.
 
 ## Next task
 
-`UX2.6-PHASE-D-ATTACK-RESPONSE-TIMEOUT-CLEANUP-01` — prove the real
-server-owned ordinary Attack response deadline can expire through the existing
-timer-advance path, publishes the exact damage settlement for the same proven
-root, and clears the public root graph without a stale card or duplicate Stage.
-Preserve the existing timer duration, CurrentAction authority, and public
-privacy. Add focused server-backed regression proof; do not add gameplay rules
-or a test-only production route.
+`UX2.6-PHASE-D-ATTACK-CONVERTED-CARD-ROOT-PROOF-01` — audit and, if needed,
+extend typed public root proof for exactly one real single-target converted
+Attack: Zhao Yun's Longdan physical Dodge played as Attack. Preserve exact
+server-proven source, target, frame/checkpoint, and physical card identity/type;
+render the real card face without inferring Attack causality in React. Add a
+server-backed browser proof from skill activation through target response.
+Keep multi-target Attack out of scope; malformed or missing conversion proof
+must fail closed.

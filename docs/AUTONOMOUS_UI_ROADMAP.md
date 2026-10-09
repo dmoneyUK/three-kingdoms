@@ -2253,6 +2253,29 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `git diff --check` passed. Playwright emulation is not real-device
   validation; Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-D-ATTACK-RESPONSE-TIMEOUT-CLEANUP-01 — Real timeout settlement
+
+- A real browser Attack response with no Dodge or manual Skip remained open
+  through its server-owned 30-second deadline. The page automatically sent
+  the existing `decline_response`; the server published exactly one
+  `ATTACK_DAMAGE_APPLIED` proof tied to the same proven root and applied one
+  damage. The graph visibly showed the exact settlement, then removed its
+  root card without a stale table reveal or duplicate Stage. Focused
+  server-backed browser proof passed 1/1 (48.9s), including the actual request,
+  exact public proof, HP change, and graph removal. Pre-commit Actions run
+  `37882419728` for parent SHA `13b5641bd9a108c2a5eda39cb9df9e4cc9946910`
+  failed in Browser shard 1 because the desktop Attack→Dodge spec made
+  sequential queries against its 600ms settlement graph. The spec now captures
+  rendered DOM, styles, and measured geometry on the first settlement frame,
+  then asserts the same semantic/layout conditions from that snapshot while
+  still verifying transition and removal. CSS animation sampling allows at
+  most 0.01px stroke and 0.005 opacity rounding. The focused set passed 4/4
+  across 390×844, 480×900, 1440×900, and the real timeout path; the desktop
+  case passed 3/3 repeats with 2 workers. Targeted ESLint, `node --check`, and
+  `git diff --check` passed. The test preserves the existing response duration
+  and does not change the separate 60-second Bumper Harvest chooser timer.
+  Reviewer acceptance is not claimed.
+
 ### UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01 — Real drag/drop completion
 
 - The real server-backed Stargazing proof now covers touch reassignment between
