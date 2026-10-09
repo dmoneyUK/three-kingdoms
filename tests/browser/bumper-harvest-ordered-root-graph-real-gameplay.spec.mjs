@@ -100,7 +100,72 @@ async function respondWithNegation(page, playerId, cardId) {
   return JSON.parse(response.request().postData() ?? "{}");
 }
 
-async function graphGeometry(page, seed, viewport, testInfo, label) {
+async function chooseHarvestCard(page) {
+  const stage = page.locator(".harvest-choice-stage");
+  await expect(stage).toBeVisible({ timeout: 20_000 });
+  const choice = stage.locator(".harvest-card-choice:not([disabled])").first();
+  await expect(choice).toBeEnabled();
+  await choice.click();
+  const confirm = stage.locator(".harvest-confirm-row button.primary");
+  await expect(confirm).toBeEnabled();
+  const submitted = postedAction(page, "choose_harvest");
+  await confirm.click();
+  const response = await submitted;
+  if (!response.ok()) throw new Error(`Bumper Harvest choice failed: ${await response.text()}`);
+  return JSON.parse(response.request().postData() ?? "{}").cardId;
+}
+
+async function startSettlementTrace(page) {
+  await page.evaluate(() => {
+    const trace = { appearedAt: null, disappearedAt: null, eventId: null, sample: null };
+    const bounds = (element) => {
+      const rect = element?.getBoundingClientRect();
+      return rect ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height } : null;
+    };
+    const inspect = () => {
+      const overlay = document.querySelector('[data-root-action-overlay="true"][data-root-action-ordered-target-graph="true"]');
+      const root = overlay?.querySelector('[data-root-action-card="true"]');
+      const ready = overlay?.getAttribute("data-root-action-ready") === "true";
+      const settled = root?.getAttribute("data-root-action-settlement-outcome") === "BUMPER_HARVEST_RESOLVED";
+      if (ready && settled) {
+        if (trace.appearedAt === null) {
+          trace.appearedAt = performance.now();
+          trace.eventId = root?.getAttribute("data-root-action-settlement-event-id") ?? null;
+          const table = document.querySelector(".play-table");
+          const dock = document.querySelector(".local-player-dock");
+          const rootBounds = bounds(root);
+          const tableBounds = bounds(table);
+          const dockBounds = bounds(dock);
+          const overlaps = (left, right) => Boolean(left && right && left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top);
+          trace.sample = {
+            root: rootBounds,
+            table: tableBounds,
+            dock: dockBounds,
+            rootOverlapsDock: overlaps(rootBounds, dockBounds),
+            branches: [...(overlay.querySelectorAll('path[data-root-action-edge="ordered-target"]') ?? [])].map((path) => ({
+              playerId: path.getAttribute("data-ordered-target-branch-player-id"),
+              status: path.getAttribute("data-ordered-target-status"),
+              outcome: path.getAttribute("data-ordered-target-outcome"),
+            })),
+            anchors: [...document.querySelectorAll("[data-player-anchor]")].map((anchor) => ({ id: anchor.getAttribute("data-player-anchor"), bounds: bounds(anchor) })),
+            stageCount: document.querySelectorAll(".interaction-stage").length,
+            pageWidth: document.documentElement.scrollWidth,
+            viewportWidth: innerWidth,
+          };
+        }
+      } else if (trace.appearedAt !== null && trace.disappearedAt === null) {
+        trace.disappearedAt = performance.now();
+      }
+    };
+    window.__bumperHarvestSettlementTrace = trace;
+    const observer = new MutationObserver(inspect);
+    window.__bumperHarvestSettlementObserver = observer;
+    observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-root-action-ready", "data-root-action-settlement-event-id", "data-root-action-settlement-outcome", "data-root-action-settlement-exiting"] });
+    inspect();
+  });
+}
+
+async function graphGeometry(page, seed, viewport, testInfo, label, { settled = false } = {}) {
   const overlay = page.locator('[data-root-action-overlay="true"][data-root-action-ordered-target-graph="true"]');
   try {
     await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
@@ -176,7 +241,7 @@ async function graphGeometry(page, seed, viewport, testInfo, label) {
           display: getComputedStyle(anchor).display,
           visibility: getComputedStyle(anchor).visibility,
         })),
-        responseNodes: [...document.querySelectorAll("[data-root-action-response-node]")].map(bounds),
+      responseNodes: [...document.querySelectorAll("[data-root-action-response-node]")].map(bounds),
       };
     });
     await testInfo.attach(`${label}-${viewport.width}x${viewport.height}-layout-not-ready.json`, {
@@ -185,6 +250,33 @@ async function graphGeometry(page, seed, viewport, testInfo, label) {
     });
     throw new Error(`${error.message}\nBumper graph diagnostics: ${JSON.stringify(diagnostics)}`);
   }
+  await expect.poll(async () => page.evaluate(() => {
+    const overlayNode = document.querySelector('[data-root-action-overlay="true"][data-root-action-ordered-target-graph="true"]');
+    const svg = overlayNode?.querySelector(".interaction-root-connectors");
+    const anchors = [...document.querySelectorAll("[data-player-anchor]")];
+    const distanceToRect = (point, element) => {
+      const rect = element?.getBoundingClientRect();
+      return point && rect
+        ? Math.hypot(Math.max(rect.left - point.x, 0, point.x - rect.right), Math.max(rect.top - point.y, 0, point.y - rect.bottom))
+        : Number.POSITIVE_INFINITY;
+    };
+    const pointAt = (path, end) => {
+      if (!path) return null;
+      const point = path.getPointAtLength(end ? path.getTotalLength() : 0);
+      const matrix = path.getScreenCTM();
+      return matrix ? new DOMPoint(point.x, point.y).matrixTransform(matrix) : null;
+    };
+    const sourceId = overlayNode?.getAttribute("data-root-action-source-id");
+    const source = anchors.find((anchor) => anchor.getAttribute("data-player-anchor") === sourceId);
+    const sourcePath = svg?.querySelector('[data-root-action-edge="source"]');
+    const distances = [distanceToRect(pointAt(sourcePath, false), source)];
+    for (const path of svg?.querySelectorAll('path[data-root-action-edge="ordered-target"]') ?? []) {
+      const playerId = path.getAttribute("data-ordered-target-branch-player-id");
+      const target = anchors.find((anchor) => anchor.getAttribute("data-player-anchor") === playerId);
+      distances.push(distanceToRect(pointAt(path, true), target));
+    }
+    return distances.length ? Math.max(...distances) : Number.POSITIVE_INFINITY;
+  }), { timeout: 5_000 }).toBeLessThanOrEqual(1.5);
   await expect(page.locator('[data-bumper-harvest-root-action="BumperHarvest"]')).toHaveCount(1);
   await expect(page.locator(".interaction-stage")).toHaveCount(0);
   await expect(page.locator(".local-player-dock")).toBeVisible();
@@ -259,6 +351,7 @@ async function graphGeometry(page, seed, viewport, testInfo, label) {
     const cardRect = bounds(root);
     const tableRect = bounds(table);
     const dockRect = bounds(dock);
+    const guidance = dock?.querySelector(".console-guidance");
     const intersects = (a, b) => Boolean(a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
     const rootPlacementBlockers = [
       ...anchors.map((anchor) => [anchor.getAttribute("data-player-anchor") ?? "player", bounds(anchor)]),
@@ -275,6 +368,14 @@ async function graphGeometry(page, seed, viewport, testInfo, label) {
       root: cardRect,
       table: tableRect,
       dock: dockRect,
+      guidance: bounds(guidance),
+      guidanceMinHeight: guidance ? getComputedStyle(guidance).minHeight : null,
+      guidanceText: guidance?.innerText ?? null,
+      guidanceHeightPreserved: dock?.getAttribute("data-guidance-height-preserved"),
+      anchors: [...anchors].map((anchor) => ({ id: anchor.getAttribute("data-player-anchor"), bounds: bounds(anchor) })),
+      settlementEventId: overlayNode?.getAttribute("data-root-action-settlement-event-id"),
+      settlementOutcome: root?.getAttribute("data-root-action-settlement-outcome"),
+      settlementExiting: overlayNode?.getAttribute("data-root-action-settlement-exiting"),
       rootOverlapsDock: intersects(cardRect, dockRect),
       rootPlacementBlockers,
       branchIds: branches.map(({ playerId }) => playerId),
@@ -317,7 +418,12 @@ async function graphGeometry(page, seed, viewport, testInfo, label) {
   expect(geometry.rootEventId).toBeTruthy();
   expect(geometry.branchIds).toEqual(geometry.expectedIds);
   expect(geometry.branches.map(({ order }) => order)).toEqual(seed.players.map((_, index) => index + 1));
-  expect(geometry.branches.filter(({ status }) => status === "CURRENT")).toHaveLength(1);
+  expect(geometry.branches.filter(({ status }) => status === "CURRENT")).toHaveLength(settled ? 0 : 1);
+  if (settled) {
+    expect(geometry.branches.every(({ status }) => status === "RESOLVED" || status === "NO_LONGER_APPLICABLE")).toBe(true);
+    expect(geometry.settlementEventId).toBeTruthy();
+    expect(geometry.settlementOutcome).toBe("BUMPER_HARVEST_RESOLVED");
+  }
   expect(geometry.sourceTetherDistance).toBeLessThanOrEqual(1.5);
   expect(geometry.branches.every(({ endpointDistance }) => endpointDistance <= 1.5)).toBe(true);
   expect(geometry.root.left).toBeGreaterThanOrEqual(geometry.table.left);
@@ -460,15 +566,7 @@ test("real Bumper Harvest keeps one stable ordered root graph through Negation a
   expect(Math.abs(nextChooserGeometry.root.left - openGeometry.root.left)).toBeLessThanOrEqual(1);
   expect(Math.abs(nextChooserGeometry.root.top - openGeometry.root.top)).toBeLessThanOrEqual(1);
 
-  const choiceCard = firstChoicePage.locator(".harvest-choice-stage .harvest-card-choice:not([disabled])").first();
-  await expect(choiceCard).toBeEnabled();
-  await choiceCard.click();
-  const confirm = firstChoicePage.locator(".harvest-choice-stage .harvest-confirm-row button.primary");
-  await expect(confirm).toBeEnabled();
-  const chooseResponse = postedAction(firstChoicePage, "choose_harvest");
-  await confirm.click();
-  const chosenResponse = await chooseResponse;
-  if (!chosenResponse.ok()) throw new Error(`Bumper Harvest choice failed: ${await chosenResponse.text()}`);
+  const chosenCardIds = [await chooseHarvestCard(firstChoicePage)];
 
   const nextChoice = await waitForProgress(request, seed, ["RESOLVED", "RESOLVED", "CURRENT", "PENDING", "PENDING"]);
   expect(nextChoice.presentationSnapshot.bumperHarvestProgress.participants[0].outcome).toBe("NEGATED");
@@ -487,8 +585,104 @@ test("real Bumper Harvest keeps one stable ordered root graph through Negation a
   expect(Math.abs(responsiveGeometry.root.left - openGeometry.root.left)).toBeLessThanOrEqual(1);
   expect(Math.abs(responsiveGeometry.root.top - openGeometry.root.top)).toBeLessThanOrEqual(1);
 
+  chosenCardIds.push(await chooseHarvestCard(secondPage));
+  const thirdChoiceView = await waitForProgress(request, seed, ["RESOLVED", "RESOLVED", "RESOLVED", "CURRENT", "PENDING"]);
+  expect(thirdChoiceView.currentAction.actorId).toBe(third.id);
+  chosenCardIds.push(await chooseHarvestCard(thirdPage));
+  const finalChoiceView = await waitForProgress(request, seed, ["RESOLVED", "RESOLVED", "RESOLVED", "RESOLVED", "CURRENT"]);
+  expect(finalChoiceView.currentAction.actorId).toBe(observer.id);
+
+  await page.setViewportSize(viewports[0]);
+  await expect(page.locator(".harvest-choice-stage > div > b")).toHaveText("Your turn — choose one card", { timeout: 20_000 });
+  const finalChooserGeometry = await graphGeometry(page, seed, viewports[0], testInfo, "bumper-harvest-final-chooser");
+  const reducedMotionPage = await browser.newPage({ viewport: viewports[0] });
+  await reducedMotionPage.emulateMedia({ reducedMotion: "reduce" });
+  await openPlayer(reducedMotionPage, seed, 4);
+  await expect(reducedMotionPage.locator(".harvest-choice-stage")).toBeVisible({ timeout: 20_000 });
+  await expect(reducedMotionPage.locator(".harvest-choice-stage > div > b")).toHaveText("Your turn — choose one card", { timeout: 20_000 });
+  await startSettlementTrace(page);
+  await startSettlementTrace(reducedMotionPage);
+
+  chosenCardIds.push(await chooseHarvestCard(page));
+  await expect.poll(async () => {
+    const view = await roomView(request, seed, 4);
+    return view.presentationSnapshot.bumperHarvestSettlements?.length ?? 0;
+  }, { timeout: 20_000 }).toBe(1);
+  const settledView = await roomView(request, seed, 4);
+  const [settlement] = settledView.presentationSnapshot.bumperHarvestSettlements;
+  expect(settlement).toMatchObject({
+    semantics: "PROVEN",
+    sourceId: source.id,
+    participants: seed.players.map((player, index) => ({
+      playerId: player.id,
+      order: index + 1,
+      status: "RESOLVED",
+      outcome: index === 0 ? "NEGATED" : "CHOSE_CARD",
+    })),
+  });
+  expect(chosenCardIds).toHaveLength(4);
+  expect(chosenCardIds.every((cardId) => !JSON.stringify(settlement).includes(cardId))).toBe(true);
+  const settledRoot = settledView.timeline.find((event) => event.id === settlement.rootEventId);
+  expect(settledRoot).toMatchObject({
+    type: "card",
+    action: "play",
+    resolutionId: settlement.rootResolutionId,
+    bumperHarvestRoot: {
+      semantics: "PROVEN",
+      sourceId: source.id,
+      cardId: seed.root.id,
+      interactionId: settlement.interactionId,
+      rootFrameId: settlement.rootFrameId,
+    },
+  });
+  expect(settledView.pendingHarvest.complete).toBe(true);
+  expect(settledView.pendingHarvest.countdownUntil).toBeGreaterThan(Date.now());
+  const publicSettlements = await Promise.all(seed.players.map(async (_, index) => {
+    const view = await roomView(request, seed, index);
+    return view.presentationSnapshot.bumperHarvestSettlements;
+  }));
+  for (const viewerSettlements of publicSettlements) expect(viewerSettlements).toEqual([settlement]);
+
+  await expect.poll(async () => page.evaluate(() => window.__bumperHarvestSettlementTrace?.appearedAt ?? null), { timeout: 20_000 }).toBeGreaterThan(0);
+  const settlementGeometry = await graphGeometry(page, seed, viewports[0], testInfo, "bumper-harvest-settled", { settled: true });
+  expect(settlementGeometry.rootEventId).toBe(openGeometry.rootEventId);
+  expect(settlementGeometry.settlementEventId).toBe(settlement.eventId);
+  expect(settlementGeometry.branches.map(({ status, outcome }) => ({ status, outcome }))).toEqual(
+    settlement.participants.map(({ status, outcome }) => ({ status, outcome: outcome ?? null })),
+  );
+  if (JSON.stringify(settlementGeometry.anchors) !== JSON.stringify(finalChooserGeometry.anchors)) {
+    throw new Error(`Bumper settlement changed physical geometry: ${JSON.stringify({
+      before: { table: finalChooserGeometry.table, dock: finalChooserGeometry.dock, guidance: finalChooserGeometry.guidance, guidanceMinHeight: finalChooserGeometry.guidanceMinHeight, guidanceText: finalChooserGeometry.guidanceText, guidanceHeightPreserved: finalChooserGeometry.guidanceHeightPreserved, root: finalChooserGeometry.root },
+      after: { table: settlementGeometry.table, dock: settlementGeometry.dock, guidance: settlementGeometry.guidance, guidanceMinHeight: settlementGeometry.guidanceMinHeight, guidanceText: settlementGeometry.guidanceText, guidanceHeightPreserved: settlementGeometry.guidanceHeightPreserved, root: settlementGeometry.root },
+    })}`);
+  }
+  expect(settlementGeometry.dock).toEqual(finalChooserGeometry.dock);
+  expect(Math.abs(settlementGeometry.root.left - finalChooserGeometry.root.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(settlementGeometry.root.top - finalChooserGeometry.root.top)).toBeLessThanOrEqual(1);
+  await expect.poll(async () => page.evaluate(() => window.__bumperHarvestSettlementTrace?.disappearedAt ?? null), { timeout: 10_000 }).toBeGreaterThan(0);
+  const normalTrace = await page.evaluate(() => window.__bumperHarvestSettlementTrace);
+  const normalHoldMs = normalTrace.disappearedAt - normalTrace.appearedAt;
+  expect(normalHoldMs).toBeGreaterThanOrEqual(350);
+  expect(normalHoldMs).toBeLessThanOrEqual(1_000);
+
+  await expect.poll(async () => reducedMotionPage.evaluate(() => window.__bumperHarvestSettlementTrace?.appearedAt ?? null), { timeout: 20_000 }).toBeGreaterThan(0);
+  await expect.poll(async () => reducedMotionPage.evaluate(() => window.__bumperHarvestSettlementTrace?.disappearedAt ?? null), { timeout: 10_000 }).toBeGreaterThan(0);
+  const reducedTrace = await reducedMotionPage.evaluate(() => window.__bumperHarvestSettlementTrace);
+  const reducedHoldMs = reducedTrace.disappearedAt - reducedTrace.appearedAt;
+  expect(reducedTrace.eventId).toBe(settlement.eventId);
+  expect(reducedHoldMs).toBeGreaterThanOrEqual(60);
+  expect(reducedHoldMs).toBeLessThan(400);
+  expect(reducedTrace.sample.rootOverlapsDock).toBe(false);
+  expect(reducedTrace.sample.root.left).toBeGreaterThanOrEqual(reducedTrace.sample.table.left);
+  expect(reducedTrace.sample.root.right).toBeLessThanOrEqual(reducedTrace.sample.table.right);
+  expect(reducedTrace.sample.branches.map(({ status }) => status)).toEqual(Array(5).fill("RESOLVED"));
+  expect(reducedTrace.sample.stageCount).toBe(0);
+  expect(reducedTrace.sample.pageWidth).toBeLessThanOrEqual(reducedTrace.sample.viewportWidth);
+  expect(reducedTrace.sample.anchors).toEqual(finalChooserGeometry.anchors);
+
   await sourcePage.close();
   await secondPage.close();
   await thirdPage.close();
+  await reducedMotionPage.close();
   expect(observer.id).toBeTruthy();
 });

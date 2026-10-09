@@ -11,7 +11,7 @@ import { canUseAction, type CurrentAction, type GameplayAction, type TriggerOpti
 import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
-import type { PresentationAttackHitSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
+import type { PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, isProvenBorrowedSwordForcedAttack, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildPresentationTransition, type PresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupSourceForViewer, projectGroupTargetScopeForViewer, projectOathRecipientScopeForStage, projectBumperHarvestStageCompositionForViewer, type BumperHarvestStageCompositionView, type GroupSourceView, type GroupTargetScopeView, type HeroFocusPlayerDisplay, type HeroFocusView, type MediumParticipantView, type OathRecipientScopeView } from "../game/hero-focus";
@@ -26,7 +26,7 @@ type ActiveAttackDodgeSettlement = { eventId: string; phase: "exiting" | "comple
 type RootActionOverlayLayoutReadiness = { key: string; state: "measuring" | "ready" | "unavailable" } | null;
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
 type PresentationImportance = "essential" | "informational";
-type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof };
+type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type CardEvent = PresentationEventMeta & { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" | "draw"; drawPlayerId?: string; presentation?: boolean };
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
 
@@ -1968,6 +1968,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const [activeStealSettlement, setActiveStealSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeAttackHitSettlement, setActiveAttackHitSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeGroupSettlement, setActiveGroupSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
+  const [activeBumperHarvestSettlement, setActiveBumperHarvestSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeAttackDodgeSettlement, setActiveAttackDodgeSettlement] = useState<ActiveAttackDodgeSettlement | null>(null);
   const attackDodgeSettlementTimerEventId = useRef<string | null>(null);
   // Events already present when the screen mounts have no new animation to
@@ -2665,6 +2666,20 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         : [];
     });
     if (freshGroupSettlements.length === 1) setActiveGroupSettlement({ eventId: freshGroupSettlements[0].eventId, exiting: false });
+    const freshBumperHarvestSettlements = fresh.flatMap((event) => {
+      if (event.type !== "message") return [];
+      const proofs = clientPresentation.bumperHarvestSettlements.filter((proof) => proof.eventId === event.id);
+      if (proofs.length !== 1) return [];
+      const proof = proofs[0];
+      const eventProof = event.publicBumperHarvestSettlement;
+      return eventProof?.semantics === proof.semantics && eventProof.rootEventId === proof.rootEventId
+        && eventProof.rootResolutionId === proof.rootResolutionId && eventProof.interactionId === proof.interactionId
+        && eventProof.rootFrameId === proof.rootFrameId && eventProof.sourceId === proof.sourceId
+        && JSON.stringify(eventProof.participants) === JSON.stringify(proof.participants)
+        ? [proof]
+        : [];
+    });
+    if (freshBumperHarvestSettlements.length === 1) setActiveBumperHarvestSettlement({ eventId: freshBumperHarvestSettlements[0].eventId, exiting: false });
     const effect = fresh.find((event) => event.type === "message" && event.effectNotice);
     if (effect?.type === "message") {
       setEffectNotice(effect.message);
@@ -2700,7 +2715,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       } else setEventQueue((queue) => coalescePresentationQueue(queue, visible));
     }
     setProcessedTimelineKey(timelineKey);
-  }, [room.timeline, timelineKey, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, clientPresentation.groupSettlements]);
+  }, [room.timeline, timelineKey, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements]);
   useEffect(() => { if (!optimisticPlay) return; const timer = setTimeout(() => setOptimisticPlay(null), UI_TIMING.playedCard); return () => clearTimeout(timer); }, [optimisticPlay]);
   useEffect(() => { if (!livePendingStartId || livePendingStartId === sequenceScopeStartId) return; const timer = setTimeout(() => setSequenceScopeStartId(livePendingStartId), 0); return () => clearTimeout(timer); }, [livePendingStartId, sequenceScopeStartId]);
   useEffect(() => { if (!harvestSubmitting || room.pendingHarvest?.actorId === harvestSubmitting.playerId && !room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId)) return; const timer = setTimeout(() => setHarvestSubmitting(null), 0); return () => clearTimeout(timer); }, [harvestSubmitting, room.pendingHarvest]);
@@ -3307,6 +3322,44 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       exiting: activeGroupSettlement?.exiting === true,
     };
   })();
+  const bumperHarvestSettlementCandidate = (() => {
+    const settlement = clientPresentation.bumperHarvestSettlements.find((candidate) => candidate.eventId === activeBumperHarvestSettlement?.eventId);
+    if (!settlement || settlement.semantics !== "PROVEN") return null;
+    const rootEvents = room.timeline.filter((event) => event.id === settlement.rootEventId);
+    const settlementEvents = room.timeline.filter((event) => event.id === settlement.eventId);
+    if (rootEvents.length !== 1 || settlementEvents.length !== 1) return null;
+    const rootEvent = rootEvents[0];
+    const settlementEvent = settlementEvents[0];
+    const rootProof = rootEvent.type === "card" ? rootEvent.bumperHarvestRoot : null;
+    const eventProof = settlementEvent.type === "message" ? settlementEvent.publicBumperHarvestSettlement : null;
+    if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
+      || rootEvent.playedAs !== undefined || rootEvent.card.kind !== "BumperHarvest"
+      || rootEvent.resolutionId !== settlement.rootResolutionId
+      || rootProof?.semantics !== "PROVEN" || rootProof.sourceId !== settlement.sourceId || rootProof.cardId !== rootEvent.card.id
+      || rootProof.interactionId !== settlement.interactionId || rootProof.rootFrameId !== settlement.rootFrameId
+      || settlementEvent.type !== "message" || settlementEvent.presentation === false
+      || settlementEvent.importance !== "essential" || settlementEvent.finalResult !== true
+      || settlementEvent.resolutionId !== settlement.rootResolutionId
+      || eventProof?.semantics !== settlement.semantics || eventProof.rootEventId !== settlement.rootEventId
+      || eventProof.rootResolutionId !== settlement.rootResolutionId || eventProof.interactionId !== settlement.interactionId
+      || eventProof.rootFrameId !== settlement.rootFrameId || eventProof.sourceId !== settlement.sourceId
+      || JSON.stringify(eventProof.participants) !== JSON.stringify(settlement.participants)) return null;
+    const source = room.players.find((player) => player.id === settlement.sourceId);
+    if (!source?.name || rootEvent.player !== source.name) return null;
+    const targets = settlement.participants.map((participant) => {
+      const player = room.players.find(({ id }) => id === participant.playerId);
+      return player?.name ? { ...participant, playerName: player.name } : null;
+    });
+    if (targets.some((target) => target === null)) return null;
+    return {
+      settlement,
+      rootEvent,
+      settlementEvent,
+      source,
+      targets: targets as NonNullable<(typeof targets)[number]>[],
+      exiting: activeBumperHarvestSettlement?.exiting === true,
+    };
+  })();
   const rootAction = clientPresentation.rootAction;
   const rootActionName = rootAction?.action === "ATTACK" ? "Attack"
     : rootAction?.cardKind === "Dismantle" ? "Burning Bridge"
@@ -3456,6 +3509,21 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       mode: "targeted",
       compactRoot: true,
       settlement: { eventId: groupSettlementCandidate.settlement.eventId, outcome: "GROUP_RESOLVED", exiting: groupSettlementCandidate.exiting },
+    }
+    : bumperHarvestSettlementCandidate
+    ? {
+      key: ["bumper-harvest", bumperHarvestSettlementCandidate.settlement.interactionId, bumperHarvestSettlementCandidate.settlement.rootFrameId, bumperHarvestSettlementCandidate.rootEvent.id].join(":"),
+      rootEventId: bumperHarvestSettlementCandidate.rootEvent.id,
+      rootPlacementKey: ["bumper-harvest-root", bumperHarvestSettlementCandidate.settlement.interactionId, bumperHarvestSettlementCandidate.settlement.rootFrameId, bumperHarvestSettlementCandidate.rootEvent.id].join(":"),
+      sourceId: bumperHarvestSettlementCandidate.settlement.sourceId,
+      targetId: null,
+      orderedTargets: bumperHarvestSettlementCandidate.targets,
+      cardKind: "BumperHarvest",
+      cardLabel: cardDefinition("BumperHarvest").name.toUpperCase(),
+      ariaLabel: `${bumperHarvestSettlementCandidate.source.name} played Bumper Harvest. ${bumperHarvestSettlementCandidate.targets.map((target) => `${target.order}. ${target.playerName}: ${target.status}${target.outcome ? `, ${target.outcome}` : ""}`).join(". ")}`,
+      mode: "targeted",
+      compactRoot: true,
+      settlement: { eventId: bumperHarvestSettlementCandidate.settlement.eventId, outcome: "BUMPER_HARVEST_RESOLVED", exiting: bumperHarvestSettlementCandidate.exiting },
     }
     : oathSimultaneousRootGraphCandidate
     ? {
@@ -3836,6 +3904,28 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     const timer = window.setTimeout(() => setActiveGroupSettlement((current) => current?.eventId === activeGroupSettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
   }, [activeGroupSettlement?.eventId, activeGroupSettlementExiting, activeGroupSettlementEventId]);
+  const activeBumperHarvestSettlementEventId = rootActionOverlayAction?.settlement?.outcome === "BUMPER_HARVEST_RESOLVED"
+    ? rootActionOverlayAction.settlement.eventId
+    : null;
+  const activeBumperHarvestSettlementExiting = rootActionOverlayAction?.settlement?.outcome === "BUMPER_HARVEST_RESOLVED"
+    && rootActionOverlayAction.settlement.exiting;
+  useEffect(() => {
+    if (!activeBumperHarvestSettlementEventId || !rootActionOverlayGraphReady
+      || activeBumperHarvestSettlement?.eventId !== activeBumperHarvestSettlementEventId || activeBumperHarvestSettlement.exiting) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setTimeout(() => {
+      setActiveBumperHarvestSettlement((current) => current?.eventId === activeBumperHarvestSettlementEventId
+        ? reducedMotion ? null : { ...current, exiting: true }
+        : current);
+    }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
+    return () => window.clearTimeout(timer);
+  }, [activeBumperHarvestSettlement?.eventId, activeBumperHarvestSettlement?.exiting, activeBumperHarvestSettlementEventId, rootActionOverlayGraphReady]);
+  useEffect(() => {
+    if (!activeBumperHarvestSettlementExiting || !activeBumperHarvestSettlementEventId
+      || activeBumperHarvestSettlement?.eventId !== activeBumperHarvestSettlementEventId) return;
+    const timer = window.setTimeout(() => setActiveBumperHarvestSettlement((current) => current?.eventId === activeBumperHarvestSettlementEventId ? null : current), UI_TIMING.interactionSettlementFade);
+    return () => window.clearTimeout(timer);
+  }, [activeBumperHarvestSettlement?.eventId, activeBumperHarvestSettlementExiting, activeBumperHarvestSettlementEventId]);
   const activeAttackDodgeSettlementEventId = rootActionOverlayAction?.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE"
     ? rootActionOverlayAction.settlement.eventId
     : null;
@@ -4059,7 +4149,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     </section>
     <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} displayMode={rootActionOverlayDisplayMode} layoutReadiness={rootActionLayoutState} fallbackReason={rootActionOverlayFallbackReason} onLayoutReadinessChange={onRootActionOverlayLayoutReadinessChange} />
     <footer className="play-command">
-    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
+    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
       heroSkillControl={
         <section className="hero-skills local-hero-skills" aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => skill.passive
@@ -4223,6 +4313,22 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
   const moveButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const previousCardRectsRef = useRef(new Map<string, { left: number; top: number; zone: string | null }>());
   const held = useMemo(() => new Map(cards.map((card) => [card.id, card])), [cards]);
+  useEffect(() => {
+    const cancelOnLostCapture = (event: PointerEvent) => {
+      const session = dragRef.current;
+      if (!session || session.pointerId !== event.pointerId) return;
+      if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+      edgeScrollRef.current = null;
+      if (edgeScrollIntervalRef.current !== null) window.clearInterval(edgeScrollIntervalRef.current);
+      edgeScrollIntervalRef.current = null;
+      dragRef.current = null;
+      setEdgeScrollZone(null);
+      setDrag(null);
+    };
+    document.addEventListener("lostpointercapture", cancelOnLostCapture, true);
+    return () => document.removeEventListener("lostpointercapture", cancelOnLostCapture, true);
+  }, []);
   const clearHoldTimer = () => {
     if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current);
     holdTimerRef.current = null;

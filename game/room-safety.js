@@ -120,6 +120,47 @@ function normalizePresentationMeta(entry) {
       })),
     };
   }
+  if (isRecord(entry.publicBumperHarvestSettlement)
+    && entry.publicBumperHarvestSettlement.semantics === "PROVEN"
+    && typeof entry.publicBumperHarvestSettlement.rootEventId === "string"
+    && typeof entry.publicBumperHarvestSettlement.rootResolutionId === "string"
+    && typeof entry.publicBumperHarvestSettlement.interactionId === "string"
+    && typeof entry.publicBumperHarvestSettlement.rootFrameId === "string"
+    && typeof entry.publicBumperHarvestSettlement.sourceId === "string"
+    && Array.isArray(entry.publicBumperHarvestSettlement.participants)
+    && entry.publicBumperHarvestSettlement.participants.length > 0
+    && entry.publicBumperHarvestSettlement.participants.every((participant, index) => isRecord(participant)
+      && typeof participant.playerId === "string"
+      && participant.order === index + 1
+      && (participant.status === "RESOLVED" && (participant.outcome === "CHOSE_CARD" || participant.outcome === "NEGATED")
+        || participant.status === "NO_LONGER_APPLICABLE" && participant.outcome === undefined))) {
+    metadata.publicBumperHarvestSettlement = {
+      semantics: "PROVEN",
+      rootEventId: entry.publicBumperHarvestSettlement.rootEventId,
+      rootResolutionId: entry.publicBumperHarvestSettlement.rootResolutionId,
+      interactionId: entry.publicBumperHarvestSettlement.interactionId,
+      rootFrameId: entry.publicBumperHarvestSettlement.rootFrameId,
+      sourceId: entry.publicBumperHarvestSettlement.sourceId,
+      participants: entry.publicBumperHarvestSettlement.participants.map((participant) => ({
+        playerId: participant.playerId,
+        order: participant.order,
+        status: participant.status,
+        ...(participant.outcome ? { outcome: participant.outcome } : {}),
+      })),
+    };
+  }
+  if (isRecord(entry.bumperHarvestRoot)
+    && entry.bumperHarvestRoot.semantics === "PROVEN"
+    && typeof entry.bumperHarvestRoot.sourceId === "string"
+    && typeof entry.bumperHarvestRoot.cardId === "string") {
+    metadata.bumperHarvestRoot = {
+      semantics: "PROVEN",
+      sourceId: entry.bumperHarvestRoot.sourceId,
+      cardId: entry.bumperHarvestRoot.cardId,
+      ...(typeof entry.bumperHarvestRoot.interactionId === "string" ? { interactionId: entry.bumperHarvestRoot.interactionId } : {}),
+      ...(typeof entry.bumperHarvestRoot.rootFrameId === "string" ? { rootFrameId: entry.bumperHarvestRoot.rootFrameId } : {}),
+    };
+  }
   return metadata;
 }
 
@@ -129,7 +170,9 @@ function normalizeTimelineEvent(entry) {
   delete event.publicStealSettlement;
   delete event.publicAttackHitSettlement;
   delete event.publicGroupSettlement;
+  delete event.publicBumperHarvestSettlement;
   delete event.publicRainingArrowsSettlement;
+  delete event.bumperHarvestRoot;
   return { ...event, ...normalizePresentationMeta(entry) };
 }
 

@@ -2122,6 +2122,25 @@ Only a proven regression or new Reviewer-approved design requirement does.
   capture cancellation. Both are repaired with focused proof in this changeset;
   outgoing Actions remain pending. Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-C-BUMPER-HARVEST-SETTLEMENT-HOLD-01 — Bumper Harvest settlement
+
+- The real server flow now attaches a privacy-safe terminal settlement to the
+  exact Bumper Harvest root, resolution, interaction, and frame, with the
+  complete ordered participant outcomes and no selected-card IDs. The
+  physical-seat graph remains through a measured normal hold and shorter
+  reduced-motion hold; its root, Seat/Dock anchors, containment, and viewer-
+  equal public proof are checked in real gameplay. API tests passed 37/37,
+  projection/client/privacy tests 127/127, and the Bumper Harvest browser path
+  passed 1/1. Stargazing now cancels a lost capture in a document capture-phase
+  listener matched to the active pointer ID, and its browser assertion waits
+  for the newly observed matching release; the focused scenario passed 3/3.
+  Targeted ESLint, build, and `git diff --check` passed. Parent
+  Actions run `37862129812` on exact SHA
+  `bc03b1df37c1d83cb3c0f738b86956189bd9ac5c` failed only Browser shard 2
+  (422/423 browser cases passed); the CI repair is bundled into this changeset
+  and the outgoing Actions result is not yet observed. Reviewer acceptance is
+  not claimed.
+
 ### UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01 — Real drag/drop completion
 
 - The real server-backed Stargazing proof now covers touch reassignment between
@@ -2143,9 +2162,9 @@ Only a proven regression or new Reviewer-approved design requirement does.
 These remain incomplete; where authoritative projection does not exist,
 behavior must continue to fail closed:
 
-- Bumper Harvest final settlement hold and unrelated Group semantics remain
-  deferred; Raining Arrows and Barbarian Invasion now share a bounded,
-  server-authored settlement proof and browser-backed hold.
+- Unrelated Group semantics not covered by typed public proof remain deferred;
+  Raining Arrows, Barbarian Invasion, and Bumper Harvest now have bounded,
+  server-authored settlement proofs and browser-backed holds.
 - Cross-frame and post-settlement Reaction Chain history beyond the active
   Negation continuation's proven linked nodes.
 - Settlement/transition history that would require new authoritative public

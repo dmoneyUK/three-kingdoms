@@ -13,6 +13,7 @@ import type {
   PresentationDismantleSettlement,
   PresentationStealSettlement,
   PresentationAttackHitSettlement,
+  PresentationBumperHarvestSettlement,
   PresentationGroupSettlement,
   PresentationSkillEffectAction,
   PresentationSkillEffectSettlement,
@@ -76,6 +77,7 @@ export type PresentationSnapshotDismantleSettlement = PresentationDismantleSettl
 export type PresentationSnapshotStealSettlement = PresentationStealSettlement;
 export type PresentationSnapshotAttackHitSettlement = PresentationAttackHitSettlement;
 export type PresentationSnapshotGroupSettlement = PresentationGroupSettlement;
+export type PresentationSnapshotBumperHarvestSettlement = PresentationBumperHarvestSettlement;
 export type PresentationSnapshotAttackDodgeResponse = PresentationAttackDodgeResponse;
 export type PresentationSnapshotDuelExchange = PresentationDuelExchange;
 export type PresentationSnapshotSelfTargetAction = PresentationSelfTargetAction;
@@ -95,6 +97,7 @@ export type PresentationSnapshot = {
   stealSettlements: readonly PresentationSnapshotStealSettlement[];
   attackHitSettlements: readonly PresentationSnapshotAttackHitSettlement[];
   groupSettlements: readonly PresentationSnapshotGroupSettlement[];
+  bumperHarvestSettlements: readonly PresentationSnapshotBumperHarvestSettlement[];
   duelExchange: PresentationSnapshotDuelExchange | null;
   attackDodgeResponses?: readonly PresentationSnapshotAttackDodgeResponse[];
   selfTargetActions?: readonly PresentationSnapshotSelfTargetAction[];
@@ -308,6 +311,41 @@ export function provenGroupSettlements(value: unknown): PresentationSnapshotGrou
     });
     return participants.length === candidate.participants.length
       ? [{ semantics: "PROVEN", eventId: candidate.eventId, rootEventId: candidate.rootEventId, rootResolutionId: candidate.rootResolutionId, interactionId: candidate.interactionId, groupFrameId: candidate.groupFrameId, sourceId: candidate.sourceId, cardKind: candidate.cardKind, participants }]
+      : [];
+  });
+}
+
+export function provenBumperHarvestSettlements(value: unknown): PresentationSnapshotBumperHarvestSettlement[] {
+  if (!Array.isArray(value)) return [];
+  const candidates = value.filter((candidate): candidate is PresentationSnapshotBumperHarvestSettlement => Boolean(candidate && typeof candidate === "object" && !Array.isArray(candidate)
+    && (candidate as PresentationSnapshotBumperHarvestSettlement).semantics === "PROVEN"
+    && nonEmptyString((candidate as PresentationSnapshotBumperHarvestSettlement).eventId)
+    && nonEmptyString((candidate as PresentationSnapshotBumperHarvestSettlement).rootEventId)
+    && (candidate as PresentationSnapshotBumperHarvestSettlement).eventId !== (candidate as PresentationSnapshotBumperHarvestSettlement).rootEventId
+    && nonEmptyString((candidate as PresentationSnapshotBumperHarvestSettlement).rootResolutionId)
+    && nonEmptyString((candidate as PresentationSnapshotBumperHarvestSettlement).interactionId)
+    && nonEmptyString((candidate as PresentationSnapshotBumperHarvestSettlement).rootFrameId)
+    && nonEmptyString((candidate as PresentationSnapshotBumperHarvestSettlement).sourceId)
+    && Array.isArray((candidate as PresentationSnapshotBumperHarvestSettlement).participants)
+    && (candidate as PresentationSnapshotBumperHarvestSettlement).participants.length > 0));
+  const eventCounts = new Map<string, number>();
+  const rootCounts = new Map<string, number>();
+  candidates.forEach((candidate) => {
+    eventCounts.set(candidate.eventId, (eventCounts.get(candidate.eventId) ?? 0) + 1);
+    rootCounts.set(candidate.rootEventId, (rootCounts.get(candidate.rootEventId) ?? 0) + 1);
+  });
+  return candidates.filter((candidate) => eventCounts.get(candidate.eventId) === 1 && rootCounts.get(candidate.rootEventId) === 1).flatMap((candidate) => {
+    const ids = new Set<string>();
+    const participants = candidate.participants.flatMap((participant, index) => {
+      if (!nonEmptyString(participant.playerId) || ids.has(participant.playerId) || participant.order !== index + 1
+        || (participant.status !== "RESOLVED" && participant.status !== "NO_LONGER_APPLICABLE")
+        || participant.status === "RESOLVED" && participant.outcome !== "CHOSE_CARD" && participant.outcome !== "NEGATED"
+        || participant.status === "NO_LONGER_APPLICABLE" && participant.outcome !== undefined) return [];
+      ids.add(participant.playerId);
+      return [{ playerId: participant.playerId, order: participant.order, status: participant.status, ...(participant.outcome ? { outcome: participant.outcome } : {}) }];
+    });
+    return participants.length === candidate.participants.length
+      ? [{ semantics: "PROVEN", eventId: candidate.eventId, rootEventId: candidate.rootEventId, rootResolutionId: candidate.rootResolutionId, interactionId: candidate.interactionId, rootFrameId: candidate.rootFrameId, sourceId: candidate.sourceId, participants }]
       : [];
   });
 }
@@ -934,6 +972,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     stealSettlements: provenStealSettlements(input.presentationV2.stealSettlements),
     attackHitSettlements: provenAttackHitSettlements(input.presentationV2.attackHitSettlements),
     groupSettlements: provenGroupSettlements(input.presentationV2.groupSettlements),
+    bumperHarvestSettlements: provenBumperHarvestSettlements(input.presentationV2.bumperHarvestSettlements),
     duelExchange: authority ? provenDuelExchange(input.presentationV2.duelExchange, authority.scene, authority.identity, authority.stable) : null,
     ...(input.presentationV2.attackDodgeResponses?.length ? { attackDodgeResponses: provenAttackDodgeResponses(input.presentationV2.attackDodgeResponses) } : {}),
     selfTargetActions: provenSelfTargetActions(input.presentationV2.selfTargetActions),

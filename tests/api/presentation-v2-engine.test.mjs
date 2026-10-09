@@ -1937,7 +1937,10 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(firstWindow.timeline.filter((event) => event.id === initialProgress?.rootEventId).length, 1);
   const rootEvent = firstWindow.timeline.find((event) => event.id === initialProgress?.rootEventId);
   assert.equal(rootEvent?.resolutionId, initialProgress?.rootResolutionId);
-  assert.deepEqual(rootEvent?.bumperHarvestRoot, { semantics: "PROVEN", sourceId: source.id, cardId: harvest.id });
+  assert.deepEqual(rootEvent?.bumperHarvestRoot, {
+    semantics: "PROVEN", sourceId: source.id, cardId: harvest.id,
+    interactionId: initialProgress?.interactionId, rootFrameId: initialProgress?.rootFrameId,
+  });
   assert.equal(initialProgress?.currentEffectState, "ACTIVE", "an open Bumper Harvest Negation branch is public but not yet blocked");
   assert.deepEqual(initialProgress?.targetIds, game.room.players.map(({ id }) => id), "the server's turn-order declaration defines the participant sequence");
   assert.deepEqual(initialProgress?.participants.map(({ status }) => status), ["CURRENT", "PENDING", "PENDING", "PENDING"]);
@@ -2061,6 +2064,21 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(completedPending.completeAt > 0, true);
   assert.equal(completedPending.choiceDeadlineAt, undefined, "the active-choice deadline is cleared before the distinct closing hold");
   assert.deepEqual(completedPending.remainingIds, [], "the terminal public checkpoint has no unresolved remaining actors");
+  const settlement = complete.presentationSnapshot.bumperHarvestSettlements?.[0];
+  assert.ok(settlement, "the terminal chooser checkpoint publishes one root-bound settlement proof");
+  assert.equal(settlement.rootEventId, terminalProgress.rootEventId);
+  assert.equal(settlement.rootResolutionId, terminalProgress.rootResolutionId);
+  assert.equal(settlement.interactionId, terminalProgress.interactionId);
+  assert.equal(settlement.rootFrameId, terminalProgress.rootFrameId);
+  assert.deepEqual(settlement.participants, terminalProgress.participants);
+  assert.equal(JSON.stringify(settlement).includes(finalCardId), false, "settlement does not reveal the acquired physical card identity");
+  const settlementRoot = complete.timeline.find((event) => event.id === settlement.rootEventId);
+  assert.deepEqual(settlementRoot.bumperHarvestRoot, {
+    semantics: "PROVEN", sourceId: source.id, cardId: harvest.id,
+    interactionId: settlement.interactionId, rootFrameId: settlement.rootFrameId,
+  }, "the root event carries the same server-proven interaction/frame identity");
+  const settlementObserver = await assertProjectionMatchesEngine(game.code, alice.token);
+  assert.deepEqual(publicSnapshot(settlementObserver.presentationSnapshot).bumperHarvestSettlements, [settlement], "settlement is viewer-equal");
 
   const duePending = { ...completedPending, completeAt: Date.now() - 1 };
   sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(duePending))} WHERE code=${quote(game.code)}`);
@@ -2068,6 +2086,8 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(closed.status, 200, JSON.stringify(closed.data));
   assert.equal(closed.data.room.pending, null);
   assert.equal(closed.data.room.causalEnvelope, null, "the completed Bumper Harvest causal identity is cleared atomically");
+  const afterClose = await assertProjectionMatchesEngine(game.code, bob.token);
+  assert.deepEqual(afterClose.presentationSnapshot.bumperHarvestSettlements, [settlement], "the exact public settlement survives causal cleanup");
 });
 
 test("FIX10 initial Negation skips ineligible seats without a fake blocker checkpoint", { timeout: 30_000 }, async () => {

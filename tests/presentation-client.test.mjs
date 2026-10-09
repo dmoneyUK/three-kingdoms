@@ -172,6 +172,7 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
     stealSettlements: [],
     attackHitSettlements: [],
     groupSettlements: [],
+    bumperHarvestSettlements: [],
     duelExchange: null,
     selfTargetActions: [],
     continuity: { relation: "ROOT_FRAME", parentFrameId: null },

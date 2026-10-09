@@ -28,9 +28,10 @@ export type PresentationV2Event = {
   publicStealSettlement?: unknown;
   publicAttackHitSettlement?: unknown;
   publicGroupSettlement?: unknown;
+  publicBumperHarvestSettlement?: unknown;
   /** Legacy persisted Raining Arrows metadata; normalized into groupSettlement. */
   publicRainingArrowsSettlement?: unknown;
-  bumperHarvestRoot?: { semantics?: unknown; sourceId?: unknown; cardId?: unknown };
+  bumperHarvestRoot?: { semantics?: unknown; sourceId?: unknown; cardId?: unknown; interactionId?: unknown; rootFrameId?: unknown };
 };
 
 export type PresentationSkillEffectAction = {
@@ -120,6 +121,28 @@ export type PresentationGroupSettlementProof = {
 };
 
 export type PresentationGroupSettlement = PresentationGroupSettlementProof & {
+  eventId: string;
+};
+
+export type PresentationBumperHarvestSettlementParticipant = {
+  playerId: string;
+  order: number;
+  status: "RESOLVED" | "NO_LONGER_APPLICABLE";
+  outcome?: HarvestParticipantProgressOutcome;
+};
+
+/** Terminal ordered outcomes for one exact Bumper Harvest root; no chosen card identity. */
+export type PresentationBumperHarvestSettlementProof = {
+  semantics: "PROVEN";
+  rootEventId: string;
+  rootResolutionId: string;
+  interactionId: string;
+  rootFrameId: string;
+  sourceId: string;
+  participants: readonly PresentationBumperHarvestSettlementParticipant[];
+};
+
+export type PresentationBumperHarvestSettlement = PresentationBumperHarvestSettlementProof & {
   eventId: string;
 };
 
@@ -423,6 +446,7 @@ export type PresentationV2 = {
   stealSettlements: readonly PresentationStealSettlement[];
   attackHitSettlements: readonly PresentationAttackHitSettlement[];
   groupSettlements: readonly PresentationGroupSettlement[];
+  bumperHarvestSettlements: readonly PresentationBumperHarvestSettlement[];
   duelExchange: PresentationDuelExchange | null;
   selfTargetActions?: readonly PresentationSelfTargetAction[];
   dyingBarrier: PresentationDyingBarrier | null;
@@ -1049,6 +1073,8 @@ function bumperHarvestProgressFor(
     || rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
     || rootEvent.card?.kind !== "BumperHarvest" || rootEvent.card.id !== rootCardId || rootEvent.resolutionId !== rootResolutionId
     || rootProof?.semantics !== "PROVEN" || rootProof.sourceId !== sourceId || rootProof.cardId !== rootCardId
+    || rootProof.interactionId !== undefined && rootProof.interactionId !== progress.interactionId
+    || rootProof.rootFrameId !== undefined && rootProof.rootFrameId !== rootFrameId
     || !envelope || !root || !active || !Array.isArray(storedParticipants) || !storedParticipants.length
     || root.parentFrameId != null || root.stage !== "SEQUENTIAL_CHOICE"
     || root.origin.originEffect !== "BumperHarvest" || root.origin.originSourceId !== sourceId
@@ -1997,6 +2023,64 @@ function groupSettlementsFor(timeline: readonly PresentationV2Event[]): Presenta
   });
 }
 
+function bumperHarvestSettlementsFor(timeline: readonly PresentationV2Event[]): PresentationBumperHarvestSettlement[] {
+  const eventIdCounts = new Map<string, number>();
+  const rootIdCounts = new Map<string, number>();
+  for (const event of timeline) {
+    const eventId = stringValue(event.id);
+    if (eventId) eventIdCounts.set(eventId, (eventIdCounts.get(eventId) ?? 0) + 1);
+    const proof = record(event.publicBumperHarvestSettlement);
+    const rootEventId = stringValue(proof?.rootEventId);
+    if (rootEventId) rootIdCounts.set(rootEventId, (rootIdCounts.get(rootEventId) ?? 0) + 1);
+  }
+
+  return timeline.flatMap((event) => {
+    const proof = record(event.publicBumperHarvestSettlement);
+    const eventId = stringValue(event.id);
+    const rootEventId = stringValue(proof?.rootEventId);
+    const rootResolutionId = stringValue(proof?.rootResolutionId);
+    const interactionId = stringValue(proof?.interactionId);
+    const rootFrameId = stringValue(proof?.rootFrameId);
+    const sourceId = stringValue(proof?.sourceId);
+    const rawParticipants = proof?.participants;
+    if (!proof || !eventId || eventIdCounts.get(eventId) !== 1
+      || !rootEventId || rootEventId === eventId || rootIdCounts.get(rootEventId) !== 1
+      || !rootResolutionId || !interactionId || !rootFrameId || !sourceId
+      || proof.semantics !== "PROVEN" || !Array.isArray(rawParticipants) || rawParticipants.length === 0
+      || event.type !== "message" || event.presentation === false || !stringValue(event.message)
+      || event.importance !== "essential" || event.finalResult !== true
+      || event.resolutionId !== rootResolutionId) return [];
+
+    const roots = timeline.filter((candidate) => candidate.id === rootEventId);
+    const rootEvent = roots.length === 1 ? roots[0] : null;
+    const rootCard = record(rootEvent?.card);
+    const rootProof = record(rootEvent?.bumperHarvestRoot);
+    if (!rootEvent || rootEvent.type !== "card" || rootEvent.presentation === false
+      || rootEvent.action !== "play" || rootEvent.playedAs !== undefined
+      || rootEvent.resolutionId !== rootResolutionId || rootCard?.kind !== "BumperHarvest"
+      || !stringValue(rootCard.id) || rootProof?.semantics !== "PROVEN"
+      || rootProof.sourceId !== sourceId || rootProof.cardId !== rootCard.id
+      || rootProof.interactionId !== interactionId || rootProof.rootFrameId !== rootFrameId) return [];
+
+    const participants: PresentationBumperHarvestSettlementParticipant[] = [];
+    const participantIds = new Set<string>();
+    for (let index = 0; index < rawParticipants.length; index += 1) {
+      const participant = record(rawParticipants[index]);
+      const playerId = stringValue(participant?.playerId);
+      const status = participant?.status;
+      const outcome = participant?.outcome;
+      if (!playerId || participantIds.has(playerId) || participant?.order !== index + 1
+        || (status !== "RESOLVED" && status !== "NO_LONGER_APPLICABLE")
+        || status === "RESOLVED" && outcome !== "CHOSE_CARD" && outcome !== "NEGATED"
+        || status === "NO_LONGER_APPLICABLE" && outcome !== undefined) return [];
+      participantIds.add(playerId);
+      participants.push({ playerId, order: index + 1, status, ...(outcome ? { outcome } : {}) });
+    }
+
+    return [{ semantics: "PROVEN", eventId, rootEventId, rootResolutionId, interactionId, rootFrameId, sourceId, participants }];
+  });
+}
+
 function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): PresentationAttackDodgeResponse[] {
   const eventCounts = new Map<string, number>();
   const eventsById = new Map<string, PresentationV2Event[]>();
@@ -2263,6 +2347,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const stealSettlements = stealSettlementsFor(input.timeline);
   const attackHitSettlements = attackHitSettlementsFor(input.timeline);
   const groupSettlements = groupSettlementsFor(input.timeline);
+  const bumperHarvestSettlements = bumperHarvestSettlementsFor(input.timeline);
   const duelExchange = duelExchangeFor(envelope, interactionScene, input.pending, input.timeline);
   const selfTargetActions = selfTargetActionsFor(input.timeline);
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
@@ -2304,6 +2389,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     stealSettlements,
     attackHitSettlements,
     groupSettlements,
+    bumperHarvestSettlements,
     duelExchange,
     selfTargetActions,
     dyingBarrier,

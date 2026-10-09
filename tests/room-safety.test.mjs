@@ -119,6 +119,51 @@ test("preserves only ordered public Group settlement fields", () => {
   assert.equal(normalizeTimeline([{ ...event, publicGroupSettlement: { ...proof, cardKind: "Attack" } }])[0].publicGroupSettlement, undefined);
 });
 
+test("preserves only privacy-safe Bumper Harvest settlement and exact root-frame proof fields", () => {
+  const proof = {
+    semantics: "PROVEN",
+    rootEventId: "bumper-root-event",
+    rootResolutionId: "bumper-resolution",
+    interactionId: "bumper-interaction",
+    rootFrameId: "bumper-frame",
+    sourceId: "source",
+    participants: [
+      { playerId: "first", order: 1, status: "RESOLVED", outcome: "CHOSE_CARD", selectedCardId: "private-card-id" },
+      { playerId: "second", order: 2, status: "RESOLVED", outcome: "NEGATED" },
+    ],
+    selectedCardIds: ["private-card-id"],
+  };
+  const event = normalizeTimeline([{
+    type: "message", id: "bumper-settlement-event", message: "Bumper Harvest finishes resolving.",
+    importance: "essential", finalResult: true, resolutionId: "bumper-resolution",
+    publicBumperHarvestSettlement: proof,
+  }])[0];
+  assert.deepEqual(event.publicBumperHarvestSettlement, {
+    semantics: "PROVEN",
+    rootEventId: "bumper-root-event",
+    rootResolutionId: "bumper-resolution",
+    interactionId: "bumper-interaction",
+    rootFrameId: "bumper-frame",
+    sourceId: "source",
+    participants: [
+      { playerId: "first", order: 1, status: "RESOLVED", outcome: "CHOSE_CARD" },
+      { playerId: "second", order: 2, status: "RESOLVED", outcome: "NEGATED" },
+    ],
+  });
+  assert.equal(JSON.stringify(event.publicBumperHarvestSettlement).includes("private-card-id"), false);
+  assert.equal(normalizeTimeline([{ ...event, publicBumperHarvestSettlement: { ...proof, participants: [{ ...proof.participants[0], outcome: "DAMAGED" }, proof.participants[1]] } }])[0].publicBumperHarvestSettlement, undefined);
+
+  const root = normalizeTimeline([{
+    type: "card", id: "bumper-root-event", player: "SOURCE", target: "All living players", action: "play",
+    resolutionId: "bumper-resolution", card: { id: "bumper-card-id", kind: "BumperHarvest", suit: "♣", rank: "7" },
+    bumperHarvestRoot: { semantics: "PROVEN", sourceId: "source", cardId: "bumper-card-id", interactionId: "bumper-interaction", rootFrameId: "bumper-frame", hiddenChoiceId: "private-card-id" },
+  }])[0];
+  assert.deepEqual(root.bumperHarvestRoot, {
+    semantics: "PROVEN", sourceId: "source", cardId: "bumper-card-id", interactionId: "bumper-interaction", rootFrameId: "bumper-frame",
+  });
+  assert.equal(JSON.stringify(root.bumperHarvestRoot).includes("private-card-id"), false);
+});
+
 test("handles missing collections and rejects malformed items while preserving valid data", () => {
   const empty = normalizeRoomData({ code: "SAFE1", status: "lobby", players: [], myHand: [], timeline: [] });
   assert.deepEqual(empty.players, []); assert.deepEqual(empty.myHand, []); assert.deepEqual(empty.timeline, []);

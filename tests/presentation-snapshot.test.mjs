@@ -678,6 +678,46 @@ test("snapshot exposes identical ordered Group settlement proofs to actor and ob
     currentAction: null,
     actionRevision: "barbarian-malformed",
   }).groupSettlements, [], "Barbarian settlement rejects a Raining Arrows-only outcome");
+
+  const bumperSettlement = {
+    semantics: "PROVEN",
+    eventId: "bumper-final-event",
+    rootEventId: "bumper-root-event",
+    rootResolutionId: "bumper-resolution",
+    interactionId: "bumper-interaction",
+    rootFrameId: "bumper-frame",
+    sourceId: "A",
+    participants: [
+      { playerId: "A", order: 1, status: "RESOLVED", outcome: "NEGATED", selectedCardId: "private-choice" },
+      { playerId: "B", order: 2, status: "RESOLVED", outcome: "CHOSE_CARD" },
+      { playerId: "C", order: 3, status: "NO_LONGER_APPLICABLE" },
+    ],
+  };
+  const bumperPresentation = { ...presentation(scene()), bumperHarvestSettlements: [bumperSettlement] };
+  const bumperActor = composePresentationSnapshot({ presentationV2: bumperPresentation, currentAction: null, actionRevision: "bumper-actor", viewerId: "A" });
+  const bumperObserver = composePresentationSnapshot({ presentationV2: bumperPresentation, currentAction: null, actionRevision: "bumper-observer", viewerId: "C" });
+  assert.deepEqual(bumperActor.bumperHarvestSettlements, [{
+    semantics: "PROVEN", eventId: "bumper-final-event", rootEventId: "bumper-root-event", rootResolutionId: "bumper-resolution",
+    interactionId: "bumper-interaction", rootFrameId: "bumper-frame", sourceId: "A",
+    participants: [
+      { playerId: "A", order: 1, status: "RESOLVED", outcome: "NEGATED" },
+      { playerId: "B", order: 2, status: "RESOLVED", outcome: "CHOSE_CARD" },
+      { playerId: "C", order: 3, status: "NO_LONGER_APPLICABLE" },
+    ],
+  }]);
+  assert.deepEqual(bumperActor.bumperHarvestSettlements, bumperObserver.bumperHarvestSettlements, "Bumper settlement is public and viewer-equal");
+  assert.equal(JSON.stringify(bumperActor.bumperHarvestSettlements).includes("private-choice"), false);
+  for (const malformed of [
+    { ...bumperSettlement, participants: [{ ...bumperSettlement.participants[0], status: "CURRENT" }, ...bumperSettlement.participants.slice(1)] },
+    { ...bumperSettlement, participants: [{ ...bumperSettlement.participants[0], outcome: "DAMAGED" }, ...bumperSettlement.participants.slice(1)] },
+    { ...bumperSettlement, participants: [bumperSettlement.participants[0], { ...bumperSettlement.participants[1], playerId: "A" }, bumperSettlement.participants[2]] },
+  ]) {
+    assert.deepEqual(composePresentationSnapshot({
+      presentationV2: { ...bumperPresentation, bumperHarvestSettlements: [malformed] },
+      currentAction: null,
+      actionRevision: "bumper-malformed",
+    }).bumperHarvestSettlements, [], "malformed Bumper terminal proof is withheld as a whole");
+  }
 });
 
 test("snapshot fails closed atomically for every scene-boundary coherence mismatch", () => {

@@ -633,10 +633,15 @@ for (const entry of [
       return face?.hasPointerCapture(pointerId) ?? false;
     }, { cardId: attack.id, pointerId: capturedPointerId });
     expect(captureWasHeld).toBe(true);
+    const lostCaptureCountBeforeRelease = await opened.actorPage.evaluate(({ pointerId }) =>
+      (window.__stargazingInvalidDropPointerTrace ?? []).filter((event) => event.type === "lostpointercapture" && event.pointerId === pointerId).length,
+    { pointerId: capturedPointerId });
     await opened.actorPage.evaluate(({ cardId, pointerId }) => {
       document.querySelector(`[data-deck-card-id="${cardId}"] .deck-reorder-card-face`).releasePointerCapture(pointerId);
     }, { cardId: attack.id, pointerId: capturedPointerId });
-    await expect.poll(() => opened.actorPage.evaluate(() => (window.__stargazingInvalidDropPointerTrace ?? []).some((event) => event.type === "lostpointercapture"))).toBe(true);
+    await expect.poll(() => opened.actorPage.evaluate(({ pointerId, previousCount }) =>
+      (window.__stargazingInvalidDropPointerTrace ?? []).filter((event) => event.type === "lostpointercapture" && event.pointerId === pointerId).length > previousCount,
+    { pointerId: capturedPointerId, previousCount: lostCaptureCountBeforeRelease })).toBe(true);
     await expect(cardNode(opened.dialog, attack.id)).toHaveAttribute("data-dragging", "false");
     await opened.actorPage.mouse.up();
     expect(await orderIn(opened.dialog, "top")).toEqual(beforeLostCapture);

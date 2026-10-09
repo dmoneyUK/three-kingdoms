@@ -98,7 +98,7 @@ export type InteractionRootOverlayAction = {
   groupTargetEffectState?: { targetId: string; state: "ACTIVE" | "BLOCKED" };
   orderedTargetEffectState?: { targetId: string; state: "ACTIVE" | "BLOCKED" };
   rootEffectState?: "ACTIVE" | "BLOCKED";
-  settlement?: { eventId: string; outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE" | "ATTACK_DAMAGE_APPLIED" | "DISMANTLE_RESOLVED" | "STEAL_RESOLVED" | "GROUP_RESOLVED"; exiting: boolean };
+  settlement?: { eventId: string; outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE" | "ATTACK_DAMAGE_APPLIED" | "DISMANTLE_RESOLVED" | "STEAL_RESOLVED" | "GROUP_RESOLVED" | "BUMPER_HARVEST_RESOLVED"; exiting: boolean };
   response?: { eventId: string; actorId: string; actorName: string; cardLabel: string; ariaLabel: string; countersRoot?: boolean; targetId?: string; decisionActorId?: string };
   responses?: readonly InteractionRootOverlayResponseNode[];
 };
@@ -215,7 +215,7 @@ function layoutGroupRootAction(
   const targetEffectState = action.groupTargetEffectState ?? action.orderedTargetEffectState;
   if (!table || !targets?.length || new Set(targets.map(({ playerId }) => playerId)).size !== targets.length
     || targets.some((target, index) => target.order !== index + 1)) return fail();
-  const settledGroup = action.settlement?.outcome === "GROUP_RESOLVED";
+  const settledGroup = action.settlement?.outcome === "GROUP_RESOLVED" || action.settlement?.outcome === "BUMPER_HARVEST_RESOLVED";
   if (settledGroup
     ? targets.some(({ status }) => status !== "RESOLVED" && status !== "NO_LONGER_APPLICABLE")
     : targets.filter(({ status }) => status === "CURRENT" || status === "PAUSED").length !== 1) return fail();
@@ -1225,6 +1225,7 @@ export function InteractionRootOverlay({
     ...(action.settlement?.outcome === "DISMANTLE_RESOLVED" ? ["Dismantle resolved"] : []),
     ...(action.settlement?.outcome === "STEAL_RESOLVED" ? ["Steal resolved"] : []),
     ...(action.settlement?.outcome === "GROUP_RESOLVED" ? ["Raining Arrows group effect resolved"] : []),
+    ...(action.settlement?.outcome === "BUMPER_HARVEST_RESOLVED" ? ["Bumper Harvest resolved"] : []),
   ].map((sentence) => sentence.trim().replace(/[.!?]+$/u, ""))
     .filter(Boolean)
     .join(". ");

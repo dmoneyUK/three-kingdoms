@@ -24,7 +24,7 @@ import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { projectPresentationV2, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof } from "../../../game/presentation-v2";
+import { projectPresentationV2, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
@@ -35,7 +35,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string } };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null; causal_envelope_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -619,7 +619,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
 function dismantleSettlementProofFor(room: RoomRow, pending: TargetCardPending, log: string[]): PresentationDismantleSettlementProof | undefined {
   if (pending.cardKind !== "Dismantle") return undefined;
@@ -769,6 +769,20 @@ function addPrivateDrawEvent(log: string[], player: PlayerRow, card: Card, initi
 function addCardEventWithId(log: string[], player: string, card: Card, target = player, action: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" = "play", presentation = true, meta?: PresentationMeta) {
   const eventId = crypto.randomUUID();
   return { log: addCardEvent(log, player, card, target, action, presentation, meta, eventId), eventId };
+}
+function attachBumperHarvestRootFrame(log: string[], eventId: string, sourceId: string, cardId: string, interactionId: string, rootFrameId: string) {
+  let matches = 0;
+  const next = log.map((entry) => {
+    if (!entry.startsWith("@card:")) return entry;
+    try {
+      const event = JSON.parse(entry.slice(6)) as { id?: unknown; bumperHarvestRoot?: { semantics?: unknown; sourceId?: unknown; cardId?: unknown } };
+      if (event.id !== eventId) return entry;
+      matches += 1;
+      if (event.bumperHarvestRoot?.semantics !== "PROVEN" || event.bumperHarvestRoot.sourceId !== sourceId || event.bumperHarvestRoot.cardId !== cardId) return entry;
+      return `@card:${JSON.stringify({ ...event, bumperHarvestRoot: { semantics: "PROVEN", sourceId, cardId, interactionId, rootFrameId } })}`;
+    } catch { return entry; }
+  });
+  return matches === 1 ? next : log;
 }
 function attackDodgeResponseProof(log: string[], response: ResponsePending, responderId: string): PresentationAttackDodgeResponseProof | undefined {
   const attack = attackResponse(response);
@@ -3025,6 +3039,7 @@ async function resumeNormalStratagemUse(room: RoomRow, source: PlayerRow, player
     } else {
       const participantIds = choosers.map((player) => player.id);
       const progress = initialHarvestProgress(source.id, participantIds, effect.rootEventId, effect.rootResolutionId, effect.rootCardId);
+      nextLog = attachBumperHarvestRootFrame(nextLog, effect.rootEventId, source.id, effect.rootCardId, progress.causal.interactionId, progress.causal.frameId);
       const harvest: HarvestPending = { kind: "harvest", sourceId: source.id, actorId: choosers[0].id, remainingIds: participantIds.slice(1), revealed: draw.drawn, availableIds: draw.drawn.map((revealed) => revealed.id), choices: [], resumePhase: room.phase ?? "play", reason: "Choose 1 revealed card from Bumper Harvest", causal: progress.causal, participantProgress: progress.participantProgress, heldCards: [card] };
       await beginHarvestTarget({ ...room, causal_envelope_json: JSON.stringify(progress.causalEnvelope) }, harvest, players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(hand) } : player), nextDeck, nextDiscard, nextLog, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), source.id)], progress.causalEnvelope);
     }
@@ -4138,8 +4153,74 @@ async function queueHarvestCompletion(room: RoomRow, pending: HarvestPending, de
   if (terminal.participantProgress) terminal = { ...terminal, participantProgress: { ...terminal.participantProgress, currentParticipantId: null } };
   const complete = { ...terminal, remainingIds: [], previewCardId: undefined, choiceDeadlineAt: undefined, completeAt: Date.now() + HARVEST_CHOICE_HOLD_MS, reason: "Showing the final Bumper Harvest result" } satisfies HarvestPending;
   const causalEnvelope = harvestChoiceEnvelope(room, complete, null, createdEnvelope);
-  writes.push(causalRoomStateWrite(room.id, { phase: "response", pending: complete, deck, discard, log, causalEnvelope }));
+  const settlement = bumperHarvestSettlementProofFor(complete, causalEnvelope, log);
+  const finalLog = settlement
+    ? addLogWithId(log, "Bumper Harvest finishes resolving.", undefined, {
+      resolutionId: settlement.rootResolutionId,
+      importance: "essential",
+      finalResult: true,
+      publicBumperHarvestSettlement: settlement,
+    }).log
+    : log;
+  writes.push(causalRoomStateWrite(room.id, { phase: "response", pending: complete, deck, discard, log: finalLog, causalEnvelope }));
   if (writes.length) await db().batch(writes);
+}
+
+function bumperHarvestSettlementProofFor(
+  pending: HarvestPending,
+  envelope: CausalEnvelope | null,
+  log: string[],
+): PresentationBumperHarvestSettlementProof | undefined {
+  const progress = pending.participantProgress;
+  const causal = pending.causal;
+  const participants = progress?.participants;
+  const rootFrameId = progress?.rootFrameId;
+  const interactionId = progress?.interactionId;
+  const rootEventId = progress?.rootEventId;
+  const rootResolutionId = progress?.rootResolutionId;
+  const rootCardId = progress?.rootCardId;
+  const root = envelope?.frames.find((frame) => frame.frameId === rootFrameId) ?? null;
+  const rootEvents = rootEventId ? gameTimeline(log).filter((event) => event.id === rootEventId) : [];
+  const rootEvent = rootEvents.length === 1 ? rootEvents[0] : null;
+  const rootCardEvents = rootCardId ? gameTimeline(log).filter((event) => event.type === "card" && event.action === "play" && event.card?.id === rootCardId) : [];
+  const rootProof = rootEvent?.bumperHarvestRoot;
+  if (!pending.completeAt || pending.choiceDeadlineAt !== undefined || pending.remainingIds.length !== 0
+    || !progress || progress.version !== 2 || !causal || !rootFrameId || !interactionId || !rootEventId
+    || !rootResolutionId || !rootCardId || !participants?.length || progress.currentParticipantId !== null
+    || causal.interactionId !== interactionId || causal.frameId !== rootFrameId
+    || !envelope || envelope.interactionId !== interactionId || envelope.activeFrameId !== rootFrameId
+    || envelope.checkpoint.frameId !== rootFrameId || envelope.checkpoint.stage !== "SEQUENTIAL_CHOICE"
+    || !root || root.frameId !== rootFrameId || root.parentFrameId !== null || root.stage !== "SEQUENTIAL_CHOICE"
+    || root.origin.originEffect !== "BumperHarvest" || root.origin.originSourceId !== pending.sourceId
+    || root.origin.originalTargetIds.length !== participants.length
+    || root.origin.originalTargetIds.some((playerId, index) => playerId !== participants[index]?.playerId)
+    || root.current.currentSourceId !== pending.sourceId || root.current.currentEffect !== "BumperHarvest"
+    || root.current.currentTargetIds.length !== 0 || root.current.resolvingPlayerId !== null
+    || !rootEvent || rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
+    || rootEvent.playedAs !== undefined || rootEvent.resolutionId !== rootResolutionId
+    || rootEvent.card?.kind !== "BumperHarvest" || rootEvent.card.id !== rootCardId
+    || rootCardEvents.length !== 1 || rootCardEvents[0].id !== rootEventId
+    || rootProof?.semantics !== "PROVEN" || rootProof.sourceId !== pending.sourceId || rootProof.cardId !== rootCardId
+    || rootProof.interactionId !== interactionId || rootProof.rootFrameId !== rootFrameId) return undefined;
+
+  const terminalParticipants: PresentationBumperHarvestSettlementParticipant[] = [];
+  const participantIds = new Set<string>();
+  for (let index = 0; index < participants.length; index += 1) {
+    const participant = participants[index];
+    if (!participant.playerId || participantIds.has(participant.playerId)
+      || participant.playerId !== root.origin.originalTargetIds[index]
+      || participant.status !== "RESOLVED" && participant.status !== "NO_LONGER_APPLICABLE"
+      || participant.status === "RESOLVED" && participant.outcome !== "CHOSE_CARD" && participant.outcome !== "NEGATED"
+      || participant.status === "NO_LONGER_APPLICABLE" && participant.outcome !== undefined) return undefined;
+    participantIds.add(participant.playerId);
+    terminalParticipants.push({
+      playerId: participant.playerId,
+      order: index + 1,
+      status: participant.status,
+      ...(participant.outcome ? { outcome: participant.outcome } : {}),
+    });
+  }
+  return { semantics: "PROVEN", rootEventId, rootResolutionId, interactionId, rootFrameId, sourceId: pending.sourceId, participants: terminalParticipants };
 }
 
 async function beginHarvestTarget(room: RoomRow, pending: HarvestPending, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = [], createdEnvelope: CausalEnvelope | null = null) {
@@ -4229,7 +4310,9 @@ async function advanceHarvest(roomId: string) {
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
   const pending = parse<Pending | null>(room?.pending_json ?? null);
   if (!room || room.phase !== "response" || pending?.kind !== "harvest" || !pending.completeAt || Date.now() < pending.completeAt) return;
-  const log = addHistory(parse<string[]>(room.log_json, []), "Bumper Harvest finishes resolving.");
+  const storedLog = parse<string[]>(room.log_json, []);
+  const hasPublicSettlement = gameTimeline(storedLog).some((event) => event.publicBumperHarvestSettlement?.rootEventId === pending.participantProgress?.rootEventId);
+  const log = hasPublicSettlement ? storedLog : addHistory(storedLog, "Bumper Harvest finishes resolving.");
   const discard = commitHeldHarvestCards(parse<Card[]>(room.discard_json, []), pending);
   const claim = await causalRoomStateWrite(roomId, {
     phase: pending.resumePhase,

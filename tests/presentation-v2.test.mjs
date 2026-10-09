@@ -1162,3 +1162,52 @@ test("Group settlement projection requires one exact root and complete ordered t
   });
   assert.deepEqual(projectPresentationV2({ pending: null, currentAction: null, actionRevision: "barbarian-invalid", timeline: barbarianTimeline.map((event) => event.id === "barbarian-settlement-event" ? { ...event, publicGroupSettlement: { ...barbarianProof, participants: [{ ...barbarianProof.participants[0], outcome: "AVOIDED" }, barbarianProof.participants[1]] } } : event) }).groupSettlements, [], "Barbarian Invasion cannot claim a Dodge avoidance outcome");
 });
+
+test("Bumper Harvest settlement projection binds exact root and ordered terminal choices without card identities", () => {
+  const proof = {
+    semantics: "PROVEN",
+    rootEventId: "bumper-root-event",
+    rootResolutionId: "bumper-resolution",
+    interactionId: "bumper-interaction",
+    rootFrameId: "bumper-frame",
+    sourceId: "source-id",
+    participants: [
+      { playerId: "source-id", order: 1, status: "RESOLVED", outcome: "NEGATED", selectedCardId: "hidden-choice-1" },
+      { playerId: "target-id", order: 2, status: "RESOLVED", outcome: "CHOSE_CARD", selectedCardId: "hidden-choice-2" },
+      { playerId: "third-id", order: 3, status: "NO_LONGER_APPLICABLE" },
+    ],
+    selectedCardIds: ["hidden-choice-1", "hidden-choice-2"],
+  };
+  const timeline = [
+    { type: "card", id: "bumper-root-event", player: "SOURCE", action: "play", resolutionId: "bumper-resolution", card: { id: "bumper-card-id", kind: "BumperHarvest" }, bumperHarvestRoot: { semantics: "PROVEN", sourceId: "source-id", cardId: "bumper-card-id", interactionId: "bumper-interaction", rootFrameId: "bumper-frame" } },
+    { type: "message", id: "bumper-settlement-event", message: "Bumper Harvest finishes resolving.", importance: "essential", finalResult: true, resolutionId: "bumper-resolution", publicBumperHarvestSettlement: proof },
+  ];
+  const project = (events = timeline) => projectPresentationV2({ pending: null, currentAction: null, actionRevision: "bumper-settled", timeline: events });
+  const projected = project();
+  assert.deepEqual(projected.bumperHarvestSettlements, [{
+    semantics: "PROVEN",
+    eventId: "bumper-settlement-event",
+    rootEventId: "bumper-root-event",
+    rootResolutionId: "bumper-resolution",
+    interactionId: "bumper-interaction",
+    rootFrameId: "bumper-frame",
+    sourceId: "source-id",
+    participants: [
+      { playerId: "source-id", order: 1, status: "RESOLVED", outcome: "NEGATED" },
+      { playerId: "target-id", order: 2, status: "RESOLVED", outcome: "CHOSE_CARD" },
+      { playerId: "third-id", order: 3, status: "NO_LONGER_APPLICABLE" },
+    ],
+  }]);
+  assert.equal(JSON.stringify(projected.bumperHarvestSettlements).includes("hidden-choice"), false);
+  for (const [label, malformed] of [
+    ["pending participant", { ...proof, participants: [{ ...proof.participants[0], status: "CURRENT" }, ...proof.participants.slice(1)] }],
+    ["unknown outcome", { ...proof, participants: [{ ...proof.participants[0], outcome: "DAMAGED" }, ...proof.participants.slice(1)] }],
+    ["duplicate participant", { ...proof, participants: [proof.participants[0], { ...proof.participants[1], playerId: "source-id" }, proof.participants[2]] }],
+    ["wrong root frame", { ...proof, rootFrameId: "stale-frame" }],
+  ]) {
+    assert.deepEqual(project(timeline.map((event) => event.id === "bumper-settlement-event" ? { ...event, publicBumperHarvestSettlement: malformed } : event)).bumperHarvestSettlements, [], `${label} fails closed`);
+  }
+  assert.deepEqual(project(timeline.map((event) => event.id === "bumper-settlement-event" ? { ...event, resolutionId: "stale-resolution" } : event)).bumperHarvestSettlements, [], "stale final event fails closed");
+  assert.deepEqual(project(timeline.map((event) => event.id === "bumper-root-event" ? { ...event, card: { ...event.card, kind: "Attack" } } : event)).bumperHarvestSettlements, [], "wrong root card fails closed");
+  assert.deepEqual(project([...timeline, { ...timeline[0] }]).bumperHarvestSettlements, [], "ambiguous physical root fails closed");
+});
