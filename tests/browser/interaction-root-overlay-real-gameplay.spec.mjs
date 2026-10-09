@@ -800,7 +800,8 @@ function expectAttackTargetHighlightCoversAnchor(measurement, targetId, state) {
     expect(Math.abs(measurement.targetHighlightStrokeWidth - 2)).toBeLessThanOrEqual(0.01);
     expect(measurement.targetHighlightStrokeColor).toBe("rgb(167, 170, 165)");
     expect(Math.abs(Number.parseFloat(measurement.targetHighlightOpacity) - 0.4)).toBeLessThanOrEqual(0.005);
-    expect(measurement.targetHighlightFilter).toContain("8px");
+    const blockedGlowRadius = Number.parseFloat(measurement.targetHighlightFilter.match(/0px 0px ([\d.]+)px/)?.[1] ?? "NaN");
+    expect(blockedGlowRadius).toBeCloseTo(8, 0);
   }
 }
 

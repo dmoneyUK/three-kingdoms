@@ -2475,3 +2475,19 @@ HANDOVER" wording here after the handoff has moved on.
   `git diff --check` passed. Screenshots for both roles, missing-proof fallback,
   and proof recovery are attached to the Playwright report. This supplements,
   rather than replaces, the existing ten-window polling stability matrix.
+
+### UX2-6.27-ATTACK-DODGE-FRESH-SCREENSHOT-AUDIT-01 — Visual audit
+
+- Inspected fresh server-backed four-player Attack/Dodge screenshots at
+  390×844, 480×900, and 1440×900. The inspected compositions show the green
+  source tether, prominent red Attack direction, whole Seat/Dock emphasis,
+  recognizable Attack/Dodge cards, and Dodge physically intercepting the red
+  path without a duplicate central Stage. The focused screenshot matrix passed
+  3/3 mobile/dense cases and 1/1 wide case after correcting a stale test that
+  compared an animated CSS glow radius as an exact string instead of a numeric
+  value.
+- The real 6/8-player mobile cases can fail closed with
+  `geometry-unavailable`, returning to the safe Interaction Stage. This is a
+  measured remaining dense-layout limitation; it does not establish that every
+  such scene is impossible. Preserve the fallback unless a collision-free
+  root/response fit is proven. Reviewer visual acceptance is not claimed.
