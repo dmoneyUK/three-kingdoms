@@ -3,7 +3,7 @@ import test from "node:test";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles } from "../game/presentation-client.ts";
 import { buildPresentationTransition } from "../game/presentation-transition.ts";
 import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupTargetScopeForViewer, projectOathRecipientScopeForStage, projectBumperHarvestStageCompositionForViewer } from "../game/hero-focus.ts";
-import { buildDecisionPresentation } from "../app/page.tsx";
+import { buildDecisionPresentation, presentationViewKey } from "../app/page.tsx";
 
 function scene(overrides = {}) {
   return {
@@ -296,6 +296,9 @@ test("adapter carries only a root action bound to the active public frame", () =
   };
   const accepted = snapshot({ interaction, rootAction });
   const local = buildPresentationClientView(accepted, "B");
+  const beforeRootProof = buildPresentationClientView(snapshot({ interaction }), "B");
+  assert.notEqual(presentationViewKey(local), presentationViewKey(beforeRootProof),
+    "arrival of a new public root-action proof advances the local-preview handoff key");
   const observer = buildPresentationClientView({
     ...accepted,
     localControl: { ...accepted.localControl, actorId: null, entitled: false },

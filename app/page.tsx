@@ -521,7 +521,7 @@ function groupParticipantOutcomeMarker(outcome: PresentationClientView["groupPar
 
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
 
-function presentationViewKey(view: PresentationClientView) {
+export function presentationViewKey(view: PresentationClientView) {
   return JSON.stringify([
     view.hasInteraction,
     view.interactionId,
@@ -540,6 +540,10 @@ function presentationViewKey(view: PresentationClientView) {
     view.decisionActorId,
     view.activeResolverId,
     view.continuity.relation,
+    // Root proof can advance while the Stage envelope stays unchanged. Treat
+    // it as a new presentation so a submitted local target preview cannot
+    // keep blocking the authoritative root composition.
+    view.rootAction?.rootEventId ?? null,
   ]);
 }
 
