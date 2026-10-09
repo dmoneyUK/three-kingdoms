@@ -5,7 +5,7 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-Remote `ux-v2` HEAD `e92512360514cf63b9cc4181d0dd80b3124aa2fb` failed run `37987317069`: API/Lint and Browser shard 2 passed; Browser shard 1 failed the dense 8-player Attack geometry test at 480×900. Exact job log `114012430663` shows the Attack root is less than 8px clear of a player Seat/Dock; shard report and worker-log artifacts are present (`11644615343`, `11644630363`). Local repair reserves 18px only for the 8-player side-column compact layout (401–600px), covering the measured 10px Dock growth on Dodge handoff. `npm run build`, focused geometry browser tests (4/4: 6/8 players at 390/480px), targeted ESLint, and `git diff --check` pass. CI repair is prepared locally; push and exact-HEAD CI validation remain pending.
+Repair commit `6fe2e0f6096080db711d3f701fd7bc574f8ee191` was pushed; exact run `37993971425` failed Browser shard 1 (API/Lint and shard 2 passed). The new failure was `real 8-player Attack root overlay ... 390×844`: graph handoff measured 449ms against a 250ms bound; fit diagnostics show target/compact had no reserved Dodge slot and placement became ready at minimum size. One polling test was flaky but passed on retry; 447 browser tests passed. Diagnosis: the first repair let added Dock-clearance checks alter the 390px search path. A narrower local repair now applies those extra checks only to the 8-player side-column compact 401–600px layout. Build, focused browser coverage (5/5: 390px root handoff plus 6/8-player geometry at 390/480px), targeted ESLint, and `git diff --check` pass. Second CI-repair commit/validation pending; no UX work may resume until the exact pushed HEAD is green.
 
 ## Design checkpoint
 

@@ -1092,7 +1092,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     const left = Math.max(tableRect.left + margin, Math.min(candidate.x - cardWidth / 2, tableRect.right - margin - cardWidth));
     const top = Math.max(tableRect.top + margin, Math.min(candidate.y - cardHeight / 2, rootPlacementBottom - cardHeight));
     const card: Rect = { left, top, right: left + cardWidth, bottom: top + cardHeight, width: cardWidth, height: cardHeight };
-    const rootOverlapsGrowingLocalDock = Boolean(isUnansweredAttackRoot && localDockRect
+    const rootOverlapsGrowingLocalDock = Boolean(hasEightPlayerCompactLayout && isUnansweredAttackRoot && localDockRect
       && overlaps(card, localDockRect, unansweredAttackDockClearance));
     const rootOverlapsSeatOrDock = obstacleElements.some((element) => anchorObstacleSet.has(element)
       && overlaps(card, relativeRect(element, shellBounds), isUnansweredAttackRoot
@@ -1332,16 +1332,11 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
         // between the side Seats on a 390px eight-player board. Add exact
         // obstacle-boundary placements for the root card without turning the
         // whole layout into a blocking one-pixel scan.
-        allObstacles.forEach((obstacle, index) => {
-          const isLocalDockObstacle = isUnansweredAttackRoot
-            && obstacleElements[index]?.classList.contains("local-player-dock");
-          const obstacleClearance = isLocalDockObstacle
-            ? Math.max(clearance, unansweredAttackDockClearance)
-            : clearance;
-          fieldLefts.add(obstacle.right + obstacleClearance);
-          fieldLefts.add(obstacle.left - obstacleClearance - cardWidth);
-          fieldTops.add(obstacle.bottom + obstacleClearance);
-          fieldTops.add(obstacle.top - obstacleClearance - cardHeight);
+        allObstacles.forEach((obstacle) => {
+          fieldLefts.add(obstacle.right + clearance);
+          fieldLefts.add(obstacle.left - clearance - cardWidth);
+          fieldTops.add(obstacle.bottom + clearance);
+          fieldTops.add(obstacle.top - clearance - cardHeight);
         });
         fieldLefts.add(tableRect.left + margin);
         fieldLefts.add(tableRect.right - margin - cardWidth);
@@ -1359,10 +1354,10 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
           const projection = ((cardCenter.x - sourceCenter.x) * lineX + (cardCenter.y - sourceCenter.y) * lineY) / lineLengthSquared;
           if (projection < .16 || projection > .92) continue;
           positionsInRelationBand += 1;
-          if ((isUnansweredAttackRoot && localDockRect
+          if ((hasEightPlayerCompactLayout && isUnansweredAttackRoot && localDockRect
             && overlaps(card, localDockRect, unansweredAttackDockClearance))
             || allObstacles.some((obstacle, index) => {
-            const isLocalDockObstacle = isUnansweredAttackRoot
+            const isLocalDockObstacle = hasEightPlayerCompactLayout && isUnansweredAttackRoot
               && obstacleElements[index]?.classList.contains("local-player-dock");
             const obstacleClearance = isLocalDockObstacle
               ? Math.max(clearance, unansweredAttackDockClearance)
@@ -1454,11 +1449,11 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     && stableRootCard.bottom <= (hasEightPlayerPhoneLayout ? tableRect.bottom - margin : stableStageBottom)
     && !obstacleElements.some((element) => {
       const requiredClearance = element.classList.contains("local-player-dock")
-        ? isUnansweredAttackRoot ? unansweredAttackDockClearance : 0
+        ? isUnansweredAttackRoot && hasEightPlayerCompactLayout ? unansweredAttackDockClearance : 0
         : 8;
       return overlaps(stableRootCard, relativeRect(element, shellBounds), requiredClearance);
     })
-    && !(isUnansweredAttackRoot && localDockRect
+    && !(hasEightPlayerCompactLayout && isUnansweredAttackRoot && localDockRect
       && overlaps(stableRootCard, localDockRect, unansweredAttackDockClearance))
     && !(hiddenPendingPublicResponseTimer && overlaps(stableRootCard, hiddenPendingPublicResponseTimer, 8));
   const selectedCandidate = cachedRootFits && stableRootCard
