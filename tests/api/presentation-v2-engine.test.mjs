@@ -2201,7 +2201,17 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.deepEqual(authoritativePending(game.code).availableIds, availableBeforeExpiry, "expiry does not silently take or discard a revealed card");
 
   const chosen = authoritativePending(game.code).availableIds[0];
-  const picked = await requestAndSettle("choose_harvest", { code: game.code, token: alice.token, cardId: chosen });
+  const chooserContext = {
+    actionRevision: expiredChoice.data.room.actionRevision,
+    meId: first.id,
+    phase: "response",
+    pendingKind: "harvest",
+    actorId: first.id,
+  };
+  const preview = await requestAndSettle("preview_harvest", { code: game.code, token: alice.token, cardId: chosen, context: chooserContext });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  assert.equal(preview.data.room.actionRevision, chooserContext.actionRevision, "changing the uncommitted Harvest preview does not stale the same chooser decision");
+  const picked = await requestAndSettle("choose_harvest", { code: game.code, token: alice.token, cardId: chosen, context: chooserContext });
   assert.equal(picked.status, 200, JSON.stringify(picked.data));
   nextWindow = await assertProjectionMatchesEngine(game.code, bob.token);
   progress = nextWindow.presentationSnapshot.bumperHarvestProgress;

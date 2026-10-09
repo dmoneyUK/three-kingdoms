@@ -11,25 +11,46 @@ function card(kind, id) {
   return { id, kind, suit: "♣", rank: "7" };
 }
 
-async function seedGroupGame(request, cardKind, { includeNegationChain = false } = {}) {
+async function seedGroupGame(request, cardKind, { includeNegationChain = false, playerCount = 4 } = {}) {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const root = card(cardKind, `group-branch-root-${suffix}`);
-  const hidden = [card("Peach", `group-branch-hidden-a-${suffix}`), card("Peach", `group-branch-hidden-b-${suffix}`)];
+  const hidden = Array.from({ length: playerCount === 4 ? 2 : playerCount - 1 }, (_, index) => card("Peach", `group-branch-hidden-${index + 1}-${suffix}`));
+  const roleSets = {
+    4: ["Lord", "Loyalist", "Rebel", "Renegade"],
+    5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"],
+    6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"],
+    7: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"],
+    8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"],
+  };
+  const roles = roleSets[playerCount];
+  if (!roles) throw new Error(`Unsupported seeded player count ${playerCount}.`);
   const negations = includeNegationChain ? {
     source: card("Negation", `group-branch-negation-source-${suffix}`),
     first: card("Negation", `group-branch-negation-first-${suffix}`),
     second: card("Negation", `group-branch-negation-second-${suffix}`),
   } : null;
+  const seededPlayers = [
+    { name: "SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [root, ...(negations ? [negations.source] : [])] },
+    { name: "FIRST", role: "Loyalist", hero: "sun-quan", hp: 4, maxHp: 4, hand: [hidden[0], ...(negations ? [negations.first] : [])] },
+    { name: "SECOND", role: "Rebel", hero: "guo-jia", hp: 4, maxHp: 4, hand: [hidden[1], ...(negations ? [negations.second] : [])] },
+    { name: "THIRD", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: playerCount > 4 ? [hidden[2]] : [] },
+    ...[
+      { name: "FOURTH", role: "Loyalist", hero: "hua-tuo" },
+      { name: "FIFTH", role: "Rebel", hero: "daqiao" },
+      { name: "SIXTH", role: "Rebel", hero: "zhang-fei" },
+      { name: "SEVENTH", role: "Renegade", hero: "zhuge-liang" },
+    ].map((player, index) => ({
+      ...player,
+      hp: 4,
+      maxHp: 4,
+      hand: [hidden[index + 3]],
+    })),
+  ].slice(0, playerCount).map((player, index) => ({ ...player, role: roles[index] }));
   const response = await request.post(`${API}/__test/seed-playing-game`, {
     data: {
       phase: "play",
       turnSeat: 0,
-      players: [
-        { name: "SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [root, ...(negations ? [negations.source] : [])] },
-        { name: "FIRST", role: "Loyalist", hero: "sun-quan", hp: 4, maxHp: 4, hand: [hidden[0], ...(negations ? [negations.first] : [])] },
-        { name: "SECOND", role: "Rebel", hero: "guo-jia", hp: 4, maxHp: 4, hand: [hidden[1], ...(negations ? [negations.second] : [])] },
-        { name: "THIRD", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: [] },
-      ],
+      players: seededPlayers,
     },
   });
   if (!response.ok()) throw new Error(`seed ${cardKind} game failed: ${await response.text()}`);
@@ -89,7 +110,8 @@ async function playGroupCard(page, root) {
     && response.request().method() === "POST"
     && JSON.parse(response.request().postData() ?? "{}").action === "play_card");
   await play.click();
-  expect((await submitted).ok()).toBeTruthy();
+  const response = await submitted;
+  if (!response.ok()) throw new Error(`Playing ${root.kind} failed (${response.status()}): ${await response.text()}`);
 }
 
 async function reachFirstParticipant(request, seed, targetId, requirement) {
@@ -502,6 +524,46 @@ for (const { cardKind, viewport } of [
     }
   });
 }
+
+test("8-player Raining Arrows keeps every physical-seat branch inside the dense mobile table", async ({ page, request }, testInfo) => {
+  test.setTimeout(60_000);
+  const viewport = { width: 390, height: 844 };
+  const seed = await seedGroupGame(request, "RainingArrows", { playerCount: 8 });
+  const source = seed.players[0];
+  const first = seed.players[1];
+  await openGame(page, seed, 0, viewport);
+  await playGroupCard(page, seed.root);
+
+  const firstView = await reachFirstParticipant(request, seed, first.id, "dodge");
+  expect(firstView.presentationSnapshot.groupParticipantProgress?.targetIds).toEqual(seed.players.slice(1).map(({ id }) => id));
+  expect(firstView.presentationSnapshot.groupParticipantProgress?.participants.map(({ status }) => status)).toEqual([
+    "CURRENT", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING",
+  ]);
+
+  const before = await graphGeometry(page, seed, viewport, testInfo, "raining-arrows-8-player-open");
+  expect(before.sourceId).toBe(source.id);
+  expect(before.anchors).toHaveLength(8);
+  expect(before.branches).toHaveLength(7);
+  expect(before.branches.map(({ status }) => status)).toEqual([
+    "CURRENT", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING",
+  ]);
+
+  await apiAction(request, seed, 1, "decline_response");
+  await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot.groupParticipantProgress?.participants.map(({ status }) => status) ?? [])
+    .toEqual(["RESOLVED", "CURRENT", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING"]);
+  await expect.poll(() => page.locator('[data-group-target-branch-player-id]').nth(0).getAttribute("data-group-target-status"))
+    .toBe("RESOLVED");
+  await expect.poll(() => page.locator('[data-group-target-branch-player-id]').nth(1).getAttribute("data-group-target-status"))
+    .toBe("CURRENT");
+  const after = await graphGeometry(page, seed, viewport, testInfo, "raining-arrows-8-player-next-target");
+  expect(after.rootEventId).toBe(before.rootEventId);
+  expect(after.branches.map(({ status }) => status)).toEqual([
+    "RESOLVED", "CURRENT", "PENDING", "PENDING", "PENDING", "PENDING", "PENDING",
+  ]);
+  for (const key of ["left", "top", "right", "bottom"]) {
+    expect(Math.abs(after.card[key] - before.card[key])).toBeLessThanOrEqual(1);
+  }
+});
 
 for (const { cardKind, viewport, reducedMotion } of [
   ...["RainingArrows", "BarbarianInvasion"].flatMap((cardKind) => [

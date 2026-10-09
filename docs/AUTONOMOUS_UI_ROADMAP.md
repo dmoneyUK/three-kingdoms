@@ -1621,6 +1621,17 @@ Only a proven regression or new Reviewer-approved design requirement does.
   previous P5 failure is included with this task's change; Reviewer acceptance
   is not claimed.
 
+### UX2.REFINEMENT-PRE-SECTION-6-GATE-REVALIDATION-01 — Current prerequisite evidence
+
+- Rechecked the final gate on the current implementation: P4 real Negation,
+  Raining Arrows, and server-projected Inspect passed 7/7; P5 real-room Seat
+  geometry passed 2/2 at 390×844 and 480×900. §4A Private Draw/Harvest timer
+  cases passed 15/15 across the real-gameplay and presentation specs; §4B
+  compact Inspect cases passed 20/20, with real server-backed Inspect also
+  covered at 390, 480, and 1440px. Together with the recorded P1–P3, §4.10,
+  and §4C.29 evidence, these refinement prerequisites are closed for Section 6
+  planning. This is implementation/test evidence, not Reviewer acceptance.
+
 ### UX2.6-PHASE-A-ROOT-ACTION-PROJECTION-01 — Ordinary Attack root proof
 
 - Added a viewer-equal public `rootAction` for an ordinary Attack only when
@@ -2424,3 +2435,27 @@ When a task closes, add only a short durable milestone/result when it helps
 future planning. Keep temporary CI failures, exact resume instructions, and
 current task state in HANDOVER while active; do not leave stale "CI pending in
 HANDOVER" wording here after the handoff has moved on.
+
+### UX2-FINAL-AOE-MULTI-TARGET-REVALIDATION-02 — Post-Halberd AOE matrix
+
+- Revalidated production-path Raining Arrows, Barbarian Invasion, Oath,
+  Bumper Harvest, and Halberd ordered Attack roots. The 21-case browser matrix
+  passed serially at 390×844, 480×900, and 1440×900; an added 8-player
+  Raining Arrows case measured all seven fixed-seat branches, next-target
+  advancement, stable root geometry, containment, and no horizontal overflow
+  at 390×844. Fresh screenshot/geometry attachments are in the Playwright
+  report.
+- The same Bumper Harvest workflow exposed a real stale-revision race: its
+  visual-only `previewCardId` changed `actionRevision` between card preview
+  and Confirm although the chooser and legal available cards were unchanged.
+  Harvest preview is now omitted from that revision hash while the actor,
+  phase, legal pending state, and hand revisions remain authoritative. The
+  PresentationV2 engine API file passed 39/39, including preview-then-confirm
+  with the same chooser revision. Build, targeted ESLint, and
+  `git diff --check` passed.
+- An earlier four-worker local run recorded a Wrangler `503` stating that the
+  Worker restarted mid-request; the affected Raining settlement and Bumper
+  hold cases passed in isolated and complete serial reruns. The exact remote
+  base SHA `b98834674e32ecdd8faa6bccdcd64e699a4d93b6` passed all five jobs in
+  Actions run `37902249037`; this task's outgoing SHA remains pending CI.
+  Reviewer acceptance is not claimed.

@@ -5,29 +5,29 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-§4D P3 real server-to-Skills audit is complete: 51 focused browser tests passed
-across the mapped 37 unique provider IDs and a 25-Hero no-authority matrix.
-They verify CurrentAction routing, exact activation/continuation payloads,
-stable disabled controls without authority, and no duplicate Action Row entry.
-Latest observed parent Actions run `37899520578` on `2052b7926a5a7fb5e3c6e21527df7f411e04a8c3` failed only ESLint for an unused `attacker` local in
-`daqiao-deflection-real-gameplay.spec.mjs:45`; API tests, build, and both
-browser shards passed. The unused local is removed in this task commit; its
-Actions validation is pending. Reviewer acceptance is not claimed.
+Final multi-target revalidation passed 21/21 real server-backed browser cases,
+including an 8-player Raining Arrows graph at 390×844; the focused
+PresentationV2 engine file passed 39/39. Build, targeted ESLint, and
+`git diff --check` passed. The unchanged remote base SHA
+`b98834674e32ecdd8faa6bccdcd64e699a4d93b6` passed all five jobs in Actions run
+`37902249037`; the outgoing task SHA is not yet validated. No Reviewer
+acceptance is claimed.
 
 ## Design checkpoint
 
-Latest remote `docs/UX2-refine.md` blob:
-`4c56947d9965cde28a7c888e19f5d5fa0612112e`; no newer design change since the
-last checkpoint. Re-reviewed §1.10 and §4D P3/P4/§4D.3. The §4C.15 Burning
-Bridge visible-name amendment (`a8f0ec65`) remains later than the §4D P2
-wording (`268c4f85`); follow Burning Bridge for visible copy and retain
-internal `Dismantle` identifiers.
+Latest remote `docs/UX2-refine.md` blob: `4c56947d9965cde28a7c888e19f5d5fa0612112e`.
+Re-reviewed §6.24 dense-table and stale/reconnect acceptance, §6.25–6.27, and
+§5.4. P1–P5, §4A/§4B, Phase A, and the §6.27 Attack/Dodge stability/visual
+work have focused evidence; do not redo them. The new eight-seat AOE scene
+closes the final matrix update required after the Halberd ordered-root render.
 
 ## Current task
 
-`UX2-4D-P4-REAL-PRODUCTION-PATH-PARITY-01` — verify the approved Negation
-open/first/counter/settlement path, Raining Arrows with and without Dodge, and
-Opponent Inspect public Hero/skill/equipment/judgment plus concealed-Hand
-projection through server-generated rooms and the production page. Repair any
-real-path mismatch; fixture/API evidence is supplementary. Section 6 and P5
-remain gated until their own bounded tasks close.
+`UX2-6.24-ATTACK-RECONNECT-FAIL-CLOSED-PROOF-01` — add real server-backed
+ordinary-Attack reload/reconnect proof for attacker and defender. During one
+open response, reload each client and verify it restores only the same
+authoritative root event/interaction with both measured connectors ready; then
+advance the real server decision and verify the stale root cannot reappear.
+Measure no duplicate Stage, no Seat/Dock movement, and fail-closed behavior if
+the exact proof is absent. Keep this to reconnect/stale lifecycle; do not widen
+into another card or graph redesign.

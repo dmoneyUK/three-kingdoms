@@ -451,11 +451,13 @@ async function recoverClaimedHeroSkill(room: RoomRow, player: PlayerRow, hand: C
 async function actionRevisionFor(room: RoomRow, players: PlayerRow[], projectedActionPlayerId: string | null) {
   // Keep the revision sensitive to private continuation/state changes without
   // placing their serialized contents in a value returned to every viewer.
-  // Arming a response deadline changes timing metadata, not the current
-  // decision; clients may already hold a valid local card selection.
+  // Arming a response deadline and updating a Harvest card preview change
+  // timing/visual metadata, not the current decision; clients may already hold
+  // a valid local card selection while those updates are in flight.
   const persistedPending = parsePersistedPending(room.pending_json);
   const pendingRevisionInput = persistedPending
-    ? JSON.stringify(Object.fromEntries(Object.entries(persistedPending).filter(([key]) => key !== "deadline")))
+    ? JSON.stringify(Object.fromEntries(Object.entries(persistedPending).filter(([key]) =>
+      key !== "deadline" && !(persistedPending.kind === "harvest" && key === "previewCardId"))))
     : room.pending_json ?? "";
   const [pendingRevision, skillStateRevision, handRevision] = await Promise.all([
     hash(pendingRevisionInput),
