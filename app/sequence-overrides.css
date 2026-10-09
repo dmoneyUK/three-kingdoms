@@ -5643,3 +5643,19 @@
     bottom: 56px;
   }
 }
+
+/* UX2 §6.27: free a stable Attack/Dodge lane on dense 8-player phones. Keep
+   both persistent piles visible and move them only within the otherwise
+   seat-free center band; Seats, Dock, and controls remain fixed. */
+@media (min-width: 360px) and (max-width: 400px) and (min-height: 701px) {
+  .game-shell:has(> .interaction-root-overlay[data-root-action-card-kind="Attack"])
+    .play-table[data-seat-topology="side-column"]:has(> .player-board[data-player-count="8"]) > .play-center {
+    top: calc(clamp(270px, 66%, 460px) - 62px);
+  }
+
+  .game-shell:has(> .interaction-root-overlay[data-root-action-card-kind="Attack"])
+    .play-table.sequence-active:not(.sequence-concluding)[data-seat-topology="side-column"]:has(> .player-board[data-player-count="8"]) > .play-center {
+    opacity: 1;
+    visibility: visible;
+  }
+}

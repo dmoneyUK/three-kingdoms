@@ -46,6 +46,22 @@ type AttackGeometryFitDiagnostic = {
   dodgePlacementFieldSearch?: AttackDodgePlacementFieldSearch;
   placementSearchEligibility?: { attempted: boolean; unansweredAttackRoot: boolean; viewportWidth: number; pathCandidateCount: number };
   placementIdentity?: { currentRootPlacementKey: string; rememberedRootKey: string | null; hasStableRootForInteraction: boolean };
+  dodgeGeometry?: {
+    table: Rect;
+    stableStageBottom: number;
+    margin: number;
+    rootCard: Rect;
+    attacker: Rect;
+    target: Rect;
+    responseActor: Rect;
+    responseElement: Rect;
+    responseSize: { width: number; height: number };
+    attackPath: { start: Point; end: Point };
+    safeRegion: Rect;
+    preferredResponseCard: Rect | null;
+    preferredResponseFits: boolean;
+    obstacles: readonly { kind: "anchor" | "control"; label: string; rect: Rect }[];
+  };
   candidateCount?: number;
   rootFitCandidateCount?: number;
   rootFitWithDodgeSlotCount?: number;
@@ -934,6 +950,15 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   };
   const lateralDistance = Math.min(92, Math.max(42, Math.min(tableRect.width, tableRect.height) * .14));
   const isUnansweredAttackRoot = action.cardKind === "Attack" && !action.response && !action.responses?.length;
+  const hasEightPlayerPhoneLayout = shellBounds.width >= 360 && shellBounds.width <= 400
+    && shellBounds.height >= 701 && table.dataset.seatTopology === "side-column"
+    && Boolean(table.querySelector(':scope > .player-board[data-player-count="8"]'));
+  // At 8p/390 the real source Dock grows by 10px after the response handoff.
+  // Reserve that observed growth before displaying the Attack root so the
+  // authoritative card can keep its 12px table inset without moving on Dodge.
+  const rootPlacementBottom = tableRect.bottom - margin
+    - (isUnansweredAttackRoot && hasEightPlayerPhoneLayout ? 12 : 0);
+  const placementFieldSampleStep = shellBounds.width <= 400 ? 1 : 4;
   const localDockElement = shell.querySelector<HTMLElement>(".local-player-dock");
   const localDockRect = localDockElement?.getClientRects().length ? relativeRect(localDockElement, shellBounds) : null;
   const stableStageBottom = localDockRect && localDockRect.top >= tableRect.bottom ? localDockRect.top : tableRect.bottom;
@@ -980,10 +1005,10 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   };
   const pathCandidates: { card: Rect; reservedDodge: Rect | null; score: number }[] = candidateCenters.flatMap((candidate) => {
     const left = Math.max(tableRect.left + margin, Math.min(candidate.x - cardWidth / 2, tableRect.right - margin - cardWidth));
-    const top = Math.max(tableRect.top + margin, Math.min(candidate.y - cardHeight / 2, tableRect.bottom - margin - cardHeight));
+    const top = Math.max(tableRect.top + margin, Math.min(candidate.y - cardHeight / 2, rootPlacementBottom - cardHeight));
     const card: Rect = { left, top, right: left + cardWidth, bottom: top + cardHeight, width: cardWidth, height: cardHeight };
     const rootOverlapsSeatOrDock = obstacleElements.some((element) => anchorObstacleSet.has(element)
-      && overlaps(card, relativeRect(element, shellBounds), isUnansweredAttackRoot ? 22 : 8));
+      && overlaps(card, relativeRect(element, shellBounds), isUnansweredAttackRoot ? 12 : 8));
     const rootOverlapsControl = obstacleElements.some((element) => !anchorObstacleSet.has(element)
       && overlaps(card, relativeRect(element, shellBounds), 8));
     if (rootOverlapsSeatOrDock || rootOverlapsControl) {
@@ -1011,7 +1036,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
         height: reservedDodgeSize.height,
       });
       const reservationCandidates = [
-        ...[.4, .45, .5, .55, .6, .65].flatMap((fraction) => [0, -12, 12, -24, 24, -36, 36].map((offset) => ({
+        ...[.4, .45, .5, .55, .6, .65].flatMap((fraction) => [0, -12, 12, -24, 24, -36, 36, -40, 40, -48, 48].map((offset) => ({
           rect: responseRectAt(attackPointAt(fraction, offset)),
           mode: "direct" as const,
           preferredFraction: fraction,
@@ -1037,7 +1062,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
           return [];
         }
         const overlapsSeatOrDock = obstacleElements.some((element) => anchorObstacleSet.has(element)
-          && overlaps(candidateRect, relativeRect(element, shellBounds), 22));
+          && overlaps(candidateRect, relativeRect(element, shellBounds), 8));
         const overlapsControl = obstacleElements.some((element) => !anchorObstacleSet.has(element)
           && overlaps(candidateRect, relativeRect(element, shellBounds), 8));
         if (overlapsSeatOrDock || overlapsControl) {
@@ -1085,14 +1110,125 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     let rootOnlyCandidates: typeof pathCandidates = [];
     let rootOnlyClearance: number | undefined;
     const lineLengthSquared = lineX * lineX + lineY * lineY || 1;
+    const findFieldDodgeSlot = (card: Rect): Rect | null => {
+      if (!reservedDodgeSize) return null;
+      const fieldAttackStart = rectangleEdge(card, targetCenter);
+      const fieldAttackEnd = rectangleEdge(targetRect, center(card));
+      const fieldAttackLength = Math.hypot(fieldAttackEnd.x - fieldAttackStart.x, fieldAttackEnd.y - fieldAttackStart.y) || 1;
+      const fieldAttackNormal = {
+        x: -(fieldAttackEnd.y - fieldAttackStart.y) / fieldAttackLength,
+        y: (fieldAttackEnd.x - fieldAttackStart.x) / fieldAttackLength,
+      };
+      const responseRectAt = (fraction: number, offset: number): Rect => {
+        const point = {
+          x: fieldAttackStart.x + (fieldAttackEnd.x - fieldAttackStart.x) * fraction + fieldAttackNormal.x * offset,
+          y: fieldAttackStart.y + (fieldAttackEnd.y - fieldAttackStart.y) * fraction + fieldAttackNormal.y * offset,
+        };
+        return {
+          left: point.x - reservedDodgeSize.width / 2,
+          top: point.y - reservedDodgeSize.height / 2,
+          right: point.x + reservedDodgeSize.width / 2,
+          bottom: point.y + reservedDodgeSize.height / 2,
+          width: reservedDodgeSize.width,
+          height: reservedDodgeSize.height,
+        };
+      };
+      const responseSlotIsClear = (responseRect: Rect) => responseRect.left >= tableRect.left + margin
+        && responseRect.right <= tableRect.right - margin
+        && responseRect.top >= tableRect.top + margin
+        && responseRect.bottom <= stableStageBottom - margin
+        && !overlaps(responseRect, card, 8)
+        && !obstacles.some((obstacle) => overlaps(responseRect, obstacle, 8));
+      const directCandidates = [.4, .45, .46, .465, .47, .5, .55, .6, .65].flatMap((fraction) => [0, -16, 16, -32, 32, -40, 40, -48, 48]
+        .flatMap((offset) => {
+          const responseRect = responseRectAt(fraction, offset);
+          const projection = projectPointToSegment(fieldAttackStart, fieldAttackEnd, center(responseRect));
+          return projection.fraction >= .35 && projection.fraction <= .70
+            && segmentIntersectsRect(fieldAttackStart, fieldAttackEnd, responseRect)
+            ? [{ responseRect, score: Math.abs(projection.fraction - .52) * 100 + Math.abs(offset) }]
+            : [];
+        })).sort((left, right) => left.score - right.score);
+      for (const candidate of directCandidates) {
+        if (responseSlotIsClear(candidate.responseRect)) return candidate.responseRect;
+      }
+      const normalRadius = Math.abs(fieldAttackNormal.x) * reservedDodgeSize.width / 2
+        + Math.abs(fieldAttackNormal.y) * reservedDodgeSize.height / 2;
+      const adjacentCandidates = [.4, .45, .5, .55, .6, .65].flatMap((fraction) => [14, 18, 20].flatMap((gap) => [-1, 1].flatMap((side) => {
+        const responseRect = responseRectAt(fraction, side * (normalRadius + gap));
+        const projection = projectPointToSegment(fieldAttackStart, fieldAttackEnd, center(responseRect));
+        if (projection.fraction < .35 || projection.fraction > .70
+          || segmentIntersectsRect(fieldAttackStart, fieldAttackEnd, responseRect)) return [];
+        const edgeGap = pointRectDistance(projection.point, responseRect);
+        if (edgeGap < 12 || edgeGap > 20 || !segmentNearRect(fieldAttackStart, fieldAttackEnd, responseRect, 20)) return [];
+        return [{ responseRect, score: Math.abs(projection.fraction - .52) * 100 + Math.abs(edgeGap - 16) }];
+      }))).sort((left, right) => left.score - right.score);
+      for (const candidate of adjacentCandidates) {
+        if (responseSlotIsClear(candidate.responseRect)) return candidate.responseRect;
+      }
+
+      // Fraction/offset samples can miss a very narrow legal corridor when
+      // the remaining horizontal clearance is only a fraction of a CSS px.
+      // Add exact obstacle-boundary positions, then prove each resulting card
+      // against the same safe-region, clearance, projection, and path rules.
+      const safeLeft = tableRect.left + margin;
+      const safeRight = tableRect.right - margin - reservedDodgeSize.width;
+      const safeTop = tableRect.top + margin;
+      const safeBottom = stableStageBottom - margin - reservedDodgeSize.height;
+      const placementObstacles = [...obstacles, card];
+      const candidateLefts = new Set([safeLeft, safeRight]);
+      const candidateTops = new Set([safeTop, safeBottom]);
+      for (const obstacle of placementObstacles) {
+        candidateLefts.add(obstacle.right + 8);
+        candidateLefts.add(obstacle.left - 8 - reservedDodgeSize.width);
+        candidateTops.add(obstacle.bottom + 8);
+        candidateTops.add(obstacle.top - 8 - reservedDodgeSize.height);
+      }
+      for (const fraction of [.35, .45, .52, .60, .70]) {
+        const point = {
+          x: fieldAttackStart.x + (fieldAttackEnd.x - fieldAttackStart.x) * fraction,
+          y: fieldAttackStart.y + (fieldAttackEnd.y - fieldAttackStart.y) * fraction,
+        };
+        candidateLefts.add(point.x - reservedDodgeSize.width / 2);
+        candidateLefts.add(point.x - reservedDodgeSize.width);
+        candidateTops.add(point.y - reservedDodgeSize.height / 2);
+        candidateTops.add(point.y - reservedDodgeSize.height);
+      }
+      const boundaryCandidates = [...candidateTops].flatMap((top) => [...candidateLefts].map((left) => ({
+        responseRect: {
+          left,
+          top,
+          right: left + reservedDodgeSize.width,
+          bottom: top + reservedDodgeSize.height,
+          width: reservedDodgeSize.width,
+          height: reservedDodgeSize.height,
+        },
+      }))).filter(({ responseRect }) => responseSlotIsClear(responseRect));
+      const boundaryDirectCandidates = boundaryCandidates.flatMap(({ responseRect }) => {
+        const projection = projectPointToSegment(fieldAttackStart, fieldAttackEnd, center(responseRect));
+        if (projection.fraction < .35 || projection.fraction > .70
+          || !segmentIntersectsRect(fieldAttackStart, fieldAttackEnd, responseRect)) return [];
+        return [{ responseRect, score: Math.abs(projection.fraction - .52) * 100 + projection.distance }];
+      }).sort((left, right) => left.score - right.score);
+      if (boundaryDirectCandidates[0]) return boundaryDirectCandidates[0].responseRect;
+      const boundaryAdjacentCandidates = boundaryCandidates.flatMap(({ responseRect }) => {
+        const projection = projectPointToSegment(fieldAttackStart, fieldAttackEnd, center(responseRect));
+        if (projection.fraction < .35 || projection.fraction > .70
+          || segmentIntersectsRect(fieldAttackStart, fieldAttackEnd, responseRect)) return [];
+        const edgeGap = pointRectDistance(projection.point, responseRect);
+        if (edgeGap < 12 || edgeGap > 20 || !segmentNearRect(fieldAttackStart, fieldAttackEnd, responseRect, 20)) return [];
+        return [{ responseRect, score: Math.abs(projection.fraction - .52) * 100 + Math.abs(edgeGap - 16) }];
+      }).sort((left, right) => left.score - right.score);
+      if (boundaryAdjacentCandidates[0]) return boundaryAdjacentCandidates[0].responseRect;
+      return null;
+    };
     for (const clearance of [12, 8]) {
       let positionsInRelationBand = 0;
       let cardClearCount = 0;
       let connectorClearCount = 0;
       let preferredBandConnectorClearCount = 0;
       const fieldCandidates: typeof pathCandidates = [];
-      for (let top = tableRect.top + margin; top + cardHeight <= tableRect.bottom - margin; top += 4) {
-        for (let left = tableRect.left + margin; left + cardWidth <= tableRect.right - margin; left += 4) {
+      for (let top = tableRect.top + margin; top + cardHeight <= rootPlacementBottom; top += placementFieldSampleStep) {
+        for (let left = tableRect.left + margin; left + cardWidth <= tableRect.right - margin; left += placementFieldSampleStep) {
           const card: Rect = { left, top, right: left + cardWidth, bottom: top + cardHeight, width: cardWidth, height: cardHeight };
           const cardCenter = center(card);
           const projection = ((cardCenter.x - sourceCenter.x) * lineX + (cardCenter.y - sourceCenter.y) * lineY) / lineLengthSquared;
@@ -1112,81 +1248,31 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
           if (sourcePathBlocked || targetPathBlocked) continue;
           connectorClearCount += 1;
           if (projection >= .30 && projection <= .42) preferredBandConnectorClearCount += 1;
-          const fieldAttackStart = rectangleEdge(card, targetCenter);
-          const fieldAttackEnd = rectangleEdge(targetRect, cardCenter);
-          const fieldAttackLength = Math.hypot(fieldAttackEnd.x - fieldAttackStart.x, fieldAttackEnd.y - fieldAttackStart.y) || 1;
-          const fieldAttackNormal = {
-            x: -(fieldAttackEnd.y - fieldAttackStart.y) / fieldAttackLength,
-            y: (fieldAttackEnd.x - fieldAttackStart.x) / fieldAttackLength,
-          };
-          const responseSlotCandidates: { responseRect: Rect; mode: "direct" | "adjacent"; score: number }[] = [];
-          if (reservedDodgeSize) {
-            const responseRectAt = (fraction: number, offset: number): Rect => {
-              const point = {
-                x: fieldAttackStart.x + (fieldAttackEnd.x - fieldAttackStart.x) * fraction + fieldAttackNormal.x * offset,
-                y: fieldAttackStart.y + (fieldAttackEnd.y - fieldAttackStart.y) * fraction + fieldAttackNormal.y * offset,
-              };
-              return {
-                left: point.x - reservedDodgeSize.width / 2,
-                top: point.y - reservedDodgeSize.height / 2,
-                right: point.x + reservedDodgeSize.width / 2,
-                bottom: point.y + reservedDodgeSize.height / 2,
-                width: reservedDodgeSize.width,
-                height: reservedDodgeSize.height,
-              };
-            };
-            const responseSlotIsClear = (responseRect: Rect) => responseRect.left >= tableRect.left + margin
-              && responseRect.right <= tableRect.right - margin
-              && responseRect.top >= tableRect.top + margin
-              && responseRect.bottom <= stableStageBottom - margin
-              && !overlaps(responseRect, card, 8)
-              && !obstacles.some((obstacle) => overlaps(responseRect, obstacle, 8));
-            for (const fraction of [.4, .45, .5, .55, .6, .65]) {
-              for (const offset of [0, -16, 16, -32, 32]) {
-                const responseRect = responseRectAt(fraction, offset);
-                const projection = projectPointToSegment(fieldAttackStart, fieldAttackEnd, center(responseRect));
-                if (responseSlotIsClear(responseRect) && projection.fraction >= .35 && projection.fraction <= .70
-                  && segmentIntersectsRect(fieldAttackStart, fieldAttackEnd, responseRect)) {
-                  responseSlotCandidates.push({ responseRect, mode: "direct", score: Math.abs(projection.fraction - .52) * 100 + Math.abs(offset) });
-                }
-              }
-            }
-            const normalRadius = Math.abs(fieldAttackNormal.x) * reservedDodgeSize.width / 2
-              + Math.abs(fieldAttackNormal.y) * reservedDodgeSize.height / 2;
-            for (const fraction of [.4, .45, .5, .55, .6, .65]) {
-              for (const gap of [14, 18, 20]) {
-                for (const side of [-1, 1]) {
-                  const responseRect = responseRectAt(fraction, side * (normalRadius + gap));
-                  const projection = projectPointToSegment(fieldAttackStart, fieldAttackEnd, center(responseRect));
-                  if (!responseSlotIsClear(responseRect) || projection.fraction < .35 || projection.fraction > .70
-                    || segmentIntersectsRect(fieldAttackStart, fieldAttackEnd, responseRect)) continue;
-                  const edgeGap = pointRectDistance(projection.point, responseRect);
-                  if (edgeGap < 12 || edgeGap > 20 || !segmentNearRect(fieldAttackStart, fieldAttackEnd, responseRect, 20)) continue;
-                  responseSlotCandidates.push({ responseRect, mode: "adjacent", score: 500
-                    + Math.abs(projection.fraction - .52) * 100 + Math.abs(edgeGap - 16) });
-                }
-              }
-            }
-          }
-          const fieldReservedDodge = responseSlotCandidates.sort((left, right) => left.score - right.score)[0]?.responseRect ?? null;
           const lateral = Math.abs((cardCenter.x - sourceCenter.x) * -lineY + (cardCenter.y - sourceCenter.y) * lineX) / Math.sqrt(lineLengthSquared);
           const distance = Math.hypot(cardCenter.x - preferred.x, cardCenter.y - preferred.y);
           fieldCandidates.push({
             card,
-            reservedDodge: fieldReservedDodge,
+            reservedDodge: null,
             score: distance + Math.abs(projection - sourceBiasedFraction) * 80 + lateral * .12,
           });
         }
       }
       passes.push({ clearance, positionsInRelationBand, cardClearCount, connectorClearCount, preferredBandConnectorClearCount });
-      const pairedCandidates = fieldCandidates.filter((candidate) => candidate.reservedDodge);
-      if (pairedCandidates.length > 0) {
-        selectedCandidates = pairedCandidates.sort((left, right) => left.score - right.score);
+      const orderedFieldCandidates = fieldCandidates.sort((left, right) => left.score - right.score);
+      let pairedCandidate: (typeof pathCandidates)[number] | undefined;
+      for (const candidate of orderedFieldCandidates) {
+        const reservedDodge = findFieldDodgeSlot(candidate.card);
+        if (!reservedDodge) continue;
+        pairedCandidate = { ...candidate, reservedDodge };
+        break;
+      }
+      if (pairedCandidate) {
+        selectedCandidates = [pairedCandidate];
         selectedClearance = clearance;
         break;
       }
-      if (fieldCandidates.length > 0 && rootOnlyCandidates.length === 0) {
-        rootOnlyCandidates = fieldCandidates.sort((left, right) => left.score - right.score);
+      if (orderedFieldCandidates.length > 0 && rootOnlyCandidates.length === 0) {
+        rootOnlyCandidates = orderedFieldCandidates;
         rootOnlyClearance = clearance;
       }
     }
@@ -1206,7 +1292,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       candidates = selectedCandidates;
     }
     placementFieldSearch = {
-      sampleStep: 4,
+      sampleStep: placementFieldSampleStep,
       relationBand: [.16, .92],
       passes,
       ...(selectedClearance !== undefined ? { selectedClearance } : {}),
@@ -1229,7 +1315,8 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const cachedRootFits = stableRootCard
     && stableRootBottomCorrection <= 24
     && stableRootCard.left >= tableRect.left + margin && stableRootCard.top >= tableRect.top + margin
-    && stableRootCard.right <= tableRect.right - margin && stableRootCard.bottom <= stableStageBottom
+    && stableRootCard.right <= tableRect.right - margin
+    && stableRootCard.bottom <= (hasEightPlayerPhoneLayout ? tableRect.bottom - margin : stableStageBottom)
     && !obstacleElements.some((element) => overlaps(stableRootCard, relativeRect(element, shellBounds), element.classList.contains("local-player-dock") ? 0 : 8));
   const selectedCandidate = cachedRootFits && stableRootCard
     ? { card: stableRootCard, reservedDodge: preferredResponseCard, score: 0 }
@@ -1582,7 +1669,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
         dodgeInterceptionFallback = responseCandidates.length > 0;
       }
       if (!responseCandidates.length) {
-        const sampleStep = 2;
+        const sampleStep = shellBounds.width <= 400 ? 1 : 2;
         const relationBand: [number, number] = [.05, .95];
         const preferredFractionBand: [number, number] = [.35, .70];
         const fieldSearch: AttackDodgePlacementFieldSearch = {
@@ -1667,9 +1754,44 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
             dodgePlacementFieldSearch: fieldSearch,
           });
         } else {
+          const safeRegion: Rect = {
+            left: tableRect.left + margin,
+            top: tableRect.top + margin,
+            right: tableRect.right - margin,
+            bottom: stableStageBottom - margin,
+            width: tableRect.width - margin * 2,
+            height: stableStageBottom - tableRect.top - margin * 2,
+          };
+          const diagnosticRect = (rect: Rect): Rect => Object.fromEntries(
+            Object.entries(rect).map(([key, value]) => [key, Math.round(value * 100) / 100]),
+          ) as Rect;
+          const diagnosticPoint = (point: Point): Point => ({
+            x: Math.round(point.x * 100) / 100,
+            y: Math.round(point.y * 100) / 100,
+          });
           reportFitDiagnostic("no-dodge-interception-candidate", {
             ...dodgeFitCounts,
             dodgePlacementFieldSearch: fieldSearch,
+            dodgeGeometry: {
+              table: diagnosticRect(tableRect),
+              stableStageBottom: Math.round(stableStageBottom * 100) / 100,
+              margin,
+              rootCard: diagnosticRect(card),
+              attacker: diagnosticRect(sourceRect),
+              target: diagnosticRect(targetRect),
+              responseActor: diagnosticRect(responseSourceRect),
+              responseElement: diagnosticRect(relativeRect(responseElement, shellBounds)),
+              responseSize: { width: Math.round(responseWidth * 100) / 100, height: Math.round(responseHeight * 100) / 100 },
+              attackPath: { start: diagnosticPoint(attackPathStart), end: diagnosticPoint(attackPathEnd) },
+              safeRegion: diagnosticRect(safeRegion),
+              preferredResponseCard: preferredResponseCard ? diagnosticRect(preferredResponseCard) : null,
+              preferredResponseFits: Boolean(preferredResponseFits),
+              obstacles: obstacleElements.map((element, index) => ({
+                kind: anchorObstacleSet.has(element) ? "anchor" as const : "control" as const,
+                label: element.dataset.playerAnchor ?? String(element.className),
+                rect: diagnosticRect(obstacles[index]!),
+              })),
+            },
           });
         }
       }
