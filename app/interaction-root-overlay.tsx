@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import type { Card, CardKind } from "../game/model";
 import type { PresentationSnapshotBumperHarvestProgress, PresentationSnapshotGroupParticipantProgress, PresentationSnapshotRootAction } from "../game/presentation-snapshot";
 import { CardFace } from "./card-face";
@@ -1432,15 +1433,37 @@ export function InteractionRootOverlay({
         : { key: currentAction.key, state: "unavailable" });
     };
     measure();
+    let scheduledMeasure: number | null = null;
+    const scheduleMeasure = () => {
+      // Re-anchor before the next paint. A viewport/scroll change can move a
+      // player anchor without resizing it, so waiting for the coalesced frame
+      // would leave one visible frame of the previous causal geometry.
+      flushSync(measure);
+      if (scheduledMeasure !== null) return;
+      scheduledMeasure = window.requestAnimationFrame(() => {
+        scheduledMeasure = null;
+        measure();
+      });
+    };
     const observer = new ResizeObserver(measure);
     observer.observe(shell);
+    observer.observe(card);
+    if (responseCardRef.current) observer.observe(responseCardRef.current);
     const table = shell.querySelector<HTMLElement>(".play-table");
     if (table) observer.observe(table);
     shell.querySelectorAll<HTMLElement>("[data-player-anchor], .play-center, .stage-system-cluster").forEach((element) => observer.observe(element));
-    window.addEventListener("resize", measure);
+    window.addEventListener("resize", scheduleMeasure);
+    window.addEventListener("scroll", scheduleMeasure, { passive: true });
+    const visualViewport = window.visualViewport;
+    visualViewport?.addEventListener("resize", scheduleMeasure);
+    visualViewport?.addEventListener("scroll", scheduleMeasure, { passive: true });
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", measure);
+      window.removeEventListener("resize", scheduleMeasure);
+      window.removeEventListener("scroll", scheduleMeasure);
+      visualViewport?.removeEventListener("resize", scheduleMeasure);
+      visualViewport?.removeEventListener("scroll", scheduleMeasure);
+      if (scheduledMeasure !== null) window.cancelAnimationFrame(scheduledMeasure);
       onLayoutReadinessChange(null);
     };
   }, [actionSignature, enabled, onLayoutReadinessChange]);

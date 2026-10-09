@@ -2238,6 +2238,21 @@ Only a proven regression or new Reviewer-approved design requirement does.
   targeted ESLint, `git diff --check`, and visual screenshot review passed.
   Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-D-ATTACK-MOBILE-GEOMETRY-REMEASURE-01 — Mobile viewport changes
+
+- The real Attack graph synchronously remeasures on window and visual-viewport
+  resize/scroll and observes responsive root/response card dimensions. Browser
+  proof retained the same server-proven root for attacker and defender at
+  390×844 and 480×900; ready connectors ended within 2.1 CSS px of measured
+  anchors. At 390×724 the solver explicitly failed closed as
+  `geometry-unavailable`, restoring 390×844 restored that same graph, and
+  480×780 remained ready. There was no natural page-scroll range at the
+  tested sizes, so the test did not manufacture overflow. The focused mobile
+  browser case passed 1/1 and the ten-window continuity case passed 1/1 after
+  the remeasurement change; build, targeted ESLint, `node --check`, and
+  `git diff --check` passed. Playwright emulation is not real-device
+  validation; Reviewer acceptance is not claimed.
+
 ### UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01 — Real drag/drop completion
 
 - The real server-backed Stargazing proof now covers touch reassignment between

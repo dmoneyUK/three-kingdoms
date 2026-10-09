@@ -260,10 +260,35 @@ async function openGame(page, seed, playerIndex, viewport) {
         const interactionStageVisible = isVisible(stage);
         const attackResponseStageVisible = isVisible(attackStage);
         const rootEventId = overlay?.dataset.rootActionEventId ?? null;
+        const connectorSvg = overlay?.querySelector(".interaction-root-connectors");
+        const connectorBounds = connectorSvg?.getBoundingClientRect() ?? null;
+        const rootBounds = rootCard?.getBoundingClientRect() ?? null;
+        const anchorBounds = (playerId) => [...document.querySelectorAll("[data-player-anchor]")]
+          .find((anchor) => anchor.dataset.playerAnchor === playerId)?.getBoundingClientRect() ?? null;
+        const pointToRectDistance = (point, bounds) => point && bounds
+          ? Math.hypot(Math.max(bounds.left - point.x, 0, point.x - bounds.right), Math.max(bounds.top - point.y, 0, point.y - bounds.bottom))
+          : Infinity;
+        const edgeEndpoints = (edge) => {
+          const path = overlay?.querySelector(`[data-root-action-edge="${edge}"]`);
+          if (!path || !connectorBounds) return [null, null];
+          return [0, path.getTotalLength()].map((offset) => {
+            const point = path.getPointAtLength(offset);
+            return { x: point.x + connectorBounds.x, y: point.y + connectorBounds.y };
+          });
+        };
+        const pairedAnchorResidual = (points, first, second) => Math.min(
+          pointToRectDistance(points[0], first) + pointToRectDistance(points[1], second),
+          pointToRectDistance(points[0], second) + pointToRectDistance(points[1], first),
+        );
+        const sourceAnchorResidual = pairedAnchorResidual(edgeEndpoints("source"), anchorBounds(overlay?.dataset.rootActionSourceId), rootBounds);
+        const targetAnchorResidual = pairedAnchorResidual(edgeEndpoints("target"), rootBounds, anchorBounds(overlay?.dataset.rootActionTargetId));
         window.__wtkAttackVisibleFrames.push({
           frameNumber: frameNumber++,
           elapsedMs: Math.round(performance.now() - startedAt),
           sampleTimeMs: performance.now(),
+          innerWidth,
+          innerHeight,
+          visualViewportHeight: window.visualViewport?.height ?? null,
           mode: overlay?.dataset.rootActionDisplayMode ?? (interactionStageVisible ? "fallback" : "inactive"),
           fallbackGate: overlay?.dataset.rootActionFallbackReason ?? (rootEventId ? null : "no-proven-root"),
           layoutState: overlay?.dataset.rootActionLayoutState ?? null,
@@ -285,12 +310,15 @@ async function openGame(page, seed, playerIndex, viewport) {
           targetEdgeVisible: isVisible(overlay?.querySelector('[data-root-action-edge="target"]')),
           targetMarkerPresent: Boolean(overlay?.querySelector('.interaction-root-connectors marker[id^="root-target-arrow-"]')),
           svgVisible: isVisible(overlay?.querySelector(".interaction-root-connectors")),
+          sourceAnchorResidual,
+          targetAnchorResidual,
           classification: stage?.dataset.localUiMode ? "explicit-local-presentation"
             : overlay?.dataset.rootActionFallbackReason === "local-presentation-precedence" ? "local-presentation-precedence"
-              : overlay?.dataset.rootActionFallbackReason === "awaiting-public-reveal" || activeRevealCards.length ? "event-reveal-handoff"
+              : overlay?.dataset.rootActionFallbackReason === "awaiting-public-reveal" || !rootEventId && activeRevealCards.length ? "event-reveal-handoff"
                 : overlay?.dataset.rootActionFallbackReason === "geometry-unavailable" ? "geometry-unavailable"
                   : overlay?.dataset.rootActionLayoutState === "measuring" ? "measurement-pending"
                     : !rootEventId ? "proof-or-action-absent"
+                      : overlay?.dataset.rootActionDisplayMode === "graph" && activeRevealCards.length ? "graph-present-with-active-reveal"
                       : overlay?.dataset.rootActionDisplayMode === "graph" && (!isVisible(overlay?.querySelector('[data-root-action-edge="source"]'))
                         || !isVisible(overlay?.querySelector('[data-root-action-edge="target"]')) || !isVisible(overlay?.querySelector(".interaction-root-connectors")))
                         ? "graph-present-but-connectors-hidden"
@@ -2033,7 +2061,8 @@ async function assertContinuousAttackGraphFrames(page, rootAction, startTimeMs, 
     || frame.fallbackGate !== null || !frame.rootCardVisible || frame.interactionStageVisible
     || frame.attackResponseStageVisible || frame.localUiMode !== null
     || frame.activeTableRevealCardCount !== 0 || !frame.sourceEdgeVisible || !frame.targetEdgeVisible
-    || !frame.targetMarkerPresent || !frame.svgVisible || frame.classification !== "graph-visible");
+    || !frame.targetMarkerPresent || !frame.svgVisible || frame.classification !== "graph-visible"
+    || frame.sourceAnchorResidual > 2.1 || frame.targetAnchorResidual > 2.1);
   expect(unexpected, `${label}: every sampled frame must retain the same proven, visibly connected graph; first unexpected frames: ${JSON.stringify(unexpected.slice(0, 5))}`).toEqual([]);
   expect(frames.slice(1).every((frame, index) => frame.frameNumber === frames[index].frameNumber + 1), `${label}: no unobserved rAF sample gap`).toBe(true);
   return frames;
@@ -2166,4 +2195,261 @@ test("ten real Attack windows retain one proven visible graph through room polli
   await testInfo.attach("attack-continuity-rAF-traces.json", { body: JSON.stringify(frameTraces, null, 2), contentType: "application/json" });
   await testInfo.attach("attack-continuity-public-projection-polls.json", { body: JSON.stringify(projectionPollTraces, null, 2), contentType: "application/json" });
   await testInfo.attach("attack-continuity-geometry.json", { body: JSON.stringify(geometryEvidence, null, 2), contentType: "application/json" });
+});
+
+test("real mobile Attack graph remeasures after visual viewport height changes and preserves page-scroll safety", async ({ browser, request }, testInfo) => {
+  test.setTimeout(150_000);
+  for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }]) {
+    const sourceCard = { ...attack, id: `attack-mobile-geometry-${viewport.width}` };
+    const targetCard = { ...dodge, id: `dodge-mobile-geometry-${viewport.width}` };
+    const seed = await seedGame(request, 4, { sourceCard, targetCard });
+    const sourceId = seed.players[0].id;
+    const targetId = seed.players[1].id;
+    const attackerContext = await browser.newContext({ viewport, isMobile: true, hasTouch: true });
+    const defenderContext = await browser.newContext({ viewport, isMobile: true, hasTouch: true });
+    const attackerPage = await attackerContext.newPage();
+    const defenderPage = await defenderContext.newPage();
+    try {
+      await Promise.all([
+        openGame(attackerPage, seed, 0, viewport),
+        openGame(defenderPage, seed, 1, viewport),
+      ]);
+      await Promise.all([
+        attackerPage.evaluate(() => window.__wtkStartAttackVisibleFrameSampling()),
+        defenderPage.evaluate(() => window.__wtkStartAttackVisibleFrameSampling()),
+      ]);
+      await playAttackThroughPage(attackerPage, "TARGET", sourceCard);
+      await expect.poll(async () => (await roomView(request, seed, 1)).presentationSnapshot?.rootAction ?? null, {
+        timeout: 20_000,
+        message: `${viewport.width}px mobile: server creates a proven Attack root`,
+      }).not.toBeNull();
+      const rootAction = (await roomView(request, seed, 1)).presentationSnapshot.rootAction;
+      expect(rootAction).toMatchObject({ semantics: "PROVEN", action: "ATTACK", cardKind: "Attack", sourceId, targetId });
+      await Promise.all([expectAttackGraphIdentity(attackerPage, rootAction), expectAttackGraphIdentity(defenderPage, rootAction)]);
+
+      const geometryAtCurrentViewport = async (page, phase) => {
+        await expect.poll(() => page.evaluate(({ source, target, rootEventId, interactionId }) => {
+          const overlay = document.querySelector('[data-root-action-overlay="true"]');
+          if (!overlay || overlay.dataset.rootActionEventId !== rootEventId
+            || overlay.dataset.rootActionInteractionId !== interactionId) return "wrong-root";
+          if (overlay.dataset.rootActionLayoutState === "unavailable"
+            && overlay.dataset.rootActionFallbackReason === "geometry-unavailable") return "unavailable";
+          if (overlay.dataset.rootActionLayoutState !== "ready" || overlay.dataset.rootActionReady !== "true") return "pending";
+          const svg = overlay.querySelector(".interaction-root-connectors");
+          const root = overlay.querySelector('[data-root-action-card="true"]');
+          const anchors = [...document.querySelectorAll("[data-player-anchor]")];
+          const anchor = (id) => anchors.find((element) => element.dataset.playerAnchor === id)?.getBoundingClientRect() ?? null;
+          const sourceBounds = anchor(source);
+          const targetBounds = anchor(target);
+          const rootBounds = root?.getBoundingClientRect() ?? null;
+          const svgBounds = svg?.getBoundingClientRect() ?? null;
+          const distance = (point, rect) => point && rect
+            ? Math.hypot(Math.max(rect.left - point.x, 0, point.x - rect.right), Math.max(rect.top - point.y, 0, point.y - rect.bottom))
+            : Infinity;
+          const endpoints = (edge) => {
+            const path = overlay.querySelector(`[data-root-action-edge="${edge}"]`);
+            if (!path || !svgBounds) return [null, null];
+            return [0, path.getTotalLength()].map((offset) => {
+              const point = path.getPointAtLength(offset);
+              return { x: point.x + svgBounds.x, y: point.y + svgBounds.y };
+            });
+          };
+          const pairedDistance = (points, first, second) => Math.min(
+            distance(points[0], first) + distance(points[1], second),
+            distance(points[0], second) + distance(points[1], first),
+          );
+          return sourceBounds && targetBounds && rootBounds
+            && pairedDistance(endpoints("source"), sourceBounds, rootBounds) <= 2.1
+            && pairedDistance(endpoints("target"), rootBounds, targetBounds) <= 2.1
+            ? "ready" : "pending";
+        }, { source: sourceId, target: targetId, rootEventId: rootAction.rootEventId, interactionId: rootAction.interactionId }), {
+          message: `${phase}: only accept ready after both SVG endpoints match current real anchors, or an explicit geometry fallback`,
+        }).toMatch(/^(ready|unavailable)$/);
+        const measurement = await page.evaluate(({ source, target }) => {
+          const overlay = document.querySelector('[data-root-action-overlay="true"]');
+          const svg = overlay?.querySelector(".interaction-root-connectors");
+          const root = overlay?.querySelector('[data-root-action-card="true"]');
+          const anchors = [...document.querySelectorAll("[data-player-anchor]")];
+          const anchor = (id) => anchors.find((element) => element.dataset.playerAnchor === id)?.getBoundingClientRect() ?? null;
+          const sourceBounds = anchor(source);
+          const targetBounds = anchor(target);
+          const rootBounds = root?.getBoundingClientRect() ?? null;
+          const svgBounds = svg?.getBoundingClientRect() ?? null;
+          const endpoint = (edge, atEnd) => {
+            const path = overlay?.querySelector(`[data-root-action-edge="${edge}"]`);
+            if (!path || !svgBounds) return null;
+            const point = path.getPointAtLength(atEnd ? path.getTotalLength() : 0);
+            return { x: point.x + svgBounds.x, y: point.y + svgBounds.y };
+          };
+          const distance = (point, rect) => point && rect
+            ? Math.hypot(Math.max(rect.left - point.x, 0, point.x - rect.right), Math.max(rect.top - point.y, 0, point.y - rect.bottom))
+            : Infinity;
+          const sourceEndpoints = [endpoint("source", false), endpoint("source", true)];
+          const targetEndpoints = [endpoint("target", false), endpoint("target", true)];
+          const pairedDistance = (points, first, second) => Math.min(
+            distance(points[0], first) + distance(points[1], second),
+            distance(points[0], second) + distance(points[1], first),
+          );
+          const targetPath = overlay?.querySelector('[data-root-action-edge="target"]');
+          const sourcePath = overlay?.querySelector('[data-root-action-edge="source"]');
+          const marker = overlay?.querySelector('.interaction-root-connectors marker[id^="root-target-arrow-"]');
+          const visible = (element) => {
+            if (!element) return false;
+            const style = getComputedStyle(element);
+            return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0;
+          };
+          const visualViewport = window.visualViewport;
+          return {
+            rootEventId: overlay?.dataset.rootActionEventId ?? null,
+            interactionId: overlay?.dataset.rootActionInteractionId ?? null,
+            mode: overlay?.dataset.rootActionDisplayMode ?? null,
+            layout: overlay?.dataset.rootActionLayoutState ?? null,
+            fallback: overlay?.dataset.rootActionFallbackReason ?? null,
+            ready: overlay?.dataset.rootActionReady ?? null,
+            rootCardVisible: visible(root),
+            sourceVisible: visible(sourcePath),
+            targetVisible: visible(targetPath),
+            svgVisible: visible(svg),
+            markerPresent: Boolean(marker),
+            sourceToAnchors: pairedDistance(sourceEndpoints, sourceBounds, rootBounds),
+            targetToAnchors: pairedDistance(targetEndpoints, rootBounds, targetBounds),
+            sourceEndpoints,
+            targetEndpoints,
+            connectorBounds: svgBounds ? { x: svgBounds.x, y: svgBounds.y, width: svgBounds.width, height: svgBounds.height } : null,
+            targetPathData: targetPath?.getAttribute("d") ?? null,
+            root: rootBounds ? { x: rootBounds.x, y: rootBounds.y, width: rootBounds.width, height: rootBounds.height } : null,
+            source: sourceBounds ? { x: sourceBounds.x, y: sourceBounds.y, width: sourceBounds.width, height: sourceBounds.height } : null,
+            target: targetBounds ? { x: targetBounds.x, y: targetBounds.y, width: targetBounds.width, height: targetBounds.height } : null,
+            inner: { width: innerWidth, height: innerHeight, scrollY },
+            visualViewport: visualViewport ? { width: visualViewport.width, height: visualViewport.height, offsetTop: visualViewport.offsetTop, pageTop: visualViewport.pageTop } : null,
+            document: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight },
+            stageCount: document.querySelectorAll(".interaction-stage").length,
+            visibleLegacyHeroNodes: [...document.querySelectorAll(".medium-participant-card, .hero-focus")]
+              .filter(visible).map((element) => ({ className: element.className, role: element.getAttribute("aria-label") })),
+          };
+        }, { source: sourceId, target: targetId });
+        expect(measurement.rootEventId).toBe(rootAction.rootEventId);
+        expect(measurement.interactionId).toBe(rootAction.interactionId);
+        if (measurement.layout === "ready") {
+          expect(measurement.mode).toBe("graph");
+          expect(measurement.ready).toBe("true");
+          expect(measurement.fallback).toBeNull();
+          expect(measurement.rootCardVisible && measurement.sourceVisible && measurement.targetVisible && measurement.svgVisible).toBe(true);
+          expect(measurement.markerPresent).toBe(true);
+          expect(measurement.sourceToAnchors, `${phase}: source tether ends on the real source and same root; measured ${JSON.stringify(measurement)}`).toBeLessThanOrEqual(2.1);
+          expect(measurement.targetToAnchors, `${phase}: Attack arrow ends on the same root and target; measured ${JSON.stringify(measurement)}`).toBeLessThanOrEqual(2.1);
+          expect(measurement.stageCount, `${phase}: no duplicate legacy Stage accompanies the graph`).toBe(0);
+          expect(measurement.visibleLegacyHeroNodes, `${phase}: graph ownership leaves no visible central Hero/source duplicate`).toEqual([]);
+        } else {
+          expect(measurement.mode).toBe("fallback");
+          expect(measurement.ready).toBe("false");
+          expect(measurement.fallback, `${phase}: an unavailable graph has a classified reason`).toBe("geometry-unavailable");
+          expect(measurement.rootCardVisible || measurement.sourceVisible || measurement.targetVisible || measurement.svgVisible).toBe(false);
+          expect(measurement.stageCount, `${phase}: fail-closed fallback does not duplicate the legacy Stage`).toBeLessThanOrEqual(1);
+        }
+        expect(measurement.document.width).toBeLessThanOrEqual(measurement.inner.width);
+        await testInfo.attach(`attack-mobile-geometry-${viewport.width}-${phase.replace(/[^a-z0-9]+/giu, "-").toLowerCase()}.json`, {
+          body: JSON.stringify(measurement, null, 2), contentType: "application/json",
+        });
+        return measurement;
+      };
+
+      const pages = [attackerPage, defenderPage];
+      const stableSamplingStarts = await Promise.all(pages.map((page) => page.evaluate(() => performance.now())));
+      const initial = await Promise.all(pages.map((page) => geometryAtCurrentViewport(page, "initial")));
+      expect(initial.every(({ layout }) => layout === "ready"), `${viewport.width}px opening graph is valid before geometry changes`).toBe(true);
+      for (const page of pages) {
+        const before = await page.evaluate(() => ({ width: window.visualViewport?.width ?? null, height: window.visualViewport?.height ?? null }));
+        const resizedViewport = { width: viewport.width, height: viewport.height - 120 };
+        await page.setViewportSize(resizedViewport);
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const after = await page.evaluate(() => ({ width: window.visualViewport?.width ?? null, height: window.visualViewport?.height ?? null }));
+        expect(after.width).toBe(before.width);
+        expect(after.height).toBeLessThan(before.height);
+      }
+      const resized = await Promise.all(pages.map((page) => geometryAtCurrentViewport(page, "viewport shrink")));
+      expect(resized.every(({ rootEventId, interactionId }) => rootEventId === rootAction.rootEventId && interactionId === rootAction.interactionId)).toBe(true);
+      for (const [index, page] of pages.entries()) {
+        const scrollState = await page.evaluate(() => {
+          const maxScroll = Math.max(0, document.documentElement.scrollHeight - innerHeight);
+          const targetScroll = Math.min(72, maxScroll);
+          if (targetScroll > 0) window.scrollTo({ top: targetScroll, behavior: "auto" });
+          return { maxScroll, targetScroll };
+        });
+        if (scrollState.targetScroll > 0) {
+          await expect.poll(() => page.evaluate(() => scrollY), { message: `${viewport.width}px viewer can complete a real page scroll` })
+            .toBe(scrollState.targetScroll);
+        } else {
+          expect(await page.evaluate(() => scrollY), `${viewport.width}px has no forced document scroll when the game fits the visual viewport`).toBe(0);
+        }
+        const afterScroll = await geometryAtCurrentViewport(page, `scroll (${scrollState.targetScroll}px)`);
+        await testInfo.attach(`attack-mobile-geometry-${viewport.width}-${index === 0 ? "attacker" : "defender"}.json`, {
+          body: JSON.stringify({ initial: initial[index], resized: resized[index], scrollState, afterScroll }, null, 2),
+          contentType: "application/json",
+        });
+        if (index === 1) {
+          const screenshotPath = testInfo.outputPath(`attack-mobile-geometry-${viewport.width}-resized.png`);
+          await page.screenshot({ path: screenshotPath });
+          await testInfo.attach(`attack-mobile-geometry-${viewport.width}-resized.png`, {
+            path: screenshotPath, contentType: "image/png",
+          });
+        }
+        await page.setViewportSize(viewport);
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        await expect.poll(() => page.locator('[data-root-action-overlay="true"]').getAttribute("data-root-action-layout-state"), {
+          message: `${viewport.width}px restoring the original visual viewport remeasures the still-proven Attack root`,
+        }).toBe("ready");
+        await expect.poll(() => page.evaluate(({ rootEventId, interactionId }) => {
+          const frame = window.__wtkAttackVisibleFrames.at(-1);
+          return frame?.rootEventId === rootEventId && frame?.interactionId === interactionId
+            && frame.classification === "graph-visible"
+            && frame.sourceAnchorResidual <= 2.1 && frame.targetAnchorResidual <= 2.1;
+        }, { rootEventId: rootAction.rootEventId, interactionId: rootAction.interactionId }), {
+          message: `${viewport.width}px one animation frame uses the restored Seat/Dock positions rather than stale connector geometry`,
+        }).toBe(true);
+        const restored = await geometryAtCurrentViewport(page, "viewport restored");
+        expect(restored.layout, `${viewport.width}px returns to the same usable Attack graph after restoring the viewport`).toBe("ready");
+        await expect.poll(() => page.evaluate(() => window.__wtkAttackVisibleFrames.slice(-3).every((frame) => frame.classification === "graph-visible")), {
+          message: `${viewport.width}px restored viewport keeps the same graph visible across consecutive animation frames`,
+        }).toBe(true);
+        const traceEnd = await page.evaluate(() => performance.now());
+        const frames = await page.evaluate(({ start, end }) => window.__wtkAttackVisibleFrames
+          .filter((frame) => frame.sampleTimeMs >= start && frame.sampleTimeMs <= end), { start: stableSamplingStarts[index], end: traceEnd });
+        const invalidFrames = frames.filter((frame) => frame.rootEventId !== rootAction.rootEventId
+          || frame.interactionId !== rootAction.interactionId
+          || !["graph-visible", "measurement-pending", "geometry-unavailable"].includes(frame.classification)
+          || frame.classification === "graph-visible" && (!frame.sourceEdgeVisible || !frame.targetEdgeVisible || !frame.svgVisible || !frame.targetMarkerPresent || frame.interactionStageVisible || frame.activeTableRevealCardCount !== 0 || frame.sourceAnchorResidual > 2.1 || frame.targetAnchorResidual > 2.1)
+          || frame.classification === "geometry-unavailable" && (frame.fallbackGate !== "geometry-unavailable" || frame.layoutState !== "unavailable"));
+        const viewportSignature = (frame) => `${frame.innerWidth}:${frame.innerHeight}:${frame.visualViewportHeight}`;
+        const inFlightViewportFrames = [];
+        const unexpected = invalidFrames.filter((frame) => {
+          const frameIndex = frames.indexOf(frame);
+          const previous = frames[frameIndex - 1];
+          const next = frames[frameIndex + 1];
+          const viewportChangedAtFrame = previous && viewportSignature(previous) !== viewportSignature(frame);
+          const recoveredBeforeNextPaint = next && viewportSignature(next) === viewportSignature(frame)
+            && next.rootEventId === rootAction.rootEventId && next.interactionId === rootAction.interactionId
+            && next.classification === "graph-visible" && next.sourceEdgeVisible && next.targetEdgeVisible
+            && next.svgVisible && next.targetMarkerPresent && !next.interactionStageVisible
+            && next.activeTableRevealCardCount === 0
+            && next.sourceAnchorResidual <= 2.1 && next.targetAnchorResidual <= 2.1;
+          if (frame.rootEventId === rootAction.rootEventId && frame.interactionId === rootAction.interactionId
+            && frame.classification === "graph-visible" && (frame.sourceAnchorResidual > 2.1 || frame.targetAnchorResidual > 2.1)
+            && viewportChangedAtFrame && recoveredBeforeNextPaint) {
+            inFlightViewportFrames.push({ frame, immediatelyRecovered: next });
+            return false;
+          }
+          return true;
+        });
+        expect(unexpected, `${viewport.width}px ${index === 0 ? "attacker" : "defender"}: viewport transitions stay on this root and only use classified measurement/fallback states`).toEqual([]);
+        await testInfo.attach(`attack-mobile-geometry-${viewport.width}-${index === 0 ? "attacker" : "defender"}-in-flight-rAF.json`, {
+          body: JSON.stringify(inFlightViewportFrames, null, 2), contentType: "application/json",
+        });
+        expect(frames.length).toBeGreaterThanOrEqual(3);
+        expect(frames.slice(1).every((frame, frameIndex) => frame.frameNumber === frames[frameIndex].frameNumber + 1)).toBe(true);
+      }
+    } finally {
+      await Promise.all([attackerContext.close(), defenderContext.close()]);
+    }
+  }
 });
