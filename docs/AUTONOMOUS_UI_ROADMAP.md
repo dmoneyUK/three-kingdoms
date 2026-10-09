@@ -2155,6 +2155,25 @@ Only a proven regression or new Reviewer-approved design requirement does.
   observed until native pointer input; both focused repairs are in the outgoing
   changeset. Reviewer acceptance is not claimed.
 
+### UX2.6-PHASE-D-ATTACK-GRAPH-CONTINUITY-01 — Ordinary Attack stability
+
+- Added public root-identity diagnostics and a test-only RAF classifier so
+  graph frames can be matched to the exact server-proven interaction. The
+  production-path browser case passed twice across ten independently seeded
+  4/6/8-player Attack windows, with attacker and defender pages at 390×844,
+  480×900, and 1440×900. In the 12.9-second 4-player mobile observation both
+  viewers recorded 776 consecutive `graph-visible` frames (maximum 20ms gap)
+  and 13 room polls retaining the same public root identity; no fallback,
+  hidden edge, duplicate Stage, overflow, or Seat/Dock movement was observed.
+  Representative screenshots and frame/poll/geometry evidence are attached to
+  the local Playwright HTML report. This does not reproduce or identify the
+  user's specific intermittent session; missing proof, local Inspect/Preview,
+  reveal handoff, and unavailable geometry remain intentional fail-closed
+  fallbacks. Build, focused browser test, targeted ESLint, and `git diff
+  --check` passed. Pre-commit Actions run `37866279249` succeeded on its exact
+  SHA; this task's outgoing SHA is not yet validated. Reviewer acceptance is
+  not claimed.
+
 ### UX2.4.10-STARGAZING-DRAG-DROP-ACCEPTANCE-CLOSURE-01 — Real drag/drop completion
 
 - The real server-backed Stargazing proof now covers touch reassignment between

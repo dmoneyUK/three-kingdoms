@@ -82,6 +82,10 @@ function compactResponseGraph(responses: readonly InteractionRootOverlayResponse
 export type InteractionRootOverlayAction = {
   key: string;
   rootEventId: string;
+  interactionId?: string;
+  rootFrameId?: string;
+  checkpointId?: string;
+  presentationRevision?: number;
   rootPlacementKey?: string;
   sourceId: string;
   targetId: string | null;
@@ -1245,6 +1249,10 @@ export function InteractionRootOverlay({
     data-root-action-layout-state={layoutReadiness ?? undefined}
     data-root-action-fallback-reason={displayMode === "fallback" ? fallbackReason : undefined}
     data-root-action-event-id={action.rootEventId}
+    data-root-action-interaction-id={action.interactionId}
+    data-root-action-root-frame-id={action.rootFrameId}
+    data-root-action-checkpoint-id={action.checkpointId}
+    data-root-action-presentation-revision={action.presentationRevision}
     data-root-action-source-id={action.sourceId}
     data-root-action-target-id={action.groupTargets?.length || action.orderedTargets?.length || action.simultaneousTargets?.length ? undefined : action.targetId ?? undefined}
     data-root-action-group-target-graph={action.groupTargets?.length ? "true" : undefined}

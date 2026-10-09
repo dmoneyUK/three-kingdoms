@@ -3679,6 +3679,10 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     : rootAction
     ? {
       key: interactionRootActionKey(rootAction),
+      interactionId: rootAction.interactionId,
+      rootFrameId: rootAction.rootFrameId,
+      checkpointId: rootAction.checkpointId,
+      presentationRevision: rootAction.presentationRevision,
       rootEventId: rootAction.rootEventId,
       sourceId: rootAction.sourceId,
       targetId: rootAction.targetId,

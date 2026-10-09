@@ -7,7 +7,7 @@ const steal = { id: "root-overlay-real-steal", kind: "Steal", suit: "♠", rank:
 const dodge = { id: "root-overlay-real-dodge", kind: "Dodge", suit: "♥", rank: "3" };
 const peach = { id: "root-overlay-real-peach", kind: "Peach", suit: "♥", rank: "3" };
 
-async function seedGame(request, playerCount = 4, { sourceCard = attack, sourceHp = 4, targetCard = null } = {}) {
+async function seedGame(request, playerCount = 4, { sourceCard = attack, sourceCards = null, sourceHp = 4, targetCard = null, targetCards = null } = {}) {
   const rolesByPlayerCount = {
     4: ["Rebel", "Loyalist", "Lord", "Renegade"],
     6: ["Rebel", "Loyalist", "Lord", "Renegade", "Rebel", "Rebel"],
@@ -27,7 +27,7 @@ async function seedGame(request, playerCount = 4, { sourceCard = attack, sourceH
     role: rolesByPlayerCount[playerCount]?.[index],
     hp: index === 0 ? sourceHp : 4,
     maxHp: 4,
-    hand: index === 0 ? [sourceCard] : index === 1 && targetCard ? [targetCard] : [],
+    hand: index === 0 ? sourceCards ?? [sourceCard] : index === 1 ? targetCards ?? (targetCard ? [targetCard] : []) : [],
   }));
   const response = await request.post(`${API}/__test/seed-playing-game`, {
     data: {
@@ -73,23 +73,43 @@ async function openGame(page, seed, playerIndex, viewport) {
         const interactionStageVisible = isVisible(stage);
         const attackResponseStageVisible = isVisible(attackStage);
         const rootEventId = overlay?.dataset.rootActionEventId ?? null;
-        if (rootEventId || interactionStageVisible || activeRevealCards.length) {
-          window.__wtkAttackVisibleFrames.push({
-            frameNumber: frameNumber++,
-            elapsedMs: Math.round(performance.now() - startedAt),
-            mode: overlay?.dataset.rootActionDisplayMode ?? (interactionStageVisible ? "fallback" : "inactive"),
-            fallbackGate: overlay?.dataset.rootActionFallbackReason ?? (rootEventId ? null : "no-proven-root"),
-            layoutState: overlay?.dataset.rootActionLayoutState ?? null,
-            rootEventId,
-            sourceId: overlay?.dataset.rootActionSourceId ?? null,
-            targetId: overlay?.dataset.rootActionTargetId ?? null,
-            rootCardKind: overlay?.dataset.rootActionCardKind ?? null,
-            rootCardVisible: isVisible(rootCard),
-            interactionStageVisible,
-            attackResponseStageVisible,
-            activeTableRevealCardCount: activeRevealCards.length,
-          });
-        }
+        window.__wtkAttackVisibleFrames.push({
+          frameNumber: frameNumber++,
+          elapsedMs: Math.round(performance.now() - startedAt),
+          sampleTimeMs: performance.now(),
+          mode: overlay?.dataset.rootActionDisplayMode ?? (interactionStageVisible ? "fallback" : "inactive"),
+          fallbackGate: overlay?.dataset.rootActionFallbackReason ?? (rootEventId ? null : "no-proven-root"),
+          layoutState: overlay?.dataset.rootActionLayoutState ?? null,
+          rootEventId,
+          sourceId: overlay?.dataset.rootActionSourceId ?? null,
+          targetId: overlay?.dataset.rootActionTargetId ?? null,
+          interactionId: overlay?.dataset.rootActionInteractionId ?? null,
+          rootFrameId: overlay?.dataset.rootActionRootFrameId ?? null,
+          checkpointId: overlay?.dataset.rootActionCheckpointId ?? null,
+          presentationRevision: overlay?.dataset.rootActionPresentationRevision ?? null,
+          rootCardKind: overlay?.dataset.rootActionCardKind ?? null,
+          rootCardVisible: isVisible(rootCard),
+          interactionStageVisible,
+          attackResponseStageVisible,
+          localUiMode: stage?.dataset.localUiMode ?? null,
+          stagePresentationTransition: stage?.dataset.presentationTransition ?? null,
+          activeTableRevealCardCount: activeRevealCards.length,
+          sourceEdgeVisible: isVisible(overlay?.querySelector('[data-root-action-edge="source"]')),
+          targetEdgeVisible: isVisible(overlay?.querySelector('[data-root-action-edge="target"]')),
+          targetMarkerPresent: Boolean(overlay?.querySelector('.interaction-root-connectors marker[id^="root-target-arrow-"]')),
+          svgVisible: isVisible(overlay?.querySelector(".interaction-root-connectors")),
+          classification: stage?.dataset.localUiMode ? "explicit-local-presentation"
+            : overlay?.dataset.rootActionFallbackReason === "local-presentation-precedence" ? "local-presentation-precedence"
+              : overlay?.dataset.rootActionFallbackReason === "awaiting-public-reveal" || activeRevealCards.length ? "event-reveal-handoff"
+                : overlay?.dataset.rootActionFallbackReason === "geometry-unavailable" ? "geometry-unavailable"
+                  : overlay?.dataset.rootActionLayoutState === "measuring" ? "measurement-pending"
+                    : !rootEventId ? "proof-or-action-absent"
+                      : overlay?.dataset.rootActionDisplayMode === "graph" && (!isVisible(overlay?.querySelector('[data-root-action-edge="source"]'))
+                        || !isVisible(overlay?.querySelector('[data-root-action-edge="target"]')) || !isVisible(overlay?.querySelector(".interaction-root-connectors")))
+                        ? "graph-present-but-connectors-hidden"
+                        : overlay?.dataset.rootActionDisplayMode === "graph" ? "graph-visible"
+                          : overlay?.dataset.rootActionFallbackReason ?? "fallback-unclassified",
+        });
         window.__wtkAttackFrameSamplingRequest = requestAnimationFrame(sample);
       };
       window.__wtkAttackFrameSamplingRequest = requestAnimationFrame(sample);
@@ -121,8 +141,42 @@ async function roomView(request, seed, playerIndex) {
   return response.json();
 }
 
-async function playAttackThroughPage(page, targetName) {
-  await page.locator(`[data-hand-card-id="${attack.id}"] .game-card`).click();
+function observePublicAttackProofPolls(page) {
+  const samples = [];
+  page.on("response", async (response) => {
+    if (response.request().method() !== "GET" || !response.url().includes("/api/rooms?")) return;
+    try {
+      const view = await response.json();
+      const identity = view.presentationSnapshot?.identity;
+      const root = view.presentationSnapshot?.rootAction;
+      samples.push({
+        observedAt: Date.now(),
+        phase: view.phase ?? null,
+        currentActionKind: view.currentAction?.kind ?? null,
+        identity: identity ? {
+          interactionId: identity.interactionId,
+          checkpointId: identity.checkpointId,
+          presentationRevision: identity.presentationRevision,
+        } : null,
+        rootAction: root ? {
+          interactionId: root.interactionId,
+          rootFrameId: root.rootFrameId,
+          checkpointId: root.checkpointId,
+          presentationRevision: root.presentationRevision,
+          rootEventId: root.rootEventId,
+          sourceId: root.sourceId,
+          targetId: root.targetId,
+          action: root.action,
+          cardKind: root.cardKind,
+        } : null,
+      });
+    } catch { /* Ignore non-JSON or expired room responses in this test-only observer. */ }
+  });
+  return samples;
+}
+
+async function playAttackThroughPage(page, targetName, card = attack) {
+  await page.locator(`[data-hand-card-id="${card.id}"] .game-card`).click();
   await page.getByRole("button", { name: `Select ${targetName}`, exact: true }).click();
   const confirm = page.locator('[data-console-surface="local-operation"] button.primary');
   await expect(confirm).toBeEnabled();
@@ -151,8 +205,8 @@ async function playTargetedStratagemThroughPage(page, targetName, card, actionNa
   if (!response.ok()) throw new Error(`${actionName} submission failed: ${await response.text()}`);
 }
 
-async function playDodgeThroughPage(page) {
-  const dodgeButton = page.locator(`[data-hand-card-id="${dodge.id}"] .game-card`);
+async function playDodgeThroughPage(page, card = dodge) {
+  const dodgeButton = page.locator(`[data-hand-card-id="${card.id}"] .game-card`);
   await expect(dodgeButton).toBeEnabled();
   await dodgeButton.click();
   await expect(dodgeButton).toHaveClass(/selected/);
@@ -1468,3 +1522,190 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     await expect(page.locator('[data-root-action-overlay="true"]')).toHaveCount(0, { timeout: 15_000 });
   });
 }
+
+async function expectAttackGraphIdentity(page, rootAction) {
+  const overlay = page.locator('[data-root-action-overlay="true"]');
+  await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+  await expect(overlay).toHaveAttribute("data-root-action-display-mode", "graph");
+  await expect(overlay).toHaveAttribute("data-root-action-layout-state", "ready");
+  await expect(overlay).toHaveAttribute("data-root-action-event-id", rootAction.rootEventId);
+  await expect(overlay).toHaveAttribute("data-root-action-interaction-id", rootAction.interactionId);
+  await expect(overlay).toHaveAttribute("data-root-action-root-frame-id", rootAction.rootFrameId);
+  await expect(overlay).toHaveAttribute("data-root-action-checkpoint-id", rootAction.checkpointId);
+  await expect(overlay).toHaveAttribute("data-root-action-presentation-revision", String(rootAction.presentationRevision));
+  await expect(overlay).toHaveAttribute("data-root-action-source-id", rootAction.sourceId);
+  await expect(overlay).toHaveAttribute("data-root-action-target-id", rootAction.targetId);
+  await expect(overlay).toHaveAttribute("data-root-action-card-kind", "Attack");
+  expect(await overlay.getAttribute("data-root-action-fallback-reason")).toBeNull();
+  await expect(overlay.locator('[data-root-action-card="true"]')).toBeVisible();
+  await expect(overlay.locator('[data-root-action-edge="source"]')).toBeVisible();
+  await expect(overlay.locator('[data-root-action-edge="target"]')).toBeVisible();
+}
+
+function attackPollMatches(sample, rootAction) {
+  return sample.phase === "response" && sample.rootAction?.interactionId === rootAction.interactionId
+    && sample.rootAction?.rootFrameId === rootAction.rootFrameId
+    && sample.rootAction?.checkpointId === rootAction.checkpointId
+    && sample.rootAction?.presentationRevision === rootAction.presentationRevision
+    && sample.rootAction?.rootEventId === rootAction.rootEventId
+    && sample.rootAction?.sourceId === rootAction.sourceId
+    && sample.rootAction?.targetId === rootAction.targetId
+    && sample.rootAction?.action === "ATTACK" && sample.rootAction?.cardKind === "Attack";
+}
+
+async function waitForAttackProofPolls(samples, fromIndex, rootAction, count, timeout = 10_000) {
+  await expect.poll(() => samples.slice(fromIndex).filter((sample) => attackPollMatches(sample, rootAction)).length, {
+    timeout,
+    message: `server room polling continues to project the same proven Attack root ${rootAction.rootEventId}`,
+  }).toBeGreaterThanOrEqual(count);
+}
+
+async function assertContinuousAttackGraphFrames(page, rootAction, startTimeMs, endTimeMs, label) {
+  const frames = await page.evaluate(({ start, end }) => window.__wtkAttackVisibleFrames
+    .filter((frame) => frame.sampleTimeMs >= start && frame.sampleTimeMs <= end), { start: startTimeMs, end: endTimeMs });
+  expect(frames.length, `${label}: rAF trace covers the observation interval`).toBeGreaterThan(10);
+  expect(frames.at(-1).sampleTimeMs - frames[0].sampleTimeMs, `${label}: measured frame coverage`).toBeGreaterThanOrEqual(endTimeMs - startTimeMs - 50);
+  const unexpected = frames.filter((frame) => frame.rootEventId !== rootAction.rootEventId
+    || frame.interactionId !== rootAction.interactionId
+    || frame.rootFrameId !== rootAction.rootFrameId
+    || frame.checkpointId !== rootAction.checkpointId
+    || frame.presentationRevision !== String(rootAction.presentationRevision)
+    || frame.sourceId !== rootAction.sourceId || frame.targetId !== rootAction.targetId
+    || frame.rootCardKind !== "Attack" || frame.mode !== "graph" || frame.layoutState !== "ready"
+    || frame.fallbackGate !== null || !frame.rootCardVisible || frame.interactionStageVisible
+    || frame.attackResponseStageVisible || frame.localUiMode !== null
+    || frame.activeTableRevealCardCount !== 0 || !frame.sourceEdgeVisible || !frame.targetEdgeVisible
+    || !frame.targetMarkerPresent || !frame.svgVisible || frame.classification !== "graph-visible");
+  expect(unexpected, `${label}: every sampled frame must retain the same proven, visibly connected graph; first unexpected frames: ${JSON.stringify(unexpected.slice(0, 5))}`).toEqual([]);
+  expect(frames.slice(1).every((frame, index) => frame.frameNumber === frames[index].frameNumber + 1), `${label}: no unobserved rAF sample gap`).toBe(true);
+  return frames;
+}
+
+async function captureAttackGraphGeometry(page, sourceId, targetId, playerCount, viewport, label) {
+  const before = await page.evaluate(() => window.__wtkRootOverlayPreGraphAnchors);
+  const after = await measure(page, sourceId, targetId);
+  expect(before, `${label}: capture physical Seats/Dock before graph ownership`).toBeTruthy();
+  expect(Object.keys(before)).toHaveLength(playerCount);
+  expect(after.playerAnchors).toHaveLength(playerCount);
+  expect(after.overlayReady).toBe(true);
+  expect(after.stageCount).toBe(0);
+  expect(after.documentWidth).toBeLessThanOrEqual(after.viewportWidth);
+  expect(after.sourcePath).toMatch(/^M \S+ \S+ L \S+ \S+$/);
+  expect(after.targetPath).toMatch(/^M \S+ \S+ L \S+ \S+$/);
+  expect(after.targetEdge).toContain("root-target-arrow-");
+  for (const anchor of after.playerAnchors) {
+    const baseline = before[anchor.id];
+    expect(baseline, `${label}: baseline exists for physical player ${anchor.id}`).toBeTruthy();
+    for (const dimension of ["x", "y", "right", "bottom", "width", "height"]) {
+      expect(Math.abs(anchor[dimension] - baseline[dimension]), `${label}: ${anchor.id} ${dimension} does not shift when graph appears`).toBeLessThanOrEqual(0.5);
+    }
+  }
+  return { playerCount, viewport, before, after };
+}
+
+test("ten real Attack windows retain one proven visible graph through room polling for both participants", async ({ browser, request }, testInfo) => {
+  test.setTimeout(240_000);
+  const scenarios = [
+    { playerCount: 4, viewport: { width: 390, height: 844 } },
+    { playerCount: 4, viewport: { width: 480, height: 900 } },
+    { playerCount: 4, viewport: { width: 1440, height: 900 } },
+    { playerCount: 6, viewport: { width: 390, height: 844 } },
+    { playerCount: 6, viewport: { width: 480, height: 900 } },
+    { playerCount: 8, viewport: { width: 390, height: 844 } },
+    { playerCount: 8, viewport: { width: 480, height: 900 } },
+    { playerCount: 4, viewport: { width: 390, height: 844 } },
+    { playerCount: 6, viewport: { width: 480, height: 900 } },
+    { playerCount: 8, viewport: { width: 390, height: 844 } },
+  ];
+  const rootEventIds = new Set();
+  const frameTraces = [];
+  const projectionPollTraces = [];
+  const geometryEvidence = [];
+
+  for (const [index, scenario] of scenarios.entries()) {
+    const { playerCount, viewport } = scenario;
+    const sourceCard = { ...attack, id: `attack-continuity-${index}` };
+    const targetCard = { ...dodge, id: `dodge-continuity-${index}` };
+    const seed = await seedGame(request, playerCount, { sourceCard, targetCard });
+    const sourceId = seed.players[0].id;
+    const targetId = seed.players[1].id;
+    const attackerPage = await browser.newPage({ viewport });
+    const defenderPage = await browser.newPage({ viewport });
+    const attackerPolls = observePublicAttackProofPolls(attackerPage);
+    const defenderPolls = observePublicAttackProofPolls(defenderPage);
+    const label = `${playerCount} players / ${viewport.width}×${viewport.height}`;
+    try {
+      await Promise.all([openGame(attackerPage, seed, 0, viewport), openGame(defenderPage, seed, 1, viewport)]);
+      await Promise.all([
+        attackerPage.evaluate(() => window.__wtkStartAttackVisibleFrameSampling()),
+        defenderPage.evaluate(() => window.__wtkStartAttackVisibleFrameSampling()),
+      ]);
+      await playAttackThroughPage(attackerPage, "TARGET", sourceCard);
+      await expect.poll(async () => (await roomView(request, seed, 1)).presentationSnapshot?.rootAction?.rootEventId ?? null, {
+        timeout: 20_000,
+        message: `${label}: server creates a public ordinary Attack root`,
+      }).not.toBeNull();
+      const targetView = await roomView(request, seed, 1);
+      const rootAction = targetView.presentationSnapshot.rootAction;
+      expect(targetView.currentAction.kind).toBe("response");
+      expect(rootAction).toMatchObject({ semantics: "PROVEN", action: "ATTACK", cardKind: "Attack", sourceId, targetId });
+      expect(targetView.timeline.some((event) => event.id === rootAction.rootEventId && event.action === "play" && event.card?.kind === "Attack")).toBe(true);
+      expect(JSON.stringify(rootAction)).not.toContain(sourceCard.id);
+      expect(rootEventIds.has(rootAction.rootEventId), "each independently seeded window has a distinct authoritative root event").toBe(false);
+      rootEventIds.add(rootAction.rootEventId);
+      await Promise.all([expectAttackGraphIdentity(attackerPage, rootAction), expectAttackGraphIdentity(defenderPage, rootAction)]);
+
+      const attackerPollStart = attackerPolls.length;
+      const defenderPollStart = defenderPolls.length;
+      const nodeStart = Date.now();
+      const attackerStart = await attackerPage.evaluate(() => performance.now());
+      const defenderStart = await defenderPage.evaluate(() => performance.now());
+      const minimumPolls = index === 0 ? 8 : 1;
+      if (index === 0) {
+        await Promise.all([attackerPage, defenderPage].map((page) => expect.poll(() => page.evaluate(({ start, rootEventId }) =>
+          window.__wtkAttackVisibleFrames.some((frame) => frame.sampleTimeMs >= start + 12_000 && frame.rootEventId === rootEventId),
+        { start: page === attackerPage ? attackerStart : defenderStart, rootEventId: rootAction.rootEventId }), {
+          timeout: 20_000,
+          message: `${label}: sample real root graph continuously for at least 12 seconds`,
+        }).toBe(true)));
+      }
+      await Promise.all([
+        waitForAttackProofPolls(attackerPolls, attackerPollStart, rootAction, minimumPolls, index === 0 ? 20_000 : 12_000),
+        waitForAttackProofPolls(defenderPolls, defenderPollStart, rootAction, minimumPolls, index === 0 ? 20_000 : 12_000),
+      ]);
+      const attackerEnd = await attackerPage.evaluate(() => performance.now());
+      const defenderEnd = await defenderPage.evaluate(() => performance.now());
+      const nodeEnd = Date.now();
+      const attackerFrames = await assertContinuousAttackGraphFrames(attackerPage, rootAction, attackerStart, attackerEnd, `${label} local attacker`);
+      const defenderFrames = await assertContinuousAttackGraphFrames(defenderPage, rootAction, defenderStart, defenderEnd, `${label} local defender`);
+      if (index === 0) {
+        expect(attackerEnd - attackerStart).toBeGreaterThanOrEqual(12_000);
+        expect(defenderEnd - defenderStart).toBeGreaterThanOrEqual(12_000);
+      }
+      for (const [role, samples, fromIndex] of [["attacker", attackerPolls, attackerPollStart], ["defender", defenderPolls, defenderPollStart]]) {
+        const intervalPolls = samples.slice(fromIndex).filter((sample) => sample.observedAt >= nodeStart && sample.observedAt <= nodeEnd && sample.phase === "response");
+        expect(intervalPolls.length, `${label} ${role}: enough actual room GET polls were observed`).toBeGreaterThanOrEqual(minimumPolls);
+        expect(intervalPolls.every((sample) => attackPollMatches(sample, rootAction)), `${label} ${role}: every response poll retained the same public root identity`).toBe(true);
+        projectionPollTraces.push({ label, role, polls: intervalPolls });
+      }
+
+      const actorGeometry = await captureAttackGraphGeometry(attackerPage, sourceId, targetId, playerCount, viewport, `${label} local attacker`);
+      const defenderGeometry = await captureAttackGraphGeometry(defenderPage, sourceId, targetId, playerCount, viewport, `${label} local defender`);
+      geometryEvidence.push({ label, actorGeometry, defenderGeometry });
+      frameTraces.push({ label, rootAction, attackerFrames, defenderFrames });
+      if (playerCount === 4) {
+        await testInfo.attach(`attack-continuity-${index + 1}-attacker.png`, { body: await attackerPage.screenshot(), contentType: "image/png" });
+      }
+      await testInfo.attach(`attack-continuity-${index + 1}-defender.png`, { body: await defenderPage.screenshot(), contentType: "image/png" });
+      await expect(attackerPage.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-display-mode", "graph");
+      await expect(defenderPage.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-display-mode", "graph");
+    } finally {
+      await Promise.all([attackerPage.close(), defenderPage.close()]);
+    }
+  }
+
+  expect(rootEventIds.size).toBeGreaterThanOrEqual(10);
+  await testInfo.attach("attack-continuity-rAF-traces.json", { body: JSON.stringify(frameTraces, null, 2), contentType: "application/json" });
+  await testInfo.attach("attack-continuity-public-projection-polls.json", { body: JSON.stringify(projectionPollTraces, null, 2), contentType: "application/json" });
+  await testInfo.attach("attack-continuity-geometry.json", { body: JSON.stringify(geometryEvidence, null, 2), contentType: "application/json" });
+});

@@ -5,36 +5,32 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-`UX2.6-PHASE-D-ATTACK-GRAPH-ROUTING-CONSISTENCY-01` found no ordinary Attack
-production-routing regression. With public root proof and measured anchors, the
-physical-seat graph owns the Stage composition; Inspect and unavailable-anchor
-states intentionally fail back. Real Attack browser coverage passed 26/26,
-including 4/6/8-player layouts, Attack→Dodge, direct-hit settlement, and
-390×844 / 480×900 / 1440×900. The focused post-assertion matrix passed 14/14.
-Measured ordinary Attack paths are straight; source tether 4.8px, target arrow
-6.5px, marker 20px, target halo 4.5px. Graph handoff is bounded to 250ms.
-
-Remote parent HEAD `bf5313d486c47b3e6fb04dbbbe797010913b4778`, Actions run
-`37865225311`, completed **FAILED**: fast test had a stale partial
-`PresentationClientView` fixture; Browser shard 2 did not observe the explicit
-lost-pointer-capture event before another native pointer input. API and Browser
-shard 1 succeeded. The fixture now starts from the canonical client view, and
-the browser regression flushes the pending capture transition with a real
-pointer move. Local proof: fast 254/254, Stargazing 3/3, Attack 14/14,
-`git diff --check`. These repairs and this task are prepared together; outgoing
-CI has not run. Reviewer acceptance is not claimed.
+`UX2.6-PHASE-D-ATTACK-GRAPH-CONTINUITY-01` found no unexplained graph loss
+in the tested ordinary server-proven Attack response. The focused real-gameplay
+browser case passed twice. Across ten 4/6/8-player windows, both participants
+retained the graph; the first 390×844 window sampled 776 consecutive frames
+over 12.9s per viewer (max gap 20ms) and 13 public room polls per viewer, all
+with the same root identity and visible edges. Build, targeted ESLint (4GB Node
+heap), and `git diff --check` passed. Latest Actions run `37866279249` succeeded
+on `202978ee34d6c411d26e91d2e449c6a81caad1a6`; latest remote HEAD
+`0bf37f7b779bdab601b49b42a96d7b19ef9a714d` has no run listed. Outgoing task
+SHA is not yet pushed/validated. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
-Latest remote `docs/UX2-refine.md` blob `7feb8af937b6407f3f33c3959325db8d3f188cf4`
-is unchanged. At the task boundary, §6.1–6.9, §6.18–6.26 were reviewed.
+Latest `docs/UX2-refine.md` blob: `4c56947d9965cde28a7c888e19f5d5fa0612112e`.
+Reviewed §6.27–6.27.4. No intermittent disappearance was reproduced after the
+ordinary Attack graph reached `ready`; the existing safe Stage fallback remains
+for missing proof, explicit local presentation, reveal handoff, or unavailable
+geometry. Current yellow/cream connector styling and text-only root card remain
+unfinished against §6.27 and must be refined in separate bounded work.
 
 ## Current task
 
-`UX2.6-PHASE-D-ATTACK-GRAPH-CONNECTOR-EMPHASIS-01` — after the outgoing
-repair-and-task SHA is green, refine only the ready ordinary Attack graph's
-source/target line, arrowhead, and active-target emphasis in response to the
-Reviewer’s readability report. Keep ordinary Attack paths straight, target
-relation stronger than source, physical Seats/Dock fixed, and Stage fallback
-semantics untouched. Prove computed geometry/style and screenshots at
-390×844, 480×900, and wide; no horizontal overflow or Seat/Dock movement.
+`UX2.6-PHASE-D-ATTACK-CARD-FACE-SCALE-01` — render the ordinary Attack root and
+successful Dodge response as authentic portrait `CardFace` cards, sized as
+large as collision-free space allows at 390×844, 480×900, and wide layouts.
+Use §6.27.1/.3 size and 2:3 targets, with safe dense-layout minima; keep the
+root position stable (≤1 CSS px) as Dodge appears, and preserve Seats/Dock,
+controls, containment, and fail-closed authority. Do not change connector
+colors, thickness, arrowhead, or target highlight in this task.
