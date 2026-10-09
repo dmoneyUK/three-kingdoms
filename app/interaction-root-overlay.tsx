@@ -41,7 +41,7 @@ type AttackGeometryFitDiagnostic = {
   phase: "root" | "dodge-response" | "other-response";
   fitStep: string;
   viewport: { width: number; height: number };
-  cause: "missing-table-or-card-rect" | "missing-or-invalid-player-anchor" | "missing-dodge-response-card" | "dodge-interception-point-unavailable" | "table-smaller-than-card-margin" | "no-attack-root-candidate" | "no-reserved-dodge-candidate" | "no-dodge-interception-candidate" | "placement-field-root-selected" | "placement-field-dodge-selected" | "dodge-response-without-stable-root";
+  cause: "missing-table-or-card-rect" | "missing-or-invalid-player-anchor" | "missing-dodge-response-card" | "dodge-interception-point-unavailable" | "table-smaller-than-card-margin" | "no-attack-root-candidate" | "no-reserved-dodge-candidate" | "no-dodge-interception-candidate" | "placement-field-root-selected" | "placement-field-dodge-selected" | "sampled-path-root-selected" | "dodge-response-without-stable-root";
   placementFieldSearch?: AttackRootPlacementFieldSearch;
   dodgePlacementFieldSearch?: AttackDodgePlacementFieldSearch;
   placementSearchEligibility?: { attempted: boolean; unansweredAttackRoot: boolean; viewportWidth: number; pathCandidateCount: number };
@@ -49,7 +49,6 @@ type AttackGeometryFitDiagnostic = {
     sourcePath: Rect;
     sourceAnchor: Rect;
     targetAnchor: Rect;
-    targetPathElementClassName: string;
     target: Rect;
     reservedResponseTimer: Rect | null;
     obstacles: readonly Rect[];
@@ -70,6 +69,16 @@ type AttackGeometryFitDiagnostic = {
     preferredResponseCard: Rect | null;
     preferredResponseFits: boolean;
     obstacles: readonly { kind: "anchor" | "control"; label: string; rect: Rect }[];
+  };
+  selectedSampledPathRoot?: {
+    candidateCount: number;
+    selectedIndex: number;
+    selection: "sampled-path" | "cached-root";
+    rootCard: Rect;
+    projection: number;
+    lateral: number;
+    reservedDodgeCard: Rect | null;
+    responseSlotMode?: "direct" | "adjacent";
   };
   candidateCount?: number;
   rootFitCandidateCount?: number;
@@ -874,9 +883,10 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const sourcePathElement = action.cardKind === "Attack" && sourceElement.classList.contains("local-player-dock")
     ? sourceElement.querySelector<HTMLElement>(".local-hero-card") ?? sourceElement
     : sourceElement;
-  const targetPathElement = action.cardKind === "Attack" && targetElement.classList.contains("local-player-dock")
-    ? targetElement.querySelector<HTMLElement>(".local-hero-card") ?? targetElement
-    : targetElement;
+  // Attack target causality is anchored to the full player interaction area.
+  // In particular, the incoming red path must terminate at the top edge of
+  // the viewer's Local Dock, not at the Hero portrait inside it.
+  const targetPathElement = targetElement;
   const sourceRect = relativeRect(sourcePathElement, shellBounds);
   const targetAnchorRect = relativeRect(targetElement, shellBounds);
   const targetRect = relativeRect(targetPathElement, shellBounds);
@@ -996,7 +1006,13 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       : step === "minimum" ? { width: 106, height: 159 } : step === "compact" ? { width: 119, height: 179 } : { width: 132, height: 198 };
   const reservedDodgeSize = isUnansweredAttackRoot && shellBounds.width < 900 ? dodgeFaceSize(fitStep) : null;
   const baseOffsets = [0, -lateralDistance, lateralDistance, -lateralDistance * 1.65, lateralDistance * 1.65];
-  const candidateOffsets = isUnansweredAttackRoot ? [...baseOffsets, -124, 124, -150, 150] : baseOffsets;
+  // On narrow portrait tables, source and target seats often share the top
+  // row. Give targeted roots enough perpendicular travel to clear that row;
+  // the shorter legacy offsets could leave every candidate colliding with a
+  // seat even though the open lower table area is large enough.
+  const candidateOffsets = isUnansweredAttackRoot || shellBounds.width <= 600
+    ? [...baseOffsets, -124, 124, -150, 150]
+    : baseOffsets;
   const candidateFractions = isUnansweredAttackRoot
     ? [.16, .2, .24, .28, .36, .44, .52, .6, .68, .76, .84, .92]
     : [.28, .36, .44, .52];
@@ -1011,10 +1027,16 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const anchorObstacleElements = Array.from(shell.querySelectorAll<HTMLElement>("[data-player-anchor]"))
     .filter((element) => element.getClientRects().length > 0);
   const anchorObstacleSet = new Set(anchorObstacleElements);
-  const obstacleElements = [
-    ...anchorObstacleElements,
-    ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .game-messages, .game-exit")),
-  ].filter((element) => element.getClientRects().length > 0)
+  const controlObstacleElements = Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .game-messages, .game-exit"))
+    .filter((element) => {
+      if (element.getClientRects().length === 0) return false;
+      // Attack reserves the fixed Deck/Discard lane through its Dodge handoff,
+      // so the cached root stays stable when the pile returns after resolution.
+      if (action.cardKind === "Attack") return true;
+      const style = getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0;
+    });
+  const obstacleElements = [...anchorObstacleElements, ...controlObstacleElements];
   const obstacles = obstacleElements.map((element) => relativeRect(element, shellBounds));
   const stageSystemElement = shell.querySelector<HTMLElement>(".stage-system-cluster");
   const responseTimerVisible = Boolean(stageSystemElement?.querySelector(".visible-countdown-response"));
@@ -1039,7 +1061,6 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     sourcePath: sourceRect,
     sourceAnchor: relativeRect(sourceElement, shellBounds),
     targetAnchor: targetAnchorRect,
-    targetPathElementClassName: targetPathElement.className,
     target: targetRect,
     reservedResponseTimer: hiddenPendingPublicResponseTimer,
     obstacles: allObstacles,
@@ -1385,10 +1406,10 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     };
   }
   // A CurrentAction handoff can grow the local Dock slightly. Preserve the
-  // cached root and apply only the minimum upward clearance needed to keep it
-  // out of the Dock, rather than re-routing the root across the table.
+  // cached root and apply only the minimum upward correction needed to keep
+  // the required 8px Seat/Dock clearance, rather than re-routing the root.
   const stableRootBottomCorrection = preferredRootCard
-    ? Math.max(0, preferredRootCard.bottom - stableStageBottom)
+    ? Math.max(0, preferredRootCard.bottom - (stableStageBottom - 8))
     : 0;
   const stableRootCard = preferredRootCard ? {
     ...preferredRootCard,
@@ -1469,6 +1490,28 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     reportFitDiagnostic("placement-field-root-selected", {
       candidateCount: candidateCenters.length,
       placementFieldSearch,
+      ...(rootPlacementGeometry ? { rootPlacementGeometry } : {}),
+    });
+  } else if (isUnansweredAttackRoot && selectedCandidate) {
+    const selectedProjection = projectPointToSegment(sourceCenter, targetCenter, center(card));
+    reportFitDiagnostic("sampled-path-root-selected", {
+      candidateCount: pathCandidates.length,
+      selectedSampledPathRoot: {
+        candidateCount: pathCandidates.length,
+        selectedIndex: pathCandidates.indexOf(selectedCandidate),
+        selection: cachedRootFits ? "cached-root" : "sampled-path",
+        rootCard: card,
+        projection: selectedProjection.fraction,
+        lateral: selectedProjection.distance,
+        reservedDodgeCard,
+        ...(reservedDodgeCard ? {
+          responseSlotMode: segmentIntersectsRect(
+            rectangleEdge(card, targetCenter),
+            rectangleEdge(targetRect, center(card)),
+            reservedDodgeCard,
+          ) ? "direct" as const : "adjacent" as const,
+        } : {}),
+      },
       ...(rootPlacementGeometry ? { rootPlacementGeometry } : {}),
     });
   }

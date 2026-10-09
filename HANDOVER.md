@@ -5,7 +5,7 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result / CI
 
-Task A implementation is locally complete: fixed stale Dodge causal-envelope reuse, preserved the complete Attack/Dodge and Negation counter graph for the viewer-local 3,000ms read, and kept public polling current without delaying server actions. Focused browser validation passed 8/8 core cases, 4/4 converted/observer/timeout cases, and a post-lint-fix Negation retest 1/1; build, split targeted ESLint, and `git diff --check` passed. Latest remote Actions run `37956890975` for base SHA `0a840be400f3aad9a9936c2189cfbabb58c0c2ac` failed Browser shard 1; its other validation jobs passed. GitHub's unauthenticated log download returned 403 and artifact download 401, so no console log is claimed. Task changes are uncommitted; exact outgoing-SHA CI remains pending.
+Task A and the related Browser-shard repair are locally ready. The root now targets the full Local Dock, narrow-screen candidate search clears the top Seat row, and hidden controls are not treated as visible obstacles (Attack still reserves its Deck/Discard lane). The stale blocked-card copy assertion now checks semantic card identity. Focused real-gameplay evidence: four-player private selection, 10 independent selected/unselected windows, 10 dual-viewer polling windows, 6 converted/observer/timeout/reconnect/preemption cases, 4 dense layouts, 3 Negation/Dismantle paths, Attack and Negation 3-second holds; build, targeted ESLint, and `git diff --check` pass. Base `a01ff339978ef96323750b4c2a7aa7e2cde92ea5`: run `37973109533` failed Browser shard 1; duplicate `37973111537` was cancelled; other lint/API/browser-shard-2 jobs succeeded. Public annotations show only generic exit code 1; log download returned 403. Outgoing SHA is not yet pushed.
 
 ## Design checkpoint
 
@@ -13,4 +13,4 @@ Latest remote `docs/UX2-refine.md` blob `88c73eb523b6e14f769fc10eee5a5ad40b8f93b
 
 ## Current task
 
-`UX2-6.29-A-ATTACK-DODGE-CONTINUITY-AND-HOLD-01` — implementation and focused local evidence are complete. Next: recheck the latest remote CI immediately before commit, commit/push only Task A files with the related CI repair, then wait for that exact SHA's Actions result. Close Task A only when it is green; re-read current design at that boundary before planning Task B. No Reviewer acceptance is claimed.
+`UX2-6.29-A-ATTACK-DODGE-CONTINUITY-AND-HOLD-01` — ready to commit with the related CI repair; Task A remains open until the exact pushed SHA passes Actions. Then re-fetch/re-read the design and plan Task B. No Reviewer acceptance is claimed.

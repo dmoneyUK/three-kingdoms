@@ -285,7 +285,8 @@ async function runNegationScenario({ page, request, testInfo, outcome, viewport,
     const overlay = viewerPage.locator('[data-root-action-overlay="true"]');
     await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: 15_000 });
     await expect(overlay).toHaveAttribute("data-root-effect-state", "BLOCKED");
-    await expect(overlay.locator('[data-root-action-card="true"][data-root-effect-state="BLOCKED"]')).toContainText("BLOCKED EFFECT");
+    await expect(overlay.locator('[data-root-action-card="true"][data-root-effect-state="BLOCKED"]'))
+      .toHaveAttribute("data-root-action-card-face-kind", "Dismantle");
     const responseCard = overlay.locator('[data-root-action-response-card="true"]');
     await expect(responseCard).toHaveAttribute("data-response-event-id", firstProof.publicEventLinks.nodes[0].eventId);
     await expect(responseCard).toHaveAttribute("data-response-actor-id", third.id);

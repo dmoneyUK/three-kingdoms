@@ -234,6 +234,9 @@ async function captureAttackDodgeInterceptionGeometry(page) {
     const rootRect = rect(root);
     const targetRect = rect(target);
     const responseRect = rect(response);
+    const overlayRect = rect(overlay);
+    const shellRect = rect(document.querySelector(".game-shell"));
+    const responseStyle = getComputedStyle(response);
     const rootCenter = { x: rootRect.x + rootRect.width / 2, y: rootRect.y + rootRect.height / 2 };
     const targetCenter = { x: targetRect.x + targetRect.width / 2, y: targetRect.y + targetRect.height / 2 };
     const responseCenter = { x: responseRect.x + responseRect.width / 2, y: responseRect.y + responseRect.height / 2 };
@@ -259,7 +262,12 @@ async function captureAttackDodgeInterceptionGeometry(page) {
       if (low > high) break;
     }
     const connectorRect = connector.getBoundingClientRect();
+    const attackPathStart = attackPath.getPointAtLength(0);
     const attackPathEnd = attackPath.getPointAtLength(attackPath.getTotalLength());
+    const actualAttackSegment = {
+      start: { x: attackPathStart.x + connectorRect.x, y: attackPathStart.y + connectorRect.y },
+      end: { x: attackPathEnd.x + connectorRect.x, y: attackPathEnd.y + connectorRect.y },
+    };
     const markPoint = mark.getPointAtLength(mark.getTotalLength() / 2);
     const attackEnd = { x: attackPathEnd.x + connectorRect.x, y: attackPathEnd.y + connectorRect.y };
     const markCenter = { x: markPoint.x + connectorRect.x, y: markPoint.y + connectorRect.y };
@@ -282,6 +290,15 @@ async function captureAttackDodgeInterceptionGeometry(page) {
       fraction,
       lineIntersectsCard,
       edgeGap,
+      rootRect,
+      targetRect,
+      responseRect,
+      overlayRect,
+      shellRect,
+      responsePosition: { left: responseStyle.left, top: responseStyle.top },
+      attackSegment: { start, end },
+      renderedAttackPath: { d: attackPath.getAttribute("d"), ...actualAttackSegment },
+      targetAnchorClassName: String(target.className),
       pathEndpointToMark: Math.hypot(attackEnd.x - markCenter.x, attackEnd.y - markCenter.y),
       markerEnd: attackPath.getAttribute("marker-end"),
       falseCounterArrows: overlay.querySelectorAll('[data-root-action-edge="negation-counters-root"]').length,
@@ -381,8 +398,14 @@ async function openGame(page, seed, playerIndex, viewport) {
         if (!element) return false;
         const style = getComputedStyle(element);
         const bounds = element.getBoundingClientRect();
+        const hasBoxArea = bounds.width > 0 && bounds.height > 0;
+        const isPaintedSvgPath = element.namespaceURI === "http://www.w3.org/2000/svg"
+          && typeof element.getTotalLength === "function"
+          && element.getTotalLength() > 0
+          && style.stroke !== "none"
+          && Number.parseFloat(style.strokeWidth) > 0;
         return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0
-          && bounds.width > 0 && bounds.height > 0;
+          && (hasBoxArea || isPaintedSvgPath);
       };
       const sample = () => {
         const overlay = document.querySelector('[data-root-action-overlay="true"]');
@@ -710,7 +733,7 @@ async function observeAttackDodgeSettlement(page, sourceId = null, targetId = nu
           const connectorRect = connector?.getBoundingClientRect() ?? null;
           const anchor = (playerId) => [...document.querySelectorAll("[data-player-anchor]")]
             .find((element) => element.dataset.playerAnchor === playerId);
-          const pathAnchor = (playerId) => {
+          const sourcePathAnchor = (playerId) => {
             const element = anchor(playerId);
             return element?.classList.contains("local-player-dock")
               ? element.querySelector(".local-hero-card") ?? element
@@ -743,8 +766,8 @@ async function observeAttackDodgeSettlement(page, sourceId = null, targetId = nu
           const paths = [...overlay.querySelectorAll('[data-root-action-edge], [data-root-action-dodge-interception-mark="true"]')]
             .map(pathSnapshot).filter(Boolean);
           const bounds = {
-            source: rect(anchor(sourceId)), sourcePath: rect(pathAnchor(sourceId)),
-            target: rect(anchor(targetId)), targetPath: rect(pathAnchor(targetId)),
+            source: rect(anchor(sourceId)), sourcePath: rect(sourcePathAnchor(sourceId)),
+            target: rect(anchor(targetId)), targetPath: rect(anchor(targetId)),
             root: rect(root), response: rect(response),
             table: rect(document.querySelector(".play-table")), shell: rect(document.querySelector(".game-shell")),
             anchors: [...document.querySelectorAll("[data-player-anchor]")].map((element) => ({ id: element.dataset.playerAnchor, ...rect(element) })),
@@ -1147,6 +1170,37 @@ async function measure(page, sourceId, targetId) {
   }, { sourceId, targetId });
 }
 
+async function captureAttackTargetDockEndpoint(page, targetId) {
+  return page.evaluate((expectedTargetId) => {
+    const overlay = document.querySelector('[data-root-action-overlay="true"]');
+    const target = [...document.querySelectorAll("[data-player-anchor]")]
+      .find((element) => element.dataset.playerAnchor === expectedTargetId);
+    const path = overlay?.querySelector('[data-root-action-edge="target"]');
+    const svg = overlay?.querySelector(".interaction-root-connectors");
+    if (!overlay || !target?.classList.contains("local-player-dock") || !path || !svg) return null;
+    const dock = target.getBoundingClientRect();
+    const svgBounds = svg.getBoundingClientRect();
+    const point = path.getPointAtLength(path.getTotalLength());
+    const endpoint = { x: point.x + svgBounds.x, y: point.y + svgBounds.y };
+    return {
+      targetId: target.dataset.playerAnchor,
+      dock: { left: dock.left, top: dock.top, right: dock.right, bottom: dock.bottom, width: dock.width, height: dock.height },
+      endpoint,
+      gapAboveDock: dock.top - endpoint.y,
+      dockWidthPosition: (endpoint.x - dock.left) / dock.width,
+    };
+  }, targetId);
+}
+
+function expectAttackTargetDockEndpoint(measurement, targetId, label) {
+  expect(measurement, `${label}: the rendered target path and Local Dock are measurable`).not.toBeNull();
+  expect(measurement.targetId).toBe(targetId);
+  expect(measurement.gapAboveDock, `${label}: arrow tip ends at or up to 5px above the Dock border`).toBeGreaterThanOrEqual(-0.5);
+  expect(measurement.gapAboveDock, `${label}: arrow tip ends at or up to 5px above the Dock border`).toBeLessThanOrEqual(5);
+  expect(measurement.dockWidthPosition, `${label}: arrow tip lands in the central half of the Dock`).toBeGreaterThanOrEqual(.25);
+  expect(measurement.dockWidthPosition, `${label}: arrow tip lands in the central half of the Dock`).toBeLessThanOrEqual(.75);
+}
+
 function expectAttackTargetHighlightCoversAnchor(measurement, targetId, state) {
   const { target, shell, targetHighlightGeometry: highlight } = measurement;
   expect(highlight, "the proven Attack target has a measured SVG highlight").not.toBeNull();
@@ -1449,6 +1503,8 @@ test("real 4-player Attack graph stays intact while Lu Xun selects and unselects
     await Promise.all(viewers.map((viewer) => expectAttackGraphIdentity(viewer, rootAction)));
     const beforeDom = await Promise.all(viewers.map((viewer) => captureAttackGraphFrameDiagnostic(viewer)));
     const beforeHighlightMeasurements = await Promise.all(viewers.map((viewer) => measure(viewer, sourceId, targetId)));
+    const initialDockEndpoint = await captureAttackTargetDockEndpoint(defenderPage, targetId);
+    expectAttackTargetDockEndpoint(initialDockEndpoint, targetId, "four-player Attack before private Dodge selection");
     for (const [index, state] of beforeDom.entries()) {
       expectWholeDockAttackHighlight(state, targetId, "viewer " + index + " before selection");
       expectAttackTargetHighlightCoversAnchor(beforeHighlightMeasurements[index], targetId, "active");
@@ -1474,7 +1530,7 @@ test("real 4-player Attack graph stays intact while Lu Xun selects and unselects
     }
     await Promise.all(viewers.map((viewer) => viewer.evaluate(() => window.__wtkStartAttackVisibleFrameSampling())));
     await testInfo.attach("four-player-390-lu-xun-attack-before-dodge-selection.json", {
-      body: JSON.stringify({ publicRoot: rootAction, beforeDom }, null, 2),
+      body: JSON.stringify({ publicRoot: rootAction, beforeDom, targetDockEndpoint: initialDockEndpoint }, null, 2),
       contentType: "application/json",
     });
     await testInfo.attach("four-player-390-lu-xun-attack-before-dodge-selection.png", {
@@ -1528,12 +1584,24 @@ test("real 4-player Attack graph stays intact while Lu Xun selects and unselects
     const selectedFrameEnds = await Promise.all(viewers.map((viewer) => viewer.evaluate(() => window.__wtkAttackVisibleFrames.length)));
     const selectedStates = await Promise.all(viewers.map((viewer) => captureAttackGraphFrameDiagnostic(viewer)));
     const selectedHighlightMeasurements = await Promise.all(viewers.map((viewer) => measure(viewer, sourceId, targetId)));
+    const selectedDockEndpoint = await captureAttackTargetDockEndpoint(defenderPage, targetId);
+    expectAttackTargetDockEndpoint(selectedDockEndpoint, targetId, "four-player Attack while private Dodge is selected");
+    expect(Math.hypot(
+      selectedDockEndpoint.endpoint.x - initialDockEndpoint.endpoint.x,
+      selectedDockEndpoint.endpoint.y - initialDockEndpoint.endpoint.y,
+    ), "private card selection does not move the public Attack-to-Dock endpoint").toBeLessThanOrEqual(1);
     for (const measurement of selectedHighlightMeasurements) {
       expectAttackTargetHighlightCoversAnchor(measurement, targetId, "active");
     }
     const unselectStart = Date.now();
     await dodgeCard.click();
     await expect(dodgeCard).not.toHaveClass(/selected/);
+    const unselectedDockEndpoint = await captureAttackTargetDockEndpoint(defenderPage, targetId);
+    expectAttackTargetDockEndpoint(unselectedDockEndpoint, targetId, "four-player Attack after private Dodge is unselected");
+    expect(Math.hypot(
+      unselectedDockEndpoint.endpoint.x - initialDockEndpoint.endpoint.x,
+      unselectedDockEndpoint.endpoint.y - initialDockEndpoint.endpoint.y,
+    ), "Dodge unselection preserves the same public Attack-to-Dock endpoint").toBeLessThanOrEqual(1);
     await expect.poll(() => defenderPage.evaluate((start) => window.__wtkAttackVisibleFrames
       .filter((frame) => frame.sampleWallClockMs >= start && frame.selectedHandCardCount === 0).length, unselectStart), {
       message: "the final local unselection occurs before the server-owned response deadline",
@@ -1576,6 +1644,7 @@ test("real 4-player Attack graph stays intact while Lu Xun selects and unselects
           deadline: afterView.currentAction.deadline,
         },
         attackDodgeResponseCount: afterView.presentationSnapshot.attackDodgeResponses?.length ?? 0,
+        targetDockEndpoints: { beforeSelection: initialDockEndpoint, selected: selectedDockEndpoint, unselected: unselectedDockEndpoint },
         confirmLabelWhileSelected,
         selectionObservation: {
           selectedFrom,
@@ -2770,6 +2839,7 @@ for (const scenario of [
         }
       }
       const selectedActorFieldFit = actorLayout.fitDiagnostics.find((diagnostic) => diagnostic.cause === "placement-field-root-selected");
+      const selectedActorPathFit = actorLayout.fitDiagnostics.find((diagnostic) => diagnostic.cause === "sampled-path-root-selected");
       if (playerCount === 8 && viewport.width === 390) {
         expect(actorLayout.mode, "the 8-player 390px local attacker uses the proven Attack graph").toBe("graph");
         expect(actorLayout.fitStep).toBe("minimum");
@@ -2796,13 +2866,29 @@ for (const scenario of [
         }
       } else {
         expect(actorLayout.mode, `${playerCount}p ${viewport.width}px local attacker uses the proven graph`).toBe("graph");
-        expect(selectedActorFieldFit, "the graph came from the measured field search, not the old sampled path set").toBeTruthy();
-        const search = selectedActorFieldFit.placementFieldSearch;
-        expect([8, 12]).toContain(search.selectedClearance);
-        expect(search.selected?.projection).toBeGreaterThanOrEqual(.16);
-        expect(search.selected?.projection).toBeLessThanOrEqual(.92);
-        expect(Math.abs(search.selected.left - (actorLayout.root.x - actorLayout.diagnostics.shell.x))).toBeLessThanOrEqual(1);
-        expect(Math.abs(search.selected.top - (actorLayout.root.y - actorLayout.diagnostics.shell.y))).toBeLessThanOrEqual(1);
+        expect(selectedActorFieldFit || selectedActorPathFit,
+          "the graph records whether its measured placement came from field search or the valid sampled-path candidate set").toBeTruthy();
+        const selectedRoot = selectedActorFieldFit
+          ? selectedActorFieldFit.placementFieldSearch.selected
+          : {
+            left: selectedActorPathFit.selectedSampledPathRoot.rootCard.left,
+            top: selectedActorPathFit.selectedSampledPathRoot.rootCard.top,
+            projection: selectedActorPathFit.selectedSampledPathRoot.projection,
+          };
+        expect(selectedRoot.projection).toBeGreaterThanOrEqual(.16);
+        expect(selectedRoot.projection).toBeLessThanOrEqual(.92);
+        expect(Math.abs(selectedRoot.left - (actorLayout.root.x - actorLayout.diagnostics.shell.x))).toBeLessThanOrEqual(1);
+        expect(Math.abs(selectedRoot.top - (actorLayout.root.y - actorLayout.diagnostics.shell.y))).toBeLessThanOrEqual(1);
+        if (selectedActorFieldFit) {
+          expect([8, 12]).toContain(selectedActorFieldFit.placementFieldSearch.selectedClearance);
+        } else {
+          expect(selectedActorPathFit.selectedSampledPathRoot.candidateCount).toBeGreaterThan(0);
+          if (selectedActorPathFit.selectedSampledPathRoot.selection === "sampled-path") {
+            expect(selectedActorPathFit.selectedSampledPathRoot.selectedIndex).toBeGreaterThanOrEqual(0);
+            expect(selectedActorPathFit.selectedSampledPathRoot.selectedIndex)
+              .toBeLessThan(selectedActorPathFit.selectedSampledPathRoot.candidateCount);
+          }
+        }
 
         const actorGeometry = await measure(page, sourceId, targetId);
         const causalConnectors = actorGeometry.connectorPoints.filter(({ edge }) => edge === "source" || edge === "target");
@@ -2882,6 +2968,10 @@ for (const scenario of [
       const defenderInterceptionAtFirstFrame = defenderResponseFrame
         ? await captureAttackDodgeInterceptionGeometry(targetPage)
         : null;
+      if (defenderInterceptionAtFirstFrame) await testInfo.attach(`dense-attack-dodge-${playerCount}p-${viewport.width}px-defender-interception.json`, {
+        body: JSON.stringify(defenderInterceptionAtFirstFrame, null, 2),
+        contentType: "application/json",
+      });
       responseLayout.fitDiagnostics = await targetPage.evaluate((rootEventId) => window.__wtkAttackFitDiagnostics
         .filter((diagnostic) => diagnostic.rootEventId === rootEventId), rootAction.rootEventId);
       await testInfo.attach(`dense-attack-dodge-${playerCount}p-${viewport.width}px-defender-first-response.png`, {
@@ -2985,6 +3075,45 @@ for (const scenario of [
         actorResponseLayout.fitDiagnostics = await page.evaluate((rootEventId) => window.__wtkAttackFitDiagnostics
           .filter((diagnostic) => diagnostic.rootEventId === rootEventId), rootAction.rootEventId);
         actorResponseLayout.dodgeOutcome = actorDodgeOutcome;
+        if (actorDodgeOutcome.kind === "rendered" && !actorDodgeOutcome.responseFrame.attackDodgePathVisible) {
+          await testInfo.attach(`dense-attack-dodge-${playerCount}p-${viewport.width}px-attacker-missing-interception.json`, {
+            body: JSON.stringify({
+              outcome: actorDodgeOutcome,
+              serverProof: responseProofShape,
+              liveDom: await page.evaluate(() => {
+                const overlay = document.querySelector('[data-root-action-overlay="true"]');
+                const path = overlay?.querySelector('[data-root-action-edge="attack-dodge-interception"]');
+                const target = overlay?.querySelector('[data-root-action-edge="target"]');
+                const response = overlay?.querySelector('[data-root-action-response-card="true"]');
+                return {
+                  overlay: overlay ? {
+                    ready: overlay.dataset.rootActionReady,
+                    mode: overlay.dataset.rootActionDisplayMode,
+                    layout: overlay.dataset.rootActionLayoutState,
+                    cardKind: overlay.dataset.rootActionCardKind,
+                    rootEffectState: overlay.dataset.rootEffectState,
+                    settlementEventId: overlay.dataset.rootActionSettlementEventId,
+                    responseCount: overlay.dataset.rootActionResponseCount,
+                    targetPath: overlay.querySelector('[data-root-action-edge]')?.getAttribute("d") ?? null,
+                  } : null,
+                  attackInterceptionPath: path?.getAttribute("d") ?? null,
+                  ordinaryTargetPath: target?.getAttribute("d") ?? null,
+                  response: response ? {
+                    eventId: response.dataset.responseEventId,
+                    actorId: response.dataset.responseActorId,
+                    cardKind: response.dataset.responseCardFaceKind,
+                    countersRoot: response.dataset.responseRelation,
+                    rect: (() => { const { x, y, width, height } = response.getBoundingClientRect(); return { x, y, width, height }; })(),
+                  } : null,
+                };
+              }),
+            }, null, 2),
+            contentType: "application/json",
+          });
+          await testInfo.attach(`dense-attack-dodge-${playerCount}p-${viewport.width}px-attacker-missing-interception.png`, {
+            body: await page.screenshot(), contentType: "image/png",
+          });
+        }
         if (actorDodgeOutcome.kind === "rendered") {
           expect(actorDodgeOutcome.responseFrame).toMatchObject({
             mode: "graph", layoutState: "ready", rootEventId: rootAction.rootEventId,
