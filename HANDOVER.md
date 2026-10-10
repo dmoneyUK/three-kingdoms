@@ -5,7 +5,7 @@ Mode: `USER-DIRECTED UX REFINEMENT`
 
 ## Latest result / CI
 
-§6.35 completed-graph supersession is implemented locally: a completed Attack/Dodge graph retires on server-authoritative public action, End Turn/discard, turn/game/room boundary, or its server-issued 20s deadline; same-root continuations remain intact. Current Node 22.13.0 checks: build passed, lint passed, fast tests 270/270, API tests 266/266, lifecycle unit tests 9/9, focused server-backed browser tests 5/5. Latest remote HEAD before this change `814b4e5`; Actions run `38080179998` failed. Its lint failure (`_local`/`_id` unused) is fixed here. API job exposed only a generic exit code; exact-SHA Node 22 API reruns passed twice, and current API suite passed. New pushed-SHA CI/deployment pending.
+§6.35 completed-graph supersession shipped in `6dd2178d`. Exact-SHA Actions run `38086020572` succeeded: lint/fast, API, browser startup smoke, D1 migration, build, Worker deploy and production smoke all passed. Local Node 22.13.0: build and lint passed; fast 270/270; API 266/266; lifecycle unit 9/9; focused server-backed browser 5/5. Previous run `38080179998` failed lint (unused test bindings, fixed here) and API (generic exit only; exact-SHA Node 22 reruns passed twice; cause not reproduced). No false CI cause claimed.
 
 ## Design checkpoint
 
@@ -13,4 +13,4 @@ Latest remote `docs/UX2-refine.md` blob: `2e33ccf6fa9582bb537c490db737653eec9261
 
 ## Current task
 
-`UX2-6.35-COMPLETED-GRAPH-SUPERSESSION-01` — implementation and focused evidence complete locally; commit/push, verify exact-SHA CI and deployment, then stop for Reviewer/user inspection. Do not start §6.34 expansion before visual acceptance. No Reviewer acceptance is claimed.
+User review of the deployed §6.35 graph lifecycle; Agent paused at the requested review boundary. §6.34 Stage A still uses Hand 68×102px, public 60×90px (compact 54×81px), with proportional rank/suit marks (9/7px; compact 8/6px). Visual acceptance remains pending; do not expand card-family work before Reviewer acceptance. No Reviewer acceptance is claimed.
