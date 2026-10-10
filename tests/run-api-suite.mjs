@@ -8,13 +8,12 @@ const files = readdirSync(new URL("./api/", import.meta.url))
   .sort()
   .map((file) => `tests/api/${file}`);
 
-// Keep the groups explicit so measured file costs can be rebalanced without
-// changing test membership. Every child gets its own Wrangler/D1 lifecycle.
+// Keep two isolated groups explicit to lower concurrent Wrangler/D1 memory.
+// Same-membership process-tree samples measured ~1.65 GiB vs ~2.22 GiB with
+// four groups; API duration rose from ~50s to 54.92s.
 const shardGroups = [
-  ["tests/api/da-qiao.test.mjs", "tests/api/equipment.test.mjs", "tests/api/gongsun-zan.test.mjs", "tests/api/judgement.test.mjs", "tests/api/ma-chao.test.mjs"],
-  ["tests/api/privacy-response.test.mjs", "tests/api/heroes-wu-shu.test.mjs"],
-  ["tests/api/stratagems.test.mjs", "tests/api/borrowed-sword.test.mjs", "tests/api/presentation-v2-engine.test.mjs", "tests/api/presentation-causality.test.mjs", "tests/api/zhuge-liang.test.mjs"],
-  ["tests/api/eight-trigrams-failed-response.test.mjs", "tests/api/lobby-heroes-wei.test.mjs", "tests/api/concurrency.test.mjs", "tests/api/yue-jin-dauntless.test.mjs", "tests/api/huang-yueying.test.mjs", "tests/api/lady-gan.test.mjs", "tests/api/sun-shangxiang.test.mjs", "tests/api/hua-tuo.test.mjs", "tests/api/diao-chan.test.mjs", "tests/api/hua-xiong.test.mjs", "tests/api/pan-feng.test.mjs", "tests/api/huang-gai.test.mjs"],
+  ["tests/api/da-qiao.test.mjs", "tests/api/equipment.test.mjs", "tests/api/gongsun-zan.test.mjs", "tests/api/judgement.test.mjs", "tests/api/ma-chao.test.mjs", "tests/api/eight-trigrams-failed-response.test.mjs", "tests/api/lobby-heroes-wei.test.mjs", "tests/api/concurrency.test.mjs", "tests/api/yue-jin-dauntless.test.mjs", "tests/api/huang-yueying.test.mjs", "tests/api/lady-gan.test.mjs", "tests/api/sun-shangxiang.test.mjs", "tests/api/hua-tuo.test.mjs", "tests/api/diao-chan.test.mjs", "tests/api/hua-xiong.test.mjs", "tests/api/pan-feng.test.mjs", "tests/api/huang-gai.test.mjs"],
+  ["tests/api/privacy-response.test.mjs", "tests/api/heroes-wu-shu.test.mjs", "tests/api/stratagems.test.mjs", "tests/api/borrowed-sword.test.mjs", "tests/api/presentation-v2-engine.test.mjs", "tests/api/presentation-causality.test.mjs", "tests/api/zhuge-liang.test.mjs"],
 ];
 const assigned = shardGroups.flat();
 if (assigned.length !== files.length || new Set(assigned).size !== files.length || files.some((file) => !assigned.includes(file))) {

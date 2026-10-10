@@ -2611,3 +2611,31 @@ HANDOVER" wording here after the handoff has moved on.
   passed. Focused ESLint and `git diff --check` passed.
 - Exact pre-commit base `fa48e33cf11376f127536d10209c8652b140a1f1` passed all
   five Actions jobs in run `37932531424`. Reviewer acceptance is not claimed.
+
+### UX2-6.32-PROCESS-TREE-MEMORY-PROFILE-01 — Local memory baseline and API runner
+
+- Profiled on macOS 14.5 arm64 / 8 GiB, Node 26.3.0, npm 12.0.2; ESLint
+  9.39.4, Playwright 1.63.0, Wrangler 4.128.0 and Vinext 1.0.0-beta.2.
+  Process-tree RSS is sampled every 100ms from `ps`; this can miss brief peaks
+  and summed RSS can double-count shared pages. No known child remained alive
+  two seconds after any profiled command.
+Profile command measurements:
+
+| Command | Peak processes | Peak tree RSS | Duration | Result |
+| --- | ---: | ---: | ---: | --- |
+| `npm run build` | 2 | 784.8 MiB | 6.11s | pass |
+| `npm run lint` | 2 | 1,457–1,774 MiB sampled | 28–30s | V8 heap OOM (~2.0 GiB used); not OS SIGKILL |
+| `npm run test:fast` | 5 | 317.7 MiB | 12.43s | 264/264 pass |
+| `npm run test:api` (4 groups) | 34 | 2,266–2,278 MiB | 50.15–50.35s | 266/266, 24 files |
+| `npm run test:api` (2 groups) | 18 | 1,688 MiB | 54.92s | 266/266, same 24 files |
+| `npm run test:browser:smoke` | 14 | 974–1,024 MiB | 8.04–8.22s | 1 passed |
+- Rebalanced only the existing API runner groups; no test file or assertion was
+  removed or changed. The two-group local sample cut peak tree RSS by about 26%
+  for about five seconds more API runtime. Pre-change Actions run `38072401250`
+  for `b84779c58de4a031f93e66250af63b9005a06c48` passed all jobs and deploy in
+  3m07s; the runner-change SHA's full Actions result remains to be observed.
+- Local lint OOM is specific to this Node 26 environment; repository CI uses
+  Node 22.13.0 with `NODE_OPTIONS=--max-old-space-size=8192` and passed the
+  recorded base SHA. React lint checks were not disabled; targeted diagnostics
+  did not establish a safe rule-level fix. No root cause for the reported
+  general 3–4 GB symptom is claimed.
