@@ -14,6 +14,9 @@ concurrency:
   group: cloudflare-deploy-${{ github.ref }}
   queue: max
 
+env:
+  NEXT_PUBLIC_BUILD_SHA: ${{ github.sha }}
+
 # Keep required push browser validation to the server-backed room/startup smoke.
 # Broad UX diagnostics remain manual until the user accepts the rendered behavior.
 jobs:

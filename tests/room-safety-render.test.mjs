@@ -8,6 +8,7 @@ import { buildConsoleDecisionDisplay } from "../game/console-decision.ts";
 import { IMPLEMENTED_STANDARD_HERO_IDS, STANDARD_HEROES } from "../game/heroes.ts";
 import { buildPresentationClientView } from "../game/presentation-client.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
+import { BUILD_SHA } from "../app/build-info.ts";
 
 const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
 const gameRoomSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
@@ -117,6 +118,10 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
     },
   });
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room: uxRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.ok(html.includes(`data-build-sha="${BUILD_SHA}"`), "the game screen exposes the exact build SHA used for its client bundle");
+  assert.match(html, /GitHub Actions build SHA/);
+  assert.match(html, /Download UX trace/);
+  assert.doesNotMatch(html, /Start Attack\/Dodge trace|Stop Attack\/Dodge trace|Copy UX trace/);
   assert.equal((html.match(/class="decision-status/g) ?? []).length, 1, "one primary status area is rendered");
   assert.equal((html.match(/class="interaction-stage"/g) ?? []).length, 1, "one read-only Interaction Stage is rendered");
   assert.equal((html.match(/data-player-anchor="/g) ?? []).length, 2, "Interaction Stage insertion preserves both player anchors");

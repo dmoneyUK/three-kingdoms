@@ -21,7 +21,8 @@ import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSele
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { CardFace } from "./card-face";
 import { InteractionRootOverlay, interactionRootActionKey, type InteractionRootOverlayAction } from "./interaction-root-overlay";
-import { exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, startAttackDodgeUxTrace, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
+import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
+import { BUILD_LABEL, BUILD_SHA } from "./build-info";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -230,20 +231,32 @@ export default function Home() {
       if (!response.ok) throw new Error("Room is no longer available.");
       const rawData = await readApiJson<unknown>(response);
       let roomPayload = rawData;
+      let serverDiagnostic: Record<string, unknown> | null = null;
       if (uxTraceId && rawData && typeof rawData === "object" && !Array.isArray(rawData)) {
         const traceResponse = rawData as { room?: unknown; attackDodgeUxTrace?: Record<string, unknown> };
         if (traceResponse.attackDodgeUxTrace) {
-          recordAttackDodgeUxTrace("server-projection-evaluation", traceResponse.attackDodgeUxTrace);
+          serverDiagnostic = traceResponse.attackDodgeUxTrace;
           roomPayload = traceResponse.room ?? rawData;
         }
       }
       const nextRoom = normalizeRoomData(roomPayload) as Room | null;
       if (!nextRoom || !nextRoom.meId) throw new Error("Your player session is no longer valid.");
+      if (serverDiagnostic) {
+        recordAttackDodgeUxTrace("server-projection-evaluation", sanitizeAttackDodgeUxTraceData(
+          serverDiagnostic,
+          nextRoom.players.map((player) => player.name),
+          nextRoom.code,
+          [playerToken, ...nextRoom.myHand.map((card) => card.id)],
+        ) as Record<string, unknown>);
+      }
+      recordPublicGameRoomSnapshot(nextRoom, "poll");
+      if (nextRoom.status === "finished") stopAttackDodgeUxTrace("game-finished");
       if (epoch === stateEpoch.current) setRoom(nextRoom as Room);
       return true;
     } catch (cause) {
       if (uxTraceId) recordAttackDodgeUxTrace("room-poll-failure", { traceId: uxTraceId, kind: cause instanceof Error ? cause.name : "unknown" });
       if (cause instanceof Error && /Previous game data|no longer available|session is no longer valid/.test(cause.message)) {
+        stopAttackDodgeUxTrace("room-session-unavailable");
         localStorage.removeItem("three-realms-session");
         if (epoch === stateEpoch.current) { setRoom(null); setCode(""); setToken(""); }
       }
@@ -264,6 +277,8 @@ export default function Home() {
     try {
       const session = JSON.parse(saved) as { code: string; token: string; name?: string };
       if (!/^[A-Z0-9]{5}$/.test(session.code) || !session.token) throw new Error("Invalid saved session");
+      resumeAttackDodgeUxTraceSession();
+      recordAttackDodgeUxTrace("saved-game-session-restored", { automaticRecording: true });
       const timer = setTimeout(() => { setToken(session.token); setCode(session.code); if (session.name) setName(session.name); void fetchRoom(session.code, session.token, true); }, 0);
       return () => clearTimeout(timer);
     } catch { localStorage.removeItem("three-realms-session"); }
@@ -302,6 +317,7 @@ export default function Home() {
     if (!nonBlocking && mutationInFlight.current) return false;
     if (!nonBlocking) mutationInFlight.current = mutationKey;
     const epoch = nonBlocking ? stateEpoch.current : ++stateEpoch.current; const mutationSequence = nonBlocking ? latestAppliedMutation.current : epoch;
+    if (action === "create" || action === "join") beginAttackDodgeUxTraceSession();
     const uxTraceId = getAttackDodgeUxTraceId();
     if (!nonBlocking) { setBusy(true); setError(""); }
     try {
@@ -330,10 +346,17 @@ export default function Home() {
           const diagnosticStage = rawData.attackDodgeUxTrace.stage === "server-projection-after-play"
             ? "server-projection-after-play"
             : "server-proof-evaluation";
-          recordAttackDodgeUxTrace(diagnosticStage, rawData.attackDodgeUxTrace);
+          recordAttackDodgeUxTrace(diagnosticStage, sanitizeAttackDodgeUxTraceData(
+            rawData.attackDodgeUxTrace,
+            room?.players.map((player) => player.name) ?? [],
+            room?.code,
+            [token, ...(room?.myHand.map((card) => card.id) ?? [])],
+          ) as Record<string, unknown>);
         }
       }
       const data = { ...rawData, room: normalizeRoomData(rawData.room) as Room | null };
+      if (data.room) recordPublicGameRoomSnapshot(data.room, "action");
+      if (data.room?.status === "finished") stopAttackDodgeUxTrace("game-finished");
       if (data.room && mutationSequence >= latestAppliedMutation.current && (nonBlocking || epoch === stateEpoch.current)) { latestAppliedMutation.current = Math.max(latestAppliedMutation.current, mutationSequence); setToken(data.token ?? token); setRoom(data.room); setCode(data.room.code); }
       if (!response.ok || action !== "heartbeat" && !data.room) throw new Error(data.error ?? "Something went wrong.");
       if (action === "heartbeat") return true;
@@ -387,6 +410,7 @@ export default function Home() {
   }, [roomCode, token, pageVisible, negationDeadline]);
 
   function leave() {
+    stopAttackDodgeUxTrace("player-left-game");
     stateEpoch.current += 1; setRoom(null); setError(""); setPublicCounterReadUntil(0); lastPublicCounterReadIdentity.current = null;
   }
 
@@ -1692,7 +1716,7 @@ function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuin
   </div>;
 }
 
-function StageSystemCluster({ publicResponseTimerPending, responseTimer, eventTimer, onLeave, attackDodgeTraceActive, onStartAttackDodgeTrace, onStopAttackDodgeTrace }: { publicResponseTimerPending: boolean; responseTimer?: ReactNode; eventTimer?: ReactNode; onLeave: () => void; attackDodgeTraceActive: boolean; onStartAttackDodgeTrace: () => void; onStopAttackDodgeTrace: () => void }) {
+function StageSystemCluster({ publicResponseTimerPending, responseTimer, eventTimer, onLeave }: { publicResponseTimerPending: boolean; responseTimer?: ReactNode; eventTimer?: ReactNode; onLeave: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [traceNotice, setTraceNotice] = useState("");
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1706,40 +1730,29 @@ function StageSystemCluster({ publicResponseTimerPending, responseTimer, eventTi
       menuButtonRef.current?.focus();
     }
   };
-  const copyTrace = async () => {
-    try {
-      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
-      await navigator.clipboard.writeText(exportAttackDodgeUxTrace());
-      setTraceNotice("UX trace copied. Paste it into your report.");
-    } catch {
-      setTraceNotice("Copy unavailable here. Use Download UX trace instead.");
-    }
-  };
   const downloadTrace = () => {
     const blob = new Blob([exportAttackDodgeUxTrace()], { type: "application/json" });
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = objectUrl;
-    link.download = `wtk-attack-dodge-ux-trace-${new Date().toISOString().replaceAll(":", "-")}.json`;
+    link.download = `wtk-game-ux-trace-${new Date().toISOString().replaceAll(":", "-")}.json`;
     link.style.display = "none";
     document.body.append(link);
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
-    setTraceNotice("UX trace downloaded to this device.");
+    setTraceNotice("Complete game UX trace downloaded to this device.");
   };
 
   return <div className="stage-system-cluster" data-stage-system-cluster="true" data-public-response-timer-pending={publicResponseTimerPending ? "true" : undefined}>
     {responseTimer}
     {eventTimer}
+    <span className="stage-build-version" title={`GitHub Actions commit ${BUILD_SHA}`} aria-label={`Build ${BUILD_SHA}`} data-build-sha={BUILD_SHA}>BUILD {BUILD_LABEL}</span>
     <div className="stage-system-menu">
       <div id="stage-system-menu-actions" className="stage-system-menu-actions" role="group" aria-label="System menu actions" hidden={!menuOpen}>
-        {attackDodgeTraceActive
-          ? <button type="button" className="stage-system-diagnostics-active" onClick={() => { onStopAttackDodgeTrace(); setTraceNotice("Trace stopped. Copy or download it before starting another trace."); setMenuOpen(false); }} onKeyDown={closeMenuOnEscape}>Stop Attack/Dodge trace</button>
-          : <button type="button" className="stage-system-diagnostics" onClick={() => { onStartAttackDodgeTrace(); setTraceNotice("Recording locally. Reproduce one Attack/Dodge issue, then stop and export."); setMenuOpen(false); }} onKeyDown={closeMenuOnEscape}>Start Attack/Dodge trace</button>}
-        <button type="button" className="stage-system-diagnostics" onClick={() => void copyTrace()} onKeyDown={closeMenuOnEscape}>Copy UX trace</button>
+        <small className="stage-system-build-sha"><span>GitHub Actions build SHA</span><code>{BUILD_SHA}</code></small>
         <button type="button" className="stage-system-diagnostics" onClick={downloadTrace} onKeyDown={closeMenuOnEscape}>Download UX trace</button>
-        <small className="stage-system-diagnostics-note">Local only. An opted-in Dodge submit adds server proof reason codes. No upload, names, room code, physical card IDs, hand contents, or legal-action options.</small>
+        <small className="stage-system-diagnostics-note">Recording starts automatically when you create, join, or restore a game and ends when the game ends or you leave. The local download includes public hero names and skill names, seat-based game/UI transitions, and graph diagnostics. It excludes player display names, room code, token, private card identities, and private legal options. A random trace ID is sent with room requests so the server can return proof diagnostics; the downloaded trace itself is not uploaded. The trace is bounded to 3,200 entries or about 1.7 MB; only if that limit is reached are the oldest entries trimmed.</small>
         {traceNotice && <small className="stage-system-diagnostics-status" role="status">{traceNotice}</small>}
         <button type="button" className="stage-system-exit" onClick={confirmExit} onKeyDown={closeMenuOnEscape}>Exit Game</button>
       </div>
@@ -4831,13 +4844,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       nodes: domNodes,
     });
   }, [attackDodgeTraceSnapshotJson]);
-  const beginAttackDodgeUxTrace = () => {
-    startAttackDodgeUxTrace();
-    if (attackDodgeTraceSnapshot) recordAttackDodgeUxTrace("pipeline-state", attackDodgeTraceSnapshot);
-  };
-  const endAttackDodgeUxTrace = () => {
-    stopAttackDodgeUxTrace();
-  };
   const localEquipmentSelection = activeSkillSelection
     ? { eligibleIds: activeSkillSelection.eligibleCardIds, selectedIds: activeSkillSelectedCardIds, max: activeSkillSelection.max, disabled: busy || presentationBusy, onToggle: (cardId: string) => setActiveSkillSelectionState((state) => { if (!state || !activeSkillStateIsCurrent) return state; const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)); return validIds.includes(cardId) ? { ...state, cardIds: validIds.filter((id) => id !== cardId) } : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, cardId] } : { ...state, cardIds: validIds }; }) }
     : targetCardPickerInLocalDock && targetCardPickerSelection && targetCardPickerTarget
@@ -4976,7 +4982,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         if (!player) return null;
         const hero = heroDefinition(player.hero);
         return { name: player.name, heroId: hero?.id ?? player.hero, heroName: hero?.name ?? (player.hero ? heroName(player.hero) : null), hp: player.hp, maxHp: player.maxHp };
-      }} previewPlayer={targetPreviewPresentation} previewSubmission={submittedTargetPreview} inspectPlayer={opponentInspectionPresentation} selectableDetail={targetCardPickerSelectableDetail} judgementInFlight={judgementInFlight} onCloseInspect={() => setExpandedOpponentId(null)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} />}<StageSystemCluster onLeave={onLeave} publicResponseTimerPending={seatCountdown?.kind === "response"} responseTimer={seatCountdown?.kind === "response" ? <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} responseTimer /> : null} eventTimer={<>{privateDrawTimer}{harvestEventTimer}</>} attackDodgeTraceActive={attackDodgeUxTraceActive} onStartAttackDodgeTrace={beginAttackDodgeUxTrace} onStopAttackDodgeTrace={endAttackDodgeUxTrace} /></div>
+      }} previewPlayer={targetPreviewPresentation} previewSubmission={submittedTargetPreview} inspectPlayer={opponentInspectionPresentation} selectableDetail={targetCardPickerSelectableDetail} judgementInFlight={judgementInFlight} onCloseInspect={() => setExpandedOpponentId(null)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} />}<StageSystemCluster onLeave={onLeave} publicResponseTimerPending={seatCountdown?.kind === "response"} responseTimer={seatCountdown?.kind === "response" ? <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} responseTimer /> : null} eventTimer={<>{privateDrawTimer}{harvestEventTimer}</>} /></div>
       <aside className={`game-messages ${messagesCollapsed ? "collapsed" : ""}`} aria-label="Game Messages"><header><button type="button" onClick={() => setMessagesCollapsed((collapsed) => !collapsed)} aria-label={messagesCollapsed ? "Expand game messages" : "Collapse game messages"} aria-expanded={!messagesCollapsed}>{messagesCollapsed ? "▣" : "—"}</button></header>{!messagesCollapsed && <div aria-live="polite">{gameMessages.length ? gameMessages.map((entry, index) => <p className={index === gameMessages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div>}</aside>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
       {effectNotice && <div className="turn-notice effect-notice" role="status"><span>EFFECT TRIGGERED</span><b>{effectNotice}</b></div>}

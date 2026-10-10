@@ -8,8 +8,12 @@ export default defineConfig(async () => {
 
   const { cloudflare } = await import("@cloudflare/vite-plugin");
   const lanTesting = process.env.VINEXT_LAN_TEST === "1";
+  const buildSha = process.env.NEXT_PUBLIC_BUILD_SHA?.trim() || "development";
 
   return {
+    define: {
+      "process.env.NEXT_PUBLIC_BUILD_SHA": JSON.stringify(buildSha),
+    },
     // Keep the HMR socket available for LAN clients, but do not let Vite's
     // development overlay hide the game if that socket briefly reconnects.
     // Gameplay errors are handled by the application's own error UI instead.

@@ -4777,6 +4777,20 @@
   position: relative;
   flex: 0 0 auto;
 }
+.stage-build-version {
+  display: inline-flex;
+  align-items: center;
+  min-height: 19px;
+  box-sizing: border-box;
+  padding: 2px 5px;
+  border: 1px solid #76643c;
+  border-radius: 2px;
+  background: #11140ff2;
+  color: #d8c48c;
+  font: 700 7px/1 Arial, sans-serif;
+  letter-spacing: .06em;
+  white-space: nowrap;
+}
 .stage-system-menu-trigger {
   display: grid;
   box-sizing: border-box;
@@ -4813,6 +4827,15 @@
   box-shadow: 0 8px 20px #000b;
 }
 .stage-system-menu-actions[hidden] { display: none; }
+.stage-system-build-sha {
+  display: block;
+  margin: 3px 4px 7px;
+  color: #c6b88e;
+  font: 8px/1.35 Arial, sans-serif;
+  overflow-wrap: anywhere;
+}
+.stage-system-build-sha span { display: block; color: #e6cc8c; font-weight: 700; }
+.stage-system-build-sha code { color: #d8d0bd; font: 7px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .stage-system-diagnostics,
 .stage-system-diagnostics-active {
   display: block;
