@@ -899,6 +899,79 @@
   .interaction-root-overlay .interaction-root-response-card.is-card-face { width: 88px; height: 132px; }
 }
 
+/* The ordinary Attack/Dodge pair is one compact, balanced composition. Keep
+   its physical faces at the same size across viewport widths; ordered/group
+   Attack graphs retain their separately approved card treatment. */
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph]) .interaction-root-action-card.is-card-face[data-root-action-card-face-kind="Attack"],
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph]) .interaction-root-response-card.is-card-face[data-response-card-face-kind="Dodge"] {
+  width: 60px;
+  height: 90px;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph]) {
+  --attack-card-corner-width: 22px;
+  --attack-card-corner-height: 30px;
+  --attack-card-rank-size: 9px;
+  --attack-card-suit-size: 7px;
+  --attack-card-corner-padding: 2px 2px 6px;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph])[data-root-action-card-fit-step="compact"] .interaction-root-action-card.is-card-face[data-root-action-card-face-kind="Attack"],
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph])[data-root-action-card-fit-step="compact"] .interaction-root-response-card.is-card-face[data-response-card-face-kind="Dodge"],
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph])[data-root-action-card-fit-step="minimum"] .interaction-root-action-card.is-card-face[data-root-action-card-face-kind="Attack"],
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph])[data-root-action-card-fit-step="minimum"] .interaction-root-response-card.is-card-face[data-response-card-face-kind="Dodge"] {
+  width: 54px;
+  height: 81px;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph])[data-root-action-card-fit-step="compact"],
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph])[data-root-action-card-fit-step="minimum"] {
+  --attack-card-corner-width: 20px;
+  --attack-card-corner-height: 27px;
+  --attack-card-rank-size: 8px;
+  --attack-card-suit-size: 6px;
+  --attack-card-corner-padding: 1px 2px 5px;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph]) .interaction-root-action-card.is-card-face[data-root-action-card-face-kind="Attack"] > .played-card,
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph]) .interaction-root-response-card.is-card-face[data-response-card-face-kind="Dodge"] > .played-card {
+  padding: 3px;
+  border-radius: 5px;
+  box-shadow: 0 4px 12px #000b, 0 0 0 1px #f1dfb06b;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph]) .interaction-root-action-card.is-card-face[data-root-action-card-face-kind="Attack"] > .played-card > i,
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph]) .interaction-root-response-card.is-card-face[data-response-card-face-kind="Dodge"] > .played-card > i {
+  left: 4px;
+  top: 3px;
+  width: var(--attack-card-corner-width);
+  min-height: var(--attack-card-corner-height);
+  padding: var(--attack-card-corner-padding);
+  border-width: 1px;
+  border-radius: 0 0 6px 0;
+  font-size: var(--attack-card-rank-size);
+  line-height: 1;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph]) .interaction-root-action-card.is-card-face[data-root-action-card-face-kind="Attack"] > .played-card > i small,
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph]) .interaction-root-response-card.is-card-face[data-response-card-face-kind="Dodge"] > .played-card > i small {
+  margin-top: 0;
+  font-size: var(--attack-card-suit-size);
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph]) .interaction-root-action-card.is-card-face[data-root-action-card-face-kind="Attack"] > .played-card > .card-name-mark,
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph]) .interaction-root-response-card.is-card-face[data-response-card-face-kind="Dodge"] > .played-card > .card-name-mark {
+  max-width: 94%;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph]) .interaction-root-action-card.is-card-face[data-root-action-card-face-kind="Attack"] > .played-card > strong,
+.interaction-root-overlay[data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph]):not([data-root-action-ordered-target-graph]):not([data-root-action-oath-simultaneous-graph]) .interaction-root-response-card.is-card-face[data-response-card-face-kind="Dodge"] > .played-card > strong {
+  font-size: 5px;
+  letter-spacing: .08em;
+}
+
 .interaction-root-action-card.is-effect-node {
   width: clamp(108px, 29vw, 132px);
   min-height: 52px;
