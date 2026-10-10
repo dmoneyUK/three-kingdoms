@@ -4632,7 +4632,8 @@ async function playCardRoomResponse(code: string, token: string, traceId: string
   const state = await roomState(code, token, Boolean(traceId));
   if (!state) return json({ error: "Room not found." }, 404);
   if (traceId && state.pendingAttack) return json(attackDodgeProjectionTrace(traceId, state, "server-projection-after-play"));
-  const { attackDodgeProjectionDiagnostics: _diagnostics, ...room } = state;
+  const room = { ...state };
+  delete room.attackDodgeProjectionDiagnostics;
   return json({ room });
 }
 
