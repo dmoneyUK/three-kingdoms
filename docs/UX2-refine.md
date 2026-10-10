@@ -3721,3 +3721,38 @@ The Coding Agent should extract **separate small tasks** at the next planning/ha
 5. Update Coding Agent-owned \`HANDOVER.md\` and **stop for the user's next instruction**. Do not claim Reviewer visual approval or enroll unapproved long UX tests.
 
 **Priority:** This CI-gate correction comes before starting another card type. Subsequent implementation is **one card, one user-visible feature, one user approval at a time**. Long-term regression coverage should be admitted only after that acceptance and must be designed to respect the six-minute push budget.
+
+
+### 6.31 User-approved Attack/Dodge mobile graph and trace-menu polish (2026-10-10)
+
+**Scope and evidence:** The user supplied two real iPhone screenshots of a working Attack/Dodge relationship graph and the System Menu. The requested work is **visual polish only**: the current portrait Attack and Dodge cards crowd/obscure the red relationship arrow, and a long diagnostic paragraph below **Download UX trace** makes the in-game menu unnecessarily large. This is not a request to change gameplay, causality, card/skill handling, 20-second graph hold, server deadlines, or trace collection. The user will visually review the result.
+
+**Override on mobile:** For ordinary Attack/Dodge at **390–480 CSS px**, visibility of the direction/blocked endpoint takes priority over §§6.27–6.27.1's earlier preference for maximally large cards. Preserve §§6.27.2, 6.29.5–6.29.7's direct Dodge interception, authentic physical CardFace, arrowless green authorship tether, strong red Attack direction, fixed Seats/Dock and safe controls. This override applies to mobile Attack/Dodge sizing, not automatically to other card types.
+
+#### 6.31.1 Card size and position
+
+- On approximately **440px** portrait (the user's screenshot), and across 390–480px, start with a *matched smaller pair*: approximately **Attack 96–108 × 144–162 CSS px**, **Dodge 88–98 × 132–147 CSS px** at 2:3 aspect. This is roughly **75–85% of the oversized current fit**, subject to actual CSS measurements. Keep card artwork, rank and suit readable; adjust after screenshot comparison rather than applying a blind transform. In narrower 320px layouts choose the smallest readable non-overlapping fit, and report impossible geometry explicitly.
+- Arrange a **compact, separated** causal composition inside the playable upper/middle table. Place the Attack clearly in the attacking author's foreground, and Dodge on or immediately adjacent to the *proven incoming Attack path*. The size/position must leave useful visible red path between cards and a clear block near Dodge, while retaining source ownership. Avoid top player Seats, Deck/Discard, Local Dock, menus, Guidance and actionable controls.
+- Never reposition an already displayed Attack root simply because Dodge appears; keep same-interaction root location stable **within 1 CSS px** when viewport and anchors are unchanged. For an actual viewport/anchor change, re-fit using authoritative public IDs. Do not duplicate the same public card in the legacy overlay.
+- Measure actual card rectangles and recompute arrow geometry **together**. Reducing CSS sizes while leaving old SVG endpoints or cached layout coordinates is not a finished fix.
+
+#### 6.31.2 No hidden red arrowhead or false Attack continuation
+
+- **Before Dodge:** the red Attack arrow must be visibly directional from the authentic Attack card boundary toward the actual target Seat/Dock; neither path endpoint nor arrowhead may sit under a card body or its border.
+- **After proven Dodge:** show a visibly incoming red segment **ending at the leading Dodge edge or a visible external block/contact mark**. The arrowhead, bar or cross that explains the block must be visible **outside the cards**, not concealed underneath blue Dodge art. Keep the approximate 26–32px phone arrowhead where a directional head is used. Do **not** leave an active red arrow visually continuing from the block to the targeted player. Optional expired remainder is <=20% opacity and has no active arrowhead.
+- Dodge remains a **physical interception**, not a free-floating triangular network. For tight geometries, the §6.27.2 adjacent fallback may place the nearest Dodge edge **12–20px** from the genuine path, with a short explicit contact segment. This intentional contact at the card edge is different from allowing the card to hide the causal line. Do not blindly raise the full SVG layer over card art.
+- Keep Attack and Dodge's **green, arrowless** owner-to-card tethers legible and distinct from red direction, consistent with §6.29.5. Do not obscure controls or shift Seat/Dock DOM. Check actual rendered stroke, marker, SVG clipping and z-order: DOM existence and \`graphReady=true\` do not prove the arrow is visibly legible.
+
+**Visual acceptance:** Show side-by-side before/after **real server-backed** Attack → publicly played Dodge screenshots at 390×844, approximately 440px portrait, and 480×900, plus a relevant narrow/short fit if changed. Confirm true root/response ownership, readable rank/suit, clearly visible incoming red direction and stopped/block mark, green source tethers, no occluded arrowhead, no control overlap, unchanged response timing. A geometry-unavailable fallback or legacy-only card display is **not** a positive UX pass. Keep any new lengthy visual diagnostic suite out of required push CI until the user approves it (§6.30).
+
+#### 6.31.3 Compact System Menu
+
+The existing \`app/page.tsx\` menu contains a long \`stage-system-diagnostics-note\` about automatic recording, privacy exclusions, trace IDs and length limits. **Remove that long visible note**, not the actual safety or diagnostics functionality.
+
+Keep the **GitHub Actions build SHA**, **Download UX trace** button and **Exit Game** button. Keep the build badge, actual JSON export/automatic recording, privacy filtering, trace-size limit, short download success \`role="status"\` feedback, keyboard/focus behavior and Exit Game confirmation. Prefer **no text** under the download button; only a single short unobtrusive hint if truly needed.
+
+**Menu acceptance:** A mobile screenshot shows a compact SHA + two actions with no large explanatory paragraph, excess height or hidden controls. Download and Exit continue to work. Do not change the trace API or data policy to achieve the visual reduction.
+
+#### 6.31.4 Coding Agent boundary
+
+This is one bounded **UI-only** task: inspect \`app/interaction-root-overlay.tsx\`, \`app/sequence-overrides.css\` and System Menu in \`app/page.tsx\`. Deliver measured before/after mobile screenshots and a brief focused regression check. Do **not** change rules, public proof, skills, response deadlines, graph-hold duration, CI selection or other card graphs. Stop for the user's visual review; a green CI alone is not UX acceptance. Work on this only at an authorized planning boundary; do not interrupt an existing HANDOVER task.
