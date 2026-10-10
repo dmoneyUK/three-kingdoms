@@ -2,6 +2,25 @@
 
 This document is the current UX2 product/UI design authority for the refinement phase. It records reviewer-approved expected behavior, interaction presentation, responsive requirements, and measurable acceptance criteria. It is not a task queue.
 
+## 0. Reading guide: current authority, historical gates, and no duplicate tasks (2026-10-10)
+
+This is a **product/UX design and acceptance specification, not the Coding Agent's task queue**. Only the user's latest instruction and the Coding Agent-owned `HANDOVER.md` determine an active implementation task. `docs/AUTONOMOUS_UI_ROADMAP.md` records implementation/test evidence, not user visual acceptance. Do not reconstruct old task lists from this document, and do not repeat implementation-closed work without a reproduced regression, a newly approved requirement, or a specific independent verification request.
+
+**Phase interpretation:** §§1–4C specify enduring UX contracts. The historical pre-§6 integration gate in §4D was revalidated and cleared **for implementation sequencing** in the roadmap milestone `UX2.REFINEMENT-PRE-SECTION-6-GATE-REVALIDATION-01`; the earlier §5 deferral has expired. Section 6 physical-seat causal visualization is already under implementation/refinement. Neither milestone nor passing CI constitutes the user's visual sign-off.
+
+**Current refinement precedence (newer specific decisions win over older generic targets):**
+
+| Subject | Current canonical requirement | Older wording to treat as superseded |
+| --- | --- | --- |
+| Mobile Attack/Dodge card fit at 390–480 CSS px | **§6.31.1** measured smaller matched cards and clear red interception; maintain the direct path of §6.27.2 | Larger mobile preferred card targets in §6.27.1 and §6.28.1 |
+| Public author/source connector weight | **§6.29.5** green arrowless 5–6px at ~390px, scaling for wider viewports | 3.5–4.5px source-width examples in older Attack-only text |
+| Publicly committed Dodge, Negation/counter-Negation and AOE response readability | **§§6.28.2, 6.29.3, 6.29.7:** complete proven counter/response diagram readable for 3,000ms per viewer, unless a newer live root supersedes it | Earlier ~0.4–0.8s / 600ms settlement removal for these particular results |
+| Active Attack response and other interaction holds | Preserve existing, distinct live-response/other graph lifetime rules; **§6.31** does not authorize changing the separately referenced 20-second graph hold | Treating the 3-second *completed counter-result* interval as an Attack-response timer or a global graph timeout |
+| CI gate and evidence | **§6.30:** required push-to-deploy/smoke <=6 minutes, minimal meaningful checks; expansive unapproved visual tests remain optional | Old large per-push browser matrices and historical one-time CI task commands |
+| Diagnostic memory work | **§6.32:** profile real process-tree RSS/OOM before any bounded optimization | Assuming the reported 3–4GB figure is a measured root cause or a license to remove checks |
+
+All server-authored public causal proof, local `CurrentAction` legality, hidden-information protections, stable Seat/Dock geometry, fail-closed behavior and real-device acceptance requirements remain in force. Follow detailed sections below for actual UX behavior, not historic task IDs.
+
 ## 1. Local Hero Skill Controls — Single Activation Surface and Readable Adaptive Layout
 
 ### 1.1 Final player-facing result
@@ -2290,315 +2309,47 @@ This refinement is not complete merely because all cards are technically
 clickable. The reviewer must be able to see the available choice structure
 immediately on a real phone-sized layout.
 
-## 4D. Production-Path Completion Gate — Mandatory Before Section 6
-
-### 4D.1 Why this gate exists
-
-A component or fixture state is not sufficient evidence that a UX2 refinement is
-implemented in the real game.
-
-Reviewer-observed deployed-game screenshots have already demonstrated two cases
-where the repository contained the intended component/test shape but the real
-player experience did not match it:
-
-- Steal / 顺手牵羊 reached the legacy target-card picker instead of the §4C
-  unified modal;
-- Zhuge Liang Stargazing reached an oversized deck-reorder dialog in which the
-  actual card faces disappeared, leaving reorder controls without readable
-  cards.
-
-The code audit also confirmed that most browser specs directly load fixture
-states rather than driving a server-created room all the way through the real
-page. API tests and fixture browser tests remain useful, but they prove
-different layers and must not be treated as equivalent to production-path
-reachability.
-
-From this point onward, a UX2 item must not be marked complete merely because:
-
-- the component exists;
-- a fixture can render it;
-- an API test proves the server rule independently;
-- a focused browser spec passes against a handcrafted projection.
-
-For the affected refinements below, completion requires evidence that the real
-server-generated state reaches the intended production UI.
-
-The following are **five bounded pre-Section-6 tasks**. Each task is one task;
-the bullets inside each task are acceptance requirements, not separate tasks.
-The Coding Agent may choose the execution order, but all five plus §4.10 and
-§4A must be closed before Section 6 begins.
-
-### Task P1 — Restore real server-to-browser validation
-
-The project must regain a working way to create/use a real room in local browser
-validation and render the resulting server-generated state through the
-production page.
-
-The audit found a current local-development blocker in
-\`app/api/rooms/route.ts\`: \`CausalCreation\` is declared twice, and the local
-\`POST /api/rooms\` path was reported to return 500 under the development
-runtime even though the production build succeeds.
-
-Required outcome:
-
-- local real-room creation works through the same route used by the product;
-- a browser test can create/seed or otherwise enter a real room and observe the
-  production page without substituting a handcrafted CurrentAction or
-  PresentationSnapshot;
-- the test path must be suitable for validating the UX2 flows in Tasks P2–P4;
-- build success alone is not sufficient if the development/runtime route used
-  for integration validation is broken.
-
-This task is complete when at least one real server-seeded browser flow reaches
-the production game page reliably on a clean run.
-
-### Task P2 — Finish §4C in real gameplay, not only fixtures
-
-The §4C Unified Target Card Selection Modal must be the normal player-facing
-selection surface for the real authoritative flows it covers.
-
-This task includes:
-
-- Steal;
-- Dismantle / Burning Bridges;
-- Sima Yi Retaliation;
-- Frost Sword;
-- Kirin Bow.
-
-The deployed-game Steal screenshot already proves that the old
-\`table-hidden-card-picker\` remains reachable in normal play. Therefore §4C is
-currently **not complete**.
-
-Required outcome:
-
-- an authoritative target-card decision with a valid target and legal
-  selectable keys reaches the unified modal in real gameplay;
-- ordinary Steal/Dismantle/Retaliation/Frost Sword/Kirin Bow decisions must not
-  fall back to a visually unrelated legacy picker merely because Interaction
-  Stage Hero Focus, Inspect state, or a transient target preview does not match
-  an additional presentation condition;
-- CurrentAction remains the legality/selection authority;
-- Interaction Stage / Hero Focus presentation must not become a second,
-  unrelated requirement for deciding whether the viewer receives the §4C
-  selection UX;
-- \`hand:n\` keys render as individually selectable anonymous face-down cards;
-- a legacy/grouped \`hand\` key, when genuinely authoritative, uses the grouped
-  Random-card fallback **inside the same §4C visual language**, not a different
-  picker;
-- Equipment and Judgment remain public face-up selections where legal;
-- action identity/copy remains effect-specific:
-  - \`STEAL — Choose 1 card to obtain\`;
-  - \`DISMANTLE — Choose 1 card to discard\`;
-  - \`RETALIATION — Choose 1 card to obtain\`;
-  - equivalent specific copy for Frost Sword and Kirin Bow;
-- primary actions use the approved effect-specific CTA;
-- selected state, selection count, Cancel treatment, and 44px minimum touch
-  geometry match §4C;
-- no hidden Hand identity is leaked;
-- stale/revision changes still clear local selection.
-
-Required production-path proof:
-
-1. real server-generated Steal reaches the unified modal;
-2. real server-generated Dismantle reaches the unified modal;
-3. real Retaliation reaches the unified modal with multiple anonymous Hand
-   positions;
-4. real Frost Sword selection reaches the unified modal;
-5. real Kirin Bow selection reaches its simplified unified modal;
-6. at least one real mixed-zone case proves Hand plus Equipment/Judgment
-   presentation where the rules allow it;
-7. no normal supported flow above reaches the legacy picker.
-
-Fixture coverage may supplement this proof but may not replace it.
-
-### Task P3 — Close the Hero Skills real-game reachability audit
-
-Section 1.10 remains open until every implemented Hero capability that is meant
-to be actionable from the Local Hero Skills band has been checked against the
-real server-projected decision path.
-
-The recent test-only skill commits are useful regression coverage, but a
-fixture-proven button is not enough to claim that the real game reaches the same
-state.
-
-Required outcome:
-
-- every implemented active/optional/response Hero capability has an identified
-  authoritative provider/option from the real game;
-- the Skills-band control becomes enabled only from that authority;
-- activation submits the existing authoritative payload;
-- required card/target/choice continuations are reachable in the real game;
-- the same activation is not duplicated in the generic Action Row;
-- absence of authority leaves the stable skill control unavailable/passive as
-  appropriate;
-- any capability found to exist only in fixture mapping, or whose real
-  projection cannot reach the approved UX, is fixed as part of this task rather
-  than merely documented.
-
-The agent may batch capabilities by behavior family to finish this quickly.
-This is one roster-completion task, not one task per Hero.
-
-Completion evidence must distinguish:
-
-- server/provider proof;
-- production component routing;
-- browser rendering/interaction proof.
-
-Do not report a Hero skill complete solely because a fixture spec passes.
-
-### Task P4 — Real production-path parity for already-claimed interaction UX
-
-Several refinements have strong engine/API coverage and strong fixture-browser
-coverage but no proof that the same server-generated state reaches the same UI.
-
-Before Section 6, run real server-to-browser validation for at least:
-
-- single-target Negation:
-  - open window;
-  - first public Negation;
-  - counter-Negation;
-  - settlement outcome;
-- Raining Arrows:
-  - Dodge available;
-  - no Dodge / \`TAKE DAMAGE\`;
-  - correct local Guidance and no obsolete duplicate controls;
-- Opponent Inspect:
-  - public Hero identity/skills;
-  - Equipment;
-  - Judgment;
-  - Hand count without hidden Hand identity.
-
-If the real server projection does not route to the already-approved UX, this
-task includes repairing that mismatch. It is not an audit-only task.
+## 4D. Production-path completion gate — historical pre-Section-6 checkpoint
 
-The goal is not to duplicate every fixture test with a full end-to-end test.
-The goal is to establish real production-path parity for the feature families
-that were previously claimed complete primarily from separated API + fixture
-evidence.
+### 4D.1 Purpose and closure scope
 
-### Task P5 — Remove the confirmed mobile top dead-space before seat geometry is frozen
+The original §4D gate was created after fixture-only rendering failed to reproduce the real Steal target-card modal and Zhuge Liang Stargazing experience. Its **permanent rule** is still valid: an API assertion or handcrafted browser fixture alone does not prove that the server-generated game state reaches the intended player-facing UI.
 
-The audit confirmed that on phone layout the top-row \`player-board\` currently
-starts around 55px below the table top while the corresponding status element
-is absent, leaving a substantial unused band above the opponent seats.
-
-This is a confirmed geometry issue and must be resolved before Section 6,
-because Section 6 will use the physical Seat positions as graph anchors.
-
-Required outcome:
-
-- do not preserve a large empty top reservation when no visible UI occupies it;
-- reclaim the unused phone vertical space for the table/interaction area;
-- opponent seats remain aligned, readable, and non-overlapping;
-- System Menu, timer, Guidance, and any genuine top control retain required
-  clearance;
-- 390×844 and 480×900 should not show an unexplained ~55px dead band above the
-  first opponent row;
-- the physical Seat geometry should be stable after this task so Section 6 can
-  anchor interaction connectors against it.
-
-### 4D.2 Evidence language for future completion reports
+The five original P1–P5 task instructions here are **retired as active work**. The historical implementation/test record is in `docs/AUTONOMOUS_UI_ROADMAP.md`, including the milestone `UX2.REFINEMENT-PRE-SECTION-6-GATE-REVALIDATION-01`. That revalidation recorded the §4D prerequisites as closed **for starting Section 6**, after P1–P5, §4.10, §4C.29, §4A and §4B evidence was gathered. It does not establish device-level visual acceptance and should not be turned into a new prerequisite backlog.
 
-For all UX2 work from this point forward, completion reports must state which
-evidence layer was actually observed.
-
-Use separate statements such as:
-
-- **Rules/API proven**
-- **Server projection proven**
-- **Fixture browser proven**
-- **Real server-backed browser path proven**
-- **Deployed-game screenshot/reviewer proof**
-
-Do not collapse these into a generic statement such as "browser tests pass" or
-"the feature is complete".
-
-If real server-backed browser proof has not been run, report the UI reachability
-as **Not proven**.
-
-### 4D.3 Section 6 gate
-
-Section 6 must not begin until:
-
-- §4.10 Stargazing private deck-reorder UX is closed;
-- §4C.29 mobile target-card modal layout refinement is closed;
-- §4A, including Bumper Harvest active-choice timer authority, is closed;
-- Task P1 real server-to-browser validation is available;
-- Task P2 unified target-card production routing is closed;
-- Task P3 full Hero Skills real-game reachability audit is closed;
-- Task P4 real production-path parity is closed;
-- Task P5 mobile top dead-space/seat geometry is closed.
-
-This gate exists specifically to prevent a new Interaction Visualization layer
-from being built on top of UX that only works in fixtures or whose real-game
-routing is still inconsistent.
-
-## 5. Interaction-Stage Hero / Player Presentation — DEFERRED TO UX2 INTERACTION VISUALIZATION REFACTOR
-
-### 5.1 Current decision
-
-All Interaction Stage Hero/player visualization work is deferred.
-
-Do not implement further UX2 refinement tasks that change:
-
-- central combat Hero portraits;
-- Source Hero representation;
-- Target Hero representation;
-- Group target Hero representation;
-- viewer Hero representation inside the Stage;
-- Hero/player size, position, orientation, or duplication;
-- current-participant Hero visual treatment;
-- Hero/player-to-card connector geometry;
-- physical Seat / Local Dock nodes as a new combat graph;
-- a new seat-anchored interaction overlay;
-- UX2 interaction-visualization graph-foundation work.
-
-The current implementation remains the temporary baseline until the user explicitly resumes the interaction-visualization refactor.
-
-### 5.2 Planning consequence
-
-A HANDOVER task that alters Interaction Stage Hero/player presentation is not currently authorized by this design.
-
-At the next task/planning boundary, the Coding Agent must:
-
-1. finish only an already-running task that does not modify deferred Hero/player presentation;
-2. re-read this document;
-3. skip/defer any Hero/player interaction-graph task;
-4. choose the next bounded task from the active non-Hero refinements in Sections 1–4;
-5. preserve server-owned presentation authority and fail-closed behavior.
-
-Do not delete existing Hero/player presentation code merely because it will be replaced later.
-
-### 5.3 Active refinement scope while deferred
-
-Current authorized refinement work includes:
-
-- Local Hero Skills band consistency and activation;
-- single-target Negation public-card/response presentation that does not alter Hero/player nodes;
-- direct response Guidance;
-- `TAKE DAMAGE` semantics for Raining Arrows;
-- authoritative legal response-provider emphasis;
-- System Menu / Exit relocation;
-- response timer relocation;
-- Zhuge Liang Stargazing / Empty Fortress Strategem skill presentation;
-- transient event timer relocation and compact event-overlay spacing from §4A;
-- compact other-player Inspect panel refinement from §4B;
-- mandatory real-game production-path completion tasks from §4D.
-
-### 5.4 Resume condition
-
-The user has authorized the UX2 interaction-visualization refactor **after all active refinement sections before §5 are completed, including §4A and §4B**. This refactor is part of completing UX2, not a new UX version.
-
-Therefore:
-
-1. finish the remaining authorized refinement work before §5 first, including the Stargazing private deck-reorder usability task in §4.10, the mobile target-card modal refinement in §4C.29, §4A, and all mandatory production-path completion tasks in §4D;
-2. do not interleave the UX2 interaction-visualization graph work with unfinished pre-§5 refinement tasks;
-3. once those refinement items are closed at a clean planning boundary, Section 6 becomes the next authorized UX2 implementation work;
-4. begin Section 6 from **§6.25 Phase A — physical-seat graph foundation** unless a newer direct user instruction changes the order;
-5. continue to split the UX2 interaction-visualization refactor into bounded HANDOVER tasks rather than implementing all phases at once;
-6. preserve all server-authority, privacy, fail-closed, and physical-seat-stability requirements in §6.
-
-An older HANDOVER item does not by itself prove that the prerequisite refinement work is complete. The Coding Agent must re-read this document at the planning boundary before starting Section 6.
+### 4D.2 What remains required of any affected UX
+
+| Historical gate | Durable acceptance invariant (not a new task) | Evidence location |
+| --- | --- | --- |
+| P1 — real room | Production page can be reached through real server-created game state, without fabricated CurrentAction/PresentationSnapshot | Roadmap: `UX2.REFINE-REAL-SERVER-TO-BROWSER-PROOF-P1-01` |
+| P2 — selectable target cards | Steal, Burning Bridge (internal Dismantle), Retaliation, Frost Sword and Kirin Bow use the unified §4C UI when real legal options are supplied; anonymous Hand remains concealed; no unrelated legacy picker | Roadmap: `UX2.REFINE-UNIFIED-TARGET-CARD-MODAL-REAL-GAME-P2-01` |
+| P3 — Hero Skills | All implemented actionable Hero providers remain reachable through the Skills band with server-projected options, exact submission, and no Action Row duplicate; absent authority is unavailable | Roadmap: `UX2.REFINE-HERO-SKILLS-REAL-GAME-REACHABILITY-P3-01` and later roster audit |
+| P4 — interaction parity | Real-game single-target Negation, Raining Arrows responses and compact privacy-safe Opponent Inspect match §§2–3 and §4B | Roadmap: `UX2.REFINE-REAL-PRODUCTION-PATH-PARITY-P4-01` |
+| P5 — phone Seat geometry | No unexplained ~55px unused band above opponent Seats at 390/480px; physical anchors, top controls and Stage safe region remain aligned | Roadmap: `UX2.REFINE-MOBILE-TOP-DEAD-SPACE-P5-01` and pre-§6 gate revalidation |
+
+Additional prerequisite evidence is recorded for §4.10 Stargazing, §4C.29 mixed-zone picker, §4A Private Draw/Harvest timers and §4B compact Inspect. **Do not reassign any of these historical P tasks solely because their former instructions appeared in an older revision.** A concrete regression may justify a newly scoped repair; user visual certification remains separate.
+
+### 4D.3 Evidence vocabulary (still normative)
+
+Every relevant completion claim must distinguish **Rules/API proven**, **Server projection proven**, **Fixture browser proven**, **Real server-backed browser path proven**, **Deployed-game screenshot/reviewer proof** and **User visually accepted**. A clean build, passing fixture, green CI or roadmap closure is not a substitute for any later layer. For ongoing Section 6 changes, perform only targeted regressions to §4D contracts when those paths are affected; do not repeat the whole pre-Section-6 gate by default.
+
+## 5. Historical Interaction-Stage deferral — gate cleared, constraints retained
+
+### 5.1 Original sequencing decision
+
+Before the §4D gate closed, work on central Hero/player visualization, physical-seat graph connectors and the new Interaction Stage was deliberately deferred so that incomplete real-game control routing and unstable Seat geometry would not be concealed by a new overlay. This was a **temporary implementation-order constraint**, not a permanent ban on Section 6.
+
+### 5.2 Current interpretation
+
+The roadmap's `UX2.REFINEMENT-PRE-SECTION-6-GATE-REVALIDATION-01` records the relevant prerequisites as implementation/test-closed for proceeding to §6. Section 6 has subsequently received real implementation evidence. **Do not send the Agent back to §§1–4D or restart §6 Phase A merely to re-satisfy the obsolete deferral.** Reopen a prior area only for a new user decision, a concrete reproduced regression, or a specifically requested targeted review.
+
+### 5.3 Architecture boundaries carried into Section 6
+
+The local viewer's Hero stays in the Local Dock and is not duplicated in the public central Stage. Opponent physical Seats remain fixed; all source, target, response, counter, participant and relationship evidence must come from the typed server/public projection, not from timeline order, private legal options, HP deltas or inferred geometry. Keep local controls/Inspect separate from public presentation and fail closed when proof or safe geometry is missing. These invariants are detailed in §§6.2–6.24 and remain mandatory.
+
+### 5.4 Acceptance boundary
+
+Closed implementation sequencing does **not** constitute Reviewer/device acceptance of the player-facing graph, the final AOE/multi-target visuals, or new refinements in §§6.27–6.32. Each newly changed visible behavior still requires focused proof and the user's review.
 
 ## 6. UX2 Interaction Visualization Refactor — Physical-Seat Anchored Causal Graph
 
@@ -3410,19 +3161,19 @@ These are user-approved refinements to §§6.3, 6.5–6.7, 6.11, 6.17, 6.19–6.
 **Verification:** Review the real production-path Attack response, committed Dodge block, and settlement for local and opponent players at 390×844, 480×900, wide screen, and dense 6–8-player scenes where supported. Inspect screenshots, not only geometry/tests. Confirm at a glance: green authorship tether has no arrow; large red arrow indicates the actual target including Dock-top endpoint; whole target area is emphasized; Dodge visibly stops Attack without a triangle or contradictory status; authentic cards are large/readable; control labels remain consistent; no hidden/private leakage, guessed relationships, collisions, or lingering completed graph. Final reviewer visual approval is still required.
 #### 6.27.1 Quantified size and placement targets (implementation guidance)
 
-These values are concrete starting targets for implementation and screenshot review, **not permission to break collision/containment constraints**. Measure all dimensions in CSS pixels from real rendered elements, not screenshot-image pixels or device-pixel-ratio pixels. For each alternative choose the largest collision-free layout. Ratios below reference the current portrait hand-card face, approximately **68 × 102 CSS px (width × height; 2:3 aspect ratio)** in \`app/sequence-overrides.css\`. Do not use the current wide, shallow text placeholder's aspect ratio as the new card shape.
+These values are concrete starting targets for implementation and screenshot review; the later mobile fit and source-line decisions in §§6.31.1 and 6.29.5 are incorporated below, **not permission to break collision/containment constraints**. Measure all dimensions in CSS pixels from real rendered elements, not screenshot-image pixels or device-pixel-ratio pixels. For each alternative choose the largest collision-free layout. Ratios below reference the current portrait hand-card face, approximately **68 × 102 CSS px (width × height; 2:3 aspect ratio)** in \`app/sequence-overrides.css\`. Do not use the current wide, shallow text placeholder's aspect ratio as the new card shape.
 
 | Element | At 390px portrait | At 480px portrait | At >= 900px wide | Fit / ratio rule |
 | --- | --- | --- | --- | --- |
-| Attack root card | target 120 × 180px | target 132 × 198px | target 150 × 225px | 2:3 portrait; preferred width 1.6–1.9× hand-card width on portrait phones |
-| Dodge response card | target 108 × 162px | target 116 × 174px | target 132 × 198px | 2:3 portrait; preferred width 1.35–1.7× hand-card width on phones |
-| Dense/short view minimum if necessary | Attack 96 × 144px, Dodge 88 × 132px | adapt proportionally | adapt proportionally | Shrink **both** cards together in steps only when real geometry requires it; never crop art or overlap controls |
-| Green source ribbon/tube | 3.5–4.5px visible body | 3.5–4.5px | 4–5px | Roughly 2–2.6× the previous generic 1.7px hairline; no arrowhead |
+| Attack root card | **§6.31.1:** ~96–108 × 144–162px as measured | **§6.31.1:** adapt same readable size band | target 150 × 225px | 2:3 portrait; use largest fit that keeps red Attack direction and card art visible |
+| Dodge response card | **§6.31.1:** ~88–98 × 132–147px as measured | **§6.31.1:** adapt same readable size band | target 132 × 198px | 2:3 portrait; direct interception and arrow/block clearance take priority |
+| Dense/short view minimum if necessary | Attack 96 × 144px, Dodge 88 × 132px (smaller only for measured 320px constraints) | adapt to proven safe geometry | adapt proportionally | Shrink in matched fit steps without clipping art or control overlap |
+| Green source ribbon/tube | **5–6px** (§6.29.5) | **5.5–6.5px** | **6–7px** | Global author-tether style, always arrowless and slightly secondary to red target |
 | Red Attack target ribbon/tube | 6–8px visible body | 6–8px | 7–9px | Roughly 2.1–2.9× the former generic 2.8px target stroke; always visually stronger than green source |
 | Attack arrowhead | 26–32px axial length, 17–22px across | same / slight increase | 28–36px axial | About 1.3–1.6× the previous 20px Attack marker; arrow tip and silhouette stay visible at Dock boundary |
 | Whole-target boundary emphasis | 3–4px clear ring plus restrained 14–24px halo | same | same | Covers **full existing Seat or Local Dock bounding box**, not only Hero art; no layout size/position change |
 
-Colour semantics are fixed by §6.3 and user feedback: **green source**, **red Attack direction**. Use sufficiently luminous colours on the near-black board (initial design examples \`#86B9A2\` for green and \`#E06B5D\` for red), with subtle light/dark edge treatment to make strokes read as narrow tubes or ribbons, not flat hairlines. The currently committed Attack-only CSS overrides in \`app/sequence-overrides.css\` make the source cream (\`#e3dfc9\`) and the target/marker yellow (\`#ffd166\`); these **must be reconciled with the approved green/red visual grammar**, rather than silently retaining a contradictory colour exception. The numerical values are target appearance, not an instruction to hardcode all viewports identically.
+Colour semantics are fixed by §6.3 and user feedback: **green source**, **red Attack direction**. Use sufficiently luminous colours on the near-black board (initial design examples \`#86B9A2\` for green and \`#E06B5D\` for red), with subtle light/dark edge treatment to make strokes read as narrow tubes or ribbons, not flat hairlines. Any old cream/yellow Attack connector overrides are superseded by the green/red visual grammar. Check actual rendered computed CSS instead of assuming a former override is still deployed. The numerical values are target appearance, not an instruction to hardcode all viewports identically.
 
 **Root location:** Retain the root card inside the playable table, along the authored source → affected target relation, with preferred root-card centre around **30–42% of the source-to-target centreline length measured from the source**, allowing lateral routing to avoid obstacles. Existing code's ~36% source bias is a reasonable starting anchor. Maintain at least **12px outer margin** from the table safe region and **8–12px separation** from opponent Seat, Deck/Discard, timer, menu and Guidance rectangles. Once the authoritative root is displayed, preserve its top-left position to within **1 CSS px** during Dodge appearance and brief settlement, except a minimum correction required by a genuine viewport/obstacle change.
 
@@ -3462,17 +3213,7 @@ Use the **same CardFace/game-card artwork and border/iconography family** as the
 
 **Stability requirement:** Once an ordinary **server-proven** single-target Attack graph reaches \`ready\` during the response window and no explicit local modal/Inspect intervenes, both source tether and red target arrow should remain visibly present through subsequent room polling and benign layout updates, **without unsolicited transitions to legacy Stage**. If the DOM anchors genuinely disappear or the server proof becomes invalid, fail closed as required by §6.2 and record the reason rather than masking it with guessed lines. While initial measurements are pending, prevent a visually jarring repeated Hero-card flash; retain a still-valid previously proven graph for the *same authoritative interaction* only if geometry remains valid, or show a neutral non-causal transition while measuring.
 
-**Test matrix and observable thresholds:**
-
-- Real server-backed normal Attack at **390×844**, **480×900**, **1440×900** for both local attacker and local defender; also **6- and 8-player** 390px and 480px boards.
-- Sample **requestAnimationFrame** and graph DOM state for at least **12 continuous seconds** inside one open response window, plus a repeated server-poll/update sequence. Capture root identity, \`displayMode\`, \`layoutReadiness\`, \`fallbackReason\`, source and target SVG path presence, marker and computed visibility, and actual screenshot attachments.
-- After first \`ready\`, require **zero unexpected graph → measuring/unavailable/fallback frames** during unchanged, valid response conditions. Any intentional Inspect/Preview/real geometry-loss transition is tested separately with an explicit expected reason and recovery to the **same** proven interaction root.
-- Test **at least 10 repeated Attack windows** (not only one successful example) for regression. Verify both source and target paths and arrowhead are continuously present, not merely \`data-root-action-card\` eventually visible.
-- Independently test **Dodge submission, successful interception, hit settlement, timeout/skip, viewport resize and mobile scroll/address-bar induced geometry changes**; ensure no duplicate central Hero Stage and new graph simultaneously, no stale graph from a preceding root, and no stuck public graph after settlement.
-- Test real conversion/multi-target variants separately; if server proof is unsupported, document the scope clearly and schedule typed proof support. **Never fake links** to satisfy appearance-only assertions.
-- Review actual screenshot/frame artifacts for visual quality and absence of green/red connector occlusion; CI pass alone is not Reviewer sign-off.
-
-**Sequencing:** First diagnose and resolve intermittent ordinary Attack graph disappearance using the existing node sizes; then introduce larger authentic card geometry and stronger ribbon/arrow visuals with the placement and continuity tests. This separates a rendering-stability defect from the much larger responsive-layout design change. All agent-facing instructions for this refinement must be written in English, and implementation should be divided into bounded steps if needed.
+**Single regression gate:** The **normative** reproduction, frame classifications and measured test matrix are in **§6.28.1** (with latest mobile card sizing in §6.31.1), not a second separate audit. That gate covers repeated server-backed four-player Attack, selected/unsubmitted Dodge, 12-second response polling, source and target path visibility, converted Attack, browser resize and fail-closed conditions. Do not plan §6.27.4 and §6.28.1 as independent tasks. Keep proof missing, geometry pending, SVG occlusion and temporary user Inspect clearly distinguishable. Real screenshot inspection and user approval are still required.
 
 ### 6.28 Four-player Attack graph reliability and three-second public counter hold (User approved 2026-10-09)
 
@@ -3483,8 +3224,8 @@ This section is a **new, higher-priority acceptance correction** based on a real
 **Observed deployed-game reproduction reference:** A portrait iPhone view with **four players** (three opponents on the top row and local Lu Xun in the Dock), while the local player is answering **Dodge the Attack**, approximately **24 seconds remain**, and **one Dodge is selected but not yet confirmed**. The table shows only a **tiny Attack CardFace with a numbered gold "1" badge** near the middle. **No visible green attacker-source tether, red Attack-to-local-Dock arrow, or full-Dock target highlight** appears. The small numbered card resembles the old \`TableResolutionSequence\` / \`.table-played-card\` rendering, not the approved full-size \`InteractionRootOverlay\`. This is a concrete **four-player production UX regression**, not only the previously identified 6–8-player dense-seat fallback. The screenshot alone does not prove why the modern overlay was absent.
 
 **Expected visual state during the entire uncommitted Dodge selection:**
-- Root: one recognizable actual Attack card in the approved **120×180px portrait target size at 390px**, or a fit-proven **108×162 / 96×144px** smaller step as specified in §6.27.1. It is spatially related to the actual attacker and local defender; no tiny numbered settled card is accepted as a replacement graph.
-- Source: an arrowless green ribbon **3.5–4.5px** wide from the real attacking opponent Seat to the Attack card. It must stay visible during response selection, room polling and ordinary hand-card lift.
+- Root: one recognizable actual Attack card in the approved **§6.31.1 mobile fit-proven ~96–108×144–162px Attack range at 390–480px**, or a smaller clearly documented constrained fit. It is spatially related to the actual attacker and local defender; no tiny numbered settled card is accepted as a replacement graph.
+- Source: an arrowless green ribbon **5–6px at ~390px** (§6.29.5) from the real attacking opponent Seat to the Attack card. It must stay visible during response selection, room polling and ordinary hand-card lift.
 - Target: a red ribbon **6–8px** wide ending at the **top boundary of the entire Local Player Dock**, with a clearly legible **26–32px** axial arrowhead. The **whole Dock** is emphasized by the approved **3–4px ring and 14–24px outer glow**, not just the portrait.
 - Hand: the privately selected Dodge remains in its normal lifted state and ordinary **CONFIRM / SKIP** controls remain available. **Changing or selecting a response card before submission must not hide, suppress, or replace an already proven public Attack relation**. A selected private Dodge must not be shown as a public response node before the server commits it.
 - No duplicated source/target Hero portraits, second generic action-card copy, or spurious "ROOT ACTION"/"PLAYED BY" explanatory text.
@@ -3527,15 +3268,11 @@ This specifically **supersedes the ~0.4–0.8-second preference in §6.17 for th
 - Reduced-motion, 6–8-player mobile space, window resize, a new independent action arriving within 3s, viewer refresh/reconnect, and two rapid counter-Negations. Verify unique proof identity, graph/layout stability, safe z-index, no controls blocked, no duplicate mini-cards, and no stale reappearance.
 - Capture PNGs and **time-stamped frame/DOM traces** for each important role and make successful CI screenshots/report artifacts retrievable for independent visual Reviewer approval. A green CI run does not constitute visual acceptance.
 
-#### 6.28.3 Execution order and acceptance ownership
+#### 6.28.3 One regression, separate evidence boundaries
 
-**Task A (P0, first):** Reproduce and repair the **four-player in-response missing-connector** screenshot class using the exact public data and geometry diagnostics above. Do not proceed merely because dense 8-player tests pass.
+§6.28.1 defines the **single** four-player missing-connector regression and its real server-backed diagnostics; §6.28.2 defines the **separate** publicly committed counter-result reading-time contract. The later §§6.29.1/6.29.7 apply the same contracts across the broader graph, rather than creating new tickets for the same Attack/Dodge or Negation work.
 
-**Task B (new UX timing):** Implement the **3,000ms public counter-graph hold** for Attack/Dodge and Negation/counter-Negation, with tests proving the **complete public graph** (not only card visibility) persists and gameplay remains interactive. Keep this as a separate bounded commit from Task A so the appearance regression and timer change can be evaluated independently.
-
-**Task C (visual acceptance):** Independently inspect real screenshots/recordings for (a) four-player **Dodge selected but uncommitted** with intact Attack tethers/highlight, and (b) each committed Dodge/Negation/counter-Negation at ~1s and ~2.9s. Maintain minimal visible copy and the globally approved **CONFIRM** vocabulary. Report unsupported situations precisely instead of claiming all Attack scenes are complete.
-
-All coding-agent instructions and handoff task text for this work must be **in English**. Only \`docs/UX2-refine.md\` is owned by the UX Reviewer; \`HANDOVER.md\` remains Coding Agent-owned. Neither §4D completion nor unrelated Card/Skill work should be reopened as a prerequisite.
+Independent verification must distinguish (a) an Attack still awaiting a privately selected/unsubmitted Dodge, (b) a fully server-committed Dodge/Negation/counter-Negation graph held for 3,000ms, and (c) active gameplay continuing with no server delay. Evidence needs actual screenshots/frames, proof identity, lifecycle tests and reviewer/user visual acceptance. **No historic task here automatically becomes an active Coding Agent assignment.**
 
 ### 6.29 Consolidated causal-graph refinement: Attack/Dodge, Group/AOE, and relationship emphasis (User approved 2026-10-09)
 
@@ -3543,18 +3280,11 @@ All coding-agent instructions and handoff task text for this work must be **in E
 
 **One visual language:** A public card should visually belong to the **physical player who played it**; a connector shows **what that card does**. Players understand the graph through authentic card faces, clear arrow direction, physical obstruction, and active/expired emphasis—not explanatory prose. Use the same physical Seat/Local Dock anchors throughout. The server owns public card identities, exact targets, ordered participant states, causal response links, and settlement; the viewer's CurrentAction alone owns private legality. If proof or geometry is inadequate, fail closed and log an exact, test-only reason rather than fabricating relations.
 
-#### 6.29.1 Attack → Dodge: four-player missing-line regression and complete response hold
+#### 6.29.1 Attack → Dodge: shared canonical regression, not a second task
 
-This is **P0**. A user-observed four-player iPhone Safari Attack response showed a tiny **numbered Attack card**, 24 seconds remaining, and a **privately selected but unsubmitted Dodge** in the Local Dock, yet **no green source tether, red target arrow, or whole-Dock target halo**. A mini card is not a substitute for the approved public Attack graph.
+For four-player real server-backed Attack with a **privately selected but unsubmitted Dodge**, render and retain the proven Attack root, green arrowless author tether, visible red arrow to the full target Dock/Seat and target highlight. An unsubmitted selection must not reveal a public Dodge or suppress the graph. The **only** detailed diagnostic/test contract for this regression is §6.28.1 (including its repeated windows, polling/frame evidence and fallback classification).
 
-- Reproduce the exact **four-player ordinary Attack response**, including selecting and deselecting a hand Dodge without pressing CONFIRM. Once the authoritative Attack root is proven and its anchors fit, the existing full-size Attack card, attacker source tether, red arrow to the **top edge of the entire local Dock**, and whole-Dock target glow must remain continuously visible. A private selection **must not** become a public Dodge node, and must not suppress the public Attack.
-- Inspect \`rootActionOverlayEnabled\`, \`rootActionOverlayLayoutReadiness\`, \`rootActionOverlayOwnsComposition\`, \`rootActionTemporarilyBlocked\`, event/reveal handoff, the root proof's frame/event identity, the optional future Dodge-slot reservation, SVG computed style/stacking/marker, and \`TableResolutionSequence\` miniature-card fallback. Capture the **specific** reason for every missing-line frame, including "root fits but reserved Dodge does not". Do not assume all failures are dense-layout geometry failures.
-- Preserve the §6.27 authentic portrait Attack/Dodge sizes and collision constraints: at 390px, preferred **Attack 120×180 CSS px / Dodge 108×162**, compact **108×162 / 98×147**, minimum **96×144 / 88×132**; 2:3 aspect ratio. The physical Seat/Dock never moves. If an unsupported scene truly cannot fit, keep its fail-closed alternative and attach measured evidence; do not mark the reproduction fixed.
-- A publicly committed Dodge must **directly interrupt the Attack-to-target red path**. The actual Dodge card blocks the path, the Attack line ends at the Dodge/contact mark, and the successful block does not retain a fully active arrow through to the player. A green arrowless tether connects the real Dodge-playing Seat/Dock to the public Dodge card. **No separate triangle**, no "PLAYED BY", and do not label the successful Dodge "BLOCKED".
-- **Public visual hold:** After the entire committed Attack → Dodge graph first becomes visible, keep **the real Attack card, Dodge card, both source tethers, and the block relationship together for 3,000ms** on the viewer's screen, unless a newer authoritative live action must supersede it. Apply the same rule to **Negation / counter-Negation** with correct direct effect-to-counter semantics. Motion may end within 150ms; the hold is **static and legible**. Reduced-motion keeps the same 3,000ms readable state without movement. Remove/fade within **200ms** after expiry when the interaction is settled.
-- This is a **client-only public presentation hold**, never a change to server response deadlines, legal actions, turn progression, timeouts, or card privacy. New public responses to the **same** interaction update the existing graph; a **different live root** takes priority. Keep response buttons generically **CONFIRM**, with existing approved exceptions such as TAKE DAMAGE. Do not add explanatory gameplay text.
-
-**Acceptance:** Test ten independent four-player Attack windows from real server-generated rooms, at **390×844, 480×900, 1440×900** (both source and defender), sampling 12 seconds of response frames/polls and selected/unselected private Dodge. After readiness, there must be **zero unexplained frames missing a visible green source path, visible red target path/arrowhead, or target emphasis**. Commit Dodge from the browser UI, assert source/counter identities from the public server projection, and capture timestamps at **0ms, 1,000ms, 2,900ms, and >3,000ms**. Also cover observer polling, reduced motion, response timeout, converted Attack/Dodge and 6/8-player geometry without inventing links.
+After a publicly **committed** Dodge, the authentic response card intercepts/blocks the incoming red line per §6.27.2; keep the complete graph readable for **3,000ms** under §6.28.2 without delaying real game controls. Use §6.31.1 for the latest 390–480px card sizes and §6.29.5 for green source stroke width. These are **one set of UX requirements**, not an instruction to assign additional legacy §6.27/§6.28/§6.29 Attack tasks.
 
 #### 6.29.2 Group/AOE cards: physical ownership and source-front anchoring
 
@@ -3662,38 +3392,11 @@ Use **green #86B9A2** and red **#E06B5D** as initial high-contrast reference col
 - **Minimal text:** Card artwork carries identity. Do not add visible "PLAYED BY", "ROOT ACTION" where a real face is available, verbose response instructions, or bespoke primary button captions. Preserve **CONFIRM** and already-approved **TAKE DAMAGE** exceptions. Keep accessible, privacy-safe, screen-reader-only semantic descriptions and accessible controls.
 - **No inference:** No client-only made-up source/target/counter relation, private card disclosure, guessed group response provenance, stale root reappearance, or a false whole-AOE block. All fallback/visibility decisions must have a reason observable in **test-only** evidence.
 
-#### 6.29.8 Bounded Coding Agent task sequence and acceptance gates (in English)
+#### 6.29.8 Cross-feature evidence and acceptance (no duplicate execution plan)
 
-The Coding Agent should extract **separate small tasks** at the next planning/handover boundary; do not attempt one giant multi-feature patch. Respect existing in-flight task ownership and do **not** edit this design document merely to report task results.
+Each **newly changed** causal-graph behavior must be validated with a real production page backed by server-created/seeded room state. Confirm the **exact typed public** source, target, response, frame and participant scope, viewer equality/privacy, stable root geometry (within 1 CSS px unless measured layout changes), appropriate screenshot legibility, no overlapping Seats/controls, valid reconnect/revision cleanup, and no duplicate numbered legacy card while the proven graph owns composition.
 
-**Task A — P0: four-player Attack/Dodge continuity and 3-second public counter readability (§§6.28, 6.29.1).**
-1. Reproduce the exact four-player "Dodge selected, Attack miniature without connectors" production UI using server-backed fixtures and browser hand selection.
-2. Diagnose proof-vs-geometry-vs-visibility with frame-level evidence; repair the root cause without guessed relations.
-3. Implement/verify the **3,000ms complete causal graph** for publicly committed Dodge and Negation/counter-Negation; preserve independent turn progression.
-4. Test before/during private selection, after public response, reconnect, reduced motion, multi-viewer delivery, and correct cleanup. Close only with real browser screenshots.
-
-**Task B — P1: source-owned AOE root geometry (§6.29.2).**
-1. Replace target-centroid-biased AOE root placement with the **source-foreground position** and measured safe-region search above.
-2. Keep same-interaction root position within **1 CSS px** while current target advances or Negation starts.
-3. Test source at top/middle/end Seat and at Local Dock, 4/6/8 players, 390×844 / 480×900 / 1440×900. Record exact fallback cause for impossible layouts; do not move Seats or dock.
-
-**Task C — P1: real public AOE answers and progress (§§6.29.3–6.29.4).**
-1. Audit existing authoritative Group/AE target-response proof; add missing typed public exact-response links for Barbarian Invasion **Attack** and Raining Arrows **Dodge** (including \`playedAs\` variants where valid). Keep group Negation scope independent.
-2. Render committed response CardFace **in front of its author Seat/Dock**, green author tether, short response-to-exact-target-branch contact/intercept; show it for the approved 3-second visual interval when safely possible. Do not show a privately selected card as public.
-3. Apply large **18–22px** branch endpoint statuses with clear current, paused, completed-success, completed-damaged, negated and pending differences. No "all branches cancelled" when only one target's effect is negated.
-4. Verify multi-player sequential responses and viewer equality; no duplicate miniature cards and no obscured local CONFIRM/SKIP.
-
-**Task D — P1/P2: thick active source lines and proven expired-link treatment (§§6.29.5–6.29.6).**
-1. Centralise and reconcile **green 5–6px** active source styling versus **red 6–8px** target line on 390px, including AOE, Duel, Negation and converted-card variants. Validate arrowhead/no-arrow semantics and contrast.
-2. Add typed presentation-only \`CURRENT\` / \`RECENT_EXPIRED\` / \`COLLAPSED_HISTORY\` styling driven by already-proven public step identity; support at least Duel Attack #1 → #2, Negation → counter-Negation, and ordered group target progress.
-3. Limit visible history to current + immediately previous expired on phones unless measured space permits more. Do not compete with the 3-second readable public counter relationship or prevent live actions.
-
-**Final acceptance and evidence (all tasks):**
-- Use the **production page against actual server-created/seeded rooms**. UI operations must be performed from actual hand/response controls at least once per family; API-only POSTs or fixture-only renders are not equivalent to UI reachability.
-- Capture screenshot and **time-stamped frame/DOM traces** for all major states, including 390×844, 480×900, 1440×900, **6/8-player** dense scenes and both local/remote viewers. Publish useful screenshot/Playwright report artifacts from successful CI for independent review.
-- Confirm exact source/target IDs, public root/event/frame/revision scope, root rectangle stability **≤1 CSS px**, connector/marker presence and visibility, complete public response duration **3,000ms ±200ms** when not superseded, branch marker legibility, collision-free card ownership, and no unexpected original Stage/reveal duplicates.
-- Verify actor/responder privacy, stale/rejected response proof, browser reconnect, polling, touch-like viewport changes, reduced motion, new authoritative root preemption, and that server timers are unaffected.
-- **No final UX Reviewer acceptance is implied by green CI.** Do not reopen completed §4D work or change \`HANDOVER.md\` on the UX Reviewer side. The Coding Agent owns task selection/results in \`HANDOVER.md\`; this document is the design source of truth.
+For the **existing Attack/Dodge regression and committed counter timing**, use §§6.28.1–6.28.2; do not run a second identical matrix. For **new AOE source-front placement**, use §6.29.2; for **AOE response and participant progression**, §§6.29.3–6.29.4; for **global line weight and expired links**, §§6.29.5–6.29.6. Test actual phone-sized 390×844/480×900 plus wide and dense-player cases where the change affects them, with before/after visual artifacts. Keep extended browser suites **optional until accepted** under §6.30. Only the user can visually accept UX. This paragraph is not an Agent task queue.
 
 ### 6.30 User-approved CI gate policy: maximum six minutes, minimal tests, visual tests only after acceptance (2026-10-09)
 
@@ -3713,19 +3416,11 @@ The Coding Agent should extract **separate small tasks** at the next planning/ha
 
 **UX release status is independent of CI:** A green fast CI means the chosen technical checks passed. It does **not** mean Attack/Dodge, AOE or any other card passed visual acceptance. The user's real-device observation of missing Attack lines remains **UX REJECTED / OPEN** until the user examines a working implementation.
 
-**Agent's next isolated execution task — \`UX2-CI-MINIMAL-6MIN-01\`:**
-1. Inventory required CI tests, execution time and false-positive UX tests. Identify the current long Attack/Dodge and dense 6/8-player cases that have **not been accepted by the user**.
-2. Change workflow and test selection so those long UX cases **do not run on push**. Keep their source files and make a separate manually triggered runner for diagnostics; do not modify game presentation while doing this CI-only task.
-3. Retain only the bounded build/lint, essential rules/API/privacy and basic browser journey checks on push. Remove redundant setup/build where safe; measure cold/warm timings, retries and runner consumption.
-4. Push one bounded CI change, demonstrate **three successful ordinary CI runs each no longer than 6:00 end-to-end**, with accurate checks, no swallowed failures, and honest deployment verification. If the limit is not yet reached, report the exact remaining slow stage and continue optimizing this CI task rather than broadening UX scope.
-5. Update Coding Agent-owned \`HANDOVER.md\` and **stop for the user's next instruction**. Do not claim Reviewer visual approval or enroll unapproved long UX tests.
-
-**Priority:** This CI-gate correction comes before starting another card type. Subsequent implementation is **one card, one user-visible feature, one user approval at a time**. Long-term regression coverage should be admitted only after that acceptance and must be designed to respect the six-minute push budget.
-
+**Historic execution note:** The former `UX2-CI-MINIMAL-6MIN-01` assignment text has been removed from this design. The **policy above** is the permanent requirement. The current `.github/workflows/deploy.yml` selects fast tests, API checks, lint, a single browser startup smoke and a dependent deploy; actual <=6:00 end-to-end compliance still requires exact-run measurement. Do **not** restart a CI optimization task or demand another fixed set of three historical runs solely because that task ID once appeared here. Future changes to CI or its performance gate require a fresh, scoped user direction.
 
 ### 6.31 User-approved Attack/Dodge mobile graph and trace-menu polish (2026-10-10)
 
-**Scope and evidence:** The user supplied two real iPhone screenshots of a working Attack/Dodge relationship graph and the System Menu. The requested work is **visual polish only**: the current portrait Attack and Dodge cards crowd/obscure the red relationship arrow, and a long diagnostic paragraph below **Download UX trace** makes the in-game menu unnecessarily large. This is not a request to change gameplay, causality, card/skill handling, 20-second graph hold, server deadlines, or trace collection. The user will visually review the result.
+**Scope and evidence:** The user supplied two real iPhone screenshots of a working Attack/Dodge relationship graph and the System Menu. The requested work is **visual polish only**: the current portrait Attack and Dodge cards crowd/obscure the red relationship arrow, and a long diagnostic paragraph below **Download UX trace** makes the in-game menu unnecessarily large. This is not a request to change gameplay, causality, card/skill handling, separate active graph hold (including the existing 20-second context where applicable), server deadlines, or trace collection. The user will visually review the result.
 
 **Override on mobile:** For ordinary Attack/Dodge at **390–480 CSS px**, visibility of the direction/blocked endpoint takes priority over §§6.27–6.27.1's earlier preference for maximally large cards. Preserve §§6.27.2, 6.29.5–6.29.7's direct Dodge interception, authentic physical CardFace, arrowless green authorship tether, strong red Attack direction, fixed Seats/Dock and safe controls. This override applies to mobile Attack/Dodge sizing, not automatically to other card types.
 
@@ -3809,12 +3504,8 @@ An optimization is proven only by **comparable before/after peak process-tree RS
 
 Only implement a **small, measured runner/config change** in the same bounded diagnostic task. If the leading fix is a production refactor or alters test grouping substantially, report the measurements and hand off a **separate, scoped follow-up task** instead of expanding the investigation. Never claim the 3–4 GB root cause fixed without relevant proof.
 
-### 6.33 Next-planning-boundary task separation for §§6.31–6.32
+### 6.33 Independent refinement areas and task-ownership boundary
 
-These are **separate approved areas**, not a combined implementation mandate. The Coding Agent owns \`HANDOVER.md\`, chooses one bounded task at the next valid planning boundary consistent with the user's direction, and must not interrupt an unrelated in-flight task merely because this design was amended.
+§6.31 (mobile Attack/Dodge layout plus compact System Menu) and §6.32 (measured build/lint/API memory investigation) are **different user-approved design areas**. Neither has been marked completed or visually accepted by inclusion in this document. They are **not simultaneously assigned**, and this section does not create tasks.
 
-**Candidate A — Mobile Attack/Dodge arrows and compact trace menu:** Apply §6.31 to \`app/interaction-root-overlay.tsx\`, \`app/sequence-overrides.css\` and the System Menu in \`app/page.tsx\`. Preserve exact public relationships and trace export. Validate on actual server-backed 390/~440/480px views; deliver side-by-side screenshots of clear red direction/Dodge interception and the compact menu. Short focused local checks; required CI stays fast. **Stop for the user's visual acceptance**. No memory/test-runner changes.
-
-**Candidate B — Build/lint/test memory measurement and limited optimization:** Apply §6.32. Measure per-command peak process-tree RSS, compare 4-vs-2 API shards and ESLint rule costs, inspect child cleanup, and separate V8 heap OOM from OS/cgroup kill. Preserve all tests and checks. Make only one evidence-backed low-risk runner/config change if justified, verify RSS/time and exact-SHA CI/deploy; otherwise report root cause/next smallest task. **Stop for review**. No card layout or System Menu changes.
-
-**Neither item is completed by this design amendment.** Green CI is not UX approval; performance advice is not proof of memory savings. Do not treat old §6.30 examples as authority to restart historical tasks without a current planning decision.
+For a newly authorized §6.31 implementation, use only its measured UI/trace-menu acceptance; do not change CI or memory behavior. For a separately authorized §6.32 diagnostic, first reproduce/profile memory and preserve all meaningful checks; do not change the Attack graph, card sizes or System Menu. The Coding Agent must compare current source and the *actual* `HANDOVER.md` task, avoid repeating implemented work, and take the **one** current user-directed bounded task. Return to the user for a new choice at the task boundary rather than inferring one from historic IDs.
