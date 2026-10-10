@@ -24,6 +24,20 @@ type AttackDodgeUxTraceDocument = {
 let memoryDocument: AttackDodgeUxTraceDocument | null = null;
 let memoryActive = false;
 let storageUnavailable = false;
+const activeListeners = new Set<() => void>();
+
+export function subscribeToAttackDodgeUxTraceActive(listener: () => void) {
+  activeListeners.add(listener);
+  return () => { activeListeners.delete(listener); };
+}
+
+export function getAttackDodgeUxTraceServerSnapshot() {
+  return false;
+}
+
+function notifyActiveListeners() {
+  activeListeners.forEach((listener) => listener());
+}
 
 function sessionStorageOrNull(): Storage | null {
   if (typeof window === "undefined" || storageUnavailable) return null;
@@ -129,6 +143,7 @@ export function startAttackDodgeUxTrace() {
     }
   }
   recordAttackDodgeUxTrace("trace-started", { note: "Local Attack/Dodge graph diagnostics enabled." });
+  notifyActiveListeners();
 }
 
 export function stopAttackDodgeUxTrace() {
@@ -143,6 +158,7 @@ export function stopAttackDodgeUxTrace() {
       storageUnavailable = true;
     }
   }
+  notifyActiveListeners();
 }
 
 export function exportAttackDodgeUxTrace(): string {

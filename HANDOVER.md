@@ -5,9 +5,9 @@ Mode: `USER-DIRECTED UX REPAIR`
 
 ## Latest result / CI
 
-The 20-second Attack→Dodge graph hold remains the latest implementation result. Added an opt-in, local-only recorder to distinguish server projection/proof, client candidate selection, overlay blockers, geometry, rendered Stage/legacy/SVG composition, and hold timers. It stores a bounded trace in this browser tab and exports by copy/download; it does not upload data. No new tests were added. Local build and focused ESLint for the trace utility and overlay pass; page-level ESLint exhausted the available Node heap. Real-device trace has not yet been captured.
+The 20-second Attack→Dodge graph hold remains the latest implementation result. Added an opt-in local recorder for projection/proof, candidate selection, overlay blockers, geometry, rendered Stage/legacy/SVG composition, and timers. The recorder is browser-local and exports by copy/download; no new tests were added. Recorder commit `e0ae2e4406773bc142703115c636c2ae3cd532cc` failed run `38035383250`: `react-hooks/set-state-in-effect` at `app/page.tsx:2019`; browser smoke and API passed, deployment was skipped. CI repair replaces the effect with an external-store subscription. CI REPAIR PUSHED — VALIDATION PENDING. Real-device trace has not yet been captured.
 
-Latest remote `ux-v2` CI before this recorder change: run `38020378208`, exact SHA `b3350a0f7f6e48fda3e294839cc85ac90576ef9d`, success. This does not validate the uncommitted recorder.
+The failed recorder SHA is `e0ae2e4406773bc142703115c636c2ae3cd532cc` (run `38035383250`). The repair is pushed; wait for CI on its exact new SHA before using the recorder in a real game.
 
 ## Design checkpoint
 

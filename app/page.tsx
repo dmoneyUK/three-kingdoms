@@ -20,7 +20,7 @@ import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSele
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { CardFace } from "./card-face";
 import { InteractionRootOverlay, interactionRootActionKey, type InteractionRootOverlayAction } from "./interaction-root-overlay";
-import { exportAttackDodgeUxTrace, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, startAttackDodgeUxTrace, stopAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
+import { exportAttackDodgeUxTrace, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, startAttackDodgeUxTrace, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -2014,10 +2014,11 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const onRootActionOverlayLayoutReadinessChange = useCallback((next: RootActionOverlayLayoutReadiness) => {
     setRootActionOverlayLayoutReadiness((current) => current?.key === next?.key && current?.state === next?.state ? current : next);
   }, []);
-  const [attackDodgeUxTraceActive, setAttackDodgeUxTraceActive] = useState(false);
-  useEffect(() => {
-    setAttackDodgeUxTraceActive(isAttackDodgeUxTraceActive());
-  }, []);
+  const attackDodgeUxTraceActive = useSyncExternalStore(
+    subscribeToAttackDodgeUxTraceActive,
+    isAttackDodgeUxTraceActive,
+    getAttackDodgeUxTraceServerSnapshot,
+  );
   const [effectNotice, setEffectNotice] = useState<string | null>(null);
   const [infoCard, setInfoCard] = useState<Card | null>(null);
   const [infoHero, setInfoHero] = useState<Hero | null>(null);
@@ -4642,12 +4643,10 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   }, [attackDodgeTraceSnapshotJson]);
   const beginAttackDodgeUxTrace = () => {
     startAttackDodgeUxTrace();
-    setAttackDodgeUxTraceActive(true);
     if (attackDodgeTraceSnapshot) recordAttackDodgeUxTrace("pipeline-state", attackDodgeTraceSnapshot);
   };
   const endAttackDodgeUxTrace = () => {
     stopAttackDodgeUxTrace();
-    setAttackDodgeUxTraceActive(false);
   };
   const localEquipmentSelection = activeSkillSelection
     ? { eligibleIds: activeSkillSelection.eligibleCardIds, selectedIds: activeSkillSelectedCardIds, max: activeSkillSelection.max, disabled: busy || presentationBusy, onToggle: (cardId: string) => setActiveSkillSelectionState((state) => { if (!state || !activeSkillStateIsCurrent) return state; const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)); return validIds.includes(cardId) ? { ...state, cardIds: validIds.filter((id) => id !== cardId) } : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, cardId] } : { ...state, cardIds: validIds }; }) }
