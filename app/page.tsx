@@ -4502,7 +4502,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       || attackDodgeSettlementAlreadyActive
       || attackDodgeSettlementCapturedEventIds.current.has(activeAttackDodgeSettlementEventId)) return;
     attackDodgeSettlementCapturedEventIds.current.add(activeAttackDodgeSettlementEventId);
-    const proofKey = attackDodgeResponseProofKey(proof);
     setActiveAttackDodgeSettlement({
       eventId: activeAttackDodgeSettlementEventId,
       proof,
@@ -4510,7 +4509,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       phase: "reading",
       remainingMs: UI_TIMING.attackDodgePublicCounterRead,
     });
-    if (proofKey) setNewAttackDodgeResponseProofs((current) => current.filter((entry) => entry.proofKey !== proofKey));
   }, [attackDodgeResponseCandidate, attackDodgeSettlementAlreadyActive, activeAttackDodgeSettlementEventId, rootActionOverlayAction, rootActionOverlayGraphReady]);
   useEffect(() => {
     if (!activeAttackDodgeSettlementReadingEventId || activeAttackDodgeSettlementRemainingMs === null || !rootActionOverlayGraphReady) return;

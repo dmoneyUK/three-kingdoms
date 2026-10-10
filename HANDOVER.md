@@ -5,7 +5,7 @@ Mode: `USER-DIRECTED UX REPAIR`
 
 ## Latest result / CI
 
-Attack root diagnostics are deployed on `9f188540ac6f14ece031939468fd33c647d39c40` (run `38053408522` succeeded). Exact-response client change `4a34c8478b4a9bbe1e621da776063f6b5ba5415e` and dependency repair `ef258aa8ce75a77f8a836d4c1e358e1d5ddb322c` failed only at React Hooks lint; API and Browser smoke passed, Deploy skipped. The second lint annotation requires memoizing the root identity because the newly listed dependency changed every render; a CI-only repair is in progress.
+Attack root diagnostics are deployed on `9f188540ac6f14ece031939468fd33c647d39c40` (run `38053408522` succeeded). Exact-response client change `4a34c8478b4a9bbe1e621da776063f6b5ba5415e` failed Hooks lint; two repair SHAs were `ef258aa8ce75a77f8a836d4c1e358e1d5ddb322c` and `721dd164bd8c783846e87326afe1269b523fe008`, with the latter exposing `react-hooks/set-state-in-effect` at `app/page.tsx:4513`. The redundant queue update is removed; exact CI lint command with its 8 GB heap passes locally. This CI-only repair must pass its own Actions run before feature work resumes.
 
 ## Design checkpoint
 
