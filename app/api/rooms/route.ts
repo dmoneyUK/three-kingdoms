@@ -5753,15 +5753,21 @@ export async function POST(request: Request) {
             : { ...continuation.group.requirement, actorId: redirectTarget.id },
         } satisfies GroupResponsePending : undefined;
         const redirectedDeclaration: AttackDeclaration = { ...continuation.declaration, targetId: redirectTarget.id, dodgeSuppressed: undefined };
+        const redirectedEnvelope = causalEnvelopeAtStage(liveRoom, redirectedDeclaration.causal, "ATTACK_RESPONSE", {
+          currentSourceId: source.id,
+          currentEffect: redirectedDeclaration.origin,
+          currentTargetIds: [redirectTarget.id],
+          resolvingPlayerId: redirectTarget.id,
+        });
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(nextTargetHand), JSON.stringify(nextTargetEquipment), target.id),
-          db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), room.id),
+          causalRoomStateWrite(room.id, { phase: "resolving", pending: null, discard, log, causalEnvelope: redirectedEnvelope }),
         ]);
         const redirectedContinuation: AttackTargetedTriggerContinuation = { kind: "attack_targeted_event", declaration: redirectedDeclaration, ...(redirectedGroup ? { group: redirectedGroup } : {}) };
         if (Object.values(targetEquipment).some((card) => card?.id === redirectCost.id)) {
           await advanceEquipmentLostEvents(room.id, equipmentLostRecords(target.id, [redirectCost], "deflection"), { kind: "attack_targeted", continuation: redirectedContinuation, handLoss: { playerId: target.id, beforeHand: targetHand } });
         } else {
-          await resumeCanonicalTriggerContinuation({ ...liveRoom, phase: "resolving", pending_json: null, discard_json: JSON.stringify(discard) }, redirectedContinuation, continuationPlayers, discard, log);
+          await resumeCanonicalTriggerContinuation({ ...liveRoom, phase: "resolving", pending_json: null, discard_json: JSON.stringify(discard), causal_envelope_json: redirectedEnvelope ? JSON.stringify(redirectedEnvelope) : null }, redirectedContinuation, continuationPlayers, discard, log);
         }
         return json({ room: await roomState(code, token) });
       }

@@ -683,6 +683,9 @@ function rootActionForSnapshot(
 ): PresentationSnapshotRootAction | null {
   const action = snapshot.rootAction;
   const identity = snapshot.identity;
+  const sourceOwnedAttackTargetTrigger = scene.sourceOwnedAttackTargetTrigger?.semantics === "PROVEN"
+    && scene.sourceOwnedAttackTargetTrigger.actorId === action?.sourceId
+    && scene.decisionActorId === action?.sourceId;
   if (!action || !identity || action.semantics !== "PROVEN"
     || !isProvenRootActionCardProof(action)
     || snapshot.stable.kind !== "CHOICE"
@@ -693,18 +696,20 @@ function rootActionForSnapshot(
     || scene.continuity.relation !== "ROOT_FRAME" || scene.rootFrameId !== scene.activeFrameId
     || !isString(action.sourceId) || action.sourceId === action.targetId
     || action.sourceId !== scene.sourceId || action.sourceId !== scene.activeSourceId
-    || !isString(action.targetId) || scene.targetIds.length !== 1 || scene.targetIds[0] !== action.targetId
+    || !isString(action.targetId) || scene.targetIds.length !== 1
     || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== action.targetId
     || !CARD_KINDS.includes(action.cardKind)) return null;
   const attackScene = action.action === "ATTACK"
     && scene.stage === "ATTACK_RESPONSE"
     && scene.currentParticipantId === action.targetId
     && scene.participantRoles.sourceId === action.sourceId
-    && scene.participantRoles.originalTargetIds.length === 1 && scene.participantRoles.originalTargetIds[0] === action.targetId
+    && scene.participantRoles.originalTargetIds.length === 1 && scene.participantRoles.originalTargetIds[0] === scene.targetIds[0]
     && scene.participantRoles.activeTargetIds.length === 1 && scene.participantRoles.activeTargetIds[0] === action.targetId
     && scene.participantRoles.currentParticipantId === action.targetId
-    && scene.participantRoles.decisionActorId === action.targetId && scene.participantRoles.activeResolverId === action.targetId
-    && scene.decisionActorId === action.targetId && scene.activeResolverId === action.targetId;
+    && (scene.participantRoles.decisionActorId === action.targetId || sourceOwnedAttackTargetTrigger)
+    && scene.participantRoles.activeResolverId === action.targetId
+    && (scene.decisionActorId === action.targetId || sourceOwnedAttackTargetTrigger)
+    && scene.activeResolverId === action.targetId;
   const targetCardEffect = action.action === "STRATAGEM"
     ? action.cardKind === "Dismantle" ? "Burning Bridges" : action.cardKind === "Steal" ? "Steal" : null
     : null;
@@ -712,6 +717,7 @@ function rootActionForSnapshot(
     && scene.stage === "SETTLEMENT" && scene.effect === targetCardEffect
     && scene.currentParticipantId === action.targetId
     && scene.participantRoles.sourceId === action.sourceId
+    && scene.targetIds[0] === action.targetId
     && scene.participantRoles.originalTargetIds.length === 1 && scene.participantRoles.originalTargetIds[0] === action.targetId
     && scene.participantRoles.activeTargetIds.length === 1 && scene.participantRoles.activeTargetIds[0] === action.targetId
     && scene.participantRoles.currentParticipantId === action.targetId

@@ -225,6 +225,7 @@ export type PresentationParticipantRoles = {
   activeTargetIds: readonly string[];
   currentParticipantId: string | null;
   decisionActorId: string | null;
+  sourceOwnedAttackTargetTrigger?: { semantics: "PROVEN"; actorId: string };
   activeResolverId: string | null;
   parentParticipantId: string | null;
   participantIds: readonly string[];
@@ -601,15 +602,15 @@ function stageFor(kind: string, value: RecordLike): string {
 function contextFor(value: unknown): Context | null {
   const item = record(value); if (!item) return null;
   const kind = stringValue(item.kind); if (!kind) return null;
-  const declaration = record(item.declaration);
   const continuation = record(item.continuation);
+  const declaration = record(item.declaration) ?? record(continuation?.declaration);
   const judgement = record(item.judgement);
   const resume = record(judgement?.resume);
   return {
     kind,
     stage: stageFor(kind, item),
     sourceId: firstString(item.sourceId, declaration?.sourceId, continuation?.sourceId, judgement?.sourceId),
-    targetIds: unique([...strings(item.targetIds), ...strings(continuation?.targetIds), firstString(item.targetId, item.effectTargetId, continuation?.targetId, continuation?.effectTargetId, judgement?.targetId, resume?.targetId)]),
+    targetIds: unique([...strings(item.targetIds), ...strings(declaration?.targetIds), ...strings(continuation?.targetIds), firstString(item.targetId, item.effectTargetId, declaration?.targetId, continuation?.targetId, continuation?.effectTargetId, judgement?.targetId, resume?.targetId)]),
     // Historical targets must come from explicit root/declaration data only.
     originalTargetIds: unique([...strings(item.originalTargetIds), ...strings(declaration?.targetIds), firstString(item.originalTargetId, declaration?.targetId)]),
     resolutionId: firstString(item.resolutionId, continuation?.resolutionId, declaration?.resolutionId, judgement?.resolutionId),
@@ -737,8 +738,9 @@ function sourceOwnedTriggerDecisionActorId(envelope: CausalEnvelope | null, pend
     || activeFrame.current.resolvingPlayerId !== targetId
     || activeFrame.origin.originSourceId !== sourceId
     || activeFrame.current.currentSourceId !== sourceId
-    || !activeFrame.origin.originalTargetIds.includes(targetId)
-    || !activeFrame.current.currentTargetIds.includes(targetId)) return null;
+    || activeFrame.origin.originalTargetIds.length !== 1
+    || activeFrame.current.currentTargetIds.length !== 1
+    || activeFrame.current.currentTargetIds[0] !== targetId) return null;
   return actorId;
 }
 
@@ -910,6 +912,7 @@ function interactionSceneFor(
     : targetIds;
   const currentParticipantId = groupValues?.currentParticipantId ?? firstString(activeCurrent?.currentTargetIds[0]);
   const dyingProof = dyingDecisionProof(envelope, pending);
+  const sourceOwnedAttackTargetActorId = proven ? sourceOwnedTriggerDecisionActorId(envelope, pending, activeFrame) : null;
   const semanticDecisionActor = semanticDecisionActorId(envelope, pending, activeFrame, dyingProof);
   const publicActiveResolverId = isBumperHarvestNegationPending(pending) ? null : activeCurrent?.resolvingPlayerId ?? null;
   const relation: InteractionSceneContinuity["relation"] = !proven
@@ -979,6 +982,7 @@ function interactionSceneFor(
     targetIds,
     currentParticipantId,
     decisionActorId: semanticDecisionActor,
+    ...(sourceOwnedAttackTargetActorId ? { sourceOwnedAttackTargetTrigger: { semantics: "PROVEN" as const, actorId: sourceOwnedAttackTargetActorId } } : {}),
     activeResolverId: publicActiveResolverId,
     activeSourceId: activeCurrent?.currentSourceId ?? null,
     activeTargetIds: activeCurrent?.currentTargetIds ?? [],
@@ -1796,9 +1800,13 @@ function singleTargetAttackRootActionEvaluationFor(
   const declaration = record(continuation?.declaration);
   const causal = record(item?.causal);
   const continuationCausal = record(continuation?.causal);
-  const sourceId = stringValue(continuation?.sourceId);
-  const targetId = stringValue(continuation?.targetId);
-  const sequenceStartCardId = stringValue(continuation?.sequenceStartCardId);
+  const declarationCausal = record(declaration?.causal);
+  const isAttackResponse = item?.kind === "response" && continuation?.kind === "attack";
+  const isAttackTargetTrigger = item?.kind === "trigger" && item.event === "attack_targeted"
+    && continuation?.kind === "attack_targeted_event" && Boolean(declaration);
+  const sourceId = firstString(continuation?.sourceId, declaration?.sourceId);
+  const targetId = firstString(continuation?.targetId, declaration?.targetId);
+  const sequenceStartCardId = firstString(continuation?.sequenceStartCardId, declaration?.sequenceStartCardId);
   const expectedRootEventId = firstString(continuation?.rootEventId, declaration?.rootEventId);
   const readyAfterEventId = stringValue(item?.readyAfterEventId);
   const frame = envelope?.frames.find(({ frameId }) => frameId === envelope.activeFrameId) ?? null;
@@ -1814,8 +1822,8 @@ function singleTargetAttackRootActionEvaluationFor(
       : null;
 
   const checks: Record<string, boolean> = {
-    pendingIsResponse: item?.kind === "response",
-    continuationIsAttack: continuation?.kind === "attack",
+    pendingIsAuthorizedAttackStage: isAttackResponse || isAttackTargetTrigger,
+    continuationIsAuthorizedAttackStage: isAttackResponse || isAttackTargetTrigger,
     causalEnvelopePresent: Boolean(envelope),
     activeCausalFramePresent: Boolean(frame),
     exactlyOneRootCausalFrame: rootFrames.length === 1,
@@ -1833,29 +1841,37 @@ function singleTargetAttackRootActionEvaluationFor(
     pendingCausalFrameMatches: causal?.frameId === frame?.frameId,
     continuationCausalInteractionMatches: continuationCausal?.interactionId === envelope?.interactionId,
     continuationCausalFrameMatches: continuationCausal?.frameId === frame?.frameId,
+    declarationCausalMatchesAttackFrame: !isAttackTargetTrigger
+      || declarationCausal?.interactionId === envelope?.interactionId && declarationCausal.frameId === frame?.frameId,
     distinctSourceAndTargetPresent: Boolean(sourceId && targetId && sourceId !== targetId),
-    responseActorIsTarget: item?.actorId === targetId,
+    decisionActorIsAuthorized: isAttackResponse
+      ? item?.actorId === targetId
+      : isAttackTargetTrigger && (item?.actorId === sourceId || item?.actorId === targetId),
+    sceneDecisionActorMatchesPending: scene?.decisionActorId === item?.actorId,
     frameOriginSourceMatches: frame?.origin.originSourceId === sourceId,
     frameCurrentSourceMatches: frame?.current.currentSourceId === sourceId,
     frameEffectUnchanged: frame?.current.currentEffect === frame?.origin.originEffect,
     sceneEffectMatchesRoot: scene?.effect === frame?.origin.originEffect,
-    oneOriginalTargetMatches: frame?.origin.originalTargetIds.length === 1 && frame.origin.originalTargetIds[0] === targetId,
+    exactlyOneOriginalTargetPresent: frame?.origin.originalTargetIds.length === 1,
     oneActiveTargetMatches: frame?.current.currentTargetIds.length === 1 && frame.current.currentTargetIds[0] === targetId,
     currentResolverIsTarget: frame?.current.resolvingPlayerId === targetId,
     sceneSourceMatches: scene?.sourceId === sourceId,
     sceneActiveSourceMatches: scene?.activeSourceId === sourceId,
-    sceneHasOneOriginalTarget: scene?.targetIds.length === 1 && scene.targetIds[0] === targetId,
+    sceneOriginalTargetMatchesFrame: scene?.targetIds.length === 1
+      && scene.targetIds[0] === frame?.origin.originalTargetIds[0],
     sceneHasOneActiveTarget: scene?.activeTargetIds.length === 1 && scene.activeTargetIds[0] === targetId,
     sceneCurrentParticipantIsTarget: scene?.currentParticipantId === targetId,
     participantRoleSourceMatches: scene?.participantRoles.sourceId === sourceId,
-    participantRoleOriginalTargetMatches: scene?.participantRoles.originalTargetIds.length === 1 && scene.participantRoles.originalTargetIds[0] === targetId,
+    participantRoleOriginalTargetMatchesFrame: scene?.participantRoles.originalTargetIds.length === 1
+      && scene.participantRoles.originalTargetIds[0] === frame?.origin.originalTargetIds[0],
     participantRoleActiveTargetMatches: scene?.participantRoles.activeTargetIds.length === 1 && scene.participantRoles.activeTargetIds[0] === targetId,
     participantRoleCurrentParticipantIsTarget: scene?.participantRoles.currentParticipantId === targetId,
-    participantRoleDecisionActorIsTarget: scene?.participantRoles.decisionActorId === targetId,
+    participantRoleDecisionActorMatchesPending: scene?.participantRoles.decisionActorId === item?.actorId,
     participantRoleResolverIsTarget: scene?.participantRoles.activeResolverId === targetId,
-    sceneDecisionActorIsTarget: scene?.decisionActorId === targetId,
+    sceneDecisionActorIsAuthorized: scene?.decisionActorId === targetId || scene?.decisionActorId === sourceId,
     sceneResolverIsTarget: scene?.activeResolverId === targetId,
-    rootContextIsResponse: rootContext?.kind === "response",
+    rootContextIsAuthorizedAttackStage: rootContext?.kind === "response"
+      || rootContext?.kind === "trigger" && rootContext.stage === "attack_targeted",
     rootContextSourceMatches: rootContext?.sourceId === sourceId,
     rootContextHasOneTarget: rootContext?.targetIds.length === 1 && rootContext.targetIds[0] === targetId,
     sequenceStartCardPresent: Boolean(sequenceStartCardId),
@@ -2557,6 +2573,7 @@ function participantsFromScene(scene: PresentationInteractionScene): Presentatio
   };
   add(scene.participantRoles.sourceId, "source");
   scene.participantRoles.originalTargetIds.forEach((id) => add(id, id === scene.participantRoles.currentParticipantId ? "current_target" : "target"));
+  scene.participantRoles.activeTargetIds.forEach((id) => add(id, id === scene.participantRoles.currentParticipantId ? "current_target" : "target"));
   scene.participantRoles.participantIds.forEach((id) => add(id, "group_participant"));
   return [...map].map(([playerId, roles]) => ({ playerId, roles: [...roles] }));
 }
