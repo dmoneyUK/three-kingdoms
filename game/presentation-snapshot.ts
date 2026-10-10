@@ -370,7 +370,11 @@ export function provenAttackDodgeResponses(value: unknown): PresentationSnapshot
     && (candidate as PresentationSnapshotAttackDodgeResponse).rootSourceId !== (candidate as PresentationSnapshotAttackDodgeResponse).targetId
     && (candidate as PresentationSnapshotAttackDodgeResponse).responseActorId === (candidate as PresentationSnapshotAttackDodgeResponse).targetId
     && (candidate as PresentationSnapshotAttackDodgeResponse).rootCardKind === "Attack"
-    && (candidate as PresentationSnapshotAttackDodgeResponse).responseCardKind === "Dodge"));
+    && (candidate as PresentationSnapshotAttackDodgeResponse).responseCardKind === "Dodge"
+    && ((candidate as PresentationSnapshotAttackDodgeResponse).displayExpiresAtMs === undefined
+      || nonNegativeInteger((candidate as PresentationSnapshotAttackDodgeResponse).displayExpiresAtMs))
+    && ((candidate as PresentationSnapshotAttackDodgeResponse).turnSeatAtCommit === undefined
+      || nonNegativeInteger((candidate as PresentationSnapshotAttackDodgeResponse).turnSeatAtCommit))));
   const counts = new Map<string, number>();
   responses.forEach((response) => counts.set(response.responseEventId, (counts.get(response.responseEventId) ?? 0) + 1));
   return responses.filter((response) => counts.get(response.responseEventId) === 1).map((response) => ({
@@ -387,6 +391,8 @@ export function provenAttackDodgeResponses(value: unknown): PresentationSnapshot
     responseCardKind: "Dodge",
     responseEventId: response.responseEventId,
     responseResolutionId: response.responseResolutionId,
+    ...(response.displayExpiresAtMs !== undefined ? { displayExpiresAtMs: response.displayExpiresAtMs } : {}),
+    ...(response.turnSeatAtCommit !== undefined ? { turnSeatAtCommit: response.turnSeatAtCommit } : {}),
   }));
 }
 

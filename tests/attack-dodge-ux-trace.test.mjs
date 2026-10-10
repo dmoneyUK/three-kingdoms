@@ -9,6 +9,150 @@ import {
   stopAttackDodgeUxTrace,
   summarizePublicGameRoom,
 } from "../app/attack-dodge-ux-trace.ts";
+import {
+  attackDodgePublicActionEvents,
+  attackDodgeSettlementSupersessionReason,
+  persistRetiredAttackDodgeComposition,
+  readRetiredAttackDodgeComposition,
+  retiredAttackDodgeCompositionStorageSnapshot,
+  subscribeRetiredAttackDodgeComposition,
+} from "../game/attack-dodge-settlement-lifecycle.ts";
+
+const settlementHold = {
+  roomCode: "ROOM1",
+  phase: "play-struck",
+  turnSeat: 0,
+  rootEventId: "attack-root",
+  responseEventId: "dodge-response",
+  interactionId: "interaction-1",
+  rootFrameId: "root-frame-1",
+  sourceId: "source-player",
+  targetId: "target-player",
+  publicActionEventIds: ["attack-root", "dodge-response"],
+};
+
+function settlementRoom(overrides = {}) {
+  return {
+    roomCode: "ROOM1",
+    status: "playing",
+    phase: "play-struck",
+    turnSeat: 0,
+    currentAction: { kind: "turn" },
+    interaction: null,
+    liveRoots: [],
+    publicActionEvents: [],
+    ...overrides,
+  };
+}
+
+test("completed Attack/Dodge holds ignore polling and same-root causal updates", () => {
+  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom()), null);
+  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({
+    interaction: { semantics: "PROVEN", interactionId: "interaction-1", rootFrameId: "root-frame-1" },
+    publicActionEvents: [{ eventId: "same-root-trigger", rootEventId: "attack-root", interactionId: "interaction-1", rootFrameId: "root-frame-1" }],
+  })), null);
+  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({
+    liveRoots: [{ semantics: "PROVEN", rootEventId: "attack-root", interactionId: "interaction-1", rootFrameId: "root-frame-1", sourceId: "source-player", targetId: "target-player" }],
+  })), null);
+});
+
+test("same-root Duel, Negation, and AOE public continuations do not retire a held graph", () => {
+  for (const proofKey of ["duelAttackResponse", "negationSettlement", "publicGroupSettlement"]) {
+    const publicActionEvents = attackDodgePublicActionEvents([{
+      id: `${proofKey}-continuation`, type: "message", [proofKey]: {
+        rootEventId: settlementHold.rootEventId,
+        interactionId: settlementHold.interactionId,
+        rootFrameId: settlementHold.rootFrameId,
+      },
+    }]);
+    assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({ publicActionEvents })), null, proofKey);
+  }
+  const privateSelectionEvents = attackDodgePublicActionEvents([
+    { id: "private-dodge-selection", type: "card", action: "draw", presentation: false },
+  ]);
+  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({
+    currentAction: { kind: "response" }, publicActionEvents: privateSelectionEvents,
+  })), null, "private Dodge selection is not an independent public action");
+});
+
+test("completed Attack/Dodge holds retire on authoritative action and turn boundaries", () => {
+  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({
+    publicActionEvents: [{ eventId: "next-public-play" }],
+  })), "new-public-action");
+  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({ turnSeat: 1 })), "turn-advanced");
+  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({ phase: "discard" })), "discard-phase");
+  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({
+    currentAction: { kind: "trigger", triggerEvent: "turn_end" },
+  })), "turn-ending-trigger");
+  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({
+    phase: "resolving", currentAction: { kind: "none" },
+  })), "turn-ending-resolution");
+  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({ roomCode: "ROOM2" })), "room-changed");
+  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({ status: "finished" })), "game-ended");
+  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({
+    liveRoots: [{ semantics: "PROVEN", rootEventId: "next-attack", interactionId: "interaction-2", rootFrameId: "root-frame-2", sourceId: "source-player", targetId: "target-player" }],
+  })), "different-live-root");
+});
+
+test("settlement action identity extraction ignores messages and private draws", () => {
+  assert.deepEqual(attackDodgePublicActionEvents([
+    { id: "informational-message", type: "message", message: "A player acted." },
+    { id: "private-draw", type: "card", action: "draw", presentation: false },
+    { id: "next-attack", type: "card", action: "play", presentation: true },
+    { id: "discard-event", type: "cards", action: "discard", presentation: true },
+    { id: "linked-proof", type: "message", attackDodgeResponse: { rootEventId: "attack-root", interactionId: "interaction-1", rootFrameId: "root-frame-1" } },
+  ]), [
+    { eventId: "next-attack", timelineIndex: 2 },
+    { eventId: "discard-event", timelineIndex: 3 },
+    { eventId: "linked-proof", timelineIndex: 4, rootEventId: "attack-root", interactionId: "interaction-1", rootFrameId: "root-frame-1" },
+  ]);
+});
+
+test("a later public action or server read deadline retires an Attack/Dodge for a fresh viewer", () => {
+  const events = attackDodgePublicActionEvents([
+    { id: "older-action", type: "card", action: "play", presentation: true },
+    { id: "attack-root", type: "card", action: "play", presentation: true },
+    { id: "dodge-response", type: "card", action: "play", presentation: true },
+    { id: "next-equipment", type: "card", action: "equip", presentation: true },
+  ]);
+  const response = events.find((event) => event.eventId === "dodge-response");
+  assert.ok(response);
+  const hold = {
+    ...settlementHold,
+    displayExpiresAtMs: 20_000,
+    publicActionEventIds: events.filter((event) => event.timelineIndex <= response.timelineIndex).map((event) => event.eventId),
+  };
+  assert.equal(attackDodgeSettlementSupersessionReason(hold, settlementRoom({
+    nowMs: 19_999,
+    publicActionEvents: events,
+  })), "new-public-action");
+  assert.equal(attackDodgeSettlementSupersessionReason(hold, settlementRoom({ nowMs: 20_000 })), "public-read-window-expired");
+});
+
+test("retired public Attack/Dodge identities survive refresh without crossing rooms", () => {
+  const values = new Map();
+  let storeNotifications = 0;
+  const unsubscribe = subscribeRetiredAttackDodgeComposition("ROOM1", () => { storeNotifications += 1; });
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  assert.deepEqual(persistRetiredAttackDodgeComposition(storage, "ROOM1", ["attack-root", "dodge-response"], ["attack-card", "dodge-card"]), {
+    roomCode: "ROOM1", eventIds: ["attack-root", "dodge-response"], cardIds: ["attack-card", "dodge-card"],
+  });
+  assert.deepEqual(persistRetiredAttackDodgeComposition(storage, "ROOM1", ["next-attack", "attack-root"], ["next-card"]), {
+    roomCode: "ROOM1", eventIds: ["attack-root", "dodge-response", "next-attack"], cardIds: ["attack-card", "dodge-card", "next-card"],
+  });
+  assert.deepEqual(readRetiredAttackDodgeComposition(storage, "ROOM1"), {
+    roomCode: "ROOM1", eventIds: ["attack-root", "dodge-response", "next-attack"], cardIds: ["attack-card", "dodge-card", "next-card"],
+  });
+  assert.deepEqual(readRetiredAttackDodgeComposition(storage, "ROOM2"), {
+    roomCode: "ROOM2", eventIds: [], cardIds: [],
+  });
+  assert.equal(storeNotifications, 2, "same-tab persistence notifies the external-store subscriber");
+  assert.equal(typeof retiredAttackDodgeCompositionStorageSnapshot("ROOM1"), "string");
+  unsubscribe();
+});
 
 test("game trace records public hero/skill and causal context without private identities", () => {
   const summary = summarizePublicGameRoom({

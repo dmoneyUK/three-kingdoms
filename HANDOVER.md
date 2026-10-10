@@ -5,12 +5,12 @@ Mode: `USER-DIRECTED UX REFINEMENT`
 
 ## Latest result / CI
 
-§6.34 Stage A implementation: server-backed Attack/Dodge browser matrix passed 4/4 (1m36s) at 390×844, 440×956, 480×900 and 1440×900, across source, target and observer views. Measured Hand CardFaces are 68×102 CSS px; public Attack/Dodge faces are 60×90, with 54×81 compact fallback. Rank/suit corners scale with the face (9/7px; compact 8/6px). `npm run build` and `git diff --check` passed. Reviewer visual acceptance remains pending. Pre-commit CI gate: latest relevant Actions run `38074092482` succeeded on `3739cec`; current remote `5b5a160` only updates design docs and has no matching run.
+§6.35 completed-graph supersession is implemented locally: a completed Attack/Dodge graph retires on server-authoritative public action, End Turn/discard, turn/game/room boundary, or its server-issued 20s deadline; same-root continuations remain intact. Current Node 22.13.0 checks: build passed, lint passed, fast tests 270/270, API tests 266/266, lifecycle unit tests 9/9, focused server-backed browser tests 5/5. Latest remote HEAD before this change `814b4e5`; Actions run `38080179998` failed. Its lint failure (`_local`/`_id` unused) is fixed here. API job exposed only a generic exit code; exact-SHA Node 22 API reruns passed twice, and current API suite passed. New pushed-SHA CI/deployment pending.
 
 ## Design checkpoint
 
-Reviewed latest remote `docs/UX2-refine.md` blob `2e33ccf6fa9582bb537c490db737653eec926158`, including changes since `1108283`: §6.35 now prioritizes immediate retirement of completed graphs on authoritative new-action/turn boundaries; its lifecycle rule does not cancel the in-flight Stage A. Stage A visual acceptance is still open.
+Latest remote `docs/UX2-refine.md` blob: `2e33ccf6fa9582bb537c490db737653eec926158`. §6.35 reviewed; no newer design change. §6.34 Stage A card sizes remain Hand 68×102px, public 60×90px (compact 54×81px); rank/suit marks scale with the face (9/7px; compact 8/6px). Reviewer visual acceptance remains pending.
 
 ## Current task
 
-`UX2-6.35-COMPLETED-GRAPH-SUPERSESSION-01` (P0) — reproduce a real server-backed Attack→Dodge result whose 20s graph remains after accepted End Turn/discard/next turn; capture authoritative action, phase/turn, root/response IDs and held-overlay diagnostics; then implement one small server-authoritative supersession predicate that clears the entire completed graph on independent action/turn/session boundaries without clearing same-root continuations. Focused browser proof at 390×844, ~440px and 480×900; do not change card sizing/placement, timers or CI selection. Stop for user review. Stage A screenshots/evidence are ready for Reviewer visual acceptance; no acceptance is claimed.
+`UX2-6.35-COMPLETED-GRAPH-SUPERSESSION-01` — implementation and focused evidence complete locally; commit/push, verify exact-SHA CI and deployment, then stop for Reviewer/user inspection. Do not start §6.34 expansion before visual acceptance. No Reviewer acceptance is claimed.

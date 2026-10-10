@@ -30,6 +30,7 @@ import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
 import { childCausalFrame, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
 import { advanceCausalSemanticCheckpoint } from "../causal-envelope";
+import { ATTACK_DODGE_PUBLIC_READ_MS } from "../../../game/attack-dodge-settlement-lifecycle";
 
 export const runtime = "edge";
 
@@ -793,7 +794,7 @@ function attachBumperHarvestRootFrame(log: string[], eventId: string, sourceId: 
   });
   return matches === 1 ? next : log;
 }
-function attackDodgeResponseProof(log: string[], response: ResponsePending, responderId: string): AttackDodgeProofEvaluation {
+function attackDodgeResponseProof(log: string[], response: ResponsePending, responderId: string, turnSeatAtCommit: number | null): AttackDodgeProofEvaluation {
   const attack = attackResponse(response);
   const causal = response.causal;
   const correlation = {
@@ -892,6 +893,8 @@ function attackDodgeResponseProof(log: string[], response: ResponsePending, resp
     responseActorId: responderId,
     rootCardKind: "Attack",
     responseCardKind: "Dodge",
+    displayExpiresAtMs: Date.now() + ATTACK_DODGE_PUBLIC_READ_MS,
+    ...(Number.isInteger(turnSeatAtCommit) && turnSeatAtCommit !== null ? { turnSeatAtCommit } : {}),
   };
   return {
     proof,
@@ -6646,7 +6649,7 @@ export async function POST(request: Request) {
       if (dodgeCards.length === 1) {
         responseEventId = crypto.randomUUID();
         if (dodgeCards[0].kind === "Dodge" && !responseExecution?.playedAs) {
-          attackDodgeEvaluation = attackDodgeResponseProof(log, attack.response, me.id);
+          attackDodgeEvaluation = attackDodgeResponseProof(log, attack.response, me.id, liveRoom.turn_seat);
         } else {
           attackDodgeEvaluation = {
             proof: null,

@@ -431,6 +431,10 @@ export type PresentationAttackDodgeResponseProof = {
   responseActorId: string;
   rootCardKind: "Attack";
   responseCardKind: "Dodge";
+  /** Server time at which this public read window expires; legacy proofs may omit it. */
+  displayExpiresAtMs?: number;
+  /** Server-owned turn identity captured when the Dodge was committed. */
+  turnSeatAtCommit?: number;
 };
 
 export type PresentationAttackDodgeResponse = PresentationAttackDodgeResponseProof & {
@@ -2397,6 +2401,12 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
       responseCardKind: "Dodge",
       responseEventId: eventId,
       responseResolutionId,
+      ...(Number.isSafeInteger(proof.displayExpiresAtMs) && (proof.displayExpiresAtMs as number) >= 0
+        ? { displayExpiresAtMs: proof.displayExpiresAtMs as number }
+        : {}),
+      ...(Number.isSafeInteger(proof.turnSeatAtCommit) && (proof.turnSeatAtCommit as number) >= 0
+        ? { turnSeatAtCommit: proof.turnSeatAtCommit as number }
+        : {}),
     }];
   });
 }

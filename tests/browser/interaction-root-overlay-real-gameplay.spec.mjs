@@ -164,7 +164,7 @@ async function captureAttackStageComposition(page, sourceId, targetId) {
     const obstacles = [...document.querySelectorAll(".play-center, .stage-system-cluster, .game-messages, .game-exit")]
       .map((element) => ({ name: String(element.className), ...rect(element), style: getComputedStyle(element).visibility }))
       .filter((obstacle) => obstacle.width > 0 && obstacle.height > 0 && obstacle.style !== "hidden");
-    const anchor = (id) => anchors.filter((item) => item.id === id).map(({ id: _id, local: _local, ...bounds }) => bounds)[0] ?? null;
+    const anchor = (id) => anchors.find((item) => item.id === id) ?? null;
     const source = anchor(sourceId);
     const target = anchor(targetId);
     const responseElement = document.querySelector('[data-root-action-response-card="true"]');
@@ -3709,6 +3709,23 @@ test("real Attack→Dodge keeps its 20-second public graph without an exit anima
     await expect(overlay.locator('[data-root-action-card="true"]')).toHaveCount(0);
     await expect(targetPage.locator('.table-resolution-layer .table-played-card')).toHaveCount(0);
     expect(proof.counterRelation).toBe("BLOCKS_TARGET_EFFECT");
+
+    await targetPage.reload();
+    await expect(targetPage.locator(".game-shell")).toBeVisible();
+    await expect(targetPage.locator('[data-root-action-overlay="true"]')).toHaveCount(0);
+    await expect(targetPage.locator(`[data-public-counter-read-timer="true"][data-public-counter-read-event-id="${proof.responseEventId}"]`)).toHaveCount(0);
+    await expect(targetPage.locator('.table-resolution-layer .table-played-card')).toHaveCount(0);
+
+    const freshViewer = await browser.newPage({ viewport });
+    try {
+      await openGame(freshViewer, seed, 1, viewport);
+      await expect(freshViewer.locator('[data-root-action-overlay="true"]')).toHaveCount(0);
+      await expect(freshViewer.locator(`[data-public-counter-read-timer="true"][data-public-counter-read-event-id="${proof.responseEventId}"]`)).toHaveCount(0);
+      await expect(freshViewer.locator('.table-resolution-layer .table-played-card')).toHaveCount(0);
+      expect(await freshViewer.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("wtk.attack-dodge-retired.")))).toEqual([]);
+    } finally {
+      await freshViewer.close();
+    }
   } finally {
     await targetPage.close();
   }
@@ -4815,6 +4832,237 @@ test("a new authoritative Attack root preempts the unexpired Dodge read graph wi
         targetAction: (await roomView(request, seed, 1)).currentAction }, null, 2),
       contentType: "application/json",
     });
+  } finally {
+    await Promise.all([sourcePage.close(), targetPage.close()]);
+  }
+});
+
+async function beginRealAttackDodgeReadGraph({ browser, request, viewport, sourceCard, targetDodge, seedOptions = {} }) {
+  const seed = await seedGame(request, 4, { ...seedOptions, sourceCard, targetCard: targetDodge });
+  const sourceId = seed.players[0].id;
+  const targetId = seed.players[1].id;
+  const sourcePage = await browser.newPage({ viewport });
+  const targetPage = await browser.newPage({ viewport });
+  await Promise.all([
+    openGame(sourcePage, seed, 0, viewport),
+    openGame(targetPage, seed, 1, viewport),
+  ]);
+  await playAttackThroughPage(sourcePage, "TARGET", sourceCard);
+  await expect.poll(async () => {
+    const action = (await roomView(request, seed, 1)).currentAction;
+    return action?.kind === "response" && action.actorId === targetId && action.requirement === "dodge"
+      && action.legalActions?.includes("respond") === true
+      && action.options?.some((option) => option.providerId === "card"
+        && option.selection?.type === "cards" && option.selection.eligibleCardIds?.includes(targetDodge.id)) === true;
+  }, { timeout: 20_000, message: "the real server opens a legal Dodge response window for this viewer" }).toBe(true);
+  await expect(targetPage.locator(`[data-hand-card-id="${targetDodge.id}"] .game-card`)).toBeEnabled({ timeout: 20_000 });
+  await playDodgeThroughPage(targetPage, targetDodge);
+  await expect.poll(async () => {
+    const view = await roomView(request, seed, 1);
+    const proof = view.presentationSnapshot?.attackDodgeResponses?.find((entry) => entry.targetId === targetId);
+    return proof ? { view, proof } : null;
+  }, { timeout: 10_000, message: "the server publishes the committed Dodge proof" }).not.toBeNull();
+  const proofView = await roomView(request, seed, 1);
+  const proof = proofView.presentationSnapshot.attackDodgeResponses.find((entry) => entry.targetId === targetId);
+  expect(proof).toMatchObject({
+    semantics: "PROVEN", rootEventId: expect.any(String), responseEventId: expect.any(String), targetId,
+    turnSeatAtCommit: 0, displayExpiresAtMs: expect.any(Number),
+  });
+  expect(proof.displayExpiresAtMs).toBeGreaterThan(Date.now());
+  expect(proof.displayExpiresAtMs).toBeLessThanOrEqual(Date.now() + 20_000);
+  const overlay = targetPage.locator('[data-root-action-overlay="true"]');
+  await expect(overlay).toHaveAttribute("data-root-action-event-id", proof.rootEventId);
+  await expect(overlay.locator('[data-root-action-response-card="true"]')).toHaveAttribute("data-response-event-id", proof.responseEventId);
+  const responseTimer = targetPage.locator(`[data-public-counter-read-timer="true"][data-public-counter-read-event-id="${proof.responseEventId}"]`);
+  await expect(responseTimer).toBeVisible({ timeout: 10_000 });
+  const before = {
+    phase: proofView.phase,
+    turnSeat: proofView.turnSeat,
+    proof: { rootEventId: proof.rootEventId, responseEventId: proof.responseEventId, interactionId: proof.interactionId, rootFrameId: proof.rootFrameId },
+    graph: await overlay.evaluate((element) => ({
+      rootEventId: element.dataset.rootActionEventId,
+      settlementEventId: element.dataset.rootActionSettlementEventId,
+      responseEventId: element.querySelector('[data-root-action-response-card="true"]')?.getAttribute("data-response-event-id") ?? null,
+      cardCount: element.querySelectorAll('[data-root-action-card="true"], [data-root-action-response-card="true"]').length,
+      edgeCount: element.querySelectorAll("[data-root-action-edge]").length,
+    })),
+  };
+  expect(before.graph).toMatchObject({ rootEventId: proof.rootEventId, settlementEventId: proof.responseEventId, responseEventId: proof.responseEventId, cardCount: 2 });
+  await expect.poll(async () => {
+    const view = await roomView(request, seed, 0);
+    return view.turnSeat === 0 && view.phase?.startsWith("play") === true
+      && view.currentAction?.actorId === sourceId && view.currentAction.legalActions?.includes("end_turn") === true;
+  }, { timeout: 15_000, message: "the attacker resumes the authoritative Play decision after Dodge" }).toBe(true);
+  return { seed, sourceId, targetId, sourcePage, targetPage, sourceCard, targetDodge, proof, before, beforeScreenshot: await targetPage.screenshot() };
+}
+
+async function expectAttackDodgeGraphRetired({ state, boundary, reload = true }) {
+  const { targetPage, targetId, proof } = state;
+  await expect.poll(() => targetPage.locator('[data-root-action-overlay="true"]').count(), {
+    timeout: 10_000, message: `${boundary}: the old graph disappears after its authoritative room snapshot arrives`,
+  }).toBe(0);
+  const responseTimer = targetPage.locator(`[data-public-counter-read-timer="true"][data-public-counter-read-event-id="${proof.responseEventId}"]`);
+  await expect(responseTimer).toHaveCount(0);
+  const legacyCounterCards = targetPage.locator(".table-resolution-layer .table-played-card .played-card.attack, .table-resolution-layer .table-played-card .played-card.dodge");
+  await expect(legacyCounterCards).toHaveCount(0);
+
+  let roomPollCount = 0;
+  const countRoomPoll = (response) => {
+    if (response.request().method() === "GET" && response.url().startsWith(`${API}/api/rooms?`)) roomPollCount += 1;
+  };
+  if (reload) {
+    const baselinePollCount = roomPollCount;
+    targetPage.on("response", countRoomPoll);
+    await targetPage.reload();
+    await expect(targetPage.locator(`[data-player-anchor="${targetId}"]`)).toBeVisible();
+    await expect.poll(() => roomPollCount, { timeout: 10_000, message: `${boundary}: the reconnected viewer receives an authoritative room poll` })
+      .toBeGreaterThan(baselinePollCount + 1);
+    targetPage.off("response", countRoomPoll);
+    await expect(targetPage.locator('[data-root-action-overlay="true"]')).toHaveCount(0);
+    await expect(responseTimer).toHaveCount(0);
+    await expect(legacyCounterCards).toHaveCount(0);
+  }
+  return await targetPage.evaluate((responseEventId) => ({
+    overlayCount: document.querySelectorAll('[data-root-action-overlay="true"]').length,
+    countdownCount: document.querySelectorAll(`[data-public-counter-read-timer="true"][data-public-counter-read-event-id="${responseEventId}"]`).length,
+    legacyCounterCardCount: document.querySelectorAll(".table-resolution-layer .table-played-card .played-card.attack, .table-resolution-layer .table-played-card .played-card.dodge").length,
+  }), proof.responseEventId);
+}
+
+async function expectFreshViewerAttackDodgeGraphRetired({ browser, seed, viewport, responseEventId, boundary }, testInfo) {
+  const freshViewer = await browser.newPage({ viewport });
+  try {
+    await openGame(freshViewer, seed, 1, viewport);
+    await expect(freshViewer.locator('[data-root-action-overlay="true"]')).toHaveCount(0);
+    await expect(freshViewer.locator(`[data-public-counter-read-timer="true"][data-public-counter-read-event-id="${responseEventId}"]`)).toHaveCount(0);
+    await expect(freshViewer.locator(".table-resolution-layer .table-played-card .played-card.attack, .table-resolution-layer .table-played-card .played-card.dodge")).toHaveCount(0);
+    const retiredStorageKeys = await freshViewer.evaluate(() => Object.keys(localStorage)
+      .filter((key) => key.startsWith("wtk.attack-dodge-retired.")));
+    expect(retiredStorageKeys, `${boundary}: a fresh browser context has no local retirement tombstone`).toEqual([]);
+    await testInfo.attach(`attack-dodge-${boundary}-fresh-viewer.png`, {
+      body: await freshViewer.screenshot(), contentType: "image/png",
+    });
+    return { overlayCount: 0, countdownCount: 0, legacyCounterCardCount: 0, retiredStorageKeys };
+  } finally {
+    await freshViewer.close();
+  }
+}
+
+test("a real completed Attack/Dodge graph retires on the authoritative next-turn boundary", async ({ browser, request }, testInfo) => {
+  test.setTimeout(75_000);
+  const viewport = { width: 480, height: 900 };
+  const sourceCard = { ...attack, id: `attack-turn-boundary-${Date.now()}` };
+  const targetDodge = { ...dodge, id: `dodge-turn-boundary-${Date.now()}` };
+  const state = await beginRealAttackDodgeReadGraph({ browser, request, viewport, sourceCard, targetDodge });
+  const { seed, sourcePage, targetPage, before, beforeScreenshot } = state;
+  try {
+    const endTurnResponsePromise = sourcePage.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "end_turn"; }
+      catch { return false; }
+    });
+    const endTurnButton = sourcePage.getByRole("button", { name: "End", exact: true });
+    await expect(endTurnButton).toBeEnabled({ timeout: 15_000 });
+    await endTurnButton.click();
+    const endTurnResponse = await endTurnResponsePromise;
+    expect(endTurnResponse.ok(), `accepted End Turn: ${await endTurnResponse.text()}`).toBe(true);
+    await expect.poll(async () => (await roomView(request, seed, 1)).turnSeat, {
+      timeout: 15_000, message: "server-authoritative turn ownership advances from the attacker",
+    }).toBe(1);
+    const after = await expectAttackDodgeGraphRetired({ state, boundary: "next turn" });
+    const freshViewer = await expectFreshViewerAttackDodgeGraphRetired({
+      browser, seed, viewport, responseEventId: state.proof.responseEventId, boundary: "next-turn",
+    }, testInfo);
+    const afterView = await roomView(request, seed, 1);
+    await testInfo.attach("attack-dodge-next-turn-boundary.json", {
+      body: JSON.stringify({ before, after: { phase: afterView.phase, turnSeat: afterView.turnSeat,
+        currentAction: afterView.currentAction && { kind: afterView.currentAction.kind, actorId: afterView.currentAction.actorId },
+        rootAction: afterView.presentationSnapshot?.rootAction ?? null, graph: after, freshViewer },
+      endTurnAccepted: endTurnResponse.ok() }, null, 2), contentType: "application/json",
+    });
+    await testInfo.attach("attack-dodge-next-turn-before.png", { body: beforeScreenshot, contentType: "image/png" });
+    await testInfo.attach("attack-dodge-next-turn-after.png", { body: await targetPage.screenshot(), contentType: "image/png" });
+    expect(afterView.turnSeat).toBe(1);
+    expect(after).toEqual({ overlayCount: 0, countdownCount: 0, legacyCounterCardCount: 0 });
+  } finally {
+    await Promise.all([sourcePage.close(), targetPage.close()]);
+  }
+});
+
+test("a real public same-turn Equipment action retires the completed Attack/Dodge graph", async ({ browser, request }, testInfo) => {
+  test.setTimeout(75_000);
+  const viewport = { width: 390, height: 844 };
+  const sourceCard = { ...attack, id: `attack-same-turn-action-${Date.now()}` };
+  const targetDodge = { ...dodge, id: `dodge-same-turn-action-${Date.now()}` };
+  const equipment = { id: `equipment-same-turn-action-${Date.now()}`, kind: "ZhugeCrossbow", suit: "♦", rank: "A" };
+  const state = await beginRealAttackDodgeReadGraph({ browser, request, viewport, sourceCard, targetDodge, seedOptions: { sourceCards: [sourceCard, equipment] } });
+  const { seed, sourcePage, targetPage, sourceId, proof, before, beforeScreenshot } = state;
+  try {
+    const equipped = await request.post(`${API}/api/rooms`, { data: { action: "play_card", cardId: equipment.id, code: seed.code, token: seed.players[0].token } });
+    expect(equipped.ok(), `accepted same-turn Equipment play: ${await equipped.text()}`).toBe(true);
+    await expect.poll(async () => (await roomView(request, seed, 0)).timeline.some((event) =>
+      event.type === "card" && event.card.id === equipment.id && event.action === "equip"), {
+      timeout: 15_000, message: "the server records a distinct public Equipment action in the same turn",
+    }).toBe(true);
+    const after = await expectAttackDodgeGraphRetired({ state, boundary: "same-turn Equipment action" });
+    const freshViewer = await expectFreshViewerAttackDodgeGraphRetired({
+      browser, seed, viewport, responseEventId: proof.responseEventId, boundary: "same-turn-action",
+    }, testInfo);
+    const afterView = await roomView(request, seed, 0);
+    await testInfo.attach("attack-dodge-same-turn-action.json", {
+      body: JSON.stringify({ before, after, freshViewer, phase: afterView.phase, turnSeat: afterView.turnSeat,
+        newPublicAction: afterView.timeline.find((event) => event.type === "card" && event.card.id === equipment.id) ?? null,
+        oldResponseEventId: proof.responseEventId, actingPlayerId: sourceId }, null, 2), contentType: "application/json",
+    });
+    await testInfo.attach("attack-dodge-same-turn-before.png", { body: beforeScreenshot, contentType: "image/png" });
+    await testInfo.attach("attack-dodge-same-turn-after.png", { body: await targetPage.screenshot(), contentType: "image/png" });
+    expect(afterView.turnSeat).toBe(0);
+    expect(afterView.phase?.startsWith("play")).toBe(true);
+    expect(after).toEqual({ overlayCount: 0, countdownCount: 0, legacyCounterCardCount: 0 });
+  } finally {
+    await Promise.all([sourcePage.close(), targetPage.close()]);
+  }
+});
+
+test("a real End Turn that enters discard retires the completed Attack/Dodge graph", async ({ browser, request }, testInfo) => {
+  test.setTimeout(75_000);
+  const viewport = { width: 440, height: 956 };
+  const sourceCard = { ...attack, id: `attack-discard-boundary-${Date.now()}` };
+  const targetDodge = { ...dodge, id: `dodge-discard-boundary-${Date.now()}` };
+  const sourceCards = [sourceCard,
+    { ...peach, id: `discard-peach-a-${Date.now()}` },
+    { ...peach, id: `discard-peach-b-${Date.now()}`, suit: "♦" },
+    { ...dodge, id: `discard-dodge-a-${Date.now()}` },
+    { ...dodge, id: `discard-dodge-b-${Date.now()}`, suit: "♣" },
+  ];
+  const state = await beginRealAttackDodgeReadGraph({ browser, request, viewport, sourceCard, targetDodge, seedOptions: { sourceCards, sourceHp: 1 } });
+  const { seed, sourcePage, targetPage, before, beforeScreenshot } = state;
+  try {
+    const endTurnResponsePromise = sourcePage.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "end_turn"; }
+      catch { return false; }
+    });
+    const endTurnButton = sourcePage.getByRole("button", { name: "End", exact: true });
+    await expect(endTurnButton).toBeEnabled({ timeout: 15_000 });
+    await endTurnButton.click();
+    const endTurnResponse = await endTurnResponsePromise;
+    expect(endTurnResponse.ok(), `accepted End Turn into discard: ${await endTurnResponse.text()}`).toBe(true);
+    await expect.poll(async () => (await roomView(request, seed, 0)).phase, {
+      timeout: 15_000, message: "post-play hand limit enters the authoritative Discard Phase",
+    }).toBe("discard");
+    const after = await expectAttackDodgeGraphRetired({ state, boundary: "End Turn into discard" });
+    const afterView = await roomView(request, seed, 0);
+    await testInfo.attach("attack-dodge-discard-boundary.json", {
+      body: JSON.stringify({ before, after, phase: afterView.phase, turnSeat: afterView.turnSeat,
+        currentAction: afterView.currentAction && { kind: afterView.currentAction.kind, actorId: afterView.currentAction.actorId } }, null, 2),
+      contentType: "application/json",
+    });
+    await testInfo.attach("attack-dodge-discard-before.png", { body: beforeScreenshot, contentType: "image/png" });
+    await testInfo.attach("attack-dodge-discard-after.png", { body: await targetPage.screenshot(), contentType: "image/png" });
+    expect(afterView.phase).toBe("discard");
+    expect(afterView.turnSeat).toBe(0);
+    expect(after).toEqual({ overlayCount: 0, countdownCount: 0, legacyCounterCardCount: 0 });
   } finally {
     await Promise.all([sourcePage.close(), targetPage.close()]);
   }

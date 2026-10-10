@@ -57,6 +57,13 @@ function publicSnapshot(snapshot) {
   return publicPart;
 }
 
+function assertDodgeReadLifecycle(proof, expectedTurnSeat) {
+  assert.ok(Number.isSafeInteger(proof.displayExpiresAtMs), "the public Dodge proof carries a server read-window deadline");
+  assert.ok(proof.displayExpiresAtMs > Date.now(), "the accepted Dodge remains inside its public read window");
+  assert.ok(proof.displayExpiresAtMs <= Date.now() + 20_000, "the public read window is capped at 20 seconds");
+  assert.equal(proof.turnSeatAtCommit, expectedTurnSeat, "the public proof records the server-owned turn seat at commit");
+}
+
 test("engine-backed Sowing Distrust exposes only its exact public Effect root across both target choices", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [source, target] = game.room.players;
@@ -342,6 +349,8 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   const observerSettled = await assertProjectionMatchesEngine(game.code, game.members[2].token);
   const dodgeEvent = sourceSettled.timeline.find((event) => event.type === "card" && event.card?.id === dodge.id);
   assert.ok(dodgeEvent, "the production response route persists the submitted physical Dodge event");
+  const projectedDodgeProof = sourceSettled.presentationV2.attackDodgeResponses[0];
+  assertDodgeReadLifecycle(projectedDodgeProof, source.seat);
   const dodgeProof = {
     semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
     interactionId: attackScene.interactionId,
@@ -355,6 +364,8 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
     responseCardKind: "Dodge",
     responseEventId: dodgeEvent.id,
     responseResolutionId: dodgeEvent.resolutionId,
+    displayExpiresAtMs: projectedDodgeProof.displayExpiresAtMs,
+    turnSeatAtCommit: source.seat,
   };
   assert.equal(dodgeEvent.resolutionId, rootEvent.resolutionId, "the actual Dodge and root Attack belong to one exact resolution");
   assert.equal(sourceSettled.timeline.some((event) => event.id === "private-attack-draw"), true, "the source's private draw history remains in the source-only timeline");
@@ -458,15 +469,17 @@ test("engine-backed Longdan Dodge-as-Attack preserves semantic root and physical
   const observerSettled = await assertProjectionMatchesEngine(game.code, observerMember.token);
   const responseEvent = sourceSettled.timeline.find((event) => event.type === "card" && event.card?.id === targetDodge.id);
   assert.ok(responseEvent, "the production response persists the defender's physical Dodge event");
+  const convertedDodgeResponseProof = sourceSettled.presentationV2.attackDodgeResponses[0];
+  assertDodgeReadLifecycle(convertedDodgeResponseProof, source.seat);
   assert.deepEqual(responseEvent.attackDodgeResponse, {
     semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
     interactionId: rootAction.interactionId, rootFrameId: rootAction.rootFrameId,
     rootEventId: rootEvent.id, rootResolutionId: rootEvent.resolutionId,
     rootSourceId: source.id, targetId: target.id, responseActorId: target.id,
     rootCardKind: "Attack", responseCardKind: "Dodge",
+    displayExpiresAtMs: convertedDodgeResponseProof.displayExpiresAtMs, turnSeatAtCommit: source.seat,
   }, "server attaches a typed semantic Attack/Dodge link without physical card identities");
   assert.equal(responseEvent.resolutionId, rootEvent.resolutionId, "the converted root and Dodge share one resolution");
-  const convertedDodgeResponseProof = sourceSettled.presentationV2.attackDodgeResponses[0];
   assert.equal(sourceSettled.presentationV2.attackDodgeResponses.length, 1);
   assert.deepEqual(sourceSettled.presentationSnapshot.attackDodgeResponses, [convertedDodgeResponseProof]);
   assert.deepEqual(targetSettled.presentationSnapshot.attackDodgeResponses, [convertedDodgeResponseProof]);
@@ -579,15 +592,17 @@ test("engine-backed Guan Yu Peach-as-Attack preserves its physical root through 
   const observerSettled = await assertProjectionMatchesEngine(game.code, observerMember.token);
   const responseEvent = sourceSettled.timeline.find((event) => event.type === "card" && event.card?.id === targetDodge.id);
   assert.ok(responseEvent, "the production response persists the defender's physical Dodge event");
+  const peachDodgeProof = sourceSettled.presentationV2.attackDodgeResponses[0];
+  assertDodgeReadLifecycle(peachDodgeProof, source.seat);
   assert.deepEqual(responseEvent.attackDodgeResponse, {
     semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
     interactionId: rootAction.interactionId, rootFrameId: rootAction.rootFrameId,
     rootEventId: rootEvent.id, rootResolutionId: rootEvent.resolutionId,
     rootSourceId: source.id, targetId: target.id, responseActorId: target.id,
     rootCardKind: "Attack", responseCardKind: "Dodge",
+    displayExpiresAtMs: peachDodgeProof.displayExpiresAtMs, turnSeatAtCommit: source.seat,
   }, "the server links the real Dodge to the converted Peach Attack without card identities");
   assert.equal(responseEvent.resolutionId, rootEvent.resolutionId);
-  const peachDodgeProof = sourceSettled.presentationV2.attackDodgeResponses[0];
   assert.equal(sourceSettled.presentationV2.attackDodgeResponses.length, 1);
   assert.deepEqual(sourceSettled.presentationSnapshot.attackDodgeResponses, [peachDodgeProof]);
   assert.deepEqual(targetSettled.presentationSnapshot.attackDodgeResponses, [peachDodgeProof]);
