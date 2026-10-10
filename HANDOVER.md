@@ -7,7 +7,7 @@ Mode: `USER-DIRECTED UX REPAIR`
 
 The 2026-10-10 11:22 iPhone trace showed the Attack graph ready, then a physical Dodge whose server proof was rejected as `attack-root-public-event-not-unique` (`matchingRootEventCount: 2`). The cause was private `draw` history for the same physical Attack being counted as a public root; the source-side PresentationV2 also counted that private card occurrence, making projection viewer-dependent. Both proof-building and projection now count public `play` events only. The existing server-backed Attack/Dodge API case now includes a source-private draw record for the same Attack and proves a `PROVEN` response plus equal source/target/observer projections while preserving the private timeline boundary.
 
-Local validation: `npm run build` passed; `GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs GAME_TEST_PORT=3237 GAME_TEST_INSPECTOR_PORT=9237 node tests/run-tests.mjs` passed 39/39; targeted ESLint for the two production files and API test passed; `git diff --check` passed. Latest base Actions run observed: `38047823947`, Success on SHA `340657897dbeb893f456fc72afd3aa54d7237c84`. New fix commit/CI status is pending.
+CI repair: Actions run `38048566976` failed on SHA `35e7a74470902046a62637e7bc8153b618fb094e`; `npm run test:fast` had one failure at `tests/presentation-v2.test.mjs:308`, and deploy was skipped. The duplicate-card fixture omitted `action: "play"`, so it no longer represented the public-play identity collision guarded by the projection. Updated that fixture without weakening the assertion; focused reproduction now passes 1/1. Repair commit/push and exact-SHA CI/deploy validation are pending.
 
 ## Design checkpoint
 
@@ -15,4 +15,4 @@ Latest `docs/UX2-refine.md` blob `6ad42a6f4522be67bd492a20aa1564e420aeffe2` revi
 
 ## Current task
 
-`UX2-6.29.1-ATTACK-DODGE-REAL-TRACE-01` — after this fix deploys, reproduce one real ordinary Attack→physical Dodge and export a new trace. Confirm `server-proof-evaluation.proofBuilder.result === PROVEN`, both projection counts are 1, then inspect graph candidate/readiness and the 20-second graph display. Keep the 60-second response deadline unchanged. The supplied trace established and fixed the proof/projection rejection; deployed real-game verification of the fix remains open.
+`UX2-6.29.1-ATTACK-DODGE-REAL-TRACE-01` — resume only after the CI repair SHA succeeds and its deployment is observed. Then reproduce one real ordinary Attack→physical Dodge and export a new trace. Confirm `server-proof-evaluation.proofBuilder.result === PROVEN`, both projection counts are 1, then inspect graph candidate/readiness and the 20-second graph display. Keep the 60-second response deadline unchanged. The supplied trace established and fixed the proof/projection rejection; deployed real-game verification remains open.

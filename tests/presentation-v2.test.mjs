@@ -302,7 +302,7 @@ test("Attack/Dodge counter proof links one submitted physical Dodge to its exact
     { timeline: [root, { ...dodge, attackDodgeResponse: { ...proof, responseActorId: "A" } }], label: "response actor differs from target" },
     { timeline: [root, { ...dodge, attackDodgeResponse: { ...proof, targetId: "A" } }], label: "self-target relation is invalid for ordinary Attack" },
     { timeline: [root, { ...root }, dodge], label: "duplicate root event identity" },
-    { timeline: [root, { ...event("other-event", "other-resolution", { card: card("attack-physical-card", "Dodge") }) }, dodge], label: "duplicate physical card identity" },
+    { timeline: [root, { ...event("other-event", "other-resolution", { action: "play", card: card("attack-physical-card", "Dodge") }) }, dodge], label: "duplicate public play of the same physical card" },
     { timeline: [root, dodge, { ...dodge }], label: "duplicate response event identity" },
   ]) {
     assert.deepEqual(project(invalid.timeline).attackDodgeResponses ?? [], [], `${invalid.label} fails closed`);
