@@ -3134,7 +3134,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         ? current
         : unique;
     });
-  }, [room.code, currentAttackRootIdentityKey, attackDodgeResponseCandidates]);
+  }, [room.code, currentAttackRootIdentityKey, currentAttackRootIdentity, room.timeline, attackDodgeResponseCandidates]);
   const pendingAttackDodgeResponseProofKeys = newAttackDodgeResponseProofs
     .filter((entry) => entry.roomCode === room.code && !attackDodgeSettlementCapturedEventIds.current.has(entry.responseEventId))
     .map((entry) => entry.proofKey);
