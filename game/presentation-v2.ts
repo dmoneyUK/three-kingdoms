@@ -2236,7 +2236,9 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
       matching.push(event);
       eventsById.set(eventId, matching);
     }
-    for (const cardId of eventCardIds(event)) cardIdCounts.set(cardId, (cardIdCounts.get(cardId) ?? 0) + 1);
+    if ((event.type === "card" || event.type === "cards") && event.presentation !== false && event.action === "play") {
+      for (const cardId of eventCardIds(event)) cardIdCounts.set(cardId, (cardIdCounts.get(cardId) ?? 0) + 1);
+    }
   }
   return timeline.flatMap((event) => {
     const proof = record(event.attackDodgeResponse);

@@ -5,9 +5,9 @@ Mode: `USER-DIRECTED UX REPAIR`
 
 ## Latest result / CI
 
-The Attack/Dodge trace now correlates browser requests with an opt-in server proof evaluation. A submitted Dodge records the first proof rejection reason plus whether its public event reached PresentationV2 and PresentationSnapshot. This is returned only to the authenticated trace-enabled client; it is not persisted or written to server logs, and excludes names, room codes, hand contents, and physical card IDs. No new tests were added. Targeted ESLint passed for `app/api/rooms/route.ts` and `app/attack-dodge-ux-trace.ts`; the combined lint invocation including `app/page.tsx` exhausted Node's heap, so that file has no local lint result.
+The 2026-10-10 11:22 iPhone trace showed the Attack graph ready, then a physical Dodge whose server proof was rejected as `attack-root-public-event-not-unique` (`matchingRootEventCount: 2`). The cause was private `draw` history for the same physical Attack being counted as a public root; the source-side PresentationV2 also counted that private card occurrence, making projection viewer-dependent. Both proof-building and projection now count public `play` events only. The existing server-backed Attack/Dodge API case now includes a source-private draw record for the same Attack and proves a `PROVEN` response plus equal source/target/observer projections while preserving the private timeline boundary.
 
-Latest relevant Actions run observed: `38040902028`, success on SHA `853afff53b95779bb8bc319f266b4918fa8948da`. Current remote HEAD at resume was `d29c4f6896c155971cf00c2da976a7c5b0a8fc15`; no run for that documentation-only SHA was listed. Diagnostic change CI/deployment status is pending.
+Local validation: `npm run build` passed; `GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs GAME_TEST_PORT=3237 GAME_TEST_INSPECTOR_PORT=9237 node tests/run-tests.mjs` passed 39/39; targeted ESLint for the two production files and API test passed; `git diff --check` passed. Latest base Actions run observed: `38047823947`, Success on SHA `340657897dbeb893f456fc72afd3aa54d7237c84`. New fix commit/CI status is pending.
 
 ## Design checkpoint
 
@@ -15,4 +15,4 @@ Latest `docs/UX2-refine.md` blob `6ad42a6f4522be67bd492a20aa1564e420aeffe2` revi
 
 ## Current task
 
-`UX2-6.29.1-ATTACK-DODGE-REAL-TRACE-01` — instrumentation is ready; resume with one real ordinary Attack→physical Dodge game after this trace-enabled build is deployed. Start trace before the Attack, submit Dodge normally, then stop and export the JSON. Read `server-proof-evaluation` first: `proofBuilder.reason` identifies a rejected server guard; if it says `PROVEN`, compare event publication counts, client proof evaluation, overlay readiness/block reason, and DOM geometry. Fix only the first failing production stage. Preserve the 20-second card display and 60-second response deadline. The supplied MP4 did not include its JSON trace, so the production cause remains unconfirmed.
+`UX2-6.29.1-ATTACK-DODGE-REAL-TRACE-01` — after this fix deploys, reproduce one real ordinary Attack→physical Dodge and export a new trace. Confirm `server-proof-evaluation.proofBuilder.result === PROVEN`, both projection counts are 1, then inspect graph candidate/readiness and the 20-second graph display. Keep the 60-second response deadline unchanged. The supplied trace established and fixed the proof/projection rejection; deployed real-game verification of the fix remains open.

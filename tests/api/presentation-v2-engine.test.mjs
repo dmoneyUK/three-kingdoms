@@ -180,6 +180,9 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   const attack = card("Attack", "engine-projector-attack");
   const dodge = card("Dodge", "engine-projector-dodge");
   setHand(source.id, [attack], 4, 4); setHand(target.id, [dodge], 4, 4); setTurn(game.code, source.seat);
+  const log = JSON.parse(query(`SELECT log_json FROM rooms WHERE code=${quote(game.code)}`));
+  log.push(`@card:${JSON.stringify({ id: "private-attack-draw", player: source.name, target: source.name, card: attack, action: "draw", presentation: false, privateToPlayerId: source.id, drawPlayerId: source.id })}`);
+  sql(`UPDATE rooms SET log_json=${quote(JSON.stringify(log))} WHERE code=${quote(game.code)}`);
   const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetId: target.id });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   const targetView = await assertProjectionMatchesEngine(game.code, targetMember.token);
@@ -268,8 +271,10 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   assert.equal(targetRepeat.data.causalEnvelope.checkpoint.checkpointId, attackEnvelope.checkpoint.checkpointId);
   assert.equal(targetRepeat.data.causalEnvelope.presentationRevision, attackEnvelope.presentationRevision);
   assert.equal(query(`SELECT phase FROM rooms WHERE code=${quote(game.code)}`), "response", "read-only viewer projections preserve the active response boundary");
-  const responded = await request("respond", { code: game.code, token: targetMember.token, providerId: "card", cardId: dodge.id });
+  const responded = await request("respond", { code: game.code, token: targetMember.token, providerId: "card", cardId: dodge.id, uxTraceId: "test-attack-dodge-proof" });
   assert.equal(responded.status, 200, JSON.stringify(responded.data));
+  assert.equal(responded.data.attackDodgeUxTrace?.proofBuilder?.result, "PROVEN", JSON.stringify(responded.data.attackDodgeUxTrace));
+  assert.equal(responded.data.attackDodgeUxTrace?.proofBuilder?.checks?.matchingRootEventCount, 1, JSON.stringify(responded.data.attackDodgeUxTrace));
   const sourceSettled = await assertProjectionMatchesEngine(game.code, sourceMember.token);
   const targetSettled = await assertProjectionMatchesEngine(game.code, targetMember.token);
   const observerSettled = await assertProjectionMatchesEngine(game.code, game.members[2].token);
@@ -290,7 +295,11 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
     responseResolutionId: dodgeEvent.resolutionId,
   };
   assert.equal(dodgeEvent.resolutionId, rootEvent.resolutionId, "the actual Dodge and root Attack belong to one exact resolution");
+  assert.equal(sourceSettled.timeline.some((event) => event.id === "private-attack-draw"), true, "the source's private draw history remains in the source-only timeline");
+  assert.equal(targetSettled.timeline.some((event) => event.id === "private-attack-draw"), false, "the private draw history remains hidden from other viewers");
   assert.deepEqual(sourceSettled.presentationV2.attackDodgeResponses, [dodgeProof]);
+  assert.deepEqual(targetSettled.presentationV2.attackDodgeResponses, [dodgeProof], "private source draw history does not change public proof projection");
+  assert.deepEqual(observerSettled.presentationV2.attackDodgeResponses, [dodgeProof], "observers receive the same public proof projection");
   assert.deepEqual(sourceSettled.presentationSnapshot.attackDodgeResponses, [dodgeProof]);
   assert.deepEqual(targetSettled.presentationSnapshot.attackDodgeResponses, [dodgeProof], "target receives identical public counter proof");
   assert.deepEqual(observerSettled.presentationSnapshot.attackDodgeResponses, [dodgeProof], "unrelated viewer receives identical public counter proof");

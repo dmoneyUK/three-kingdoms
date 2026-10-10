@@ -851,7 +851,8 @@ function attackDodgeResponseProof(log: string[], response: ResponsePending, resp
       publicCardEvents.push({ entryKind: entry.startsWith("@card:") ? "card" : "cards", event: JSON.parse(entry.slice(entry.startsWith("@card:") ? 6 : 7)) as RecordLike });
     } catch { /* An unrelated malformed history entry cannot prove this response. */ }
   }
-  const matchingRootEvents = publicCardEvents.filter(({ event }) => record(event.card)?.id === continuation.sequenceStartCardId);
+  const matchingRootEvents = publicCardEvents.filter(({ event }) => record(event.card)?.id === continuation.sequenceStartCardId
+    && event.action === "play" && event.presentation !== false && typeof event.privateToPlayerId !== "string");
   if (matchingRootEvents.length !== 1) return reject("attack-root-public-event-not-unique", { ...baseChecks, matchingRootEventCount: matchingRootEvents.length });
   if (matchingRootEvents[0].entryKind !== "card") return reject("attack-root-is-not-a-single-card-event", { ...baseChecks, matchingRootEventCount: 1, matchingRootEntryKind: "cards" });
   const root = matchingRootEvents[0].event;
