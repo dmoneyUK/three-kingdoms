@@ -3756,3 +3756,65 @@ Keep the **GitHub Actions build SHA**, **Download UX trace** button and **Exit G
 #### 6.31.4 Coding Agent boundary
 
 This is one bounded **UI-only** task: inspect \`app/interaction-root-overlay.tsx\`, \`app/sequence-overrides.css\` and System Menu in \`app/page.tsx\`. Deliver measured before/after mobile screenshots and a brief focused regression check. Do **not** change rules, public proof, skills, response deadlines, graph-hold duration, CI selection or other card graphs. Stop for the user's visual review; a green CI alone is not UX acceptance. Work on this only at an authorized planning boundary; do not interrupt an existing HANDOVER task.
+
+
+### 6.32 Compilation, ESLint and test memory optimization — evidence first (user-requested review 2026-10-10)
+
+**Scope:** The user reports local compilation/testing sometimes approaching **3–4 GB RAM** and failing with OOM. This is a **reported symptom**, not a measured per-process peak from the available GitHub Actions logs. Memory profiling and subsequent safe optimizations are authorized investigation topics; an unverified heap leak, OOM cause or memory saving must **not** be asserted as fact. This is independent of §6.31's UI polish.
+
+#### 6.32.1 Confirmed review evidence (historical baseline, remeasure on current HEAD)
+
+| Area | Verified evidence | Caution |
+| --- | --- | --- |
+| Vinext build | Around **6–9 seconds** per build in recent successful GitHub Actions runs | Wall time is **not** peak memory |
+| Complete ESLint | **71 seconds** in Actions run **38061870954**, **92 seconds** in run **38064028420** | Likely worthwhile to profile; no RSS/heap peak recorded |
+| Fast tests | **261 passing tests**, **8.64 seconds** in run 38061870954; \`--test-concurrency=1\` | Already relatively efficient; no justification to remove tests |
+| API suite | **266 passing tests** across **24 files** and **four concurrent shards**, about **76.62 seconds** | Each shard creates its own Wrangler/D1/test Node process group; aggregate RSS may be high, but is **unmeasured** |
+| Source size | \`app/api/rooms/route.ts\` ~**584 KB**, \`app/page.tsx\` ~**468 KB**, \`app/interaction-root-overlay.tsx\` ~**171 KB** | Babel emits a >500 KB deoptimization warning for route.ts; warning **does not prove OOM** |
+| ESLint heap configuration | \`NODE_OPTIONS=--max-old-space-size=8192\` in \`.github/workflows/deploy.yml\` | 8192 is a permitted V8 old-space maximum, **not actual 8 GB allocation**, and may be unsafe as a workaround on a RAM-limited host |
+| Browser tests | Required CI runs one room-startup smoke; full Playwright diagnostics are manual. Local \`test:browser\` has no explicit workers cap | Automatic local worker count can cause aggregate Chromium pressure on smaller machines; measure it first |
+
+GitHub's required \`lint-fast\`, \`api\` and \`browser-smoke\` jobs execute on **separate runners**, so do not add their RAM figures as if on one shared host. Conversely a local developer running multiple commands concurrently may see aggregate memory pressure. The inspected successful GitHub runs did **not** contain a proven OOM event or a peak RSS metric; do not confuse lack of such logs with proof that the user's local problem cannot occur.
+
+Inspect the current \`package.json\`, \`eslint.config.mjs\`, \`tests/run-api-suite.mjs\`, \`tests/run-tests.mjs\`, \`tests/run-fast-tests.mjs\`, \`tests/browser/playwright.config.mjs\`, \`.github/workflows/deploy.yml\` and \`docs/CI_TEST_OPTIMIZATION.md\` (the latter is historical analysis, **not** current policy). Always refresh the measurements and test membership.
+
+#### 6.32.2 First deliverable: reproducible process-tree memory profile
+
+Before modifying source or discarding tests:
+
+1. Record exact branch SHA, OS/RAM limit and Node/tool versions. Run **separately** \`npm run build\`, \`npm run lint\`, \`npm run test:fast\`, \`npm run test:api\` and the existing **single** browser-smoke test.
+2. Capture **peak resident memory (RSS) for the complete spawned process tree**, not just \`node\`'s heap: include Wrangler, workerd, Miniflare/D1, test Node processes and Chromium when present. Record per-PID RSS, optional \`heapUsed/heapTotal\`, wall time, peak aggregate tree RSS, subprocess count, exit code and test pass count. Use appropriate OS process sampling and/or \`/usr/bin/time -v\`; explicitly state metric limitations.
+3. Check whether child processes remain alive after command exit. A \`SIGTERM\` call without awaiting process exit is a **cleanup risk to measure**, not itself proof of leaked workers.
+4. If it OOMs, distinguish **V8 \`JavaScript heap out of memory\`**, **OS/container \`SIGKILL\` / exit 137 / cgroup \`oom_kill\`**, and unrelated failures; include the shortest safe error tail. Do not accidentally reveal test tokens, private cards or game secrets.
+5. Make a reproducible comparison table: **command / concurrent processes / peak tree RSS / heap peak where measurable / duration / test counts / result**. If no OOM reproduces, state that honestly and identify the strongest measured memory consumer.
+6. Profiling belongs in local/opt-in diagnostics, **not** an unapproved lengthy push-CI job. Do not trigger repeated known OOM failures in ordinary CI.
+
+#### 6.32.3 Evidence-driven optimization candidates and safety rules
+
+**P0 — Lint costs:** Profile large files and the current ESLint flat config, especially the React Compiler/Hooks rule scope for server-only modules versus genuine React components. If React-specific analysis is demonstrably unnecessary on non-React files, **narrow that rule application only where valid**; keep every relevant React/hook check on UI/hooks, and preserve TypeScript, security and accessibility checks. Prove equivalent intended rule enforcement via a small deliberately failing lint fixture or precise rule coverage comparison. Do not disable entire lint categories merely to lower memory.
+
+**P0 — API process concurrency:** Compare **four versus two API shards** while maintaining **exactly the same 24 test files/test membership**, isolated D1 states and meaningful assertions. Profile aggregate tree RSS and duration. A change from four to two is a candidate **only if** it produces a verified memory benefit and does not push full required CI/deployment past the user-approved limit. Do not reduce test counts, share databases across concurrent suites unsafely, or hide failures.
+
+**P1 — Child process lifetimes:** Audit \`tests/run-tests.mjs\` cleanup after Wrangler termination and temporary state removal, and verify whether any descendants survive. If observed, use a bounded graceful shutdown/wait and appropriate escalation, preserving test outcome. Do not assume leak from code shape alone.
+
+**P1 — Optional full browser diagnostics:** Measure RAM under local Playwright's implicit worker count; use a memory-aware explicit \`--workers=1\` or \`--workers=2\` when appropriate. Required push smoke already uses one worker. Keep broad UX cases in optional/manual diagnostics until post-acceptance authorization (§6.30), **not** deleted from the repository.
+
+**P2 — Oversized production modules:** Consider a **later separately approved** domain/module decomposition only if it materially lowers measured lint/build memory or improves maintainability. A Babel >500 KB warning alone does not justify a risky refactor of the authoritative room API, game rules, or client state machine.
+
+**Forbidden shortcuts:** raising Node old-space above physical/container RAM as a blanket cure; turning off real lint/privacy checks; skipping or deleting passing tests to save RAM; running all benchmark commands simultaneously and mislabeling system-wide load as a single-command peak; weakening assertions or marking an OOM as successful.
+
+#### 6.32.4 Memory optimization acceptance and the six-minute CI policy
+
+An optimization is proven only by **comparable before/after peak process-tree RSS** or elimination of an **actually reproduced OOM**, together with unchanged meaningful lint checks, full API/fast test membership and results, and no gameplay/privacy regressions. Report the time cost. The **full normal push-to-required-CI-to-Cloudflare-deploy/smoke interval must still finish within 6:00** under §6.30, rather than optimizing a single stage while harming the full pipeline.
+
+Only implement a **small, measured runner/config change** in the same bounded diagnostic task. If the leading fix is a production refactor or alters test grouping substantially, report the measurements and hand off a **separate, scoped follow-up task** instead of expanding the investigation. Never claim the 3–4 GB root cause fixed without relevant proof.
+
+### 6.33 Next-planning-boundary task separation for §§6.31–6.32
+
+These are **separate approved areas**, not a combined implementation mandate. The Coding Agent owns \`HANDOVER.md\`, chooses one bounded task at the next valid planning boundary consistent with the user's direction, and must not interrupt an unrelated in-flight task merely because this design was amended.
+
+**Candidate A — Mobile Attack/Dodge arrows and compact trace menu:** Apply §6.31 to \`app/interaction-root-overlay.tsx\`, \`app/sequence-overrides.css\` and the System Menu in \`app/page.tsx\`. Preserve exact public relationships and trace export. Validate on actual server-backed 390/~440/480px views; deliver side-by-side screenshots of clear red direction/Dodge interception and the compact menu. Short focused local checks; required CI stays fast. **Stop for the user's visual acceptance**. No memory/test-runner changes.
+
+**Candidate B — Build/lint/test memory measurement and limited optimization:** Apply §6.32. Measure per-command peak process-tree RSS, compare 4-vs-2 API shards and ESLint rule costs, inspect child cleanup, and separate V8 heap OOM from OS/cgroup kill. Preserve all tests and checks. Make only one evidence-backed low-risk runner/config change if justified, verify RSS/time and exact-SHA CI/deploy; otherwise report root cause/next smallest task. **Stop for review**. No card layout or System Menu changes.
+
+**Neither item is completed by this design amendment.** Green CI is not UX approval; performance advice is not proof of memory savings. Do not treat old §6.30 examples as authority to restart historical tasks without a current planning decision.
