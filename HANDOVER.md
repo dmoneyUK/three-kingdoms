@@ -5,7 +5,7 @@ Mode: `USER-DIRECTED UX REFINEMENT`
 
 ## Latest result / CI
 
-§6.36 Task 1 fix: a new Attack now selects its newly authored causal envelope instead of a completed Negation frame retained for history. API regression covers declined and countered/restored DrawTwo Negation; three-view 440×766 browser flow proves the Attack root and source/target paths are visible before Dodge. Focused checks: API 24/24 + engine/projection API 39/39, browser 1/1, targeted ESLint and `git diff --check` passed. Pre-commit latest code-push Actions run `38086020572` succeeded for `6dd2178`; later remote commits through `5c60728` are docs-only. This task's exact-SHA CI/deploy is pending.
+§6.36 Task 1 shipped in `379d14f9d9ba816f23d938ebba945885ad457bfb`: a new Attack selects its newly authored causal envelope instead of a completed Negation frame retained for history. API regression covers declined and countered/restored DrawTwo Negation; three-view 440×766 browser flow proves the Attack root and source/target paths are visible before Dodge. Focused checks: API 24/24 + engine/projection API 39/39, browser 1/1, targeted ESLint and `git diff --check` passed. Exact-SHA Actions run `38087662559` succeeded, including Deploy Worker and production smoke.
 
 Known residual: after a real Dodge at 440×766, the same root/proof remains identified, but all three browser perspectives report `geometry-unavailable`; the Dodge face and response connectors are not visible. Captured screenshots/geometry are local Playwright artifacts. This is outside Task 1's root-envelope fix; do not silently begin another repair.
 
