@@ -169,7 +169,7 @@ const UI_TIMING = {
   interactionSettlementReduced: 120,
   interactionSettlementFade: 150,
   publicCounterRead: 3000,
-  attackDodgePublicCounterRead: 30_000,
+  attackDodgePublicCounterRead: 20_000,
   publicCounterSettlementConfirm: 120,
   publicCounterFade: 180,
 } as const;

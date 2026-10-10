@@ -713,7 +713,7 @@ async function observeAttackDodgeSettlement(page, sourceId = null, targetId = nu
       if (node && overlay?.dataset.rootActionReady === "true" && timing.shownAt === null) {
         timing.shownAt = performance.now();
         timing.outcome = node.dataset.rootActionSettlementOutcome ?? null;
-        for (const offsetMs of [0, 1000, 2900]) {
+        for (const offsetMs of [0, 1000, 19900]) {
           window.setTimeout(() => captureReadWindowFrame(offsetMs), offsetMs);
         }
         if (sourceId && targetId) {
@@ -921,8 +921,8 @@ async function assertAttackDodgeSettlementCleanup(page, { rootAction, responsePr
   expect(Math.abs(visual.root.rect.x - baselineRoot.x), `${label}: Attack root x remains stable during settlement`).toBeLessThanOrEqual(1);
   expect(Math.abs(visual.root.rect.y - baselineRoot.y), `${label}: Attack root y remains stable during settlement`).toBeLessThanOrEqual(1);
   await expect.poll(() => page.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.readWindowFrames?.length ?? 0), {
-    timeout: 4_000,
-    message: `${label}: record the complete public graph at 0ms, 1,000ms and 2,900ms`,
+    timeout: 21_000,
+    message: `${label}: record the complete public graph at 0ms, 1,000ms and 19,900ms`,
   }).toBe(3);
   const readWindowFrames = await page.evaluate(() => window.__wtkAttackDodgeSettlementTiming.readWindowFrames);
   await test.info().attach(`${label.replaceAll(/[^a-z0-9]+/gi, "-").toLowerCase()}-settlement-read-window.json`, {
@@ -942,7 +942,7 @@ async function assertAttackDodgeSettlementCleanup(page, { rootAction, responsePr
     }, null, 2),
     contentType: "application/json",
   });
-  expect(readWindowFrames.map((frame) => frame.scheduledOffsetMs)).toEqual([0, 1000, 2900]);
+  expect(readWindowFrames.map((frame) => frame.scheduledOffsetMs)).toEqual([0, 1000, 19900]);
   for (const frame of readWindowFrames) {
     expect(frame.elapsedMs, `${label}: sample is within the documented scheduling tolerance`).toBeGreaterThanOrEqual(frame.scheduledOffsetMs - 100);
     expect(frame.elapsedMs, `${label}: sample is within the documented scheduling tolerance`).toBeLessThanOrEqual(frame.scheduledOffsetMs + 200);
@@ -975,13 +975,13 @@ async function assertAttackDodgeSettlementCleanup(page, { rootAction, responsePr
     });
   }
   await expect.poll(() => page.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.removedAt ?? null), {
-    timeout: 5_000,
+    timeout: 22_000,
     message: `${label}: completed Dodge settlement node is removed`,
   }).not.toBeNull();
   const timing = await page.evaluate(() => window.__wtkAttackDodgeSettlementTiming);
   expect(timing.outcome).toBe("ATTACK_BLOCKED_BY_DODGE");
-  expect(timing.exitingAt - timing.shownAt).toBeGreaterThanOrEqual(2800);
-  expect(timing.exitingAt - timing.shownAt).toBeLessThanOrEqual(3200);
+  expect(timing.exitingAt - timing.shownAt).toBeGreaterThanOrEqual(19_800);
+  expect(timing.exitingAt - timing.shownAt).toBeLessThanOrEqual(20_200);
   expect(timing.removedAt - timing.exitingAt).toBeGreaterThanOrEqual(100);
   expect(timing.removedAt - timing.exitingAt).toBeLessThanOrEqual(250);
   const cleanup = await page.evaluate(() => {
@@ -2700,12 +2700,12 @@ for (const scenario of [
       expect(Math.abs(geometry.target.x - dockBefore.x), "viewer Dock keeps its horizontal anchor").toBeLessThanOrEqual(.5);
       expect(Math.abs(geometry.target.right - dockBefore.right), "viewer Dock keeps its horizontal extent").toBeLessThanOrEqual(.5);
       expect(Math.abs(geometry.target.bottom - dockBefore.bottom), "viewer Dock remains bottom-anchored as its hand changes").toBeLessThanOrEqual(.5);
-      await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.exitingAt ?? null), { timeout: 5_000 }).not.toBeNull();
-      await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.removedAt ?? null), { timeout: 5_000 }).not.toBeNull();
+      await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.exitingAt ?? null), { timeout: 22_000 }).not.toBeNull();
+      await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.removedAt ?? null), { timeout: 2_000 }).not.toBeNull();
       const settlementTiming = await targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming);
       expect(settlementTiming.outcome).toBe("ATTACK_BLOCKED_BY_DODGE");
-      expect(settlementTiming.exitingAt - settlementTiming.shownAt).toBeGreaterThanOrEqual(2800);
-      expect(settlementTiming.exitingAt - settlementTiming.shownAt).toBeLessThanOrEqual(3200);
+      expect(settlementTiming.exitingAt - settlementTiming.shownAt).toBeGreaterThanOrEqual(19_800);
+      expect(settlementTiming.exitingAt - settlementTiming.shownAt).toBeLessThanOrEqual(20_200);
       expect(settlementTiming.removedAt - settlementTiming.exitingAt).toBeGreaterThanOrEqual(100);
       expect(settlementTiming.removedAt - settlementTiming.exitingAt).toBeLessThanOrEqual(250);
       expect(settlementTiming.targetHighlightReachedNeutral).toBe(true);
@@ -3436,7 +3436,7 @@ for (const scenario of [
   });
 }
 
-test("real Attack→Dodge keeps its 3-second public graph without an exit animation under reduced motion", async ({ page, browser, request }) => {
+test("real Attack→Dodge keeps its 20-second public graph without an exit animation under reduced motion", async ({ page, browser, request }) => {
   test.setTimeout(60_000);
   const viewport = { width: 390, height: 844 };
   const seed = await seedGame(request, 4, { targetCard: dodge });
@@ -3460,9 +3460,9 @@ test("real Attack→Dodge keeps its 3-second public graph without an exit animat
     await expect.poll(async () => (await roomView(request, seed, 2)).presentationSnapshot?.attackDodgeResponses?.length ?? 0, { timeout: 20_000 }).toBe(1);
     const proof = (await roomView(request, seed, 2)).presentationSnapshot.attackDodgeResponses[0];
     await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.outcome ?? null), { timeout: 3_000 }).toBe("ATTACK_BLOCKED_BY_DODGE");
-    await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.readWindowFrames?.length ?? 0), { timeout: 4_000 }).toBe(3);
+    await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.readWindowFrames?.length ?? 0), { timeout: 21_000 }).toBe(3);
     const readWindowFrames = await targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming.readWindowFrames);
-    expect(readWindowFrames.map((frame) => frame.scheduledOffsetMs)).toEqual([0, 1000, 2900]);
+    expect(readWindowFrames.map((frame) => frame.scheduledOffsetMs)).toEqual([0, 1000, 19900]);
     for (const frame of readWindowFrames) {
       expect(frame.elapsedMs).toBeGreaterThanOrEqual(frame.scheduledOffsetMs - 100);
       expect(frame.elapsedMs).toBeLessThanOrEqual(frame.scheduledOffsetMs + 200);
@@ -3478,12 +3478,12 @@ test("real Attack→Dodge keeps its 3-second public graph without an exit animat
         legacyAttackCount: 0,
       });
     }
-    await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.removedAt ?? null), { timeout: 5_000 }).not.toBeNull();
+    await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming?.removedAt ?? null), { timeout: 22_000 }).not.toBeNull();
     const timing = await targetPage.evaluate(() => window.__wtkAttackDodgeSettlementTiming);
     expect(timing.outcome).toBe("ATTACK_BLOCKED_BY_DODGE");
     expect(timing.exitingAt).toBeNull();
-    expect(timing.removedAt - timing.shownAt).toBeGreaterThanOrEqual(2800);
-    expect(timing.removedAt - timing.shownAt).toBeLessThanOrEqual(3200);
+    expect(timing.removedAt - timing.shownAt).toBeGreaterThanOrEqual(19_800);
+    expect(timing.removedAt - timing.shownAt).toBeLessThanOrEqual(20_200);
     await expect(overlay.locator('[data-root-action-card="true"]')).toHaveCount(0);
     await expect(targetPage.locator('.table-resolution-layer .table-played-card')).toHaveCount(0);
     expect(proof.counterRelation).toBe("BLOCKS_TARGET_EFFECT");

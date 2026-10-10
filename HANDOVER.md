@@ -5,14 +5,14 @@ Mode: `USER-DIRECTED UX REPAIR`
 
 ## Latest result / CI
 
-Attack→Dodge graph readability is extended to 30 seconds of graph-ready visibility per viewer, with an on-screen `0:30` countdown beside the root card. The timer pauses with graph unavailability, polling follows the remaining visible interval, and a different authoritative root still preempts immediately. Negation remains at 3 seconds. No test files were changed or added.
+Fixed the real Attack→Dodge graph crash: `PublicCounterReadTimer` called `useEffect` without importing it. The graph now shows Attack, the server-proven Dodge, and a visible `0:20` hold timer; the hold is 20 seconds of graph-ready visibility per viewer. A rebuilt local Worker passed the existing server-backed 4-player 390×844 Attack→Dodge browser scenario and produced a screenshot with the full graph. No new tests were added; existing timing assertions were updated to 20 seconds.
 
-Feature commit `df2d675719ba99bf6dc030c7eb8061b9b932efe8`; CI-only lint repairs `b8dc09fbda414cea488d9f84911dc2eecd57b2dd` and `cddba6bf1e6faa8bc365aabfcb3658dba2801d31`. Exact remote CI run `38018860884` (#971) for `cddba6b` succeeded, including API tests, browser startup smoke, lint/fast tests, deployment, and production health smoke. Exact `NODE_OPTIONS=--max-old-space-size=8192 npm run lint` also passed locally. Real Attack→Dodge gameplay screenshot has not been manually verified.
+Latest completed remote CI before this revision: run `38018860884` (#971), tested code SHA `cddba6bf1e6faa8bc365aabfcb3658dba2801d31`, success including deployment and health smoke. Check the exact pushed revision's CI before any subsequent code commit; that fresh CI has not yet been verified.
 
 ## Design checkpoint
 
-Latest `docs/UX2-refine.md` blob `6ad42a6f4522be67bd492a20aa1564e420aeffe2` reviewed; unchanged since the prior handoff. §6.29.1 says 3 seconds, overridden for this bounded change by the user's direct 30-second instruction. No Reviewer acceptance is claimed.
+Latest `docs/UX2-refine.md` blob `6ad42a6f4522be67bd492a20aa1564e420aeffe2` reviewed. §6.29.7 specifies 3 seconds; the user's direct instruction overrides it to 20 seconds for this bounded Attack→Dodge task. The separate server-owned Attack response deadline remains 30 seconds; the screenshot's `22s` was that response window, not the post-Dodge graph hold. No Reviewer acceptance is claimed.
 
 ## Current task
 
-`UX2-6.29.1-ATTACK-DODGE-VISIBLE-30S-TIMER-04` — keep open until the user confirms the deployed real-game `0:30→0:00` Attack→Dodge graph. Before any next code commit, inspect exact current-HEAD CI; do not add tests.
+`UX2-6.29.1-ATTACK-DODGE-20S-PRODUCTION-01` — keep open for the user to verify the deployed real-mobile Attack→Dodge graph; local server-backed 390×844 proof passes, but real-device/deployed visual confirmation remains outstanding.
