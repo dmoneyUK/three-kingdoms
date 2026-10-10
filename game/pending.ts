@@ -10,7 +10,7 @@ export type CausalFields = { causal?: CausalContext };
 
 /** The one persisted decision in a room, independent of HTTP and D1. */
 export type AttackOrigin = "card" | "serpent_spear" | "green_dragon" | "halberd" | "duel" | "triggered" | "borrowed_sword";
-export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; ignoresArmor?: boolean; requiredDodgeCount?: number; dodgeSuppressed?: boolean; sequenceStartCardId: string; resumePhase: string; resumePlayerId?: string; resolutionId?: string } & CausalFields;
+export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; ignoresArmor?: boolean; requiredDodgeCount?: number; dodgeSuppressed?: boolean; sequenceStartCardId: string; /** Exact public card-play event that began this Attack interaction. */ rootEventId?: string; resumePhase: string; resumePlayerId?: string; resolutionId?: string } & CausalFields;
 export type HarvestChoice = { cardId: string; playerId: string; playerName: string };
 export type HarvestParticipantProgressStatus = "PENDING" | "CURRENT" | "RESOLVED" | "NO_LONGER_APPLICABLE";
 export type HarvestParticipantProgressOutcome = "CHOSE_CARD" | "NEGATED";
@@ -36,7 +36,7 @@ export type JudgementNegationCausalResume =
   | { kind: "root" }
   | { kind: "parent"; stage: CausalFrame["stage"]; current: CausalFrameCurrent };
 /** Only effect-resumption data belongs in a canonical response continuation. */
-export type AttackContinuation = { kind: "attack"; sourceId: string; targetId: string; resumePhase?: string; resumePlayerId?: string; sequenceStartCardId?: string; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; damageCards?: Card[]; ignoresArmor?: boolean; requiredDodgeCount?: number; resolutionId?: string } & CausalFields;
+export type AttackContinuation = { kind: "attack"; sourceId: string; targetId: string; resumePhase?: string; resumePlayerId?: string; sequenceStartCardId?: string; /** Exact public card-play event that began this Attack interaction. */ rootEventId?: string; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; damageCards?: Card[]; ignoresArmor?: boolean; requiredDodgeCount?: number; resolutionId?: string } & CausalFields;
 export type InfluencingAttackContinuation = { kind: "influencing_attack"; sourceId: string; targetId: string; resumePhase: string; sequenceStartCardId: string; origin: "triggered" } & CausalFields;
 export type GroupParticipantProgressStatus = "PENDING" | "CURRENT" | "PAUSED" | "RESOLVED" | "NO_LONGER_APPLICABLE";
 export type GroupParticipantProgressOutcome = "AVOIDED" | "DAMAGED" | "NEGATED" | "DEFEATED";
@@ -116,6 +116,7 @@ export type AttackDodgedTriggerContinuation = CausalFields & {
   resumePhase: string;
   resumePlayerId?: string;
   sequenceStartCardId: string;
+  rootEventId?: string;
   origin?: AttackOrigin;
   resolutionId?: string;
 };

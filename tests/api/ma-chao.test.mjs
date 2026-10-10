@@ -7,16 +7,20 @@ async function openAttack({ judgement, equipment = {}, targetHand = [card("Dodge
   const game = await createHumanGame();
   const [source, target] = game.room.players;
   const [sourceMember, targetMember] = game.members;
+  const attack = card("Attack", "ma-chao-attack");
   sql(`UPDATE players SET hero='ma-chao', hp=4, max_hp=4 WHERE id=${quote(source.id)}`);
   sql(`UPDATE players SET hero=${quote(targetHero)}, hp=4, max_hp=4 WHERE id=${quote(target.id)}`);
-  setHand(source.id, [card("Attack", "ma-chao-attack")], 4, 4);
+  setHand(source.id, [attack], 4, 4);
   setHand(target.id, targetHand, 4, 4);
   setEquipment(source.id, equipment);
   setDeck(game.code, [judgement, card("Attack", "after-judgement-a"), card("Dodge", "after-judgement-b")]);
   setTurn(game.code, source.seat, "play");
+  const log = JSON.parse(query(`SELECT log_json FROM rooms WHERE code=${quote(game.code)}`));
+  log.push(`@card:${JSON.stringify({ id: "private-ma-chao-attack-draw", player: source.name, target: source.name, card: attack, action: "draw", presentation: false, privateToPlayerId: source.id, drawPlayerId: source.id })}`);
+  sql(`UPDATE rooms SET log_json=${quote(JSON.stringify(log))} WHERE code=${quote(game.code)}`);
   const played = await request("play_card", { code: game.code, token: sourceMember.token, cardId: "attack-ma-chao-attack", targetId: target.id });
   assert.equal(played.status, 200, JSON.stringify(played.data));
-  return { game, source, target, sourceMember, targetMember };
+  return { game, source, target, sourceMember, targetMember, attack, targetHand };
 }
 
 test("Cavalry is an optional source-owned attack_targeted trigger and Skip preserves Dodge", async () => {
@@ -25,6 +29,9 @@ test("Cavalry is an optional source-owned attack_targeted trigger and Skip prese
   assert.ok(trigger.causalEnvelope, "Attack-targeted entry retains the real Attack root envelope");
   const persisted = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(opened.game.code)}`));
   const activeFrame = trigger.causalEnvelope.frames.find((frame) => frame.frameId === trigger.causalEnvelope.activeFrameId);
+  const publicAttackEvents = trigger.timeline.filter((event) => event.type === "card" && event.action === "play" && event.presentation !== false && event.card?.id === opened.attack.id);
+  assert.equal(publicAttackEvents.length, 1, "the physical Attack has one exact public play event despite its private draw history");
+  const attackRootEvent = publicAttackEvents[0];
   assert.equal(persisted.kind, "trigger");
   assert.equal(persisted.event, "attack_targeted");
   assert.equal(persisted.actorId, opened.source.id);
@@ -37,6 +44,8 @@ test("Cavalry is an optional source-owned attack_targeted trigger and Skip prese
   assert.equal(persisted.continuation.declaration.causal.frameId, trigger.causalEnvelope.activeFrameId);
   assert.equal(persisted.continuation.declaration.sourceId, opened.source.id);
   assert.equal(persisted.continuation.declaration.targetId, opened.target.id);
+  assert.equal(persisted.continuation.declaration.rootEventId, attackRootEvent.id,
+    "the Attack declaration retains the public play-event identity while Cavalry is pending");
   assert.equal(activeFrame?.stage, "ATTACK_RESPONSE");
   assert.equal(activeFrame?.origin.originSourceId, opened.source.id);
   assert.deepEqual(activeFrame?.origin.originalTargetIds, [opened.target.id]);
@@ -65,10 +74,29 @@ test("Cavalry is an optional source-owned attack_targeted trigger and Skip prese
   const dodge = (await state(opened.game.code, opened.targetMember.token)).data;
   assert.equal(dodge.currentAction.kind, "response", JSON.stringify(dodge));
   assert.equal(dodge.currentAction.requirement, "dodge");
+  assert.equal(dodge.currentAction.presentation.readyAfterEventId === attackRootEvent.id, false,
+    "the response barrier is the trigger-resume message, not the Attack root event");
+  assert.equal(dodge.timeline.find((event) => event.id === dodge.currentAction.presentation.readyAfterEventId)?.type, "message");
+  assert.equal(dodge.presentationV2.rootAction?.rootEventId, attackRootEvent.id,
+    "the response graph is rooted at the original public Attack after the trigger is declined");
+  assert.deepEqual(dodge.presentationSnapshot.rootAction, dodge.presentationV2.rootAction);
+  const sourceView = (await state(opened.game.code, opened.sourceMember.token)).data;
+  assert.deepEqual(sourceView.presentationV2.rootAction, dodge.presentationV2.rootAction,
+    "the exact public Attack root is viewer-equal for attacker and defender");
+  assert.equal(dodge.timeline.find((event) => event.id === attackRootEvent.id)?.card?.kind, "Attack");
   assert.equal(dodge.presentationV2.interactionScene?.decisionActorId, opened.target.id);
   assert.equal(dodge.presentationV2.interactionScene?.activeResolverId, opened.target.id);
   assert.equal(dodge.presentationV2.stableBoundary.kind, "CHOICE");
   assert.equal(dodge.presentationSnapshot.decision?.actorId, opened.target.id);
+  const dodgeCard = opened.targetHand[0];
+  const committedDodge = await request("respond", { code: opened.game.code, token: opened.targetMember.token, providerId: "card", cardId: dodgeCard.id });
+  assert.equal(committedDodge.status, 200, JSON.stringify(committedDodge.data));
+  const afterDodge = (await state(opened.game.code, opened.sourceMember.token)).data;
+  assert.equal(afterDodge.presentationV2.attackDodgeResponses?.[0]?.rootEventId, attackRootEvent.id,
+    "the committed Dodge proof remains linked to the same original Attack event");
+  const afterDodgeTarget = (await state(opened.game.code, opened.targetMember.token)).data;
+  assert.deepEqual(afterDodgeTarget.presentationV2.attackDodgeResponses, afterDodge.presentationV2.attackDodgeResponses,
+    "source and target receive the same exact public Attack/Dodge relation");
 });
 
 test("Cavalry rejects a stale trigger submission after the window resolves", async () => {

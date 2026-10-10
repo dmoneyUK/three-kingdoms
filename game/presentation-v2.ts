@@ -195,6 +195,7 @@ export type AttackRootProjectionDiagnostics = {
     interactionId: string | null;
     rootFrameId: string | null;
     rootEventId: string | null;
+    expectedRootEventId: string | null;
     readyAfterEventId: string | null;
   };
   input: {
@@ -1777,6 +1778,12 @@ function eventForContext(context: Context | null, timeline: readonly Presentatio
   return null;
 }
 
+function uniqueTimelineEventById(eventId: string | null, timeline: readonly PresentationV2Event[]): PresentationV2Event | null {
+  if (!eventId) return null;
+  const matches = timeline.filter((event) => event.id === eventId);
+  return matches.length === 1 ? matches[0] : null;
+}
+
 function singleTargetAttackRootActionEvaluationFor(
   envelope: CausalEnvelope | null,
   scene: PresentationInteractionScene | null,
@@ -1786,11 +1793,13 @@ function singleTargetAttackRootActionEvaluationFor(
 ): { rootAction: PresentationRootAction | null; diagnostics: AttackRootProjectionDiagnostics } {
   const item = record(pending);
   const continuation = record(item?.continuation);
+  const declaration = record(continuation?.declaration);
   const causal = record(item?.causal);
   const continuationCausal = record(continuation?.causal);
   const sourceId = stringValue(continuation?.sourceId);
   const targetId = stringValue(continuation?.targetId);
   const sequenceStartCardId = stringValue(continuation?.sequenceStartCardId);
+  const expectedRootEventId = firstString(continuation?.rootEventId, declaration?.rootEventId);
   const readyAfterEventId = stringValue(item?.readyAfterEventId);
   const frame = envelope?.frames.find(({ frameId }) => frameId === envelope.activeFrameId) ?? null;
   const rootFrames = envelope?.frames.filter(({ parentFrameId }) => parentFrameId == null) ?? [];
@@ -1851,7 +1860,8 @@ function singleTargetAttackRootActionEvaluationFor(
     rootContextHasOneTarget: rootContext?.targetIds.length === 1 && rootContext.targetIds[0] === targetId,
     sequenceStartCardPresent: Boolean(sequenceStartCardId),
     readyAfterEventPresent: Boolean(readyAfterEventId),
-    rootEventMatchesReadyAfterEvent: rootEvent?.id === readyAfterEventId,
+    rootEventIdentityPresent: Boolean(expectedRootEventId),
+    rootEventMatchesExpectedIdentity: rootEvent?.id === expectedRootEventId,
     rootEventIsPublicCardPlay: rootEvent?.type === "card" && rootEvent.presentation !== false && rootEvent.action === "play",
     rootEventCardMatchesSequenceStart: Boolean(card && card.id === sequenceStartCardId),
     rootEventHasPhysicalAttackProof: Boolean(physicalCardProof),
@@ -1864,6 +1874,7 @@ function singleTargetAttackRootActionEvaluationFor(
       interactionId: envelope?.interactionId ?? null,
       rootFrameId: frame?.frameId ?? null,
       rootEventId: rootEvent?.id ?? null,
+      expectedRootEventId,
       readyAfterEventId,
     },
     input: {
@@ -1897,14 +1908,16 @@ function singleTargetAttackRootActionEvaluationFor(
 }
 
 function attackRootProjectionEvaluationFor(input: PresentationV2Input) {
-  const { active, group: directGroup, root } = pendingContexts(input.pending);
+  const { group: directGroup, root } = pendingContexts(input.pending);
   const group = directGroup ?? typedGroupContinuation(input.pending);
   const envelope = input.causalEnvelope ?? null;
   const groupValues = groupProjectionValues(envelope, input.pending, group);
   const scene = interactionSceneFor(envelope, groupValues, input.pending);
-  const barrierId = input.currentAction?.presentation?.readyAfterEventId ?? null;
-  const barrierEvent = barrierId ? input.timeline.find((event) => event.id === barrierId && event.presentation !== false) ?? null : null;
-  const rootEvent = barrierEvent ?? eventForContext(root, input.timeline, barrierId) ?? eventForContext(active, input.timeline, barrierId);
+  const pendingItem = record(input.pending);
+  const pendingContinuation = record(pendingItem?.continuation);
+  const pendingDeclaration = record(pendingContinuation?.declaration);
+  const expectedRootEventId = firstString(pendingContinuation?.rootEventId, pendingDeclaration?.rootEventId);
+  const rootEvent = uniqueTimelineEventById(expectedRootEventId, input.timeline);
   return singleTargetAttackRootActionEvaluationFor(envelope, scene, input.pending, root, rootEvent);
 }
 

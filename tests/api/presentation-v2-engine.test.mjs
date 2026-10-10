@@ -1,5 +1,5 @@
 import test from "node:test";
-import { projectPresentationV2 } from "../../game/presentation-v2.ts";
+import { attackRootProjectionDiagnosticsFor, projectPresentationV2 } from "../../game/presentation-v2.ts";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
 import { buildPresentationClientView } from "../../game/presentation-client.ts";
 import { oathRecipientIds } from "../../game/oath.ts";
@@ -230,7 +230,7 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
     activeFrameId: attackScene.activeFrameId,
     checkpointId: attackScene.checkpointId,
     presentationRevision: attackScene.presentationRevision,
-    rootEventId: targetView.currentAction.presentation.readyAfterEventId,
+    rootEventId: pending.continuation.rootEventId,
     action: "ATTACK",
     sourceId: source.id,
     targetId: target.id,
@@ -239,6 +239,8 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   };
   assert.deepEqual(targetView.presentationV2.rootAction, attackRootAction, "the public root card is bound to the active frame and exact played-card event");
   assert.deepEqual(targetView.presentationSnapshot.rootAction, attackRootAction, "the accepted public snapshot carries the typed root action");
+  assert.equal(attackRootAction.rootEventId, targetView.currentAction.presentation.readyAfterEventId,
+    "ordinary Attack's public card event and initial ready barrier may coincide");
   assert.equal(JSON.stringify(targetView.presentationSnapshot.rootAction).includes(attack.id), false, "physical card IDs are not copied into the public root-action contract");
   assert.deepEqual(targetView.presentationV2.attackDodgeResponses ?? [], [], "an open Dodge decision has no submitted-response node");
   assert.deepEqual(targetView.presentationSnapshot.attackDodgeResponses ?? [], [], "an open Dodge decision publishes no counter proof");
@@ -246,12 +248,45 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   assert.ok(rootEvent && rootEvent.card?.id === attack.id, "the root event identity points to the exact played physical Attack");
   const rootActionInput = { pending, currentAction: targetView.currentAction, actionRevision: targetView.actionRevision, timeline: targetView.timeline, causalEnvelope: attackEnvelope };
   const priorPublicCardHistory = { ...rootEvent, id: "earlier-public-card-history", action: "reveal", resolutionId: "older-resolution" };
-  const exactBarrierWinsOverEarlierCardIdentity = projectPresentationV2({
+  const exactRootIdentityWinsOverEarlierCardIdentity = projectPresentationV2({
     ...rootActionInput,
     timeline: [priorPublicCardHistory, ...targetView.timeline],
   });
-  assert.equal(exactBarrierWinsOverEarlierCardIdentity.rootAction?.rootEventId, rootEvent.id,
-    "the exact readyAfterEventId wins over an earlier visible event with the same physical card identity");
+  assert.equal(exactRootIdentityWinsOverEarlierCardIdentity.rootAction?.rootEventId, rootEvent.id,
+    "the persisted root event identity wins over earlier history for the same physical card");
+  const responseBarrierMessage = { id: "attack-response-barrier-message", type: "message", presentation: true, message: "The response window opens." };
+  const messageBarrierProjection = projectPresentationV2({
+    ...rootActionInput,
+    currentAction: {
+      ...targetView.currentAction,
+      presentation: { ...targetView.currentAction.presentation, readyAfterEventId: responseBarrierMessage.id },
+    },
+    timeline: [...targetView.timeline, responseBarrierMessage],
+  });
+  assert.equal(messageBarrierProjection.rootAction?.rootEventId, rootEvent.id,
+    "a later message used as the response barrier cannot replace the Attack root event");
+  const mismatchedRootIdentity = projectPresentationV2({
+    ...rootActionInput,
+    pending: { ...pending, continuation: { ...pending.continuation, rootEventId: responseBarrierMessage.id } },
+    timeline: [...targetView.timeline, responseBarrierMessage],
+  });
+  assert.equal(mismatchedRootIdentity.rootAction, null,
+    "a root identity that names a message is rejected even when its barrier is valid");
+  assert.ok(attackRootProjectionDiagnosticsFor({
+    ...rootActionInput,
+    pending: { ...pending, continuation: { ...pending.continuation, rootEventId: responseBarrierMessage.id } },
+    timeline: [...targetView.timeline, responseBarrierMessage],
+  }).rejectionReasons.includes("rootEventIsPublicCardPlay"));
+  const missingRootIdentity = projectPresentationV2({
+    ...rootActionInput,
+    pending: { ...pending, continuation: { ...pending.continuation, rootEventId: undefined } },
+  });
+  assert.equal(missingRootIdentity.rootAction, null, "missing exact Attack event identity fails closed");
+  const duplicateRootIdentity = projectPresentationV2({
+    ...rootActionInput,
+    timeline: [...targetView.timeline, { ...rootEvent, type: "message" }],
+  });
+  assert.equal(duplicateRootIdentity.rootAction, null, "duplicate event IDs fail closed instead of selecting one timeline entry");
   const missingCardProof = projectPresentationV2({
     ...rootActionInput,
     pending: { ...pending, continuation: { ...pending.continuation, sequenceStartCardId: "unlinked-card" } },

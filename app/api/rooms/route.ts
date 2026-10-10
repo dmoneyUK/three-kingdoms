@@ -511,13 +511,13 @@ function addPassiveAttackPreventionNotice(log: string[], source: PlayerRow, targ
   const attackLabel = attack && (attack.suit === "♠" || attack.suit === "♣") ? "black Attack" : "Attack";
   return { log: addLogWithId(log, `${target.name}'s ${prevention.reason} blocks ${source.name}'s ${attackLabel}. No damage is dealt.`, undefined, { effectNotice: true }).log };
 }
-function attackDeclaration(source: PlayerRow, target: PlayerRow, origin: AttackOrigin, physicalCards: Card[], resumePhase: string, attackCard?: Card, causal?: CausalContext): CausalCreation<AttackDeclaration> {
+function attackDeclaration(source: PlayerRow, target: PlayerRow, origin: AttackOrigin, physicalCards: Card[], resumePhase: string, attackCard?: Card, causal?: CausalContext, rootEventId?: string): CausalCreation<AttackDeclaration> {
   const root = causal ? null : createCausalRoot({
     stage: "ATTACK_RESPONSE",
     origin: { originSourceId: source.id, originEffect: origin, originalTargetIds: [target.id] },
     current: { currentSourceId: source.id, currentEffect: origin, currentTargetIds: [target.id], resolvingPlayerId: target.id },
   });
-  return { value: { sourceId: source.id, targetId: target.id, origin, physicalCards, attackCard, ignoresArmor: hasBlueSteelSword(source), requiredDodgeCount: attackDodgeCount(source), sequenceStartCardId: physicalCards[0]?.id ?? attackCard?.id ?? "", resumePhase, resumePlayerId: source.id, causal: causal ?? root?.context }, createdEnvelope: root?.envelope ?? null };
+  return { value: { sourceId: source.id, targetId: target.id, origin, physicalCards, attackCard, ignoresArmor: hasBlueSteelSword(source), requiredDodgeCount: attackDodgeCount(source), sequenceStartCardId: physicalCards[0]?.id ?? attackCard?.id ?? "", ...(rootEventId ? { rootEventId } : {}), resumePhase, resumePlayerId: source.id, causal: causal ?? root?.context }, createdEnvelope: root?.envelope ?? null };
 }
 function exactCausalEnvelope(room: RoomRow, createdEnvelope: CausalEnvelope | null): CausalEnvelope | null { return parseCausalEnvelope(room.causal_envelope_json) ?? createdEnvelope; }
 function resumeGroupCausalRoom(room: RoomRow, childCausal?: CausalContext) {
@@ -542,7 +542,7 @@ function attackResponseDecision(declaration: AttackDeclaration, target: PlayerRo
     deadline: nextResponseDeadline(target),
     ...(declaration.resolutionId ? { resolutionId: declaration.resolutionId } : {}),
     causal: declaration.causal,
-    continuation: { kind: "attack", sourceId: declaration.sourceId, targetId: declaration.targetId, resumePhase: declaration.resumePhase, resumePlayerId: declaration.resumePlayerId, sequenceStartCardId: declaration.sequenceStartCardId, origin: declaration.origin, damageCards: declaration.physicalCards, requiredDodgeCount: count, causal: declaration.causal, ...(declaration.resolutionId ? { resolutionId: declaration.resolutionId } : {}), ...(declaration.ignoresArmor ? { ignoresArmor: true } : {}), ...(physicalCard ? { physicalCardId: physicalCard.id } : {}), ...(physicalSuit ? { physicalSuit } : {}) },
+    continuation: { kind: "attack", sourceId: declaration.sourceId, targetId: declaration.targetId, resumePhase: declaration.resumePhase, resumePlayerId: declaration.resumePlayerId, sequenceStartCardId: declaration.sequenceStartCardId, ...(declaration.rootEventId ? { rootEventId: declaration.rootEventId } : {}), origin: declaration.origin, damageCards: declaration.physicalCards, requiredDodgeCount: count, causal: declaration.causal, ...(declaration.resolutionId ? { resolutionId: declaration.resolutionId } : {}), ...(declaration.ignoresArmor ? { ignoresArmor: true } : {}), ...(physicalCard ? { physicalCardId: physicalCard.id } : {}), ...(physicalSuit ? { physicalSuit } : {}) },
   };
 }
 function attackTargetedContext(source: PlayerRow, target: PlayerRow, players: PlayerRow[] = []) {
@@ -3238,7 +3238,7 @@ async function applyAttackResponseOutcome(room: RoomRow, response: ResponsePendi
         .bind(serializePending(reopened.pending), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(reopened.log), room.id).run();
       return;
     }
-    await finishDodgedAttack(nextRoom, source, actor, judged.discard, judged.log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", [db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(judged.deck), room.id)], continuation.origin, continuation.resumePlayerId);
+    await finishDodgedAttack(nextRoom, source, actor, judged.discard, judged.log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", [db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(judged.deck), room.id)], continuation.origin, continuation.resumePlayerId, continuation.rootEventId);
     return;
   }
   judged.log = addLog(judged.log, `${actor.name} judges ${judged.judged ? `${judged.judged.rank}${judged.judged.suit}` : "nothing"} with ${resolution.label}. ${resolution.failureText}`);
@@ -3624,7 +3624,7 @@ async function resolveAttackDamageAboutToApply({ room, source, target, players, 
   });
 }
 
-async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, target: PlayerRow | null, discard: Card[], log: string[], resumePhase: string, sequenceStartCardId: string, writes: D1PreparedStatement[] = [], origin?: AttackOrigin, resumePlayerId?: string) {
+async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, target: PlayerRow | null, discard: Card[], log: string[], resumePhase: string, sequenceStartCardId: string, writes: D1PreparedStatement[] = [], origin?: AttackOrigin, resumePlayerId?: string, rootEventId?: string) {
   const options = source && target ? getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceHand: parse<Card[]>(source.hand_json, []), targetHand: parse<Card[]>(target.hand_json, []), targetEquipment: equipmentCards(target) }) : [];
   if (source?.alive && target?.alive && options.length) {
     const presentation = addLogWithId(log, `${source.name}'s Attack is blocked. ${options.length === 1 ? options[0].label : "Optional reactions"} may apply.`);
@@ -3633,7 +3633,7 @@ async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, targe
       kind: "trigger", event: "attack_dodged", actorId: source.id, resolutionId,
       reason: `Choose an optional reaction to ${target.name}'s Dodge, or skip`,
       deadline: nextResponseDeadline(source),
-      continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId, resolutionId, ...(resumePlayerId ? { resumePlayerId } : {}), ...(origin ? { origin } : {}) },
+      continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId, ...(rootEventId ? { rootEventId } : {}), resolutionId, ...(resumePlayerId ? { resumePlayerId } : {}), ...(origin ? { origin } : {}) },
     };
     const readyAfterEventId = latestDecisionPresentationEventId(presentation.log, resolutionId);
     writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(readyAfterEventId ? withPresentationBarrier(pending, presentation.log, readyAfterEventId) : pending), JSON.stringify(discard), JSON.stringify(presentation.log), room.id));
@@ -3825,7 +3825,7 @@ async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDod
   const displayLabel = presentationLabel.replace(/^Use\s+/, "");
   const nextSourceHand = sourceHand.filter((card) => card.id !== attack.id);
   const followUpOrigin: AttackOrigin = continuation.origin === "borrowed_sword" ? "borrowed_sword" : "triggered";
-  const declarationResult = attackDeclaration(source, target, followUpOrigin, [attack], continuation.resumePhase, attack, continuation.causal);
+  const declarationResult = attackDeclaration(source, target, followUpOrigin, [attack], continuation.resumePhase, attack, continuation.causal, continuation.rootEventId);
   const declaration = { ...declarationResult.value, resumePlayerId: continuation.resumePlayerId, sequenceStartCardId: continuation.sequenceStartCardId, resolutionId: continuation.resolutionId } satisfies AttackDeclaration;
   discard.push(attack); const followUpPresentation = addCardEventWithId(log, source.name, attack, target.name); log = addLog(followUpPresentation.log, `${source.name} uses ${displayLabel} to play another Attack on ${target.name}.`);
   if (attackTargetedOptions(source, target, [], players).length) {
@@ -6431,7 +6431,7 @@ export async function POST(request: Request) {
       : attackCards.length > 1
         ? addCardGroupEventWithId(baseLog, me.name, attackCards, "play", true, target.name)
         : addLogWithId(baseLog, `${me.name} provides an Attack on ${holder.name}'s behalf.`, undefined);
-    const declarationResult = attackDeclaration(holder, target, "borrowed_sword", attackCards, continuation.resumePhase, attack, continuation.causal);
+    const declarationResult = attackDeclaration(holder, target, "borrowed_sword", attackCards, continuation.resumePhase, attack, continuation.causal, attackCards.length === 1 ? presentation.eventId : undefined);
     const declaration = { ...declarationResult.value, resumePlayerId: continuation.resumePlayerId } satisfies AttackDeclaration;
     const next = attackResponseDecision(declaration, target);
     if (attackTargetedOptions(holder, target, [], players).length) {
@@ -6693,7 +6693,7 @@ export async function POST(request: Request) {
           db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(reopened.pending), JSON.stringify(discard), JSON.stringify(reopened.log), room.id),
         ]);
       } else {
-        await finishDodgedAttack(liveRoom, source, semanticTarget, discard, log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId)], continuation.origin, continuation.resumePlayerId);
+        await finishDodgedAttack(liveRoom, source, semanticTarget, discard, log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId)], continuation.origin, continuation.resumePlayerId, continuation.rootEventId);
       }
       await maybeOpenHandLossTrigger(room.id, me.id, handBeforeResponse);
     } else {
@@ -7052,7 +7052,7 @@ export async function POST(request: Request) {
         }
         // A provider-supplied virtual Attack keeps the original physical card
         // as its identity for suit, history, conservation, and stale checks.
-        const { value: declaration, createdEnvelope } = attackDeclaration(me, target, halberdAttack ? "halberd" : "card", [card], phaseAfterAttack(me), card);
+        const { value: declaration, createdEnvelope } = attackDeclaration(me, target, halberdAttack ? "halberd" : "card", [card], phaseAfterAttack(me), card, undefined, attackPresentation.eventId);
         const targetedOptions = attackTargetedOptions(me, target, [], players);
         if (targetedOptions.length) {
           const targetedPresentation = addLogWithId(log, `${me.name}'s Attack-targeted abilities open for ${target.name}.`);
