@@ -179,12 +179,23 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   const [sourceMember, targetMember] = game.members;
   const attack = card("Attack", "engine-projector-attack");
   const dodge = card("Dodge", "engine-projector-dodge");
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(source.id)}`);
   setHand(source.id, [attack], 4, 4); setHand(target.id, [dodge], 4, 4); setTurn(game.code, source.seat);
   const log = JSON.parse(query(`SELECT log_json FROM rooms WHERE code=${quote(game.code)}`));
   log.push(`@card:${JSON.stringify({ id: "private-attack-draw", player: source.name, target: source.name, card: attack, action: "draw", presentation: false, privateToPlayerId: source.id, drawPlayerId: source.id })}`);
   sql(`UPDATE rooms SET log_json=${quote(JSON.stringify(log))} WHERE code=${quote(game.code)}`);
-  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetId: target.id });
+  const traceId = "attack-dodge-projection-proof-test";
+  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetId: target.id, uxTraceId: traceId });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  assert.equal(opened.data.attackDodgeUxTrace?.traceId, traceId);
+  assert.equal(opened.data.attackDodgeUxTrace?.stage, "server-projection-after-play");
+  assert.equal(opened.data.attackDodgeUxTrace?.projection?.result, "PROVEN",
+    JSON.stringify(opened.data.attackDodgeUxTrace?.projection?.rejectionReasons));
+  assert.deepEqual(opened.data.attackDodgeUxTrace?.projection?.rejectionReasons, []);
+  assert.equal(opened.data.attackDodgeUxTrace?.projectedRootAction, "ATTACK",
+    "the play_card response captures the server projection before the Dodge window advances");
+  assert.equal(JSON.stringify(opened.data.attackDodgeUxTrace).includes(attack.id), false,
+    "opt-in projection diagnostics do not expose the physical card identity");
   const targetView = await assertProjectionMatchesEngine(game.code, targetMember.token);
   const pending = authoritativePending(game.code);
   assert.equal(pending.kind, "response");
@@ -234,6 +245,13 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   const rootEvent = targetView.timeline.find((event) => event.id === attackRootAction.rootEventId);
   assert.ok(rootEvent && rootEvent.card?.id === attack.id, "the root event identity points to the exact played physical Attack");
   const rootActionInput = { pending, currentAction: targetView.currentAction, actionRevision: targetView.actionRevision, timeline: targetView.timeline, causalEnvelope: attackEnvelope };
+  const priorPublicCardHistory = { ...rootEvent, id: "earlier-public-card-history", action: "reveal", resolutionId: "older-resolution" };
+  const exactBarrierWinsOverEarlierCardIdentity = projectPresentationV2({
+    ...rootActionInput,
+    timeline: [priorPublicCardHistory, ...targetView.timeline],
+  });
+  assert.equal(exactBarrierWinsOverEarlierCardIdentity.rootAction?.rootEventId, rootEvent.id,
+    "the exact readyAfterEventId wins over an earlier visible event with the same physical card identity");
   const missingCardProof = projectPresentationV2({
     ...rootActionInput,
     pending: { ...pending, continuation: { ...pending.continuation, sequenceStartCardId: "unlinked-card" } },
@@ -271,6 +289,15 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   assert.equal(targetRepeat.data.causalEnvelope.checkpoint.checkpointId, attackEnvelope.checkpoint.checkpointId);
   assert.equal(targetRepeat.data.causalEnvelope.presentationRevision, attackEnvelope.presentationRevision);
   assert.equal(query(`SELECT phase FROM rooms WHERE code=${quote(game.code)}`), "response", "read-only viewer projections preserve the active response boundary");
+  const pollUrl = new URL("/api/rooms", process.env.GAME_TEST_URL ?? "http://localhost:3137");
+  pollUrl.search = new URLSearchParams({ code: game.code, token: targetMember.token, uxTraceId: traceId }).toString();
+  const tracedPoll = await fetch(pollUrl);
+  assert.equal(tracedPoll.status, 200);
+  const tracedPollData = await tracedPoll.json();
+  assert.equal(tracedPollData.attackDodgeUxTrace?.stage, "server-projection-evaluation");
+  assert.equal(tracedPollData.attackDodgeUxTrace?.projection?.result, "PROVEN",
+    "an active response-window poll reports the root projection gate before a Dodge is submitted");
+  assert.equal(tracedPollData.attackDodgeUxTrace?.projectedRootAction, "ATTACK");
   const responded = await request("respond", { code: game.code, token: targetMember.token, providerId: "card", cardId: dodge.id, uxTraceId: "test-attack-dodge-proof" });
   assert.equal(responded.status, 200, JSON.stringify(responded.data));
   assert.equal(responded.data.attackDodgeUxTrace?.proofBuilder?.result, "PROVEN", JSON.stringify(responded.data.attackDodgeUxTrace));

@@ -188,6 +188,26 @@ export type PresentationV2Input = {
   causalEnvelope?: CausalEnvelope | null;
 };
 
+export type AttackRootProjectionDiagnostics = {
+  result: "PROVEN" | "REJECTED";
+  rejectionReasons: readonly string[];
+  correlation: {
+    interactionId: string | null;
+    rootFrameId: string | null;
+    rootEventId: string | null;
+    readyAfterEventId: string | null;
+  };
+  input: {
+    pendingKind: string | null;
+    continuationKind: string | null;
+    sceneSemantics: string | null;
+    sceneStage: string | null;
+    rootEventType: string | null;
+    rootEventAction: string | null;
+    rootEventCardKind: string | null;
+  };
+};
+
 export type PresentationParticipant = {
   playerId: string;
   roles: readonly ("source" | "target" | "current_target" | "responder" | "group_participant")[];
@@ -1757,13 +1777,13 @@ function eventForContext(context: Context | null, timeline: readonly Presentatio
   return null;
 }
 
-function singleTargetAttackRootActionFor(
+function singleTargetAttackRootActionEvaluationFor(
   envelope: CausalEnvelope | null,
   scene: PresentationInteractionScene | null,
   pending: unknown,
   rootContext: Context | null,
   rootEvent: PresentationV2Event | null,
-): PresentationRootAction | null {
+): { rootAction: PresentationRootAction | null; diagnostics: AttackRootProjectionDiagnostics } {
   const item = record(pending);
   const continuation = record(item?.continuation);
   const causal = record(item?.causal);
@@ -1784,38 +1804,83 @@ function singleTargetAttackRootActionFor(
       ? { physicalCardKind, playedAs: "attack" as const }
       : null;
 
-  if (item?.kind !== "response" || continuation?.kind !== "attack"
-    || !envelope || !frame || rootFrames.length !== 1 || !scene
-    || scene.semantics !== "PROVEN" || scene.continuity.relation !== "ROOT_FRAME"
-    || scene.rootFrameId !== frame.frameId || scene.activeFrameId !== frame.frameId
-    || scene.stage !== "ATTACK_RESPONSE" || frame.stage !== "ATTACK_RESPONSE"
-    || frame.parentFrameId != null
-    || envelope.checkpoint.frameId !== frame.frameId || envelope.checkpoint.stage !== frame.stage
-    || causal?.interactionId !== envelope.interactionId || causal.frameId !== frame.frameId
-    || continuationCausal?.interactionId !== envelope.interactionId || continuationCausal.frameId !== frame.frameId
-    || !sourceId || !targetId || sourceId === targetId || item.actorId !== targetId
-    || frame.origin.originSourceId !== sourceId || frame.current.currentSourceId !== sourceId
-    || frame.current.currentEffect !== frame.origin.originEffect || scene.effect !== frame.origin.originEffect
-    || frame.origin.originalTargetIds.length !== 1 || frame.origin.originalTargetIds[0] !== targetId
-    || frame.current.currentTargetIds.length !== 1 || frame.current.currentTargetIds[0] !== targetId
-    || frame.current.resolvingPlayerId !== targetId
-    || scene.sourceId !== sourceId || scene.activeSourceId !== sourceId
-    || scene.targetIds.length !== 1 || scene.targetIds[0] !== targetId
-    || scene.activeTargetIds.length !== 1 || scene.activeTargetIds[0] !== targetId
-    || scene.currentParticipantId !== targetId
-    || scene.participantRoles.sourceId !== sourceId
-    || scene.participantRoles.originalTargetIds.length !== 1 || scene.participantRoles.originalTargetIds[0] !== targetId
-    || scene.participantRoles.activeTargetIds.length !== 1 || scene.participantRoles.activeTargetIds[0] !== targetId
-    || scene.participantRoles.currentParticipantId !== targetId
-    || scene.participantRoles.decisionActorId !== targetId || scene.participantRoles.activeResolverId !== targetId
-    || scene.decisionActorId !== targetId || scene.activeResolverId !== targetId
-    || rootContext?.kind !== "response" || rootContext.sourceId !== sourceId
-    || rootContext.targetIds.length !== 1 || rootContext.targetIds[0] !== targetId || !sequenceStartCardId
-    || !readyAfterEventId || rootEvent?.id !== readyAfterEventId
-    || rootEvent.type !== "card" || rootEvent.presentation === false || rootEvent.action !== "play"
-    || !card || card.id !== sequenceStartCardId || !physicalCardProof) return null;
+  const checks: Record<string, boolean> = {
+    pendingIsResponse: item?.kind === "response",
+    continuationIsAttack: continuation?.kind === "attack",
+    causalEnvelopePresent: Boolean(envelope),
+    activeCausalFramePresent: Boolean(frame),
+    exactlyOneRootCausalFrame: rootFrames.length === 1,
+    interactionScenePresent: Boolean(scene),
+    interactionSemanticsProven: scene?.semantics === "PROVEN",
+    sceneIsRootFrameContinuation: scene?.continuity.relation === "ROOT_FRAME",
+    sceneRootFrameMatchesActiveFrame: scene?.rootFrameId === frame?.frameId,
+    sceneActiveFrameMatchesActiveFrame: scene?.activeFrameId === frame?.frameId,
+    sceneAtAttackResponseStage: scene?.stage === "ATTACK_RESPONSE",
+    frameAtAttackResponseStage: frame?.stage === "ATTACK_RESPONSE",
+    activeFrameIsRoot: frame?.parentFrameId == null,
+    checkpointMatchesActiveFrame: envelope?.checkpoint.frameId === frame?.frameId,
+    checkpointMatchesFrameStage: envelope?.checkpoint.stage === frame?.stage,
+    pendingCausalInteractionMatches: causal?.interactionId === envelope?.interactionId,
+    pendingCausalFrameMatches: causal?.frameId === frame?.frameId,
+    continuationCausalInteractionMatches: continuationCausal?.interactionId === envelope?.interactionId,
+    continuationCausalFrameMatches: continuationCausal?.frameId === frame?.frameId,
+    distinctSourceAndTargetPresent: Boolean(sourceId && targetId && sourceId !== targetId),
+    responseActorIsTarget: item?.actorId === targetId,
+    frameOriginSourceMatches: frame?.origin.originSourceId === sourceId,
+    frameCurrentSourceMatches: frame?.current.currentSourceId === sourceId,
+    frameEffectUnchanged: frame?.current.currentEffect === frame?.origin.originEffect,
+    sceneEffectMatchesRoot: scene?.effect === frame?.origin.originEffect,
+    oneOriginalTargetMatches: frame?.origin.originalTargetIds.length === 1 && frame.origin.originalTargetIds[0] === targetId,
+    oneActiveTargetMatches: frame?.current.currentTargetIds.length === 1 && frame.current.currentTargetIds[0] === targetId,
+    currentResolverIsTarget: frame?.current.resolvingPlayerId === targetId,
+    sceneSourceMatches: scene?.sourceId === sourceId,
+    sceneActiveSourceMatches: scene?.activeSourceId === sourceId,
+    sceneHasOneOriginalTarget: scene?.targetIds.length === 1 && scene.targetIds[0] === targetId,
+    sceneHasOneActiveTarget: scene?.activeTargetIds.length === 1 && scene.activeTargetIds[0] === targetId,
+    sceneCurrentParticipantIsTarget: scene?.currentParticipantId === targetId,
+    participantRoleSourceMatches: scene?.participantRoles.sourceId === sourceId,
+    participantRoleOriginalTargetMatches: scene?.participantRoles.originalTargetIds.length === 1 && scene.participantRoles.originalTargetIds[0] === targetId,
+    participantRoleActiveTargetMatches: scene?.participantRoles.activeTargetIds.length === 1 && scene.participantRoles.activeTargetIds[0] === targetId,
+    participantRoleCurrentParticipantIsTarget: scene?.participantRoles.currentParticipantId === targetId,
+    participantRoleDecisionActorIsTarget: scene?.participantRoles.decisionActorId === targetId,
+    participantRoleResolverIsTarget: scene?.participantRoles.activeResolverId === targetId,
+    sceneDecisionActorIsTarget: scene?.decisionActorId === targetId,
+    sceneResolverIsTarget: scene?.activeResolverId === targetId,
+    rootContextIsResponse: rootContext?.kind === "response",
+    rootContextSourceMatches: rootContext?.sourceId === sourceId,
+    rootContextHasOneTarget: rootContext?.targetIds.length === 1 && rootContext.targetIds[0] === targetId,
+    sequenceStartCardPresent: Boolean(sequenceStartCardId),
+    readyAfterEventPresent: Boolean(readyAfterEventId),
+    rootEventMatchesReadyAfterEvent: rootEvent?.id === readyAfterEventId,
+    rootEventIsPublicCardPlay: rootEvent?.type === "card" && rootEvent.presentation !== false && rootEvent.action === "play",
+    rootEventCardMatchesSequenceStart: Boolean(card && card.id === sequenceStartCardId),
+    rootEventHasPhysicalAttackProof: Boolean(physicalCardProof),
+  };
+  const rejectionReasons = Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name);
+  const diagnostics: AttackRootProjectionDiagnostics = {
+    result: rejectionReasons.length === 0 ? "PROVEN" : "REJECTED",
+    rejectionReasons,
+    correlation: {
+      interactionId: envelope?.interactionId ?? null,
+      rootFrameId: frame?.frameId ?? null,
+      rootEventId: rootEvent?.id ?? null,
+      readyAfterEventId,
+    },
+    input: {
+      pendingKind: stringValue(item?.kind),
+      continuationKind: stringValue(continuation?.kind),
+      sceneSemantics: stringValue(scene?.semantics),
+      sceneStage: stringValue(scene?.stage),
+      rootEventType: stringValue(rootEvent?.type),
+      rootEventAction: stringValue(rootEvent?.action),
+      rootEventCardKind: stringValue(card?.kind),
+    },
+  };
+  if (rejectionReasons.length > 0 || !envelope || !frame || !rootEvent || !sourceId || !targetId || !physicalCardProof) {
+    return { rootAction: null, diagnostics };
+  }
 
-  return {
+  return { rootAction: {
     semantics: "PROVEN",
     interactionId: envelope.interactionId,
     rootFrameId: frame.frameId,
@@ -1828,7 +1893,24 @@ function singleTargetAttackRootActionFor(
     targetId,
     cardKind: "Attack",
     ...physicalCardProof,
-  };
+  }, diagnostics };
+}
+
+function attackRootProjectionEvaluationFor(input: PresentationV2Input) {
+  const { active, group: directGroup, root } = pendingContexts(input.pending);
+  const group = directGroup ?? typedGroupContinuation(input.pending);
+  const envelope = input.causalEnvelope ?? null;
+  const groupValues = groupProjectionValues(envelope, input.pending, group);
+  const scene = interactionSceneFor(envelope, groupValues, input.pending);
+  const barrierId = input.currentAction?.presentation?.readyAfterEventId ?? null;
+  const barrierEvent = barrierId ? input.timeline.find((event) => event.id === barrierId && event.presentation !== false) ?? null : null;
+  const rootEvent = barrierEvent ?? eventForContext(root, input.timeline, barrierId) ?? eventForContext(active, input.timeline, barrierId);
+  return singleTargetAttackRootActionEvaluationFor(envelope, scene, input.pending, root, rootEvent);
+}
+
+/** Trace-only diagnostics for the existing server-authoritative Attack root proof gate. */
+export function attackRootProjectionDiagnosticsFor(input: PresentationV2Input): AttackRootProjectionDiagnostics {
+  return attackRootProjectionEvaluationFor(input).diagnostics;
 }
 
 function singleTargetTargetCardRootActionFor(
@@ -2487,7 +2569,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const groupCardKind = group ? firstString(group.cardKind, group.kind === "group" ? "group" : null) : null;
   const groupValues = groupProjectionValues(envelope, input.pending, group);
   const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
-  const rootAction = singleTargetAttackRootActionFor(envelope, interactionScene, input.pending, root, rootEvent)
+  const rootAction = attackRootProjectionEvaluationFor(input).rootAction
     ?? singleTargetTargetCardRootActionFor(envelope, interactionScene, input.pending, input.timeline, "Dismantle")
     ?? singleTargetTargetCardRootActionFor(envelope, interactionScene, input.pending, input.timeline, "Steal");
   const skillEffectAction = skillEffectActionFor(input);

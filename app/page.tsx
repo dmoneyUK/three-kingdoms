@@ -212,10 +212,21 @@ export default function Home() {
     const uxTraceId = getAttackDodgeUxTraceId();
     try {
       if (uxTraceId) recordAttackDodgeUxTrace("room-poll-request", { traceId: uxTraceId });
-      const response = await fetch(`/api/rooms?code=${roomCode}&token=${playerToken}`, { cache: "no-store" });
+      const query = new URLSearchParams({ code: roomCode, token: playerToken });
+      if (uxTraceId) query.set("uxTraceId", uxTraceId);
+      const response = await fetch(`/api/rooms?${query.toString()}`, { cache: "no-store" });
       if (uxTraceId) recordAttackDodgeUxTrace("room-poll-response", { traceId: uxTraceId, status: response.status, ok: response.ok });
       if (!response.ok) throw new Error("Room is no longer available.");
-      const nextRoom = normalizeRoomData(await readApiJson(response)) as Room | null;
+      const rawData = await readApiJson<unknown>(response);
+      let roomPayload = rawData;
+      if (uxTraceId && rawData && typeof rawData === "object" && !Array.isArray(rawData)) {
+        const traceResponse = rawData as { room?: unknown; attackDodgeUxTrace?: Record<string, unknown> };
+        if (traceResponse.attackDodgeUxTrace) {
+          recordAttackDodgeUxTrace("server-projection-evaluation", traceResponse.attackDodgeUxTrace);
+          roomPayload = traceResponse.room ?? rawData;
+        }
+      }
+      const nextRoom = normalizeRoomData(roomPayload) as Room | null;
       if (!nextRoom || !nextRoom.meId) throw new Error("Your player session is no longer valid.");
       if (epoch === stateEpoch.current) setRoom(nextRoom as Room);
       return true;
@@ -304,7 +315,12 @@ export default function Home() {
           roomReturned: Boolean(rawData.room),
           serverDiagnosticReturned: Boolean(rawData.attackDodgeUxTrace),
         });
-        if (rawData.attackDodgeUxTrace) recordAttackDodgeUxTrace("server-proof-evaluation", rawData.attackDodgeUxTrace);
+        if (rawData.attackDodgeUxTrace) {
+          const diagnosticStage = rawData.attackDodgeUxTrace.stage === "server-projection-after-play"
+            ? "server-projection-after-play"
+            : "server-proof-evaluation";
+          recordAttackDodgeUxTrace(diagnosticStage, rawData.attackDodgeUxTrace);
+        }
       }
       const data = { ...rawData, room: normalizeRoomData(rawData.room) as Room | null };
       if (data.room && mutationSequence >= latestAppliedMutation.current && (nonBlocking || epoch === stateEpoch.current)) { latestAppliedMutation.current = Math.max(latestAppliedMutation.current, mutationSequence); setToken(data.token ?? token); setRoom(data.room); setCode(data.room.code); }
@@ -4365,12 +4381,25 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     ? activeAttackDodgeSettlementId
     : null;
   const attackDodgeSettlementAlreadyActive = activeAttackDodgeSettlementId === activeAttackDodgeSettlementEventId;
+  const attackDodgeSettlementCaptureRejectionReasons = [
+    !activeAttackDodgeSettlementEventId ? "no-blocked-by-dodge-settlement" : null,
+    !rootActionOverlayGraphReady ? "graph-layout-not-ready" : null,
+    !rootActionOverlayAction?.response ? "overlay-response-missing" : null,
+    rootActionOverlayAction?.response?.eventId !== activeAttackDodgeSettlementEventId ? "overlay-response-event-mismatch" : null,
+    attackDodgeSettlementAlreadyActive ? "settlement-already-active" : null,
+    activeAttackDodgeSettlementEventId && attackDodgeSettlementCapturedEventIds.current.has(activeAttackDodgeSettlementEventId) ? "settlement-event-already-captured" : null,
+  ].filter((reason): reason is string => Boolean(reason));
   const attackDodgeRootCardReadEventId = rootActionOverlayAction?.cardKind === "Attack"
     && rootActionOverlayAction.mode === "targeted"
     && rootActionOverlayAction.cardFace
     && !rootActionOverlayAction.response
     ? rootActionOverlayAction.rootEventId
     : null;
+  const attackDodgeRootCardCaptureRejectionReasons = [
+    !attackDodgeRootCardReadEventId ? "no-targeted-attack-root-card" : null,
+    !rootActionOverlayGraphReady ? "graph-layout-not-ready" : null,
+    attackDodgeRootCardReadEventId && attackDodgeRootCardReadCapturedEventIds.current.has(attackDodgeRootCardReadEventId) ? "root-card-event-already-captured" : null,
+  ].filter((reason): reason is string => Boolean(reason));
   const attackDodgeRootCardReadRemainingMs = rootActionOverlayGraphReady
     && activeAttackDodgeRootCardRead?.eventId === attackDodgeRootCardReadEventId
     ? activeAttackDodgeRootCardRead.remainingMs
@@ -4638,10 +4667,26 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       remainingMs: activeAttackDodgeSettlement?.remainingMs ?? null,
       superseded: attackDodgeHoldSuperseded,
       capturedEventCount: attackDodgeSettlementCapturedEventIds.current.size,
+      settlementCaptureGate: {
+        candidateEventId: activeAttackDodgeSettlementEventId,
+        overlayResponseEventId: rootActionOverlayAction?.response?.eventId ?? null,
+        graphReady: rootActionOverlayGraphReady,
+        alreadyActive: attackDodgeSettlementAlreadyActive,
+        alreadyCaptured: Boolean(activeAttackDodgeSettlementEventId && attackDodgeSettlementCapturedEventIds.current.has(activeAttackDodgeSettlementEventId)),
+        eligible: attackDodgeSettlementCaptureRejectionReasons.length === 0,
+        rejectionReasons: attackDodgeSettlementCaptureRejectionReasons,
+      },
       graphTimerRemainingMs: rootActionOverlayPublicReadRemainingMs,
       rootCardEventId: activeAttackDodgeRootCardRead?.eventId ?? null,
       rootCardTimerRemainingMs: attackDodgeRootCardReadRemainingMs,
       capturedRootCardCount: attackDodgeRootCardReadCapturedEventIds.current.size,
+      rootCardCaptureGate: {
+        candidateEventId: attackDodgeRootCardReadEventId,
+        graphReady: rootActionOverlayGraphReady,
+        alreadyCaptured: Boolean(attackDodgeRootCardReadEventId && attackDodgeRootCardReadCapturedEventIds.current.has(attackDodgeRootCardReadEventId)),
+        eligible: attackDodgeRootCardCaptureRejectionReasons.length === 0,
+        rejectionReasons: attackDodgeRootCardCaptureRejectionReasons,
+      },
     },
   } : null;
   const attackDodgeTraceSnapshotJson = attackDodgeTraceSnapshot ? JSON.stringify(attackDodgeTraceSnapshot) : null;

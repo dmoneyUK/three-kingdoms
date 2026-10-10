@@ -1,6 +1,6 @@
 const ACTIVE_KEY = "wtk.attack-dodge-ux-trace.active.v1";
 const DOCUMENT_KEY = "wtk.attack-dodge-ux-trace.document.v1";
-const MAX_TRACE_ENTRIES = 700;
+const MAX_TRACE_ENTRIES = 1400;
 
 export type AttackDodgeUxTraceEntry = {
   elapsedMs: number;

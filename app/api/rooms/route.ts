@@ -24,7 +24,7 @@ import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { projectPresentationV2, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof } from "../../../game/presentation-v2";
+import { attackRootProjectionDiagnosticsFor, projectPresentationV2, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
@@ -4437,7 +4437,7 @@ function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: P
 }
 
 
-async function roomState(code: string, token?: string) {
+async function roomState(code: string, token?: string, includeAttackDodgeDiagnostics = false) {
   const db = env.DB;
   const room = await db.prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
   if (!room) return null;
@@ -4541,16 +4541,21 @@ async function roomState(code: string, token?: string) {
     ...(presentation ? { presentation } : {}),
   };
   const projectedTimeline = gameTimeline(rawLog, me?.id);
-  const presentationV2 = projectPresentationV2({
+  const presentationInput = {
     pending,
     currentAction,
     actionRevision,
     timeline: projectedTimeline,
     causalEnvelope,
     oathRecipientIds: oathRecipientIds(players.map((player) => ({ id: player.id, alive: Boolean(player.alive), hp: player.hp, maxHp: player.max_hp }))),
-  });
+  };
+  const presentationV2 = projectPresentationV2(presentationInput);
+  const attackDodgeProjectionDiagnostics = includeAttackDodgeDiagnostics
+    ? attackRootProjectionDiagnosticsFor(presentationInput)
+    : null;
   const presentationSnapshot = composePresentationSnapshot({ presentationV2, currentAction, actionRevision, viewerId: me?.id ?? null });
   return {
+    ...(attackDodgeProjectionDiagnostics ? { attackDodgeProjectionDiagnostics } : {}),
     code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending ? { kind: responsePending ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction, presentationSnapshot,
     isHost: me?.id === room.host_player_id, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
@@ -4584,10 +4589,59 @@ async function roomState(code: string, token?: string) {
   };
 }
 
+type RoomStateResult = NonNullable<Awaited<ReturnType<typeof roomState>>>;
+
+function attackDodgeProjectionTrace(traceId: string, state: RoomStateResult, stage = "server-projection-evaluation") {
+  const { attackDodgeProjectionDiagnostics: diagnostics, ...room } = state;
+  const recentPublicAttackDodgeEvents = room.timeline.slice(-8).flatMap((event) => {
+    const candidate = event as { type?: string; action?: string; id?: string; card?: { kind?: string }; playedAs?: string; resolutionId?: string; presentation?: boolean };
+    if (candidate.type !== "card" || candidate.action !== "play"
+      || candidate.card?.kind !== "Attack" && candidate.card?.kind !== "Dodge") return [];
+    return [{ eventId: candidate.id ?? null, action: candidate.action, cardKind: candidate.card.kind,
+      playedAs: candidate.playedAs ?? null, resolutionId: candidate.resolutionId ?? null,
+      presentation: candidate.presentation !== false }];
+  });
+  const responseRequirement = room.currentAction.requirement === "attack" || room.currentAction.requirement === "dodge";
+  const relevant = Boolean(room.pendingAttack || responseRequirement
+    || room.presentationSnapshot.rootAction?.action === "ATTACK"
+    || (room.presentationSnapshot.attackDodgeResponses?.length ?? 0) > 0
+    || recentPublicAttackDodgeEvents.length > 0);
+  return {
+    room,
+    attackDodgeUxTrace: {
+      traceId,
+      stage,
+      relevant,
+      roomState: {
+        phase: room.phase,
+        pendingKind: room.pending?.kind ?? null,
+        pendingAttackActive: Boolean(room.pendingAttack),
+        currentActionKind: room.currentAction.kind,
+        currentActionRequirement: room.currentAction.requirement ?? null,
+        readyAfterEventId: room.currentAction.presentation?.readyAfterEventId ?? null,
+      },
+      projection: relevant ? diagnostics ?? null : null,
+      projectedRootAction: relevant ? room.presentationSnapshot.rootAction?.action ?? null : null,
+      serverDodgeProofCount: relevant ? room.presentationSnapshot.attackDodgeResponses?.length ?? 0 : null,
+      recentPublicAttackDodgeEvents,
+    },
+  };
+}
+
+async function playCardRoomResponse(code: string, token: string, traceId: string | null) {
+  const state = await roomState(code, token, Boolean(traceId));
+  if (!state) return json({ error: "Room not found." }, 404);
+  if (traceId && state.pendingAttack) return json(attackDodgeProjectionTrace(traceId, state, "server-projection-after-play"));
+  const { attackDodgeProjectionDiagnostics: _diagnostics, ...room } = state;
+  return json({ room });
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = (url.searchParams.get("code") ?? "").toUpperCase();
   const token = url.searchParams.get("token") ?? "";
+  const requestedTraceId = url.searchParams.get("uxTraceId") ?? "";
+  const uxTraceId = /^[a-zA-Z0-9-]{8,80}$/.test(requestedTraceId) ? requestedTraceId : null;
   if (url.searchParams.get("audit") === "1") {
     const room = await env.DB.prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
     if (!room) return json({ error: "Room not found." }, 404);
@@ -4596,8 +4650,14 @@ export async function GET(request: Request) {
     const result = await env.DB.prepare("SELECT id,event_key,event_type,actor_id,actor_name,action,phase_before,phase_after,turn_seat_before,turn_seat_after,acting_player_before,acting_player_after,detail_json,created_at FROM game_audit WHERE room_id = ? ORDER BY id").bind(room.id).all();
     return json({ code, audit: result.results ?? [] });
   }
-  const state = await roomState(code, token);
-  return state ? json(state) : json({ error: "Room not found." }, 404);
+  const state = await roomState(code, token, Boolean(uxTraceId));
+  if (!state) return json({ error: "Room not found." }, 404);
+  if (uxTraceId) {
+    if (!state.meId) return json({ error: "A valid room member session is required for UX diagnostics." }, 403);
+    const trace = attackDodgeProjectionTrace(uxTraceId, state);
+    return json(trace);
+  }
+  return json(state);
 }
 
 export async function POST(request: Request) {
@@ -6987,7 +7047,7 @@ export async function POST(request: Request) {
           log = addLog(log, `${me.name} uses their last hand card as Attack with Sky Piercing Halberd, targeting ${targets.map((entry) => entry.name).join(", ")}. ${target.name} resolves first.`);
           await beginGroupTarget(liveRoom, pending, pending.continuation, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me)], groupCreation.createdEnvelope);
           await maybeOpenHandLossTrigger(room.id, me.id, handBeforeAction);
-          return json({ room: await roomState(code, token) });
+          return playCardRoomResponse(code, token, uxTraceId);
         }
         // A provider-supplied virtual Attack keeps the original physical card
         // as its identity for suit, history, conservation, and stale checks.
@@ -6997,7 +7057,7 @@ export async function POST(request: Request) {
           const targetedPresentation = addLogWithId(log, `${me.name}'s Attack-targeted abilities open for ${target.name}.`);
           await beginAttackTargeted(liveRoom, declaration, me, target, discard, targetedPresentation.log, targetedPresentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me)], [], undefined, createdEnvelope);
           await maybeOpenHandLossTrigger(room.id, me.id, handBeforeAction);
-          return json({ room: await roomState(code, token) });
+          return playCardRoomResponse(code, token, uxTraceId);
         }
         const prevention = addPassiveAttackPreventionNotice(log, me, target, attackPhysicalCard(declaration));
         if (prevention) {
@@ -7008,7 +7068,7 @@ export async function POST(request: Request) {
             db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(phaseAfterAttack(me), JSON.stringify(discard), JSON.stringify(log), room.id),
           ]);
           await maybeOpenHandLossTrigger(room.id, me.id, handBeforeAction);
-          return json({ room: await roomState(code, token) });
+          return playCardRoomResponse(code, token, uxTraceId);
         }
         const presentation = addLogWithId(log, `${me.name} plays Attack on ${target.name}. Action passes from ${me.name} to ${target.name} for Dodge response.`);
         const responsePending = withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, attackPresentation.eventId);
@@ -7053,6 +7113,7 @@ export async function POST(request: Request) {
       }
     }
     await maybeOpenHandLossTrigger(room.id, me.id, handBeforeAction);
+    if (action === "play_card") return playCardRoomResponse(code, token, uxTraceId);
     return json({ room: await roomState(code, token), ...(drawnCards.length ? { drawnCards } : {}) });
   }
 
