@@ -1752,7 +1752,6 @@ function StageSystemCluster({ publicResponseTimerPending, responseTimer, eventTi
       <div id="stage-system-menu-actions" className="stage-system-menu-actions" role="group" aria-label="System menu actions" hidden={!menuOpen}>
         <small className="stage-system-build-sha"><span>GitHub Actions build SHA</span><code>{BUILD_SHA}</code></small>
         <button type="button" className="stage-system-diagnostics" onClick={downloadTrace} onKeyDown={closeMenuOnEscape}>Download UX trace</button>
-        <small className="stage-system-diagnostics-note">Recording starts automatically when you create, join, or restore a game and ends when the game ends or you leave. The local download includes public hero names and skill names, seat-based game/UI transitions, and graph diagnostics. It excludes player display names, room code, token, private card identities, and private legal options. A random trace ID is sent with room requests so the server can return proof diagnostics; the downloaded trace itself is not uploaded. The trace is bounded to 3,200 entries or about 1.7 MB; only if that limit is reached are the oldest entries trimmed.</small>
         {traceNotice && <small className="stage-system-diagnostics-status" role="status">{traceNotice}</small>}
         <button type="button" className="stage-system-exit" onClick={confirmExit} onKeyDown={closeMenuOnEscape}>Exit Game</button>
       </div>

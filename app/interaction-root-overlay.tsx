@@ -229,6 +229,12 @@ function relativeRect(element: HTMLElement, root: DOMRect): Rect {
   };
 }
 
+function publicReadTimerPosition(card: Rect, shellWidth: number) {
+  return shellWidth <= 480
+    ? { left: card.left >= 60 ? card.left - 60 : card.right + 6, top: card.top + 4 }
+    : { left: card.left + card.width - 54, top: Math.max(6, card.top - 30) };
+}
+
 function PublicCounterReadTimer({ eventId, remainingMs, style, readKind }: { eventId: string; remainingMs: number; style: { left: number; top: number }; readKind: "response" | "card" }) {
   const [remainingSeconds, setRemainingSeconds] = useState(Math.ceil(remainingMs / 1000));
   useEffect(() => {
@@ -1038,8 +1044,8 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const localDockRect = localDockElement?.getClientRects().length ? relativeRect(localDockElement, shellBounds) : null;
   const stableStageBottom = localDockRect && localDockRect.top >= tableRect.bottom ? localDockRect.top : tableRect.bottom;
   const fitStep = cardElement.closest<HTMLElement>("[data-root-action-card-fit-step]")?.dataset.rootActionCardFitStep ?? "target";
-  const dodgeFaceSize = (step: string) => shellBounds.width < 430
-    ? step === "minimum" ? { width: 88, height: 132 } : step === "compact" ? { width: 98, height: 147 } : { width: 108, height: 162 }
+  const dodgeFaceSize = (step: string) => shellBounds.width <= 480
+    ? step === "minimum" ? { width: 88, height: 132 } : step === "compact" ? { width: 94, height: 141 } : { width: 98, height: 147 }
     : shellBounds.width < 900
       ? step === "minimum" ? { width: 94, height: 141 } : step === "compact" ? { width: 104, height: 156 } : { width: 116, height: 174 }
       : step === "minimum" ? { width: 106, height: 159 } : step === "compact" ? { width: 119, height: 179 } : { width: 132, height: 198 };
@@ -2618,6 +2624,13 @@ export function InteractionRootOverlay({
   const visible = enabled && displayMode === "graph" && layoutReadiness === "ready" && Boolean(layout) && accessiblePartsValid
     && Boolean(sourceName && (groupNamesKnown || orderedNamesKnown || simultaneousNamesKnown || action.mode === "self-target" || targetName));
   const responseChainRootBlocked = Boolean(action.responses?.length && action.rootEffectState === "BLOCKED");
+  const blockedResponseCard = layout?.responseCard ?? layout?.card;
+  const blockedResponseTimerStyle = blockedResponseCard && layout
+    ? publicReadTimerPosition(blockedResponseCard, layout.width)
+    : null;
+  const attackCardReadTimerStyle = layout
+    ? publicReadTimerPosition(layout.card, layout.width)
+    : null;
   return <>
     <div
     ref={layerRef}
@@ -2913,15 +2926,12 @@ export function InteractionRootOverlay({
     })}
     </div>
     {visible && layout && action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE"
-      && publicCounterReadRemainingMs !== null && publicCounterReadRemainingMs !== undefined && <PublicCounterReadTimer
+      && blockedResponseTimerStyle && publicCounterReadRemainingMs !== null && publicCounterReadRemainingMs !== undefined && <PublicCounterReadTimer
         key={`response:${action.settlement.eventId}`}
         eventId={action.settlement.eventId}
         remainingMs={publicCounterReadRemainingMs}
         readKind="response"
-        style={{
-          left: (layout.responseCard ?? layout.card).left + (layout.responseCard ?? layout.card).width - 54,
-          top: Math.max(6, (layout.responseCard ?? layout.card).top - 30),
-        }}
+        style={blockedResponseTimerStyle}
       />}
     {visible && layout && action.cardKind === "Attack" && action.cardFace
       && !action.response && publicCardReadEventId === action.rootEventId
@@ -2930,7 +2940,7 @@ export function InteractionRootOverlay({
         eventId={publicCardReadEventId}
         remainingMs={publicCardReadRemainingMs}
         readKind="card"
-        style={{ left: layout.card.left + layout.card.width - 54, top: Math.max(6, layout.card.top - 30) }}
+        style={attackCardReadTimerStyle ?? publicReadTimerPosition(layout.card, layout.width)}
       />}
   </>;
 }

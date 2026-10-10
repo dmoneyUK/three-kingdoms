@@ -19,18 +19,18 @@ function makeFourCardDodgeHand(selectedDodge, suffix) {
 
 function expectedAttackCardFaceSize(viewport, cardKind, fitStep) {
   const large = viewport.width >= 900;
-  const medium = viewport.width >= 430 && !large;
+  const medium = viewport.width > 480 && !large;
   const sizes = {
     target: large
       ? { Attack: { width: 150, height: 225 }, Dodge: { width: 132, height: 198 } }
       : medium
         ? { Attack: { width: 132, height: 198 }, Dodge: { width: 116, height: 174 } }
-        : { Attack: { width: 120, height: 180 }, Dodge: { width: 108, height: 162 } },
+        : { Attack: { width: 108, height: 162 }, Dodge: { width: 98, height: 147 } },
     compact: large
       ? { Attack: { width: 135, height: 203 }, Dodge: { width: 119, height: 179 } }
       : medium
         ? { Attack: { width: 120, height: 180 }, Dodge: { width: 104, height: 156 } }
-        : { Attack: { width: 108, height: 162 }, Dodge: { width: 98, height: 147 } },
+        : { Attack: { width: 102, height: 153 }, Dodge: { width: 94, height: 141 } },
     minimum: large
       ? { Attack: { width: 120, height: 180 }, Dodge: { width: 106, height: 159 } }
       : medium
@@ -62,7 +62,7 @@ async function expectAttackConnectorAppearance(overlay) {
     };
   });
   expect(appearance.source).toMatchObject({
-    markerEnd: null, stroke: "rgb(134, 185, 162)", strokeWidth: "4px",
+    markerEnd: null, stroke: "rgb(134, 185, 162)", strokeWidth: "5.5px",
   });
   expect(appearance.source.d).toMatch(/\bL\b/);
   expect(appearance.source.d).not.toMatch(/\bQ\b/);
@@ -1309,7 +1309,7 @@ for (const scenario of [
     const after = await measure(page, sourceId, targetId);
     expect(after.sourcePath, JSON.stringify({ cardKind: after.overlayCardKind, responseCount: after.responseCount, path: after.sourcePath })).toMatch(/^M \S+ \S+ L \S+ \S+$/);
     expect(after.targetPath).toMatch(/^M \S+ \S+ L \S+ \S+$/);
-    expect(after.sourceStrokeWidth).toBe(4);
+    expect(after.sourceStrokeWidth).toBe(5.5);
     expect(after.targetStrokeWidth).toBeGreaterThanOrEqual(6);
     expect(after.sourceStrokeColor).toBe("rgb(134, 185, 162)");
     expect(after.targetStrokeColor).toBe("rgb(224, 107, 93)");
@@ -2628,7 +2628,7 @@ for (const scenario of [
       expect(dodgeSourceAppearance.d).toMatch(/\bL\b/);
       expect(dodgeSourceAppearance.d).not.toMatch(/\bQ\b/);
       expect(dodgeSourceAppearance).toMatchObject({
-        markerEnd: null, stroke: "rgb(134, 185, 162)", strokeWidth: "3.5px",
+        markerEnd: null, stroke: "rgb(134, 185, 162)", strokeWidth: "5.5px",
       });
       expect(geometry.edges.filter((edge) => edge.edge === "interception-mark")).toHaveLength(1);
       expect(geometry.edges.filter((edge) => edge.edge === "attack-dodge-interception")).toHaveLength(1);
