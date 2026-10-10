@@ -4277,7 +4277,16 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const activeAttackDodgeSettlementEventId = rootActionOverlayAction?.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE"
     ? rootActionOverlayAction.settlement.eventId
     : null;
-  const attackDodgeSettlementAlreadyActive = activeAttackDodgeSettlement?.eventId === activeAttackDodgeSettlementEventId;
+  const activeAttackDodgeSettlementId = activeAttackDodgeSettlement?.eventId ?? null;
+  const activeAttackDodgeSettlementPhase = activeAttackDodgeSettlement?.phase ?? null;
+  const activeAttackDodgeSettlementRemainingMs = activeAttackDodgeSettlement?.remainingMs ?? null;
+  const activeAttackDodgeSettlementReadingEventId = activeAttackDodgeSettlementPhase === "reading"
+    ? activeAttackDodgeSettlementId
+    : null;
+  const activeAttackDodgeSettlementExitingEventId = activeAttackDodgeSettlementPhase === "exiting"
+    ? activeAttackDodgeSettlementId
+    : null;
+  const attackDodgeSettlementAlreadyActive = activeAttackDodgeSettlementId === activeAttackDodgeSettlementEventId;
   const rootActionOverlayPublicReadRemainingMs = rootActionOverlayGraphReady
     && activeAttackDodgeSettlement?.phase === "reading"
     && activeAttackDodgeSettlement.action.response?.eventId === activeAttackDodgeSettlement.eventId
@@ -4285,9 +4294,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     ? activeAttackDodgeSettlement.remainingMs
     : null;
   useEffect(() => {
-    if (!activeAttackDodgeSettlement || !attackDodgeHoldSuperseded) return;
-    setActiveAttackDodgeSettlement((current) => current?.eventId === activeAttackDodgeSettlement.eventId ? null : current);
-  }, [activeAttackDodgeSettlement?.eventId, attackDodgeHoldSuperseded]);
+    if (!activeAttackDodgeSettlementId || !attackDodgeHoldSuperseded) return;
+    setActiveAttackDodgeSettlement((current) => current?.eventId === activeAttackDodgeSettlementId ? null : current);
+  }, [activeAttackDodgeSettlementId, attackDodgeHoldSuperseded]);
   useEffect(() => {
     const action = rootActionOverlayAction;
     if (!activeAttackDodgeSettlementEventId || !rootActionOverlayGraphReady
@@ -4301,18 +4310,19 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       phase: "reading",
       remainingMs: UI_TIMING.attackDodgePublicCounterRead,
     });
-  }, [attackDodgeSettlementAlreadyActive, activeAttackDodgeSettlementEventId, onPublicCounterReadVisible, rootActionOverlayAction, rootActionOverlayGraphReady]);
+  }, [attackDodgeSettlementAlreadyActive, activeAttackDodgeSettlementEventId, rootActionOverlayAction, rootActionOverlayGraphReady]);
   useEffect(() => {
-    if (activeAttackDodgeSettlement?.phase !== "reading" || !rootActionOverlayGraphReady) return;
-    const eventId = activeAttackDodgeSettlement.eventId;
+    if (!activeAttackDodgeSettlementReadingEventId || activeAttackDodgeSettlementRemainingMs === null || !rootActionOverlayGraphReady) return;
+    const eventId = activeAttackDodgeSettlementReadingEventId;
+    const remainingMs = activeAttackDodgeSettlementRemainingMs;
     const visibleSince = performance.now();
-    onPublicCounterReadVisible(`attack-dodge:${eventId}`, activeAttackDodgeSettlement.remainingMs, true);
+    onPublicCounterReadVisible(`attack-dodge:${eventId}`, remainingMs, true);
     const timer = window.setTimeout(() => {
       const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       setActiveAttackDodgeSettlement((current) => current?.eventId === eventId && current.phase === "reading"
         ? { ...current, phase: reducedMotion ? "complete" : "exiting", remainingMs: 0 }
         : current);
-    }, Math.max(0, activeAttackDodgeSettlement.remainingMs));
+    }, Math.max(0, remainingMs));
     return () => {
       window.clearTimeout(timer);
       const visibleMs = performance.now() - visibleSince;
@@ -4320,16 +4330,17 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         ? { ...current, remainingMs: Math.max(0, current.remainingMs - visibleMs) }
         : current);
     };
-  }, [activeAttackDodgeSettlement?.eventId, activeAttackDodgeSettlement?.phase, activeAttackDodgeSettlement?.remainingMs, onPublicCounterReadVisible, rootActionOverlayGraphReady]);
+  }, [activeAttackDodgeSettlementReadingEventId, activeAttackDodgeSettlementRemainingMs, onPublicCounterReadVisible, rootActionOverlayGraphReady]);
   useEffect(() => {
-    if (activeAttackDodgeSettlement?.phase !== "exiting") return;
+    if (!activeAttackDodgeSettlementExitingEventId) return;
+    const eventId = activeAttackDodgeSettlementExitingEventId;
     const timer = window.setTimeout(() => {
-      setActiveAttackDodgeSettlement((current) => current?.eventId === activeAttackDodgeSettlement.eventId && current.phase === "exiting"
+      setActiveAttackDodgeSettlement((current) => current?.eventId === eventId && current.phase === "exiting"
         ? { ...current, phase: "complete" }
         : current);
     }, UI_TIMING.publicCounterFade);
     return () => window.clearTimeout(timer);
-  }, [activeAttackDodgeSettlement?.eventId, activeAttackDodgeSettlement?.phase]);
+  }, [activeAttackDodgeSettlementExitingEventId]);
   const rootActionCardId = rootActionEvent?.type === "card" ? rootActionEvent.card.id
     : selfTargetCandidate?.event.card.id ?? null;
   const duelExchangeEventIds = new Set(duelExchangeGraphCandidate
