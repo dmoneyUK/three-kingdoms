@@ -5,7 +5,7 @@ Mode: `USER-DIRECTED UX REPAIR`
 
 ## Latest result / CI
 
-Attack root diagnostics are deployed on `9f188540ac6f14ece031939468fd33c647d39c40` (run `38053408522` succeeded). Exact-response client change `4a34c8478b4a9bbe1e621da776063f6b5ba5415e` failed run `38054321661` only at React Hooks lint (`currentAttackRootIdentity` and `room.timeline` omitted); API and Browser smoke passed, Deploy skipped. CI-only dependency repair is in progress; no further feature work until its exact SHA is green.
+Attack root diagnostics are deployed on `9f188540ac6f14ece031939468fd33c647d39c40` (run `38053408522` succeeded). Exact-response client change `4a34c8478b4a9bbe1e621da776063f6b5ba5415e` and dependency repair `ef258aa8ce75a77f8a836d4c1e358e1d5ddb322c` failed only at React Hooks lint; API and Browser smoke passed, Deploy skipped. The second lint annotation requires memoizing the root identity because the newly listed dependency changed every render; a CI-only repair is in progress.
 
 ## Design checkpoint
 

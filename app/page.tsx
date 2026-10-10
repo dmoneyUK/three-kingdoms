@@ -3082,7 +3082,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       ? [{ proof, rootEvent, responseEvent }]
       : []);
   const currentAttackRoot = clientPresentation.rootAction?.action === "ATTACK" ? clientPresentation.rootAction : null;
-  const currentAttackRootIdentity: AttackDodgeResponseRootIdentity | null = currentAttackRoot
+  const currentAttackRootIdentity: AttackDodgeResponseRootIdentity | null = useMemo(() => currentAttackRoot
     ? {
       rootEventId: currentAttackRoot.rootEventId,
       interactionId: currentAttackRoot.interactionId,
@@ -3090,7 +3090,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       sourceId: currentAttackRoot.sourceId,
       targetId: currentAttackRoot.targetId,
     }
-    : null;
+    : null, [currentAttackRoot]);
   const currentAttackRootIdentityKey = currentAttackRootIdentity
     ? JSON.stringify([currentAttackRootIdentity.rootEventId, currentAttackRootIdentity.interactionId, currentAttackRootIdentity.rootFrameId, currentAttackRootIdentity.sourceId, currentAttackRootIdentity.targetId])
     : "";
