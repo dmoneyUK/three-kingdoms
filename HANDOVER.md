@@ -1,18 +1,18 @@
 # WTK UI / Layout — Current Handoff
 
 Branch: `ux-v2`  
-Mode: `USER-DIRECTED UX REFINEMENT`
+Mode: `USER-DIRECTED TEST INFRASTRUCTURE`
 
 ## Latest result / CI
 
-§6.36 Task 1 shipped in `379d14f9d9ba816f23d938ebba945885ad457bfb`: a new Attack selects its newly authored causal envelope instead of a completed Negation frame retained for history. API regression covers declined and countered/restored DrawTwo Negation; three-view 440×766 browser flow proves the Attack root and source/target paths are visible before Dodge. Focused checks: API 24/24 + engine/projection API 39/39, browser 1/1, targeted ESLint and `git diff --check` passed. Exact-SHA Actions run `38087662559` succeeded, including Deploy Worker and production smoke.
+`WTK-TEST-PRESET-HANDS-01` implementation is prepared locally: explicit host-enabled test rooms, persisted server-validated Standard-card presets, and physical-card assignment through the existing post-Hero-selection `beginMatch()` deal. Normal rooms retain random dealing. User directed that this feature have no automated tests; no feature-specific automated tests are retained. Production build and targeted ESLint passed; `db:generate` reports no schema drift. Manual deployed-game verification and exact feature-SHA CI/deploy are pending.
 
-Known residual: after a real Dodge at 440×766, the same root/proof remains identified, but all three browser perspectives report `geometry-unavailable`; the Dodge face and response connectors are not visible. Captured screenshots/geometry are local Playwright artifacts. This is outside Task 1's root-envelope fix; do not silently begin another repair.
+Before commit, latest relevant push CI was run `38087662559`, **success** on `379d14f9d9ba816f23d938ebba945885ad457bfb`. Current remote `ux-v2` is `4c40c1b851d1fce69c5c80ed5db1e0e1e21e7f52` (design-document-only update; no run observed for that SHA).
 
 ## Design checkpoint
 
-Latest remote `docs/UX2-refine.md` blob: `5fc5e771143dc460109aa1868e79cf5986815d9b`; §6.36 Task 1 reviewed. Reviewer acceptance remains pending.
+Latest remote `docs/UX2-refine.md` blob: `d966440b487bcbe172d5ea608704cc6945dfe6df` (reviewed; its §6.36 update does not conflict with this direct testing-infrastructure task). Do not modify `docs/UX2-refine.md`.
 
 ## Current task
 
-STOP — request independent Reviewer/user review of §6.36 Task 1 evidence after exact-SHA CI/deploy verification. Do not start §6.36 Task 2/3 or other UX work without the next explicit authorization.
+`WTK-TEST-PRESET-HANDS-01` — commit/push, verify exact-SHA CI/deployment, perform the real four-seat manual acceptance if the deployed browser is accessible, then stop for Reviewer/user review. Do not start §6.36 Task 2/3 or other UX work.

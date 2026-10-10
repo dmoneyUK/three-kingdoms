@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { cardDefinition, effectivePhysicalSuit, isAttackCard, makeDeck, shuffle } from "../../../game/cards";
 import { CARD_KINDS, type Card, type EquipmentZone } from "../../../game/model";
+import { testHandPresetFor, validateTestHandPreset } from "../../../game/test-hand-presets";
 import { canDeclareAttack as canDeclareAttackFor, effectiveDistanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 import { canRespondWithNegation, getAttackCardProvider, getPlayPhaseActions, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
@@ -44,9 +45,9 @@ type AttackDodgeProofDiagnostic = {
   checks: Record<string, string | number | boolean | null>;
 };
 type AttackDodgeProofEvaluation = { proof: PresentationAttackDodgeResponseProof | null; diagnostic: AttackDodgeProofDiagnostic };
-type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null; causal_envelope_json: string | null };
+type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null; causal_envelope_json: string | null; test_room: number; test_hand_preset_json: string | null; test_hand_config_revision: number };
 type Hero = HeroDefinition;
-type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
+type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; is_test_player: number; connected_at: number };
 type CausalCreation<T> = { value: T; createdEnvelope: CausalEnvelope | null };
 
 const ROLE_SETS: Record<number, string[]> = { 4: ["Lord", "Loyalist", "Rebel", "Renegade"], 5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"], 6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 7: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"] };
@@ -151,6 +152,21 @@ function nextGeneralSelector(players: PlayerRow[]) {
   return generalSelectionOrder(players).find((player) => !player.hero) ?? null;
 }
 
+function hostControlledTestRoster(room: RoomRow, players: PlayerRow[], hostTokenHash: string) {
+  return players.length >= 4
+    && players.length <= room.max_players
+    && players.some((player) => player.id === room.host_player_id && player.token_hash === hostTokenHash)
+    && players.every((player) => player.id === room.host_player_id
+      ? player.token_hash === hostTokenHash
+      : player.is_test_player === 1 && player.token_hash === hostTokenHash);
+}
+
+function testPresetFromRoom(room: RoomRow, seats: ReadonlySet<number>) {
+  if (!room.test_room) return { preset: testHandPresetFor("random"), error: null as string | null };
+  const stored = parse<unknown>(room.test_hand_preset_json, testHandPresetFor("random"));
+  return validateTestHandPreset(stored, seats);
+}
+
 async function beginStandardHeroSelection(roomId: string, players: PlayerRow[]) {
   const roles = shuffle([...(ROLE_SETS[players.length] ?? [])]);
   const rulers = IMPLEMENTED_STANDARD_HEROES.filter((hero) => LORD_GENERAL_IDS.has(hero.id));
@@ -179,10 +195,13 @@ async function beginStandardHeroSelection(roomId: string, players: PlayerRow[]) 
     remainingNonLordPlayers -= 1;
   }
   const assigned = players.map((player, index) => ({ player, role: roles[index], options: optionsByPlayerId.get(player.id) ?? [] }));
-  await db().batch([
-    ...assigned.map(({ player, role, options }) => db().prepare("UPDATE players SET role = ?, hero = NULL, hp = NULL, max_hp = NULL, hero_options_json = ? WHERE id = ?").bind(role, JSON.stringify(options), player.id)),
-    db().prepare("UPDATE rooms SET status = 'heroes', turn_seat = NULL, phase = NULL, pending_json = NULL WHERE id = ?").bind(roomId),
+  const claim = `hero-selection:${crypto.randomUUID()}`;
+  const result = await db().batch([
+    db().prepare("UPDATE rooms SET status = 'heroes', turn_seat = NULL, phase = ?, pending_json = NULL WHERE id = ? AND status = 'lobby'").bind(claim, roomId),
+    ...assigned.map(({ player, role, options }) => db().prepare("UPDATE players SET role = ?, hero = NULL, hp = NULL, max_hp = NULL, hero_options_json = ? WHERE id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'heroes' AND phase = ?)").bind(role, JSON.stringify(options), player.id, roomId, claim)),
+    db().prepare("UPDATE rooms SET phase = NULL WHERE id = ? AND status = 'heroes' AND phase = ?").bind(roomId, claim),
   ]);
+  return (result[0]?.meta.changes ?? 0) > 0;
 }
 function parsePersistedPending(value: string | null): Pending | null {
   try { return value ? JSON.parse(value) as Pending : null; } catch { return null; }
@@ -2063,20 +2082,45 @@ async function beginTurnEnd(roomId: string, endingPlayer: PlayerRow) {
 }
 
 async function beginMatch(roomId: string, players: PlayerRow[]) {
+  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+  if (!room || room.status !== "heroes") return false;
+  const seatSet = new Set(players.map((player) => player.seat));
+  const configured = testPresetFromRoom(room, seatSet);
+  if (configured.error || !configured.preset) throw new Error(configured.error ?? "The saved test-hand preset is invalid.");
+  if (room.test_room) {
+    const host = players.find((player) => player.id === room.host_player_id);
+    if (!host || players.some((player) => player.id !== host.id && (player.is_test_player !== 1 || player.token_hash !== host.token_hash))) {
+      throw new Error("A test room may contain only its host and host-controlled Test Players.");
+    }
+  }
   const deck = makeDeck();
   const openingHands = players.map((player) => ({ player, cards: [] as Card[] }));
-  for (const entry of openingHands) entry.cards = shuffle([...entry.cards, ...deck.splice(0, Math.max(0, 4 - entry.cards.length))]);
+  for (const entry of openingHands) {
+    for (const kind of configured.preset.handsBySeat[entry.player.seat] ?? []) {
+      const physicalIndex = deck.findIndex((card) => card.kind === kind);
+      if (physicalIndex < 0) throw new Error(`The Standard deck has no remaining physical ${kind} card for seat ${entry.player.seat + 1}.`);
+      entry.cards.push(...deck.splice(physicalIndex, 1));
+    }
+    entry.cards = shuffle([...entry.cards, ...deck.splice(0, Math.max(0, 4 - entry.cards.length))]);
+  }
   let openingLog = [`${(players.find((player) => player.role === "Lord") ?? players[0]).name} begins the match.`];
   for (const { player, cards } of openingHands) for (const drawn of cards) openingLog = addPrivateDrawEvent(openingLog, player, drawn, true);
+  const claim = `initial-deal:${crypto.randomUUID()}`;
   const updates = openingHands.map(({ player, cards }) => {
     const hero = STANDARD_HEROES.find((candidate) => candidate.id === player.hero);
     const maxHp = hero?.hp ?? player.max_hp ?? 0;
     const hp = maxHp + (player.role === "Lord" ? 1 : 0);
-    return db().prepare("UPDATE players SET hp = ?, max_hp = ?, hand_json = ?, judgement_json = '[]', equipment_json = '{}', alive = 1 WHERE id = ?").bind(hp, hp, JSON.stringify(cards), player.id);
+    return db().prepare("UPDATE players SET hp = ?, max_hp = ?, hand_json = ?, judgement_json = '[]', equipment_json = '{}', alive = 1 WHERE id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'playing' AND phase = ?)").bind(hp, hp, JSON.stringify(cards), player.id, roomId, claim);
   });
   const lord = players.find((player) => player.role === "Lord") ?? players[0];
-  await db().batch([...updates, db().prepare("UPDATE rooms SET status = 'playing', turn_seat = ?, phase = 'draw', deck_json = ?, discard_json = '[]', log_json = ?, skill_state_json = ? WHERE id = ?").bind(lord.seat, JSON.stringify(deck), JSON.stringify(openingLog), JSON.stringify(turnHistoryFor(lord.id)), roomId)]);
+  const committed = await db().batch([
+    db().prepare("UPDATE rooms SET status = 'playing', phase = ? WHERE id = ? AND status = 'heroes'").bind(claim, roomId),
+    ...updates,
+    db().prepare("UPDATE rooms SET turn_seat = ?, phase = 'draw', deck_json = ?, discard_json = '[]', log_json = ?, skill_state_json = ?, test_hand_preset_json = NULL WHERE id = ? AND status = 'playing' AND phase = ?").bind(lord.seat, JSON.stringify(deck), JSON.stringify(openingLog), JSON.stringify(turnHistoryFor(lord.id)), roomId, claim),
+  ]);
+  if ((committed[0]?.meta.changes ?? 0) <= 0) return false;
   await beginTurnStart(roomId, lord.seat);
+  return true;
 }
 function db() { return env.DB; }
 
@@ -4498,6 +4542,13 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const responseDeadline = pending && "deadline" in pending ? pending.deadline ?? 0 : 0;
   const responseCountdownVisibleAt = room.phase === "response" && responseDeadline ? responseDeadline - HUMAN_RESPONSE_TIMEOUT_MS : 0;
   const actionPlayerId = room.status === "heroes" ? projectedActionPlayerId : negationWaitingForOther || room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
+  const isRoomHost = me?.id === room.host_player_id;
+  const hostPresetResult = room.test_room && room.status === "lobby" && isRoomHost
+    ? testPresetFromRoom(room, new Set(players.map((player) => player.seat)))
+    : null;
+  const hostTestHandPreset = hostPresetResult?.preset && !hostPresetResult.error
+    ? { ...hostPresetResult.preset, revision: room.test_hand_config_revision }
+    : null;
   const privateActionReason = responsePending?.delegation
     ? delegatedResponseReason(responsePending, me, players)
     : pending?.reason ?? (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
@@ -4564,8 +4615,8 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const presentationSnapshot = composePresentationSnapshot({ presentationV2, currentAction, actionRevision, viewerId: me?.id ?? null });
   return {
     ...(attackDodgeProjectionDiagnostics ? { attackDodgeProjectionDiagnostics } : {}),
-    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending ? { kind: responsePending ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction, presentationSnapshot,
-    isHost: me?.id === room.host_player_id, meId: me?.id ?? null,
+    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, isTestRoom: Boolean(room.test_room), testHandPreset: hostTestHandPreset, responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending ? { kind: responsePending ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction, presentationSnapshot,
+    isHost: isRoomHost, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
     myHeroOptions: room.status === "heroes" && me && !me.hero && (me.role === "Lord" || Boolean(players.find((player) => player.role === "Lord")?.hero)) ? currentHeroOptions(me.hero_options_json) : [],
     turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null,
@@ -4593,7 +4644,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     pendingTargetCard: pending?.kind === "target_card" ? { kind: "target_card", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, cardKind: pending.cardKind } : null,
     pendingBorrowedSword: pending?.kind === "borrowed_sword" ? { kind: "borrowed_sword", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, holderId: pending.holderId, stage: pending.stage, weaponId: pending.weaponId ?? null, eligibleTargetIds: pending.stage === "choose_target" ? borrowedSwordForcedTargetIds(players, pending.sourceId, pending.holderId) : [] } : responsePending?.continuation.kind === "borrowed_sword_attack" ? { kind: "borrowed_sword", sourceId: responsePending.continuation.sourceId, actorId: responsePending.actorId, targetId: responsePending.continuation.targetId, holderId: responsePending.continuation.holderId, stage: "force_attack", weaponId: responsePending.continuation.weaponId, eligibleTargetIds: [] } : null,
     pendingDying: pending?.kind === "dying" ? { kind: "dying", sourceId: pending.sourceId, targetId: pending.targetId, origin: pending.origin ?? null, recoveryNeeded: recoveryNeeded(players.find((player) => player.id === pending.targetId)?.hp ?? 0), deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,
-    players: players.map((player) => ({ id: player.id, name: player.name, seat: player.seat, hero: room.status === "heroes" && player.role !== "Lord" && player.id !== me?.id ? null : player.hero, generalReady: Boolean(player.hero), ready: Boolean(player.ready), hp: room.status === "heroes" ? null : player.hp, maxHp: room.status === "heroes" ? null : player.max_hp, alive: Boolean(player.alive), connected: viewerPlayerIds.has(player.id) || Date.now() - player.connected_at < 90_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
+    players: players.map((player) => ({ id: player.id, name: player.name, seat: player.seat, hero: room.status === "heroes" && player.role !== "Lord" && player.id !== me?.id ? null : player.hero, generalReady: Boolean(player.hero), ready: Boolean(player.ready), hp: room.status === "heroes" ? null : player.hp, maxHp: room.status === "heroes" ? null : player.max_hp, alive: Boolean(player.alive), connected: viewerPlayerIds.has(player.id) || Date.now() - player.connected_at < 90_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isTestPlayer: Boolean(player.is_test_player), role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
   };
 }
 
@@ -4706,12 +4757,14 @@ export async function POST(request: Request) {
   if (action === "join") {
     if (name.length < 2) return json({ error: "Enter a name with at least 2 characters." }, 400);
     if (room.status !== "lobby") return json({ error: "This match has already started." }, 409);
+    if (room.test_room) return json({ error: "Test games are limited to the host and host-controlled Test Players." }, 409);
     const count = await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ?").bind(room.id).first<{ count: number }>();
     if ((count?.count ?? 0) >= room.max_players) return json({ error: "This room is full." }, 409);
     const used = await db.prepare("SELECT seat FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<{ seat: number }>();
     const seats = new Set((used.results ?? []).map((row) => row.seat)); let seat = 0; while (seats.has(seat)) seat++;
     const playerId = crypto.randomUUID(); const playerToken = newToken();
-    await db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, ?, ?)").bind(playerId, room.id, name, await hash(playerToken), seat, Date.now()).run();
+    const joined = await db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'lobby' AND test_room = 0)").bind(playerId, room.id, name, await hash(playerToken), seat, Date.now(), room.id).run();
+    if ((joined.meta.changes ?? 0) <= 0) return json({ error: "This room is no longer accepting independent players." }, 409);
     return json({ token: playerToken, room: await roomState(code, playerToken) }, 201);
   }
 
@@ -6129,9 +6182,45 @@ export async function POST(request: Request) {
     const inserts = [];
     for (let index = 0; index < needed; index++) {
       let seat = 0; while (seats.has(seat)) seat++; seats.add(seat);
-      inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, ready, connected_at) VALUES (?, ?, ?, ?, ?, 1, ?)").bind(crypto.randomUUID(), room.id, `Test Player ${seat + 1}`, tokenHash, seat, Date.now()));
+      inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, ready, connected_at, is_test_player) VALUES (?, ?, ?, ?, ?, 1, ?, 1)").bind(crypto.randomUUID(), room.id, `Test Player ${seat + 1}`, tokenHash, seat, Date.now()));
     }
     if (inserts.length) await db.batch(inserts);
+    return json({ room: await roomState(code, token) });
+  }
+
+  if (action === "enable_test_room") {
+    if (!sessionPlayers.some((player) => player.id === room.host_player_id)) return json({ error: "Only the authenticated host can enable a test game." }, 403);
+    if (room.status !== "lobby") return json({ error: "Test mode can only be enabled before the match starts." }, 409);
+    if (room.test_room) return json({ error: "This room is already designated as a test game." }, 409);
+    const defaultPreset = testHandPresetFor("random");
+    const enabled = await db.prepare("UPDATE rooms SET test_room = 1, test_hand_preset_json = ?, test_hand_config_revision = 0 WHERE id = ? AND status = 'lobby' AND test_room = 0 AND (SELECT COUNT(*) FROM players WHERE room_id = rooms.id) >= 4 AND NOT EXISTS (SELECT 1 FROM players AS participant WHERE participant.room_id = rooms.id AND participant.id <> rooms.host_player_id AND (participant.is_test_player <> 1 OR participant.token_hash <> ?))")
+      .bind(JSON.stringify(defaultPreset), room.id, tokenHash).run();
+    if ((enabled.meta.changes ?? 0) <= 0) {
+      return json({ error: "Add host-controlled Test Players first. A test game cannot include independent human participants." }, 409);
+    }
+    return json({ room: await roomState(code, token) });
+  }
+
+  if (action === "configure_test_hands") {
+    if (!sessionPlayers.some((player) => player.id === room.host_player_id)) return json({ error: "Only the authenticated host can configure starting hands." }, 403);
+    if (!room.test_room) return json({ error: "Starting-hand presets are available only in an explicitly enabled test game." }, 409);
+    if (room.status !== "lobby") return json({ error: "Starting hands cannot be changed after the match starts." }, 409);
+    if (!Number.isInteger(body.expectedRevision) || Number(body.expectedRevision) !== room.test_hand_config_revision) {
+      return json({ error: "The saved preset changed. Refresh the lobby before saving again.", stale: true }, 409);
+    }
+    const participants = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+    if (!hostControlledTestRoster(room, participants.results ?? [], tokenHash)) {
+      return json({ error: "Test-hand presets require only the host and host-controlled Test Players." }, 409);
+    }
+    const requestConfig = {
+      id: body.presetId,
+      ...(Object.prototype.hasOwnProperty.call(body, "handsBySeat") ? { handsBySeat: body.handsBySeat } : {}),
+    };
+    const validated = validateTestHandPreset(requestConfig, new Set((participants.results ?? []).map((player) => player.seat)));
+    if (validated.error || !validated.preset) return json({ error: validated.error ?? "Choose a valid starting-hand preset." }, 400);
+    const updated = await db.prepare("UPDATE rooms SET test_hand_preset_json = ?, test_hand_config_revision = test_hand_config_revision + 1 WHERE id = ? AND status = 'lobby' AND test_room = 1 AND test_hand_config_revision = ?")
+      .bind(JSON.stringify(validated.preset), room.id, room.test_hand_config_revision).run();
+    if ((updated.meta.changes ?? 0) <= 0) return json({ error: "The saved preset changed. Refresh the lobby before saving again.", stale: true }, 409);
     return json({ room: await roomState(code, token) });
   }
 
@@ -6141,9 +6230,14 @@ export async function POST(request: Request) {
     const result = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
     const players = result.results ?? [];
     if (players.length < 4 || players.length > room.max_players) return json({ error: "Classic mode needs 4–8 players." }, 409);
+    if (room.test_room) {
+      if (!hostControlledTestRoster(room, players, tokenHash)) return json({ error: "A test game may contain only the host and host-controlled Test Players." }, 409);
+      const preset = testPresetFromRoom(room, new Set(players.map((player) => player.seat)));
+      if (preset.error || !preset.preset) return json({ error: preset.error ?? "The saved test-hand preset is invalid." }, 409);
+    }
+    if (!await beginStandardHeroSelection(room.id, players)) return json({ error: "The lobby has already started." }, 409);
     await resetAudit(room.id);
     await recordAuditAction(room, me, name, action);
-    await beginStandardHeroSelection(room.id, players);
     return json({ room: await roomState(code, token) });
   }
 

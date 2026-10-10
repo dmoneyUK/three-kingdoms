@@ -15,6 +15,9 @@ export const rooms = sqliteTable("rooms", {
   pendingJson: text("pending_json"),
   skillStateJson: text("skill_state_json"),
   causalEnvelopeJson: text("causal_envelope_json"),
+  testRoom: integer("test_room", { mode: "boolean" }).notNull().default(false),
+  testHandPresetJson: text("test_hand_preset_json"),
+  testHandConfigRevision: integer("test_hand_config_revision").notNull().default(0),
 }, (table) => [uniqueIndex("rooms_code_unique").on(table.code)]);
 
 export const players = sqliteTable("players", {
@@ -33,6 +36,7 @@ export const players = sqliteTable("players", {
   judgementJson: text("judgement_json"),
   equipmentJson: text("equipment_json"),
   alive: integer("alive", { mode: "boolean" }).notNull().default(true),
+  isTestPlayer: integer("is_test_player", { mode: "boolean" }).notNull().default(false),
   connectedAt: integer("connected_at").notNull(),
 }, (table) => [uniqueIndex("players_room_seat_unique").on(table.roomId, table.seat)]);
 
