@@ -4293,10 +4293,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     && rootActionOverlayAction?.response?.eventId === activeAttackDodgeSettlement.eventId
     ? activeAttackDodgeSettlement.remainingMs
     : null;
-  useEffect(() => {
-    if (!activeAttackDodgeSettlementId || !attackDodgeHoldSuperseded) return;
+  if (activeAttackDodgeSettlementId && attackDodgeHoldSuperseded) {
     setActiveAttackDodgeSettlement((current) => current?.eventId === activeAttackDodgeSettlementId ? null : current);
-  }, [activeAttackDodgeSettlementId, attackDodgeHoldSuperseded]);
+  }
   useEffect(() => {
     const action = rootActionOverlayAction;
     if (!activeAttackDodgeSettlementEventId || !rootActionOverlayGraphReady
