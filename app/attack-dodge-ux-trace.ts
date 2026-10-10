@@ -12,6 +12,7 @@ type AttackDodgeUxTraceDocument = {
   schema: "wtk-attack-dodge-ux-trace";
   version: 1;
   startedAt: string;
+  traceId?: string;
   environment: {
     userAgent: string;
     viewport: { width: number; height: number; devicePixelRatio: number };
@@ -91,6 +92,19 @@ export function isAttackDodgeUxTraceActive(): boolean {
   return memoryActive;
 }
 
+export function getAttackDodgeUxTraceId(): string | null {
+  if (!isAttackDodgeUxTraceActive()) return null;
+  const document = readDocument();
+  if (!document) return null;
+  if (!document.traceId) {
+    document.traceId = typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    writeDocument(document);
+  }
+  return document.traceId;
+}
+
 export function recordAttackDodgeUxTrace(stage: string, data: Record<string, unknown>) {
   if (!isAttackDodgeUxTraceActive()) return;
   const document = readDocument();
@@ -114,6 +128,9 @@ export function startAttackDodgeUxTrace() {
     schema: "wtk-attack-dodge-ux-trace",
     version: 1,
     startedAt: new Date().toISOString(),
+    traceId: typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
     environment: {
       userAgent: navigator.userAgent,
       viewport: {
@@ -142,7 +159,7 @@ export function startAttackDodgeUxTrace() {
       storageUnavailable = true;
     }
   }
-  recordAttackDodgeUxTrace("trace-started", { note: "Local Attack/Dodge graph diagnostics enabled." });
+  recordAttackDodgeUxTrace("trace-started", { traceId: document.traceId, note: "Local Attack/Dodge graph diagnostics enabled." });
   notifyActiveListeners();
 }
 

@@ -36,6 +36,13 @@ export const runtime = "edge";
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
 type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type AttackDodgeProofDiagnostic = {
+  result: "PROVEN" | "REJECTED" | "NOT_ATTEMPTED";
+  reason: string;
+  correlation: { interactionId: string | null; rootFrameId: string | null; rootEventId: string | null; rootResolutionId: string | null; responseEventId: string | null };
+  checks: Record<string, string | number | boolean | null>;
+};
+type AttackDodgeProofEvaluation = { proof: PresentationAttackDodgeResponseProof | null; diagnostic: AttackDodgeProofDiagnostic };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null; causal_envelope_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -786,18 +793,56 @@ function attachBumperHarvestRootFrame(log: string[], eventId: string, sourceId: 
   });
   return matches === 1 ? next : log;
 }
-function attackDodgeResponseProof(log: string[], response: ResponsePending, responderId: string): PresentationAttackDodgeResponseProof | undefined {
+function attackDodgeResponseProof(log: string[], response: ResponsePending, responderId: string): AttackDodgeProofEvaluation {
   const attack = attackResponse(response);
-  if (!attack) return undefined;
-  const { continuation } = attack;
   const causal = response.causal;
-  if (continuation.origin !== "card" || continuation.requiredDodgeCount !== 1
-    || !continuation.sourceId || continuation.sourceId === continuation.targetId
-    || response.actorId !== continuation.targetId || responderId !== continuation.targetId
-    || response.requirement.kind !== "dodge" || response.requirement.targetId !== continuation.targetId
-    || !continuation.sequenceStartCardId || !causal
-    || causal.interactionId !== continuation.causal?.interactionId || causal.frameId !== continuation.causal?.frameId
-    || !causal.interactionId || !causal.frameId) return undefined;
+  const correlation = {
+    interactionId: causal?.interactionId ?? null,
+    rootFrameId: causal?.frameId ?? null,
+    rootEventId: null,
+    rootResolutionId: null,
+    responseEventId: null,
+  };
+  const reject = (reason: string, checks: AttackDodgeProofDiagnostic["checks"] = {}, rootEventId: string | null = null, rootResolutionId: string | null = null): AttackDodgeProofEvaluation => ({
+    proof: null,
+    diagnostic: { result: "REJECTED", reason, correlation: { ...correlation, rootEventId, rootResolutionId }, checks },
+  });
+  if (!attack) return reject("not-an-attack-response", { responseIsAttack: false });
+  const { continuation } = attack;
+  const baseChecks = {
+    originIsCard: continuation.origin === "card",
+    requiredDodgeCountIsOne: continuation.requiredDodgeCount === 1,
+    sourcePresent: Boolean(continuation.sourceId),
+    sourceDiffersFromTarget: continuation.sourceId !== continuation.targetId,
+    responseActorIsTarget: response.actorId === continuation.targetId,
+    submitterIsTarget: responderId === continuation.targetId,
+    requirementIsDodge: response.requirement.kind === "dodge",
+    requirementTargetIsTarget: response.requirement.targetId === continuation.targetId,
+    sequenceStartCardPresent: Boolean(continuation.sequenceStartCardId),
+    responseCausalPresent: Boolean(causal),
+    causalInteractionMatchesContinuation: Boolean(causal && causal.interactionId === continuation.causal?.interactionId),
+    causalFrameMatchesContinuation: Boolean(causal && causal.frameId === continuation.causal?.frameId),
+    causalInteractionPresent: Boolean(causal?.interactionId),
+    causalFramePresent: Boolean(causal?.frameId),
+  };
+  const failedGate = [
+    [baseChecks.originIsCard, "attack-origin-is-not-card"],
+    [baseChecks.requiredDodgeCountIsOne, "required-dodge-count-is-not-one"],
+    [baseChecks.sourcePresent, "attack-source-missing"],
+    [baseChecks.sourceDiffersFromTarget, "attack-is-self-targeted"],
+    [baseChecks.responseActorIsTarget, "response-actor-is-not-attack-target"],
+    [baseChecks.submitterIsTarget, "submitter-is-not-attack-target"],
+    [baseChecks.requirementIsDodge, "response-requirement-is-not-dodge"],
+    [baseChecks.requirementTargetIsTarget, "response-requirement-target-mismatch"],
+    [baseChecks.sequenceStartCardPresent, "attack-sequence-card-missing"],
+    [baseChecks.responseCausalPresent, "response-causal-context-missing"],
+    [baseChecks.causalInteractionMatchesContinuation, "response-interaction-mismatch"],
+    [baseChecks.causalFrameMatchesContinuation, "response-frame-mismatch"],
+    [baseChecks.causalInteractionPresent, "response-interaction-id-missing"],
+    [baseChecks.causalFramePresent, "response-frame-id-missing"],
+  ].find(([passed]) => !passed)?.[1] as string | undefined;
+  if (failedGate) return reject(failedGate, baseChecks);
+  if (!causal || !causal.interactionId || !causal.frameId) return reject("response-causal-identity-missing", baseChecks);
 
   const publicCardEvents: Array<{ entryKind: "card" | "cards"; event: Record<string, unknown> }> = [];
   for (const entry of log) {
@@ -807,26 +852,54 @@ function attackDodgeResponseProof(log: string[], response: ResponsePending, resp
     } catch { /* An unrelated malformed history entry cannot prove this response. */ }
   }
   const matchingRootEvents = publicCardEvents.filter(({ event }) => record(event.card)?.id === continuation.sequenceStartCardId);
-  if (matchingRootEvents.length !== 1 || matchingRootEvents[0].entryKind !== "card") return undefined;
+  if (matchingRootEvents.length !== 1) return reject("attack-root-public-event-not-unique", { ...baseChecks, matchingRootEventCount: matchingRootEvents.length });
+  if (matchingRootEvents[0].entryKind !== "card") return reject("attack-root-is-not-a-single-card-event", { ...baseChecks, matchingRootEventCount: 1, matchingRootEntryKind: "cards" });
   const root = matchingRootEvents[0].event;
   const rootCard = record(root.card);
   const ordinaryAttackRoot = root.playedAs === undefined && rootCard?.kind === "Attack";
   const convertedAttackRoot = root.playedAs === "attack" && typeof rootCard?.kind === "string"
     && CARD_KINDS.includes(rootCard.kind as Card["kind"]) && rootCard.kind !== "Attack";
-  if (typeof root.id !== "string" || !root.id || typeof root.resolutionId !== "string" || !root.resolutionId
-    || root.action !== "play" || root.presentation === false || (!ordinaryAttackRoot && !convertedAttackRoot)) return undefined;
-  return {
+  const rootChecks = {
+    ...baseChecks,
+    matchingRootEventCount: matchingRootEvents.length,
+    rootEventIdPresent: typeof root.id === "string" && Boolean(root.id),
+    rootResolutionIdPresent: typeof root.resolutionId === "string" && Boolean(root.resolutionId),
+    rootActionIsPlay: root.action === "play",
+    rootPresentationIsPublic: root.presentation !== false,
+    rootCardIsAttackOrValidConversion: ordinaryAttackRoot || convertedAttackRoot,
+  };
+  const rootFailure = [
+    [rootChecks.rootEventIdPresent, "attack-root-event-id-missing"],
+    [rootChecks.rootResolutionIdPresent, "attack-root-resolution-id-missing"],
+    [rootChecks.rootActionIsPlay, "attack-root-event-is-not-play"],
+    [rootChecks.rootPresentationIsPublic, "attack-root-presentation-suppressed"],
+    [rootChecks.rootCardIsAttackOrValidConversion, "attack-root-card-kind-or-conversion-mismatch"],
+  ].find(([passed]) => !passed)?.[1] as string | undefined;
+  const rootEventId = typeof root.id === "string" ? root.id : null;
+  const rootResolutionId = typeof root.resolutionId === "string" ? root.resolutionId : null;
+  if (rootFailure) return reject(rootFailure, rootChecks, rootEventId, rootResolutionId);
+  if (!rootEventId || !rootResolutionId) return reject("attack-root-public-identity-missing", rootChecks, rootEventId, rootResolutionId);
+  const proof: PresentationAttackDodgeResponseProof = {
     semantics: "PROVEN",
     counterRelation: "BLOCKS_TARGET_EFFECT",
     interactionId: causal.interactionId,
     rootFrameId: causal.frameId,
-    rootEventId: root.id,
-    rootResolutionId: root.resolutionId,
+    rootEventId,
+    rootResolutionId,
     rootSourceId: continuation.sourceId,
     targetId: continuation.targetId,
     responseActorId: responderId,
     rootCardKind: "Attack",
     responseCardKind: "Dodge",
+  };
+  return {
+    proof,
+    diagnostic: {
+      result: "PROVEN",
+      reason: "public-response-proof-created",
+      correlation: { interactionId: proof.interactionId, rootFrameId: proof.rootFrameId, rootEventId: proof.rootEventId, rootResolutionId: proof.rootResolutionId, responseEventId: null },
+      checks: rootChecks,
+    },
   };
 }
 function duelAttackResponseProof(
@@ -4528,6 +4601,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
+  const uxTraceId = typeof body.uxTraceId === "string" && /^[a-zA-Z0-9-]{8,80}$/.test(body.uxTraceId) ? body.uxTraceId : null;
   let action = String(body.action ?? "");
   let responseExecution: ResponseExecution | null = null;
   let triggerExecution: ReturnType<typeof resolveTriggeredEffect> = null;
@@ -6496,20 +6570,57 @@ export async function POST(request: Request) {
     const dodgeCards = dodgeIds.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
     if (canonicalDodge && dodgeCards.length !== dodgeIds.length) return json({ error: "That Dodge provider is no longer available." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Attack response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
+    let attackDodgeEvaluation: AttackDodgeProofEvaluation | null = null;
+    let responseEventId: string | null = null;
     if (canonicalDodge) {
       const dodgeIdsSet = new Set(dodgeIds);
       hand = hand.filter((card) => !dodgeIdsSet.has(card.id)); discard.push(...dodgeCards);
       if (dodgeCards.length === 1) {
-        const attackDodgeResponse = dodgeCards[0].kind === "Dodge" && !responseExecution?.playedAs
-          ? attackDodgeResponseProof(log, attack.response, me.id)
-          : undefined;
+        responseEventId = crypto.randomUUID();
+        if (dodgeCards[0].kind === "Dodge" && !responseExecution?.playedAs) {
+          attackDodgeEvaluation = attackDodgeResponseProof(log, attack.response, me.id);
+        } else {
+          attackDodgeEvaluation = {
+            proof: null,
+            diagnostic: {
+              result: "NOT_ATTEMPTED",
+              reason: dodgeCards[0].kind !== "Dodge" ? "submitted-card-is-not-a-physical-dodge" : "converted-response-not-supported-by-this-proof-contract",
+              correlation: {
+                interactionId: attack.response.causal?.interactionId ?? null,
+                rootFrameId: attack.response.causal?.frameId ?? null,
+                rootEventId: null,
+                rootResolutionId: null,
+                responseEventId,
+              },
+              checks: { onePhysicalCardSubmitted: true, physicalCardIsDodge: dodgeCards[0].kind === "Dodge", responseWasConverted: Boolean(responseExecution?.playedAs) },
+            },
+          };
+        }
+        const attackDodgeResponse = attackDodgeEvaluation.proof ?? undefined;
         log = addCardEvent(log, me.name, dodgeCards[0], source?.name ?? "Attack", "play", true, {
           ...(attackDodgeResponse ? { resolutionId: attackDodgeResponse.rootResolutionId } : {}),
           ...(responseExecution?.playedAs ? { playedAs: responseExecution.playedAs } : {}),
           ...(attackDodgeResponse ? { attackDodgeResponse } : {}),
-        });
+        }, responseEventId);
       }
-      else log = addLogWithId(log, `${me.name} uses ${responseExecution?.providerId ?? "a Dodge provider"}.` ).log;
+      else {
+        attackDodgeEvaluation = {
+          proof: null,
+          diagnostic: {
+            result: "NOT_ATTEMPTED",
+            reason: "response-did-not-produce-one-public-physical-card",
+            correlation: {
+              interactionId: attack.response.causal?.interactionId ?? null,
+              rootFrameId: attack.response.causal?.frameId ?? null,
+              rootEventId: null,
+              rootResolutionId: null,
+              responseEventId: null,
+            },
+            checks: { physicalCardCount: dodgeCards.length },
+          },
+        };
+        log = addLogWithId(log, `${me.name} uses ${responseExecution?.providerId ?? "a Dodge provider"}.` ).log;
+      }
       log = addLog(log, dodgeCards.length ? `${me.name} plays Dodge and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.` : `${me.name} uses ${responseExecution?.providerId ?? "a Dodge provider"} and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.`);
       const reopened = responseAfterSemanticSuccess(response)
         ? reopenSemanticResponse(response, semanticTarget, log, `${semanticTarget.name} must provide another Dodge.`)
@@ -6537,7 +6648,38 @@ export async function POST(request: Request) {
         await resolveAttackDamageAboutToApply({ room: liveRoom, source, target: semanticTarget, players: rows.results ?? [], sourceHand: parse<Card[]>(source.hand_json, []), discard, log, resumePhase: continuation.resumePhase ?? phaseAfterAttack(source), resumePlayerId: continuation.resumePlayerId, sequenceStartCardId: continuation.sequenceStartCardId ?? "", damageCards: continuation.damageCards, physicalSuit: continuation.physicalSuit, origin: continuation.origin, causal: continuation.causal, label: "Attack", ...(attackHitProof ? { finalizeAttackHitLog: (damageLog: string[]) => attachAttackHitSettlement(damageLog, attackHitProof) } : {}) });
       }
     }
-    return json({ room: await roomState(code, token) });
+    const nextRoom = await roomState(code, token);
+    if (uxTraceId && attackDodgeEvaluation) {
+      const responseEvent = responseEventId ? nextRoom?.timeline.find((event) => event.id === responseEventId) : undefined;
+      const presentationV2Proofs = nextRoom?.presentationV2?.attackDodgeResponses ?? [];
+      const snapshotProofs = nextRoom?.presentationSnapshot?.attackDodgeResponses ?? [];
+      return json({
+        room: nextRoom,
+        attackDodgeUxTrace: {
+          traceId: uxTraceId,
+          stage: "server-proof-and-projection",
+          proofBuilder: {
+            ...attackDodgeEvaluation.diagnostic,
+            correlation: { ...attackDodgeEvaluation.diagnostic.correlation, responseEventId },
+          },
+          responseEvent: {
+            eventId: responseEventId,
+            presentInReturnedTimeline: Boolean(responseEvent),
+            isPublicCardPlay: responseEvent?.type === "card" && responseEvent.action === "play" && responseEvent.presentation !== false,
+            resolutionMatchesRoot: attackDodgeEvaluation.proof
+              ? responseEvent?.resolutionId === attackDodgeEvaluation.proof.rootResolutionId
+              : null,
+          },
+          projection: {
+            presentationV2ProofCount: presentationV2Proofs.length,
+            snapshotProofCount: snapshotProofs.length,
+            responseMatchCountInPresentationV2: responseEventId ? presentationV2Proofs.filter((proof) => proof.responseEventId === responseEventId).length : 0,
+            responseMatchCountInSnapshot: responseEventId ? snapshotProofs.filter((proof) => proof.responseEventId === responseEventId).length : 0,
+          },
+        },
+      });
+    }
+    return json({ room: nextRoom });
   }
 
   if (action === "start_rescue_timer") {

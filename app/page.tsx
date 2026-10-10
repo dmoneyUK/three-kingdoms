@@ -20,7 +20,7 @@ import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSele
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { CardFace } from "./card-face";
 import { InteractionRootOverlay, interactionRootActionKey, type InteractionRootOverlayAction } from "./interaction-root-overlay";
-import { exportAttackDodgeUxTrace, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, startAttackDodgeUxTrace, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
+import { exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, startAttackDodgeUxTrace, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -209,14 +209,18 @@ export default function Home() {
 
   const fetchRoom = useCallback(async (roomCode: string, playerToken: string, quiet = false) => {
     const epoch = stateEpoch.current;
+    const uxTraceId = getAttackDodgeUxTraceId();
     try {
+      if (uxTraceId) recordAttackDodgeUxTrace("room-poll-request", { traceId: uxTraceId });
       const response = await fetch(`/api/rooms?code=${roomCode}&token=${playerToken}`, { cache: "no-store" });
+      if (uxTraceId) recordAttackDodgeUxTrace("room-poll-response", { traceId: uxTraceId, status: response.status, ok: response.ok });
       if (!response.ok) throw new Error("Room is no longer available.");
       const nextRoom = normalizeRoomData(await readApiJson(response)) as Room | null;
       if (!nextRoom || !nextRoom.meId) throw new Error("Your player session is no longer valid.");
       if (epoch === stateEpoch.current) setRoom(nextRoom as Room);
       return true;
     } catch (cause) {
+      if (uxTraceId) recordAttackDodgeUxTrace("room-poll-failure", { traceId: uxTraceId, kind: cause instanceof Error ? cause.name : "unknown" });
       if (cause instanceof Error && /Previous game data|no longer available|session is no longer valid/.test(cause.message)) {
         localStorage.removeItem("three-realms-session");
         if (epoch === stateEpoch.current) { setRoom(null); setCode(""); setToken(""); }
@@ -276,6 +280,7 @@ export default function Home() {
     if (!nonBlocking && mutationInFlight.current) return false;
     if (!nonBlocking) mutationInFlight.current = mutationKey;
     const epoch = nonBlocking ? stateEpoch.current : ++stateEpoch.current; const mutationSequence = nonBlocking ? latestAppliedMutation.current : epoch;
+    const uxTraceId = getAttackDodgeUxTraceId();
     if (!nonBlocking) { setBusy(true); setError(""); }
     try {
       if (action === "join") {
@@ -286,8 +291,21 @@ export default function Home() {
         } catch { localStorage.removeItem("three-realms-session"); }
       }
       const context = room && !["create", "join", "start", "add_test_players", "choose_hero", "heartbeat"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId } : undefined;
-      const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, code, token, ...(context ? { context } : {}), ...extra }) });
-      const rawData = await readApiJson<{ error?: string; token?: string; room?: unknown }>(response);
+      if (uxTraceId) recordAttackDodgeUxTrace("gameplay-action-request", { traceId: uxTraceId, action, hasRevisionContext: Boolean(context?.actionRevision) });
+      const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, code, token, ...(context ? { context } : {}), ...(uxTraceId ? { uxTraceId } : {}), ...extra }) });
+      const rawData = await readApiJson<{ error?: string; token?: string; room?: unknown; stale?: boolean; attackDodgeUxTrace?: Record<string, unknown> }>(response);
+      if (uxTraceId) {
+        recordAttackDodgeUxTrace("gameplay-action-response", {
+          traceId: uxTraceId,
+          action,
+          status: response.status,
+          ok: response.ok,
+          stale: rawData.stale === true,
+          roomReturned: Boolean(rawData.room),
+          serverDiagnosticReturned: Boolean(rawData.attackDodgeUxTrace),
+        });
+        if (rawData.attackDodgeUxTrace) recordAttackDodgeUxTrace("server-proof-evaluation", rawData.attackDodgeUxTrace);
+      }
       const data = { ...rawData, room: normalizeRoomData(rawData.room) as Room | null };
       if (data.room && mutationSequence >= latestAppliedMutation.current && (nonBlocking || epoch === stateEpoch.current)) { latestAppliedMutation.current = Math.max(latestAppliedMutation.current, mutationSequence); setToken(data.token ?? token); setRoom(data.room); setCode(data.room.code); }
       if (!response.ok || action !== "heartbeat" && !data.room) throw new Error(data.error ?? "Something went wrong.");
@@ -296,7 +314,11 @@ export default function Home() {
       if (epoch === stateEpoch.current && mutationSequence >= latestAppliedMutation.current) { latestAppliedMutation.current = mutationSequence; setToken(nextToken); setRoom(data.room); setCode(data.room.code); }
       localStorage.setItem("three-realms-session", JSON.stringify({ code: data.room.code, token: nextToken, name: name.trim() }));
       return true;
-    } catch (cause) { if (!backgroundPreview) setError(cause instanceof Error ? cause.message : "Something went wrong."); return false; }
+    } catch (cause) {
+      if (uxTraceId) recordAttackDodgeUxTrace("gameplay-action-failure", { traceId: uxTraceId, action, kind: cause instanceof Error ? cause.name : "unknown" });
+      if (!backgroundPreview) setError(cause instanceof Error ? cause.message : "Something went wrong.");
+      return false;
+    }
     finally { if (!nonBlocking) { if (mutationInFlight.current === mutationKey) mutationInFlight.current = null; setBusy(false); } }
   }
 
@@ -1690,7 +1712,7 @@ function StageSystemCluster({ publicResponseTimerPending, responseTimer, eventTi
           : <button type="button" className="stage-system-diagnostics" onClick={() => { onStartAttackDodgeTrace(); setTraceNotice("Recording locally. Reproduce one Attack/Dodge issue, then stop and export."); setMenuOpen(false); }} onKeyDown={closeMenuOnEscape}>Start Attack/Dodge trace</button>}
         <button type="button" className="stage-system-diagnostics" onClick={() => void copyTrace()} onKeyDown={closeMenuOnEscape}>Copy UX trace</button>
         <button type="button" className="stage-system-diagnostics" onClick={downloadTrace} onKeyDown={closeMenuOnEscape}>Download UX trace</button>
-        <small className="stage-system-diagnostics-note">Local only. Includes browser/viewport and public event/interaction IDs; no upload, names, room code, hand cards, or legal-action options.</small>
+        <small className="stage-system-diagnostics-note">Local only. An opted-in Dodge submit adds server proof reason codes. No upload, names, room code, physical card IDs, hand contents, or legal-action options.</small>
         {traceNotice && <small className="stage-system-diagnostics-status" role="status">{traceNotice}</small>}
         <button type="button" className="stage-system-exit" onClick={confirmExit} onKeyDown={closeMenuOnEscape}>Exit Game</button>
       </div>
