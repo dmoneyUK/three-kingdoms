@@ -5,9 +5,9 @@ Mode: `USER-DIRECTED UX REPAIR`
 
 ## Latest result / CI
 
-Human response windows now use a server-owned 60-second deadline, shown from its start. A newly visible Attack root card has a separate 20-second timer in the relationship graph; a publicly proven Dodge continues to receive its own 20-second graph read/hold. These clocks do not extend or pause one another. No new test declarations were added.
+Human response windows now use a server-owned 60-second deadline, shown from its start. A newly visible Attack root card has a separate 20-second timer in the relationship graph; a publicly proven Dodge continues to receive its own 20-second graph read/hold. These clocks do not extend or pause one another. No new test declarations were added. Pushed as `ec09c7dbd6343f33388c7cf4101042c57b9c109c`.
 
-Focused response-timer browser checks: 2/2 passed. The full existing timer file had 3/4 pass; its System Menu keyboard case still fails because the open menu overlaps Stage content. Targeted ESLint had 0 errors (the JSX fixture was ignored by configuration); `git diff --check` passed. Latest observed remote CI is run `38035821193`, success for SHA `faba3633ffef13082990a47b85f0778794c25100`; these local changes have not yet been pushed or CI-validated.
+CI run `38040320101` for `ec09c7dbd6343f33388c7cf4101042c57b9c109c` failed only at an outdated assertion in `tests/api/equipment.test.mjs:119`: it expected the response countdown start to be in the future, which conflicts with showing the 60-second window from its start. Updated the existing assertion to verify the server deadline is exactly 60 seconds after that start; no new test declarations. `npm run build` passed and the focused equipment API file passed 20/20, including the failing AOE Negation case. Other CI jobs passed; deploy was skipped. Repair commit/CI pending.
 
 ## Design checkpoint
 
@@ -15,4 +15,4 @@ Latest `docs/UX2-refine.md` blob `6ad42a6f4522be67bd492a20aa1564e420aeffe2` revi
 
 ## Current task
 
-`UX2-6.29.1-ATTACK-DODGE-REAL-TRACE-01` — after the timer update is pushed, reproduce one real Attack→Dodge case with the deployed local recorder, export the JSON, identify the first failing projection/proof/overlay/layout stage, and fix only that production cause. Resume: mobile game → System Menu → Start Attack/Dodge trace → reproduce → Stop → Download UX trace. The supplied MP4 did not include the JSON trace; do not claim the recurring missing-card graph issue is fixed from timer changes alone.
+`CI-REPAIR-RESPONSE-TIMER-START-ASSERTION-01` — commit/push the assertion repair and verify the exact repair SHA's Actions run. Do not resume feature work until that SHA is green. Then resume `UX2-6.29.1-ATTACK-DODGE-REAL-TRACE-01`; the supplied MP4 did not include its JSON trace, and the recurring missing-card graph issue remains open.

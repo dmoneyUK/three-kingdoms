@@ -116,7 +116,7 @@ test("AOE counter rounds include their own Negation player last and resume the a
   const act = (action, extra = {}) => requestAndSettle(action, { code: room.code, token, ...extra });
   let result = await act("play_card", { cardId: "barbarianinvasion-self-root" });
   assert.equal(result.data.room.actionPlayerId, me.id);
-  assert.ok(result.data.room.responseCountdownVisibleAt > Date.now(), "an eligible Negation response receives a server-side timeout");
+  assert.equal(result.data.room.pendingNegation.deadline - result.data.room.responseCountdownVisibleAt, 60_000, "an eligible Negation response starts its server-owned 60-second countdown immediately");
   await act("decline_response");
   result = await act("respond", { cardId: "negation-self-1" });
   assert.equal(result.data.room.actionPlayerId, p2.id); assert.equal(result.data.room.pendingNegation.chainDepth, 1); assert.equal(result.data.room.pendingNegation.negated, true); assert.equal(result.data.room.pendingNegation.latestNegationPlayerId, p1.id);
