@@ -5,12 +5,14 @@ Mode: `USER-DIRECTED UX REFINEMENT`
 
 ## Latest result / CI
 
-§6.35 completed-graph supersession shipped in `6dd2178d`. Exact-SHA Actions run `38086020572` succeeded: lint/fast, API, browser startup smoke, D1 migration, build, Worker deploy and production smoke all passed. Local Node 22.13.0: build and lint passed; fast 270/270; API 266/266; lifecycle unit 9/9; focused server-backed browser 5/5. Previous run `38080179998` failed lint (unused test bindings, fixed here) and API (generic exit only; exact-SHA Node 22 reruns passed twice; cause not reproduced). No false CI cause claimed.
+§6.36 Task 1 fix: a new Attack now selects its newly authored causal envelope instead of a completed Negation frame retained for history. API regression covers declined and countered/restored DrawTwo Negation; three-view 440×766 browser flow proves the Attack root and source/target paths are visible before Dodge. Focused checks: API 24/24 + engine/projection API 39/39, browser 1/1, targeted ESLint and `git diff --check` passed. Pre-commit latest code-push Actions run `38086020572` succeeded for `6dd2178`; later remote commits through `5c60728` are docs-only. This task's exact-SHA CI/deploy is pending.
+
+Known residual: after a real Dodge at 440×766, the same root/proof remains identified, but all three browser perspectives report `geometry-unavailable`; the Dodge face and response connectors are not visible. Captured screenshots/geometry are local Playwright artifacts. This is outside Task 1's root-envelope fix; do not silently begin another repair.
 
 ## Design checkpoint
 
-Latest remote `docs/UX2-refine.md` blob: `2e33ccf6fa9582bb537c490db737653eec926158`. §6.35 reviewed; no newer design change. §6.34 Stage A card sizes remain Hand 68×102px, public 60×90px (compact 54×81px); rank/suit marks scale with the face (9/7px; compact 8/6px). Reviewer visual acceptance remains pending.
+Latest remote `docs/UX2-refine.md` blob: `5fc5e771143dc460109aa1868e79cf5986815d9b`; §6.36 Task 1 reviewed. Reviewer acceptance remains pending.
 
 ## Current task
 
-User review of the deployed §6.35 graph lifecycle; Agent paused at the requested review boundary. §6.34 Stage A still uses Hand 68×102px, public 60×90px (compact 54×81px), with proportional rank/suit marks (9/7px; compact 8/6px). Visual acceptance remains pending; do not expand card-family work before Reviewer acceptance. No Reviewer acceptance is claimed.
+STOP — request independent Reviewer/user review of §6.36 Task 1 evidence after exact-SHA CI/deploy verification. Do not start §6.36 Task 2/3 or other UX work without the next explicit authorization.

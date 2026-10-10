@@ -520,7 +520,12 @@ function attackDeclaration(source: PlayerRow, target: PlayerRow, origin: AttackO
   });
   return { value: { sourceId: source.id, targetId: target.id, origin, physicalCards, attackCard, ignoresArmor: hasBlueSteelSword(source), requiredDodgeCount: attackDodgeCount(source), sequenceStartCardId: physicalCards[0]?.id ?? attackCard?.id ?? "", ...(rootEventId ? { rootEventId } : {}), resumePhase, resumePlayerId: source.id, causal: causal ?? root?.context }, createdEnvelope: root?.envelope ?? null };
 }
-function exactCausalEnvelope(room: RoomRow, createdEnvelope: CausalEnvelope | null): CausalEnvelope | null { return parseCausalEnvelope(room.causal_envelope_json) ?? createdEnvelope; }
+function exactCausalEnvelope(room: RoomRow, createdEnvelope: CausalEnvelope | null): CausalEnvelope | null {
+  // A newly authored Attack root supersedes a completed interaction envelope
+  // that may remain stored for settlement/history. Null means this is an
+  // inherited continuation, which must keep the active persisted frame.
+  return createdEnvelope ?? parseCausalEnvelope(room.causal_envelope_json);
+}
 function resumeGroupCausalRoom(room: RoomRow, childCausal?: CausalContext) {
   const activeEnvelope = parseCausalEnvelope(room.causal_envelope_json);
   if (!activeEnvelope || !childCausal || activeEnvelope.interactionId !== childCausal.interactionId || activeEnvelope.activeFrameId !== childCausal.frameId) return room;

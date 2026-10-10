@@ -3,6 +3,7 @@ import test from "node:test";
 import { projectPresentationV2 } from "../../game/presentation-v2.ts";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
 import { buildPresentationClientView } from "../../game/presentation-client.ts";
+import { baseUrl } from "./harness.mjs";
 import {
   assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
@@ -34,6 +35,124 @@ test("Something Out of Nothing preserves Play Phase and reveals the stratagem wi
   const opponentView = await state(game.code, game.members[1].token);
   assert.equal(opponentView.data.players.find((player) => player.id === hostPlayer.id).handCount, 2);
   assert.equal(opponentView.data.myHand.some((held) => result.data.drawnCards.some((drawn) => drawn.id === held.id)), false);
+});
+
+test("a new Attack replaces the completed DrawTwo Negation frame across public viewers", { timeout: 60_000 }, async () => {
+  for (const negationOutcome of ["declined", "cancelled-and-restored"]) {
+    const game = await createHumanGame();
+    const [source, defender, observer, fourth] = game.room.players;
+    const [sourceMember, defenderMember, observerMember] = game.members;
+    const suffix = `post-negation-${negationOutcome}`;
+    const drawTwo = card("DrawTwo", `${suffix}-draw-two`);
+    const attack = card("Attack", `${suffix}-attack`);
+    const defenderNegation = card("Negation", `${suffix}-negation`);
+    const defenderDodge = card("Dodge", `${suffix}-dodge`, "♥");
+    const observerNegation = card("Negation", `${suffix}-counter-negation`);
+
+    for (const player of game.room.players) sql(`UPDATE players SET hero=NULL WHERE id=${quote(player.id)}`);
+    setHand(source.id, [drawTwo, attack], 4, 4);
+    setHand(defender.id, [defenderNegation, defenderDodge], 4, 4);
+    setHand(observer.id, negationOutcome === "declined" ? [] : [observerNegation], 4, 4);
+    setHand(fourth.id, [], 4, 4);
+    setDeck(game.code, [card("Peach", `${suffix}-drawn-a`, "♥"), card("Dodge", `${suffix}-drawn-b`, "♣")]);
+    setTurn(game.code, source.seat, "play");
+
+    const playedDrawTwo = await request("play_card", { code: game.code, token: sourceMember.token, cardId: drawTwo.id, preserveResponse: true });
+    assert.equal(playedDrawTwo.status, 200, JSON.stringify(playedDrawTwo.data));
+    const negationWindow = await state(game.code, defenderMember.token);
+    assert.equal(negationWindow.data.currentAction.actorId, defender.id);
+    assert.equal(negationWindow.data.currentAction.requirement, "negate");
+    const originalNegationEnvelope = playedDrawTwo.data.room.causalEnvelope;
+    assert.ok(originalNegationEnvelope);
+    assert.equal(originalNegationEnvelope.checkpoint.stage, "NEGATION");
+
+    if (negationOutcome === "declined") {
+      const declined = await requestAndSettle("decline_response", { code: game.code, token: defenderMember.token });
+      assert.equal(declined.status, 200, JSON.stringify(declined.data));
+    } else {
+      const negated = await request("respond", { code: game.code, token: defenderMember.token, providerId: "negation_card", cardId: defenderNegation.id, preserveResponse: true });
+      assert.equal(negated.status, 200, JSON.stringify(negated.data));
+      const counterWindow = await state(game.code, observerMember.token);
+      assert.equal(counterWindow.data.currentAction.actorId, observer.id, JSON.stringify(counterWindow.data.currentAction));
+      assert.equal(counterWindow.data.currentAction.requirement, "negate");
+      const restored = await requestAndSettle("respond", { code: game.code, token: observerMember.token, cardId: observerNegation.id });
+      assert.equal(restored.status, 200, JSON.stringify(restored.data));
+      assert.ok(restored.data.room.log.some((entry) => /plays Negation to restore Something Out of Nothing/.test(entry)));
+    }
+
+    const resumed = await state(game.code, sourceMember.token);
+    assert.equal(resumed.data.phase, "play");
+    assert.equal(resumed.data.currentAction.actorId, source.id);
+    assert.equal(resumed.data.causalEnvelope.interactionId, originalNegationEnvelope.interactionId,
+      "the completed Negation proof remains available as history until a new public root replaces it");
+    assert.equal(resumed.data.causalEnvelope.checkpoint.stage, "NEGATION");
+
+    const playedAttack = await requestAndSettle("play_card", {
+      code: game.code,
+      token: sourceMember.token,
+      cardId: attack.id,
+      targetId: defender.id,
+      preserveResponse: true,
+    });
+    assert.equal(playedAttack.status, 200, JSON.stringify(playedAttack.data));
+
+    const liveViews = await Promise.all([
+      state(game.code, sourceMember.token),
+      state(game.code, defenderMember.token),
+      state(game.code, observerMember.token),
+    ]);
+    const [sourceView, defenderView, observerView] = liveViews.map((view) => view.data);
+    const rootAction = sourceView.presentationSnapshot.rootAction;
+    assert.ok(rootAction, `${negationOutcome}: a live Attack root is projected after the old Negation frame`);
+    assert.equal(defenderView.currentAction.requirement, "dodge", JSON.stringify({ meId: defenderView.meId, actorId: defenderView.currentAction.actorId, currentAction: defenderView.currentAction, phase: defenderView.phase }));
+    assert.deepEqual(rootAction, defenderView.presentationSnapshot.rootAction);
+    assert.deepEqual(rootAction, observerView.presentationSnapshot.rootAction);
+    assert.equal(rootAction.semantics, "PROVEN");
+    assert.equal(rootAction.sourceId, source.id);
+    assert.equal(rootAction.targetId, defender.id);
+    assert.notEqual(rootAction.interactionId, originalNegationEnvelope.interactionId);
+    assert.notEqual(rootAction.rootFrameId, originalNegationEnvelope.activeFrameId);
+
+    const attackEvent = sourceView.timeline.find((event) => event.card?.id === attack.id && event.action === "play");
+    assert.ok(attackEvent, "the physical Attack has a public play event");
+    assert.equal(rootAction.rootEventId, attackEvent.id, "the graph root is the exact public Attack event");
+    for (const view of [sourceView, defenderView, observerView]) {
+      assert.equal(view.presentationV2.interactionScene?.semantics, "PROVEN");
+      assert.equal(view.presentationV2.interactionScene?.stage, "ATTACK_RESPONSE");
+      assert.equal(view.presentationV2.interactionScene?.interactionId, rootAction.interactionId);
+      assert.equal(view.presentationV2.interactionScene?.activeFrameId, rootAction.rootFrameId);
+      assert.deepEqual(view.presentationSnapshot.attackDodgeResponses ?? [], [], "the private unsubmitted Dodge is not public");
+    }
+
+    const traceResponse = await fetch(`${baseUrl}/api/rooms?code=${game.code}&token=${sourceMember.token}&uxTraceId=ux2-636-${negationOutcome}`);
+    assert.equal(traceResponse.status, 200);
+    const trace = await traceResponse.json();
+    assert.equal(trace.attackDodgeUxTrace.projection.result, "PROVEN");
+    assert.deepEqual(trace.attackDodgeUxTrace.projection.rejectionReasons, []);
+    assert.equal(trace.attackDodgeUxTrace.projection.correlation.rootEventId, attackEvent.id);
+    assert.equal(trace.attackDodgeUxTrace.projection.correlation.rootFrameId, rootAction.rootFrameId);
+
+    const submittedDodge = await requestAndSettle("respond", {
+      code: game.code,
+      token: defenderMember.token,
+      cardId: defenderDodge.id,
+      preserveResponse: true,
+    });
+    assert.equal(submittedDodge.status, 200, JSON.stringify(submittedDodge.data));
+    const settledViews = await Promise.all([
+      state(game.code, sourceMember.token),
+      state(game.code, defenderMember.token),
+      state(game.code, observerMember.token),
+    ]);
+    for (const { data: view } of settledViews) {
+      const [proof] = view.presentationSnapshot.attackDodgeResponses ?? [];
+      assert.ok(proof, `${negationOutcome}: the committed Dodge is publicly linked to its Attack`);
+      assert.equal(proof.interactionId, rootAction.interactionId);
+      assert.equal(proof.rootFrameId, rootAction.rootFrameId);
+      assert.equal(proof.rootEventId, attackEvent.id);
+      assert.equal(view.timeline.some((event) => event.id === proof.responseEventId && event.card?.kind === "Dodge"), true);
+    }
+  }
 });
 
 test("host test flow follows the live actor for Something Out of Nothing and rejects stale actions", { timeout: 30_000 }, async () => {

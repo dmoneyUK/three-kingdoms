@@ -3,6 +3,8 @@ import { writeFile } from "node:fs/promises";
 
 const API = "http://127.0.0.1:3137";
 const attack = { id: "root-overlay-real-attack", kind: "Attack", suit: "♠", rank: "7" };
+const drawTwoCard = { id: "root-overlay-real-draw-two", kind: "DrawTwo", suit: "♠", rank: "7" };
+const negationCard = { id: "root-overlay-real-negation", kind: "Negation", suit: "♣", rank: "8" };
 const longdanDodge = { id: "root-overlay-real-longdan-dodge", kind: "Dodge", suit: "♣", rank: "6" };
 const dismantle = { id: "root-overlay-real-dismantle", kind: "Dismantle", suit: "♠", rank: "7" };
 const steal = { id: "root-overlay-real-steal", kind: "Steal", suit: "♠", rank: "7" };
@@ -2611,6 +2613,177 @@ test("real Steal settlement keeps its semantic result under reduced motion witho
   expect(JSON.stringify(observerView.timeline)).not.toContain(hiddenCard.id);
   expect(sourceId).not.toBe(targetId);
   await testInfo.attach("steal-reduced-motion-settlement.json", { body: JSON.stringify({ timing, settlement: settledView.presentationSnapshot.stealSettlements[0] }, null, 2), contentType: "application/json" });
+});
+
+test("real post-Negation Attack creates and keeps its own visible graph at 440×766", async ({ browser, request }, testInfo) => {
+  test.setTimeout(90_000);
+  const viewport = { width: 440, height: 766 };
+  const suffix = Date.now();
+  const sourceDrawTwo = { ...drawTwoCard, id: `post-negation-draw-two-${suffix}` };
+  const sourceAttack = { ...attack, id: `post-negation-attack-${suffix}` };
+  const targetNegation = { ...negationCard, id: `post-negation-negation-${suffix}` };
+  const targetDodge = { ...dodge, id: `post-negation-dodge-${suffix}` };
+  const seed = await seedGame(request, 4, {
+    sourceCards: [sourceDrawTwo, sourceAttack],
+    targetCards: [targetNegation, targetDodge],
+  });
+  const sourceId = seed.players[0].id;
+  const targetId = seed.players[1].id;
+  const contexts = await Promise.all([0, 1, 2].map(() => browser.newContext({
+    viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3,
+  })));
+  const [attackerPage, defenderPage, observerPage] = await Promise.all(contexts.map((context) => context.newPage()));
+  const viewers = [
+    { name: "attacker", page: attackerPage, playerIndex: 0 },
+    { name: "defender", page: defenderPage, playerIndex: 1 },
+    { name: "observer", page: observerPage, playerIndex: 2 },
+  ];
+  try {
+    await Promise.all(viewers.map(({ page, playerIndex }) => openGame(page, seed, playerIndex, viewport)));
+
+    await attackerPage.locator(`[data-hand-card-id="${sourceDrawTwo.id}"] .game-card`).click();
+    const drawTwoPlay = attackerPage.locator('[data-console-surface="local-operation"] button.primary');
+    await expect(drawTwoPlay).toBeEnabled();
+    const drawTwoResponse = attackerPage.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "play_card"; }
+      catch { return false; }
+    });
+    await drawTwoPlay.click();
+    const drawTwoResult = await drawTwoResponse;
+    expect(drawTwoResult.ok(), `DrawTwo is submitted through the production play_card route: ${await drawTwoResult.text()}`).toBe(true);
+    await expect.poll(async () => {
+      const action = (await roomView(request, seed, 1)).currentAction;
+      return action?.kind === "response" && action.actorId === targetId && action.requirement === "negate"
+        && action.options?.some((option) => option.providerId === "negation_card"
+          && option.selection?.eligibleCardIds?.includes(targetNegation.id)) === true;
+    }, { timeout: 15_000, message: "the actual room projection opens the target's Negation decision" }).toBe(true);
+    const negationWindowView = await roomView(request, seed, 1);
+    const negationEnvelope = negationWindowView.causalEnvelope;
+    expect(negationEnvelope?.checkpoint.stage).toBe("NEGATION");
+    // Open the active responder's latest server projection in this viewport;
+    // the other two independent viewer tabs may still be on their prior poll.
+    await defenderPage.reload();
+    await expect(defenderPage.locator(".game-shell")).toBeVisible();
+    const skip = defenderPage.getByRole("button", { name: "Skip", exact: true });
+    await expect(skip).toBeVisible({ timeout: 15_000 });
+    const declineResponse = defenderPage.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "decline_response"; }
+      catch { return false; }
+    });
+    await skip.click();
+    const declined = await declineResponse;
+    expect(declined.ok(), `the target declines the real Negation response: ${await declined.text()}`).toBe(true);
+    await expect.poll(async () => {
+      const action = (await roomView(request, seed, 0)).currentAction;
+      return action?.actorId === sourceId && action?.legalActions?.includes("play_card") === true;
+    }, { timeout: 15_000, message: "the same source resumes its Play phase after zero-response Negation" }).toBe(true);
+
+    await attackerPage.reload();
+    await expect(attackerPage.locator(".game-shell")).toBeVisible();
+    await attackerPage.evaluate(() => window.__wtkStartAttackVisibleFrameSampling());
+    await playAttackThroughPage(attackerPage, "TARGET", sourceAttack);
+    await expect.poll(async () => (await roomView(request, seed, 2)).presentationSnapshot?.rootAction?.rootEventId ?? null, {
+      timeout: 15_000, message: "the server projects the new Attack root to an independent observer before Dodge is submitted",
+    }).not.toBeNull();
+    const [sourceView, targetView, observerView] = await Promise.all([
+      roomView(request, seed, 0), roomView(request, seed, 1), roomView(request, seed, 2),
+    ]);
+    const rootAction = observerView.presentationSnapshot.rootAction;
+    expect(rootAction).toMatchObject({
+      semantics: "PROVEN", action: "ATTACK", cardKind: "Attack", physicalCardKind: "Attack", sourceId, targetId,
+    });
+    expect(sourceView.presentationSnapshot.rootAction).toEqual(rootAction);
+    expect(targetView.presentationSnapshot.rootAction).toEqual(rootAction);
+    expect(rootAction.interactionId).not.toBe(negationEnvelope.interactionId);
+    expect(rootAction.rootFrameId).not.toBe(negationEnvelope.activeFrameId);
+    expect(targetView.currentAction).toMatchObject({ kind: "response", actorId: targetId, requirement: "dodge" });
+    expect(targetView.presentationSnapshot.attackDodgeResponses ?? []).toEqual([]);
+    const attackEvent = observerView.timeline.find((event) => event.id === rootAction.rootEventId);
+    expect(attackEvent).toMatchObject({ action: "play", card: { id: sourceAttack.id, kind: "Attack" } });
+
+    const traceResponse = await request.get(`${API}/api/rooms?code=${seed.code}&token=${seed.players[0].token}&uxTraceId=ux2-636-browser`);
+    expect(traceResponse.ok()).toBe(true);
+    const trace = await traceResponse.json();
+    expect(trace.attackDodgeUxTrace.projection).toMatchObject({ result: "PROVEN", rejectionReasons: [] });
+    expect(trace.attackDodgeUxTrace.projection.correlation).toMatchObject({
+      rootEventId: attackEvent.id, rootFrameId: rootAction.rootFrameId,
+    });
+
+    await Promise.all(viewers.map(({ page }) => page.reload()));
+    await Promise.all(viewers.map(({ page }) => page.locator(".game-shell").waitFor({ state: "visible" })));
+
+    for (const { name, page } of viewers) {
+      await expectAttackGraphIdentity(page, rootAction);
+      await expectAttackConnectorAppearance(page.locator('[data-root-action-overlay="true"]'));
+      for (const edge of ["source", "target"]) {
+        const connector = page.locator(`[data-root-action-edge="${edge}"]`);
+        await expect(connector, `${name}: ${edge} relation is actually visible before Dodge`).toBeVisible();
+        const bounds = await connector.boundingBox();
+        expect(Math.max(bounds?.width ?? 0, bounds?.height ?? 0), `${name}: ${edge} relation has measurable on-screen geometry`).toBeGreaterThan(1);
+      }
+      const screenshot = await page.screenshot({ path: testInfo.outputPath(`post-negation-attack-before-dodge-${name}-440x766.png`) });
+      await testInfo.attach(`post-negation-attack-before-dodge-${name}-440x766.png`, { body: screenshot, contentType: "image/png" });
+    }
+    await attachJsonFile(testInfo, "post-negation-attack-identities-before-dodge.json", {
+      viewport, sourceId, targetId, negationEnvelope,
+      rootAction, attackEvent, projection: trace.attackDodgeUxTrace.projection,
+      publicViews: [sourceView, targetView, observerView].map((view) => ({
+        meId: view.meId, phase: view.phase, currentAction: view.currentAction,
+        rootAction: view.presentationSnapshot.rootAction,
+      })),
+    });
+
+    await playDodgeThroughPage(defenderPage, targetDodge);
+    await expect.poll(async () => (await roomView(request, seed, 2)).presentationSnapshot?.attackDodgeResponses?.[0]?.responseEventId ?? null, {
+      timeout: 10_000, message: "the server publishes the exact committed Dodge response proof on the same root",
+    }).not.toBeNull();
+    const settledViews = await Promise.all([0, 1, 2].map((playerIndex) => roomView(request, seed, playerIndex)));
+    const proof = settledViews[2].presentationSnapshot.attackDodgeResponses[0];
+    expect(proof).toMatchObject({
+      semantics: "PROVEN", rootEventId: attackEvent.id, rootFrameId: rootAction.rootFrameId,
+      interactionId: rootAction.interactionId, rootSourceId: sourceId, targetId, responseActorId: targetId,
+      rootCardKind: "Attack", responseCardKind: "Dodge",
+    });
+    await Promise.all(viewers.map(({ page }) => page.reload()));
+    await Promise.all(viewers.map(({ page }) => page.locator(".game-shell").waitFor({ state: "visible" })));
+    const afterDodgePresentation = [];
+    for (const { name, page } of viewers) {
+      const overlay = page.locator('[data-root-action-overlay="true"]');
+      await expect(overlay).toHaveAttribute("data-root-action-event-id", rootAction.rootEventId);
+      await expect(overlay).toHaveAttribute("data-root-action-interaction-id", rootAction.interactionId);
+      const responseCard = page.locator(`[data-root-action-response-card="true"][data-response-event-id="${proof.responseEventId}"]`);
+      const responseEdges = page.locator('[data-root-action-edge="response-source"], [data-root-action-edge="attack-dodge-interception"]');
+      afterDodgePresentation.push({
+        viewer: name,
+        rootEventId: await overlay.getAttribute("data-root-action-event-id"),
+        interactionId: await overlay.getAttribute("data-root-action-interaction-id"),
+        displayMode: await overlay.getAttribute("data-root-action-display-mode"),
+        layoutState: await overlay.getAttribute("data-root-action-layout-state"),
+        fallbackReason: await overlay.getAttribute("data-root-action-fallback-reason"),
+        responseCardCount: await responseCard.count(),
+        visibleResponseCard: await responseCard.isVisible().catch(() => false),
+        visibleResponseEdgeCount: await responseEdges.evaluateAll((edges) => edges.filter((edge) => {
+          const style = getComputedStyle(edge);
+          const bounds = edge.getBoundingClientRect();
+          return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0 && bounds.width > 0 && bounds.height > 0;
+        }).length),
+        geometry: await captureAttackOverlayDiagnostics(page),
+      });
+      const screenshot = await page.screenshot({ path: testInfo.outputPath(`post-negation-attack-after-dodge-${name}-440x766.png`) });
+      await testInfo.attach(`post-negation-attack-after-dodge-${name}-440x766.png`, { body: screenshot, contentType: "image/png" });
+    }
+    await attachJsonFile(testInfo, "post-negation-attack-identities-after-dodge.json", {
+      viewport, rootAction, attackEvent, dodgeProof: proof, afterDodgePresentation,
+      publicViews: settledViews.map((view) => ({
+        meId: view.meId, phase: view.phase, rootAction: view.presentationSnapshot.rootAction,
+        responses: view.presentationSnapshot.attackDodgeResponses,
+      })),
+    });
+  } finally {
+    await Promise.all(contexts.map((context) => context.close()));
+  }
 });
 
 for (const scenario of [
