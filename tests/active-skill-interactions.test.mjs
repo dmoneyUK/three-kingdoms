@@ -1369,6 +1369,9 @@ test("mounted Judgement focus and controls ignore legacy owners and require an a
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: judgementReplacementRoom({ includeReveal: false }), onRecover: () => {} }, React.createElement(GameRoom, { room: judgementReplacementRoom({ includeReveal: false }), busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findAllByProps({ "data-stage": "JUDGEMENT" }).length, 1, "semantic stage may remain public from the proven snapshot");
-  assert.equal(JSON.stringify(renderer.toJSON()).includes("Dodge"), false, "no revealed card is rendered without the server reveal event");
+  const renderedDodgeCards = renderer.root.findAll((node) => typeof node.props.className === "string"
+    && node.props.className.split(/\s+/u).includes("played-card")
+    && node.props.className.split(/\s+/u).includes("dodge"));
+  assert.equal(renderedDodgeCards.length, 0, "no Dodge card face is rendered without the server reveal event");
   await act(async () => { renderer.unmount(); });
 });

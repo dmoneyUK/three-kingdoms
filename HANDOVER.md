@@ -5,9 +5,9 @@ Mode: `USER-DIRECTED UX REPAIR`
 
 ## Latest result / CI
 
-The 20-second Attack→Dodge graph hold remains the latest implementation result. Added an opt-in local recorder for projection/proof, candidate selection, overlay blockers, geometry, rendered Stage/legacy/SVG composition, and timers. The recorder is browser-local and exports by copy/download; no new tests were added. Recorder commit `e0ae2e4406773bc142703115c636c2ae3cd532cc` failed run `38035383250`: `react-hooks/set-state-in-effect` at `app/page.tsx:2019`; browser smoke and API passed, deployment was skipped. CI repair replaces the effect with an external-store subscription. CI REPAIR PUSHED — VALIDATION PENDING. Real-device trace has not yet been captured.
+The 20-second Attack→Dodge graph hold remains the latest implementation result. Added an opt-in local recorder for projection/proof, candidate selection, overlay blockers, geometry, rendered Stage/legacy/SVG composition, and timers. Recorder commit `e0ae2e4406773bc142703115c636c2ae3cd532cc` first failed Hooks lint; repair `41303f501cb15c574b9c0d54b208b60b92e17136` cleared lint but run `38035633330` failed one stale fast assertion that matched the new menu text “Attack/Dodge” instead of checking a rendered card. Browser smoke/API passed; deployment was skipped. The existing assertion now checks for an actual Dodge card face; its test file passes 45/45 locally. No tests were added. CI REPAIR PUSHED — VALIDATION PENDING.
 
-The failed recorder SHA is `e0ae2e4406773bc142703115c636c2ae3cd532cc` (run `38035383250`). The repair is pushed; wait for CI on its exact new SHA before using the recorder in a real game.
+Latest failed CI is run `38035633330` for SHA `41303f501cb15c574b9c0d54b208b60b92e17136`; the test-only assertion repair is pushed and its exact-SHA validation is pending. No recorder deployment or real-device trace is confirmed.
 
 ## Design checkpoint
 
