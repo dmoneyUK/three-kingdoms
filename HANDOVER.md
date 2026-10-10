@@ -7,7 +7,7 @@ Mode: `USER-DIRECTED UX REPAIR`
 
 Human response windows now use a server-owned 60-second deadline, shown from its start. A newly visible Attack root card has a separate 20-second timer in the relationship graph; a publicly proven Dodge continues to receive its own 20-second graph read/hold. These clocks do not extend or pause one another. No new test declarations were added. Pushed as `ec09c7dbd6343f33388c7cf4101042c57b9c109c`.
 
-CI run `38040320101` for `ec09c7dbd6343f33388c7cf4101042c57b9c109c` failed only at an outdated assertion in `tests/api/equipment.test.mjs:119`: it expected the response countdown start to be in the future, which conflicts with showing the 60-second window from its start. Updated the existing assertion to verify the server deadline is exactly 60 seconds after that start; no new test declarations. `npm run build` passed and the focused equipment API file passed 20/20, including the failing AOE Negation case. Other CI jobs passed; deploy was skipped. Repair commit/CI pending.
+CI repair: run `38040902028` succeeded for exact SHA `853afff53b95779bb8bc319f266b4918fa8948da`; API tests, Lint/fast tests, Browser startup/room smoke, and deploy all passed. The prior failure was a stale assertion in `tests/api/equipment.test.mjs:119` expecting the response countdown start to be in the future; it now verifies the server deadline is exactly 60 seconds after that start. No new test declarations. Local `npm run build` and focused equipment API file (20/20) passed.
 
 ## Design checkpoint
 
@@ -15,4 +15,4 @@ Latest `docs/UX2-refine.md` blob `6ad42a6f4522be67bd492a20aa1564e420aeffe2` revi
 
 ## Current task
 
-`CI-REPAIR-RESPONSE-TIMER-START-ASSERTION-01` — commit/push the assertion repair and verify the exact repair SHA's Actions run. Do not resume feature work until that SHA is green. Then resume `UX2-6.29.1-ATTACK-DODGE-REAL-TRACE-01`; the supplied MP4 did not include its JSON trace, and the recurring missing-card graph issue remains open.
+`UX2-6.29.1-ATTACK-DODGE-REAL-TRACE-01` — awaiting the user's next instruction before resuming. When authorized, reproduce one real Attack→Dodge case with the deployed recorder, export its JSON, identify the first failing projection/proof/overlay/layout stage, and fix only that production cause. The supplied MP4 did not include its JSON trace; the recurring missing-card graph issue remains open.
