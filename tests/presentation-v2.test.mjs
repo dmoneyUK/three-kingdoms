@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { presentationBarrierState, projectPresentationV2 } from "../game/presentation-v2.ts";
+import { attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate } from "../game/attack-dodge-response-selection.ts";
 
 const card = (id, kind = "Attack") => ({ id, kind });
 const event = (id, resolutionId, extra = {}) => ({ id, type: "card", player: "A", target: "B", card: card(`${id}-card`), resolutionId, importance: "essential", ...extra });
@@ -16,6 +17,81 @@ function point(label, pending, currentAction, timeline, expected) {
 
 const attack = { kind: "response", actorId: "B", requirement: { kind: "dodge", sourceId: "A", targetId: "B" }, reason: "Respond to Attack", resolutionId: "r1", readyAfterEventId: "attack-event", continuation: { kind: "attack", sourceId: "A", targetId: "B", sequenceStartCardId: "attack-card", resumePhase: "play", resolutionId: "r1" } };
 const damage = { kind: "trigger", actorId: "B", event: "damage_about_to_apply", reason: "Damage may be modified", resolutionId: "r1", readyAfterEventId: "damage-event", continuation: { kind: "damage_about_to_apply_event", sourceId: "A", targetId: "B", sequenceStartCardId: "attack-card", resumePhase: "play", resolutionId: "r1" } };
+
+const sequentialDodgeCandidate = (index) => ({ proof: {
+  semantics: "PROVEN",
+  counterRelation: "BLOCKS_TARGET_EFFECT",
+  interactionId: `dodge-interaction-${index}`,
+  rootFrameId: `dodge-frame-${index}`,
+  rootEventId: `attack-event-${index}`,
+  rootResolutionId: `attack-resolution-${index}`,
+  rootSourceId: "attacker",
+  targetId: "defender",
+  responseActorId: "defender",
+  rootCardKind: "Attack",
+  responseCardKind: "Dodge",
+  responseEventId: `dodge-event-${index}`,
+  responseResolutionId: `dodge-resolution-${index}`,
+} });
+
+test("four consecutive public Dodges remain correlated to their own Attack identities", () => {
+  const history = [1, 2, 3, 4].map(sequentialDodgeCandidate);
+  const seenProofKeys = new Set();
+  let queuedProofKeys = [];
+
+  for (let index = 0; index < history.length; index += 1) {
+    const visibleHistory = history.slice(0, index + 1);
+    const arrivals = newlyObservedAttackDodgeResponseKeys(visibleHistory, seenProofKeys);
+    assert.deepEqual(arrivals.map((arrival) => arrival.responseEventId), [`dodge-event-${index + 1}`]);
+    queuedProofKeys = [...queuedProofKeys, ...arrivals.map((arrival) => arrival.proofKey)];
+
+    const selection = selectAttackDodgeResponseCandidate(visibleHistory, { newlyObservedProofKeys: queuedProofKeys });
+    assert.equal(selection.candidate, history[index], `Dodge ${index + 1} stays bound to Attack ${index + 1}`);
+    assert.equal(selection.reason, "matched-new-public-response");
+    queuedProofKeys = queuedProofKeys.filter((key) => key !== arrivals[0].proofKey);
+  }
+
+  assert.equal(selectAttackDodgeResponseCandidate(history).candidate, null,
+    "historical proof uniqueness or cardinality never replays a response without a newly received identity");
+  assert.equal(selectAttackDodgeResponseCandidate(history, {
+    newlyObservedProofKeys: history.map(({ proof }) => attackDodgeResponseProofKey(proof)),
+  }).reason, "ambiguous-new-public-responses",
+  "multiple newly received relations are not ordered by timeline or array position");
+  assert.equal(selectAttackDodgeResponseCandidate(history, {
+    heldProofKey: attackDodgeResponseProofKey(history[3].proof),
+    newlyObservedProofKeys: [attackDodgeResponseProofKey(history[0].proof)],
+  }).candidate, history[3], "a captured settlement stays bound to its exact full proof identity");
+  assert.equal(selectAttackDodgeResponseCandidate(history.slice(0, 3), {
+    heldProofKey: attackDodgeResponseProofKey(history[3].proof),
+    newlyObservedProofKeys: [attackDodgeResponseProofKey(history[0].proof)],
+  }).reason, "held-settlement-proof-unavailable",
+  "a missing captured proof fails closed instead of falling through to another Dodge");
+  assert.equal(selectAttackDodgeResponseCandidate(history, {
+    currentRoot: {
+      rootEventId: "attack-event-4",
+      interactionId: "dodge-interaction-4",
+      rootFrameId: "dodge-frame-4",
+      sourceId: "attacker",
+      targetId: "defender",
+    },
+    newlyObservedProofKeys: history.slice(0, 3).map(({ proof }) => attackDodgeResponseProofKey(proof)),
+  }).candidate, history[3],
+  "a live root only selects its exact proof, never an older queued response");
+  const historicalArrivals = history.slice(0, 3).flatMap(({ proof }) => {
+    const proofKey = attackDodgeResponseProofKey(proof);
+    return proofKey ? [{ proofKey, responseEventId: proof.responseEventId }] : [];
+  });
+  assert.deepEqual(filterAttackDodgeResponseArrivalsForRoot(historicalArrivals, history, {
+    rootEventId: "attack-event-4",
+    interactionId: "dodge-interaction-4",
+    rootFrameId: "dodge-frame-4",
+    sourceId: "attacker",
+    targetId: "defender",
+  }), [], "responses that arrive while another Attack is live are not queued for later replay");
+  assert.notEqual(attackDodgeResponseProofKey({ ...history[3].proof, rootFrameId: "wrong-frame" }),
+    attackDodgeResponseProofKey(history[3].proof),
+  "the response identity includes its exact root frame rather than only the Dodge event ID");
+});
 
 const flows = [
   {

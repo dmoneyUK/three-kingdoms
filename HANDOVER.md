@@ -5,14 +5,14 @@ Mode: `USER-DIRECTED UX REPAIR`
 
 ## Latest result / CI
 
-Attack root projection now prefers the exact `readyAfterEventId`, and trace-enabled `play_card` responses plus response-window polls report named root-proof rejection checks. Client traces also record settlement/root-card capture gates. Diagnostics are opt-in and omit physical card IDs. API: 39/39; projection: 43/43; build and focused route lint passed. Actions run `38053234928` failed only on `no-unused-vars` at `app/api/rooms/route.ts:4635`; API and browser smoke passed, Deploy was skipped. The one-line lint repair is local; repair commit/push and exact-SHA validation are pending.
+Attack root projection diagnostics are deployed on `9f188540ac6f14ece031939468fd33c647d39c40` (exact Actions run `38053408522` succeeded, including Worker deploy and production smoke). The exact-response client change is implemented locally; `node --import tsx tests/presentation-v2.test.mjs` passed 44/44 and helper/test lint passed. Page lint could not complete locally: ESLint exhausted 3 GB heap without a diagnostic; exact push CI is required.
 
-Latest feature SHA: `22de2a305a01e3d5cac6f594e49258e38c96cbff`; exact Actions run `38053234928` failed as above, so deployment did not run. Earlier code-relevant run `38049513240` succeeded on `48f31169a8bea9b456fe10a8006663b9d0a6672f`.
+Feature SHA `22de2a305a01e3d5cac6f594e49258e38c96cbff` first failed run `38053234928` only for an unused diagnostic binding; API and browser smoke passed, Deploy skipped. CI-only repair SHA `9f188540ac6f14ece031939468fd33c647d39c40` passed exact run `38053408522`: Lint/fast, API, Browser smoke, D1 migrations, Worker deploy, and production smoke all succeeded.
 
 ## Design checkpoint
 
-Reviewed remote `docs/UX2-refine.md` blob `6ad42a6f4522be67bd492a20aa1564e420aeffe2`. Keep the direct user settings: 60-second response deadline and 20-second card display.
+Latest remote `docs/UX2-refine.md` blob `6ad42a6f4522be67bd492a20aa1564e420aeffe2` re-read at this boundary. Direct user timing remains 60-second response / 20-second public-card display; no timer change is part of the next task.
 
 ## Current task
 
-`UX2-6.29.1-ATTACK-DODGE-ROOT-PROJECTION-DIAGNOSTICS-02` — repair the reported lint error in a CI-repair-only commit, push, and require that exact SHA's CI/deployment to succeed before feature work resumes. Then close this task and plan the separate exact-event client Dodge correlation task at a fresh design boundary.
+`UX2-6.29.1-ATTACK-DODGE-EXACT-RESPONSE-CORRELATION-03` — replace global historical-proof uniqueness fallback with a client record keyed by the newly received public Dodge `responseEventId` and its exact root, resolution, interaction, and frame identity. Preserve that identity through Pending cleanup; fail closed on mismatches. Prove four consecutive Dodge responses bind to their own Attack despite older proofs remaining in timeline. Do not change graph geometry, gameplay, or the 20-second display.

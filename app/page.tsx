@@ -11,7 +11,8 @@ import { canUseAction, type CurrentAction, type GameplayAction, type TriggerOpti
 import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
-import type { PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
+import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
+import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, isProvenBorrowedSwordForcedAttack, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildPresentationTransition, type PresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupSourceForViewer, projectGroupTargetScopeForViewer, projectOathRecipientScopeForStage, projectBumperHarvestStageCompositionForViewer, type BumperHarvestStageCompositionView, type GroupSourceView, type GroupTargetScopeView, type HeroFocusPlayerDisplay, type HeroFocusView, type MediumParticipantView, type OathRecipientScopeView } from "../game/hero-focus";
@@ -26,10 +27,12 @@ type Hero = { id: string; name: string; faction: string; hp: number; ability: st
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
 type ActiveAttackDodgeSettlement = {
   eventId: string;
+  proof: PresentationAttackDodgeResponse;
   action: InteractionRootOverlayAction;
   phase: "reading" | "exiting" | "complete";
   remainingMs: number;
 };
+type AttackDodgeObservedProof = { roomCode: string; proofKey: string; responseEventId: string };
 type ActiveAttackDodgeRootCardRead = { eventId: string; remainingMs: number };
 type ActivePublicNegationRead = { key: string; action: InteractionRootOverlayAction; expiresAt: number; phase: "reading" | "elapsed" | "live" | "settlement-pending" | "exiting" };
 type RootActionOverlayLayoutReadiness = { key: string; state: "measuring" | "ready" | "unavailable" } | null;
@@ -47,6 +50,14 @@ const GROUP_CURRENT_EFFECT_LABELS: Readonly<Record<string, string>> = {
   SkyPiercingHalberdAttack: "Attack",
 };
 type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | ({ type: "message"; id: string; message: string; drawPlayerId?: string; presentation?: boolean } & PresentationEventMeta);
+
+function attackDodgeProofKeysFromTimeline(timeline: readonly GameEvent[]): Set<string> {
+  return new Set(timeline.flatMap((event) => {
+    const proof = (event as GameEvent & { attackDodgeResponse?: unknown }).attackDodgeResponse;
+    const key = attackDodgeResponseProofKey(proof);
+    return key ? [key] : [];
+  }));
+}
 type Player = { id: string; name: string; seat: number; hero: string | null; generalReady: boolean; ready: boolean; hp: number | null; maxHp: number | null; alive: boolean; connected: boolean; handCount: number; judgementCards: Card[]; equipmentCards: Card[]; attackRange: number; distance: number | null; isHost: boolean; role: string | null };
 type LocalTargetPreviewPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null };
 type LocalTargetPreviewSubmission = { targetId: string; presentationKey: string; actionRevision: string; currentActionKey: string };
@@ -2079,6 +2090,11 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const [activeBumperHarvestSettlement, setActiveBumperHarvestSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeAttackDodgeSettlement, setActiveAttackDodgeSettlement] = useState<ActiveAttackDodgeSettlement | null>(null);
   const attackDodgeSettlementCapturedEventIds = useRef(new Set<string>());
+  const [newAttackDodgeResponseProofs, setNewAttackDodgeResponseProofs] = useState<AttackDodgeObservedProof[]>([]);
+  const observedAttackDodgeProofs = useRef<{ roomCode: string; proofKeys: Set<string> } | null>(null);
+  if (observedAttackDodgeProofs.current === null) {
+    observedAttackDodgeProofs.current = { roomCode: room.code, proofKeys: attackDodgeProofKeysFromTimeline(room.timeline) };
+  }
   const [activeAttackDodgeRootCardRead, setActiveAttackDodgeRootCardRead] = useState<ActiveAttackDodgeRootCardRead | null>(null);
   const attackDodgeRootCardReadCapturedEventIds = useRef(new Set<string>());
   const [activePublicNegationRead, setActivePublicNegationRead] = useState<ActivePublicNegationRead | null>(null);
@@ -3066,34 +3082,69 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       ? [{ proof, rootEvent, responseEvent }]
       : []);
   const currentAttackRoot = clientPresentation.rootAction?.action === "ATTACK" ? clientPresentation.rootAction : null;
-  const attackDodgeResponsesForCurrentRoot = currentAttackRoot
-    ? attackDodgeResponseCandidates.filter(({ proof }) => proof.rootEventId === currentAttackRoot.rootEventId
-      && proof.interactionId === currentAttackRoot.interactionId
-      && proof.rootFrameId === currentAttackRoot.rootFrameId
-      && proof.rootSourceId === currentAttackRoot.sourceId
-      && proof.targetId === currentAttackRoot.targetId)
+  const currentAttackRootIdentity: AttackDodgeResponseRootIdentity | null = currentAttackRoot
+    ? {
+      rootEventId: currentAttackRoot.rootEventId,
+      interactionId: currentAttackRoot.interactionId,
+      rootFrameId: currentAttackRoot.rootFrameId,
+      sourceId: currentAttackRoot.sourceId,
+      targetId: currentAttackRoot.targetId,
+    }
+    : null;
+  const currentAttackRootIdentityKey = currentAttackRootIdentity
+    ? JSON.stringify([currentAttackRootIdentity.rootEventId, currentAttackRootIdentity.interactionId, currentAttackRootIdentity.rootFrameId, currentAttackRootIdentity.sourceId, currentAttackRootIdentity.targetId])
+    : "";
+  const attackDodgeResponsesForCurrentRoot = currentAttackRootIdentity
+    ? attackDodgeResponseCandidates.filter(({ proof }) => attackDodgeResponseMatchesRoot(proof, currentAttackRootIdentity))
     : [];
+  const activeAttackDodgeSettlementProofKey = activeAttackDodgeSettlement
+    ? attackDodgeResponseProofKey(activeAttackDodgeSettlement.proof)
+    : null;
   const attackDodgeResponsesForActiveSettlement = activeAttackDodgeSettlement
-    ? attackDodgeResponseCandidates.filter(({ proof }) => proof.responseEventId === activeAttackDodgeSettlement.eventId)
+    ? attackDodgeResponseCandidates.filter(({ proof }) => attackDodgeResponseProofKey(proof) === activeAttackDodgeSettlementProofKey)
     : [];
-  // A room may contain many historical, server-proven Dodge responses. Select
-  // only the response tied to the live root or the exact locally held event;
-  // global history cardinality must not hide a valid current relation.
-  const attackDodgeResponseCandidate = attackDodgeResponsesForCurrentRoot.length === 1
-    ? attackDodgeResponsesForCurrentRoot[0]
-    : attackDodgeResponsesForCurrentRoot.length > 1
-      ? null
-      : attackDodgeResponsesForActiveSettlement.length === 1
-        ? attackDodgeResponsesForActiveSettlement[0]
-        : attackDodgeResponsesForActiveSettlement.length > 1
-          ? null
-          : attackDodgeResponseCandidates.length === 1 ? attackDodgeResponseCandidates[0] : null;
-  const attackDodgeCandidateSelectionReason = attackDodgeResponsesForCurrentRoot.length === 1 ? "matched-current-root"
-    : attackDodgeResponsesForCurrentRoot.length > 1 ? "ambiguous-current-root-proof"
-      : attackDodgeResponsesForActiveSettlement.length === 1 ? "matched-held-settlement"
-        : attackDodgeResponsesForActiveSettlement.length > 1 ? "ambiguous-held-settlement-proof"
-          : attackDodgeResponseCandidates.length === 1 ? "unique-proven-response-fallback"
-            : attackDodgeResponseCandidates.length > 1 ? "ambiguous-proven-response-fallback" : "no-eligible-proven-response";
+  const completedAttackDodgeSettlementCandidate = activeAttackDodgeSettlement?.phase === "complete" && activeAttackDodgeSettlementProofKey
+    ? attackDodgeResponseCandidates.find(({ proof }) => attackDodgeResponseProofKey(proof) === activeAttackDodgeSettlementProofKey) ?? null
+    : null;
+  useEffect(() => {
+    const observation = observedAttackDodgeProofs.current;
+    if (!observation) return;
+    if (observation.roomCode !== room.code) {
+      observation.roomCode = room.code;
+      observation.proofKeys = attackDodgeProofKeysFromTimeline(room.timeline);
+      setNewAttackDodgeResponseProofs((current) => current.length === 0 ? current : []);
+      return;
+    }
+
+    const arrivals = newlyObservedAttackDodgeResponseKeys(attackDodgeResponseCandidates, observation.proofKeys);
+    const currentRootProofKeys = currentAttackRootIdentity
+      ? new Set(attackDodgeResponseCandidates.flatMap(({ proof }) => attackDodgeResponseMatchesRoot(proof, currentAttackRootIdentity)
+        ? [attackDodgeResponseProofKey(proof) ?? ""]
+        : []))
+      : null;
+    const eligibleArrivals = filterAttackDodgeResponseArrivalsForRoot(arrivals, attackDodgeResponseCandidates, currentAttackRootIdentity);
+    setNewAttackDodgeResponseProofs((current) => {
+      const retained = current.filter((entry) => entry.roomCode === room.code
+        && !attackDodgeSettlementCapturedEventIds.current.has(entry.responseEventId)
+        && (!currentRootProofKeys || currentRootProofKeys.has(entry.proofKey)));
+      const next = [...retained, ...eligibleArrivals.map((arrival) => ({ ...arrival, roomCode: room.code }))];
+      const unique = [...new Map(next.map((entry) => [entry.proofKey, entry])).values()];
+      return unique.length === current.length && unique.every((entry, index) => entry.roomCode === current[index].roomCode
+        && entry.proofKey === current[index].proofKey && entry.responseEventId === current[index].responseEventId)
+        ? current
+        : unique;
+    });
+  }, [room.code, currentAttackRootIdentityKey, attackDodgeResponseCandidates]);
+  const pendingAttackDodgeResponseProofKeys = newAttackDodgeResponseProofs
+    .filter((entry) => entry.roomCode === room.code && !attackDodgeSettlementCapturedEventIds.current.has(entry.responseEventId))
+    .map((entry) => entry.proofKey);
+  const attackDodgeResponseSelection = selectAttackDodgeResponseCandidate(attackDodgeResponseCandidates, {
+    currentRoot: currentAttackRootIdentity,
+    heldProofKey: activeAttackDodgeSettlement?.phase === "complete" ? null : activeAttackDodgeSettlementProofKey,
+    newlyObservedProofKeys: pendingAttackDodgeResponseProofKeys,
+  });
+  const attackDodgeResponseCandidate = attackDodgeResponseSelection.candidate;
+  const attackDodgeCandidateSelectionReason = attackDodgeResponseSelection.reason;
   const attackDodgeGraphCandidate = activeAttackDodgeSettlement?.phase === "complete"
     && attackDodgeResponseCandidate?.proof.responseEventId === activeAttackDodgeSettlement.eventId
     ? null
@@ -4444,18 +4495,23 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   }
   useEffect(() => {
     const action = rootActionOverlayAction;
+    const proof = attackDodgeResponseCandidate?.proof;
     if (!activeAttackDodgeSettlementEventId || !rootActionOverlayGraphReady
       || !action?.response || action.response.eventId !== activeAttackDodgeSettlementEventId
+      || !proof || proof.responseEventId !== activeAttackDodgeSettlementEventId
       || attackDodgeSettlementAlreadyActive
       || attackDodgeSettlementCapturedEventIds.current.has(activeAttackDodgeSettlementEventId)) return;
     attackDodgeSettlementCapturedEventIds.current.add(activeAttackDodgeSettlementEventId);
+    const proofKey = attackDodgeResponseProofKey(proof);
     setActiveAttackDodgeSettlement({
       eventId: activeAttackDodgeSettlementEventId,
+      proof,
       action,
       phase: "reading",
       remainingMs: UI_TIMING.attackDodgePublicCounterRead,
     });
-  }, [attackDodgeSettlementAlreadyActive, activeAttackDodgeSettlementEventId, rootActionOverlayAction, rootActionOverlayGraphReady]);
+    if (proofKey) setNewAttackDodgeResponseProofs((current) => current.filter((entry) => entry.proofKey !== proofKey));
+  }, [attackDodgeResponseCandidate, attackDodgeSettlementAlreadyActive, activeAttackDodgeSettlementEventId, rootActionOverlayAction, rootActionOverlayGraphReady]);
   useEffect(() => {
     if (!activeAttackDodgeSettlementReadingEventId || activeAttackDodgeSettlementRemainingMs === null || !rootActionOverlayGraphReady) return;
     const eventId = activeAttackDodgeSettlementReadingEventId;
@@ -4492,8 +4548,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     ? [duelExchangeGraphCandidate.exchange.root.eventId, ...duelExchangeGraphCandidate.exchange.responses.map((response) => response.responseEventId)]
     : []);
   const completedAttackDodgeSequenceCandidate = activeAttackDodgeSettlement?.phase === "complete"
-    && attackDodgeResponseCandidate?.proof.responseEventId === activeAttackDodgeSettlement.eventId
-    ? attackDodgeResponseCandidate
+    && completedAttackDodgeSettlementCandidate?.proof.responseEventId === activeAttackDodgeSettlement.eventId
+    ? completedAttackDodgeSettlementCandidate
     : null;
   const displayedSequenceEvents = rootActionOverlayOwnsComposition && rootActionOverlayAction
     ? sequenceEvents.filter((event) => event.id !== rootActionOverlayAction.rootEventId
@@ -4618,11 +4674,35 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         semantics: proof.semantics,
         rootEventId: proof.rootEventId,
         responseEventId: proof.responseEventId,
+        rootResolutionId: proof.rootResolutionId,
+        responseResolutionId: proof.responseResolutionId,
+        interactionId: proof.interactionId,
+        rootFrameId: proof.rootFrameId,
         reasons,
       })),
       liveRootMatchCount: attackDodgeResponsesForCurrentRoot.length,
       heldSettlementMatchCount: attackDodgeResponsesForActiveSettlement.length,
       selectedCandidateReason: attackDodgeCandidateSelectionReason,
+      newlyObservedResponseEventIds: pendingAttackDodgeResponseProofKeys.flatMap((proofKey) => {
+        const candidate = attackDodgeResponseCandidates.find(({ proof }) => attackDodgeResponseProofKey(proof) === proofKey);
+        return candidate ? [candidate.proof.responseEventId] : [];
+      }),
+      capturedSettlementProof: activeAttackDodgeSettlement ? {
+        responseEventId: activeAttackDodgeSettlement.proof.responseEventId,
+        rootEventId: activeAttackDodgeSettlement.proof.rootEventId,
+        rootResolutionId: activeAttackDodgeSettlement.proof.rootResolutionId,
+        responseResolutionId: activeAttackDodgeSettlement.proof.responseResolutionId,
+        interactionId: activeAttackDodgeSettlement.proof.interactionId,
+        rootFrameId: activeAttackDodgeSettlement.proof.rootFrameId,
+      } : null,
+      selectedCandidateIdentity: attackDodgeResponseCandidate ? {
+        responseEventId: attackDodgeResponseCandidate.proof.responseEventId,
+        rootEventId: attackDodgeResponseCandidate.proof.rootEventId,
+        rootResolutionId: attackDodgeResponseCandidate.proof.rootResolutionId,
+        responseResolutionId: attackDodgeResponseCandidate.proof.responseResolutionId,
+        interactionId: attackDodgeResponseCandidate.proof.interactionId,
+        rootFrameId: attackDodgeResponseCandidate.proof.rootFrameId,
+      } : null,
       graphCandidateSelected: Boolean(attackDodgeGraphCandidate),
     },
     overlay: {
