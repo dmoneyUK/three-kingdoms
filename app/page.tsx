@@ -20,6 +20,7 @@ import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSele
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { CardFace } from "./card-face";
 import { InteractionRootOverlay, interactionRootActionKey, type InteractionRootOverlayAction } from "./interaction-root-overlay";
+import { exportAttackDodgeUxTrace, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, startAttackDodgeUxTrace, stopAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -1641,8 +1642,9 @@ function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuin
   </div>;
 }
 
-function StageSystemCluster({ publicResponseTimerPending, responseTimer, eventTimer, onLeave }: { publicResponseTimerPending: boolean; responseTimer?: ReactNode; eventTimer?: ReactNode; onLeave: () => void }) {
+function StageSystemCluster({ publicResponseTimerPending, responseTimer, eventTimer, onLeave, attackDodgeTraceActive, onStartAttackDodgeTrace, onStopAttackDodgeTrace }: { publicResponseTimerPending: boolean; responseTimer?: ReactNode; eventTimer?: ReactNode; onLeave: () => void; attackDodgeTraceActive: boolean; onStartAttackDodgeTrace: () => void; onStopAttackDodgeTrace: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [traceNotice, setTraceNotice] = useState("");
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const confirmExit = () => {
     if (window.confirm("Exit this game?")) onLeave();
@@ -1654,12 +1656,41 @@ function StageSystemCluster({ publicResponseTimerPending, responseTimer, eventTi
       menuButtonRef.current?.focus();
     }
   };
+  const copyTrace = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(exportAttackDodgeUxTrace());
+      setTraceNotice("UX trace copied. Paste it into your report.");
+    } catch {
+      setTraceNotice("Copy unavailable here. Use Download UX trace instead.");
+    }
+  };
+  const downloadTrace = () => {
+    const blob = new Blob([exportAttackDodgeUxTrace()], { type: "application/json" });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = `wtk-attack-dodge-ux-trace-${new Date().toISOString().replaceAll(":", "-")}.json`;
+    link.style.display = "none";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+    setTraceNotice("UX trace downloaded to this device.");
+  };
 
   return <div className="stage-system-cluster" data-stage-system-cluster="true" data-public-response-timer-pending={publicResponseTimerPending ? "true" : undefined}>
     {responseTimer}
     {eventTimer}
     <div className="stage-system-menu">
       <div id="stage-system-menu-actions" className="stage-system-menu-actions" role="group" aria-label="System menu actions" hidden={!menuOpen}>
+        {attackDodgeTraceActive
+          ? <button type="button" className="stage-system-diagnostics-active" onClick={() => { onStopAttackDodgeTrace(); setTraceNotice("Trace stopped. Copy or download it before starting another trace."); setMenuOpen(false); }} onKeyDown={closeMenuOnEscape}>Stop Attack/Dodge trace</button>
+          : <button type="button" className="stage-system-diagnostics" onClick={() => { onStartAttackDodgeTrace(); setTraceNotice("Recording locally. Reproduce one Attack/Dodge issue, then stop and export."); setMenuOpen(false); }} onKeyDown={closeMenuOnEscape}>Start Attack/Dodge trace</button>}
+        <button type="button" className="stage-system-diagnostics" onClick={() => void copyTrace()} onKeyDown={closeMenuOnEscape}>Copy UX trace</button>
+        <button type="button" className="stage-system-diagnostics" onClick={downloadTrace} onKeyDown={closeMenuOnEscape}>Download UX trace</button>
+        <small className="stage-system-diagnostics-note">Local only. Includes browser/viewport and public event/interaction IDs; no upload, names, room code, hand cards, or legal-action options.</small>
+        {traceNotice && <small className="stage-system-diagnostics-status" role="status">{traceNotice}</small>}
         <button type="button" className="stage-system-exit" onClick={confirmExit} onKeyDown={closeMenuOnEscape}>Exit Game</button>
       </div>
       <button ref={menuButtonRef} type="button" className="stage-system-menu-trigger" aria-label="System menu" aria-expanded={menuOpen} aria-controls="stage-system-menu-actions" onClick={() => setMenuOpen((open) => !open)} onKeyDown={closeMenuOnEscape}>☰</button>
@@ -1982,6 +2013,10 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const [rootActionOverlayLayoutReadiness, setRootActionOverlayLayoutReadiness] = useState<RootActionOverlayLayoutReadiness>(null);
   const onRootActionOverlayLayoutReadinessChange = useCallback((next: RootActionOverlayLayoutReadiness) => {
     setRootActionOverlayLayoutReadiness((current) => current?.key === next?.key && current?.state === next?.state ? current : next);
+  }, []);
+  const [attackDodgeUxTraceActive, setAttackDodgeUxTraceActive] = useState(false);
+  useEffect(() => {
+    setAttackDodgeUxTraceActive(isAttackDodgeUxTraceActive());
   }, []);
   const [effectNotice, setEffectNotice] = useState<string | null>(null);
   const [infoCard, setInfoCard] = useState<Card | null>(null);
@@ -2958,25 +2993,36 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       }),
     }
     : null;
-  const attackDodgeResponseCandidates = (clientPresentation.attackDodgeResponses ?? []).flatMap((proof) => {
+  const attackDodgeResponseEvaluations = (clientPresentation.attackDodgeResponses ?? []).map((proof) => {
     const rootEvents = room.timeline.filter((event) => event.id === proof.rootEventId);
     const responseEvents = room.timeline.filter((event) => event.id === proof.responseEventId);
-    if (rootEvents.length !== 1 || responseEvents.length !== 1
-      || !presentedEventIds.has(proof.rootEventId) || !presentedEventIds.has(proof.responseEventId)) return [];
-    const rootEvent = rootEvents[0];
-    const responseEvent = responseEvents[0];
-    if (rootEvent.type !== "card" || responseEvent.type !== "card"
-      || rootEvent.action !== "play" || responseEvent.action !== "play"
-      || rootEvent.presentation === false || responseEvent.presentation === false
-      || (rootEvent.playedAs === undefined
-        ? rootEvent.card.kind !== "Attack"
-        : rootEvent.playedAs !== "attack" || rootEvent.card.kind === "Attack")
-      || responseEvent.playedAs !== undefined || responseEvent.card.kind !== "Dodge"
-      || rootEvent.resolutionId !== proof.rootResolutionId || responseEvent.resolutionId !== proof.responseResolutionId
-      || proof.counterRelation !== "BLOCKS_TARGET_EFFECT"
-      || proof.responseActorId !== proof.targetId) return [];
-    return [{ proof, rootEvent, responseEvent }];
+    const rootEvent = rootEvents.length === 1 ? rootEvents[0] : null;
+    const responseEvent = responseEvents.length === 1 ? responseEvents[0] : null;
+    const reasons: string[] = [];
+    if (rootEvents.length !== 1) reasons.push(rootEvents.length === 0 ? "root-event-missing" : "root-event-duplicate");
+    if (responseEvents.length !== 1) reasons.push(responseEvents.length === 0 ? "response-event-missing" : "response-event-duplicate");
+    if (!presentedEventIds.has(proof.rootEventId)) reasons.push("root-event-not-presented-yet");
+    if (!presentedEventIds.has(proof.responseEventId)) reasons.push("response-event-not-presented-yet");
+    if (!rootEvent || rootEvent.type !== "card" || rootEvent.action !== "play") reasons.push("root-event-not-public-card-play");
+    else {
+      if (rootEvent.presentation === false) reasons.push("root-event-presentation-suppressed");
+      if (rootEvent.playedAs === undefined ? rootEvent.card.kind !== "Attack" : rootEvent.playedAs !== "attack" || rootEvent.card.kind === "Attack") reasons.push("root-event-not-attack");
+      if (rootEvent.resolutionId !== proof.rootResolutionId) reasons.push("root-resolution-mismatch");
+    }
+    if (!responseEvent || responseEvent.type !== "card" || responseEvent.action !== "play") reasons.push("response-event-not-public-card-play");
+    else {
+      if (responseEvent.presentation === false) reasons.push("response-event-presentation-suppressed");
+      if (responseEvent.playedAs !== undefined || responseEvent.card.kind !== "Dodge") reasons.push("response-event-not-dodge");
+      if (responseEvent.resolutionId !== proof.responseResolutionId) reasons.push("response-resolution-mismatch");
+    }
+    if (proof.counterRelation !== "BLOCKS_TARGET_EFFECT") reasons.push("counter-relation-mismatch");
+    if (proof.responseActorId !== proof.targetId) reasons.push("responder-target-mismatch");
+    return { proof, rootEvent, responseEvent, reasons };
   });
+  const attackDodgeResponseCandidates = attackDodgeResponseEvaluations.flatMap(({ proof, rootEvent, responseEvent, reasons }) =>
+    reasons.length === 0 && rootEvent?.type === "card" && responseEvent?.type === "card"
+      ? [{ proof, rootEvent, responseEvent }]
+      : []);
   const currentAttackRoot = clientPresentation.rootAction?.action === "ATTACK" ? clientPresentation.rootAction : null;
   const attackDodgeResponsesForCurrentRoot = currentAttackRoot
     ? attackDodgeResponseCandidates.filter(({ proof }) => proof.rootEventId === currentAttackRoot.rootEventId
@@ -3000,6 +3046,12 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         : attackDodgeResponsesForActiveSettlement.length > 1
           ? null
           : attackDodgeResponseCandidates.length === 1 ? attackDodgeResponseCandidates[0] : null;
+  const attackDodgeCandidateSelectionReason = attackDodgeResponsesForCurrentRoot.length === 1 ? "matched-current-root"
+    : attackDodgeResponsesForCurrentRoot.length > 1 ? "ambiguous-current-root-proof"
+      : attackDodgeResponsesForActiveSettlement.length === 1 ? "matched-held-settlement"
+        : attackDodgeResponsesForActiveSettlement.length > 1 ? "ambiguous-held-settlement-proof"
+          : attackDodgeResponseCandidates.length === 1 ? "unique-proven-response-fallback"
+            : attackDodgeResponseCandidates.length > 1 ? "ambiguous-proven-response-fallback" : "no-eligible-proven-response";
   const attackDodgeGraphCandidate = activeAttackDodgeSettlement?.phase === "complete"
     && attackDodgeResponseCandidate?.proof.responseEventId === activeAttackDodgeSettlement.eventId
     ? null
@@ -4381,6 +4433,222 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     && eventCards(displayedEvent).some((card) => card.id === completedAttackDodgeSequenceCandidate.responseEvent.card.id);
   const displayedTableEvent = activeRootAttackEvent || activeRootSelfTargetEvent || activeRootResponseEvent || completedAttackDodgeResponseEvent ? null : displayedEvent;
   const tablePresentationVisible = displayedSequenceEvents.length > 0 || Boolean(displayedTableEvent && eventCards(displayedTableEvent).length);
+  const attackDodgeTraceSeat = (playerId: string | null | undefined) => playerId
+    ? room.players.find((player) => player.id === playerId)?.seat ?? null
+    : null;
+  const summarizeAttackRoot = (action: PresentationClientView["rootAction"]) => action?.action === "ATTACK" ? {
+    semantics: action.semantics,
+    rootEventId: action.rootEventId,
+    interactionId: action.interactionId,
+    rootFrameId: action.rootFrameId,
+    checkpointId: action.checkpointId,
+    presentationRevision: action.presentationRevision,
+    sourceSeat: attackDodgeTraceSeat(action.sourceId),
+    targetSeat: attackDodgeTraceSeat(action.targetId),
+    cardKind: action.cardKind,
+    physicalCardKind: action.physicalCardKind,
+    playedAs: action.playedAs ?? null,
+  } : null;
+  const recentAttackDodgeTimeline = attackDodgeUxTraceActive ? room.timeline.slice(-8).flatMap((event) => event.type === "card"
+    && event.action === "play" && (event.card.kind === "Attack" || event.card.kind === "Dodge")
+      ? [{ eventId: event.id, action: event.action, cardKind: event.card.kind, playedAs: event.playedAs ?? null,
+        resolutionId: event.resolutionId ?? null, presentation: event.presentation !== false, presented: presentedEventIds.has(event.id) }]
+      : []) : [];
+  const recentAttackDodgeEventIds = new Set(recentAttackDodgeTimeline.map((event) => event.eventId));
+  const traceRelevantAttackDodgeProofs = attackDodgeUxTraceActive
+    ? attackDodgeResponseEvaluations.filter(({ proof }) =>
+      currentAttackRoot?.rootEventId === proof.rootEventId
+      || activeAttackDodgeSettlement?.eventId === proof.responseEventId
+      || recentAttackDodgeEventIds.has(proof.rootEventId)
+      || recentAttackDodgeEventIds.has(proof.responseEventId)).slice(-12)
+    : [];
+  const attackDodgeProofIsRecent = attackDodgeUxTraceActive && attackDodgeResponseEvaluations.some(({ proof }) =>
+    currentAttackRoot?.rootEventId === proof.rootEventId
+    || activeAttackDodgeSettlement?.eventId === proof.responseEventId
+    || recentAttackDodgeEventIds.has(proof.rootEventId)
+    || recentAttackDodgeEventIds.has(proof.responseEventId));
+  const attackDodgeTraceRelevant = attackDodgeUxTraceActive && Boolean(room.pendingAttack
+    || room.currentAction?.requirement === "attack" || room.currentAction?.requirement === "dodge"
+    || clientPresentation.rootAction?.action === "ATTACK" || attackDodgeProofIsRecent
+    || activeAttackDodgeSettlement || recentAttackDodgeTimeline.length);
+  const attackDodgeTraceSnapshot = attackDodgeTraceRelevant ? {
+    room: { status: room.status, phase: room.phase, turnSeat: room.turnSeat, viewerSeat: attackDodgeTraceSeat(room.meId) },
+    currentAction: {
+      kind: room.currentAction?.kind ?? null,
+      requirement: room.currentAction?.requirement ?? null,
+      actorSeat: attackDodgeTraceSeat(room.currentAction?.actorId),
+      actorIsViewer: room.currentAction?.actorId === room.meId,
+      deadlineRemainingSeconds: room.currentAction?.deadline ? Math.max(0, Math.ceil((room.currentAction.deadline - Date.now()) / 1000)) : null,
+    },
+    pendingAttack: room.pendingAttack ? {
+      sourceSeat: attackDodgeTraceSeat(room.pendingAttack.sourceId),
+      targetSeat: attackDodgeTraceSeat(room.pendingAttack.targetId),
+      deadlineRemainingSeconds: room.pendingAttack.deadline ? Math.max(0, Math.ceil((room.pendingAttack.deadline - Date.now()) / 1000)) : null,
+    } : null,
+    presentation: {
+      interaction: room.presentationSnapshot?.interaction ? {
+        semantics: room.presentationSnapshot.interaction.semantics,
+        stage: room.presentationSnapshot.interaction.stage,
+        interactionId: room.presentationSnapshot.interaction.interactionId,
+        rootFrameId: room.presentationSnapshot.interaction.rootFrameId,
+        activeFrameId: room.presentationSnapshot.interaction.activeFrameId,
+        checkpointId: room.presentationSnapshot.interaction.checkpointId,
+        presentationRevision: room.presentationSnapshot.interaction.presentationRevision,
+        sourceSeat: attackDodgeTraceSeat(room.presentationSnapshot.interaction.sourceId),
+        currentParticipantSeat: attackDodgeTraceSeat(room.presentationSnapshot.interaction.currentParticipantId),
+        decisionActorSeat: attackDodgeTraceSeat(room.presentationSnapshot.interaction.decisionActorId),
+        targetSeats: room.presentationSnapshot.interaction.targetIds.map(attackDodgeTraceSeat),
+      } : null,
+      serverRootAction: summarizeAttackRoot(room.presentationSnapshot?.rootAction ?? null),
+      clientRootAction: summarizeAttackRoot(clientPresentation.rootAction),
+      serverDodgeProofCount: room.presentationSnapshot?.attackDodgeResponses?.length ?? 0,
+      clientDodgeProofs: traceRelevantAttackDodgeProofs.map(({ proof }) => ({
+        semantics: proof.semantics,
+        rootEventId: proof.rootEventId,
+        responseEventId: proof.responseEventId,
+        rootResolutionId: proof.rootResolutionId,
+        responseResolutionId: proof.responseResolutionId,
+        interactionId: proof.interactionId,
+        rootFrameId: proof.rootFrameId,
+        sourceSeat: attackDodgeTraceSeat(proof.rootSourceId),
+        targetSeat: attackDodgeTraceSeat(proof.targetId),
+        responseActorSeat: attackDodgeTraceSeat(proof.responseActorId),
+        relation: proof.counterRelation,
+      })),
+      validatedTimelineEvents: recentAttackDodgeTimeline,
+    },
+    proofEvaluation: {
+      count: attackDodgeResponseEvaluations.length,
+      validCount: attackDodgeResponseCandidates.length,
+      evaluations: traceRelevantAttackDodgeProofs.map(({ proof, reasons }) => ({
+        semantics: proof.semantics,
+        rootEventId: proof.rootEventId,
+        responseEventId: proof.responseEventId,
+        reasons,
+      })),
+      liveRootMatchCount: attackDodgeResponsesForCurrentRoot.length,
+      heldSettlementMatchCount: attackDodgeResponsesForActiveSettlement.length,
+      selectedCandidateReason: attackDodgeCandidateSelectionReason,
+      graphCandidateSelected: Boolean(attackDodgeGraphCandidate),
+    },
+    overlay: {
+      rootEventId: rootActionOverlayAction?.rootEventId ?? null,
+      interactionId: rootActionOverlayAction?.interactionId ?? null,
+      rootFrameId: rootActionOverlayAction?.rootFrameId ?? null,
+      sourceSeat: attackDodgeTraceSeat(rootActionOverlayAction?.sourceId),
+      targetSeat: attackDodgeTraceSeat(rootActionOverlayAction?.targetId),
+      cardKind: rootActionOverlayAction?.cardKind ?? null,
+      rootCardFaceKind: rootActionOverlayAction?.cardFace?.kind ?? null,
+      responseEventId: rootActionOverlayAction?.response?.eventId ?? null,
+      responseActorSeat: attackDodgeTraceSeat(rootActionOverlayAction?.response?.actorId),
+      responseCardFaceKind: rootActionOverlayAction?.response?.cardFace?.kind ?? null,
+      settlementOutcome: rootActionOverlayAction?.settlement?.outcome ?? null,
+      temporarilyBlockedBy: {
+        targetPreview: Boolean(targetPreviewPresentation),
+        opponentInspection: Boolean(opponentInspectionPresentation),
+        selectableDetail: Boolean(targetCardPickerSelectableDetail && !skillEffectActionCandidate),
+        expandedOpponent: expandedOpponentId !== null,
+        groupScopePreview: groupScopePreview.active,
+      },
+      awaitingReveal: {
+        activeEvent: Boolean(activeEvent),
+        queuedEventCount: eventQueue.length,
+        unseenPresentations: hasUnseenPresentations,
+        optimisticPlay: Boolean(optimisticPlay),
+      },
+      enabled: rootActionOverlayEnabled,
+      displayMode: rootActionOverlayDisplayMode,
+      layoutState: rootActionLayoutState,
+      layoutStateMatchesAction: Boolean(rootActionOverlayAction && rootActionOverlayLayoutReadiness?.key === rootActionOverlayAction.key),
+      fallbackReason: rootActionOverlayFallbackReason ?? null,
+      geometryUnavailable: rootActionOverlayGeometryUnavailable,
+      graphReady: rootActionOverlayGraphReady,
+      ownsComposition: rootActionOverlayOwnsComposition,
+      legacySequenceEventCount: displayedSequenceEvents.length,
+      legacyTablePresentationVisible: tablePresentationVisible,
+    },
+    hold: {
+      eventId: activeAttackDodgeSettlement?.eventId ?? null,
+      phase: activeAttackDodgeSettlement?.phase ?? null,
+      remainingMs: activeAttackDodgeSettlement?.remainingMs ?? null,
+      superseded: attackDodgeHoldSuperseded,
+      capturedEventCount: attackDodgeSettlementCapturedEventIds.current.size,
+      graphTimerRemainingMs: rootActionOverlayPublicReadRemainingMs,
+    },
+  } : null;
+  const attackDodgeTraceSnapshotJson = attackDodgeTraceSnapshot ? JSON.stringify(attackDodgeTraceSnapshot) : null;
+  useEffect(() => {
+    if (!attackDodgeTraceSnapshotJson) return;
+    recordAttackDodgeUxTrace("pipeline-state", JSON.parse(attackDodgeTraceSnapshotJson) as Record<string, unknown>);
+    const shell = document.querySelector<HTMLElement>(".game-shell");
+    if (!shell) return;
+    const shellRect = shell.getBoundingClientRect();
+    const trackedSelector = [
+      ".interaction-stage",
+      ".interaction-stage-hero-region",
+      ".interaction-stage-event-region",
+      ".interaction-stage-meta-region",
+      ".interaction-stage-current-effect",
+      ".interaction-stage-current-effect-flow",
+      ".hero-focus",
+      ".medium-participant-card",
+      ".reaction-chain",
+      ".reaction-chain-group",
+      ".table-resolution-layer",
+      ".active-table-reveal",
+      ".player-played-cards",
+      ".table-played-card",
+      ".interaction-root-overlay",
+      ".interaction-root-action-card",
+      ".interaction-root-response-card",
+      ".interaction-root-connectors",
+      ".interaction-root-connectors path[class]",
+    ].join(",");
+    const domNodes = Array.from(shell.querySelectorAll<HTMLElement | SVGElement>(trackedSelector)).slice(0, 64).map((element, index) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const safeAttributes = ["data-stage", "data-stable-kind", "data-local-ui-mode", "data-group-composition", "data-oath-composition", "data-bumper-harvest-composition", "data-root-action-enabled", "data-root-action-ready", "data-root-action-display-mode", "data-root-action-layout-state", "data-root-action-fallback-reason", "data-root-action-card-fit-step", "data-root-action-dodge-slot-reserved", "data-root-action-visible-response-count", "data-root-action-response-count", "data-root-action-settlement-exiting", "data-public-counter-read-exiting"];
+      const attributes = Object.fromEntries(safeAttributes.flatMap((name) => {
+        const value = element.getAttribute(name);
+        return value === null ? [] : [[name, value]];
+      }));
+      return {
+        index,
+        classes: (element.getAttribute("class") ?? "").split(/\s+/u).filter(Boolean),
+        attributes,
+        rect: {
+          left: Math.round((rect.left - shellRect.left) * 10) / 10,
+          top: Math.round((rect.top - shellRect.top) * 10) / 10,
+          width: Math.round(rect.width * 10) / 10,
+          height: Math.round(rect.height * 10) / 10,
+        },
+        connected: element.isConnected,
+        clientRectCount: element.getClientRects().length,
+        display: style.display,
+        visibility: style.visibility,
+        opacity: style.opacity,
+        zIndex: style.zIndex,
+        path: element instanceof SVGPathElement ? element.getAttribute("d") : undefined,
+      };
+    });
+    const table = shell.querySelector<HTMLElement>(".play-table");
+    recordAttackDodgeUxTrace("presentation-dom", {
+      topology: table?.dataset.seatTopology ?? null,
+      stageMounted: Boolean(shell.querySelector(".interaction-stage")),
+      legacySequenceMounted: Boolean(shell.querySelector(".table-resolution-layer")),
+      rootOverlayMounted: Boolean(shell.querySelector(".interaction-root-overlay")),
+      nodes: domNodes,
+    });
+  }, [attackDodgeTraceSnapshotJson]);
+  const beginAttackDodgeUxTrace = () => {
+    startAttackDodgeUxTrace();
+    setAttackDodgeUxTraceActive(true);
+    if (attackDodgeTraceSnapshot) recordAttackDodgeUxTrace("pipeline-state", attackDodgeTraceSnapshot);
+  };
+  const endAttackDodgeUxTrace = () => {
+    stopAttackDodgeUxTrace();
+    setAttackDodgeUxTraceActive(false);
+  };
   const localEquipmentSelection = activeSkillSelection
     ? { eligibleIds: activeSkillSelection.eligibleCardIds, selectedIds: activeSkillSelectedCardIds, max: activeSkillSelection.max, disabled: busy || presentationBusy, onToggle: (cardId: string) => setActiveSkillSelectionState((state) => { if (!state || !activeSkillStateIsCurrent) return state; const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)); return validIds.includes(cardId) ? { ...state, cardIds: validIds.filter((id) => id !== cardId) } : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, cardId] } : { ...state, cardIds: validIds }; }) }
     : targetCardPickerInLocalDock && targetCardPickerSelection && targetCardPickerTarget
@@ -4519,7 +4787,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         if (!player) return null;
         const hero = heroDefinition(player.hero);
         return { name: player.name, heroId: hero?.id ?? player.hero, heroName: hero?.name ?? (player.hero ? heroName(player.hero) : null), hp: player.hp, maxHp: player.maxHp };
-      }} previewPlayer={targetPreviewPresentation} previewSubmission={submittedTargetPreview} inspectPlayer={opponentInspectionPresentation} selectableDetail={targetCardPickerSelectableDetail} judgementInFlight={judgementInFlight} onCloseInspect={() => setExpandedOpponentId(null)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} />}<StageSystemCluster onLeave={onLeave} publicResponseTimerPending={seatCountdown?.kind === "response"} responseTimer={seatCountdown?.kind === "response" ? <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} responseTimer /> : null} eventTimer={<>{privateDrawTimer}{harvestEventTimer}</>} /></div>
+      }} previewPlayer={targetPreviewPresentation} previewSubmission={submittedTargetPreview} inspectPlayer={opponentInspectionPresentation} selectableDetail={targetCardPickerSelectableDetail} judgementInFlight={judgementInFlight} onCloseInspect={() => setExpandedOpponentId(null)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} />}<StageSystemCluster onLeave={onLeave} publicResponseTimerPending={seatCountdown?.kind === "response"} responseTimer={seatCountdown?.kind === "response" ? <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} responseTimer /> : null} eventTimer={<>{privateDrawTimer}{harvestEventTimer}</>} attackDodgeTraceActive={attackDodgeUxTraceActive} onStartAttackDodgeTrace={beginAttackDodgeUxTrace} onStopAttackDodgeTrace={endAttackDodgeUxTrace} /></div>
       <aside className={`game-messages ${messagesCollapsed ? "collapsed" : ""}`} aria-label="Game Messages"><header><button type="button" onClick={() => setMessagesCollapsed((collapsed) => !collapsed)} aria-label={messagesCollapsed ? "Expand game messages" : "Collapse game messages"} aria-expanded={!messagesCollapsed}>{messagesCollapsed ? "▣" : "—"}</button></header>{!messagesCollapsed && <div aria-live="polite">{gameMessages.length ? gameMessages.map((entry, index) => <p className={index === gameMessages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div>}</aside>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
       {effectNotice && <div className="turn-notice effect-notice" role="status"><span>EFFECT TRIGGERED</span><b>{effectNotice}</b></div>}

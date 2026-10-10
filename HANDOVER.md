@@ -5,14 +5,14 @@ Mode: `USER-DIRECTED UX REPAIR`
 
 ## Latest result / CI
 
-Fixed the real Attack→Dodge graph crash: `PublicCounterReadTimer` called `useEffect` without importing it. The graph now shows Attack, the server-proven Dodge, and a visible `0:20` hold timer; the hold is 20 seconds of graph-ready visibility per viewer. A rebuilt local Worker passed the existing server-backed 4-player 390×844 Attack→Dodge browser scenario and produced a screenshot with the full graph. No new tests were added; existing timing assertions were updated to 20 seconds.
+The 20-second Attack→Dodge graph hold remains the latest implementation result. Added an opt-in, local-only recorder to distinguish server projection/proof, client candidate selection, overlay blockers, geometry, rendered Stage/legacy/SVG composition, and hold timers. It stores a bounded trace in this browser tab and exports by copy/download; it does not upload data. No new tests were added. Local build and focused ESLint for the trace utility and overlay pass; page-level ESLint exhausted the available Node heap. Real-device trace has not yet been captured.
 
-Latest completed remote CI before this revision: run `38018860884` (#971), tested code SHA `cddba6bf1e6faa8bc365aabfcb3658dba2801d31`, success including deployment and health smoke. Check the exact pushed revision's CI before any subsequent code commit; that fresh CI has not yet been verified.
+Latest remote `ux-v2` CI before this recorder change: run `38020378208`, exact SHA `b3350a0f7f6e48fda3e294839cc85ac90576ef9d`, success. This does not validate the uncommitted recorder.
 
 ## Design checkpoint
 
-Latest `docs/UX2-refine.md` blob `6ad42a6f4522be67bd492a20aa1564e420aeffe2` reviewed. §6.29.7 specifies 3 seconds; the user's direct instruction overrides it to 20 seconds for this bounded Attack→Dodge task. The separate server-owned Attack response deadline remains 30 seconds; the screenshot's `22s` was that response window, not the post-Dodge graph hold. No Reviewer acceptance is claimed.
+Latest `docs/UX2-refine.md` blob `6ad42a6f4522be67bd492a20aa1564e420aeffe2` reviewed. §6.29.7 says 3 seconds; direct user instruction overrides the Attack→Dodge graph hold to 20 seconds. No Reviewer acceptance or real-mobile confirmation is claimed.
 
 ## Current task
 
-`UX2-6.29.1-ATTACK-DODGE-20S-PRODUCTION-01` — keep open for the user to verify the deployed real-mobile Attack→Dodge graph; local server-backed 390×844 proof passes, but real-device/deployed visual confirmation remains outstanding.
+`UX2-6.29.1-ATTACK-DODGE-REAL-TRACE-01` — get the opt-in recorder through CI/deployment, then capture a real game where Attack root or Dodge is missing from the relationship graph. Use the exported trace to identify the first failing stage and fix that specific production cause. Resume: mobile game System Menu → Start Attack/Dodge trace → reproduce → Stop → Copy/Download UX trace.

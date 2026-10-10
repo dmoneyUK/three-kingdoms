@@ -4803,13 +4803,53 @@
   right: 0;
   bottom: calc(100% + 6px);
   z-index: 2;
-  min-width: 120px;
+  box-sizing: border-box;
+  width: min(244px, calc(100vw - 20px));
+  max-height: min(70vh, 420px);
+  overflow: auto;
   padding: 4px;
   border: 1px solid #9c8249;
   background: #11140ff5;
   box-shadow: 0 8px 20px #000b;
 }
 .stage-system-menu-actions[hidden] { display: none; }
+.stage-system-diagnostics,
+.stage-system-diagnostics-active {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  margin: 0 0 4px;
+  padding: 7px 9px;
+  border: 1px solid #9c8249;
+  background: #1a1b15;
+  color: #e6cc8c;
+  font: 700 9px/1.25 Arial, sans-serif;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.stage-system-diagnostics-active {
+  border-color: #cf7464;
+  background: #321d18;
+  color: #ffd2c8;
+}
+.stage-system-diagnostics:hover,
+.stage-system-diagnostics:focus-visible,
+.stage-system-diagnostics-active:hover,
+.stage-system-diagnostics-active:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 1px;
+}
+.stage-system-diagnostics-note,
+.stage-system-diagnostics-status {
+  display: block;
+  margin: 4px 3px 7px;
+  color: #c6b88e;
+  font: 9px/1.35 Arial, sans-serif;
+  overflow-wrap: anywhere;
+}
+.stage-system-diagnostics-status { color: #e6cc8c; }
 .stage-system-exit {
   width: 100%;
   min-height: 36px;

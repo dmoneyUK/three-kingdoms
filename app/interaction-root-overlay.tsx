@@ -5,6 +5,7 @@ import { flushSync } from "react-dom";
 import type { Card, CardKind } from "../game/model";
 import type { PresentationSnapshotBumperHarvestProgress, PresentationSnapshotGroupParticipantProgress, PresentationSnapshotRootAction } from "../game/presentation-snapshot";
 import { CardFace } from "./card-face";
+import { isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
 
 type Point = { x: number; y: number };
 type Rect = { left: number; top: number; right: number; bottom: number; width: number; height: number };
@@ -233,10 +234,12 @@ function PublicCounterReadTimer({ eventId, remainingMs, style }: { eventId: stri
   useEffect(() => {
     const visibleSince = performance.now();
     let lastSeconds = Math.ceil(remainingMs / 1000);
+    recordAttackDodgeUxTrace("public-read-timer", { eventId, remainingSeconds: lastSeconds });
     const update = () => {
       const nextSeconds = Math.ceil(Math.max(0, remainingMs - (performance.now() - visibleSince)) / 1000);
       if (nextSeconds !== lastSeconds) {
         lastSeconds = nextSeconds;
+        recordAttackDodgeUxTrace("public-read-timer", { eventId, remainingSeconds: nextSeconds });
         setRemainingSeconds(nextSeconds);
       }
     };
@@ -2158,21 +2161,51 @@ export function InteractionRootOverlay({
     const card = cardRef.current;
     const shell = layer?.closest<HTMLElement>(".game-shell");
     const initialAction = actionRef.current;
+    const traceActive = isAttackDodgeUxTraceActive();
     if (!enabled) {
+      if (traceActive && initialAction?.cardKind === "Attack") recordAttackDodgeUxTrace("overlay-layout-state", {
+        rootEventId: initialAction.rootEventId,
+        state: "disabled",
+        cause: "parent-overlay-disabled",
+      });
       onLayoutReadinessChange(null);
       return;
     }
     if (!initialAction?.sourceId
       || (!initialAction.targetId && !initialAction.groupTargets?.length && !initialAction.orderedTargets?.length && !initialAction.simultaneousTargets?.length)
       || !initialAction.key || !layer || !card || !shell) {
+      if (traceActive && initialAction?.cardKind === "Attack") recordAttackDodgeUxTrace("overlay-layout-state", {
+        rootEventId: initialAction.rootEventId,
+        state: "unavailable",
+        cause: "overlay-prerequisite-missing",
+        hasSource: Boolean(initialAction.sourceId),
+        hasTarget: Boolean(initialAction.targetId || initialAction.groupTargets?.length || initialAction.orderedTargets?.length || initialAction.simultaneousTargets?.length),
+        hasKey: Boolean(initialAction.key),
+        hasLayer: Boolean(layer),
+        hasCard: Boolean(card),
+        hasShell: Boolean(shell),
+      });
       onLayoutReadinessChange(initialAction?.key ? { key: initialAction.key, state: "unavailable" } : null);
       return;
     }
+    if (traceActive && initialAction.cardKind === "Attack") recordAttackDodgeUxTrace("overlay-layout-state", {
+      rootEventId: initialAction.rootEventId,
+      state: "measuring",
+      enabled,
+      responseCardExpected: Boolean(initialAction.response?.cardFace?.kind === "Dodge"),
+      stableRootPresent: stableRootPlacementRef.current?.rootKey === (initialAction.rootPlacementKey ?? initialAction.rootEventId),
+    });
     onLayoutReadinessChange({ key: initialAction.key, state: "measuring" });
 
     const measure = () => {
       const currentAction = actionRef.current;
+      const captureTrace = traceActive || isAttackDodgeUxTraceActive();
       if (!currentAction?.key) {
+        if (captureTrace && currentAction?.cardKind === "Attack") recordAttackDodgeUxTrace("overlay-layout-state", {
+          rootEventId: currentAction.rootEventId,
+          state: "unavailable",
+          cause: "action-key-missing-during-measurement",
+        });
         onLayoutReadinessChange(null);
         return;
       }
@@ -2186,6 +2219,11 @@ export function InteractionRootOverlay({
       const currentVisibleResponses = currentResponsePresentation?.nodes ?? [];
       const currentHistoryCount = currentResponsePresentation?.collapsedCount ?? 0;
       if (currentAction.responses && !currentResponsePresentation) {
+        if (captureTrace && currentAction.cardKind === "Attack") recordAttackDodgeUxTrace("overlay-layout-state", {
+          rootEventId: currentAction.rootEventId,
+          state: "unavailable",
+          cause: "response-graph-compaction-failed",
+        });
         onLayoutReadinessChange({ key: currentAction.key, state: "unavailable" });
         return;
       }
@@ -2207,9 +2245,55 @@ export function InteractionRootOverlay({
       const preferredResponseCard = rememberedPlacementMatches ? rememberedRoot.reservedResponseCard : null;
       const canScaleAttackCard = currentAction.cardKind === "Attack";
       const fitSteps = canScaleAttackCard ? ["target", "compact", "minimum"] as const : ["target"] as const;
-      const diagnosticReporter = (window as Window & {
+      const externalDiagnosticReporter = (window as Window & {
         __wtkCaptureAttackFitDiagnostic?: AttackGeometryFitDiagnosticReporter;
       }).__wtkCaptureAttackFitDiagnostic;
+      const diagnosticReporter: AttackGeometryFitDiagnosticReporter | undefined = externalDiagnosticReporter || captureTrace ? (diagnostic) => {
+        externalDiagnosticReporter?.(diagnostic);
+        if (!captureTrace && !isAttackDodgeUxTraceActive()) return;
+        const numericCounters = Object.fromEntries(Object.entries(diagnostic).filter(([name, value]) =>
+          typeof value === "number" && /(count|rejected|inspected|candidate)/iu.test(name)));
+        recordAttackDodgeUxTrace("geometry-fit", {
+          rootEventId: diagnostic.rootEventId,
+          phase: diagnostic.phase,
+          fitStep: diagnostic.fitStep,
+          viewport: diagnostic.viewport,
+          cause: diagnostic.cause,
+          numericCounters,
+          placementFieldSearch: diagnostic.placementFieldSearch,
+          dodgePlacementFieldSearch: diagnostic.dodgePlacementFieldSearch,
+          placementSearchEligibility: diagnostic.placementSearchEligibility,
+          rootPlacementGeometry: diagnostic.rootPlacementGeometry ? {
+            sourcePath: diagnostic.rootPlacementGeometry.sourcePath,
+            sourceAnchor: diagnostic.rootPlacementGeometry.sourceAnchor,
+            targetAnchor: diagnostic.rootPlacementGeometry.targetAnchor,
+            target: diagnostic.rootPlacementGeometry.target,
+            reservedResponseTimer: diagnostic.rootPlacementGeometry.reservedResponseTimer,
+            obstacleCount: diagnostic.rootPlacementGeometry.obstacles.length,
+          } : null,
+          placementIdentity: diagnostic.placementIdentity ? {
+            hasStableRootForInteraction: diagnostic.placementIdentity.hasStableRootForInteraction,
+            rememberedRootPresent: diagnostic.placementIdentity.rememberedRootKey !== null,
+          } : null,
+          dodgeGeometry: diagnostic.dodgeGeometry ? {
+            table: diagnostic.dodgeGeometry.table,
+            stableStageBottom: diagnostic.dodgeGeometry.stableStageBottom,
+            margin: diagnostic.dodgeGeometry.margin,
+            rootCard: diagnostic.dodgeGeometry.rootCard,
+            attacker: diagnostic.dodgeGeometry.attacker,
+            target: diagnostic.dodgeGeometry.target,
+            responseActor: diagnostic.dodgeGeometry.responseActor,
+            responseElement: diagnostic.dodgeGeometry.responseElement,
+            responseSize: diagnostic.dodgeGeometry.responseSize,
+            attackPath: diagnostic.dodgeGeometry.attackPath,
+            safeRegion: diagnostic.dodgeGeometry.safeRegion,
+            preferredResponseCard: diagnostic.dodgeGeometry.preferredResponseCard,
+            preferredResponseFits: diagnostic.dodgeGeometry.preferredResponseFits,
+            obstacles: diagnostic.dodgeGeometry.obstacles.map(({ kind, rect }) => ({ kind, rect })),
+          } : null,
+          selectedSampledPathRoot: diagnostic.selectedSampledPathRoot,
+        });
+      } : undefined;
       if (canScaleAttackCard && currentAction.response?.cardFace?.kind === "Dodge" && !hasStableRootForInteraction) {
         if (diagnosticReporter) diagnosticReporter({
           rootEventId: currentAction.rootEventId,
@@ -2311,6 +2395,23 @@ export function InteractionRootOverlay({
       const accessiblePartsValid = Boolean(currentAction.ariaLabel.trim())
         && (!currentAction.response || Boolean(currentAction.response.ariaLabel.trim()))
         && currentVisibleResponses.every((response) => Boolean(response.ariaLabel.trim()));
+      if (captureTrace && currentAction.cardKind === "Attack") recordAttackDodgeUxTrace("overlay-layout-result", {
+        rootEventId: currentAction.rootEventId,
+        state: nextLayout && accessiblePartsValid ? "ready" : "unavailable",
+        cause: !nextLayout ? "no-layout-candidate" : !accessiblePartsValid ? "accessible-description-invalid" : null,
+        fitStep: selectedFitStep,
+        viewport: { width: Math.round(shellBounds.width), height: Math.round(shellBounds.height) },
+        card: nextLayout?.card ?? null,
+        reservedDodgeCard: nextLayout?.responseCard ?? null,
+        dodgeCard: currentAction.response?.cardFace?.kind === "Dodge" ? nextLayout?.responseCard ?? null : null,
+        dodgeInterceptionFallback: nextLayout?.dodgeInterceptionFallback ?? false,
+        connectors: {
+          source: Boolean(nextLayout?.sourcePath),
+          target: Boolean(nextLayout?.targetPath),
+          responseSource: Boolean(nextLayout?.responseSourcePath),
+          block: Boolean(nextLayout?.targetBlockPath || nextLayout?.blockPath),
+        },
+      });
       onLayoutReadinessChange(nextLayout && accessiblePartsValid
         ? { key: currentAction.key, state: "ready" }
         : { key: currentAction.key, state: "unavailable" });
@@ -2350,6 +2451,142 @@ export function InteractionRootOverlay({
       onLayoutReadinessChange(null);
     };
   }, [actionSignature, enabled, onLayoutReadinessChange]);
+
+  useEffect(() => {
+    if (!isAttackDodgeUxTraceActive()) return;
+    if (action?.cardKind !== "Attack") return;
+    const layer = layerRef.current;
+    const shell = layer?.closest<HTMLElement>(".game-shell");
+    if (!layer || !shell) return;
+    const relativeBounds = (element: Element | null) => {
+      if (!(element instanceof HTMLElement || element instanceof SVGElement)) return null;
+      const rect = element.getBoundingClientRect();
+      const shellRect = shell.getBoundingClientRect();
+      return {
+        left: Math.round((rect.left - shellRect.left) * 10) / 10,
+        top: Math.round((rect.top - shellRect.top) * 10) / 10,
+        width: Math.round(rect.width * 10) / 10,
+        height: Math.round(rect.height * 10) / 10,
+      };
+    };
+    const anchorBounds = (playerId: string | null | undefined) => {
+      if (!playerId) return null;
+      const matches = Array.from(shell.querySelectorAll<HTMLElement>("[data-player-anchor]"))
+        .filter((element) => element.dataset.playerAnchor === playerId);
+      return matches.length === 1 ? relativeBounds(matches[0]) : null;
+    };
+    const elementState = (element: Element | null) => {
+      if (!(element instanceof HTMLElement || element instanceof SVGElement)) return null;
+      const style = getComputedStyle(element);
+      return {
+        rect: relativeBounds(element),
+        connected: element.isConnected,
+        clientRectCount: element.getClientRects().length,
+        display: style.display,
+        visibility: style.visibility,
+        opacity: style.opacity,
+        zIndex: style.zIndex,
+      };
+    };
+    const svg = layer.querySelector<SVGSVGElement>(".interaction-root-connectors");
+    const graphEdges = svg ? Array.from(svg.querySelectorAll<SVGPathElement>("path[class]")).map((path) => {
+      const style = getComputedStyle(path);
+      return {
+        edge: path.getAttribute("data-root-action-edge") ?? path.classList[0] ?? "unlabelled",
+        className: path.getAttribute("class"),
+        path: path.getAttribute("d"),
+        stroke: style.stroke,
+        strokeWidth: style.strokeWidth,
+        opacity: style.opacity,
+        visibility: style.visibility,
+        markerEndPresent: Boolean(path.getAttribute("marker-end")),
+        rect: relativeBounds(path),
+      };
+    }) : [];
+    const targetHalo = svg?.querySelector<SVGRectElement>(".interaction-root-target-halo") ?? null;
+    const targetHaloStyle = targetHalo ? getComputedStyle(targetHalo) : null;
+    const markers = svg ? Array.from(svg.querySelectorAll<SVGMarkerElement>("marker")).map((marker, index) => ({
+      index,
+      width: marker.getAttribute("markerWidth"),
+      height: marker.getAttribute("markerHeight"),
+      units: marker.getAttribute("markerUnits"),
+    })) : [];
+    const responseCard = layer.querySelector<HTMLElement>("[data-root-action-response-card]");
+    const rootCard = cardRef.current;
+    const graphTimer = layer.querySelector<HTMLElement>(".interaction-root-public-read-timer");
+    const responseTimer = shell.querySelector<HTMLElement>(".visible-countdown-response");
+    const shellRect = shell.getBoundingClientRect();
+    const visualViewport = window.visualViewport;
+    const rootStyle = rootCard ? getComputedStyle(rootCard) : null;
+    const svgStyle = svg ? getComputedStyle(svg) : null;
+    recordAttackDodgeUxTrace("overlay-dom", {
+      rootEventId: action.rootEventId,
+      interactionId: action.interactionId ?? null,
+      rootFrameId: action.rootFrameId ?? null,
+      mode: action.mode ?? "targeted",
+      cardKind: action.cardKind,
+      rootCardFaceKind: action.cardFace?.kind ?? null,
+      responseEventId: action.response?.eventId ?? null,
+      responseCardFaceKind: action.response?.cardFace?.kind ?? null,
+      responseCounterRelation: action.response?.countersRoot ? "BLOCKS_ROOT" : action.response?.targetId ? "TARGETS_PLAYER" : null,
+      settlementOutcome: action.settlement?.outcome ?? null,
+      overlay: {
+        enabled: layer.dataset.rootActionEnabled === "true",
+        ready: layer.dataset.rootActionReady === "true",
+        displayMode: layer.dataset.rootActionDisplayMode ?? null,
+        layoutState: layer.dataset.rootActionLayoutState ?? null,
+        fallbackReason: layer.dataset.rootActionFallbackReason ?? null,
+        fitStep: layer.dataset.rootActionCardFitStep ?? null,
+        dodgeSlotReserved: layer.dataset.rootActionDodgeSlotReserved ?? null,
+        visibleResponseCount: Number(layer.dataset.rootActionVisibleResponseCount ?? 0),
+        responseCount: Number(layer.dataset.rootActionResponseCount ?? 0),
+        exiting: layer.dataset.rootActionSettlementExiting === "true",
+        visibility: getComputedStyle(layer).visibility,
+        opacity: getComputedStyle(layer).opacity,
+      },
+      viewport: {
+        width: Math.round(window.innerWidth),
+        height: Math.round(window.innerHeight),
+        visualWidth: visualViewport ? Math.round(visualViewport.width) : null,
+        visualHeight: visualViewport ? Math.round(visualViewport.height) : null,
+        devicePixelRatio: window.devicePixelRatio || 1,
+      },
+      shell: { width: Math.round(shellRect.width), height: Math.round(shellRect.height) },
+      anchors: {
+        source: anchorBounds(action.sourceId),
+        target: anchorBounds(action.targetId),
+        responseSource: anchorBounds(action.response?.actorId),
+      },
+      cards: {
+        root: elementState(rootCard),
+        response: elementState(responseCard),
+      },
+      svg: {
+        present: Boolean(svg),
+        state: elementState(svg ?? null),
+        viewBox: svg?.getAttribute("viewBox") ?? null,
+        pointerEvents: svgStyle?.pointerEvents ?? null,
+        edges: graphEdges,
+        targetHalo: targetHalo ? {
+          x: targetHalo.getAttribute("x"),
+          y: targetHalo.getAttribute("y"),
+          width: targetHalo.getAttribute("width"),
+          height: targetHalo.getAttribute("height"),
+          stroke: targetHaloStyle?.stroke ?? null,
+          strokeWidth: targetHaloStyle?.strokeWidth ?? null,
+          opacity: targetHaloStyle?.opacity ?? null,
+          fill: targetHaloStyle?.fill ?? null,
+        } : null,
+        markers,
+      },
+      rootCardStyle: rootStyle ? { visibility: rootStyle.visibility, opacity: rootStyle.opacity, zIndex: rootStyle.zIndex } : null,
+      timers: {
+        graphText: graphTimer?.textContent?.trim() ?? null,
+        responseText: responseTimer?.textContent?.trim() ?? null,
+        responseUrgency: responseTimer?.dataset.countdownUrgency ?? null,
+      },
+    });
+  }, [action?.cardFace?.kind, action?.cardKind, action?.interactionId, action?.mode, action?.response?.actorId, action?.response?.cardFace?.kind, action?.response?.countersRoot, action?.response?.eventId, action?.response?.targetId, action?.rootEventId, action?.rootFrameId, action?.settlement?.outcome, action?.sourceId, action?.targetId, actionSignature, displayMode, enabled, layout, layoutReadiness, publicCounterReadRemainingMs]);
 
   if (!action) return null;
   const groupNamesKnown = Boolean(action.groupTargets?.length && action.groupTargets.every((target) => target.playerName.trim()));
