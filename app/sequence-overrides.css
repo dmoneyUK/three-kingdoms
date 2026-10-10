@@ -510,6 +510,26 @@
   pointer-events: none;
 }
 
+.interaction-root-public-read-timer {
+  position: absolute;
+  z-index: 9;
+  display: grid;
+  min-width: 54px;
+  height: 22px;
+  place-items: center;
+  padding: 0 7px;
+  border: 1px solid #b6d8c4;
+  border-radius: 999px;
+  background: #101a15f2;
+  box-shadow: 0 0 0 1px #50725f99, 0 3px 9px #000b;
+  color: #f5e6b8;
+  font: 800 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .03em;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .interaction-root-overlay[data-root-action-ready="false"] .interaction-root-connectors,
 .interaction-root-overlay[data-root-action-ready="false"] .interaction-root-action-card,
 .interaction-root-overlay[data-root-action-ready="false"] .interaction-root-history-summary {

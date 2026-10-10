@@ -228,6 +228,35 @@ function relativeRect(element: HTMLElement, root: DOMRect): Rect {
   };
 }
 
+function PublicCounterReadTimer({ eventId, remainingMs, style }: { eventId: string; remainingMs: number; style: { left: number; top: number } }) {
+  const [remainingSeconds, setRemainingSeconds] = useState(Math.ceil(remainingMs / 1000));
+  useEffect(() => {
+    const visibleSince = performance.now();
+    let lastSeconds = Math.ceil(remainingMs / 1000);
+    const update = () => {
+      const nextSeconds = Math.ceil(Math.max(0, remainingMs - (performance.now() - visibleSince)) / 1000);
+      if (nextSeconds !== lastSeconds) {
+        lastSeconds = nextSeconds;
+        setRemainingSeconds(nextSeconds);
+      }
+    };
+    update();
+    const timer = window.setInterval(update, 200);
+    return () => window.clearInterval(timer);
+  }, [eventId, remainingMs]);
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = String(remainingSeconds % 60).padStart(2, "0");
+  return <div
+    className="interaction-root-public-read-timer"
+    data-public-counter-read-timer="true"
+    data-public-counter-read-event-id={eventId}
+    data-public-counter-read-remaining-seconds={remainingSeconds}
+    role="timer"
+    aria-label={`Public response graph time remaining: ${minutes} minutes ${seconds} seconds`}
+    style={style}
+  >{`${minutes}:${seconds}`}</div>;
+}
+
 function center(rect: Rect): Point { return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }; }
 
 function rectangleEdge(rect: Rect, toward: Point): Point {
@@ -2082,6 +2111,7 @@ export function InteractionRootOverlay({
   displayMode,
   layoutReadiness,
   fallbackReason,
+  publicCounterReadRemainingMs,
   onLayoutReadinessChange,
 }: {
   action: InteractionRootOverlayAction | null;
@@ -2091,6 +2121,7 @@ export function InteractionRootOverlay({
   displayMode: "graph" | "measuring" | "fallback";
   layoutReadiness: "measuring" | "ready" | "unavailable" | null;
   fallbackReason?: string;
+  publicCounterReadRemainingMs?: number | null;
   onLayoutReadinessChange: (readiness: { key: string; state: "measuring" | "ready" | "unavailable" } | null) => void;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
@@ -2346,7 +2377,8 @@ export function InteractionRootOverlay({
   const visible = enabled && displayMode === "graph" && layoutReadiness === "ready" && Boolean(layout) && accessiblePartsValid
     && Boolean(sourceName && (groupNamesKnown || orderedNamesKnown || simultaneousNamesKnown || action.mode === "self-target" || targetName));
   const responseChainRootBlocked = Boolean(action.responses?.length && action.rootEffectState === "BLOCKED");
-  return <div
+  return <>
+    <div
     ref={layerRef}
     className="interaction-root-overlay"
     data-root-action-overlay="true"
@@ -2638,5 +2670,13 @@ export function InteractionRootOverlay({
         <strong>{response.cardLabel}</strong>
       </div>;
     })}
-  </div>;
+    </div>
+    {visible && layout && action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE"
+      && publicCounterReadRemainingMs !== null && publicCounterReadRemainingMs !== undefined && <PublicCounterReadTimer
+        key={action.settlement.eventId}
+        eventId={action.settlement.eventId}
+        remainingMs={publicCounterReadRemainingMs}
+        style={{ left: layout.card.left + layout.card.width - 54, top: Math.max(6, layout.card.top - 30) }}
+      />}
+  </>;
 }
