@@ -5,9 +5,9 @@ Mode: `USER-DIRECTED TEST INFRASTRUCTURE`
 
 ## Latest result / CI
 
-`WTK-TEST-PRESET-HANDS-01` implementation is prepared locally: explicit host-enabled test rooms, persisted server-validated Standard-card presets, and physical-card assignment through the existing post-Hero-selection `beginMatch()` deal. Normal rooms retain random dealing. User directed that this feature have no automated tests; no feature-specific automated tests are retained. Production build and targeted ESLint passed; `db:generate` reports no schema drift. Manual deployed-game verification and exact feature-SHA CI/deploy are pending.
+`WTK-TEST-PRESET-HANDS-01` shipped in `896938e09ea3462d4bd8994b7cfad7ad1baa6b55`: explicit host-enabled test rooms, persisted server-validated Standard-card presets, and physical-card assignment through the existing post-Hero-selection `beginMatch()` deal. Normal rooms retain random dealing. No feature-specific automated tests are retained per user direction. Local production build and targeted ESLint passed; `db:generate` reports no schema drift. A temporary focused API/browser run before the no-automation instruction passed 6/6 and 2/2 respectively; those test additions were removed and are not acceptance evidence.
 
-Before commit, latest relevant push CI was run `38087662559`, **success** on `379d14f9d9ba816f23d938ebba945885ad457bfb`. Current remote `ux-v2` is `4c40c1b851d1fce69c5c80ed5db1e0e1e21e7f52` (design-document-only update; no run observed for that SHA).
+Exact-SHA Actions run `38090086059` on `896938e`: **success** for Lint/fast, API, browser startup smoke, and deploy. Production `/api/health` returned `{"ok":true,"worker":"available"}`; the deployed UI displayed the exact `896938e` build SHA. Manual deployed gameplay remains unverified: the available in-app browser restored an older completed match, and macOS Chrome is locked. The existing browser session was not cleared or replaced.
 
 ## Design checkpoint
 
@@ -15,4 +15,4 @@ Latest remote `docs/UX2-refine.md` blob: `d966440b487bcbe172d5ea608704cc6945dfe6
 
 ## Current task
 
-`WTK-TEST-PRESET-HANDS-01` — commit/push, verify exact-SHA CI/deployment, perform the real four-seat manual acceptance if the deployed browser is accessible, then stop for Reviewer/user review. Do not start §6.36 Task 2/3 or other UX work.
+STOP — await a clean/unlocked browser session to perform the deployed four-seat manual acceptance, then hand off for Reviewer/user review. Do not start §6.36 Task 2/3 or other UX work.
