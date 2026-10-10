@@ -684,7 +684,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
           : state === "active-negation-unfocused-observer" ? meId
           : dyingFixture ? dyingTargetId : judgementStage ? state === "judgement" ? "p2" : "p1" : actorId;
   const currentActionBase = state === "rest" || bumperHarvestComplete || negationSettlementOutcome ? null : currentActionFor(bumperHarvestLocalFixture || oathNegationLocalFixture || groupNegationLocalFixture ? "negation" : bumperHarvestFixture && bumperHarvestChild || oathNegationFixture || groupNegationFixture ? "active-negation-observer" : bumperHarvestFixture ? "group-observer" : state, actorId, hand[0]?.id ?? "", { targetHandCount, targetCardCase, targetCardKind });
-  const responseDeadline = timedResponse && state === "negation" ? Date.parse("2026-01-01T00:00:25.000Z") : 0;
+  const responseDeadline = timedResponse && state === "negation" ? Date.parse("2026-01-01T00:01:00.000Z") : 0;
   const resolvedCurrentAction = currentActionBase && state === "hua-xiong-triumphant-observer"
     ? { version: 3, kind: "response", actorId, deadline: 0, reason: "Waiting for the acting player", legalActions: [] }
     : currentActionBase && duelObserverView

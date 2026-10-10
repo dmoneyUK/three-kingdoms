@@ -30,6 +30,7 @@ type ActiveAttackDodgeSettlement = {
   phase: "reading" | "exiting" | "complete";
   remainingMs: number;
 };
+type ActiveAttackDodgeRootCardRead = { eventId: string; remainingMs: number };
 type ActivePublicNegationRead = { key: string; action: InteractionRootOverlayAction; expiresAt: number; phase: "reading" | "elapsed" | "live" | "settlement-pending" | "exiting" };
 type RootActionOverlayLayoutReadiness = { key: string; state: "measuring" | "ready" | "unavailable" } | null;
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
@@ -2040,6 +2041,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const [activeBumperHarvestSettlement, setActiveBumperHarvestSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeAttackDodgeSettlement, setActiveAttackDodgeSettlement] = useState<ActiveAttackDodgeSettlement | null>(null);
   const attackDodgeSettlementCapturedEventIds = useRef(new Set<string>());
+  const [activeAttackDodgeRootCardRead, setActiveAttackDodgeRootCardRead] = useState<ActiveAttackDodgeRootCardRead | null>(null);
+  const attackDodgeRootCardReadCapturedEventIds = useRef(new Set<string>());
   const [activePublicNegationRead, setActivePublicNegationRead] = useState<ActivePublicNegationRead | null>(null);
   // Events already present when the screen mounts have no new animation to
   // wait for. New event IDs enter this set only after their presentation ends.
@@ -4340,12 +4343,51 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     ? activeAttackDodgeSettlementId
     : null;
   const attackDodgeSettlementAlreadyActive = activeAttackDodgeSettlementId === activeAttackDodgeSettlementEventId;
+  const attackDodgeRootCardReadEventId = rootActionOverlayAction?.cardKind === "Attack"
+    && rootActionOverlayAction.mode === "targeted"
+    && rootActionOverlayAction.cardFace
+    && !rootActionOverlayAction.response
+    ? rootActionOverlayAction.rootEventId
+    : null;
+  const attackDodgeRootCardReadRemainingMs = rootActionOverlayGraphReady
+    && activeAttackDodgeRootCardRead?.eventId === attackDodgeRootCardReadEventId
+    ? activeAttackDodgeRootCardRead.remainingMs
+    : null;
   const rootActionOverlayPublicReadRemainingMs = rootActionOverlayGraphReady
     && activeAttackDodgeSettlement?.phase === "reading"
     && activeAttackDodgeSettlement.action.response?.eventId === activeAttackDodgeSettlement.eventId
     && rootActionOverlayAction?.response?.eventId === activeAttackDodgeSettlement.eventId
     ? activeAttackDodgeSettlement.remainingMs
     : null;
+  useEffect(() => {
+    if (!attackDodgeRootCardReadEventId || !rootActionOverlayGraphReady
+      || attackDodgeRootCardReadCapturedEventIds.current.has(attackDodgeRootCardReadEventId)) return;
+    attackDodgeRootCardReadCapturedEventIds.current.add(attackDodgeRootCardReadEventId);
+    setActiveAttackDodgeRootCardRead({
+      eventId: attackDodgeRootCardReadEventId,
+      remainingMs: UI_TIMING.attackDodgePublicCounterRead,
+    });
+  }, [attackDodgeRootCardReadEventId, rootActionOverlayGraphReady]);
+  useEffect(() => {
+    const eventId = attackDodgeRootCardReadEventId;
+    const remainingMs = attackDodgeRootCardReadRemainingMs;
+    if (!eventId || remainingMs === null || !rootActionOverlayGraphReady) return;
+    const visibleSince = performance.now();
+    onPublicCounterReadVisible(`attack-dodge-card:${eventId}`, remainingMs, true);
+    let elapsed = false;
+    const timer = window.setTimeout(() => {
+      elapsed = true;
+      setActiveAttackDodgeRootCardRead((current) => current?.eventId === eventId ? null : current);
+    }, Math.max(0, remainingMs));
+    return () => {
+      window.clearTimeout(timer);
+      if (elapsed) return;
+      const visibleMs = performance.now() - visibleSince;
+      setActiveAttackDodgeRootCardRead((current) => current?.eventId === eventId
+        ? { ...current, remainingMs: Math.max(0, current.remainingMs - visibleMs) }
+        : current);
+    };
+  }, [attackDodgeRootCardReadEventId, attackDodgeRootCardReadRemainingMs, onPublicCounterReadVisible, rootActionOverlayGraphReady]);
   if (activeAttackDodgeSettlementId && attackDodgeHoldSuperseded) {
     setActiveAttackDodgeSettlement((current) => current?.eventId === activeAttackDodgeSettlementId ? null : current);
   }
@@ -4575,6 +4617,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       superseded: attackDodgeHoldSuperseded,
       capturedEventCount: attackDodgeSettlementCapturedEventIds.current.size,
       graphTimerRemainingMs: rootActionOverlayPublicReadRemainingMs,
+      rootCardEventId: activeAttackDodgeRootCardRead?.eventId ?? null,
+      rootCardTimerRemainingMs: attackDodgeRootCardReadRemainingMs,
+      capturedRootCardCount: attackDodgeRootCardReadCapturedEventIds.current.size,
     },
   } : null;
   const attackDodgeTraceSnapshotJson = attackDodgeTraceSnapshot ? JSON.stringify(attackDodgeTraceSnapshot) : null;
@@ -4805,7 +4850,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       <div className="player-board" aria-label="Players" data-player-count={room.players.length} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}>{room.players.filter((player) => player.id !== room.meId).map((player) => { const index = room.players.findIndex((candidate) => candidate.id === player.id); const relativeIndex = (index - myTableIndex + room.players.length) % room.players.length; const selectedTargetCardKind = selectedCanPlayAsAttack ? "Attack" : card?.kind; const cardTargetLegal = Boolean(card && (card.kind === "BorrowedSword" ? borrowedSwordPlayTargetIds.includes(player.id) : selectedTargetCardKind && canTargetCharacter({ sourceId: room.meId, targetId: player.id, targetHero: player.hero, targetHandCount: player.handCount, cardKind: selectedTargetCardKind }))); const targetablePlayer = Boolean((borrowedSwordTargetSelectionActive && borrowedSwordEligibleTargetIds.includes(player.id) && player.alive) || (activeSkillTargetMode && activeSkillTargetIds.includes(player.id) && player.alive) || (triggerTargetSelection?.targetIds.includes(player.id) && triggerTargetMode) || (serpentMode && canPlay) || (card && cardTargetLegal && (selectedCanPlayAsAttack || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "BorrowedSword" || card.kind === "Overindulgence" || card.kind === "RationsDepleted"))); return <OpponentPlayerCard key={`square-${player.id}`} totalPlayers={room.players.length} player={player} viewerId={room.meId} playerHero={heroDefinition(player.hero)} relativeIndex={relativeIndex} isTurn={player.seat === room.turnSeat} isActionPlayer={clientPresentation.stage !== "NEGATION" && player.id === room.actionPlayerId} isSelectedTarget={borrowedSwordTargetId === player.id || targetIds.includes(player.id)} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(player.id)} interactionRoles={projectInteractionSeatRoles(clientPresentation, player.id)} targetSelectionActive={targetSelectionActive} targetablePlayer={targetablePlayer} onTarget={() => { if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id); else { setTarget(player.id); setTargetCardIndex(null); } }} onInspect={() => setExpandedOpponentId((currentId) => currentId === player.id ? null : player.id)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} judgementInFlight={judgementInFlight} serpentSelected={serpentSelected} triggerResponse={triggerResponse} triggerSelectionUsesCards={triggerSelectionUsesCards} responseDecisionReady={responseDecisionReady} triggerCardOption={triggerCardOption} onToggleEquipment={(cardId) => setSerpentSelected((ids) => ids.includes(cardId) ? ids.filter((id) => id !== cardId) : ids.length < (triggerResponse && triggerSelectionUsesCards ? triggerSelectionMax : 2) ? [...ids, cardId] : ids)} />; })}</div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
     </section>
-    <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} displayMode={rootActionOverlayDisplayMode} layoutReadiness={rootActionLayoutState} fallbackReason={rootActionOverlayFallbackReason} publicCounterReadRemainingMs={rootActionOverlayPublicReadRemainingMs} onLayoutReadinessChange={onRootActionOverlayLayoutReadinessChange} />
+    <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} displayMode={rootActionOverlayDisplayMode} layoutReadiness={rootActionLayoutState} fallbackReason={rootActionOverlayFallbackReason} publicCounterReadRemainingMs={rootActionOverlayPublicReadRemainingMs} publicCardReadEventId={attackDodgeRootCardReadEventId} publicCardReadRemainingMs={attackDodgeRootCardReadRemainingMs} onLayoutReadinessChange={onRootActionOverlayLayoutReadinessChange} />
     <footer className="play-command">
     <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
       heroSkillControl={

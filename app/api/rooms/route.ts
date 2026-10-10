@@ -48,7 +48,7 @@ const json = (data: unknown, status = 200) => Response.json(data, { status, head
 const publicRoleName = (role: string | null | undefined) => role === "Renegade" ? "Spy" : role ?? null;
 const HARVEST_CHOICE_HOLD_MS = 1400;
 const HARVEST_CHOICE_DURATION_MS = 60_000;
-const HUMAN_RESPONSE_TIMEOUT_MS = 30_000;
+const HUMAN_RESPONSE_TIMEOUT_MS = 60_000;
 const ROOM_IDLE_TIMEOUT_MS = 5 * 60_000;
 // Human decisions do not begin their clock until the client has finished the
 // public presentation and explicitly arms it.
@@ -4414,7 +4414,7 @@ async function roomState(code: string, token?: string) {
   const viewerPlayerIds = new Set(sessionPlayers.map((player) => player.id));
   const actionRevision = await actionRevisionFor(room, players, projectedActionPlayerId);
   const responseDeadline = pending && "deadline" in pending ? pending.deadline ?? 0 : 0;
-  const responseCountdownVisibleAt = room.phase === "response" && responseDeadline ? responseDeadline - HUMAN_RESPONSE_TIMEOUT_MS + 5_000 : 0;
+  const responseCountdownVisibleAt = room.phase === "response" && responseDeadline ? responseDeadline - HUMAN_RESPONSE_TIMEOUT_MS : 0;
   const actionPlayerId = room.status === "heroes" ? projectedActionPlayerId : negationWaitingForOther || room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
   const privateActionReason = responsePending?.delegation
     ? delegatedResponseReason(responsePending, me, players)

@@ -229,24 +229,24 @@ function relativeRect(element: HTMLElement, root: DOMRect): Rect {
   };
 }
 
-function PublicCounterReadTimer({ eventId, remainingMs, style }: { eventId: string; remainingMs: number; style: { left: number; top: number } }) {
+function PublicCounterReadTimer({ eventId, remainingMs, style, readKind }: { eventId: string; remainingMs: number; style: { left: number; top: number }; readKind: "response" | "card" }) {
   const [remainingSeconds, setRemainingSeconds] = useState(Math.ceil(remainingMs / 1000));
   useEffect(() => {
     const visibleSince = performance.now();
     let lastSeconds = Math.ceil(remainingMs / 1000);
-    recordAttackDodgeUxTrace("public-read-timer", { eventId, remainingSeconds: lastSeconds });
+    recordAttackDodgeUxTrace("public-read-timer", { eventId, readKind, remainingSeconds: lastSeconds });
     const update = () => {
       const nextSeconds = Math.ceil(Math.max(0, remainingMs - (performance.now() - visibleSince)) / 1000);
       if (nextSeconds !== lastSeconds) {
         lastSeconds = nextSeconds;
-        recordAttackDodgeUxTrace("public-read-timer", { eventId, remainingSeconds: nextSeconds });
+        recordAttackDodgeUxTrace("public-read-timer", { eventId, readKind, remainingSeconds: nextSeconds });
         setRemainingSeconds(nextSeconds);
       }
     };
     update();
     const timer = window.setInterval(update, 200);
     return () => window.clearInterval(timer);
-  }, [eventId, remainingMs]);
+  }, [eventId, readKind, remainingMs]);
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = String(remainingSeconds % 60).padStart(2, "0");
   return <div
@@ -255,7 +255,7 @@ function PublicCounterReadTimer({ eventId, remainingMs, style }: { eventId: stri
     data-public-counter-read-event-id={eventId}
     data-public-counter-read-remaining-seconds={remainingSeconds}
     role="timer"
-    aria-label={`Public response graph time remaining: ${minutes} minutes ${seconds} seconds`}
+    aria-label={`Public ${readKind === "response" ? "response" : "card"} graph time remaining: ${minutes} minutes ${seconds} seconds`}
     style={style}
   >{`${minutes}:${seconds}`}</div>;
 }
@@ -2115,6 +2115,8 @@ export function InteractionRootOverlay({
   layoutReadiness,
   fallbackReason,
   publicCounterReadRemainingMs,
+  publicCardReadEventId,
+  publicCardReadRemainingMs,
   onLayoutReadinessChange,
 }: {
   action: InteractionRootOverlayAction | null;
@@ -2125,6 +2127,8 @@ export function InteractionRootOverlay({
   layoutReadiness: "measuring" | "ready" | "unavailable" | null;
   fallbackReason?: string;
   publicCounterReadRemainingMs?: number | null;
+  publicCardReadEventId?: string | null;
+  publicCardReadRemainingMs?: number | null;
   onLayoutReadinessChange: (readiness: { key: string; state: "measuring" | "ready" | "unavailable" } | null) => void;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
@@ -2910,9 +2914,22 @@ export function InteractionRootOverlay({
     </div>
     {visible && layout && action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE"
       && publicCounterReadRemainingMs !== null && publicCounterReadRemainingMs !== undefined && <PublicCounterReadTimer
-        key={action.settlement.eventId}
+        key={`response:${action.settlement.eventId}`}
         eventId={action.settlement.eventId}
         remainingMs={publicCounterReadRemainingMs}
+        readKind="response"
+        style={{
+          left: (layout.responseCard ?? layout.card).left + (layout.responseCard ?? layout.card).width - 54,
+          top: Math.max(6, (layout.responseCard ?? layout.card).top - 30),
+        }}
+      />}
+    {visible && layout && action.cardKind === "Attack" && action.cardFace
+      && !action.response && publicCardReadEventId === action.rootEventId
+      && publicCardReadRemainingMs !== null && publicCardReadRemainingMs !== undefined && <PublicCounterReadTimer
+        key={`card:${publicCardReadEventId}`}
+        eventId={publicCardReadEventId}
+        remainingMs={publicCardReadRemainingMs}
+        readKind="card"
         style={{ left: layout.card.left + layout.card.width - 54, top: Math.max(6, layout.card.top - 30) }}
       />}
   </>;

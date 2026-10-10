@@ -20,9 +20,9 @@ test("UX2 response timer and System Menu stay compact at the Stage/Guidance boun
   await expect(timer).toBeVisible();
   await expect(timer).toHaveAttribute("role", "timer");
   await expect(timer).toHaveAttribute("data-countdown-urgency", "calm");
-  await expect(timer).toHaveAttribute("aria-label", "Response Time 25 seconds");
+  await expect(timer).toHaveAttribute("aria-label", "Response Time 60 seconds");
   await expect(timer.locator(".countdown-hourglass")).toHaveAttribute("aria-hidden", "true");
-  await expect(timer).toContainText("25s");
+  await expect(timer).toContainText("60s");
   await expect(timer).not.toContainText("Response Time");
   await expect(timer).not.toContainText(/Player\s+\d/i);
   await expect(stage).toBeVisible();
