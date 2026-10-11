@@ -595,15 +595,15 @@ async function assertAttackGraphOrSafeFallback(page, viewport, label) {
   return { mode: "fallback", fitStep: diagnostics.overlay.fitStep, diagnostics };
 }
 
-async function seedGame(request, playerCount = 4, { sourceCard = attack, sourceCards = null, sourceHp = 4, sourceHero = "zhao-yun", targetHero = "sun-quan", targetCard = null, targetCards = null, otherHands = {}, sourceIndex = 0, targetIndex = 1 } = {}) {
+async function seedGame(request, playerCount = 4, { sourceCard = attack, sourceCards = null, sourceHp = 4, sourceHero = "zhao-yun", targetHero = "sun-quan", sourceName = "SOURCE", targetName = "TARGET", targetCard = null, targetCards = null, otherHands = {}, sourceIndex = 0, targetIndex = 1 } = {}) {
   const rolesByPlayerCount = {
     4: ["Rebel", "Loyalist", "Lord", "Renegade"],
     6: ["Rebel", "Loyalist", "Lord", "Renegade", "Rebel", "Rebel"],
     8: ["Rebel", "Loyalist", "Lord", "Renegade", "Rebel", "Rebel", "Loyalist", "Rebel"],
   };
   const players = [
-    { name: "SOURCE", hero: sourceHero },
-    { name: "TARGET", hero: targetHero },
+    { name: "SOURCE", hero: "zhao-yun" },
+    { name: "TARGET", hero: "sun-quan" },
     { name: "THIRD", hero: "guo-jia" },
     { name: "FOURTH", hero: "zhou-yu" },
     { name: "FIFTH", hero: "huang-gai" },
@@ -612,6 +612,7 @@ async function seedGame(request, playerCount = 4, { sourceCard = attack, sourceC
     { name: "EIGHTH", hero: "liu-bei" },
   ].slice(0, playerCount).map((player, index) => ({
     ...player,
+    name: index === sourceIndex ? sourceName : index === targetIndex ? targetName : player.name,
     role: rolesByPlayerCount[playerCount]?.[index],
     hero: index === sourceIndex ? sourceHero : index === targetIndex ? targetHero : player.hero,
     hp: index === sourceIndex ? sourceHp : 4,
@@ -3251,20 +3252,27 @@ for (const scenario of [
     const targetCards = [targetDodge, { ...attack, id: `stage-a-target-attack-${suffix}` }, { ...peach, id: `stage-a-target-peach-${suffix}` }, { ...peach, id: `stage-a-target-peach-two-${suffix}` }];
     const sourceCards = [sourceCard, { ...peach, id: `stage-a-source-peach-${suffix}` }, { ...dodge, id: `stage-a-source-dodge-${suffix}` }, { ...peach, id: `stage-a-source-peach-two-${suffix}` }];
     const observerCards = [{ ...attack, id: `stage-a-observer-attack-${suffix}` }, { ...peach, id: `stage-a-observer-peach-${suffix}` }, { ...dodge, id: `stage-a-observer-dodge-${suffix}` }, { ...peach, id: `stage-a-observer-peach-two-${suffix}` }];
-    const targetName = ["SOURCE", "TARGET", "THIRD", "FOURTH", "FIFTH", "SIXTH", "SEVENTH", "EIGHTH"][targetIndex];
+    const sourceName = "Cao Cao";
+    const targetName = "Zhang Liao";
     const seed = await seedGame(request, playerCount, {
       sourceCard,
       sourceCards,
       targetCards,
+      sourceHero: "cao-cao",
+      targetHero: "zhang-liao",
+      sourceName,
+      targetName,
       otherHands: { 2: observerCards },
       targetIndex,
     });
-    const sourceIndex = seed.players.findIndex((player) => player.name === "SOURCE");
+    const sourceIndex = seed.players.findIndex((player) => player.name === sourceName);
     const resolvedTargetIndex = seed.players.findIndex((player) => player.name === targetName);
     const observerIndex = seed.players.findIndex((player) => player.name === "THIRD");
     expect(sourceIndex, "the seeded response identifies the source by player identity").toBeGreaterThanOrEqual(0);
     expect(resolvedTargetIndex, "the seeded response identifies the selected target by player identity").toBeGreaterThanOrEqual(0);
     expect(observerIndex, "the seeded response identifies an independent observer").toBeGreaterThanOrEqual(0);
+    expect(seed.players[sourceIndex]).toMatchObject({ name: sourceName, hero: "cao-cao" });
+    expect(seed.players[resolvedTargetIndex]).toMatchObject({ name: targetName, hero: "zhang-liao" });
     const sourceId = seed.players[sourceIndex].id;
     const targetId = seed.players[resolvedTargetIndex].id;
     await openGame(page, seed, sourceIndex, viewport);
@@ -3307,7 +3315,7 @@ for (const scenario of [
       expect(await openOverlay.getAttribute("data-root-action-fallback-reason")).toBeNull();
       await expect(targetPage.locator(".interaction-stage")).toHaveCount(0);
       await expect(openOverlay).toHaveAttribute("role", "img");
-      await expect(openOverlay).toHaveAttribute("aria-label", `SOURCE played Attack targeting ${targetName}.`);
+      await expect(openOverlay).toHaveAttribute("aria-label", `${sourceName} played Attack targeting ${targetName}.`);
       const openRootCard = targetPage.locator('[data-root-action-card="true"]');
       await expect(openRootCard).toHaveAttribute("data-root-action-card-face-kind", "Attack");
       await expect(openRootCard.locator(".played-card.attack")).toBeVisible();
@@ -3398,7 +3406,7 @@ for (const scenario of [
         const screenshot = await viewerPage.screenshot({ path: testInfo.outputPath(`attack-stage-a-root-${viewport.width}-${name}.png`) });
         await testInfo.attach(`attack-stage-a-root-${viewport.width}-${name}.png`, { body: screenshot, contentType: "image/png" });
       }
-      await expect(targetPage.getByRole("img", { name: `SOURCE played Attack targeting ${targetName}.` })).toHaveCount(1);
+      await expect(targetPage.getByRole("img", { name: `${sourceName} played Attack targeting ${targetName}.` })).toHaveCount(1);
       await expect(openOverlay.getByRole("img")).toHaveCount(0);
       await expect(targetPage.locator('[data-root-action-response-card="true"]')).toHaveCount(0);
       await expect.poll(async () => {
@@ -3510,7 +3518,7 @@ for (const scenario of [
       expect(visual.overlay).toMatchObject({
         ready: "true", enabled: "true", mode: "graph", layout: "ready", fallbackReason: null,
         role: "img",
-        ariaLabel: `SOURCE played Attack targeting ${targetName}. ${targetName} played Dodge to block SOURCE's Attack against ${targetName}. Attack resolution complete.`,
+        ariaLabel: `${sourceName} played Attack targeting ${targetName}. ${targetName} played Dodge to block ${sourceName}'s Attack against ${targetName}. Attack resolution complete.`,
         pointerEvents: "none",
       });
       expect(visual.root.dataset).toMatchObject({
@@ -3521,14 +3529,14 @@ for (const scenario of [
       expect(visual.root.faceVisible).toBe(true);
       expect(visual.root.faceStyle.backgroundImage).toContain("/attack-card.jpg");
       expect(visual.root.directSmallCount).toBe(0);
-      expect(visual.root.ariaLabel).toBe(`SOURCE played Attack targeting ${targetName}`);
+      expect(visual.root.ariaLabel).toBe(`${sourceName} played Attack targeting ${targetName}`);
       expect(visual.response.dataset).toMatchObject({
         responseCardFaceKind: "Dodge", responseRelation: "COUNTERS_ROOT",
         responseActorId: targetId, responseEventId: proof.responseEventId,
       });
       expect(visual.response.faceVisible).toBe(true);
       expect(visual.response.faceStyle.backgroundImage).toContain("/dodge-card.jpg");
-      expect(visual.response.ariaLabel).toBe(`${targetName} played Dodge to block SOURCE's Attack against ${targetName}`);
+      expect(visual.response.ariaLabel).toBe(`${targetName} played Dodge to block ${sourceName}'s Attack against ${targetName}`);
       expect(visual.response.dataset.rootActionDodgeInterception).toMatch(/^(direct|adjacent)$/);
       expect(geometry.stageCount).toBe(0);
       expect(geometry.tablePlayedCardCount).toBe(0);
