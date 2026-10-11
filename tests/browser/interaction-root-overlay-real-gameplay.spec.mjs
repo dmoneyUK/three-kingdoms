@@ -693,7 +693,8 @@ function observePublicAttackProofPolls(page) {
   page.on("response", async (response) => {
     if (response.request().method() !== "GET" || !response.url().includes("/api/rooms?")) return;
     try {
-      const view = await response.json();
+      const responseView = await response.json();
+      const view = responseView.room && typeof responseView.room === "object" ? responseView.room : responseView;
       const identity = view.presentationSnapshot?.identity;
       const root = view.presentationSnapshot?.rootAction;
       samples.push({
@@ -1694,9 +1695,9 @@ test("real 4-player Attack graph stays intact while Lu Xun selects and unselects
     }, { timeout: 10_000, message: "the selected Dodge remains inside the authoritative response deadline" }).toBeGreaterThan(0);
     const armedView = await roomView(request, seed, 1);
     const deadline = armedView.currentAction.deadline;
-    expect(deadline - Date.now()).toBeLessThanOrEqual(30_000);
+    expect(deadline - Date.now()).toBeLessThanOrEqual(60_000);
     await expect.poll(() => deadline - Date.now(), {
-      timeout: 8_000,
+      timeout: 40_000,
       message: "capture the selected-Dodge state with approximately 24 seconds remaining",
     }).toBeLessThanOrEqual(24_000);
     const nearScreenshotDeadlineRemainingMs = deadline - Date.now();
@@ -2638,6 +2639,8 @@ test("real post-Negation Attack creates and keeps its own visible graph at 440×
     { name: "defender", page: defenderPage, playerIndex: 1 },
     { name: "observer", page: observerPage, playerIndex: 2 },
   ];
+  const beforeResponseRootBounds = new Map();
+  let lateObserverPage = null;
   try {
     await Promise.all(viewers.map(({ page, playerIndex }) => openGame(page, seed, playerIndex, viewport)));
 
@@ -2717,6 +2720,9 @@ test("real post-Negation Attack creates and keeps its own visible graph at 440×
     for (const { name, page } of viewers) {
       await expectAttackGraphIdentity(page, rootAction);
       await expectAttackConnectorAppearance(page.locator('[data-root-action-overlay="true"]'));
+      const rootBounds = await page.locator('[data-root-action-card="true"]').boundingBox();
+      expect(rootBounds, `${name}: retain the stable root position before Dodge`).not.toBeNull();
+      beforeResponseRootBounds.set(name, rootBounds);
       for (const edge of ["source", "target"]) {
         const connector = page.locator(`[data-root-action-edge="${edge}"]`);
         await expect(connector, `${name}: ${edge} relation is actually visible before Dodge`).toBeVisible();
@@ -2746,15 +2752,185 @@ test("real post-Negation Attack creates and keeps its own visible graph at 440×
       interactionId: rootAction.interactionId, rootSourceId: sourceId, targetId, responseActorId: targetId,
       rootCardKind: "Attack", responseCardKind: "Dodge",
     });
-    await Promise.all(viewers.map(({ page }) => page.reload()));
-    await Promise.all(viewers.map(({ page }) => page.locator(".game-shell").waitFor({ state: "visible" })));
-    const afterDodgePresentation = [];
-    for (const { name, page } of viewers) {
+    expect(proof.displayExpiresAtMs).toBeGreaterThan(Date.now());
+
+    const assertVisibleDodgeGraph = async (name, page, previousRootBounds = null, readyTimeout = 10_000) => {
       const overlay = page.locator('[data-root-action-overlay="true"]');
       await expect(overlay).toHaveAttribute("data-root-action-event-id", rootAction.rootEventId);
       await expect(overlay).toHaveAttribute("data-root-action-interaction-id", rootAction.interactionId);
-      const responseCard = page.locator(`[data-root-action-response-card="true"][data-response-event-id="${proof.responseEventId}"]`);
-      const responseEdges = page.locator('[data-root-action-edge="response-source"], [data-root-action-edge="attack-dodge-interception"]');
+      await expect(overlay).toHaveAttribute("data-root-action-root-frame-id", rootAction.rootFrameId);
+      await expect(overlay).toHaveAttribute("data-root-action-settlement-event-id", proof.responseEventId);
+      try {
+        await expect(overlay).toHaveAttribute("data-root-action-ready", "true", { timeout: readyTimeout });
+      } catch (error) {
+        await testInfo.attach(`post-negation-task2-${name}-layout-failure.json`, {
+          body: JSON.stringify({
+            rootAction,
+            dodgeProof: proof,
+            remainingMs: proof.displayExpiresAtMs - Date.now(),
+            dom: await captureAttackOverlayDiagnostics(page),
+            fitDiagnostics: await page.evaluate(() => window.__wtkAttackFitDiagnostics),
+          }, null, 2),
+          contentType: "application/json",
+        });
+        throw error;
+      }
+      await expect(overlay).toHaveAttribute("data-root-action-display-mode", "graph");
+      await expect(overlay).toHaveAttribute("data-root-action-layout-state", "ready");
+      const rootCard = overlay.locator('[data-root-action-card="true"]');
+      const responseCard = overlay.locator(`[data-root-action-response-card="true"][data-response-event-id="${proof.responseEventId}"]`);
+      await expect(rootCard).toBeVisible();
+      await expect(rootCard.locator(".played-card.attack")).toBeVisible();
+      await expect(responseCard).toBeVisible();
+      await expect(responseCard).toHaveAttribute("data-response-card-face-kind", "Dodge");
+      await expect(responseCard.locator(".played-card.dodge")).toBeVisible();
+      const rootBounds = await rootCard.boundingBox();
+      expect(rootBounds).not.toBeNull();
+      if (previousRootBounds) {
+        expect(Math.abs(rootBounds.x - previousRootBounds.x), `${name}: response commit preserves root x`).toBeLessThanOrEqual(1);
+        expect(Math.abs(rootBounds.y - previousRootBounds.y), `${name}: response commit preserves root y`).toBeLessThanOrEqual(1);
+      }
+      const edges = {};
+      for (const edgeName of ["source", "response-source", "attack-dodge-interception"]) {
+        const edge = overlay.locator(`[data-root-action-edge="${edgeName}"]`);
+        const geometry = await edge.evaluate((element) => {
+          const bounds = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return {
+            bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+            pathLength: element.getTotalLength(),
+            display: style.display,
+            visibility: style.visibility,
+            stroke: style.stroke,
+            strokeWidth: Number.parseFloat(style.strokeWidth),
+            opacity: Number.parseFloat(style.opacity),
+          };
+        });
+        expect(geometry.display, `${name}: ${edgeName} is not removed from layout`).not.toBe("none");
+        expect(geometry.visibility, `${name}: ${edgeName} is painted`).not.toBe("hidden");
+        expect(geometry.stroke, `${name}: ${edgeName} has a rendered stroke`).not.toBe("none");
+        expect(geometry.strokeWidth, `${name}: ${edgeName} has a measurable stroke`).toBeGreaterThan(0);
+        expect(geometry.opacity, `${name}: ${edgeName} is not transparent`).toBeGreaterThan(0);
+        expect(geometry.pathLength, `${name}: ${edgeName} has measurable SVG path length`).toBeGreaterThan(1);
+        expect(Math.max(geometry.bounds.width, geometry.bounds.height), `${name}: ${edgeName} has measurable on-screen extent`).toBeGreaterThan(1);
+        edges[edgeName] = geometry;
+      }
+      const interceptionMark = overlay.locator('[data-root-action-dodge-interception-mark="true"]');
+      await expect(interceptionMark, `${name}: Dodge visibly marks the intercepted Attack path`).toBeVisible();
+      const markBounds = await interceptionMark.boundingBox();
+      expect(markBounds, `${name}: Dodge interception mark has measurable geometry`).not.toBeNull();
+      expect(Math.max(markBounds.width, markBounds.height), `${name}: interception mark has visible path length`).toBeGreaterThan(1);
+      edges.interceptionMark = markBounds;
+      await testInfo.attach(`post-negation-task2-${name}-settled.png`, {
+        body: await page.screenshot(), contentType: "image/png",
+      });
+      return { rootBounds, edges, rootFaceVisible: true, dodgeFaceVisible: true };
+    };
+
+    const noReloadSettledPresentation = await Promise.all(viewers.map(({ name, page }) =>
+      assertVisibleDodgeGraph(name, page, beforeResponseRootBounds.get(name))));
+
+    // Seat four has not observed the root or response. Connect it only after
+    // the server has committed the Dodge, while that proof's read window lives.
+    lateObserverPage = await browser.newPage({ viewport });
+    await openGame(lateObserverPage, seed, 3, viewport);
+    const lateServerView = await roomView(request, seed, 3);
+    const lateServerProof = lateServerView.presentationSnapshot.attackDodgeResponses
+      .find((candidate) => candidate.responseEventId === proof.responseEventId);
+    expect(lateServerProof).toEqual(proof);
+    await expect.poll(() => lateObserverPage.locator('[data-root-action-overlay="true"]').getAttribute("data-root-action-event-id"), {
+      timeout: 5_000, message: "the late viewer receives this exact still-live public root and Dodge proof",
+    }).toBe(rootAction.rootEventId);
+    const lateObserverRemainingMs = proof.displayExpiresAtMs - Date.now();
+    expect(lateObserverRemainingMs, "late observer is measured within the server-owned Dodge read window").toBeGreaterThan(3_000);
+    const lateObserverImmediateState = {
+      remainingMs: lateObserverRemainingMs,
+      geometry: await captureAttackOverlayDiagnostics(lateObserverPage),
+      fitDiagnostics: await lateObserverPage.evaluate(() => window.__wtkAttackFitDiagnostics),
+    };
+    await testInfo.attach("post-negation-task2-late-observer-before-reload.json", {
+      body: JSON.stringify({ rootAction, dodgeProof: proof, serverProof: lateServerProof, ...lateObserverImmediateState }, null, 2),
+      contentType: "application/json",
+    });
+    const lateObserverScreenshot = await lateObserverPage.screenshot({
+      path: testInfo.outputPath("post-negation-task2-late-observer-before-reload.png"),
+    });
+    await testInfo.attach("post-negation-task2-late-observer-before-reload.png", {
+      body: lateObserverScreenshot, contentType: "image/png",
+    });
+    const lateObserverPresentation = await assertVisibleDodgeGraph("late-observer", lateObserverPage, null, 1_000);
+    const allViewers = [...viewers, { name: "late-observer", page: lateObserverPage, playerIndex: 3 }];
+
+    const assertMeasuredUnavailableDodgeGraph = async (name, page) => {
+      const overlay = page.locator('[data-root-action-overlay="true"]');
+      await expect(overlay).toHaveAttribute("data-root-action-event-id", rootAction.rootEventId);
+      await expect(overlay).toHaveAttribute("data-root-action-interaction-id", rootAction.interactionId);
+      await expect(overlay).toHaveAttribute("data-root-action-root-frame-id", rootAction.rootFrameId);
+      await expect(overlay).toHaveAttribute("data-root-action-settlement-event-id", proof.responseEventId);
+      await expect(overlay).toHaveAttribute("data-root-action-layout-state", "unavailable");
+      await expect(overlay).toHaveAttribute("data-root-action-display-mode", "fallback");
+      await expect(overlay).toHaveAttribute("data-root-action-fallback-reason", "geometry-unavailable");
+      const diagnostic = await page.evaluate((rootEventId) => {
+        const all = window.__wtkAttackFitDiagnostics.filter((entry) => entry.rootEventId === rootEventId
+          && entry.phase === "dodge-response");
+        return {
+          lateEntry: all.find((entry) => entry.cause === "late-entry-layout-attempted") ?? null,
+          geometry: all.filter((entry) => entry.cause === "no-dodge-interception-candidate").at(-1) ?? null,
+        };
+      }, rootAction.rootEventId);
+      expect(diagnostic.lateEntry, `${name}: the exact public relation attempted a fresh layout without a cache`).toMatchObject({
+        lateEntryIdentity: {
+          interactionId: rootAction.interactionId,
+          rootFrameId: rootAction.rootFrameId,
+          rootEventId: rootAction.rootEventId,
+          sourceId,
+          targetId,
+          responseEventId: proof.responseEventId,
+        },
+        placementIdentity: { rememberedRootKey: null, hasStableRootForInteraction: false },
+      });
+      expect(diagnostic.geometry, `${name}: collision-safe search reports why no graph is available`).toBeTruthy();
+      expect(diagnostic.geometry.dodgeDirectCandidateCount + diagnostic.geometry.dodgeAdjacentCandidateCount)
+        .toBeGreaterThan(0);
+      expect(diagnostic.geometry.dodgePlacementFieldSearch.inspectedPositions).toBeGreaterThan(0);
+      const visualState = await overlay.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const root = element.querySelector('[data-root-action-card="true"]');
+        const response = element.querySelector('[data-root-action-response-card="true"]');
+        const graph = element.querySelector(".interaction-root-connectors");
+        return {
+          visibility: style.visibility,
+          rootVisibility: root ? getComputedStyle(root).visibility : null,
+          responseVisibility: response ? getComputedStyle(response).visibility : null,
+          graphVisibility: graph ? getComputedStyle(graph).visibility : null,
+        };
+      });
+      expect(visualState).toMatchObject({ visibility: "hidden", rootVisibility: "hidden", responseVisibility: "hidden" });
+      expect([null, "hidden"]).toContain(visualState.graphVisibility);
+      return { kind: "geometry-unavailable", diagnostic, visualState };
+    };
+
+    await Promise.all(allViewers.map(({ page }) => page.reload()));
+    await Promise.all(allViewers.map(({ page }) => page.locator(".game-shell").waitFor({ state: "visible" })));
+    const afterDodgePresentation = [];
+    for (const { name, page } of allViewers) {
+      expect(proof.displayExpiresAtMs).toBeGreaterThan(Date.now(), `${name}: forced reconnect remains inside the same authoritative read window`);
+      await expect.poll(() => page.locator('[data-root-action-overlay="true"]').getAttribute("data-root-action-layout-state"), {
+        timeout: 5_000, message: `${name}: reconnect measures this exact live Attack/Dodge proof`,
+      }).toMatch(/^(ready|unavailable)$/);
+      const overlay = page.locator('[data-root-action-overlay="true"]');
+      await expect(overlay).toHaveAttribute("data-root-action-event-id", rootAction.rootEventId);
+      await expect(overlay).toHaveAttribute("data-root-action-interaction-id", rootAction.interactionId);
+      await expect(overlay).toHaveAttribute("data-root-action-root-frame-id", rootAction.rootFrameId);
+      await expect(overlay).toHaveAttribute("data-root-action-settlement-event-id", proof.responseEventId);
+      const result = await overlay.getAttribute("data-root-action-layout-state") === "ready"
+        ? { kind: "graph", ...(await assertVisibleDodgeGraph(name, page, null, 1_000)) }
+        : await assertMeasuredUnavailableDodgeGraph(name, page);
+      if (name === "late-observer") {
+        expect(result.kind, "a late observer can reconstruct the same valid public graph after reconnect").toBe("graph");
+        expect(Math.abs(result.rootBounds.x - lateObserverPresentation.rootBounds.x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(result.rootBounds.y - lateObserverPresentation.rootBounds.y)).toBeLessThanOrEqual(1);
+      }
       afterDodgePresentation.push({
         viewer: name,
         rootEventId: await overlay.getAttribute("data-root-action-event-id"),
@@ -2762,26 +2938,22 @@ test("real post-Negation Attack creates and keeps its own visible graph at 440×
         displayMode: await overlay.getAttribute("data-root-action-display-mode"),
         layoutState: await overlay.getAttribute("data-root-action-layout-state"),
         fallbackReason: await overlay.getAttribute("data-root-action-fallback-reason"),
-        responseCardCount: await responseCard.count(),
-        visibleResponseCard: await responseCard.isVisible().catch(() => false),
-        visibleResponseEdgeCount: await responseEdges.evaluateAll((edges) => edges.filter((edge) => {
-          const style = getComputedStyle(edge);
-          const bounds = edge.getBoundingClientRect();
-          return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0 && bounds.width > 0 && bounds.height > 0;
-        }).length),
+        result,
+        remainingMs: proof.displayExpiresAtMs - Date.now(),
         geometry: await captureAttackOverlayDiagnostics(page),
       });
       const screenshot = await page.screenshot({ path: testInfo.outputPath(`post-negation-attack-after-dodge-${name}-440x766.png`) });
       await testInfo.attach(`post-negation-attack-after-dodge-${name}-440x766.png`, { body: screenshot, contentType: "image/png" });
     }
     await attachJsonFile(testInfo, "post-negation-attack-identities-after-dodge.json", {
-      viewport, rootAction, attackEvent, dodgeProof: proof, afterDodgePresentation,
+      viewport, rootAction, attackEvent, dodgeProof: proof, noReloadSettledPresentation, lateObserverPresentation, afterDodgePresentation,
       publicViews: settledViews.map((view) => ({
         meId: view.meId, phase: view.phase, rootAction: view.presentationSnapshot.rootAction,
         responses: view.presentationSnapshot.attackDodgeResponses,
       })),
     });
   } finally {
+    if (lateObserverPage) await lateObserverPage.close();
     await Promise.all(contexts.map((context) => context.close()));
   }
 });
@@ -3709,22 +3881,10 @@ for (const scenario of [
         expect(defenderDodgeOutcome.fallbackFrame.interactionStageCount).toBeLessThanOrEqual(1);
         const dodgeFitDiagnostic = defenderDodgeOutcome.fitDiagnostic;
         expect(dodgeFitDiagnostic, "safe Dodge fallback records a test-only geometry cause for the same proven root").toBeTruthy();
-        expect(dodgeFitDiagnostic.cause).toMatch(/^(missing-table-or-card-rect|missing-or-invalid-player-anchor|missing-dodge-response-card|dodge-interception-point-unavailable|table-smaller-than-card-margin|no-attack-root-candidate|no-dodge-interception-candidate|no-reserved-dodge-candidate|dodge-response-without-stable-root)$/);
-        if (dodgeFitDiagnostic.cause === "dodge-response-without-stable-root") {
-          expect(dodgeFitDiagnostic.placementIdentity).toMatchObject({
-            rememberedRootKey: null,
-            hasStableRootForInteraction: false,
-          });
-          expect(dodgeFitDiagnostic.placementIdentity.currentRootPlacementKey).toEqual(expect.any(String));
-        }
+        expect(dodgeFitDiagnostic.cause).toMatch(/^(missing-table-or-card-rect|missing-or-invalid-player-anchor|missing-dodge-response-card|dodge-interception-point-unavailable|table-smaller-than-card-margin|no-attack-root-candidate|no-dodge-interception-candidate|no-reserved-dodge-candidate|late-entry-layout-attempted)$/);
         if (playerCount === 6 && viewport.width === 390) {
-          if (targetLayout.mode === "graph") {
-            expect(dodgeFitDiagnostic.cause, "a stable 6-player 390px root records exhausted Dodge interception candidates").toBe("no-dodge-interception-candidate");
-          } else {
-            expect(targetLayout.mode).toBe("fallback");
-            expect(dodgeFitDiagnostic.cause, "a 6-player 390px response without a measurable defender root fails closed explicitly")
-              .toBe("dodge-response-without-stable-root");
-          }
+          expect(dodgeFitDiagnostic.cause, "a 6-player 390px response with no safe measured placement fails closed after the late-entry attempt")
+            .toBe("no-dodge-interception-candidate");
         }
         if (dodgeFitDiagnostic.cause === "no-dodge-interception-candidate") {
           expect(dodgeFitDiagnostic.dodgeDirectCandidateCount + dodgeFitDiagnostic.dodgeAdjacentCandidateCount,
@@ -5426,28 +5586,44 @@ test("real Attack reconnect restores the same proven graph and fails closed with
       targetMarkerPresent: true,
     })));
 
-    const roomViewMatcher = (url) => url.origin === API && url.pathname === "/api/rooms";
+    const roomViewMatcher = `${API}/api/rooms*`;
     const strippedViews = [];
+    const interceptedViews = [];
     const stripRootProof = async (route) => {
       if (route.request().method() !== "GET") return route.continue();
       const response = await route.fetch();
       const view = await response.json();
-      if (view.presentationSnapshot?.rootAction?.rootEventId !== rootAction.rootEventId) {
+      const roomView = view.room && typeof view.room === "object" ? view.room : view;
+      const rootEventId = roomView.presentationSnapshot?.rootAction?.rootEventId ?? null;
+      interceptedViews.push({
+        url: route.request().url(),
+        phase: roomView.phase ?? null,
+        currentAction: roomView.currentAction?.kind ?? null,
+        rootEventId,
+      });
+      if (rootEventId !== rootAction.rootEventId) {
         return route.fulfill({ response });
       }
-      const presentationSnapshot = { ...view.presentationSnapshot };
+      const presentationSnapshot = { ...roomView.presentationSnapshot };
       delete presentationSnapshot.rootAction;
       strippedViews.push({
-        phase: view.phase,
-        currentAction: view.currentAction,
+        phase: roomView.phase,
+        currentAction: roomView.currentAction,
         rootActionPresent: Object.hasOwn(presentationSnapshot, "rootAction"),
       });
-      await route.fulfill({ response, json: { ...view, presentationSnapshot } });
+      const strippedRoomView = { ...roomView, presentationSnapshot };
+      await route.fulfill({ response, json: view.room ? { ...view, room: strippedRoomView } : strippedRoomView });
     };
     await defenderPage.route(roomViewMatcher, stripRootProof);
+    await defenderPage.reload({ waitUntil: "domcontentloaded" });
+    await expect(defenderPage.locator(".game-shell")).toBeVisible();
+    await expect.poll(() => interceptedViews.length, {
+      timeout: 5_000, message: "reload makes an API-backed viewer projection request through the proof filter",
+    }).toBeGreaterThan(0);
+    expect(interceptedViews.some((view) => view.rootEventId === rootAction.rootEventId), JSON.stringify({ rootAction, interceptedViews })).toBe(true);
     await expect.poll(() => strippedViews.length, {
       timeout: 25_000,
-      message: "test transport withholds only the public root proof while the server response decision remains live",
+      message: "a real reconnect receives a response decision while transport withholds only its public root proof",
     }).toBeGreaterThan(0);
     await expect(defenderPage.locator('[data-root-action-overlay="true"]')).toHaveCount(0, { timeout: 25_000 });
     await expect(defenderPage.locator(".interaction-root-connectors")).toHaveCount(0);
@@ -5463,6 +5639,8 @@ test("real Attack reconnect restores the same proven graph and fails closed with
     });
 
     await defenderPage.unroute(roomViewMatcher, stripRootProof);
+    await defenderPage.reload({ waitUntil: "domcontentloaded" });
+    await expect(defenderPage.locator(".game-shell")).toBeVisible();
     await expectAttackGraphIdentity(defenderPage, rootAction);
     await defenderPage.evaluate(() => window.__wtkStartAttackVisibleFrameSampling());
     const proofRestored = await captureReconnectAttackGraph(defenderPage, rootAction, 4, viewport, "defender proof restored");

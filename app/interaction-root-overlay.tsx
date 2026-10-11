@@ -42,7 +42,7 @@ type AttackGeometryFitDiagnostic = {
   phase: "root" | "dodge-response" | "other-response";
   fitStep: string;
   viewport: { width: number; height: number };
-  cause: "missing-table-or-card-rect" | "missing-or-invalid-player-anchor" | "missing-dodge-response-card" | "dodge-interception-point-unavailable" | "table-smaller-than-card-margin" | "no-attack-root-candidate" | "no-reserved-dodge-candidate" | "no-dodge-interception-candidate" | "placement-field-root-selected" | "placement-field-dodge-selected" | "sampled-path-root-selected" | "dodge-response-without-stable-root";
+  cause: "missing-table-or-card-rect" | "missing-or-invalid-player-anchor" | "missing-dodge-response-card" | "dodge-interception-point-unavailable" | "table-smaller-than-card-margin" | "no-attack-root-candidate" | "no-reserved-dodge-candidate" | "no-dodge-interception-candidate" | "placement-field-root-selected" | "placement-field-dodge-selected" | "sampled-path-root-selected" | "late-entry-layout-attempted";
   placementFieldSearch?: AttackRootPlacementFieldSearch;
   dodgePlacementFieldSearch?: AttackDodgePlacementFieldSearch;
   placementSearchEligibility?: { attempted: boolean; unansweredAttackRoot: boolean; viewportWidth: number; pathCandidateCount: number };
@@ -55,6 +55,7 @@ type AttackGeometryFitDiagnostic = {
     obstacles: readonly Rect[];
   };
   placementIdentity?: { currentRootPlacementKey: string; rememberedRootKey: string | null; hasStableRootForInteraction: boolean };
+  lateEntryIdentity?: { interactionId: string; rootFrameId: string; rootEventId: string; sourceId: string; targetId: string; responseEventId: string };
   dodgeGeometry?: {
     table: Rect;
     stableStageBottom: number;
@@ -2417,6 +2418,7 @@ export function InteractionRootOverlay({
             hasStableRootForInteraction: diagnostic.placementIdentity.hasStableRootForInteraction,
             rememberedRootPresent: diagnostic.placementIdentity.rememberedRootKey !== null,
           } : null,
+          lateEntryIdentity: diagnostic.lateEntryIdentity ?? null,
           dodgeGeometry: diagnostic.dodgeGeometry ? {
             table: diagnostic.dodgeGeometry.table,
             stableStageBottom: diagnostic.dodgeGeometry.stableStageBottom,
@@ -2442,16 +2444,21 @@ export function InteractionRootOverlay({
           phase: "dodge-response",
           fitStep: layer.dataset.rootActionCardFitStep ?? "target",
           viewport: { width: Math.round(shellBounds.width), height: Math.round(shellBounds.height) },
-          cause: "dodge-response-without-stable-root",
+          cause: "late-entry-layout-attempted",
           placementIdentity: {
             currentRootPlacementKey,
             rememberedRootKey: rememberedRoot?.rootKey ?? null,
             hasStableRootForInteraction,
           },
+          lateEntryIdentity: {
+            interactionId: currentAction.interactionId ?? "",
+            rootFrameId: currentAction.rootFrameId ?? "",
+            rootEventId: currentAction.rootEventId,
+            sourceId: currentAction.sourceId,
+            targetId: currentAction.targetId ?? "",
+            responseEventId: currentAction.response.eventId,
+          },
         });
-        setLayout(null);
-        onLayoutReadinessChange({ key: currentAction.key, state: "unavailable" });
-        return;
       }
       const rememberedFitStep = rememberedPlacementMatches ? rememberedRoot.fitStep : null;
       const preferredFitStepIndex = rememberedFitStep ? fitSteps.indexOf(rememberedFitStep) : -1;
