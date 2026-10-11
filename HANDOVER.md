@@ -5,7 +5,7 @@ Mode: `USER-DIRECTED UX REFINEMENT`
 
 ## Latest result / CI
 
-Seat-relative Stage A follow-up implemented locally: server-backed four-player Attack→Dodge browser flow captured before/after at 390×844, 440×766, 480×900 and 1440×900; focused build, ESLint, geometry suite (4/4) and diff check pass. Remote `a5bd5ec` has no Actions run; latest push run `38162977802` is success for prior code SHA `586d530`. This follow-up’s commit/CI/deploy is pending.
+§6.38 seat-relative follow-up code SHA `44720e7d1af64783cebbb520775e4cf0bbdf0be8` passed exact-SHA Actions run `38184507122` (Lint/fast, API, browser smoke, Cloudflare deploy); production `/api/health` returned `{"ok":true,"worker":"available"}`. Local real Worker/API Attack→Dodge geometry suite passed 4/4 at 390×844, 440×766, 480×900 and 1440×900; build, focused ESLint and diff checks passed.
 
 ## Design checkpoint
 
