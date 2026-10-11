@@ -5,7 +5,7 @@ Mode: `USER-DIRECTED UX REFINEMENT`
 
 ## Latest result / CI
 
-§6.38 Stage A implementation and server-backed visual evidence are ready for review. `npm run build`, `git diff --check`, and the focused Worker/API browser run passed; exact new-SHA CI/deployment is pending. The latest prior successful deploy is Actions `38128467454` for `9f4b93c7ec90dad316c0c66f0d254ec254181bea`; remote `ux-v2` was `62baac09a897da45c72df4475ac68198e9f02739` before this task, with only documentation commits after that deployed application SHA.
+§6.38 Stage A shipped in `41e6ec74d619e40492fd46887f8f0069c67e97cc`. Exact-SHA Actions run `38161329435` succeeded (Lint/fast, API, browser smoke, deploy and production smoke); `/api/health` returned `{"ok":true,"worker":"available"}`. `npm run build`, `git diff --check`, and the focused real Worker/API browser run passed (5/5).
 
 ## Design checkpoint
 
@@ -13,4 +13,4 @@ Latest remote `docs/UX2-refine.md` blob: `08d2f72f166a8ffb69e8901e1c23a9201897a8
 
 ## Current task
 
-`UX2-6.38-A-ORTHOGONAL-BATTLE-ROUTING-01` — implementation and real server-backed Stage A screenshots/geometry are complete locally. Push/verify this SHA, then stop for Reviewer/user visual acceptance. Do not start Stage B or C.
+`UX2-6.38-A-ORTHOGONAL-BATTLE-ROUTING-01` — implementation, exact-SHA CI/deploy, and real server-backed Stage A screenshots/geometry are complete. Await independent Reviewer/user visual acceptance; do not start Stage B or C.
