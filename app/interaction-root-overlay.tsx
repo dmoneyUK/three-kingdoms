@@ -117,6 +117,8 @@ type RootActionLayout = {
   width: number;
   height: number;
   card: Rect;
+  orthogonalAttackRouting?: boolean;
+  orthogonalAttackControlsSide?: "left" | "right";
   sourcePath: string;
   targetPath: string | null;
   responseTargetPath: string | null;
@@ -306,6 +308,132 @@ function pathBetween(start: Point, end: Point, curve: number): string {
     y: (start.y + end.y) / 2 + dx / length * curve,
   };
   return `M ${start.x.toFixed(1)} ${start.y.toFixed(1)} Q ${control.x.toFixed(1)} ${control.y.toFixed(1)} ${end.x.toFixed(1)} ${end.y.toFixed(1)}`;
+}
+
+type OrthogonalAxis = "horizontal" | "vertical";
+type OrthogonalEdge = "top" | "right" | "bottom" | "left";
+
+function orthogonalPath(start: Point, end: Point, obstacles: readonly Rect[], bounds: Rect, preferredFirst: OrthogonalAxis, clearance = 5): string | null {
+  const expandedObstacles = obstacles.map((obstacle) => expandRect(obstacle, clearance));
+  const inBounds = (point: Point) => point.x >= bounds.left && point.x <= bounds.right
+    && point.y >= bounds.top && point.y <= bounds.bottom;
+  if (!inBounds(start) || !inBounds(end)) return null;
+  const same = (left: Point, right: Point) => Math.abs(left.x - right.x) < .1 && Math.abs(left.y - right.y) < .1;
+  const clearSegment = (from: Point, to: Point) => (Math.abs(from.x - to.x) < .1 || Math.abs(from.y - to.y) < .1)
+    && !expandedObstacles.some((obstacle) => segmentIntersectsRect(from, to, obstacle));
+  const candidates: { points: Point[]; bends: number; preferencePenalty: number; length: number }[] = [];
+  const addCandidate = (rawPoints: Point[]) => {
+    const points = rawPoints.filter((point, index) => index === 0 || !same(point, rawPoints[index - 1]!))
+      .filter((point, index, all) => index === 0 || index === all.length - 1
+        || !((Math.abs(all[index - 1]!.x - point.x) < .1 && Math.abs(point.x - all[index + 1]!.x) < .1)
+          || (Math.abs(all[index - 1]!.y - point.y) < .1 && Math.abs(point.y - all[index + 1]!.y) < .1)));
+    if (points.length < 2 || !same(points[0]!, start) || !same(points.at(-1)!, end)
+      || points.some((point) => !inBounds(point))) return;
+    if (points.slice(1).some((point, index) => !clearSegment(points[index]!, point))) return;
+    const first = Math.abs(points[1]!.x - points[0]!.x) > .1 ? "horizontal" : "vertical";
+    candidates.push({
+      points,
+      bends: Math.max(0, points.length - 2),
+      preferencePenalty: first === preferredFirst ? 0 : 1,
+      length: points.slice(1).reduce((sum, point, index) => sum + distanceBetween(points[index]!, point), 0),
+    });
+  };
+  if (Math.abs(start.x - end.x) < .1 || Math.abs(start.y - end.y) < .1) addCandidate([start, end]);
+  addCandidate([start, { x: end.x, y: start.y }, end]);
+  addCandidate([start, { x: start.x, y: end.y }, end]);
+  const xChannels = new Set<number>([(start.x + end.x) / 2]);
+  const yChannels = new Set<number>([(start.y + end.y) / 2]);
+  for (const obstacle of expandedObstacles) {
+    xChannels.add(obstacle.left - clearance);
+    xChannels.add(obstacle.right + clearance);
+    yChannels.add(obstacle.top - clearance);
+    yChannels.add(obstacle.bottom + clearance);
+  }
+  for (const x of xChannels) {
+    if (x < bounds.left || x > bounds.right) continue;
+    addCandidate([start, { x, y: start.y }, { x, y: end.y }, end]);
+  }
+  for (const y of yChannels) {
+    if (y < bounds.top || y > bounds.bottom) continue;
+    addCandidate([start, { x: start.x, y }, { x: end.x, y }, end]);
+  }
+  const selected = candidates.sort((left, right) => left.bends - right.bends
+    || left.preferencePenalty - right.preferencePenalty || left.length - right.length)[0];
+  if (!selected) return null;
+  const points = selected.points;
+  let path = `M ${points[0]!.x.toFixed(1)} ${points[0]!.y.toFixed(1)}`;
+  const radius = 8;
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1]!;
+    const corner = points[index]!;
+    const next = points[index + 1]!;
+    const incomingLength = distanceBetween(previous, corner);
+    const outgoingLength = distanceBetween(corner, next);
+    const bendRadius = Math.min(radius, incomingLength / 2, outgoingLength / 2);
+    const incoming = { x: (corner.x - previous.x) / incomingLength, y: (corner.y - previous.y) / incomingLength };
+    const outgoing = { x: (next.x - corner.x) / outgoingLength, y: (next.y - corner.y) / outgoingLength };
+    const before = { x: corner.x - incoming.x * bendRadius, y: corner.y - incoming.y * bendRadius };
+    const after = { x: corner.x + outgoing.x * bendRadius, y: corner.y + outgoing.y * bendRadius };
+    path += ` L ${before.x.toFixed(1)} ${before.y.toFixed(1)} Q ${corner.x.toFixed(1)} ${corner.y.toFixed(1)} ${after.x.toFixed(1)} ${after.y.toFixed(1)}`;
+  }
+  path += ` L ${points.at(-1)!.x.toFixed(1)} ${points.at(-1)!.y.toFixed(1)}`;
+  return path;
+}
+
+function orthogonalEdgeSamples(rect: Rect, edge: OrthogonalEdge, toward: Point): Point[] {
+  const horizontal = edge === "top" || edge === "bottom";
+  const minimum = horizontal ? rect.left : rect.top;
+  const maximum = horizontal ? rect.right : rect.bottom;
+  const fixed = edge === "top" ? rect.top : edge === "bottom" ? rect.bottom : edge === "left" ? rect.left : rect.right;
+  const preferred = Math.max(minimum, Math.min(horizontal ? toward.x : toward.y, maximum));
+  const inset = Math.min(8, Math.max(0, (maximum - minimum) / 4));
+  const positions = [preferred, (minimum + maximum) / 2, minimum + inset, maximum - inset];
+  return [...new Set(positions.map((position) => Number(position.toFixed(1))))]
+    .sort((left, right) => Math.abs(left - preferred) - Math.abs(right - preferred))
+    .map((position) => horizontal ? { x: position, y: fixed } : { x: fixed, y: position });
+}
+
+function orthogonalRouteBetweenRects(startRect: Rect, endRect: Rect, obstacles: readonly Rect[], bounds: Rect, startEdge: OrthogonalEdge, endEdge: OrthogonalEdge, preferredFirst: OrthogonalAxis): string | null {
+  const startCenter = center(startRect);
+  const endCenter = center(endRect);
+  const startIsHorizontal = startEdge === "top" || startEdge === "bottom";
+  const endIsHorizontal = endEdge === "top" || endEdge === "bottom";
+  const startToward = startIsHorizontal ? endCenter : startCenter;
+  const endToward = endIsHorizontal ? endCenter : startCenter;
+  const candidates: { path: string; bends: number; anchorDrift: number; distance: number }[] = [];
+  for (const start of orthogonalEdgeSamples(startRect, startEdge, startToward)) {
+    for (const end of orthogonalEdgeSamples(endRect, endEdge, endToward)) {
+      const path = orthogonalPath(start, end, obstacles, bounds, preferredFirst);
+      if (!path) continue;
+      const startAxisPosition = startIsHorizontal ? start.x : start.y;
+      const endAxisPosition = endIsHorizontal ? end.x : end.y;
+      const startPreferred = startIsHorizontal ? startToward.x : startToward.y;
+      const endPreferred = endIsHorizontal ? endToward.x : endToward.y;
+      candidates.push({
+        path,
+        bends: (path.match(/\bQ\b/g) ?? []).length,
+        anchorDrift: Math.abs(startAxisPosition - startPreferred) + Math.abs(endAxisPosition - endPreferred),
+        distance: Math.abs(start.x - end.x) + Math.abs(start.y - end.y),
+      });
+    }
+  }
+  return candidates.sort((left, right) => left.bends - right.bends
+    || left.anchorDrift - right.anchorDrift || left.distance - right.distance)[0]?.path ?? null;
+}
+
+function facingOrthogonalEdges(startRect: Rect, endRect: Rect): { start: OrthogonalEdge; end: OrthogonalEdge; first: OrthogonalAxis } {
+  const startCenter = center(startRect);
+  const endCenter = center(endRect);
+  const dx = endCenter.x - startCenter.x;
+  const dy = endCenter.y - startCenter.y;
+  if (Math.abs(dy) >= Math.abs(dx)) {
+    return dy >= 0
+      ? { start: "bottom", end: "top", first: "vertical" }
+      : { start: "top", end: "bottom", first: "vertical" };
+  }
+  return dx >= 0
+    ? { start: "right", end: "left", first: "horizontal" }
+    : { start: "left", end: "right", first: "horizontal" };
 }
 
 function quadraticPointBetween(start: Point, end: Point, curve: number, progress: number): Point {
@@ -876,7 +1004,7 @@ function layoutSimultaneousRootAction(
   };
 }
 
-function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, responseElement: HTMLElement | null, responseElements: readonly HTMLElement[], historySummaryElement: HTMLElement | null, action: Pick<InteractionRootOverlayAction, "rootEventId" | "sourceId" | "targetId" | "cardKind" | "cardFace" | "mode" | "rootEffectState" | "settlement" | "response"> & ResponseLayout, preferredRootCard: Rect | null, preferredResponseCard: Rect | null, diagnosticReporter?: AttackGeometryFitDiagnosticReporter): RootActionLayout | null {
+function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, responseElement: HTMLElement | null, responseElements: readonly HTMLElement[], historySummaryElement: HTMLElement | null, action: Pick<InteractionRootOverlayAction, "rootEventId" | "sourceId" | "targetId" | "cardKind" | "cardFace" | "mode" | "rootEffectState" | "settlement" | "response" | "groupTargets" | "orderedTargets" | "simultaneousTargets"> & ResponseLayout, preferredRootCard: Rect | null, preferredResponseCard: Rect | null, diagnosticReporter?: AttackGeometryFitDiagnosticReporter): RootActionLayout | null {
   const table = shell.querySelector<HTMLElement>(".play-table");
   const shellBounds = shell.getBoundingClientRect();
   const cardBounds = cardElement.getBoundingClientRect();
@@ -901,6 +1029,9 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       .filter((anchor) => anchor.dataset.playerAnchor === playerId);
     return matches.length === 1 ? matches[0] : null;
   };
+  const isOrthogonalAttackRoot = action.cardKind === "Attack" && action.cardFace?.kind === "Attack" && action.mode === "targeted"
+    && Boolean(action.targetId) && !action.groupTargets?.length && !action.orderedTargets?.length
+    && !action.simultaneousTargets?.length && !action.responses?.length;
   const sourceElement = anchorFor(action.sourceId);
   const isSelfTarget = action.mode === "self-target";
   const targetElement = isSelfTarget ? sourceElement : action.targetId ? anchorFor(action.targetId) : null;
@@ -935,9 +1066,11 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   }
 
   const tableRect = relativeRect(table, shellBounds);
-  const sourcePathElement = action.cardKind === "Attack" && sourceElement.classList.contains("local-player-dock")
-    ? sourceElement.querySelector<HTMLElement>(".local-hero-card") ?? sourceElement
-    : sourceElement;
+  const sourcePathElement = isOrthogonalAttackRoot && sourceElement.classList.contains("local-player-dock")
+    ? sourceElement
+    : action.cardKind === "Attack" && sourceElement.classList.contains("local-player-dock")
+      ? sourceElement.querySelector<HTMLElement>(".local-hero-card") ?? sourceElement
+      : sourceElement;
   // Attack target causality is anchored to the full player interaction area.
   // In particular, the incoming red path must terminate at the top edge of
   // the viewer's Local Dock, not at the Hero portrait inside it.
@@ -946,10 +1079,17 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const targetAnchorRect = relativeRect(targetElement, shellBounds);
   const targetRect = relativeRect(targetPathElement, shellBounds);
   const targetHalo = action.cardKind === "Attack" ? { ...targetAnchorRect } : null;
-  const responseSourcePathElement = action.cardKind === "Attack" && isAttackDodgeSemanticResponse(action.response)
-    && responseSourceElement?.classList.contains("local-player-dock")
-    ? responseSourceElement.querySelector<HTMLElement>(".local-hero-card") ?? responseSourceElement
-    : responseSourceElement;
+  const orthogonalAttackControlsSide = isOrthogonalAttackRoot
+    ? targetElement.classList.contains("local-player-dock")
+      ? center(sourceRect).x < center(tableRect).x ? "right" : "left"
+      : center(targetAnchorRect).x < center(tableRect).x ? "right" : "left"
+    : undefined;
+  const responseSourcePathElement = isOrthogonalAttackRoot && responseSourceElement?.classList.contains("local-player-dock")
+    ? responseSourceElement
+    : action.cardKind === "Attack" && isAttackDodgeSemanticResponse(action.response)
+      && responseSourceElement?.classList.contains("local-player-dock")
+      ? responseSourceElement.querySelector<HTMLElement>(".local-hero-card") ?? responseSourceElement
+      : responseSourceElement;
   const responseSourceRect = responseSourcePathElement ? relativeRect(responseSourcePathElement, shellBounds) : null;
   const responseTargetRect = responseTargetElement ? relativeRect(responseTargetElement, shellBounds) : null;
   const cardWidth = cardBounds.width;
@@ -1029,7 +1169,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const lineY = targetCenter.y - sourceCenter.y;
   const lineLength = Math.hypot(lineX, lineY) || 1;
   const normal = { x: -lineY / lineLength, y: lineX / lineLength };
-  const isUnansweredAttackRoot = action.cardKind === "Attack" && !action.response && !action.responses?.length;
+  const isUnansweredAttackRoot = isOrthogonalAttackRoot && !action.response && !action.responses?.length;
   const hasEightPlayerPhoneLayout = shellBounds.width >= 360 && shellBounds.width <= 400
     && shellBounds.height >= 701 && table.dataset.seatTopology === "side-column"
     && Boolean(table.querySelector(':scope > .player-board[data-player-count="8"]'));
@@ -1072,7 +1212,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   }, { x: 0, y: 0 });
   const attackBiasLength = Math.min(20, Math.min(attackUsableField.width, attackUsableField.height) * .04);
   const attackBiasMagnitude = Math.hypot(attackBiasDirection.x, attackBiasDirection.y);
-  const attackCompositionCenter = attackBiasMagnitude > .1 ? {
+  const attackCompositionCenter = isOrthogonalAttackRoot ? attackFieldCenter : attackBiasMagnitude > .1 ? {
     x: attackFieldCenter.x + attackBiasDirection.x / attackBiasMagnitude * attackBiasLength,
     y: attackFieldCenter.y + attackBiasDirection.y / attackBiasMagnitude * attackBiasLength,
   } : attackFieldCenter;
@@ -1130,7 +1270,14 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     }))),
   ];
   const centreSeedFractions = [-.3, -.24, -.18, -.12, -.06, 0, .06, .12, .18, .24, .3];
-  const centreFirstCandidates = isUnansweredAttackRoot ? centreSeedFractions.flatMap((xFraction) => centreSeedFractions.map((yFraction) => {
+  const centreFirstCandidates = isUnansweredAttackRoot ? [
+    {
+      x: attackCompositionCenter.x + (cardWidth + 12) / 2,
+      y: attackCompositionCenter.y,
+      fraction: .5,
+      offset: 0,
+    },
+    ...centreSeedFractions.flatMap((xFraction) => centreSeedFractions.map((yFraction) => {
     const point = {
       x: attackCompositionCenter.x + attackUsableField.width * xFraction,
       y: attackCompositionCenter.y + attackUsableField.height * yFraction,
@@ -1145,7 +1292,8 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       fraction: projection.fraction,
       offset: (point.x - projected.x) * normal.x + (point.y - projected.y) * normal.y,
     };
-  })) : [];
+    })),
+  ] : [];
   const candidateCenters = [...sampledPathCenters, ...centreFirstCandidates];
   const controlObstacleElements = Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .game-messages, .game-exit"))
     .filter((element) => {
@@ -1191,6 +1339,56 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     width: tableRect.width - margin * 2,
     height: stableStageBottom - tableRect.top - margin * 2,
   };
+  const connectorBounds: Rect = {
+    left: 0, top: 0, right: shellBounds.width, bottom: shellBounds.height,
+    width: shellBounds.width, height: shellBounds.height,
+  };
+  const routeObstaclesFor = (ignored: HTMLElement) => [
+    ...obstacleElements.filter((element) => element !== ignored).map((element) => relativeRect(element, shellBounds)),
+  ];
+  const attackRoutesForCard = (candidateCard: Rect) => {
+    if (!isOrthogonalAttackRoot || !action.targetId) return null;
+    const candidateCenter = center(candidateCard);
+    const sourceDirection = facingOrthogonalEdges(sourceRect, candidateCard);
+    const sourcePath = orthogonalRouteBetweenRects(sourceRect, candidateCard, routeObstaclesFor(sourceElement), connectorBounds,
+      sourceDirection.start, sourceDirection.end, sourceDirection.first);
+    const targetAbove = targetRect.bottom <= candidateCard.top;
+    const targetBelow = targetRect.top >= candidateCard.bottom;
+    const targetLeft = targetRect.right <= candidateCard.left;
+    const targetRight = targetRect.left >= candidateCard.right;
+    const targetDirection = targetElement.classList.contains("local-player-dock") && targetBelow
+      ? { start: "bottom" as const, end: "top" as const, first: "vertical" as const }
+      : targetAbove && targetLeft
+        ? { start: "left" as const, end: "bottom" as const, first: "horizontal" as const }
+        : targetAbove && targetRight
+          ? { start: "right" as const, end: "bottom" as const, first: "horizontal" as const }
+          : targetAbove
+            ? { start: "top" as const, end: "bottom" as const, first: "vertical" as const }
+            : targetBelow
+              ? { start: "bottom" as const, end: "top" as const, first: "vertical" as const }
+          : targetLeft
+                ? { start: "left" as const, end: "right" as const, first: "horizontal" as const }
+                : targetRight
+                  ? { start: "right" as const, end: "left" as const, first: "horizontal" as const }
+                  : facingOrthogonalEdges(candidateCard, targetRect);
+    const targetObstacles = routeObstaclesFor(targetElement);
+    const localDockStraightPath = targetElement.classList.contains("local-player-dock") && targetBelow
+      ? (() => {
+        const alignedX = Math.max(Math.max(candidateCard.left, targetRect.left), Math.min(candidateCenter.x, Math.min(candidateCard.right, targetRect.right)));
+        if (alignedX > Math.min(candidateCard.right, targetRect.right)) return null;
+        return orthogonalPath(
+          { x: alignedX, y: candidateCard.bottom },
+          { x: alignedX, y: targetRect.top },
+          targetObstacles,
+          connectorBounds,
+          "vertical",
+        );
+      })()
+      : null;
+    const targetPath = localDockStraightPath ?? orthogonalRouteBetweenRects(candidateCard, targetRect, targetObstacles, connectorBounds,
+      targetDirection.start, targetDirection.end, targetDirection.first);
+    return sourcePath && targetPath ? { sourcePath, targetPath } : null;
+  };
   if (action.cardKind === "Attack" && (attackSafeRect.width < cardWidth || attackSafeRect.height < cardHeight)) {
     reportFitDiagnostic("table-smaller-than-card-margin", {
       rootPlacementGeometry: {
@@ -1233,7 +1431,13 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     const top = Math.max(rootPlacementTop, Math.min(candidate.y - cardHeight / 2, rootPlacementBottom - cardHeight));
     const card: Rect = { left, top, right: left + cardWidth, bottom: top + cardHeight, width: cardWidth, height: cardHeight };
     const cardProjection = projectPointToSegment(sourceCenter, targetCenter, center(card));
-    if (action.cardKind === "Attack" && (cardProjection.fraction < .16 || cardProjection.fraction > .92)) return [];
+    // Orthogonal Stage A scores the complete Attack+reserved-Dodge composition
+    // against the usable battlefield centre. When the source and target share
+    // a row, the visually balanced card pair can sit just beyond the source's
+    // projection on that row; its public identity still comes exclusively from
+    // the proven source/target IDs and the collision-checked Seat/Card routes.
+    if (action.cardKind === "Attack" && !isOrthogonalAttackRoot
+      && (cardProjection.fraction < .16 || cardProjection.fraction > .92)) return [];
     const rootOverlapsGrowingLocalDock = Boolean(hasEightPlayerCompactLayout && isUnansweredAttackRoot && localDockRect
       && overlaps(card, localDockRect, unansweredAttackDockClearance));
     const rootOverlapsSeatOrDock = obstacleElements.some((element) => anchorObstacleSet.has(element)
@@ -1248,9 +1452,39 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       if (rootOverlapsControl) fitCounts.rootRejectedByControl += 1;
       return [];
     }
+    if (isOrthogonalAttackRoot && !attackRoutesForCard(card)) return [];
     fitCounts.rootFitCandidateCount += 1;
     let reservedDodge: Rect | null = null;
     if (reservedDodgeSize) {
+      if (isOrthogonalAttackRoot) {
+        const responseGap = 12;
+        const candidateRect: Rect = {
+          left: card.left - responseGap - reservedDodgeSize.width,
+          top: center(card).y - reservedDodgeSize.height / 2,
+          right: card.left - responseGap,
+          bottom: center(card).y + reservedDodgeSize.height / 2,
+          width: reservedDodgeSize.width,
+          height: reservedDodgeSize.height,
+        };
+        const insideSafeRegion = candidateRect.left >= attackSafeRect.left
+          && candidateRect.right <= attackSafeRect.right
+          && candidateRect.top >= attackSafeRect.top
+          && candidateRect.bottom <= attackSafeRect.bottom;
+        const overlapsSeatOrDock = obstacleElements.some((element) => anchorObstacleSet.has(element)
+          && overlaps(candidateRect, relativeRect(element, shellBounds), 8));
+        const overlapsControl = obstacleElements.some((element) => !anchorObstacleSet.has(element)
+          && overlaps(candidateRect, relativeRect(element, shellBounds), 8))
+          || Boolean(hiddenPendingPublicResponseTimer && overlaps(candidateRect, hiddenPendingPublicResponseTimer, 8));
+        if (insideSafeRegion && !overlaps(card, candidateRect, 8) && !overlapsSeatOrDock && !overlapsControl) {
+          reservedDodge = candidateRect;
+          fitCounts.validDodgeSlotCount += 1;
+        } else {
+          if (!insideSafeRegion) fitCounts.dodgeRejectedOutsideSafeRegion += 1;
+          if (overlaps(card, candidateRect, 8)) fitCounts.dodgeRejectedByRootCard += 1;
+          if (overlapsSeatOrDock) fitCounts.dodgeRejectedBySeatOrDock += 1;
+          if (overlapsControl) fitCounts.dodgeRejectedByControl += 1;
+        }
+      } else {
       const attackStart = rectangleEdge(card, targetCenter);
       const attackEnd = rectangleEdge(targetRect, center(card));
       const attackLength = Math.hypot(attackEnd.x - attackStart.x, attackEnd.y - attackStart.y) || 1;
@@ -1325,6 +1559,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       })
         .sort((left, right) => left.score - right.score);
       reservedDodge = reserveCandidates[0]?.rect ?? null;
+      }
       if (!reservedDodge) {
         fitCounts.rootFitWithoutDodgeSlotCount += 1;
       } else {
@@ -1358,6 +1593,21 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     const lineLengthSquared = lineX * lineX + lineY * lineY || 1;
     const findFieldDodgeSlot = (card: Rect): Rect | null => {
       if (!reservedDodgeSize) return null;
+      if (isOrthogonalAttackRoot) {
+        const responseRect: Rect = {
+          left: card.left - 12 - reservedDodgeSize.width,
+          top: center(card).y - reservedDodgeSize.height / 2,
+          right: card.left - 12,
+          bottom: center(card).y + reservedDodgeSize.height / 2,
+          width: reservedDodgeSize.width,
+          height: reservedDodgeSize.height,
+        };
+        return responseRect.left >= attackSafeRect.left && responseRect.right <= attackSafeRect.right
+          && responseRect.top >= attackSafeRect.top && responseRect.bottom <= attackSafeRect.bottom
+          && !overlaps(responseRect, card, 8)
+          && !allObstacles.some((obstacle) => overlaps(responseRect, obstacle, 8))
+          ? responseRect : null;
+      }
       const fieldAttackStart = rectangleEdge(card, targetCenter);
       const fieldAttackEnd = rectangleEdge(targetRect, center(card));
       const fieldAttackLength = Math.hypot(fieldAttackEnd.x - fieldAttackStart.x, fieldAttackEnd.y - fieldAttackStart.y) || 1;
@@ -1527,13 +1777,17 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
           })) continue;
           cardClearCount += 1;
 
-          const sourceStart = rectangleEdge(sourceRect, cardCenter);
-          const sourceEnd = rectangleEdge(card, sourceCenter);
-          const targetStart = rectangleEdge(card, targetCenter);
-          const targetEnd = rectangleEdge(targetRect, cardCenter);
-          const sourcePathBlocked = pathIntersectsObstacle(sourceStart, sourceEnd, sourceElement, clearance);
-          const targetPathBlocked = pathIntersectsObstacle(targetStart, targetEnd, targetElement, clearance);
-          if (sourcePathBlocked || targetPathBlocked) continue;
+          if (isOrthogonalAttackRoot) {
+            if (!attackRoutesForCard(card)) continue;
+          } else {
+            const sourceStart = rectangleEdge(sourceRect, cardCenter);
+            const sourceEnd = rectangleEdge(card, sourceCenter);
+            const targetStart = rectangleEdge(card, targetCenter);
+            const targetEnd = rectangleEdge(targetRect, cardCenter);
+            const sourcePathBlocked = pathIntersectsObstacle(sourceStart, sourceEnd, sourceElement, clearance);
+            const targetPathBlocked = pathIntersectsObstacle(targetStart, targetEnd, targetElement, clearance);
+            if (sourcePathBlocked || targetPathBlocked) continue;
+          }
           connectorClearCount += 1;
           if (projection >= .30 && projection <= .42) preferredBandConnectorClearCount += 1;
           const lateral = Math.abs((cardCenter.x - sourceCenter.x) * -lineY + (cardCenter.y - sourceCenter.y) * lineX) / Math.sqrt(lineLengthSquared);
@@ -1600,13 +1854,17 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const stableRootBottomCorrection = preferredRootCard
     ? Math.max(0, preferredRootCard.bottom - (stableStageBottom - stableTargetDockInset))
     : 0;
+  const stableRootBattlefieldCenterNudge = preferredRootCard && isOrthogonalAttackRoot
+    && isAttackDodgeSemanticResponse(action.response) && action.response.countersRoot
+    ? Math.max(-.9, Math.min(.9, attackFieldCenter.y - center(preferredRootCard).y))
+    : 0;
   const stableRootCard = preferredRootCard ? {
     ...preferredRootCard,
-    top: preferredRootCard.top - stableRootBottomCorrection,
+    top: preferredRootCard.top - stableRootBottomCorrection + stableRootBattlefieldCenterNudge,
     width: cardWidth,
     height: cardHeight,
     right: preferredRootCard.left + cardWidth,
-    bottom: preferredRootCard.top - stableRootBottomCorrection + cardHeight,
+    bottom: preferredRootCard.top - stableRootBottomCorrection + stableRootBattlefieldCenterNudge + cardHeight,
   } : null;
   const stableRootSafeTop = action.cardKind === "Attack" ? rootPlacementTop : tableRect.top + margin;
   const stableRootSafeBottom = action.cardKind === "Attack" ? rootPlacementBottom : stableStageBottom;
@@ -1811,6 +2069,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       width: shellBounds.width,
       height: shellBounds.height,
       card,
+      orthogonalAttackRouting: isOrthogonalAttackRoot,
       sourcePath: pathBetween(sourceStart, sourceEnd, rootPathCurve),
       targetPath: pathBetween(rectangleEdge(card, targetCenter), rectangleEdge(targetRect, cardCenter), action.cardKind === "Attack" ? 0 : Math.min(34, lineLength * .05)),
       responseTargetPath: null,
@@ -1890,7 +2149,27 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     };
     let dodgeInterceptionFallback = false;
     let responseCandidates: { responseCard: Rect; score: number }[];
-    if (attackDodgeIntercepted) {
+    if (attackDodgeIntercepted && isOrthogonalAttackRoot) {
+      const responseGap = 12;
+      const leftOfRoot: Rect = {
+        left: card.left - responseGap - responseWidth,
+        top: cardCenter.y - responseHeight / 2,
+        right: card.left - responseGap,
+        bottom: cardCenter.y + responseHeight / 2,
+        width: responseWidth,
+        height: responseHeight,
+      };
+      const alignedPreferredResponse = preferredResponseFits && preferredResponseCard ? {
+        ...preferredResponseCard,
+        top: cardCenter.y - responseHeight / 2,
+        bottom: cardCenter.y + responseHeight / 2,
+      } : null;
+      const responseCard = alignedPreferredResponse
+        && alignedPreferredResponse.right <= card.left
+        && !responseFitFailure(alignedPreferredResponse)
+        ? alignedPreferredResponse : leftOfRoot;
+      responseCandidates = responseFitFailure(responseCard) ? [] : [{ responseCard, score: 0 }];
+    } else if (attackDodgeIntercepted) {
       const dodgeFitCounts = {
         dodgeDirectCandidateCount: 0,
         dodgeDirectFitCandidateCount: 0,
@@ -2164,6 +2443,23 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     }
     const responseSourceStart = rectangleEdge(responseSourceRect, responseCenter);
     const responseSourceEnd = rectangleEdge(responseCard, responseSourceCenter);
+    const orthogonalRootPaths = isOrthogonalAttackRoot ? attackRoutesForCard(card) : null;
+  const orthogonalDodgeSourcePath = isOrthogonalAttackRoot && attackDodgeIntercepted
+      ? (() => {
+        if (!responseSourceRect || !responseSourceElement) return null;
+        const facing = facingOrthogonalEdges(responseSourceRect, responseCard);
+        return orthogonalRouteBetweenRects(responseSourceRect, responseCard,
+          [...routeObstaclesFor(responseSourceElement), card], connectorBounds,
+          facing.start, facing.end, facing.first);
+      })()
+      : null;
+    if (isOrthogonalAttackRoot && !orthogonalRootPaths) {
+      reportFitDiagnostic("no-dodge-interception-candidate", {
+        reason: "orthogonal-connector-route-unavailable",
+        rootPlacementGeometry: { root: card, response: responseCard, source: sourceRect, target: targetRect, responder: responseSourceRect },
+      });
+      return null;
+    }
     const responseTargetPath = !attackDodgeIntercepted && responseTargetRect && responseTargetCenter
       ? pathBetween(rectangleEdge(responseCard, responseTargetCenter), rectangleEdge(responseTargetRect, responseCenter), action.cardKind === "Attack" ? 0 : Math.min(28, Math.hypot(responseTargetCenter.x - responseCenter.x, responseTargetCenter.y - responseCenter.y) * .045))
       : null;
@@ -2171,7 +2467,12 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       ? pathBetween(rectangleEdge(card, targetCenter), rectangleEdge(targetRect, cardCenter), action.cardKind === "Attack" ? 0 : Math.min(34, lineLength * .05))
       : null;
     let targetBlockPath: string | null = null;
-    if (attackDodgeIntercepted) {
+    if (attackDodgeIntercepted && isOrthogonalAttackRoot) {
+      const attackStart = { x: card.left, y: cardCenter.y };
+      const dodgeEnd = { x: responseCard.right, y: responseCenter.y };
+      targetPath = orthogonalPath(attackStart, dodgeEnd, [], tableRect, "horizontal", 0);
+      targetBlockPath = crossMarkAt(dodgeEnd, { x: -1, y: 0 }, 8);
+    } else if (attackDodgeIntercepted) {
       const attackPathStart = rectangleEdge(card, targetCenter);
       const attackPathEnd = rectangleEdge(targetRect, cardCenter);
       const attackLength = Math.hypot(attackPathEnd.x - attackPathStart.x, attackPathEnd.y - attackPathStart.y) || 1;
@@ -2199,21 +2500,32 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       const targetBlockHalf = 8;
       targetBlockPath = `M ${(targetMiddle.x - targetNormal.x * targetBlockHalf).toFixed(1)} ${(targetMiddle.y - targetNormal.y * targetBlockHalf).toFixed(1)} L ${(targetMiddle.x + targetNormal.x * targetBlockHalf).toFixed(1)} ${(targetMiddle.y + targetNormal.y * targetBlockHalf).toFixed(1)}`;
     }
+    if (isOrthogonalAttackRoot && attackDodgeIntercepted && (!targetPath || !orthogonalDodgeSourcePath)) {
+      reportFitDiagnostic("no-dodge-interception-candidate", {
+        reason: "orthogonal-connector-route-unavailable",
+        rootPlacementGeometry: { root: card, response: responseCard, source: sourceRect, target: targetRect, responder: responseSourceRect },
+      });
+      return null;
+    }
     return {
       width: shellBounds.width,
       height: shellBounds.height,
       card,
-      sourcePath: pathBetween(sourceStart, sourceEnd, rootPathCurve),
+      orthogonalAttackRouting: isOrthogonalAttackRoot,
+      orthogonalAttackControlsSide,
+      sourcePath: orthogonalRootPaths?.sourcePath ?? pathBetween(sourceStart, sourceEnd, rootPathCurve),
       targetPath,
       responseTargetPath,
       targetBlockPath,
       responseCard,
       dodgeInterceptionFallback,
-      responseSourcePath: pathBetween(
-        responseSourceStart,
-        responseSourceEnd,
-        action.cardKind === "Attack" && isAttackDodgeSemanticResponse(action.response) ? 0 : Math.min(20, lineLength * .025),
-      ),
+      responseSourcePath: isOrthogonalAttackRoot && attackDodgeIntercepted
+        ? orthogonalDodgeSourcePath
+        : pathBetween(
+          responseSourceStart,
+          responseSourceEnd,
+          action.cardKind === "Attack" && isAttackDodgeSemanticResponse(action.response) ? 0 : Math.min(20, lineLength * .025),
+        ),
       counterPath: !attackDodgeIntercepted && counterStart && counterEnd ? pathBetween(counterStart, counterEnd, 0) : null,
       blockPath,
       responseCards: [],
@@ -2225,12 +2537,22 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   }
   const targetStart = rectangleEdge(card, targetCenter);
   const targetEnd = rectangleEdge(targetRect, cardCenter);
+  const orthogonalRoutes = attackRoutesForCard(card);
+  if (isOrthogonalAttackRoot && !orthogonalRoutes) {
+    reportFitDiagnostic("no-attack-root-candidate", {
+      candidateCount: candidates.length,
+      reason: "orthogonal-connector-route-unavailable",
+    });
+    return null;
+  }
   return {
     width: shellBounds.width,
     height: shellBounds.height,
     card,
-    sourcePath: pathBetween(sourceStart, sourceEnd, rootPathCurve),
-    targetPath: pathBetween(targetStart, targetEnd, action.cardKind === "Attack" ? 0 : Math.min(34, lineLength * .05)),
+    orthogonalAttackRouting: isOrthogonalAttackRoot,
+    orthogonalAttackControlsSide,
+    sourcePath: orthogonalRoutes?.sourcePath ?? pathBetween(sourceStart, sourceEnd, rootPathCurve),
+    targetPath: orthogonalRoutes?.targetPath ?? pathBetween(targetStart, targetEnd, action.cardKind === "Attack" ? 0 : Math.min(34, lineLength * .05)),
     responseTargetPath: null,
     targetBlockPath: null,
     responseCard: reservedDodgeCard,
@@ -2514,13 +2836,17 @@ export function InteractionRootOverlay({
         nextLayout = layoutForCurrentAction();
         if (nextLayout) break;
       }
+      const keepPreDodgeRootPlacement = Boolean(rememberedPlacementMatches && rememberedRoot
+        && currentAction.cardKind === "Attack"
+        && isAttackDodgeSemanticResponse(currentAction.response)
+        && currentAction.response.countersRoot);
       if (nextLayout && currentRootPlacementKey) stableRootPlacementRef.current = {
         rootKey: currentRootPlacementKey,
         width: nextLayout.width,
         height: nextLayout.height,
         fitStep: selectedFitStep,
-        card: nextLayout.card,
-        reservedResponseCard: nextLayout.responseCard,
+        card: keepPreDodgeRootPlacement && rememberedRoot ? rememberedRoot.card : nextLayout.card,
+        reservedResponseCard: keepPreDodgeRootPlacement && rememberedRoot ? rememberedRoot.reservedResponseCard : nextLayout.responseCard,
       };
       setLayout((current) => {
         if (!nextLayout || !current) return nextLayout;
@@ -2800,6 +3126,8 @@ export function InteractionRootOverlay({
     data-root-action-oath-simultaneous-graph={action.simultaneousTargets?.length ? "true" : undefined}
     data-oath-recipient-count={action.simultaneousTargets?.length ?? undefined}
     data-root-action-mode={action.mode}
+    data-root-action-orthogonal-attack-routing={layout?.orthogonalAttackRouting ? "true" : "false"}
+    data-root-action-orthogonal-controls-side={layout?.orthogonalAttackControlsSide}
     data-root-action-card-kind={action.cardKind}
     data-root-action-dodge-slot-reserved={action.cardKind === "Attack" && !action.response && !action.responses?.length
       ? layout?.responseCard ? "true" : "false" : undefined}

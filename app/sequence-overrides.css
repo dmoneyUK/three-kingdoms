@@ -3648,6 +3648,55 @@
   }
 }
 
+/* UX2 §6.38 Stage A: keep pile identities and animation anchors at the edge,
+   outside the ordinary Attack/Dodge composition's central visual mass. */
+.game-shell:has(> .interaction-root-overlay[data-root-action-overlay="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"])) .play-table > .play-center {
+  top: auto;
+  right: auto;
+  bottom: 8px;
+  left: 8px;
+  translate: 0 0;
+  gap: 4px;
+  z-index: 0;
+}
+
+.game-shell:has(> .interaction-root-overlay[data-root-action-overlay="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"])) .play-table > .play-center .draw-stack,
+.game-shell:has(> .interaction-root-overlay[data-root-action-overlay="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"])) .play-table > .play-center .discard-stack {
+  width: 34px;
+  height: 48px;
+  border-width: 1px;
+  border-radius: 3px;
+  box-shadow: 0 3px 8px #0007;
+}
+
+.game-shell:has(> .interaction-root-overlay[data-root-action-overlay="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"])) .play-table > .play-center .draw-stack b,
+.game-shell:has(> .interaction-root-overlay[data-root-action-overlay="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"])) .play-table > .play-center .discard-stack b {
+  font-size: 10px;
+}
+
+.game-shell:has(> .interaction-root-overlay[data-root-action-overlay="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"])) .play-table > .play-center .draw-stack span,
+.game-shell:has(> .interaction-root-overlay[data-root-action-overlay="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"])) .play-table > .play-center .discard-stack span {
+  margin-top: 2px;
+  font-size: 5px;
+  letter-spacing: .04em;
+}
+
+.game-shell:has(> .interaction-root-overlay[data-root-action-overlay="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"])) .play-table > .play-center .discard-stack .played-card {
+  width: 30px;
+  height: 42px;
+  box-shadow: none;
+}
+
+.game-shell:has(> .interaction-root-overlay[data-root-action-overlay="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"])) .play-table > .play-center .discard-stack .played-card > i {
+  width: 12px;
+  min-height: 17px;
+  font-size: 5px;
+}
+
+.game-shell:has(> .interaction-root-overlay[data-root-action-overlay="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"])) .play-table > .play-center .discard-stack .played-card > i small {
+  font-size: 4px;
+}
+
 /* UX2.0VIS-12D: mobile opponent seats should frame the Hero's upper body,
    trimming some source-image headroom while keeping each original asset. */
 @media (max-width: 650px) {
@@ -4872,6 +4921,20 @@
 .game-shell .play-table[data-seat-topology="top-row"] > .interaction-safe-zone > .stage-system-cluster { bottom: 4px; }
 @media (min-width: 600px) {
   .game-shell .play-table[data-seat-topology="top-row"] > .interaction-safe-zone > .stage-system-cluster { bottom: 3px; }
+}
+
+/* UX2 §6.38 Stage A: on portrait top-row layouts, keep the live response
+   clock and system controls above the battlefield and opposite the proven
+   target side so they do not force extra routing elbows. */
+@media (max-width: 599px) {
+  .game-shell:has(> .interaction-root-overlay[data-root-action-overlay="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"])) .play-table[data-seat-topology="top-row"] > .interaction-safe-zone > .stage-system-cluster {
+    top: 8px;
+    bottom: auto;
+  }
+  .game-shell:has(> .interaction-root-overlay[data-root-action-overlay="true"][data-root-action-orthogonal-controls-side="left"]) .play-table[data-seat-topology="top-row"] > .interaction-safe-zone > .stage-system-cluster {
+    left: 8px;
+    right: auto;
+  }
 }
 .stage-system-menu {
   position: relative;
