@@ -1,16 +1,20 @@
 # WTK UI / Layout — Current Handoff
 
 Branch: `ux-v2`  
-Mode: `USER-DIRECTED UX2 TASK`
+Mode: `USER-DIRECTED TEST INFRA TASK`
 
 ## Latest result / CI
 
-`UX2-6.36-03-LONGDAN-ATTACK-AS-DODGE-GRAPH-PROOF` shipped in `f9cb0fe006bb5770f00ee84b2d2e2762feb6adec`; its CI-only lint repair shipped in `2bfdc5b1632c1406571ad523cba05d5b92d718c2`. The server accepts a Dodge proof only for Zhao Yun’s exact `zhao_yun_attack_as_dodge` execution consuming one physical Attack as Dodge; the public event keeps its Attack face while typed proof binds exact root/response/resolution/frame/source/target. Projection, snapshot validation and overlay layout preserve physical/effective identity. Real four-player browser flow showed the graph from attacker, defender and observer views with `AS DODGE`. Focused API (40), presentation/snapshot (64), build and converted-response browser checks passed. Exact final-SHA Actions run `38124908539`: **success** (Lint/fast, API, browser smoke, deploy). Production `/api/health` returned `{"ok":true,"worker":"available"}` and the deployed page bundle contains the full `2bfdc5b1632c1406571ad523cba05d5b92d718c2` SHA. A separate ordinary-Dodge browser run reached and passed graph assertions but failed its existing 20-second timing assertion: the observer saw the exit class about 687ms before layout-ready `shownAt`; timers are out of scope. Focused local ESLint exhausted Node heap (default and 4GB); Actions lint is green.
+`WTK-TEST-ROOM-HERO-SELECTION-01` implementation is ready: in an explicitly enabled TEST GAME, the host controller can choose any unused implemented Standard hero for each controlled seat during the existing hero-selection stage. Choices use the existing server-authorized `choose_hero` flow; duplicate heroes remain rejected. Unmarked Quick Test and ordinary multiplayer keep their existing role-specific candidate pools. No migration or gameplay-rule change.
+
+Focused validation: `npm run build`; `GAME_TEST_FILES=tests/api/lobby-heroes-wei.test.mjs node tests/run-tests.mjs` (23/23); `git diff --check`. Scoped ESLint was attempted but the local Node process exhausted its heap; this is not a passing lint result.
+
+Before this task commit, remote `ux-v2` HEAD was `6640a7ab1d8796cb2bc29264a965b4c0c5665e7e` with no combined status entries. The latest push-triggered run observed for the branch was `38124908539` on `2bfdc5b1632c1406571ad523cba05d5b92d718c2`, completed successfully. Per the user's CI rule, the empty current-HEAD status is treated as success. Post-push validation for this task SHA is pending observation.
 
 ## Design checkpoint
 
-Latest remote `docs/UX2-refine.md` blob: `d966440b487bcbe172d5ea608704cc6945dfe6df` (reviewed; §6.36.4 Task 3 governs this bounded Longdan proof repair).
+Latest remote `docs/UX2-refine.md` blob: `d966440b487bcbe172d5ea608704cc6945dfe6df` (reviewed; not changed for this testing-infrastructure task).
 
 ## Current task
 
-`WTK-TEST-ROOM-HERO-SELECTION-01` — Add host-controlled hero selection to test games while leaving ordinary multiplayer unchanged. The user requested this after Task 3; confirm the intended assignment flow (default proposal: host assigns heroes per test seat before match start) before implementation. Do not mix it into the completed Longdan change.
+`WTK-TEST-ROOM-HERO-SELECTION-01` — commit and push only the scoped hero-selection implementation, regression proof, and this handoff; then report the exact SHA and observed Actions state and stop for user review.

@@ -167,7 +167,7 @@ function testPresetFromRoom(room: RoomRow, seats: ReadonlySet<number>) {
   return validateTestHandPreset(stored, seats);
 }
 
-async function beginStandardHeroSelection(roomId: string, players: PlayerRow[]) {
+async function beginStandardHeroSelection(roomId: string, players: PlayerRow[], testRoom = false) {
   const roles = shuffle([...(ROLE_SETS[players.length] ?? [])]);
   const rulers = IMPLEMENTED_STANDARD_HEROES.filter((hero) => LORD_GENERAL_IDS.has(hero.id));
   const shuffledGenerals = shuffle(IMPLEMENTED_STANDARD_HEROES.filter((hero) => !LORD_GENERAL_IDS.has(hero.id)));
@@ -182,6 +182,10 @@ async function beginStandardHeroSelection(roomId: string, players: PlayerRow[]) 
   let remainingNonLordPlayers = selectionOrder.filter((player) => rolesByPlayerId.get(player.id) !== "Lord").length;
   const optionsByPlayerId = new Map<string, HeroDefinition[]>();
   for (const player of selectionOrder) {
+    if (testRoom) {
+      optionsByPlayerId.set(player.id, [...IMPLEMENTED_STANDARD_HEROES]);
+      continue;
+    }
     const role = rolesByPlayerId.get(player.id);
     if (role === "Lord") {
       optionsByPlayerId.set(player.id, [...rulers, ...shuffledGenerals.slice(generalCursor, generalCursor + 2)]);
@@ -4571,6 +4575,10 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const hostTestHandPreset = hostPresetResult?.preset && !hostPresetResult.error
     ? { ...hostPresetResult.preset, revision: room.test_hand_config_revision }
     : null;
+  const myHeroOptions = room.status === "heroes" && me && !me.hero
+    && (me.role === "Lord" || Boolean(players.find((player) => player.role === "Lord")?.hero))
+    ? currentHeroOptions(me.hero_options_json).filter((hero) => !room.test_room || !players.some((player) => player.hero === hero.id))
+    : [];
   const privateActionReason = responsePending?.delegation
     ? delegatedResponseReason(responsePending, me, players)
     : pending?.reason ?? (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
@@ -4640,7 +4648,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, isTestRoom: Boolean(room.test_room), testHandPreset: hostTestHandPreset, responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending ? { kind: responsePending ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction, presentationSnapshot,
     isHost: isRoomHost, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
-    myHeroOptions: room.status === "heroes" && me && !me.hero && (me.role === "Lord" || Boolean(players.find((player) => player.role === "Lord")?.hero)) ? currentHeroOptions(me.hero_options_json) : [],
+    myHeroOptions,
     turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null,
     log: rawLog.flatMap((entry, index) => { if (entry.startsWith("@card:") || entry.startsWith("@cards:")) return []; if (entry.startsWith("@history:")) { try { return [(JSON.parse(entry.slice(9)) as { message: string }).message]; } catch { return []; } } const event = messageEvent(entry, index); return event ? [event.message] : []; }),
     timeline: projectedTimeline, presentationV2, myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && me?.seat === room.turn_seat, actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && me?.id === actualActionPlayerId,
@@ -4666,7 +4674,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     pendingTargetCard: pending?.kind === "target_card" ? { kind: "target_card", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, cardKind: pending.cardKind } : null,
     pendingBorrowedSword: pending?.kind === "borrowed_sword" ? { kind: "borrowed_sword", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, holderId: pending.holderId, stage: pending.stage, weaponId: pending.weaponId ?? null, eligibleTargetIds: pending.stage === "choose_target" ? borrowedSwordForcedTargetIds(players, pending.sourceId, pending.holderId) : [] } : responsePending?.continuation.kind === "borrowed_sword_attack" ? { kind: "borrowed_sword", sourceId: responsePending.continuation.sourceId, actorId: responsePending.actorId, targetId: responsePending.continuation.targetId, holderId: responsePending.continuation.holderId, stage: "force_attack", weaponId: responsePending.continuation.weaponId, eligibleTargetIds: [] } : null,
     pendingDying: pending?.kind === "dying" ? { kind: "dying", sourceId: pending.sourceId, targetId: pending.targetId, origin: pending.origin ?? null, recoveryNeeded: recoveryNeeded(players.find((player) => player.id === pending.targetId)?.hp ?? 0), deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,
-    players: players.map((player) => ({ id: player.id, name: player.name, seat: player.seat, hero: room.status === "heroes" && player.role !== "Lord" && player.id !== me?.id ? null : player.hero, generalReady: Boolean(player.hero), ready: Boolean(player.ready), hp: room.status === "heroes" ? null : player.hp, maxHp: room.status === "heroes" ? null : player.max_hp, alive: Boolean(player.alive), connected: viewerPlayerIds.has(player.id) || Date.now() - player.connected_at < 90_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isTestPlayer: Boolean(player.is_test_player), role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
+    players: players.map((player) => ({ id: player.id, name: player.name, seat: player.seat, hero: room.status === "heroes" && !(room.test_room && isTestController) && player.role !== "Lord" && player.id !== me?.id ? null : player.hero, generalReady: Boolean(player.hero), ready: Boolean(player.ready), hp: room.status === "heroes" ? null : player.hp, maxHp: room.status === "heroes" ? null : player.max_hp, alive: Boolean(player.alive), connected: viewerPlayerIds.has(player.id) || Date.now() - player.connected_at < 90_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isTestPlayer: Boolean(player.is_test_player), role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
   };
 }
 
@@ -6257,7 +6265,7 @@ export async function POST(request: Request) {
       const preset = testPresetFromRoom(room, new Set(players.map((player) => player.seat)));
       if (preset.error || !preset.preset) return json({ error: preset.error ?? "The saved test-hand preset is invalid." }, 409);
     }
-    if (!await beginStandardHeroSelection(room.id, players)) return json({ error: "The lobby has already started." }, 409);
+    if (!await beginStandardHeroSelection(room.id, players, Boolean(room.test_room))) return json({ error: "The lobby has already started." }, 409);
     await resetAudit(room.id);
     await recordAuditAction(room, me, name, action);
     return json({ room: await roomState(code, token) });

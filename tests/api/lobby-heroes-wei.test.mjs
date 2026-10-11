@@ -55,6 +55,54 @@ test("test controller accepts displayed Lord and non-first candidates through th
   assert.ok(room.players.every((player) => player.hero));
 });
 
+test("explicit TEST GAME lets the host assign specific unused Standard heroes to each controlled seat", async () => {
+  const created = await requestAndSettle("create", { name: "Hero Test Host" });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const code = created.data.room.code;
+  const token = created.data.token;
+  const added = await requestAndSettle("add_test_players", { code, token });
+  assert.equal(added.status, 200, JSON.stringify(added.data));
+  const enabled = await requestAndSettle("enable_test_room", { code, token });
+  assert.equal(enabled.status, 200, JSON.stringify(enabled.data));
+  assert.equal(enabled.data.room.isTestRoom, true);
+
+  const started = await requestAndSettle("start", { code, token });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  let room = started.data.room;
+  assert.equal(room.isTestRoom, true);
+  assert.equal(room.isTestController, true);
+  assert.ok(room.myHeroOptions.some((hero) => hero.id === "daqiao"), "the TEST GAME hero picker includes implemented non-Lord heroes");
+  assert.ok(room.myHeroOptions.some((hero) => hero.id === "zhao-yun"));
+  assert.equal(room.myHeroOptions.some((hero) => hero.id === "yu-jin"), false, "the picker excludes legacy, non-Standard heroes");
+
+  const heroBySeat = new Map([[0, "daqiao"], [1, "zhao-yun"], [2, "simayi"], [3, "huang-gai"]]);
+  let confirmedCount = 0;
+  while (room.status === "heroes") {
+    const actor = room.players.find((player) => player.id === room.meId);
+    assert.ok(actor, "the host controller receives the current controlled seat");
+    const selectedHeroId = heroBySeat.get(actor.seat);
+    assert.ok(selectedHeroId, `seat ${actor.seat + 1} has an explicit test assignment`);
+    assert.ok(room.myHeroOptions.some((hero) => hero.id === selectedHeroId), `${selectedHeroId} is available for seat ${actor.seat + 1}`);
+    const chosen = await requestAndSettle("choose_hero", { code, token, heroId: selectedHeroId });
+    assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+    room = chosen.data.room;
+    confirmedCount += 1;
+
+    if (room.status === "heroes") {
+      assert.equal(room.players.find((player) => player.id === actor.id)?.hero, selectedHeroId, "the test controller can verify the confirmed seat-to-hero assignment");
+      const nextActor = room.players.find((player) => player.id === room.meId);
+      assert.ok(nextActor);
+      assert.equal(room.myHeroOptions.some((hero) => hero.id === selectedHeroId), false, "a confirmed hero is removed from the next seat's options");
+      const duplicate = await requestAndSettle("choose_hero", { code, token, heroId: selectedHeroId });
+      assert.equal(duplicate.status, 409, "the server rejects reusing a hero even if a client crafts the request");
+    }
+  }
+
+  assert.equal(confirmedCount, 4);
+  assert.equal(room.status, "playing");
+  for (const player of room.players) assert.equal(player.hero, heroBySeat.get(player.seat), `seat ${player.seat + 1} receives its selected hero`);
+});
+
 test("hero selection enforces unique heroes for Quick Test and normal multiplayer, including stale concurrent choices", async () => {
   const quick = await createTestLobby();
   const quickFirst = quick.data.room;
