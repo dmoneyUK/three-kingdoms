@@ -162,6 +162,16 @@ function pointTouchesRectEdge(point, rect, tolerance = 2) {
       || Math.abs(point.y - rect.y) <= tolerance || Math.abs(point.y - rect.bottom) <= tolerance);
 }
 
+function expectedOrthogonalAttackerSide(geometry) {
+  const tableCenterX = geometry.table.x + geometry.table.width / 2;
+  const sourceCenterX = geometry.source.x + geometry.source.width / 2;
+  const targetCenterX = geometry.target.x + geometry.target.width / 2;
+  if (geometry.source.local && !geometry.target.local) return targetCenterX < tableCenterX ? "right" : "left";
+  if (geometry.target.local && !geometry.source.local) return sourceCenterX < tableCenterX ? "left" : "right";
+  if (Math.abs(sourceCenterX - targetCenterX) > 12) return sourceCenterX < targetCenterX ? "left" : "right";
+  return sourceCenterX < tableCenterX ? "left" : "right";
+}
+
 async function captureAttackOverlayDiagnostics(page) {
   return page.evaluate(() => {
     const rect = (element) => {
@@ -305,6 +315,7 @@ async function captureAttackStageComposition(page, sourceId, targetId) {
         targetId: overlay.dataset.rootActionTargetId,
         mode: overlay.dataset.rootActionMode,
         orthogonalAttackRouting: overlay.dataset.rootActionOrthogonalAttackRouting,
+        attackerSide: overlay.dataset.rootActionOrthogonalAttackerSide ?? null,
         orthogonalControlsSide: overlay.dataset.rootActionOrthogonalControlsSide,
         cardKind: overlay.dataset.rootActionCardKind,
         cardFaceKind: overlay.querySelector('[data-root-action-card="true"]')?.dataset.rootActionCardFaceKind ?? null,
@@ -511,6 +522,8 @@ async function captureAttackDodgeInterceptionGeometry(page) {
     const connectorRect = connector.getBoundingClientRect();
     const attackPathStart = attackPath.getPointAtLength(0);
     const attackPathEnd = attackPath.getPointAtLength(attackPath.getTotalLength());
+    const attackerSide = overlay.dataset.rootActionOrthogonalAttackerSide;
+    const defenderSide = attackerSide === "left" ? "right" : "left";
     const actualAttackSegment = {
       start: { x: attackPathStart.x + connectorRect.x, y: attackPathStart.y + connectorRect.y },
       end: { x: attackPathEnd.x + connectorRect.x, y: attackPathEnd.y + connectorRect.y },
@@ -533,7 +546,8 @@ async function captureAttackDodgeInterceptionGeometry(page) {
     const lineIntersectsCard = low <= high;
     const edgeGap = lineIntersectsCard ? 0 : Math.min(pointRectGap(start), pointRectGap(end), ...corners.map(pointSegmentGap));
     const horizontal = Math.abs(actualAttackSegment.start.y - actualAttackSegment.end.y) <= 1;
-    const pathEndpointToDodgeEdge = Math.hypot(actualAttackSegment.end.x - responseRect.right, actualAttackSegment.end.y - responseCenter.y);
+    const defenderFacingDodgeEdge = defenderSide === "right" ? responseRect.x : responseRect.right;
+    const pathEndpointToDodgeEdge = Math.hypot(actualAttackSegment.end.x - defenderFacingDodgeEdge, actualAttackSegment.end.y - responseCenter.y);
     const lineTerminatesAtCard = horizontal && pathEndpointToDodgeEdge <= 2.1;
     return {
       mode: response.dataset.rootActionDodgeInterception,
@@ -541,7 +555,11 @@ async function captureAttackDodgeInterceptionGeometry(page) {
       lineIntersectsCard: lineTerminatesAtCard,
       lineTerminatesAtCard,
       horizontal,
+      attackerSide,
+      defenderSide,
       responseLeftOfRoot: responseRect.right < rootRect.x,
+      responseRightOfRoot: responseRect.x > rootRect.right,
+      responseSide: responseRect.x > rootRect.right ? "right" : responseRect.right < rootRect.x ? "left" : "overlap",
       responseVerticalCenterDelta: Math.abs(responseCenter.y - rootCenter.y),
       pathEndpointToDodgeEdge,
       edgeGap: lineTerminatesAtCard ? 0 : edgeGap,
@@ -1071,8 +1089,11 @@ async function observeAttackDodgeSettlement(page, sourceId = null, targetId = nu
           const attackSegment = edgeState("attack-dodge-interception");
           const markerPoint = markPoints?.middle;
           const attackDodgeLineHorizontal = Boolean(attackSegment && Math.abs(attackSegment.start.y - attackSegment.end.y) <= 1);
+          const attackerSide = overlay.dataset.rootActionOrthogonalAttackerSide ?? null;
+          const defenderSide = attackerSide === "left" ? "right" : attackerSide === "right" ? "left" : null;
+          const defenderFacingDodgeEdge = defenderSide === "right" ? bounds.response.x : bounds.response.right;
           const attackDodgePathEndpointToCard = attackSegment
-            ? Math.hypot(attackSegment.end.x - bounds.response.right, attackSegment.end.y - (bounds.response.y + bounds.response.height / 2))
+            ? Math.hypot(attackSegment.end.x - defenderFacingDodgeEdge, attackSegment.end.y - (bounds.response.y + bounds.response.height / 2))
             : null;
           const attackDodgeLineTerminatesAtCard = attackDodgeLineHorizontal && (attackDodgePathEndpointToCard ?? Infinity) <= 2.1;
           window.__wtkAttackDodgeSettlementVisual = {
@@ -1113,7 +1134,11 @@ async function observeAttackDodgeSettlement(page, sourceId = null, targetId = nu
                 lineIntersectsCard: attackDodgeLineTerminatesAtCard,
                 lineTerminatesAtCard: attackDodgeLineTerminatesAtCard,
                 horizontal: attackDodgeLineHorizontal,
+                attackerSide,
+                defenderSide,
                 responseLeftOfRoot: bounds.response.right < bounds.root.x,
+                responseRightOfRoot: bounds.response.x > bounds.root.right,
+                responseSide: bounds.response.x > bounds.root.right ? "right" : bounds.response.right < bounds.root.x ? "left" : "overlap",
                 responseVerticalCenterDelta: Math.abs(responseCenter.y - rootCenter.y),
                 pathEndpointToDodgeEdge: attackDodgePathEndpointToCard,
                 nearestPathToCardEdge: attackDodgeLineTerminatesAtCard ? 0 : distanceToRect(closest, bounds.response),
@@ -3238,10 +3263,10 @@ test("real post-Negation Attack creates and keeps its own visible graph at 440×
 });
 
 for (const scenario of [
-  { playerCount: 4, targetIndex: 1, viewport: { width: 390, height: 844 } },
+  { playerCount: 4, targetIndex: 3, viewport: { width: 390, height: 844 } },
   { playerCount: 4, targetIndex: 3, viewport: { width: 440, height: 766 } },
-  { playerCount: 4, targetIndex: 1, viewport: { width: 480, height: 900 } },
-  { playerCount: 4, targetIndex: 1, viewport: { width: 1440, height: 900 } },
+  { playerCount: 4, targetIndex: 3, viewport: { width: 480, height: 900 } },
+  { playerCount: 4, targetIndex: 3, viewport: { width: 1440, height: 900 } },
 ]) {
   const { playerCount, targetIndex, viewport } = scenario;
   test(`§6.38 real ${playerCount}-player orthogonal Attack→Dodge graph uses card faces at ${viewport.width}×${viewport.height}`, async ({ page, browser, request }, testInfo) => {
@@ -3253,13 +3278,13 @@ for (const scenario of [
     const sourceCards = [sourceCard, { ...peach, id: `stage-a-source-peach-${suffix}` }, { ...dodge, id: `stage-a-source-dodge-${suffix}` }, { ...peach, id: `stage-a-source-peach-two-${suffix}` }];
     const observerCards = [{ ...attack, id: `stage-a-observer-attack-${suffix}` }, { ...peach, id: `stage-a-observer-peach-${suffix}` }, { ...dodge, id: `stage-a-observer-dodge-${suffix}` }, { ...peach, id: `stage-a-observer-peach-two-${suffix}` }];
     const sourceName = "Cao Cao";
-    const targetName = "Zhang Liao";
+    const targetName = "Zhao Yun";
     const seed = await seedGame(request, playerCount, {
       sourceCard,
       sourceCards,
       targetCards,
       sourceHero: "cao-cao",
-      targetHero: "zhang-liao",
+      targetHero: "zhao-yun",
       sourceName,
       targetName,
       otherHands: { 2: observerCards },
@@ -3272,7 +3297,7 @@ for (const scenario of [
     expect(resolvedTargetIndex, "the seeded response identifies the selected target by player identity").toBeGreaterThanOrEqual(0);
     expect(observerIndex, "the seeded response identifies an independent observer").toBeGreaterThanOrEqual(0);
     expect(seed.players[sourceIndex]).toMatchObject({ name: sourceName, hero: "cao-cao" });
-    expect(seed.players[resolvedTargetIndex]).toMatchObject({ name: targetName, hero: "zhang-liao" });
+    expect(seed.players[resolvedTargetIndex]).toMatchObject({ name: targetName, hero: "zhao-yun" });
     const sourceId = seed.players[sourceIndex].id;
     const targetId = seed.players[resolvedTargetIndex].id;
     await openGame(page, seed, sourceIndex, viewport);
@@ -3333,6 +3358,11 @@ for (const scenario of [
       })));
       await attachJsonFile(testInfo, `attack-stage-a-root-geometry-${viewport.width}.json`, rootGeometries);
       for (const { perspective: name, geometry: evidence } of rootGeometries) {
+        const attackerSide = expectedOrthogonalAttackerSide(evidence);
+        const defenderSide = attackerSide === "left" ? "right" : "left";
+        const attackerCenterX = evidence.root.x + evidence.root.width / 2;
+        const attackerFirstLeg = evidence.connectors.source.d.match(/^M\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+L\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/);
+        const targetFirstLeg = evidence.connectors.target.d.match(/^M\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+L\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/);
         if (viewport.width <= 599) {
           const controls = evidence.obstacles.find((obstacle) => obstacle.name.includes("stage-system-cluster"));
           expect(controls, `${name}: public timer/system controls remain measured`).toBeTruthy();
@@ -3346,41 +3376,52 @@ for (const scenario of [
           expect(controlsCenterX < tableCenterX, `${name}: controls occupy the selected side of the table`)
             .toBe(expectedControlsSide === "left");
         }
-        expectOrthogonalPath(evidence.connectors.source, `${name} Attack author tether`, {
-          expectedElbows: name === "local-source" ? 0 : minimumOrthogonalRouteElbows(evidence.connectors.source, evidence, sourceId),
+        expect(evidence.overlay.attackerSide, `${name}: proven player anchors select the attacker half`).toBe(attackerSide);
+        expect(attackerCenterX < evidence.usable.center.x, `${name}: Attack occupies the half belonging to its source`)
+          .toBe(attackerSide === "left");
+        expect(Math.abs(attackerCenterX - evidence.usable.center.x), `${name}: Attack does not collapse onto the global center`)
+          .toBeGreaterThan(12);
+        const sourceRoute = expectOrthogonalPath(evidence.connectors.source, `${name} Attack author tether`, {
+          expectedElbows: evidence.source.local ? 0 : 1,
         });
+        expect(minimumOrthogonalRouteElbows(evidence.connectors.source, evidence, sourceId),
+          `${name}: Attack author tether uses the minimum collision-free bend count`).toBe(sourceRoute.elbows);
         expect(evidence.connectors.source.markerEnd, `${name}: green author tether is arrowless`).toBeNull();
         expect(pointTouchesRectEdge(evidence.connectors.source.start, evidence.source), `${name}: source tether begins on the actual author Seat/Dock`).toBe(true);
         expect(pointTouchesRectEdge(evidence.connectors.source.end, evidence.root), `${name}: source tether ends on the Attack CardFace`).toBe(true);
-        expectOrthogonalPath(evidence.connectors.target, `${name} Attack target route`, {
-          expectedElbows: name === "local-source" && !evidence.target.local
-            ? 1
-            : minimumOrthogonalRouteElbows(evidence.connectors.target, evidence, targetId),
+        if (evidence.source.local) {
+          expect(evidence.connectors.source.start.x).toBeCloseTo(attackerCenterX, 0);
+          expect(evidence.connectors.source.end.x).toBeCloseTo(attackerCenterX, 0);
+          expect(evidence.connectors.source.start.y).toBeCloseTo(evidence.localDock.y, 0);
+          expect(evidence.connectors.source.end.y).toBeCloseTo(evidence.root.bottom, 0);
+        } else {
+          expect(evidence.connectors.source.start.x).toBeCloseTo(evidence.source.x + evidence.source.width / 2, 0);
+          expect(evidence.connectors.source.start.y).toBeCloseTo(evidence.source.bottom, 0);
+          expect(attackerFirstLeg, `${name}: source route begins with a vertical descent`).not.toBeNull();
+          expect(Number(attackerFirstLeg[1])).toBeCloseTo(Number(attackerFirstLeg[3]), 0);
+          expect(evidence.connectors.source.end.x).toBeCloseTo(attackerSide === "left" ? evidence.root.x : evidence.root.right, 0);
+          expect(evidence.connectors.source.end.y).toBeCloseTo(evidence.root.y + evidence.root.height / 2, 0);
+        }
+        const targetRoute = expectOrthogonalPath(evidence.connectors.target, `${name} Attack target route`, {
+          expectedElbows: 1,
         });
+        expect(minimumOrthogonalRouteElbows(evidence.connectors.target, evidence, targetId),
+          `${name}: Attack target route uses the minimum collision-free bend count`).toBe(targetRoute.elbows);
         expect(evidence.connectors.target.markerEnd, `${name}: red Attack route terminates directionally`).toMatch(/^url\(#root-target-arrow-/);
         expect(evidence.connectors.target.end.y, `${name}: red route ends at the actual inward-facing Seat/Dock edge`)
           .toBeCloseTo(evidence.target.local ? evidence.target.y : evidence.target.bottom, 0);
-        const targetCenterX = evidence.target.x + evidence.target.width / 2;
+        expect(evidence.connectors.target.start.x, `${name}: red target route begins on the defender-facing Attack edge`)
+          .toBeCloseTo(defenderSide === "right" ? evidence.root.right : evidence.root.x, 0);
+        expect(evidence.connectors.target.start.y, `${name}: red route leaves at the Attack face center`)
+          .toBeCloseTo(evidence.root.y + evidence.root.height / 2, 0);
+        expect(targetFirstLeg, `${name}: red target route begins with a horizontal leg`).not.toBeNull();
+        expect(Number(targetFirstLeg[2])).toBeCloseTo(Number(targetFirstLeg[4]), 0);
         if (evidence.target.local) {
-          expect(evidence.connectors.target.start.y, `${name}: incoming route leaves the Attack card's bottom edge toward the local Dock`)
-            .toBeCloseTo(evidence.root.bottom, 0);
-        } else if (name === "local-source") {
-          const expectedStartX = targetCenterX < evidence.root.x ? evidence.root.x : evidence.root.right;
-          expect(evidence.connectors.target.start.x, `${name}: reference red route leaves the appropriate horizontal Attack edge`)
-            .toBeCloseTo(expectedStartX, 0);
-          expect(evidence.connectors.target.start.y, `${name}: reference red route leaves at the Attack face center`)
-            .toBeCloseTo(evidence.root.y + evidence.root.height / 2, 0);
-          const firstLeg = evidence.connectors.target.d.match(/^M\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+L\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/);
-          expect(firstLeg, `${name}: reference Attack route has a measurable first horizontal leg`).not.toBeNull();
-          expect(Number(firstLeg[2])).toBeCloseTo(Number(firstLeg[4]), 0);
-        } else if (targetCenterX < evidence.root.x) {
-          expect(evidence.connectors.target.start.x, `${name}: left-hand target route begins at the Attack card's left edge`)
-            .toBeCloseTo(evidence.root.x, 0);
-          expect(evidence.connectors.target.start.y).toBeCloseTo(evidence.root.y + evidence.root.height / 2, 0);
-        } else if (targetCenterX > evidence.root.right) {
-          expect(evidence.connectors.target.start.x, `${name}: right-hand target route begins at the Attack card's right edge`)
-            .toBeCloseTo(evidence.root.right, 0);
-          expect(evidence.connectors.target.start.y).toBeCloseTo(evidence.root.y + evidence.root.height / 2, 0);
+          expect(Math.abs(evidence.connectors.target.end.x - evidence.connectors.target.start.x),
+            `${name}: defender-side red route keeps a visible horizontal lead before turning down`)
+            .toBeGreaterThanOrEqual(Math.min(20, evidence.usable.width * .05) - 1);
+          expect(evidence.connectors.target.end.x, `${name}: target route aligns with the defender Dock's horizontal center`)
+            .toBeCloseTo(evidence.target.x + evidence.target.width / 2, 0);
         }
         expect(evidence.piles.draw.width, `${name}: draw pile retains a compact visible animation anchor, including its small rotation`).toBeLessThanOrEqual(40);
         expect(evidence.piles.draw.height, `${name}: draw pile retains a compact visible animation anchor, including its small rotation`).toBeLessThanOrEqual(52);
@@ -3393,13 +3434,10 @@ for (const scenario of [
         `${name}: central Attack card does not overlap the compact pile lane`).toBe(true);
         if (name === "local-source") {
           const responseSpaceOffset = evidence.root.x + evidence.root.width / 2 - evidence.usable.center.x;
-          expect(responseSpaceOffset,
-            "Attack reserves response-side room while remaining in the central battlefield").toBeGreaterThan(20);
-          expect(responseSpaceOffset).toBeLessThanOrEqual(50);
-          expect(evidence.connectors.source.start.x).toBeCloseTo(evidence.root.x + evidence.root.width / 2, 0);
-          expect(evidence.connectors.source.end.x).toBeCloseTo(evidence.root.x + evidence.root.width / 2, 0);
-          expect(evidence.connectors.source.start.y).toBeCloseTo(evidence.localDock.y, 0);
-          expect(evidence.connectors.source.end.y).toBeCloseTo(evidence.root.bottom, 0);
+          expect(Math.sign(responseSpaceOffset), "the source-side Attack is shifted away from its defender response half")
+            .toBe(attackerSide === "left" ? -1 : 1);
+          expect(Math.abs(responseSpaceOffset)).toBeGreaterThan(20);
+          expect(Math.abs(responseSpaceOffset)).toBeLessThanOrEqual(50);
         }
       }
       for (const { name, page: viewerPage } of perspectives) {
@@ -3470,19 +3508,34 @@ for (const scenario of [
       for (let index = 0; index < settledGeometries.length; index += 1) {
         const { perspective, geometry: evidence } = settledGeometries[index];
         const beforeDodge = rootGeometries[index].geometry;
+        const attackerSide = expectedOrthogonalAttackerSide(evidence);
+        const defenderSide = attackerSide === "left" ? "right" : "left";
+        const pairCenterTolerance = evidence.target.local ? 15 : 2;
+        const dodgeSourceFirstLeg = evidence.connectors.responseSource.d.match(/^M\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+L\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/);
         expectOrthogonalPath(evidence.connectors.source, `${perspective} retained attacker tether`);
-        expectOrthogonalPath(evidence.connectors.responseSource, `${perspective} committed Dodge author tether`);
+        expectOrthogonalPath(evidence.connectors.responseSource, `${perspective} committed Dodge author tether`, { expectedElbows: 1 });
         expectOrthogonalPath(evidence.connectors.interception, `${perspective} Attack→Dodge interception`, { expectedElbows: 0 });
         expect(pointTouchesRectEdge(evidence.connectors.source.start, evidence.source), `${perspective}: attacker tether remains attached to the real source anchor`).toBe(true);
         expect(pointTouchesRectEdge(evidence.connectors.source.end, evidence.root), `${perspective}: attacker tether ends at the unchanged Attack`).toBe(true);
         expect(pointTouchesRectEdge(evidence.connectors.responseSource.start, evidence.responseAuthor), `${perspective}: Dodge authorship begins at the real responder anchor`).toBe(true);
         expect(pointTouchesRectEdge(evidence.connectors.responseSource.end, evidence.response), `${perspective}: Dodge authorship ends at the physical Dodge CardFace`).toBe(true);
+        expect(evidence.overlay.attackerSide).toBe(attackerSide);
+        expect(evidence.response.x > evidence.root.right, `${perspective}: Dodge occupies the proven defender half`)
+          .toBe(defenderSide === "right");
+        expect(evidence.response.right < evidence.root.x, `${perspective}: Dodge occupies the proven defender half`)
+          .toBe(defenderSide === "left");
+        expect(dodgeSourceFirstLeg, `${perspective}: responder tether begins vertically before turning into Dodge`).not.toBeNull();
+        expect(Number(dodgeSourceFirstLeg[1])).toBeCloseTo(Number(dodgeSourceFirstLeg[3]), 0);
+        expect(evidence.connectors.responseSource.end.x, `${perspective}: Dodge tether enters on the defender-facing card edge`)
+          .toBeCloseTo(defenderSide === "right" ? evidence.response.right : evidence.response.x, 0);
         expect(evidence.connectors.target, `${perspective}: no second full-strength red Attack→Hero route after Dodge`).toBeNull();
-        expect(evidence.response.x + evidence.response.width).toBeCloseTo(evidence.root.x - 12, 0);
+        expect(defenderSide === "right"
+          ? evidence.response.x - evidence.root.right
+          : evidence.root.x - evidence.response.right).toBeCloseTo(12, 0);
         expect(evidence.response.y + evidence.response.height / 2).toBeCloseTo(evidence.root.y + evidence.root.height / 2, 0);
-        expect(evidence.connectors.interception.start.x).toBeCloseTo(evidence.root.x, 0);
+        expect(evidence.connectors.interception.start.x).toBeCloseTo(defenderSide === "right" ? evidence.root.right : evidence.root.x, 0);
         expect(evidence.connectors.interception.start.y).toBeCloseTo(evidence.root.y + evidence.root.height / 2, 0);
-        expect(evidence.connectors.interception.end.x).toBeCloseTo(evidence.response.x + evidence.response.width, 0);
+        expect(evidence.connectors.interception.end.x).toBeCloseTo(defenderSide === "right" ? evidence.response.x : evidence.response.right, 0);
         expect(evidence.connectors.interception.end.y).toBeCloseTo(evidence.response.y + evidence.response.height / 2, 0);
         expect(evidence.connectors.interception.markerEnd).toBeNull();
         if (perspective === "local-source") {
@@ -3493,7 +3546,7 @@ for (const scenario of [
         }
         expect(Math.abs(evidence.root.x - beforeDodge.root.x), `${perspective}: Attack stays fixed through the committed Dodge`).toBeLessThanOrEqual(1);
         expect(Math.abs(evidence.root.y - beforeDodge.root.y), `${perspective}: Attack stays fixed through the committed Dodge`).toBeLessThanOrEqual(1);
-        expect(Math.abs(evidence.groupCenterOffset.x), `${perspective}: the Attack/Dodge union is horizontally balanced`).toBeLessThanOrEqual(2);
+        expect(Math.abs(evidence.groupCenterOffset.x), `${perspective}: the Attack/Dodge union is horizontally balanced`).toBeLessThanOrEqual(pairCenterTolerance);
         expect(Math.abs(evidence.groupCenterOffset.y), `${perspective}: the Attack/Dodge union stays within 12px of the usable battlefield centre`).toBeLessThanOrEqual(12);
       }
       for (const { name, page: viewerPage } of perspectives) {
@@ -3588,7 +3641,16 @@ for (const scenario of [
       );
       expect(responseFaceGeometry.fitStep).toBe(blockedFitStep);
       expect(geometry.interception.horizontal, "committed Dodge interception is a horizontal Attack-to-Dodge route").toBe(true);
-      expect(geometry.interception.responseLeftOfRoot, "committed Dodge is left of the unchanged Attack card").toBe(true);
+      const localTargetGeometry = settledGeometries.find(({ perspective }) => perspective === "local-target").geometry;
+      const localTargetAttackerSide = expectedOrthogonalAttackerSide(localTargetGeometry);
+      const localTargetDefenderSide = localTargetAttackerSide === "left" ? "right" : "left";
+      expect(geometry.interception.attackerSide).toBe(localTargetAttackerSide);
+      expect(geometry.interception.defenderSide).toBe(localTargetDefenderSide);
+      expect(geometry.interception.responseSide, "committed Dodge is on the defender's viewer-relative half").toBe(localTargetDefenderSide);
+      expect(geometry.interception.responseRightOfRoot, "the defender-side Dodge is right of Attack when Zhao Yun occupies the right half")
+        .toBe(localTargetDefenderSide === "right");
+      expect(geometry.interception.responseLeftOfRoot, "the defender-side Dodge is left of Attack when Zhao Yun occupies the left half")
+        .toBe(localTargetDefenderSide === "left");
       expect(geometry.interception.responseVerticalCenterDelta).toBeLessThanOrEqual(1);
       expect(geometry.interception.pathEndpointToDodgeEdge).toBeLessThanOrEqual(2.1);
       expect(geometry.interception.pathEndpointToMarkCenter).toBeLessThanOrEqual(2.1);
@@ -3615,7 +3677,8 @@ for (const scenario of [
         expect(committed.response.width).toBeLessThanOrEqual(committed.handCard.width + 0.5);
         expect(committed.response.height).toBeLessThanOrEqual(committed.handCard.height + 0.5);
         expect(Math.abs(committed.groupCenterOffset.x), `${perspectives[index].name}: Attack/Dodge union stays horizontally centred`).toBeLessThanOrEqual(committed.usable.width * .32);
-        expect(Math.abs(committed.groupCenterOffset.x), `${perspectives[index].name}: Attack/Dodge card pair is centred in the available field`).toBeLessThanOrEqual(3);
+        expect(Math.abs(committed.groupCenterOffset.x), `${perspectives[index].name}: Attack/Dodge card pair remains visually balanced in the available field`)
+          .toBeLessThanOrEqual(committed.target.local ? 15 : 3);
         expect(Math.abs(committed.groupCenterOffset.y), `${perspectives[index].name}: Attack/Dodge union stays within 12px of the usable battlefield centre`).toBeLessThanOrEqual(12);
         expect(Math.abs(committed.root.x - initial.root.x), `${perspectives[index].name}: Attack root x remains stable`).toBeLessThanOrEqual(1);
         expect(Math.abs(committed.root.y - initial.root.y), `${perspectives[index].name}: Attack root y remains stable`).toBeLessThanOrEqual(1);
@@ -3634,8 +3697,13 @@ for (const scenario of [
       expect(geometry.response.bottom).toBeLessThanOrEqual(geometry.table.bottom);
       expect(geometry.root.right <= geometry.response.x || geometry.response.right <= geometry.root.x
         || geometry.root.bottom <= geometry.response.y || geometry.response.bottom <= geometry.root.y).toBe(true);
-      expect(geometry.response.right).toBeLessThan(geometry.root.x);
-      expect(geometry.root.x - geometry.response.right).toBeCloseTo(12, 0);
+      if (geometry.interception.defenderSide === "right") {
+        expect(geometry.response.x).toBeGreaterThan(geometry.root.right);
+        expect(geometry.response.x - geometry.root.right).toBeCloseTo(12, 0);
+      } else {
+        expect(geometry.response.right).toBeLessThan(geometry.root.x);
+        expect(geometry.root.x - geometry.response.right).toBeCloseTo(12, 0);
+      }
       expect(geometry.response.y + geometry.response.height / 2).toBeCloseTo(geometry.root.y + geometry.root.height / 2, 0);
       expect(geometry.obstacles.every((obstacle) => {
         return (geometry.root.right <= obstacle.x || geometry.root.x >= obstacle.right || geometry.root.bottom <= obstacle.y || geometry.root.y >= obstacle.bottom)

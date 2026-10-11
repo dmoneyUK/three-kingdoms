@@ -118,6 +118,7 @@ type RootActionLayout = {
   height: number;
   card: Rect;
   orthogonalAttackRouting?: boolean;
+  orthogonalAttackerSide?: "left" | "right";
   orthogonalAttackControlsSide?: "left" | "right";
   sourcePath: string;
   targetPath: string | null;
@@ -1079,6 +1080,26 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const targetAnchorRect = relativeRect(targetElement, shellBounds);
   const targetRect = relativeRect(targetPathElement, shellBounds);
   const targetHalo = action.cardKind === "Attack" ? { ...targetAnchorRect } : null;
+  // Public proof resolves the source/target IDs above; their measured anchors
+  // only determine which half of this viewer's battlefield represents each
+  // already-proven participant. A local Dock spans the full width, so use the
+  // external participant's side and assign the Dock the opposite half.
+  const orthogonalAttackerSide: "left" | "right" | undefined = isOrthogonalAttackRoot
+    ? (() => {
+      const fieldCenterX = center(tableRect).x;
+      const sourceCenterX = center(sourceRect).x;
+      const targetCenterX = center(targetRect).x;
+      const sourceIsLocal = sourceElement.classList.contains("local-player-dock");
+      const targetIsLocal = targetElement.classList.contains("local-player-dock");
+      if (sourceIsLocal && !targetIsLocal) return targetCenterX < fieldCenterX ? "right" : "left";
+      if (targetIsLocal && !sourceIsLocal) return sourceCenterX < fieldCenterX ? "left" : "right";
+      if (Math.abs(sourceCenterX - targetCenterX) > 12) return sourceCenterX < targetCenterX ? "left" : "right";
+      return sourceCenterX < fieldCenterX ? "left" : "right";
+    })()
+    : undefined;
+  const orthogonalDefenderSide: "left" | "right" | undefined = orthogonalAttackerSide
+    ? orthogonalAttackerSide === "left" ? "right" : "left"
+    : undefined;
   const orthogonalAttackControlsSide = isOrthogonalAttackRoot
     ? targetElement.classList.contains("local-player-dock")
       ? center(sourceRect).x < center(tableRect).x ? "right" : "left"
@@ -1199,6 +1220,13 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   };
   attackUsableField.height = attackUsableField.bottom - attackUsableField.top;
   const attackFieldCenter = center(attackUsableField);
+  const rootRemainsOnAttackerHalf = (candidate: Rect) => !orthogonalAttackerSide
+    || (orthogonalAttackerSide === "left"
+      ? candidate.right <= attackFieldCenter.x - 1
+      : candidate.left >= attackFieldCenter.x + 1);
+  const localTargetHorizontalLead = isUnansweredAttackRoot && targetElement.classList.contains("local-player-dock")
+    ? Math.min(20, attackUsableField.width * .05)
+    : 0;
   const attackCompositionAuthors = action.cardKind === "Attack"
     ? isUnansweredAttackRoot || !responseSourceRect
       ? [sourceCenter, targetCenter]
@@ -1272,7 +1300,10 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const centreSeedFractions = [-.3, -.24, -.18, -.12, -.06, 0, .06, .12, .18, .24, .3];
   const centreFirstCandidates = isUnansweredAttackRoot ? [
     {
-      x: attackCompositionCenter.x + (cardWidth + 12) / 2,
+      x: attackCompositionCenter.x + (orthogonalAttackerSide === "left" ? -1 : 1)
+        * (localTargetHorizontalLead > 0
+          ? cardWidth / 2 + localTargetHorizontalLead
+          : (cardWidth + 12) / 2),
       y: attackCompositionCenter.y,
       fraction: .5,
       offset: 0,
@@ -1347,46 +1378,51 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     ...obstacleElements.filter((element) => element !== ignored).map((element) => relativeRect(element, shellBounds)),
   ];
   const attackRoutesForCard = (candidateCard: Rect) => {
-    if (!isOrthogonalAttackRoot || !action.targetId) return null;
+    if (!isOrthogonalAttackRoot || !action.targetId || !orthogonalAttackerSide || !orthogonalDefenderSide) return null;
     const candidateCenter = center(candidateCard);
-    const sourceDirection = facingOrthogonalEdges(sourceRect, candidateCard);
-    const sourcePath = orthogonalRouteBetweenRects(sourceRect, candidateCard, routeObstaclesFor(sourceElement), connectorBounds,
-      sourceDirection.start, sourceDirection.end, sourceDirection.first);
+    const sideEdgePoint = (rect: Rect, side: "left" | "right", y = center(rect).y): Point => ({
+      x: side === "left" ? rect.left : rect.right,
+      y,
+    });
+    const sourcePath = sourceElement.classList.contains("local-player-dock") && sourceRect.top >= candidateCard.bottom
+      ? (() => {
+        const x = Math.max(sourceRect.left + 8, Math.min(candidateCenter.x, sourceRect.right - 8));
+        return orthogonalPath({ x, y: sourceRect.top }, { x, y: candidateCard.bottom },
+          routeObstaclesFor(sourceElement), connectorBounds, "vertical");
+      })()
+      : sourceRect.bottom <= candidateCard.top
+        ? orthogonalPath(
+          { x: center(sourceRect).x, y: sourceRect.bottom },
+          sideEdgePoint(candidateCard, orthogonalAttackerSide),
+          routeObstaclesFor(sourceElement), connectorBounds, "vertical",
+        )
+        : (() => {
+          const sourceDirection = facingOrthogonalEdges(sourceRect, candidateCard);
+          return orthogonalRouteBetweenRects(sourceRect, candidateCard, routeObstaclesFor(sourceElement), connectorBounds,
+            sourceDirection.start, sourceDirection.end, sourceDirection.first);
+        })();
     const targetAbove = targetRect.bottom <= candidateCard.top;
     const targetBelow = targetRect.top >= candidateCard.bottom;
     const targetLeft = targetRect.right <= candidateCard.left;
     const targetRight = targetRect.left >= candidateCard.right;
-    const targetDirection = targetElement.classList.contains("local-player-dock") && targetBelow
-      ? { start: "bottom" as const, end: "top" as const, first: "vertical" as const }
-      : targetAbove && targetLeft
-        ? { start: "left" as const, end: "bottom" as const, first: "horizontal" as const }
-        : targetAbove && targetRight
-          ? { start: "right" as const, end: "bottom" as const, first: "horizontal" as const }
-          : targetAbove
-            ? { start: "top" as const, end: "bottom" as const, first: "vertical" as const }
-            : targetBelow
-              ? { start: "bottom" as const, end: "top" as const, first: "vertical" as const }
-          : targetLeft
-                ? { start: "left" as const, end: "right" as const, first: "horizontal" as const }
-                : targetRight
-                  ? { start: "right" as const, end: "left" as const, first: "horizontal" as const }
-                  : facingOrthogonalEdges(candidateCard, targetRect);
     const targetObstacles = routeObstaclesFor(targetElement);
-    const localDockStraightPath = targetElement.classList.contains("local-player-dock") && targetBelow
-      ? (() => {
-        const alignedX = Math.max(Math.max(candidateCard.left, targetRect.left), Math.min(candidateCenter.x, Math.min(candidateCard.right, targetRect.right)));
-        if (alignedX > Math.min(candidateCard.right, targetRect.right)) return null;
-        return orthogonalPath(
-          { x: alignedX, y: candidateCard.bottom },
-          { x: alignedX, y: targetRect.top },
-          targetObstacles,
-          connectorBounds,
-          "vertical",
-        );
-      })()
-      : null;
-    const targetPath = localDockStraightPath ?? orthogonalRouteBetweenRects(candidateCard, targetRect, targetObstacles, connectorBounds,
-      targetDirection.start, targetDirection.end, targetDirection.first);
+    const targetSidePoint = sideEdgePoint(candidateCard, orthogonalDefenderSide);
+    const targetEndpoint = targetAbove
+      ? { x: center(targetRect).x, y: targetRect.bottom }
+      : targetBelow
+        ? { x: center(targetRect).x, y: targetRect.top }
+        : targetLeft
+          ? { x: targetRect.right, y: center(targetRect).y }
+          : targetRight
+            ? { x: targetRect.left, y: center(targetRect).y }
+            : null;
+    const targetPath = targetEndpoint
+      ? orthogonalPath(targetSidePoint, targetEndpoint, targetObstacles, connectorBounds, "horizontal")
+      : (() => {
+        const targetDirection = facingOrthogonalEdges(candidateCard, targetRect);
+        return orthogonalRouteBetweenRects(candidateCard, targetRect, targetObstacles, connectorBounds,
+          targetDirection.start, targetDirection.end, "horizontal");
+      })();
     return sourcePath && targetPath ? { sourcePath, targetPath } : null;
   };
   if (action.cardKind === "Attack" && (attackSafeRect.width < cardWidth || attackSafeRect.height < cardHeight)) {
@@ -1430,6 +1466,11 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     const left = Math.max(attackSafeRect.left, Math.min(candidate.x - cardWidth / 2, attackSafeRect.right - cardWidth));
     const top = Math.max(rootPlacementTop, Math.min(candidate.y - cardHeight / 2, rootPlacementBottom - cardHeight));
     const card: Rect = { left, top, right: left + cardWidth, bottom: top + cardHeight, width: cardWidth, height: cardHeight };
+    if (isOrthogonalAttackRoot && !rootRemainsOnAttackerHalf(card)) return [];
+    if (localTargetHorizontalLead > 0 && orthogonalDefenderSide) {
+      const targetFacingCardX = orthogonalDefenderSide === "right" ? card.right : card.left;
+      if (Math.abs(targetCenter.x - targetFacingCardX) < localTargetHorizontalLead - .5) return [];
+    }
     const cardProjection = projectPointToSegment(sourceCenter, targetCenter, center(card));
     // Orthogonal Stage A scores the complete Attack+reserved-Dodge composition
     // against the usable battlefield centre. When the source and target share
@@ -1457,11 +1498,12 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     let reservedDodge: Rect | null = null;
     if (reservedDodgeSize) {
       if (isOrthogonalAttackRoot) {
-        const responseGap = 12;
-        const candidateRect: Rect = {
-          left: card.left - responseGap - reservedDodgeSize.width,
+      const responseGap = 12;
+      const candidateRect: Rect = {
+          left: orthogonalDefenderSide === "right" ? card.right + responseGap : card.left - responseGap - reservedDodgeSize.width,
           top: center(card).y - reservedDodgeSize.height / 2,
-          right: card.left - responseGap,
+          right: orthogonalDefenderSide === "right" ? card.right + responseGap + reservedDodgeSize.width
+            : card.left - responseGap,
           bottom: center(card).y + reservedDodgeSize.height / 2,
           width: reservedDodgeSize.width,
           height: reservedDodgeSize.height,
@@ -1595,9 +1637,9 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       if (!reservedDodgeSize) return null;
       if (isOrthogonalAttackRoot) {
         const responseRect: Rect = {
-          left: card.left - 12 - reservedDodgeSize.width,
+          left: orthogonalDefenderSide === "right" ? card.right + 12 : card.left - 12 - reservedDodgeSize.width,
           top: center(card).y - reservedDodgeSize.height / 2,
-          right: card.left - 12,
+          right: orthogonalDefenderSide === "right" ? card.right + 12 + reservedDodgeSize.width : card.left - 12,
           bottom: center(card).y + reservedDodgeSize.height / 2,
           width: reservedDodgeSize.width,
           height: reservedDodgeSize.height,
@@ -1761,6 +1803,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       for (const top of orderedFieldTops) {
         for (const left of orderedFieldLefts) {
           const card: Rect = { left, top, right: left + cardWidth, bottom: top + cardHeight, width: cardWidth, height: cardHeight };
+          if (isOrthogonalAttackRoot && !rootRemainsOnAttackerHalf(card)) continue;
           const cardCenter = center(card);
           const projection = ((cardCenter.x - sourceCenter.x) * lineX + (cardCenter.y - sourceCenter.y) * lineY) / lineLengthSquared;
           if (projection < .16 || projection > .92) continue;
@@ -2151,10 +2194,10 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     let responseCandidates: { responseCard: Rect; score: number }[];
     if (attackDodgeIntercepted && isOrthogonalAttackRoot) {
       const responseGap = 12;
-      const leftOfRoot: Rect = {
-        left: card.left - responseGap - responseWidth,
+      const defenderSideCard: Rect = {
+        left: orthogonalDefenderSide === "right" ? card.right + responseGap : card.left - responseGap - responseWidth,
         top: cardCenter.y - responseHeight / 2,
-        right: card.left - responseGap,
+        right: orthogonalDefenderSide === "right" ? card.right + responseGap + responseWidth : card.left - responseGap,
         bottom: cardCenter.y + responseHeight / 2,
         width: responseWidth,
         height: responseHeight,
@@ -2165,9 +2208,11 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
         bottom: cardCenter.y + responseHeight / 2,
       } : null;
       const responseCard = alignedPreferredResponse
-        && alignedPreferredResponse.right <= card.left
+        && (orthogonalDefenderSide === "right"
+          ? alignedPreferredResponse.left >= card.right
+          : alignedPreferredResponse.right <= card.left)
         && !responseFitFailure(alignedPreferredResponse)
-        ? alignedPreferredResponse : leftOfRoot;
+        ? alignedPreferredResponse : defenderSideCard;
       responseCandidates = responseFitFailure(responseCard) ? [] : [{ responseCard, score: 0 }];
     } else if (attackDodgeIntercepted) {
       const dodgeFitCounts = {
@@ -2441,16 +2486,35 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       const blockHalf = 7;
       blockPath = `M ${(counterEnd.x - blockNormal.x * blockHalf).toFixed(1)} ${(counterEnd.y - blockNormal.y * blockHalf).toFixed(1)} L ${(counterEnd.x + blockNormal.x * blockHalf).toFixed(1)} ${(counterEnd.y + blockNormal.y * blockHalf).toFixed(1)}`;
     }
-    const responseSourceStart = rectangleEdge(responseSourceRect, responseCenter);
-    const responseSourceEnd = rectangleEdge(responseCard, responseSourceCenter);
-    const orthogonalRootPaths = isOrthogonalAttackRoot ? attackRoutesForCard(card) : null;
-  const orthogonalDodgeSourcePath = isOrthogonalAttackRoot && attackDodgeIntercepted
+  const responseSourceStart = rectangleEdge(responseSourceRect, responseCenter);
+  const responseSourceEnd = rectangleEdge(responseCard, responseSourceCenter);
+  const orthogonalRootPaths = isOrthogonalAttackRoot ? attackRoutesForCard(card) : null;
+    const orthogonalDodgeSourcePath = isOrthogonalAttackRoot && attackDodgeIntercepted
       ? (() => {
-        if (!responseSourceRect || !responseSourceElement) return null;
+        if (!responseSourceRect || !responseSourceElement || !orthogonalDefenderSide) return null;
+        const dodgeEndpoint = {
+          x: orthogonalDefenderSide === "right" ? responseCard.right : responseCard.left,
+          y: responseCenter.y,
+        };
+        const routeObstacles = [...routeObstaclesFor(responseSourceElement), card];
+        if (responseSourceElement.classList.contains("local-player-dock")
+          && responseSourceRect.top >= responseCard.bottom) {
+          const x = orthogonalDefenderSide === "right"
+            ? Math.min(responseSourceRect.right - 12, responseCard.right + 32)
+            : Math.max(responseSourceRect.left + 12, responseCard.left - 32);
+          return orthogonalPath({ x, y: responseSourceRect.top }, dodgeEndpoint,
+            routeObstacles, connectorBounds, "vertical");
+        }
+        if (responseSourceRect.bottom <= responseCard.top) {
+          return orthogonalPath(
+            { x: center(responseSourceRect).x, y: responseSourceRect.bottom },
+            dodgeEndpoint,
+            routeObstacles, connectorBounds, "vertical",
+          );
+        }
         const facing = facingOrthogonalEdges(responseSourceRect, responseCard);
         return orthogonalRouteBetweenRects(responseSourceRect, responseCard,
-          [...routeObstaclesFor(responseSourceElement), card], connectorBounds,
-          facing.start, facing.end, facing.first);
+          routeObstacles, connectorBounds, facing.start, facing.end, facing.first);
       })()
       : null;
     if (isOrthogonalAttackRoot && !orthogonalRootPaths) {
@@ -2468,10 +2532,16 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       : null;
     let targetBlockPath: string | null = null;
     if (attackDodgeIntercepted && isOrthogonalAttackRoot) {
-      const attackStart = { x: card.left, y: cardCenter.y };
-      const dodgeEnd = { x: responseCard.right, y: responseCenter.y };
+      const attackStart = {
+        x: orthogonalDefenderSide === "right" ? card.right : card.left,
+        y: cardCenter.y,
+      };
+      const dodgeEnd = {
+        x: orthogonalDefenderSide === "right" ? responseCard.left : responseCard.right,
+        y: responseCenter.y,
+      };
       targetPath = orthogonalPath(attackStart, dodgeEnd, [], tableRect, "horizontal", 0);
-      targetBlockPath = crossMarkAt(dodgeEnd, { x: -1, y: 0 }, 8);
+      targetBlockPath = crossMarkAt(dodgeEnd, { x: orthogonalDefenderSide === "right" ? 1 : -1, y: 0 }, 8);
     } else if (attackDodgeIntercepted) {
       const attackPathStart = rectangleEdge(card, targetCenter);
       const attackPathEnd = rectangleEdge(targetRect, cardCenter);
@@ -2512,6 +2582,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       height: shellBounds.height,
       card,
       orthogonalAttackRouting: isOrthogonalAttackRoot,
+      orthogonalAttackerSide,
       orthogonalAttackControlsSide,
       sourcePath: orthogonalRootPaths?.sourcePath ?? pathBetween(sourceStart, sourceEnd, rootPathCurve),
       targetPath,
@@ -2550,6 +2621,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     height: shellBounds.height,
     card,
     orthogonalAttackRouting: isOrthogonalAttackRoot,
+    orthogonalAttackerSide,
     orthogonalAttackControlsSide,
     sourcePath: orthogonalRoutes?.sourcePath ?? pathBetween(sourceStart, sourceEnd, rootPathCurve),
     targetPath: orthogonalRoutes?.targetPath ?? pathBetween(targetStart, targetEnd, action.cardKind === "Attack" ? 0 : Math.min(34, lineLength * .05)),
@@ -3127,6 +3199,7 @@ export function InteractionRootOverlay({
     data-oath-recipient-count={action.simultaneousTargets?.length ?? undefined}
     data-root-action-mode={action.mode}
     data-root-action-orthogonal-attack-routing={layout?.orthogonalAttackRouting ? "true" : "false"}
+    data-root-action-orthogonal-attacker-side={layout?.orthogonalAttackerSide}
     data-root-action-orthogonal-controls-side={layout?.orthogonalAttackControlsSide}
     data-root-action-card-kind={action.cardKind}
     data-root-action-dodge-slot-reserved={action.cardKind === "Attack" && !action.response && !action.responses?.length
