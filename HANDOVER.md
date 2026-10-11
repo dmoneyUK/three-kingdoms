@@ -5,7 +5,7 @@ Mode: `USER-DIRECTED UX2 TASK`
 
 ## Latest result / CI
 
-`UX2-6.36-02-DODGE-WITHOUT-STABLE-ROOT-RECOVERY`: the real server-backed late-entry case reproduced a valid committed Dodge without a local root-layout cache. The overlay now lets that exact public proof use the existing collision-safe layout solver and records the root/frame/source/target/response identity. Browser evidence shows the late observer can rebuild the same graph; a viewer with no collision-free placement remains explicitly fail-closed. Local build, targeted ESLint, syntax/diff checks, and five focused browser regressions passed. Latest relevant Actions run before this change: `38090086059`, SHA `896938e`, success. Exact change-SHA CI/deployment: pending push.
+`UX2-6.36-02-DODGE-WITHOUT-STABLE-ROOT-RECOVERY` shipped as `41187a4cc65fa8e9d2265dcd575f64fca2a0c173`. A real server-backed late-entry case reproduced a valid committed Dodge without a local root-layout cache. The overlay now lets that exact public proof use the existing collision-safe layout solver and records root/frame/source/target/response identity. At 440×766, late observer/attacker/observer rebuild the graph; the defender orientation with no collision-free placement remains explicitly fail-closed. Local build, targeted ESLint, syntax/diff checks, and five focused browser regressions passed. Exact-SHA Actions run `38098403261`: **success** (Lint/fast, API, browser startup smoke, deploy). Production `/api/health` returned `{"ok":true,"worker":"available"}` and the deployed page bundle contains the exact `41187a4` build SHA.
 
 ## Design checkpoint
 
@@ -13,4 +13,4 @@ Latest remote `docs/UX2-refine.md` blob: `d966440b487bcbe172d5ea608704cc6945dfe6
 
 ## Current task
 
-Verify the exact pushed Task 2 SHA's Actions/deployment, then stop for Reviewer/user visual review. Do not start §6.36 Task 3.
+STOP — Task 2 is shipped and deployed; await Reviewer/user visual review. Do not start §6.36 Task 3.
