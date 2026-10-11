@@ -5,7 +5,7 @@ Mode: `USER-DIRECTED UX REFINEMENT`
 
 ## Latest result / CI
 
-§6.38 Stage A application shipped in `41e6ec74d619e40492fd46887f8f0069c67e97cc`. Final Cao Cao→Zhang Liao evidence/test follow-up `bff1d285f118a4b64dd5703f93d7ef4371bfe276` passed exact-SHA Actions run `38161975775` (Lint/fast, API, browser smoke, deploy and production smoke); `/api/health` returned `{"ok":true,"worker":"available"}`. The prior application SHA also passed run `38161329435`. Local `npm run build`, `git diff --check`, and focused real Worker/API browser validation passed (5/5).
+§6.38 Stage A application shipped in `41e6ec74d619e40492fd46887f8f0069c67e97cc`. Final geometry-assertion follow-up `586d530a5b08eb31aa56ceca74ce99d8d6172207` passed exact-SHA Actions run `38162977802` (Lint/fast, API, browser smoke, deploy and production smoke); `/api/health` returned `{"ok":true,"worker":"available"}`. Local build/diff checks passed; real Worker/API Stage A suite passed 5/5 and dense 6/8-person mobile regression passed 1/1.
 
 ## Design checkpoint
 
