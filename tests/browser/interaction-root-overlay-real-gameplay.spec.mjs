@@ -1569,8 +1569,8 @@ for (const scenario of [
       throw new Error(`${error.message}\nRAF diagnostic: ${JSON.stringify(diagnostic)}`);
     }
     const after = await measure(page, sourceId, targetId);
-    expect(after.sourcePath, JSON.stringify({ cardKind: after.overlayCardKind, responseCount: after.responseCount, path: after.sourcePath })).toMatch(/^M \S+ \S+ L \S+ \S+$/);
-    expect(after.targetPath).toMatch(/^M \S+ \S+ L \S+ \S+$/);
+    expectOrthogonalPath({ d: after.sourcePath }, `${playerCount}p ${viewport.width}px source tether`);
+    expectOrthogonalPath({ d: after.targetPath }, `${playerCount}p ${viewport.width}px target route`);
     expect(after.sourceStrokeWidth).toBe(5.5);
     expect(after.targetStrokeWidth).toBeGreaterThanOrEqual(6);
     expect(after.sourceStrokeColor).toBe("rgb(134, 185, 162)");
@@ -5378,8 +5378,8 @@ async function captureAttackGraphGeometry(page, sourceId, targetId, playerCount,
   expect(after.overlayReady).toBe(true);
   expect(after.stageCount).toBe(0);
   expect(after.documentWidth).toBeLessThanOrEqual(after.viewportWidth);
-  expect(after.sourcePath).toMatch(/^M \S+ \S+ L \S+ \S+$/);
-  expect(after.targetPath).toMatch(/^M \S+ \S+ L \S+ \S+$/);
+  expectOrthogonalPath({ d: after.sourcePath }, `${label}: source tether`);
+  expectOrthogonalPath({ d: after.targetPath }, `${label}: target route`);
   expect(after.targetEdge).toContain("root-target-arrow-");
   for (const anchor of after.playerAnchors) {
     const baseline = before[anchor.id];
