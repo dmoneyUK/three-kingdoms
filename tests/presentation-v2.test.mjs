@@ -369,12 +369,31 @@ test("Attack/Dodge counter proof links one submitted physical Dodge to its exact
   }];
   assert.deepEqual(project([root, dodge]).attackDodgeResponses, expected);
 
+  const longdanAttack = event("longdan-physical-attack-response", root.resolutionId, {
+    player: "B", target: "A", action: "play", playedAs: "dodge",
+    card: card("longdan-physical-card", "Attack"),
+    attackDodgeResponse: { ...proof, responsePhysicalCardKind: "Attack", responsePlayedAs: "dodge" },
+  });
+  const longdanProof = {
+    ...proof,
+    responsePhysicalCardKind: "Attack",
+    responsePlayedAs: "dodge",
+    responseEventId: longdanAttack.id,
+    responseResolutionId: longdanAttack.resolutionId,
+  };
+  assert.deepEqual(project([root, longdanAttack]).attackDodgeResponses, [longdanProof],
+    "a typed Zhao Yun conversion keeps the physical Attack event while proving semantic Dodge");
+
   for (const invalid of [
     { timeline: [dodge], label: "missing root event" },
     { timeline: [root, { ...dodge, attackDodgeResponse: { ...proof, rootResolutionId: "stale-resolution" } }], label: "mismatched root resolution" },
     { timeline: [root, { ...dodge, resolutionId: "other-resolution" }], label: "response belongs to another resolution" },
     { timeline: [root, { ...dodge, playedAs: "dodge" }], label: "converted response is not a physical Dodge" },
     { timeline: [root, { ...dodge, card: card("dodge-physical-card", "Attack") }], label: "wrong response card kind" },
+    { timeline: [root, { ...longdanAttack, attackDodgeResponse: proof }], label: "physical Attack response without conversion proof" },
+    { timeline: [root, { ...longdanAttack, attackDodgeResponse: { ...longdanAttack.attackDodgeResponse, responsePlayedAs: "attack" } }], label: "conversion proof has a mismatched effective action" },
+    { timeline: [root, { ...longdanAttack, playedAs: undefined }], label: "physical Attack event is missing its Dodge conversion marker" },
+    { timeline: [root, { ...longdanAttack, card: card("longdan-physical-card", "Dodge"), playedAs: undefined }], label: "conversion proof does not match the physical face" },
     { timeline: [root, { ...dodge, attackDodgeResponse: { ...proof, responseActorId: "A" } }], label: "response actor differs from target" },
     { timeline: [root, { ...dodge, attackDodgeResponse: { ...proof, targetId: "A" } }], label: "self-target relation is invalid for ordinary Attack" },
     { timeline: [root, { ...root }, dodge], label: "duplicate root event identity" },

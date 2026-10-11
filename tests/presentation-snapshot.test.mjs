@@ -160,6 +160,27 @@ test("snapshot carries typed Attack/Dodge counter proof identically for acting a
   assert.deepEqual(acting.attackDodgeResponses, [response]);
   assert.deepEqual(observing.attackDodgeResponses, [response], "public counter proof is viewer-equal");
   assert.equal(JSON.stringify(acting.attackDodgeResponses).includes("physical-card"), false);
+  const convertedResponse = {
+    ...response, responseEventId: "converted-attack-event", responsePhysicalCardKind: "Attack",
+    responsePlayedAs: "dodge", physicalCardId: "must-not-enter-semantic-proof",
+  };
+  const convertedSnapshot = composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, attackDodgeResponses: [convertedResponse] },
+    currentAction: { kind: "none", actorId: null }, actionRevision: "action-converted", viewerId: "C",
+  });
+  assert.deepEqual(convertedSnapshot.attackDodgeResponses, [{
+    ...response, responseEventId: "converted-attack-event", responsePhysicalCardKind: "Attack", responsePlayedAs: "dodge",
+  }], "snapshot preserves the typed physical Attack/effective Dodge pairing but strips card IDs");
+  for (const malformedConversion of [
+    { ...convertedResponse, responsePlayedAs: undefined },
+    { ...convertedResponse, responsePhysicalCardKind: "Dodge" },
+    { ...convertedResponse, responsePlayedAs: "attack" },
+  ]) {
+    assert.deepEqual(composePresentationSnapshot({
+      presentationV2: { ...publicPresentation, attackDodgeResponses: [malformedConversion] },
+      currentAction: null, actionRevision: "action-malformed", viewerId: "C",
+    }).attackDodgeResponses, [], "malformed physical/effective pairing fails closed");
+  }
   assert.deepEqual(composePresentationSnapshot({
     presentationV2: { ...publicPresentation, attackDodgeResponses: [response, { ...response, responseActorId: "A" }, { ...response, responseEventId: "dodge-event" }] },
     currentAction: null, actionRevision: "action-c", viewerId: "C",

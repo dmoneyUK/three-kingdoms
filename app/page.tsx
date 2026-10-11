@@ -13,6 +13,7 @@ import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
+import { attackDodgeResponseEventMatchesProof } from "../game/presentation-v2";
 import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
 import { ATTACK_DODGE_PUBLIC_READ_MS, attackDodgePublicActionEvents, attackDodgeSettlementSupersessionReason, parseRetiredAttackDodgeCompositionSnapshot, persistRetiredAttackDodgeComposition, retiredAttackDodgeCompositionServerSnapshot, retiredAttackDodgeCompositionStorageSnapshot, subscribeRetiredAttackDodgeComposition, type AttackDodgeSettlementHoldIdentity } from "../game/attack-dodge-settlement-lifecycle";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, isProvenBorrowedSwordForcedAttack, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
@@ -3202,7 +3203,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     if (!responseEvent || responseEvent.type !== "card" || responseEvent.action !== "play") reasons.push("response-event-not-public-card-play");
     else {
       if (responseEvent.presentation === false) reasons.push("response-event-presentation-suppressed");
-      if (responseEvent.playedAs !== undefined || responseEvent.card.kind !== "Dodge") reasons.push("response-event-not-dodge");
+      if (!attackDodgeResponseEventMatchesProof(proof, responseEvent)) reasons.push("response-event-physical-semantic-proof-mismatch");
       if (responseEvent.resolutionId !== proof.responseResolutionId) reasons.push("response-resolution-mismatch");
     }
     if (proof.counterRelation !== "BLOCKS_TARGET_EFFECT") reasons.push("counter-relation-mismatch");
@@ -4273,8 +4274,14 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
           actorName: room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.responseActorId)?.name ?? "Unknown player",
           cardFace: attackDodgeGraphCandidate.responseEvent.card,
           cardLabel: "DODGE",
+          semanticAction: "DODGE",
+          ...(attackDodgeGraphCandidate.proof.responsePhysicalCardKind === "Attack" && attackDodgeGraphCandidate.proof.responsePlayedAs === "dodge"
+            ? { semanticLabel: "AS DODGE" }
+            : {}),
           countersRoot: attackDodgeGraphCandidate.proof.counterRelation === "BLOCKS_TARGET_EFFECT",
-          ariaLabel: `${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.responseActorId)?.name ?? "Unknown player"} played Dodge to block ${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.rootSourceId)?.name ?? "Unknown player"}'s Attack against ${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.targetId)?.name ?? "an opponent"}`,
+          ariaLabel: attackDodgeGraphCandidate.proof.responsePhysicalCardKind === "Attack"
+            ? `${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.responseActorId)?.name ?? "Unknown player"} used a physical Attack as Dodge with Braveheart to block ${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.rootSourceId)?.name ?? "Unknown player"}'s Attack against ${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.targetId)?.name ?? "the target"}`
+            : `${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.responseActorId)?.name ?? "Unknown player"} played Dodge to block ${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.rootSourceId)?.name ?? "Unknown player"}'s Attack against ${room.players.find((player) => player.id === attackDodgeGraphCandidate.proof.targetId)?.name ?? "an opponent"}`,
         },
       }
     : singleTargetNegationGraphCandidate

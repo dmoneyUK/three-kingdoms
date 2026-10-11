@@ -25,6 +25,7 @@ import type {
   PresentationStableBoundary,
   PresentationV2,
 } from "./presentation-v2";
+import { isSupportedAttackDodgeResponseProof } from "./presentation-v2";
 
 /** The only public identity a future presentation client may use. */
 export type PresentationSnapshotIdentity = {
@@ -356,6 +357,7 @@ export function provenBumperHarvestSettlements(value: unknown): PresentationSnap
 export function provenAttackDodgeResponses(value: unknown): PresentationSnapshotAttackDodgeResponse[] {
   if (!Array.isArray(value)) return [];
   const responses = value.filter((candidate): candidate is PresentationSnapshotAttackDodgeResponse => Boolean(candidate && typeof candidate === "object" && !Array.isArray(candidate)
+    && isSupportedAttackDodgeResponseProof(candidate)
     && (candidate as PresentationSnapshotAttackDodgeResponse).semantics === "PROVEN"
     && (candidate as PresentationSnapshotAttackDodgeResponse).counterRelation === "BLOCKS_TARGET_EFFECT"
     && nonEmptyString((candidate as PresentationSnapshotAttackDodgeResponse).responseEventId)
@@ -391,6 +393,9 @@ export function provenAttackDodgeResponses(value: unknown): PresentationSnapshot
     responseCardKind: "Dodge",
     responseEventId: response.responseEventId,
     responseResolutionId: response.responseResolutionId,
+    ...(response.responsePhysicalCardKind === "Attack" && response.responsePlayedAs === "dodge"
+      ? { responsePhysicalCardKind: "Attack" as const, responsePlayedAs: "dodge" as const }
+      : {}),
     ...(response.displayExpiresAtMs !== undefined ? { displayExpiresAtMs: response.displayExpiresAtMs } : {}),
     ...(response.turnSeatAtCommit !== undefined ? { turnSeatAtCommit: response.turnSeatAtCommit } : {}),
   }));

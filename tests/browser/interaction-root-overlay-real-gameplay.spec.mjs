@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 
 const API = "http://127.0.0.1:3137";
 const attack = { id: "root-overlay-real-attack", kind: "Attack", suit: "♠", rank: "7" };
+const longdanAttack = { id: "root-overlay-real-longdan-attack", kind: "Attack", suit: "♦", rank: "9" };
 const drawTwoCard = { id: "root-overlay-real-draw-two", kind: "DrawTwo", suit: "♠", rank: "7" };
 const negationCard = { id: "root-overlay-real-negation", kind: "Negation", suit: "♣", rank: "8" };
 const longdanDodge = { id: "root-overlay-real-longdan-dodge", kind: "Dodge", suit: "♣", rank: "6" };
@@ -2384,6 +2385,153 @@ test("real Longdan Dodge-as-Attack is intercepted by a real Dodge in both viewer
     }
   } finally {
     await defenderPage.close();
+  }
+});
+
+test("real Zhao Yun Longdan Attack-as-Dodge keeps its physical Attack face in the public relation graph for all viewers", async ({ page, browser, request }, testInfo) => {
+  test.setTimeout(60_000);
+  const seed = await seedGame(request, 4, {
+    sourceCard: attack, sourceHero: "cao-cao", targetCard: longdanAttack, targetHero: "zhao-yun",
+  });
+  const sourceId = seed.players[0].id;
+  const targetId = seed.players[1].id;
+  const viewport = { width: 390, height: 844 };
+  const defenderPage = await browser.newPage({ viewport });
+  const observerPage = await browser.newPage({ viewport });
+  const viewers = [page, defenderPage, observerPage];
+  try {
+    await Promise.all([
+      openGame(page, seed, 0, viewport),
+      openGame(defenderPage, seed, 1, viewport),
+      openGame(observerPage, seed, 2, viewport),
+    ]);
+    const sourceTurn = await roomView(request, seed, 0);
+    expect(sourceTurn.currentAction).toMatchObject({ kind: "turn", actorId: sourceId, canDeclareAttack: true });
+    await playAttackThroughPage(page, "TARGET", attack);
+    await expect.poll(async () => (await roomView(request, seed, 1)).currentAction?.kind, {
+      timeout: 20_000, message: "the defender receives the real Attack response decision",
+    }).toBe("response");
+    const attackerBefore = await roomView(request, seed, 0);
+    const defenderBefore = await roomView(request, seed, 1);
+    expect(defenderBefore.currentAction).toMatchObject({ kind: "response", actorId: targetId, requirement: "dodge" });
+    expect(defenderBefore.currentAction.options).toContainEqual(expect.objectContaining({
+      providerId: "zhao_yun_attack_as_dodge", playedAs: "dodge", satisfies: "dodge",
+    }));
+    const rootAction = defenderBefore.presentationSnapshot.rootAction;
+    expect(rootAction).toMatchObject({ action: "ATTACK", cardKind: "Attack", sourceId, targetId });
+    const rootEvent = defenderBefore.timeline.find((event) => event.id === rootAction.rootEventId);
+    expect(rootEvent).toMatchObject({ action: "play", card: { id: attack.id, kind: "Attack", suit: "♠", rank: "7" } });
+    expect(attackerBefore.presentationSnapshot.rootAction).toEqual(rootAction);
+
+    await Promise.all(viewers.map((viewer) => expectAttackGraphIdentity(viewer, rootAction)));
+    await Promise.all(viewers.map((viewer) => viewer.evaluate(() => window.__wtkStartAttackVisibleFrameSampling())));
+    await Promise.all(viewers.map((viewer) => observeAttackDodgeSettlement(viewer, sourceId, targetId)));
+
+    const braveheart = defenderPage.getByRole("button", { name: "Braveheart", exact: true });
+    await expect(braveheart).toBeEnabled();
+    await braveheart.click();
+    await expect(braveheart).toHaveClass(/active/);
+    const selectedAttack = defenderPage.locator(`[data-hand-card-id="${longdanAttack.id}"] .game-card`);
+    await expect(selectedAttack).toBeEnabled();
+    await selectedAttack.click();
+    await expect(selectedAttack).toHaveClass(/selected/);
+    const confirm = defenderPage.locator('[data-console-surface="local-operation"] button.primary');
+    await expect(confirm).toBeEnabled();
+    const responseRequest = defenderPage.waitForRequest((candidate) => {
+      if (candidate.url() !== `${API}/api/rooms` || candidate.method() !== "POST") return false;
+      try { return JSON.parse(candidate.postData() ?? "{}").action === "respond"; }
+      catch { return false; }
+    });
+    await confirm.click();
+    const submission = JSON.parse((await responseRequest).postData() ?? "{}");
+    expect(submission).toMatchObject({ action: "respond", providerId: "zhao_yun_attack_as_dodge", cardId: longdanAttack.id });
+
+    await expect.poll(async () => (await roomView(request, seed, 2)).presentationSnapshot?.attackDodgeResponses?.length ?? 0, {
+      timeout: 20_000, message: "server publishes the exact Zhao Yun physical Attack/effective Dodge response proof",
+    }).toBe(1);
+    const [sourceAfter, defenderAfter, observerAfter] = await Promise.all([0, 1, 2].map((index) => roomView(request, seed, index)));
+    const proof = defenderAfter.presentationSnapshot.attackDodgeResponses[0];
+    expect(sourceAfter.presentationSnapshot.attackDodgeResponses).toEqual([proof]);
+    expect(observerAfter.presentationSnapshot.attackDodgeResponses).toEqual([proof]);
+    expect(proof).toMatchObject({
+      semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
+      interactionId: rootAction.interactionId, rootFrameId: rootAction.rootFrameId,
+      rootEventId: rootAction.rootEventId, rootResolutionId: rootEvent.resolutionId,
+      rootSourceId: sourceId, targetId, responseActorId: targetId,
+      rootCardKind: "Attack", responseCardKind: "Dodge",
+      responsePhysicalCardKind: "Attack", responsePlayedAs: "dodge",
+    });
+    expect(JSON.stringify(proof)).not.toContain(longdanAttack.id);
+    const responseEvent = observerAfter.timeline.find((event) => event.id === proof.responseEventId);
+    expect(responseEvent).toMatchObject({
+      action: "play", playedAs: "dodge", resolutionId: proof.rootResolutionId,
+      card: { id: longdanAttack.id, kind: "Attack", suit: "♦", rank: "9" },
+      attackDodgeResponse: { responsePhysicalCardKind: "Attack", responsePlayedAs: "dodge", responseCardKind: "Dodge" },
+    });
+
+    const readFrame = (viewer) => viewer.evaluate(({ rootEventId, responseEventId }) => {
+      const overlay = document.querySelector('[data-root-action-overlay="true"]');
+      const responseCard = overlay?.querySelector('[data-root-action-response-card="true"]');
+      const edgeNames = ["source", "attack-dodge-interception", "response-source"];
+      const edges = edgeNames.map((edge) => {
+        const path = overlay?.querySelector(`[data-root-action-edge="${edge}"]`);
+        return path ? { edge, visible: getComputedStyle(path).display !== "none" && getComputedStyle(path).visibility !== "hidden"
+          && path.getTotalLength() > 0, d: path.getAttribute("d") } : { edge, visible: false, d: null };
+      });
+      const mark = overlay?.querySelector('[data-root-action-dodge-interception-mark="true"]');
+      return {
+        overlay: overlay ? { ...overlay.dataset } : null,
+        rootEventId: overlay?.dataset.rootActionEventId ?? null,
+        responseEventId: responseCard?.dataset.responseEventId ?? null,
+        rootFace: overlay?.querySelector('[data-root-action-card="true"]')?.dataset.rootActionCardFaceKind ?? null,
+        responseFace: responseCard?.dataset.responseCardFaceKind ?? null,
+        semanticAction: responseCard?.dataset.responseSemanticAction ?? null,
+        semanticLabel: responseCard?.querySelector(".interaction-root-response-semantic")?.textContent?.trim() ?? null,
+        physicalAttackFaceCount: overlay?.querySelectorAll(".played-card.attack").length ?? 0,
+        physicalDodgeFaceCount: overlay?.querySelectorAll(".played-card.dodge").length ?? 0,
+        responseCardCount: overlay?.querySelectorAll('[data-root-action-response-card="true"]').length ?? 0,
+        edges: [...edges, { edge: "interception-mark", visible: Boolean(mark && getComputedStyle(mark).display !== "none" && mark.getTotalLength() > 0), d: mark?.getAttribute("d") ?? null }],
+        stageCount: document.querySelectorAll(".interaction-stage").length,
+        documentWidth: document.documentElement.scrollWidth,
+      };
+    }, { rootEventId: rootAction.rootEventId, responseEventId: proof.responseEventId });
+
+    for (const [index, viewer] of viewers.entries()) {
+      const graph = viewer.locator('[data-root-action-overlay="true"]');
+      await expect(graph).toHaveAttribute("data-root-action-ready", "true");
+      await expect(graph).toHaveAttribute("data-root-action-display-mode", "graph");
+      await expect(graph).toHaveAttribute("data-root-action-layout-state", "ready");
+      await expect(graph).toHaveAttribute("data-root-action-event-id", rootAction.rootEventId);
+      await expect(graph).toHaveAttribute("data-root-action-interaction-id", rootAction.interactionId);
+      await expect(graph).toHaveAttribute("data-root-action-root-frame-id", rootAction.rootFrameId);
+      const responseCard = graph.locator('[data-root-action-response-card="true"]');
+      await expect(responseCard).toBeVisible();
+      await expect(responseCard).toHaveAttribute("data-response-event-id", proof.responseEventId);
+      await expect(responseCard).toHaveAttribute("data-response-card-face-kind", "Attack");
+      await expect(responseCard).toHaveAttribute("data-response-semantic-action", "DODGE");
+      await expect(responseCard.locator(".played-card.attack")).toBeVisible();
+      await expect(responseCard.locator(".interaction-root-response-semantic")).toHaveText("AS DODGE");
+      await expect(graph.locator(".played-card.dodge")).toHaveCount(0, "no fictional physical Dodge CardFace is created");
+      await expect(graph.locator(".interaction-root-connectors")).toBeVisible();
+      const frame = await readFrame(viewer);
+      expect(frame).toMatchObject({
+        rootEventId: rootAction.rootEventId, responseEventId: proof.responseEventId,
+        rootFace: "Attack", responseFace: "Attack", semanticAction: "DODGE", semanticLabel: "AS DODGE",
+        physicalAttackFaceCount: 2, physicalDodgeFaceCount: 0, responseCardCount: 1, stageCount: 0,
+      });
+      expect(frame.edges.map(({ edge }) => edge)).toEqual(["source", "attack-dodge-interception", "response-source", "interception-mark"]);
+      expect(frame.edges.every(({ visible, d }) => visible && typeof d === "string" && d.length > 0)).toBe(true, JSON.stringify(frame.edges));
+      expect(frame.documentWidth).toBeLessThanOrEqual(viewport.width);
+      await testInfo.attach(`longdan-attack-as-dodge-${["attacker", "defender", "observer"][index]}.png`, {
+        body: await viewer.screenshot(), contentType: "image/png",
+      });
+      await testInfo.attach(`longdan-attack-as-dodge-${["attacker", "defender", "observer"][index]}.json`, {
+        body: JSON.stringify(frame, null, 2), contentType: "application/json",
+      });
+    }
+  } finally {
+    await defenderPage.close();
+    await observerPage.close();
   }
 });
 

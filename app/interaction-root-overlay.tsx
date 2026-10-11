@@ -214,9 +214,13 @@ export type InteractionRootOverlayAction = {
   rootEffectState?: "ACTIVE" | "BLOCKED";
   settlement?: { eventId: string; outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE" | "ATTACK_DAMAGE_APPLIED" | "DISMANTLE_RESOLVED" | "STEAL_RESOLVED" | "GROUP_RESOLVED" | "BUMPER_HARVEST_RESOLVED"; exiting: boolean };
   publicCounterRead?: { eventId: string; exiting: boolean; live?: boolean; settled?: boolean };
-  response?: { eventId: string; actorId: string; actorName: string; cardFace?: Card; cardLabel: string; ariaLabel: string; countersRoot?: boolean; targetId?: string; decisionActorId?: string };
+  response?: { eventId: string; actorId: string; actorName: string; cardFace?: Card; cardLabel: string; ariaLabel: string; semanticAction?: "DODGE"; semanticLabel?: string; countersRoot?: boolean; targetId?: string; decisionActorId?: string };
   responses?: readonly InteractionRootOverlayResponseNode[];
 };
+
+function isAttackDodgeSemanticResponse(response: InteractionRootOverlayAction["response"]): boolean {
+  return response?.semanticAction === "DODGE" || response?.cardFace?.kind === "Dodge";
+}
 
 function relativeRect(element: HTMLElement, root: DOMRect): Rect {
   const rect = element.getBoundingClientRect();
@@ -880,7 +884,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     if (action.cardKind !== "Attack" || !action.targetId || !diagnosticReporter) return;
     diagnosticReporter({
       rootEventId: action.rootEventId,
-      phase: action.response?.cardFace?.kind === "Dodge" ? "dodge-response" : action.response ? "other-response" : "root",
+      phase: isAttackDodgeSemanticResponse(action.response) ? "dodge-response" : action.response ? "other-response" : "root",
       fitStep: cardElement.closest<HTMLElement>("[data-root-action-card-fit-step]")?.dataset.rootActionCardFitStep ?? "target",
       viewport: { width: Math.round(shellBounds.width), height: Math.round(shellBounds.height) },
       cause,
@@ -942,7 +946,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const targetAnchorRect = relativeRect(targetElement, shellBounds);
   const targetRect = relativeRect(targetPathElement, shellBounds);
   const targetHalo = action.cardKind === "Attack" ? { ...targetAnchorRect } : null;
-  const responseSourcePathElement = action.cardKind === "Attack" && action.response?.cardFace?.kind === "Dodge"
+  const responseSourcePathElement = action.cardKind === "Attack" && isAttackDodgeSemanticResponse(action.response)
     && responseSourceElement?.classList.contains("local-player-dock")
     ? responseSourceElement.querySelector<HTMLElement>(".local-hero-card") ?? responseSourceElement
     : responseSourceElement;
@@ -1825,7 +1829,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   }
   if (action.response) {
     if (!responseElement || !responseSourceElement || !responseSourceRect) {
-      if (!responseElement && action.cardKind === "Attack" && action.response.cardFace?.kind === "Dodge") {
+      if (!responseElement && action.cardKind === "Attack" && isAttackDodgeSemanticResponse(action.response)) {
         reportFitDiagnostic("missing-dodge-response-card");
       }
       return null;
@@ -1842,7 +1846,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     const countersRoot = action.response.countersRoot === true
       && (action.rootEffectState === "BLOCKED" || dodgeSettlementConfirmsBlock);
     const attackDodgeIntercepted = action.cardKind === "Attack"
-      && action.response.cardFace?.kind === "Dodge"
+      && isAttackDodgeSemanticResponse(action.response)
       && countersRoot;
     const responseSourceCenter = center(responseSourceRect);
     const responseTargetCenter = responseTargetRect ? center(responseTargetRect) : null;
@@ -1862,10 +1866,10 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     const responseFractions = targetsPlayer ? [.3, .42, .52, .62, .72, .82, .9]
       : countersRoot ? [.48, .6, .72, .82] : [.64, .72, .8];
     const responseOffsets = targetsPlayer ? [0, -42, 42, -68, 68, -100, 100, -132, 132, -164, 164]
-      : action.cardKind === "Attack" && action.response.cardFace?.kind === "Dodge"
+      : action.cardKind === "Attack" && isAttackDodgeSemanticResponse(action.response)
         ? [0, -42, 42, -68, 68, -96, 96, -124, 124, -150, 150]
         : [0, -42, 42, -68, 68];
-    const preferredResponseFits = action.cardKind === "Attack" && action.response.cardFace?.kind === "Dodge"
+    const preferredResponseFits = action.cardKind === "Attack" && isAttackDodgeSemanticResponse(action.response)
       && preferredResponseCard
       && Math.abs(preferredResponseCard.width - responseWidth) < .5
       && Math.abs(preferredResponseCard.height - responseHeight) < .5
@@ -2208,7 +2212,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       responseSourcePath: pathBetween(
         responseSourceStart,
         responseSourceEnd,
-        action.cardKind === "Attack" && action.response.cardFace?.kind === "Dodge" ? 0 : Math.min(20, lineLength * .025),
+        action.cardKind === "Attack" && isAttackDodgeSemanticResponse(action.response) ? 0 : Math.min(20, lineLength * .025),
       ),
       counterPath: !attackDodgeIntercepted && counterStart && counterEnd ? pathBetween(counterStart, counterEnd, 0) : null,
       blockPath,
@@ -2286,7 +2290,7 @@ export function InteractionRootOverlay({
   const responseTargetId = action?.response?.targetId ?? null;
   const responseCountersRoot = action?.response?.countersRoot === true;
   const attackDodgeInterception = action?.cardKind === "Attack"
-    && action.response?.cardFace?.kind === "Dodge"
+    && isAttackDodgeSemanticResponse(action.response)
     && responseCountersRoot
     && (action.rootEffectState === "BLOCKED" || action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE");
   const responseTargetsPlayer = Boolean(responseTargetId);
@@ -2335,7 +2339,7 @@ export function InteractionRootOverlay({
       rootEventId: initialAction.rootEventId,
       state: "measuring",
       enabled,
-      responseCardExpected: Boolean(initialAction.response?.cardFace?.kind === "Dodge"),
+      responseCardExpected: isAttackDodgeSemanticResponse(initialAction.response),
       stableRootPresent: stableRootPlacementRef.current?.rootKey === (initialAction.rootPlacementKey ?? initialAction.rootEventId),
     });
     onLayoutReadinessChange({ key: initialAction.key, state: "measuring" });
@@ -2438,7 +2442,7 @@ export function InteractionRootOverlay({
           selectedSampledPathRoot: diagnostic.selectedSampledPathRoot,
         });
       } : undefined;
-      if (canScaleAttackCard && currentAction.response?.cardFace?.kind === "Dodge" && !hasStableRootForInteraction) {
+      if (canScaleAttackCard && isAttackDodgeSemanticResponse(currentAction.response) && !hasStableRootForInteraction) {
         if (diagnosticReporter) diagnosticReporter({
           rootEventId: currentAction.rootEventId,
           phase: "dodge-response",
@@ -2553,7 +2557,7 @@ export function InteractionRootOverlay({
         viewport: { width: Math.round(shellBounds.width), height: Math.round(shellBounds.height) },
         card: nextLayout?.card ?? null,
         reservedDodgeCard: nextLayout?.responseCard ?? null,
-        dodgeCard: currentAction.response?.cardFace?.kind === "Dodge" ? nextLayout?.responseCard ?? null : null,
+        dodgeCard: isAttackDodgeSemanticResponse(currentAction.response) ? nextLayout?.responseCard ?? null : null,
         dodgeInterceptionFallback: nextLayout?.dodgeInterceptionFallback ?? false,
         connectors: {
           source: Boolean(nextLayout?.sourcePath),
@@ -3018,6 +3022,7 @@ export function InteractionRootOverlay({
       className={`interaction-root-action-card interaction-root-response-card${action.response.cardFace ? " is-card-face" : ""}${responseTargetsPlayer ? " is-active" : ""}`}
       data-root-action-response-card="true"
       data-response-card-face-kind={action.response.cardFace?.kind}
+      data-response-semantic-action={action.response.semanticAction}
       data-response-event-id={action.response.eventId}
       data-response-actor-id={action.response.actorId}
       data-response-decision-actor-id={action.response.decisionActorId ?? undefined}
@@ -3033,6 +3038,7 @@ export function InteractionRootOverlay({
         <small>{action.response.targetId || action.response.countersRoot ? `FROM ${action.response.actorName}` : "BLOCKED"}</small>
         <strong>{action.response.cardLabel}</strong>
       </>}
+      {action.response.semanticLabel && <span className="interaction-root-response-semantic">{action.response.semanticLabel}</span>}
     </div>}
     {visibleResponses.map((response, index) => {
       const active = index === visibleResponses.length - 1;

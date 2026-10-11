@@ -418,8 +418,8 @@ export function isProvenRootActionCardProof(value: unknown): value is Presentati
   return false;
 }
 
-/** Public proof that one submitted physical Dodge blocks one exact ordinary Attack target effect. */
-export type PresentationAttackDodgeResponseProof = {
+/** Public proof that one submitted Dodge-semantic response blocks one exact Attack target effect. */
+type PresentationAttackDodgeResponseProofBase = {
   semantics: "PROVEN";
   counterRelation: "BLOCKS_TARGET_EFFECT";
   interactionId: string;
@@ -430,6 +430,7 @@ export type PresentationAttackDodgeResponseProof = {
   targetId: string;
   responseActorId: string;
   rootCardKind: "Attack";
+  /** Semantic response kind; may differ from the actual public CardFace below. */
   responseCardKind: "Dodge";
   /** Server time at which this public read window expires; legacy proofs may omit it. */
   displayExpiresAtMs?: number;
@@ -437,10 +438,38 @@ export type PresentationAttackDodgeResponseProof = {
   turnSeatAtCommit?: number;
 };
 
+export type PresentationAttackDodgeResponseProof = PresentationAttackDodgeResponseProofBase & (
+  | { responsePhysicalCardKind?: never; responsePlayedAs?: never }
+  | { responsePhysicalCardKind: "Attack"; responsePlayedAs: "dodge" }
+);
+
 export type PresentationAttackDodgeResponse = PresentationAttackDodgeResponseProof & {
   responseEventId: string;
   responseResolutionId: string;
 };
+
+/** Only these server-authored physical/effective pairings can prove an Attack block. */
+export function isSupportedAttackDodgeResponseProof(value: unknown): value is PresentationAttackDodgeResponseProof {
+  const proof = record(value);
+  if (!proof) return false;
+  const hasPhysicalKind = Object.prototype.hasOwnProperty.call(proof, "responsePhysicalCardKind");
+  const hasPlayedAs = Object.prototype.hasOwnProperty.call(proof, "responsePlayedAs");
+  if (!hasPhysicalKind && !hasPlayedAs) return true;
+  return hasPhysicalKind && hasPlayedAs
+    && proof.responsePhysicalCardKind === "Attack" && proof.responsePlayedAs === "dodge";
+}
+
+/** Cross-checks a typed server proof against the exact public physical response event. */
+export function attackDodgeResponseEventMatchesProof(
+  value: unknown,
+  event: Pick<PresentationV2Event, "card" | "playedAs">,
+): boolean {
+  if (!isSupportedAttackDodgeResponseProof(value)) return false;
+  if (value.responsePhysicalCardKind === "Attack") {
+    return event.card?.kind === "Attack" && event.playedAs === "dodge";
+  }
+  return event.card?.kind === "Dodge" && event.playedAs === undefined;
+}
 
 /** Server-authored public proof that one accepted Attack belongs to a Duel exchange. */
 export type PresentationDuelAttackResponseProof = {
@@ -2374,8 +2403,8 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
     const rootCardId = stringValue(rootCard?.id);
     const responseCardId = stringValue(responseCard?.id);
     if (!eventId || eventCounts.get(eventId) !== 1 || !responseResolutionId
-      || event.type !== "card" || event.presentation === false || event.action !== "play" || event.playedAs !== undefined
-      || responseCard?.kind !== "Dodge" || !responseCardId || cardIdCounts.get(responseCardId) !== 1
+      || event.type !== "card" || event.presentation === false || event.action !== "play"
+      || !attackDodgeResponseEventMatchesProof(proof, event) || !responseCardId || cardIdCounts.get(responseCardId) !== 1
       || proof.semantics !== "PROVEN" || proof.counterRelation !== "BLOCKS_TARGET_EFFECT"
       || rootEvent.type !== "card" || rootEvent.presentation === false || rootEvent.action !== "play"
       || !rootCardId || cardIdCounts.get(rootCardId) !== 1
@@ -2401,6 +2430,9 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
       responseCardKind: "Dodge",
       responseEventId: eventId,
       responseResolutionId,
+      ...(proof.responsePhysicalCardKind === "Attack" && proof.responsePlayedAs === "dodge"
+        ? { responsePhysicalCardKind: "Attack" as const, responsePlayedAs: "dodge" as const }
+        : {}),
       ...(Number.isSafeInteger(proof.displayExpiresAtMs) && (proof.displayExpiresAtMs as number) >= 0
         ? { displayExpiresAtMs: proof.displayExpiresAtMs as number }
         : {}),

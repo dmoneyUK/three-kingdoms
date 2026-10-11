@@ -383,6 +383,103 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   assert.deepEqual(settled.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
 });
 
+test("engine-backed Zhao Yun Attack-as-Dodge publishes only its exact physical-card conversion proof", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [source, target] = game.room.players;
+  const [sourceMember, targetMember, observerMember] = game.members;
+  const attack = card("Attack", "engine-longdan-attack-as-dodge", "♦");
+  attack.rank = "9";
+  const rootAttack = card("Attack", "engine-longdan-response-root", "♠");
+  setHand(source.id, [rootAttack], 4, 4);
+  setHand(target.id, [attack], 4, 4);
+  sql(`UPDATE players SET hero='zhao-yun' WHERE id=${quote(target.id)}`);
+  setTurn(game.code, source.seat);
+
+  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: rootAttack.id, targetId: target.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const decision = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  const rootAction = decision.presentationSnapshot.rootAction;
+  assert.equal(rootAction?.rootEventId, decision.timeline.find((event) => event.type === "card" && event.card?.id === rootAttack.id)?.id);
+  const longdanOption = decision.currentAction.options.find((option) => option.providerId === "zhao_yun_attack_as_dodge");
+  assert.deepEqual(longdanOption?.selection?.eligibleCardIds, [attack.id], "the real server exposes this exact physical Attack only through Longdan");
+  assert.equal(longdanOption?.playedAs, "dodge");
+
+  const unconverted = await request("respond", { code: game.code, token: targetMember.token, providerId: "card", cardId: attack.id });
+  assert.equal(unconverted.status, 409, "an Attack without the authoritative Longdan conversion cannot satisfy Dodge");
+  assert.equal(authoritativePending(game.code)?.kind, "response", "the rejected attempt leaves the exact server decision intact");
+
+  const response = await request("respond", {
+    code: game.code, token: targetMember.token, providerId: "zhao_yun_attack_as_dodge", cardId: attack.id,
+    uxTraceId: "longdan-response-proof-test",
+  });
+  assert.equal(response.status, 200, JSON.stringify(response.data));
+  assert.equal(response.data.attackDodgeUxTrace?.proofBuilder?.result, "PROVEN", JSON.stringify(response.data.attackDodgeUxTrace));
+  assert.equal(response.data.attackDodgeUxTrace?.proofBuilder?.checks?.authoritativeLongdanAttackAsDodge, true);
+
+  const sourceView = await assertProjectionMatchesEngine(game.code, sourceMember.token);
+  const targetView = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  const observerView = await assertProjectionMatchesEngine(game.code, observerMember.token);
+  const proof = sourceView.presentationSnapshot.attackDodgeResponses[0];
+  assert.ok(proof, "server projection accepts the Longdan physical Attack as the semantic Dodge response");
+  assertDodgeReadLifecycle(proof, source.seat);
+  assert.equal(proof.rootEventId, rootAction.rootEventId);
+  assert.equal(proof.interactionId, rootAction.interactionId);
+  assert.equal(proof.rootFrameId, rootAction.rootFrameId);
+  assert.equal(proof.rootResolutionId, decision.timeline.find((event) => event.id === rootAction.rootEventId)?.resolutionId);
+  assert.deepEqual(proof, {
+    semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
+    interactionId: rootAction.interactionId, rootFrameId: rootAction.rootFrameId,
+    rootEventId: rootAction.rootEventId,
+    rootResolutionId: proof.rootResolutionId, rootSourceId: source.id, targetId: target.id, responseActorId: target.id,
+    rootCardKind: "Attack", responseCardKind: "Dodge",
+    responseEventId: proof.responseEventId, responseResolutionId: proof.responseResolutionId,
+    responsePhysicalCardKind: "Attack", responsePlayedAs: "dodge",
+    displayExpiresAtMs: proof.displayExpiresAtMs, turnSeatAtCommit: source.seat,
+  });
+  const responseEvent = sourceView.timeline.find((event) => event.id === proof.responseEventId);
+  assert.ok(responseEvent);
+  assert.deepEqual(responseEvent.card, attack, "the public event retains the actual Attack art, suit, rank and physical ID");
+  assert.equal(responseEvent.playedAs, "dodge");
+  assert.deepEqual(responseEvent.attackDodgeResponse, {
+    semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
+    interactionId: proof.interactionId, rootFrameId: proof.rootFrameId,
+    rootEventId: proof.rootEventId, rootResolutionId: proof.rootResolutionId,
+    rootSourceId: source.id, targetId: target.id, responseActorId: target.id,
+    rootCardKind: "Attack", responseCardKind: "Dodge",
+    responsePhysicalCardKind: "Attack", responsePlayedAs: "dodge",
+    displayExpiresAtMs: proof.displayExpiresAtMs, turnSeatAtCommit: source.seat,
+  }, "the exact server-authored semantic/physical pairing is attached to the public event");
+  assert.equal(sourceView.timeline.find((event) => event.id === proof.rootEventId)?.card?.id, rootAttack.id);
+  assert.deepEqual(sourceView.presentationSnapshot.attackDodgeResponses, [proof]);
+  assert.deepEqual(targetView.presentationSnapshot.attackDodgeResponses, [proof]);
+  assert.deepEqual(observerView.presentationSnapshot.attackDodgeResponses, [proof]);
+  assert.equal(JSON.stringify(proof).includes(attack.id), false, "the typed relation does not duplicate the physical card identity");
+  assert.equal(JSON.stringify(proof).includes(rootAttack.id), false);
+
+  const input = { pending: null, currentAction: null, actionRevision: "settled", timeline: sourceView.timeline };
+  const withoutConversionProof = sourceView.timeline.map((event) => {
+    if (event.id !== proof.responseEventId) return event;
+    const attackDodgeResponse = { ...event.attackDodgeResponse };
+    delete attackDodgeResponse.responsePhysicalCardKind;
+    delete attackDodgeResponse.responsePlayedAs;
+    return { ...event, attackDodgeResponse };
+  });
+  assert.deepEqual(projectPresentationV2({ ...input, timeline: withoutConversionProof }).attackDodgeResponses ?? [], [],
+    "a physical Attack without the typed conversion proof is rejected");
+  const mismatchedConversion = sourceView.timeline.map((event) => event.id === proof.responseEventId
+    ? { ...event, attackDodgeResponse: { ...event.attackDodgeResponse, responsePlayedAs: "attack" } }
+    : event);
+  assert.deepEqual(projectPresentationV2({ ...input, timeline: mismatchedConversion }).attackDodgeResponses ?? [], [],
+    "a mismatched effective-action marker is rejected");
+  const mismatchedFace = sourceView.timeline.map((event) => event.id === proof.responseEventId
+    ? { ...event, card: { ...event.card, kind: "Dodge" }, playedAs: undefined }
+    : event);
+  assert.deepEqual(projectPresentationV2({ ...input, timeline: mismatchedFace }).attackDodgeResponses ?? [], [],
+    "a proof cannot substitute a Dodge face for the actual converted physical Attack");
+  assert.deepEqual(projectPresentationV2({ ...input, timeline: [...sourceView.timeline, responseEvent] }).attackDodgeResponses ?? [], [],
+    "replayed response event identity is rejected");
+});
+
 test("engine-backed Longdan Dodge-as-Attack preserves semantic root and physical card proof", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [source, target] = game.room.players;

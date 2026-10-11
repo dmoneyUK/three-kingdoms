@@ -818,7 +818,15 @@ function attachBumperHarvestRootFrame(log: string[], eventId: string, sourceId: 
   });
   return matches === 1 ? next : log;
 }
-function attackDodgeResponseProof(log: string[], response: ResponsePending, responderId: string, turnSeatAtCommit: number | null): AttackDodgeProofEvaluation {
+function attackDodgeResponseProof(
+  log: string[],
+  response: ResponsePending,
+  responderId: string,
+  turnSeatAtCommit: number | null,
+  responseCard: Card | undefined,
+  responseExecution: ResponseExecution | null,
+  responderHero: string | null,
+): AttackDodgeProofEvaluation {
   const attack = attackResponse(response);
   const causal = response.causal;
   const correlation = {
@@ -849,7 +857,15 @@ function attackDodgeResponseProof(log: string[], response: ResponsePending, resp
     causalFrameMatchesContinuation: Boolean(causal && causal.frameId === continuation.causal?.frameId),
     causalInteractionPresent: Boolean(causal?.interactionId),
     causalFramePresent: Boolean(causal?.frameId),
+    responseExecutionSatisfiedDodge: responseExecution?.status === "satisfied" && responseExecution.satisfies === "dodge",
+    responseExecutionConsumesExactPhysicalCard: responseExecution?.status === "satisfied"
+      && responseExecution.consumeCardIds?.length === 1 && responseExecution.consumeCardIds[0] === responseCard?.id,
+    ordinaryPhysicalDodge: responseCard?.kind === "Dodge" && responseExecution?.playedAs === undefined,
+    authoritativeLongdanAttackAsDodge: responderHero === "zhao-yun" && responseCard?.kind === "Attack"
+      && responseExecution?.status === "satisfied" && responseExecution.providerId === "zhao_yun_attack_as_dodge"
+      && responseExecution.satisfies === "dodge" && responseExecution.playedAs === "dodge",
   };
+  const supportedDodgeResponse = baseChecks.ordinaryPhysicalDodge || baseChecks.authoritativeLongdanAttackAsDodge;
   const failedGate = [
     [baseChecks.originIsCard, "attack-origin-is-not-card"],
     [baseChecks.requiredDodgeCountIsOne, "required-dodge-count-is-not-one"],
@@ -865,6 +881,9 @@ function attackDodgeResponseProof(log: string[], response: ResponsePending, resp
     [baseChecks.causalFrameMatchesContinuation, "response-frame-mismatch"],
     [baseChecks.causalInteractionPresent, "response-interaction-id-missing"],
     [baseChecks.causalFramePresent, "response-frame-id-missing"],
+    [baseChecks.responseExecutionSatisfiedDodge, "response-execution-does-not-satisfy-dodge"],
+    [baseChecks.responseExecutionConsumesExactPhysicalCard, "response-execution-does-not-consume-one-exact-card"],
+    [supportedDodgeResponse, "physical-response-card-has-no-authoritative-dodge-semantics"],
   ].find(([passed]) => !passed)?.[1] as string | undefined;
   if (failedGate) return reject(failedGate, baseChecks);
   if (!causal || !causal.interactionId || !causal.frameId) return reject("response-causal-identity-missing", baseChecks);
@@ -917,6 +936,9 @@ function attackDodgeResponseProof(log: string[], response: ResponsePending, resp
     responseActorId: responderId,
     rootCardKind: "Attack",
     responseCardKind: "Dodge",
+    ...(baseChecks.authoritativeLongdanAttackAsDodge
+      ? { responsePhysicalCardKind: "Attack" as const, responsePlayedAs: "dodge" as const }
+      : {}),
     displayExpiresAtMs: Date.now() + ATTACK_DODGE_PUBLIC_READ_MS,
     ...(Number.isInteger(turnSeatAtCommit) && turnSeatAtCommit !== null ? { turnSeatAtCommit } : {}),
   };
@@ -6747,25 +6769,9 @@ export async function POST(request: Request) {
       hand = hand.filter((card) => !dodgeIdsSet.has(card.id)); discard.push(...dodgeCards);
       if (dodgeCards.length === 1) {
         responseEventId = crypto.randomUUID();
-        if (dodgeCards[0].kind === "Dodge" && !responseExecution?.playedAs) {
-          attackDodgeEvaluation = attackDodgeResponseProof(log, attack.response, me.id, liveRoom.turn_seat);
-        } else {
-          attackDodgeEvaluation = {
-            proof: null,
-            diagnostic: {
-              result: "NOT_ATTEMPTED",
-              reason: dodgeCards[0].kind !== "Dodge" ? "submitted-card-is-not-a-physical-dodge" : "converted-response-not-supported-by-this-proof-contract",
-              correlation: {
-                interactionId: attack.response.causal?.interactionId ?? null,
-                rootFrameId: attack.response.causal?.frameId ?? null,
-                rootEventId: null,
-                rootResolutionId: null,
-                responseEventId,
-              },
-              checks: { onePhysicalCardSubmitted: true, physicalCardIsDodge: dodgeCards[0].kind === "Dodge", responseWasConverted: Boolean(responseExecution?.playedAs) },
-            },
-          };
-        }
+        attackDodgeEvaluation = attackDodgeResponseProof(
+          log, attack.response, me.id, liveRoom.turn_seat, dodgeCards[0], responseExecution, me.hero,
+        );
         const attackDodgeResponse = attackDodgeEvaluation.proof ?? undefined;
         log = addCardEvent(log, me.name, dodgeCards[0], source?.name ?? "Attack", "play", true, {
           ...(attackDodgeResponse ? { resolutionId: attackDodgeResponse.rootResolutionId } : {}),
@@ -6791,7 +6797,10 @@ export async function POST(request: Request) {
         };
         log = addLogWithId(log, `${me.name} uses ${responseExecution?.providerId ?? "a Dodge provider"}.` ).log;
       }
-      log = addLog(log, dodgeCards.length ? `${me.name} plays Dodge and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.` : `${me.name} uses ${responseExecution?.providerId ?? "a Dodge provider"} and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.`);
+      const responseDescription = responseExecution?.providerId === "zhao_yun_attack_as_dodge"
+        ? "uses Braveheart to play Attack as Dodge"
+        : dodgeCards.length ? "plays Dodge" : `uses ${responseExecution?.providerId ?? "a Dodge provider"}`;
+      log = addLog(log, `${me.name} ${responseDescription} and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.`);
       const reopened = responseAfterSemanticSuccess(response)
         ? reopenSemanticResponse(response, semanticTarget, log, `${semanticTarget.name} must provide another Dodge.`)
         : null;
