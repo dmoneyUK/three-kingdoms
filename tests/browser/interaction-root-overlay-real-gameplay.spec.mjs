@@ -2469,7 +2469,7 @@ test("real Zhao Yun Longdan Attack-as-Dodge keeps its physical Attack face in th
       attackDodgeResponse: { responsePhysicalCardKind: "Attack", responsePlayedAs: "dodge", responseCardKind: "Dodge" },
     });
 
-    const readFrame = (viewer) => viewer.evaluate(({ rootEventId, responseEventId }) => {
+    const readFrame = (viewer) => viewer.evaluate(() => {
       const overlay = document.querySelector('[data-root-action-overlay="true"]');
       const responseCard = overlay?.querySelector('[data-root-action-response-card="true"]');
       const edgeNames = ["source", "attack-dodge-interception", "response-source"];
@@ -2494,7 +2494,7 @@ test("real Zhao Yun Longdan Attack-as-Dodge keeps its physical Attack face in th
         stageCount: document.querySelectorAll(".interaction-stage").length,
         documentWidth: document.documentElement.scrollWidth,
       };
-    }, { rootEventId: rootAction.rootEventId, responseEventId: proof.responseEventId });
+    });
 
     for (const [index, viewer] of viewers.entries()) {
       const graph = viewer.locator('[data-root-action-overlay="true"]');
