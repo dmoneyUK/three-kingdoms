@@ -3689,14 +3689,14 @@ The ordinary Attack-only and committed Attack→Dodge cases above are the accept
 
 ### 6.39 Approved Stage B1 Duel two-round relationship graph and Stage A path-balance refinement (2026-10-12)
 
-**Task ID (keep original B1 ID): \`UX2-6.34-B1-DUEL-LONG-CHAIN-01\`**  
-**Status:** User-approved visual design; **not yet implemented or visually accepted**. This is **one bounded implementation/review task**: (1) Duel response-chain redesign and (2) small Attack/Dodge layout-balance polish. This design document is *not* the Coding Agent's execution queue. The Agent alone owns \`HANDOVER.md\`; this design update must **never** modify it.
+**Task ID (keep original B1 ID): `UX2-6.34-B1-DUEL-LONG-CHAIN-01`**  
+**Status:** User-approved visual design; **not yet implemented or visually accepted**. This is **one bounded implementation/review task**: (1) Duel response-chain redesign and (2) small Attack/Dodge layout-balance polish. This design document is *not* the Coding Agent's execution queue. The Agent alone owns `HANDOVER.md`; this design update must **never** modify it.
 
-**Visual references:** The user's real ordinary Attack / Attack→Dodge phone screenshots (2026-10-12 23:11) define the practical seat-relative battlefield; the successive generated Play 1–4 images and 23:31 corrections define the layering concept. Generated image art, invented seats, and erroneously shown \`Dodge\` during a Duel are **not** authoritative.
+**Visual references:** The user's real ordinary Attack / Attack→Dodge phone screenshots (2026-10-12 23:11) define the practical seat-relative battlefield; the successive generated Play 1–4 images and 23:31 corrections define the layering concept. Generated image art, invented seats, and erroneously shown `Dodge` during a Duel are **not** authoritative.
 
 #### 6.39.1 Gameplay truth, left/right ownership and common grammar
 
-- A real \`Duel\` has **one stable publicly authenticated Duel root**. Duel participants alternately answer with **genuine, publicly committed Attack** cards. A two-round four-play example is **Attack #1, Attack #2, Attack #3, Attack #4**, one new card at a time, in server-proven continuation order. **Do not display a Dodge as a Duel response** just because its layout is inspired by the ordinary Attack→Dodge diagram. If a converted/virtual Attack is allowed, represent only its server-proven public physical/played-as identity.
+- A real `Duel` has **one stable publicly authenticated Duel root**. Duel participants alternately answer with **genuine, publicly committed Attack** cards. A two-round four-play example is **Attack #1, Attack #2, Attack #3, Attack #4**, one new card at a time, in server-proven continuation order. **Do not display a Dodge as a Duel response** just because its layout is inspired by the ordinary Attack→Dodge diagram. If a converted/virtual Attack is allowed, represent only its server-proven public physical/played-as identity.
 - **Side ownership:** Determine each duelist's left or right half from their **actual authenticated viewer-relative Seat/Local Dock position**. Keep that mapping stable throughout the same Duel for the same viewer; mirror appropriately for attacker, defender and observer viewpoints. Card source is proven from actor/card/root IDs, never inferred from geometry.
 - In the usable central battlefield, place a card approximately **on the middle portion of its horizontal connector run** within the author's own half. The two sides form a balanced composition. Green author tethers are **pale green, arrowless**; red response/effect relations are **vivid red, directional** and use correct validated Duel continuation. Draw horizontal/vertical straight segments joined by minimal rounded 90° elbows, never diagonals or decorative curves. Every terminal arrow must connect to a **real proven participant Seat/Dock or proven response card**, not an empty point or the lower Guidance strip.
 - Reuse the §6.34 hand-size-or-smaller genuine CardFace, with correct rank/suit/art/id and no duplicate legacy CardFace. Duel root itself remains stable throughout; **only historical played response cards** can reposition when later rounds arrive.
@@ -3735,7 +3735,7 @@ The ordinary Attack-only and committed Attack→Dodge cases above are the accept
 
 #### 6.39.3 Round three and later; finite screen budget
 
-- Each newer play continues the same top/current and lower/previous-pair grammar. Promote the previously current complete pair into the compact subdued lower band only when the next real play arrives. **Never invent a pending card.** Older pairs beyond the immediately prior complete pair collapse into a neutral **\`+N earlier responses\`** cue or accessible history affordance as needed. Do not infinitely shrink, pile up, or obscure controls.
+- Each newer play continues the same top/current and lower/previous-pair grammar. Promote the previously current complete pair into the compact subdued lower band only when the next real play arrives. **Never invent a pending card.** Older pairs beyond the immediately prior complete pair collapse into a neutral **`+N earlier responses`** cue or accessible history affordance as needed. Do not infinitely shrink, pile up, or obscure controls.
 - If the Duel ends early, show only the real committed responses and correctly proven result. Retain the settled graph **four seconds from its first fully rendered terminal composition**, subject to an independent new authoritative action superseding it (§0.1/§6.35). Do not change server damage, response deadlines or legality.
 
 #### 6.39.4 Exact elbow-fork routing rule (no bottom-of-card branch)
@@ -3754,7 +3754,7 @@ The user explicitly adds **Attack/Dodge path-balance improvement to this B1 task
 
 #### 6.39.6 Coding Agent implementation boundary and real-game acceptance
 
-**One bounded delivery:** \`UX2-6.34-B1-DUEL-LONG-CHAIN-01\` includes exactly **Duel B1 + the §6.39.5 Attack/Dodge route-balance polish**. Implement from this approved geometry; **do not delegate product-design decisions back to the Coding Agent** or start Stage B2/C automatically. Reuse the existing typed Duel continuation proof and current renderer; do not rewrite Duel gameplay or infer who plays the next card from spatial position.
+**One bounded delivery:** `UX2-6.34-B1-DUEL-LONG-CHAIN-01` includes exactly **Duel B1 + the §6.39.5 Attack/Dodge route-balance polish**. Implement from this approved geometry; **do not delegate product-design decisions back to the Coding Agent** or start Stage B2/C automatically. Reuse the existing typed Duel continuation proof and current renderer; do not rewrite Duel gameplay or infer who plays the next card from spatial position.
 
 **Before marking implemented, collect:**
 
@@ -3764,5 +3764,5 @@ The user explicitly adds **Attack/Dodge path-balance improvement to this B1 task
 4. Review **390×844**, about **440 CSS px iPhone 17 Pro Max**, **480×900** and a relevant wide viewport. No page overflow, clipped arrows, covered Seat/Dock/Guidance/Hand/menu, broken accessible direction/expired-state cues or private leakage. If unavailable geometry prevents a claimed positive result, fail closed and report exact reason.
 5. Focused browser geometry + public-proof regressions; exact commit SHA, changed files, live screenshots, CI and deployment status. Required push CI <=6 min (§6.30); heavyweight full visual matrices remain optional.
 
-**STOP for independent user / Reviewer acceptance after this one combined B1 task.** The design is *not* an acceptance claim or instruction to alter \`HANDOVER.md\`. Stage B2 Negation and Stage C Group/AOE remain separate.
+**STOP for independent user / Reviewer acceptance after this one combined B1 task.** The design is *not* an acceptance claim or instruction to alter `HANDOVER.md`. Stage B2 Negation and Stage C Group/AOE remain separate.
 
