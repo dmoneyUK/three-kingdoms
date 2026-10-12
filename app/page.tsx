@@ -1800,7 +1800,12 @@ function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuin
   </div>;
 }
 
-function GameSystemMenu({ onLeave }: { onLeave: () => void }) {
+function GameSystemMenu({ onLeave, messages, messagesCollapsed, onToggleMessages }: {
+  onLeave: () => void;
+  messages: readonly { id: string; message: string }[];
+  messagesCollapsed: boolean;
+  onToggleMessages: () => void;
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [traceNotice, setTraceNotice] = useState("");
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1831,6 +1836,12 @@ function GameSystemMenu({ onLeave }: { onLeave: () => void }) {
   return <div className="stage-system-menu" data-system-menu-placement="guidance">
     <div id="stage-system-menu-actions" className="stage-system-menu-actions" role="group" aria-label="System menu actions" hidden={!menuOpen}>
       <small className="stage-system-build-sha"><span>GitHub Actions build SHA</span><code>{BUILD_SHA}</code></small>
+      <aside className={`game-messages ${messagesCollapsed ? "collapsed" : ""}`} aria-label="Game Messages">
+        <header><button type="button" className="stage-system-game-messages-toggle" onClick={onToggleMessages} aria-label={messagesCollapsed ? "Expand game messages" : "Collapse game messages"} aria-controls="stage-system-game-messages-list" aria-expanded={!messagesCollapsed}>
+          <span>Game Messages</span><span aria-hidden="true">{messagesCollapsed ? "＋" : "−"}</span>
+        </button></header>
+        {!messagesCollapsed && <div id="stage-system-game-messages-list" className="stage-system-game-messages-list" aria-live="polite">{messages.length ? messages.map((entry, index) => <p className={index === messages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div>}
+      </aside>
       <button type="button" className="stage-system-diagnostics" onClick={downloadTrace} onKeyDown={closeMenuOnEscape}>Download UX trace</button>
       {traceNotice && <small className="stage-system-diagnostics-status" role="status">{traceNotice}</small>}
       <button type="button" className="stage-system-exit" onClick={confirmExit} onKeyDown={closeMenuOnEscape}>Exit Game</button>
@@ -5320,6 +5331,11 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       ? decisionPresentation.supportingInstruction
       : room.currentAction?.reason || decisionPresentation.supportingInstruction;
   const consoleDecline = responseDamageAction || triggerDeclineAction ? { label: responseDamageAction === "decline_response" ? responseDeclineLabel : "Skip", enabled: true } : null;
+  const canClearTargetCardPickerSelection = Boolean(
+    targetCardPickerOption
+    && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId)
+    && targetCardPickerSelectedKeys.length > 0,
+  );
   const consoleSecondaryControls = [
     ...(genericTriggerOptions.map((option) => option.label)),
     ...(genericResponseOptions.map((option) => option.label)),
@@ -5334,7 +5350,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     busy: busy || activeSkillSelectionBusy,
     selection: consoleSelection,
     primaryCandidates: consolePrimaryCandidates,
-    localCancel: { visible: localTargetSelection.canCancel && !triggerHasProviderCancelSurface && !normalHasProviderCancelSurface || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal || targetCardPickerOption && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId)), enabled: localTargetSelection.canCancel || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal) || Boolean(targetCardPickerOption) },
+    localCancel: { visible: localTargetSelection.canCancel && !triggerHasProviderCancelSurface && !normalHasProviderCancelSurface || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal) || canClearTargetCardPickerSelection, enabled: localTargetSelection.canCancel || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal) || canClearTargetCardPickerSelection },
     authoritativeDecline: consoleDecline,
     secondaryControls: consoleSecondaryControls,
   });
@@ -5354,7 +5370,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
           : null}
         eventTimer={<>{privateDrawTimer}{harvestEventTimer}</>}
       /></div>
-      <aside className={`game-messages ${messagesCollapsed ? "collapsed" : ""}`} aria-label="Game Messages"><header><button type="button" onClick={() => setMessagesCollapsed((collapsed) => !collapsed)} aria-label={messagesCollapsed ? "Expand game messages" : "Collapse game messages"} aria-expanded={!messagesCollapsed}>{messagesCollapsed ? "▣" : "—"}</button></header>{!messagesCollapsed && <div aria-live="polite">{gameMessages.length ? gameMessages.map((entry, index) => <p className={index === gameMessages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div>}</aside>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
       {effectNotice && <div className="turn-notice effect-notice" role="status"><span>EFFECT TRIGGERED</span><b>{effectNotice}</b></div>}
       {canChooseBorrowedSword && <div className="turn-notice borrowed-sword-notice" role="status"><span>BORROWED SWORD</span><b>{borrowedSwordTargetId ? "Target selected · confirm below" : "Choose a legal Attack target"}</b></div>}
@@ -5426,8 +5441,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       } guidance={
         <div className="console-guidance" data-console-guidance="true">
           <div className="console-guidance-row">
-            <div className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`} data-console-decision-kind={consoleDecision.kind} data-console-coherent={consoleDecision.coherent ? "true" : "false"} data-console-primary={consoleDecision.primary?.label ?? "none"} data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"} data-console-selection-count={consoleDecision.selectionCount ?? undefined} data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"} data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"} role="status" aria-live="polite" aria-atomic="true"><small>{localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{consoleDecision.instruction}</strong>{!negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}{consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true"><b>LOCAL CANCEL</b><span>Change your selection before submitting.</span></span>}</div>
-            <GameSystemMenu onLeave={onLeave} />
+            <div className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`} data-console-decision-kind={consoleDecision.kind} data-console-coherent={consoleDecision.coherent ? "true" : "false"} data-console-primary={consoleDecision.primary?.label ?? "none"} data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"} data-console-selection-count={consoleDecision.selectionCount ?? undefined} data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"} data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"} role="status" aria-live="polite" aria-atomic="true"><small>{localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{consoleDecision.instruction}</strong>{!negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}{consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true"><b>{canClearTargetCardPickerSelection ? "CLEAR SELECTION" : "LOCAL CANCEL"}</b><span>{canClearTargetCardPickerSelection ? "Remove your selected card." : "Change your selection before submitting."}</span></span>}</div>
+            <GameSystemMenu onLeave={onLeave} messages={gameMessages} messagesCollapsed={messagesCollapsed} onToggleMessages={() => setMessagesCollapsed((collapsed) => !collapsed)} />
           </div>
           {invalidResponseState && <p className="error" role="status">Waiting for the latest response state…</p>}
           {(activeSkillSelection || activeSkillTargetSelection) && activeSkillOption?.effectId === "diao_chan_lust" && activeSkillSelectedTargetIds.length > 1 && <small role="status">Lust order: {room.players.find((player) => player.id === activeSkillSelectedTargetIds[0])?.name} plays Attack first, then {room.players.find((player) => player.id === activeSkillSelectedTargetIds[1])?.name}.</small>}
@@ -5481,7 +5496,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         <div data-action-slots="true">
           <div data-action-slot="cancel">
             {borrowedSwordTargetSelectionActive && consoleDecision.localCancel.visible && <button className="end local-target-cancel" disabled={busy || presentationBusy || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
-            {(targetCardPickerInHeroFocus || targetCardPickerInLocalDock) && consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption?.effectId) && <button className="end local-target-cancel" disabled={responseControlsDisabled || !consoleDecision.localCancel.enabled} onClick={cancelTargetCardPicker}>Cancel</button>}
+            {(targetCardPickerInHeroFocus || targetCardPickerInLocalDock) && canClearTargetCardPickerSelection && <button className="end local-target-cancel" disabled={responseControlsDisabled || !consoleDecision.localCancel.enabled} onClick={cancelTargetCardPicker}>Clear selection</button>}
             {triggerResponse && triggerTargetMode && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !triggerHasProviderCancelSurface && <button className="end local-target-cancel" disabled={responseControlsDisabled || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
             {(activeSkillSelection || activeSkillTargetSelection) && activeSkillTargetMode && consoleDecision.localCancel.visible && localTargetSelection.canCancel && <button className="end local-target-cancel" disabled={busy || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
             {room.isMyTurn && canPlay && consoleKind === "turn" && normalTargetSelectionActive && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !normalHasProviderCancelSurface && <button className="end local-target-cancel" disabled={busy || presentationBusy || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}

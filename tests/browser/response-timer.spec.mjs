@@ -110,14 +110,28 @@ test("UX2 System Menu is keyboard-accessible and confirms Exit without changing 
   const menu = page.getByRole("button", { name: "System menu" });
   const actions = page.getByLabel("System menu actions");
   const exit = actions.getByRole("button", { name: "Exit Game" });
+  const messages = actions.locator("aside.game-messages");
+  const messagesToggle = messages.locator(".stage-system-game-messages-toggle");
   await expect(menu).toHaveAttribute("aria-controls", "stage-system-menu-actions");
   await expect(menu).toContainText("⚙");
   await expect(menu).toHaveAttribute("aria-expanded", "false");
   await expect(exit).toBeHidden();
+  await expect(page.locator(".play-table > .game-messages")).toHaveCount(0);
+  await expect(messages).toBeHidden();
 
   await menu.click();
   await expect(menu).toHaveAttribute("aria-expanded", "true");
   await expect(exit).toBeVisible();
+  await expect(messages).toBeVisible();
+  await expect(messagesToggle).toHaveAccessibleName("Expand game messages");
+  await expect(messagesToggle).toHaveAttribute("aria-expanded", "false");
+  await messagesToggle.click();
+  await expect(messagesToggle).toHaveAccessibleName("Collapse game messages");
+  await expect(messagesToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(messages.locator(".stage-system-game-messages-list")).toBeVisible();
+  await messagesToggle.click();
+  await expect(messagesToggle).toHaveAttribute("aria-expanded", "false");
+  await expect(messages.locator(".stage-system-game-messages-list")).toBeHidden();
   const popupGeometry = await page.evaluate(() => {
     const bounds = (element) => {
       const { left, right, top, bottom } = element.getBoundingClientRect();

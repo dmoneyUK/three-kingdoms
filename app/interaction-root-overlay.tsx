@@ -661,7 +661,7 @@ function layoutGroupRootAction(
   const lateralDistance = Math.min(112, Math.max(44, Math.min(tableRect.width, tableRect.height) * .16));
   const obstacleElements = [
     ...Array.from(shell.querySelectorAll<HTMLElement>("[data-player-anchor]")),
-    ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .stage-system-menu, .game-messages, .game-exit")),
+    ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .stage-system-menu, .stage-system-menu-actions, .game-messages, .game-exit")),
   ].filter((element) => element.getClientRects().length > 0);
   const obstacles = obstacleElements.map((element) => relativeRect(element, shellBounds));
   const lateralOffsets = action.orderedTargets?.length
@@ -908,7 +908,7 @@ function layoutSimultaneousRootAction(
   const lateralDistance = Math.min(100, Math.max(42, Math.min(tableRect.width, tableRect.height) * .15));
   const obstacleElements = [
     ...Array.from(shell.querySelectorAll<HTMLElement>("[data-player-anchor]")),
-    ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .stage-system-menu, .game-messages, .game-exit")),
+    ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .stage-system-menu, .stage-system-menu-actions, .game-messages, .game-exit")),
   ].filter((element) => element.getClientRects().length > 0);
   const obstacles = obstacleElements.map((element) => relativeRect(element, shellBounds));
   const candidates = [.3, .38, .46, .54].flatMap((fraction) => [0, -lateralDistance, lateralDistance, -lateralDistance * 1.55, lateralDistance * 1.55].flatMap((offset) => {
@@ -1176,7 +1176,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     }))));
     const obstacles = [
       ...Array.from(shell.querySelectorAll<HTMLElement>("[data-player-anchor]")),
-      ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .stage-system-menu, .game-messages, .game-exit")),
+      ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .stage-system-menu, .stage-system-menu-actions, .game-messages, .game-exit")),
     ].filter((element) => element.getClientRects().length > 0)
       .map((element) => relativeRect(element, shellBounds));
     const candidates = candidateCenters.flatMap((candidate) => {
@@ -1357,7 +1357,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     })),
   ] : [];
   const candidateCenters = [...sampledPathCenters, ...centreFirstCandidates];
-  const controlObstacleElements = Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .stage-system-menu, .game-messages, .game-exit"))
+  const controlObstacleElements = Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .stage-system-menu, .stage-system-menu-actions, .game-messages, .game-exit"))
     .filter((element) => {
       if (element.getClientRects().length === 0) return false;
       // Attack reserves the fixed Deck/Discard lane through its Dodge handoff,

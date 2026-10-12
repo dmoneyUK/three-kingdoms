@@ -336,6 +336,16 @@ test("real Dauntless activates from Skills and routes the ending player's Equipm
     const endingDock = endingPage.locator('.local-player-dock[data-player-anchor="' + game.players[0].id + '"]');
     const equipmentChoice = endingDock.locator('[data-equipment-id="' + equipment.id + '"] .local-zone-card-button');
     await expect(equipmentChoice).toBeEnabled();
+    await expect(endingDock.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
+    await expect(endingDock.getByRole("button", { name: "Clear selection", exact: true })).toHaveCount(0);
+    await expect(endingDock.getByText("LOCAL CANCEL", { exact: true })).toHaveCount(0);
+    await equipmentChoice.click();
+    await expect(equipmentChoice).toHaveAttribute("aria-pressed", "true");
+    const clearSelection = endingDock.getByRole("button", { name: "Clear selection", exact: true });
+    await expect(clearSelection).toBeVisible();
+    await clearSelection.click();
+    await expect(equipmentChoice).toHaveAttribute("aria-pressed", "false");
+    await expect(endingDock.getByText("CLEAR SELECTION", { exact: true })).toHaveCount(0);
     await equipmentChoice.click();
     await expect(equipmentChoice).toHaveAttribute("aria-pressed", "true");
     const endingConfirm = endingDock.locator('[data-action-slot="primary"] button.primary');

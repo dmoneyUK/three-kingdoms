@@ -75,7 +75,7 @@ async function expectAttackConnectorAppearance(overlay) {
   expect(appearance.source.d).toMatch(/\bL\b/);
   expect(appearance.source.d).not.toMatch(/\bC\b/);
   expect(appearance.target).toMatchObject({
-    stroke: "rgb(255, 129, 115)", strokeWidth: "8.5px",
+    stroke: "rgb(255, 48, 48)", strokeWidth: "8.5px",
   });
   expect(appearance.target.d).toMatch(/\bL\b/);
   expect(appearance.target.d).not.toMatch(/\bC\b/);
@@ -1737,11 +1737,11 @@ for (const scenario of [
     expect(after.sourceStrokeWidth).toBe(6.5);
     expect(after.targetStrokeWidth).toBe(8.5);
     expect(after.sourceStrokeColor).toBe("rgb(166, 224, 197)");
-    expect(after.targetStrokeColor).toBe("rgb(255, 129, 115)");
+    expect(after.targetStrokeColor).toBe("rgb(255, 48, 48)");
     expect(after.targetOpacity).toBe("1");
     expect(after.targetMarkerWidth).toBe("30");
     expect(after.targetMarkerHeight).toBe("22");
-    expect(after.targetMarkerFill).toBe("rgb(255, 129, 115)");
+    expect(after.targetMarkerFill).toBe("rgb(255, 48, 48)");
     expect(after.targetHighlight).not.toBeNull();
     expectAttackTargetHighlightCoversAnchor(after, targetId, "active");
     expect(after.overlayCardKind).toBe("Attack");
@@ -3730,7 +3730,7 @@ for (const scenario of [
       expect(geometry.edges.some((edge) => edge.edge === "negation-counters-root")).toBe(false);
       const attackInterception = geometry.edges.find((edge) => edge.edge === "attack-dodge-interception");
       expect(attackInterception).toMatchObject({
-        markerEnd: null, stroke: "rgb(255, 129, 115)", strokeWidth: "8.5px", strokeDasharray: "none", opacity: "1",
+        markerEnd: null, stroke: "rgb(255, 48, 48)", strokeWidth: "8.5px", strokeDasharray: "none", opacity: "1",
       });
       const interceptionMark = geometry.edges.find((edge) => edge.edge === "interception-mark");
       expect(interceptionMark.dataset.rootActionBlocked).toBe("true");
