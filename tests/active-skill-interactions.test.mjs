@@ -217,6 +217,12 @@ async function gameTree(skill, onAction) {
 function buttons(renderer, props) { return renderer.root.findAllByType("button").filter((button) => Object.entries(props).every(([key, value]) => button.props[key] === value)); }
 function button(renderer, props) { const matches = buttons(renderer, props); assert.equal(matches.length, 1, `expected one button ${JSON.stringify(props)}, got ${matches.length}; buttons=${renderer.root.findAllByType("button").map((entry) => String(entry.props.children)).join(" | ")}`); return matches[0]; }
 function nodeWith(renderer, prop, value) { const matches = renderer.root.findAll((node) => node.props?.[prop] === value); assert.equal(matches.length, 1, `expected one node ${prop}=${value}, got ${matches.length}`); return matches[0]; }
+function opponentHeroButton(renderer, playerId) {
+  const seat = nodeWith(renderer, "data-player-anchor", playerId);
+  const matches = seat.findAllByType("button").filter((entry) => entry.props.className?.split(/\s+/).includes("opponent-hero-target"));
+  assert.equal(matches.length, 1, `expected one opponent hero control for ${playerId}, got ${matches.length}`);
+  return matches[0];
+}
 function seatAnchorIds(renderer) { return [...new Set(renderer.root.findAll((node) => typeof node.props?.["data-player-anchor"] === "string").map((node) => node.props["data-player-anchor"]))].sort(); }
 function handCardButton(renderer, cardId) { return nodeWith(renderer, "data-hand-card-id", cardId).findAllByType("button")[0]; }
 function targetButton(renderer, playerId) { return nodeWith(renderer, "data-player-anchor", playerId).findAllByType("button")[0]; }
@@ -721,8 +727,8 @@ test("Zhang Liao Assault uses generic target controls during the Draw Phase", as
   const skillButton = () => button(renderer, { "aria-label": "Assault" });
   const useButton = () => button(renderer, { children: "Confirm" });
 
-  assert.equal(button(renderer, { "aria-label": "Inspect TARGET ONE" }).props.disabled, false, "inactive Assault preserves inspection controls");
-  await act(async () => { button(renderer, { "aria-label": "Inspect TARGET ONE" }).props.onClick(); });
+  assert.equal(opponentHeroButton(renderer, "p2").props.disabled, false, "inactive Assault preserves inspection controls");
+  await act(async () => { opponentHeroButton(renderer, "p2").props.onClick(); });
   assert.equal(renderer.root.findAllByProps({ role: "dialog" }).length, 1, "inactive opponent hero click opens inspection");
   await act(async () => { renderer.root.findByProps({ "aria-label": "Close TARGET ONE inspection" }).props.onClick(); });
 
@@ -754,7 +760,7 @@ test("Zhang Liao Assault uses generic target controls during the Draw Phase", as
   assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "zhang_liao_assault", targetIds: ["p2", "p3"] }]);
 
   await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
-  assert.equal(button(renderer, { "aria-label": "Inspect TARGET ONE" }).props.disabled, false, "explicit Cancel exits target mode");
+  assert.equal(opponentHeroButton(renderer, "p2").props.disabled, false, "explicit Cancel exits target mode");
   await act(async () => { skillButton().props.onClick(); });
   assert.equal(useButton().props.disabled, true, "reactivation resets target selection");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
@@ -1061,8 +1067,8 @@ test("group card scope preview is local, rule-derived, and does not become targe
   assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props["data-local-group-preview"], undefined, "Oath excludes full-health players");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p4").props["data-local-group-preview"], undefined, "Oath excludes defeated players");
   assert.equal(nodeWith(renderer, "data-group-scope-preview", "Oath").props.children.join(""), "PREVIEW · WOUNDED CHARACTERS");
-  assert.equal(button(renderer, { "aria-label": "Inspect WOUNDED" }).props.disabled, false, "scope decoration does not create a target control");
-  await act(async () => { button(renderer, { "aria-label": "Inspect WOUNDED" }).props.onClick(); });
+  assert.equal(opponentHeroButton(renderer, "p2").props.disabled, false, "scope decoration does not create a target control");
+  await act(async () => { opponentHeroButton(renderer, "p2").props.onClick(); });
   assert.equal(actionCalls.length, 0, "selecting or inspecting preview scope sends no action");
   await act(async () => { handCardButton(renderer, "Oath-card").props.onClick(); });
   assert.equal(renderer.root.findAllByProps({ "data-group-scope-preview": "Oath" }).length, 0, "deselect clears local scope preview");
