@@ -1306,3 +1306,49 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 /* UI-10: keep the local decision console contained as controls wrap on touch widths. */
 [data-console-surface="local-operation"]{min-width:0}[data-console-surface="local-operation"]>div{min-width:0;display:flex;flex-wrap:wrap;justify-content:flex-end}
 @media(max-width:520px){[data-console-surface="local-operation"]{height:auto;min-height:40px;align-items:flex-start;gap:6px}[data-console-surface="local-operation"]>div{max-width:100%;gap:5px}}
+
+.game-shell .play-table > .interaction-safe-zone > .effect-notice {
+  position: absolute;
+  top: 8px;
+  right: clamp(5px, 1.2cqw, 12px);
+  z-index: 18;
+  box-sizing: border-box;
+  width: min(320px, max(170px, calc(100% - 215px)), calc(100% - 12px));
+  max-width: 320px;
+  padding: 9px 12px;
+  border: 1px solid #c9a653;
+  border-radius: 5px;
+  background: #11140ff2;
+  box-shadow: 0 8px 22px #0009, inset 0 0 0 1px #d8b75a12;
+  color: #f0d28c;
+  text-align: left;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  animation: effectNoticeEnter 130ms ease-out;
+}
+.game-shell .play-table > .interaction-safe-zone > .effect-notice > span {
+  display: block;
+  color: #b9a36f;
+  font: 700 8px/1.2 Arial, sans-serif;
+  letter-spacing: .18em;
+}
+.game-shell .play-table > .interaction-safe-zone > .effect-notice > b {
+  display: block;
+  margin-top: 4px;
+  color: #f0d28c;
+  font: 12.5px/1.35 Arial, sans-serif;
+  font-weight: 600;
+}
+.game-shell .play-table > .interaction-safe-zone > .effect-notice.is-exiting {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+@keyframes effectNoticeEnter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .game-shell .play-table > .interaction-safe-zone > .effect-notice { animation: none; }
+  .game-shell .play-table > .interaction-safe-zone > .effect-notice.is-exiting { opacity: 1; transform: none; transition: none; }
+}

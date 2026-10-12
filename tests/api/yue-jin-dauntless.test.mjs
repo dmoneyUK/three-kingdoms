@@ -121,6 +121,8 @@ test("Dauntless falls back to sourced damage and preserves Sima Yi, Xiahou Dun, 
   const retaliation = await requestAndSettle("trigger", { code: simaGame.code, token: simaGame.members[0].token, providerId: "sima_yi_fankui", cardKeys: ["hand:0"] });
   assert.equal(retaliation.status, 200, JSON.stringify(retaliation.data));
   assert.equal(retaliation.data.room.players.find((player) => player.id === sima.target.id).hp, 3);
+  const retaliationNotice = retaliation.data.room.timeline.find((event) => event.type === "message" && event.message.includes("with Retaliation."));
+  assert.ok(retaliationNotice?.effectNotice, "the public Retaliation result is a separately identified Effect Triggered notice");
   assert.equal(roomCardCount(simaGame.code, "drawtwo-dauntless-sima-gain"), 1);
   assert.equal((await state(simaGame.code, simaGame.members[1].token)).data.phase, "draw");
 

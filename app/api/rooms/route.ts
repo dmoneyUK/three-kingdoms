@@ -6027,7 +6027,7 @@ export async function POST(request: Request) {
           const lostEquipment = Object.values(sourceEquipment).some((card) => card?.id === selected.id) ? [selected] : [];
           const targetHand = [...parse<Card[]>(target.hand_json, []), selected];
           let gainLog = handIndex >= 0 ? addPrivateDrawEvent(log, target, selected) : addCardEvent(log, target.name, selected, target.name, "gain", true);
-          gainLog = addLog(gainLog, `${target.name} obtains a card from ${sourcePlayer.name} with Retaliation.`);
+          gainLog = addLogWithId(gainLog, `${target.name} obtains a card from ${sourcePlayer.name} with Retaliation.`, undefined, { effectNotice: true }).log;
           await db.batch([
             db.prepare("UPDATE players SET hand_json = ?, equipment_json = ?, judgement_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), JSON.stringify(nextEquipment), JSON.stringify(nextJudgement), sourcePlayer.id),
             db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id),

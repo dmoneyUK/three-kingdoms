@@ -76,6 +76,7 @@ const GROUP_CURRENT_EFFECT_LABELS: Readonly<Record<string, string>> = {
   SkyPiercingHalberdAttack: "Attack",
 };
 type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | ({ type: "message"; id: string; message: string; drawPlayerId?: string; presentation?: boolean } & PresentationEventMeta);
+type EffectNoticeState = { roomCode: string; viewerId: string; eventId: string; message: string; exiting: boolean };
 
 function attackDodgeProofKeysFromTimeline(timeline: readonly GameEvent[]): Set<string> {
   return new Set(timeline.flatMap((event) => {
@@ -203,6 +204,7 @@ const UI_TIMING = {
   judgementCard: 4000,
   privateDraw: 3000,
   effectNotice: 2400,
+  effectNoticeExit: 160,
   sequenceDiscard: 700,
   interactionSettlement: 600,
   interactionSettlementReduced: 120,
@@ -2168,7 +2170,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     isAttackDodgeUxTraceActive,
     getAttackDodgeUxTraceServerSnapshot,
   );
-  const [effectNotice, setEffectNotice] = useState<string | null>(null);
+  const [effectNotice, setEffectNotice] = useState<EffectNoticeState | null>(null);
   const [infoCard, setInfoCard] = useState<Card | null>(null);
   const [infoHero, setInfoHero] = useState<Hero | null>(null);
   const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
@@ -2181,6 +2183,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const hasInitialDeal = room.timeline.some((event) => event.type === "card" && event.initialDeal && event.drawPlayerId === room.meId);
   const knownHandCards = useRef(baselineHand(room.meId, hasInitialDeal ? [] : room.myHand, hasInitialDeal ? [] : room.timeline));
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
+  const effectNoticeScope = useRef(JSON.stringify([room.code, room.meId]));
   const [activeSkillEffectSettlement, setActiveSkillEffectSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeDismantleSettlement, setActiveDismantleSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeStealSettlement, setActiveStealSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
@@ -2844,6 +2847,13 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     if (result.drawn.length) setPrivateDrawPresentation({ playerId: room.meId, cards: result.drawn });
   }, [room.meId, room.myHand, room.timeline]);
   useEffect(() => {
+    const noticeScopeKey = JSON.stringify([room.code, room.meId]);
+    if (effectNoticeScope.current !== noticeScopeKey) {
+      effectNoticeScope.current = noticeScopeKey;
+      seenEvents.current = new Set((room.timeline ?? []).map((event) => event.id));
+      setProcessedTimelineKey(timelineKey);
+      setEffectNotice(null);
+    }
     const fresh = (room.timeline ?? []).filter((event) => !seenEvents.current.has(event.id));
     fresh.forEach((event) => seenEvents.current.add(event.id));
     const freshSkillSettlements = fresh.flatMap((event) => {
@@ -2948,12 +2958,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         : [];
     });
     if (freshBumperHarvestSettlements.length === 1) setActiveBumperHarvestSettlement({ eventId: freshBumperHarvestSettlements[0].eventId, exiting: false });
-    const effect = fresh.find((event) => event.type === "message" && event.effectNotice);
-    if (effect?.type === "message") {
-      setEffectNotice(effect.message);
-      const timer = setTimeout(() => setEffectNotice((current) => current === effect.message ? null : current), UI_TIMING.effectNotice);
-      void timer;
-    }
+    const effect = fresh.filter((event) => event.type === "message" && event.effectNotice === true
+      && Boolean(event.id.trim()) && room.timeline.filter((candidate) => candidate.id === event.id).length === 1).at(-1);
+    if (effect?.type === "message") setEffectNotice({ roomCode: room.code, viewerId: room.meId, eventId: effect.id, message: effect.message, exiting: false });
     const immediatelyPresented = new Set<string>();
     const visible = fresh.filter((event) => {
       if (event.presentation === false) return false;
@@ -2983,7 +2990,23 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       } else setEventQueue((queue) => coalescePresentationQueue(queue, visible));
     }
     setProcessedTimelineKey(timelineKey);
-  }, [room.timeline, timelineKey, room.code, room.phase, room.turnSeat, room.status, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements]);
+  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements]);
+  const effectNoticeEventId = effectNotice?.eventId ?? "";
+  const effectNoticeRoomCode = effectNotice?.roomCode ?? "";
+  const effectNoticeViewerId = effectNotice?.viewerId ?? "";
+  useEffect(() => {
+    if (!effectNoticeEventId) return;
+    if (effectNoticeRoomCode !== room.code || effectNoticeViewerId !== room.meId) return;
+    const eventId = effectNoticeEventId;
+    const roomCode = effectNoticeRoomCode;
+    const viewerId = effectNoticeViewerId;
+    const exitTimer = window.setTimeout(() => setEffectNotice((current) => current?.eventId === eventId
+      && current.roomCode === roomCode && current.viewerId === viewerId ? { ...current, exiting: true } : current),
+    Math.max(0, UI_TIMING.effectNotice - UI_TIMING.effectNoticeExit));
+    const removeTimer = window.setTimeout(() => setEffectNotice((current) => current?.eventId === eventId
+      && current.roomCode === roomCode && current.viewerId === viewerId ? null : current), UI_TIMING.effectNotice);
+    return () => { window.clearTimeout(exitTimer); window.clearTimeout(removeTimer); };
+  }, [effectNoticeEventId, effectNoticeRoomCode, effectNoticeViewerId, room.code, room.meId]);
   useEffect(() => { if (!optimisticPlay) return; const timer = setTimeout(() => setOptimisticPlay(null), UI_TIMING.playedCard); return () => clearTimeout(timer); }, [optimisticPlay]);
   useEffect(() => { if (!livePendingStartId || livePendingStartId === sequenceScopeStartId) return; const timer = setTimeout(() => setSequenceScopeStartId(livePendingStartId), 0); return () => clearTimeout(timer); }, [livePendingStartId, sequenceScopeStartId]);
   useEffect(() => { if (!harvestSubmitting || room.pendingHarvest?.actorId === harvestSubmitting.playerId && !room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId)) return; const timer = setTimeout(() => setHarvestSubmitting(null), 0); return () => clearTimeout(timer); }, [harvestSubmitting, room.pendingHarvest]);
@@ -5359,9 +5382,10 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
           ? <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} responseTimer />
           : null}
         eventTimer={<>{privateDrawTimer}{harvestEventTimer}</>}
-      /></div>
+      />
+      {effectNotice && effectNotice.roomCode === room.code && effectNotice.viewerId === room.meId && <div key={effectNotice.eventId} className={`effect-notice${effectNotice.exiting ? " is-exiting" : ""}`} role="status" aria-live="polite" aria-atomic="true" data-effect-notice-event-id={effectNotice.eventId}><span>EFFECT TRIGGERED</span><b>{effectNotice.message}</b></div>}
+      </div>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
-      {effectNotice && <div className="turn-notice effect-notice" role="status"><span>EFFECT TRIGGERED</span><b>{effectNotice}</b></div>}
       {canChooseBorrowedSword && <div className="turn-notice borrowed-sword-notice" role="status"><span>BORROWED SWORD</span><b>{borrowedSwordTargetId ? "Target selected · confirm below" : "Choose a legal Attack target"}</b></div>}
       {privateDrawVisible && <div className="played-card-stage private-draw-stage" role="status"><div className="private-draw-content"><div className="card-action-title"><b>PRIVATE DRAW</b><span>Only you can see these cards</span></div><div className="private-draw-row" role="region" aria-label="Private drawn cards; scroll horizontally to view all" tabIndex={privateDrawCards.length > 3 ? 0 : undefined}>{privateDrawCards.map((drawn) => <CardFace card={drawn} key={drawn.id} />)}</div></div></div>}
       {privateDistribution && !presentationBusy && <PrivateCardDistributionDialog key={room.actionRevision} cards={privateDistribution.cards} players={room.players.filter((player) => privateDistribution.eligibleRecipientIds.includes(player.id) && player.alive)} disabled={busy} error={error} onSubmit={(assignments) => onAction("trigger", { providerId: "private_card_distribution", assignments })} />}
