@@ -81,7 +81,7 @@ async function measure(page) {
     };
     const cluster = document.querySelector(".stage-system-cluster");
     const timer = cluster?.querySelector(":scope > .visible-countdown-event");
-    const menu = cluster?.querySelector(".stage-system-menu-trigger");
+    const menu = document.querySelector(".local-player-dock .console-guidance-row .stage-system-menu-trigger");
     const table = document.querySelector(".play-table");
     const dock = document.querySelector(".local-player-dock");
     const guidance = dock?.querySelector(".console-guidance");
@@ -224,7 +224,7 @@ test("real Bumper Harvest gives each active chooser a server-owned 60-second Sta
     expect(geometry.timer.width, context).toBeLessThanOrEqual(68);
     expect(geometry.timer.height, context).toBeGreaterThanOrEqual(36);
     expect(geometry.timer.height, context).toBeLessThanOrEqual(44);
-    expect(Math.abs(geometry.timer.right + 8 - geometry.menu.left), context).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.menu.right - (geometry.guidance.right - 8)), context).toBeLessThanOrEqual(1);
     expect(Math.abs(geometry.menu.left - prior.menu.left), context).toBeLessThanOrEqual(2);
     expect(Math.abs(geometry.menu.top - prior.menu.top), context).toBeLessThanOrEqual(2);
     expect(Math.abs(geometry.guidance.top - prior.guidance.top), context).toBeLessThanOrEqual(2);

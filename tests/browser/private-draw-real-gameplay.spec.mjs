@@ -20,7 +20,7 @@ async function measure(page, includeEvent) {
       return { left, right, top, bottom, width, height };
     };
     const cluster = document.querySelector(".stage-system-cluster");
-    const menu = cluster.querySelector(".stage-system-menu-trigger");
+    const menu = document.querySelector(".local-player-dock .console-guidance-row .stage-system-menu-trigger");
     const timer = cluster.querySelector(":scope > .visible-countdown-event");
     const table = document.querySelector(".play-table");
     const dock = document.querySelector(".local-player-dock");
@@ -184,13 +184,13 @@ test("real draw-phase gameplay shows private cards and the compact timer without
     expect(geometry.timer.width, context).toBeLessThanOrEqual(64);
     expect(geometry.timer.height, context).toBeGreaterThanOrEqual(36);
     expect(geometry.timer.height, context).toBeLessThanOrEqual(44);
-    expect(Math.abs(geometry.timer.right - geometry.menu.left + 8), context).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.menu.right - (geometry.guidance.right - 8)), context).toBeLessThanOrEqual(1);
     expect(Math.abs(geometry.menu.left - prior.menu.left), context).toBeLessThanOrEqual(2);
     expect(Math.abs(geometry.menu.top - prior.menu.top), context).toBeLessThanOrEqual(2);
     expect(Math.abs(geometry.guidance.top - prior.guidance.top), context).toBeLessThanOrEqual(2);
     expect(geometry.timerPointerEvents, context).toBe("none");
     expect(geometry.timer.left, context).toBeGreaterThanOrEqual(geometry.table.left - 1);
-    expect(geometry.menu.right, context).toBeLessThanOrEqual(geometry.table.right + 1);
+    expect(geometry.menu.right, context).toBeLessThanOrEqual(geometry.dock.right - 1);
     expect(geometry.table.bottom, context).toBeLessThanOrEqual(geometry.dock.top + 1);
     expect(geometry.cluster.bottom, context).toBeLessThanOrEqual(geometry.guidance.top);
     expect(geometry.guidance.top - geometry.cluster.bottom, context).toBeGreaterThanOrEqual(8);

@@ -190,7 +190,7 @@ async function graphGeometry(page, seed, viewport, testInfo, label, { settled = 
       const targetRects = targetIds.map((id) => bounds(anchorFor(id)));
       const obstacles = [
         ...[...document.querySelectorAll("[data-player-anchor]")].map(bounds),
-        ...[".play-center", ".stage-system-cluster", ".game-messages", ".game-exit"].map((selector) => bounds(shell?.querySelector(selector))),
+        ...[".play-center", ".stage-system-cluster", ".stage-system-menu", ".game-messages", ".game-exit"].map((selector) => bounds(shell?.querySelector(selector))),
       ].filter(Boolean).map((rect) => ({ left: rect.left - shellRect.left, top: rect.top - shellRect.top, right: rect.right - shellRect.left, bottom: rect.bottom - shellRect.top }));
       const tableLocal = tableRect && { left: tableRect.left - shellRect.left, top: tableRect.top - shellRect.top, right: tableRect.right - shellRect.left, bottom: tableRect.bottom - shellRect.top, width: tableRect.width, height: tableRect.height };
       const center = (rect) => ({ x: (rect.left + rect.right) / 2, y: (rect.top + rect.bottom) / 2 });
@@ -232,7 +232,7 @@ async function graphGeometry(page, seed, viewport, testInfo, label, { settled = 
           overlayRoot: bounds(overlayRootNode),
         } : null,
         root: bounds(document.querySelector('[data-bumper-harvest-root-action="BumperHarvest"]')),
-        obstacles: [".play-center", ".stage-system-cluster", ".game-messages", ".game-exit"].map((selector) => ({ selector, bounds: bounds(document.querySelector(selector)) })),
+        obstacles: [".play-center", ".stage-system-cluster", ".stage-system-menu", ".game-messages", ".game-exit"].map((selector) => ({ selector, bounds: bounds(document.querySelector(selector)) })),
         candidateChecks,
         anchors: [...document.querySelectorAll("[data-player-anchor]")].map((anchor) => ({
           id: anchor.dataset.playerAnchor,
@@ -355,7 +355,7 @@ async function graphGeometry(page, seed, viewport, testInfo, label, { settled = 
     const intersects = (a, b) => Boolean(a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
     const rootPlacementBlockers = [
       ...anchors.map((anchor) => [anchor.getAttribute("data-player-anchor") ?? "player", bounds(anchor)]),
-      ...[".play-center", ".stage-system-cluster", ".game-messages", ".game-exit"].map((selector) => [selector, bounds(document.querySelector(selector))]),
+      ...[".play-center", ".stage-system-cluster", ".stage-system-menu", ".game-messages", ".game-exit"].map((selector) => [selector, bounds(document.querySelector(selector))]),
     ].filter(([, rect]) => rect && cardRect
       && cardRect.left < rect.right + 8 && cardRect.right > rect.left - 8
       && cardRect.top < rect.bottom + 8 && cardRect.bottom > rect.top - 8)

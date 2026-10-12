@@ -213,7 +213,7 @@ test("Bumper Harvest closing countdown joins the lower-right System Cluster with
       return { left, right, top, bottom, width, height };
     };
     const cluster = document.querySelector(".stage-system-cluster");
-    const menu = cluster?.querySelector(".stage-system-menu-trigger");
+    const menu = document.querySelector(".local-player-dock .console-guidance-row .stage-system-menu-trigger");
     const timer = cluster?.querySelector(":scope > .visible-countdown-event");
     const guidance = document.querySelector(".local-player-dock .console-guidance");
     const dock = document.querySelector(".local-player-dock");
@@ -258,7 +258,7 @@ test("Bumper Harvest closing countdown joins the lower-right System Cluster with
     expect(geometry.timer.width, context).toBeLessThanOrEqual(68);
     expect(geometry.timer.height, context).toBeGreaterThanOrEqual(36);
     expect(geometry.timer.height, context).toBeLessThanOrEqual(44);
-    expect(Math.abs(geometry.timer.right + 8 - geometry.menu.left), context).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.menu.right - (geometry.guidance.right - 8)), context).toBeLessThanOrEqual(1);
     expect(Math.abs(geometry.menu.left - prior.menu.left), context).toBeLessThanOrEqual(2);
     expect(Math.abs(geometry.menu.top - prior.menu.top), context).toBeLessThanOrEqual(2);
     expect(Math.abs(geometry.guidance.top - prior.guidance.top), context).toBeLessThanOrEqual(2);
@@ -286,7 +286,7 @@ test("Bumper Harvest closing countdown joins the lower-right System Cluster with
     expect(choosingGeometry.timer.width, choosingContext).toBeLessThanOrEqual(68);
     expect(choosingGeometry.timer.height, choosingContext).toBeGreaterThanOrEqual(36);
     expect(choosingGeometry.timer.height, choosingContext).toBeLessThanOrEqual(44);
-    expect(Math.abs(choosingGeometry.timer.right + 8 - choosingGeometry.menu.left), choosingContext).toBeLessThanOrEqual(1);
+    expect(Math.abs(choosingGeometry.menu.right - (choosingGeometry.guidance.right - 8)), choosingContext).toBeLessThanOrEqual(1);
     expect(Math.abs(choosingGeometry.menu.left - prior.menu.left), choosingContext).toBeLessThanOrEqual(2);
     expect(Math.abs(choosingGeometry.menu.top - prior.menu.top), choosingContext).toBeLessThanOrEqual(2);
     expect(Math.abs(choosingGeometry.guidance.top - prior.guidance.top), choosingContext).toBeLessThanOrEqual(2);

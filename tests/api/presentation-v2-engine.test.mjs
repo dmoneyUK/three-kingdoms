@@ -58,9 +58,7 @@ function publicSnapshot(snapshot) {
 }
 
 function assertDodgeReadLifecycle(proof, expectedTurnSeat) {
-  assert.ok(Number.isSafeInteger(proof.displayExpiresAtMs), "the public Dodge proof carries a server read-window deadline");
-  assert.ok(proof.displayExpiresAtMs > Date.now(), "the accepted Dodge remains inside its public read window");
-  assert.ok(proof.displayExpiresAtMs <= Date.now() + 20_000, "the public read window is capped at 20 seconds");
+  assert.equal(Object.hasOwn(proof, "displayExpiresAtMs"), false, "public gameplay proof does not impose a wall-clock graph lifetime");
   assert.equal(proof.turnSeatAtCommit, expectedTurnSeat, "the public proof records the server-owned turn seat at commit");
 }
 
@@ -364,7 +362,6 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
     responseCardKind: "Dodge",
     responseEventId: dodgeEvent.id,
     responseResolutionId: dodgeEvent.resolutionId,
-    displayExpiresAtMs: projectedDodgeProof.displayExpiresAtMs,
     turnSeatAtCommit: source.seat,
   };
   assert.equal(dodgeEvent.resolutionId, rootEvent.resolutionId, "the actual Dodge and root Attack belong to one exact resolution");
@@ -434,7 +431,7 @@ test("engine-backed Zhao Yun Attack-as-Dodge publishes only its exact physical-c
     rootCardKind: "Attack", responseCardKind: "Dodge",
     responseEventId: proof.responseEventId, responseResolutionId: proof.responseResolutionId,
     responsePhysicalCardKind: "Attack", responsePlayedAs: "dodge",
-    displayExpiresAtMs: proof.displayExpiresAtMs, turnSeatAtCommit: source.seat,
+    turnSeatAtCommit: source.seat,
   });
   const responseEvent = sourceView.timeline.find((event) => event.id === proof.responseEventId);
   assert.ok(responseEvent);
@@ -447,7 +444,7 @@ test("engine-backed Zhao Yun Attack-as-Dodge publishes only its exact physical-c
     rootSourceId: source.id, targetId: target.id, responseActorId: target.id,
     rootCardKind: "Attack", responseCardKind: "Dodge",
     responsePhysicalCardKind: "Attack", responsePlayedAs: "dodge",
-    displayExpiresAtMs: proof.displayExpiresAtMs, turnSeatAtCommit: source.seat,
+    turnSeatAtCommit: source.seat,
   }, "the exact server-authored semantic/physical pairing is attached to the public event");
   assert.equal(sourceView.timeline.find((event) => event.id === proof.rootEventId)?.card?.id, rootAttack.id);
   assert.deepEqual(sourceView.presentationSnapshot.attackDodgeResponses, [proof]);
@@ -574,7 +571,7 @@ test("engine-backed Longdan Dodge-as-Attack preserves semantic root and physical
     rootEventId: rootEvent.id, rootResolutionId: rootEvent.resolutionId,
     rootSourceId: source.id, targetId: target.id, responseActorId: target.id,
     rootCardKind: "Attack", responseCardKind: "Dodge",
-    displayExpiresAtMs: convertedDodgeResponseProof.displayExpiresAtMs, turnSeatAtCommit: source.seat,
+    turnSeatAtCommit: source.seat,
   }, "server attaches a typed semantic Attack/Dodge link without physical card identities");
   assert.equal(responseEvent.resolutionId, rootEvent.resolutionId, "the converted root and Dodge share one resolution");
   assert.equal(sourceSettled.presentationV2.attackDodgeResponses.length, 1);
@@ -697,7 +694,7 @@ test("engine-backed Guan Yu Peach-as-Attack preserves its physical root through 
     rootEventId: rootEvent.id, rootResolutionId: rootEvent.resolutionId,
     rootSourceId: source.id, targetId: target.id, responseActorId: target.id,
     rootCardKind: "Attack", responseCardKind: "Dodge",
-    displayExpiresAtMs: peachDodgeProof.displayExpiresAtMs, turnSeatAtCommit: source.seat,
+    turnSeatAtCommit: source.seat,
   }, "the server links the real Dodge to the converted Peach Attack without card identities");
   assert.equal(responseEvent.resolutionId, rootEvent.resolutionId);
   assert.equal(sourceSettled.presentationV2.attackDodgeResponses.length, 1);

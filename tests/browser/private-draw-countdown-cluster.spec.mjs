@@ -19,7 +19,8 @@ async function measure(page) {
     };
     const cluster = document.querySelector(".stage-system-cluster");
     const timer = cluster.querySelector(":scope > .visible-countdown-event");
-    const menu = cluster.querySelector(".stage-system-menu-trigger");
+    const menu = document.querySelector(".local-player-dock .console-guidance-row .stage-system-menu-trigger");
+    const guidanceRow = document.querySelector(".local-player-dock .console-guidance-row");
     const deck = document.querySelector(".draw-stack");
     const discard = document.querySelector(".discard-stack");
     const guidance = document.querySelector(".local-player-dock .console-guidance");
@@ -31,6 +32,7 @@ async function measure(page) {
       cluster: bounds(cluster),
       timer: timer ? bounds(timer) : null,
       menu: bounds(menu),
+      guidanceRow: bounds(guidanceRow),
       deck: bounds(deck),
       discard: bounds(discard),
       guidance: bounds(guidance),
@@ -58,7 +60,7 @@ async function measurePrivateDrawContent(page) {
     const guidance = document.querySelector(".local-player-dock .console-guidance");
     const dock = document.querySelector(".local-player-dock");
     const table = document.querySelector(".play-table");
-    const menu = cluster.querySelector(".stage-system-menu-trigger");
+    const menu = document.querySelector(".local-player-dock .console-guidance-row .stage-system-menu-trigger");
     const deck = document.querySelector(".draw-stack");
     const discard = document.querySelector(".discard-stack");
     const cards = [...eventStage.querySelectorAll(".private-draw-row .played-card")].map((card) => {
@@ -87,13 +89,13 @@ async function measurePrivateDrawContent(page) {
   });
 }
 
-test("Private Draw countdown moves into the lower-right System Menu cluster without changing its content", async ({ page }) => {
+test("Private Draw countdown stays in the Stage cluster while the System Menu stays in Dock guidance", async ({ page }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
   await page.setViewportSize(viewports[0]);
   await page.goto("/tests/browser/fixture.html?state=normal&count=4");
 
   const cluster = page.locator(".stage-system-cluster");
-  const menu = cluster.getByRole("button", { name: "System menu" });
+  const menu = page.locator(".local-player-dock .console-guidance-row").getByRole("button", { name: "System menu" });
   await expect(menu).toBeVisible();
   await expect(cluster.locator(":scope > .visible-countdown-event")).toHaveCount(0);
   await expect(page.locator(".private-draw-stage")).toHaveCount(0);
@@ -133,13 +135,13 @@ test("Private Draw countdown moves into the lower-right System Menu cluster with
     expect(geometry.timer.width, context).toBeLessThanOrEqual(64);
     expect(geometry.timer.height, context).toBeGreaterThanOrEqual(36);
     expect(geometry.timer.height, context).toBeLessThanOrEqual(44);
-    expect(Math.abs(geometry.timer.right - geometry.menu.left + 8), context).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.menu.right - (geometry.guidance.right - 8)), context).toBeLessThanOrEqual(1);
     expect(Math.abs(geometry.menu.left - prior.menu.left), context).toBeLessThanOrEqual(2);
     expect(Math.abs(geometry.menu.top - prior.menu.top), context).toBeLessThanOrEqual(2);
     expect(Math.abs(geometry.guidance.top - prior.guidance.top), context).toBeLessThanOrEqual(2);
     expect(geometry.timerPointerEvents, context).toBe("none");
     expect(geometry.timer.left, context).toBeGreaterThanOrEqual(geometry.table.left - 1);
-    expect(geometry.menu.right, context).toBeLessThanOrEqual(geometry.table.right + 1);
+    expect(geometry.menu.right, context).toBeLessThanOrEqual(geometry.dock.right - 1);
     expect(geometry.table.bottom, context).toBeLessThanOrEqual(geometry.dock.top + 1);
     expect(geometry.cluster.bottom, context).toBeLessThanOrEqual(geometry.guidance.top);
     expect(geometry.guidance.top - geometry.cluster.bottom, context).toBeGreaterThanOrEqual(8);

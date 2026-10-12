@@ -373,8 +373,6 @@ export function provenAttackDodgeResponses(value: unknown): PresentationSnapshot
     && (candidate as PresentationSnapshotAttackDodgeResponse).responseActorId === (candidate as PresentationSnapshotAttackDodgeResponse).targetId
     && (candidate as PresentationSnapshotAttackDodgeResponse).rootCardKind === "Attack"
     && (candidate as PresentationSnapshotAttackDodgeResponse).responseCardKind === "Dodge"
-    && ((candidate as PresentationSnapshotAttackDodgeResponse).displayExpiresAtMs === undefined
-      || nonNegativeInteger((candidate as PresentationSnapshotAttackDodgeResponse).displayExpiresAtMs))
     && ((candidate as PresentationSnapshotAttackDodgeResponse).turnSeatAtCommit === undefined
       || nonNegativeInteger((candidate as PresentationSnapshotAttackDodgeResponse).turnSeatAtCommit))));
   const counts = new Map<string, number>();
@@ -396,7 +394,6 @@ export function provenAttackDodgeResponses(value: unknown): PresentationSnapshot
     ...(response.responsePhysicalCardKind === "Attack" && response.responsePlayedAs === "dodge"
       ? { responsePhysicalCardKind: "Attack" as const, responsePlayedAs: "dodge" as const }
       : {}),
-    ...(response.displayExpiresAtMs !== undefined ? { displayExpiresAtMs: response.displayExpiresAtMs } : {}),
     ...(response.turnSeatAtCommit !== undefined ? { turnSeatAtCommit: response.turnSeatAtCommit } : {}),
   }));
 }

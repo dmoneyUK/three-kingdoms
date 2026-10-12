@@ -31,7 +31,6 @@ import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
 import { childCausalFrame, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
 import { advanceCausalSemanticCheckpoint } from "../causal-envelope";
-import { ATTACK_DODGE_PUBLIC_READ_MS } from "../../../game/attack-dodge-settlement-lifecycle";
 
 export const runtime = "edge";
 
@@ -943,7 +942,6 @@ function attackDodgeResponseProof(
     ...(baseChecks.authoritativeLongdanAttackAsDodge
       ? { responsePhysicalCardKind: "Attack" as const, responsePlayedAs: "dodge" as const }
       : {}),
-    displayExpiresAtMs: Date.now() + ATTACK_DODGE_PUBLIC_READ_MS,
     ...(Number.isInteger(turnSeatAtCommit) && turnSeatAtCommit !== null ? { turnSeatAtCommit } : {}),
   };
   return {

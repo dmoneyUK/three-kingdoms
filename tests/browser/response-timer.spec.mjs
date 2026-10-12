@@ -5,7 +5,7 @@ function overlaps(left, right) {
     && Math.min(left.bottom, right.bottom) > Math.max(left.top, right.top);
 }
 
-test("UX2 response timer and System Menu stay compact at the Stage/Guidance boundary", async ({ page }) => {
+test("UX2 response timer stays in the Stage and System Menu occupies the Dock guidance edge", async ({ page }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/tests/browser/fixture.html?state=negation&count=10&timedResponse=1&timedObserver=1");
@@ -14,7 +14,7 @@ test("UX2 response timer and System Menu stay compact at the Stage/Guidance boun
   const safeZone = table.locator(":scope > .interaction-safe-zone");
   const cluster = safeZone.locator(":scope > .stage-system-cluster");
   const timer = cluster.locator(":scope > .visible-countdown-response");
-  const menu = cluster.getByRole("button", { name: "System menu" });
+  const menu = page.locator(".local-player-dock .console-guidance-row .stage-system-menu-trigger");
   const stage = safeZone.locator('.interaction-stage[data-stage="NEGATION"]');
 
   await expect(timer).toBeVisible();
@@ -54,12 +54,13 @@ test("UX2 response timer and System Menu stay compact at the Stage/Guidance boun
       const stageNode = safe.querySelector('.interaction-stage[data-stage="NEGATION"]');
       const clusterNode = safe.querySelector(":scope > .stage-system-cluster");
       const timerNode = clusterNode.querySelector(":scope > .visible-countdown-response");
-      const menuNode = clusterNode.querySelector(".stage-system-menu-trigger");
+      const menuNode = document.querySelector(".local-player-dock .console-guidance-row .stage-system-menu-trigger");
+      const guidanceRowNode = document.querySelector(".local-player-dock .console-guidance-row");
       const guidanceNode = document.querySelector(".local-player-dock .console-guidance");
       const dockNode = document.querySelector(".local-player-dock");
       const rect = bounds;
       return {
-        safeZone: rect(safe), cluster: rect(clusterNode), timer: rect(timerNode), menu: rect(menuNode),
+        safeZone: rect(safe), cluster: rect(clusterNode), timer: rect(timerNode), menu: rect(menuNode), guidanceRow: rect(guidanceRowNode),
         guidance: rect(guidanceNode), dock: rect(dockNode), pageWidth: document.documentElement.scrollWidth,
         stageContent: [...stageNode.children].filter(visible).map(rect),
         seats: [...tableNode.querySelectorAll('.player-board[data-player-count="10"] [data-player-anchor]')].map(rect),
@@ -71,11 +72,13 @@ test("UX2 response timer and System Menu stay compact at the Stage/Guidance boun
     expect(Math.abs(geometry.cluster.bottom - geometry.safeZone.bottom - stageBoundaryOffset), JSON.stringify(geometry)).toBeLessThanOrEqual(1);
     expect(geometry.menu.width).toBeGreaterThanOrEqual(44);
     expect(geometry.menu.height).toBeGreaterThanOrEqual(44);
+    expect(Math.abs(geometry.menu.right - (geometry.guidance.right - 8))).toBeLessThanOrEqual(1);
+    expect(geometry.menu.top).toBeGreaterThanOrEqual(geometry.guidance.top);
+    expect(geometry.menu.bottom).toBeLessThanOrEqual(geometry.guidance.bottom);
     expect(geometry.timer.width).toBeGreaterThanOrEqual(52);
     expect(geometry.timer.width).toBeLessThanOrEqual(68);
     expect(geometry.timer.height).toBeGreaterThanOrEqual(36);
     expect(geometry.timer.height).toBeLessThanOrEqual(44);
-    expect(Math.abs(geometry.timer.right - geometry.menu.left + 8)).toBeLessThanOrEqual(1);
     expect(geometry.cluster.bottom).toBeLessThanOrEqual(geometry.guidance.top);
     expect(geometry.guidance.top - geometry.cluster.bottom).toBeGreaterThanOrEqual(8);
     expect(geometry.guidance.top - geometry.cluster.bottom).toBeLessThanOrEqual(12);
@@ -108,6 +111,7 @@ test("UX2 System Menu is keyboard-accessible and confirms Exit without changing 
   const actions = page.getByLabel("System menu actions");
   const exit = actions.getByRole("button", { name: "Exit Game" });
   await expect(menu).toHaveAttribute("aria-controls", "stage-system-menu-actions");
+  await expect(menu).toContainText("⚙");
   await expect(menu).toHaveAttribute("aria-expanded", "false");
   await expect(exit).toBeHidden();
 
@@ -127,9 +131,11 @@ test("UX2 System Menu is keyboard-accessible and confirms Exit without changing 
     const popup = document.querySelector(".stage-system-menu-actions");
     const stage = document.querySelector('.interaction-stage[data-stage="NEGATION"]');
     const guidance = document.querySelector(".console-guidance");
+    const menu = document.querySelector(".stage-system-menu-trigger");
     return {
       viewportWidth: innerWidth,
       popup: bounds(popup),
+      menu: bounds(menu),
       content: [...stage.children].filter(visible).map(bounds),
       guidance: bounds(guidance),
       pageWidth: document.documentElement.scrollWidth,
@@ -138,7 +144,7 @@ test("UX2 System Menu is keyboard-accessible and confirms Exit without changing 
   expect(popupGeometry.popup.left).toBeGreaterThanOrEqual(0);
   expect(popupGeometry.popup.right).toBeLessThanOrEqual(popupGeometry.viewportWidth);
   expect(popupGeometry.pageWidth).toBeLessThanOrEqual(popupGeometry.viewportWidth);
-  expect(popupGeometry.popup.bottom).toBeLessThanOrEqual(popupGeometry.guidance.top);
+  expect(popupGeometry.popup.bottom).toBeLessThanOrEqual(popupGeometry.menu.top - 4);
   expect(popupGeometry.content.filter((content) => overlaps(popupGeometry.popup, content))).toEqual([]);
 
   let cancelledDialogMessage = "";

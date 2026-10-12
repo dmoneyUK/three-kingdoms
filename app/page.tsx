@@ -15,7 +15,7 @@ import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
 import { attackDodgeResponseEventMatchesProof } from "../game/presentation-v2";
 import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
-import { ATTACK_DODGE_PUBLIC_READ_MS, attackDodgePublicActionEvents, attackDodgeSettlementSupersessionReason, attackHitSettlementSupersessionReason, parseRetiredAttackDodgeCompositionSnapshot, persistRetiredAttackDodgeComposition, retiredAttackDodgeCompositionServerSnapshot, retiredAttackDodgeCompositionStorageSnapshot, subscribeRetiredAttackDodgeComposition, type AttackDodgeSettlementHoldIdentity, type AttackHitSettlementHoldIdentity } from "../game/attack-dodge-settlement-lifecycle";
+import { attackDodgePublicActionEvents, attackDodgeSettlementSupersessionReason, attackHitSettlementSupersessionReason, parseRetiredAttackDodgeCompositionSnapshot, persistRetiredAttackDodgeComposition, retiredAttackDodgeCompositionServerSnapshot, retiredAttackDodgeCompositionStorageSnapshot, subscribeRetiredAttackDodgeComposition, type AttackDodgeSettlementHoldIdentity, type AttackHitSettlementHoldIdentity } from "../game/attack-dodge-settlement-lifecycle";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, isProvenBorrowedSwordForcedAttack, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildPresentationTransition, type PresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupSourceForViewer, projectGroupTargetScopeForViewer, projectOathRecipientScopeForStage, projectBumperHarvestStageCompositionForViewer, type BumperHarvestStageCompositionView, type GroupSourceView, type GroupTargetScopeView, type HeroFocusPlayerDisplay, type HeroFocusView, type MediumParticipantView, type OathRecipientScopeView } from "../game/hero-focus";
@@ -23,7 +23,7 @@ import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { CardFace } from "./card-face";
-import { InteractionRootOverlay, PublicCounterReadTimer, interactionRootActionKey, type InteractionRootOverlayAction } from "./interaction-root-overlay";
+import { InteractionRootOverlay, interactionRootActionKey, type InteractionRootOverlayAction } from "./interaction-root-overlay";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
 
@@ -39,7 +39,6 @@ type ActiveAttackDodgeSettlement = {
 };
 type RetiredAttackDodgeComposition = { roomCode: string; eventIds: Set<string>; cardIds: Set<string> };
 type AttackDodgeObservedProof = { roomCode: string; proofKey: string; responseEventId: string };
-type ActiveAttackDodgeRootCardRead = { eventId: string; remainingMs: number };
 type ActivePublicNegationRead = { key: string; action: InteractionRootOverlayAction; expiresAt: number; phase: "reading" | "elapsed" | "live" | "settlement-pending" | "exiting" };
 type RootActionOverlayLayoutReadiness = { key: string; state: "measuring" | "ready" | "unavailable" } | null;
 
@@ -208,10 +207,10 @@ const UI_TIMING = {
   interactionSettlement: 600,
   interactionSettlementReduced: 120,
   interactionSettlementFade: 150,
-  attackHitSettlementRead: 5_000,
+  attackHitSettlementRead: 4_000,
   attackHitSettlementFade: 180,
   publicCounterRead: 3000,
-  attackDodgePublicCounterRead: ATTACK_DODGE_PUBLIC_READ_MS,
+  attackDodgeResultRead: 4_000,
   publicCounterSettlementConfirm: 120,
   publicCounterFade: 180,
 } as const;
@@ -1801,7 +1800,7 @@ function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuin
   </div>;
 }
 
-function StageSystemCluster({ publicResponseTimerPending, responseTimer, cardReadTimer, eventTimer, onLeave }: { publicResponseTimerPending: boolean; responseTimer?: ReactNode; cardReadTimer?: ReactNode; eventTimer?: ReactNode; onLeave: () => void }) {
+function GameSystemMenu({ onLeave }: { onLeave: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [traceNotice, setTraceNotice] = useState("");
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1829,20 +1828,22 @@ function StageSystemCluster({ publicResponseTimerPending, responseTimer, cardRea
     setTraceNotice("Complete game UX trace downloaded to this device.");
   };
 
-  return <div className="stage-system-cluster" data-stage-system-cluster="true" data-public-response-timer-pending={publicResponseTimerPending ? "true" : undefined} role="group" aria-label="Game build, countdowns and system controls">
+  return <div className="stage-system-menu" data-system-menu-placement="guidance">
+    <div id="stage-system-menu-actions" className="stage-system-menu-actions" role="group" aria-label="System menu actions" hidden={!menuOpen}>
+      <small className="stage-system-build-sha"><span>GitHub Actions build SHA</span><code>{BUILD_SHA}</code></small>
+      <button type="button" className="stage-system-diagnostics" onClick={downloadTrace} onKeyDown={closeMenuOnEscape}>Download UX trace</button>
+      {traceNotice && <small className="stage-system-diagnostics-status" role="status">{traceNotice}</small>}
+      <button type="button" className="stage-system-exit" onClick={confirmExit} onKeyDown={closeMenuOnEscape}>Exit Game</button>
+    </div>
+    <button ref={menuButtonRef} type="button" className="stage-system-menu-trigger" aria-label="System menu" aria-expanded={menuOpen} aria-controls="stage-system-menu-actions" onClick={() => setMenuOpen((open) => !open)} onKeyDown={closeMenuOnEscape}><span aria-hidden="true">⚙︎</span></button>
+  </div>;
+}
+
+function StageSystemCluster({ publicResponseTimerPending, responseTimer, eventTimer }: { publicResponseTimerPending: boolean; responseTimer?: ReactNode; eventTimer?: ReactNode }) {
+  return <div className="stage-system-cluster" data-stage-system-cluster="true" data-public-response-timer-pending={publicResponseTimerPending ? "true" : undefined} role="group" aria-label="Game build and countdowns">
     <span className="stage-build-version" title={`GitHub Actions commit ${BUILD_SHA}`} aria-label={`Build ${BUILD_SHA}`} data-build-sha={BUILD_SHA}>BUILD {BUILD_LABEL}</span>
     {eventTimer}
-    {cardReadTimer}
     {responseTimer}
-    <div className="stage-system-menu">
-      <div id="stage-system-menu-actions" className="stage-system-menu-actions" role="group" aria-label="System menu actions" hidden={!menuOpen}>
-        <small className="stage-system-build-sha"><span>GitHub Actions build SHA</span><code>{BUILD_SHA}</code></small>
-        <button type="button" className="stage-system-diagnostics" onClick={downloadTrace} onKeyDown={closeMenuOnEscape}>Download UX trace</button>
-        {traceNotice && <small className="stage-system-diagnostics-status" role="status">{traceNotice}</small>}
-        <button type="button" className="stage-system-exit" onClick={confirmExit} onKeyDown={closeMenuOnEscape}>Exit Game</button>
-      </div>
-      <button ref={menuButtonRef} type="button" className="stage-system-menu-trigger" aria-label="System menu" aria-expanded={menuOpen} aria-controls="stage-system-menu-actions" onClick={() => setMenuOpen((open) => !open)} onKeyDown={closeMenuOnEscape}>☰</button>
-    </div>
   </div>;
 }
 
@@ -2215,8 +2216,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   if (observedAttackDodgeProofs.current === null) {
     observedAttackDodgeProofs.current = { roomCode: room.code, proofKeys: attackDodgeProofKeysFromTimeline(room.timeline) };
   }
-  const [activeAttackDodgeRootCardRead, setActiveAttackDodgeRootCardRead] = useState<ActiveAttackDodgeRootCardRead | null>(null);
-  const attackDodgeRootCardReadCapturedEventIds = useRef(new Set<string>());
   const [activePublicNegationRead, setActivePublicNegationRead] = useState<ActivePublicNegationRead | null>(null);
   // Events already present when the screen mounts have no new animation to
   // wait for. New event IDs enter this set only after their presentation ends.
@@ -3208,7 +3207,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     status: room.status,
     phase: room.phase,
     turnSeat: room.turnSeat,
-    nowMs: Date.now(),
     currentAction: room.currentAction ? {
       kind: room.currentAction.kind,
       triggerEvent: room.currentAction.triggerEvent ?? null,
@@ -3264,7 +3262,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
           turnSeat: proof.turnSeatAtCommit ?? null,
           rootEventId: proof.rootEventId,
           responseEventId: proof.responseEventId,
-          ...(proof.displayExpiresAtMs !== undefined ? { displayExpiresAtMs: proof.displayExpiresAtMs } : {}),
           interactionId: proof.interactionId,
           rootFrameId: proof.rootFrameId,
           sourceId: proof.rootSourceId,
@@ -4628,6 +4625,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       visibleFrames += 1;
       if (visibleSince === null && visibleFrames >= 2) {
         visibleSince = now;
+        onPublicCounterReadVisible(`attack-hit:${activeAttackHitSettlementEventId}`, UI_TIMING.attackHitSettlementRead, true);
         setActiveAttackHitSettlement((current) => current?.eventId === activeAttackHitSettlementEventId
           && current.firstRenderedAt === null
           ? { ...current, firstRenderedAt: now }
@@ -4650,7 +4648,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [activeAttackHitSettlement, activeAttackHitSettlementEventId, attackHitSettlementSuperseded, recordAttackHitSettlementRetirement, rootActionOverlayGraphReady]);
+  }, [activeAttackHitSettlement, activeAttackHitSettlementEventId, attackHitSettlementSuperseded, onPublicCounterReadVisible, recordAttackHitSettlementRetirement, rootActionOverlayGraphReady]);
   useEffect(() => {
     if (!activeAttackHitSettlementExiting || !activeAttackHitSettlementEventId
       || activeAttackHitSettlement?.eventId !== activeAttackHitSettlementEventId) return;
@@ -4731,56 +4729,12 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     attackDodgeSettlementAlreadyActive ? "settlement-already-active" : null,
     activeAttackDodgeSettlementEventId && attackDodgeSettlementCapturedEventIds.current.has(activeAttackDodgeSettlementEventId) ? "settlement-event-already-captured" : null,
   ].filter((reason): reason is string => Boolean(reason));
-  const attackDodgeRootCardReadEventId = rootActionOverlayAction?.cardKind === "Attack"
-    && rootActionOverlayAction.mode === "targeted"
-    && rootActionOverlayAction.cardFace
-    && !rootActionOverlayAction.response
-    ? rootActionOverlayAction.rootEventId
-    : null;
-  const attackDodgeRootCardCaptureRejectionReasons = [
-    !attackDodgeRootCardReadEventId ? "no-targeted-attack-root-card" : null,
-    !rootActionOverlayGraphReady ? "graph-layout-not-ready" : null,
-    attackDodgeRootCardReadEventId && attackDodgeRootCardReadCapturedEventIds.current.has(attackDodgeRootCardReadEventId) ? "root-card-event-already-captured" : null,
-  ].filter((reason): reason is string => Boolean(reason));
-  const attackDodgeRootCardReadRemainingMs = rootActionOverlayGraphReady
-    && activeAttackDodgeRootCardRead?.eventId === attackDodgeRootCardReadEventId
-    ? activeAttackDodgeRootCardRead.remainingMs
-    : null;
-  const rootActionOverlayPublicReadRemainingMs = rootActionOverlayGraphReady
+  const rootActionOverlayResultReadRemainingMs = rootActionOverlayGraphReady
     && visibleActiveAttackDodgeSettlement?.phase === "reading"
     && visibleActiveAttackDodgeSettlement.action.response?.eventId === visibleActiveAttackDodgeSettlement.eventId
     && rootActionOverlayAction?.response?.eventId === visibleActiveAttackDodgeSettlement.eventId
     ? visibleActiveAttackDodgeSettlement.remainingMs
     : null;
-  useEffect(() => {
-    if (!attackDodgeRootCardReadEventId || !rootActionOverlayGraphReady
-      || attackDodgeRootCardReadCapturedEventIds.current.has(attackDodgeRootCardReadEventId)) return;
-    attackDodgeRootCardReadCapturedEventIds.current.add(attackDodgeRootCardReadEventId);
-    setActiveAttackDodgeRootCardRead({
-      eventId: attackDodgeRootCardReadEventId,
-      remainingMs: UI_TIMING.attackDodgePublicCounterRead,
-    });
-  }, [attackDodgeRootCardReadEventId, rootActionOverlayGraphReady]);
-  useEffect(() => {
-    const eventId = attackDodgeRootCardReadEventId;
-    const remainingMs = attackDodgeRootCardReadRemainingMs;
-    if (!eventId || remainingMs === null || !rootActionOverlayGraphReady) return;
-    const visibleSince = performance.now();
-    onPublicCounterReadVisible(`attack-dodge-card:${eventId}`, remainingMs, true);
-    let elapsed = false;
-    const timer = window.setTimeout(() => {
-      elapsed = true;
-      setActiveAttackDodgeRootCardRead((current) => current?.eventId === eventId ? null : current);
-    }, Math.max(0, remainingMs));
-    return () => {
-      window.clearTimeout(timer);
-      if (elapsed) return;
-      const visibleMs = performance.now() - visibleSince;
-      setActiveAttackDodgeRootCardRead((current) => current?.eventId === eventId
-        ? { ...current, remainingMs: Math.max(0, current.remainingMs - visibleMs) }
-        : current);
-    };
-  }, [attackDodgeRootCardReadEventId, attackDodgeRootCardReadRemainingMs, onPublicCounterReadVisible, rootActionOverlayGraphReady]);
   useEffect(() => {
     const held = activeAttackDodgeSettlement;
     const reason = attackDodgeHoldSupersessionReason;
@@ -4832,7 +4786,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         turnSeat: room.turnSeat,
         rootEventId: proof.rootEventId,
         responseEventId: proof.responseEventId,
-        ...(proof.displayExpiresAtMs !== undefined ? { displayExpiresAtMs: proof.displayExpiresAtMs } : {}),
         interactionId: proof.interactionId,
         rootFrameId: proof.rootFrameId,
         sourceId: proof.rootSourceId,
@@ -4840,9 +4793,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         publicActionEventIds: attackDodgePublicActions.map((event) => event.eventId),
       },
       phase: "reading",
-      remainingMs: proof.displayExpiresAtMs === undefined
-        ? UI_TIMING.attackDodgePublicCounterRead
-        : Math.max(0, Math.min(UI_TIMING.attackDodgePublicCounterRead, proof.displayExpiresAtMs - Date.now())),
+      remainingMs: UI_TIMING.attackDodgeResultRead,
     });
   }, [attackDodgeGraphCandidate, attackDodgeSettlementAlreadyActive, activeAttackDodgeSettlementEventId, attackDodgePublicActions, persistedRetiredAttackDodgeEvents, room.code, room.phase, room.turnSeat, rootActionOverlayAction, rootActionOverlayGraphReady]);
   useEffect(() => {
@@ -4850,9 +4801,44 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     const held = visibleActiveAttackDodgeSettlement;
     const eventId = activeAttackDodgeSettlementReadingEventId;
     const remainingMs = activeAttackDodgeSettlementRemainingMs;
-    const visibleSince = performance.now();
-    onPublicCounterReadVisible(`attack-dodge:${eventId}`, remainingMs, true);
-    const timer = window.setTimeout(() => {
+    let frameId = 0;
+    let stableVisibleFrames = 0;
+    let visibleSince: number | null = null;
+    let timer: number | null = null;
+    let elapsed = false;
+    const visible = (element: Element | null | undefined) => {
+      if (!element) return false;
+      const style = window.getComputedStyle(element);
+      const bounds = element.getBoundingClientRect();
+      const paintedPath = element.namespaceURI === "http://www.w3.org/2000/svg"
+        && typeof (element as SVGPathElement).getTotalLength === "function"
+        && (element as SVGPathElement).getTotalLength() > 0
+        && style.stroke !== "none"
+        && Number.parseFloat(style.strokeWidth) > 0;
+      return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0
+        && (bounds.width > 0 && bounds.height > 0 || paintedPath);
+    };
+    const hasVisibleResultGraph = () => {
+      const overlay = [...document.querySelectorAll<HTMLElement>('[data-root-action-overlay="true"]')]
+        .find((element) => element.dataset.rootActionSettlementEventId === eventId);
+      const root = overlay?.querySelector<HTMLElement>('[data-root-action-card="true"]');
+      const response = [...(overlay?.querySelectorAll<HTMLElement>('[data-root-action-response-card="true"]') ?? [])]
+        .find((element) => element.dataset.responseEventId === eventId) ?? null;
+      const rootFace = root?.querySelector<HTMLElement>(".played-card");
+      const responseFace = response?.querySelector<HTMLElement>(".played-card");
+      const source = overlay?.querySelector<SVGPathElement>('[data-root-action-edge="source"]');
+      const interception = overlay?.querySelector<SVGPathElement>('[data-root-action-edge="attack-dodge-interception"]');
+      const responseSource = overlay?.querySelector<SVGPathElement>('[data-root-action-edge="response-source"]');
+      const highlight = overlay?.querySelector<SVGElement>('[data-root-action-target-highlight="true"]');
+      return overlay?.dataset.rootActionReady === "true"
+        && overlay.dataset.rootActionSettlementEventId === eventId
+        && root?.dataset.rootActionSettlementOutcome === "ATTACK_BLOCKED_BY_DODGE"
+        && response?.dataset.responseEventId === eventId
+        && visible(rootFace) && visible(responseFace)
+        && visible(source) && visible(interception) && visible(responseSource) && visible(highlight);
+    };
+    const retire = () => {
+      elapsed = true;
       if (held?.eventId === eventId && held.phase === "reading") {
         const retired = persistAttackDodgeSettlementRetirement(held);
         const composition = retiredAttackDodgeComposition.current.roomCode === held.lifecycle.roomCode
@@ -4866,13 +4852,38 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       setActiveAttackDodgeSettlement((current) => current?.eventId === eventId && current.phase === "reading"
         ? { ...current, phase: reducedMotion ? "complete" : "exiting", remainingMs: 0 }
         : current);
-    }, Math.max(0, remainingMs));
+    };
+    const checkVisibleComposition = (now: number) => {
+      if (!hasVisibleResultGraph()) {
+        if (visibleSince !== null) {
+          const visibleMs = now - visibleSince;
+          visibleSince = null;
+          stableVisibleFrames = 0;
+          setActiveAttackDodgeSettlement((current) => current?.eventId === eventId && current.phase === "reading"
+            ? { ...current, remainingMs: Math.max(0, current.remainingMs - visibleMs) }
+            : current);
+        }
+        frameId = window.requestAnimationFrame(checkVisibleComposition);
+        return;
+      }
+      stableVisibleFrames += 1;
+      if (visibleSince === null && stableVisibleFrames >= 2) {
+        visibleSince = now;
+        onPublicCounterReadVisible(`attack-dodge:${eventId}`, remainingMs, true);
+        timer = window.setTimeout(retire, Math.max(0, remainingMs));
+      }
+      frameId = window.requestAnimationFrame(checkVisibleComposition);
+    };
+    frameId = window.requestAnimationFrame(checkVisibleComposition);
     return () => {
-      window.clearTimeout(timer);
-      const visibleMs = performance.now() - visibleSince;
-      setActiveAttackDodgeSettlement((current) => current?.eventId === eventId && current.phase === "reading"
-        ? { ...current, remainingMs: Math.max(0, current.remainingMs - visibleMs) }
-        : current);
+      window.cancelAnimationFrame(frameId);
+      if (timer !== null) window.clearTimeout(timer);
+      if (visibleSince !== null && !elapsed) {
+        const visibleMs = performance.now() - visibleSince;
+        setActiveAttackDodgeSettlement((current) => current?.eventId === eventId && current.phase === "reading"
+          ? { ...current, remainingMs: Math.max(0, current.remainingMs - visibleMs) }
+          : current);
+      }
     };
   }, [visibleActiveAttackDodgeSettlement, activeAttackDodgeSettlementReadingEventId, activeAttackDodgeSettlementRemainingMs, onPublicCounterReadVisible, rootActionOverlayGraphReady]);
   useEffect(() => {
@@ -5128,17 +5139,10 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         eligible: attackDodgeSettlementCaptureRejectionReasons.length === 0,
         rejectionReasons: attackDodgeSettlementCaptureRejectionReasons,
       },
-      graphTimerRemainingMs: rootActionOverlayPublicReadRemainingMs,
-      rootCardEventId: activeAttackDodgeRootCardRead?.eventId ?? null,
-      rootCardTimerRemainingMs: attackDodgeRootCardReadRemainingMs,
-      capturedRootCardCount: attackDodgeRootCardReadCapturedEventIds.current.size,
-      rootCardCaptureGate: {
-        candidateEventId: attackDodgeRootCardReadEventId,
-        graphReady: rootActionOverlayGraphReady,
-        alreadyCaptured: Boolean(attackDodgeRootCardReadEventId && attackDodgeRootCardReadCapturedEventIds.current.has(attackDodgeRootCardReadEventId)),
-        eligible: attackDodgeRootCardCaptureRejectionReasons.length === 0,
-        rejectionReasons: attackDodgeRootCardCaptureRejectionReasons,
-      },
+      resultReadRemainingMs: rootActionOverlayResultReadRemainingMs,
+      activeRootLifecycle: rootActionOverlayAction?.cardKind === "Attack" && !rootActionOverlayAction.response
+        ? "authoritative-card-relationship"
+        : null,
     },
   } : null;
   const attackDodgeTraceSnapshotJson = attackDodgeTraceSnapshot ? JSON.stringify(attackDodgeTraceSnapshot) : null;
@@ -5344,11 +5348,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         const hero = heroDefinition(player.hero);
         return { name: player.name, heroId: hero?.id ?? player.hero, heroName: hero?.name ?? (player.hero ? heroName(player.hero) : null), hp: player.hp, maxHp: player.maxHp };
       }} previewPlayer={targetPreviewPresentation} previewSubmission={submittedTargetPreview} inspectPlayer={opponentInspectionPresentation} selectableDetail={targetCardPickerSelectableDetail} judgementInFlight={judgementInFlight} onCloseInspect={() => setExpandedOpponentId(null)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} />}<StageSystemCluster
-        onLeave={onLeave}
         publicResponseTimerPending={seatCountdown?.kind === "response"}
-        cardReadTimer={attackDodgeRootCardReadEventId && attackDodgeRootCardReadRemainingMs !== null
-          ? <PublicCounterReadTimer eventId={attackDodgeRootCardReadEventId} remainingMs={attackDodgeRootCardReadRemainingMs} readKind="card" placement="stage-system" />
-          : null}
         responseTimer={seatCountdown?.kind === "response"
           ? <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} responseTimer />
           : null}
@@ -5414,7 +5414,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
     </section>
-    <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} displayMode={rootActionOverlayDisplayMode} layoutReadiness={rootActionLayoutState} fallbackReason={rootActionOverlayFallbackReason} publicCounterReadRemainingMs={rootActionOverlayPublicReadRemainingMs} onLayoutReadinessChange={onRootActionOverlayLayoutReadinessChange} />
+    <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} displayMode={rootActionOverlayDisplayMode} layoutReadiness={rootActionLayoutState} fallbackReason={rootActionOverlayFallbackReason} resultReadRemainingMs={rootActionOverlayResultReadRemainingMs} onLayoutReadinessChange={onRootActionOverlayLayoutReadinessChange} />
     <footer className="play-command">
     <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
       heroSkillControl={
@@ -5425,7 +5425,10 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         </section>
       } guidance={
         <div className="console-guidance" data-console-guidance="true">
-          <div className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`} data-console-decision-kind={consoleDecision.kind} data-console-coherent={consoleDecision.coherent ? "true" : "false"} data-console-primary={consoleDecision.primary?.label ?? "none"} data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"} data-console-selection-count={consoleDecision.selectionCount ?? undefined} data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"} data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"} role="status" aria-live="polite" aria-atomic="true"><small>{localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{consoleDecision.instruction}</strong>{!negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}{consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true"><b>LOCAL CANCEL</b><span>Change your selection before submitting.</span></span>}</div>
+          <div className="console-guidance-row">
+            <div className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`} data-console-decision-kind={consoleDecision.kind} data-console-coherent={consoleDecision.coherent ? "true" : "false"} data-console-primary={consoleDecision.primary?.label ?? "none"} data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"} data-console-selection-count={consoleDecision.selectionCount ?? undefined} data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"} data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"} role="status" aria-live="polite" aria-atomic="true"><small>{localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{consoleDecision.instruction}</strong>{!negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}{consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true"><b>LOCAL CANCEL</b><span>Change your selection before submitting.</span></span>}</div>
+            <GameSystemMenu onLeave={onLeave} />
+          </div>
           {invalidResponseState && <p className="error" role="status">Waiting for the latest response state…</p>}
           {(activeSkillSelection || activeSkillTargetSelection) && activeSkillOption?.effectId === "diao_chan_lust" && activeSkillSelectedTargetIds.length > 1 && <small role="status">Lust order: {room.players.find((player) => player.id === activeSkillSelectedTargetIds[0])?.name} plays Attack first, then {room.players.find((player) => player.id === activeSkillSelectedTargetIds[1])?.name}.</small>}
         </div>

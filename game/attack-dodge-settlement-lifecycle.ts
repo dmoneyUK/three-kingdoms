@@ -1,7 +1,5 @@
 type RecordValue = Record<string, unknown>;
 
-export const ATTACK_DODGE_PUBLIC_READ_MS = 20_000;
-
 export type AttackDodgePublicActionEvent = {
   eventId: string;
   /** Canonical server timeline position, used only to detect later retirement actions. */
@@ -50,7 +48,6 @@ export type AttackDodgeSettlementHoldIdentity = {
   turnSeat: number | null;
   rootEventId: string;
   responseEventId: string;
-  displayExpiresAtMs?: number;
   interactionId: string;
   rootFrameId: string;
   sourceId: string;
@@ -63,7 +60,6 @@ export type AttackDodgeSettlementRoomProgress = {
   status: string;
   phase: string | null;
   turnSeat: number | null;
-  nowMs?: number;
   currentAction: { kind?: string | null; triggerEvent?: string | null } | null;
   interaction: { semantics?: string | null; interactionId?: string | null; rootFrameId?: string | null } | null;
   liveRoots: readonly {
@@ -84,8 +80,7 @@ export type AttackDodgeSettlementSupersessionReason =
   | "turn-ending-trigger"
   | "turn-ending-resolution"
   | "new-public-action"
-  | "different-live-root"
-  | "public-read-window-expired";
+  | "different-live-root";
 
 export type RetiredAttackDodgeCompositionRecord = {
   roomCode: string;
@@ -267,91 +262,27 @@ export function attackDodgePublicActionEvents(timeline: readonly unknown[]): Att
 }
 
 /**
- * An Attack-hit result is a read-only quiet-period hold. It retires on exact
- * server room/turn/phase/action progress; timeline position never establishes
- * who acted or why.
+ * An authoritative Attack-hit result remains visible for its local four-second
+ * readable hold. Game progress continues normally; only leaving the room may
+ * discard the local composition before that hold completes.
  */
 export function attackHitSettlementSupersessionReason(
   hold: AttackHitSettlementHoldIdentity,
   current: AttackHitSettlementRoomProgress,
 ): AttackHitSettlementSupersessionReason | null {
   if (current.roomCode !== hold.roomCode) return "room-changed";
-  if (current.status !== "playing") return "game-ended";
-  if (hold.turnSeat !== null && current.turnSeat !== hold.turnSeat) return "turn-advanced";
-  if (current.phase === "discard" && hold.phase !== "discard") return "discard-phase";
-  if (current.currentAction?.triggerEvent === "discard_phase" || current.currentAction?.triggerEvent === "turn_end") {
-    return "turn-ending-trigger";
-  }
-  if (current.phase === "resolving" && current.currentAction?.kind === "none" && current.phase !== hold.phase) {
-    return "turn-ending-resolution";
-  }
-  if (current.liveRootEventId && current.liveRootEventId !== hold.rootEventId) return "different-live-root";
-
-  const capturedActionIds = new Set(hold.publicActionEventIds);
-  for (const event of current.publicActionEvents) {
-    if (capturedActionIds.has(event.eventId) || event.eventId === hold.rootEventId || event.eventId === hold.eventId) continue;
-    // A typed event that retains this exact root/resolution is a continuation,
-    // not an independent action that should replace the result.
-    if (event.rootEventId === hold.rootEventId || event.resolutionId === hold.rootResolutionId) continue;
-    return "new-public-action";
-  }
   return null;
 }
 
-function sameHeldRoot(hold: AttackDodgeSettlementHoldIdentity, root: AttackDodgeSettlementRoomProgress["liveRoots"][number]) {
-  return root.semantics === "PROVEN"
-    && root.rootEventId === hold.rootEventId
-    && root.interactionId === hold.interactionId
-    && root.rootFrameId === hold.rootFrameId
-    && root.sourceId === hold.sourceId
-    && root.targetId === hold.targetId;
-}
-
-function actionEventContinuesHeldRoot(hold: AttackDodgeSettlementHoldIdentity, event: AttackDodgePublicActionEvent) {
-  const hasConflictingFrame = event.rootFrameId !== undefined && event.rootFrameId !== hold.rootFrameId;
-  const hasConflictingInteraction = event.interactionId !== undefined && event.interactionId !== hold.interactionId;
-  if (hasConflictingFrame || hasConflictingInteraction) return false;
-  return event.rootEventId === hold.rootEventId
-    || event.interactionId === hold.interactionId && event.rootFrameId === hold.rootFrameId;
-}
-
 /**
- * A completed Attack/Dodge read graph is a quiet-period hold, not a new source
- * of gameplay state. Retire it only on authoritative room/turn/action progress.
+ * Once an exact public Dodge proof completes the Attack relationship, each
+ * viewer keeps that completed composition through its four-second visible
+ * read hold. New turns/actions do not obscure the result; changing rooms does.
  */
 export function attackDodgeSettlementSupersessionReason(
   hold: AttackDodgeSettlementHoldIdentity,
   current: AttackDodgeSettlementRoomProgress,
 ): AttackDodgeSettlementSupersessionReason | null {
   if (current.roomCode !== hold.roomCode) return "room-changed";
-  if (current.status !== "playing") return "game-ended";
-  if (hold.displayExpiresAtMs !== undefined && current.nowMs !== undefined && current.nowMs >= hold.displayExpiresAtMs) {
-    return "public-read-window-expired";
-  }
-  if (hold.turnSeat !== null && current.turnSeat !== hold.turnSeat) return "turn-advanced";
-  if (current.phase === "discard" && hold.phase !== "discard") return "discard-phase";
-  if (current.currentAction?.triggerEvent === "discard_phase" || current.currentAction?.triggerEvent === "turn_end") {
-    return "turn-ending-trigger";
-  }
-
-  // A still-live identical interaction owns its continuation. Timeline position below
-  // is used only to retire a completed graph on a later independent public action;
-  // it never supplies source, target, participant, or causal identity.
-  const sameInteractionIsLive = current.interaction?.semantics === "PROVEN"
-    && current.interaction.interactionId === hold.interactionId
-    && current.interaction.rootFrameId === hold.rootFrameId;
-  if (sameInteractionIsLive) return null;
-
-  if (current.phase === "resolving" && current.currentAction?.kind === "none"
-    && current.phase !== hold.phase) return "turn-ending-resolution";
-
-  const capturedActionIds = new Set(hold.publicActionEventIds);
-  for (const event of current.publicActionEvents) {
-    if (capturedActionIds.has(event.eventId) || event.eventId === hold.rootEventId || event.eventId === hold.responseEventId) continue;
-    if (actionEventContinuesHeldRoot(hold, event)) continue;
-    return "new-public-action";
-  }
-
-  if (current.liveRoots.some((root) => !sameHeldRoot(hold, root))) return "different-live-root";
   return null;
 }

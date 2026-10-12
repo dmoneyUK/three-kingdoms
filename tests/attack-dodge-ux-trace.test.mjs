@@ -76,26 +76,26 @@ test("same-root Duel, Negation, and AOE public continuations do not retire a hel
   })), null, "private Dodge selection is not an independent public action");
 });
 
-test("completed Attack/Dodge holds retire on authoritative action and turn boundaries", () => {
+test("completed Attack/Dodge results survive gameplay progress for the four-second read hold", () => {
   assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({
     publicActionEvents: [{ eventId: "next-public-play" }],
-  })), "new-public-action");
-  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({ turnSeat: 1 })), "turn-advanced");
-  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({ phase: "discard" })), "discard-phase");
+  })), null, "a later public action does not cut off the completed result");
+  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({ turnSeat: 1 })), null);
+  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({ phase: "discard" })), null);
   assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({
     currentAction: { kind: "trigger", triggerEvent: "turn_end" },
-  })), "turn-ending-trigger");
+  })), null);
   assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({
     phase: "resolving", currentAction: { kind: "none" },
-  })), "turn-ending-resolution");
+  })), null);
   assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({ roomCode: "ROOM2" })), "room-changed");
-  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({ status: "finished" })), "game-ended");
+  assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({ status: "finished" })), null);
   assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({
     liveRoots: [{ semantics: "PROVEN", rootEventId: "next-attack", interactionId: "interaction-2", rootFrameId: "root-frame-2", sourceId: "source-player", targetId: "target-player" }],
-  })), "different-live-root");
+  })), null);
 });
 
-test("Attack-hit result holds retire only on authoritative independent progress", () => {
+test("Attack-hit result holds survive gameplay progress so every viewer can read the outcome", () => {
   const publicActionEvents = attackDodgePublicActionEvents([
     { id: "attack-root", type: "card", action: "play", presentation: true, resolutionId: "attack-resolution" },
     { id: "attack-hit-proof", type: "message", presentation: true, resolutionId: "attack-resolution", publicAttackHitSettlement: { rootEventId: "attack-root" } },
@@ -125,13 +125,13 @@ test("Attack-hit result holds retire only on authoritative independent progress"
   assert.equal(attackHitSettlementSupersessionReason(hold, progress({
     publicActionEvents: [...publicActionEvents.filter((event) => event.eventId !== "new-independent-action"), publicActionEvents.find((event) => event.eventId === "same-resolution-continuation")],
   })), null, "the same server resolution remains a continuation");
-  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ publicActionEvents })), "new-public-action");
-  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ liveRootEventId: "another-root" })), "different-live-root");
-  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ turnSeat: 1 })), "turn-advanced");
-  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ phase: "discard" })), "discard-phase");
-  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ currentAction: { kind: "trigger", triggerEvent: "turn_end" } })), "turn-ending-trigger");
+  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ publicActionEvents })), null);
+  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ liveRootEventId: "another-root" })), null);
+  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ turnSeat: 1 })), null);
+  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ phase: "discard" })), null);
+  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ currentAction: { kind: "trigger", triggerEvent: "turn_end" } })), null);
   assert.equal(attackHitSettlementSupersessionReason(hold, progress({ roomCode: "ROOM2" })), "room-changed");
-  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ status: "finished" })), "game-ended");
+  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ status: "finished" })), null);
 });
 
 test("settlement action identity extraction ignores messages and private draws", () => {
@@ -148,7 +148,7 @@ test("settlement action identity extraction ignores messages and private draws",
   ]);
 });
 
-test("a later public action or server read deadline retires an Attack/Dodge for a fresh viewer", () => {
+test("a later public action and wall-clock age do not retire an Attack/Dodge result", () => {
   const events = attackDodgePublicActionEvents([
     { id: "older-action", type: "card", action: "play", presentation: true },
     { id: "attack-root", type: "card", action: "play", presentation: true },
@@ -159,14 +159,15 @@ test("a later public action or server read deadline retires an Attack/Dodge for 
   assert.ok(response);
   const hold = {
     ...settlementHold,
-    displayExpiresAtMs: 20_000,
     publicActionEventIds: events.filter((event) => event.timelineIndex <= response.timelineIndex).map((event) => event.eventId),
   };
   assert.equal(attackDodgeSettlementSupersessionReason(hold, settlementRoom({
-    nowMs: 19_999,
-    publicActionEvents: events,
-  })), "new-public-action");
-  assert.equal(attackDodgeSettlementSupersessionReason(hold, settlementRoom({ nowMs: 20_000 })), "public-read-window-expired");
+    nowMs: 24 * 60 * 60 * 1000,
+  })), null, "an active causal graph has no fixed wall-clock expiry");
+  assert.equal(attackDodgeSettlementSupersessionReason({ ...hold, displayExpiresAtMs: 1 }, settlementRoom({
+    nowMs: 24 * 60 * 60 * 1000,
+  })), null, "legacy server expiry metadata cannot retire the graph");
+  assert.equal(attackDodgeSettlementSupersessionReason(hold, settlementRoom({ publicActionEvents: events })), null);
 });
 
 test("retired public Attack/Dodge identities survive refresh without crossing rooms", () => {

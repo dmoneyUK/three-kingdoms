@@ -874,17 +874,18 @@ for (const viewport of VIS_04B_VIEWPORTS) {
           return { left, right, top, bottom, width, height };
         };
         const cluster = element.querySelector(":scope > .stage-system-cluster");
+        const menu = document.querySelector(".local-player-dock .console-guidance-row .stage-system-menu-trigger");
         return {
           background: style.backgroundColor,
           borders: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth],
           children: [...element.children].map((child) => child.dataset.stageSystemCluster === "true" ? "stage-system-cluster" : child.className),
           cluster: bounds(cluster),
-          menu: bounds(cluster.querySelector(".stage-system-menu-trigger")),
+          menu: bounds(menu),
           guidance: bounds(document.querySelector(".local-player-dock .console-guidance")),
         };
       });
       const systemCluster = page.locator('.interaction-safe-zone > .stage-system-cluster');
-      const systemMenu = systemCluster.getByRole("button", { name: "System menu" });
+      const systemMenu = page.locator(".local-player-dock .console-guidance-row").getByRole("button", { name: "System menu" });
       const guidanceGap = safeZoneVisuals.guidance.top - safeZoneVisuals.cluster.bottom;
 
       expect(await page.locator('.play-table[data-seat-topology="top-row"] .interaction-safe-zone').count()).toBe(1);
@@ -892,12 +893,13 @@ for (const viewport of VIS_04B_VIEWPORTS) {
       await expect(page.locator(".interaction-stage")).toHaveCount(0);
       await expect(systemCluster).toBeVisible();
       await expect(systemMenu).toBeVisible();
-      await expect(systemCluster.locator(".stage-system-menu-actions")).toBeHidden();
+      await expect(page.locator(".stage-system-menu-actions")).toBeHidden();
       expect(safeZoneVisuals.background).toBe("rgba(0, 0, 0, 0)");
       expect(safeZoneVisuals.borders).toEqual(["0px", "0px", "0px", "0px"]);
       expect(safeZoneVisuals.children).toEqual(["stage-system-cluster"]);
       expect(safeZoneVisuals.menu.width).toBeGreaterThanOrEqual(44);
       expect(safeZoneVisuals.menu.height).toBeGreaterThanOrEqual(44);
+      expect(Math.abs(safeZoneVisuals.menu.right - (safeZoneVisuals.guidance.right - 8))).toBeLessThanOrEqual(1);
       expect(safeZoneVisuals.cluster.right).toBeCloseTo(layout.safeZone.right - 14, 0);
       expect(guidanceGap, JSON.stringify({ viewport, safeZoneVisuals })).toBeGreaterThanOrEqual(8);
       expect(guidanceGap, JSON.stringify({ viewport, safeZoneVisuals })).toBeLessThanOrEqual(12);
@@ -3075,16 +3077,16 @@ test("UX2.0VIS-03E keeps NEGATION Reaction Chain without a medium source", async
   await expect(page.locator('[data-reaction-chain="proven"]')).toBeVisible();
 });
 
-test("UX2.0VIS-02 keeps the Stage System Menu anchor in REST without Stage chrome", async ({ page }) => {
+test("UX2.0VIS-02 keeps the System Menu in Dock guidance in REST without Stage chrome", async ({ page }) => {
   await loadFixture(page, { state: "rest", count: 4, width: 480, height: 900 });
   const safeZone = page.locator(".interaction-safe-zone");
   const systemCluster = safeZone.locator(":scope > .stage-system-cluster");
-  const systemMenu = systemCluster.getByRole("button", { name: "System menu" });
+  const systemMenu = page.locator(".local-player-dock .console-guidance-row").getByRole("button", { name: "System menu" });
   await expect(safeZone).toHaveCount(1);
   await expect(page.locator(".interaction-stage")).toHaveCount(0);
   await expect(systemCluster).toBeVisible();
   await expect(systemMenu).toBeVisible();
-  await expect(systemCluster.locator(".stage-system-menu-actions")).toBeHidden();
+  await expect(page.locator(".stage-system-menu-actions")).toBeHidden();
   const emptyGeometry = await safeZone.evaluate((element) => {
     const style = getComputedStyle(element);
     return {

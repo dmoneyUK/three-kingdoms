@@ -432,8 +432,6 @@ type PresentationAttackDodgeResponseProofBase = {
   rootCardKind: "Attack";
   /** Semantic response kind; may differ from the actual public CardFace below. */
   responseCardKind: "Dodge";
-  /** Server time at which this public read window expires; legacy proofs may omit it. */
-  displayExpiresAtMs?: number;
   /** Server-owned turn identity captured when the Dodge was committed. */
   turnSeatAtCommit?: number;
 };
@@ -2432,9 +2430,6 @@ function attackDodgeResponsesFor(timeline: readonly PresentationV2Event[]): Pres
       responseResolutionId,
       ...(proof.responsePhysicalCardKind === "Attack" && proof.responsePlayedAs === "dodge"
         ? { responsePhysicalCardKind: "Attack" as const, responsePlayedAs: "dodge" as const }
-        : {}),
-      ...(Number.isSafeInteger(proof.displayExpiresAtMs) && (proof.displayExpiresAtMs as number) >= 0
-        ? { displayExpiresAtMs: proof.displayExpiresAtMs as number }
         : {}),
       ...(Number.isSafeInteger(proof.turnSeatAtCommit) && (proof.turnSeatAtCommit as number) >= 0
         ? { turnSeatAtCommit: proof.turnSeatAtCommit as number }

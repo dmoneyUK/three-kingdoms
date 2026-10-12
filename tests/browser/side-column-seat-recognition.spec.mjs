@@ -34,7 +34,7 @@ async function readLayout(page) {
       systemCluster: bounds(systemCluster),
       guidance: bounds(guidance),
       dock: bounds(dock),
-      menu: bounds(systemCluster.querySelector(".stage-system-menu-trigger")),
+      menu: bounds(document.querySelector(".local-player-dock .console-guidance-row .stage-system-menu-trigger")),
       stage: [stage, ...stage.querySelectorAll("*")].filter(visible).map(bounds),
       seats: [...board.querySelectorAll(":scope > [data-player-anchor]")].map((seat) => {
         const target = seat.querySelector(".opponent-hero-target");
@@ -93,6 +93,9 @@ for (const width of VIEWPORTS) {
       expect(result.systemCluster.bottom, "system cluster stays anchored at the Stage/Guidance boundary").toBeCloseTo(result.safeZone.bottom + stageBoundaryOffset, 0);
       expect(result.menu.width, "System Menu meets the minimum touch target").toBeGreaterThanOrEqual(44);
       expect(result.menu.height, "System Menu meets the minimum touch target").toBeGreaterThanOrEqual(44);
+      expect(Math.abs(result.menu.right - (result.guidance.right - 8)), "System Menu aligns to the right edge of player guidance").toBeLessThanOrEqual(1);
+      expect(result.menu.y).toBeGreaterThanOrEqual(result.guidance.y);
+      expect(result.menu.bottom).toBeLessThanOrEqual(result.guidance.bottom);
       expect(result.guidance.y - result.systemCluster.bottom, "system cluster clears Guidance by 8–12px").toBeGreaterThanOrEqual(8);
       expect(result.guidance.y - result.systemCluster.bottom, "system cluster clears Guidance by 8–12px").toBeLessThanOrEqual(12);
       expect(overlaps(result.systemCluster, result.guidance), "system controls do not cover Local Guidance").toBe(false);

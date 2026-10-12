@@ -237,44 +237,6 @@ function relativeRect(element: HTMLElement, root: DOMRect): Rect {
   };
 }
 
-function publicReadTimerPosition(card: Rect, shellWidth: number) {
-  return shellWidth <= 480
-    ? { left: card.left >= 60 ? card.left - 60 : card.right + 6, top: card.top + 4 }
-    : { left: card.left + card.width - 54, top: Math.max(6, card.top - 30) };
-}
-
-export function PublicCounterReadTimer({ eventId, remainingMs, style, readKind, placement = "overlay" }: { eventId: string; remainingMs: number; style?: { left: number; top: number }; readKind: "response" | "card"; placement?: "overlay" | "stage-system" }) {
-  const [remainingSeconds, setRemainingSeconds] = useState(Math.ceil(remainingMs / 1000));
-  useEffect(() => {
-    const visibleSince = performance.now();
-    let lastSeconds = Math.ceil(remainingMs / 1000);
-    recordAttackDodgeUxTrace("public-read-timer", { eventId, readKind, placement, remainingSeconds: lastSeconds });
-    const update = () => {
-      const nextSeconds = Math.ceil(Math.max(0, remainingMs - (performance.now() - visibleSince)) / 1000);
-      if (nextSeconds !== lastSeconds) {
-        lastSeconds = nextSeconds;
-        recordAttackDodgeUxTrace("public-read-timer", { eventId, readKind, placement, remainingSeconds: nextSeconds });
-        setRemainingSeconds(nextSeconds);
-      }
-    };
-    update();
-    const timer = window.setInterval(update, 200);
-    return () => window.clearInterval(timer);
-  }, [eventId, placement, readKind, remainingMs]);
-  const minutes = Math.floor(remainingSeconds / 60);
-  const seconds = String(remainingSeconds % 60).padStart(2, "0");
-  return <div
-    className={`interaction-root-public-read-timer${placement === "stage-system" ? " stage-system-card-read-timer" : ""}`}
-    data-public-counter-read-timer="true"
-    data-public-counter-read-event-id={eventId}
-    data-public-counter-read-remaining-seconds={remainingSeconds}
-    data-public-counter-read-placement={placement}
-    role="timer"
-    aria-label={`Public ${readKind === "response" ? "response" : "card"} graph time remaining: ${minutes} minutes ${seconds} seconds`}
-    style={style}
-  >{`${minutes}:${seconds}`}</div>;
-}
-
 function center(rect: Rect): Point { return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }; }
 
 function unionRect(rects: readonly Rect[]): Rect {
@@ -699,7 +661,7 @@ function layoutGroupRootAction(
   const lateralDistance = Math.min(112, Math.max(44, Math.min(tableRect.width, tableRect.height) * .16));
   const obstacleElements = [
     ...Array.from(shell.querySelectorAll<HTMLElement>("[data-player-anchor]")),
-    ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .game-messages, .game-exit")),
+    ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .stage-system-menu, .game-messages, .game-exit")),
   ].filter((element) => element.getClientRects().length > 0);
   const obstacles = obstacleElements.map((element) => relativeRect(element, shellBounds));
   const lateralOffsets = action.orderedTargets?.length
@@ -946,7 +908,7 @@ function layoutSimultaneousRootAction(
   const lateralDistance = Math.min(100, Math.max(42, Math.min(tableRect.width, tableRect.height) * .15));
   const obstacleElements = [
     ...Array.from(shell.querySelectorAll<HTMLElement>("[data-player-anchor]")),
-    ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .game-messages, .game-exit")),
+    ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .stage-system-menu, .game-messages, .game-exit")),
   ].filter((element) => element.getClientRects().length > 0);
   const obstacles = obstacleElements.map((element) => relativeRect(element, shellBounds));
   const candidates = [.3, .38, .46, .54].flatMap((fraction) => [0, -lateralDistance, lateralDistance, -lateralDistance * 1.55, lateralDistance * 1.55].flatMap((offset) => {
@@ -1214,7 +1176,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     }))));
     const obstacles = [
       ...Array.from(shell.querySelectorAll<HTMLElement>("[data-player-anchor]")),
-      ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .game-messages, .game-exit")),
+      ...Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .stage-system-menu, .game-messages, .game-exit")),
     ].filter((element) => element.getClientRects().length > 0)
       .map((element) => relativeRect(element, shellBounds));
     const candidates = candidateCenters.flatMap((candidate) => {
@@ -1395,7 +1357,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     })),
   ] : [];
   const candidateCenters = [...sampledPathCenters, ...centreFirstCandidates];
-  const controlObstacleElements = Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .game-messages, .game-exit"))
+  const controlObstacleElements = Array.from(shell.querySelectorAll<HTMLElement>(".play-center, .stage-system-cluster, .stage-system-menu, .game-messages, .game-exit"))
     .filter((element) => {
       if (element.getClientRects().length === 0) return false;
       // Attack reserves the fixed Deck/Discard lane through its Dodge handoff,
@@ -1411,18 +1373,11 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const hiddenPendingPublicResponseTimer = isUnansweredAttackRoot
     && Boolean(stageSystemElement)
     && !responseTimerVisible
-    ? (() => {
+      ? (() => {
       const stageRect = relativeRect(stageSystemElement, shellBounds);
-      const menuButton = stageSystemElement.querySelector<HTMLElement>(".stage-system-menu-trigger");
-      const menuWidth = menuButton?.getBoundingClientRect().width ?? 44;
       const gap = Number.parseFloat(getComputedStyle(stageSystemElement).gap) || 8;
-      const buildBadge = stageSystemElement.querySelector<HTMLElement>(".stage-build-version");
-      const buildBadgeWidth = buildBadge?.getBoundingClientRect().width ?? 52;
       const timerWidth = stageSystemElement.querySelector<HTMLElement>(".visible-countdown-event")?.getBoundingClientRect().width ?? 64;
-      const reservedWidth = Math.max(
-        stageRect.width + timerWidth + gap,
-        menuWidth + buildBadgeWidth + timerWidth + gap * 2,
-      );
+      const reservedWidth = stageRect.width + timerWidth + gap;
       return {
         ...stageRect,
         left: stageRect.right - reservedWidth,
@@ -2720,7 +2675,7 @@ export function InteractionRootOverlay({
   displayMode,
   layoutReadiness,
   fallbackReason,
-  publicCounterReadRemainingMs,
+  resultReadRemainingMs,
   onLayoutReadinessChange,
 }: {
   action: InteractionRootOverlayAction | null;
@@ -2730,7 +2685,7 @@ export function InteractionRootOverlay({
   displayMode: "graph" | "measuring" | "fallback";
   layoutReadiness: "measuring" | "ready" | "unavailable" | null;
   fallbackReason?: string;
-  publicCounterReadRemainingMs?: number | null;
+  resultReadRemainingMs?: number | null;
   onLayoutReadinessChange: (readiness: { key: string; state: "measuring" | "ready" | "unavailable" } | null) => void;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
@@ -3130,8 +3085,6 @@ export function InteractionRootOverlay({
     })) : [];
     const responseCard = layer.querySelector<HTMLElement>("[data-root-action-response-card]");
     const rootCard = cardRef.current;
-    const graphTimer = Array.from(document.querySelectorAll<HTMLElement>(".interaction-root-public-read-timer"))
-      .find((timer) => timer.dataset.publicCounterReadEventId === action.rootEventId) ?? null;
     const responseTimer = shell.querySelector<HTMLElement>(".visible-countdown-response");
     const shellRect = shell.getBoundingClientRect();
     const visualViewport = window.visualViewport;
@@ -3199,12 +3152,12 @@ export function InteractionRootOverlay({
       },
       rootCardStyle: rootStyle ? { visibility: rootStyle.visibility, opacity: rootStyle.opacity, zIndex: rootStyle.zIndex } : null,
       timers: {
-        graphText: graphTimer?.textContent?.trim() ?? null,
+        resultReadRemainingMs: resultReadRemainingMs ?? null,
         responseText: responseTimer?.textContent?.trim() ?? null,
         responseUrgency: responseTimer?.dataset.countdownUrgency ?? null,
       },
     });
-  }, [action?.cardFace?.kind, action?.cardKind, action?.interactionId, action?.mode, action?.response?.actorId, action?.response?.cardFace?.kind, action?.response?.countersRoot, action?.response?.eventId, action?.response?.targetId, action?.rootEventId, action?.rootFrameId, action?.settlement?.outcome, action?.sourceId, action?.targetId, actionSignature, displayMode, enabled, layout, layoutReadiness, publicCounterReadRemainingMs]);
+  }, [action?.cardFace?.kind, action?.cardKind, action?.interactionId, action?.mode, action?.response?.actorId, action?.response?.cardFace?.kind, action?.response?.countersRoot, action?.response?.eventId, action?.response?.targetId, action?.rootEventId, action?.rootFrameId, action?.settlement?.outcome, action?.sourceId, action?.targetId, actionSignature, displayMode, enabled, layout, layoutReadiness, resultReadRemainingMs]);
 
   if (!action) return null;
   const groupNamesKnown = Boolean(action.groupTargets?.length && action.groupTargets.every((target) => target.playerName.trim()));
@@ -3232,10 +3185,6 @@ export function InteractionRootOverlay({
   const visible = enabled && displayMode === "graph" && layoutReadiness === "ready" && Boolean(layout) && accessiblePartsValid
     && Boolean(sourceName && (groupNamesKnown || orderedNamesKnown || simultaneousNamesKnown || action.mode === "self-target" || targetName));
   const responseChainRootBlocked = Boolean(action.responses?.length && action.rootEffectState === "BLOCKED");
-  const blockedResponseCard = layout?.responseCard ?? layout?.card;
-  const blockedResponseTimerStyle = blockedResponseCard && layout
-    ? publicReadTimerPosition(blockedResponseCard, layout.width)
-    : null;
   const attackHitResultPosition = visible && layout && action.settlement?.outcome === "ATTACK_DAMAGE_APPLIED"
     && action.targetId && targetName
     ? attackHitResultLabelPosition(layout)
@@ -3550,13 +3499,5 @@ export function InteractionRootOverlay({
       aria-label={`Take damage: ${targetName}`}
       style={attackHitResultPosition}
     >TAKE DAMAGE</span>}
-    {visible && layout && action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE"
-      && blockedResponseTimerStyle && publicCounterReadRemainingMs !== null && publicCounterReadRemainingMs !== undefined && <PublicCounterReadTimer
-        key={`response:${action.settlement.eventId}`}
-        eventId={action.settlement.eventId}
-        remainingMs={publicCounterReadRemainingMs}
-        readKind="response"
-        style={blockedResponseTimerStyle}
-      />}
   </>;
 }

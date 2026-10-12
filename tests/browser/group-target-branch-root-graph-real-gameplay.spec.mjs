@@ -214,7 +214,7 @@ async function graphGeometry(page, seed, viewport, testInfo, label = "group-root
       const rootBounds = asLocal(bounds(document.querySelector('[data-root-action-card="true"][data-group-root-action]')));
       const obstacleNodes = [
         ...anchors.map((node, index) => [`anchor-${node.getAttribute("data-player-anchor") ?? index}`, node]),
-        ...[".play-center", ".stage-system-cluster", ".game-messages", ".game-exit"].map((selector) => [selector, document.querySelector(selector)]),
+        ...[".play-center", ".stage-system-cluster", ".stage-system-menu", ".game-messages", ".game-exit"].map((selector) => [selector, document.querySelector(selector)]),
       ].filter(([, node]) => node?.getClientRects().length > 0).map(([name, node]) => ({ name, rect: asLocal(bounds(node)) }));
       const candidateDiagnostics = vector && normal && actorCenter && effectPoint && tableLocal && responseBounds
         ? [.42, .54, .66, .78].flatMap((fraction) => [0, -lateralDistance, lateralDistance, -lateralDistance * 1.6, lateralDistance * 1.6].map((offset) => {
