@@ -593,7 +593,6 @@ type OpponentPlayerCardProps = {
   targetablePlayer: boolean;
   onTarget: () => void;
   onInspect: () => void;
-  onHeroInfo: (hero: Hero) => void;
   onInfoCard: (card: Card) => void;
   judgementInFlight: ReadonlySet<string>;
   serpentSelected: string[];
@@ -620,7 +619,7 @@ function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
   return <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M1.2 11.7h11.4l-1-2.2.3-2-1.3-2-1.8-.5L7.4 7H5.1L3.8 4.2l-1.6.4.8 2.9-1.2 1.7Z" /><path d="M4 11.6v1.2m5.8-1.2v1.2" /></svg>;
 }
 
-function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isActionPlayer, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, targetablePlayer, onTarget, onInspect, onHeroInfo, onInfoCard, judgementInFlight }: OpponentPlayerCardProps) {
+function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isActionPlayer, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, targetablePlayer, onTarget, onInspect, onInfoCard, judgementInFlight }: OpponentPlayerCardProps) {
   const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex);
   const fourPlayerTopRow = totalPlayers === 4;
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
@@ -651,7 +650,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
           </span>
         </button>
         {!fourPlayerTopRow && equipmentSummary.length > 0 && <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment">{equipmentSummary}</div>}
-        {playerHero && <button type="button" className="hero-card-info-button" aria-label={targetSelectionActive ? `Inspect ${player.name}` : `Explain ${playerHero.name}`} onClick={() => targetSelectionActive ? onInspect() : onHeroInfo(playerHero)}>i</button>}
+        {playerHero && <button type="button" className="hero-card-info-button" aria-label={`Inspect ${player.name}`} onClick={onInspect}>i</button>}
       </div>
       {player.judgementCards.length > 0 && <section className="opponent-judgement-zone" aria-label="Judgement Zone">
         <span className="opponent-zone-label">Judgement</span>
@@ -777,45 +776,42 @@ function hasProvenExternalHeroFocusTarget(view: PresentationClientView, viewerId
   return display.visible && focus.visible && targetId !== viewerId && focus.primary?.id === targetId;
 }
 
-function HeroFocus({ view, showSource = true, previewPlayer = null, inspectPlayer = null, selectableDetail = null, hideArchitecturalLabel = false, roleLabelOverride = null, groupParticipantProgress = null, judgementInFlight, onCloseInspect, onHeroInfo, onInfoCard }: { view: HeroFocusView; showSource?: boolean; previewPlayer?: LocalTargetPreviewPresentation | null; inspectPlayer?: LocalOpponentInspectionPresentation | null; selectableDetail?: TargetCardSelectableDetail | null; hideArchitecturalLabel?: boolean; roleLabelOverride?: string | null; groupParticipantProgress?: PresentationClientView["groupParticipantProgress"][number] | null; judgementInFlight?: ReadonlySet<string>; onCloseInspect?: () => void; onHeroInfo?: (hero: Hero) => void; onInfoCard?: (card: Card) => void }) {
-  if (inspectPlayer) {
-    const inspectedHero = inspectPlayer.hero;
-    const publicSkills = inspectedHero?.skills ?? [];
-    const renderInspectionCard = (card: Card, hidden = false) => <button key={card.id} type="button" className="opponent-inspection-card" style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard?.(card); }}><CardFace card={card} /></button>;
-    const heroName = inspectedHero?.name ?? "Unknown Hero";
-    return <div className="hero-focus hero-focus-inspect opponent-inspection-panel" role="dialog" aria-label={`${inspectPlayer.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={inspectPlayer.id}>
-      <div className="hero-focus-heading"><strong>{`INSPECT · ${inspectPlayer.name}`}</strong><button type="button" className="hero-focus-inspect-close" aria-label={`Close ${inspectPlayer.name} inspection`} onClick={onCloseInspect}>×</button></div>
-      <div className="hero-focus-body">
-        <span className={inspectedHero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={inspectedHero?.id}>{inspectedHero ? <HeroPortrait hero={inspectedHero} /> : "?"}</span>
-        <div className="hero-focus-identity">
-          <b>{inspectPlayer.name}</b><span>{heroName}</span><small>HP {inspectPlayer.hp ?? "?"}/{inspectPlayer.maxHp ?? "?"} · {hpDisplay(inspectPlayer.hp)}</small>
-          {inspectedHero && <button type="button" className="hero-focus-inspect-explain" aria-label={`Explain ${inspectedHero.name}`} onClick={() => onHeroInfo?.(inspectedHero)}>Explain Hero</button>}
-        </div>
-      </div>
-      <div className="hero-focus-inspect-details hero-focus-context">
+function OpponentPublicInspector({ player, judgementInFlight, onClose, onInfoCard }: { player: LocalOpponentInspectionPresentation; judgementInFlight?: ReadonlySet<string>; onClose?: () => void; onInfoCard?: (card: Card) => void }) {
+  const [expandedSkillName, setExpandedSkillName] = useState<string | null>(null);
+  const hero = player.hero;
+  const skills = hero?.skills ?? [];
+  const expandedSkill = skills.find((skill) => skill.name === expandedSkillName) ?? null;
+  const baseId = `opponent-inspect-${player.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+  const renderInspectionCard = (card: Card, hidden = false) => <button key={card.id} type="button" className="opponent-inspection-card" style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard?.(card); }}><CardFace card={card} /></button>;
+  return <section key={player.id} className="hero-focus hero-focus-inspect opponent-inspection-panel" role="dialog" aria-label={`${player.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={player.id}>
+    <div className="hero-focus-heading"><strong>{`INSPECT · ${player.name}`}</strong><button type="button" className="hero-focus-inspect-close" aria-label={`Close ${player.name} inspection`} onClick={onClose}>×</button></div>
+    <div className="hero-focus-body">
+      <span className={hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={hero?.id}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
+      <div className="hero-focus-identity">
+        <b>{player.name}</b><span>{hero?.name ?? "Unknown Hero"}</span>
+        <div className="hero-focus-identity-stats"><small>HP {player.hp ?? "?"}/{player.maxHp ?? "?"}</small><small data-public-hand-count={player.handCount}>Hand · {player.handCount}</small></div>
         <section className="opponent-inspection-zone hero-focus-inspect-public-skills" aria-label="Public Skills">
           <h3>Public Skills</h3>
-          <div className="hero-focus-inspect-skills">{publicSkills.length ? publicSkills.map((skill) => <button type="button" className="hero-focus-inspect-skill" key={skill.name} aria-label={`Explain ${skill.name}`} onClick={() => inspectedHero && onHeroInfo?.(inspectedHero)}>{skill.name}</button>) : <span className="opponent-inspection-empty">None</span>}</div>
+          <div className="hero-focus-inspect-skills">{skills.length ? skills.map((skill) => {
+            const detailId = `${baseId}-skill-${skill.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+            const expanded = expandedSkillName === skill.name;
+            return <button type="button" className="hero-focus-inspect-skill" key={skill.name} aria-label={`Show ${skill.name} description`} aria-expanded={expanded} aria-controls={detailId} onClick={() => setExpandedSkillName((current) => current === skill.name ? null : skill.name)}>{skill.name}</button>;
+          }) : <span className="opponent-inspection-empty">None</span>}</div>
         </section>
-        <div className="hero-focus-inspect-public-zones">
-          <section className="opponent-inspection-zone" aria-label="Equipment"><h3>Equipment</h3><div className="opponent-inspection-card-row">{inspectPlayer.equipmentCards.length ? inspectPlayer.equipmentCards.map((card) => renderInspectionCard(card)) : <span className="opponent-inspection-empty">None</span>}</div></section>
-          <section className="opponent-inspection-zone" aria-label="Judgement Zone"><h3>Judgement Zone</h3><div className="opponent-inspection-card-row">{inspectPlayer.judgementCards.length ? inspectPlayer.judgementCards.map((card) => renderInspectionCard(card, judgementInFlight?.has(card.id))) : <span className="opponent-inspection-empty">None</span>}</div></section>
-          <section className="opponent-inspection-zone" aria-label="Concealed Hand" data-concealed-hand-count={inspectPlayer.handCount}><h3>Hand · {inspectPlayer.handCount}</h3><div className="hero-focus-inspect-hand" aria-label={`${inspectPlayer.handCount} concealed hand cards`}><span className="hero-focus-inspect-hand-backs" aria-hidden="true">{Array.from({ length: Math.min(3, inspectPlayer.handCount) }, (_, index) => <i key={index} />)}</span><strong>{inspectPlayer.handCount} {inspectPlayer.handCount === 1 ? "card" : "cards"}</strong></div></section>
-        </div>
       </div>
-    </div>;
-  }
-  if (previewPlayer) {
-    const previewHeroName = previewPlayer.hero?.name ?? "Unknown Hero";
-    return <div className="hero-focus hero-focus-preview" aria-label={`Preview target ${previewPlayer.name}`} data-hero-focus-mode="PREVIEW" data-preview-player-id={previewPlayer.id}>
-      <div className="hero-focus-heading"><strong>PREVIEW TARGET</strong></div>
-      <div className="hero-focus-body">
-        <span className={previewPlayer.hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={previewPlayer.hero?.id}>{previewPlayer.hero ? <HeroPortrait hero={previewPlayer.hero} /> : "?"}</span>
-        <div className="hero-focus-identity"><b>{previewPlayer.name}</b><span>{previewHeroName}</span><small>HP {previewPlayer.hp ?? "?"}/{previewPlayer.maxHp ?? "?"}</small></div>
+    </div>
+    <div className="hero-focus-inspect-details hero-focus-context">
+      {expandedSkill && <p className="hero-focus-inspect-skill-description" id={`${baseId}-skill-${expandedSkill.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`} role="region" aria-label={`${expandedSkill.name} description`}>{expandedSkill.description}</p>}
+      <div className="hero-focus-inspect-public-zones">
+        <section className="opponent-inspection-zone" aria-label="Equipment"><h3>Equipment</h3><div className="opponent-inspection-card-row">{player.equipmentCards.length ? player.equipmentCards.map((card) => renderInspectionCard(card)) : <span className="opponent-inspection-empty">None</span>}</div></section>
+        <section className="opponent-inspection-zone" aria-label="Judgement Zone"><h3>Judgement Zone</h3><div className="opponent-inspection-card-row">{player.judgementCards.length ? player.judgementCards.map((card) => renderInspectionCard(card, judgementInFlight?.has(card.id))) : <span className="opponent-inspection-empty">None</span>}</div></section>
       </div>
-      <small className="hero-focus-context">UNSUBMITTED TARGET · LOCAL PREVIEW</small>
-    </div>;
-  }
+    </div>
+  </section>;
+}
+
+function HeroFocus({ view, showSource = true, inspectPlayer = null, selectableDetail = null, hideArchitecturalLabel = false, roleLabelOverride = null, groupParticipantProgress = null, judgementInFlight, onCloseInspect, onInfoCard }: { view: HeroFocusView; showSource?: boolean; inspectPlayer?: LocalOpponentInspectionPresentation | null; selectableDetail?: TargetCardSelectableDetail | null; hideArchitecturalLabel?: boolean; roleLabelOverride?: string | null; groupParticipantProgress?: PresentationClientView["groupParticipantProgress"][number] | null; judgementInFlight?: ReadonlySet<string>; onCloseInspect?: () => void; onInfoCard?: (card: Card) => void }) {
+  if (inspectPlayer) return <OpponentPublicInspector player={inspectPlayer} judgementInFlight={judgementInFlight} onClose={onCloseInspect} onInfoCard={onInfoCard} />;
   if (!view.visible || !view.primary) return null;
   const hero = heroDefinition(view.primary.heroId);
   const heroName = view.primary.heroName ?? hero?.name ?? null;
@@ -1135,7 +1131,7 @@ function BumperHarvestInteractionComposition({ source, view, rootActive, negatio
   </div>;
 }
 
-export function InteractionStage({ view, viewerId, transitionKind = "NONE", transition = null, topRowMode = false, resolvePlayerName, resolvePlayerDisplay, previewPlayer = null, previewSubmission = null, inspectPlayer = null, selectableDetail = null, judgementInFlight, onCloseInspect, onHeroInfo, onInfoCard }: { view: PresentationClientView; viewerId: string | null; transitionKind?: PresentationTransitionKind; transition?: PresentationTransition | null; topRowMode?: boolean; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined; previewPlayer?: LocalTargetPreviewPresentation | null; previewSubmission?: LocalTargetPreviewSubmission | null; inspectPlayer?: LocalOpponentInspectionPresentation | null; selectableDetail?: TargetCardSelectableDetail | null; judgementInFlight?: ReadonlySet<string>; onCloseInspect?: () => void; onHeroInfo?: (hero: Hero) => void; onInfoCard?: (card: Card) => void }) {
+export function InteractionStage({ view, viewerId, transitionKind = "NONE", transition = null, topRowMode = false, resolvePlayerName, resolvePlayerDisplay, inspectPlayer = null, selectableDetail = null, judgementInFlight, onCloseInspect, onInfoCard }: { view: PresentationClientView; viewerId: string | null; transitionKind?: PresentationTransitionKind; transition?: PresentationTransition | null; topRowMode?: boolean; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined; inspectPlayer?: LocalOpponentInspectionPresentation | null; selectableDetail?: TargetCardSelectableDetail | null; judgementInFlight?: ReadonlySet<string>; onCloseInspect?: () => void; onInfoCard?: (card: Card) => void }) {
   const stage = buildInteractionStageView(view, resolvePlayerName);
   const borrowedSwordForcedAttack = isProvenBorrowedSwordForcedAttack(stage);
   const dyingHandoff = buildDyingHandoffView(stage);
@@ -1146,15 +1142,8 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", tran
     stage,
     heroFocus.roleLabel === "CURRENT PARTICIPANT" ? heroFocus.primary?.id ?? null : null,
   );
-  const authoritativePreviewFocus = Boolean(previewPlayer
-    && previewSubmission?.targetId === previewPlayer.id
-    && previewSubmission.presentationKey !== presentationViewKey(view)
-    && display.visible
-    && (display.focusTarget.id === previewPlayer.id || heroFocus.primary?.id === previewPlayer.id));
-  const localPreviewPlayer = authoritativePreviewFocus ? null : previewPlayer;
-  const hasLocalPreview = localPreviewPlayer !== null;
   const hasLocalInspect = inspectPlayer !== null;
-  const hasLocalFocus = hasLocalPreview || hasLocalInspect;
+  const hasLocalFocus = hasLocalInspect;
   const focusSelectableDetail = selectableDetail
     && !hasLocalFocus
     && display.visible
@@ -1367,7 +1356,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", tran
   const currentParticipantProgress = [...stage.groupParticipantProgress, ...(stage.orderedTargetProgress ?? [])]
     .find((participant) => participant.playerId === stage.currentParticipant.id) ?? null;
   const focusGroupParticipantProgress = currentParticipantProgress?.playerId === heroFocus.primary?.id ? currentParticipantProgress : null;
-  const localFocusPlayerId = inspectPlayer?.id ?? localPreviewPlayer?.id;
+  const localFocusPlayerId = inspectPlayer?.id;
   const showMediumSource = Boolean(mediumSource && mediumSource.player.id !== localFocusPlayerId && !hasLocalInspect);
   const publicEffectLabel = stage.effect?.trim() || null;
   const groupCurrentEffectLabel = publicEffectLabel ? GROUP_CURRENT_EFFECT_LABELS[publicEffectLabel] ?? null : null;
@@ -1521,12 +1510,12 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", tran
         : null;
   const singleTargetParticipantIsTarget = isProvenSingleTargetParticipantCardLane
     && singleTargetNegationRootTarget?.id === viewerId;
-  const renderedHeroFocus = <HeroFocus view={heroFocus} showSource={!showMediumSource && heroFocus.source.id !== viewerId} previewPlayer={localPreviewPlayer} selectableDetail={focusSelectableDetail} hideArchitecturalLabel={hideStageArchitecturalChrome} roleLabelOverride={hideStageArchitecturalChrome ? playerFacingHeroFocusRole : null} groupParticipantProgress={focusGroupParticipantProgress} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />;
+  const renderedHeroFocus = <HeroFocus view={heroFocus} showSource={!showMediumSource && heroFocus.source.id !== viewerId} selectableDetail={focusSelectableDetail} hideArchitecturalLabel={hideStageArchitecturalChrome} roleLabelOverride={hideStageArchitecturalChrome ? playerFacingHeroFocusRole : null} groupParticipantProgress={focusGroupParticipantProgress} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onInfoCard={onInfoCard} />;
   if (!display.visible && !hasLocalFocus && !isProvenStandaloneCancelledSettlement && !isProvenStandaloneRestoredSettlement) return null;
-  return <section className="interaction-stage" aria-label={isProvenSingleTargetCausalComposition || isProvenSingleTargetParticipantCardLane || isProvenStandaloneRestoredSettlement ? "Interaction Stage" : isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : standaloneCancelledSettlement?.interactionId ?? standaloneRestoredSettlement?.interactionId} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : standaloneCancelledSettlement?.checkpointId ?? standaloneRestoredSettlement?.checkpointId} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : standaloneCancelledSettlement?.presentationRevision ?? standaloneRestoredSettlement?.presentationRevision} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={isProvenGroupComposition || isProvenOathComposition || isProvenBumperHarvestComposition || isProvenSingleTargetCausalComposition || isProvenSingleTargetParticipantCardLane || isProvenStandaloneRestoredSettlement ? undefined : currentEffect ?? undefined} data-borrowed-sword-forced-attack={borrowedSwordForcedAttack ? "true" : undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined} data-group-negation={isProvenGroupNegation ? "true" : undefined} data-group-composition={isProvenGroupComposition ? "true" : undefined} data-oath-composition={isProvenOathComposition ? "true" : undefined} data-bumper-harvest-composition={isProvenBumperHarvestComposition ? "true" : undefined} data-single-target-negation-composition={isProvenSingleTargetCausalComposition ? "proven" : undefined} data-single-target-negation-participant-lane={isProvenSingleTargetParticipantCardLane ? "proven" : undefined} data-negation-restored-root-card={isProvenStandaloneRestoredSettlement ? "proven" : undefined} data-negation-settlement={singleTargetNegationSettlementOutcome ?? undefined} data-negation-open-composition={isProvenSingleTargetOpenComposition || isProvenSingleTargetParticipantOpen ? "proven" : undefined} data-negation-first-branch-composition={isProvenSingleTargetNegationFirstBranch ? "proven" : undefined} data-negation-counter-branch-composition={isProvenSingleTargetNegationCounterBranch ? "proven" : undefined}>
+  return <section className="interaction-stage" aria-label={isProvenSingleTargetCausalComposition || isProvenSingleTargetParticipantCardLane || isProvenStandaloneRestoredSettlement ? "Interaction Stage" : isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : standaloneCancelledSettlement?.interactionId ?? standaloneRestoredSettlement?.interactionId} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : standaloneCancelledSettlement?.checkpointId ?? standaloneRestoredSettlement?.checkpointId} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : standaloneCancelledSettlement?.presentationRevision ?? standaloneRestoredSettlement?.presentationRevision} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={isProvenGroupComposition || isProvenOathComposition || isProvenBumperHarvestComposition || isProvenSingleTargetCausalComposition || isProvenSingleTargetParticipantCardLane || isProvenStandaloneRestoredSettlement ? undefined : currentEffect ?? undefined} data-borrowed-sword-forced-attack={borrowedSwordForcedAttack ? "true" : undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-group-negation={isProvenGroupNegation ? "true" : undefined} data-group-composition={isProvenGroupComposition ? "true" : undefined} data-oath-composition={isProvenOathComposition ? "true" : undefined} data-bumper-harvest-composition={isProvenBumperHarvestComposition ? "true" : undefined} data-single-target-negation-composition={isProvenSingleTargetCausalComposition ? "proven" : undefined} data-single-target-negation-participant-lane={isProvenSingleTargetParticipantCardLane ? "proven" : undefined} data-negation-restored-root-card={isProvenStandaloneRestoredSettlement ? "proven" : undefined} data-negation-settlement={singleTargetNegationSettlementOutcome ?? undefined} data-negation-open-composition={isProvenSingleTargetOpenComposition || isProvenSingleTargetParticipantOpen ? "proven" : undefined} data-negation-first-branch-composition={isProvenSingleTargetNegationFirstBranch ? "proven" : undefined} data-negation-counter-branch-composition={isProvenSingleTargetNegationCounterBranch ? "proven" : undefined}>
     {!hasLocalInspect && !isProvenGroupComposition && !isProvenOathComposition && !isProvenBumperHarvestComposition && !isProvenSingleTargetCausalComposition && !isProvenSingleTargetParticipantCardLane && !isProvenStandaloneRestoredSettlement && <header>{!hideStageArchitecturalChrome
       ? <span>INTERACTION STAGE</span>
-      : stage.stage === "DYING" && <span className="interaction-stage-visually-hidden">INTERACTION STAGE</span>}<strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : currentEffect && isOpenNegationResponse ? "NEGATION RESPONSE" : currentEffect && stage.stage === "DYING" ? display.focusLabel : currentEffect ? stage.stageLabel : display.focusLabel}</strong>{showViewerDecisionMarker && <em>YOUR DECISION</em>}</header>}
+      : stage.stage === "DYING" && <span className="interaction-stage-visually-hidden">INTERACTION STAGE</span>}<strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : currentEffect && isOpenNegationResponse ? "NEGATION RESPONSE" : currentEffect && stage.stage === "DYING" ? display.focusLabel : currentEffect ? stage.stageLabel : display.focusLabel}</strong>{showViewerDecisionMarker && <em>YOUR DECISION</em>}</header>}
     {!isProvenGroupComposition && !isProvenOathComposition && !isProvenBumperHarvestComposition && !isProvenSingleTargetCausalComposition && !isProvenSingleTargetParticipantCardLane && !isProvenStandaloneRestoredSettlement && currentEffectSummary && <p className="interaction-stage-event-summary" data-stage-event-summary="proven">{currentEffectSummary}</p>}
     {isProvenGroupComposition && groupTargetScope && stage.groupCardKind
       ? <GroupInteractionComposition source={groupSource} rootKind={stage.groupCardKind} rootActive={groupNegationNodes.length === 0} negationNodes={groupNegationNodes} interactionId={reactionChain.interactionId} targetScope={groupTargetScope} />
@@ -1594,7 +1583,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", tran
     {hasLocalInspect && inspectPlayer && <div className="opponent-inspection-layer">
       <div className="opponent-inspection-backdrop" aria-hidden="true" />
       <div className="opponent-inspection-floating-shell">
-        <HeroFocus view={heroFocus} inspectPlayer={inspectPlayer} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
+        <HeroFocus view={heroFocus} inspectPlayer={inspectPlayer} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onInfoCard={(card) => { onCloseInspect?.(); onInfoCard?.(card); }} />
       </div>
     </div>}
   </section>;
@@ -2635,6 +2624,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const triggerHasProviderCancelSurface = Boolean(triggerTargetMode && selectedTriggerOption && !heroTriggerEffectIds.has(selectedTriggerOption.effectId));
   const normalHasProviderCancelSurface = wushengMode === "play" || longdanMode === "play";
   const resetLocalTargetFlow = (flow: LocalTargetFlow) => {
+    setExpandedOpponentId(null);
     setTargetIds([]);
     if (flow === "normal") {
       setSelected(""); setWushengMode(null); setLongdanMode(null);
@@ -5363,7 +5353,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         if (!player) return null;
         const hero = heroDefinition(player.hero);
         return { name: player.name, heroId: hero?.id ?? player.hero, heroName: hero?.name ?? (player.hero ? heroName(player.hero) : null), hp: player.hp, maxHp: player.maxHp };
-      }} previewPlayer={targetPreviewPresentation} previewSubmission={submittedTargetPreview} inspectPlayer={opponentInspectionPresentation} selectableDetail={targetCardPickerSelectableDetail} judgementInFlight={judgementInFlight} onCloseInspect={() => setExpandedOpponentId(null)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} />}<StageSystemCluster
+      }} inspectPlayer={opponentInspectionPresentation} selectableDetail={targetCardPickerSelectableDetail} judgementInFlight={judgementInFlight} onCloseInspect={() => setExpandedOpponentId(null)} onInfoCard={setInfoCard} />}<StageSystemCluster
         publicResponseTimerPending={seatCountdown?.kind === "response"}
         responseTimer={seatCountdown?.kind === "response"
           ? <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} responseTimer />
@@ -5413,9 +5403,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
             interactionRoles={projectInteractionSeatRoles(clientPresentation, player.id)}
             targetSelectionActive={targetSelectionActive}
             targetablePlayer={targetablePlayer}
-            onTarget={() => { if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id); else { setTarget(player.id); setTargetCardIndex(null); } }}
-            onInspect={() => setExpandedOpponentId((currentId) => currentId === player.id ? null : player.id)}
-            onHeroInfo={setInfoHero}
+            onTarget={() => { if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id); else { setTarget(player.id); setTargetCardIndex(null); } setExpandedOpponentId(player.id); }}
+            onInspect={() => setExpandedOpponentId(player.id)}
             onInfoCard={setInfoCard}
             judgementInFlight={judgementInFlight}
             serpentSelected={serpentSelected}
@@ -5431,7 +5420,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     </section>
     <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} displayMode={rootActionOverlayDisplayMode} layoutReadiness={rootActionLayoutState} fallbackReason={rootActionOverlayFallbackReason} resultReadRemainingMs={rootActionOverlayResultReadRemainingMs} onLayoutReadinessChange={onRootActionOverlayLayoutReadinessChange} />
     <footer className="play-command">
-    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
+    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setExpandedOpponentId(null); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
       heroSkillControl={
         <section className="hero-skills local-hero-skills" aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => skill.passive

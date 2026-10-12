@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { devices, expect, test } from "@playwright/test";
 
 const API = "http://127.0.0.1:3137";
 const card = (kind, id, suit = "♠", rank = "7") => ({ id, kind, suit, rank });
@@ -673,19 +673,20 @@ test("real Raining Arrows exposes Zhen Ji's authoritative Dodge provider in Skil
 
 for (const viewport of [
   { width: 390, height: 844 },
+  { width: 440, height: 844 },
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
-  test(`server-projected opponent Inspect stays compact and private at ${viewport.width}px`, async ({ page, request }, testInfo) => {
-    const hidden = [card("Peach", `real-inspect-hidden-a-${viewport.width}`), card("Dodge", `real-inspect-hidden-b-${viewport.width}`), card("Attack", `real-inspect-hidden-c-${viewport.width}`)];
+  test(`server-projected unified target inspector stays compact and private at ${viewport.width}px`, async ({ page, request }, testInfo) => {
+    const hidden = [card("Peach", `real-inspect-hidden-${viewport.width}`)];
+    const attack = card("Attack", `real-inspect-attack-${viewport.width}`);
     const crossbow = card("ZhugeCrossbow", `real-inspect-crossbow-${viewport.width}`, "♦", "A");
     const shield = card("NioShield", `real-inspect-shield-${viewport.width}`);
-    const lightning = card("Lightning", `real-inspect-lightning-${viewport.width}`);
     const seed = await seedGame(request, [
-      { name: "VIEWER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
+      { name: "VIEWER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [attack] },
       {
-        name: "INSPECTED", role: "Loyalist", hero: "zhuge-liang", hp: 3, maxHp: 3, hand: hidden,
-        equipment: { weapon: crossbow, armor: shield }, judgement: [lightning],
+        name: "INSPECTED", role: "Loyalist", hero: "xiahou-dun", hp: 2, maxHp: 4, hand: hidden,
+        equipment: { weapon: crossbow, armor: shield }, judgement: [],
       },
       { name: "THIRD", role: "Rebel", hero: "guo-jia", hp: 4, maxHp: 4, hand: [] },
       { name: "FOURTH", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: [] },
@@ -693,95 +694,130 @@ for (const viewport of [
     const inspected = seed.players[1];
     const projected = await roomView(request, seed, 0);
     const target = projected.players.find((player) => player.id === inspected.id);
-    expect(target).toMatchObject({ hero: "zhuge-liang", handCount: 3 });
+    expect(target).toMatchObject({ hero: "xiahou-dun", hp: 2, maxHp: 4, handCount: 1 });
     expect(target.equipmentCards.map((entry) => entry.id)).toEqual(expect.arrayContaining([crossbow.id, shield.id]));
-    expect(target.judgementCards.map((entry) => entry.id)).toEqual([lightning.id]);
+    expect(target.judgementCards).toEqual([]);
     for (const hiddenCard of hidden) expect(JSON.stringify(projected)).not.toContain(hiddenCard.id);
 
     await openGame(page, seed, 0, viewport);
-    const inspectButton = page.locator(`[data-player-anchor="${inspected.id}"] .opponent-hero-target`);
+    const submissions = [];
+    page.on("request", (requestEvent) => {
+      if (requestEvent.url() === `${API}/api/rooms` && requestEvent.method() === "POST") {
+        submissions.push(JSON.parse(requestEvent.postData() ?? "{}"));
+      }
+    });
+    const inspectButton = page.locator(`[data-player-anchor="${inspected.id}"] .hero-card-info-button`);
     await expect(inspectButton).toHaveAttribute("aria-label", "Inspect INSPECTED");
     await inspectButton.click();
+    const readOnlyPanel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
+    await expect(readOnlyPanel).toBeVisible();
+    await expect(page.locator(`[data-player-anchor="${inspected.id}"].selected-target`)).toHaveCount(0);
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
+    expect(submissions).toEqual([]);
+    await readOnlyPanel.getByRole("button", { name: "Close INSPECTED inspection" }).click();
+
+    await page.locator(`[data-hand-card-id="${attack.id}"] .game-card`).click();
+    await page.getByRole("button", { name: "Select INSPECTED", exact: true }).click();
     const stage = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"]');
     const panel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
     await expect(panel).toBeVisible();
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
+    await expect(page.locator(`[data-player-anchor="${inspected.id}"].selected-target`)).toHaveCount(1);
+    await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
     await expect(panel.locator(".hero-focus-heading strong")).toHaveText("INSPECT · INSPECTED");
-    await expect(panel.locator(".hero-focus-identity")).toContainText("Zhuge Liang");
-    await expect(panel.locator(".hero-focus-identity")).toContainText("HP 3/3");
-    await expect(panel.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill')).toHaveCount(2);
-    await expect(panel.locator('[aria-label="Public Skills"]')).toContainText("Stargazing");
-    await expect(panel.locator('[aria-label="Public Skills"]')).toContainText("Empty Fortress Strategem");
+    await expect(panel.locator(".hero-focus-identity")).toContainText("Xiahou Dun");
+    await expect(panel.locator(".hero-focus-identity")).toContainText("HP 2/4");
+    await expect(panel.locator(".hero-focus-identity [data-public-hand-count]")).toHaveText("Hand · 1");
+    await expect(panel.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill')).toHaveCount(1);
+    await expect(panel.locator('[aria-label="Public Skills"]')).toContainText("Stauchness");
     await expect(panel.locator('[aria-label="Equipment"] .opponent-inspection-card')).toHaveCount(2);
     await expect(panel.getByRole("button", { name: "Explain Zhuge Crossbow" })).toBeVisible();
     await expect(panel.getByRole("button", { name: "Explain Nio Shield" })).toBeVisible();
-    await expect(panel.getByRole("button", { name: "Explain Lightning" })).toBeVisible();
-    const concealed = panel.locator('[aria-label="Concealed Hand"]');
-    await expect(concealed).toHaveAttribute("data-concealed-hand-count", "3");
-    await expect(concealed).toContainText("Hand · 3");
-    await expect(panel.locator(".hero-focus-inspect-hand-backs i")).toHaveCount(3);
-    await expect(concealed.locator(".played-card")).toHaveCount(0);
+    await expect(panel.locator('[aria-label="Judgement Zone"] .opponent-inspection-empty')).toHaveText("None");
+    await expect(panel.locator('[aria-label="Concealed Hand"]')).toHaveCount(0);
+    await expect(panel.locator(".hero-focus-inspect-hand-backs")).toHaveCount(0);
     await expect(panel).not.toContainText(/\b(Lord|Loyalist|Rebel|Renegade|Spy)\b/);
     const bodyText = await page.locator("body").innerText();
     for (const hiddenCard of hidden) expect(bodyText).not.toContain(hiddenCard.id);
-    const details = panel.locator(".hero-focus-inspect-details");
-    const publicSkillsBox = await panel.locator('[aria-label="Public Skills"]').boundingBox();
-    const publicZonesBox = await panel.locator(".hero-focus-inspect-public-zones").boundingBox();
-    expect(publicSkillsBox).not.toBeNull();
-    expect(publicZonesBox).not.toBeNull();
-    expect(publicSkillsBox.y + publicSkillsBox.height).toBeLessThanOrEqual(publicZonesBox.y + 1);
-    const detailsGeometry = await details.evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight }));
-    await testInfo.attach(`inspect-public-zones-geometry-${viewport.width}`, { body: JSON.stringify(detailsGeometry), contentType: "application/json" });
-    const detailsViewport = async () => details.evaluate((element) => {
-      const box = element.getBoundingClientRect();
-      const top = box.top + element.clientTop;
-      return { top, bottom: top + element.clientHeight };
-    });
-    const scrollContentIntoView = async (name, content) => {
-      const currentBox = await content.boundingBox();
-      const currentViewport = await detailsViewport();
-      expect(currentBox).not.toBeNull();
-      const offset = currentBox.y < currentViewport.top
-        ? currentBox.y - currentViewport.top
-        : currentBox.y + currentBox.height > currentViewport.bottom
-          ? currentBox.y + currentBox.height - currentViewport.bottom
-          : 0;
-      if (offset) await details.evaluate((element, scrollBy) => { element.scrollTop += scrollBy; }, offset);
-      const visibleBox = await content.boundingBox();
-      const visibleViewport = await detailsViewport();
-      const panelBox = await panel.boundingBox();
-      const scrollState = await details.evaluate((element) => ({ scrollTop: element.scrollTop, clientTop: element.clientTop, clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, borderTop: getComputedStyle(element).borderTopWidth }));
-      expect(visibleBox.y, JSON.stringify({ currentBox, currentViewport, visibleBox, visibleViewport, offset, scrollState })).toBeGreaterThanOrEqual(visibleViewport.top - 1);
-      expect(visibleBox.y + visibleBox.height).toBeLessThanOrEqual(visibleViewport.bottom + 1);
-      expect(visibleBox.y).toBeGreaterThanOrEqual(panelBox.y - 1);
-      expect(visibleBox.y + visibleBox.height).toBeLessThanOrEqual(panelBox.y + panelBox.height + 1);
-      await attachScreenshot(testInfo, `inspect-${name}-${viewport.width}`, page);
-    };
-    await scrollContentIntoView("equipment-crossbow", panel.getByRole("button", { name: "Explain Zhuge Crossbow" }));
-    await scrollContentIntoView("equipment-shield", panel.getByRole("button", { name: "Explain Nio Shield" }));
-    await scrollContentIntoView("judgement-lightning", panel.getByRole("button", { name: "Explain Lightning" }));
-    await scrollContentIntoView("concealed-hand", concealed);
-    await attachScreenshot(testInfo, `inspect-public-zones-scrolled-${viewport.width}`, page);
-    await details.evaluate((element) => { element.scrollTop = 0; });
+    const third = seed.players[2];
+    await page.locator(`[data-player-anchor="${third.id}"] .hero-card-info-button`).click();
+    const thirdPanel = page.getByRole("dialog", { name: "THIRD opponent inspection" });
+    await expect(thirdPanel).toBeVisible();
+    await expect(thirdPanel).toHaveAttribute("data-inspect-player-id", third.id);
+    await expect(page.locator(`[data-player-anchor="${inspected.id}"].selected-target`)).toHaveCount(1);
+    await expect(page.locator(`[data-player-anchor="${third.id}"].selected-target`)).toHaveCount(0);
+    await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
+    expect(submissions).toEqual([]);
+    await thirdPanel.getByRole("button", { name: "Close THIRD inspection" }).click();
+    await expect(page.locator(`[data-player-anchor="${inspected.id}"].selected-target`)).toHaveCount(1);
+    await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
+    await inspectButton.click();
+    await expect(panel).toBeVisible();
 
-    const [stageBox, panelBox, dockBefore, menuBox, guidanceBox] = await Promise.all([
-      stage.boundingBox(), panel.boundingBox(), page.locator(".local-player-dock").boundingBox(),
+    const details = panel.locator(".hero-focus-inspect-details");
+    const skill = panel.getByRole("button", { name: "Show Stauchness description" });
+    await skill.focus();
+    await page.keyboard.press("Enter");
+    const skillDescription = panel.getByRole("region", { name: "Stauchness description" });
+    await expect(skillDescription).toHaveText("After you take damage, you may enter Judgement phase, if the Judgement card does not belong to [Heart], the source of damage must choose between: ①discard 2 hand cards; ②take 1 damage from you.");
+    await expect(skill).toHaveAttribute("aria-expanded", "true");
+    expect(submissions).toEqual([]);
+    const detailsGeometry = await details.evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, overflowY: getComputedStyle(element).overflowY }));
+    await testInfo.attach(`inspect-expanded-details-geometry-${viewport.width}`, { body: JSON.stringify(detailsGeometry), contentType: "application/json" });
+    await attachScreenshot(testInfo, `server-unified-inspect-expanded-${viewport.width}`, page);
+    await page.keyboard.press("Enter");
+    await expect(skillDescription).toHaveCount(0);
+    await expect(skill).toHaveAttribute("aria-expanded", "false");
+    const dockAtSelectedTarget = await page.locator(".local-player-dock").boundingBox();
+    await attachScreenshot(testInfo, `server-unified-inspect-${viewport.width}`, page);
+
+    const surface = page.locator(".opponent-inspection-floating-shell");
+    const detailsBox = await details.boundingBox();
+    const equipmentCardBoxes = await panel.locator('[aria-label="Equipment"] .opponent-inspection-card').evaluateAll((cards) => cards.map((card) => {
+      const box = card.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    }));
+    const [stageBox, surfaceBox, panelBox, dockBefore, menuBox, guidanceBox, seatBoxes] = await Promise.all([
+      stage.boundingBox(), surface.boundingBox(), panel.boundingBox(), dockAtSelectedTarget,
       page.locator(".stage-system-menu-trigger").boundingBox(), page.locator(".local-player-dock .console-guidance").boundingBox(),
+      page.locator(".player-board [data-player-anchor]").evaluateAll((seats) => seats.map((seat) => { const box = seat.getBoundingClientRect(); return { x: box.x, y: box.y, width: box.width, height: box.height }; })),
     ]);
     expect(stageBox).not.toBeNull();
+    expect(surfaceBox).not.toBeNull();
     expect(panelBox).not.toBeNull();
     expect(dockBefore).not.toBeNull();
     expect(menuBox).not.toBeNull();
     expect(guidanceBox).not.toBeNull();
-    await testInfo.attach(`inspect-layout-geometry-${viewport.width}`, { body: JSON.stringify({ stageBox, panelBox, dockBefore, menuBox, guidanceBox, detailsGeometry }, null, 2), contentType: "application/json" });
+    await testInfo.attach(`inspect-layout-geometry-${viewport.width}`, { body: JSON.stringify({ stageBox, surfaceBox, panelBox, detailsBox, equipmentCardBoxes, dockBefore, menuBox, guidanceBox, seatBoxes, detailsGeometry }, null, 2), contentType: "application/json" });
     const overlaps = (a, b) => Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x)
       && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
-    expect(panelBox.width).toBeLessThan(stageBox.width);
-    expect(panelBox.height).toBeLessThanOrEqual(stageBox.height * 0.72 + 1);
-    expect(panelBox.y).toBeGreaterThanOrEqual(stageBox.y - 1);
-    expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height + 1);
-    expect(overlaps(panelBox, menuBox)).toBe(false);
-    expect(overlaps(panelBox, guidanceBox)).toBe(false);
-    expect(overlaps(panelBox, dockBefore)).toBe(false);
+    expect(surfaceBox.width).toBeLessThan(stageBox.width);
+    expect(surfaceBox.height).toBeLessThanOrEqual(stageBox.height * 0.5 + 1);
+    expect(surfaceBox.y).toBeGreaterThanOrEqual(stageBox.y - 1);
+    expect(surfaceBox.y + surfaceBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height + 1);
+    expect(panelBox.x).toBeGreaterThanOrEqual(surfaceBox.x);
+    expect(panelBox.y).toBeGreaterThanOrEqual(surfaceBox.y);
+    expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(surfaceBox.x + surfaceBox.width);
+    expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(surfaceBox.y + surfaceBox.height);
+    expect(detailsBox.y).toBeGreaterThanOrEqual(panelBox.y);
+    expect(detailsBox.y + detailsBox.height).toBeLessThanOrEqual(panelBox.y + panelBox.height + 1);
+    expect(overlaps(surfaceBox, menuBox)).toBe(false);
+    expect(overlaps(surfaceBox, guidanceBox)).toBe(false);
+    expect(overlaps(surfaceBox, dockBefore)).toBe(false);
+    for (const seatBox of seatBoxes) expect(overlaps(surfaceBox, seatBox)).toBe(false);
+    if (viewport.width > 520) {
+      expect(detailsBox.x).toBeGreaterThan(panelBox.x);
+      expect(detailsBox.width).toBeLessThan(panelBox.width);
+    }
+    for (const cardBox of equipmentCardBoxes) {
+      expect(cardBox.x).toBeGreaterThanOrEqual(detailsBox.x);
+      expect(cardBox.y).toBeGreaterThanOrEqual(detailsBox.y);
+      expect(cardBox.x + cardBox.width).toBeLessThanOrEqual(detailsBox.x + detailsBox.width);
+      expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(detailsBox.y + detailsBox.height + 1);
+    }
+    if (viewport.width <= 520) expect(surfaceBox.width / stageBox.width).toBeGreaterThanOrEqual(0.88);
+    expect(surfaceBox.width / stageBox.width).toBeLessThanOrEqual(0.94);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
     await attachScreenshot(testInfo, `server-opponent-inspect-${viewport.width}`, page);
 
@@ -790,5 +826,54 @@ for (const viewport of [
     const dockAfter = await page.locator(".local-player-dock").boundingBox();
     expect(Math.abs(dockAfter.x - dockBefore.x)).toBeLessThanOrEqual(2);
     expect(Math.abs(dockAfter.y - dockBefore.y)).toBeLessThanOrEqual(2);
+    await expect(page.locator(`[data-player-anchor="${inspected.id}"].selected-target`)).toHaveCount(1);
+    await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
+    const confirm = page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" });
+    const submittedPromise = actionResponse(page, "play_card");
+    await confirm.click();
+    const submitted = await submittedPromise;
+    expect(submitted.ok()).toBeTruthy();
+    expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({ action: "play_card", cardId: attack.id, targetId: inspected.id });
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+    expect(submissions).toHaveLength(1);
   });
 }
+
+test.describe("iPhone 17 Pro Max mobile browser emulation", () => {
+  const iphoneDevice = Object.fromEntries(Object.entries(devices["iPhone 17 Pro Max"]).filter(([key]) => key !== "defaultBrowserType"));
+  test.use(iphoneDevice);
+
+  test("server-backed inspector supports touch and keyboard skill disclosure", async ({ page, request }, testInfo) => {
+    const hidden = [card("Peach", "real-inspect-mobile-hidden")];
+    const crossbow = card("ZhugeCrossbow", "real-inspect-mobile-crossbow", "♦", "A");
+    const shield = card("NioShield", "real-inspect-mobile-shield");
+    const seed = await seedGame(request, [
+      { name: "VIEWER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
+      { name: "INSPECTED", role: "Loyalist", hero: "xiahou-dun", hp: 2, maxHp: 4, hand: hidden, equipment: { weapon: crossbow, armor: shield }, judgement: [] },
+      { name: "THIRD", role: "Rebel", hero: "guo-jia", hp: 4, maxHp: 4, hand: [] },
+      { name: "FOURTH", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: [] },
+    ]);
+    const viewport = devices["iPhone 17 Pro Max"].viewport;
+    await openGame(page, seed, 0, viewport);
+    const tap = async (locator) => {
+      const box = await locator.boundingBox();
+      expect(box).not.toBeNull();
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    };
+    const inspectButton = page.locator(`[data-player-anchor="${seed.players[1].id}"] .hero-card-info-button`);
+    await tap(inspectButton);
+    const panel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
+    await expect(panel).toBeVisible();
+    await expect(panel.locator(".hero-focus-identity [data-public-hand-count]")).toHaveText("Hand · 1");
+    const skill = panel.getByRole("button", { name: "Show Stauchness description" });
+    await skill.focus();
+    await page.keyboard.press("Enter");
+    await expect(panel.getByRole("region", { name: "Stauchness description" })).toContainText("After you take damage, you may enter Judgement phase");
+    await attachScreenshot(testInfo, "server-webkit-mobile-inspector-skill-expanded", page);
+    await tap(skill);
+    await expect(panel.getByRole("region", { name: "Stauchness description" })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+    await tap(panel.getByRole("button", { name: "Close INSPECTED inspection" }));
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+  });
+});

@@ -2335,7 +2335,6 @@
 .hero-focus-inspect .hero-focus-identity span { font-size: 12px; line-height: 1.15; }
 .hero-focus-inspect .hero-focus-identity small { font-size: 10px; }
 .hero-focus-inspect-close { flex: none; width: 22px; height: 22px; padding: 0; border: 1px solid #a58e5d; border-radius: 50%; background: #11140f; color: #f0d28c; font: 16px/18px Arial, sans-serif; cursor: pointer; pointer-events: auto; }
-.hero-focus-inspect-explain { width: fit-content; padding: 2px 5px; border: 1px solid #7b704c; background: #171a13; color: #d9c28b; font: 700 9px Arial, sans-serif; cursor: pointer; pointer-events: auto; }
 .hero-focus-inspect-details { grid-area: context; grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 5px; min-width: 0; min-height: 0; max-height: min(30vh, 240px); overflow: auto; padding: 0 2px 2px 0; pointer-events: auto; }
 .hero-focus-inspect .hero-focus-inspect-public-skills { margin-top: 0; padding: 4px 5px; }
 .hero-focus-inspect-public-zones { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 5px; }
@@ -2344,10 +2343,6 @@
 .hero-focus-inspect .hero-focus-inspect-public-skills h3 { margin-bottom: 4px; font-size: 7px; }
 .hero-focus-inspect-skills { display: flex; flex-wrap: wrap; gap: 4px; }
 .hero-focus-inspect-skill { max-width: 100%; padding: 4px 7px; border: 1px solid #6f846f99; background: #17231d; color: #d9d0bb; font: 700 10px/1.15 Arial, sans-serif; overflow-wrap: anywhere; cursor: pointer; pointer-events: auto; }
-.hero-focus-inspect-hand { display: flex; align-items: center; gap: 7px; color: #d9d0bb; font: 8px Arial, sans-serif; }
-.hero-focus-inspect-hand-backs { display: flex; align-items: center; padding-left: 4px; }
-.hero-focus-inspect-hand-backs i { width: 15px; height: 20px; margin-left: -4px; border: 1px solid #aa925b; border-radius: 2px; background: repeating-linear-gradient(135deg, #25352c 0 2px, #17231d 2px 4px); box-shadow: 0 1px 2px #0008; }
-.hero-focus-inspect-hand strong { color: #f0d28c; }
 .hero-focus-inspect .opponent-inspection-card { width: clamp(42px, 12vw, 60px); flex-basis: clamp(42px, 12vw, 60px); pointer-events: auto; }
 .hero-focus-inspect .opponent-inspection-zone[aria-label="Equipment"] .opponent-inspection-card-row:has(> .opponent-inspection-card:only-child) > .opponent-inspection-card { width: clamp(70px, 16vw, 78px); flex-basis: clamp(70px, 16vw, 78px); }
 
@@ -2443,23 +2438,230 @@
   max-height: max(0px, min(220px, calc(72cqh - 132px)));
 }
 
+/* UX2 §4B.12: one compact public inspector also owns the selected-target
+   preview. Keep identity fixed and scroll only public details when needed. */
+.opponent-inspection-backdrop {
+  background: #07090724;
+}
+
+.opponent-inspection-layer {
+  padding: 12px;
+}
+
+.opponent-inspection-floating-shell {
+  display: flex;
+  flex-direction: column;
+  height: fit-content;
+  width: min(94%, 660px);
+  max-height: min(50cqh, 380px);
+  min-height: 0;
+  padding: 5px;
+}
+
+.game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell > .hero-focus.hero-focus-inspect {
+  display: grid;
+  grid-template-areas: "heading heading" "body context";
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  flex: 0 1 auto;
+  gap: 3px;
+  width: 100%;
+  height: fit-content;
+  max-height: calc(min(50cqh, 380px) - 12px);
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-heading {
+  grid-area: heading;
+  min-height: 20px;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 1px;
+  border-bottom: 1px solid #51452f;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-heading strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
+  grid-area: body;
+  display: grid;
+  grid-template-columns: minmax(58px, 58px) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-portrait {
+  grid-area: auto;
+  flex: none;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 5;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity {
+  grid-area: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: baseline;
+  align-content: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity b,
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity span {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity b {
+  color: #f0d28c;
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity span {
+  color: #e2d4b4;
+  font-size: 12px;
+  line-height: 1.15;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity small {
+  color: #c8bea8;
+  font-size: 10px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context {
+  grid-area: context;
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 2px 2px 0;
+}
+
+.game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context {
+  grid-area: context;
+  grid-column: auto;
+  grid-row: auto;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-public-skills {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-public-skills h3 {
+  flex: none;
+  margin: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-public-skills h3,
+.opponent-inspection-floating-shell .hero-focus-inspect-public-zones .opponent-inspection-zone h3 {
+  margin-bottom: 2px;
+  font-size: 8px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-public-skills h3 {
+  margin: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skill {
+  min-height: 21px;
+  max-width: 100%;
+  padding: 2px 5px;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-close {
+  width: 20px;
+  height: 20px;
+  font-size: 14px;
+  line-height: 16px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skill-description {
+  margin: 6px 0 0;
+  padding: 6px 7px;
+  border-left: 2px solid #a58e5d;
+  background: #090b08;
+  color: #e4dcc9;
+  font: 12px/1.4 Arial, sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-public-zones {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 3px;
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-zone {
+  min-width: 0;
+  padding: 2px 3px;
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-card-row {
+  gap: 3px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .opponent-inspection-card {
+  width: 38px;
+  flex-basis: 38px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-inspect-public-zones .opponent-inspection-zone[aria-label="Equipment"] .opponent-inspection-card-row:has(> .opponent-inspection-card:only-child) > .opponent-inspection-card {
+  width: 38px;
+  flex-basis: 38px;
+}
+
 @media (max-width: 520px) {
   .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell > .hero-focus.hero-focus-inspect {
-    grid-template-columns: minmax(0, 41fr) minmax(0, 59fr);
-    column-gap: 10px;
+    grid-template-areas: "heading" "body" "context";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    max-height: calc(min(50cqh, 380px) - 12px);
   }
-  .game-shell .play-table[data-seat-topology="top-row"] .hero-focus-inspect {
-    grid-template-columns: minmax(0, 41fr) minmax(0, 59fr);
-    column-gap: 10px;
-  }
-  .game-shell .play-table[data-seat-topology="top-row"] .hero-focus-inspect .hero-focus-portrait {
-    box-sizing: border-box;
-    width: 100%;
-    height: auto;
-    aspect-ratio: 4 / 5;
-  }
-  .opponent-inspection-floating-shell .hero-focus-inspect-details {
-    max-height: min(30vh, 180px);
+
+  .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context {
+    grid-column: 1 / -1;
+    grid-row: 3;
   }
 }
 
@@ -2765,9 +2967,6 @@
 
 /* UX2.2-HF-PREVIEW-01: distinguish local, unsubmitted focus without changing
    the shared Hero Focus geometry or implying an authoritative interaction. */
-.hero-focus-preview { outline: 1px dashed #d0a858; outline-offset: 4px; }
-.hero-focus-preview .hero-focus-heading strong,
-.hero-focus-preview .hero-focus-context { color: #efc36c; }
 
 .hero-focus-selectable-detail {
   grid-column: 1 / -1;

@@ -23,17 +23,19 @@ test("Borrowed Sword target selection consumes only the CurrentAction projection
 
   await legalHolder.click();
   await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
-  const preview = page.locator('.interaction-stage[data-local-ui-mode="PREVIEW"]');
-  await expect(preview).toHaveAttribute("data-local-preview-player-id", "p2");
-  await expect(preview).toContainText("UNSUBMITTED TARGET · LOCAL PREVIEW");
+  const inspector = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel');
+  await expect(inspector).toHaveAttribute("data-inspect-player-id", "p2");
   const confirm = page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" });
+  await expect(confirm).toBeEnabled();
+  await page.getByRole("button", { name: "Close Player 2 inspection", exact: true }).click();
+  await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
   await expect(confirm).toBeEnabled();
   await confirm.click();
   await expect.poll(() => page.evaluate(() => window.__browserActions.at(-1))).toEqual({
     action: "play_card",
     extra: { cardId: "browser-borrowed-sword", targetId: "p2" },
   });
-  await expect(preview).toHaveAttribute("data-local-preview-player-id", "p2");
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
 });
 
 test("Borrowed Sword does not invent a target when CurrentAction projects none", async ({ page }) => {

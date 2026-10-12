@@ -26,7 +26,7 @@ function expectStableBox(before, after) {
   }
 }
 
-test("opponent Hero info opens without replacing the authoritative Stage with Inspect", async ({ page }) => {
+test("opponent information affordance opens the unified inspector without changing Stage identity", async ({ page }) => {
   await loadFixture(page, { state: "interaction", width: 480, height: 900 });
   const stage = page.locator('.play-table[data-seat-topology="top-row"] .interaction-stage');
   await expect(stage).toHaveAttribute("data-stage", "ATTACK_RESPONSE");
@@ -35,14 +35,15 @@ test("opponent Hero info opens without replacing the authoritative Stage with In
   ));
 
   await page.locator('[data-player-anchor="p2"] .hero-card-info-button').click();
-  await expect(page.getByRole("dialog", { name: "Liu Bei" })).toBeVisible();
-  await expect(stage).not.toHaveAttribute("data-local-ui-mode");
+  await expect(page.getByRole("dialog", { name: "Player 2 opponent inspection" })).toBeVisible();
+  await expect(stage).toHaveAttribute("data-local-ui-mode", "INSPECT");
   expect(await stage.evaluate((element) => Object.fromEntries(
     ["data-interaction-id", "data-checkpoint-id", "data-presentation-revision", "data-stage"].map((name) => [name, element.getAttribute(name)]),
   ))).toEqual(stageIdentity);
 
-  await page.getByRole("button", { name: "Close hero information" }).click();
+  await page.getByRole("button", { name: "Close Player 2 inspection" }).click();
   await expect(stage).toBeVisible();
+  await expect(stage).not.toHaveAttribute("data-local-ui-mode");
 });
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
@@ -70,9 +71,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       expect(Number.parseFloat(await skill.evaluate((element) => getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(10);
     }
     await expect(inspect.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]')).toHaveCount(1);
-    await expect(inspect.locator('[aria-label="Concealed Hand"]')).toHaveAttribute("data-concealed-hand-count", "2");
-    await expect(inspect.locator(".hero-focus-inspect-hand-backs i")).toHaveCount(2);
-    await expect(inspect.locator('[aria-label="Concealed Hand"] .played-card')).toHaveCount(0);
+    await expect(inspect.locator(".hero-focus-identity [data-public-hand-count]")).toHaveText("Hand · 2");
+    await expect(inspect.locator('[aria-label="Concealed Hand"]')).toHaveCount(0);
+    await expect(inspect.locator(".hero-focus-inspect-hand-backs")).toHaveCount(0);
     await expect(inspect).not.toHaveAttribute("aria-modal", "true");
     await expect(layer).toBeVisible();
     await expect(layer.locator(".opponent-inspection-backdrop")).toBeVisible();
@@ -92,7 +93,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
         player: Number.parseFloat(getComputedStyle(element.querySelector("b")).fontSize),
         hero: Number.parseFloat(getComputedStyle(element.querySelector("span")).fontSize),
         hp: Number.parseFloat(getComputedStyle(element.querySelector("small")).fontSize),
-        explain: Number.parseFloat(getComputedStyle(element.querySelector(".hero-focus-inspect-explain")).fontSize),
+        hand: Number.parseFloat(getComputedStyle(element.querySelector("[data-public-hand-count]")).fontSize),
       })),
       page.locator(".stage-system-menu-trigger").boundingBox(),
       page.locator(".local-player-dock .console-guidance").boundingBox(),
@@ -109,27 +110,24 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     expect(Math.abs(backdropBox.height - stageBox.height)).toBeLessThanOrEqual(1);
     expect(Math.abs((shellBox.x + shellBox.width / 2) - (stageBox.x + stageBox.width / 2))).toBeLessThanOrEqual(1);
     expect(Math.abs((shellBox.y + shellBox.height / 2) - (stageBox.y + stageBox.height / 2))).toBeLessThanOrEqual(1);
-    expect(shellBox.height / stageBox.height).toBeLessThanOrEqual(0.72);
+    expect(shellBox.height / stageBox.height).toBeLessThanOrEqual(0.5);
     expect(shellBox.height).toBeLessThan(stageBox.height);
     expect(identityType.player).toBeGreaterThanOrEqual(15);
     expect(identityType.hero).toBeGreaterThanOrEqual(12);
     expect(identityType.hp).toBeGreaterThanOrEqual(10);
-    expect(identityType.explain).toBeGreaterThanOrEqual(9);
+    expect(identityType.hand).toBeGreaterThanOrEqual(10);
+    expect(portraitBox.width).toBeLessThanOrEqual(82);
     if (viewport.width <= 520) {
-      expect(portraitBox.width / inspectBox.width).toBeGreaterThanOrEqual(0.38);
-      expect(portraitBox.width / inspectBox.width).toBeLessThanOrEqual(0.44);
-      expect(identityBox.width / inspectBox.width).toBeGreaterThanOrEqual(0.56);
-      expect(identityBox.width / inspectBox.width).toBeLessThanOrEqual(0.62);
+      expect(portraitBox.width).toBeGreaterThanOrEqual(58);
+      expect(identityBox.width).toBeGreaterThan(portraitBox.width);
       expect(identityBox.x).toBeGreaterThanOrEqual(portraitBox.x + portraitBox.width);
       expect(identityBox.x + identityBox.width).toBeLessThanOrEqual(shellBox.x + shellBox.width);
       expect(shellBox.width / stageBox.width).toBeGreaterThanOrEqual(0.88);
       expect(shellBox.width / stageBox.width).toBeLessThanOrEqual(0.94);
-      expect(shellBox.x - stageBox.x).toBeGreaterThanOrEqual(12);
-      expect(shellBox.x - stageBox.x).toBeLessThanOrEqual(16);
-      expect(stageBox.x + stageBox.width - shellBox.x - shellBox.width).toBeGreaterThanOrEqual(12);
-      expect(stageBox.x + stageBox.width - shellBox.x - shellBox.width).toBeLessThanOrEqual(16);
+      const leftInset = shellBox.x - stageBox.x;
+      const rightInset = stageBox.x + stageBox.width - shellBox.x - shellBox.width;
+      expect(Math.abs(leftInset - rightInset)).toBeLessThanOrEqual(1);
     } else {
-      expect(portraitBox.width).toBeLessThanOrEqual(100);
       expect(portraitBox.height).toBeLessThanOrEqual(125);
     }
     expect(Math.abs((titleBox.y + titleBox.height / 2) - (closeBox.y + closeBox.height / 2))).toBeLessThanOrEqual(2);
@@ -141,7 +139,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
 
     await inspect.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]').click();
     await expect(page.getByRole("dialog", { name: "Zhuge Crossbow" })).toBeVisible();
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
     await page.getByRole("button", { name: "Close card explanation" }).click();
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+    await page.locator('[data-player-anchor="p2"] .hero-card-info-button').click();
     await expect(inspect).toBeVisible();
 
     await page.getByRole("button", { name: "Close Player 2 inspection", exact: true }).click();
@@ -166,7 +167,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       skills.locator(".hero-focus-inspect-skill").evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
     ]);
     expect(skillZoneBox).not.toBeNull();
-    expect(skillZoneBox.height).toBeLessThanOrEqual(48);
+    expect(skillZoneBox.height).toBeLessThanOrEqual(60);
     expect(skillType).toBeGreaterThanOrEqual(10);
     const equipment = inspect.locator('[aria-label="Equipment"]');
     const equipmentCard = equipment.locator('.opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]');
@@ -174,20 +175,25 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     const [equipmentZoneBox, equipmentCardBox] = await Promise.all([equipment.boundingBox(), equipmentCard.boundingBox()]);
     expect(equipmentZoneBox).not.toBeNull();
     expect(equipmentCardBox).not.toBeNull();
-    expect(equipmentCardBox.width).toBeGreaterThanOrEqual(70);
+    expect(equipmentCardBox.width).toBeGreaterThanOrEqual(36);
     expect(equipmentCardBox.height / equipmentCardBox.width).toBeGreaterThanOrEqual(1.45);
     expect(equipmentCardBox.height / equipmentCardBox.width).toBeLessThanOrEqual(1.55);
     expect(equipmentCardBox.x).toBeGreaterThanOrEqual(equipmentZoneBox.x);
     expect(equipmentCardBox.x + equipmentCardBox.width).toBeLessThanOrEqual(equipmentZoneBox.x + equipmentZoneBox.width);
 
-    await skills.getByRole("button", { name: "Explain Stauchness" }).click();
-    await expect(page.getByRole("dialog", { name: "Xiahou Dun" })).toBeVisible();
-    await page.getByRole("button", { name: "Close hero information" }).click();
-    await expect(inspect).toBeVisible();
+    const stauchness = skills.getByRole("button", { name: "Show Stauchness description" });
+    await stauchness.click();
+    const description = inspect.getByRole("region", { name: "Stauchness description" });
+    await expect(description).toContainText("After you take damage, you may enter Judgement phase");
+    await expect(stauchness).toHaveAttribute("aria-expanded", "true");
+    await stauchness.click();
+    await expect(description).toHaveCount(0);
+    await expect(stauchness).toHaveAttribute("aria-expanded", "false");
     await equipmentCard.click();
     await expect(page.getByRole("dialog", { name: "Zhuge Crossbow" })).toBeVisible();
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
     await page.getByRole("button", { name: "Close card explanation" }).click();
-    await expect(inspect).toBeVisible();
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
   });
 }
 
@@ -214,29 +220,33 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
   });
 }
 
-for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
-  test(`Inspect keeps Concealed Hand zone content-sized beside Judgment at ${viewport.width}px`, async ({ page }) => {
-    await loadFixture(page, { ...viewport, count: 6, equipmentCase: "empty" });
+for (const count of [6, 8]) {
+  test(`Inspect keeps public Hand count private and Judgment compact with ${count} seats`, async ({ page }) => {
+    const viewport = { width: 390, height: 844 };
+    await loadFixture(page, { ...viewport, count, equipmentCase: "empty" });
     await page.locator('[data-player-anchor="p3"] .opponent-hero-target').click();
     const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
     const judgment = inspect.locator('[aria-label="Judgement Zone"]');
-    const hand = inspect.locator('[aria-label="Concealed Hand"]');
     const judgmentCard = judgment.locator('.opponent-inspection-card[aria-label="Explain Lightning"]');
     const publicZones = inspect.locator(".hero-focus-inspect-public-zones");
     await expect(judgmentCard).toHaveCount(1);
-    const [inspectBox, publicZonesBox, judgmentBox, handBox] = await Promise.all([
+    const [inspectBox, publicZonesBox, judgmentBox] = await Promise.all([
       inspect.boundingBox(),
       publicZones.boundingBox(),
       judgment.boundingBox(),
-      hand.boundingBox(),
     ]);
     expect(inspectBox).not.toBeNull();
     expect(publicZonesBox).not.toBeNull();
     expect(publicZonesBox.width).toBeGreaterThan(inspectBox.width * 0.7);
     expect(judgmentBox).not.toBeNull();
-    expect(handBox).not.toBeNull();
-    expect(judgmentBox.height).toBeGreaterThan(handBox.height + 20);
-    expect(handBox.height).toBeLessThanOrEqual(viewport.width <= 520 ? 80 : 60);
+    await expect(inspect.locator(".hero-focus-identity [data-public-hand-count]")).toBeVisible();
+    await expect(inspect.locator('[aria-label="Concealed Hand"]')).toHaveCount(0);
+    await expect(inspect.locator(".hero-focus-inspect-hand-backs")).toHaveCount(0);
+    const seatBoxes = await seatGeometry(page);
+    const panelBox = await page.locator(".opponent-inspection-floating-shell").boundingBox();
+    expect(panelBox).not.toBeNull();
+    for (const seatBox of seatBoxes) expect(overlaps(panelBox, seatBox)).toBe(false);
+    expect(await page.locator(".local-player-dock").boundingBox()).not.toBeNull();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
   });
 }
@@ -252,7 +262,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     const [zoneBox, detailsBox] = await Promise.all([judgment.boundingBox(), inspect.locator(".hero-focus-inspect-details").boundingBox()]);
     expect(zoneBox).not.toBeNull();
     expect(detailsBox).not.toBeNull();
-    expect(zoneBox.height).toBeLessThanOrEqual(34);
+    expect(zoneBox.height).toBeLessThanOrEqual(38);
     expect(zoneBox.x).toBeGreaterThanOrEqual(detailsBox.x);
     expect(zoneBox.x + zoneBox.width).toBeLessThanOrEqual(detailsBox.x + detailsBox.width);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
@@ -270,32 +280,32 @@ test("Inspect shows a compact None state when public Hero skills are unavailable
   await expect(inspect.locator(".hero-focus-identity .hero-focus-inspect-explain")).toHaveCount(0);
 });
 
-test("Inspect stays independent from target selection and restores the selected Preview", async ({ page }) => {
+test("unified Inspector changes its subject without changing the legal target", async ({ page }) => {
   await loadFixture(page, { state: "ordinary-turn", width: 480, height: 900, equipmentCase: "empty" });
   await page.locator('[data-hand-card-id="browser-ordinary-5"] .game-card').click();
   await page.getByRole("button", { name: "Select Player 2", exact: true }).click();
-  const preview = page.locator('.interaction-stage[data-local-ui-mode="PREVIEW"]');
-  await expect(preview).toHaveAttribute("data-local-preview-player-id", "p2");
-  await expect(preview.locator('[data-hero-focus-mode="PREVIEW"]')).not.toContainText("HERO FOCUS");
+  const panel = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel');
+  await expect(panel).toHaveAttribute("data-inspect-player-id", "p2");
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
 
   await page.getByRole("button", { name: "Inspect Player 2", exact: true }).click();
-  const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
-  await expect(inspect).toBeVisible();
-  await expect(inspect).not.toContainText("HERO FOCUS");
+  await expect(panel).toBeVisible();
+  await expect(panel).not.toContainText("HERO FOCUS");
   await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
   await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
   await expect(page.locator('[data-console-surface="local-operation"] button.local-target-cancel')).toBeVisible();
   expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
 
-  await page.getByRole("button", { name: "Explain Liu Bei", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Liu Bei" })).toBeVisible();
-  await page.getByRole("button", { name: "Close hero information" }).click();
-  await expect(inspect).toBeVisible();
+  await page.getByRole("button", { name: "Inspect Player 3", exact: true }).click();
+  await expect(panel).toHaveAttribute("data-inspect-player-id", "p3");
   await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
+  await expect(page.locator('.opponent-player-card[data-player-anchor="p3"]')).not.toHaveClass(/selected-target/);
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
 
-  await page.getByRole("button", { name: "Close Player 2 inspection", exact: true }).click();
-  await expect(preview).toHaveAttribute("data-local-preview-player-id", "p2");
-  await expect(preview.locator('[data-hero-focus-mode="PREVIEW"]')).not.toContainText("HERO FOCUS");
+  await page.getByRole("button", { name: "Close Player 3 inspection", exact: true }).click();
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+  await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
+  await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
   expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
 });
 
@@ -330,9 +340,9 @@ test("Side Column Inspect keeps public Judgement details inside the centre Stage
   await expect(inspect.locator('[aria-label="Judgement Zone"] .opponent-inspection-card[aria-label="Explain Lightning"]')).toHaveCount(1);
   await inspect.locator('[aria-label="Judgement Zone"] .opponent-inspection-card[aria-label="Explain Lightning"]').click();
   await expect(page.getByRole("dialog", { name: "Lightning" })).toBeVisible();
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
   await page.getByRole("button", { name: "Close card explanation" }).click();
-  await expect(inspect).toBeVisible();
-  await page.getByRole("button", { name: "Close Player 3 inspection", exact: true }).click();
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
   expect(await seatGeometry(page)).toEqual(before);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(480);
 });
