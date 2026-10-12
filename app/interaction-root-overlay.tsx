@@ -243,31 +243,32 @@ function publicReadTimerPosition(card: Rect, shellWidth: number) {
     : { left: card.left + card.width - 54, top: Math.max(6, card.top - 30) };
 }
 
-function PublicCounterReadTimer({ eventId, remainingMs, style, readKind }: { eventId: string; remainingMs: number; style: { left: number; top: number }; readKind: "response" | "card" }) {
+export function PublicCounterReadTimer({ eventId, remainingMs, style, readKind, placement = "overlay" }: { eventId: string; remainingMs: number; style?: { left: number; top: number }; readKind: "response" | "card"; placement?: "overlay" | "operation-status" }) {
   const [remainingSeconds, setRemainingSeconds] = useState(Math.ceil(remainingMs / 1000));
   useEffect(() => {
     const visibleSince = performance.now();
     let lastSeconds = Math.ceil(remainingMs / 1000);
-    recordAttackDodgeUxTrace("public-read-timer", { eventId, readKind, remainingSeconds: lastSeconds });
+    recordAttackDodgeUxTrace("public-read-timer", { eventId, readKind, placement, remainingSeconds: lastSeconds });
     const update = () => {
       const nextSeconds = Math.ceil(Math.max(0, remainingMs - (performance.now() - visibleSince)) / 1000);
       if (nextSeconds !== lastSeconds) {
         lastSeconds = nextSeconds;
-        recordAttackDodgeUxTrace("public-read-timer", { eventId, readKind, remainingSeconds: nextSeconds });
+        recordAttackDodgeUxTrace("public-read-timer", { eventId, readKind, placement, remainingSeconds: nextSeconds });
         setRemainingSeconds(nextSeconds);
       }
     };
     update();
     const timer = window.setInterval(update, 200);
     return () => window.clearInterval(timer);
-  }, [eventId, readKind, remainingMs]);
+  }, [eventId, placement, readKind, remainingMs]);
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = String(remainingSeconds % 60).padStart(2, "0");
   return <div
-    className="interaction-root-public-read-timer"
+    className={`interaction-root-public-read-timer${placement === "operation-status" ? " local-operation-card-read-timer" : ""}`}
     data-public-counter-read-timer="true"
     data-public-counter-read-event-id={eventId}
     data-public-counter-read-remaining-seconds={remainingSeconds}
+    data-public-counter-read-placement={placement}
     role="timer"
     aria-label={`Public ${readKind === "response" ? "response" : "card"} graph time remaining: ${minutes} minutes ${seconds} seconds`}
     style={style}
@@ -297,6 +298,74 @@ function rectangleEdge(rect: Rect, toward: Point): Point {
   const yScale = dy === 0 ? Number.POSITIVE_INFINITY : rect.height / 2 / Math.abs(dy);
   const scale = Math.min(xScale, yScale);
   return { x: origin.x + dx * scale, y: origin.y + dy * scale };
+}
+
+function attackHitResultLabelPosition(layout: RootActionLayout): { left: number; top: number } | null {
+  if (!layout.targetPath) return null;
+  const tokens = layout.targetPath.match(/[MLQ]|-?(?:\d+\.?\d*|\.\d+)/g);
+  if (!tokens) return null;
+  const segments: { from: Point; to: Point; straight: boolean }[] = [];
+  let current: Point | null = null;
+  let tokenIndex = 0;
+  const readPoint = (): Point | null => {
+    const x = Number(tokens[tokenIndex++]);
+    const y = Number(tokens[tokenIndex++]);
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+  };
+  while (tokenIndex < tokens.length) {
+    const command = tokens[tokenIndex++];
+    if (command === "M" || command === "L") {
+      const next = readPoint();
+      if (!next) return null;
+      if (command === "L" && current) segments.push({ from: current, to: next, straight: true });
+      current = next;
+    } else if (command === "Q" && current) {
+      const control = readPoint();
+      const end = readPoint();
+      if (!control || !end) return null;
+      const start = current;
+      let previous = start;
+      for (let step = 1; step <= 12; step += 1) {
+        const t = step / 12;
+        const inverse = 1 - t;
+        const next = {
+          x: inverse * inverse * start.x + 2 * inverse * t * control.x + t * t * end.x,
+          y: inverse * inverse * start.y + 2 * inverse * t * control.y + t * t * end.y,
+        };
+        segments.push({ from: previous, to: next, straight: false });
+        previous = next;
+      }
+      current = end;
+    } else return null;
+  }
+  const labelWidth = 132;
+  const labelHeight = 32;
+  let traversedFromTarget = 0;
+  let labelCenter: Point | null = null;
+  for (let index = segments.length - 1; index >= 0; index -= 1) {
+    const segment = segments[index]!;
+    const dx = segment.to.x - segment.from.x;
+    const dy = segment.to.y - segment.from.y;
+    const length = Math.hypot(dx, dy);
+    if (segment.straight && length > .1 && (Math.abs(dx) < .1 || Math.abs(dy) < .1)) {
+      const halfExtent = Math.abs(dx) < .1 ? labelHeight / 2 : labelWidth / 2;
+      const distanceIntoSegment = Math.max(0, halfExtent + 10 - traversedFromTarget);
+      if (length >= distanceIntoSegment) {
+        const fraction = distanceIntoSegment / length;
+        labelCenter = {
+          x: segment.to.x - dx * fraction,
+          y: segment.to.y - dy * fraction,
+        };
+        break;
+      }
+    }
+    traversedFromTarget += length;
+  }
+  if (!labelCenter) return null;
+  return {
+    left: Math.max(4, Math.min(layout.width - labelWidth - 4, labelCenter.x - labelWidth / 2)),
+    top: Math.max(4, Math.min(layout.height - labelHeight - 4, labelCenter.y - labelHeight / 2)),
+  };
 }
 
 function pathBetween(start: Point, end: Point, curve: number): string {
@@ -2652,8 +2721,6 @@ export function InteractionRootOverlay({
   layoutReadiness,
   fallbackReason,
   publicCounterReadRemainingMs,
-  publicCardReadEventId,
-  publicCardReadRemainingMs,
   onLayoutReadinessChange,
 }: {
   action: InteractionRootOverlayAction | null;
@@ -2664,8 +2731,6 @@ export function InteractionRootOverlay({
   layoutReadiness: "measuring" | "ready" | "unavailable" | null;
   fallbackReason?: string;
   publicCounterReadRemainingMs?: number | null;
-  publicCardReadEventId?: string | null;
-  publicCardReadRemainingMs?: number | null;
   onLayoutReadinessChange: (readiness: { key: string; state: "measuring" | "ready" | "unavailable" } | null) => void;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
@@ -3065,7 +3130,8 @@ export function InteractionRootOverlay({
     })) : [];
     const responseCard = layer.querySelector<HTMLElement>("[data-root-action-response-card]");
     const rootCard = cardRef.current;
-    const graphTimer = layer.querySelector<HTMLElement>(".interaction-root-public-read-timer");
+    const graphTimer = Array.from(document.querySelectorAll<HTMLElement>(".interaction-root-public-read-timer"))
+      .find((timer) => timer.dataset.publicCounterReadEventId === action.rootEventId) ?? null;
     const responseTimer = shell.querySelector<HTMLElement>(".visible-countdown-response");
     const shellRect = shell.getBoundingClientRect();
     const visualViewport = window.visualViewport;
@@ -3170,8 +3236,9 @@ export function InteractionRootOverlay({
   const blockedResponseTimerStyle = blockedResponseCard && layout
     ? publicReadTimerPosition(blockedResponseCard, layout.width)
     : null;
-  const attackCardReadTimerStyle = layout
-    ? publicReadTimerPosition(layout.card, layout.width)
+  const attackHitResultPosition = visible && layout && action.settlement?.outcome === "ATTACK_DAMAGE_APPLIED"
+    && action.targetId && targetName
+    ? attackHitResultLabelPosition(layout)
     : null;
   return <>
     <div
@@ -3472,6 +3539,17 @@ export function InteractionRootOverlay({
       </div>;
     })}
     </div>
+    {attackHitResultPosition && action.targetId && action.settlement?.outcome === "ATTACK_DAMAGE_APPLIED" && targetName && <span
+      className={`attack-hit-result-indicator${action.settlement.exiting ? " is-exiting" : ""}`}
+      data-attack-hit-result="true"
+      data-attack-hit-result-placement="attack-target-path"
+      data-attack-hit-result-event-id={action.settlement.eventId}
+      data-attack-hit-result-player-id={action.targetId}
+      data-attack-hit-result-outcome="ATTACK_DAMAGE_APPLIED"
+      role="status"
+      aria-label={`Take damage: ${targetName}`}
+      style={attackHitResultPosition}
+    >TAKE DAMAGE</span>}
     {visible && layout && action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE"
       && blockedResponseTimerStyle && publicCounterReadRemainingMs !== null && publicCounterReadRemainingMs !== undefined && <PublicCounterReadTimer
         key={`response:${action.settlement.eventId}`}
@@ -3479,15 +3557,6 @@ export function InteractionRootOverlay({
         remainingMs={publicCounterReadRemainingMs}
         readKind="response"
         style={blockedResponseTimerStyle}
-      />}
-    {visible && layout && action.cardKind === "Attack" && action.cardFace
-      && !action.response && publicCardReadEventId === action.rootEventId
-      && publicCardReadRemainingMs !== null && publicCardReadRemainingMs !== undefined && <PublicCounterReadTimer
-        key={`card:${publicCardReadEventId}`}
-        eventId={publicCardReadEventId}
-        remainingMs={publicCardReadRemainingMs}
-        readKind="card"
-        style={attackCardReadTimerStyle ?? publicReadTimerPosition(layout.card, layout.width)}
       />}
   </>;
 }

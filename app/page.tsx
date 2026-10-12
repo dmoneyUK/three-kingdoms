@@ -23,7 +23,7 @@ import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { CardFace } from "./card-face";
-import { InteractionRootOverlay, interactionRootActionKey, type InteractionRootOverlayAction } from "./interaction-root-overlay";
+import { InteractionRootOverlay, PublicCounterReadTimer, interactionRootActionKey, type InteractionRootOverlayAction } from "./interaction-root-overlay";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
 
@@ -208,7 +208,7 @@ const UI_TIMING = {
   interactionSettlement: 600,
   interactionSettlementReduced: 120,
   interactionSettlementFade: 150,
-  attackHitSettlementRead: 2_000,
+  attackHitSettlementRead: 5_000,
   attackHitSettlementFade: 180,
   publicCounterRead: 3000,
   attackDodgePublicCounterRead: ATTACK_DODGE_PUBLIC_READ_MS,
@@ -571,18 +571,6 @@ export function HeroInfoDialog({ hero, onClose }: { hero: Hero; onClose: () => v
 function heroName(id?: string | null) { return id ? id.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") : "Unknown"; }
 function heroSkillNames(hero: Pick<Hero, "id" | "skills">) { return hero.skills?.map((skill) => skill.name) ?? [heroSkillName(hero.id) ?? "Hero"]; }
 function heroSkillName(id?: string | null) { return id ? HEROES.find((hero) => hero.id === id)?.skills[0]?.name ?? null : null; }
-type AttackHitResultPresentation = { eventId: string; exiting: boolean };
-function AttackHitResultIndicator({ playerId, playerName, result }: { playerId: string; playerName: string; result: AttackHitResultPresentation }) {
-  return <span
-    className={`attack-hit-result-indicator${result.exiting ? " is-exiting" : ""}`}
-    data-attack-hit-result="true"
-    data-attack-hit-result-event-id={result.eventId}
-    data-attack-hit-result-player-id={playerId}
-    data-attack-hit-result-outcome="ATTACK_DAMAGE_APPLIED"
-    role="status"
-    aria-label={`Take damage: ${playerName}`}
-  >TAKE DAMAGE</span>;
-}
 function conciseActionLabel(label: string) {
   return ({ "Play Attack": "Attack", "Play Dodge": "Dodge", "Play Negation": "Negate", "Use Serpent Spear": "Spear" } as Record<string, string>)[label] ?? label;
 }
@@ -601,7 +589,6 @@ type OpponentPlayerCardProps = {
   isActionPlayer: boolean;
   isSelectedTarget: boolean;
   isGroupPreview: boolean;
-  attackHitResult: AttackHitResultPresentation | null;
   interactionRoles: InteractionSeatSemanticRoles;
   targetSelectionActive: boolean;
   targetablePlayer: boolean;
@@ -634,7 +621,7 @@ function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
   return <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M1.2 11.7h11.4l-1-2.2.3-2-1.3-2-1.8-.5L7.4 7H5.1L3.8 4.2l-1.6.4.8 2.9-1.2 1.7Z" /><path d="M4 11.6v1.2m5.8-1.2v1.2" /></svg>;
 }
 
-function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isActionPlayer, isSelectedTarget, isGroupPreview, attackHitResult, interactionRoles, targetSelectionActive, targetablePlayer, onTarget, onInspect, onHeroInfo, onInfoCard, judgementInFlight }: OpponentPlayerCardProps) {
+function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isActionPlayer, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, targetablePlayer, onTarget, onInspect, onHeroInfo, onInfoCard, judgementInFlight }: OpponentPlayerCardProps) {
   const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex);
   const fourPlayerTopRow = totalPlayers === 4;
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
@@ -667,7 +654,6 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
         {!fourPlayerTopRow && equipmentSummary.length > 0 && <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment">{equipmentSummary}</div>}
         {playerHero && <button type="button" className="hero-card-info-button" aria-label={targetSelectionActive ? `Inspect ${player.name}` : `Explain ${playerHero.name}`} onClick={() => targetSelectionActive ? onInspect() : onHeroInfo(playerHero)}>i</button>}
       </div>
-      {attackHitResult && <AttackHitResultIndicator playerId={player.id} playerName={player.name} result={attackHitResult} />}
       {player.judgementCards.length > 0 && <section className="opponent-judgement-zone" aria-label="Judgement Zone">
         <span className="opponent-zone-label">Judgement</span>
         <div className="opponent-judgement-cards">{miniJudgement}</div>
@@ -1846,7 +1832,7 @@ function StageSystemCluster({ publicResponseTimerPending, responseTimer, eventTi
   return <div className="stage-system-cluster" data-stage-system-cluster="true" data-public-response-timer-pending={publicResponseTimerPending ? "true" : undefined}>
     {responseTimer}
     {eventTimer}
-    <span className="stage-build-version" title={`GitHub Actions commit ${BUILD_SHA}`} aria-label={`Build ${BUILD_SHA}`} data-build-sha={BUILD_SHA}>BUILD {BUILD_LABEL}</span>
+    <span className="stage-build-version stage-build-version-layout-reservation" aria-hidden="true">BUILD {BUILD_LABEL}</span>
     <div className="stage-system-menu">
       <div id="stage-system-menu-actions" className="stage-system-menu-actions" role="group" aria-label="System menu actions" hidden={!menuOpen}>
         <small className="stage-system-build-sha"><span>GitHub Actions build SHA</span><code>{BUILD_SHA}</code></small>
@@ -1988,11 +1974,10 @@ type LocalPlayerDockProps = {
   equipmentSelection?: { eligibleIds: string[]; selectedIds: string[]; max: number; disabled: boolean; onToggle: (cardId: string) => void } | null;
   hiddenCardIds?: ReadonlySet<string>;
   isGroupPreview?: boolean;
-  attackHitResult?: AttackHitResultPresentation | null;
   preserveGuidanceHeight?: boolean;
 };
 
-export function LocalPlayerDock({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), isGroupPreview = false, attackHitResult = null, preserveGuidanceHeight = false }: LocalPlayerDockProps) {
+export function LocalPlayerDock({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), isGroupPreview = false, preserveGuidanceHeight = false }: LocalPlayerDockProps) {
   const dockRef = useRef<HTMLElement | null>(null);
   const guidanceHeightRef = useRef<number | null>(null);
   const preserveGuidanceHeightRef = useRef(preserveGuidanceHeight);
@@ -2080,7 +2065,6 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
             onClick={() => selfTargetable ? onSelfTarget() : onHeroInfo(hero)}
           ><span className="local-hero-portrait" data-hero-id={hero.id} aria-hidden="true"><HeroPortrait hero={hero} /><span className="local-hero-overlay"><span className="local-hero-label">{hero.name}</span><span className="local-hero-vitals"><strong className="local-hero-role">{player?.role ?? "Role pending"}</strong><span className="local-hero-hp">HP {player?.hp ?? 0}/{player?.maxHp ?? 0}</span><span className="local-hero-hearts">{hpDisplay(player?.hp ?? null)}</span></span></span></span></button>
           {selfTargetable && <button type="button" className="hero-card-info-button local-hero-info-button" aria-label={`Explain ${hero.name}`} onClick={(event) => { event.stopPropagation(); onHeroInfo(hero); }}>i</button>}
-          {attackHitResult && player && <AttackHitResultIndicator playerId={player.id} playerName={player.name} result={attackHitResult} />}
         </> : <div className="local-hero-card local-hero-card-empty" aria-label="Hero not selected"><span className="local-hero-portrait" aria-hidden="true"><span className="local-hero-label">HERO</span></span></div>}
         {judgementCards.length > 0 && <div ref={judgementRailRef} className="local-judgement-cards local-judgement-overlay" data-judgement-layout={judgementCardLayout.measured ? "measured" : "pending"} style={{ justifyContent: judgementCards.length === 1 ? "center" : "flex-start" }} role="group" aria-label="Persistent Judgement cards">
           {judgementCards.map((card, index) => <div className="local-judgement-card-slot" key={card.id} style={{ marginLeft: index === 0 ? 0 : `${judgementCardLayout.step - judgementCardWidth}px` }}>{renderZoneCard(card)}</div>)}
@@ -4419,9 +4403,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     ? rootActionOverlayLayoutReadiness.state
     : null;
   const rootActionOverlayGraphReady = Boolean(rootActionOverlayEnabled && rootActionLayoutState === "ready");
-  const attackHitResultPresentation = attackHitSettlementCandidate
-    ? { targetId: attackHitSettlementCandidate.action.targetId, eventId: attackHitSettlementCandidate.action.eventId, exiting: attackHitSettlementCandidate.exiting }
-    : null;
   const rootActionOverlayMeasuring = Boolean(rootActionOverlayEnabled && (rootActionLayoutState === null || rootActionLayoutState === "measuring"));
   const rootActionOverlayGeometryUnavailable = Boolean(rootActionOverlayEnabled && rootActionLayoutState === "unavailable");
   // Keep the current Stage/reveal composition intact until geometry is proven.
@@ -5392,9 +5373,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
             || serpentMode && canPlay
             || card && cardTargetLegal && (selectedCanPlayAsAttack || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "BorrowedSword" || card.kind === "Overindulgence" || card.kind === "RationsDepleted"),
           );
-          const attackHitResult = attackHitResultPresentation?.targetId === player.id
-            ? { eventId: attackHitResultPresentation.eventId, exiting: attackHitResultPresentation.exiting }
-            : null;
           return <OpponentPlayerCard
             key={`square-${player.id}`}
             totalPlayers={room.players.length}
@@ -5406,7 +5384,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
             isActionPlayer={clientPresentation.stage !== "NEGATION" && player.id === room.actionPlayerId}
             isSelectedTarget={borrowedSwordTargetId === player.id || targetIds.includes(player.id)}
             isGroupPreview={groupScopePreview.affectedPlayerIds.includes(player.id)}
-            attackHitResult={attackHitResult}
             interactionRoles={projectInteractionSeatRoles(clientPresentation, player.id)}
             targetSelectionActive={targetSelectionActive}
             targetablePlayer={targetablePlayer}
@@ -5426,9 +5403,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
     </section>
-    <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} displayMode={rootActionOverlayDisplayMode} layoutReadiness={rootActionLayoutState} fallbackReason={rootActionOverlayFallbackReason} publicCounterReadRemainingMs={rootActionOverlayPublicReadRemainingMs} publicCardReadEventId={attackDodgeRootCardReadEventId} publicCardReadRemainingMs={attackDodgeRootCardReadRemainingMs} onLayoutReadinessChange={onRootActionOverlayLayoutReadinessChange} />
+    <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} displayMode={rootActionOverlayDisplayMode} layoutReadiness={rootActionLayoutState} fallbackReason={rootActionOverlayFallbackReason} publicCounterReadRemainingMs={rootActionOverlayPublicReadRemainingMs} onLayoutReadinessChange={onRootActionOverlayLayoutReadinessChange} />
     <footer className="play-command">
-    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} attackHitResult={attackHitResultPresentation?.targetId === room.meId ? { eventId: attackHitResultPresentation.eventId, exiting: attackHitResultPresentation.exiting } : null} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
+    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
       heroSkillControl={
         <section className="hero-skills local-hero-skills" aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => skill.passive
@@ -5438,6 +5415,15 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       } guidance={
         <div className="console-guidance" data-console-guidance="true">
           <div className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`} data-console-decision-kind={consoleDecision.kind} data-console-coherent={consoleDecision.coherent ? "true" : "false"} data-console-primary={consoleDecision.primary?.label ?? "none"} data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"} data-console-selection-count={consoleDecision.selectionCount ?? undefined} data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"} data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"} role="status" aria-live="polite" aria-atomic="true"><small>{localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{consoleDecision.instruction}</strong>{!negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}{consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true"><b>LOCAL CANCEL</b><span>Change your selection before submitting.</span></span>}</div>
+          <div className="local-operation-status" data-local-operation-status="true" role="group" aria-label="Game build and public card timer">
+            <span className="stage-build-version" title={`GitHub Actions commit ${BUILD_SHA}`} aria-label={`Build ${BUILD_SHA}`} data-build-sha={BUILD_SHA}>BUILD {BUILD_LABEL}</span>
+            {attackDodgeRootCardReadEventId && attackDodgeRootCardReadRemainingMs !== null && <PublicCounterReadTimer
+              eventId={attackDodgeRootCardReadEventId}
+              remainingMs={attackDodgeRootCardReadRemainingMs}
+              readKind="card"
+              placement="operation-status"
+            />}
+          </div>
           {invalidResponseState && <p className="error" role="status">Waiting for the latest response state…</p>}
           {(activeSkillSelection || activeSkillTargetSelection) && activeSkillOption?.effectId === "diao_chan_lust" && activeSkillSelectedTargetIds.length > 1 && <small role="status">Lust order: {room.players.find((player) => player.id === activeSkillSelectedTargetIds[0])?.name} plays Attack first, then {room.players.find((player) => player.id === activeSkillSelectedTargetIds[1])?.name}.</small>}
         </div>

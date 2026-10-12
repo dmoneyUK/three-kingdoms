@@ -1384,6 +1384,21 @@ async function measureAttackHitResult(page, targetId) {
     const targetRect = rect(target);
     const style = marker ? getComputedStyle(marker) : null;
     const overlap = (first, second) => Boolean(first && second && first.x < second.right && first.right > second.x && first.y < second.bottom && first.bottom > second.y);
+    const targetPath = document.querySelector('[data-root-action-overlay="true"] [data-root-action-edge="target"]');
+    const pathMatrix = targetPath?.getScreenCTM();
+    let pathToMarkerDistance = Number.POSITIVE_INFINITY;
+    if (targetPath && pathMatrix && markerRect) {
+      const length = targetPath.getTotalLength();
+      const steps = Math.max(1, Math.ceil(length));
+      for (let index = 0; index <= steps; index += 1) {
+        const localPoint = targetPath.getPointAtLength(length * index / steps);
+        const screenPoint = new DOMPoint(localPoint.x, localPoint.y).matrixTransform(pathMatrix);
+        const dx = Math.max(markerRect.x - screenPoint.x, 0, screenPoint.x - markerRect.right);
+        const dy = Math.max(markerRect.y - screenPoint.y, 0, screenPoint.y - markerRect.bottom);
+        pathToMarkerDistance = Math.min(pathToMarkerDistance, Math.hypot(dx, dy));
+      }
+    }
+    const targetPortrait = target?.querySelector(".opponent-hero-card, .local-hero-anchor");
     const localControls = target?.classList.contains("local-player-dock")
       ? [...target.querySelectorAll(".local-dock-zones, .local-hand-section, .turn-controls, .console-guidance")]
       : [];
@@ -1398,6 +1413,11 @@ async function measureAttackHitResult(page, targetId) {
       pointerEvents: style?.pointerEvents ?? null,
       opacity: Number.parseFloat(style?.opacity ?? "0"),
       exiting: marker?.classList.contains("is-exiting") ?? false,
+      placement: marker?.dataset.attackHitResultPlacement ?? null,
+      fontSize: style?.fontSize ?? null,
+      minPathToMarkerDistance: pathToMarkerDistance,
+      overlapsAttackPath: pathToMarkerDistance < 1,
+      overlapsTargetPortrait: overlap(markerRect, rect(targetPortrait)),
       marker: markerRect,
       target: targetRect,
       insideTargetAnchor: Boolean(markerRect && targetRect && markerRect.x >= targetRect.x - .5 && markerRect.y >= targetRect.y - .5
@@ -4690,6 +4710,25 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 440, height: 766 }
           .map((selector) => [selector, rect(dock?.querySelector(selector) ?? null)]).concat([[".local-player-dock", rect(dock)]]));
       }, targetId);
       expect(await Promise.all(viewerPages.map((viewerPage) => viewerPage.locator('[data-attack-hit-result="true"]').count()))).toEqual(viewerPages.map(() => 0));
+      const operationStatuses = await Promise.all(viewerPages.map((viewerPage) => viewerPage.evaluate(() => {
+        const status = document.querySelector('[data-local-operation-status="true"]');
+        const guidance = status?.closest(".console-guidance");
+        const timer = status?.querySelector('[data-public-counter-read-timer="true"]');
+        const build = status?.querySelector("[data-build-sha]");
+        const rect = (element) => {
+          if (!element) return null;
+          const bounds = element.getBoundingClientRect();
+          return { x: bounds.x, y: bounds.y, right: bounds.right, bottom: bounds.bottom, width: bounds.width, height: bounds.height };
+        };
+        return { status: rect(status), guidance: rect(guidance), timerPlacement: timer?.dataset.publicCounterReadPlacement ?? null, buildSha: build?.dataset.buildSha ?? null };
+      })));
+      for (const [index, status] of operationStatuses.entries()) {
+        expect(status.status, `${viewerLabels[index]} build and card timer sit in the operation guidance`).toBeTruthy();
+        expect(status.timerPlacement).toBe("operation-status");
+        expect(status.buildSha).toBeTruthy();
+        expect(status.status.x).toBeGreaterThan(status.guidance.x + status.guidance.width / 2);
+        expect(status.status.right).toBeLessThanOrEqual(status.guidance.right + .5);
+      }
       const preSkipGeometry = await Promise.all(viewerPages.map((viewerPage) => measure(viewerPage, sourceId, targetId)));
       expect(preSkipGeometry.map((geometry) => geometry.overlayRootEventId)).toEqual(viewerPages.map(() => rootAction.rootEventId));
       expect(preSkipGeometry.map((geometry) => geometry.orthogonalAttackRouting)).toEqual(viewerPages.map(() => "true"));
@@ -4806,6 +4845,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 440, height: 766 }
       });
       const settledGeometries = await Promise.all(viewerPages.map((viewerPage) => measure(viewerPage, sourceId, targetId)));
       const resultGeometries = await Promise.all(viewerPages.map((viewerPage) => measureAttackHitResult(viewerPage, targetId)));
+      await testInfo.attach("attack-hit-result-placement-geometry.json", {
+        body: JSON.stringify({ viewport, perspectives: viewerLabels.map((label, index) => ({
+          label,
+          operationStatus: operationStatuses[index],
+          targetPath: settledGeometries[index].targetPath,
+          result: resultGeometries[index],
+        })) }, null, 2),
+        contentType: "application/json",
+      });
       for (const [index, viewerPage] of viewerPages.entries()) {
         const label = viewerLabels[index];
         const viewerOverlay = viewerOverlays[index];
@@ -4827,8 +4875,11 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 440, height: 766 }
         const resultGeometry = resultGeometries[index];
         expect(resultGeometry, `${label} has the target's read-only outcome marker`).toMatchObject({
           present: true, text: "TAKE DAMAGE", playerId: targetId, eventId: proof.eventId,
-          outcome: "ATTACK_DAMAGE_APPLIED", role: "status", pointerEvents: "none", insideTargetAnchor: true,
+          outcome: "ATTACK_DAMAGE_APPLIED", role: "status", pointerEvents: "none", placement: "attack-target-path",
+          insideTargetAnchor: false, overlapsAttackPath: true, overlapsTargetPortrait: false,
         });
+        expect(resultGeometry.marker.height, `${label} result label has the larger readable hit area`).toBeGreaterThanOrEqual(32);
+        expect(Number.parseFloat(resultGeometry.fontSize), `${label} result label is phone-readable`).toBeGreaterThanOrEqual(13);
         expect(resultGeometry.intersectsLocalControl, `${label} outcome marker does not cover Dock controls`).toBe(false);
         await expect(viewerPage.locator('[data-attack-hit-result="true"]')).toHaveCount(1);
         await expect(viewerPage.locator(`[data-attack-hit-result-player-id="${sourceId}"]`)).toHaveCount(0);
@@ -4910,7 +4961,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 440, height: 766 }
         }));
         try {
           await expect.poll(() => viewerPage.evaluate(() => window.__wtkAttackHitSettlementTiming?.removedAt ?? null), {
-            timeout: 4_000, message: `${viewerLabels[index]} Attack-hit result lifecycle: capture, readable hold, fade and removal`,
+            timeout: 8_000, message: `${viewerLabels[index]} Attack-hit result lifecycle: capture, readable hold, fade and removal`,
           }).not.toBeNull();
         } catch (error) {
           const state = await readState();
@@ -4924,8 +4975,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 440, height: 766 }
         expect(timing.resultLabel).toBe("TAKE DAMAGE");
         expect(timing.resultTargetId).toBe(targetId);
         expect(timing.resultEventId).toBe(proof.eventId);
-        expect(timing.exitingAt - timing.shownAt, `${viewerLabels[index]} has a readable two-second hold`).toBeGreaterThanOrEqual(1_900);
-        expect(timing.exitingAt - timing.shownAt).toBeLessThanOrEqual(2_350);
+        expect(timing.exitingAt - timing.shownAt, `${viewerLabels[index]} has a readable five-second hold`).toBeGreaterThanOrEqual(4_900);
+        expect(timing.exitingAt - timing.shownAt).toBeLessThanOrEqual(5_350);
         expect(timing.removedAt - timing.exitingAt, `${viewerLabels[index]} has a brief fade`).toBeGreaterThanOrEqual(140);
         expect(timing.removedAt - timing.exitingAt).toBeLessThanOrEqual(350);
       }
@@ -4937,7 +4988,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 440, height: 766 }
   });
 }
 
-test("real direct Attack hit settlement shortens under reduced motion", async ({ page, browser, request }, testInfo) => {
+test("real direct Attack hit settlement keeps the readable result under reduced motion", async ({ page, browser, request }, testInfo) => {
   test.setTimeout(60_000);
   const viewport = { width: 390, height: 844 };
   const seed = await seedGame(request, 4);
@@ -4970,15 +5021,15 @@ test("real direct Attack hit settlement shortens under reduced motion", async ({
     await expect(targetPage.locator('[data-root-action-edge="target"]')).toHaveCount(1);
     await expect(targetPage.locator('[data-root-action-card="true"] .played-card.attack .card-name-mark')).toHaveText("Attack");
     await testInfo.attach("attack-hit-reduced-motion-during-hold-390x844.png", { body: await targetPage.screenshot(), contentType: "image/png" });
-    await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackHitSettlementTiming?.removedAt ?? null), { timeout: 3_000 }).not.toBeNull();
+    await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackHitSettlementTiming?.removedAt ?? null), { timeout: 8_000 }).not.toBeNull();
     const timing = await targetPage.evaluate(() => window.__wtkAttackHitSettlementTiming);
     expect(timing.outcome).toBe("ATTACK_DAMAGE_APPLIED");
     expect(timing.visibleComposition).toBe(true);
     expect(timing.exitingAt).toBeNull();
     expect(timing.resultLabel).toBe("TAKE DAMAGE");
     expect(timing.resultTargetId).toBe(seed.players[1].id);
-    expect(timing.removedAt - timing.shownAt).toBeGreaterThanOrEqual(1_900);
-    expect(timing.removedAt - timing.shownAt).toBeLessThanOrEqual(2_350);
+    expect(timing.removedAt - timing.shownAt).toBeGreaterThanOrEqual(4_900);
+    expect(timing.removedAt - timing.shownAt).toBeLessThanOrEqual(5_350);
     await expect(overlay.locator('[data-root-action-card="true"]')).toHaveCount(0);
   } finally {
     await targetPage.close();
@@ -5114,13 +5165,13 @@ test("real Attack response timeout automatically declines, publishes its exact h
     await expect(targetPage.locator('[data-attack-hit-result="true"]')).toHaveText("TAKE DAMAGE");
     await expect(targetPage.locator(`[data-attack-hit-result-player-id="${targetId}"]`)).toHaveAttribute("data-attack-hit-result-event-id", proof.eventId);
     const timeoutResultGeometry = await measureAttackHitResult(targetPage, targetId);
-    expect(timeoutResultGeometry).toMatchObject({ present: true, text: "TAKE DAMAGE", playerId: targetId, eventId: proof.eventId, insideTargetAnchor: true, pointerEvents: "none" });
+    expect(timeoutResultGeometry).toMatchObject({ present: true, text: "TAKE DAMAGE", playerId: targetId, eventId: proof.eventId, insideTargetAnchor: false, placement: "attack-target-path", overlapsAttackPath: true, overlapsTargetPortrait: false, pointerEvents: "none" });
     await expect(overlay).toHaveAttribute("data-root-action-event-id", rootAction.rootEventId);
     await expect(overlay).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET. Attack damage applied.");
     await expect(targetPage.locator(".interaction-stage")).toHaveCount(0);
     await testInfo.attach("attack-timeout-settlement-390x844.png", { body: await targetPage.screenshot(), contentType: "image/png" });
     await expect.poll(() => targetPage.evaluate(() => window.__wtkAttackHitSettlementTiming?.removedAt ?? null), {
-      timeout: 5_000, message: "the public root graph does not remain stuck after timeout settlement",
+      timeout: 8_000, message: "the public root graph does not remain stuck after timeout settlement",
     }).not.toBeNull();
     await expect(overlay.locator('[data-root-action-card="true"]')).toHaveCount(0);
     const timeoutTiming = await targetPage.evaluate(() => window.__wtkAttackHitSettlementTiming);
@@ -5128,8 +5179,8 @@ test("real Attack response timeout automatically declines, publishes its exact h
     expect(timeoutTiming.visibleComposition).toBe(true);
     expect(timeoutTiming.resultTargetId).toBe(targetId);
     expect(timeoutTiming.resultEventId).toBe(proof.eventId);
-    expect(timeoutTiming.exitingAt - timeoutTiming.shownAt).toBeGreaterThanOrEqual(1_900);
-    expect(timeoutTiming.exitingAt - timeoutTiming.shownAt).toBeLessThanOrEqual(2_350);
+    expect(timeoutTiming.exitingAt - timeoutTiming.shownAt).toBeGreaterThanOrEqual(4_900);
+    expect(timeoutTiming.exitingAt - timeoutTiming.shownAt).toBeLessThanOrEqual(5_350);
     expect(timeoutTiming.removedAt - timeoutTiming.exitingAt).toBeGreaterThanOrEqual(140);
     expect(timeoutTiming.removedAt - timeoutTiming.exitingAt).toBeLessThanOrEqual(350);
     await expect(targetPage.locator(".interaction-stage")).toHaveCount(0);

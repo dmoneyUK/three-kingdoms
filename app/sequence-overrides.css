@@ -529,6 +529,11 @@
   pointer-events: none;
   white-space: nowrap;
 }
+.interaction-root-public-read-timer.local-operation-card-read-timer {
+  position: static;
+  z-index: auto;
+  flex: 0 0 auto;
+}
 
 .interaction-root-overlay[data-root-action-ready="false"] .interaction-root-connectors,
 .interaction-root-overlay[data-root-action-ready="false"] .interaction-root-action-card,
@@ -1037,22 +1042,21 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  max-width: calc(100vw - 16px);
-  padding: 4px 5px;
-  border: 1px solid #f18c72;
-  border-radius: 3px;
-  background: #321b18f2;
+  width: 132px;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 2px solid #f18c72;
+  border-radius: 5px;
+  background: #321b18f5;
   color: #ffe4a8;
-  box-shadow: 0 2px 8px #000c, 0 0 0 1px #35191599;
-  font: 800 8px/1 Arial, sans-serif;
-  letter-spacing: .075em;
+  box-shadow: 0 2px 8px #000c, 0 0 0 1px #35191599, 0 0 9px #e36d5a66;
+  font: 800 13px/1 Arial, sans-serif;
+  letter-spacing: .06em;
   white-space: nowrap;
   pointer-events: none;
   transition: opacity 180ms ease-out, filter 180ms ease-out;
 }
 
-.opponent-public-zones > .attack-hit-result-indicator { left: 2px; bottom: 2px; }
-.local-hero-anchor > .attack-hit-result-indicator { left: 2px; top: 2px; }
 .attack-hit-result-indicator.is-exiting { opacity: .18; filter: saturate(.45); }
 
 .interaction-root-overlay[data-public-counter-read-exiting="true"] .interaction-root-action-card,
@@ -1465,8 +1469,10 @@
 }
 .local-hand-section[data-raining-arrows-dodge-providers="available"] .local-hand-rail .game-card:disabled { opacity: .64; }
 
-.local-player-dock .console-guidance { grid-area: guidance; width: 100%; min-width: 0; height: auto; padding: 5px 8px; overflow: visible; }
-.local-player-dock .console-guidance .decision-status { width: 100%; max-height: none; overflow: visible; white-space: normal; overflow-wrap: break-word; }
+.local-player-dock .console-guidance { position: relative; grid-area: guidance; width: 100%; min-width: 0; height: auto; padding: 5px 8px; overflow: visible; }
+.local-player-dock .console-guidance .decision-status { width: 100%; max-height: none; padding-right: 126px; overflow: visible; white-space: normal; overflow-wrap: break-word; }
+.local-operation-status { position: absolute; z-index: 12; top: 50%; right: 8px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; max-width: calc(100% - 12px); transform: translateY(-50%); pointer-events: none; }
+.stage-build-version-layout-reservation { visibility: hidden; }
 .local-player-dock .console-guidance > .error { margin: 4px 0 0; }
 .local-player-dock .turn-controls { --action-slot-width: 90px; position: relative; grid-area: actions; z-index: 100; min-height: 65px; height: auto; padding: 7px 8px; display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 4px; color: #c8b487; font: 10px/1.2 Arial, sans-serif; }
 .local-player-dock .turn-controls > [data-action-extras="true"] { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px; width: 100%; min-width: 0; }
@@ -1494,6 +1500,9 @@
 
 @media (max-width: 480px) {
   .game-shell .play-command { padding: 4px 6px 5px; }
+  .local-player-dock .console-guidance .decision-status { padding-right: 120px; }
+  .local-operation-status { right: 6px; gap: 3px; }
+  .local-operation-status .stage-build-version { padding: 2px 4px; font-size: 6px; }
   .local-player-dock { --top-panel-height: 58px; grid-template-columns: 96px minmax(0, 1fr); grid-template-rows: auto var(--top-panel-height) var(--hand-panel-height) minmax(48px, auto); padding: 0; }
   .local-dock-identity { align-items: stretch; }
   .local-hero-anchor { width: min(100%, 88px); max-width: 88px; }
