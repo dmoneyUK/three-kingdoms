@@ -2787,6 +2787,8 @@ The renderer must use typed public response proof. It must not infer that a newl
 
 ### 6.12 Duel exchange
 
+**Latest layout authority:** §6.39 defines the approved two-round, four-play Duel view and same-slice ordinary Attack/Dodge routing-balance polish. The sketches below show causal meaning, not required visual geometry. Duel participants respond with genuine **Attack**, not Dodge; reuse Attack/Dodge *spatial grammar*, not the wrong card type.
+
 Duel is a persistent root cause with repeated alternating Attack responses.
 
 The Duel card should remain visible throughout the exchange as contextual root state:
@@ -3343,6 +3345,8 @@ All color and stroke values from prior drafts are retired. Keep source links cle
 
 #### 6.29.6 Expired causal relationships: old link becomes subdued, current step takes focus
 
+**Specific latest Duel exception (§6.39):** Preserve the original **green/red hue and complete lower historical pair** through round-2 play #3/#4; dim their brightness/opacity rather than changing green/red to grey or deleting the responding card. The Duel card root remains stable while *response* cards reflow into a compact old-round band. This newer rule overrides the generic expired-line color and prior-card-collapse guidance below only for the Duel two-round display.
+
 **Updated user decision:** In sequential interactions such as **Duel**, when an earlier exchange finishes and the next publicly committed **Attack** arrives, the previous source/response/target relationship should **not stay highlighted**, but a faint trace can remain so the user understands the chain. This is a **visual lifecycle state**, not a server game-state mutation.
 
 **Semantics:**
@@ -3546,7 +3550,7 @@ Only implement a **small, measured runner/config change** in the same bounded di
 
 **Stage A — accepted baseline:** The user confirmed completion on 2026-10-12. Its accepted ordinary Attack-only and Attack→Dodge composition is recorded in §6.38 and must be preserved; do not reopen or rebuild it absent a reproduced regression or direct user request.
 
-**Stage B — long-chain layout reuse (separately reviewable after A).** Apply the same accepted shared CardFace/composition language to already-proven Duel repeated Attacks and Negation/counter-Negation, using existing typed response links and history compaction. Validate source ownership, root stability, current versus subdued context, no overlap/dangling arrows, no infinite shrink and no accumulated card pile. Apply the single lifecycle in §0.1; do not retain family-specific graph durations.
+**Stage B — long-chain layout reuse (separately reviewable after A).** **Stage B1 Duel is specifically governed by §6.39, task reference `UX2-6.34-B1-DUEL-LONG-CHAIN-01`, which also includes the user-requested narrow ordinary Attack/Dodge path-balance polish.** Stage B2 Negation is separate. Apply the same accepted shared CardFace/composition language to already-proven Duel repeated Attacks and Negation/counter-Negation, using existing typed response links and history compaction. Validate source ownership, root stability, current versus subdued context, no overlap/dangling arrows, no infinite shrink and no accumulated card pile. Apply the single lifecycle in §0.1; do not retain family-specific graph durations.
 
 **Stage C — AOE layout adoption (separately reviewable after B).** Apply the shared geometry to existing proven Group/AOE root and participant branches with 4/6/8-player positions, preserving per-target semantics and §6.29.4 outcome markers. Audit which ordinary AOE responses have actual typed public identity; integrate only proven cards. If that proof is missing, stop that subpart and report the exact projector/snapshot/client contract needed for a separate authorized change. No new legality or rule work hidden inside a UI geometry task.
 
@@ -3602,7 +3606,7 @@ These accepted cases are regression safeguards, not a claim that every orientati
 | Design order | References | Design status | Required player-facing principle |
 | --- | --- | --- | --- |
 | **1 — Stage A: complete** | §§0.1, 6.34, 6.38 | User-confirmed complete | Preserve compact, balanced, viewer-relative ordinary Attack/Dodge composition and exact public root/response semantics. |
-| **2 — Duel chains** | §§6.12, 6.29.6, 6.34 Stage B | Further design/review required | Keep one stable Duel root. The newest server-proven response and its exact relation lead; the immediately previous step may remain subdued; compact older history without card piles, false arrows, private disclosure or root movement. |
+| **2 — Duel B1 + Attack/Dodge path-balance polish** | **§6.39**, §§6.12, 6.29.6, 6.34, 6.38 | **Approved design; implementation and visual acceptance pending** | One B1 task ID `UX2-6.34-B1-DUEL-LONG-CHAIN-01`: four genuine alternating Duel Attacks across two compact seat-relative left/right rounds. Historical first pair shrinks and shifts down, green/red routes keep hue/shape but dim; new upper branches fork at old elbow nodes rather than card bottoms. In same bounded task balance ordinary Attack/Dodge card positioning and orthogonal connectors without reopening their semantics. |
 | **3 — Negation chains** | §§2, 6.13–6.14, 6.29.6, 6.34 Stage B | Further design/review required | Connect each new public Negation to the exact countered card/effect. Keep root identity stable, demote prior same-root relations, and preserve scope without false player-target or whole-AOE claims. Apply §0.1 lifecycle. |
 | **4 — Group/AOE** | §§6.9–6.10, 6.29.2–6.29.4, 6.34 Stage C | Further proof/layout review required | Reuse one stable root and exact public per-target branches; distinguish ordered from simultaneous semantics. Show a physical response only with server-proven card, actor, frame, branch and outcome. Distinguish current/paused/resolved/pending/inapplicable states by shape and contrast; never infer outcomes from HP or turn order. |
 | **5 — Cross-family review** | §§2–4, 6.7–6.26, 6.30 and this section | Human visual acceptance gate | Use real server-backed flows across representative card families, player counts and mobile/wide sizes. Confirm privacy, stable roots, visible geometry, no overlap/overflow and correct lifecycle. Do not treat CI or fixture-only proof as reviewer acceptance. |
@@ -3682,3 +3686,83 @@ The following describe the **accepted reference states**, not an automatic test 
 The ordinary Attack-only and committed Attack→Dodge cases above are the accepted Stage A reference. Preserve exact server proof, viewer-relative orthogonal geometry and the measured compact CardFace composition. Any future regression report must distinguish server proof, rendered visibility, geometry, CI/deployment and human review; do not reuse the former Stage A stop gate as an outstanding assignment.
 
 **Ownership:** This document is the current relationship-graph design authority. `HANDOVER.md` remains the Coding Agent-owned source for exactly one current or next bounded implementation task.
+
+### 6.39 Approved Stage B1 Duel two-round relationship graph and Stage A path-balance refinement (2026-10-12)
+
+**Task ID (keep original B1 ID): \`UX2-6.34-B1-DUEL-LONG-CHAIN-01\`**  
+**Status:** User-approved visual design; **not yet implemented or visually accepted**. This is **one bounded implementation/review task**: (1) Duel response-chain redesign and (2) small Attack/Dodge layout-balance polish. This design document is *not* the Coding Agent's execution queue. The Agent alone owns \`HANDOVER.md\`; this design update must **never** modify it.
+
+**Visual references:** The user's real ordinary Attack / Attack→Dodge phone screenshots (2026-10-12 23:11) define the practical seat-relative battlefield; the successive generated Play 1–4 images and 23:31 corrections define the layering concept. Generated image art, invented seats, and erroneously shown \`Dodge\` during a Duel are **not** authoritative.
+
+#### 6.39.1 Gameplay truth, left/right ownership and common grammar
+
+- A real \`Duel\` has **one stable publicly authenticated Duel root**. Duel participants alternately answer with **genuine, publicly committed Attack** cards. A two-round four-play example is **Attack #1, Attack #2, Attack #3, Attack #4**, one new card at a time, in server-proven continuation order. **Do not display a Dodge as a Duel response** just because its layout is inspired by the ordinary Attack→Dodge diagram. If a converted/virtual Attack is allowed, represent only its server-proven public physical/played-as identity.
+- **Side ownership:** Determine each duelist's left or right half from their **actual authenticated viewer-relative Seat/Local Dock position**. Keep that mapping stable throughout the same Duel for the same viewer; mirror appropriately for attacker, defender and observer viewpoints. Card source is proven from actor/card/root IDs, never inferred from geometry.
+- In the usable central battlefield, place a card approximately **on the middle portion of its horizontal connector run** within the author's own half. The two sides form a balanced composition. Green author tethers are **pale green, arrowless**; red response/effect relations are **vivid red, directional** and use correct validated Duel continuation. Draw horizontal/vertical straight segments joined by minimal rounded 90° elbows, never diagonals or decorative curves. Every terminal arrow must connect to a **real proven participant Seat/Dock or proven response card**, not an empty point or the lower Guidance strip.
+- Reuse the §6.34 hand-size-or-smaller genuine CardFace, with correct rank/suit/art/id and no duplicate legacy CardFace. Duel root itself remains stable throughout; **only historical played response cards** can reposition when later rounds arrive.
+
+#### 6.39.2 Four sequential gameplay frames — one newly committed Attack per frame
+
+**Frame 1 — Duel, play #1 (first half of round 1):**
+
+- Show only **Attack #1** on the authenticated first responder's side of the shared centre.
+- **Green** from that player's real Seat/Dock inward edge: descend/ascend vertically as needed, then **turn at an elbow and enter the card at its outside horizontal side midpoint**. The card belongs on the horizontal segment, **not at the bottom of a vertical line**.
+- **Red** from Attack #1's opposite side midpoint: travel horizontally toward the opposing duelist, then **turn vertically toward the real target Seat/Dock**. In the screenshot scenario where the targeted local player is below, the red arrow **must turn downward** and finish at the real Local Dock, not continue straight to a missing target.
+- Only committed public events draw a card; do not anticipate private response #2.
+
+**Frame 2 — play #2 (complete round 1):**
+
+- When the opposite duelist actually submits an authenticated Attack, place **Attack #2 in that player's opposite half**, at approximately **the same y-centre** as Attack #1, balancing the two cards around the battlefield centre. Keep #1 stable (<=1 CSS px at unchanged geometry).
+- Give each Attack its **own green source line**, from the real author Seat/Dock through a rounded elbow, finishing **horizontally at the card's outer side midpoint**. **Neither card should hang from a bottom vertical tether while the other lies horizontally.**
+- Red highlights the **exact latest proven response/effect**. If typed Duel proof establishes a direct Attack #1→Attack #2 relation, place a short horizontal red relation between facing side midpoints with appropriate direction/terminal; otherwise connect only the accurately proven root/effect/target relationship. Never invent an ordinary Dodge interception or point at the wrong player.
+- The whole round-1 pair (cards and its actual green/red relationships) is visually coherent. The Duel root remains one unchanged public root.
+
+**Frame 3 — play #3 (round 2 begins):**
+
+- **Do not drop Attack #2.** Keep **both** round-1 cards, and **their complete original route topology** (both genuine green author lines and verified red causal/effect route).
+- Transform the **round-1 pair as one unit**: shift both cards and their corresponding branching paths **slightly downward**, scale old cards to an initial **80–85% of their full-size normal CardFace** (within fit/readability), and maintain the left/right order and pair alignment. Retain the original **green green / red red hue**, original causal meaning and same orthogonal bend structure. **Only dim** brightness/opacity (initial target 25–40%), de-emphasise glow/thickness/bright markers. Do **not** recolour all old lines grey, turn old green red, remove one card or redraw the lower pair as a different relationship.
+- Add **only the new real Attack #3** above the old pair, on the **same player-owned side** as that author's earlier played card. The new upper card stays full-sized and brightly highlighted. Do not fabricate play #4.
+- **New green routing branches from the existing author-side orthogonal trunk/elbow junction** (or an equivalently verified reprojected Seat/Dock→elbow trunk), then runs horizontally into Attack #3's outer side midpoint. It does **not** begin from the **bottom or top of any old/new CardFace**, and does not claim an old card authored a new one. If the current red response route shares an existing causal bend/junction, branch it at that **red route's correct proven elbow**; never from the old card bottom and never create an unproven causal edge.
+- The new active path is bright; the intact lower-round pair/paths remain subdued **in the same place after the step-3 transform**.
+
+**Frame 4 — play #4 (complete round 2):**
+
+- Keep **the transformed round-1 lower pair and paths identical to frame 3** (no further motion, re-colouring, missing card, or regenerated straight lines), unless changed real viewport/obstacles make a measured reflow necessary.
+- Add only **Attack #4** to the **other duelist's upper half**, side-by-side with #3 at the same y-centre. Current upper pair is balanced, full-size, vivid; lower pair is still smaller, lower and dim.
+- Route Attack #4's green source from its **own player's existing real Seat/Dock trunk elbow** into its outer side midpoint. Both upper source branches originate from the corresponding **real elbow nodes**; do not sprout routes from lower historical cards, their bottoms, or floating points.
+- Red latest effect/response relation between correctly proven card/target endpoints is **the brightest current route**; older red remains red but low brightness. No extra simultaneous strong old-route arrow to imply a second active Duel.
+- Each new play is server-proven; the projected Duel root and its exact timeline/root/frame identities stay consistent in all four screenshots.
+
+#### 6.39.3 Round three and later; finite screen budget
+
+- Each newer play continues the same top/current and lower/previous-pair grammar. Promote the previously current complete pair into the compact subdued lower band only when the next real play arrives. **Never invent a pending card.** Older pairs beyond the immediately prior complete pair collapse into a neutral **\`+N earlier responses\`** cue or accessible history affordance as needed. Do not infinitely shrink, pile up, or obscure controls.
+- If the Duel ends early, show only the real committed responses and correctly proven result. Retain the settled graph **four seconds from its first fully rendered terminal composition**, subject to an independent new authoritative action superseding it (§0.1/§6.35). Do not change server damage, response deadlines or legality.
+
+#### 6.39.4 Exact elbow-fork routing rule (no bottom-of-card branch)
+
+- **Source routing:** Each participant has one genuine Seat/Dock edge anchor. A vertically oriented approach can turn through an **existing elbow** into that person's horizontal lane. When a second-round response arrives, the **new branch forks off that elbow or the same authenticated source trunk's newly routed elbow**, then connects *horizontally* to the new card's **outer side-centre**. Keep the old branch in place, subdued. An elbow fork is SVG routing geometry, **not an invented public causal event**.
+- **Red causal routing:** The latest current red response/target connection must have genuinely validated endpoint identities. Where it shares an old path's bend, the new red segment forks from that **real red elbow**; if the first route has no elbow, choose a legitimate collision-free joint along the **proven red relationship** instead of fabricating a bend or attaching the new line at the old card bottom. Red never changes the meaning of the earlier green source line.
+- All routes: only horizontal/vertical segments and rounded 90° elbows; minimal bends, no diagonals, no orphaned stubs, no duplicate bright targets. Active green stays green, active red stays red; history keeps the same colours but dims. Arrows/block terminal shapes express actual direction/response truth, not the appearance of an illustrative concept image.
+
+#### 6.39.5 Included same-task ordinary Attack/Dodge path-balance polish (Stage A refinement only)
+
+The user explicitly adds **Attack/Dodge path-balance improvement to this B1 task**. **Stage A is otherwise already user-accepted; do not reopen its server/proof/interaction lifecycle.** Modify only card and connector spatial balance where feasible.
+
+- **Attack-only:** Optimise the complete card-and-lines composition in the usable battlefield; keep the real Attack inside the attacker's seat-relative half and **on a horizontal path tier**, with a green vertical→elbow→horizontal **outer side-midpoint** connection when this improves balance without needless detours; red exits the opposite card side midpoint, runs horizontally, then turns vertically **up or down to the real defending Seat/Dock** with a clear arrowhead. Avoid an overlong one-sided green line and a card hung from its bottom; do not introduce an artificial elbow if a straight, correct author alignment is clearly better.
+- **Attack→Dodge:** On actual server-proven Dodge, **Attack does not move** (>1 CSS px at fixed viewport would be regression). Place genuine Dodge in the defender-owned opposite half at a similar horizontal level. Both cards should look balanced, *each on the same horizontal visual tier*, green authorship paths connected to appropriate **outside card side midpoints** where safe. The short dominant red Attack→Dodge relation **ends at Dodge**; do not simultaneously draw another full-strength red Attack→hero arrow after the block. Use true green source anchors and stable, minimal-bend geometry; avoid the complained-about visual mismatch where Attack is held by a vertical line from its bottom but Dodge sits in the red horizontal flow.
+- Preserve original physical cards, source/target proof, Zhao Yun Longdan, private pending Dodge hiding, real response controls, correct damage-on-Skip/TAKE DAMAGE and **4s** terminal result presentation, refresh/reconnect, §6.35 supersession, hand/Guidance/timer collision safety and 6-minute CI budget. **No redesign of unrelated Negation, AOE or Hero skills**.
+
+#### 6.39.6 Coding Agent implementation boundary and real-game acceptance
+
+**One bounded delivery:** \`UX2-6.34-B1-DUEL-LONG-CHAIN-01\` includes exactly **Duel B1 + the §6.39.5 Attack/Dodge route-balance polish**. Implement from this approved geometry; **do not delegate product-design decisions back to the Coding Agent** or start Stage B2/C automatically. Reuse the existing typed Duel continuation proof and current renderer; do not rewrite Duel gameplay or infer who plays the next card from spatial position.
+
+**Before marking implemented, collect:**
+
+1. **Four separate real server-backed gameplay screenshots** of the *same Duel root* after each committed response Attack #1 → #2 → #3 → #4 (if real legal play continues). Include exact projected Duel root and public card/event/actor/response IDs; no fake four-card fixture accepted as production proof. Verify especially #3: two old cards/green+red paths still visible below; and #4: same lower pair unchanged while upper pair finishes.
+2. For each frame, record real Seat/Dock endpoints, CardFace rectangles, side ownership, horizontal placement, orthogonal SVG path shape and **actual elbow/fork coordinates**. The current round is above and bright; preceding complete pair below and dim but still correct green/red; no bottom-of-card branch or ghost Dodge. Capture attacker/defender/observer perspectives where valid.
+3. Capture ordinary **Attack-only** and **Attack + real Dodge** before/after **in the same live interaction** to prove the path-balance polish did not move Attack or break the red interception, true source anchors or damage outcome.
+4. Review **390×844**, about **440 CSS px iPhone 17 Pro Max**, **480×900** and a relevant wide viewport. No page overflow, clipped arrows, covered Seat/Dock/Guidance/Hand/menu, broken accessible direction/expired-state cues or private leakage. If unavailable geometry prevents a claimed positive result, fail closed and report exact reason.
+5. Focused browser geometry + public-proof regressions; exact commit SHA, changed files, live screenshots, CI and deployment status. Required push CI <=6 min (§6.30); heavyweight full visual matrices remain optional.
+
+**STOP for independent user / Reviewer acceptance after this one combined B1 task.** The design is *not* an acceptance claim or instruction to alter \`HANDOVER.md\`. Stage B2 Negation and Stage C Group/AOE remain separate.
+
