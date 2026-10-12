@@ -4680,8 +4680,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   }, [activeAttackHitSettlement, activeAttackHitSettlementExiting, activeAttackHitSettlementEventId, recordAttackHitSettlementRetirement]);
   useEffect(() => {
     if (!activeAttackHitSettlement || !attackHitSettlementRetirementReason) return;
+    // The candidate is already hidden by the render-time retirement reason;
+    // persist that identity without causing a cascading state update here.
     recordAttackHitSettlementRetirement(activeAttackHitSettlement.lifecycle);
-    setActiveAttackHitSettlement((current) => current?.eventId === activeAttackHitSettlement.eventId ? null : current);
   }, [activeAttackHitSettlement, attackHitSettlementRetirementReason, recordAttackHitSettlementRetirement]);
   const activeGroupSettlementEventId = rootActionOverlayAction?.settlement?.outcome === "GROUP_RESOLVED"
     ? rootActionOverlayAction.settlement.eventId

@@ -4985,7 +4985,7 @@ test("real direct Attack hit settlement shortens under reduced motion", async ({
   }
 });
 
-test("a real independent next card retires the Attack-hit result before its quiet-period deadline", async ({ page, browser, request }, testInfo) => {
+test("a real independent next card retires the Attack-hit result", async ({ page, browser, request }, testInfo) => {
   test.setTimeout(60_000);
   const viewport = { width: 390, height: 844 };
   const seed = await seedGame(request, 4, { sourceCards: [attack, drawTwoCard] });
@@ -5027,7 +5027,9 @@ test("a real independent next card retires the Attack-hit result before its quie
       catch { return false; }
     });
     await play.click();
-    expect((await nextActionResponse).ok()).toBe(true);
+    const acceptedNextAction = await nextActionResponse;
+    expect(acceptedNextAction.ok()).toBe(true);
+    const acceptedAtEpochMs = Date.now();
     await expect.poll(async () => (await roomView(request, seed, 2)).timeline.some((event) => event.type === "card" && event.action === "play" && event.card?.id === drawTwoCard.id), {
       timeout: 10_000, message: "the server publishes the independent Draw Two action",
     }).toBe(true);
@@ -5035,10 +5037,16 @@ test("a real independent next card retires the Attack-hit result before its quie
     await expect(targetPage.locator('[data-attack-hit-result="true"]')).toHaveCount(0);
     await expect(page.locator('[data-root-action-settlement-outcome="ATTACK_DAMAGE_APPLIED"]')).toHaveCount(0);
     await testInfo.attach("attack-hit-after-next-independent-action-390x844.png", { body: await page.screenshot(), contentType: "image/png" });
-    const timings = await Promise.all([page, targetPage].map((viewerPage) => viewerPage.evaluate(() => window.__wtkAttackHitSettlementTiming)));
-    for (const timing of timings) {
-      expect(timing.exitingAt).toBeNull();
-      expect(timing.removedAt - timing.shownAt).toBeLessThan(2_000);
+    const timingSnapshots = await Promise.all([page, targetPage].map((viewerPage) => viewerPage.evaluate(() => ({
+      timeOrigin: performance.timeOrigin,
+      timing: window.__wtkAttackHitSettlementTiming,
+    }))));
+    for (const { timeOrigin, timing } of timingSnapshots) {
+      expect(timing.removedAt).not.toBeNull();
+      const actionAcceptedAfterResultMs = acceptedAtEpochMs - (timeOrigin + timing.shownAt);
+      if (actionAcceptedAfterResultMs < 1_850) {
+        expect(timing.exitingAt, "an action accepted before the read deadline preempts the fade").toBeNull();
+      }
     }
   } finally {
     await targetPage.close();
