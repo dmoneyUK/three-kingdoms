@@ -6,10 +6,43 @@ export type AttackDodgePublicActionEvent = {
   eventId: string;
   /** Canonical server timeline position, used only to detect later retirement actions. */
   timelineIndex: number;
+  resolutionId?: string;
   rootEventId?: string;
   interactionId?: string;
   rootFrameId?: string;
 };
+
+export type AttackHitSettlementHoldIdentity = {
+  roomCode: string;
+  phase: string | null;
+  turnSeat: number | null;
+  eventId: string;
+  rootEventId: string;
+  rootResolutionId: string;
+  rootCardId: string;
+  targetId: string;
+  publicActionEventIds: readonly string[];
+};
+
+export type AttackHitSettlementRoomProgress = {
+  roomCode: string;
+  status: string;
+  phase: string | null;
+  turnSeat: number | null;
+  currentAction: { kind?: string | null; triggerEvent?: string | null } | null;
+  liveRootEventId: string | null;
+  publicActionEvents: readonly AttackDodgePublicActionEvent[];
+};
+
+export type AttackHitSettlementSupersessionReason =
+  | "room-changed"
+  | "game-ended"
+  | "turn-advanced"
+  | "discard-phase"
+  | "turn-ending-trigger"
+  | "turn-ending-resolution"
+  | "new-public-action"
+  | "different-live-root";
 
 export type AttackDodgeSettlementHoldIdentity = {
   roomCode: string;
@@ -225,11 +258,44 @@ export function attackDodgePublicActionEvents(timeline: readonly unknown[]): Att
     return [{
       eventId,
       timelineIndex,
+      ...(stringField(event, "resolutionId") ? { resolutionId: stringField(event, "resolutionId") } : {}),
       ...(stringField(proof, "rootEventId") ? { rootEventId: stringField(proof, "rootEventId") } : {}),
       ...(stringField(proof, "interactionId") ? { interactionId: stringField(proof, "interactionId") } : {}),
       ...(stringField(proof, "rootFrameId") ? { rootFrameId: stringField(proof, "rootFrameId") } : {}),
     }];
   });
+}
+
+/**
+ * An Attack-hit result is a read-only quiet-period hold. It retires on exact
+ * server room/turn/phase/action progress; timeline position never establishes
+ * who acted or why.
+ */
+export function attackHitSettlementSupersessionReason(
+  hold: AttackHitSettlementHoldIdentity,
+  current: AttackHitSettlementRoomProgress,
+): AttackHitSettlementSupersessionReason | null {
+  if (current.roomCode !== hold.roomCode) return "room-changed";
+  if (current.status !== "playing") return "game-ended";
+  if (hold.turnSeat !== null && current.turnSeat !== hold.turnSeat) return "turn-advanced";
+  if (current.phase === "discard" && hold.phase !== "discard") return "discard-phase";
+  if (current.currentAction?.triggerEvent === "discard_phase" || current.currentAction?.triggerEvent === "turn_end") {
+    return "turn-ending-trigger";
+  }
+  if (current.phase === "resolving" && current.currentAction?.kind === "none" && current.phase !== hold.phase) {
+    return "turn-ending-resolution";
+  }
+  if (current.liveRootEventId && current.liveRootEventId !== hold.rootEventId) return "different-live-root";
+
+  const capturedActionIds = new Set(hold.publicActionEventIds);
+  for (const event of current.publicActionEvents) {
+    if (capturedActionIds.has(event.eventId) || event.eventId === hold.rootEventId || event.eventId === hold.eventId) continue;
+    // A typed event that retains this exact root/resolution is a continuation,
+    // not an independent action that should replace the result.
+    if (event.rootEventId === hold.rootEventId || event.resolutionId === hold.rootResolutionId) continue;
+    return "new-public-action";
+  }
+  return null;
 }
 
 function sameHeldRoot(hold: AttackDodgeSettlementHoldIdentity, root: AttackDodgeSettlementRoomProgress["liveRoots"][number]) {

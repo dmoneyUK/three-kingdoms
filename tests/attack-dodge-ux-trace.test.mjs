@@ -10,6 +10,7 @@ import {
   summarizePublicGameRoom,
 } from "../app/attack-dodge-ux-trace.ts";
 import {
+  attackHitSettlementSupersessionReason,
   attackDodgePublicActionEvents,
   attackDodgeSettlementSupersessionReason,
   persistRetiredAttackDodgeComposition,
@@ -92,6 +93,45 @@ test("completed Attack/Dodge holds retire on authoritative action and turn bound
   assert.equal(attackDodgeSettlementSupersessionReason(settlementHold, settlementRoom({
     liveRoots: [{ semantics: "PROVEN", rootEventId: "next-attack", interactionId: "interaction-2", rootFrameId: "root-frame-2", sourceId: "source-player", targetId: "target-player" }],
   })), "different-live-root");
+});
+
+test("Attack-hit result holds retire only on authoritative independent progress", () => {
+  const publicActionEvents = attackDodgePublicActionEvents([
+    { id: "attack-root", type: "card", action: "play", presentation: true, resolutionId: "attack-resolution" },
+    { id: "attack-hit-proof", type: "message", presentation: true, resolutionId: "attack-resolution", publicAttackHitSettlement: { rootEventId: "attack-root" } },
+    { id: "same-resolution-continuation", type: "card", action: "play", presentation: true, resolutionId: "attack-resolution" },
+    { id: "new-independent-action", type: "card", action: "play", presentation: true, resolutionId: "next-resolution" },
+    { id: "private-selection", type: "card", action: "draw", presentation: false },
+  ]);
+  const proofIndex = publicActionEvents.find((event) => event.eventId === "attack-hit-proof").timelineIndex;
+  const hold = {
+    roomCode: "ROOM1",
+    phase: "play-struck",
+    turnSeat: 0,
+    eventId: "attack-hit-proof",
+    rootEventId: "attack-root",
+    rootResolutionId: "attack-resolution",
+    rootCardId: "physical-attack-card",
+    publicActionEventIds: publicActionEvents.filter((event) => event.timelineIndex <= proofIndex).map((event) => event.eventId),
+  };
+  const progress = (overrides = {}) => ({
+    roomCode: "ROOM1", status: "playing", phase: "play-struck", turnSeat: 0,
+    currentAction: { kind: "turn" }, liveRootEventId: null,
+    publicActionEvents: publicActionEvents.filter((event) => event.eventId !== "new-independent-action"),
+    ...overrides,
+  });
+
+  assert.equal(attackHitSettlementSupersessionReason(hold, progress()), null, "polls and the exact hit proof keep the result readable");
+  assert.equal(attackHitSettlementSupersessionReason(hold, progress({
+    publicActionEvents: [...publicActionEvents.filter((event) => event.eventId !== "new-independent-action"), publicActionEvents.find((event) => event.eventId === "same-resolution-continuation")],
+  })), null, "the same server resolution remains a continuation");
+  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ publicActionEvents })), "new-public-action");
+  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ liveRootEventId: "another-root" })), "different-live-root");
+  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ turnSeat: 1 })), "turn-advanced");
+  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ phase: "discard" })), "discard-phase");
+  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ currentAction: { kind: "trigger", triggerEvent: "turn_end" } })), "turn-ending-trigger");
+  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ roomCode: "ROOM2" })), "room-changed");
+  assert.equal(attackHitSettlementSupersessionReason(hold, progress({ status: "finished" })), "game-ended");
 });
 
 test("settlement action identity extraction ignores messages and private draws", () => {

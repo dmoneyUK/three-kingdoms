@@ -1030,6 +1030,31 @@
   transition: opacity 180ms ease-out, filter 180ms ease-out;
 }
 
+.attack-hit-result-indicator {
+  position: absolute;
+  z-index: 24;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  max-width: calc(100vw - 16px);
+  padding: 4px 5px;
+  border: 1px solid #f18c72;
+  border-radius: 3px;
+  background: #321b18f2;
+  color: #ffe4a8;
+  box-shadow: 0 2px 8px #000c, 0 0 0 1px #35191599;
+  font: 800 8px/1 Arial, sans-serif;
+  letter-spacing: .075em;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 180ms ease-out, filter 180ms ease-out;
+}
+
+.opponent-public-zones > .attack-hit-result-indicator { left: 2px; bottom: 2px; }
+.local-hero-anchor > .attack-hit-result-indicator { left: 2px; top: 2px; }
+.attack-hit-result-indicator.is-exiting { opacity: .18; filter: saturate(.45); }
+
 .interaction-root-overlay[data-public-counter-read-exiting="true"] .interaction-root-action-card,
 .interaction-root-overlay[data-public-counter-read-exiting="true"] .interaction-root-history-summary {
   opacity: .18;
