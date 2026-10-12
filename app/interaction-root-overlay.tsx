@@ -243,7 +243,7 @@ function publicReadTimerPosition(card: Rect, shellWidth: number) {
     : { left: card.left + card.width - 54, top: Math.max(6, card.top - 30) };
 }
 
-export function PublicCounterReadTimer({ eventId, remainingMs, style, readKind, placement = "overlay" }: { eventId: string; remainingMs: number; style?: { left: number; top: number }; readKind: "response" | "card"; placement?: "overlay" | "operation-status" }) {
+export function PublicCounterReadTimer({ eventId, remainingMs, style, readKind, placement = "overlay" }: { eventId: string; remainingMs: number; style?: { left: number; top: number }; readKind: "response" | "card"; placement?: "overlay" | "stage-system" }) {
   const [remainingSeconds, setRemainingSeconds] = useState(Math.ceil(remainingMs / 1000));
   useEffect(() => {
     const visibleSince = performance.now();
@@ -264,7 +264,7 @@ export function PublicCounterReadTimer({ eventId, remainingMs, style, readKind, 
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = String(remainingSeconds % 60).padStart(2, "0");
   return <div
-    className={`interaction-root-public-read-timer${placement === "operation-status" ? " local-operation-card-read-timer" : ""}`}
+    className={`interaction-root-public-read-timer${placement === "stage-system" ? " stage-system-card-read-timer" : ""}`}
     data-public-counter-read-timer="true"
     data-public-counter-read-event-id={eventId}
     data-public-counter-read-remaining-seconds={remainingSeconds}

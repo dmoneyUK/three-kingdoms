@@ -1801,7 +1801,7 @@ function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuin
   </div>;
 }
 
-function StageSystemCluster({ publicResponseTimerPending, responseTimer, eventTimer, onLeave }: { publicResponseTimerPending: boolean; responseTimer?: ReactNode; eventTimer?: ReactNode; onLeave: () => void }) {
+function StageSystemCluster({ publicResponseTimerPending, responseTimer, cardReadTimer, eventTimer, onLeave }: { publicResponseTimerPending: boolean; responseTimer?: ReactNode; cardReadTimer?: ReactNode; eventTimer?: ReactNode; onLeave: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [traceNotice, setTraceNotice] = useState("");
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1829,10 +1829,11 @@ function StageSystemCluster({ publicResponseTimerPending, responseTimer, eventTi
     setTraceNotice("Complete game UX trace downloaded to this device.");
   };
 
-  return <div className="stage-system-cluster" data-stage-system-cluster="true" data-public-response-timer-pending={publicResponseTimerPending ? "true" : undefined}>
-    {responseTimer}
+  return <div className="stage-system-cluster" data-stage-system-cluster="true" data-public-response-timer-pending={publicResponseTimerPending ? "true" : undefined} role="group" aria-label="Game build, countdowns and system controls">
+    <span className="stage-build-version" title={`GitHub Actions commit ${BUILD_SHA}`} aria-label={`Build ${BUILD_SHA}`} data-build-sha={BUILD_SHA}>BUILD {BUILD_LABEL}</span>
     {eventTimer}
-    <span className="stage-build-version stage-build-version-layout-reservation" aria-hidden="true">BUILD {BUILD_LABEL}</span>
+    {cardReadTimer}
+    {responseTimer}
     <div className="stage-system-menu">
       <div id="stage-system-menu-actions" className="stage-system-menu-actions" role="group" aria-label="System menu actions" hidden={!menuOpen}>
         <small className="stage-system-build-sha"><span>GitHub Actions build SHA</span><code>{BUILD_SHA}</code></small>
@@ -5342,7 +5343,17 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         if (!player) return null;
         const hero = heroDefinition(player.hero);
         return { name: player.name, heroId: hero?.id ?? player.hero, heroName: hero?.name ?? (player.hero ? heroName(player.hero) : null), hp: player.hp, maxHp: player.maxHp };
-      }} previewPlayer={targetPreviewPresentation} previewSubmission={submittedTargetPreview} inspectPlayer={opponentInspectionPresentation} selectableDetail={targetCardPickerSelectableDetail} judgementInFlight={judgementInFlight} onCloseInspect={() => setExpandedOpponentId(null)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} />}<StageSystemCluster onLeave={onLeave} publicResponseTimerPending={seatCountdown?.kind === "response"} responseTimer={seatCountdown?.kind === "response" ? <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} responseTimer /> : null} eventTimer={<>{privateDrawTimer}{harvestEventTimer}</>} /></div>
+      }} previewPlayer={targetPreviewPresentation} previewSubmission={submittedTargetPreview} inspectPlayer={opponentInspectionPresentation} selectableDetail={targetCardPickerSelectableDetail} judgementInFlight={judgementInFlight} onCloseInspect={() => setExpandedOpponentId(null)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} />}<StageSystemCluster
+        onLeave={onLeave}
+        publicResponseTimerPending={seatCountdown?.kind === "response"}
+        cardReadTimer={attackDodgeRootCardReadEventId && attackDodgeRootCardReadRemainingMs !== null
+          ? <PublicCounterReadTimer eventId={attackDodgeRootCardReadEventId} remainingMs={attackDodgeRootCardReadRemainingMs} readKind="card" placement="stage-system" />
+          : null}
+        responseTimer={seatCountdown?.kind === "response"
+          ? <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} responseTimer />
+          : null}
+        eventTimer={<>{privateDrawTimer}{harvestEventTimer}</>}
+      /></div>
       <aside className={`game-messages ${messagesCollapsed ? "collapsed" : ""}`} aria-label="Game Messages"><header><button type="button" onClick={() => setMessagesCollapsed((collapsed) => !collapsed)} aria-label={messagesCollapsed ? "Expand game messages" : "Collapse game messages"} aria-expanded={!messagesCollapsed}>{messagesCollapsed ? "▣" : "—"}</button></header>{!messagesCollapsed && <div aria-live="polite">{gameMessages.length ? gameMessages.map((entry, index) => <p className={index === gameMessages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div>}</aside>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
       {effectNotice && <div className="turn-notice effect-notice" role="status"><span>EFFECT TRIGGERED</span><b>{effectNotice}</b></div>}
@@ -5415,15 +5426,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       } guidance={
         <div className="console-guidance" data-console-guidance="true">
           <div className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`} data-console-decision-kind={consoleDecision.kind} data-console-coherent={consoleDecision.coherent ? "true" : "false"} data-console-primary={consoleDecision.primary?.label ?? "none"} data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"} data-console-selection-count={consoleDecision.selectionCount ?? undefined} data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"} data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"} role="status" aria-live="polite" aria-atomic="true"><small>{localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{consoleDecision.instruction}</strong>{!negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}{consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true"><b>LOCAL CANCEL</b><span>Change your selection before submitting.</span></span>}</div>
-          <div className="local-operation-status" data-local-operation-status="true" role="group" aria-label="Game build and public card timer">
-            <span className="stage-build-version" title={`GitHub Actions commit ${BUILD_SHA}`} aria-label={`Build ${BUILD_SHA}`} data-build-sha={BUILD_SHA}>BUILD {BUILD_LABEL}</span>
-            {attackDodgeRootCardReadEventId && attackDodgeRootCardReadRemainingMs !== null && <PublicCounterReadTimer
-              eventId={attackDodgeRootCardReadEventId}
-              remainingMs={attackDodgeRootCardReadRemainingMs}
-              readKind="card"
-              placement="operation-status"
-            />}
-          </div>
           {invalidResponseState && <p className="error" role="status">Waiting for the latest response state…</p>}
           {(activeSkillSelection || activeSkillTargetSelection) && activeSkillOption?.effectId === "diao_chan_lust" && activeSkillSelectedTargetIds.length > 1 && <small role="status">Lust order: {room.players.find((player) => player.id === activeSkillSelectedTargetIds[0])?.name} plays Attack first, then {room.players.find((player) => player.id === activeSkillSelectedTargetIds[1])?.name}.</small>}
         </div>

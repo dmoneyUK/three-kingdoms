@@ -70,12 +70,12 @@ async function expectAttackConnectorAppearance(overlay) {
     };
   });
   expect(appearance.source).toMatchObject({
-    markerEnd: null, stroke: "rgb(134, 185, 162)", strokeWidth: "5.5px",
+    markerEnd: null, stroke: "rgb(166, 224, 197)", strokeWidth: "6.5px",
   });
   expect(appearance.source.d).toMatch(/\bL\b/);
   expect(appearance.source.d).not.toMatch(/\bC\b/);
   expect(appearance.target).toMatchObject({
-    stroke: "rgb(224, 107, 93)", strokeWidth: "7px",
+    stroke: "rgb(255, 129, 115)", strokeWidth: "8.5px",
   });
   expect(appearance.target.d).toMatch(/\bL\b/);
   expect(appearance.target.d).not.toMatch(/\bC\b/);
@@ -1551,6 +1551,7 @@ async function measure(page, sourceId, targetId) {
       targetOpacity: getComputedStyle(document.querySelector('[data-root-action-edge="target"]') ?? document.documentElement).opacity,
       targetMarkerWidth: document.querySelector('.interaction-root-connectors marker[id^="root-target-arrow-"]')?.getAttribute("markerWidth") ?? null,
       targetMarkerHeight: document.querySelector('.interaction-root-connectors marker[id^="root-target-arrow-"]')?.getAttribute("markerHeight") ?? null,
+      targetMarkerFill: getComputedStyle(document.querySelector('.interaction-root-connectors marker[id^="root-target-arrow-"] path') ?? document.documentElement).fill,
       targetHighlight: rect(document.querySelector('[data-root-action-target-highlight="true"]')),
       targetHighlightGeometry: (() => {
         const highlight = document.querySelector('[data-root-action-target-highlight="true"]');
@@ -1715,13 +1716,14 @@ for (const scenario of [
     const after = await measure(page, sourceId, targetId);
     expectOrthogonalPath({ d: after.sourcePath }, `${playerCount}p ${viewport.width}px source tether`);
     expectOrthogonalPath({ d: after.targetPath }, `${playerCount}p ${viewport.width}px target route`);
-    expect(after.sourceStrokeWidth).toBe(5.5);
-    expect(after.targetStrokeWidth).toBeGreaterThanOrEqual(6);
-    expect(after.sourceStrokeColor).toBe("rgb(134, 185, 162)");
-    expect(after.targetStrokeColor).toBe("rgb(224, 107, 93)");
+    expect(after.sourceStrokeWidth).toBe(6.5);
+    expect(after.targetStrokeWidth).toBe(8.5);
+    expect(after.sourceStrokeColor).toBe("rgb(166, 224, 197)");
+    expect(after.targetStrokeColor).toBe("rgb(255, 129, 115)");
     expect(after.targetOpacity).toBe("1");
     expect(after.targetMarkerWidth).toBe("30");
     expect(after.targetMarkerHeight).toBe("22");
+    expect(after.targetMarkerFill).toBe("rgb(255, 129, 115)");
     expect(after.targetHighlight).not.toBeNull();
     expectAttackTargetHighlightCoversAnchor(after, targetId, "active");
     expect(after.overlayCardKind).toBe("Attack");
@@ -3716,7 +3718,7 @@ for (const scenario of [
       expect(geometry.edges.some((edge) => edge.edge === "negation-counters-root")).toBe(false);
       const attackInterception = geometry.edges.find((edge) => edge.edge === "attack-dodge-interception");
       expect(attackInterception).toMatchObject({
-        markerEnd: null, stroke: "rgb(224, 107, 93)", strokeWidth: "7px", strokeDasharray: "none", opacity: "1",
+        markerEnd: null, stroke: "rgb(255, 129, 115)", strokeWidth: "8.5px", strokeDasharray: "none", opacity: "1",
       });
       const interceptionMark = geometry.edges.find((edge) => edge.edge === "interception-mark");
       expect(interceptionMark.dataset.rootActionBlocked).toBe("true");
@@ -3725,7 +3727,7 @@ for (const scenario of [
       expect(dodgeSourceAppearance.dataset).toMatchObject({ responseCardFaceKind: "Dodge", responseActorId: targetId });
       expectOrthogonalPath(dodgeSourceAppearance, "defender-to-Dodge green authorship tether");
       expect(dodgeSourceAppearance).toMatchObject({
-        markerEnd: null, stroke: "rgb(134, 185, 162)", strokeWidth: "5.5px",
+        markerEnd: null, stroke: "rgb(166, 224, 197)", strokeWidth: "6.5px",
       });
       expect(geometry.edges.filter((edge) => edge.edge === "interception-mark")).toHaveLength(1);
       expect(geometry.edges.filter((edge) => edge.edge === "attack-dodge-interception")).toHaveLength(1);
@@ -4692,6 +4694,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 440, height: 766 }
         const view = await roomView(request, seed, 1);
         return view.currentAction?.kind === "response" && view.currentAction.actorId === targetId && view.currentAction.deadline > Date.now();
       }, { timeout: 20_000 }).toBe(true);
+      await Promise.all(viewerPages.map((viewerPage) => expect(viewerPage.locator(".stage-system-card-read-timer")).toBeVisible()));
+      await expect(targetPage.locator(".visible-countdown-response")).toBeVisible();
       const rootView = await roomView(request, seed, 1);
       const rootAction = rootView.presentationSnapshot.rootAction;
       expect(rootAction).toMatchObject({ semantics: "PROVEN", action: "ATTACK", sourceId, targetId, cardKind: "Attack" });
@@ -4711,23 +4715,41 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 440, height: 766 }
       }, targetId);
       expect(await Promise.all(viewerPages.map((viewerPage) => viewerPage.locator('[data-attack-hit-result="true"]').count()))).toEqual(viewerPages.map(() => 0));
       const operationStatuses = await Promise.all(viewerPages.map((viewerPage) => viewerPage.evaluate(() => {
-        const status = document.querySelector('[data-local-operation-status="true"]');
-        const guidance = status?.closest(".console-guidance");
-        const timer = status?.querySelector('[data-public-counter-read-timer="true"]');
-        const build = status?.querySelector("[data-build-sha]");
+        const cluster = document.querySelector(".stage-system-cluster");
+        const safeZone = document.querySelector(".interaction-safe-zone");
+        const timer = cluster?.querySelector('[data-public-counter-read-timer="true"]');
+        const responseTimer = cluster?.querySelector(".visible-countdown-response");
+        const build = cluster?.querySelector("[data-build-sha]");
         const rect = (element) => {
           if (!element) return null;
           const bounds = element.getBoundingClientRect();
           return { x: bounds.x, y: bounds.y, right: bounds.right, bottom: bounds.bottom, width: bounds.width, height: bounds.height };
         };
-        return { status: rect(status), guidance: rect(guidance), timerPlacement: timer?.dataset.publicCounterReadPlacement ?? null, buildSha: build?.dataset.buildSha ?? null };
+        const clusterRect = rect(cluster);
+        const safeRect = rect(safeZone);
+        return {
+          cluster: clusterRect,
+          rightInset: clusterRect && safeRect ? safeRect.right - clusterRect.right : null,
+          bottomInset: clusterRect && safeRect ? safeRect.bottom - clusterRect.bottom : null,
+          timerPlacement: timer?.dataset.publicCounterReadPlacement ?? null,
+          timerInsideCluster: Boolean(timer && cluster?.contains(timer)),
+          responseTimerInsideCluster: Boolean(responseTimer && cluster?.contains(responseTimer)),
+          buildSha: build?.dataset.buildSha ?? null,
+          buildVisible: Boolean(build && getComputedStyle(build).visibility === "visible"),
+          legacyDockStatusCount: document.querySelectorAll('[data-local-operation-status="true"]').length,
+        };
       })));
       for (const [index, status] of operationStatuses.entries()) {
-        expect(status.status, `${viewerLabels[index]} build and card timer sit in the operation guidance`).toBeTruthy();
-        expect(status.timerPlacement).toBe("operation-status");
+        expect(status.cluster, `${viewerLabels[index]} system controls have a measured stage position`).toBeTruthy();
+        expect(status.rightInset, `${viewerLabels[index]} build and countdowns are anchored at the stage lower-right`).toBeCloseTo(14, 0);
+        expect(status.bottomInset, `${viewerLabels[index]} system cluster stays at the stage bottom edge`).toBeGreaterThanOrEqual(0);
+        expect(status.bottomInset).toBeLessThanOrEqual(6);
+        expect(status.timerPlacement).toBe("stage-system");
+        expect(status.timerInsideCluster).toBe(true);
         expect(status.buildSha).toBeTruthy();
-        expect(status.status.x).toBeGreaterThan(status.guidance.x + status.guidance.width / 2);
-        expect(status.status.right).toBeLessThanOrEqual(status.guidance.right + .5);
+        expect(status.buildVisible).toBe(true);
+        expect(status.legacyDockStatusCount).toBe(0);
+        if (index === 1) expect(status.responseTimerInsideCluster, "the defender response deadline shares the lower-right system cluster").toBe(true);
       }
       const preSkipGeometry = await Promise.all(viewerPages.map((viewerPage) => measure(viewerPage, sourceId, targetId)));
       expect(preSkipGeometry.map((geometry) => geometry.overlayRootEventId)).toEqual(viewerPages.map(() => rootAction.rootEventId));

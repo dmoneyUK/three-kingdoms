@@ -529,12 +529,6 @@
   pointer-events: none;
   white-space: nowrap;
 }
-.interaction-root-public-read-timer.local-operation-card-read-timer {
-  position: static;
-  z-index: auto;
-  flex: 0 0 auto;
-}
-
 .interaction-root-overlay[data-root-action-ready="false"] .interaction-root-connectors,
 .interaction-root-overlay[data-root-action-ready="false"] .interaction-root-action-card,
 .interaction-root-overlay[data-root-action-ready="false"] .interaction-root-history-summary {
@@ -608,6 +602,34 @@
   stroke-linecap: round;
   filter: drop-shadow(0 0 2px #86b9a288);
   vector-effect: non-scaling-stroke;
+}
+
+.interaction-root-overlay[data-root-action-ready="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"]):not([data-root-action-settlement-exiting="true"]):not([data-public-counter-read-exiting="true"]) .interaction-root-source-tether {
+  stroke: #a6e0c5;
+  stroke-width: 6.5px;
+  filter: drop-shadow(0 0 5px #9bdfbdc9);
+}
+
+.interaction-root-overlay[data-root-action-ready="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"]):not([data-root-action-settlement-exiting="true"]):not([data-public-counter-read-exiting="true"]) .interaction-root-target-arrow {
+  stroke: #ff8173;
+  stroke-width: 8.5px;
+  filter: drop-shadow(0 0 7px #ff705fbf);
+}
+
+.interaction-root-overlay[data-root-action-ready="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"]):not([data-root-action-settlement-exiting="true"]):not([data-public-counter-read-exiting="true"]) .interaction-root-connectors marker[id^="root-target-arrow"] path {
+  fill: #ff8173;
+  stroke: #3d1714;
+  stroke-width: 1.5px;
+}
+
+.interaction-root-overlay[data-root-action-ready="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"]):not([data-root-action-settlement-exiting="true"]):not([data-public-counter-read-exiting="true"]) .interaction-root-response-source-tether:is([data-response-card-face-kind="Dodge"], [data-response-semantic-action="DODGE"]) {
+  stroke: #a6e0c5;
+  stroke-width: 6.5px;
+  filter: drop-shadow(0 0 5px #9bdfbdc9);
+}
+
+.interaction-root-overlay[data-root-action-ready="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"]):not([data-root-action-settlement-exiting="true"]):not([data-public-counter-read-exiting="true"]) .interaction-root-action-card[data-root-action-card-face-kind="Attack"] > .played-card {
+  box-shadow: 0 0 0 2px #ffd487, 0 0 18px #ff765d99, 0 10px 26px #000c;
 }
 
 .interaction-root-overlay[data-root-action-card-kind="Attack"] .interaction-root-target-halo {
@@ -1470,9 +1492,7 @@
 .local-hand-section[data-raining-arrows-dodge-providers="available"] .local-hand-rail .game-card:disabled { opacity: .64; }
 
 .local-player-dock .console-guidance { position: relative; grid-area: guidance; width: 100%; min-width: 0; height: auto; padding: 5px 8px; overflow: visible; }
-.local-player-dock .console-guidance .decision-status { width: 100%; max-height: none; padding-right: 126px; overflow: visible; white-space: normal; overflow-wrap: break-word; }
-.local-operation-status { position: absolute; z-index: 12; top: 50%; right: 8px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; max-width: calc(100% - 12px); transform: translateY(-50%); pointer-events: none; }
-.stage-build-version-layout-reservation { visibility: hidden; }
+.local-player-dock .console-guidance .decision-status { width: 100%; max-height: none; overflow: visible; white-space: normal; overflow-wrap: break-word; }
 .local-player-dock .console-guidance > .error { margin: 4px 0 0; }
 .local-player-dock .turn-controls { --action-slot-width: 90px; position: relative; grid-area: actions; z-index: 100; min-height: 65px; height: auto; padding: 7px 8px; display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 4px; color: #c8b487; font: 10px/1.2 Arial, sans-serif; }
 .local-player-dock .turn-controls > [data-action-extras="true"] { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px; width: 100%; min-width: 0; }
@@ -1500,9 +1520,6 @@
 
 @media (max-width: 480px) {
   .game-shell .play-command { padding: 4px 6px 5px; }
-  .local-player-dock .console-guidance .decision-status { padding-right: 120px; }
-  .local-operation-status { right: 6px; gap: 3px; }
-  .local-operation-status .stage-build-version { padding: 2px 4px; font-size: 6px; }
   .local-player-dock { --top-panel-height: 58px; grid-template-columns: 96px minmax(0, 1fr); grid-template-rows: auto var(--top-panel-height) var(--hand-panel-height) minmax(48px, auto); padding: 0; }
   .local-dock-identity { align-items: stretch; }
   .local-hero-anchor { width: min(100%, 88px); max-width: 88px; }
@@ -4957,19 +4974,6 @@
   .game-shell .play-table[data-seat-topology="top-row"] > .interaction-safe-zone > .stage-system-cluster { bottom: 3px; }
 }
 
-/* UX2 §6.38 Stage A: on portrait top-row layouts, keep the live response
-   clock and system controls above the battlefield and opposite the proven
-   target side so they do not force extra routing elbows. */
-@media (max-width: 599px) {
-  .game-shell:has(> .interaction-root-overlay[data-root-action-overlay="true"][data-root-action-card-kind="Attack"]:not([data-root-action-group-target-graph="true"]):not([data-root-action-ordered-target-graph="true"]):not([data-root-action-oath-simultaneous-graph="true"])) .play-table[data-seat-topology="top-row"] > .interaction-safe-zone > .stage-system-cluster {
-    top: 8px;
-    bottom: auto;
-  }
-  .game-shell:has(> .interaction-root-overlay[data-root-action-overlay="true"][data-root-action-orthogonal-controls-side="left"]) .play-table[data-seat-topology="top-row"] > .interaction-safe-zone > .stage-system-cluster {
-    left: 8px;
-    right: auto;
-  }
-}
 .stage-system-menu {
   position: relative;
   flex: 0 0 auto;
@@ -4987,6 +4991,20 @@
   font: 700 7px/1 Arial, sans-serif;
   letter-spacing: .06em;
   white-space: nowrap;
+  pointer-events: none;
+}
+.game-shell .interaction-safe-zone > .stage-system-cluster > .stage-system-card-read-timer {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  display: grid;
+  box-sizing: border-box;
+  width: 64px;
+  min-width: 64px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0 7px;
 }
 .stage-system-menu-trigger {
   display: grid;
