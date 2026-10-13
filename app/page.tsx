@@ -663,7 +663,6 @@ function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
 
 function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isActionPlayer, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, targetablePlayer, testViewerController, isTestViewer, onTarget, onInspect, onSwitchTestViewer, onInfoCard, judgementInFlight }: OpponentPlayerCardProps) {
   const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex);
-  const fourPlayerTopRow = totalPlayers === 4;
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
   for (const equipment of player.equipmentCards) {
     const slot = cardDefinition(equipment.kind).equipmentSlot;
@@ -684,26 +683,22 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
       <div className="player-hero-card opponent-hero-card">
         <button type="button" className="player-square-target opponent-hero-target" disabled={targetButtonDisabled} aria-label={`${targetSelectionActive ? "Select" : "Inspect"} ${player.name}`} onClick={targetSelectionActive ? onTarget : onInspect}>
           {playerHero && <span className="player-square-portrait opponent-hero-portrait" data-hero-id={playerHero.id}><HeroPortrait hero={playerHero} /></span>}
-          <span className="opponent-hero-overlay">
-            <span className="opponent-player-name">{player.name}</span>
-            <strong className="opponent-hero-name">{playerHero?.name ?? heroName(player.hero)}</strong>
-            <span className="player-hp">HP {player.hp ?? 0}/{player.maxHp ?? 0}</span>
-            <span className="player-hearts">{hpDisplay(player.hp)}</span>
-          </span>
         </button>
-        {!fourPlayerTopRow && equipmentSummary.length > 0 && <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment">{equipmentSummary}</div>}
-        {playerHero && <button type="button" className="hero-card-info-button" aria-label={`Inspect ${player.name}`} onClick={onInspect}>i</button>}
+        <div className="opponent-hero-overlay">
+          <span className="opponent-player-name">{player.name}</span>
+          {targetSelectionActive
+            ? <button type="button" className="opponent-hero-name opponent-hero-inspect-name" aria-label={`Inspect ${player.name}`} onClick={(event) => { event.stopPropagation(); onInspect(); }}>{playerHero?.name ?? heroName(player.hero)}</button>
+            : <span className="opponent-hero-name">{playerHero?.name ?? heroName(player.hero)}</span>}
+          <span className="player-hp">HP {player.hp ?? 0}/{player.maxHp ?? 0}</span>
+          <span className="player-hearts">{hpDisplay(player.hp)}</span>
+        </div>
+        {equipmentSummary.length > 0 && <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment">{equipmentSummary}</div>}
         {playerHero && testViewerController && <button type="button" className="test-view-switch-button" data-testid={`test-view-switch-${player.id}`} data-test-viewer-id={player.id} aria-label={`Switch test perspective to ${player.name}`} aria-pressed={isTestViewer} title={`View as ${player.name}`} onClick={(event) => { event.stopPropagation(); onSwitchTestViewer(); }}>VIEW</button>}
       </div>
       {player.judgementCards.length > 0 && <section className="opponent-judgement-zone" aria-label="Judgement Zone">
         <span className="opponent-zone-label">Judgement</span>
         <div className="opponent-judgement-cards">{miniJudgement}</div>
       </section>}
-    </div>
-    <div className="opponent-hand-footer">
-      <span className="player-hand-label">Hand cards</span>
-      {fourPlayerTopRow && equipmentSummary.length > 0 && <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment">{equipmentSummary}</div>}
-      <strong className="player-hand-count">{player.handCount}</strong>
     </div>
   </article>;
 }
@@ -831,16 +826,18 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, onInfoCar
     <div className="hero-focus-body">
       <span className={hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={hero?.id}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
       <div className="hero-focus-identity">
-        <b>{player.name}</b><span>{hero?.name ?? "Unknown Hero"}</span>
-        <div className="hero-focus-identity-stats"><small>HP {player.hp ?? "?"}/{player.maxHp ?? "?"}</small><small data-public-hand-count={player.handCount}>Hand · {player.handCount}</small></div>
-        <section className="opponent-inspection-zone hero-focus-inspect-public-skills" aria-label="Public Skills">
-          <h3>Public Skills</h3>
-          <div className="hero-focus-inspect-skills">{skills.length ? skills.map((skill) => {
-            const detailId = `${baseId}-skill-${skill.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-            const expanded = expandedSkillName === skill.name;
-            return <button type="button" className="hero-focus-inspect-skill" key={skill.name} aria-label={`Show ${skill.name} description`} aria-expanded={expanded} aria-controls={detailId} onClick={() => setExpandedSkillName((current) => current === skill.name ? null : skill.name)}>{skill.name}</button>;
-          }) : <span className="opponent-inspection-empty">None</span>}</div>
-        </section>
+        <div className="hero-focus-identity-line">
+          <span className="hero-focus-identity-hero">{hero?.name ?? "Unknown Hero"}</span>
+          <div className="hero-focus-identity-stats"><small>HP {player.hp ?? "?"}/{player.maxHp ?? "?"}</small><small data-public-hand-count={player.handCount}>Hand · {player.handCount}</small></div>
+          <section className="opponent-inspection-zone hero-focus-inspect-public-skills" aria-label="Public Skills">
+            <h3>Public Skills</h3>
+            <div className="hero-focus-inspect-skills">{skills.length ? skills.map((skill) => {
+              const detailId = `${baseId}-skill-${skill.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+              const expanded = expandedSkillName === skill.name;
+              return <button type="button" className="hero-focus-inspect-skill" key={skill.name} aria-label={`Show ${skill.name} description`} aria-expanded={expanded} aria-controls={detailId} onClick={() => setExpandedSkillName((current) => current === skill.name ? null : skill.name)}>{skill.name}</button>;
+            }) : <span className="opponent-inspection-empty">None</span>}</div>
+          </section>
+        </div>
       </div>
     </div>
     <div className="hero-focus-inspect-details hero-focus-context">
@@ -1867,7 +1864,7 @@ function GameSystemMenu({ onLeave, messages, messagesCollapsed, onToggleMessages
 
   return <div className="stage-system-menu" data-system-menu-placement="guidance">
     <div id="stage-system-menu-actions" className="stage-system-menu-actions" role="group" aria-label="System menu actions" hidden={!menuOpen}>
-      <small className="stage-system-build-sha"><span>GitHub Actions build SHA</span><code>{BUILD_SHA}</code></small>
+      <small className="stage-system-build-sha" data-build-sha={BUILD_SHA}><span>BUILD {BUILD_LABEL}</span><code>GitHub Actions SHA · {BUILD_SHA}</code></small>
       <aside className={`game-messages ${messagesCollapsed ? "collapsed" : ""}`} aria-label="Game Messages">
         <header><button type="button" className="stage-system-game-messages-toggle" onClick={onToggleMessages} aria-label={messagesCollapsed ? "Expand game messages" : "Collapse game messages"} aria-controls="stage-system-game-messages-list" aria-expanded={!messagesCollapsed}>
           <span>Game Messages</span><span aria-hidden="true">{messagesCollapsed ? "＋" : "−"}</span>
@@ -1883,8 +1880,7 @@ function GameSystemMenu({ onLeave, messages, messagesCollapsed, onToggleMessages
 }
 
 function StageSystemCluster({ publicResponseTimerPending, responseTimer, eventTimer }: { publicResponseTimerPending: boolean; responseTimer?: ReactNode; eventTimer?: ReactNode }) {
-  return <div className="stage-system-cluster" data-stage-system-cluster="true" data-public-response-timer-pending={publicResponseTimerPending ? "true" : undefined} role="group" aria-label="Game build and countdowns">
-    <span className="stage-build-version" title={`GitHub Actions commit ${BUILD_SHA}`} aria-label={`Build ${BUILD_SHA}`} data-build-sha={BUILD_SHA}>BUILD {BUILD_LABEL}</span>
+  return <div className="stage-system-cluster" data-stage-system-cluster="true" data-public-response-timer-pending={publicResponseTimerPending ? "true" : undefined} role="group" aria-label="Game countdowns">
     {eventTimer}
     {responseTimer}
   </div>;

@@ -42,16 +42,13 @@ test("test-game perspective switches manually and stays selected when the server
     const card = button.closest(".local-hero-anchor, .opponent-hero-card");
     const buttonRect = button.getBoundingClientRect();
     const cardRect = card?.getBoundingClientRect();
-    const infoRect = card?.querySelector(".hero-card-info-button")?.getBoundingClientRect();
-    const overlap = infoRect && buttonRect.left < infoRect.right && buttonRect.right > infoRect.left
-      && buttonRect.top < infoRect.bottom && buttonRect.bottom > infoRect.top;
     return {
       id: button.getAttribute("data-test-viewer-id"),
       width: buttonRect.width,
       height: buttonRect.height,
       insideHero: Boolean(cardRect && buttonRect.left >= cardRect.left && buttonRect.top >= cardRect.top
         && buttonRect.right <= cardRect.right && buttonRect.bottom <= cardRect.bottom),
-      overlapsInfo: Boolean(overlap),
+      opponentInfoMarker: Boolean(card?.classList.contains("opponent-hero-card") && card.querySelector(".hero-card-info-button")),
     };
   }));
   console.log("test-view-switch-geometry", JSON.stringify({ viewport: page.viewportSize(), buttons: switchGeometry }));
@@ -60,7 +57,7 @@ test("test-game perspective switches manually and stays selected when the server
     expect(geometry.width).toBeGreaterThan(0);
     expect(geometry.height).toBeGreaterThan(0);
     expect(geometry.insideHero).toBe(true);
-    expect(geometry.overlapsInfo).toBe(false);
+    expect(geometry.opponentInfoMarker).toBe(false);
   }
 
   const selectedButton = page.getByTestId(`test-view-switch-${selectedViewer.id}`);

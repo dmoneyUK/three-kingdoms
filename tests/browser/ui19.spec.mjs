@@ -678,14 +678,14 @@ for (const { width, height } of TOPOLOGY_MATRIX) {
 }
 
 for (const { width, height } of TOPOLOGY_MATRIX) {
-  test(`UX2.0VIS-04A ${width}x${height} keeps public identity and hand count with equipment at a glance`, async ({ page }) => {
+  test(`UX2.0VIS-04A ${width}x${height} keeps public identity without thumbnail Hand details`, async ({ page }) => {
     await loadFixture(page, { state: "rest", count: 4, width, height });
     for (const playerId of ["p2", "p3", "p4"]) {
       const seat = page.locator(`[data-player-anchor="${playerId}"]`);
       await assertVisible(seat.locator(".opponent-player-name"), `${playerId} name`);
       await assertVisible(seat.locator(".opponent-hero-name"), `${playerId} hero name`);
       await assertVisible(seat.locator(".player-hp"), `${playerId} HP text`);
-      await assertVisible(seat.locator(".opponent-hand-footer .player-hand-count"), `${playerId} hand count`);
+      await expect(seat.locator(".opponent-hand-footer, .player-hand-count, .hero-card-info-button")).toHaveCount(0);
     }
 
     const equipmentSeat = page.locator('[data-player-anchor="p2"]');
@@ -1175,7 +1175,7 @@ async function sideThumbnailGeometry(page) {
         const target = seat.querySelector(".opponent-hero-target");
         const targetBox = target.getBoundingClientRect();
         const hit = document.elementFromPoint(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2);
-        const required = [".opponent-hero-card", ".opponent-hero-target", ".opponent-hero-portrait", ".opponent-hero-name", ".player-hp", ".opponent-hand-footer", ".player-hand-count"];
+        const required = [".opponent-hero-card", ".opponent-hero-target", ".opponent-hero-portrait", ".opponent-hero-name", ".player-hp"];
         return {
           id: seat.dataset.playerAnchor, side: seat.dataset.sideColumn, row: Number(seat.dataset.sideRow),
           ...bounds(seat), target: bounds(target), hitSafe: Boolean(hit && target.contains(hit)),
@@ -1370,7 +1370,7 @@ for (const width of [480, 650]) {
       expect(presentation.playerNameFits).toBe(true);
       expect(presentation.heroNameFits).toBe(true);
       await assertVisible(seat.locator(".opponent-hero-overlay .player-hp"), "HP");
-      await assertVisible(seat.locator(".opponent-hand-footer .player-hand-count"), "concealed Hand count");
+      await expect(seat.locator(".opponent-hand-footer, .player-hand-count, .hero-card-info-button")).toHaveCount(0);
       await expect(seat.locator(".game-card")).toHaveCount(0);
       if (equipmentCase.scenario === "multiple") await testInfo.attach("top-row-equipment-art", { body: await page.screenshot({ animations: "disabled" }), contentType: "image/png" });
       const bounds = await seat.evaluate((element) => {
@@ -1487,7 +1487,7 @@ for (const width of [390, 480, 650]) {
       expect(presentation.heroNameFits).toBe(true);
       expect(presentation.art.width).toBeGreaterThanOrEqual(39);
       await assertVisible(page.locator(`[data-player-anchor="${playerId}"] .player-hp`), `${playerId} HP`);
-      await assertVisible(page.locator(`[data-player-anchor="${playerId}"] .opponent-hand-footer .player-hand-count`), `${playerId} Hand count`);
+      await expect(page.locator(`[data-player-anchor="${playerId}"] .opponent-hand-footer, [data-player-anchor="${playerId}"] .player-hand-count, [data-player-anchor="${playerId}"] .hero-card-info-button`)).toHaveCount(0);
     }
   });
 }
@@ -1507,8 +1507,6 @@ for (const width of [390, 480, 650]) {
           const artBox = bounds(art);
           const name = seat.querySelector(".opponent-hero-name");
           const nameBox = bounds(name);
-          const summary = seat.querySelector(".opponent-hand-footer");
-          const summaryBox = bounds(summary);
           const target = seat.querySelector(".opponent-hero-target");
           const targetBox = bounds(target);
           const hit = document.elementFromPoint(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2);
@@ -1522,15 +1520,14 @@ for (const width of [390, 480, 650]) {
             heroName: name.textContent.trim(),
             heroNameBox: nameBox,
             heroNameShare: nameBox.width * nameBox.height / (seatBox.width * seatBox.height),
-            summary: summaryBox,
-            summaryShare: summaryBox.width * summaryBox.height / (seatBox.width * seatBox.height),
             playerNameFits: seat.querySelector(".opponent-player-name").scrollWidth <= seat.querySelector(".opponent-player-name").clientWidth,
             heroNameFits: name.scrollWidth <= name.clientWidth,
             imageLoaded: Boolean(image.naturalWidth && image.naturalHeight),
             imageFit: artStyle.objectFit,
             imagePosition: artStyle.objectPosition,
             equipmentCount: seat.querySelectorAll(".opponent-equipment-indicator").length,
-            handCount: seat.querySelector(".player-hand-count").textContent.trim(),
+            handCountPresent: Boolean(seat.querySelector(".player-hand-count")),
+            handFooterPresent: Boolean(seat.querySelector(".opponent-hand-footer")),
             hpVisible: (() => { const box = seat.querySelector(".player-hp").getBoundingClientRect(); return box.width > 0 && box.height > 0; })(),
             targetHitSafe: Boolean(hit && target.contains(hit)),
             pageWidth: document.documentElement.scrollWidth,
@@ -1545,12 +1542,10 @@ for (const width of [390, 480, 650]) {
       expect(Math.max(...seats.map(({ pageWidth }) => pageWidth))).toBeLessThanOrEqual(width);
       for (const seat of seats) {
         expect(seat.seat.width).toBeCloseTo(expectedVis12bSeatWidth(board.width), 1);
-        expect(seat.artShare, `${seat.id} Hero image is the dominant 62–68% card area`).toBeGreaterThanOrEqual(0.62);
-        expect(seat.artShare, `${seat.id} Hero image is the dominant 62–68% card area`).toBeLessThanOrEqual(0.68);
-        expect(seat.heroNameShare, `${seat.id} Hero-name strip occupies 14–17%`).toBeGreaterThanOrEqual(0.14);
-        expect(seat.heroNameShare, `${seat.id} Hero-name strip occupies 14–17%`).toBeLessThanOrEqual(0.17);
-        expect(seat.summaryShare, `${seat.id} Equipment/Hand summary occupies 18–21%`).toBeGreaterThanOrEqual(0.18);
-        expect(seat.summaryShare, `${seat.id} Equipment/Hand summary occupies 18–21%`).toBeLessThanOrEqual(0.21);
+        expect(seat.artShare, `${seat.id} Hero image uses the thumbnail space after removing the Hand footer`).toBeGreaterThanOrEqual(0.75);
+        expect(seat.artShare, `${seat.id} Hero image uses the thumbnail space after removing the Hand footer`).toBeLessThanOrEqual(0.80);
+        expect(seat.heroNameShare, `${seat.id} Hero-name strip remains visible`).toBeGreaterThanOrEqual(0.18);
+        expect(seat.heroNameShare, `${seat.id} Hero-name strip remains visible`).toBeLessThanOrEqual(0.22);
         expect(seat.imageLoaded, `${seat.id} uses its real Hero artwork`).toBe(true);
         expect(seat.imageFit).toBe("cover");
         expect(seat.imagePosition).toBe("50% 20%");
@@ -1558,13 +1553,13 @@ for (const width of [390, 480, 650]) {
         expect(seat.heroNameFits).toBe(true);
         expect(seat.hpVisible).toBe(true);
         expect(seat.equipmentCount).toBe(1);
-        expect(seat.handCount).toBe("2");
+        expect(seat.handCountPresent).toBe(false);
+        expect(seat.handFooterPresent).toBe(false);
         expect(seat.targetHitSafe).toBe(true);
         expect(seat.art.x).toBeGreaterThanOrEqual(seat.seat.x);
         expect(seat.art.right).toBeLessThanOrEqual(seat.seat.right);
         expect(seat.heroNameBox.x).toBeGreaterThanOrEqual(seat.seat.x);
         expect(seat.heroNameBox.right).toBeLessThanOrEqual(seat.seat.right);
-        expect(seat.summary.bottom).toBeLessThanOrEqual(seat.seat.bottom);
         if (stage) expect(seat.seat.bottom).toBeLessThanOrEqual(stage.y - 6);
       }
       const orderedSeats = [...seats].sort((left, right) => left.seat.x - right.seat.x);
@@ -1678,7 +1673,7 @@ test("UX2.0VIS-12I four-player desktop retains its existing Hero and Equipment a
   expect(seats.map(({ id }) => id).sort()).toEqual(["p2", "p3", "p4"]);
   for (const seat of seats) {
     expect(seat.art.width).toBeCloseTo(52, 0);
-    expect(seat.art.height).toBeCloseTo(70, 0);
+    expect(seat.art.height).toBeCloseTo(seat.hero.height, 0);
     expect(seat.equipment.y).toBeCloseTo(seat.hero.y + 2, 0);
     expect(seat.target).toBe(true);
   }

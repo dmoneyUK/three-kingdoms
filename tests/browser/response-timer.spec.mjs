@@ -112,16 +112,24 @@ test("UX2 System Menu is keyboard-accessible and confirms Exit without changing 
   const exit = actions.getByRole("button", { name: "Exit Game" });
   const messages = actions.locator("aside.game-messages");
   const messagesToggle = messages.locator(".stage-system-game-messages-toggle");
+  const buildInfo = actions.locator(".stage-system-build-sha");
   await expect(menu).toHaveAttribute("aria-controls", "stage-system-menu-actions");
   await expect(menu).toContainText("⚙");
   await expect(menu).toHaveAttribute("aria-expanded", "false");
   await expect(exit).toBeHidden();
+  await expect(buildInfo).toBeHidden();
+  await expect(page.locator(".stage-build-version")).toHaveCount(0);
   await expect(page.locator(".play-table > .game-messages")).toHaveCount(0);
   await expect(messages).toBeHidden();
 
   await menu.click();
   await expect(menu).toHaveAttribute("aria-expanded", "true");
   await expect(exit).toBeVisible();
+  await expect(buildInfo).toBeVisible();
+  const buildSha = await buildInfo.getAttribute("data-build-sha");
+  expect(buildSha).toBeTruthy();
+  await expect(buildInfo.locator("span")).toHaveText(`BUILD ${buildSha === "development" ? "DEV" : buildSha.slice(0, 7)}`);
+  await expect(buildInfo.locator("code")).toContainText(buildSha);
   await expect(messages).toBeVisible();
   await expect(messagesToggle).toHaveAccessibleName("Expand game messages");
   await expect(messagesToggle).toHaveAttribute("aria-expanded", "false");

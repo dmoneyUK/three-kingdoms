@@ -4736,7 +4736,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 440, height: 766 }
         const safeZone = document.querySelector(".interaction-safe-zone");
         const timer = cluster?.querySelector('[data-public-counter-read-timer="true"]');
         const responseTimer = cluster?.querySelector(".visible-countdown-response");
-        const build = cluster?.querySelector("[data-build-sha]");
+        const build = document.querySelector(".stage-system-menu-actions [data-build-sha]");
         const rect = (element) => {
           if (!element) return null;
           const bounds = element.getBoundingClientRect();
@@ -4753,7 +4753,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 440, height: 766 }
           timerInsideCluster: Boolean(timer && cluster?.contains(timer)),
           responseTimerInsideCluster: Boolean(responseTimer && cluster?.contains(responseTimer)),
           buildSha: build?.dataset.buildSha ?? null,
-          buildVisible: Boolean(build && getComputedStyle(build).visibility === "visible"),
+          buildInCountdownCluster: Boolean(build && cluster?.contains(build)),
+          buildMenuHidden: Boolean(build?.closest(".stage-system-menu-actions")?.hidden),
           legacyDockStatusCount: document.querySelectorAll('[data-local-operation-status="true"]').length,
         };
       })));
@@ -4764,7 +4765,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 440, height: 766 }
         expect(status.bottomInset).toBeLessThanOrEqual(6);
         expect(status.graphDisplayTimerCount).toBe(0);
         expect(status.buildSha).toBeTruthy();
-        expect(status.buildVisible).toBe(true);
+        expect(status.buildInCountdownCluster).toBe(false);
+        expect(status.buildMenuHidden).toBe(true);
         expect(status.legacyDockStatusCount).toBe(0);
         if (index === 1) expect(status.responseTimerInsideCluster, "the defender response deadline shares the lower-right system cluster").toBe(true);
       }

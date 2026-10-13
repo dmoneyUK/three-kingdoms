@@ -1,6 +1,9 @@
 import { devices, expect, test } from "@playwright/test";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const API = "http://127.0.0.1:3137";
+const inspectionEvidenceDirectory = process.env.WTK_INSPECT_EVIDENCE_DIR?.trim() ?? "";
 const card = (kind, id, suit = "♠", rank = "7") => ({ id, kind, suit, rank });
 
 async function seedGame(request, players) {
@@ -25,6 +28,18 @@ async function attachScreenshot(testInfo, name, page) {
   const path = testInfo.outputPath(`${name}.png`);
   await page.screenshot({ path, animations: "disabled" });
   await testInfo.attach(name, { path, contentType: "image/png" });
+}
+
+function saveInspectionEvidence(name, content) {
+  if (!inspectionEvidenceDirectory) return;
+  mkdirSync(inspectionEvidenceDirectory, { recursive: true });
+  writeFileSync(join(inspectionEvidenceDirectory, name), content);
+}
+
+async function saveInspectionScreenshot(page, name) {
+  if (!inspectionEvidenceDirectory) return;
+  mkdirSync(inspectionEvidenceDirectory, { recursive: true });
+  await page.screenshot({ path: join(inspectionEvidenceDirectory, name), animations: "disabled" });
 }
 
 async function roomView(request, seed, playerIndex) {
@@ -706,8 +721,9 @@ for (const viewport of [
         submissions.push(JSON.parse(requestEvent.postData() ?? "{}"));
       }
     });
-    const inspectButton = page.locator(`[data-player-anchor="${inspected.id}"] .hero-card-info-button`);
+    const inspectButton = page.locator(`[data-player-anchor="${inspected.id}"] .opponent-hero-target`);
     await expect(inspectButton).toHaveAttribute("aria-label", "Inspect INSPECTED");
+    await expect(page.locator(`[data-player-anchor="${inspected.id}"] .hero-card-info-button, [data-player-anchor="${inspected.id}"] .opponent-hand-footer, [data-player-anchor="${inspected.id}"] .player-hand-count`)).toHaveCount(0);
     await inspectButton.click();
     const readOnlyPanel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
     await expect(readOnlyPanel).toBeVisible();
@@ -726,6 +742,7 @@ for (const viewport of [
     await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
     await expect(panel.locator(".hero-focus-heading strong")).toHaveText("INSPECT · INSPECTED");
     await expect(panel.locator(".hero-focus-identity")).toContainText("Xiahou Dun");
+    await expect(panel.locator(".hero-focus-identity")).not.toContainText("INSPECTED");
     await expect(panel.locator(".hero-focus-identity")).toContainText("HP 2/4");
     await expect(panel.locator(".hero-focus-identity [data-public-hand-count]")).toHaveText("Hand · 1");
     await expect(panel.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill')).toHaveCount(1);
@@ -740,7 +757,7 @@ for (const viewport of [
     const bodyText = await page.locator("body").innerText();
     for (const hiddenCard of hidden) expect(bodyText).not.toContain(hiddenCard.id);
     const third = seed.players[2];
-    await page.locator(`[data-player-anchor="${third.id}"] .hero-card-info-button`).click();
+    await page.locator(`[data-player-anchor="${third.id}"] .opponent-hero-inspect-name`).click();
     const thirdPanel = page.getByRole("dialog", { name: "THIRD opponent inspection" });
     await expect(thirdPanel).toBeVisible();
     await expect(thirdPanel).toHaveAttribute("data-inspect-player-id", third.id);
@@ -764,8 +781,26 @@ for (const viewport of [
     await expect(skill).toHaveAttribute("aria-expanded", "true");
     expect(submissions).toEqual([]);
     const detailsGeometry = await details.evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, overflowY: getComputedStyle(element).overflowY }));
-    await testInfo.attach(`inspect-expanded-details-geometry-${viewport.width}`, { body: JSON.stringify(detailsGeometry), contentType: "application/json" });
+    const descriptionGeometry = await skillDescription.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const style = getComputedStyle(element);
+      const lineHeight = Number.parseFloat(style.lineHeight);
+      const verticalPadding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+      return {
+        naturalLines: range.getClientRects().length,
+        visibleLines: Math.floor((element.clientHeight - verticalPadding + 0.5) / lineHeight),
+        maxHeight: Number.parseFloat(style.maxHeight),
+        lineHeight,
+        scrollHeight: element.scrollHeight,
+        clientHeight: element.clientHeight,
+      };
+    });
+    expect(descriptionGeometry.visibleLines).toBeGreaterThanOrEqual(Math.min(4, descriptionGeometry.naturalLines));
+    expect(descriptionGeometry.maxHeight).toBeLessThanOrEqual(4 * descriptionGeometry.lineHeight + 1);
+    await testInfo.attach(`inspect-expanded-details-geometry-${viewport.width}`, { body: JSON.stringify({ detailsGeometry, descriptionGeometry }), contentType: "application/json" });
     await attachScreenshot(testInfo, `server-unified-inspect-expanded-${viewport.width}`, page);
+    await saveInspectionScreenshot(page, `server-unified-inspect-expanded-${viewport.width}.png`);
     await page.keyboard.press("Enter");
     await expect(skillDescription).toHaveCount(0);
     await expect(skill).toHaveAttribute("aria-expanded", "false");
@@ -789,7 +824,9 @@ for (const viewport of [
     expect(dockBefore).not.toBeNull();
     expect(menuBox).not.toBeNull();
     expect(guidanceBox).not.toBeNull();
-    await testInfo.attach(`inspect-layout-geometry-${viewport.width}`, { body: JSON.stringify({ stageBox, surfaceBox, panelBox, detailsBox, equipmentCardBoxes, dockBefore, menuBox, guidanceBox, seatBoxes, detailsGeometry }, null, 2), contentType: "application/json" });
+    const layoutGeometry = { stageBox, surfaceBox, panelBox, detailsBox, equipmentCardBoxes, dockBefore, menuBox, guidanceBox, seatBoxes, detailsGeometry, descriptionGeometry };
+    await testInfo.attach(`inspect-layout-geometry-${viewport.width}`, { body: JSON.stringify(layoutGeometry, null, 2), contentType: "application/json" });
+    saveInspectionEvidence(`server-unified-inspect-layout-${viewport.width}.json`, JSON.stringify(layoutGeometry, null, 2));
     const overlaps = (a, b) => Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x)
       && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
     expect(surfaceBox.width).toBeLessThan(stageBox.width);
@@ -820,6 +857,7 @@ for (const viewport of [
     expect(surfaceBox.width / stageBox.width).toBeLessThanOrEqual(0.94);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
     await attachScreenshot(testInfo, `server-opponent-inspect-${viewport.width}`, page);
+    await saveInspectionScreenshot(page, `server-opponent-inspect-${viewport.width}.png`);
 
     await panel.getByRole("button", { name: "Close INSPECTED inspection" }).click();
     await expect(page.locator('.interaction-stage[data-local-ui-mode="INSPECT"]')).toHaveCount(0);
@@ -860,7 +898,7 @@ test.describe("iPhone 17 Pro Max mobile browser emulation", () => {
       expect(box).not.toBeNull();
       await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
     };
-    const inspectButton = page.locator(`[data-player-anchor="${seed.players[1].id}"] .hero-card-info-button`);
+    const inspectButton = page.locator(`[data-player-anchor="${seed.players[1].id}"] .opponent-hero-target`);
     await tap(inspectButton);
     const panel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
     await expect(panel).toBeVisible();
@@ -870,6 +908,7 @@ test.describe("iPhone 17 Pro Max mobile browser emulation", () => {
     await page.keyboard.press("Enter");
     await expect(panel.getByRole("region", { name: "Stauchness description" })).toContainText("After you take damage, you may enter Judgement phase");
     await attachScreenshot(testInfo, "server-webkit-mobile-inspector-skill-expanded", page);
+    await saveInspectionScreenshot(page, "server-touch-mobile-inspector-skill-expanded.png");
     await tap(skill);
     await expect(panel.getByRole("region", { name: "Stauchness description" })).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);

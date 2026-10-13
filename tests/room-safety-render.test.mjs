@@ -119,7 +119,7 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   });
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room: uxRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.ok(html.includes(`data-build-sha="${BUILD_SHA}"`), "the game screen exposes the exact build SHA used for its client bundle");
-  assert.match(html, /GitHub Actions build SHA/);
+  assert.match(html, /GitHub Actions SHA/);
   assert.match(html, /Download UX trace/);
   assert.doesNotMatch(html, /Start Attack\/Dodge trace|Stop Attack\/Dodge trace|Copy UX trace/);
   assert.equal((html.match(/class="decision-status/g) ?? []).length, 1, "one primary status area is rendered");
@@ -706,8 +706,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /class="player-square[^>]*data-player-anchor="p2"/);
   assert.match(html, /class="player-square[^>]*data-player-anchor="p3"/);
   assert.match(html, /class="opponent-equipment-indicator" data-slot="weapon" data-equipment-id="opponent-weapon" data-card-kind="BlueSteelSword" role="img" aria-label="Weapon equipped: Blue Steel Sword"/);
-  assert.match(html, /class="opponent-hero-overlay"[\s\S]*class="opponent-hero-name">Liu Bei<\/strong>[\s\S]*class="player-hp">HP 3\/4<\/span>[\s\S]*class="player-hearts">♥♥♥<\/span>/);
-  assert.match(html, /class="opponent-hand-footer"[\s\S]*class="player-hand-label">Hand cards<\/span>[\s\S]*class="player-hand-count">4<\/strong>/);
+  assert.match(html, /class="opponent-hero-overlay"[\s\S]*class="opponent-hero-name">Liu Bei<\/span>[\s\S]*class="player-hp">HP 3\/4<\/span>[\s\S]*class="player-hearts">♥♥♥<\/span>/);
+  assert.doesNotMatch(html, /class="opponent-hand-footer"|class="player-hand-count"/);
   assert.match(html, /class="opponent-equipment-indicator"[^>]*title="Weapon: Blue Steel Sword"/);
   assert.match(html, /class="mini-zone-card judgement-mini"[^>]*data-judgement-id="opponent-judgement"/);
   assert.match(html, /class="local-hand"[^>]*data-card-origin-anchor="p1"/);
@@ -718,7 +718,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /data-hero-id="cao-cao"/);
   assert.match(html, /class="player-square-portrait opponent-hero-portrait" data-hero-id="liu-bei"[\s\S]*data-hero-art-id="liu-bei"/);
   assert.match(html, /data-hero-art-id="xiahou-dun"/);
-  assert.match(html, /aria-label="Inspect ALICE"/, "opponent heroes are inspectable when no target is active");
+  assert.match(html, /aria-label="Inspect ALICE"/, "opponent Hero cards are inspectable when no target is active");
+  assert.doesNotMatch(html, /class="hero-card-info-button" aria-label="Inspect ALICE"/);
   assert.match(sequenceStyleSource, /\.opponent-hero-card \{[\s\S]*aspect-ratio: 2 \/ 3;/, "opponent hero portraits remain 2:3");
   assert.match(sequenceStyleSource, /\.opponent-hero-portrait \{[\s\S]*height: 100% !important;/, "opponent artwork fills the hero region");
   assert.match(sequenceStyleSource, /\.opponent-hero-portrait \.hero-art-image \{[^}]*object-fit: cover; object-position: center top;/, "opponent artwork uses cover framing");
@@ -852,7 +853,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.doesNotMatch(sequenceStyleSource, /margin-left: -38px|margin-left: -34px/);
   assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls\s*\{[\s\S]*min-height: 65px[\s\S]*padding: 7px 8px/);
   assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls button\s*\{[\s\S]*min-width: 78px/);
-  assert.match(globalStyleSource, /\.player-hp[\s\S]*\.player-hearts[\s\S]*\.player-hand-count/);
+  assert.match(sequenceStyleSource, /\.opponent-hero-overlay[\s\S]*\.player-hp[\s\S]*\.player-hearts/);
   assert.match(globalStyleSource, /\.mini-equipment-card \.mini-equipment-button > \.played-card[\s\S]*width: 100%[\s\S]*height: 100%/);
   assert.match(sequenceStyleSource, /@media \(max-width: 360px\)[\s\S]*grid-template-columns: 64px minmax\(0, 1fr\)/);
   assert.match(sequenceStyleSource, /\.local-hero-anchor\s*\{[^}]*width: min\(100%, 72px\)[^}]*max-width: 72px/);

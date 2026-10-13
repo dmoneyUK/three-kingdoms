@@ -26,7 +26,7 @@ function expectStableBox(before, after) {
   }
 }
 
-test("opponent information affordance opens the unified inspector without changing Stage identity", async ({ page }) => {
+test("clicking an opponent Hero opens the unified inspector without changing Stage identity", async ({ page }) => {
   await loadFixture(page, { state: "interaction", width: 480, height: 900 });
   const stage = page.locator('.play-table[data-seat-topology="top-row"] .interaction-stage');
   await expect(stage).toHaveAttribute("data-stage", "ATTACK_RESPONSE");
@@ -34,7 +34,7 @@ test("opponent information affordance opens the unified inspector without changi
     ["data-interaction-id", "data-checkpoint-id", "data-presentation-revision", "data-stage"].map((name) => [name, element.getAttribute(name)]),
   ));
 
-  await page.locator('[data-player-anchor="p2"] .hero-card-info-button').click();
+  await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
   await expect(page.getByRole("dialog", { name: "Player 2 opponent inspection" })).toBeVisible();
   await expect(stage).toHaveAttribute("data-local-ui-mode", "INSPECT");
   expect(await stage.evaluate((element) => Object.fromEntries(
@@ -51,6 +51,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     await loadFixture(page, viewport);
     const before = await seatGeometry(page);
     const dockBefore = await page.locator(".local-player-dock").boundingBox();
+    const opponentSeat = page.locator('[data-player-anchor="p2"]');
+    await expect(opponentSeat.locator(".hero-card-info-button")).toHaveCount(0);
+    await expect(opponentSeat.locator(".opponent-hand-footer, .player-hand-count")).toHaveCount(0);
     await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
 
     const stage = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"]');
@@ -63,7 +66,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     await expect(page.getByRole("dialog", { name: "Player 2 opponent inspection" })).toBeVisible();
     await expect(stage.locator(":scope > header")).toHaveCount(0);
     await expect(stage.getByText("INSPECT · Player 2", { exact: true })).toHaveCount(1);
-    await expect(inspect.locator(".hero-focus-identity")).toContainText("Player 2");
+    await expect(inspect.locator(".hero-focus-identity")).not.toContainText("Player 2");
+    await expect(inspect.locator(".hero-focus-identity-hero")).toBeVisible();
+    await expect(inspect.locator(".hero-focus-identity b")).toHaveCount(0);
     await expect(inspect.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill').first()).toBeVisible();
     const skills = inspect.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill');
     await expect(skills).toHaveCount(2);
@@ -90,9 +95,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       inspect.locator(".hero-focus-portrait").boundingBox(),
       inspect.locator(".hero-focus-identity").boundingBox(),
       inspect.locator(".hero-focus-identity").evaluate((element) => ({
-        player: Number.parseFloat(getComputedStyle(element.querySelector("b")).fontSize),
-        hero: Number.parseFloat(getComputedStyle(element.querySelector("span")).fontSize),
-        hp: Number.parseFloat(getComputedStyle(element.querySelector("small")).fontSize),
+        hero: Number.parseFloat(getComputedStyle(element.querySelector(".hero-focus-identity-hero")).fontSize),
+        hp: Number.parseFloat(getComputedStyle(element.querySelector(".hero-focus-identity-stats small")).fontSize),
         hand: Number.parseFloat(getComputedStyle(element.querySelector("[data-public-hand-count]")).fontSize),
       })),
       page.locator(".stage-system-menu-trigger").boundingBox(),
@@ -109,10 +113,11 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     expect(Math.abs(backdropBox.width - stageBox.width)).toBeLessThanOrEqual(1);
     expect(Math.abs(backdropBox.height - stageBox.height)).toBeLessThanOrEqual(1);
     expect(Math.abs((shellBox.x + shellBox.width / 2) - (stageBox.x + stageBox.width / 2))).toBeLessThanOrEqual(1);
-    expect(Math.abs((shellBox.y + shellBox.height / 2) - (stageBox.y + stageBox.height / 2))).toBeLessThanOrEqual(1);
+    const upwardShift = stageBox.y + stageBox.height / 2 - (shellBox.y + shellBox.height / 2);
+    expect(upwardShift).toBeGreaterThanOrEqual(43);
+    expect(upwardShift).toBeLessThanOrEqual(53);
     expect(shellBox.height / stageBox.height).toBeLessThanOrEqual(0.5);
     expect(shellBox.height).toBeLessThan(stageBox.height);
-    expect(identityType.player).toBeGreaterThanOrEqual(15);
     expect(identityType.hero).toBeGreaterThanOrEqual(12);
     expect(identityType.hp).toBeGreaterThanOrEqual(10);
     expect(identityType.hand).toBeGreaterThanOrEqual(10);
@@ -134,6 +139,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     expect(overlaps(shellBox, menuBox)).toBe(false);
     expect(overlaps(shellBox, guidanceBox)).toBe(false);
     expect(overlaps(shellBox, dockOpen)).toBe(false);
+    for (const seatBox of before) expect(overlaps(shellBox, seatBox)).toBe(false);
     expectStableBox(dockBefore, dockOpen);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
 
@@ -142,7 +148,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
     await page.getByRole("button", { name: "Close card explanation" }).click();
     await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
-    await page.locator('[data-player-anchor="p2"] .hero-card-info-button').click();
+    await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
     await expect(inspect).toBeVisible();
 
     await page.getByRole("button", { name: "Close Player 2 inspection", exact: true }).click();
@@ -186,6 +192,23 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     const description = inspect.getByRole("region", { name: "Stauchness description" });
     await expect(description).toContainText("After you take damage, you may enter Judgement phase");
     await expect(stauchness).toHaveAttribute("aria-expanded", "true");
+    const descriptionGeometry = await description.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const style = getComputedStyle(element);
+      const lineHeight = Number.parseFloat(style.lineHeight);
+      const verticalPadding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+      return {
+        naturalLines: range.getClientRects().length,
+        visibleLines: Math.floor((element.clientHeight - verticalPadding + 0.5) / lineHeight),
+        maxHeight: Number.parseFloat(style.maxHeight),
+        lineHeight,
+        scrollHeight: element.scrollHeight,
+        clientHeight: element.clientHeight,
+      };
+    });
+    expect(descriptionGeometry.visibleLines).toBeGreaterThanOrEqual(Math.min(4, descriptionGeometry.naturalLines));
+    expect(descriptionGeometry.maxHeight).toBeLessThanOrEqual(4 * descriptionGeometry.lineHeight + 1);
     await stauchness.click();
     await expect(description).toHaveCount(0);
     await expect(stauchness).toHaveAttribute("aria-expanded", "false");
