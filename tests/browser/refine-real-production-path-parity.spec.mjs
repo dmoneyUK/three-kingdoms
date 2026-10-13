@@ -945,7 +945,6 @@ test("server-backed compact inspector keeps public zones beside identity and sho
   await skill.click();
   const description = panel.getByRole("region", { name: "Sowing Distrust description" });
   await expect(description).toBeVisible();
-  const details = panel.locator(".hero-focus-inspect-details");
   const descriptionGeometry = await description.evaluate((element) => {
     const range = document.createRange();
     range.selectNodeContents(element);

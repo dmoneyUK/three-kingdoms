@@ -5,8 +5,8 @@ Mode: `USER-DIRECTED UX REFINEMENT`
 
 ## Latest result / CI
 
-- Inspector baseline is at `b1bd8d4a66e2c49523dd0eee9c57ce73d80b166d`; Actions run [`38366835279`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38366835279) passed all jobs, including Worker deployment and production smoke.
-- Current right-side public-zone / five-line description refinement is local and uncommitted. Focused browser validation passed 25/25, including real server-backed 390px geometry/privacy checks. Deployment for this refinement is pending.
+- Layout refinement is pushed as `535e9e4ebd57df7b62345d986655d8cbabfc2498`. Actions run [`38368442423`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38368442423): API and browser smoke passed; lint failed on one unused test variable, so deploy was skipped. A separate CI-only lint repair is in progress.
+- Focused browser validation passed 25/25, including real server-backed 390px geometry/privacy checks.
 - Evidence: `test-results/ux2-4b12-unified-target-inspect-v2/server-five-line-skill-390.png` and `server-five-line-skill-layout-390.json`.
 
 ## Design checkpoint
