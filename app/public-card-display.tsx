@@ -398,6 +398,7 @@ function AttackDodgeCardJourney({
         data-public-card-journey-actor-id={card.actorId}
         data-public-card-journey-card-id={card.cardFace.id}
         data-public-card-journey-phase={card.phase}
+        data-public-card-journey-size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
         data-public-card-primary-card={isCurrent ? "true" : undefined}
         aria-hidden="true"
         style={{ left: card.rect.left, top: card.rect.top, width: card.rect.width, height: card.rect.height }}
