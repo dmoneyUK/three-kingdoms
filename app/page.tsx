@@ -1520,12 +1520,15 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   // The centre-to-seat card journey has its own lifecycle. The legacy event
   // queue may finish its two-second read before the authoritative response
   // projection is ready; that must not make the committed card look stale.
-  const publicCardJourneySeen = useRef<{ roomCode: string; eventIds: Set<string> } | null>(null);
-  if (publicCardJourneySeen.current === null) {
-    publicCardJourneySeen.current = { roomCode: room.code, eventIds: new Set((room.timeline ?? []).map((event) => event.id)) };
+  const [publicCardJourneySeen, setPublicCardJourneySeen] = useState<{ roomCode: string; eventIds: Set<string> }>(() => ({
+    roomCode: room.code,
+    eventIds: new Set((room.timeline ?? []).map((event) => event.id)),
+  }));
+  if (publicCardJourneySeen.roomCode !== room.code) {
+    setPublicCardJourneySeen({ roomCode: room.code, eventIds: new Set((room.timeline ?? []).map((event) => event.id)) });
   }
-  const publicCardJourneySeenEventIds = publicCardJourneySeen.current.roomCode === room.code
-    ? publicCardJourneySeen.current.eventIds
+  const publicCardJourneySeenEventIds = publicCardJourneySeen.roomCode === room.code
+    ? publicCardJourneySeen.eventIds
     : new Set((room.timeline ?? []).map((event) => event.id));
   const [resolutionEvents, setResolutionEvents] = useState<GameEvent[]>(initialPendingSequence);
   const [resolutionClosing, setResolutionClosing] = useState(false);
@@ -3726,11 +3729,16 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   useEffect(() => {
     if (!publicCardDisplayReady || !publicCardJourneyRootEventId) return;
     const eventIds = [publicCardJourneyRootEventId, publicCardJourneyResponseEventId].filter((eventId): eventId is string => Boolean(eventId));
-    const current = publicCardJourneySeen.current;
-    const seen = current?.roomCode === room.code
-      ? current.eventIds
-      : new Set((room.timeline ?? []).map((event) => event.id));
-    publicCardJourneySeen.current = { roomCode: room.code, eventIds: new Set([...seen, ...eventIds]) };
+    const timer = window.setTimeout(() => {
+      setPublicCardJourneySeen((current) => {
+        const seen = current.roomCode === room.code
+          ? current.eventIds
+          : new Set((room.timeline ?? []).map((event) => event.id));
+        if (current.roomCode === room.code && eventIds.every((eventId) => seen.has(eventId))) return current;
+        return { roomCode: room.code, eventIds: new Set([...seen, ...eventIds]) };
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [room.code, room.timeline, publicCardDisplayReady, publicCardJourneyRootEventId, publicCardJourneyResponseEventId]);
   const publicDisplayOwnedEventIds = publicCardDisplayOwnsPresentation && publicCardDisplayAction
     ? [...new Set([
