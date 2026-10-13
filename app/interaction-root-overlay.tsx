@@ -1502,7 +1502,6 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   };
   const attackRoutesForCard = (candidateCard: Rect) => {
     if (!isOrthogonalAttackRoot || !action.targetId || !orthogonalAttackerSide || !orthogonalDefenderSide) return null;
-    const candidateCenter = center(candidateCard);
     const sideEdgePoint = (rect: Rect, side: "left" | "right", y = center(rect).y): Point => ({
       x: side === "left" ? rect.left : rect.right,
       y,

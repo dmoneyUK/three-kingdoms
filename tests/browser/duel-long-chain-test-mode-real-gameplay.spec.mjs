@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 
 const API = "http://127.0.0.1:3137";
 const duelViewports = [
@@ -329,7 +328,6 @@ async function snapshotDuelGraph(page, playerIds) {
     const pathEvidence = (path) => {
       if (!path) return null;
       const svg = path.ownerSVGElement;
-      const svgRect = svg.getBoundingClientRect();
       const length = path.getTotalLength();
       const ctm = path.getScreenCTM();
       const start = new DOMPoint(path.getPointAtLength(0).x, path.getPointAtLength(0).y).matrixTransform(ctm);
@@ -632,7 +630,7 @@ function orthogonalPathContainsPoint(path, point) {
   });
 }
 
-function assertDuelGeometry(geometry, proof, playerIds) {
+function assertDuelGeometry(geometry, proof) {
   expect(geometry.graphReady).toBe("true");
   expect(geometry.rootCardFaceKind).toBe("Duel");
   expect(geometry.rootEventId).toBe(proof.root.eventId);
@@ -748,7 +746,7 @@ function assertDuelGeometry(geometry, proof, playerIds) {
   }
 }
 
-async function attachFrame(page, testInfo, name, geometry) {
+async function attachFrame(page, testInfo, name) {
   const path = testInfo.outputPath(`${name}.png`);
   await mkdir(testInfo.outputDir, { recursive: true });
   await page.screenshot({ path, fullPage: true, animations: "disabled" });
@@ -863,7 +861,7 @@ test("test-mode Duel uses four real committed Attacks in one proof-backed two-ro
     await expect(page.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-response-count", String(ordinal));
     await waitForStableGraph(page);
     const geometry = await snapshotDuelGraph(page, playerIds);
-    assertDuelGeometry(geometry, finalProof, playerIds);
+    assertDuelGeometry(geometry, finalProof);
     expect(geometry.rootCardId).toBe(rootPhysicalCardId);
     const rootBounds = geometry.root;
     if (rootBoundsByFrame.length > 0) {
@@ -873,7 +871,7 @@ test("test-mode Duel uses four real committed Attacks in one proof-backed two-ro
       expect(Math.abs(rootBounds.width - original.width)).toBeLessThanOrEqual(1);
       expect(Math.abs(rootBounds.height - original.height)).toBeLessThanOrEqual(1);
     } else rootBoundsByFrame.push(rootBounds);
-    const framePath = await attachFrame(page, testInfo, `duel-b1-real-${ordinal}-390x844-attacker`, geometry);
+    const framePath = await attachFrame(page, testInfo, `duel-b1-real-${ordinal}-390x844-attacker`);
     screenshots[`response${ordinal}`] = framePath;
 
     const hiddenHandIds = views.flatMap((perspective) => perspective.myHand.map(({ id }) => id))
@@ -972,8 +970,8 @@ test("test-mode Duel uses four real committed Attacks in one proof-backed two-ro
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await waitForStableGraph(page);
     const geometry = await snapshotDuelGraph(page, playerIds);
-    assertDuelGeometry(geometry, finalProof, playerIds);
-    const screenshot = await attachFrame(page, testInfo, `duel-b1-real-final-${viewport.name}-attacker`, geometry);
+    assertDuelGeometry(geometry, finalProof);
+    const screenshot = await attachFrame(page, testInfo, `duel-b1-real-final-${viewport.name}-attacker`);
     screenshots[`final-${viewport.name}`] = screenshot;
     frames.push({ ordinal: 4, viewport: geometry.viewport, geometry: { ...geometry, overlayHtml: undefined }, screenshot });
   }
@@ -985,8 +983,8 @@ test("test-mode Duel uses four real committed Attacks in one proof-backed two-ro
     expect(perspectiveRoom.presentationSnapshot.duelExchange).toEqual(finalProof);
     await waitForStableGraph(page);
     const geometry = await snapshotDuelGraph(page, playerIds);
-    assertDuelGeometry(geometry, finalProof, playerIds);
-    const screenshot = await attachFrame(page, testInfo, `duel-b1-real-final-390x844-${perspective}`, geometry);
+    assertDuelGeometry(geometry, finalProof);
+    const screenshot = await attachFrame(page, testInfo, `duel-b1-real-final-390x844-${perspective}`);
     finalViewScreenshots[perspective] = { playerId: player.id, meId: perspectiveRoom.meId, screenshot, geometry: { ...geometry, overlayHtml: undefined } };
     const privateIds = perspectiveRoom.myHand.map(({ id }) => id).filter((id) => !duelCardIds.has(id));
     for (const hiddenCardId of privateIds) expect(geometry.overlayHtml).not.toContain(hiddenCardId);
@@ -1062,7 +1060,7 @@ test("test-mode real Attack→Dodge keeps its balanced root and routes at four v
     expect(geometry.eventId).toBe(rootAction.rootEventId);
     expect(geometry.rootCardId).toBe(attackCard.id);
     beforeByViewport[viewport.width] = geometry;
-    screenshots[`attack-only-${viewport.name}`] = await attachFrame(page, testInfo, `attack-dodge-real-before-${viewport.name}`, geometry);
+    screenshots[`attack-only-${viewport.name}`] = await attachFrame(page, testInfo, `attack-dodge-real-before-${viewport.name}`);
   }
 
   const defenderView = await switchViewer(page, request, game, defender.id);
@@ -1110,7 +1108,7 @@ test("test-mode real Attack→Dodge keeps its balanced root and routes at four v
       .filter((id) => id !== attackCard.id && id !== dodgeCard.id);
     for (const privateId of privateHandIds) expect(geometry.overlayHtml).not.toContain(privateId);
     afterByViewport[viewport.width] = geometry;
-    screenshots[`attack-dodge-${viewport.name}`] = await attachFrame(page, testInfo, `attack-dodge-real-after-${viewport.name}`, geometry);
+    screenshots[`attack-dodge-${viewport.name}`] = await attachFrame(page, testInfo, `attack-dodge-real-after-${viewport.name}`);
   }
 
   const evidencePath = testInfo.outputPath("attack-dodge-real-test-mode-balance-evidence.json");
