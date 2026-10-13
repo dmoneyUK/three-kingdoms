@@ -572,13 +572,13 @@ test(`${cardKind} pending card choice uses the shared modal without duplicate Lo
     assert.equal(buttons(renderer, { children: "Confirm" }).length, 0, "no duplicate footer Confirm is rendered");
     assert.equal(consoleButtons(renderer).filter((node) => node.props.children === "Cancel").length, 0, "no duplicate footer Cancel is rendered");
     assert.equal(button(renderer, { children: "Cancel" }).props.disabled, false, "modal owns local cancellation");
+    const mainBefore = { kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] };
 
-    const stageBefore = renderer.root.findByProps({ className: "interaction-stage" }).props["data-presentation-revision"];
     await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
     assert.equal(actionCalls.length, 0, "hidden-position selection remains local");
     assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], true);
     assert.equal(button(renderer, { children: useLabel }).props.disabled, false);
-    assert.equal(renderer.root.findByProps({ className: "interaction-stage" }).props["data-presentation-revision"], stageBefore, "private choice does not mutate public presentation");
+    assert.deepEqual({ kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] }, mainBefore, "private choice does not mutate public presentation");
 
     await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
     assert.equal(actionCalls.length, 0, "modal Cancel remains local");
@@ -1115,15 +1115,15 @@ test("group scope preview helper uses only public living-state and turn order", 
   assert.equal(buildGroupScopePreview({ cardKind: "Oath", sourceId: "p1", turnSeat: 2, players, playAuthorized: false }).active, false);
 });
 
-test("mounted Duel response follows the semantic actor for controls and Hero Focus", async () => {
+test("mounted Duel response follows CurrentAction while the retired public stage stays absent", async () => {
   const room = duelResponseRoom();
   const actionCalls = [];
   let renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.deepEqual(seatAnchorIds(renderer), ["p1", "p2"], "Duel focus uses the existing stable seat anchors");
-  assert.equal(renderer.root.findByProps({ "data-stage": "DUEL_EXCHANGE" }).props["data-continuity"], "ROOT_FRAME");
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "Target", "the local Duel actor stays in the dock while the unique external counterpart is focused");
+  assert.equal(renderer.root.findAllByProps({ "data-public-card-display": "true" }).length, 0, "the fixture has no public physical root event to display");
+  assert.equal(renderer.root.findAllByProps({ className: "interaction-stage" }).length, 0, "the oversized Duel stage is retired");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("interaction-seat-decision-actor"), true);
   assert.equal(buttonsContaining(renderer, "Skip").length, 1, "the acting Duel seat receives one authoritative Skip");
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "Confirm waits for the local Attack selection");
@@ -1140,7 +1140,7 @@ test("mounted Duel response keeps private controls and public focus viewer-equal
   let renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "Target");
+  assert.equal(renderer.root.findAllByProps({ "data-public-card-display": "true" }).length, 0, "an observer does not receive an unproven Duel CardFace");
   assert.equal(buttonsContaining(renderer, "Confirm").length, 0, "a non-actor cannot see private response controls");
   assert.equal(buttonsContaining(renderer, "Skip").length, 0, "a non-actor cannot submit the authoritative decline");
   assert.equal(renderer.root.findAllByProps({ "data-hand-card-id": "duel-response-attack" }).length, 0, "the response hand remains private to the acting viewer");
@@ -1169,7 +1169,7 @@ test("mounted Duel response clears local selection when the server revision hand
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.deepEqual(seatAnchorIds(renderer), ["p1", "p2"], "responder handoff keeps seat order and count stable");
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "Target");
+  assert.equal(renderer.root.findAllByProps({ "data-public-card-display": "true" }).length, 0, "the prior public card presenter remains fail-closed after handoff");
   assert.equal(buttonsContaining(renderer, "Confirm").length, 0, "the previous local Confirm is removed after handoff");
   assert.equal(buttonsContaining(renderer, "Skip").length, 0, "the previous local Skip is removed after handoff");
   await act(async () => { renderer.unmount(); });
@@ -1181,8 +1181,7 @@ test("mounted Duel semantics ignore legacy action owner and turn fields", async 
   let renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  assert.equal(renderer.root.findByProps({ "data-stage": "DUEL_EXCHANGE" }).props["data-presentation-revision"], 1);
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "Target");
+  assert.equal(renderer.root.findAllByProps({ "data-public-card-display": "true" }).length, 0, "legacy owner fields cannot create a public Duel card without its proven event");
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "CurrentAction still owns the local response console");
   assert.equal(buttonsContaining(renderer, "Skip").length, 1);
   await act(async () => { renderer.unmount(); });
@@ -1193,18 +1192,15 @@ test("GameRoom does not calculate a Duel next responder on the client", () => {
   assert.doesNotMatch(source, /nextDuel(?:Response|Responder)|pendingDuel\.opponentId\s*[?:].*actorId/, "Duel alternation remains a server Pending/continuation concern");
 });
 
-test("mounted Negation chain is public-only while response selection remains local until Confirm", async () => {
+test("mounted Negation window fails closed without public card proof while response selection stays local", async () => {
   const room = negationReactionRoom();
   const actionCalls = [];
   let renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  const chain = renderer.root.findByProps({ "data-reaction-chain": "proven" });
-  assert.equal(chain.props["data-reaction-interaction-id"], "negation-interaction");
-  assert.equal(renderer.root.findAllByProps({ "data-reaction-node": "root" }).length, 1);
-  assert.equal(renderer.root.findAllByProps({ "data-reaction-node": "active" }).length, 1);
-  assert.equal(renderer.root.findByProps({ "data-reaction-node": "active" }).props["data-reaction-relation"], "ROOT_FRAME");
-  assert.equal(JSON.stringify(renderer.toJSON()).includes("forged-provider"), false, "compatibility counter fields cannot create a public node");
+  assert.equal(renderer.root.findAllByProps({ "data-public-card-display": "true" }).length, 0, "a missing public physical root event cannot create a card display");
+  assert.equal(renderer.root.findAllByProps({ "data-reaction-chain": "proven" }).length, 0, "the retired reaction panel is absent");
+  assert.equal(JSON.stringify(renderer.toJSON()).includes("forged-provider"), false, "legacy pending fields cannot create public presentation data");
   await act(async () => { handCardButton(renderer, "negation-private").props.onClick(); });
   assert.equal(actionCalls.some(([actionName]) => actionName === "respond"), false, "selecting Negation is local");
   await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
@@ -1212,7 +1208,7 @@ test("mounted Negation chain is public-only while response selection remains loc
   await act(async () => { renderer.unmount(); });
 });
 
-test("mounted Negation keeps chain viewer-equal, private controls hidden, and stale selection cleared", async () => {
+test("mounted Negation keeps unproven public cards hidden, private controls scoped, and stale selection cleared", async () => {
   const actorRoom = negationReactionRoom();
   const observerRoom = negationReactionRoom({ meId: "p1", actorId: "p2" });
   let actor;
@@ -1220,9 +1216,10 @@ test("mounted Negation keeps chain viewer-equal, private controls hidden, and st
   await act(async () => { actor = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: actorRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: actorRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { observer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: observerRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: observerRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  assert.equal(actor.root.findAllByProps({ "data-reaction-chain": "proven" }).length, 1);
-  assert.equal(observer.root.findAllByProps({ "data-reaction-chain": "proven" }).length, 1);
-  assert.equal(JSON.stringify(actor.toJSON()).match(/REACTION CHAIN[\s\S]*?ACTIVE RESPONSE/)?.[0], JSON.stringify(observer.toJSON()).match(/REACTION CHAIN[\s\S]*?ACTIVE RESPONSE/)?.[0], "the chain itself is viewer-equal");
+  assert.equal(actor.root.findAllByProps({ "data-public-card-display": "true" }).length, 0, "the actor fixture has no public committed root event");
+  assert.equal(observer.root.findAllByProps({ "data-public-card-display": "true" }).length, 0, "the observer sees the same fail-closed public projection");
+  assert.equal(actor.root.findAllByProps({ "data-reaction-chain": "proven" }).length, 0, "the retired reaction panel is absent");
+  assert.equal(observer.root.findAllByProps({ "data-reaction-chain": "proven" }).length, 0, "the retired reaction panel is absent for observers too");
   assert.equal(observer.root.findAllByProps({ "data-hand-card-id": "negation-private" }).length, 0);
   assert.equal(buttonsContaining(observer, "Confirm").length, 0);
   assert.equal(buttonsContaining(observer, "Skip").length, 0);
@@ -1246,7 +1243,7 @@ test("mounted Dying handoff keeps the dying player focused while Peach stays loc
   const handoff = renderer.root.findByProps({ "data-dying-handoff": "proven" });
   assert.equal(handoff.props["data-dying-player-id"], "p2");
   assert.equal(handoff.props["data-dying-decision-actor-id"], "p3");
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "DYING PLAYER");
+  assert.equal(renderer.root.findAllByProps({ "data-hero-focus": "true" }).length, 0, "the compact handoff avoids restoring the old Hero Focus panel");
   assert.equal(renderer.root.findByProps({ "data-stage": "DYING" }).findAllByType("button").length, 0, "public Dying stage has no rescue controls");
   assert.equal(button(renderer, { children: "Peach" }).props.disabled, true, "Peach requires a local card selection");
   assert.equal(buttonsContaining(renderer, "Skip").length, 1);
@@ -1291,9 +1288,9 @@ test("mounted Dying scene is viewer-equal, preserves child context, and hides re
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(actor.root.findByProps({ "data-dying-handoff": "proven" }).props["data-dying-continuity"], "CHILD_FRAME");
   assert.equal(actor.root.findByProps({ "data-dying-handoff": "proven" }).props["data-dying-parent-frame-id"], "duel-frame");
-  assert.equal(actor.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "DYING PLAYER");
+  assert.equal(actor.root.findByProps({ "data-dying-handoff": "proven" }).props["data-dying-player-id"], "p2");
   assert.equal(observer.root.findByProps({ "data-dying-handoff": "proven" }).props["data-dying-decision-actor-id"], "p3");
-  assert.equal(observer.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "DYING PLAYER");
+  assert.equal(observer.root.findByProps({ "data-dying-handoff": "proven" }).props["data-dying-player-id"], "p2");
   assert.equal(observer.root.findAllByProps({ "data-hand-card-id": "dying-peach" }).length, 0);
   assert.equal(buttonsContaining(observer, "Peach").length, 0);
   assert.equal(buttonsContaining(observer, "Skip").length, 0);
@@ -1312,7 +1309,7 @@ test("mounted Dying handoff follows the server actor revision and ignores legacy
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: legacyMutated, onRecover: () => {} }, React.createElement(GameRoom, { room: legacyMutated, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findByProps({ "data-dying-handoff": "proven" }).props["data-dying-decision-actor-id"], "p1");
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "DYING PLAYER");
+  assert.equal(renderer.root.findByProps({ "data-dying-handoff": "proven" }).props["data-dying-player-id"], "p2");
   assert.equal(renderer.root.findAllByProps({ "data-hand-card-id": "dying-peach" }).length, 0, "actor handoff removes the stale private card");
   assert.equal(buttonsContaining(renderer, "Peach").length, 0);
   assert.equal(buttonsContaining(renderer, "Skip").length, 0);
@@ -1327,8 +1324,8 @@ test("mounted Judgement replacement keeps subject focus public and replacement c
   const action = async (...args) => { actionCalls.push(args); return true; };
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  assert.equal(renderer.root.findByProps({ "data-stage": "JUDGEMENT" }).props["data-continuity"], "ROOT_FRAME");
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "Target", "Hero Focus follows the Judgement subject without exposing architectural role text");
+  assert.equal(renderer.root.findByType("main").props["data-presentation-has-interaction"], "true", "the server-projected Judgement stage remains available without the old central panel");
+  assert.equal(renderer.root.findAllByProps({ className: "interaction-stage" }).length, 0, "Judgement does not restore the oversized generic stage");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("interaction-seat-decision-actor"), true);
   assert.equal(button(renderer, { "aria-label": "Necromancy" }).props.disabled, false);
   assert.equal(buttonsContaining(renderer, "Skip").length, 1);
@@ -1344,7 +1341,7 @@ test("mounted Judgement replacement keeps subject focus public and replacement c
   room = judgementReplacementRoom({ actorId: "p1", actionRevision: "judgement-effective-2", triggerEvent: "judgement_effective" });
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "Target");
+  assert.equal(renderer.root.findByType("main").props["data-presentation-has-interaction"], "true");
   assert.equal(button(renderer, { "aria-label": "Necromancy" }).props.disabled, true, "the old replacement provider is disabled after the authoritative actor changes");
   assert.equal(buttonsContaining(renderer, "Confirm").length, 0);
   assert.equal(buttonsContaining(renderer, "Skip").length, 0);
@@ -1373,10 +1370,10 @@ test("mounted Judgement focus and controls ignore legacy owners and require an a
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: legacy, onRecover: () => {} }, React.createElement(GameRoom, { room: legacy, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(button(renderer, { "aria-label": "Necromancy" }).props.disabled, false);
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "Target");
+  assert.equal(renderer.root.findByType("main").props["data-presentation-has-interaction"], "true");
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: judgementReplacementRoom({ includeReveal: false }), onRecover: () => {} }, React.createElement(GameRoom, { room: judgementReplacementRoom({ includeReveal: false }), busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  assert.equal(renderer.root.findAllByProps({ "data-stage": "JUDGEMENT" }).length, 1, "semantic stage may remain public from the proven snapshot");
+  assert.equal(renderer.root.findAllByProps({ "data-stage": "JUDGEMENT" }).length, 0, "Judgement semantics remain server-projected without restoring the retired central panel");
   const renderedDodgeCards = renderer.root.findAll((node) => typeof node.props.className === "string"
     && node.props.className.split(/\s+/u).includes("played-card")
     && node.props.className.split(/\s+/u).includes("dodge"));

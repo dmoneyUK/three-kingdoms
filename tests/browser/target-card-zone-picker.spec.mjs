@@ -3,15 +3,15 @@ import { expect, test } from "@playwright/test";
 async function loadPicker(page, { width, height = 844, handCount = 4 }) {
   await page.setViewportSize({ width, height });
   await page.goto(`/tests/browser/fixture.html?state=picker-hand-zone&count=4&targetHandCount=${handCount}`);
-  const focus = page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]');
-  await expect(focus).toBeVisible();
-  return focus;
+  const dialog = page.getByRole("dialog", { name: "Retaliation target card selection" });
+  await expect(dialog).toBeVisible();
+  return dialog;
 }
 
 async function loadFrostSwordSelection(page, { width, height = 844, handCount = 4, targetCardCase = "valid" }) {
   await page.setViewportSize({ width, height });
   await page.goto(`/tests/browser/fixture.html?state=frost-sword-selectable&count=4&targetHandCount=${handCount}&targetCardCase=${targetCardCase}`);
-  return page.locator('[aria-label="Interaction Stage"]');
+  return page.locator(".play-table");
 }
 
 async function loadFrostSwordModal(page, { width, height = 844, handCount = 4, targetCardCase = "valid" }) {
@@ -27,16 +27,18 @@ async function loadLocalEquipmentTargetCard(page, { width, height = 844, targetC
   return page.locator(".local-player-dock");
 }
 
-async function loadFanjianSelectableDetail(page, { width, height = 844, targetCardCase = "valid" }) {
+async function loadFanjianSelectionModal(page, { width, height = 844, targetCardCase = "valid" }) {
   await page.setViewportSize({ width, height });
   await page.goto(`/tests/browser/fixture.html?state=fanjian-selectable&count=4&targetHandCount=2&targetCardCase=${targetCardCase}&hero=zhou-yu`);
-  return page.locator('[aria-label="Interaction Stage"]');
+  const dialog = page.getByRole("dialog", { name: "Sowing Distrust — choose a hidden card target card selection" });
+  await expect(dialog).toBeVisible();
+  return dialog;
 }
 
 async function loadKirinBowSelectableDetail(page, { width, height = 844, targetCardCase = "valid" }) {
   await page.setViewportSize({ width, height });
   await page.goto(`/tests/browser/fixture.html?state=kirin-bow-selectable&count=4&targetCardCase=${targetCardCase}`);
-  return page.locator('[aria-label="Interaction Stage"]');
+  return page.locator(".play-table");
 }
 
 async function loadKirinBowModal(page, viewport) {
@@ -50,7 +52,7 @@ async function loadPendingTargetCard(page, { width, height = 844, count = 4, han
   await page.setViewportSize({ width, height });
   const params = new URLSearchParams({ state: "pending-target-card", count: String(count), targetHandCount: String(handCount), targetCardCase, targetCardKind: cardKind, effect: cardKind });
   await page.goto(`/tests/browser/fixture.html?${params}`);
-  return page.locator('[aria-label="Interaction Stage"]');
+  return page.locator(".play-table");
 }
 
 async function openRetaliationModal(page, { width, height = 844, targetCardCase = "valid", handCount = 4 } = {}) {
@@ -101,7 +103,6 @@ for (const viewport of [
       return { stage: box(".play-table"), dock: box(".local-player-dock") };
     });
 
-    await expect(stage).toHaveAttribute("data-current-effect", "Dismantle");
     await expect(dialog).toBeVisible();
     await expect(dialog.locator("header strong")).toHaveText("BURNING BRIDGE");
     await expect(dialog.locator("header span")).toHaveText("Choose 1 card to discard");
@@ -250,15 +251,13 @@ for (const viewport of [
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
-  test(`Hero Focus selectable detail and concealed Hand remain readable at ${viewport.width}px`, async ({ page }) => {
-    const focus = await loadPicker(page, viewport);
-    const detail = focus.getByRole("group", { name: "Retaliation selection" });
-    const handZone = detail.locator('[data-target-card-zone="hand"]');
-    const row = detail.locator(".target-card-picker-card-row");
+test(`Retaliation target-card modal and concealed Hand remain readable at ${viewport.width}px`, async ({ page }) => {
+    const dialog = await loadPicker(page, viewport);
+    const handZone = dialog.locator('[data-target-card-zone="hand"]');
+    const row = dialog.locator(".target-card-picker-zone-hand .target-card-picker-card-row");
 
-    await expect(detail.locator("header span")).toHaveText("Retaliation");
-    await expect(detail.locator("header small")).toHaveText("Choose where to obtain 1 card");
-    await expect(detail).not.toContainText("SELECTABLE DETAIL");
+    await expect(dialog.locator("header strong")).toHaveText("RETALIATION");
+    await expect(dialog.locator("header span")).toHaveText("Choose where to obtain 1 card");
     await expect(handZone).toHaveCount(1);
     await expect(handZone).toHaveAccessibleName("Hand ×4 · Random card");
     await expect(handZone).toContainText("Hand ×4");
@@ -269,14 +268,14 @@ for (const viewport of [
     expect(targetProjection.handCount).toBe(4);
     expect(targetProjection.handCards ?? []).toEqual([]);
 
-    const publicEquipment = detail.locator('[data-target-card-zone="equipment"]');
-    const publicJudgement = detail.locator('[data-target-card-zone="judgement"]');
+    const publicEquipment = dialog.locator('[data-target-card-zone="equipment"]');
+    const publicJudgement = dialog.locator('[data-target-card-zone="judgement"]');
     await expect(publicEquipment).toHaveCount(1);
     await expect(publicEquipment).toHaveAttribute("aria-label", /^Equipment: /);
     await expect(publicJudgement).toHaveCount(1);
     await expect(publicJudgement).toHaveAttribute("aria-label", /^Judgement: /);
 
-    const bounds = await focus.evaluate((element) => {
+    const bounds = await dialog.evaluate((element) => {
       const box = element.getBoundingClientRect();
       return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
     });
@@ -293,26 +292,24 @@ for (const viewport of [
 }
 
 test("large concealed Hands keep the exact public count without expanding into many selectable cards", async ({ page }) => {
-  const focus = await loadPicker(page, { width: 390, handCount: 10 });
-  const detail = focus.getByRole("group", { name: "Retaliation selection" });
-  const handZone = detail.locator('[data-target-card-zone="hand"]');
+  const dialog = await loadPicker(page, { width: 390, handCount: 10 });
+  const handZone = dialog.locator('[data-target-card-zone="hand"]');
 
   await expect(handZone).toHaveAccessibleName("Hand ×10 · Random card");
   await expect(handZone).toContainText("Hand ×10");
   await expect(handZone.locator(".target-card-picker-hand-back")).toHaveCount(6);
   await expect(handZone.locator(".target-card-picker-hand-overflow")).toHaveText("+4");
-  await expect(detail.locator('[data-target-card-zone="hand"]')).toHaveCount(1);
+  await expect(dialog.locator('[data-target-card-zone="hand"]')).toHaveCount(1);
 });
 
-test("Local Dock Confirm submits the concealed Hand's existing semantic key exactly once", async ({ page }) => {
-  const focus = await loadPicker(page, { width: 390 });
-  const detail = focus.getByRole("group", { name: "Retaliation selection" });
-  const handZone = detail.locator('[data-target-card-zone="hand"]');
+test("Retaliation modal submits the concealed Hand's existing semantic key exactly once", async ({ page }) => {
+  const dialog = await loadPicker(page, { width: 390 });
+  const handZone = dialog.locator('[data-target-card-zone="hand"]');
 
   await handZone.click();
   await expect(handZone).toHaveAttribute("aria-pressed", "true");
-  await expect(detail.locator(".target-card-picker-count")).toHaveText("1 / 1 selected");
-  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+  await expect(dialog.locator(".target-card-picker-count")).toHaveText("1 / 1 selected");
+  const confirm = dialog.getByRole("button", { name: "Use Retaliation" });
   await expect(confirm).toBeEnabled();
   await confirm.click();
 
@@ -321,30 +318,18 @@ test("Local Dock Confirm submits the concealed Hand's existing semantic key exac
   ]);
 });
 
-test("Local Dock Cancel clears only local detail while Skip remains authoritative", async ({ page }) => {
-  const focus = await loadPicker(page, { width: 390 });
-  const handZone = focus.locator('[data-target-card-zone="hand"]');
-  const dock = page.locator('[data-console-surface="local-operation"]');
-  const stage = page.locator(".interaction-stage");
-  const publicStageBefore = await stage.evaluate((element) => ({
-    revision: element.getAttribute("data-presentation-revision"),
-    interaction: element.getAttribute("data-interaction-id"),
-    stage: element.getAttribute("data-stage"),
-  }));
+test("Retaliation modal Cancel clears only local selection while Skip remains authoritative", async ({ page }) => {
+  const dialog = await loadPicker(page, { width: 390 });
+  const handZone = dialog.locator('[data-target-card-zone="hand"]');
 
-  await expect(dock.getByRole("button", { name: "Cancel" })).toBeVisible();
-  await expect(dock.getByRole("button", { name: "Skip" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Skip" })).toBeVisible();
   await handZone.click();
-  expect(await stage.evaluate((element) => ({
-    revision: element.getAttribute("data-presentation-revision"),
-    interaction: element.getAttribute("data-interaction-id"),
-    stage: element.getAttribute("data-stage"),
-  }))).toEqual(publicStageBefore);
-  await dock.getByRole("button", { name: "Cancel" }).click();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(handZone).toHaveAttribute("aria-pressed", "false");
   expect(await page.evaluate(() => window.__browserActions.filter((entry) => ["trigger", "decline_trigger"].includes(entry.action)))).toEqual([]);
 
-  await dock.getByRole("button", { name: "Skip" }).click();
+  await dialog.getByRole("button", { name: "Skip" }).click();
   await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "decline_trigger").map((entry) => entry.action))).toEqual(["decline_trigger"]);
 });
 
@@ -353,15 +338,14 @@ for (const { zone, key } of [
   { zone: "judgement", key: "browser-public-judgement" },
 ]) {
   test(`public ${zone} remains an individually selectable physical card`, async ({ page }) => {
-    const focus = await loadPicker(page, { width: 390 });
-    const detail = focus.getByRole("group", { name: "Retaliation selection" });
-    const publicCard = detail.locator(`[data-target-card-zone="${zone}"]`);
-    const handZone = detail.locator('[data-target-card-zone="hand"]');
+    const dialog = await loadPicker(page, { width: 390 });
+    const publicCard = dialog.locator(`[data-target-card-zone="${zone}"]`);
+    const handZone = dialog.locator('[data-target-card-zone="hand"]');
 
     await publicCard.click();
     await expect(publicCard).toHaveAttribute("aria-pressed", "true");
     await expect(handZone).toHaveAttribute("aria-pressed", "false");
-    await page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" }).click();
+    await dialog.getByRole("button", { name: "Use Retaliation" }).click();
 
     await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
       { action: "trigger", extra: { providerId: "browser_retaliation_zone", cardKeys: [key] } },
@@ -370,9 +354,9 @@ for (const { zone, key } of [
 }
 
 test("a new action revision clears local selectable-detail input", async ({ page }) => {
-  const focus = await loadPicker(page, { width: 390 });
-  const handZone = focus.locator('[data-target-card-zone="hand"]');
-  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+  const dialog = await loadPicker(page, { width: 390 });
+  const handZone = dialog.locator('[data-target-card-zone="hand"]');
+  const confirm = dialog.getByRole("button", { name: "Use Retaliation" });
 
   await handZone.click();
   await expect(handZone).toHaveAttribute("aria-pressed", "true");
@@ -381,16 +365,14 @@ test("a new action revision clears local selectable-detail input", async ({ page
   await expect(confirm).toBeDisabled();
 });
 
-test("supported opaque per-hand keys use anonymous Hero Focus selection", async ({ page }) => {
+test("supported opaque per-hand keys use anonymous target-card modal selection", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/tests/browser/fixture.html?state=picker&count=4");
 
-  const focus = page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"][data-hero-focus-player-id="p1"]');
-  const detail = focus.getByRole("group", { name: "Retaliation selection" });
-  const positions = detail.locator('[data-target-card-zone="hand-position"]');
+  const dialog = page.getByRole("dialog", { name: "Retaliation target card selection" });
+  const positions = dialog.locator('[data-target-card-zone="hand-position"]');
 
-  await expect(focus).toBeVisible();
-  await expect(page.getByRole("dialog", { name: "Retaliation target card selection" })).toHaveCount(0);
+  await expect(dialog).toBeVisible();
   await expect(positions).toHaveCount(2);
   await expect(positions.nth(0)).toHaveAccessibleName("Hidden hand card 1");
   await expect(positions.nth(1)).toHaveAccessibleName("Hidden hand card 2");
@@ -399,7 +381,7 @@ test("supported opaque per-hand keys use anonymous Hero Focus selection", async 
   expect(targetProjection.handCards ?? []).toEqual([]);
 
   await positions.nth(1).click();
-  await page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" }).click();
+  await dialog.getByRole("button", { name: "Use Retaliation" }).click();
   await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
     { action: "trigger", extra: { providerId: "browser-target-card", cardKeys: ["hand:1"] } },
   ]);
@@ -410,56 +392,45 @@ for (const viewport of [
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
-  test(`Fanjian source-owned hidden-Hand selection uses proven Hero Focus at ${viewport.width}px`, async ({ page }) => {
-    const stage = await loadFanjianSelectableDetail(page, viewport);
-    const focus = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"][data-hero-focus-player-id="p1"]');
-    const detail = focus.getByRole("group", { name: "Sowing Distrust — choose a hidden card selection" });
-    const positions = detail.locator('[data-target-card-zone="hand-position"]');
-    const [dockBox, positionBoxes] = await Promise.all([
-      page.locator(".local-player-dock").boundingBox(),
+  test(`Fanjian source-owned hidden-Hand selection uses the shared modal at ${viewport.width}px`, async ({ page }) => {
+    const dialog = await loadFanjianSelectionModal(page, viewport);
+    const positions = dialog.locator('[data-target-card-zone="hand-position"]');
+    const [dialogBox, positionBoxes] = await Promise.all([
+      dialog.boundingBox(),
       positions.evaluateAll((elements) => elements.map((element) => {
         const { x, y, width, height } = element.getBoundingClientRect();
         const style = getComputedStyle(element);
         return { x, y, width, height, cssWidth: style.width, cssHeight: style.height };
       })),
     ]);
-    const stageParts = await stage.evaluate((element) => Object.fromEntries(
-      [".interaction-stage-body", ".interaction-stage-hero-region", ".interaction-stage-current-effect-flow", ".hero-focus", ".hero-focus-selectable-detail", ".hero-focus-selectable-detail-row"]
-        .map((selector) => {
-          const node = element.querySelector(selector);
-          if (!node) return [selector, null];
-          const { x, y, width, height } = node.getBoundingClientRect();
-          const style = getComputedStyle(node);
-          return [selector, { x, y, width, height, display: style.display, gridTemplateColumns: style.gridTemplateColumns, gridTemplateRows: style.gridTemplateRows }];
-        }),
-    ));
-    await expect(focus).toBeVisible();
-    await expect(focus).toHaveAttribute("data-hero-focus-role", "Source");
-    await expect(detail.locator("header span")).toHaveText("Sowing Distrust — choose a hidden card");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator("header strong")).toHaveText("SOWING DISTRUST — CHOOSE A HIDDEN CARD");
+    await expect(dialog.locator("header span")).toHaveText("Choose 1 eligible card");
     await expect(positions).toHaveCount(2);
     await expect(positions.nth(0)).toHaveAccessibleName("Hidden hand card 1");
     await expect(positions.nth(1)).toHaveAccessibleName("Hidden hand card 2");
-    await expect(detail).not.toContainText(/Attack|Peach|Dodge|Negation|♥|♠/);
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(dialog).not.toContainText(/Attack|Peach|Dodge|Negation|♥|♠/);
     const sourceProjection = await page.evaluate(() => window.__browserRoom.players.find((player) => player.id === "p1"));
     expect(sourceProjection.handCount).toBe(2);
     expect(sourceProjection.handCards ?? []).toEqual([]);
-    expect(dockBox && positionBoxes).toBeTruthy();
+    expect(dialogBox && positionBoxes).toBeTruthy();
     for (const positionBox of positionBoxes) {
       expect(positionBox.width).toBeGreaterThanOrEqual(44);
       expect(positionBox.height).toBeGreaterThanOrEqual(44);
-      expect(positionBox.y + positionBox.height, JSON.stringify({ positionBox, dockBox, stageParts })).toBeLessThanOrEqual(dockBox.y + 1);
+      expect(positionBox.x).toBeGreaterThanOrEqual(dialogBox.x);
+      expect(positionBox.x + positionBox.width).toBeLessThanOrEqual(dialogBox.x + dialogBox.width + 1);
+      expect(positionBox.y).toBeGreaterThanOrEqual(dialogBox.y);
+      expect(positionBox.y + positionBox.height).toBeLessThanOrEqual(dialogBox.y + dialogBox.height + 1);
       expect(positionBox.x).toBeGreaterThanOrEqual(0);
       expect(positionBox.x + positionBox.width).toBeLessThanOrEqual(viewport.width);
     }
   });
 }
 
-test("Fanjian SELECTABLE DETAIL keeps anonymous selection local and submits the existing key once", async ({ page }) => {
-  const stage = await loadFanjianSelectableDetail(page, { width: 390 });
-  const detail = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]').getByRole("group", { name: "Sowing Distrust — choose a hidden card selection" });
-  const hiddenPosition = detail.getByRole("button", { name: "Hidden hand card 2" });
-  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+test("Fanjian modal keeps anonymous selection local and submits the existing key once", async ({ page }) => {
+  const dialog = await loadFanjianSelectionModal(page, { width: 390 });
+  const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 2" });
+  const confirm = dialog.getByRole("button", { name: "Use Sowing Distrust — choose a hidden card" });
 
   await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
@@ -472,10 +443,9 @@ test("Fanjian SELECTABLE DETAIL keeps anonymous selection local and submits the 
 });
 
 test("Fanjian source selection clears when the CurrentAction revision changes", async ({ page }) => {
-  const stage = await loadFanjianSelectableDetail(page, { width: 390 });
-  const detail = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]').getByRole("group", { name: "Sowing Distrust — choose a hidden card selection" });
-  const hiddenPosition = detail.getByRole("button", { name: "Hidden hand card 1" });
-  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+  const dialog = await loadFanjianSelectionModal(page, { width: 390 });
+  const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 1" });
+  const confirm = dialog.getByRole("button", { name: "Use Sowing Distrust — choose a hidden card" });
 
   await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
@@ -485,7 +455,7 @@ test("Fanjian source selection clears when the CurrentAction revision changes", 
 });
 
 test("Fanjian retains the generic picker when the external source focus is not proven", async ({ page }) => {
-  await loadFanjianSelectableDetail(page, { width: 390, targetCardCase: "unfocused" });
+  await loadFanjianSelectionModal(page, { width: 390, targetCardCase: "unfocused" });
 
   await expect(page.getByRole("dialog", { name: "Sowing Distrust — choose a hidden card target card selection" })).toBeVisible();
   await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
@@ -514,7 +484,6 @@ for (const viewport of [
       dialog.locator(".target-card-picker-actions button").evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height)),
     ]);
 
-    await expect(stage).toHaveAttribute("data-current-effect", "Attack");
     await expect(dialog.locator("header strong")).toHaveText("KIRIN BOW");
     await expect(dialog.locator("header span")).toHaveText("Choose 1 Mount to discard");
     await expect(dialog.locator(".target-card-picker-zone-equipment h3")).toHaveText("EQUIPMENT");
@@ -648,7 +617,6 @@ for (const viewport of [
     const dock = page.locator(".local-player-dock");
     const [stageBefore, dockBefore] = await Promise.all([stage.boundingBox(), dock.boundingBox()]);
 
-    await expect(stage).toHaveAttribute("data-stage", "ATTACK_RESPONSE");
     await expect(dialog.locator("header strong")).toHaveText("FROST SWORD");
     await expect(dialog.locator("header span")).toHaveText("Choose 1–2 cards to discard");
     await expect(dialog.locator(".target-card-picker-zone-hand h3")).toHaveText("HAND · 4");
