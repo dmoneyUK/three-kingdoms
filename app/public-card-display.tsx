@@ -71,7 +71,7 @@ type JourneyCard = {
   rect: CardRect;
   target: CardRect;
 };
-type JourneyState = { scopeKey: string; cards: JourneyCard[] };
+type JourneyState = { scopeKey: string; cards: JourneyCard[]; center: CardRect | null };
 
 const REVEAL_CARD = { width: 60, height: 90 };
 const PARKED_CARD = { width: 48, height: 72 };
@@ -184,12 +184,11 @@ function AttackDodgeCardJourney({
   resultReadRemainingMs: number | null;
 }) {
   const scopeKey = action.motion?.scopeKey ?? action.rootEventId;
-  const [journey, setJourney] = useState<JourneyState>({ scopeKey: "", cards: [] });
+  const [journey, setJourney] = useState<JourneyState>({ scopeKey: "", cards: [], center: null });
   const journeyRef = useRef(journey);
   const actionRef = useRef(action);
   const sourceNameRef = useRef(sourceName);
   const mountedRef = useRef(false);
-  const centerRef = useRef<CardRect | null>(null);
   const hasAttackDodgeMotion = action.motion?.type === "attack-dodge";
   const eventSignature = `${action.rootEventId}|${action.response?.eventId ?? ""}|${action.motion?.rootFresh ? "new-root" : "parked-root"}|${action.motion?.responseFresh ? "new-response" : "parked-response"}`;
   const latestResponse = action.response ?? null;
@@ -219,7 +218,6 @@ function AttackDodgeCardJourney({
     const currentSourceName = sourceNameRef.current;
     if (!enabled || !currentAction.motion) return;
     const center = battlefieldCenterCard();
-    centerRef.current = center;
     const previous = journeyRef.current.scopeKey === scopeKey ? journeyRef.current.cards : [];
     const root = currentAction.cardFace && currentSourceName ? [{
       eventId: currentAction.rootEventId,
@@ -279,7 +277,7 @@ function AttackDodgeCardJourney({
       if (showCenterReveal) additions.push(next);
       return next;
     });
-    const nextState = { scopeKey, cards: nextCards };
+    const nextState = { scopeKey, cards: nextCards, center };
     journeyRef.current = nextState;
     setJourney(nextState);
 
@@ -333,9 +331,9 @@ function AttackDodgeCardJourney({
     let observer: ResizeObserver | null = null;
     const reposition = () => {
       const center = battlefieldCenterCard();
-      centerRef.current = center;
       const next = {
         ...journeyRef.current,
+        center,
         cards: journeyRef.current.cards.map((card) => {
           const target = actorParkedCard(card.actorId) ?? center;
           return {
@@ -345,6 +343,7 @@ function AttackDodgeCardJourney({
           };
         }),
       };
+      journeyRef.current = next;
       setJourney(next);
       document.querySelectorAll<HTMLElement>("[data-player-anchor]").forEach((anchor) => observer?.observe(anchor));
     };
@@ -367,9 +366,9 @@ function AttackDodgeCardJourney({
     };
   }, [enabled, hasAttackDodgeMotion, journey.scopeKey, scopeKey]);
 
-  if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !centerRef.current) return null;
+  if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
   const cards = journey.cards;
-  const copyTop = centerRef.current.top + REVEAL_CARD.height + 7;
+  const copyTop = journey.center.top + REVEAL_CARD.height + 7;
   return <section
     className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}`}
     role="status"
