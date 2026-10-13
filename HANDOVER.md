@@ -16,4 +16,4 @@ Reviewed `docs/UX2-refine.md` at `83ad06cb33c5e959f2d76b5072b0848c17698805` (blo
 
 ## Current boundary
 
-Wait for the user's retest of manual SWITCH and visual acceptance of deployed Task 1. Do not start `UX2-CENTRE-REVEAL-SEAT-CARDS-02` until Task 1 is accepted and the user authorizes it.
+`UX2-CENTRE-REVEAL-SEAT-CARDS-02` — implement the first ordinary Attack/Dodge slice only: each proven public card reveals at battlefield centre at 60×90 CSS px, then moves to a 48×72 thumbnail at its actual author's Seat/Dock; preserve the Attack while Dodge reveals, show only proof-backed outcomes, and accent the Local Dock only for its server-authorized Dodge response. Keep manual test-player switching and legal controls unchanged. Do not implement Duel, Negation, AOE, or relationship graphs. Per the user's direction, do not run local automated tests; use the push-triggered CI and stop for the user's visual/manual acceptance.

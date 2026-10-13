@@ -1266,9 +1266,10 @@ type LocalPlayerDockProps = {
   hiddenCardIds?: ReadonlySet<string>;
   isGroupPreview?: boolean;
   preserveGuidanceHeight?: boolean;
+  attackResponsePrompt?: boolean;
 };
 
-export function LocalPlayerDock({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), isGroupPreview = false, preserveGuidanceHeight = false }: LocalPlayerDockProps) {
+export function LocalPlayerDock({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), isGroupPreview = false, preserveGuidanceHeight = false, attackResponsePrompt = false }: LocalPlayerDockProps) {
   const dockRef = useRef<HTMLElement | null>(null);
   const guidanceHeightRef = useRef<number | null>(null);
   const preserveGuidanceHeightRef = useRef(preserveGuidanceHeight);
@@ -1343,7 +1344,7 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
     {selectable ? <button type="button" className="local-zone-card-button" aria-label={`Select ${cardDefinition(card.kind).name}`} aria-pressed={selected} disabled={!equipmentSelection || equipmentSelection.disabled || !equipmentSelection.eligibleIds.includes(card.id)} onClick={() => equipmentSelection?.onToggle(card.id)} /> : <button type="button" className="local-zone-card-button" aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={() => onInfoCard(card)} />}
     <button type="button" className="zone-info-button" aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(card); }}>i</button>
   </div>;
-  return <section ref={dockRef} className={`local-player-dock${isGroupPreview ? " local-group-preview" : ""}${interactionRoleClasses ? ` ${interactionRoleClasses}` : ""}`} data-player-anchor={player?.id ?? undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-guidance-height-preserved={preserveGuidanceHeight ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined} aria-label="Your player area">
+  return <section ref={dockRef} className={`local-player-dock${isGroupPreview ? " local-group-preview" : ""}${interactionRoleClasses ? ` ${interactionRoleClasses}` : ""}${attackResponsePrompt ? " local-dock-attack-response" : ""}`} data-player-anchor={player?.id ?? undefined} data-attack-response-prompt={attackResponsePrompt ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-guidance-height-preserved={preserveGuidanceHeight ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined} aria-label="Your player area">
     {guidance}
     <div className="local-dock-identity">
       <div className="local-hero-anchor">
@@ -3571,7 +3572,14 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       targetId: attackHitSettlementCandidate.action.targetId,
       cardKind: "Attack",
       cardFace: attackHitSettlementCandidate.rootEvent.card,
+      cardLabel: "ATTACK",
       ariaLabel: `${attackHitSettlementCandidate.source.name} played Attack targeting ${attackHitSettlementCandidate.target.name}`,
+      motion: {
+        type: "attack-dodge",
+        scopeKey: [room.code, attackHitSettlementCandidate.action.rootEventId].join(":"),
+        rootFresh: !presentedEventIds.has(attackHitSettlementCandidate.action.rootEventId),
+        responseFresh: false,
+      },
       settlement: { eventId: attackHitSettlementCandidate.action.eventId, outcome: attackHitSettlementCandidate.action.outcome, exiting: attackHitSettlementCandidate.exiting },
     }
     : duelNegationPublicAction
@@ -3612,6 +3620,21 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       cardFace: rootActionCardFace,
       cardLabel: rootActionName?.toUpperCase() ?? "ACTION",
       ariaLabel: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "Unknown player"} played ${rootActionName ?? "an action"}${rootAction.targetId ? ` targeting ${room.players.find((player) => player.id === rootAction.targetId)?.name ?? "the target"}` : ""}`,
+      ...(rootAction.action === "ATTACK" ? {
+        motion: {
+          type: "attack-dodge" as const,
+          scopeKey: [room.code, rootAction.rootEventId].join(":"),
+          rootFresh: !presentedEventIds.has(rootAction.rootEventId),
+          responseFresh: false,
+        },
+        ...(rootAction.targetId === room.meId
+          && room.currentAction?.kind === "response"
+          && room.currentAction.requirement === "dodge"
+          && room.currentAction.actorId === room.meId
+          && canUseAction(room.currentAction, "respond")
+          ? { publicNotice: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "A player"} attacked you. Play Dodge or Skip.` }
+          : {}),
+      } : {}),
     }
     : attackDodgeDisplayCandidate
       ? {
@@ -3623,7 +3646,14 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         targetId: attackDodgeDisplayCandidate.proof.targetId,
         cardKind: "Attack",
         cardFace: attackDodgeDisplayCandidate.rootEvent.card,
+        cardLabel: "ATTACK",
         ariaLabel: `${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.rootSourceId)?.name ?? "Unknown player"} played Attack targeting ${room.players.find((player) => player.id === attackDodgeDisplayCandidate.proof.targetId)?.name ?? "unknown player"}`,
+        motion: {
+          type: "attack-dodge",
+          scopeKey: [room.code, attackDodgeDisplayCandidate.proof.rootEventId].join(":"),
+          rootFresh: false,
+          responseFresh: !presentedEventIds.has(attackDodgeDisplayCandidate.proof.responseEventId),
+        },
         settlement: {
           eventId: attackDodgeDisplayCandidate.proof.responseEventId,
           outcome: "ATTACK_BLOCKED_BY_DODGE",
@@ -3878,7 +3908,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     const hasVisibleSettlementComposition = () => {
       const display = [...document.querySelectorAll<HTMLElement>('[data-public-card-display="true"]')]
         .find((element) => element.dataset.publicCardSettlementEventId === activeAttackHitSettlementEventId);
-      const cardFace = display?.querySelector<HTMLElement>(".played-card");
+      const cardFace = display?.querySelector<HTMLElement>("[data-public-card-primary-card='true'] .played-card");
       const result = display?.querySelector<HTMLElement>('[data-public-card-result="ATTACK_DAMAGE_APPLIED"]');
       const visible = (element: Element | null | undefined) => {
         if (!element) return false;
@@ -4104,7 +4134,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     const hasVisibleResultCard = () => {
       const display = [...document.querySelectorAll<HTMLElement>('[data-public-card-display="true"]')]
         .find((element) => element.dataset.publicCardEventId === eventId);
-      const cardFace = display?.querySelector<HTMLElement>(".played-card");
+      const cardFace = display?.querySelector<HTMLElement>("[data-public-card-primary-card='true'] .played-card");
       const result = display?.querySelector<HTMLElement>('[data-public-card-result="ATTACK_BLOCKED_BY_DODGE"]');
       return display?.dataset.publicCardReady === "true"
         && display.dataset.publicCardSettlementEventId === eventId
@@ -4652,7 +4682,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} />
     </section>
     <footer className="play-command">
-    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setExpandedOpponentId(null); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
+    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setExpandedOpponentId(null); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} attackResponsePrompt={Boolean(rootAction?.action === "ATTACK" && rootActionCardFace && rootAction.targetId === room.meId && room.currentAction?.kind === "response" && room.currentAction.requirement === "dodge" && room.currentAction.actorId === room.meId && canUseAction(room.currentAction, "respond"))} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
       heroSkillControl={
         <section className="hero-skills local-hero-skills" aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => skill.passive
