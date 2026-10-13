@@ -3,17 +3,16 @@
 Branch: `ux-v2`  
 Mode: `USER-DIRECTED UX REFINEMENT`
 
-## Latest implementation / validation
+## Latest result
 
-- Task 1 implementation is in the local worktree: the graph renderer and oversized combat panels are removed; one static presenter now owns validated public CardFaces and short public messages. `CurrentAction`, typed proofs, private choice modals, timers, settlement retirement and SWITCH authorization remain in their existing paths.
-- Local automated tests were not run at the user's direction. `git diff --check` is clean. Implementation commit, exact-SHA CI and deployment are pending.
-- Latest successful code baseline is `507b82682506a9f2f5b67da0adf1f2ba49d66296`, Actions run [`38399482708`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38399482708); it does not validate this implementation.
-- No authenticated live gameplay screenshots are available in this session; device and multiplayer visual acceptance remain with the user after deployment.
+- `UX2-NO-GRAPH-REMOVAL-01` is implemented and deployed. Commit `cdff8e71f3eb8f8e73598974553ecffeadf487c2` removes the graph renderer and oversized combat panels and adds the proof-backed static public-card presenter. Follow-ups `408e4c19f00cf179f76e08433ba5044599b79324`, `16fb711dbed8635dad686d41a0539d73e372f5a7`, and `f7b1aba6c6347f9361951fd385ba6f69a30af36b` fix React Compiler lint, retire old stage assertions/transition keyframes, and align one stale assertion.
+- Exact latest SHA `f7b1aba6c6347f9361951fd385ba6f69a30af36b` passed Actions run [`38428426946`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38428426946): lint/fast tests, API tests, browser startup smoke, deploy, and production smoke all succeeded. Local automated tests were not run per user direction.
+- No authenticated real-game screenshots were captured. Multiplayer/device visual acceptance remains pending with the user.
 
 ## Design checkpoint
 
-Reviewed the complete `docs/UX2-refine.md` at `83ad06cb33c5e959f2d76b5072b0848c17698805` (blob `b3e3d3642534ae97e8aa0c356c48d669f493ac9a`). It retires all visible relationship graphs and supersedes the previous B1 graph task. Task 1 is a static, proof-backed public-card display; centre-reveal/seat-card animation remains a separate later task.
+Reviewed `docs/UX2-refine.md` at `83ad06cb33c5e959f2d76b5072b0848c17698805` (blob `b3e3d3642534ae97e8aa0c356c48d669f493ac9a`). It replaces the former relationship-graph UX. The design document has not been modified.
 
-## Current task — `UX2-NO-GRAPH-REMOVAL-01`
+## Current boundary
 
-Finish delivery of `UX2-NO-GRAPH-REMOVAL-01`: commit and push only its files, verify the exact SHA's CI and deployment, then stop for user visual acceptance. Do not start `UX2-CENTRE-REVEAL-SEAT-CARDS-02` until explicitly authorized.
+Wait for the user's visual acceptance of deployed Task 1. Do not start `UX2-CENTRE-REVEAL-SEAT-CARDS-02` or another UX task until explicitly authorized.
