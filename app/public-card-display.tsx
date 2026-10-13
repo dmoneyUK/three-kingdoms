@@ -75,7 +75,7 @@ type JourneyState = { scopeKey: string; cards: JourneyCard[]; center: CardRect |
 
 const REVEAL_CARD = { width: 60, height: 90 };
 const PARKED_CARD = { width: 48, height: 72 };
-const REVEAL_HOLD_MS = 620;
+const REVEAL_HOLD_MS = 4000;
 const MOVE_DURATION_MS = 380;
 
 function boundCardRect(left: number, top: number, width: number, height: number): CardRect {
