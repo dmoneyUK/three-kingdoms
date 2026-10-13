@@ -1520,17 +1520,13 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   // The centre-to-seat card journey has its own lifecycle. The legacy event
   // queue may finish its two-second read before the authoritative response
   // projection is ready; that must not make the committed card look stale.
-  const [publicCardJourneySeen, setPublicCardJourneySeen] = useState(() => ({
-    roomCode: room.code,
-    eventIds: new Set((room.timeline ?? []).map((event) => event.id)),
-  }));
-  const publicCardJourneySeenEventIds = publicCardJourneySeen.roomCode === room.code
-    ? publicCardJourneySeen.eventIds
+  const publicCardJourneySeen = useRef<{ roomCode: string; eventIds: Set<string> } | null>(null);
+  if (publicCardJourneySeen.current === null) {
+    publicCardJourneySeen.current = { roomCode: room.code, eventIds: new Set((room.timeline ?? []).map((event) => event.id)) };
+  }
+  const publicCardJourneySeenEventIds = publicCardJourneySeen.current.roomCode === room.code
+    ? publicCardJourneySeen.current.eventIds
     : new Set((room.timeline ?? []).map((event) => event.id));
-  useEffect(() => {
-    if (publicCardJourneySeen.roomCode === room.code) return;
-    setPublicCardJourneySeen({ roomCode: room.code, eventIds: new Set((room.timeline ?? []).map((event) => event.id)) });
-  }, [room.code, room.timeline, publicCardJourneySeen.roomCode]);
   const [resolutionEvents, setResolutionEvents] = useState<GameEvent[]>(initialPendingSequence);
   const [resolutionClosing, setResolutionClosing] = useState(false);
   const [sequenceScopeStartId, setSequenceScopeStartId] = useState(initialPendingSequence[0]?.id ?? "");
@@ -3730,13 +3726,11 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   useEffect(() => {
     if (!publicCardDisplayReady || !publicCardJourneyRootEventId) return;
     const eventIds = [publicCardJourneyRootEventId, publicCardJourneyResponseEventId].filter((eventId): eventId is string => Boolean(eventId));
-    setPublicCardJourneySeen((current) => {
-      const seen = current.roomCode === room.code
-        ? current.eventIds
-        : new Set((room.timeline ?? []).map((event) => event.id));
-      if (eventIds.every((eventId) => seen.has(eventId)) && current.roomCode === room.code) return current;
-      return { roomCode: room.code, eventIds: new Set([...seen, ...eventIds]) };
-    });
+    const current = publicCardJourneySeen.current;
+    const seen = current?.roomCode === room.code
+      ? current.eventIds
+      : new Set((room.timeline ?? []).map((event) => event.id));
+    publicCardJourneySeen.current = { roomCode: room.code, eventIds: new Set([...seen, ...eventIds]) };
   }, [room.code, room.timeline, publicCardDisplayReady, publicCardJourneyRootEventId, publicCardJourneyResponseEventId]);
   const publicDisplayOwnedEventIds = publicCardDisplayOwnsPresentation && publicCardDisplayAction
     ? [...new Set([
