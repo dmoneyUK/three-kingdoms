@@ -123,18 +123,13 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.match(html, /Download UX trace/);
   assert.doesNotMatch(html, /Start Attack\/Dodge trace|Stop Attack\/Dodge trace|Copy UX trace/);
   assert.equal((html.match(/class="decision-status/g) ?? []).length, 1, "one primary status area is rendered");
-  assert.equal((html.match(/class="interaction-stage"/g) ?? []).length, 1, "one read-only Interaction Stage is rendered");
-  assert.equal((html.match(/data-player-anchor="/g) ?? []).length, 2, "Interaction Stage insertion preserves both player anchors");
-  assert.equal((html.match(/class="local-player-dock/g) ?? []).length, 1, "Interaction Stage insertion keeps one local dock");
-  assert.equal((html.match(/data-console-surface="local-operation"/g) ?? []).length, 1, "Interaction Stage insertion keeps one footer console");
-  assert.match(html, /aria-label="Interaction Stage"/, "the read-only Stage retains an accessible name");
-  assert.doesNotMatch(html, /<header><span>INTERACTION STAGE<\/span>/, "the architectural Stage label is not player-facing chrome");
-  assert.match(html, /<strong>Attack Response<\/strong>/);
-  assert.match(html, /<small>CURRENT EFFECT<\/small><strong>Attack<\/strong>/);
-  assert.match(html, /data-continuity="ROOT_FRAME"/);
-  assert.doesNotMatch(html, /<small>DECISION<\/small><b>Lü Bu<\/b>/, "viewer decision identity is not repeated in the Stage");
-  assert.doesNotMatch(html, /<small>PROGRESS<\/small>|Target \d+ of \d+/, "Interaction Stage does not infer ordinal target progress");
-  assert.doesNotMatch(html, />interaction-ui</, "causal IDs remain diagnostics in data attributes");
+  assert.equal((html.match(/class="interaction-stage"/g) ?? []).length, 0, "ordinary combat does not render the retired Interaction Stage");
+  assert.equal((html.match(/data-public-card-display="true"/g) ?? []).length, 0, "an interaction without a committed physical root event does not invent a public CardFace");
+  assert.equal((html.match(/data-player-anchor="/g) ?? []).length, 2, "retiring the Stage preserves both physical player anchors");
+  assert.equal((html.match(/class="local-player-dock/g) ?? []).length, 1, "retiring the Stage keeps one local dock");
+  assert.equal((html.match(/data-console-surface="local-operation"/g) ?? []).length, 1, "retiring the Stage keeps one footer console");
+  assert.doesNotMatch(html, /<header><span>INTERACTION STAGE<\/span>|<strong>Attack Response<\/strong>|<small>CURRENT EFFECT<\/small>/, "legacy combat panel copy is absent");
+  assert.doesNotMatch(html, /data-reaction-node=|data-group-composition=|data-hero-focus-player-id=/, "legacy reaction and participant compositions are absent");
   assert.match(html, /data-presentation-kind="CHOICE"/);
   assert.match(html, /data-presentation-has-interaction="true"/);
   assert.match(html, /data-presentation-local-control="true"/);
@@ -195,39 +190,6 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.doesNotMatch(legacyMismatchHtml, /<small>DECISION OWNER<\/small><b>Zhao Yun/, "legacy action owner cannot replace the public decision actor");
   assert.match(html, /YOUR DECISION/);
   assert.match(html, /Lü Bu/);
-  const sourceOwnedSnapshot = {
-    ...uxRoom.presentationSnapshot,
-    stable: { ...uxRoom.presentationSnapshot.stable, decisionActorId: "p2" },
-    interaction: { ...uxRoom.presentationSnapshot.interaction, decisionActorId: "p2", activeResolverId: "p1", participantRoles: { ...uxRoom.presentationSnapshot.interaction.participantRoles, decisionActorId: "p2", activeResolverId: "p1" } },
-    decision: { actorId: "p2", stage: "ATTACK_RESPONSE" },
-    localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: "p2", entitled: false },
-  };
-  const sourceOwnedStageHtml = renderToStaticMarkup(React.createElement(InteractionStage, { view: buildPresentationClientView(sourceOwnedSnapshot, "p1"), resolvePlayerName: (playerId) => presentationPlayers.find((player) => player.id === playerId)?.name ?? null }));
-  assert.match(sourceOwnedStageHtml, /data-medium-participant-player-id="p2"/, "source-owned decision actor remains visible in the Source role");
-  assert.doesNotMatch(sourceOwnedStageHtml, /<small>DECISION<\/small>/, "decision identity is not repeated when that player is already visible as Source");
-  assert.match(sourceOwnedStageHtml, /<small>RESOLVER<\/small><b>Lü Bu<\/b>/, "resolver remains distinct from decision owner");
-  const childSnapshot = {
-    ...uxRoom.presentationSnapshot,
-    stable: { ...uxRoom.presentationSnapshot.stable, decisionActorId: "p1" },
-    interaction: { ...uxRoom.presentationSnapshot.interaction, stage: "DAMAGE", parentFrameId: "parent-frame", continuity: { relation: "CHILD_FRAME", parentFrameId: "parent-frame" }, decisionActorId: "p1", activeResolverId: "p1", participantRoles: { ...uxRoom.presentationSnapshot.interaction.participantRoles, decisionActorId: "p1", activeResolverId: "p1" } },
-    decision: { actorId: "p1", stage: "DAMAGE" },
-  };
-  const childStageHtml = renderToStaticMarkup(React.createElement(InteractionStage, { view: buildPresentationClientView(childSnapshot, "p1"), resolvePlayerName: (playerId) => presentationPlayers.find((player) => player.id === playerId)?.name ?? null }));
-  assert.match(childStageHtml, /data-continuity="CHILD_FRAME"/);
-  assert.match(childStageHtml, /data-parent-frame-id="parent-frame"/, "frame IDs remain available as diagnostics");
-  assert.doesNotMatch(childStageHtml, /parent frame parent-frame/, "unlabelled frame IDs are not visible copy");
-  const namedParentSnapshot = {
-    ...childSnapshot,
-    interaction: {
-      ...childSnapshot.interaction,
-      rootFrameId: "parent-frame",
-      activeFrameId: "child-frame",
-      rootOrigin: { frameId: "parent-frame", stage: "GROUP_RESOLUTION", sourceId: "p2", effect: "RainingArrows", targetIds: ["p1"] },
-    },
-  };
-  const namedParentHtml = renderToStaticMarkup(React.createElement(InteractionStage, { view: buildPresentationClientView(namedParentSnapshot, "p1"), resolvePlayerName: (playerId) => presentationPlayers.find((player) => player.id === playerId)?.name ?? null }));
-  assert.match(namedParentHtml, /class="hero-focus-context">During Raining Arrows<\/small>/);
-  assert.doesNotMatch(namedParentHtml, /parent frame parent-frame/);
   const restHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: null }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((restHtml.match(/class="interaction-stage"/g) ?? []).length, 0, "REST renders no Interaction Stage");
   assert.equal((restHtml.match(/data-player-anchor="/g) ?? []).length, 2, "REST hides semantic focus without collapsing topology");
@@ -278,173 +240,48 @@ test("Legacy distribution keeps private cards static and labels recipients by he
   assert.doesNotMatch(gameRoomSource, /<option value=\{player\.id\} key=\{player\.id\}>\{player\.name\}<\/option>/, "Legacy does not expose player names in recipient choices");
 });
 
-test("Interaction Stage presents the accepted public participant without becoming a control surface", () => {
-  const createSnapshot = (sceneOverrides = {}, stableOverrides = {}, decisionActorId = "B") => {
-    const interaction = {
-      semantics: "PROVEN", interactionId: "focus-interaction", rootFrameId: "focus-root", activeFrameId: "focus-frame", parentFrameId: null,
-      checkpointId: "focus-checkpoint", presentationRevision: 2, stage: "ATTACK_RESPONSE", effect: "Attack", sourceId: "A", targetIds: ["B"],
+test("retired public combat stage is absent while the proven Dying handoff remains", () => {
+  const createSnapshot = (stage = "ATTACK_RESPONSE", decisionActorId = "B") => ({
+    identity: { interactionId: "stage-interaction", checkpointId: "stage-checkpoint", presentationRevision: 2 },
+    stable: { kind: "CHOICE", interactionId: "stage-interaction", checkpointId: "stage-checkpoint", presentationRevision: 2, decisionActorId },
+    interaction: {
+      semantics: "PROVEN", interactionId: "stage-interaction", rootFrameId: "stage-root", activeFrameId: "stage-frame", parentFrameId: null,
+      checkpointId: "stage-checkpoint", presentationRevision: 2, stage, effect: "Attack", sourceId: "A", targetIds: ["B"],
       currentParticipantId: "B", decisionActorId, activeResolverId: "A", activeSourceId: "A", activeTargetIds: ["B"], participantIds: ["A", "B"],
       participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId, activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "B"] },
-      continuity: { relation: "ROOT_FRAME", parentFrameId: null }, ...sceneOverrides,
-    };
-    return {
-      identity: { interactionId: "focus-interaction", checkpointId: "focus-checkpoint", presentationRevision: 2 },
-      stable: { kind: "CHOICE", interactionId: "focus-interaction", checkpointId: "focus-checkpoint", presentationRevision: 2, decisionActorId, ...stableOverrides },
-      interaction,
-      decision: decisionActorId ? { actorId: decisionActorId, stage: interaction.stage } : null,
-      localControl: { source: "CurrentAction", actionRevision: "focus-action", kind: "response", actorId: decisionActorId, entitled: true },
-      settlement: null, transitionEvents: [],
-    };
-  };
-  const players = {
-    A: { name: "Ma Chao", heroId: "ma-chao", heroName: "Ma Chao", hp: 4, maxHp: 4 },
-    B: { name: "Zhao Yun", heroId: "zhao-yun", heroName: "Zhao Yun", hp: 3, maxHp: 4 },
-    C: { name: "Cao Cao", heroId: "cao-cao", heroName: "Cao Cao", hp: 4, maxHp: 4 },
-  };
-  const resolveName = (id) => players[id]?.name ?? null;
-  const resolveDisplay = (id) => players[id] ?? null;
-  const renderStage = (snapshot, viewerId = "B", displayResolver = resolveDisplay) => renderToStaticMarkup(React.createElement(InteractionStage, {
+      continuity: { relation: "ROOT_FRAME", parentFrameId: null },
+    },
+    decision: decisionActorId ? { actorId: decisionActorId, stage } : null,
+    localControl: { source: "CurrentAction", actionRevision: "stage-action", kind: "response", actorId: decisionActorId, entitled: true },
+    settlement: null,
+    transitionEvents: [],
+  });
+  const names = { A: "Ma Chao", B: "Zhao Yun", C: "Cao Cao" };
+  const renderStage = (snapshot, viewerId = "B", transitionKind = "NONE") => renderToStaticMarkup(React.createElement(InteractionStage, {
     view: buildPresentationClientView(snapshot, viewerId),
-    resolvePlayerName: resolveName,
-    resolvePlayerDisplay: displayResolver,
+    transitionKind,
+    resolvePlayerName: (playerId) => names[playerId] ?? null,
   }));
 
-  const ordinaryHtml = renderStage(createSnapshot());
-  assert.match(ordinaryHtml, /class="hero-focus"[^>]*data-hero-focus-player-id="B"[^>]*data-hero-focus-role="Target"/);
-  assert.match(ordinaryHtml, /class="hero-focus-identity"[^>]*><b>Zhao Yun<\/b><span>Zhao Yun<\/span><small>HP 3\/4<\/small>/);
-  assert.match(ordinaryHtml, /class="hero-focus-portrait"[^>]*data-hero-id="zhao-yun"/);
-  assert.doesNotMatch(ordinaryHtml, /button|data-hand|data-card|legalActions|providers/i, "Hero Focus renders no controls or private card data");
+  assert.equal(renderStage(createSnapshot()), "", "Attack response semantics do not render the retired large panel");
+  assert.equal(renderStage(createSnapshot("NEGATION")), "", "Negation semantics do not render a reaction-chain panel");
+  assert.equal(renderStage(createSnapshot("GROUP_RESOLUTION", "C"), "C"), "", "group semantics do not render the retired participant composition");
 
-  const negationSnapshot = (targetIds) => ({
-    ...createSnapshot({
-      stage: "NEGATION", effect: "Dismantle", targetIds, activeTargetIds: targetIds, currentParticipantId: "B",
-      decisionActorId: "B", activeResolverId: "A", participantRoles: {
-        sourceId: "A", originalTargetIds: targetIds, activeTargetIds: targetIds, currentParticipantId: "B",
-        decisionActorId: "B", activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "B"],
-      },
-    }),
-    reactionChain: { semantics: "PROVEN", interactionId: "focus-interaction", frameId: "focus-frame", nodes: [] },
-  });
-  const reactionRoot = (html) => html.match(/<li data-reaction-node="root">([\s\S]*?)<\/li>/)?.[1] ?? "";
-  const unaddressedNegationRoot = reactionRoot(renderStage(negationSnapshot([])));
-  assert.match(unaddressedNegationRoot, /Dismantle/);
-  assert.match(unaddressedNegationRoot, /Ma Chao/);
-  assert.doesNotMatch(unaddressedNegationRoot, /No proven target|→/, "an unproven target is omitted without placeholder copy");
-  const namedNegationRoot = reactionRoot(renderStage(negationSnapshot(["B"])));
-  assert.match(namedNegationRoot, /Ma Chao → Zhao Yun/, "proven target names remain visible");
-
-  const sourceOwnedHtml = renderStage(createSnapshot({ currentParticipantId: "B", decisionActorId: "A", activeResolverId: "B", participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "A", activeResolverId: "B", parentParticipantId: null, participantIds: ["A", "B"] } }, { decisionActorId: "A" }, "A"), "A");
-  assert.match(sourceOwnedHtml, /data-hero-focus-player-id="B"/);
-  assert.match(sourceOwnedHtml, /data-hero-focus-source-id="A"/);
-  assert.doesNotMatch(sourceOwnedHtml, /<small>DECISION<\/small><b>Ma Chao<\/b>/, "viewer-owned decision identity stays out of the Stage");
-  assert.doesNotMatch(sourceOwnedHtml, /class="hero-focus"[^>]*data-hero-focus-player-id="A"/, "source-owned decision does not move Hero Focus to the decision source");
-
-  const groupSnapshot = createSnapshot({ activeFrameId: "focus-root", stage: "GROUP_RESOLUTION", effect: "Raining Arrows", targetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"], participantRoles: { sourceId: "A", originalTargetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", parentParticipantId: null, participantIds: ["A", "B", "C"] } }, { decisionActorId: "C" }, "C");
-  const groupProgress = {
-    cardKind: "RainingArrows", resolutionSemantics: "GROUP", interactionId: "focus-interaction", groupFrameId: "focus-root", activeFrameId: "focus-root",
-    checkpointId: "focus-checkpoint", presentationRevision: 2, targetIds: ["B", "C"], currentParticipantId: "C",
-    participants: [
-      { playerId: "B", order: 1, status: "RESOLVED", outcome: "AVOIDED" },
-      { playerId: "C", order: 2, status: "CURRENT" },
-    ],
-  };
-  const groupHtml = renderStage({
-    ...groupSnapshot,
-    groupParticipantProgress: groupProgress,
-  }, "C");
-  assert.match(groupHtml, /data-group-composition="true"/);
-  assert.match(groupHtml, /data-group-source-player-id="A"/);
-  assert.match(groupHtml, /data-group-root-action="RainingArrows"/);
-  assert.match(groupHtml, /data-group-target-id="C"[^>]*data-participant-status="CURRENT"/);
-  assert.doesNotMatch(groupHtml, /data-hero-focus-player-id="C"/, "the Group Target Strip alone owns current-participant emphasis");
-  assert.match(groupHtml, /data-participant-status="RESOLVED"[^>]*data-participant-outcome="AVOIDED"/);
-  assert.match(groupHtml, /data-group-outcome-marker="AVOIDED"[^>]*aria-label="Status: Resolved; Outcome: Avoided"><span aria-hidden="true">✓<\/span><\/span>/);
-  assert.doesNotMatch(groupHtml, /physicalCardId|legalActions|providers/i, "public outcome contains no response-card identity or local control data");
-
-  const damagedHtml = renderStage({
-    ...groupSnapshot,
-    groupParticipantProgress: {
-      ...groupProgress,
-      participants: [
-        { playerId: "B", order: 1, status: "RESOLVED", outcome: "DAMAGED" },
-        { playerId: "C", order: 2, status: "CURRENT" },
-      ],
-    },
-  }, "C");
-  assert.match(damagedHtml, /data-participant-status="RESOLVED"[^>]*data-participant-outcome="DAMAGED"/);
-  assert.match(damagedHtml, /data-group-outcome-marker="DAMAGED"[^>]*aria-label="Status: Resolved; Outcome: Damaged"><span aria-hidden="true">−♥<\/span><\/span>/);
-
-  const negatedHtml = renderStage({
-    ...groupSnapshot,
-    groupParticipantProgress: {
-      ...groupProgress,
-      participants: [
-        { playerId: "B", order: 1, status: "RESOLVED", outcome: "NEGATED" },
-        { playerId: "C", order: 2, status: "CURRENT" },
-      ],
-    },
-  }, "C");
-  assert.match(negatedHtml, /data-participant-status="RESOLVED"[^>]*data-participant-outcome="NEGATED"/);
-  assert.match(negatedHtml, /data-group-outcome-marker="NEGATED"[^>]*aria-label="Status: Resolved; Outcome: Negated"><span aria-hidden="true">⊘<\/span><\/span>/);
-
-  const defeatedHtml = renderStage({
-    ...groupSnapshot,
-    groupParticipantProgress: {
-      ...groupProgress,
-      participants: [
-        { playerId: "B", order: 1, status: "RESOLVED", outcome: "DEFEATED" },
-        { playerId: "C", order: 2, status: "CURRENT" },
-      ],
-    },
-  }, "C");
-  assert.match(defeatedHtml, /data-participant-status="RESOLVED"[^>]*data-participant-outcome="DEFEATED"/);
-  assert.match(defeatedHtml, /data-group-outcome-marker="DEFEATED"[^>]*aria-label="Status: Resolved; Outcome: Defeated"><span aria-hidden="true">✕<\/span><\/span>/);
-
-  const ambiguousHtml = renderStage(createSnapshot({ targetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "B", "C"], participantRoles: { sourceId: "A", originalTargetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "B", "C"] } }, { decisionActorId: "A" }, "A"));
-  assert.doesNotMatch(ambiguousHtml, /data-hero-focus="true"/, "ambiguous multi-target state has no guessed Hero Focus");
-
-  const soleTargetHtml = renderStage(createSnapshot({ targetIds: ["C"], activeTargetIds: ["C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "C"], participantRoles: { sourceId: "A", originalTargetIds: ["C"], activeTargetIds: ["C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "C"] } }, { decisionActorId: "A" }, "A"));
-  assert.match(soleTargetHtml, /data-hero-focus-player-id="C"[^>]*data-hero-focus-role="Target"/);
-
-  const childHtml = renderStage(createSnapshot({ stage: "DAMAGE", parentFrameId: "group-frame", continuity: { relation: "CHILD_FRAME", parentFrameId: "group-frame" }, decisionActorId: "B", activeResolverId: "B", participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", parentParticipantId: null, participantIds: ["A", "B"] } }, {}, "B"));
-  assert.match(childHtml, /data-hero-focus-player-id="B"/);
-  assert.match(childHtml, /data-parent-frame-id="group-frame"/);
-  assert.doesNotMatch(childHtml, /hero-focus-context|parent frame group-frame/);
-
-  const dyingHtml = renderStage(createSnapshot({ stage: "DYING", currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", parentParticipantId: null, participantIds: ["A", "B"] } }, {}, "B"));
-  assert.match(dyingHtml, /data-hero-focus-player-id="B"[^>]*data-hero-focus-role="DYING PLAYER"/);
+  const dyingHtml = renderStage(createSnapshot("DYING"));
+  assert.match(dyingHtml, /aria-label="Dying rescue handoff"/);
   assert.match(dyingHtml, /data-dying-handoff="proven"[^>]*data-dying-player-id="B"[^>]*data-dying-decision-actor-id="B"/);
-  assert.match(dyingHtml, /DYING \/ RESCUE/);
-  assert.match(dyingHtml, /Dying · Rescue/);
-
-  const uninvolvedHtml = renderStage(createSnapshot(), "C");
-  assert.match(uninvolvedHtml, /data-hero-focus-player-id="B"[^>]*data-hero-focus-role="Target"/);
-  assert.doesNotMatch(ordinaryHtml, /YOUR DECISION/, "viewer decision guidance is owned by the Local Dock");
-  assert.doesNotMatch(uninvolvedHtml, /YOUR DECISION/);
-
-  const missingHtml = renderStage(createSnapshot({ currentParticipantId: "missing", targetIds: ["missing"], activeTargetIds: ["missing"], decisionActorId: "missing", participantRoles: { sourceId: "A", originalTargetIds: ["missing"], activeTargetIds: ["missing"], currentParticipantId: "missing", decisionActorId: "missing", activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "missing"] } }, { decisionActorId: "missing" }, "missing"), "missing", () => null);
-  assert.match(missingHtml, /data-hero-focus-player-id="missing"/);
-  assert.match(missingHtml, /<div class="hero-focus-identity"><b>Unknown participant<\/b>/);
-  assert.doesNotMatch(missingHtml, /data-hero-id="undefined"/);
-  const longNameHtml = renderStage(createSnapshot(), "B", (id) => id === "B" ? { ...players.B, name: "A deliberately long public player name for containment" } : resolveDisplay(id));
-  assert.match(longNameHtml, /A deliberately long public player name for containment/);
-
-  const restHtml = renderStage({ identity: null, interaction: null, decision: null, stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null }, localControl: null, settlement: null, transitionEvents: [] });
-  assert.equal(restHtml, "", "REST hides Interaction Stage and Hero Focus");
-  assert.match(globalStyleSource, /\.hero-focus\{/);
-  assert.match(globalStyleSource, /@media\(max-width:650px\)[^\n]*\.hero-focus/);
-  assert.match(globalStyleSource, /@media\(max-width:480px\)[^\n]*\.hero-focus/);
-  assert.match(globalStyleSource, /\.dying-handoff\{/);
-  assert.doesNotMatch(globalStyleSource, /(?:^|})\.hero-focus\{[^}]*animation/, "Hero Focus animation remains scoped to an accepted transition marker");
+  assert.match(dyingHtml, /Zhao Yun/);
+  assert.doesNotMatch(dyingHtml, /hero-focus-player-id|data-reaction-node|<button|data-hand|data-card|legalActions|providers/i);
+  assert.match(globalStyleSource, /\.dying-handoff-compact\{/);
 });
 
-test("UI-18 consumes semantic transition kinds without changing topology or authority", () => {
+test("retired Interaction Stage transition visuals stay absent", () => {
   const snapshot = {
     identity: { interactionId: "visual-interaction", checkpointId: "visual-checkpoint", presentationRevision: 4 },
     stable: { kind: "CHOICE", interactionId: "visual-interaction", checkpointId: "visual-checkpoint", presentationRevision: 4, decisionActorId: "p1" },
     interaction: {
       semantics: "PROVEN", interactionId: "visual-interaction", rootFrameId: "visual-root", activeFrameId: "visual-frame", parentFrameId: null,
-      checkpointId: "visual-checkpoint", presentationRevision: 4, stage: "ATTACK_RESPONSE", sourceId: "p2", effect: "Attack", targetIds: ["p1"],
+      checkpointId: "visual-checkpoint", presentationRevision: 4, stage: "ATTACK_RESPONSE", effect: "Attack", sourceId: "p2", targetIds: ["p1"],
       currentParticipantId: "p1", decisionActorId: "p1", activeResolverId: "p1", activeSourceId: "p2", activeTargetIds: ["p1"], participantIds: ["p1", "p2"],
       participantRoles: { sourceId: "p2", originalTargetIds: ["p1"], activeTargetIds: ["p1"], currentParticipantId: "p1", decisionActorId: "p1", activeResolverId: "p1", parentParticipantId: null, participantIds: ["p1", "p2"] },
       continuity: { relation: "ROOT_FRAME", parentFrameId: null },
@@ -454,39 +291,19 @@ test("UI-18 consumes semantic transition kinds without changing topology or auth
     settlement: null,
     transitionEvents: [],
   };
-  const players = { p1: "Lü Bu", p2: "Zhao Yun" };
   const renderStage = (transitionKind, viewerId = "p1") => renderToStaticMarkup(React.createElement(InteractionStage, {
     view: buildPresentationClientView(snapshot, viewerId),
     transitionKind,
-    resolvePlayerName: (playerId) => players[playerId] ?? null,
-    resolvePlayerDisplay: (playerId) => ({ name: players[playerId] ?? "Unknown participant", heroId: playerId === "p1" ? "lü-bu" : "zhao-yun", heroName: players[playerId], hp: 4, maxHp: 4 }),
+    resolvePlayerName: (playerId) => playerId === "p1" ? "Lü Bu" : "Zhao Yun",
   }));
 
-  const transitionKinds = ["NONE", "CONTENT_UPDATE", "FOCUS_UPDATE", "FRAME_TRANSITION", "INTERACTION_TRANSITION"];
-  for (const transitionKind of transitionKinds) {
-    const html = renderStage(transitionKind);
-    assert.match(html, new RegExp(`data-presentation-transition="${transitionKind}"`), `${transitionKind} keeps the accepted semantic marker`);
-    assert.doesNotMatch(html, /<button|aria-disabled|pointer-events/i, `${transitionKind} does not add a control surface`);
+  for (const transitionKind of ["NONE", "CONTENT_UPDATE", "FOCUS_UPDATE", "FRAME_TRANSITION", "INTERACTION_TRANSITION"]) {
+    assert.equal(renderStage(transitionKind), "", `${transitionKind} does not revive the retired combat stage`);
+    assert.equal(renderStage(transitionKind, "p2"), "", `${transitionKind} remains absent for every viewer`);
   }
-
-  const noneHtml = renderStage("NONE");
-  assert.doesNotMatch(noneHtml, /presentation-(?:content|focus|frame|interaction)|animation/i, "NONE has no visual replay marker or animation state");
-  assert.equal(renderStage("NONE"), noneHtml, "repeated NONE remains stable and does not replay");
-  assert.equal(
-    renderStage("INTERACTION_TRANSITION").match(/data-presentation-transition="[^"]+"/)?.[0],
-    renderStage("INTERACTION_TRANSITION", "p2").match(/data-presentation-transition="[^"]+"/)?.[0],
-    "the public semantic marker is viewer-equal",
-  );
-
-  assert.match(globalStyleSource, /\.interaction-stage\[data-presentation-transition="CONTENT_UPDATE"\]\{animation:presentationContentRefresh 180ms/);
-  assert.match(globalStyleSource, /\.interaction-stage\[data-presentation-transition="FOCUS_UPDATE"\]\{animation:presentationFocusEmphasis 240ms/);
-  assert.match(globalStyleSource, /\.interaction-stage\[data-presentation-transition="FOCUS_UPDATE"\] \.hero-focus\{animation:presentationFocusPanelEmphasis 240ms/);
-  assert.match(globalStyleSource, /\.interaction-stage\[data-presentation-transition="FRAME_TRANSITION"\]\{animation:presentationFrameEmphasis 280ms/);
-  assert.match(globalStyleSource, /\.interaction-stage\[data-presentation-transition="INTERACTION_TRANSITION"\]\{animation:presentationInteractionEmphasis 320ms/);
-  assert.match(globalStyleSource, /@media\(prefers-reduced-motion:reduce\)[\s\S]*animation:none!important/);
-  const ui18Styles = globalStyleSource.match(/\/\* UI-18:[\s\S]*?\/\* UI-05:/)?.[0] ?? "";
-  assert.doesNotMatch(ui18Styles, /player-square|local-player-dock|transform|opacity|pointer-events|position|translate/);
-  assert.match(ui18Styles, /@keyframes presentation(?:ContentRefresh|FocusEmphasis|FocusPanelEmphasis|FrameEmphasis|InteractionEmphasis)/);
+  assert.doesNotMatch(globalStyleSource, /\.interaction-stage\[data-presentation-transition=/, "the retired stage has no transition animation selectors");
+  assert.doesNotMatch(globalStyleSource, /@keyframes presentation(?:ContentRefresh|FocusEmphasis|FocusPanelEmphasis|FrameEmphasis|InteractionEmphasis)/, "the retired stage has no orphaned transition keyframes");
+  assert.match(globalStyleSource, /\.public-card-display/ , "the static public card presenter owns the replacement display styles");
 });
 
 test("waiting room starts without lobby readiness controls", () => {
