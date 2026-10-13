@@ -2,57 +2,29 @@
 
 This document is the current UX2 product/UI design authority for the refinement phase. It records reviewer-approved expected behavior, interaction presentation, responsive requirements, and measurable acceptance criteria. It is not a task queue.
 
-## 0. Reading guide: current authority, historical gates, and no duplicate tasks (revision 2026-10-12)
+# UX2 Refinement Decisions
 
-This is a **product/UX design and acceptance specification, not the Coding Agent's task queue**. Only the user's latest instruction and the Coding Agent-owned `HANDOVER.md` determine an active implementation task. `docs/AUTONOMOUS_UI_ROADMAP.md` records implementation/test evidence, not user visual acceptance. Do not reconstruct old task lists from this document, and do not repeat implementation-closed work without a reproduced regression, a newly approved requirement, or a specific independent verification request.
+**Current product authority — revised 2026-10-13.** This is a design/acceptance specification, **not** the Coding Agent's task queue. User visual review rejected the relationship-line/graph approach after the real Duel experience. **All former public relationship-graph layout requirements in the previous §0.1 and former §§6.1–6.39 are withdrawn and removed from this current design.** Prior revisions remain accessible only in Git history; they are not alternative implementation specifications. The current no-connector card-display contract in §6 takes precedence over earlier graphics in `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, historical roadmaps, agent workflow examples and previous screenshots. None of these older documents may be used to resurrect source tethers, target arrows, branch forks, SVG edges or enormous duplicated Reaction Chain presentations.
 
-**Phase interpretation:** §§1–4C specify enduring UX contracts. The historical pre-§6 integration gate in §4D was revalidated and cleared **for implementation sequencing** in the roadmap milestone `UX2.REFINEMENT-PRE-SECTION-6-GATE-REVALIDATION-01`; the earlier §5 deferral has expired. Section 6 physical-seat causal visualization is already under implementation/refinement. Neither milestone nor passing CI constitutes the user's visual sign-off.
+## 0. Current UX authority, safety and implementation order
 
-**Current refinement precedence (newer specific decisions win over older generic targets):**
+**Player-facing goal:** Instead of visualizing the causal relationship as lines, make each **genuinely committed public card** readable in the middle of the battlefield, then **shrink/move it into a short-lived card display in front of its actual owner's Seat or Local Player Dock**. Use compact readable text to explain source, target, response and result. This applies to ordinary Attack/Dodge first, then Duel, Negation, AOE and other public card families. Never move the real Seat/Dock.
 
-| Subject | Current canonical requirement | Older wording to treat as superseded |
-| --- | --- | --- |
-| Universal graph meaning and visual grammar | **§0.1 applies to every design session and agent:** exact public proof, stable root identity, semantic lifecycle, fixed Seat/Dock anchors, pale-green source tether, vivid-red effect relation, orthogonal routing, one compact balanced composition, privacy, and real-game evidence | Older family notes that imply client-inferred causality, curved routes, duplicate player/card panels, or a timer-driven graph lifetime |
-| Shared public battle-card scale and spatial placement | **§0.1 + §§6.34/6.38:** use authentic public CardFaces no larger than the same viewport's hand cards; accepted Stage A size targets are 60×90 CSS px and 54×81px compact where fit requires it; place the whole graph centrally and balance it around the actual usable field | Older proposals for oversized/source-edge cards are superseded; retain only compatible proof and accessibility requirements |
-| Connector semantics and weight | Source/player→card is pale green and arrowless; card→actual target/effect is vivid red with a clear directional endpoint; a counter relation terminates at the proven response with a non-colour interception marker. Use §6.29.5's measured stroke hierarchy, with current Attack references `#a6e0c5` and `#ff4b4b` | Muted/cream Attack lines, hairline source links, diagonal/Bézier routes, or equal-strength contradictory post-Dodge target arrows |
-| Relationship lifecycle | **§0.1 / §6.35:** graph remains while its server-authoritative interaction is unresolved, regardless of elapsed time. Once terminal outcome is proven and the complete result is first rendered, keep it readable for **4 seconds**. No 20-second graph countdown. Server response deadlines remain separate and never pause | Fixed 20s/3s/sub-second graph-retention windows, countdown-driven disappearance, or treating animation/layout readiness as game completion |
-| CI gate and evidence | **§6.30:** required push-to-deploy/smoke <=6 minutes, minimal meaningful checks; expansive unapproved visual tests remain optional | Old large per-push browser matrices and historical one-time CI task commands |
-| Diagnostic memory work | **§6.32:** profile real process-tree RSS/OOM before any bounded optimization | Assuming the reported 3–4GB figure is a measured root cause or a license to remove checks |
+**What is cancelled:** All source/player→card green lines, red card→player arrows, Dodge interception lines, per-target branches, card-to-card counter edges, historic dimmed paths, elbow/90° geometry, line widths and graph-only root/card positioning metrics. No client or Agent should implement or preserve them as an active UX requirement. Earlier B1 Duel diagram and Stage A routing acceptance are explicitly withdrawn **for visual presentation**, not for correct server gameplay.
 
-All server-authored public causal proof, local `CurrentAction` legality, hidden-information protections, stable Seat/Dock geometry, fail-closed behavior and real-device acceptance requirements remain in force. Follow detailed sections below for actual UX behavior, not historic task IDs.
+**What remains mandatory:** The engine and server own all legal actions and outcomes. `CurrentAction` alone controls each viewer's legal buttons/private options. Typed, verified public event/card/actor/target information controls what may be shown to all players. No private card identity is revealed before authoritative commitment, no implied response based on HP/time or hand selection, no source inferred from seat geometry, no invented player/avatar, no altered match rules, no automatic switch into another real human player's account, and no resurrecting already retired events. Keep real opponent Seats and Local Dock fixed, preserve target-picker/Inspect/Skill controls, system timers, responsive safe regions and accessibility.
 
-### 0.1 Universal public relationship-graph principles — normative for every design session and agent (2026-10-12)
+**Work sequencing:** The rejected Duel B1 graph task is **not approved** and must not proceed to B2 or Stage C. First remove the obsolete visible connector graph and competing legacy combat-panel ownership (§6.10, Phase R). Once accepted, implement central public reveal → owner-side thumbnail transition (§6.10, Phase P). Do not combine both migrations into a large unreviewable coding change. **The Planner must not edit `HANDOVER.md`; only the Coding Agent owns its execution handoff.** Section §7 preserves independent CI, diagnostics and compact menu rules.
 
-These are **standing design rules, not a task or task queue**. Every UX2 design conversation, review, handoff, implementation and test involving a relationship graph must read and obey them. Family-specific sections may add detail, but may not contradict these rules. The user's newest explicit decision takes precedence over older wording. If a required public relationship cannot be proven or a visual requirement conflicts with a real gameplay/control boundary, fail closed and raise the exact gap; do not guess.
+### 0.1 One public-card presentation grammar (no connectors)
 
-#### Meaning and authority
-
-- A relationship graph is a readable rendering of the **server-authoritative public causal interaction**, not an animation reconstructed from event order. Every visible player, card, edge, current/expired state and outcome must map to exact validated public identity and scope. `CurrentAction` alone owns the viewer's legal/private controls.
-- The public root has an immutable identity for that interaction. Presentation barriers such as `readyAfterEventId` control when a visual may be revealed; they are **not** substitutes for the root card/event identity. Once a genuine public root card is committed, show its graph immediately, including while an authorized optional skill/trigger is offered before the ordinary response window. Declining that trigger continues the same root. A redirection preserves the original root and changes the target only from new authoritative proof; never fabricate a Dodge or claim the original target responded.
-- A response enters the public graph only after the matching response is committed and its actor, physical card (or typed played-as identity), root/frame, target branch and resolution are proven. Private hand selection, legal options, hidden cards, responder scan order and local preview never create or decorate public graph facts.
-- Physical opponent Seats and the Local Player Dock are the only player anchors. Keep their DOM positions fixed; do not duplicate a Hero/Player centrally. Use authoritative player IDs to bind graph facts to those anchors. Geometry may choose an anchor on the corresponding real Seat/Dock edge, but geometry, seat order, names, HP and DOM order never determine who caused or receives an effect.
-
-#### Lifecycle and focus
-
-- Graph lifetime follows the authoritative card/interaction lifecycle, **not a fixed timer**. Keep the active root and its valid causal relations present for as long as that interaction is unresolved—even beyond 20 seconds, repeated polling, a skill handoff or a response wait. Same-root progress updates the graph without replacing its root; an optional private choice does not advance or erase it.
-- When authoritative terminal settlement is reached, show the **complete, readable final graph for 4 seconds from its first fully rendered settled composition**, then retire it. This applies to all card families; remove the older 20s/3s and sub-second retention variants. Reduced-motion mode keeps the same four-second static result and removes motion, not readability.
-- Do not display a graph-retention/debug countdown. A real server-owned response deadline is a separate control, belongs in its approved UI location, and must not be paused or extended by graph presentation. Presentation must never delay legal actions, turns, damage, response deadlines or server progression.
-- During a chain, the newest server-proven unresolved step is strongest; the immediately prior proven step may remain subdued context; older history is compacted before it creates a card pile or collision. A new independent authoritative interaction takes visual priority, must not be confused with same-root continuation, and must never be blocked by presentation. Never resurrect an expired graph.
-
-#### Shared visual grammar
-
-- Arrange one real public root CardFace and its proven relationships as a single balanced composition in the **usable central battlefield**. Use authentic card art/rank/suit and the compact hand-sized tiers in §§6.34/6.38; never substitute fake cards, duplicate legacy miniatures or verbose `EFFECT`/`REACTION` panels that repeat the same graph facts. Keep the root's position and scale stable while the same interaction advances.
-- **Source/authorship:** connect the actual source Seat/Dock to its public card with a pale-green, arrowless tether. The current ordinary Attack reference is `#a6e0c5` (about 5.5–6.5 CSS px on mobile, scaled/readability-checked at wider sizes).
-- **Target/effect:** connect the root card to the exact affected Seat/Dock with a vivid-red directional relation; current ordinary Attack reference is `#ff4b4b` (about 6–8 CSS px on mobile, with a clearly visible 26–32px phone arrowhead). A successful Dodge changes the dominant red relation to Attack→Dodge and visibly terminates/intercepts it there; do not leave a full-strength red hit arrow to the target. Preserve the original target fact in the authoritative graph and accessible description. Negation connects to the exact effect/card it counters; Group/AOE uses only proven per-target branches.
-- All connector routes use straight horizontal/vertical segments and the fewest collision-free **rounded 90-degree elbows**. No diagonals, Bézier/decorative curves or hairline shortcuts. Source and effect remain distinguishable without colour: source has no arrowhead; target has a clear arrowhead; interception has a distinct terminal/bar/shield/break mark. Brightness, stroke and glow emphasize the current relation; older same-root relations are visibly subdued.
-- Older ASCII sketches in family sections communicate causal meaning, not literal coordinates, line angles or required card size. Use §6.38 only for the accepted ordinary Attack/Dodge placement details; do not let an older sketch override this shared visual grammar.
-- Determine left/right and path shape from the **viewer-relative positions of the real, proven source/target anchors**, not a hard-coded side. Balance cards plus all connectors in the measured usable field, avoid Seats/Dock/Guidance/menu/timer/controls, and never move physical players to make the graph fit. Use the actual Seat/Dock edge facing the field. Prefer the shortest legible orthogonal route; document a real fit trade-off rather than drawing an invented relationship.
-- Show outcomes at the proven relationship endpoint. In particular, `TAKE DAMAGE` belongs on/adjacent to the red Attack→actual-target relation, near the target side and outside tiny Hero artwork; make it large enough to read as a result, not a control button. Do not show it merely because a response was declined—require public damage-settlement proof.
-
-#### Evidence and acceptance language
-
-- Positive UX evidence requires the real server-backed production path, exact public proof identities, visible rendered CardFaces and actual SVG/DOM geometry. Separate server projection, client selection, mounted graph, actual visible frame, CI/deploy and human visual acceptance; none implies the next. Cover attacker, defender and observer where semantics allow, and use measured mobile plus relevant wide geometry.
-- Tests and screenshots must not pass a `geometry-unavailable` fallback, guessed relation, private selection or hidden/occluded arrow as a successful graph. CI validates code; only the human Reviewer/user decides visual acceptance.
+- **Reveal:** Each newly server-confirmed public card appears as one authentic Hand-size CardFace in the centre of the available battlefield, with a concise true public actor/action/target message.
+- **Owner-side parking:** After a short readable beat it shrinks into a **medium public thumbnail** adjacent to the true author’s *real* Seat/Dock edge facing the battle area: under an opponent's top-row portrait, above the local player's Dock, or on the inward side of side-column Seats. All perspectives independently place it in front of the same real player, never in an invented centre avatar.
+- **Decision:** The viewer's actual Local Dock/Guidance responds with the correct server-owned legal actions. Pending Attack on that viewer adds a restrained **red border/highlight around the existing response area**, a clear short actor→victim sentence and the existing response timer. Highlight alone is never the only cue. No uncommitted Dodge is shown.
+- **Response:** A genuine publicly committed Dodge/Attack-as-Dodge/Negation/etc. is revealed centre-first by the same rules, then parks at its own responding player's seat. The original root thumbnail remains context while the same interaction is unresolved; newest public response has the strongest visual emphasis.
+- **Outcome:** Show proven BLOCKED, TAKE DAMAGE or other actual settlement on the **affected true player’s Seat/Dock area**, briefly legible to other viewers. Do not infer damage from Skip or decreased HP alone. Display controls remain nonblocking; a newer independent authoritative action supersedes old display.
+- **No relationship SVG, green/red strokes, arrows, card chains or 'source/effect/target' field diagrams.** Explicit actor/target text and per-player placement replace them.
+- **Evidence:** Real server-backed phone screenshots and exact public IDs, room/viewer identity, real visible card layout and accessible result are required; fixture-only or green CI is not human visual acceptance.
 
 ## 1. Local Hero Skill Controls — Single Activation Surface and Readable Adaptive Layout
 
@@ -287,215 +259,29 @@ The player should be able to look beside their Hero portrait and immediately ans
 
 They should never need to scan the bottom Action Row to discover a Hero-skill activation that should have been available beside the Hero.
 
-## 2. Single-Target Stratagem Negation Flow — Card/Response Refinement Only
+## 2. Single-target Negation — compact card reveal and decision UX (revised 2026-10-13)
 
-### 2.1 Current refinement boundary
+### 2.1 Open response opportunity
 
-The central Interaction Stage participant/Hero presentation is **frozen for the current refinement phase**.
+Show the **already publicly committed original Stratagem card** as the source player's seat-front thumbnail after its centre reveal (§6). Show one compact public description, e.g. “Cao Cao used Duel on Zhang Liao.” The Local Dock of an eligible actual responder says **“Play Negation or Skip.”** No private responder is publicly named or shown before committing. There is **no** large `NEGATION RESPONSE`, `EFFECT`, `REACTION CHAIN`, `ORIGINAL EFFECT` or dedicated oversized centre Hero/target panel. An open opportunity is not a played Negation.
 
-Do not change, resize, replace, reposition, deduplicate, reconnect, or otherwise redesign the Interaction Stage Hero/player nodes as part of UX2 refinement. Their future presentation will be handled by a separate interaction-visualization refactor.
+### 2.2 Actual Negation and counter-Negation
 
-This section therefore governs only non-Hero response presentation that remains valid across the future refactor:
+Only when the server confirms a real public Negation event: reveal the authentic Negation CardFace at the centre, then park a medium thumbnail at **the actor's own Seat/Dock**. Keep the original effect card visible at its original author's seat as contextual public history. Each later counter-Negation follows the same centre reveal → correct actor seat thumbnail sequence; the newest proven public card gets the primary glow, older public cards become visually subdued **without connection strokes**. If many responses exist, limit visible seat thumbnails and provide a small accessible count; do not stack unreadable cards or draw any relation diagram. A short public status such as “X played Negation” and “Effect negated/restored” must derive from typed, verified public resolution facts, not turn sequence or client parity guessing.
 
-- root and public response cards;
-- active-card state;
-- public Negation branch/history;
-- Local Guidance;
-- response timer/system controls where applicable;
-- privacy and server-authority rules.
+### 2.3 Resolution, controls and privacy
 
-Existing participant/Hero composition may remain as the current implementation baseline until the later refactor.
+Continue/cancel the original effect only as authorized by the server; announce the settled result via a compact nonblocking banner. Local Guidance stays the single owner of the actual response command, with authentic `CurrentAction` legality and deadline. Do not expose private hand identities, possible respondents, pending card choices or unconfirmed outcomes. Use the canonical public proof and exact card/actor IDs to fail closed on ambiguous events. Keep existing target card pickers, reaction options and responder scanning untouched.
 
-### 2.2 Open Negation window
+### 2.4 Responsive acceptance
 
-An open Negation opportunity is not yet a public reaction chain.
-
-Before anybody actually submits Negation:
-
-- the root action card remains the active public card;
-- no placeholder Negation card is rendered;
-- no large Reaction Chain panel is required;
-- the public Stage must not name a private responder;
-- the Local Guidance Strip supplies the viewer's private instruction.
-
-Preferred local instruction:
-
-```text
-Play Negation or Skip.
-```
-
-Avoid player-facing implementation-state copy such as:
-
-- `NEGATION RESPONSE`;
-- `EFFECT`;
-- `REACTION CHAIN`;
-- `ORIGINAL EFFECT`;
-- `NEGATION WINDOW`;
-- `A Negation may be played now.`;
-- `Waiting for response...`.
-
-Do not modify participant/Hero geometry to achieve this cleanup.
-
-### 2.3 Active public card
-
-At any moment, the public root/response chain has exactly one active visual head.
-
-Recommended treatment:
-
-**Active card**
-- full opacity;
-- emphasized border;
-- restrained outer glow;
-- highest visual contrast in the public chain.
-
-**Inactive causal predecessor**
-- lower opacity;
-- no outer glow;
-- lower-emphasis border.
-
-Hard rule:
-
-- exactly one public card in the current root/response chain is active at a time.
-
-This rule applies independently of the later Interaction Stage Hero refactor.
-
-### 2.4 First public Negation
-
-A Negation card appears only after it is actually submitted and becomes public.
-
-When first submitted:
-
-- keep the root action card visible as causal context;
-- make the root card visually subdued;
-- add the submitted Negation as a compact public response node;
-- make the Negation the only active public card;
-- do not create a duplicate text-heavy Reaction Chain panel;
-- do not reveal who could have responded before submission.
-
-If the actor identity of a submitted Negation is public, it may be represented compactly near the public Negation card.
-
-Do not change Interaction Stage Hero/player layout as part of this work.
-
-### 2.5 Counter-Negation
-
-Each new public counter-response extends the compact public card history.
-
-Rules:
-
-- newest unresolved public response = only active card;
-- older public response cards remain subdued causal context;
-- root identity remains available;
-- long history compacts rather than causing page-level horizontal overflow;
-- private Pass/Skip/Decline and private responder scanning create no public card node.
-
-On narrow screens, preserve at minimum:
-
-- root identity;
-- recent public response context;
-- current active head.
-
-### 2.6 Negation settlement
-
-If Negation cancels the root effect:
-
-- settle/collapse the public response history cleanly;
-- a compact cancelled/negated root state may be shown;
-- exit the interaction when authoritative settlement completes.
-
-If counter-Negation restores the root effect:
-
-- settle/collapse the public response history;
-- restore the root action card as the active public card;
-- continue the authoritative root action.
-
-Do not infer settlement from animation, timeline position, HP change, or local state.
-
-### 2.7 Local Guidance
-
-The Local Guidance Strip owns the viewer's private next-step instruction.
-
-For an eligible Negation opportunity:
-
-```text
-Play Negation or Skip.
-```
-
-Keep the instruction short and direct.
-
-Do not duplicate the same instruction in the public Stage.
-
-The visible `YOUR RESPONSE` prefix is optional when the action remains clear without it.
-
-### 2.8 Privacy and authority
-
-This refinement changes presentation only.
-
-React must not infer:
-
-- Source;
-- Target;
-- self-target legality;
-- Negation eligibility;
-- current private responder;
-- public response actor;
-- response order;
-- settlement;
-- whether the root effect resumes.
-
-Use authoritative CurrentAction / Presentation / causal-response projections.
-
-If the required public card relationship is not proven, fail closed.
-
-### 2.9 Measurable acceptance
-
-Validate at minimum:
-
-- 390 × 844 portrait;
-- 480 × 900 portrait;
-- one wide viewport.
-
-Required checks:
-
-| Requirement | Expectation |
-| --- | --- |
-| Open Negation | Placeholder Negation card count = 0 |
-| Open Negation | Large Reaction Chain panel count = 0 |
-| Active public card | Exactly 1 |
-| Submitted Negation | New public response becomes active |
-| Counter-Negation | Newest public response is active; older cards subdued |
-| Long public chain | No page-level horizontal overflow |
-| Private responder leakage | None before public submission |
-| Guidance | One short primary instruction |
-| Banned visible headings in simple open window | `EFFECT`, `REACTION CHAIN`, `ORIGINAL EFFECT`, `NEGATION WINDOW` count = 0 where the refined composition is active |
-| Stage/Dock | Overlap = 0 |
-| Stage/Guidance | Overlap = 0 |
-| Hero/player composition | No refinement task changes its geometry or representation |
-
-### 2.10 Completion criterion
-
-This section is complete when the public Negation state is understandable from the root/response card state and the Local Guidance instruction without relying on text-heavy implementation-state panels, while the existing Interaction Stage Hero/player presentation remains untouched pending the later refactor.
+At 390×844, approximately 440px phone width, 480×900 and wide viewport, an open Negation shows **zero unplayed Negation cards, zero relationship-line SVGs, zero giant Reaction Chain boxes** and one correct private instruction; a committed Negation briefly appears centre-first and then at its actor's seat. Long legitimate chains remain readable through last-public-card focus plus compact history count, without page overflow, Seat/Dock collision, duplicate card faces or leakage. Test real Negation/counter-Negation/decline/settlement states.
 
 ## 3. Group / AOE Response Refinement — Non-Hero Controls Only
 
-### 3.1 Current refinement boundary
+### 3.1 Current Group/AOE presentation boundary (revised 2026-10-13)
 
-The Group/AOE Interaction Stage Hero/player presentation is **deferred**.
-
-Do not modify during current UX2 refinement:
-
-- central Source Hero artwork;
-- Group target Hero portraits;
-- target-strip Hero geometry;
-- viewer-vs-opponent target Hero representation;
-- current-participant Hero highlight/marker;
-- Source/target Hero positions;
-- Hero-to-card or card-to-Hero connector geometry;
-- participant deduplication strategy;
-- seat-as-node / physical-player-node interaction graph.
-
-Those surfaces will be redesigned together in the later interaction-visualization refactor.
-
-Current UX2 refinement may change only the non-Hero controls and response semantics below.
+Keep fixed real Hero Seats/Local Dock and the authorized group-response controls. All obsolete central duplicated Hero portraits, source/target line diagrams and per-participant connectors are retired by §0.1 / §6. Public AOE/group cards use the same centre reveal and source-side thumbnail, followed by **each proven responder's own seat-front public response thumbnail**. Ordered/pending/completed status is conveyed by small verified labels and Local Guidance, **not** connecting paths. No additional group gameplay logic or special-Hero control rewrite is authorized by this visual change.
 
 ### 3.2 Direct local guidance
 
@@ -1321,7 +1107,7 @@ without a large top timer box and without a large unused vertical gap.
 
 ### 4A.12 Compact, non-blocking Effect Triggered notices — approved repair (2026-10-12)
 
-**Design status:** User-reported production mobile screenshot defect; **this UX remedy is specified for a separate, bounded implementation/review**, not evidence of implementation or an automatic change to the Coding Agent's current HANDOVER task. This extends §4A's compact transient-display principles and leaves §0.1's authoritative interaction graph and current legal actions intact.
+**Design status:** User-reported production mobile screenshot defect; **this UX remedy is specified for a separate, bounded implementation/review**, not evidence of implementation or an automatic change to the Coding Agent's current HANDOVER task. This extends §4A's compact transient-display principles and leaves §0.1's server-authoritative public-card and CurrentAction boundaries and current legal actions intact.
 
 **Observed screenshot:** On an iPhone-sized game, a large centred `EFFECT TRIGGERED / Test Player 2 ... with Dauntless` banner overlays the battlefield and competes with the simultaneously visible `Use Retaliation, or skip` decision for Sima Yi. The screenshot alone does **not** prove the underlying individual timeline events or their exact ordering. The documented Standard implementation makes one plausible chain: Yue Jin's **Dauntless** can trigger at another player's turn end; its Equipment-discard-or-damage settlement may cause a Sima Yi **Retaliation** post-damage decision. These are separate authoritative gameplay events and must not be conflated or changed to fix a visual notice.
 
@@ -1333,7 +1119,7 @@ without a large top timer box and without a large unused vertical gap.
 
 **Expected player-facing result:**
 
-1. **Small, non-blocking skill event banner, not a modal.** An eligible `effectNotice` appears as one **compact, black-and-gold, edge-anchored banner** inside the measured safe battlefield/Stage region, outside current CardFaces, relation lines, hero Seats, lower-right response timer/System Menu, Guidance, Hand and action buttons. Avoid the viewport/Stage centre and an all-table dimming layer. Prefer a banner width **<= 320 CSS px** or available safe width minus insets (whichever is smaller), approximately **8–10px vertical and 10–14px horizontal padding**, **12–13px readable body type**, contained text wrapping and content-driven height. Do not stretch a long message into huge central typography; preserve the full meaningful text accessibly.
+1. **Small, non-blocking skill event banner, not a modal.** An eligible `effectNotice` appears as one **compact, black-and-gold, edge-anchored banner** inside the measured safe battlefield/Stage region, outside current public CardFaces and per-player card thumbnails, hero Seats, lower-right response timer/System Menu, Guidance, Hand and action buttons. Avoid the viewport/Stage centre and an all-table dimming layer. Prefer a banner width **<= 320 CSS px** or available safe width minus insets (whichever is smaller), approximately **8–10px vertical and 10–14px horizontal padding**, **12–13px readable body type**, contained text wrapping and content-driven height. Do not stretch a long message into huge central typography; preserve the full meaningful text accessibly.
 2. **Notice and decision serve different functions.** Notice communicates a verified public event, e.g. `SKILL ACTIVATED · Yue Jin — Dauntless` **only if those actor/skill facts are actually supplied as authoritative public fields**. The primary `Retaliation` decision stays in its existing Local Dock/Guidance controls and remains operable. A public damage outcome, e.g. `Sima Yi takes 1 damage`, may only be attached when that specific public settlement is independently proven; never infer damage/skill/cause by parsing a message, comparing HP, hero names or adjacent timeline entries. Without typed facts, use the original public message unchanged with a compact `EFFECT TRIGGERED` heading; do **not** fabricate structured claims.
 3. **Event identity and timing.** Render at most one active effect notice. Key its lifecycle by the authoritative timeline `event.id` rather than by the raw message string; a different verified event may replace an older notice without creating stacked banners, while repeated room polls must not restart one old banner. Use one cancellable lifecycle for mount/reading/fade/removal, aligning React visibility and CSS animation to the existing **~2,400ms** notice presentation (a short <= 200ms exit is appropriate), including reduced-motion mode as a static readable notification. Keep DOM/animation state consistent when the viewer navigates rooms or a newer authoritative event takes precedence. No notice should intercept pointer/touch or focus.
 4. **No game-state change.** Maintain Dauntless availability and cost, its real turn-end source/target and equipment-discard/damage rules, any resulting Retaliation choice, `CurrentAction` legal actions, response deadlines, `PresentationSnapshot` and private skill/hand/role protections. This task is a **presentation-only** fix. Do not suppress the skill response or its genuine relationship graph merely to remove the large banner.
@@ -1344,8 +1130,8 @@ without a large top timer box and without a large unused vertical gap.
 - In `app/page.tsx`, replace the effect-only reuse of `.turn-notice` with a dedicated, semantically appropriate `effect-notice` banner element; keep `TURN BEGINS` and unrelated notices unchanged. Preserve the server-public message fallback, introduce event-ID keyed notice state and one reliably cleaned-up timer/effect boundary.
 - In `app/globals.css` or `app/sequence-overrides.css`, add one scoped `.effect-notice` visual treatment and mobile-safe anchor, independent of `.turn-notice b`/large `turnPulse`. Do not create conflicting specificity across both stylesheets or hard-code one device's full-screen coordinates. Align entrance/exit with the notice's actual state lifetime and respect reduced motion.
 - Using a **real server-backed** four-player setup, validate the exact sequence **Yue Jin Dauntless turn-end event → legitimate equipment/damage resolution → Sima Yi Retaliation offered when applicable**. Assert the actual `effectNotice` message identity and `CurrentAction` independently, and prove notice + Local Dock decision can coexist without text/panel overlap. Also verify cases with *no damage/Retaliation*, a second distinct effect notice, repeated polling, timer expiry and switching viewing session/room.
-- Capture **390×844**, approximately **440px iPhone 17 Pro Max CSS portrait**, **480×900** and one wide viewport, with bounding rectangles/screenshot evidence: no overlap with opponent Seats, current relation graph/cards/labels, timer/System Menu, Local Guidance, local Hand, Confirm/Skip; no page horizontal overflow or accidental click capture. Test readable wrapped notice text and reduced motion. Keep existing Stage A and Stage B graphical behavior unchanged.
-- Report changed files, the root-cause fix, real-game screenshots and measured layout/timing, focused tests, exact commit SHA and required <=6-minute CI gate (§6.30). **STOP for independent user/reviewer acceptance.** Do not alter `HANDOVER.md`, game rules, §4B.12, Duel, Negation or AOE while executing this bounded item unless explicitly instructed.
+- Capture **390×844**, approximately **440px iPhone 17 Pro Max CSS portrait**, **480×900** and one wide viewport, with bounding rectangles/screenshot evidence: no overlap with opponent Seats, current relation graph/cards/labels, timer/System Menu, Local Guidance, local Hand, Confirm/Skip; no page horizontal overflow or accidental click capture. Test readable wrapped notice text and reduced motion. Preserve the no-connector card presentation design (§6); do not resurrect the retired Stage A/B graph.
+- Report changed files, the root-cause fix, real-game screenshots and measured layout/timing, focused tests, exact commit SHA and required <=6-minute CI gate (§7.1). **STOP for independent user/reviewer acceptance.** Do not alter `HANDOVER.md`, game rules, §4B.12, Duel, Negation or AOE while executing this bounded item unless explicitly instructed.
 
 
 ## 4B. Compact Inspect Panel for Other Players
@@ -1580,7 +1366,7 @@ The mobile Inspect view is complete when it behaves as a compact, readable float
 
 **No `View Details` button, no automatic second-level screen.** The user explicitly rejected that step. Skill descriptions are reached solely by tapping skill names in the same compact panel. An existing CardFace explanation may open via a card's established info affordance where needed, but must respect one-at-a-time modal precedence rather than layering a second inspector behind the first.
 
-**Target-selection and gameplay continuity:** Once the player picks a legal opponent target, reveal/update the unified inspector without obstructing their other opponents, selected Attack hand card, or bottom **Cancel/Confirm/End** controls. The selection remains valid if the inspector is closed. Changing inspection subject must **not** silently change the chosen gameplay target; an explicit legal Seat selection does. The inspector never sends gameplay requests, enables illegal buttons, cancels a selected target on close, or pretends a local unsubmitted choice is a server-proven public action. Preserve the existing `submittedTargetPreview`/presentation-readiness and no-private-leak boundaries when removing duplicate local presentation ownership. Ensure the normal public Attack graph takes precedence once authoritative confirmation advances the interaction.
+**Target-selection and gameplay continuity:** Once the player picks a legal opponent target, reveal/update the unified inspector without obstructing their other opponents, selected Attack hand card, or bottom **Cancel/Confirm/End** controls. The selection remains valid if the inspector is closed. Changing inspection subject must **not** silently change the chosen gameplay target; an explicit legal Seat selection does. The inspector never sends gameplay requests, enables illegal buttons, cancels a selected target on close, or pretends a local unsubmitted choice is a server-proven public action. Preserve the existing `submittedTargetPreview`/presentation-readiness and no-private-leak boundaries when removing duplicate local presentation ownership. Ensure the normal confirmed public Attack reveal takes precedence once authoritative confirmation advances the interaction.
 
 **Implementation guidance (bounded):** In `app/page.tsx`, the current `LocalTargetPreviewPresentation` only contains name, Hero and HP, whereas `LocalOpponentInspectionPresentation` already provides `handCount`, `equipmentCards` and `judgementCards`. Unify the local **public-info** model and render one inspector; avoid reusing the read-only inspector as §4C's game-action card picker. Remove the competing `HeroFocus` PREVIEW composition and the extra nested `opponent-inspection-layer`/legacy Stage positioning **as active simultaneous alternatives**. Use a single scoped layout and stacking context rather than inherited `.hero-focus` / `.interaction-stage` top-row/side-column grid rules that caused the screenshot overlap. Keep its panel position determined by measured battlefield safety rather than hard-coded entire-viewport coordinates.
 
@@ -2422,1347 +2208,170 @@ Additional prerequisite evidence is recorded for §4.10 Stargazing, §4C.29 mixe
 
 Every relevant completion claim must distinguish **Rules/API proven**, **Server projection proven**, **Fixture browser proven**, **Real server-backed browser path proven**, **Deployed-game screenshot/reviewer proof** and **User visually accepted**. A clean build, passing fixture, green CI or roadmap closure is not a substitute for any later layer. For ongoing Section 6 changes, perform only targeted regressions to §4D contracts when those paths are affected; do not repeat the whole pre-Section-6 gate by default.
 
-## 5. Historical Interaction-Stage deferral — gate cleared, constraints retained
+## 5. Historical interaction-stage work — architectural constraints still applicable
 
-### 5.1 Original sequencing decision
+The earlier UX V2 Interaction Stage and physical-seat graph refactor was an implementation experiment. Its **graphical connector, Hero duplication and verbose causal-panel presentation is superseded and must be removed** by the current decision (§0.1 and §6). Older `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` and historical roadmap assertions remain historical context only and cannot override this UX2 refinement.
 
-Before the §4D gate closed, work on central Hero/player visualization, physical-seat graph connectors and the new Interaction Stage was deliberately deferred so that incomplete real-game control routing and unstable Seat geometry would not be concealed by a new overlay. This was a **temporary implementation-order constraint**, not a permanent ban on Section 6.
+Still enforce: the viewer's Hero belongs in the Local Dock; other players remain in their physical Seats; verified public projection supplies card actor/target identities; the local viewer's private `CurrentAction` controls stay in the Dock; privacy and stage/Seat collision safety do not regress. Follow §6 for all new card-display visuals. Passing prior CI or previous graph tests is not evidence that the user accepted the previous graph or accepts this new design.
 
-### 5.2 Current interpretation
+## 6. UX2 Simplified Public Card Presentation — no relationship graph (approved direction 2026-10-13)
 
-The roadmap's `UX2.REFINEMENT-PRE-SECTION-6-GATE-REVALIDATION-01` records the relevant prerequisites as implementation/test-closed for proceeding to §6. Section 6 has subsequently received real implementation evidence. **Do not send the Agent back to §§1–4D or restart §6 Phase A merely to re-satisfy the obsolete deferral.** Reopen a prior area only for a new user decision, a concrete reproduced regression, or a specifically requested targeted review.
+### 6.1 Product scope and forbidden visual elements
 
-### 5.3 Architecture boundaries carried into Section 6
+**UX2 visual strategy has changed by explicit user decision:** stop graph-connection engineering. Public card interaction is a series of **centred, human-readable reveals followed by owner-seat thumbnail placement**. The physical seat layout and the Local Dock remain unchanged. A short text sentence can identify who used a card against whom; do not express that relationship with drawn connectors. Applies first to ordinary Attack/Dodge, then Duel, Negation, AOE, judgment/equipment/skills as applicable. Reuse existing public event/projection contracts and CardFace art.
 
-The local viewer's Hero stays in the Local Dock and is not duplicated in the public central Stage. Opponent physical Seats remain fixed; all source, target, response, counter, participant and relationship evidence must come from the typed server/public projection, not from timeline order, private legal options, HP deltas or inferred geometry. Keep local controls/Inspect separate from public presentation and fail closed when proof or safe geometry is missing. These invariants are detailed in §§6.2–6.24 and remain mandatory.
+**Not allowed anywhere in the active combat presentation:** source tethers, target arrows, counter/interception strokes, continuous graph lines, elbow paths, path forks, coloured historic routes, SVG arrow markers, fake central Hero copies, edge/graph legends, standalone giant `EFFECT`/`REACTION CHAIN` layouts, or duplicate full-size floating CardFaces produced by competing renderers. Red may still be used as a **response-panel border / damage status emphasis**, not as a route. Green may still occur in ordinary UI/card art, not as authorship paths.
 
-### 5.4 Acceptance boundary
+### 6.2 Three-zone mobile layout
 
-Closed implementation sequencing does **not** constitute Reviewer/device acceptance of the player-facing graph, the final AOE/multi-target visuals, or new refinements in §§6.27–6.32. Each newly changed visible behavior still requires focused proof and the user's review.
+1. **Fixed player Seats:** Opponents remain in the actual upper/side positions for the viewer. At each player's battlefield-facing edge reserve a small public card parking area. Opponent top-row seats: **directly below that player's portrait card**. Side-column seats: **on the inward-facing side**. Never cover HP, Hand count, switch/view affordances or other Seats.
+2. **Central reveal zone:** The usable centre of the battlefield is temporarily reserved for **one newly confirmed card at a time**, rendered as a *real* CardFace of the same size as the viewer's normal hand card (initial existing nominal ~60×90 CSS px, with actual Hand CSS as the reference; do not create oversized 150px overlays). Centre text such as “Cao Cao used Attack on Zhao Yun” may sit above/below it without turning into a multi-panel Stage.
+3. **Local player's Dock:** The true viewer's Seat is fixed in the lower operational panel. Their public played card parks **just above the Dock's top boundary** in the battlefield, aligned with their local author area without blocking Guidance, Skill buttons, Hand, Confirm/Skip or a response timer. The floating thumbnail is **not** a copy of the private Hand; once played it is public and identified only by proven event data.
 
-## 6. UX2 Interaction Visualization Refactor — Physical-Seat Anchored Causal Graph
+**Medium thumbnail:** Initial target **48×72 CSS px** (or 50×75 within the 2:3 aspect ratio), slightly smaller than the actual same-device Hand/centre reveal card. Use authentic art, rank/suit and readable name; allow bounded collision-driven reduction, but never unreadably tiny. Keep one primary recent card per player, optionally one subdued immediately previous card while the same interaction remains active; older events collapse into a compact “+N” history indicator only from genuinely public events. A player with no public committed card gets no placeholder thumbnail.
 
-### 6.1 Design decision and purpose
+**No fabricated spatial semantics:** Placement depends on actual authenticated owner player ID and real Seat/Dock DOM position, never the top-row index guessed as the card actor. A single public event maps to one active card instance (centre while revealing, owner parking after), not two simultaneous copies.
 
-The next interaction-visualization direction removes duplicated combat Hero/player portraits from the central Interaction Stage.
+### 6.3 Shared public-card reveal state machine
 
-The fixed physical player representations already present around the table become the only player nodes used by the interaction visualization:
+For each distinct authentic public card-play event (and actual author) in the current authoritative interaction:
 
-- opponent Seats remain the public player anchors around the table;
-- the Local Player Dock remains the viewer's physical player anchor;
-- no second Source Hero portrait is created in the center;
-- no second Target Hero portrait is created in the center;
-- no separate compact participant strip is required merely to restate players who are already visible at their Seats/Dock.
+1. **REVEAL:** Display its genuine CardFace **at the measured centre** as soon as the action is server confirmed and publicly visible to this viewer. Allow an initial legible hold around **500–800ms** (tune by on-phone review), along with actor/action/target text derived only from verified public facts.
+2. **MOVE/PARK:** Animate (when motion is enabled) centre → real owner seat-front parking area, shrinking from Hand size to the medium thumbnail in about **250–450ms**; prefer one consistent unobstructed path rather than a relationship line. The card is a *moving object*, never a permanent arrow/connector. Once parked, it stays as public interaction context and the centre clears for the next publicly committed card.
+3. **WAIT/RESPOND:** The current decision player's own Local Guidance controls the decision. Do not replay the same card, change to the next action, move another player's card, or show a private selected response publicly merely because `CurrentAction` polls.
+4. **SETTLE/RETIRE:** Show only a **server-proven** outcome in compact readable text at the true impacted Seat/Dock. Initial aim: about **2 seconds of legible settled result** (subject to a newly confirmed independent action taking precedence); then remove obsolete parked cards. Do not pause server turns or response deadlines for reveal/hold. Genuine server response timers remain separate. Animation-only timers must not turn a private card into a public event.
 
-The central combat area becomes a temporary public action/effect layer containing cards, response cards, relationship lines, settlement state, and lightweight effect feedback.
+Repeated polling, refresh and perspective switching must dedupe by proven event/root/card IDs. On late mount/refresh, **show the current already parked public cards without replaying a historical reveal**. Reduced-motion mode skips movement and uses a static visible centre beat/seat thumbnail with equivalent information and legibility.
 
-The basic visual grammar is:
+### 6.4 Ordinary Attack → Dodge: reference sequence
 
-~~~text
-Physical Player  ── played-by tether ──  Action Card  ── target arrow ──▶  Physical Player
-~~~
+**A. Attacker chooses and confirms Attack.** Before confirmation, any selected card is a **private Hand selection only**—no public floating Attack. After server confirmation: a genuine Attack at centre at full Hand size, short text “Cao Cao used Attack on Zhao Yun”; after the readable beat the same card shrinks/moves to the attacker's owner-front parking slot (for local attacker, just above their Dock; for upper opponent, under their actual Hero Seat). Preserve its public identity through the response opportunity.
 
-This preserves table spatial identity and makes the interaction read directly against the players who are actually involved.
+**B. Defender receives Attack.** From the *defender's viewpoint*, the incoming authenticated Attack appears centre-first when newly confirmed/first observed, then parks **in front of the real attacking player** (not at the defender). The defender's own Local Dock response guidance/border becomes **visibly red-accented** and explicitly says e.g. “Cao Cao used Attack on you. Play Dodge or Skip.” The true server-owned response countdown and legal choices remain visible. Only actual `CurrentAction` options are actionable: usually genuine **Dodge**, or an explicitly legal skill-converted physical **Attack as Dodge** (e.g. Zhao Yun) if the server allows it. **Ordinary Attack is not generally a Dodge response**. No invented response card or centre target duplicate appears while the defender waits.
 
-This section records the reviewer-approved UX2 interaction-visualization refactor required to complete UX2. It does not by itself authorize a branch-wide implementation or gameplay/protocol change. Implementation still proceeds as bounded HANDOVER tasks under the sequencing in §5.4.
+**C. Defender really commits Dodge.** After server confirmation, the genuine publicly played Dodge CardFace (or legitimate converted physical card with correct “AS DODGE” label) appears at the centre at standard Hand size, with short message e.g. “Zhao Yun played Dodge.” Then the same card shrinks and parks at **Zhao Yun's own seat-front area**: above their Dock for Zhao Yun viewing themselves, below the true Zhao Yun opponent Seat for the attacker/observers. The earlier Attack thumbnail remains at its actual attacker's Seat as context. No red line, arrow or Dodge→Attack counter link is drawn.
 
-**UX2 completion gate:** UX2 must not be declared complete while the AOE / multi-target interaction presentation remains visually unacceptable. Section 6 is part of UX2 completion. Group/AOE scenes must be revalidated after the physical-seat causal-graph refactor, and Reviewer acceptance of those final screenshots is required before UX2 can be considered complete.
+**D. Result.** If genuinely blocked, display **“DODGED / Attack blocked”** or equivalent short public verified result, with subtle non-colour target status; then clean the old cards at the natural public settlement/next action boundary. If the defender legitimately declines/times out and the server proves actual damage, display **“TAKE DAMAGE” at the defender's real Seat/Dock** for an initial ~2s legible window so *all other players* can see the outcome. Do **not** show Take Damage solely on Skip; if a prevention/skill cancels damage, show the proved alternative. On later independent gameplay, prior interaction cards retire without ghosts.
 
-### 6.2 Core semantic invariant
+**Motion/source view equivalence:** The centre reveal is observed separately on each player's viewport, but after the move the card must sit before its true author in that viewer's real seat arrangement. Observers see the same public card truth and public result; they never see another player's private hand/options.
 
-Every visible relationship must represent one authoritative public fact.
+### 6.5 Duel without relationship lines
 
-The renderer must not infer causality from:
+First Duel stratagem: authentic centre reveal → Duel owner's seat-front thumbnail. During any Negation opportunity keep one compact “Play Negation or Skip” private instruction and the public Duel thumbnail; do not display the giant old `NEGATION RESPONSE / EFFECT / REACTION CHAIN` composition. Once the Duel proceeds, every **actually committed Attack response** repeats the common centre reveal → **correct answering player's own seat**. Preserve a compact latest-card/history treatment at the two actual duelist Seats; text says whose Duel it is and **who needs to provide Attack now** only to those allowed by the authoritative current decision. Do not create fake Attack #2/#3/#4, intermediate arrows, old pair route forks, round rows or centrally duplicated Duel root. At terminal resolution show the actual damage/failure outcome using §6.3. The old §6.39 four-card diagram and B1 line geometry are **cancelled**, not a backlog item.
 
-- timeline order;
-- turn ownership;
-- actionPlayerId;
-- DOM order or physical seat order;
-- Hero identity;
-- card animation order;
-- HP changes;
-- local selection state;
-- client-side guesses about what a card normally does.
+### 6.6 Negation/counter, Group/AOE and other cards
 
-CurrentAction continues to own viewer-private legality and available controls.
+**Negation:** follow current §2; each proven card appears once in the centre then parks before its public author; recent committed card strongest, older public response cards/count subdued; effect status uses verified compact text, not card-to-card connector.
 
-PresentationSnapshot / PresentationClientView, or an approved successor public-presentation model, owns public interaction facts.
+**Group/AOE:** root Group/AOE card appears centre then parks before its real author. At each actual ordered or simultaneous participant response, the true committed response card appears centre then parks before the true responder. Use compact per-participant verified pending/blocked/damaged labels and the already available Local Guidance/response timer, not arrows, participant branches or made-up public responses.
 
-Missing or ambiguous semantic proof must fail closed.
+**Other public card actions / skill-triggered events:** the same CardFace reveal/owner parking whenever a real **public physical card** has been played. Skills without a public played card use a compact nonblocking textual trigger (§4A.12), never a fabricated CardFace. Existing private Draw, target-card picker, Judgment, equipment, Hero Skills and hidden Hand boundaries remain governed by §§1–4C, not overwritten by this motion concept.
 
-The visualization must therefore be treated as a renderer of a typed public interaction graph, not as an animation system that reconstructs gameplay meaning from events after the fact.
+### 6.7 Visual and layout priority
 
-### 6.3 Graph vocabulary
+Priority: **server-authoritative identity/privacy → uninterrupted legal decisions → clear centre reveal → true owner seat placement → no Seat/Dock/control overlap → readable outcome → aesthetic timing**. Keep the battlefield visually quiet, black/gold palette, one strongest newly played public card, minimal messaging, no enormous Stage metadata. Avoid duplicate card renderers during handoff. Allow 4/6/8-seat and top/side arrangements, 390×844, ~440px iPhone 17 Pro Max and 480×900, and a wide viewport. Do not scroll/jump the main page or cover response controls; match geometry after viewport/keyboard changes.
 
-The visual model should support the following conceptual node types.
+### 6.8 Rejected old graph implementation — technical migration boundary
 
-**Physical Player node**
-- not created by the interaction renderer;
-- references an existing opponent Seat or Local Player Dock;
-- identified by the existing authoritative player ID / data-player-anchor;
-- never duplicated centrally.
+Current code is much larger than the new UX needs. The **obsolete presentational system** includes: `app/interaction-root-overlay.tsx` SVG/geometry renderer and graph-only fit states, its `InteractionRootOverlay` composition in `app/page.tsx`, conditional legacy `InteractionStage` / `SingleTargetNegationCausalComposition` / text-heavy Duel/Negation root panels, `TableResolutionSequence` duplicate CardFaces, graph-only selectors in `app/sequence-overrides.css` and `app/globals.css`, and graph-only browser geometry assertions.
 
-**Action Card node**
-- a temporary public card representation for the root action;
-- examples: Attack, Steal, Duel, Raining Arrows;
-- remains stable while its interaction is unresolved.
+**Do not delete** the server-side engine continuation, true causal event IDs, `PresentationSnapshot` / `PresentationV2` / `PresentationClientView` public proof and privacy validation, `CurrentAction` controls, target inspection/picking, match rules, legal response timers, genuine public card-zone/discard/draw animations, test-controller authorization or useful server correctness/API assertions. Rendering deletion and semantic proof deletion are **not the same thing**. When graph renderer currently gates or owns an Attack/Dodge/Negation/Duel settlement hold, relocate its **public outcome/lifecycle authority** to the simple card/outcome presenter before removing the old gate. Avoid a blank field or early-disappearing legitimate result.
 
-**Response Card node**
-- a temporary public card representation for a committed response;
-- examples: Dodge, Negation, an Attack played during Duel;
-- appears only after the response is actually public;
-- is not rendered merely because a player is privately eligible to respond.
+### 6.9 Real-game acceptance
 
-**Effect/Event node**
-- reserved for a later case where an authoritative public interaction has no physical card;
-- examples may include Hero skills, triggered statuses, or other rule events;
-- it should use the same graph grammar without inventing a fake card.
+Use a real server-backed four-player room (including authorised host-controlled test players) to capture: (1) attacker confirmed Attack in centre, (2) Attack parked before actor, (3) defender red response Dock and true Attack at author seat, (4) authentic Dodge centred, (5) Dodge parked at responder seat as seen by attacker/defender, (6) authoritative blocked or **TAKE DAMAGE** outcome. Test decline/timeouts, non-Dodge legal responses, quick supersession, refresh/viewer switch, Negation opportunity on Duel, four actual Duel Attack responses if game legally reaches them, and at least one Group/AOE response. **Zero** connector SVGs/visible graph edge strokes; **zero** giant legacy `EFFECT / REACTION CHAIN` panels; one physical played CardFace in each presentation phase, no duplicated full cards, private leaks or gameplay delay. CI and on-device human acceptance are distinct.
 
-The visual model should support three primary relationship types.
+### 6.10 Two separately accepted implementation slices — do not merge
 
-**Played-by / source tether**
+**Phase R: `UX2-NO-GRAPH-REMOVAL-01` — FIRST.** Disable/remove all **visible** relationship-graph connectors, arrowhead markers, geometry engines and their stale UI ownership; remove the obsolete oversized duplicated central interaction/Reaction Chain panels. Keep a **minimal static, proof-authenticated public played-card and compact text display** for every affected card/response while the new reveal/park animation is not yet implemented. Preserve all functional timers, CurrentAction options, public validation/settlements and privacy. Remove obsolete graph-only CSS/DOM selectors/positive visual tests, retaining core rules/API and legitimate fail-closed tests. This phase is a meaningful functional intermediate state: game playable, true current public card visible, no graph, no giant legacy panel. STOP for human review and do not implement motion in the same task.
 
-~~~text
-Player ───── Card
-~~~
+**Phase P: `UX2-CENTRE-REVEAL-SEAT-CARDS-02` — only after Phase R visual acceptance.** Implement the shared centre reveal/seat-front thumbnail state machine, first for ordinary Attack/Dodge/Damage, with true actor/public event identity, collision-safe physical Seat/Dock anchoring and per-viewer dedupe. Then extend **in separately reviewable small slices** to Duel, Negation, AOE and other public cards. No new graph connections or causal geometry.
 
-Meaning:
-- this player publicly produced/played/activated this action node.
+**Ownership:** This section specifies UX outcomes only; the Coding Agent alone maintains `HANDOVER.md`. Planner/Reviewer may provide a copyable scoped task but must never modify that handoff without direct permission.
 
-Visual treatment:
-- no arrowhead;
-- visually lighter than the target relation;
-- green may be used as the primary hue, but colour must not be the only semantic distinction.
+## 7. Independent process and System Menu rules retained from the prior UX2 specification
 
-**Target / affected-by relation**
+### 7.1 User-approved CI gate policy: maximum six minutes, minimal tests, visual tests only after acceptance (2026-10-09)
 
-~~~text
-Card ─────▶ Player
-~~~
+**This policy remains current during the no-connector UX2 migration; removed graph-only visual tests are not current user-visible acceptance criteria.** This is a process and CI requirement, not a claim that any visual feature is accepted.
 
-Meaning:
-- this public effect currently applies to, targets, or is resolving toward that player.
-
-Visual treatment:
-- explicit arrowhead;
-- stronger line weight than the source tether;
-- red/dark-red may be used as the primary hue.
-
-**Counter / block relation**
-
-~~~text
-Response Card ──| Countered Card/Effect
-~~~
-
-Meaning:
-- this public response directly counters, blocks, cancels, or otherwise opposes another public action/effect.
-
-Visual treatment:
-- must be topologically distinct from a target arrow;
-- recommended forms include a dashed/double line, terminal bar, shield/break marker, or another clear non-target symbol;
-- it must not be communicated by colour alone.
-
-### 6.4 Active state versus causal context
-
-Highlighting means **what is currently being processed or responseable**, not whether an action is generally valid or important.
-
-At any instant:
-
-- the newest unresolved public action/response head receives the strongest highlight;
-- the currently resolving target relation receives the strongest target-arrow highlight;
-- earlier causal cards remain visible only when they are still needed to explain why the current state exists;
-- earlier relationships are subdued rather than competing for attention;
-- settled relationships disappear after the settlement hold.
-
-Recommended states:
-
-**Active**
-- full opacity;
-- highest contrast;
-- restrained glow;
-- animated line energy/pulse may be used.
-
-**Context**
-- reduced opacity;
-- no competing glow;
-- preserves causal understanding.
-
-**Blocked / countered**
-- target/effect relation becomes dim, broken, crossed, or otherwise visibly interrupted.
-
-**Settled**
-- hold the complete terminal graph for the four-second read window in §0.1;
-- then retire it without leaving stale nodes or lines.
-
-Exactly one public response head should be visually dominant inside one causal chain.
-
-### 6.5 Physical-seat anchoring
-
-The interaction graph must connect to the players' existing physical UI positions.
-
-Do not create central proxy Hero/player cards merely to simplify line drawing.
-
-Use the existing player anchor contract:
-
-~~~text
-data-player-anchor="<playerId>"
-~~~
-
-for:
-
-- opponent Seats;
-- the Local Player Dock.
-
-The interaction overlay must span a coordinate space that can reach both the table and the Local Player Dock. It must therefore not be confined to a clipping region such as the existing .play-table { overflow: hidden } if that would cut a line leading to the local player.
-
-Preferred rendering architecture:
-
-- one interaction-overlay layer attached at .game-shell level;
-- SVG or equivalent vector layer for connectors/arrows;
-- HTML/CSS card nodes above the line layer;
-- pointer-events: none for non-interactive visualization surfaces so existing Seat/Dock controls remain usable;
-- card-info interaction, if later required, must be added deliberately without intercepting unrelated table input.
-
-Physical Seat/Dock geometry must not move when interaction visuals appear, change head, settle, or disappear.
-
-### 6.6 Card placement
-
-Place the root action card within the usable central battlefield. Balance the complete cards-and-connectors composition first; use only a modest viewer-relative bias toward the proven source/responder, as described in §§6.34/6.38. The source tether—not card proximity—establishes authorship.
-
-For an ordinary single-target action:
-
-~~~text
-[Source Seat/Dock] ── pale-green, no arrow ── [ROOT CARD] ── vivid-red arrow ──▶ [Target Seat/Dock]
-~~~
-
-Placement goals:
-
-- the source tether visibly reaches the real source Seat/Dock anchor;
-- keep the card far enough from every Seat that it does not cover Hero information or controls;
-- keep the card inside the usable battle field, not inside a player Seat;
-- keep its position and scale stable for the same unresolved root interaction;
-- avoid measured obstructions, including active controls and system UI;
-- do not cover the response timer, System Menu, Guidance or Local Dock controls.
-
-Route each relationship using straight horizontal/vertical segments with the fewest collision-free rounded 90-degree elbows. Do not use diagonal or Bézier/decorative curves. If a direct route is blocked, choose another legible orthogonal route around the measured obstruction.
-
-Keep the root-card position stable when:
-
-- a response card appears;
-- the active responder changes;
-- a counter-response appears;
-- the current target advances;
-- settlement state changes.
-
-### 6.7 Ordinary single-target action
-
-For a single-target action from Player A to Player B:
-
-~~~text
-A ───── [CARD] ─────▶ B
-~~~
-
-The source relation is a non-arrow tether.
-
-The target relation is an arrow from the action card to the target player.
-
-The target player itself may receive a restrained edge/halo emphasis while its target arrow is active, but the Seat/Dock must not be transformed into a new central participant card.
-
-Example:
-
-~~~text
-Cao Cao ───── [STEAL] ─────▶ Gan Ning
-~~~
-
-The graph should visually answer three questions immediately:
-
-- who created this action;
-- what action/card is resolving;
-- who the effect is directed toward.
-
-### 6.8 Self-target action
-
-If source and target are the same player, do not draw a target arrow back into the same physical player node.
-
-Preferred treatment:
-
-~~~text
-Player ───── [SELF-TARGET CARD]
-~~~
-
-with:
-
-- the card placed near/inward from that player's anchor;
-- the source tether still visible;
-- a restrained pulse/halo on the same physical player to indicate that the effect returns to self.
-
-Do not draw a long loop solely for decorative symmetry if it makes the board harder to read.
-
-Do not duplicate the same player elsewhere.
-
-### 6.9 Multi-target action
-
-A multi-target action uses one root card and one target branch per affected player.
-
-Example:
-
-~~~text
-                     ┌────────▶ B
-A ───── [AOE CARD] ──┼────────▶ C
-                     └────────▶ D
-~~~
-
-All authoritative target relations may remain visible, but only the currently resolving target/participant receives the strong active highlight.
-
-Recommended state:
-
-- unresolved non-current targets: dark/subdued target arrows;
-- current target: bright active target arrow plus restrained Seat/Dock emphasis;
-- resolved targets: subdued or marked-complete relation until the root interaction advances or closes.
-
-When authoritative resolution advances from B to C:
-
-- the root card stays fixed;
-- B's branch loses active emphasis;
-- C's branch gains active emphasis;
-- the physical Seats do not move;
-- the card does not jump to a new location.
-
-For ordered effects, a small order marker may be used only when the order is authoritative and genuinely helps comprehension.
-
-### 6.10 Target-specific effect instances
-
-A multi-target card can contain multiple independently resolving target effects.
-
-The internal public-presentation model should therefore be capable of distinguishing:
-
-- the root card action;
-- the per-target effect instance/branch;
-- the currently active target effect;
-- the outcome of each target effect.
-
-The visual UI does not need to render a separate visible "effect box" for every branch.
-
-However, this distinction is important for correct response/counter semantics. A response that cancels only B's branch must not visually imply that the entire root card has been cancelled for C and D.
-
-Counter relations should therefore attach to the correct authoritative target-effect instance when the rules distinguish that scope.
-
-### 6.11 Defensive response such as Dodge
-
-For an incoming Attack:
-
-~~~text
-A ───── [ATTACK] ─────▶ B
-~~~
-
-When B publicly plays Dodge, the Dodge card should appear on or immediately adjacent to the incoming Attack-to-B relationship.
-
-Preferred visual meaning:
-
-~~~text
-A ───── [ATTACK] ────╳────▶ B
-                         [DODGE]
-                            │
-                            B
-~~~
-
-A cleaner graph interpretation is:
-
-~~~text
-B ───── [DODGE] ──| [ATTACK → B effect]
-~~~
-
-while the incoming Attack target line is visibly interrupted.
-
-Requirements:
-
-- B-to-Dodge is a played-by/source tether;
-- Dodge is a counter/block response to the incoming Attack/effect;
-- Dodge does not need a separate target arrow pointing back to B;
-- the incoming Attack-to-B line visually shows the block;
-- if Dodge succeeds, the incoming target relation settles as avoided/blocked before disappearing;
-- if a future rule produces a counter to Dodge, that counter must target the Dodge/effect node rather than being represented as a generic arrow to B.
-
-The renderer must use typed public response proof. It must not infer that a newly played Dodge belongs to the current Attack merely because of timeline proximity.
-
-### 6.12 Duel exchange
-
-**Latest layout authority:** §6.39 defines the approved two-round, four-play Duel view and same-slice ordinary Attack/Dodge routing-balance polish. The sketches below show causal meaning, not required visual geometry. Duel participants respond with genuine **Attack**, not Dodge; reuse Attack/Dodge *spatial grammar*, not the wrong card type.
-
-Duel is a persistent root cause with repeated alternating Attack responses.
-
-The Duel card should remain visible throughout the exchange as contextual root state:
-
-~~~text
-A ───── [DUEL] ─────▶ B
-~~~
-
-When B is required to answer with Attack:
-
-~~~text
-A ───── [DUEL] ─────▶ B
-
-B ───── [ATTACK] ─────▶ A
-~~~
-
-The current response Attack becomes the dominant active visual.
-
-When A answers with another Attack:
-
-~~~text
-A ───── [DUEL] ─────▶ B
-
-A ───── [ATTACK] ─────▶ B
-~~~
-
-The previous exchange Attack should settle/fade or collapse so that the screen does not accumulate every Attack in the Duel.
-
-The important distinction is:
-
-- DUEL remains visible because it explains **why** repeated Attack exchanges are occurring;
-- the current Attack response explains **what is happening now**.
-
-The root Duel card should not disappear and reappear each round.
-
-The source/target direction of the current Attack response must come from authoritative Duel continuation data, not alternating-client assumptions.
-
-### 6.13 Negation and third-party counter-response
-
-Negation must be visualized as a response to the action/effect it counters, not as an ordinary target arrow to the affected player.
-
-Base action:
-
-~~~text
-A ───── [STEAL] ─────▶ B
-~~~
-
-If C publicly plays Negation:
-
-~~~text
-C ───── [NEGATION 1] ──| [STEAL / Steal→B effect]
-
-A ───── [STEAL] ─ - - ▶ B
-~~~
-
-The Steal-to-B target relation becomes visibly interrupted/subdued.
-
-Do **not** represent this as:
-
-~~~text
-[NEGATION] ─────▶ B
-~~~
-
-because that visually says Negation targets B rather than countering the Stratagem effect.
-
-If D then publicly plays a counter-Negation:
-
-~~~text
-D ───── [NEGATION 2] ──| [NEGATION 1]
-~~~
-
-The first Negation becomes subdued/blocked and the original Steal-to-B relation becomes active again.
-
-The public causal meaning is therefore:
-
-~~~text
-D → Negation 2 counters Negation 1
-C → Negation 1 counters Steal
-A → Steal affects B
-~~~
-
-Do not create a redundant connection from the counter chain back through A. The existing A-to-Steal source tether already explains root authorship.
-
-### 6.14 Negation chain layout
-
-Negation response cards should stay visually close to the card/effect they counter.
-
-For shallow chains:
-
-~~~text
-[ROOT CARD] ──| [NEGATION 1] ──| [NEGATION 2]
-~~~
-
-or an equivalent branch layout may be used, provided the counter direction remains unambiguous.
-
-Rules:
-
-- root card stays fixed;
-- newest unresolved response is the only strong active card;
-- older response cards are subdued;
-- the root target relation changes between active and blocked states according to the authoritative chain outcome;
-- no duplicate Hero portraits are introduced to label responders;
-- each response card may use a small source tether back to the real physical player who played it.
-
-For long chains, retain:
-
-- the root card;
-- the most recent one or two response cards at readable size;
-- a compact older-history indicator such as +N.
-
-Do not allow a long counter chain to force document-level horizontal overflow.
-
-### 6.15 Response-card placement relative to player source
-
-Every public response card should still show who played it.
-
-For example, if C plays Negation against A's Steal:
-
-~~~text
-C ───── [NEGATION]
-             │
-             └──| [STEAL] ─────▶ B
-                  │
-                  A
-~~~
-
-The exact route may vary with table geometry.
-
-The essential rule is that the response card has:
-
-- one source tether to its real physical actor;
-- one counter relation to the authoritative card/effect it opposes.
-
-This allows third-party responses to remain understandable without central actor portraits.
-
-### 6.16 Public graph versus private response opportunity
-
-The public graph shows committed public actions, not private eligibility.
-
-Before a player actually submits Dodge, Negation, Attack-for-Duel, Peach, or another response:
-
-- do not show a placeholder response card;
-- do not draw a source tether from a privately eligible responder;
-- do not expose the identity of a private decision actor solely because the server is currently asking that player;
-- do not add public prose such as "Waiting for Cao Cao to respond" unless that identity is explicitly public under an approved presentation contract.
-
-The Local Guidance Strip continues to tell the viewer what they personally can or must do.
-
-The public graph tells everyone what has already happened and what public effect is currently unresolved.
-
-### 6.17 Settlement and removal lifecycle
-
-Interaction visuals should not vanish in the exact same frame that authoritative settlement occurs.
-
-Recommended presentation lifecycle:
-
-1. **Action enters**
-   - card appears from or near the source anchor;
-   - source tether becomes visible;
-   - target relation appears.
-
-2. **Response window**
-   - root remains stable;
-   - current target/response relation is highlighted;
-   - privately available choices remain outside the public graph.
-
-3. **Public response**
-   - response card appears;
-   - its physical player source tether appears;
-   - target/counter relation updates without moving the root card.
-
-4. **Settlement**
-   - show the complete authoritative final-result state for four seconds from its first fully rendered frame, per §0.1;
-   - examples: target arrow breaks, Dodge shield/interrupt resolves, damage feedback occurs, root relation reactivates after counter-Negation.
-
-5. **Exit**
-   - temporary cards and lines fade;
-   - physical player Seats/Dock remain unchanged;
-   - durable history remains available through the existing log/history system rather than leaving stale battle objects on the table.
-
-Reduced-motion mode removes or simplifies motion while preserving the same four-second final-result readability and all semantic markers.
-
-### 6.18 Layering and routing
-
-Recommended z-order:
-
-1. board background;
-2. relationship line layer;
-3. temporary public action/response cards;
-4. existing physical player Seats/Dock and their interactive controls where appropriate;
-5. modal/private selection surfaces and system controls.
-
-Connector routing should avoid:
-
-- running directly through unrelated Hero faces;
-- covering HP/hand/equipment information;
-- crossing the Local Guidance Strip;
-- crossing the response timer/System Menu;
-- covering Deck/Discard when an alternate route is available.
-
-Use stable anchor points on each Seat/Dock edge facing the battle area rather than always drawing from the geometric center of the entire player panel.
-
-For example:
-
-- top-row opponent: prefer the inward/bottom edge;
-- left-side opponent: prefer the inward/right edge;
-- right-side opponent: prefer the inward/left edge;
-- local player: prefer the inward/top edge.
-
-These are geometry rules only. They must not be used to infer gameplay roles.
-
-### 6.19 Responsive behavior
-
-The graph must work across mobile and wide layouts without moving physical players.
-
-Validate at minimum:
-
-- 390 × 844 portrait;
-- 480 × 900 portrait;
-- one wide viewport;
-- dense 6–8 player table configurations where supported.
-
-On narrow layouts:
-
-- cards may scale down within a documented minimum readable size;
-- response cards may stack/offset;
-- long counter history may collapse;
-- connectors remain orthogonal; on narrow layouts use fewer/shorter straight segments, compact cards and clear rounded elbows rather than curves;
-- non-active relations may be simplified visually.
-
-Do not solve space pressure by reintroducing duplicated central Hero portraits.
-
-Do not create page-level horizontal scrolling.
-
-### 6.20 Accessibility and non-colour semantics
-
-The graph must not depend on red versus green alone.
-
-Use structural differences:
-
-- played-by/source tether: no arrowhead;
-- target relation: clear arrowhead;
-- counter relation: dashed/double/terminal-block or equivalent counter marker;
-- active relation: stronger width/glow/pulse;
-- blocked relation: break/cross/bar marker;
-- settled relation: fade/complete state.
-
-For screen readers, provide a concise semantic description of the current public interaction, for example:
-
-~~~text
-Cao Cao played Steal targeting Gan Ning.
-Zhuge Liang played Negation countering Steal.
-~~~
-
-The accessible description must be generated from the same authoritative public graph data as the visual layer.
-
-Do not use hidden text to expose private responder identity or private legality.
-
-### 6.21 Presentation-model direction
-
-The current Negation model already contains explicit public reaction-chain authority, but the UX2 interaction-visualization renderer should not be hard-coded around Negation alone.
-
-Preferred direction is a typed public graph/view model containing concepts equivalent to:
-
-~~~text
-InteractionGraph
-  players: references to physical player anchors
-  actionNodes: root/response/effect nodes
-  sourceRelations: player -> action
-  targetRelations: action/effect -> player
-  counterRelations: response -> action/effect
-  activeHead
-  activeTargetEffect
-  settlementState
-~~~
-
-This does not require the renderer to expose these exact type names.
-
-The important architectural boundary is:
-
-- game engine / server projection proves the semantics;
-- presentation adapter converts proof into a stable public graph;
-- React renders the graph;
-- React does not reconstruct missing relationships.
-
-For multi-target effects, the model must be capable of representing target-specific effect instances even if those instances are not visible as separate UI boxes.
-
-For Duel and defensive responses, the model must eventually provide explicit public response-card causality equivalent to what Negation already has.
-
-Do not generalize by reading generic timeline events on the client.
-
-### 6.22 Skills and non-card events
-
-The interaction system must eventually support public actions that are not represented by a physical hand card.
-
-Examples include:
-
-- Hero skill activation;
-- triggered equipment/status effects;
-- judgement-driven effects;
-- rule events that create a public response window.
-
-These should use the same relationship grammar with an Effect/Event node instead of inventing a fake physical card.
-
-Example:
-
-~~~text
-Player ───── [SKILL / EFFECT NODE] ─────▶ Target
-~~~
-
-The visual identity of such a node should be compact and visually distinct from a physical card while preserving the same source/target/counter semantics.
-
-### 6.23 Required visual invariants
-
-The UX2 interaction visualization must preserve all of the following:
-
-- one physical player representation per player;
-- no duplicate central Hero portrait for Source or Target;
-- root action card remains spatially stable while unresolved;
-- source tether always means "this player produced this node";
-- target arrow always means "this effect is directed at this player";
-- counter relation always means "this response opposes this action/effect";
-- active highlight always identifies the current unresolved public head/current resolving branch;
-- no public response node before the response is actually submitted;
-- no semantic inference from DOM position or animation order;
-- no movement of Seats/Dock caused by interaction presentation;
-- no hidden/private information leakage;
-- no gameplay legality moved from CurrentAction into React.
-
-### 6.24 Acceptance scenarios
-
-The design should eventually be proven against at least the following interaction families:
-
-1. **Single-target action, no response**
-   - A plays Attack/Steal/Dismantle on B;
-   - one source tether;
-   - one root card;
-   - one target arrow;
-   - keep the final proven composition readable for four seconds under §0.1, then retire it.
-
-2. **Self-target action**
-   - A plays a self-target action;
-   - one physical A representation;
-   - no target arrow back to A;
-   - self emphasis is readable.
-
-3. **Attack + Dodge**
-   - incoming Attack targets B;
-   - B's Dodge appears only after submission;
-   - Dodge visibly blocks the incoming relation;
-   - no false Dodge-to-B target arrow.
-
-4. **Duel**
-   - Duel root remains visible;
-   - alternating Attack response direction is authoritative;
-   - only current Attack response remains visually dominant;
-   - old exchange cards do not accumulate indefinitely.
-
-5. **Single-target Negation**
-   - A plays Steal on B;
-   - C plays Negation;
-   - Negation counters Steal/effect rather than targeting B;
-   - root target relation becomes blocked.
-
-6. **Counter-Negation**
-   - D counters C's Negation;
-   - first Negation becomes blocked/subdued;
-   - original Steal-to-B relation becomes active again.
-
-7. **Multi-target**
-   - one root card fans out to several physical players;
-   - only current target branch is strongly active;
-   - branch highlight moves without root-card movement.
-
-8. **Target-specific counter inside multi-target action**
-   - only the affected target branch is blocked;
-   - other branches do not visually appear globally cancelled.
-
-9. **Local player involvement**
-   - local player may be source, target, responder, or self-target;
-   - lines reach the Local Player Dock without clipping;
-   - local controls remain usable.
-
-10. **Dense table / responsive**
-   - 6–8 players;
-   - no connector-driven page overflow;
-   - no player geometry shift;
-   - action cards remain readable.
-
-11. **Unproven/stale/reconnect state**
-   - graph fails closed rather than showing guessed lines/cards;
-   - existing safe fallback presentation remains available until sufficient typed proof exists.
-
-### 6.25 Suggested implementation sequence
-
-Implementation should be incremental rather than replacing all UX2 interaction rendering in one change.
-
-**Phase A — physical-seat graph foundation**
-- top-level interaction overlay;
-- reliable player-anchor geometry;
-- one root card;
-- single-target source tether and target arrow;
-- self-target handling;
-- fail-closed fallback.
-
-**Phase B — generic response/counter grammar**
-- public response-card nodes;
-- explicit counter relationship;
-- Attack/Dodge once typed causal proof exists;
-- existing Negation migrated onto the same graph grammar.
-
-**Phase C — persistent-root interactions**
-- Duel exchange;
-- multi-target root with active branch switching;
-- target-specific effect instances and settlement outcomes.
-
-**Phase D — extended event sources and polish**
-- Hero skills/non-card effects;
-- advanced routing/collision avoidance;
-- long-chain collapse;
-- reduced motion/accessibility narration;
-- settlement animation polish.
-
-Do not begin a later phase by adding client inference to compensate for missing typed authority.
-
-### 6.26 Completion criterion
-
-The interaction-visualization refactor is complete when a player can read combat directly from the real table:
-
-~~~text
-who acted  →  what card/effect  →  who is affected
-                         ↘
-                     what response counters it
-~~~
-
-without duplicated central Hero/player cards, while preserving authoritative semantics, private-information boundaries, stable physical Seat/Dock geometry, responsive containment, and the existing separation between public presentation and local legal-action controls.
-### 6.27 Attack / Dodge: shared semantic rules (visual geometry is superseded by §6.38)
-
-This section retains only Attack/Dodge semantics compatible with §0.1. For current card scale, placement, routing, colors and settlement, §0.1 and the user-confirmed Stage A baseline in §6.38 are authoritative. Conflicting geometry and timing from earlier drafts is superseded.
-
-**Visual grammar over gameplay prose:** The graph should explain action, author, direction, and interception through real card artwork, distinct connectors, and strong target emphasis. Do not add user-visible explanatory prose such as "PLAYED BY", "FROM PLAYER", "DODGE AVAILABLE", or lengthy instructions. Demote generic "ROOT ACTION" and textual "BLOCKED" labels when their meaning is visible through the graph; retain concise accessible screen-reader semantics without private information.
-
-**Source:** Green means which physical player played a public card. Use a clearly visible, relatively narrow ribbon/tube-like connector, not a fine hairline. No arrowhead; shape must distinguish source from target even without colour. A publicly played Dodge also has a green source tether from its actual player.
-
-**Attack target:** Red means the incoming attack direction. Increase connector thickness, contrast, and arrowhead size significantly, so direction is unmistakable at phone scale. It is valid for the red arrow to terminate at the **top edge of the local player's whole Dock**, not necessarily at their portrait; an opponent's existing Seat is also a valid endpoint. While the Attack remains an active, unblocked target relation, the **entire attacked player Seat or Local Dock** must receive a clearly noticeable but controlled highlight/glow, not merely the portrait. After a proven Dodge, follow §6.38: no full-strength hit arrow or danger-signalling target glow remains. Do not shift panels or obstruct controls.
-
-**Dodge interception:** When authoritative public Dodge succeeds, its **real card stands directly on or adjacent to the incoming Attack-to-target line, visibly intercepting it**. The red incoming line should terminate/break at the block; beyond it, the Attack path is absent or strongly subdued, with a clear block/bar/cross if necessary. Keep the green tether from the actual Dodge player to that card, but do not create a confusing separate three-sided/triangular causal diagram, a Dodge-to-self target arrow, or a second text-based explanation. What is blocked is **Attack**, never Dodge; do not label Dodge "BLOCKED". The source path must not obscure the block relationship.
-
-**Cards and space (superseded size policy):** Keep the genuine hand-card face/artwork family, but apply §6.34's **hand-size-or-smaller** shared public battle-card scale and centred, balanced composition. The former 'as large as practical' central-card preference is no longer normative. Preserve root stability, legible connectors, fixed Seats/Dock, timer/menu/Guidance clearance, Deck/Discard, and overflow safety.
-
-**Controls:** Keep the previously unified primary action button **CONFIRM**, including an ordinary Dodge response; never rename it "PLAY DODGE" or another per-card command. Preserve only already-approved semantic exceptions such as **TAKE DAMAGE**. Do not expand response Guidance with explanatory paragraphs. Available providers remain exclusively server-authorized through CurrentAction.
-
-**Accepted baseline:** Ordinary Attack/Dodge layout and visual acceptance are recorded in §6.38. For new or changed graph behavior, use §0.1's production-path evidence standard; do not reopen this old approval checklist as a task.
-
-#### 6.27.1 Card scale, placement and connectors — superseded detail removed
-
-Use the shared public CardFace size ceiling and measured fit rules in §§0.1 and 6.34, and the user-confirmed ordinary Attack/Dodge composition in §6.38. The former oversized card dimensions, source-to-target percentage placement, fixed edge offsets, old connector colors and old target-ring measurements are retired. Keep the real target Seat/Dock unobstructed and use its actual facing edge as the proven relation endpoint.
-
-#### 6.27.2 Attack/Dodge meaning
-
-An unsubmitted Dodge is private and does not enter the graph. After a matching Dodge is publicly committed and proven, retain the Attack root and show the red effect relation intercepted at the Dodge; do not show a full-strength hit arrow continuing to the target or imply that Dodge itself was blocked. Render the defender's pale-green, arrowless authorship tether only from proven response ownership. §6.38 defines the accepted placement and routing for the ordinary Attack/Dodge states.
-
-#### 6.27.3 Rendered-card identity
-
-Use the **same CardFace/game-card artwork and border/iconography family** as the hand for Attack and Dodge; scale by container dimensions without stretching or replacing art with a text box. Show short intrinsic card name/rank/suit if that is part of the real in-game card face, but **do not add second layers of explanatory titles** such as \`ROOT ACTION\`, \`FROM <player>\`, \`PLAYED BY\`, \`BLOCKED DODGE\`, \`AVAILABLE\`, or instructions to the player. Card art should remain the largest visual element; any readability treatment must follow existing card-face language.
-
-#### 6.27.4 Reliability and evidence
-
-When a graph is absent or changes unexpectedly, identify the first failing boundary: authoritative public proof, viewer projection, client proof selection, measured layout, or actual visible CardFace/SVG. Keep these states distinct and fail closed when proof or safe geometry is unavailable. Apply §0.1's production-path evidence standard; a mounted node, readiness flag, fixture, CI result or deployment alone does not prove the player saw the intended graph. This is a standing quality rule, not a claim that every historical report is resolved and not an implementation task. Current work/status belongs in \`HANDOVER.md\`.
-
-### 6.28 Production-path evidence for relationship graphs
-
-This section complements §0.1's universal evidence and lifecycle rules. It is design guidance, not an implementation checklist or task queue. Public causality, privacy, fixed physical Seat/Local Dock geometry and server gameplay timing remain unchanged.
-
-#### 6.28.1 Production-path proof and visibility
-
-A public Attack graph must appear as soon as its exact public root is established and remain visible throughout the unresolved response, including private selection and any authorized pre-response trigger. A privately selected/unsubmitted Dodge neither becomes a public node nor suppresses the graph.
-
-When diagnosing a missing graph, distinguish absent/rejected server proof, viewer projection, measuring/unavailable geometry, event handoff, and a present-but-hidden SVG/CardFace. Use privacy-safe identifiers and actual DOM/SVG geometry; never infer causality from a legacy miniature, event order or local selection. Fail closed when proof is absent. §0.1 defines the shared production evidence and visual acceptance standard.
-
-#### 6.28.2 Lifecycle reference
-
-Use the single lifecycle in §0.1/§6.35 for every graph family. Do not define family-specific graph-retention durations or display a graph countdown. A mounted DOM node is not proof of visible geometry.
-
-#### 6.28.3 Keep evidence boundaries separate
-
-Report the first failing evidence layer and preserve negative fail-closed cases. A server proof, rendered component, passing CI, deployment, or successful screenshot is not a substitute for the other layers or for human visual acceptance.
-
-### 6.29 Shared relationship-graph patterns for card families
-
-This section records compatible family-specific semantics and layout patterns. It is design guidance, not a task queue. §0.1 controls shared authority, routing, colors, card scale, lifecycle and acceptance; §6.38 is the accepted ordinary Attack/Dodge baseline.
-
-**One visual language:** A public card should visually belong to the **physical player who played it**; a connector shows **what that card does**. Players understand the graph through authentic card faces, clear arrow direction, physical obstruction, and active/expired emphasis—not explanatory prose. Use the same physical Seat/Local Dock anchors throughout. The server owns public card identities, exact targets, ordered participant states, causal response links, and settlement; the viewer's CurrentAction alone owns private legality. If proof or geometry is inadequate, fail closed and log an exact, test-only reason rather than fabricating relations.
-
-#### 6.29.1 Attack → Dodge
-
-An unsubmitted Dodge remains private and does not enter or suppress the graph. Keep the proven Attack root visible throughout its unresolved interaction. The production-path visibility and evidence rules are summarized in §6.28.1 and §0.1.
-
-After a publicly committed, matching Dodge is proven, show the authentic response intercepting the effect while retaining the same root identity. Use §6.38 for the accepted layout; use §0.1 for lifecycle and shared visual grammar.
-
-#### 6.29.2 Group/AOE cards: source ownership with shared central battle-field placement
-
-**Revised ownership and placement decision (2026-10-10):** §6.34 supersedes the former source-foreground **physical proximity requirement** in this subsection. The original source Seat/Dock still owns the root for the full interaction, but the card should normally sit in the **shared central battle field**, moderately biased toward that source, not immediately below/above/along the source Seat. Do not optimize only for a short green tether or move toward a current target; the **whole visible graph** must remain centred and balanced after each response.
-
-- Use measured open table geometry *after excluding* physical Seats/Dock, Deck/Discard, System Menu, timers, Guidance and other active cards. Rank collision-free candidates by central composition balance first, a modest source-direction preference second, and readable connector routing. Top/side/bottom source positions should yield comparably central public graph compositions without preferential crowding around one player's UI.
-- One root CardFace stays at its proven-authoritative event location through ordered AOE participant progress and Negation handoffs (top-left drift <=1 CSS px with unchanged anchors/viewport). Show per-target public branches/status without re-anchoring the root at the current participant or a target centroid. Existing `layoutGroupRootAction()` source-to-centroid fraction search is a **code path to inspect/refine**, not a reason to implement a new parallel root renderer.
-- Use §6.34's shared hand-size-or-smaller physical card tiers, not the old 108×162+ public-card sizes. Preserve a 12px safe-table inset and measured clearance from panels/controls as useful initial guardrails; never move Seats/Dock or invent public causality to force a centred layout. If no safe centre-biased layout exists, record the measured exact obstruction and fail closed.
-
-#### 6.29.3 Group/AOE public target responses: show the played card in the shared battlefield
-
-**Observed failure:** A Barbarian Invasion participant can publicly answer with **Attack** (or a Raining Arrows participant with **Dodge**) yet the AOE graph shows only that the branch was satisfied/blocked, **without the actual response card and its visible causal connection**. A tiny independent numbered card from the old table sequence is not an acceptable substitute.
-
-**Public-proof requirement:** The group participant's **committed physical response card**, its **semantic played-as response** (where valid), **responding player ID**, **specific AOE root/active group frame**, **exact group target branch ID**, **response event/resolution identity**, and **public avoided/damaged/negated outcome** must be linked by **server-projected, viewer-equal typed proof** and independently validated by snapshot/client adapters before rendering. Group Negation already has scoped counter proof; do **not** misrepresent an ordinary Barbarian **Attack response** or Raining **Dodge response** as a Negation, nor reuse private hand or a timeline-adjacency guess as evidence. If ordinary group Attack/Dodge response proof is missing, add a bounded public projection before building visual lines. Do not expose a privately selected response until the server has committed it.
-
-**Revised placement rule (§6.34):** Once exact public response proof exists, display the authentic physical response card **inside the balanced shared central battle field**, mildly biased toward its actual responding player; the green arrowless tether establishes ownership. Do not place it immediately adjacent to that player's Seat/Dock solely to shorten the tether. This replaces the older fixed Seat-edge offsets and oversize portrait-card targets while preserving the specific server-proven AOE branch that the card answers.
-
-- All top-row, side-column and Local Dock response providers share **the same centred placement objective**; reflect player ownership by modest directional bias and a real green source tether, not by pinning the response beside a panel. Fit around current/root cards in the central safe field; use the two shared compact size tiers of §6.34.
-- Connect the response CardFace only to the **typed, exact target-effect branch** it resolved, preserving a direct intercept where cleanly possible. An adjacent **short explicit contact/intercept segment** is acceptable when balanced placement would otherwise crowd a seat or obscure the graph. Never draw a fake response-to-own-Seat target arrow or make one answer appear to cancel the whole AOE.
-- Keep the root, response and relevant target branch in one composition while the authoritative group interaction remains active. A completed participant branch becomes subdued context; compact older branches for density, not because a display timer expired. Do not show private uncommitted selections or infer response provenance from timeline adjacency.
-
-**Timing:** The group root remains until the server-authoritative group interaction is complete. Preserve completed public branches as subdued context while the group continues, compacting only for density. When the entire interaction reaches terminal settlement, use the shared four-second final-result hold in §0.1. Never delay game progression.
-
-#### 6.29.4 Group/AOE participant-progress grammar: completed vs current vs pending
-
-The screenshot's tiny upper target check marks, subtle dashed branches and unchanging target visuals are **not sufficient**. Express branch progress without adding paragraphs or secondary player portraits. Use server-projected **status/outcome**, not guessed HP delta, role, line order, or turn ownership.
-
-| Public state | Branch appearance | Player area and terminal marker |
-| --- | --- | --- |
-| **CURRENT** response required | **100% opacity**; width **4.5–6px** on 390px; strong existing gold/attack effect emphasis; clear target direction | Entire physical target Seat/Dock receives controlled focus; **18–22px** current/target emblem at end of active branch |
-| **PAUSED** by nested public Dying/Negation/choice | **75–90% opacity**, distinguishable segmented/paused effect; maintain real target ownership | Target still identifiable; use distinct pause mark, not a false completed check |
-| **RESOLVED: AVOIDED / successful required answer** | Subdued, muted, with no active arrow glow | Visible check/shield mark near branch's target end; retain the committed response as compact public history while the root continues |
-| **RESOLVED: DAMAGED / DEFEATED** | **30–45% opacity**, width **2.5–3.5px**; distinct muted outcome shape, not the successful-check style | **18–22px** unmistakable damage/broken-shield/HP-loss mark; do not infer loss from HP alone |
-| **RESOLVED: NEGATED** (specific target effect) | **30–45% opacity**, interrupted target-specific branch; never suppress unrelated branches | **18–22px** crossed/negated mark, visually different from successful normal Attack/Dodge |
-| **PENDING** | **20–35% opacity**, width **2–2.5px**, dashed and **without a completion mark or active arrow glow** | No active target halo; optional small neutral endpoint only |
-| **NO_LONGER_APPLICABLE** | **20–30% opacity**, distinctly interrupted/empty branch | Neutral/disabled mark, never a false success/damage check |
-
-The above numbers are visual **starting targets**, verified against actual rendered screenshot pixels and responsive collision constraints, not unconditional hard-coded CSS at every resolution. State cues must differ in **shape, saturation/brightness and stroke/dash**, not colour alone. Terminal glyphs should have an **18–22px legible footprint** with contrasting outline on a 390px screen; the current 9px branch-status text marker is too small to be the only cue. Ensure source tethers and group-target lines are not confused with one another. Do not use the miniature numbered-card badge as the only progress indicator.
-
-**Active-focus invariant:** For ordered group progress, exactly the **server-proven current** target branch is strongest; all completed/expired branches are secondary and all pending branches weaker. If the original group semantic model is truly **simultaneous** (e.g. Oath), preserve its actual multiple-recipient scope; do **not** rewrite simultaneous semantics to fit an ordered visual pattern. AOE root remains fixed while target branch emphasis advances. Keep all participant outcomes visually inspectable for the current group while avoiding clutter or overlap.
-
-#### 6.29.5 Stronger green source tether: global visual weight and accessibility
-
-**Updated explicit user decision:** The author-to-card green tether is too thin compared with the prominent red Attack-to-target arrow, particularly on portrait phones. **Increase its visible body thickness for all active public source relationships**, including ordinary Attack, Dodge, Negation, AOE roots, AOE responses and Duel exchanges.
-
-| CSS-pixel viewport | **Active source tether** | **Active Attack target arrow/strong target branch** | Relative visual weight |
-| --- | --- | --- | --- |
-| ~390px portrait | **5–6px** green body | **6–8px** red body | source about **75–90%** of target width |
-| ~480px portrait | **5.5–6.5px** green | **7–8px** red | still slightly secondary |
-| >=900px wide | **6–7px** green | **7–9px** red | still slightly secondary |
-
-Use §0.1's current pale-green source and vivid-red effect references (`#a6e0c5` and `#ff4b4b` for ordinary Attack), sized to the measured viewport. The green source line is always arrowless; an active effect relation has a directional endpoint; an intercepted relation has a non-colour block marker. Green means authorship, not effect direction.
-
-All color and stroke values from prior drafts are retired. Keep source links clearly visible but secondary to effect relations, following §0.1 and evidence-based responsive measurements.
-
-#### 6.29.6 Expired causal relationships: old link becomes subdued, current step takes focus
-
-**Specific latest Duel exception (§6.39):** Preserve the original **green/red hue and complete lower historical pair** through round-2 play #3/#4; dim their brightness/opacity rather than changing green/red to grey or deleting the responding card. The Duel card root remains stable while *response* cards reflow into a compact old-round band. This newer rule overrides the generic expired-line color and prior-card-collapse guidance below only for the Duel two-round display.
-
-**Updated user decision:** In sequential interactions such as **Duel**, when an earlier exchange finishes and the next publicly committed **Attack** arrives, the previous source/response/target relationship should **not stay highlighted**, but a faint trace can remain so the user understands the chain. This is a **visual lifecycle state**, not a server game-state mutation.
-
-**Semantics:**
-
-- \`CURRENT\`: relation belonging to the newest server-proven active step/effect.
-- \`RECENT_EXPIRED\`: immediately previous **public, verified** relation in the **same interaction/root** that is no longer the current focus.
-- \`COLLAPSED_HISTORY\`: older verified public steps that no longer fit cleanly; show at most a compact neutral history cue or omit their lines to preserve fit. No new full Hero portraits or stacked orphaned card pile. The active root lifecycle and four-second terminal read are governed only by §0.1.
-- A newly played card is not current until its exact public response/event identity has become authoritative. An earlier line becomes expired **only when authoritative public progress supersedes it**, not when a player merely selects a private hand card or a timer animation starts.
-
-**Required styling for an expired relation:**
-
-- body thickness **55–70%** of that relation's active body (e.g. source **3–4px** if active green is 5–6px; active Attack line 7px becomes **~4px**);
-- opacity **25–40%** and desaturated **grey-green** for a source tether, **grey-red/warm grey** for an expired attack/target relation;
-- no full-bright arrowhead, source/target glow, or whole-player target halo; a weak terminal shape may remain where necessary to show direction, without looking active;
-- use a **5–7px dash / 4–6px gap** if helpful to distinguish expired from live, but do not use dash alone as the only signal;
-- historical CardFace, if retained, loses glow and may scale to **80–90% of the active node's apparent size** **only when that can be done without moving the root or reflowing already laid-out cards**. Do not scale away rank/suit or remove proof-linked card identity.
-
-**History limit on mobile:** Prefer one current relation plus the immediately preceding subdued relation. Collapse older links before allowing overlap. The root remains stable through the interaction. When the root is terminal, retain the final composition for four seconds per §0.1, then retire it; never resurrect it.
-
-**Duel example:** The Duel root remains the single unchanged authoritative card. After player B publicly commits Attack #1, its green author tether and Duel counter relation are active. When the next player publicly commits Attack #2 and the server proves the exchange advanced, **Attack #2's author tether + response-to-Duel relation become the only brightest pair**; Attack #1's source and response links become **RECENT_EXPIRED** at 25–40% opacity, not a second fully bright active exchange. The previous card/trace is readable enough to show why it continued, then collapses as subsequent exchanges accumulate. Do not infer Duel turns or response ownership from player position or turn seat.
-
-**Negation example:** On counter-Negation, the superseded Negation-to-effect link loses emphasis and the new server-proven Negation-to-previous-Negation relation becomes strongest. Keep exact scope: countering a specific Group target effect does not negate the whole AOE root. Earlier public response cards remain subdued history while the same root is active. A new independent graph takes visual priority without being confused with a continuation.
-
-**Ordered AOE example:** Once player A's publicly answered target branch is resolved, its branch transitions to subdued **completed** styling, while player B's next authorised target branch becomes strongest. Retain A's authentic response as subdued graph history while the same root remains active, as space permits, without covering B's controls. This expresses **completed vs current vs pending** per §6.29.4; do not invent old branches from timeline sequencing.
-
-#### 6.29.7 Interaction-wide compositional and timing rules
-
-- **One authored physical card, one owner:** Do not draw the same card as a large active root and a separate numbered floating duplicate. Hide/suppress the legacy \`TableResolutionSequence\` copy **only once** the server-proven graph actually owns the composition, so a legitimate fail-closed fallback still exists when proof is missing.
-- **Spatial hierarchy (latest §6.34):** Root and public response cards favour the **usable shared battle-field centre**, with a modest source/responder bias but no upper/lower/side Seat-edge crowding. Real green tethers establish authorship; red target and direct block/contact relations express effects. Keep already visible root positions and physical Seats/Dock fixed. For Attack/Dodge preserve a visibly terminated incoming red path at Dodge/contact under §6.27.2, including its safe adjacent-contact fallback; never invent a free-floating response triangle.
-- **Visual hierarchy:** Strong current target arrow/branch > robust active green source tether > completed/expired relationship > pending relationship. Use only genuine public authored proof for each element.
-- **Lifecycle:** Apply §0.1 uniformly: retain an unresolved graph for the interaction's full authoritative lifetime, then show its fully rendered terminal composition for four seconds. A new independent action may take visual priority but must not erase a same-root continuation; no graph countdown or per-family retention duration is shown.
-- **Minimal text:** Card artwork carries identity. Do not add visible "PLAYED BY", "ROOT ACTION" where a real face is available, verbose response instructions, or bespoke primary button captions. Preserve **CONFIRM** and already-approved **TAKE DAMAGE** exceptions. Keep accessible, privacy-safe, screen-reader-only semantic descriptions and accessible controls.
-- **No inference:** No client-only made-up source/target/counter relation, private card disclosure, guessed group response provenance, stale root reappearance, or a false whole-AOE block. All fallback/visibility decisions must have a reason observable in **test-only** evidence.
-
-#### 6.29.8 Cross-feature evidence and acceptance (no duplicate execution plan)
-
-Each **newly changed** causal-graph behavior must be validated with a real production page backed by server-created/seeded room state. Confirm the **exact typed public** source, target, response, frame and participant scope, viewer equality/privacy, stable root geometry (within 1 CSS px unless measured layout changes), appropriate screenshot legibility, no overlapping Seats/controls, valid reconnect/revision cleanup, and no duplicate numbered legacy card while the proven graph owns composition.
-
-Use the relevant family semantics in §§6.29.2–6.29.6 with the shared production evidence standard in §0.1. Test phone and wide geometry where affected, and distinguish rendered evidence, CI/deployment and human visual acceptance. This section does not choose the next implementation task.
-
-### 6.30 User-approved CI gate policy: maximum six minutes, minimal tests, visual tests only after acceptance (2026-10-09)
-
-**This policy overrides any earlier §§6.27–6.29 wording that would make long, unapproved UX/browser tests mandatory on each push.** This is a process and CI requirement, not a claim that any visual feature is accepted.
-
-**Hard limit:** Ordinary \`ux-v2\` push CI, including the required checks and production deployment/smoke step, must finish within **6:00 wall-clock minutes** in a successful normal run. Track actual workflow start-to-finish time. Do not call a 6-minute browser shard a 6-minute pipeline.
+**Hard limit:** Ordinary `ux-v2` push CI, including the required checks and production deployment/smoke step, must finish within **6:00 wall-clock minutes** in a successful normal run. Track actual workflow start-to-finish time. Do not call a 6-minute browser shard a 6-minute pipeline.
 
 **Test admission is controlled by the user:**
 - Before the user explicitly approves a feature from the **actual rendered game**, do **not** add its long UX tests, repeated multi-scene assertions, 10-game loops, 12-second frame samples, or 6/8-player geometry matrices to required per-push CI.
 - A new feature's **smallest useful, short correctness test** may run locally during implementation. It does not automatically enter the required push suite. After visual acceptance, obtain the user's approval before adding that feature's tests to routine CI.
 - Previously added, long or unapproved UX tests must be **removed from the required per-push selection**, not deleted from the repository. They may run locally or by manual workflow dispatch; do not use them to block routine deployment before acceptance.
-- Tests that claim a successful public Attack relationship while accepting \`geometry-unavailable\`, old Stage fallback or merely a private target Preview are **not valid positive UX acceptance tests**. Retain any useful negative fallback/safety cases separately, without misrepresenting them as user-visible proof.
+- Old graph geometry/connector assertions are **not valid positive acceptance tests for the new no-connector UX**. Retain any useful negative fallback/safety cases separately, without misrepresenting them as user-visible proof.
 
 **Minimum required fast CI:** keep a small, reliable set of **build/typecheck, lint, fast game-rule/API/privacy and core startup/interaction smoke** checks. Run jobs concurrently and measure their duration. Use the smallest representative browser set necessary to detect app boot, room creation and fundamental control/API breakage. Do not run the entire existing Playwright collection on every push. Move broad Hero roster, AOE/Duel/Attack dense layouts, Negation chains and lengthy repeated scenarios into **manual or post-acceptance validation**, unless the user separately approves a short gate. Preserve correctness and private-information safeguards.
 
-**Honest result:** Never use \`|| true\`, forced success, skipped failing required assertions, or changed expected values merely to paint CI green. Genuine failures in the deliberately small required gate must remain failures and be repaired. The instruction that CI “must not fail” means **eliminate unreliable, redundant, unapproved UX gates and maintain a stable minimal CI**, not suppress real errors.
+**Honest result:** Never use `|| true`, forced success, skipped failing required assertions, or changed expected values merely to paint CI green. Genuine failures in the deliberately small required gate must remain failures and be repaired. The instruction that CI “must not fail” means **eliminate unreliable, redundant, unapproved UX gates and maintain a stable minimal CI**, not suppress real errors.
 
-**UX release status is independent of CI:** A green fast CI means the chosen technical checks passed. It does **not** mean a card family passed visual acceptance. The user confirmed ordinary Attack/Dodge Stage A on 2026-10-12; other graph families and broader release readiness have separate review boundaries.
+**UX release status is independent of CI:** A green fast CI means the chosen technical checks passed. It does **not** mean a card family passed visual acceptance. The user withdrew the relationship-line UX on 2026-10-13; neither old Stage A nor Duel B1 graph screenshots imply acceptance of the new card-reveal flow.
 
 **Historic execution note:** The former `UX2-CI-MINIMAL-6MIN-01` assignment text has been removed from this design. The **policy above** is the permanent requirement. The current `.github/workflows/deploy.yml` selects fast tests, API checks, lint, a single browser startup smoke and a dependent deploy; actual <=6:00 end-to-end compliance still requires exact-run measurement. Do **not** restart a CI optimization task or demand another fixed set of three historical runs solely because that task ID once appeared here. Future changes to CI or its performance gate require a fresh, scoped user direction.
 
-### 6.31 User-approved Attack/Dodge mobile graph and trace-menu polish (2026-10-10)
+### 7.2 Compilation, ESLint and test memory optimization — evidence first (user-requested review 2026-10-10)
 
-**Scope and evidence:** This section records an earlier menu/CardFace polish decision. It does not define the current graph layout or lifecycle; use §0.1 and the user-confirmed Stage A baseline in §6.38. The menu's compact build identifier and trace-export/privacy behavior remain independent of graph geometry.
+**Scope:** The user reports local compilation/testing sometimes approaching **3–4 GB RAM** and failing with OOM. This is a **reported symptom**, not a measured per-process peak from the available GitHub Actions logs. Memory profiling and subsequent safe optimizations are authorized investigation topics; an unverified heap leak, OOM cause or memory saving must **not** be asserted as fact. This is independent of the compact menu UI polish.
 
-**Current layout authority:** Stage A ordinary Attack/Dodge uses the shared compact CardFace and viewer-relative orthogonal composition in §6.38. Do not use the retired large-card, along-the-red-path placement, or per-family timer proposals below as current targets. Shared graph rules in §0.1 also apply to other card families.
-
-#### 6.31.1 Card size and position
-
-- Use §6.34's shared hand-size-or-smaller physical-card tiers (60×90px normal / 54×81px compact as design references), with actual viewport Hand measurements and legibility controlling any fit adjustment. Do not revive the retired 96–108px-wide Attack card or asymmetric larger Attack/Dodge pair.
-- Place the complete card-and-connector composition in the measured usable battlefield and balance it around that field. Use §6.38's approved seat-relative left/right mapping and orthogonal path rules; avoid Seats, Dock, menus, Guidance and controls.
-- Never reposition an already displayed Attack root simply because Dodge appears; keep same-interaction root location stable **within 1 CSS px** when viewport and anchors are unchanged. For an actual viewport/anchor change, re-fit using authoritative public IDs. Do not duplicate the same public card in the legacy overlay.
-- Measure actual card rectangles and recompute arrow geometry **together**. Reducing CSS sizes while leaving old SVG endpoints or cached layout coordinates is not a finished fix.
-
-#### 6.31.2 No hidden red arrowhead or false Attack continuation
-
-- **Before Dodge:** the red Attack arrow must be visibly directional from the authentic Attack card boundary toward the actual target Seat/Dock; neither path endpoint nor arrowhead may sit under a card body or its border.
-- **After proven Dodge:** the vivid-red relation ends/intercepts at Dodge and does not continue as a full-strength hit arrow to the target. Make direction and interception visible with a non-colour marker, following §6.38.
-- Keep SVG paths and markers visible and correctly layered; do not hide the endpoint beneath a card or draw diagonal/decorative routes.
-- Keep Attack and Dodge's **green, arrowless** owner-to-card tethers legible and distinct from red direction, consistent with §6.29.5. Do not obscure controls or shift Seat/Dock DOM. Check actual rendered stroke, marker, SVG clipping and z-order: DOM existence and \`graphReady=true\` do not prove the arrow is visibly legible.
-
-**Visual evidence:** Follow §0.1. The Stage A composition is user-confirmed complete; a new regression requires a fresh bounded task and current server-backed evidence, not rerunning this retired acceptance queue.
-
-#### 6.31.3 Compact System Menu
-
-The existing \`app/page.tsx\` menu contains a long \`stage-system-diagnostics-note\` about automatic recording, privacy exclusions, trace IDs and length limits. **Remove that long visible note**, not the actual safety or diagnostics functionality.
-
-Keep the **GitHub Actions build SHA**, **Download UX trace** button and **Exit Game** button. Keep the build badge, actual JSON export/automatic recording, privacy filtering, trace-size limit, short download success \`role="status"\` feedback, keyboard/focus behavior and Exit Game confirmation. Prefer **no text** under the download button; only a single short unobtrusive hint if truly needed.
-
-**Menu acceptance:** A mobile screenshot shows a compact SHA + two actions with no large explanatory paragraph, excess height or hidden controls. Download and Exit continue to work. Do not change the trace API or data policy to achieve the visual reduction.
-
-#### 6.31.4 Preserved menu boundary
-
-The compact System Menu/build identifier/trace-export behavior is a separate UI concern from graph geometry. Preserve its established privacy and exit-confirmation semantics. This section is a design baseline, not a current task; `HANDOVER.md` controls execution.
-
-
-### 6.32 Compilation, ESLint and test memory optimization — evidence first (user-requested review 2026-10-10)
-
-**Scope:** The user reports local compilation/testing sometimes approaching **3–4 GB RAM** and failing with OOM. This is a **reported symptom**, not a measured per-process peak from the available GitHub Actions logs. Memory profiling and subsequent safe optimizations are authorized investigation topics; an unverified heap leak, OOM cause or memory saving must **not** be asserted as fact. This is independent of §6.31's UI polish.
-
-#### 6.32.1 Confirmed review evidence (historical baseline, remeasure on current HEAD)
+#### 7.2.1 Confirmed review evidence (historical baseline, remeasure on current HEAD)
 
 | Area | Verified evidence | Caution |
 | --- | --- | --- |
 | Vinext build | Around **6–9 seconds** per build in recent successful GitHub Actions runs | Wall time is **not** peak memory |
 | Complete ESLint | **71 seconds** in Actions run **38061870954**, **92 seconds** in run **38064028420** | Likely worthwhile to profile; no RSS/heap peak recorded |
-| Fast tests | **261 passing tests**, **8.64 seconds** in run 38061870954; \`--test-concurrency=1\` | Already relatively efficient; no justification to remove tests |
+| Fast tests | **261 passing tests**, **8.64 seconds** in run 38061870954; `--test-concurrency=1` | Already relatively efficient; no justification to remove tests |
 | API suite | **266 passing tests** across **24 files** and **four concurrent shards**, about **76.62 seconds** | Each shard creates its own Wrangler/D1/test Node process group; aggregate RSS may be high, but is **unmeasured** |
-| Source size | \`app/api/rooms/route.ts\` ~**584 KB**, \`app/page.tsx\` ~**468 KB**, \`app/interaction-root-overlay.tsx\` ~**171 KB** | Babel emits a >500 KB deoptimization warning for route.ts; warning **does not prove OOM** |
-| ESLint heap configuration | \`NODE_OPTIONS=--max-old-space-size=8192\` in \`.github/workflows/deploy.yml\` | 8192 is a permitted V8 old-space maximum, **not actual 8 GB allocation**, and may be unsafe as a workaround on a RAM-limited host |
-| Browser tests | Required CI runs one room-startup smoke; full Playwright diagnostics are manual. Local \`test:browser\` has no explicit workers cap | Automatic local worker count can cause aggregate Chromium pressure on smaller machines; measure it first |
+| Source size | `app/api/rooms/route.ts` ~**584 KB**, `app/page.tsx` ~**468 KB**, `app/interaction-root-overlay.tsx` ~**171 KB** | Babel emits a >500 KB deoptimization warning for route.ts; warning **does not prove OOM** |
+| ESLint heap configuration | `NODE_OPTIONS=--max-old-space-size=8192` in `.github/workflows/deploy.yml` | 8192 is a permitted V8 old-space maximum, **not actual 8 GB allocation**, and may be unsafe as a workaround on a RAM-limited host |
+| Browser tests | Required CI runs one room-startup smoke; full Playwright diagnostics are manual. Local `test:browser` has no explicit workers cap | Automatic local worker count can cause aggregate Chromium pressure on smaller machines; measure it first |
 
-GitHub's required \`lint-fast\`, \`api\` and \`browser-smoke\` jobs execute on **separate runners**, so do not add their RAM figures as if on one shared host. Conversely a local developer running multiple commands concurrently may see aggregate memory pressure. The inspected successful GitHub runs did **not** contain a proven OOM event or a peak RSS metric; do not confuse lack of such logs with proof that the user's local problem cannot occur.
+GitHub's required `lint-fast`, `api` and `browser-smoke` jobs execute on **separate runners**, so do not add their RAM figures as if on one shared host. Conversely a local developer running multiple commands concurrently may see aggregate memory pressure. The inspected successful GitHub runs did **not** contain a proven OOM event or a peak RSS metric; do not confuse lack of such logs with proof that the user's local problem cannot occur.
 
-Inspect the current \`package.json\`, \`eslint.config.mjs\`, \`tests/run-api-suite.mjs\`, \`tests/run-tests.mjs\`, \`tests/run-fast-tests.mjs\`, \`tests/browser/playwright.config.mjs\`, \`.github/workflows/deploy.yml\` and \`docs/CI_TEST_OPTIMIZATION.md\` (the latter is historical analysis, **not** current policy). Always refresh the measurements and test membership.
+Inspect the current `package.json`, `eslint.config.mjs`, `tests/run-api-suite.mjs`, `tests/run-tests.mjs`, `tests/run-fast-tests.mjs`, `tests/browser/playwright.config.mjs`, `.github/workflows/deploy.yml` and `docs/CI_TEST_OPTIMIZATION.md` (the latter is historical analysis, **not** current policy). Always refresh the measurements and test membership.
 
-#### 6.32.2 First deliverable: reproducible process-tree memory profile
+#### 7.2.2 First deliverable: reproducible process-tree memory profile
 
 Before modifying source or discarding tests:
 
-1. Record exact branch SHA, OS/RAM limit and Node/tool versions. Run **separately** \`npm run build\`, \`npm run lint\`, \`npm run test:fast\`, \`npm run test:api\` and the existing **single** browser-smoke test.
-2. Capture **peak resident memory (RSS) for the complete spawned process tree**, not just \`node\`'s heap: include Wrangler, workerd, Miniflare/D1, test Node processes and Chromium when present. Record per-PID RSS, optional \`heapUsed/heapTotal\`, wall time, peak aggregate tree RSS, subprocess count, exit code and test pass count. Use appropriate OS process sampling and/or \`/usr/bin/time -v\`; explicitly state metric limitations.
-3. Check whether child processes remain alive after command exit. A \`SIGTERM\` call without awaiting process exit is a **cleanup risk to measure**, not itself proof of leaked workers.
-4. If it OOMs, distinguish **V8 \`JavaScript heap out of memory\`**, **OS/container \`SIGKILL\` / exit 137 / cgroup \`oom_kill\`**, and unrelated failures; include the shortest safe error tail. Do not accidentally reveal test tokens, private cards or game secrets.
+1. Record exact branch SHA, OS/RAM limit and Node/tool versions. Run **separately** `npm run build`, `npm run lint`, `npm run test:fast`, `npm run test:api` and the existing **single** browser-smoke test.
+2. Capture **peak resident memory (RSS) for the complete spawned process tree**, not just `node`'s heap: include Wrangler, workerd, Miniflare/D1, test Node processes and Chromium when present. Record per-PID RSS, optional `heapUsed/heapTotal`, wall time, peak aggregate tree RSS, subprocess count, exit code and test pass count. Use appropriate OS process sampling and/or `/usr/bin/time -v`; explicitly state metric limitations.
+3. Check whether child processes remain alive after command exit. A `SIGTERM` call without awaiting process exit is a **cleanup risk to measure**, not itself proof of leaked workers.
+4. If it OOMs, distinguish **V8 `JavaScript heap out of memory`**, **OS/container `SIGKILL` / exit 137 / cgroup `oom_kill`**, and unrelated failures; include the shortest safe error tail. Do not accidentally reveal test tokens, private cards or game secrets.
 5. Make a reproducible comparison table: **command / concurrent processes / peak tree RSS / heap peak where measurable / duration / test counts / result**. If no OOM reproduces, state that honestly and identify the strongest measured memory consumer.
 6. Profiling belongs in local/opt-in diagnostics, **not** an unapproved lengthy push-CI job. Do not trigger repeated known OOM failures in ordinary CI.
 
-#### 6.32.3 Evidence-driven optimization candidates and safety rules
+#### 7.2.3 Evidence-driven optimization candidates and safety rules
 
 **P0 — Lint costs:** Profile large files and the current ESLint flat config, especially the React Compiler/Hooks rule scope for server-only modules versus genuine React components. If React-specific analysis is demonstrably unnecessary on non-React files, **narrow that rule application only where valid**; keep every relevant React/hook check on UI/hooks, and preserve TypeScript, security and accessibility checks. Prove equivalent intended rule enforcement via a small deliberately failing lint fixture or precise rule coverage comparison. Do not disable entire lint categories merely to lower memory.
 
 **P0 — API process concurrency:** Compare **four versus two API shards** while maintaining **exactly the same 24 test files/test membership**, isolated D1 states and meaningful assertions. Profile aggregate tree RSS and duration. A change from four to two is a candidate **only if** it produces a verified memory benefit and does not push full required CI/deployment past the user-approved limit. Do not reduce test counts, share databases across concurrent suites unsafely, or hide failures.
 
-**P1 — Child process lifetimes:** Audit \`tests/run-tests.mjs\` cleanup after Wrangler termination and temporary state removal, and verify whether any descendants survive. If observed, use a bounded graceful shutdown/wait and appropriate escalation, preserving test outcome. Do not assume leak from code shape alone.
+**P1 — Child process lifetimes:** Audit `tests/run-tests.mjs` cleanup after Wrangler termination and temporary state removal, and verify whether any descendants survive. If observed, use a bounded graceful shutdown/wait and appropriate escalation, preserving test outcome. Do not assume leak from code shape alone.
 
-**P1 — Optional full browser diagnostics:** Measure RAM under local Playwright's implicit worker count; use a memory-aware explicit \`--workers=1\` or \`--workers=2\` when appropriate. Required push smoke already uses one worker. Keep broad UX cases in optional/manual diagnostics until post-acceptance authorization (§6.30), **not** deleted from the repository.
+**P1 — Optional full browser diagnostics:** Measure RAM under local Playwright's implicit worker count; use a memory-aware explicit `--workers=1` or `--workers=2` when appropriate. Required push smoke already uses one worker. Keep broad UX cases in optional/manual diagnostics until post-acceptance authorization (§7.1), **not** deleted from the repository.
 
 **P2 — Oversized production modules:** Consider a **later separately approved** domain/module decomposition only if it materially lowers measured lint/build memory or improves maintainability. A Babel >500 KB warning alone does not justify a risky refactor of the authoritative room API, game rules, or client state machine.
 
 **Forbidden shortcuts:** raising Node old-space above physical/container RAM as a blanket cure; turning off real lint/privacy checks; skipping or deleting passing tests to save RAM; running all benchmark commands simultaneously and mislabeling system-wide load as a single-command peak; weakening assertions or marking an OOM as successful.
 
-#### 6.32.4 Memory optimization acceptance and the six-minute CI policy
+#### 7.2.4 Memory optimization acceptance and the six-minute CI policy
 
-An optimization is proven only by **comparable before/after peak process-tree RSS** or elimination of an **actually reproduced OOM**, together with unchanged meaningful lint checks, full API/fast test membership and results, and no gameplay/privacy regressions. Report the time cost. The **full normal push-to-required-CI-to-Cloudflare-deploy/smoke interval must still finish within 6:00** under §6.30, rather than optimizing a single stage while harming the full pipeline.
+An optimization is proven only by **comparable before/after peak process-tree RSS** or elimination of an **actually reproduced OOM**, together with unchanged meaningful lint checks, full API/fast test membership and results, and no gameplay/privacy regressions. Report the time cost. The **full normal push-to-required-CI-to-Cloudflare-deploy/smoke interval must still finish within 6:00** under §7.1, rather than optimizing a single stage while harming the full pipeline.
 
 Only implement a **small, measured runner/config change** in the same bounded diagnostic task. If the leading fix is a production refactor or alters test grouping substantially, report the measurements and hand off a **separate, scoped follow-up task** instead of expanding the investigation. Never claim the 3–4 GB root cause fixed without relevant proof.
 
-### 6.33 Refinement ownership and accepted baselines
+### 7.3 Compact System Menu and UX trace behavior
 
-§6.31's compact System Menu and §6.32's memory investigation are independent of graph design. §6.38 Stage A is user-confirmed complete and is a regression baseline, not an outstanding task. Do not confuse a passing code gate with human UX acceptance.
+#### 7.3.1 Compact System Menu
 
-**Current design sequence (2026-10-12):** The §6.36 Attack/Dodge proof/recovery cases and §6.38 Stage A are closed for their accepted scenarios. Remaining relationship-graph design areas are Duel, Negation and Group/AOE as summarized in §6.37. This sequence is not task authority: the current bounded implementation task comes only from `HANDOVER.md`.
+The existing `app/page.tsx` menu contains a long `stage-system-diagnostics-note` about automatic recording, privacy exclusions, trace IDs and length limits. **Remove that long visible note**, not the actual safety or diagnostics functionality.
 
+Keep the **GitHub Actions build SHA**, **Download UX trace** button and **Exit Game** button. Keep the build badge, actual JSON export/automatic recording, privacy filtering, trace-size limit, short download success `role="status"` feedback, keyboard/focus behavior and Exit Game confirmation. Prefer **no text** under the download button; only a single short unobtrusive hint if truly needed.
 
-**Implementation evidence boundary:** Source and CI state are time-sensitive; inspect the current branch and HANDOVER before work. The accepted Stage A design is in §6.38. Do not assume a current deployment or reopen earlier proof/menu work without a reproduced regression or direct user instruction.
+**Menu acceptance:** A mobile screenshot shows a compact SHA + two actions with no large explanatory paragraph, excess height or hidden controls. Download and Exit continue to work. Do not change the trace API or data policy to achieve the visual reduction.
 
-**Remaining design questions:** For Group/AOE, verify that each displayed response and outcome has exact typed public proof for its root/frame/branch. Keep participant progress distinct by shape and emphasis, and compact old same-root history without losing the active target or causal scope. For Duel and Negation, emphasize only the latest server-proven step while retaining subdued same-root context as space permits. These are design constraints, not statements about current implementation status; inspect `HANDOVER.md` and current code before work.
+#### 7.3.2 Preserved menu boundary
 
-**Separate engineering diagnostic:** §6.32's process-tree profile exists in the roadmap (`UX2-6.32-PROCESS-TREE-MEMORY-PROFILE-01`). Local ESLint heap OOM may still warrant a current-head investigation if it blocks work; this is not a generic card-UX task and must not weaken the passing six-minute CI gate.
-
-
-### 6.34 Shared card scale and balanced central composition — accepted Stage A foundation
-
-**Status:** The user confirmed Stage A complete on 2026-10-12. This section records the shared compact-card and balanced-composition foundation for later family-specific design. It does not assign a task; the current execution task, if any, is only the one in `HANDOVER.md`.
-
-**Player-facing purpose:** Resemble physical table play: multiple genuine public CardFaces share one open battle field in the **usable middle of the table**, slightly biased toward their actual authors without piling up beside Seats/Dock or drifting wholly to the top, bottom or one side. The visible **composition as a whole** should feel spatially fair even when both source and responder belong to top-row opponents. Authors are already established by their proven, green, arrowless tethers; physical proximity is a secondary hint, never the sole ownership signal.
-
-#### 6.34.1 Shared public CardFace scale, not bigger than Hand
-
-- First **measure actual rendered Hand CardFace dimensions** in 390×844, ~440px iPhone portrait, 480×900 and a wide production-game view; CSS assumptions or screenshot-device pixels are not measurements. Public physical cards must be **no larger than the same viewport's actual visible Hand cards** in either dimension. Preserve authentic CardFace 2:3 art, readable name/rank/suit, stroke separation and accessible semantic text.
-- **Accepted Stage A size tiers:** normal public CardFace **60×90 CSS px** and dense compact CardFace **54×81 CSS px**, subject to the same viewport's actual Hand-size ceiling, measured safe fit and legibility. These are design targets, not permission to exceed the Hand or silently overlap controls; report a genuine impossible fit.
-- These shared scale tiers apply to physical public **Attack, Dodge, Duel responses, ordinary AOE committed responses, Negation/counter-Negation and the physical root cards** when available. Nonphysical semantic effect nodes, status glyphs and private Hand/target-card pickers are not forced into fake 2:3 CardFaces. Do not make Attack the only card that uses the compact scale; do not stretch art or create an oversized root exception.
-- Prefer **two stable, measured size tiers**, chosen for available-space and expected public chain density at initial layout. Avoid per-card arrival causing all existing cards to shrink/reflow repeatedly. During the **same proven interaction** keep the root and already-present public cards at the same size and position where anchors/viewport have not changed. A genuine change in viewport, measured obstacles, or an impossible fit may justify a deliberate one-time reflow, clearly testable and minimally disruptive.
-- When public cards multiply, prefer **history compaction over ever-smaller text**. Do not force all previously visible cards to stay as full-size nodes once their required read window has ended.
-
-#### 6.34.2 Centre-first, mildly source-biased and composition-balanced placement
-
-- Determine the **usable public battle field** from the actual table/overlay rectangle *minus measured obstruction and safety zones*: opponent Seats, entire Local Dock, active controls, Guidance, menus, timers, Deck/Discard and other currently presented cards. Use this field's **available centre**, not the entire phone-screen centre nor the player-source/target centroid as the primary objective. Keep existing safe inset/clearance checks; never shift the physical Seats/Dock or cover gameplay controls.
-- Score candidates in priority order: **(1) collision-free fit/readable links, (2) centred and balanced complete visible card+relationship composition, (3) modest relative bias toward the specific proven source/responder, (4) short/clean connectors**. Don't improve the source line by dragging a card against a Seat; don't improve the target relation by stacking Attack and Dodge at a screen edge. Balance should be re-evaluated for the *whole current public set*, not independently centring each card.
-- For a top-row attacker and local defender, Attack may lie somewhat **above** the battle-field centre and Dodge somewhat **below** it; for reversed roles invert that relative ordering. For two top-row players, still expand into the **shared central field**, with modest horizontal authorship bias rather than clustering both cards at the top. Likewise, left/right source assignments may bias horizontally without shifting the whole group to one extreme.
-- **Composition fairness metric for review, not a magic clamp:** measure and report the available-region rectangle, its centre, the union bounds and centre of all full public CardFaces, nearest edge/control distances, and each card-to-author direction. The initial design aim is that the **group's visual centre stays in the middle third-to-middle-half of the usable region when a collision-free fit permits**, rather than having all full-size cards hugging the upper/lower/left/right boundary. If geometry prevents it, document the measured reason instead of faking a passing coordinate.
-- The real author tether remains visible, **green, arrowless** and connected to the actual player anchor; the red Attack path points toward the actual target and is stronger. Do not reconstruct authorship from card position, or draw fake actions/targets to achieve symmetry. Use §6.29.5's stroke distinction, §6.31.2's arrowhead/occlusion safety and §6.20's non-colour accessibility.
-- **Root stability is paramount:** after an accepted root is shown, adding a committed response must not move or resize it solely to make a prettier layout. With unchanged geometry, preserve its top-left coordinates within **1 CSS px**. Plan enough response space without blocking an otherwise displayable authoritative root just because an optional future response may not fit. New response placement uses remaining central space and a proven direct counter/contact relation.
-
-#### 6.34.3 Interaction families and density budget
-
-| Family | Public composition | History/density rule |
-| --- | --- | --- |
-| Ordinary Attack awaiting Dodge | One hand-size-or-smaller Attack root, its real author tether, unobstructed red direction and full target emphasis | Selected **private** Dodge must not appear as a public card or displace the root |
-| Attack → committed Dodge | Attack stays fixed; Dodge occupies the defender-side half in the viewer-relative composition; vivid-red relation intercepts at Dodge | Preserve the exact public root and response identities; apply the shared §0.1 lifecycle |
-| Duel repeated Attack responses | Persistent Duel root plus newest proven response; an immediately previous proven response may remain in subdued context when space/read time allows | Older proven rounds fold into a compact neutral **+N** or similar history cue, not a growing pile; newest public exchange alone is dominant |
-| Single-target Negation / counter-Negation | Persistent original Stratagem root with newest one or two typed, public counter cards joined to the **actual countered card/effect** | Compact older proven nodes into a history cue; no false player-target arrows; shared §0.1 lifecycle |
-| Group/AOE Raining Arrows, Barbarian Invasion, etc. | One stable group root and exact public participant branches; show genuine committed response CardFaces only where independently **typed public response proof** exists | Response cards share central space; completed branches become subdued; compact older public history while preserving ongoing target/progress context |
-
-**Important implementation boundary:** The current AOE status/outcome projections and group Negation branch proof are already present. The ordinary Group Attack/Dodge response's exact linked physical-card projection is **not established by this new layout request**; if absent, do not generate a public response from private `CurrentAction`, a timeline event or inferred player/card adjacency. Record that separate projection dependency for an independently authorized server task; complete and review the layout work with existing proven public cards first. Reuse existing AOE participant status and Negation history compaction rather than inventing duplicate state machines.
-
-**Interaction lifecycle:** An unresolved root and its proven branches remain for the full authoritative interaction. After terminal settlement, retain the complete final composition for four seconds from its first fully rendered settled frame. Do not show a graph-retention countdown; never delay legal actions or server progression. See §0.1.
-
-#### 6.34.4 Reviewable implementation stages (one bounded slice at a time)
-
-**Updated user-approved implementation brief:** §6.38 is the **newer, explicit Stage A routing/composition decision** (2026-10-11). For ordinary Attack/Dodge only, it overrides older Stage A connector-shape and two-stage red emphasis preferences where they conflict, while leaving server proof, timing, physical ownership, safe fit, root immobility and user-reviewed §6.36 repairs intact. Read §6.38 before implementing or reviewing Stage A.
-
-**Stage A — accepted baseline:** The user confirmed completion on 2026-10-12. Its accepted ordinary Attack-only and Attack→Dodge composition is recorded in §6.38 and must be preserved; do not reopen or rebuild it absent a reproduced regression or direct user request.
-
-**Stage B — long-chain layout reuse (separately reviewable after A).** **Stage B1 Duel is specifically governed by §6.39, task reference `UX2-6.34-B1-DUEL-LONG-CHAIN-01`, which also includes the user-requested narrow ordinary Attack/Dodge path-balance polish.** Stage B2 Negation is separate. Apply the same accepted shared CardFace/composition language to already-proven Duel repeated Attacks and Negation/counter-Negation, using existing typed response links and history compaction. Validate source ownership, root stability, current versus subdued context, no overlap/dangling arrows, no infinite shrink and no accumulated card pile. Apply the single lifecycle in §0.1; do not retain family-specific graph durations.
-
-**Stage C — AOE layout adoption (separately reviewable after B).** Apply the shared geometry to existing proven Group/AOE root and participant branches with 4/6/8-player positions, preserving per-target semantics and §6.29.4 outcome markers. Audit which ordinary AOE responses have actual typed public identity; integrate only proven cards. If that proof is missing, stop that subpart and report the exact projector/snapshot/client contract needed for a separate authorized change. No new legality or rule work hidden inside a UI geometry task.
-
-**No duplicate-work rule:** These stages refine existing renderers and projections; they do not authorize rebuilding §6.31 menu work, accepted Attack proof, Dodge settlement, existing Duel/group/Negation foundations, or the §6.32 memory investigation. Stage order is design guidance only. Select exactly one current implementation task from `HANDOVER.md` at a valid planning boundary.
-
-#### 6.34.5 Acceptance and stop conditions
-
-These are family-level quality criteria, not a requirement to rerun every scenario for each change. Follow the single bounded scope selected in `HANDOVER.md` and validate only the affected paths plus relevant regressions.
-
-- Inspect **actual rendered Hand width/height** and public CardFace CSS pixels. All physical public cards <= Hand width and height; no stretched/fake art; rank, suit and card identity recognizable in the screenshots.
-- Public cards visibly occupy the **middle usable battle field**, not a strip immediately below top-row Seats or above the local Dock; top/bottom/left/right authorship cases are comparably balanced. Report computed individual/union rectangles and card-to-anchor positions, not only a `layoutReady` flag.
-- With stable anchors, the Attack/other root does **not jump or rescale** when a response is committed; Dodge/contact visibly interrupts red Attack and preserves both author tethers. Private selection leaves public layout unchanged.
-- Across their respective review boundaries, continuous and multi-step flows should remain legible: real Attack/Dodge, repeated Duel responses, counter-Negation and multi-player AOE; no page-level horizontal overflow, panel obstruction, orphaned graph, duplicate legacy miniature card or all-card shrink on every new step.
-- Positive visual assertions require real **server-backed** proof and visible rendered lines/card faces. Fixture-only DOM, an inferred public response, geometry-unavailable fallback, or screenshot-free passing CI does not constitute user UX acceptance. Preserve viewer equality/privacy, stale/reconnect fail-closed behavior and accessibility.
-- Keep the §6.30 **<=6-minute** required CI/deployment gate. New long scenario suites stay optional until user approval; use focused, meaningful evidence for each selected slice. A successful commit/CI is distinct from **the user's visual acceptance**.
-
-### 6.35 Semantic lifecycle of a public relationship graph
-
-This section is the single lifecycle reference and implements the normative rule in §0.1:
-
-- **Active:** Keep the same authoritative root and proven graph visible while its interaction is unresolved, regardless of elapsed time, response waits, trigger handoffs, polling or refresh. Same-root progress updates the graph; it does not create a new root. Local preview/selection is not public progress.
-- **Terminal:** Once the server proves the interaction is complete, retain the complete final graph for **four seconds from the first fully rendered settled composition**, then retire it. Reduced-motion users receive the same static read interval. Do not show a graph-retention countdown.
-- **Supersession:** A new independent authoritative interaction may take focus; it is not a same-root continuation. Never let old state block the new interaction, erase still-active same-root context, or resurrect after expiry. Do not delay turns, deadlines, legal actions or server progression for presentation.
-- **Outcome:** Show `TAKE DAMAGE` only with exact public damage-settlement proof, on/near the red effect relation at the actual target side and outside tiny Hero artwork. A declined response alone is not proof of damage.
-
-Use server-owned identity and progress only. This is a product contract, not a diagnosis, code inspection request or task queue.
-
-### 6.36 Accepted Attack/Dodge semantic regression baselines
-
-**Status:** The user accepted the scenarios below as regression baselines. Their detailed trace analysis, completed implementation plans, commit ledger and historical CI evidence belong in the roadmap, not in this design authority. They do not create current work; consult `HANDOVER.md` for that.
-
-- A new ordinary Attack after a completed Negation window has its own authoritative root/frame; completed Negation history cannot replace it.
-- A committed, server-proven Attack→Dodge graph can recover for an eligible viewer after refresh/reconnect, while expired, superseded, malformed or private-unsubmitted responses never resurrect or appear publicly.
-- Zhao Yun Longdan may use a physical Attack as an effective Dodge only when the server-proven typed conversion binds the exact root, response, actor, card and frame. Preserve the actual Attack CardFace; never fabricate a Dodge.
-- All cases continue to obey §0.1: exact public authority, private-information boundaries, stable physical Seats/Dock, semantic lifecycle, orthogonal shared visual language and evidence distinct from CI/deployment or human acceptance.
-
-These accepted cases are regression safeguards, not a claim that every orientation or every graph family is complete. Do not reopen them without a reproduced regression or direct user instruction.
-
-
-### 6.37 Remaining relationship-graph design scope (not a task queue)
-
-**Product direction:** Complete the shared Standard-card playing experience before new special-Hero-specific UX adjustments. The order below is design sequencing only; it does not create or select implementation tasks. Section 1–4 foundations and the accepted §6.36/§6.38 cases are regression baselines. Only `HANDOVER.md` identifies the current bounded task.
-
-#### 6.37.1 Status and scope
-
-- **User accepted regression cases:** §6.36 ordinary post-Negation Attack/Dodge, eligible Attack/Dodge refresh recovery, and authentic Zhao Yun Attack-as-Dodge proof. These are regression controls, not remaining card tasks.
-- **User-confirmed complete:** §6.38 Stage A uses authentic hand-size-or-smaller public CardFaces, balanced viewer-relative placement, stable root geometry and orthogonal routing. Preserve as a regression baseline. This does not imply Stage B/C acceptance.
-- **Existing foundations, not new tasks:** shared target-card picker (§4C), local player controls and earlier real-game gate (§4D), basic single-target proof, Duel/Negation/Group projector and layout foundations, group participant progress model. Test only paths relevant to a new change. The separate test-room Hero-choice infrastructure was reported shipped as `9f4b93c`; it is **not an outstanding generic card-UX item**.
-- **Out of scope until after generic UX:** individual Hero skills and exceptional response rules, other than preventing regression to already accepted Zhao Yun Longdan. An earlier Lv Bu two-Dodge trace is not by itself authorisation for a Hero-specific repair.
-
-#### 6.37.2 Remaining design areas and acceptance principles
-
-| Design order | References | Design status | Required player-facing principle |
-| --- | --- | --- | --- |
-| **1 — Stage A: complete** | §§0.1, 6.34, 6.38 | User-confirmed complete | Preserve compact, balanced, viewer-relative ordinary Attack/Dodge composition and exact public root/response semantics. |
-| **2 — Duel B1 + Attack/Dodge path-balance polish** | **§6.39**, §§6.12, 6.29.6, 6.34, 6.38 | **Approved design; implementation and visual acceptance pending** | One B1 task ID `UX2-6.34-B1-DUEL-LONG-CHAIN-01`: four genuine alternating Duel Attacks across two compact seat-relative left/right rounds. Historical first pair shrinks and shifts down, green/red routes keep hue/shape but dim; new upper branches fork at old elbow nodes rather than card bottoms. In same bounded task balance ordinary Attack/Dodge card positioning and orthogonal connectors without reopening their semantics. |
-| **3 — Negation chains** | §§2, 6.13–6.14, 6.29.6, 6.34 Stage B | Further design/review required | Connect each new public Negation to the exact countered card/effect. Keep root identity stable, demote prior same-root relations, and preserve scope without false player-target or whole-AOE claims. Apply §0.1 lifecycle. |
-| **4 — Group/AOE** | §§6.9–6.10, 6.29.2–6.29.4, 6.34 Stage C | Further proof/layout review required | Reuse one stable root and exact public per-target branches; distinguish ordered from simultaneous semantics. Show a physical response only with server-proven card, actor, frame, branch and outcome. Distinguish current/paused/resolved/pending/inapplicable states by shape and contrast; never infer outcomes from HP or turn order. |
-| **5 — Cross-family review** | §§2–4, 6.7–6.26, 6.30 and this section | Human visual acceptance gate | Use real server-backed flows across representative card families, player counts and mobile/wide sizes. Confirm privacy, stable roots, visible geometry, no overlap/overflow and correct lifecycle. Do not treat CI or fixture-only proof as reviewer acceptance. |
-
-**Design order:** Stage A is complete; review Duel, then Negation, then Group/AOE. Verify Group physical-response proof before displaying its CardFace. Missing proof is a projection gap, never permission to infer or fabricate. This order does not authorize implementation; `HANDOVER.md` remains the sole task source.
-
-#### 6.37.3 Later or conditional items (not current generic-card work)
-
-- **Hero exceptions**: separately plan after generic cards; preserve already accepted Longdan. Special two-Dodge, Hero-converted cards and other skill-only graphs each require concrete proof and user direction.
-- **Local ESLint memory:** §6.32 has an existing sampled process-tree RSS profile in the roadmap; local lint heap OOM may still justify a *separate* current-head bounded investigation if it obstructs work. It is not a graph-design acceptance condition, and no lint or CI safety gate may be silently weakened.
-- **Historical closed pre-§6 work and test-room tooling:** no new assignment without an independently reproduced defect or explicit user request.
-
-#### 6.37.4 Evidence and ownership
-
-Every selected slice must use actual authoritative public projection and real server-backed browser evidence; compare current code before touching it, make no private-card inference, preserve fixed Seats/Dock and real physical CardFaces, show screenshots plus relevant geometry/proof identifiers, distinguish code/CI completion from **user visual acceptance**, and stop for review after **one** bounded task. Updating this product-design register neither selects work for the Coding Agent nor edits Agent-owned `HANDOVER.md`.
-
-
-### 6.38 Accepted Stage A baseline — balanced orthogonal Attack / Dodge battlefield
-
-**Status:** The user confirmed Stage A complete on 2026-10-12. This section is the durable visual/regression baseline for later relationship-graph design and implementation. It is not an active task. Do not reopen Stage A without a reproduced regression or direct user instruction; do not infer that Stage B/C are accepted by this confirmation.
-
-**Decision basis:** The user reviewed the live 440px iPhone screenshot and iterated on two concept mockups: (A) **Cao Cao plays Attack against top-left Zhang Liao**, (B) **Zhang Liao commits a physical Dodge**. The user explicitly selected **central composition first**, horizontally/vertically balanced Cards + paths, removed the two visible **Deck/Discard pile blocks** from the battle area, rejected side-origin/meandering green paths and diagonal/sweeping curves, and approved **orthogonal routing with the fewest possible rounded 90-degree bends**. These images were conversation *concepts*, not code screenshots and not permission to replace card artwork, battlefield scenery, turn instructions or game assets. **The explicit rules below control implementation if a generated preview's arrowheads or decorative details disagree.**
-
-#### 6.38.1 Common visual grammar and order of priorities
-
-1. **Authentic public proof and private safety:** Server-authored exact attacker, target, physical Attack, and (when committed) real physical Dodge/skill-valid conversion are authoritative. The existing `PresentationSnapshot`/`PresentationClientView` validation and CurrentAction boundary stay intact. No inferred author, response or target from DOM position, local hand or timeline proximity; uncertain graph fails closed.
-2. **Unobstructed and balanced use of space:** Determine the battle-safe region from actual overlay and measured Seats/Dock/Guidance/menu/timer/piles/controls. Optimise the **entire visible card+connector composition** around its usable centre, both **left/right and top/bottom**. Do not place every card or all long lines against one edge merely to shorten one tether. Fit/collision and real semantic identity take priority over mathematical symmetry. Attack may sit a little right of centre *in the approved local-bottom → top-left example*; reverse/rotate relative offset for other real source/target geometries when needed.
-3. **Physical CardFaces:** Use the actual current Hand artwork, suit, rank, physical card ID and hand-size-or-smaller 2:3 face from §6.34 (currently normal **60×90 CSS px**, compact **54×81 CSS px**, subject to measured fit). Do not enlarge them or substitute illustrated placeholder cards. Do not change their dimensions unless real measured collision makes the existing approved size impossible.
-4. **Routing shape:** Each visible source/target/counter route uses **only straight horizontal and vertical segments** joined by **rounded 90° elbows**. Prefer a straight line, otherwise one elbow, otherwise the fewest collision-free elbows necessary; **no diagonal or decorative Bézier swoops**, excessive detours, or free-floating intermediate target squares. Minimise bends *after* preserving proof, physical anchors and legibility. Use consistent bend radius, stroke and visible non-colour indicators. Preserve §6.29.5 green/red contrast hierarchy. **Green author/source tethers have NO arrowheads** under §6.27/§6.20; red attack/counter endpoints must clearly express direction/interception.
-5. **Real edge anchors, not invented player positions:** Use the actual authenticated source's Seat/Dock edge facing the usable battlefield; geometry may select a point along that edge but may never assign authorship. In the approved local-attacker reference case, the Local Dock-top anchor is directly below Attack and its green tether is straight vertical. Other orientations use the real Seat/Dock edge and the shortest legible orthogonal route without crossing controls. Never begin from a viewport edge, unrelated battlefield point, or inferred player position.
-6. **Stable state transition:** Once Attack is publicly mounted, its position/scale stays stable (<= **1 CSS px** coordinate change at unchanged viewport/obstacles) when valid Dodge commits, during polling and refresh recovery. Allocate response-side space without hiding an otherwise renderable Attack. Do not duplicate the root CardFace or move physical Seats/Dock.
-
-#### 6.38.2 State A — Attack declared; no public Dodge yet
-
-For the approved reference case, the **bottom local Cao Cao** uses a genuine ordinary `Attack` against **top-left Zhang Liao**:
-
-- Show **exactly one** public Attack CardFace in the middle of the actual available battlefield, **slightly right of the shared centre** to reserve natural response space toward the left. Do not show a public Dodge until a matching response is actually committed and proven. A privately selected but unsubmitted Dodge must never appear.
-- **Green source:** One **straight vertical** author tether from the genuine Local Dock-top anchor **directly under Attack** into Attack's lower edge. Do not make a sideways segment for this reference geometry; preserve arrowless green-source semantics.
-- **Red target:** From the **Attack card's left outer edge**, travel **horizontally toward the left-hand actual target Seat**, then take **one softly rounded 90° turn vertically upward**, with the arrow terminating at the genuine **Zhang Liao Seat's lower facing edge**. The whole target Seat may glow subtly for the active incoming Attack. **There is NO empty `TARGET` placeholder, copied hero, or target marker box in the battlefield.**
-- Do not add a separate red counter line or an imaginary unplayed Dodge. The Attack root and red destination come from one exact authoritative Attack/target proof, not from screen geography.
-- For right/top/side/local targets use the same **orthogonal minimum-bend, real Seat/Dock endpoint** principle and mirrored layout, not a hard-coded Zhang Liao coordinate. Where a horizontal-then-vertical path cannot fit the real target/obstacle geometry, choose the minimum-legible orthogonal alternative and record the reason.
-
-#### 6.38.3 State B — the same Attack is publicly blocked by committed Dodge
-
-With that *same public Attack* still at its identical position, Zhang Liao submits a genuine server-proven ordinary Dodge:
-
-- **Attack stays fixed** at the original location. Place authentic Dodge to the **left of Attack**, ideally roughly aligned vertically so the **two CardFaces and their connecting red segment together sit centrally**. Allow only collision-driven compact variations; never relocate Attack to manufacture symmetry.
-- Keep **green attacker→Attack source** identical to State A: real Local Dock-top, **straight vertical**, arrowless and visually clear. Add **green defender→Dodge source** from the genuine Zhang Liao Seat-bottom edge, using a vertical/horizontal path with the **fewest rounded 90° elbows**, ending at Dodge's top/appropriate outer edge without crossing the red block line.
-- The **single dominant red visible relation** becomes **Attack → Dodge**, ideally one short **horizontal** red segment from Attack's left edge to the right edge of Dodge. It visibly **terminates/is intercepted at Dodge** (with a non-colour block terminal treatment where required). **Do NOT simultaneously render another full-strength red Attack→target-Hero arrow.** The completed target relation remains **in the same authoritative server causal proof and accessibility semantics**; optionally use only a *weak, non-danger-signalling* target/response halo after block. Do not wrongly suggest that Dodge is blocked or that Zhang Liao still faces an unblocked hit.
-- **Public semantics versus painted lines:** The user-approved settled view emphasises **three visible connector paths** (attacker-source green, defender-source green, Attack→Dodge red), **not four equally prominent SVG lines**. This deliberately refines earlier §6.11/§6.27/§6.34 and old visual-test expectations for a bright red Attack→Hero line *after* an ordinary successful Dodge. **Do not delete or relax the fourth causal fact** (Attack's true target) from server projections or privacy/fail-closed checks. Preserve identity-based proofs and the accepted §6.36 regression baselines.
-- For a Dodge decline, illegal/mismatched/stale response, or no committed public proof, **do not** switch to State B. The real visible Attack target path remains while appropriate, subject to normal game settlement/§6.35 retirement rules.
-
-#### 6.38.4 Deck / Discard display removal — visual only, never gameplay removal
-
-- Remove the **two large visible `DECK` and `DISCARD` card-pile blocks** from the **central battlefield composition** in the approved layout. They must not consume central placement space or push Attack/Dodge up toward the opponent row. Preserve original Standard deck inventory, draw/discard rules, actual discard top, counts, private/public disclosure semantics and history. This is **not** a request to delete any game zone.
-- Code inspection before implementation: `app/page.tsx` currently renders `play-center > draw-stack[data-draw-anchor]` and `discard-stack[data-discard-anchor]` and uses these DOM anchors for **draw/discard/reveal animation positioning**. Do not delete anchors or set `display:none` if that breaks movement paths, measurement or reveal timing. Provide semantically correct alternative safe animation anchors or compact non-obstructing presentation; any essential public pile information should remain available through an existing compact UI path. If the cards rely on an irreplaceable interactive pile UI, **report this separate conflict for reviewer decision** before moving unrelated controls.
-- No new floating fake discard action or uncontrolled new game rules, no change to discard-card timing, deck order, replay safety or server endpoints. The background artwork may remain as-is; the design mockups' different illustrated background is **not approved asset work**.
-
-#### 6.38.5 Preserved architecture boundaries
-
-Extend the existing server-authored public projection, viewer-side proof validation and shared relationship-graph renderer. Keep physical Seat/Dock DOM fixed; use those real anchors for geometry; layer non-interactive graph visuals without intercepting gameplay controls; preserve authentic physical CardFaces, existing animation/game-zone behavior, privacy, exact root/response identities and accepted Zhao Yun conversion. Check current code paths before implementation; file names and component boundaries may change. Apply §0.1 and do not infer public semantics from presentation state.
-
-These rules define the accepted ordinary Attack/Dodge treatment. They do not by themselves authorize any implementation task or imply acceptance of Duel, Negation, AOE, special-Hero graphs or broader release readiness. The current task is selected only from `HANDOVER.md`.
-
-#### 6.38.6 Accepted scenarios and regression baseline
-
-The following describe the **accepted reference states**, not an automatic test suite for every task. Recheck only the scenario/viewports affected by a reproduced regression or the task selected in `HANDOVER.md`.
-
-**A. Attack-only:** In a genuine four-player server-backed game, local Cao Cao commits Attack against top-left Zhang Liao. The Attack is centred with reserved response space; Local Dock→Attack is a **straight vertical arrowless green** tether; the red target route goes **horizontal first, then vertical** to Zhang Liao's exact Seat without placeholders; target emphasis is legible, with no unplayed Dodge, obstruction or duplicate legacy CardFace.
-
-**B. After an actual Dodge:** The same room/interaction receives a real Zhang Liao Dodge. The graph retains exact authoritative public root/response/frame/physical-card identities and Attack position remains within 1 CSS px; Dodge appears left of Attack; attacker and responder have genuine green authorship paths; the **only full-strength red line is Attack→Dodge**, short/horizontal, with an understandable interception; no simultaneous bright red path to Zhang Liao and no false `Dodge BLOCKED` cue. On ordinary Attack decline, remain truthful to server settlement.
-
-**C. Reference coverage for regression review (not a blanket per-task suite):** When a reported change affects these cases, use real browser evidence at **390×844, ~440px portrait, 480×900 and a relevant wide viewport**. Cover the affected local/top-row orientations and attacker/defender/observer semantics. Measure CardFace/union centre, usable battlefield centre, nearest Seat/Dock/control distances, exact connector endpoints, bend count and marker visibility. Include a legitimate compact/fail-closed case where relevant; never make impossible geometry pass by covering private controls.
-
-**D. Related safeguards:** Preserve refresh/reconnect recovery, no resurrection after a graph expires, private selected-Dodge concealment, target/response privacy, accessible non-colour direction/block semantics, real draw/discard and physical-card animation endpoints, and accepted Zhao Yun conversion. Apply §0.1's semantic lifecycle. CI and deployment are evidence layers, not visual acceptance.
-
-The ordinary Attack-only and committed Attack→Dodge cases above are the accepted Stage A reference. Preserve exact server proof, viewer-relative orthogonal geometry and the measured compact CardFace composition. Any future regression report must distinguish server proof, rendered visibility, geometry, CI/deployment and human review; do not reuse the former Stage A stop gate as an outstanding assignment.
-
-**Ownership:** This document is the current relationship-graph design authority. `HANDOVER.md` remains the Coding Agent-owned source for exactly one current or next bounded implementation task.
-
-### 6.39 Approved Stage B1 Duel two-round relationship graph and Stage A path-balance refinement (2026-10-12)
-
-**Task ID (keep original B1 ID): `UX2-6.34-B1-DUEL-LONG-CHAIN-01`**  
-**Status:** User-approved visual design; **not yet implemented or visually accepted**. This is **one bounded implementation/review task**: (1) Duel response-chain redesign and (2) small Attack/Dodge layout-balance polish. This design document is *not* the Coding Agent's execution queue. The Agent alone owns `HANDOVER.md`; this design update must **never** modify it.
-
-**Visual references:** The user's real ordinary Attack / Attack→Dodge phone screenshots (2026-10-12 23:11) define the practical seat-relative battlefield; the successive generated Play 1–4 images and 23:31 corrections define the layering concept. Generated image art, invented seats, and erroneously shown `Dodge` during a Duel are **not** authoritative.
-
-#### 6.39.1 Gameplay truth, left/right ownership and common grammar
-
-- A real `Duel` has **one stable publicly authenticated Duel root**. Duel participants alternately answer with **genuine, publicly committed Attack** cards. A two-round four-play example is **Attack #1, Attack #2, Attack #3, Attack #4**, one new card at a time, in server-proven continuation order. **Do not display a Dodge as a Duel response** just because its layout is inspired by the ordinary Attack→Dodge diagram. If a converted/virtual Attack is allowed, represent only its server-proven public physical/played-as identity.
-- **Side ownership:** Determine each duelist's left or right half from their **actual authenticated viewer-relative Seat/Local Dock position**. Keep that mapping stable throughout the same Duel for the same viewer; mirror appropriately for attacker, defender and observer viewpoints. Card source is proven from actor/card/root IDs, never inferred from geometry.
-- In the usable central battlefield, place a card approximately **on the middle portion of its horizontal connector run** within the author's own half. The two sides form a balanced composition. Green author tethers are **pale green, arrowless**; red response/effect relations are **vivid red, directional** and use correct validated Duel continuation. Draw horizontal/vertical straight segments joined by minimal rounded 90° elbows, never diagonals or decorative curves. Every terminal arrow must connect to a **real proven participant Seat/Dock or proven response card**, not an empty point or the lower Guidance strip.
-- Reuse the §6.34 hand-size-or-smaller genuine CardFace, with correct rank/suit/art/id and no duplicate legacy CardFace. Duel root itself remains stable throughout; **only historical played response cards** can reposition when later rounds arrive.
-
-#### 6.39.2 Four sequential gameplay frames — one newly committed Attack per frame
-
-**Frame 1 — Duel, play #1 (first half of round 1):**
-
-- Show only **Attack #1** on the authenticated first responder's side of the shared centre.
-- **Green** from that player's real Seat/Dock inward edge: descend/ascend vertically as needed, then **turn at an elbow and enter the card at its outside horizontal side midpoint**. The card belongs on the horizontal segment, **not at the bottom of a vertical line**.
-- **Red** from Attack #1's opposite side midpoint: travel horizontally toward the opposing duelist, then **turn vertically toward the real target Seat/Dock**. In the screenshot scenario where the targeted local player is below, the red arrow **must turn downward** and finish at the real Local Dock, not continue straight to a missing target.
-- Only committed public events draw a card; do not anticipate private response #2.
-
-**Frame 2 — play #2 (complete round 1):**
-
-- When the opposite duelist actually submits an authenticated Attack, place **Attack #2 in that player's opposite half**, at approximately **the same y-centre** as Attack #1, balancing the two cards around the battlefield centre. Keep #1 stable (<=1 CSS px at unchanged geometry).
-- Give each Attack its **own green source line**, from the real author Seat/Dock through a rounded elbow, finishing **horizontally at the card's outer side midpoint**. **Neither card should hang from a bottom vertical tether while the other lies horizontally.**
-- Red highlights the **exact latest proven response/effect**. If typed Duel proof establishes a direct Attack #1→Attack #2 relation, place a short horizontal red relation between facing side midpoints with appropriate direction/terminal; otherwise connect only the accurately proven root/effect/target relationship. Never invent an ordinary Dodge interception or point at the wrong player.
-- The whole round-1 pair (cards and its actual green/red relationships) is visually coherent. The Duel root remains one unchanged public root.
-
-**Frame 3 — play #3 (round 2 begins):**
-
-- **Do not drop Attack #2.** Keep **both** round-1 cards, and **their complete original route topology** (both genuine green author lines and verified red causal/effect route).
-- Transform the **round-1 pair as one unit**: shift both cards and their corresponding branching paths **slightly downward**, scale old cards to an initial **80–85% of their full-size normal CardFace** (within fit/readability), and maintain the left/right order and pair alignment. Retain the original **green green / red red hue**, original causal meaning and same orthogonal bend structure. **Only dim** brightness/opacity (initial target 25–40%), de-emphasise glow/thickness/bright markers. Do **not** recolour all old lines grey, turn old green red, remove one card or redraw the lower pair as a different relationship.
-- Add **only the new real Attack #3** above the old pair, on the **same player-owned side** as that author's earlier played card. The new upper card stays full-sized and brightly highlighted. Do not fabricate play #4.
-- **New green routing branches from the existing author-side orthogonal trunk/elbow junction** (or an equivalently verified reprojected Seat/Dock→elbow trunk), then runs horizontally into Attack #3's outer side midpoint. It does **not** begin from the **bottom or top of any old/new CardFace**, and does not claim an old card authored a new one. If the current red response route shares an existing causal bend/junction, branch it at that **red route's correct proven elbow**; never from the old card bottom and never create an unproven causal edge.
-- The new active path is bright; the intact lower-round pair/paths remain subdued **in the same place after the step-3 transform**.
-
-**Frame 4 — play #4 (complete round 2):**
-
-- Keep **the transformed round-1 lower pair and paths identical to frame 3** (no further motion, re-colouring, missing card, or regenerated straight lines), unless changed real viewport/obstacles make a measured reflow necessary.
-- Add only **Attack #4** to the **other duelist's upper half**, side-by-side with #3 at the same y-centre. Current upper pair is balanced, full-size, vivid; lower pair is still smaller, lower and dim.
-- Route Attack #4's green source from its **own player's existing real Seat/Dock trunk elbow** into its outer side midpoint. Both upper source branches originate from the corresponding **real elbow nodes**; do not sprout routes from lower historical cards, their bottoms, or floating points.
-- Red latest effect/response relation between correctly proven card/target endpoints is **the brightest current route**; older red remains red but low brightness. No extra simultaneous strong old-route arrow to imply a second active Duel.
-- Each new play is server-proven; the projected Duel root and its exact timeline/root/frame identities stay consistent in all four screenshots.
-
-#### 6.39.3 Round three and later; finite screen budget
-
-- Each newer play continues the same top/current and lower/previous-pair grammar. Promote the previously current complete pair into the compact subdued lower band only when the next real play arrives. **Never invent a pending card.** Older pairs beyond the immediately prior complete pair collapse into a neutral **`+N earlier responses`** cue or accessible history affordance as needed. Do not infinitely shrink, pile up, or obscure controls.
-- If the Duel ends early, show only the real committed responses and correctly proven result. Retain the settled graph **four seconds from its first fully rendered terminal composition**, subject to an independent new authoritative action superseding it (§0.1/§6.35). Do not change server damage, response deadlines or legality.
-
-#### 6.39.4 Exact elbow-fork routing rule (no bottom-of-card branch)
-
-- **Source routing:** Each participant has one genuine Seat/Dock edge anchor. A vertically oriented approach can turn through an **existing elbow** into that person's horizontal lane. When a second-round response arrives, the **new branch forks off that elbow or the same authenticated source trunk's newly routed elbow**, then connects *horizontally* to the new card's **outer side-centre**. Keep the old branch in place, subdued. An elbow fork is SVG routing geometry, **not an invented public causal event**.
-- **Red causal routing:** The latest current red response/target connection must have genuinely validated endpoint identities. Where it shares an old path's bend, the new red segment forks from that **real red elbow**; if the first route has no elbow, choose a legitimate collision-free joint along the **proven red relationship** instead of fabricating a bend or attaching the new line at the old card bottom. Red never changes the meaning of the earlier green source line.
-- All routes: only horizontal/vertical segments and rounded 90° elbows; minimal bends, no diagonals, no orphaned stubs, no duplicate bright targets. Active green stays green, active red stays red; history keeps the same colours but dims. Arrows/block terminal shapes express actual direction/response truth, not the appearance of an illustrative concept image.
-
-#### 6.39.5 Included same-task ordinary Attack/Dodge path-balance polish (Stage A refinement only)
-
-The user explicitly adds **Attack/Dodge path-balance improvement to this B1 task**. **Stage A is otherwise already user-accepted; do not reopen its server/proof/interaction lifecycle.** Modify only card and connector spatial balance where feasible.
-
-- **Attack-only:** Optimise the complete card-and-lines composition in the usable battlefield; keep the real Attack inside the attacker's seat-relative half and **on a horizontal path tier**, with a green vertical→elbow→horizontal **outer side-midpoint** connection when this improves balance without needless detours; red exits the opposite card side midpoint, runs horizontally, then turns vertically **up or down to the real defending Seat/Dock** with a clear arrowhead. Avoid an overlong one-sided green line and a card hung from its bottom; do not introduce an artificial elbow if a straight, correct author alignment is clearly better.
-- **Attack→Dodge:** On actual server-proven Dodge, **Attack does not move** (>1 CSS px at fixed viewport would be regression). Place genuine Dodge in the defender-owned opposite half at a similar horizontal level. Both cards should look balanced, *each on the same horizontal visual tier*, green authorship paths connected to appropriate **outside card side midpoints** where safe. The short dominant red Attack→Dodge relation **ends at Dodge**; do not simultaneously draw another full-strength red Attack→hero arrow after the block. Use true green source anchors and stable, minimal-bend geometry; avoid the complained-about visual mismatch where Attack is held by a vertical line from its bottom but Dodge sits in the red horizontal flow.
-- Preserve original physical cards, source/target proof, Zhao Yun Longdan, private pending Dodge hiding, real response controls, correct damage-on-Skip/TAKE DAMAGE and **4s** terminal result presentation, refresh/reconnect, §6.35 supersession, hand/Guidance/timer collision safety and 6-minute CI budget. **No redesign of unrelated Negation, AOE or Hero skills**.
-
-#### 6.39.6 Coding Agent implementation boundary and real-game acceptance
-
-**One bounded delivery:** `UX2-6.34-B1-DUEL-LONG-CHAIN-01` includes exactly **Duel B1 + the §6.39.5 Attack/Dodge route-balance polish**. Implement from this approved geometry; **do not delegate product-design decisions back to the Coding Agent** or start Stage B2/C automatically. Reuse the existing typed Duel continuation proof and current renderer; do not rewrite Duel gameplay or infer who plays the next card from spatial position.
-
-**Before marking implemented, collect:**
-
-1. **Four separate real server-backed gameplay screenshots** of the *same Duel root* after each committed response Attack #1 → #2 → #3 → #4 (if real legal play continues). Include exact projected Duel root and public card/event/actor/response IDs; no fake four-card fixture accepted as production proof. Verify especially #3: two old cards/green+red paths still visible below; and #4: same lower pair unchanged while upper pair finishes.
-2. For each frame, record real Seat/Dock endpoints, CardFace rectangles, side ownership, horizontal placement, orthogonal SVG path shape and **actual elbow/fork coordinates**. The current round is above and bright; preceding complete pair below and dim but still correct green/red; no bottom-of-card branch or ghost Dodge. Capture attacker/defender/observer perspectives where valid.
-3. Capture ordinary **Attack-only** and **Attack + real Dodge** before/after **in the same live interaction** to prove the path-balance polish did not move Attack or break the red interception, true source anchors or damage outcome.
-4. Review **390×844**, about **440 CSS px iPhone 17 Pro Max**, **480×900** and a relevant wide viewport. No page overflow, clipped arrows, covered Seat/Dock/Guidance/Hand/menu, broken accessible direction/expired-state cues or private leakage. If unavailable geometry prevents a claimed positive result, fail closed and report exact reason.
-5. Focused browser geometry + public-proof regressions; exact commit SHA, changed files, live screenshots, CI and deployment status. Required push CI <=6 min (§6.30); heavyweight full visual matrices remain optional.
-
-**STOP for independent user / Reviewer acceptance after this one combined B1 task.** The design is *not* an acceptance claim or instruction to alter `HANDOVER.md`. Stage B2 Negation and Stage C Group/AOE remain separate.
-
+The compact System Menu/build identifier/trace-export behavior is a separate UI concern from public-card placement. Preserve its established privacy and exit-confirmation semantics. This section is a design baseline, not a current task; `HANDOVER.md` controls execution.
