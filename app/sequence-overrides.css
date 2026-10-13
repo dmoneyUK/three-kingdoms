@@ -3666,8 +3666,9 @@
 /* Current actor emphasis follows CurrentAction locally and validated public
    decision ownership for opponent seats. The in-place outline preserves the
    fixed Seat/Dock geometry and remains distinct from the gold turn marker. */
-.opponent-player-card.current-action-player,
-.local-player-dock.current-action-player {
+.player-square.interaction-seat-decision-actor,
+.local-player-dock.interaction-seat-decision-actor,
+.local-player-dock:has(> .console-guidance .decision-status-active) {
   border-color: #a6e0c5;
   outline: 3px solid #78b7b0;
   outline-offset: -3px;
