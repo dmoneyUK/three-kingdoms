@@ -38,7 +38,7 @@ test("test-game perspective switches manually and stays selected when the server
 
   const switchButtons = page.getByTestId(/^test-view-switch-/);
   const initialViewerId = await page.locator(".local-player-dock").getAttribute("data-player-anchor");
-  const expectedSwitchIds = room.players.filter((player) => player.isTestPlayer && player.id !== initialViewerId).map(({ id }) => id).sort();
+  const expectedSwitchIds = room.players.filter((player) => (player.isTestPlayer || player.isHost) && player.id !== initialViewerId).map(({ id }) => id).sort();
   await expect(switchButtons).toHaveCount(expectedSwitchIds.length);
   const switchGeometry = await switchButtons.evaluateAll((buttons) => buttons.map((button) => {
     const card = button.closest(".local-hero-anchor, .opponent-hero-card");
@@ -56,7 +56,9 @@ test("test-game perspective switches manually and stays selected when the server
   console.log("test-view-switch-geometry", JSON.stringify({ viewport: page.viewportSize(), buttons: switchGeometry }));
   expect(switchGeometry).toHaveLength(expectedSwitchIds.length);
   expect(switchGeometry.map(({ id }) => id).sort()).toEqual(expectedSwitchIds);
-  await expect(page.getByTestId(`test-view-switch-${room.players.find((player) => player.isHost).id}`)).toHaveCount(0);
+  if (initialViewerId === room.players.find((player) => player.isHost).id) {
+    await expect(page.getByTestId(`test-view-switch-${initialViewerId}`)).toHaveCount(0);
+  }
   for (const geometry of switchGeometry) {
     expect(geometry.width).toBeGreaterThan(0);
     expect(geometry.height).toBeGreaterThan(0);
@@ -76,13 +78,12 @@ test("test-game perspective switches manually and stays selected when the server
   const selectedViewBody = await selectedViewResponse.json();
   expect((selectedViewBody.room ?? selectedViewBody).meId).toBe(selectedViewer.id);
   await expect(page.locator(`.local-player-dock[data-player-anchor="${selectedViewer.id}"]`)).toBeVisible();
-  await expect(page.getByTestId("test-view-return-host")).toBeVisible();
-  await expect(page.getByTestId("test-view-return-host")).toHaveText("HOST");
+  const host = room.players.find((player) => player.isHost);
+  await expect(page.getByTestId(`test-view-switch-${host.id}`)).toBeVisible();
+  await expect(page.getByTestId(`test-view-switch-${host.id}`)).toHaveText("SWITCH");
 
   const actingPlayer = room.players.find((player) => player.id === actingPlayerId);
-  const actingViewerButton = actingPlayer.isHost
-    ? page.getByTestId("test-view-return-host")
-    : page.getByTestId(`test-view-switch-${actingPlayerId}`);
+  const actingViewerButton = page.getByTestId(`test-view-switch-${actingPlayerId}`);
   const actingViewResponsePromise = page.waitForResponse((response) => {
     if (response.request().method() !== "GET" || !response.url().startsWith(`${API}/api/rooms?`)) return false;
     return new URL(response.url()).searchParams.get("testViewerId") === actingPlayerId;

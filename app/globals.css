@@ -1376,10 +1376,3 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
   outline: 2px solid #fff0b4;
   outline-offset: 1px;
 }
-.local-test-view-switch-button {
-  top: 4px;
-  left: 4px;
-  min-width: 48px;
-  height: 28px;
-  font-size: 8px;
-}

@@ -68,10 +68,10 @@ test("Duel test preset keeps physical Standard inventory and test-view selection
   const configured = await requestAndSettle("configure_test_hands", { code, token, presetId: "duel_chain", expectedRevision: 0 });
   assert.equal(configured.status, 200, JSON.stringify(configured.data));
   assert.deepEqual(configured.data.room.testHandPreset.handsBySeat, {
-    0: ["Attack", "Attack", "Attack"],
-    1: ["Duel", "Attack", "Attack", "Negation"],
-    2: ["Duel", "Attack", "Negation"],
-    3: ["Duel", "Attack", "Negation"],
+    0: ["Attack", "Attack", "Attack", "Dodge"],
+    1: ["Duel", "Attack", "Attack", "Dodge"],
+    2: ["Duel", "Attack", "Attack", "Dodge"],
+    3: ["Duel", "Attack", "Attack", "Dodge"],
   });
 
   let room = (await requestAndSettle("start", { code, token })).data.room;
@@ -91,10 +91,10 @@ test("Duel test preset keeps physical Standard inventory and test-view selection
   assert.equal(room.deckCount + allHandCards.length, 108, "opening hand allocation conserves all 108 Standard cards");
   for (const held of allHandCards) assert.equal(roomCardCount(code, held.id), 1, `${held.id} appears in exactly one live room zone`);
   const presetBySeat = {
-    0: ["Attack", "Attack", "Attack"],
-    1: ["Duel", "Attack", "Attack", "Negation"],
-    2: ["Duel", "Attack", "Negation"],
-    3: ["Duel", "Attack", "Negation"],
+    0: ["Attack", "Attack", "Attack", "Dodge"],
+    1: ["Duel", "Attack", "Attack", "Dodge"],
+    2: ["Duel", "Attack", "Attack", "Dodge"],
+    3: ["Duel", "Attack", "Attack", "Dodge"],
   };
   for (const [seatText, kinds] of Object.entries(presetBySeat)) {
     const seat = Number(seatText);

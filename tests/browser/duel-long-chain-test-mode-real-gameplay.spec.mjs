@@ -57,11 +57,11 @@ async function createTestGame(request, page, presetId, hostName, viewport = { wi
       if (response.request().method() !== "GET" || !response.url().startsWith(`${API}/api/rooms?`)) return false;
       return new URL(response.url()).searchParams.get("testViewerId") === host.id;
     });
-    await page.getByTestId("test-view-return-host").click();
+    await page.getByTestId(`test-view-switch-${host.id}`).click();
     expect((await hostViewResponse).status()).toBe(200);
   }
   await expect(page.locator(`.local-player-dock[data-player-anchor="${host.id}"]`)).toHaveCount(1);
-  const initialSwitchIds = room.players.filter((player) => player.isTestPlayer && player.id !== host.id).map(({ id }) => id);
+  const initialSwitchIds = room.players.filter((player) => (player.isTestPlayer || player.isHost) && player.id !== host.id).map(({ id }) => id);
   await expect(page.getByTestId(/^test-view-switch-/)).toHaveCount(initialSwitchIds.length);
   return { code, token, room, seats };
 }
@@ -87,7 +87,7 @@ async function switchViewer(page, request, game, playerId) {
   expect(player, `test seat ${playerId} exists`).toBeTruthy();
   const localDock = page.locator(`.local-player-dock[data-player-anchor="${playerId}"]`);
   if (await localDock.count() === 0) {
-    const button = player.isHost ? page.getByTestId("test-view-return-host") : page.getByTestId(`test-view-switch-${playerId}`);
+    const button = page.getByTestId(`test-view-switch-${playerId}`);
     await expect(button).toBeVisible();
     const selectedViewResponse = page.waitForResponse((response) => {
       if (response.request().method() !== "GET" || !response.url().startsWith(`${API}/api/rooms?`)) return false;
@@ -114,7 +114,7 @@ async function refreshViewerAfterServerAction(page, request, game, playerId) {
   await page.reload();
   await expect(page.locator(".game-shell")).toBeVisible();
   const currentViewerId = await page.locator(".local-player-dock").getAttribute("data-player-anchor");
-  const currentSwitchIds = Object.values(game.seats).filter((player) => player.isTestPlayer && player.id !== currentViewerId).map(({ id }) => id);
+  const currentSwitchIds = Object.values(game.seats).filter((player) => (player.isTestPlayer || player.isHost) && player.id !== currentViewerId).map(({ id }) => id);
   await expect(page.getByTestId(/^test-view-switch-/)).toHaveCount(currentSwitchIds.length);
   return switchViewer(page, request, game, playerId);
 }
@@ -1037,9 +1037,9 @@ test("test-mode Sima Yi Duel uses four real committed Attacks in one proof-backe
   test.setTimeout(180_000);
   const game = await createTestGame(request, page, "custom", "B1 DUEL HOST", { width: 390, height: 844 }, {
     0: ["Attack", "Attack", "Attack", "Attack"],
-    1: ["Duel", "Attack", "Attack", "Negation"],
+    1: ["Duel", "Attack", "Attack", "Dodge"],
     2: ["Attack", "Attack", "Attack", "Attack"],
-    3: ["Attack", "Attack", "Attack", "Negation"],
+    3: ["Attack", "Attack", "Attack", "Dodge"],
   }, { preferredHeroesBySeat: { 1: "simayi" } });
   const attacker = game.seats[1];
   const defender = game.seats[2];
@@ -1057,7 +1057,7 @@ test("test-mode Sima Yi Duel uses four real committed Attacks in one proof-backe
     const openingView = await readRoom(request, game, player.id);
     expect(openingView.myHand.filter(({ kind }) => kind === "Attack"), `seat ${player.seat + 1} opens with its configured physical Attack cards; hand=${JSON.stringify(openingView.myHand.map(({ id, kind }) => ({ id, kind })))}`).toHaveLength(expectedAttacks);
   }
-  expect((await readRoom(request, game, observer.id)).myHand.filter(({ kind }) => kind === "Negation")).toHaveLength(1);
+  expect((await readRoom(request, game, observer.id)).myHand.filter(({ kind }) => kind === "Negation")).toHaveLength(0);
 
   await advanceToActor(page, request, game, attacker.id);
   const attackerView = await switchViewer(page, request, game, attacker.id);
