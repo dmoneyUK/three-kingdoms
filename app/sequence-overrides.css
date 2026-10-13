@@ -977,7 +977,6 @@
 }
 
 .opponent-player-card.turn-square { box-shadow: 0 0 0 2px #d9b65f88, 0 9px 22px #000b; }
-.opponent-player-card.action-square { border-color: #78b7b0; }
 .opponent-player-card.selected-target { background: #151812; }
 
 .opponent-public-zones {
@@ -3663,3 +3662,13 @@
 /* UX2 B1: keep a full current Duel round above one compact historical round. */
 
 /* UX2 B1 corrective fit tiers and compact initial Negation notice. */
+
+/* Current actor emphasis follows CurrentAction locally and validated public
+   decision ownership for opponent seats. The in-place outline preserves the
+   fixed Seat/Dock geometry and remains distinct from the gold turn marker. */
+.opponent-player-card.current-action-player,
+.local-player-dock.current-action-player {
+  border-color: #a6e0c5;
+  outline: 3px solid #78b7b0;
+  outline-offset: -3px;
+}
