@@ -82,7 +82,6 @@ test("test-game perspective switches manually and stays selected when the server
   await expect(page.getByTestId(`test-view-switch-${host.id}`)).toBeVisible();
   await expect(page.getByTestId(`test-view-switch-${host.id}`)).toHaveText("SWITCH");
 
-  const actingPlayer = room.players.find((player) => player.id === actingPlayerId);
   const actingViewerButton = page.getByTestId(`test-view-switch-${actingPlayerId}`);
   const actingViewResponsePromise = page.waitForResponse((response) => {
     if (response.request().method() !== "GET" || !response.url().startsWith(`${API}/api/rooms?`)) return false;
