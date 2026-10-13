@@ -1517,6 +1517,20 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   // Events already present when the screen mounts have no new animation to
   // wait for. New event IDs enter this set only after their presentation ends.
   const [presentedEventIds, setPresentedEventIds] = useState<Set<string>>(() => new Set((room.timeline ?? []).map((event) => event.id)));
+  // The centre-to-seat card journey has its own lifecycle. The legacy event
+  // queue may finish its two-second read before the authoritative response
+  // projection is ready; that must not make the committed card look stale.
+  const [publicCardJourneySeen, setPublicCardJourneySeen] = useState(() => ({
+    roomCode: room.code,
+    eventIds: new Set((room.timeline ?? []).map((event) => event.id)),
+  }));
+  const publicCardJourneySeenEventIds = publicCardJourneySeen.roomCode === room.code
+    ? publicCardJourneySeen.eventIds
+    : new Set((room.timeline ?? []).map((event) => event.id));
+  useEffect(() => {
+    if (publicCardJourneySeen.roomCode === room.code) return;
+    setPublicCardJourneySeen({ roomCode: room.code, eventIds: new Set((room.timeline ?? []).map((event) => event.id)) });
+  }, [room.code, room.timeline, publicCardJourneySeen.roomCode]);
   const [resolutionEvents, setResolutionEvents] = useState<GameEvent[]>(initialPendingSequence);
   const [resolutionClosing, setResolutionClosing] = useState(false);
   const [sequenceScopeStartId, setSequenceScopeStartId] = useState(initialPendingSequence[0]?.id ?? "");
@@ -2536,8 +2550,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     const reasons: string[] = [];
     if (rootEvents.length !== 1) reasons.push(rootEvents.length === 0 ? "root-event-missing" : "root-event-duplicate");
     if (responseEvents.length !== 1) reasons.push(responseEvents.length === 0 ? "response-event-missing" : "response-event-duplicate");
-    if (!presentedEventIds.has(proof.rootEventId)) reasons.push("root-event-not-presented-yet");
-    if (!presentedEventIds.has(proof.responseEventId)) reasons.push("response-event-not-presented-yet");
     if (!rootEvent || rootEvent.type !== "card" || rootEvent.action !== "play") reasons.push("root-event-not-public-card-play");
     else {
       if (rootEvent.presentation === false) reasons.push("root-event-presentation-suppressed");
@@ -3577,7 +3589,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       motion: {
         type: "attack-dodge",
         scopeKey: [room.code, attackHitSettlementCandidate.action.rootEventId].join(":"),
-        rootFresh: !presentedEventIds.has(attackHitSettlementCandidate.action.rootEventId),
+        rootFresh: !publicCardJourneySeenEventIds.has(attackHitSettlementCandidate.action.rootEventId),
         responseFresh: false,
       },
       settlement: { eventId: attackHitSettlementCandidate.action.eventId, outcome: attackHitSettlementCandidate.action.outcome, exiting: attackHitSettlementCandidate.exiting },
@@ -3624,7 +3636,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         motion: {
           type: "attack-dodge" as const,
           scopeKey: [room.code, rootAction.rootEventId].join(":"),
-          rootFresh: !presentedEventIds.has(rootAction.rootEventId),
+          rootFresh: !publicCardJourneySeenEventIds.has(rootAction.rootEventId),
           responseFresh: false,
         },
         ...(rootAction.targetId === room.meId
@@ -3651,8 +3663,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         motion: {
           type: "attack-dodge",
           scopeKey: [room.code, attackDodgeDisplayCandidate.proof.rootEventId].join(":"),
-          rootFresh: false,
-          responseFresh: !presentedEventIds.has(attackDodgeDisplayCandidate.proof.responseEventId),
+          rootFresh: !publicCardJourneySeenEventIds.has(attackDodgeDisplayCandidate.proof.rootEventId),
+          responseFresh: !publicCardJourneySeenEventIds.has(attackDodgeDisplayCandidate.proof.responseEventId),
         },
         settlement: {
           eventId: attackDodgeDisplayCandidate.proof.responseEventId,
@@ -3713,6 +3725,19 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     && !rootActionTemporarilyBlocked);
   const publicCardDisplayReady = publicCardDisplayEnabled;
   const publicCardDisplayOwnsPresentation = publicCardDisplayReady;
+  const publicCardJourneyRootEventId = publicCardDisplayAction?.motion?.type === "attack-dodge" ? publicCardDisplayAction.rootEventId : null;
+  const publicCardJourneyResponseEventId = publicCardDisplayAction?.motion?.type === "attack-dodge" ? publicCardDisplayAction.response?.eventId ?? null : null;
+  useEffect(() => {
+    if (!publicCardDisplayReady || !publicCardJourneyRootEventId) return;
+    const eventIds = [publicCardJourneyRootEventId, publicCardJourneyResponseEventId].filter((eventId): eventId is string => Boolean(eventId));
+    setPublicCardJourneySeen((current) => {
+      const seen = current.roomCode === room.code
+        ? current.eventIds
+        : new Set((room.timeline ?? []).map((event) => event.id));
+      if (eventIds.every((eventId) => seen.has(eventId)) && current.roomCode === room.code) return current;
+      return { roomCode: room.code, eventIds: new Set([...seen, ...eventIds]) };
+    });
+  }, [room.code, room.timeline, publicCardDisplayReady, publicCardJourneyRootEventId, publicCardJourneyResponseEventId]);
   const publicDisplayOwnedEventIds = publicCardDisplayOwnsPresentation && publicCardDisplayAction
     ? [...new Set([
       publicCardDisplayAction.rootEventId,
