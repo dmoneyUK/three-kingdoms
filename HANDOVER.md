@@ -5,14 +5,14 @@ Mode: `USER-DIRECTED UX REFINEMENT`
 
 ## Latest result / CI
 
-- Inspector layout is at `535e9e4ebd57df7b62345d986655d8cbabfc2498`; separate lint-only cleanup is at `fb3f9e4f3b09dffc65c4ba1a173a07a9e16f868e`. Exact-SHA Actions run [`38368879532`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38368879532) passed lint/fast, API, browser smoke, D1 migrations, Worker deploy, and production smoke.
-- Latest user follow-up is local and pending validation: at phone widths, stack Equipment above Judgement in the right-side public zone column.
-- Prior geometry evidence: `test-results/ux2-4b12-unified-target-inspect-v2/server-five-line-skill-390.png` and `server-five-line-skill-layout-390.json`.
+- Remote `ux-v2` base is `9296fbbbedb7789996c655500b6832b037eca6e0`; exact-SHA run [`38376451849`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38376451849) passed Lint and fast tests, API tests, Browser startup and room smoke, deploy, and production smoke.
+- Current worktree focused browser evidence: test-player SWITCH flow 1/1 passed; real Duel long-chain plus Attack/Dodge path-balance 2/2 passed. The real four-response Duel graph was ready at 390×844, 440×956, 480×900, and 1440×900; all four viewer proofs matched and hidden-hand identity checks reported no leaks. Evidence: `test-results/ux2-6.39-duel-switch-evidence-20261013/`.
+- In the SWITCH path, only remote generated test players receive a `SWITCH` control; selecting the legal actor exposes that player's own hand and `CurrentAction` controls. The host perspective has a manual `HOST` return control. Normal server legality remains unchanged.
 
 ## Design checkpoint
 
-Reviewed `docs/UX2-refine.md` blob `6b9ad6ab83e8e64c185b3fdeed4ca03f40310ccb`, §4B.12. No design-document edit was made.
+Reviewed remote `docs/UX2-refine.md` blob `6b9ad6ab83e8e64c185b3fdeed4ca03f40310ccb`, including §4B.12 and §6.39. No design-document edit was made.
 
-## Current task — `UX2-4B.12-UNIFIED-TARGET-INSPECT`
+## Current task — `UX2-6.34-B1-DUEL-LONG-CHAIN-01` follow-up; awaiting visual review
 
-Keep public zones beside the Hero name/HP area and stack Equipment above Judgement at phone widths; keep Public Skills below HP and show five lines of a selected skill description. Preserve the single click-to-inspect panel, public-only server projection, target legality, privacy, fixed seats, and 48px-above-center positioning. Validate and deploy this bounded adjustment, then stop for user visual acceptance.
+Keep the approved §6.39 server-backed Duel graph and its measured screenshots available for user review. Rename opponent `VIEW` controls to `SWITCH`, show them only for generated test-player opponents, and provide a manual return to the host perspective. Perspective selection stays manual; private hands stay viewer-scoped; legal actions remain exclusively `CurrentAction`-driven. Preserve the stable Duel root, fail-closed public proof, and accepted Attack/Dodge path behavior. Record the feature SHA and exact Actions/deploy result after push, then stop for user visual acceptance. Do not start Negation B2 or Stage C/AOE.

@@ -27,8 +27,8 @@ test("test-game perspective switches manually and stays selected when the server
   expect(room.status).toBe("playing");
   expect(room.isTestController).toBe(true);
   const actingPlayerId = room.currentAction.actorId;
-  const selectedViewer = room.players.find((player) => player.id !== actingPlayerId);
-  expect(selectedViewer, "the room has a non-acting seat for an observer view").toBeTruthy();
+  const selectedViewer = room.players.find((player) => player.isTestPlayer && player.id !== actingPlayerId);
+  expect(selectedViewer, "the room has a non-acting test player for a manual bot view").toBeTruthy();
 
   await page.addInitScript(({ roomCode, sessionToken }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code: roomCode, token: sessionToken, name: "DUEL VIEW HOST" }));
@@ -37,7 +37,9 @@ test("test-game perspective switches manually and stays selected when the server
   await expect(page.locator(".game-shell")).toBeVisible();
 
   const switchButtons = page.getByTestId(/^test-view-switch-/);
-  await expect(switchButtons).toHaveCount(4);
+  const initialViewerId = await page.locator(".local-player-dock").getAttribute("data-player-anchor");
+  const expectedSwitchIds = room.players.filter((player) => player.isTestPlayer && player.id !== initialViewerId).map(({ id }) => id).sort();
+  await expect(switchButtons).toHaveCount(expectedSwitchIds.length);
   const switchGeometry = await switchButtons.evaluateAll((buttons) => buttons.map((button) => {
     const card = button.closest(".local-hero-anchor, .opponent-hero-card");
     const buttonRect = button.getBoundingClientRect();
@@ -52,7 +54,9 @@ test("test-game perspective switches manually and stays selected when the server
     };
   }));
   console.log("test-view-switch-geometry", JSON.stringify({ viewport: page.viewportSize(), buttons: switchGeometry }));
-  expect(switchGeometry).toHaveLength(4);
+  expect(switchGeometry).toHaveLength(expectedSwitchIds.length);
+  expect(switchGeometry.map(({ id }) => id).sort()).toEqual(expectedSwitchIds);
+  await expect(page.getByTestId(`test-view-switch-${room.players.find((player) => player.isHost).id}`)).toHaveCount(0);
   for (const geometry of switchGeometry) {
     expect(geometry.width).toBeGreaterThan(0);
     expect(geometry.height).toBeGreaterThan(0);
@@ -61,6 +65,7 @@ test("test-game perspective switches manually and stays selected when the server
   }
 
   const selectedButton = page.getByTestId(`test-view-switch-${selectedViewer.id}`);
+  await expect(selectedButton).toHaveText("SWITCH");
   const selectedViewResponsePromise = page.waitForResponse((response) => {
     if (response.request().method() !== "GET" || !response.url().startsWith(`${API}/api/rooms?`)) return false;
     return new URL(response.url()).searchParams.get("testViewerId") === selectedViewer.id;
@@ -71,9 +76,13 @@ test("test-game perspective switches manually and stays selected when the server
   const selectedViewBody = await selectedViewResponse.json();
   expect((selectedViewBody.room ?? selectedViewBody).meId).toBe(selectedViewer.id);
   await expect(page.locator(`.local-player-dock[data-player-anchor="${selectedViewer.id}"]`)).toBeVisible();
-  await expect(page.getByTestId(`test-view-switch-${selectedViewer.id}`)).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("test-view-return-host")).toBeVisible();
+  await expect(page.getByTestId("test-view-return-host")).toHaveText("HOST");
 
-  const actingViewerButton = page.getByTestId(`test-view-switch-${actingPlayerId}`);
+  const actingPlayer = room.players.find((player) => player.id === actingPlayerId);
+  const actingViewerButton = actingPlayer.isHost
+    ? page.getByTestId("test-view-return-host")
+    : page.getByTestId(`test-view-switch-${actingPlayerId}`);
   const actingViewResponsePromise = page.waitForResponse((response) => {
     if (response.request().method() !== "GET" || !response.url().startsWith(`${API}/api/rooms?`)) return false;
     return new URL(response.url()).searchParams.get("testViewerId") === actingPlayerId;

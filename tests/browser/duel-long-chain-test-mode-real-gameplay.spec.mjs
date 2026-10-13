@@ -49,7 +49,9 @@ async function createTestGame(request, page, presetId, hostName, viewport = { wi
   }, { roomCode: code, sessionToken: token, name: hostName });
   await page.goto(`${API}/`);
   await expect(page.locator(".game-shell")).toBeVisible();
-  await expect(page.getByTestId(/^test-view-switch-/)).toHaveCount(4);
+  const initialViewerId = await page.locator(".local-player-dock").getAttribute("data-player-anchor");
+  const initialSwitchIds = room.players.filter((player) => player.isTestPlayer && player.id !== initialViewerId).map(({ id }) => id);
+  await expect(page.getByTestId(/^test-view-switch-/)).toHaveCount(initialSwitchIds.length);
   return { code, token, room, seats };
 }
 
@@ -70,9 +72,12 @@ function isRoomAction(response, action) {
 }
 
 async function switchViewer(page, request, game, playerId) {
-  const button = page.getByTestId(`test-view-switch-${playerId}`);
-  await expect(button).toBeVisible();
-  if (await button.getAttribute("aria-pressed") !== "true") {
+  const player = Object.values(game.seats).find(({ id }) => id === playerId);
+  expect(player, `test seat ${playerId} exists`).toBeTruthy();
+  const localDock = page.locator(`.local-player-dock[data-player-anchor="${playerId}"]`);
+  if (await localDock.count() === 0) {
+    const button = player.isHost ? page.getByTestId("test-view-return-host") : page.getByTestId(`test-view-switch-${playerId}`);
+    await expect(button).toBeVisible();
     const selectedViewResponse = page.waitForResponse((response) => {
       if (response.request().method() !== "GET" || !response.url().startsWith(`${API}/api/rooms?`)) return false;
       return new URL(response.url()).searchParams.get("testViewerId") === playerId;
@@ -81,8 +86,7 @@ async function switchViewer(page, request, game, playerId) {
     const response = await selectedViewResponse;
     expect(response.status()).toBe(200);
   }
-  await expect(page.locator(`.local-player-dock[data-player-anchor="${playerId}"]`)).toHaveCount(1);
-  await expect(page.getByTestId(`test-view-switch-${playerId}`)).toHaveAttribute("aria-pressed", "true");
+  await expect(localDock).toHaveCount(1);
   return readRoom(request, game, playerId);
 }
 
@@ -94,11 +98,13 @@ async function readAllPerspectivesThroughViewerControls(page, request, game, pla
 
 async function refreshViewerAfterServerAction(page, request, game, playerId) {
   // These setup/decline transitions are committed by the authorized server
-  // test harness. Reload from that authoritative snapshot so the next manual
-  // VIEW does not inherit a stale animation queue from the previous viewer.
+  // test harness. Reload from that authoritative snapshot so a manual SWITCH
+  // does not inherit a stale animation queue from the previous viewer.
   await page.reload();
   await expect(page.locator(".game-shell")).toBeVisible();
-  await expect(page.getByTestId(/^test-view-switch-/)).toHaveCount(4);
+  const currentViewerId = await page.locator(".local-player-dock").getAttribute("data-player-anchor");
+  const currentSwitchIds = Object.values(game.seats).filter((player) => player.isTestPlayer && player.id !== currentViewerId).map(({ id }) => id);
+  await expect(page.getByTestId(/^test-view-switch-/)).toHaveCount(currentSwitchIds.length);
   return switchViewer(page, request, game, playerId);
 }
 
