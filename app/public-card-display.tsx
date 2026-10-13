@@ -186,6 +186,8 @@ function AttackDodgeCardJourney({
   const scopeKey = action.motion?.scopeKey ?? action.rootEventId;
   const [journey, setJourney] = useState<JourneyState>({ scopeKey: "", cards: [] });
   const journeyRef = useRef(journey);
+  const actionRef = useRef(action);
+  const sourceNameRef = useRef(sourceName);
   const mountedRef = useRef(false);
   const centerRef = useRef<CardRect | null>(null);
   const hasAttackDodgeMotion = action.motion?.type === "attack-dodge";
@@ -204,36 +206,40 @@ function AttackDodgeCardJourney({
   }, []);
 
   useLayoutEffect(() => {
+    actionRef.current = action;
+    sourceNameRef.current = sourceName;
+  }, [action, sourceName]);
+
+  useLayoutEffect(() => {
     journeyRef.current = journey;
   }, [journey]);
 
-  // Event identity is stable across polling. The effect intentionally reacts
-  // to this compact signature instead of freshly projected object references.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
-    if (!enabled || !action.motion) return;
+    const currentAction = actionRef.current;
+    const currentSourceName = sourceNameRef.current;
+    if (!enabled || !currentAction.motion) return;
     const center = battlefieldCenterCard();
     centerRef.current = center;
     const previous = journeyRef.current.scopeKey === scopeKey ? journeyRef.current.cards : [];
-    const root = action.cardFace && sourceName ? [{
-      eventId: action.rootEventId,
-      actorId: action.sourceId,
-      actorName: sourceName,
-      cardFace: action.cardFace,
-      ariaLabel: action.ariaLabel,
+    const root = currentAction.cardFace && currentSourceName ? [{
+      eventId: currentAction.rootEventId,
+      actorId: currentAction.sourceId,
+      actorName: currentSourceName,
+      cardFace: currentAction.cardFace,
+      ariaLabel: currentAction.ariaLabel,
       semanticLabel: undefined,
       role: "root" as const,
-      reveal: action.motion.rootFresh,
+      reveal: currentAction.motion.rootFresh,
     }] : [];
-    const response = action.response?.cardFace ? [{
-      eventId: action.response.eventId,
-      actorId: action.response.actorId,
-      actorName: action.response.actorName,
-      cardFace: action.response.cardFace,
-      ariaLabel: action.response.ariaLabel,
-      semanticLabel: action.response.semanticLabel,
+    const response = currentAction.response?.cardFace ? [{
+      eventId: currentAction.response.eventId,
+      actorId: currentAction.response.actorId,
+      actorName: currentAction.response.actorName,
+      cardFace: currentAction.response.cardFace,
+      ariaLabel: currentAction.response.ariaLabel,
+      semanticLabel: currentAction.response.semanticLabel,
       role: "response" as const,
-      reveal: action.motion.responseFresh,
+      reveal: currentAction.motion.responseFresh,
     }] : [];
     const incoming = [...root, ...response];
     const additions: JourneyCard[] = [];
