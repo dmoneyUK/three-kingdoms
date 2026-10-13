@@ -5,10 +5,10 @@ Mode: `USER-DIRECTED UX REFINEMENT`
 
 ## Latest result
 
-- `UX2-NO-GRAPH-REMOVAL-01` is implemented and deployed. Commit `cdff8e71f3eb8f8e73598974553ecffeadf487c2` removes the graph renderer and oversized combat panels and adds the proof-backed static public-card presenter. Follow-ups `408e4c19f00cf179f76e08433ba5044599b79324`, `16fb711dbed8635dad686d41a0539d73e372f5a7`, and `f7b1aba6c6347f9361951fd385ba6f69a30af36b` fix React Compiler lint, retire old stage assertions/transition keyframes, and align one stale assertion.
-- Manual test-view correction `3c32b3d48ba59457a5f03ee280c92fc19e684d38` defaults a fresh/reloaded controller view to HOST when gameplay is active, retains server-selected General progression during setup, and preserves an explicit SWITCH choice through polling and action responses. No local automated tests were run per user direction.
-- Latest code SHA `3c32b3d48ba59457a5f03ee280c92fc19e684d38` passed Actions run [`38443997040`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38443997040): lint/fast tests, API tests, browser startup smoke, deploy, and production smoke all succeeded. The Worker health endpoint also returned `ok: true` after deployment.
-- The user reported automatic perspective changes from the previously deployed build. The correction is deployed; a real-game retest and visual acceptance remain pending. The public-card presenter is intentionally static in Task 1; no centre-to-seat movement has been implemented.
+- `UX2-NO-GRAPH-REMOVAL-01` and the manual test-view correction are deployed. The graph renderer and oversized combat panels are removed; the static presenter has now been extended for proof-backed ordinary Attack/Dodge centre-to-seat reveals. Manual SWITCH remains available for authorized generated test players; no gameplay legality or private-hand rules changed.
+- `UX2-CENTRE-REVEAL-SEAT-CARDS-02` first slice is implemented in `app/public-card-display.tsx`, `app/page.tsx`, and `app/globals.css`: fresh public Attack and Dodge cards reveal at 60×90 CSS px in the battlefield, move to 48×72 at the actual actor's Seat/Dock, and retain the Attack while a proven Dodge is revealed. A verified Attack response window can show the compact public notice and accent the Local Dock only when `CurrentAction` authorizes that viewer to Dodge. Public damage/Dodge result notices remain proof-backed. Duel, Negation, AOE, and relationship graphs are out of scope.
+- Code SHA `8f7a1a339fe669ebf499df4587c0a693adfd0268` passed Actions run [`38454082445`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38454082445): API tests, lint/fast tests, browser startup smoke, D1 migrations, Worker deploy, and production smoke all succeeded. The user requested no local automated tests; none were run.
+- Deployment is complete. Real multiplayer/iPhone visual validation and reviewer acceptance have not yet occurred; wait for the user's manual review before further UX work.
 
 ## Design checkpoint
 
@@ -16,4 +16,4 @@ Reviewed `docs/UX2-refine.md` at `83ad06cb33c5e959f2d76b5072b0848c17698805` (blo
 
 ## Current boundary
 
-`UX2-CENTRE-REVEAL-SEAT-CARDS-02` — implement the first ordinary Attack/Dodge slice only: each proven public card reveals at battlefield centre at 60×90 CSS px, then moves to a 48×72 thumbnail at its actual author's Seat/Dock; preserve the Attack while Dodge reveals, show only proof-backed outcomes, and accent the Local Dock only for its server-authorized Dodge response. Keep manual test-player switching and legal controls unchanged. Do not implement Duel, Negation, AOE, or relationship graphs. Per the user's direction, do not run local automated tests; use the push-triggered CI and stop for the user's visual/manual acceptance.
+`UX2-CENTRE-REVEAL-SEAT-CARDS-02` — first ordinary Attack/Dodge slice is deployed and awaiting the user's manual/visual acceptance. Resume only for issues found in that review or a new direct instruction. Preserve manual test-player switching, server-owned legality, and private-hand boundaries; do not continue into Duel, Negation, AOE, or relationship graphs before acceptance.
