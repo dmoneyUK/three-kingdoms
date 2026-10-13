@@ -1163,11 +1163,22 @@ function layoutDuelGraphAction(
     const matches = visibleAnchors.filter(({ element }) => element.dataset.playerAnchor === playerId);
     return matches.length === 1 ? matches[0]!.element : null;
   };
+  const heroCardFor = (playerAnchor: HTMLElement) => {
+    const selector = playerAnchor.classList.contains("local-player-dock") ? ".local-hero-card" : ".opponent-hero-card";
+    const matches = Array.from(playerAnchor.querySelectorAll<HTMLElement>(selector));
+    return matches.length === 1 ? matches[0]! : null;
+  };
   const sourceElement = anchorFor(action.sourceId);
   const targetElement = anchorFor(action.targetId);
   if (!sourceElement || !targetElement) return null;
+  const sourceHeroElement = heroCardFor(sourceElement);
+  const targetHeroElement = heroCardFor(targetElement);
+  if (!sourceHeroElement || !targetHeroElement || !sourceHeroElement.isConnected || !targetHeroElement.isConnected
+    || sourceHeroElement.getClientRects().length !== 1 || targetHeroElement.getClientRects().length !== 1) return null;
   const sourceRect = relativeRect(sourceElement, shellBounds);
   const targetRect = relativeRect(targetElement, shellBounds);
+  const sourceHeroRect = relativeRect(sourceHeroElement, shellBounds);
+  const targetHeroRect = relativeRect(targetHeroElement, shellBounds);
   const tableRect = relativeRect(table, shellBounds);
   const centerX = center(tableRect).x;
   const sourceIsLocal = sourceElement.classList.contains("local-player-dock");
@@ -1222,7 +1233,14 @@ function layoutDuelGraphAction(
   }
   safe.width = safe.right - safe.left;
   safe.height = safe.bottom - safe.top;
-  const bounds: Rect = { left: 0, top: 0, right: shellBounds.width, bottom: shellBounds.height, width: shellBounds.width, height: shellBounds.height };
+  const pathBounds: Rect = {
+    left: 16,
+    top: 1,
+    right: shellBounds.width - 16,
+    bottom: shellBounds.height - 1,
+    width: shellBounds.width - 32,
+    height: shellBounds.height - 2,
+  };
   const rootWidth = cardBounds.width;
   const rootHeight = cardBounds.height;
   if (safe.width < rootWidth + 8 || safe.height < rootHeight + 8) return null;
@@ -1251,7 +1269,22 @@ function layoutDuelGraphAction(
   };
   const responseTop = root.bottom + 10;
   const priorTop = responseTop + currentHeight + 12;
-  const lanePairs = [[.30, .70], [.32, .68], [.28, .72], [.35, .65], [.26, .74]] as const;
+  const localSide = sourceIsLocal ? sourceSide : targetIsLocal ? targetSide : null;
+  const localResponseCenter = localSide === "left" ? safe.left + safe.width * .30
+    : localSide === "right" ? safe.left + safe.width * .70 : null;
+  const localResponseWidth = Math.max(0, ...measuredResponses.map((rect) => rect.width));
+  const localResponseOuterEdge = localSide === "left" && localResponseCenter !== null
+    ? localResponseCenter - localResponseWidth / 2
+    : localSide === "right" && localResponseCenter !== null ? localResponseCenter + localResponseWidth / 2 : null;
+  const localPreferredTrunkX = localSide === "left" && localResponseOuterEdge !== null
+    ? localResponseOuterEdge - 28
+    : localSide === "right" && localResponseOuterEdge !== null ? localResponseOuterEdge + 28 : null;
+  const localPreferredTrunkBlocked = localPreferredTrunkX !== null && controlRects.some((rect) =>
+    localPreferredTrunkX >= rect.left - 2 && localPreferredTrunkX <= rect.right + 2
+      && rect.top < tableRect.bottom && rect.bottom > responseTop);
+  const preferredLanePairs = [[.30, .70], [.32, .68], [.28, .72], [.35, .65], [.26, .74]] as const;
+  const obstacleAdjustedLanePairs = [[.349, .651], [.30, .70], [.32, .68], [.28, .72], [.26, .74]] as const;
+  const lanePairs = localPreferredTrunkBlocked ? obstacleAdjustedLanePairs : preferredLanePairs;
   const fixedObstacles = [...visibleAnchors.map(({ rect }) => rect), ...controlRects];
   const fits = (rect: Rect) => rect.left >= safe.left - .5 && rect.right <= safe.right + .5
     && rect.top >= safe.top - .5 && rect.bottom <= safe.bottom + .5
@@ -1285,30 +1318,32 @@ function layoutDuelGraphAction(
   if (!responseCards) return null;
 
   const anchorForPlayer = (playerId: string) => anchorFor(playerId);
-  const trunkXFor = (side: "left" | "right") => side === "left" ? safe.left + 4 : safe.right - 4;
-  const rootSourceStart = sourceIsLocal
-    ? { x: sourceSide === "left" ? sourceRect.left : sourceRect.right, y: tableRect.bottom }
-    : rectangleEdge(sourceRect, center(root));
-  const anchorTargetPoint = (element: HTMLElement, rect: Rect, side: "left" | "right", toward: Point): Point => element.classList.contains("local-player-dock")
-    ? { x: side === "left" ? rect.left : rect.right, y: tableRect.bottom }
-    : element.dataset.sideColumn === "left" ? { x: rect.right, y: Math.max(rect.top + 5, Math.min(toward.y, rect.bottom - 5)) }
-      : element.dataset.sideColumn === "right" ? { x: rect.left, y: Math.max(rect.top + 5, Math.min(toward.y, rect.bottom - 5)) }
-        : { x: Math.max(rect.left + 4, Math.min(toward.x, rect.right - 4)), y: rect.bottom };
+  const heroConnectionPoint = (element: HTMLElement, rect: Rect, toward: Point): Point => {
+    const midpoint = center(rect);
+    if (element.classList.contains("local-player-dock")) return { x: midpoint.x, y: rect.top };
+    if (element.dataset.sideColumn === "left") return { x: rect.right, y: midpoint.y };
+    if (element.dataset.sideColumn === "right") return { x: rect.left, y: midpoint.y };
+    const dx = toward.x - midpoint.x;
+    const dy = toward.y - midpoint.y;
+    if (Math.abs(dy) >= Math.abs(dx)) return { x: midpoint.x, y: dy < 0 ? rect.top : rect.bottom };
+    return { x: dx < 0 ? rect.left : rect.right, y: midpoint.y };
+  };
+  const rootSourceStart = heroConnectionPoint(sourceElement, sourceHeroRect, center(root));
   const rootSourcePort = { x: sourceSide === "left" ? root.left : root.right, y: center(root).y };
   const sourceRouteObstacles = [
     ...visibleAnchors.filter(({ element }) => element !== sourceElement).map(({ rect }) => rect),
     ...controlRects,
     ...responseCards,
   ];
-  const sourcePath = orthogonalPath(rootSourceStart, rootSourcePort, sourceRouteObstacles, bounds, "vertical", 2,
+  const sourcePath = orthogonalPath(rootSourceStart, rootSourcePort, sourceRouteObstacles, pathBounds, "vertical", 2,
     "vertical", "horizontal", true);
   const rootTargetPort = { x: targetSide === "left" ? root.left : root.right, y: center(root).y };
-  const rootTargetEnd = anchorTargetPoint(targetElement, targetRect, targetSide, center(root));
+  const rootTargetEnd = heroConnectionPoint(targetElement, targetHeroRect, center(root));
   const targetPath = orthogonalPath(rootTargetPort, rootTargetEnd, [
     ...visibleAnchors.filter(({ element }) => element !== targetElement).map(({ rect }) => rect),
     ...controlRects,
     ...responseCards,
-  ], bounds, "horizontal", 2, "horizontal", targetElement.dataset.sideColumn ? "horizontal" : "vertical", true);
+  ], pathBounds, "horizontal", 2, "horizontal", targetElement.dataset.sideColumn ? "horizontal" : "vertical", true);
   if (!sourcePath || !targetPath) return null;
 
   const pathIsClear = (points: readonly Point[], obstacles: readonly Rect[]) => points.length >= 2
@@ -1327,23 +1362,53 @@ function layoutDuelGraphAction(
   for (const [actorId, indices] of responseIndicesByActor) {
     const actor = anchorForPlayer(actorId);
     const side = sideFor(actorId);
-    if (!actor || !side) return null;
-    const actorRect = relativeRect(actor, shellBounds);
-    const trunkX = trunkXFor(side);
+    const actorHero = actor ? heroCardFor(actor) : null;
+    if (!actor || !actorHero || !side || actorHero.getClientRects().length !== 1) return null;
+    const actorHeroRect = relativeRect(actorHero, shellBounds);
     const rowYs = indices.map((index) => center(responseCards![index]!).y);
-    const start: Point = actor.classList.contains("local-player-dock")
-      ? { x: side === "left" ? actorRect.left : actorRect.right, y: tableRect.bottom }
-      : { x: side === "left" ? actorRect.left : actorRect.right, y: actorRect.bottom };
-    const end = { x: trunkX, y: actor.classList.contains("local-player-dock") ? Math.min(...rowYs) : Math.max(...rowYs) };
-    const leaveSeatY = actor.classList.contains("local-player-dock") ? start.y : start.y + 8;
-    const trunkPoints = [start, { x: start.x, y: leaveSeatY }, { x: trunkX, y: leaveSeatY }, end];
+    const start = heroConnectionPoint(actor, actorHeroRect, center(responseCards[indices[0]!]!));
+    const endY = actor.classList.contains("local-player-dock") ? Math.min(...rowYs) : Math.max(...rowYs);
+    const leaveSeatY = actor.classList.contains("local-player-dock") ? tableRect.bottom : start.y + 8;
     const trunkObstacles = [
       ...visibleAnchors.filter(({ element }) => element !== actor).map(({ rect }) => rect),
       ...controlRects,
       root,
       ...responseCards,
     ];
-    if (!pathIsClear(trunkPoints, trunkObstacles)) return null;
+    const actorOuterEdge = side === "left"
+      ? Math.min(...indices.map((index) => responseCards![index]!.left))
+      : Math.max(...indices.map((index) => responseCards![index]!.right));
+    const preferredTrunkX = actorOuterEdge + (side === "left" ? -28 : 28);
+    const verticalSpanTop = Math.min(leaveSeatY, endY);
+    const verticalSpanBottom = Math.max(leaveSeatY, endY);
+    const controlLaneCandidates = controlRects
+      .filter((rect) => rect.top < verticalSpanBottom && rect.bottom > verticalSpanTop)
+      .flatMap((rect) => side === "left" ? [rect.right + 8, rect.left - 8] : [rect.left - 8, rect.right + 8]);
+    const trunkCandidates = [...new Set([preferredTrunkX, ...controlLaneCandidates])]
+      .filter((x) => x >= pathBounds.left && x <= pathBounds.right)
+      .sort((left, right) => Math.abs(left - preferredTrunkX) - Math.abs(right - preferredTrunkX));
+    let trunkX: number | null = null;
+    let trunkPoints: Point[] | null = null;
+    for (const candidateX of trunkCandidates) {
+      if (controlRects.some((rect) => rect.top < verticalSpanBottom && rect.bottom > verticalSpanTop
+        && candidateX > rect.left - 8 && candidateX < rect.right + 8)) continue;
+      const candidatePoints = [start, { x: start.x, y: leaveSeatY }, { x: candidateX, y: leaveSeatY }, { x: candidateX, y: endY }];
+      if (!pathIsClear(candidatePoints, trunkObstacles)) continue;
+      const branchesClear = indices.every((index) => {
+        const responseRect = responseCards[index]!;
+        const elbow = { x: candidateX, y: center(responseRect).y };
+        const cardPoint = { x: side === "left" ? responseRect.left : responseRect.right, y: elbow.y };
+        if (side === "left" ? candidateX >= cardPoint.x - 20 : candidateX <= cardPoint.x + 20) return false;
+        return pathIsClear([elbow, cardPoint], [
+          ...fixedObstacles, root, ...responseCards.filter((_, cardIndex) => cardIndex !== index),
+        ]);
+      });
+      if (!branchesClear) continue;
+      trunkX = candidateX;
+      trunkPoints = candidatePoints;
+      break;
+    }
+    if (trunkX === null || !trunkPoints) return null;
     const trunkPath = roundedOrthogonalPolyline(trunkPoints);
     if (!trunkPath) return null;
     responseSourceTrunks.push({ actorId, path: trunkPath,
@@ -1380,7 +1445,7 @@ function layoutDuelGraphAction(
       const path = orthogonalPath(start, end, [
         ...fixedObstacles, root,
         ...responseCards.filter((_, cardIndex) => cardIndex !== index && cardIndex !== relatedIndex),
-      ], bounds, "horizontal", 2, "horizontal", "horizontal", true);
+      ], pathBounds, "horizontal", 2, "horizontal", "horizontal", true);
       if (!path) return null;
       responseCounterPaths.push(path);
       continue;
@@ -1388,19 +1453,18 @@ function layoutDuelGraphAction(
     const destinationElement = anchorForPlayer(proof.targetId);
     const destinationSide = sideFor(proof.targetId);
     if (!destinationElement || !destinationSide) return null;
-    const destinationRect = relativeRect(destinationElement, shellBounds);
-    const end = anchorTargetPoint(destinationElement, destinationRect, destinationSide, start);
-    const channelY = end.y > start.y ? Math.max(...responseCards.map((candidate) => candidate.bottom), card.bottom) + 8 : root.bottom + 6;
-    const turnX = start.x + (end.x >= start.x ? 1 : -1) * Math.max(24, Math.min(44, Math.abs(end.x - start.x) * .36));
-    const points = [start, { x: turnX, y: start.y }, { x: turnX, y: channelY }, { x: end.x, y: channelY }, end];
+    const destinationHero = heroCardFor(destinationElement);
+    if (!destinationHero || destinationHero.getClientRects().length !== 1) return null;
+    const destinationHeroRect = relativeRect(destinationHero, shellBounds);
+    const end = heroConnectionPoint(destinationElement, destinationHeroRect, start);
     const routeObstacles = [
       ...visibleAnchors.filter(({ element }) => element !== destinationElement).map(({ rect }) => rect),
       ...controlRects,
       root,
       ...responseCards.filter((_, cardIndex) => cardIndex !== index),
     ];
-    if (!pathIsClear(points, routeObstacles)) return null;
-    const path = roundedOrthogonalPolyline(points);
+    const path = orthogonalPath(start, end, routeObstacles, pathBounds, "horizontal", 2, "horizontal",
+      destinationElement.dataset.sideColumn ? "horizontal" : "vertical", true);
     if (!path) return null;
     responseCounterPaths.push(path);
   }

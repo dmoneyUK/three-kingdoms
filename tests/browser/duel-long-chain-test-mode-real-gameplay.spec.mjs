@@ -477,6 +477,11 @@ async function snapshotDuelGraph(page, playerIds) {
       const matches = [...document.querySelectorAll("[data-player-anchor]")].filter((node) => node.dataset.playerAnchor === id);
       return [id, matches.map(rect)];
     }));
+    const heroAnchors = Object.fromEntries(ids.map((id) => {
+      const players = [...document.querySelectorAll("[data-player-anchor]")].filter((node) => node.dataset.playerAnchor === id);
+      const selector = players[0]?.classList.contains("local-player-dock") ? ".local-hero-card" : ".opponent-hero-card";
+      return [id, players.length === 1 ? [rect(players[0].querySelector(selector))].filter(Boolean) : []];
+    }));
     const nodes = [...document.querySelectorAll('[data-root-action-response-node="true"]')].map((node) => ({
       rect: rect(node),
       eventId: node.dataset.responseEventId ?? null,
@@ -535,6 +540,7 @@ async function snapshotDuelGraph(page, playerIds) {
       dock: rect(document.querySelector(".local-player-dock")),
       localPlayerId: document.querySelector(".local-player-dock")?.getAttribute("data-player-anchor") ?? null,
       anchors,
+      heroAnchors,
       fixedZones,
       nodes,
       rootSourcePaths: edges("source"),
@@ -789,6 +795,47 @@ function rectanglesOverlap(first, second) {
     && first.top < second.bottom && second.top < first.bottom;
 }
 
+function heroEdgeMidpointDistance(point, heroRect) {
+  const midpointX = (heroRect.left + heroRect.right) / 2;
+  const midpointY = (heroRect.top + heroRect.bottom) / 2;
+  return Math.min(
+    Math.hypot(point.x - midpointX, point.y - heroRect.top),
+    Math.hypot(point.x - midpointX, point.y - heroRect.bottom),
+    Math.hypot(point.x - heroRect.left, point.y - midpointY),
+    Math.hypot(point.x - heroRect.right, point.y - midpointY),
+  );
+}
+
+function edgeTouchesHeroMidpoint(edge, heroRect, tolerance = 3) {
+  return [edge.start, edge.end].some((point) => heroEdgeMidpointDistance(point, heroRect) <= tolerance);
+}
+
+function assertEndpointsStayInsideViewport(edge, viewport, label) {
+  for (const point of [edge.start, edge.end]) {
+    expect(point.x, `${label} endpoint is inset from the horizontal viewport edges`).toBeGreaterThanOrEqual(16);
+    expect(point.x, `${label} endpoint is inset from the horizontal viewport edges`).toBeLessThanOrEqual(viewport.width - 16);
+    expect(point.y, `${label} endpoint remains inside the viewport`).toBeGreaterThanOrEqual(1);
+    expect(point.y, `${label} endpoint remains inside the viewport`).toBeLessThanOrEqual(viewport.height - 1);
+  }
+}
+
+function assertRoutePointsStayInset(edge, viewport, label) {
+  const path = inspectOrthogonalPath(edge.d);
+  const matrix = edge.svgScreenMatrix;
+  const toScreen = (point) => ({
+    x: point.x * matrix.a + point.y * matrix.c + matrix.e,
+    y: point.x * matrix.b + point.y * matrix.d + matrix.f,
+  });
+  const points = [
+    ...path.segments.flatMap(({ start, end }) => [toScreen(start), toScreen(end)]),
+    ...path.elbows.map(toScreen),
+  ];
+  for (const point of points) {
+    expect(point.x, label + " route stays inset from the left screen edge").toBeGreaterThanOrEqual(16);
+    expect(point.x, label + " route stays inset from the right screen edge").toBeLessThanOrEqual(viewport.width - 16);
+  }
+}
+
 function assertDuelGeometry(geometry, proof) {
   expect(geometry.graphReady).toBe("true");
   expect(geometry.rootElementCount).toBe(1);
@@ -817,9 +864,12 @@ function assertDuelGeometry(geometry, proof) {
 
   const sourceAnchor = geometry.anchors[proof.root.sourceId][0];
   const targetAnchor = geometry.anchors[proof.root.targetId][0];
+  const sourceHeroAnchor = geometry.heroAnchors[proof.root.sourceId]?.[0];
+  const targetHeroAnchor = geometry.heroAnchors[proof.root.targetId]?.[0];
+  expect(sourceHeroAnchor).toBeTruthy();
+  expect(targetHeroAnchor).toBeTruthy();
   const sourceLocal = proof.root.sourceId === geometry.localPlayerId;
   const targetLocal = proof.root.targetId === geometry.localPlayerId;
-  const localDockSeamTolerance = Math.max(6, geometry.dock.top - geometry.table.bottom + 1);
   const sourceX = (sourceAnchor.left + sourceAnchor.right) / 2;
   const targetX = (targetAnchor.left + targetAnchor.right) / 2;
   const battlefieldCenterX = (geometry.table.left + geometry.table.right) / 2;
@@ -838,15 +888,16 @@ function assertDuelGeometry(geometry, proof) {
   const nodeByEventId = new Map(geometry.nodes.map((node) => [node.eventId, node]));
   const edgeByEventId = new Map(geometry.responseTargetPaths.map((edge) => [edge.eventId, edge]));
   const sourceByEventId = new Map(geometry.responseSourcePaths.map((edge) => [edge.eventId, edge]));
-  // A local Dock starts five pixels below the table edge; its authenticated tether ends at that shared seam.
   const touches = (edge, rect, tolerance = 6) => Math.min(pointRectDistance(edge.start, rect), pointRectDistance(edge.end, rect)) <= tolerance;
-  expect(touches(geometry.rootSourcePaths[0], sourceAnchor, sourceLocal ? localDockSeamTolerance : 2), JSON.stringify({ edge: geometry.rootSourcePaths[0], sourceAnchor, localPlayerId: geometry.localPlayerId, viewport: geometry.viewport })).toBe(true);
+  expect(edgeTouchesHeroMidpoint(geometry.rootSourcePaths[0], sourceHeroAnchor), JSON.stringify({ edge: geometry.rootSourcePaths[0], sourceHeroAnchor, localPlayerId: geometry.localPlayerId, viewport: geometry.viewport })).toBe(true);
   expect(touches(geometry.rootSourcePaths[0], geometry.root), JSON.stringify({ edge: geometry.rootSourcePaths[0], root: geometry.root })).toBe(true);
-  expect(touches(geometry.rootTargetPaths[0], targetAnchor, targetLocal ? localDockSeamTolerance : 2), JSON.stringify({ edge: geometry.rootTargetPaths[0], targetAnchor, localPlayerId: geometry.localPlayerId, viewport: geometry.viewport })).toBe(true);
+  expect(edgeTouchesHeroMidpoint(geometry.rootTargetPaths[0], targetHeroAnchor), JSON.stringify({ edge: geometry.rootTargetPaths[0], targetHeroAnchor, localPlayerId: geometry.localPlayerId, viewport: geometry.viewport })).toBe(true);
   expect(touches(geometry.rootTargetPaths[0], geometry.root), JSON.stringify({ edge: geometry.rootTargetPaths[0], root: geometry.root })).toBe(true);
   expect(geometry.rootTargetPaths[0].markerEnd).toMatch(/^url\(#/);
   expect(inspectOrthogonalPath(geometry.rootSourcePaths[0].d).valid).toBe(true);
   expect(inspectOrthogonalPath(geometry.rootTargetPaths[0].d).valid).toBe(true);
+  assertEndpointsStayInsideViewport(geometry.rootSourcePaths[0], geometry.viewport, "Duel root source path");
+  assertEndpointsStayInsideViewport(geometry.rootTargetPaths[0], geometry.viewport, "Duel root target path");
   const rootCenter = { x: geometry.root.left + geometry.root.width / 2, y: geometry.root.top + geometry.root.height / 2 };
   expect(Math.abs(rootCenter.x - geometry.duelUsable.centerX), JSON.stringify({
     rootCenter,
@@ -885,7 +936,8 @@ function assertDuelGeometry(geometry, proof) {
     expect(sourceEdge.sourceSide).toBe(expectedSide);
     expect(sourceEdge.sourceElbow).toBeTruthy();
     expect(Math.hypot(sourceEdge.start.x - sourceEdge.sourceElbow.x, sourceEdge.start.y - sourceEdge.sourceElbow.y)).toBeLessThanOrEqual(1);
-    const actorAnchor = geometry.anchors[node.actorId][0];
+    const actorHeroAnchor = geometry.heroAnchors[node.actorId]?.[0];
+    expect(actorHeroAnchor).toBeTruthy();
     const trunk = geometry.responseSourceTrunks.find((edge) => edge.trunkActorId === node.actorId);
     expect(trunk).toBeTruthy();
     expect(inspectOrthogonalPath(trunk.d).valid).toBe(true);
@@ -893,8 +945,9 @@ function assertDuelGeometry(geometry, proof) {
     const elbowInSvg = { x: sourceEdge.sourceElbow.x - sourceEdge.svgRect.left, y: sourceEdge.sourceElbow.y - sourceEdge.svgRect.top };
     // The seat edge may jog a few pixels to the stable trunk lane; every response fork must meet the trunk itself.
     expect(orthogonalPathContainsPoint(inspectOrthogonalPath(trunk.d), elbowInSvg)).toBe(true);
-    expect([trunk.start, trunk.end].some((point) => pointRectDistance(point, actorAnchor) <= (node.actorId === geometry.localPlayerId ? localDockSeamTolerance : 2))).toBe(true);
+    expect([trunk.start, trunk.end].some((point) => heroEdgeMidpointDistance(point, actorHeroAnchor) <= 3), JSON.stringify({ trunk, actorHeroAnchor })).toBe(true);
     expect(trunk.trunkEventIds.every((eventId) => geometry.nodes.some((candidate) => candidate.eventId === eventId && candidate.actorId === node.actorId))).toBe(true);
+    assertEndpointsStayInsideViewport(trunk, geometry.viewport, `${node.eventId} source trunk`);
     expect(sourceEdge.active).toBe(node.currentRound === "true" ? "true" : "false");
     if (node.currentRound === "false") {
       expect(sourceEdge.opacity).toBeLessThan(.5);
@@ -905,10 +958,10 @@ function assertDuelGeometry(geometry, proof) {
     }
 
     const targetNode = node.targetResponseEventId ? nodeByEventId.get(node.targetResponseEventId) : null;
-    const targetEndpoint = targetNode?.rect ?? geometry.anchors[node.targetId]?.[0];
+    const targetHeroAnchor = !targetNode ? geometry.heroAnchors[node.targetId]?.[0] : null;
+    const targetEndpoint = targetNode?.rect ?? targetHeroAnchor;
     expect(targetEndpoint).toBeTruthy();
-    expect(touches(targetEdge, targetEndpoint,
-      !targetNode && node.targetId === geometry.localPlayerId ? localDockSeamTolerance : 6), JSON.stringify({
+    expect(targetNode ? touches(targetEdge, targetEndpoint, 6) : edgeTouchesHeroMidpoint(targetEdge, targetHeroAnchor), JSON.stringify({
       viewport: geometry.viewport,
       eventId: node.eventId,
       ordinal: node.ordinal,
@@ -919,8 +972,12 @@ function assertDuelGeometry(geometry, proof) {
       targetEndpoint,
       targetNode,
     })).toBe(true);
+    assertEndpointsStayInsideViewport(sourceEdge, geometry.viewport, `${node.eventId} source branch`);
+    assertEndpointsStayInsideViewport(targetEdge, geometry.viewport, `${node.eventId} target path`);
     expect(touches(targetEdge, node.rect)).toBe(true);
     if (targetNode) expect(targetEdge.targetResponseEventId).toBe(targetNode.eventId);
+    assertRoutePointsStayInset(sourceEdge, geometry.viewport, "response source");
+    assertRoutePointsStayInset(targetEdge, geometry.viewport, "response target");
     if (node.ordinal > 1) expect(node.targetId).toBe(proof.responses[node.ordinal - 2].responseActorId);
     if (targetEdge.end.y > targetEdge.start.y) expect(targetEdge.markerEnd).toMatch(/^url\(#/);
     if (!targetNode && targetEdge.end.y > targetEdge.start.y) {
@@ -963,6 +1020,7 @@ function assertDuelGeometry(geometry, proof) {
   }
   for (const edge of [...geometry.rootSourcePaths, ...geometry.rootTargetPaths, ...geometry.responseSourceTrunks]) {
     expect(inspectOrthogonalPath(edge.d).valid, edge.d).toBe(true);
+    assertRoutePointsStayInset(edge, geometry.viewport, edge.className);
     for (const zone of geometry.fixedZones) expect(pathIntersectsRect(edge, zone.rect), `path overlaps ${zone.name}`).toBe(false);
   }
 }
