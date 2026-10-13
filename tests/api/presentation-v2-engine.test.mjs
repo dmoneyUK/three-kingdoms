@@ -1792,6 +1792,17 @@ test("FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage
   const frame = root.frames[0];
   assert.equal(root.activeFrameId, frame.frameId);
   assert.equal(frame.stage, "NEGATION");
+  const duelPlayEvent = started.data.room.timeline.find((event) => event.type === "card" && event.action === "play" && event.card?.id === duel.id);
+  assert.ok(duelPlayEvent, "the public physical Duel root exists during its Negation window");
+  assert.deepEqual(started.data.room.presentationV2.reactionChain?.rootCard, {
+    interactionId: root.interactionId, frameId: frame.frameId,
+    sourceId: source.id, targetId: target.id, cardKind: "Duel",
+  }, `the initial Negation graph uses the same server-proven Duel source and selected target; pending=${JSON.stringify(authoritativePending(game.code))}; envelope=${query(`SELECT causal_envelope_json FROM rooms WHERE code=${quote(game.code)}`)}`);
+  assert.deepEqual(started.data.room.presentationV2.reactionChain?.publicEventLinks?.root, {
+    eventId: duelPlayEvent.id, resolutionId: duelPlayEvent.resolutionId,
+  }, "the graph root points at the exact public physical Duel play event");
+  assert.equal(started.data.room.presentationV2.duelExchange, null,
+    "the initial Negation window does not fabricate a DUEL_EXCHANGE proof");
   assert.equal(authoritativePending(game.code).continuation.kind, "negation");
   assert.equal(authoritativePending(game.code).causal.frameId, frame.frameId);
   assert.equal(authoritativePending(game.code).continuation.causal.frameId, frame.frameId);

@@ -270,6 +270,75 @@ test("snapshot keeps Negation public event links only when they align with the p
   }).reactionChain?.rootEffectState, undefined, "root disposition is withheld when exact public card links are absent");
 });
 
+test("snapshot carries the proven Duel root into its initial Negation window without opening exchange", () => {
+  const frameId = "duel-negation-frame";
+  const targetId = "B";
+  const sourceId = "A";
+  const interaction = scene({
+    stage: "NEGATION",
+    rootFrameId: frameId,
+    activeFrameId: frameId,
+    effect: "Duel",
+    sourceId,
+    targetIds: [targetId, sourceId],
+    currentParticipantId: targetId,
+    decisionActorId: targetId,
+    activeResolverId: targetId,
+    activeSourceId: sourceId,
+    activeTargetIds: [targetId],
+    participantRoles: {
+      sourceId,
+      originalTargetIds: [targetId, sourceId],
+      activeTargetIds: [targetId],
+      currentParticipantId: targetId,
+      decisionActorId: targetId,
+      activeResolverId: targetId,
+      parentParticipantId: null,
+      participantIds: [sourceId, targetId],
+    },
+    continuity: { relation: "ROOT_FRAME", parentFrameId: null },
+  });
+  const rootCardId = "duel-root-private-physical-id";
+  const reactionChain = {
+    semantics: "PROVEN",
+    interactionId: interaction.interactionId,
+    frameId,
+    rootCard: { interactionId: interaction.interactionId, frameId, sourceId, targetId, cardKind: "Duel" },
+    nodes: [],
+    rootEffectState: "ACTIVE",
+    publicEventLinks: { root: { eventId: "duel-root-event", resolutionId: "duel-root-resolution" }, nodes: [] },
+  };
+  const publicPresentation = { ...presentation(interaction, coherentBoundary({ decisionActorId: targetId })), reactionChain };
+  const compose = (presentationValue) => composePresentationSnapshot({
+    presentationV2: presentationValue,
+    currentAction: { kind: "response", actorId: targetId },
+    actionRevision: "duel-negation",
+    viewerId: targetId,
+  });
+
+  const opened = compose(publicPresentation);
+  assert.deepEqual(opened.reactionChain?.rootCard, reactionChain.rootCard);
+  assert.deepEqual(opened.reactionChain?.publicEventLinks, reactionChain.publicEventLinks);
+  assert.equal(opened.reactionChain?.rootEffectState, "ACTIVE");
+  assert.equal(opened.duelExchange, null, "the Negation window does not fabricate a Duel exchange");
+  assert.equal(JSON.stringify(opened.reactionChain).includes(rootCardId), false, "the public root never carries physical-card identity");
+
+  for (const malformed of [
+    { ...reactionChain, rootCard: { ...reactionChain.rootCard, sourceId: "C" } },
+    { ...reactionChain, rootCard: { ...reactionChain.rootCard, targetId: "C" } },
+  ]) {
+    const result = compose({ ...publicPresentation, reactionChain: malformed });
+    assert.equal(result.reactionChain?.rootCard, null, "source and target mismatches fail closed");
+    assert.equal(result.reactionChain?.publicEventLinks, undefined, "root links are withheld when root identity fails");
+  }
+  const ambiguousOrder = { ...interaction, targetIds: [sourceId, targetId], participantRoles: { ...interaction.participantRoles, originalTargetIds: [sourceId, targetId] } };
+  assert.equal(compose({ ...publicPresentation, interactionScene: ambiguousOrder }).reactionChain?.rootCard, null,
+    "Duel source/target order must match the authenticated public root");
+  const wrongResponder = { ...interaction, currentParticipantId: sourceId, participantRoles: { ...interaction.participantRoles, currentParticipantId: sourceId } };
+  assert.equal(compose({ ...publicPresentation, interactionScene: wrongResponder }).reactionChain?.rootCard, null,
+    "the initial Negation responder must be the proven Duel target");
+});
+
 test("snapshot carries only Group Negation scope bound to the active target effect", () => {
   const baseScene = groupScene();
   const interaction = {

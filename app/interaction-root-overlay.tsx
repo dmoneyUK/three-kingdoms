@@ -132,8 +132,12 @@ type RootActionLayout = {
   blockPath: string | null;
   responseCards: readonly Rect[];
   responseSides?: readonly ("left" | "right")[];
+  responseSourceTrunks?: readonly { actorId: string; path: string; active: boolean; responseEventIds: readonly string[] }[];
   responseSourcePaths: readonly string[];
   responseCounterPaths: readonly string[];
+  responseSourceElbows?: readonly { actorId: string; eventId: string; x: number; y: number; side: "left" | "right" }[];
+  duelUsableRect?: Rect;
+  duelCenterX?: number;
   historySummary?: Rect | null;
   groupTargetPaths?: readonly { playerId: string; path: string; marker: Point; effectPoint: Point }[];
   groupTargetEffectBlock?: { targetId: string; path: string; point: Point } | null;
@@ -242,6 +246,7 @@ export type InteractionRootOverlayAction = {
   rootEffectState?: "ACTIVE" | "BLOCKED";
   settlement?: { eventId: string; outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE" | "ATTACK_DAMAGE_APPLIED" | "DISMANTLE_RESOLVED" | "STEAL_RESOLVED" | "GROUP_RESOLVED" | "BUMPER_HARVEST_RESOLVED"; exiting: boolean };
   publicCounterRead?: { eventId: string; exiting: boolean; live?: boolean; settled?: boolean };
+  phaseNotice?: string;
   response?: { eventId: string; actorId: string; actorName: string; cardFace?: Card; cardLabel: string; ariaLabel: string; semanticAction?: "DODGE"; semanticLabel?: string; countersRoot?: boolean; targetId?: string; decisionActorId?: string };
   responses?: readonly InteractionRootOverlayResponseNode[];
 };
@@ -457,6 +462,45 @@ function orthogonalPath(
     path += ` L ${before.x.toFixed(1)} ${before.y.toFixed(1)} Q ${corner.x.toFixed(1)} ${corner.y.toFixed(1)} ${after.x.toFixed(1)} ${after.y.toFixed(1)}`;
   }
   path += ` L ${points.at(-1)!.x.toFixed(1)} ${points.at(-1)!.y.toFixed(1)}`;
+  return path;
+}
+
+function roundedOrthogonalPolyline(points: readonly Point[], radius = 8): string | null {
+  const compact: Point[] = [];
+  for (const point of points) {
+    const previous = compact.at(-1);
+    if (!previous || distanceBetween(previous, point) >= .1) compact.push(point);
+  }
+  for (let index = 1; index < compact.length; index += 1) {
+    const previous = compact[index - 1]!;
+    const current = compact[index]!;
+    if (Math.abs(previous.x - current.x) >= .1 && Math.abs(previous.y - current.y) >= .1) return null;
+  }
+  for (let index = compact.length - 2; index > 0; index -= 1) {
+    const previous = compact[index - 1]!;
+    const current = compact[index]!;
+    const next = compact[index + 1]!;
+    if ((Math.abs(previous.x - current.x) < .1 && Math.abs(current.x - next.x) < .1)
+      || (Math.abs(previous.y - current.y) < .1 && Math.abs(current.y - next.y) < .1)) compact.splice(index, 1);
+  }
+  if (compact.length < 2) return null;
+  let path = `M ${compact[0]!.x.toFixed(1)} ${compact[0]!.y.toFixed(1)}`;
+  for (let index = 1; index < compact.length - 1; index += 1) {
+    const previous = compact[index - 1]!;
+    const corner = compact[index]!;
+    const next = compact[index + 1]!;
+    const incomingLength = distanceBetween(previous, corner);
+    const outgoingLength = distanceBetween(corner, next);
+    const bendRadius = Math.min(radius, incomingLength / 2, outgoingLength / 2);
+    if (bendRadius < .1) continue;
+    const incoming = { x: (corner.x - previous.x) / incomingLength, y: (corner.y - previous.y) / incomingLength };
+    const outgoing = { x: (next.x - corner.x) / outgoingLength, y: (next.y - corner.y) / outgoingLength };
+    const before = { x: corner.x - incoming.x * bendRadius, y: corner.y - incoming.y * bendRadius };
+    const after = { x: corner.x + outgoing.x * bendRadius, y: corner.y + outgoing.y * bendRadius };
+    path += ` L ${before.x.toFixed(1)} ${before.y.toFixed(1)} Q ${corner.x.toFixed(1)} ${corner.y.toFixed(1)} ${after.x.toFixed(1)} ${after.y.toFixed(1)}`;
+  }
+  const last = compact.at(-1)!;
+  path += ` L ${last.x.toFixed(1)} ${last.y.toFixed(1)}`;
   return path;
 }
 
@@ -1096,6 +1140,299 @@ function layoutSimultaneousRootAction(
   };
 }
 
+function layoutDuelGraphAction(
+  shell: HTMLElement,
+  cardElement: HTMLElement,
+  responseElements: readonly HTMLElement[],
+  action: Pick<InteractionRootOverlayAction, "rootEventId" | "sourceId" | "targetId" | "cardKind" | "cardFace" | "mode" | "rootEffectState"> & ResponseLayout,
+  preferredRootCard: Rect | null,
+): RootActionLayout | null {
+  const table = shell.querySelector<HTMLElement>(".play-table");
+  const shellBounds = shell.getBoundingClientRect();
+  const cardBounds = cardElement.getBoundingClientRect();
+  if (!table || action.cardKind !== "Duel" || action.cardFace?.kind !== "Duel" || !action.targetId
+    || action.sourceId === action.targetId || action.mode !== "targeted"
+    || shellBounds.width <= 0 || shellBounds.height <= 0 || cardBounds.width <= 0 || cardBounds.height <= 0
+    || responseElements.length !== (action.responses?.length ?? 0)) return null;
+
+  const visibleAnchors = [...shell.querySelectorAll<HTMLElement>("[data-player-anchor]")]
+    .filter((element) => element.isConnected && element.getClientRects().length === 1)
+    .map((element) => ({ element, rect: relativeRect(element, shellBounds) }))
+    .filter(({ rect }) => rect.width > 0 && rect.height > 0);
+  const anchorFor = (playerId: string) => {
+    const matches = visibleAnchors.filter(({ element }) => element.dataset.playerAnchor === playerId);
+    return matches.length === 1 ? matches[0]!.element : null;
+  };
+  const sourceElement = anchorFor(action.sourceId);
+  const targetElement = anchorFor(action.targetId);
+  if (!sourceElement || !targetElement) return null;
+  const sourceRect = relativeRect(sourceElement, shellBounds);
+  const targetRect = relativeRect(targetElement, shellBounds);
+  const tableRect = relativeRect(table, shellBounds);
+  const centerX = center(tableRect).x;
+  const sourceIsLocal = sourceElement.classList.contains("local-player-dock");
+  const targetIsLocal = targetElement.classList.contains("local-player-dock");
+  const sourceSeatX = center(sourceRect).x;
+  const targetSeatX = center(targetRect).x;
+  let sourceSide: "left" | "right";
+  let targetSide: "left" | "right";
+  if (sourceIsLocal !== targetIsLocal) {
+    const outsideSide = (sourceIsLocal ? targetSeatX : sourceSeatX) < centerX ? "left" : "right";
+    sourceSide = sourceIsLocal ? outsideSide === "left" ? "right" : "left" : outsideSide;
+    targetSide = sourceIsLocal ? outsideSide : outsideSide === "left" ? "right" : "left";
+  } else if (!sourceIsLocal && Math.abs(sourceSeatX - targetSeatX) > 8) {
+    sourceSide = sourceSeatX < targetSeatX ? "left" : "right";
+    targetSide = sourceSide === "left" ? "right" : "left";
+  } else {
+    // A deterministic layout tie-break for overlapping real seat bounds.
+    sourceSide = "left";
+    targetSide = "right";
+  }
+  const sideFor = (playerId: string): "left" | "right" | null => playerId === action.sourceId
+    ? sourceSide : playerId === action.targetId ? targetSide : null;
+
+  const controlElements = [...shell.querySelectorAll<HTMLElement>(
+    ".play-center, .stage-system-cluster, .stage-system-menu, .stage-system-menu-actions, .game-messages, .game-exit, [data-response-timer], .console-guidance, .local-hand-section",
+  )].filter((element) => {
+    if (element.getClientRects().length !== 1) return false;
+    const style = getComputedStyle(element);
+    return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0;
+  });
+  const controlRects = controlElements.map((element) => relativeRect(element, shellBounds));
+  const safe: Rect = {
+    left: tableRect.left + 8,
+    top: tableRect.top + 8,
+    right: tableRect.right - 8,
+    bottom: tableRect.bottom - 8,
+    width: tableRect.width - 16,
+    height: tableRect.height - 16,
+  };
+  const topSeatBottom = Math.max(tableRect.top + 8, ...visibleAnchors
+    .filter(({ rect }) => rect.bottom > tableRect.top && rect.top < tableRect.top + tableRect.height * .38
+      && rect.left < tableRect.right && rect.right > tableRect.left)
+    .map(({ rect }) => rect.bottom + 8));
+  safe.top = Math.max(safe.top, topSeatBottom);
+  for (const { element, rect } of visibleAnchors) {
+    if (element.dataset.sideColumn === "left" && rect.right < centerX) safe.left = Math.max(safe.left, rect.right + 8);
+    if (element.dataset.sideColumn === "right" && rect.left > centerX) safe.right = Math.min(safe.right, rect.left - 8);
+  }
+  for (const rect of controlRects) {
+    if (rect.top >= tableRect.top + tableRect.height * .48 && rect.top < safe.bottom
+      && rect.left < centerX + 84 && rect.right > centerX - 84) safe.bottom = Math.min(safe.bottom, rect.top - 8);
+  }
+  safe.width = safe.right - safe.left;
+  safe.height = safe.bottom - safe.top;
+  const bounds: Rect = { left: 0, top: 0, right: shellBounds.width, bottom: shellBounds.height, width: shellBounds.width, height: shellBounds.height };
+  const rootWidth = cardBounds.width;
+  const rootHeight = cardBounds.height;
+  if (safe.width < rootWidth + 8 || safe.height < rootHeight + 8) return null;
+  const responses = action.responses ?? [];
+  const measuredResponses = responseElements.map((element) => element.getBoundingClientRect());
+  if (measuredResponses.some((rect) => rect.width <= 0 || rect.height <= 0)) return null;
+  for (const [index, response] of responses.entries()) {
+    const proof = response.counterTarget;
+    if (response.index !== index || response.cardFace?.kind !== "Attack" || proof.kind !== "DUEL_TARGET"
+      || ![action.sourceId, action.targetId].includes(response.actorId)
+      || ![action.sourceId, action.targetId].includes(proof.targetId)
+      || response.actorId !== proof.decisionActorId || response.actorId === proof.targetId || sideFor(response.actorId) === null) return null;
+    if (proof.relatedResponseEventId) {
+      const previous = responses[index - 1];
+      if (!previous || previous.eventId !== proof.relatedResponseEventId || previous.actorId !== proof.targetId) return null;
+    }
+  }
+  const currentHeight = Math.max(rootHeight, ...measuredResponses.flatMap((rect, index) => responses[index]?.isCurrentRound ? [rect.height] : []));
+  const root: Rect = {
+    left: preferredRootCard?.left ?? centerX - rootWidth / 2,
+    top: preferredRootCard?.top ?? safe.top + 22,
+    right: (preferredRootCard?.left ?? centerX - rootWidth / 2) + rootWidth,
+    bottom: (preferredRootCard?.top ?? safe.top + 22) + rootHeight,
+    width: rootWidth,
+    height: rootHeight,
+  };
+  const responseTop = root.bottom + 10;
+  const priorTop = responseTop + currentHeight + 12;
+  const lanePairs = [[.30, .70], [.32, .68], [.28, .72], [.35, .65], [.26, .74]] as const;
+  const fixedObstacles = [...visibleAnchors.map(({ rect }) => rect), ...controlRects];
+  const fits = (rect: Rect) => rect.left >= safe.left - .5 && rect.right <= safe.right + .5
+    && rect.top >= safe.top - .5 && rect.bottom <= safe.bottom + .5
+    && !fixedObstacles.some((obstacle) => overlaps(rect, obstacle, 4));
+  if (!fits(root)) return null;
+  let responseCards: Rect[] | null = null;
+  let responseSides: ("left" | "right")[] = [];
+  for (const [leftFraction, rightFraction] of lanePairs) {
+    const leftX = safe.left + safe.width * leftFraction;
+    const rightX = safe.left + safe.width * rightFraction;
+    if (Math.abs((leftX + rightX) / 2 - center(safe).x) > .5) continue;
+    const candidate: Rect[] = [];
+    const candidateSides: ("left" | "right")[] = [];
+    let valid = true;
+    for (const [index, response] of responses.entries()) {
+      const measured = measuredResponses[index]!;
+      const side = sideFor(response.actorId);
+      if (!side) { valid = false; break; }
+      const x = side === "left" ? leftX : rightX;
+      const top = response.isCurrentRound ? responseTop : priorTop;
+      const rect: Rect = { left: x - measured.width / 2, top, right: x + measured.width / 2, bottom: top + measured.height, width: measured.width, height: measured.height };
+      if (!fits(rect) || overlaps(rect, root, 4) || candidate.some((other) => overlaps(rect, other, 4))) { valid = false; break; }
+      candidate.push(rect);
+      candidateSides.push(side);
+    }
+    if (!valid) continue;
+    responseCards = candidate;
+    responseSides = candidateSides;
+    break;
+  }
+  if (!responseCards) return null;
+
+  const anchorForPlayer = (playerId: string) => anchorFor(playerId);
+  const trunkXFor = (side: "left" | "right") => side === "left" ? safe.left + 4 : safe.right - 4;
+  const rootSourceStart = sourceIsLocal
+    ? { x: sourceSide === "left" ? sourceRect.left : sourceRect.right, y: tableRect.bottom }
+    : rectangleEdge(sourceRect, center(root));
+  const anchorTargetPoint = (element: HTMLElement, rect: Rect, side: "left" | "right", toward: Point): Point => element.classList.contains("local-player-dock")
+    ? { x: side === "left" ? rect.left : rect.right, y: tableRect.bottom }
+    : element.dataset.sideColumn === "left" ? { x: rect.right, y: Math.max(rect.top + 5, Math.min(toward.y, rect.bottom - 5)) }
+      : element.dataset.sideColumn === "right" ? { x: rect.left, y: Math.max(rect.top + 5, Math.min(toward.y, rect.bottom - 5)) }
+        : { x: Math.max(rect.left + 4, Math.min(toward.x, rect.right - 4)), y: rect.bottom };
+  const rootSourcePort = { x: sourceSide === "left" ? root.left : root.right, y: center(root).y };
+  const sourceRouteObstacles = [
+    ...visibleAnchors.filter(({ element }) => element !== sourceElement).map(({ rect }) => rect),
+    ...controlRects,
+    ...responseCards,
+  ];
+  const sourcePath = orthogonalPath(rootSourceStart, rootSourcePort, sourceRouteObstacles, bounds, "vertical", 2,
+    "vertical", "horizontal", true);
+  const rootTargetPort = { x: targetSide === "left" ? root.left : root.right, y: center(root).y };
+  const rootTargetEnd = anchorTargetPoint(targetElement, targetRect, targetSide, center(root));
+  const targetPath = orthogonalPath(rootTargetPort, rootTargetEnd, [
+    ...visibleAnchors.filter(({ element }) => element !== targetElement).map(({ rect }) => rect),
+    ...controlRects,
+    ...responseCards,
+  ], bounds, "horizontal", 2, "horizontal", targetElement.dataset.sideColumn ? "horizontal" : "vertical", true);
+  if (!sourcePath || !targetPath) return null;
+
+  const pathIsClear = (points: readonly Point[], obstacles: readonly Rect[]) => points.length >= 2
+    && points.slice(1).every((point, index) => {
+      const previous = points[index]!;
+      if (Math.abs(previous.x - point.x) > .1 && Math.abs(previous.y - point.y) > .1) return false;
+      return !obstacles.some((obstacle) => segmentIntersectsRect(previous, point, expandRect(obstacle, 2)));
+    });
+  const responseSourceTrunks: NonNullable<RootActionLayout["responseSourceTrunks"]>[number][] = [];
+  const responseSourcePaths: string[] = Array(responses.length).fill("");
+  const responseSourceElbows: NonNullable<RootActionLayout["responseSourceElbows"]>[number][] = [];
+  const responseCounterPaths: string[] = [];
+  const responseIndicesByActor = new Map<string, number[]>();
+  for (const [index, response] of responses.entries()) responseIndicesByActor.set(response.actorId,
+    [...(responseIndicesByActor.get(response.actorId) ?? []), index]);
+  for (const [actorId, indices] of responseIndicesByActor) {
+    const actor = anchorForPlayer(actorId);
+    const side = sideFor(actorId);
+    if (!actor || !side) return null;
+    const actorRect = relativeRect(actor, shellBounds);
+    const trunkX = trunkXFor(side);
+    const rowYs = indices.map((index) => center(responseCards![index]!).y);
+    const start: Point = actor.classList.contains("local-player-dock")
+      ? { x: side === "left" ? actorRect.left : actorRect.right, y: tableRect.bottom }
+      : { x: side === "left" ? actorRect.left : actorRect.right, y: actorRect.bottom };
+    const end = { x: trunkX, y: actor.classList.contains("local-player-dock") ? Math.min(...rowYs) : Math.max(...rowYs) };
+    const leaveSeatY = actor.classList.contains("local-player-dock") ? start.y : start.y + 8;
+    const trunkPoints = [start, { x: start.x, y: leaveSeatY }, { x: trunkX, y: leaveSeatY }, end];
+    const trunkObstacles = [
+      ...visibleAnchors.filter(({ element }) => element !== actor).map(({ rect }) => rect),
+      ...controlRects,
+      root,
+      ...responseCards,
+    ];
+    if (!pathIsClear(trunkPoints, trunkObstacles)) return null;
+    const trunkPath = roundedOrthogonalPolyline(trunkPoints);
+    if (!trunkPath) return null;
+    responseSourceTrunks.push({ actorId, path: trunkPath,
+      active: indices.some((index) => responses[index]?.isCurrentRound === true),
+      responseEventIds: indices.map((index) => responses[index]!.eventId) });
+    for (const index of indices) {
+      const response = responses[index]!;
+      const responseRect = responseCards[index]!;
+      const elbow = { x: trunkX, y: center(responseRect).y };
+      const cardPoint = { x: side === "left" ? responseRect.left : responseRect.right, y: elbow.y };
+      if (Math.abs(cardPoint.x - elbow.x) < 20 || !pathIsClear([elbow, cardPoint], [
+        ...fixedObstacles, root, ...responseCards.filter((_, cardIndex) => cardIndex !== index),
+      ])) return null;
+      const sourcePath = roundedOrthogonalPolyline([elbow, cardPoint]);
+      if (!sourcePath) return null;
+      responseSourcePaths[index] = sourcePath;
+      responseSourceElbows.push({ actorId, eventId: response.eventId, x: elbow.x, y: elbow.y, side });
+    }
+  }
+
+  for (const [index, response] of responses.entries()) {
+    const card = responseCards[index]!;
+    const side = responseSides[index]!;
+    const start = { x: side === "left" ? card.right : card.left, y: center(card).y };
+    const proof = response.counterTarget;
+    if (proof.kind !== "DUEL_TARGET") return null;
+    const relatedIndex = proof.relatedResponseEventId
+      ? responses.findIndex((candidate) => candidate.eventId === proof.relatedResponseEventId) : -1;
+    if (relatedIndex >= 0) {
+      const related = responseCards[relatedIndex];
+      if (!related) return null;
+      const relatedCenter = center(related);
+      const end = { x: relatedCenter.x < start.x ? related.right : related.left, y: relatedCenter.y };
+      const path = orthogonalPath(start, end, [
+        ...fixedObstacles, root,
+        ...responseCards.filter((_, cardIndex) => cardIndex !== index && cardIndex !== relatedIndex),
+      ], bounds, "horizontal", 2, "horizontal", "horizontal", true);
+      if (!path) return null;
+      responseCounterPaths.push(path);
+      continue;
+    }
+    const destinationElement = anchorForPlayer(proof.targetId);
+    const destinationSide = sideFor(proof.targetId);
+    if (!destinationElement || !destinationSide) return null;
+    const destinationRect = relativeRect(destinationElement, shellBounds);
+    const end = anchorTargetPoint(destinationElement, destinationRect, destinationSide, start);
+    const channelY = end.y > start.y ? Math.max(...responseCards.map((candidate) => candidate.bottom), card.bottom) + 8 : root.bottom + 6;
+    const turnX = start.x + (end.x >= start.x ? 1 : -1) * Math.max(24, Math.min(44, Math.abs(end.x - start.x) * .36));
+    const points = [start, { x: turnX, y: start.y }, { x: turnX, y: channelY }, { x: end.x, y: channelY }, end];
+    const routeObstacles = [
+      ...visibleAnchors.filter(({ element }) => element !== destinationElement).map(({ rect }) => rect),
+      ...controlRects,
+      root,
+      ...responseCards.filter((_, cardIndex) => cardIndex !== index),
+    ];
+    if (!pathIsClear(points, routeObstacles)) return null;
+    const path = roundedOrthogonalPolyline(points);
+    if (!path) return null;
+    responseCounterPaths.push(path);
+  }
+
+  const blockPoint = { x: rootTargetPort.x + (targetSide === "left" ? -22 : 22), y: rootTargetPort.y };
+  return {
+    width: shellBounds.width,
+    height: shellBounds.height,
+    card: root,
+    orthogonalDuelRouting: true,
+    sourcePath,
+    targetPath,
+    responseTargetPath: null,
+    targetBlockPath: action.rootEffectState === "BLOCKED" ? crossMarkAt(blockPoint, { x: 1, y: 0 }) : null,
+    responseCard: null,
+    responseSourcePath: null,
+    counterPath: null,
+    blockPath: null,
+    responseCards,
+    responseSides,
+    responseSourceTrunks,
+    responseSourcePaths,
+    responseCounterPaths,
+    responseSourceElbows,
+    duelUsableRect: safe,
+    duelCenterX: center(safe).x,
+    historySummary: null,
+    selfHalo: null,
+    targetHalo: null,
+  };
+}
+
 function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, responseElement: HTMLElement | null, responseElements: readonly HTMLElement[], historySummaryElement: HTMLElement | null, action: Pick<InteractionRootOverlayAction, "rootEventId" | "sourceId" | "targetId" | "cardKind" | "cardFace" | "mode" | "rootEffectState" | "settlement" | "response" | "groupTargets" | "orderedTargets" | "simultaneousTargets"> & ResponseLayout, preferredRootCard: Rect | null, preferredResponseCard: Rect | null, diagnosticReporter?: AttackGeometryFitDiagnosticReporter): RootActionLayout | null {
   const table = shell.querySelector<HTMLElement>(".play-table");
   const shellBounds = shell.getBoundingClientRect();
@@ -1126,7 +1463,9 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     && !action.simultaneousTargets?.length && !action.responses?.length;
   const isOrthogonalDuelRoot = action.cardKind === "Duel" && action.cardFace?.kind === "Duel" && action.mode === "targeted"
     && Boolean(action.targetId) && !action.groupTargets?.length && !action.orderedTargets?.length
-    && !action.simultaneousTargets?.length;
+    && !action.simultaneousTargets?.length
+    && !(action.responses?.length && action.responses.some((response) => response.counterTarget.kind !== "DUEL_TARGET"));
+  if (isOrthogonalDuelRoot) return layoutDuelGraphAction(shell, cardElement, responseElements, action, preferredRootCard);
   const duelGraphRowGap = 10;
   const sourceElement = anchorFor(action.sourceId);
   const isSelfTarget = action.mode === "self-target";
@@ -3183,7 +3522,8 @@ export function InteractionRootOverlay({
         : null;
       const preferredResponseCard = rememberedPlacementMatches ? rememberedRoot.reservedResponseCard : null;
       const canScaleAttackCard = currentAction.cardKind === "Attack";
-      const fitSteps = canScaleAttackCard ? ["target", "compact", "minimum"] as const : ["target"] as const;
+      const canScaleDuelGraph = currentAction.cardKind === "Duel";
+      const fitSteps = canScaleAttackCard || canScaleDuelGraph ? ["target", "compact", "minimum"] as const : ["target"] as const;
       const externalDiagnosticReporter = (window as Window & {
         __wtkCaptureAttackFitDiagnostic?: AttackGeometryFitDiagnosticReporter;
       }).__wtkCaptureAttackFitDiagnostic;
@@ -3552,6 +3892,7 @@ export function InteractionRootOverlay({
   const accessibleDescription = [
     action.ariaLabel,
     ...(historyCount > 0 ? [`${historyCount} earlier committed ${responseHistoryLabel}${historyCount === 1 ? "" : "s"} collapsed`] : []),
+    ...(action.phaseNotice ? [action.phaseNotice] : []),
     ...(action.response ? [action.response.ariaLabel] : []),
     ...visibleResponses.map((response) => response.ariaLabel),
     ...(action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE" ? ["Attack resolution complete"] : []),
@@ -3615,6 +3956,12 @@ export function InteractionRootOverlay({
     data-public-counter-read-settled={action.publicCounterRead?.settled ? "true" : undefined}
     data-root-effect-state={action.rootEffectState ?? undefined}
     data-root-action-response-count={action.responses?.length ?? undefined}
+    data-root-action-phase={action.phaseNotice}
+    data-duel-usable-left={layout?.duelUsableRect?.left.toFixed(1)}
+    data-duel-usable-top={layout?.duelUsableRect?.top.toFixed(1)}
+    data-duel-usable-right={layout?.duelUsableRect?.right.toFixed(1)}
+    data-duel-usable-bottom={layout?.duelUsableRect?.bottom.toFixed(1)}
+    data-duel-center-x={layout?.duelCenterX?.toFixed(1)}
     data-root-action-visible-response-count={visibleResponses.length || undefined}
     data-root-action-collapsed-response-count={historyCount || undefined}
     data-group-target-effect-player-id={action.groupTargetEffectState?.targetId}
@@ -3668,7 +4015,7 @@ export function InteractionRootOverlay({
         data-root-action-edge={attackDodgeInterception ? "attack-dodge-interception" : responseTargetsPlayer ? "root-target-context" : responseCountersRoot || responseChainRootBlocked ? "root-target-blocked" : "target"}
         data-root-action-target-state={attackDodgeInterception ? "intercepted" : responseTargetsPlayer ? "context" : responseCountersRoot || responseChainRootBlocked ? "blocked" : "active"}
         d={layout.targetPath}
-        markerEnd={attackDodgeInterception || duelResponseGraph || responseCountersRoot || responseChainRootBlocked ? undefined : `url(#${markerId})`}
+        markerEnd={attackDodgeInterception || responseCountersRoot || responseChainRootBlocked ? undefined : `url(#${markerId})`}
       />}
       {layout.groupTargetPaths?.map((branch) => {
         const target = action.groupTargets?.find(({ playerId }) => playerId === branch.playerId)
@@ -3747,6 +4094,15 @@ export function InteractionRootOverlay({
       />}
       {layout.counterPath && <path className={responseCountersRoot ? "interaction-root-counter-relation interaction-root-negation-counter" : "interaction-root-counter-relation"} data-root-action-edge={responseCountersRoot ? "negation-counters-root" : "target-blocked"} d={layout.counterPath} markerEnd={responseCountersRoot ? `url(#${counterMarkerId})` : undefined} />}
       {layout.blockPath && <path className="interaction-root-block-mark" data-root-action-blocked="true" d={layout.blockPath} />}
+      {layout.responseSourceTrunks?.map((trunk) => <path
+        key={`duel-source-trunk-${trunk.actorId}`}
+        className={`interaction-root-response-source-tether interaction-root-duel-source-trunk${trunk.active ? "" : " is-subdued"}`}
+        data-root-action-edge="duel-source-trunk"
+        data-duel-source-trunk-player-id={trunk.actorId}
+        data-duel-source-trunk-active={trunk.active ? "true" : "false"}
+        data-duel-source-trunk-response-event-ids={trunk.responseEventIds.join(",")}
+        d={trunk.path}
+      />)}
       {layout.responseSourcePath && <path className="interaction-root-response-source-tether" data-root-action-edge="response-source" data-response-actor-id={responseActorId ?? undefined} data-response-card-face-kind={action.response?.cardFace?.kind} d={layout.responseSourcePath} />}
       {layout.responseTargetPath && <path
         className="interaction-root-response-target-arrow"
@@ -3771,6 +4127,9 @@ export function InteractionRootOverlay({
           data-response-current-round={duelTarget ? active ? "true" : "false" : undefined}
           data-response-latest={duelTarget ? index === visibleResponses.length - 1 ? "true" : "false" : undefined}
           data-response-round={duelTarget ? response.duelRound : undefined}
+          data-response-source-elbow-x={duelTarget ? layout?.responseSourceElbows?.find((elbow) => elbow.eventId === response.eventId)?.x.toFixed(1) : undefined}
+          data-response-source-elbow-y={duelTarget ? layout?.responseSourceElbows?.find((elbow) => elbow.eventId === response.eventId)?.y.toFixed(1) : undefined}
+          data-response-source-lane={duelTarget ? layout?.responseSourceElbows?.find((elbow) => elbow.eventId === response.eventId)?.side : undefined}
           d={path}
         />;
       })}
@@ -3778,7 +4137,7 @@ export function InteractionRootOverlay({
         const counterTarget = visibleResponses[index]?.counterTarget;
         const duelTarget = counterTarget?.kind === "DUEL_TARGET";
         const latest = index === visibleResponses.length - 1;
-        const active = latest;
+        const active = duelTarget ? visibleResponses[index]?.isCurrentRound === true : latest;
         const relatedResponseId = counterTarget?.kind === "DUEL_TARGET" ? counterTarget.relatedResponseEventId : undefined;
         const relatedResponseEventId = relatedResponseId && visibleResponses.some((response) => response.eventId === relatedResponseId)
           ? relatedResponseId : undefined;
@@ -3841,6 +4200,13 @@ export function InteractionRootOverlay({
         <strong>{action.cardLabel}</strong>
       </>}
     </div>
+    {action.phaseNotice && layout && <div
+      className="interaction-root-phase-notice interaction-root-duel-phase-notice"
+      data-root-action-phase-notice="true"
+      role="status"
+      aria-label={action.phaseNotice}
+      style={{ left: layout.card.left + layout.card.width / 2, top: layout.card.top - 18 }}
+    >{action.phaseNotice}</div>}
     {historyCount > 0 && <div
       ref={historySummaryRef}
       className="interaction-root-history-summary"

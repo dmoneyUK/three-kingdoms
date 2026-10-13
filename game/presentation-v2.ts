@@ -1571,28 +1571,77 @@ function reactionChainFor(
   const cardName = stringValue(continuation.cardName);
   const rootCardKind = continuation.rootCardKind;
   const expectedRootCardKind = effect && sourceId && targetId ? singleTargetNegationRootCardKind(effect, sourceId, targetId) : null;
+  const duelPending = record(effect?.pending);
+  const duelContinuation = record(duelPending?.continuation);
+  const duelPendingCausal = record(duelPending?.causal);
+  const duelContinuationCausal = record(duelContinuation?.causal);
+  const duelRootReadyAfterEventId = stringValue(duelPending?.readyAfterEventId);
+  const duelRootEventMatches = duelRootReadyAfterEventId
+    ? timeline.filter((candidate) => candidate.id === duelRootReadyAfterEventId)
+    : [];
+  const duelRootEventCandidate = duelRootEventMatches.length === 1 ? duelRootEventMatches[0] : null;
+  const duelRootEvent = effect?.kind === "duel" && duelRootEventCandidate?.type === "card"
+    && duelRootEventCandidate.action === "play" && duelRootEventCandidate.presentation !== false
+    && duelRootEventCandidate.playedAs === undefined && duelRootEventCandidate.card?.kind === "Duel"
+    && duelRootEventCandidate.resolutionId
+    ? publicCardEventForResolution(timeline, duelRootEventCandidate.resolutionId, "Duel")
+    : null;
   const rootFrame = envelope.frames.find(({ frameId }) => frameId === scene.rootFrameId);
-  const isProvenSingleTargetRoot = Boolean(
-    expectedRootCardKind && rootCardKind === expectedRootCardKind
-      && sourceId && targetId
-      && scene.continuity.relation === "ROOT_FRAME"
-      && scene.rootFrameId === scene.activeFrameId
-      && rootFrame?.frameId === frame.frameId
-      && rootFrame.stage === "NEGATION"
-      && (rootFrame.parentFrameId === undefined || rootFrame.parentFrameId === null)
-      && rootFrame.origin.originSourceId === sourceId
-      && rootFrame.current.currentSourceId === sourceId
-      && cardName !== null && rootFrame.origin.originEffect === cardName
-      && rootFrame.current.currentEffect === cardName && scene.effect === cardName
-      && rootFrame.origin.originalTargetIds.length === 1 && rootFrame.origin.originalTargetIds[0] === targetId
-      && rootFrame.current.currentTargetIds.length === 1 && rootFrame.current.currentTargetIds[0] === targetId
-      && scene.sourceId === sourceId && scene.activeSourceId === sourceId
-      && scene.participantRoles.sourceId === sourceId
-      && scene.targetIds.length === 1 && scene.targetIds[0] === targetId
-      && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === targetId
-      && scene.participantRoles.originalTargetIds.length === 1 && scene.participantRoles.originalTargetIds[0] === targetId
-      && scene.activeResolverId === item.actorId && scene.decisionActorId === item.actorId,
-  );
+  const isProvenDuelRoot = Boolean(effect?.kind === "duel"
+    && duelPending?.kind === "response" && duelPending.actorId === targetId
+    && duelContinuation?.kind === "duel"
+    && duelContinuation.sourceId === sourceId && duelContinuation.targetId === targetId
+    && duelContinuation.opponentId === sourceId
+    && duelContinuation.attackResponseCount === 0
+    && duelPendingCausal?.interactionId === scene.interactionId && duelPendingCausal.frameId === scene.activeFrameId
+    && duelContinuationCausal?.interactionId === scene.interactionId && duelContinuationCausal.frameId === scene.activeFrameId
+    && duelContinuation.sourceId !== duelContinuation.targetId
+    && duelRootReadyAfterEventId && duelRootEvent?.eventId === duelRootReadyAfterEventId);
+  // A Duel's NEGATION checkpoint reuses the Duel exchange root frame. Its
+  // origin names both participants, while the nested, still-unanswered Duel
+  // continuation proves which one was actually targeted by the physical
+  // card. Keep this separate from the ordinary one-target root contract.
+  const isProvenDuelNegationRoot = Boolean(isProvenDuelRoot
+    && sourceId && targetId && sourceId !== targetId
+    && scene.continuity.relation === "ROOT_FRAME"
+    && scene.rootFrameId === scene.activeFrameId && scene.activeFrameId === frame.frameId
+    && rootFrame?.frameId === frame.frameId && rootFrame.stage === "NEGATION"
+    && (rootFrame.parentFrameId === undefined || rootFrame.parentFrameId === null)
+    && rootFrame.origin.originSourceId === sourceId && rootFrame.origin.originEffect.toLowerCase() === "duel"
+    && rootFrame.origin.originalTargetIds.length === 2
+    && rootFrame.origin.originalTargetIds[0] === targetId && rootFrame.origin.originalTargetIds[1] === sourceId
+    && rootFrame.current.currentSourceId === sourceId && rootFrame.current.currentEffect.toLowerCase() === "duel"
+    && rootFrame.current.currentTargetIds.length === 1 && rootFrame.current.currentTargetIds[0] === targetId
+    && rootFrame.current.resolvingPlayerId === item.actorId
+    && scene.sourceId === sourceId && scene.activeSourceId === sourceId && scene.effect?.toLowerCase() === "duel"
+    && scene.targetIds.length === 2 && scene.targetIds[0] === targetId && scene.targetIds[1] === sourceId
+    && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === targetId
+    && scene.currentParticipantId === targetId
+    && scene.participantRoles.sourceId === sourceId
+    && scene.participantRoles.originalTargetIds.length === 2
+    && scene.participantRoles.originalTargetIds[0] === targetId && scene.participantRoles.originalTargetIds[1] === sourceId
+    && scene.participantRoles.currentParticipantId === targetId
+    && scene.activeResolverId === item.actorId && scene.decisionActorId === item.actorId);
+  const isProvenSingleTargetRoot = Boolean(expectedRootCardKind && rootCardKind === expectedRootCardKind
+    && sourceId && targetId && (effect?.kind === "duel"
+      ? isProvenDuelNegationRoot
+      : scene.continuity.relation === "ROOT_FRAME"
+        && scene.rootFrameId === scene.activeFrameId
+        && rootFrame?.frameId === frame.frameId
+        && rootFrame.stage === "NEGATION"
+        && (rootFrame.parentFrameId === undefined || rootFrame.parentFrameId === null)
+        && rootFrame.origin.originSourceId === sourceId
+        && rootFrame.current.currentSourceId === sourceId
+        && cardName !== null && rootFrame.origin.originEffect === cardName
+        && rootFrame.current.currentEffect === cardName && scene.effect === cardName
+        && rootFrame.origin.originalTargetIds.length === 1 && rootFrame.origin.originalTargetIds[0] === targetId
+        && rootFrame.current.currentTargetIds.length === 1 && rootFrame.current.currentTargetIds[0] === targetId
+        && scene.sourceId === sourceId && scene.activeSourceId === sourceId
+        && scene.participantRoles.sourceId === sourceId
+        && scene.targetIds.length === 1 && scene.targetIds[0] === targetId
+        && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === targetId
+        && scene.participantRoles.originalTargetIds.length === 1 && scene.participantRoles.originalTargetIds[0] === targetId
+        && scene.activeResolverId === item.actorId && scene.decisionActorId === item.actorId));
   const rootCard = isProvenSingleTargetRoot && sourceId && targetId && CARD_KINDS.includes(rootCardKind as CardKind)
     ? { interactionId: scene.interactionId, frameId: frame.frameId, sourceId, targetId, cardKind: rootCardKind as CardKind }
     : null;
@@ -1608,8 +1657,9 @@ function reactionChainFor(
     && (!effectRootCardId || effectRootCardId === heldRootCardIds[0])
     ? heldRootCardIds[0]
     : heldRootCardIds.length === 0 ? effectRootCardId : null;
-  const rootEvent = rootCard && rootPhysicalCardId && expectedRootCardKind
-    ? publicCardEventFor(rootPhysicalCardId, expectedRootCardKind)
+  const rootEvent = rootCard && expectedRootCardKind
+    ? effect?.kind === "duel" ? duelRootEvent
+    : rootPhysicalCardId ? publicCardEventFor(rootPhysicalCardId, expectedRootCardKind) : null
     : null;
   const linkedNodeEvents = nodeEventLinks.filter((link): link is NonNullable<typeof link> => link !== null);
   const publicNodeEventIds = linkedNodeEvents.map(({ eventId }) => eventId);

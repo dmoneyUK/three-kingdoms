@@ -249,6 +249,70 @@ test("single-target Negation exposes only an authoritative root card identity", 
   assert.equal(project({ continuation: { effect: { kind: "group", pending: {} }, rootCardKind: "BarbarianInvasion" } }).reactionChain, null, "an unproven Group target-effect association withholds the reaction chain");
 });
 
+test("Duel Negation binds its existing public root without opening Duel exchange early", () => {
+  const interactionId = "duel-negation-interaction";
+  const frameId = "duel-negation-frame";
+  const causal = { interactionId, frameId };
+  const rootCardId = "private-duel-root-card";
+  const rootEvent = { id: "public-duel-root-event", type: "card", action: "play", presentation: true, resolutionId: "duel-root-resolution", card: card(rootCardId, "Duel") };
+  const frame = {
+    frameId, parentFrameId: null, stage: "NEGATION",
+    origin: { originSourceId: "A", originEffect: "duel", originalTargetIds: ["C", "A"] },
+    current: { currentSourceId: "A", currentEffect: "Duel", currentTargetIds: ["C"], resolvingPlayerId: "B" },
+  };
+  const duelContinuation = {
+    kind: "duel", sourceId: "A", targetId: "C", opponentId: "A", resumePhase: "play",
+    attackResponseCount: 0, causal,
+  };
+  const baseContinuation = {
+    kind: "negation", sourceId: "A", effectTargetId: "C", rootCardKind: "Duel", cardName: "Duel",
+    resolutionId: "duel-root-resolution", remainingIds: [], negated: false, chainDepth: 0,
+    effect: { kind: "duel", pending: { kind: "response", actorId: "C", causal, readyAfterEventId: rootEvent.id, continuation: duelContinuation } },
+    causal,
+  };
+  const project = (timeline = [rootEvent], continuationOverrides = {}, nestedOverrides = {}) => projectPresentationV2({
+    pending: { kind: "response", actorId: "B", causal, continuation: {
+      ...baseContinuation,
+      ...continuationOverrides,
+      effect: { ...baseContinuation.effect, pending: { ...baseContinuation.effect.pending, ...nestedOverrides,
+        continuation: { ...duelContinuation, ...(nestedOverrides.continuation ?? {}) } } },
+    } },
+    currentAction: action({ actorId: "B", resolutionId: "duel-root-resolution" }),
+    actionRevision: "duel-negation-action",
+    timeline,
+    causalEnvelope: {
+      version: 1, interactionId, frames: [frame], activeFrameId: frameId,
+      checkpoint: { checkpointId: "duel-negation-checkpoint", frameId, stage: "NEGATION" }, presentationRevision: 1,
+    },
+  });
+
+  const opened = project();
+  assert.deepEqual(opened.reactionChain?.rootCard, {
+    interactionId, frameId, sourceId: "A", targetId: "C", cardKind: "Duel",
+  });
+  assert.deepEqual(opened.reactionChain?.publicEventLinks, {
+    root: { eventId: rootEvent.id, resolutionId: rootEvent.resolutionId }, nodes: [],
+  });
+  assert.equal(opened.duelExchange, null, "a public Negation root does not fabricate a DUEL_EXCHANGE proof");
+  assert.equal(JSON.stringify(opened.reactionChain).includes(rootCardId), false, "the public root reference does not copy its physical card ID");
+  assert.equal(project([rootEvent, { ...rootEvent, id: "duplicate-duel-root-event" }]).reactionChain?.publicEventLinks, undefined,
+    "ambiguous resolution-to-root matches fail closed");
+  assert.equal(project([rootEvent], {}, { continuation: { sourceId: "other-source" } }).reactionChain?.rootCard, null,
+    "a nested Duel source mismatch fails closed");
+  assert.equal(project([rootEvent], {}, { continuation: { targetId: "other-target" } }).reactionChain?.rootCard, null,
+    "a nested Duel target mismatch fails closed");
+  assert.equal(project([rootEvent], {}, { continuation: { opponentId: "other-opponent" } }).reactionChain?.rootCard, null,
+    "the nested Duel opponent must be the original source");
+  assert.equal(project([rootEvent], {}, { continuation: { attackResponseCount: 1 } }).reactionChain?.rootCard, null,
+    "the Negation-window root requires zero committed Duel Attacks");
+  assert.equal(project([rootEvent], {}, { causal: { interactionId, frameId: "other-frame" } }).reactionChain?.rootCard, null,
+    "a nested Duel continuation must share the proven root frame");
+  assert.equal(project([rootEvent], { effectTargetId: "A" }).reactionChain?.rootCard, null,
+    "the effect target must match the first participant in the Duel root pair");
+  assert.equal(project([rootEvent], {}, { continuation: { targetId: "A" } }).reactionChain?.rootCard, null,
+    "a Duel target mismatch cannot reuse the public physical root");
+});
+
 test("single-target Negation event links bind exact public card events without copying physical card IDs", () => {
   const interactionId = "steal-negation-interaction";
   const frameId = "steal-negation-frame";

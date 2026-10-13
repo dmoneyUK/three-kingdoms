@@ -806,12 +806,25 @@ function reactionChainFor(
   if (rawRootCard && typeof rawRootCard === "object" && !Array.isArray(rawRootCard)) {
     const candidate = rawRootCard as Record<string, unknown>;
     const targetId = scene.targetIds.length === 1 ? scene.targetIds[0] : null;
+    const singleTargetRoot = targetId !== null
+      && candidate.targetId === targetId
+      && scene.participantRoles.originalTargetIds.length === 1
+      && scene.participantRoles.originalTargetIds[0] === targetId;
+    const duelNegationRoot = candidate.cardKind === "Duel"
+      && scene.effect?.toLowerCase() === "duel"
+      && scene.targetIds.length === 2
+      && candidate.targetId === scene.targetIds[0]
+      && candidate.sourceId === scene.targetIds[1]
+      && scene.participantRoles.originalTargetIds.length === 2
+      && scene.participantRoles.originalTargetIds[0] === candidate.targetId
+      && scene.participantRoles.originalTargetIds[1] === candidate.sourceId
+      && scene.currentParticipantId === candidate.targetId;
     if (candidate.interactionId === identity.interactionId
       && candidate.frameId === scene.rootFrameId && candidate.frameId === scene.activeFrameId
       && scene.rootFrameId === scene.activeFrameId && scene.continuity.relation === "ROOT_FRAME"
       && typeof candidate.sourceId === "string" && candidate.sourceId === scene.sourceId && candidate.sourceId === scene.activeSourceId
-      && typeof candidate.targetId === "string" && candidate.targetId === targetId
-      && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === targetId
+      && typeof candidate.targetId === "string" && (singleTargetRoot || duelNegationRoot)
+      && scene.activeTargetIds.length === 1 && scene.activeTargetIds[0] === candidate.targetId
       && typeof candidate.cardKind === "string" && CARD_KINDS.includes(candidate.cardKind as CardKind)) {
       rootCard = {
         interactionId: identity.interactionId,

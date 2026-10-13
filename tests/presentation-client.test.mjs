@@ -506,6 +506,65 @@ test("adapter carries only a proven, linked Negation history without adding UI c
   assert.equal(invalidDisposition.reactionChain?.rootEffectState, undefined);
 });
 
+test("adapter carries a proven Duel root through its two-participant Negation frame", () => {
+  const interactionId = "duel-negation-interaction";
+  const frameId = "duel-negation-frame";
+  const interaction = scene({
+    interactionId,
+    rootFrameId: frameId,
+    activeFrameId: frameId,
+    stage: "NEGATION",
+    effect: "duel",
+    sourceId: "A",
+    targetIds: ["C", "A"],
+    currentParticipantId: "C",
+    decisionActorId: "B",
+    activeResolverId: "B",
+    activeSourceId: "A",
+    activeTargetIds: ["C"],
+    participantIds: ["A", "C"],
+    participantRoles: {
+      sourceId: "A",
+      originalTargetIds: ["C", "A"],
+      activeTargetIds: ["C"],
+      currentParticipantId: "C",
+      decisionActorId: "B",
+      activeResolverId: "B",
+      parentParticipantId: null,
+      participantIds: ["A", "C"],
+    },
+  });
+  const rootCard = { interactionId, frameId, sourceId: "A", targetId: "C", cardKind: "Duel" };
+  const reactionChain = {
+    semantics: "PROVEN",
+    interactionId,
+    frameId,
+    rootCard,
+    nodes: [],
+    rootEffectState: "ACTIVE",
+    publicEventLinks: { root: { eventId: "duel-root-event", resolutionId: "duel-root-resolution" }, nodes: [] },
+  };
+  const snapshotValue = snapshot({
+    identity: { interactionId, checkpointId: interaction.checkpointId, presentationRevision: interaction.presentationRevision },
+    interaction,
+    stable: { kind: "CHOICE", interactionId, checkpointId: interaction.checkpointId, presentationRevision: interaction.presentationRevision, decisionActorId: "B" },
+    decision: { actorId: "B", stage: "NEGATION" },
+    reactionChain,
+  });
+  const view = buildPresentationClientView(snapshotValue, "B");
+  assert.deepEqual(view.reactionChain?.rootCard, rootCard);
+  assert.deepEqual(buildReactionChainView(buildInteractionStageView(view, resolveDisplayName)).root?.targets.map(({ id }) => id), ["C", "A"]);
+
+  const wrongTarget = buildPresentationClientView({ ...snapshotValue,
+    reactionChain: { ...reactionChain, rootCard: { ...rootCard, targetId: "A" } },
+  }, "B");
+  assert.equal(wrongTarget.reactionChain?.rootCard, null, "the physical Duel target must be the first proven participant");
+  const wrongParticipants = buildPresentationClientView({ ...snapshotValue,
+    interaction: { ...interaction, targetIds: ["A", "C"], participantRoles: { ...interaction.participantRoles, originalTargetIds: ["A", "C"] } },
+  }, "B");
+  assert.equal(wrongParticipants.reactionChain?.rootCard, null, "the source/target participant order must match the server Duel continuation");
+});
+
 test("adapter preserves Group Negation target-effect scope only for the current public branch", () => {
   const base = groupProgressSnapshot();
   const interaction = {

@@ -3483,8 +3483,13 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     const chain = buildReactionChainView(negationStage);
     const root = chain?.root;
     const links = chain?.publicEventLinks;
-    if (!chain?.visible || !root || !links || !chain.interactionId || !root.cardKind
-      || !root.source.id || root.targets.length !== 1 || !root.targets[0]?.id
+    const rootCard = negationStage.reactionChainRootCard;
+    const targetBindingIsProven = Boolean(rootCard && root && (rootCard.cardKind === "Duel"
+      ? root.targets.length === 2 && root.targets[0]?.id === rootCard.targetId && root.targets[1]?.id === root.source.id
+      : root.targets.length === 1 && root.targets[0]?.id === rootCard.targetId));
+    if (!chain?.visible || !root || !links || !chain.interactionId || !root.cardKind || !rootCard
+      || !root.source.id || !root.targets[0]?.id || !targetBindingIsProven
+      || rootCard.sourceId !== root.source.id || !rootCard.targetId
       || chain.negationNodes.length !== links.nodes.length) return [];
     const expectedRootEffectState = chain.negationNodes.length % 2 === 0 ? "ACTIVE" : "BLOCKED";
     if (chain.rootEffectState !== expectedRootEffectState) return [];
@@ -3515,6 +3520,23 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     : null;
   const singleTargetNegationGraphActionKey = singleTargetNegationGraphCandidate
     ? [singleTargetNegationGraphCandidate.chain.interactionId, singleTargetNegationGraphCandidate.chain.publicEventLinks?.root.eventId, singleTargetNegationGraphCandidate.chain.rootEffectState, ...singleTargetNegationGraphCandidate.responseNodes.flatMap(({ event, node }) => [event.id, node.actor.id ?? ""])].join(":")
+    : null;
+  const duelNegationGraphCandidate = singleTargetNegationGraphCandidate
+    && clientPresentation.stage === "NEGATION"
+    && clientPresentation.hasInteraction
+    && typeof clientPresentation.rootFrameId === "string"
+    && singleTargetNegationGraphCandidate.root.cardKind === "Duel"
+    && singleTargetNegationGraphCandidate.root.source.id === clientPresentation.sourceId
+    && singleTargetNegationGraphCandidate.root.targets[0]?.id === clientPresentation.currentParticipantId
+    && clientPresentation.activeTargetIds.length === 1
+    && singleTargetNegationGraphCandidate.root.targets[0]?.id === clientPresentation.activeTargetIds[0]
+    && clientPresentation.originalTargetIds.length === 2
+    && clientPresentation.originalTargetIds[0] === singleTargetNegationGraphCandidate.root.targets[0]?.id
+    && clientPresentation.originalTargetIds[1] === singleTargetNegationGraphCandidate.root.source.id
+    && singleTargetNegationGraphCandidate.rootEvent.card?.kind === "Duel"
+    && singleTargetNegationGraphCandidate.chain.interactionId === clientPresentation.interactionId
+    && singleTargetNegationGraphCandidate.chain.publicEventLinks?.root.eventId === singleTargetNegationGraphCandidate.rootEvent.id
+    ? singleTargetNegationGraphCandidate
     : null;
   const oathSimultaneousRootGraphCandidate = (() => {
     const scope = clientPresentation.oathRecipientScope;
@@ -4101,7 +4123,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     && room.presentationSnapshot.reactionChain.frameId === activePublicNegationRead.action.rootFrameId
     && room.presentationSnapshot.reactionChain.publicEventLinks?.root.eventId === activePublicNegationRead.action.rootEventId);
   const heldPublicNegationReadAction = activeNegationReadIdentityMatches && activePublicNegationRead
-    && (!singleTargetNegationGraphActionKey || singleTargetNegationGraphActionKey === activePublicNegationRead.key)
+    && !(activePublicNegationRead.action.cardKind === "Duel" && (duelNegationGraphCandidate || duelExchangeGraphCandidate))
+    && (!singleTargetNegationGraphActionKey || singleTargetNegationGraphActionKey === activePublicNegationRead.key
+      || activePublicNegationRead.action.cardKind === "Duel" && activePublicNegationRead.action.rootEventId === duelNegationGraphCandidate?.rootEvent.id)
     ? {
       ...activePublicNegationRead.action,
       publicCounterRead: {
@@ -4156,6 +4180,37 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
               : { kind: "RESPONSE" as const, index: counterTarget?.index ?? -1 },
           };
         }),
+      } : {}),
+    }
+    : null;
+  const duelNegationRootOverlayAction: InteractionRootOverlayAction | null = duelNegationGraphCandidate
+    ? {
+      key: ["duel", duelNegationGraphCandidate.chain.interactionId, clientPresentation.rootFrameId!,
+        duelNegationGraphCandidate.rootEvent.id, duelNegationGraphCandidate.root.source.id!, duelNegationGraphCandidate.root.targets[0]!.id!].join(":"),
+      rootPlacementKey: duelNegationGraphCandidate.rootEvent.id,
+      interactionId: duelNegationGraphCandidate.chain.interactionId!,
+      rootFrameId: clientPresentation.rootFrameId!,
+      checkpointId: clientPresentation.checkpointId ?? undefined,
+      presentationRevision: clientPresentation.presentationRevision ?? undefined,
+      rootEventId: duelNegationGraphCandidate.rootEvent.id,
+      sourceId: duelNegationGraphCandidate.root.source.id!,
+      targetId: duelNegationGraphCandidate.root.targets[0]!.id!,
+      cardKind: "Duel",
+      cardFace: duelNegationGraphCandidate.rootEvent.card,
+      cardLabel: "DUEL",
+      ariaLabel: `${duelNegationGraphCandidate.root.source.name} played Duel targeting ${duelNegationGraphCandidate.root.targets[0]!.name}`,
+      mode: "targeted",
+      compactRoot: true,
+      rootEffectState: duelNegationGraphCandidate.chain.rootEffectState ?? undefined,
+      phaseNotice: duelNegationGraphCandidate.chain.rootEffectState === "BLOCKED" ? "DUEL NEGATED" : "NEGATION MAY BE PLAYED",
+      ...(duelNegationGraphCandidate.responseNodes.length ? {
+        publicCounterRead: {
+          eventId: duelNegationGraphCandidate.responseNodes.at(-1)!.event.id,
+          exiting: activePublicNegationRead?.action.rootEventId === duelNegationGraphCandidate.rootEvent.id
+            && activePublicNegationRead.phase === "exiting" && activeNegationReadSettled,
+          live: activeNegationReadStillLive,
+          settled: activeNegationReadSettled,
+        },
       } : {}),
     }
     : null;
@@ -4339,6 +4394,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       mode: "targeted",
       settlement: { eventId: attackHitSettlementCandidate.action.eventId, outcome: attackHitSettlementCandidate.action.outcome, exiting: attackHitSettlementCandidate.exiting },
     }
+    : duelNegationRootOverlayAction
+    ? duelNegationRootOverlayAction
     : duelExchangeGraphCandidate
     ? {
       key: ["duel", duelExchangeGraphCandidate.exchange.interactionId, duelExchangeGraphCandidate.exchange.rootFrameId, duelExchangeGraphCandidate.exchange.root.eventId, duelExchangeGraphCandidate.exchange.root.sourceId, duelExchangeGraphCandidate.exchange.root.targetId].join(":"),
@@ -4472,7 +4529,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     || expandedOpponentId || groupScopePreview.active);
   // ATTACK_DAMAGE_APPLIED settles the already-visible Attack root. Do not let
   // unrelated card-reveal queue work replace that proof-backed composition.
-  const rootActionAwaitingReveal = Boolean(!attackHitSettlementCandidate && (
+  const rootActionAwaitingReveal = Boolean(!duelNegationGraphCandidate && !duelExchangeGraphCandidate && !attackHitSettlementCandidate && (
     !attackDodgeGraphCandidate && rootAction && rootAction.action !== "ATTACK" && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || halberdOrderedRootGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
     || groupTargetBranchGraphCandidate && (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations)
@@ -4506,8 +4563,18 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const rootActionOverlayVisible = rootActionOverlayGraphReady;
   const rootActionOverlayOwnsComposition = rootActionOverlayGraphReady;
   const duelGraphOwnedEventIds = rootActionOverlayOwnsComposition && rootActionOverlayAction?.cardKind === "Duel"
-    ? [rootActionOverlayAction.rootEventId, ...(rootActionOverlayAction.responses ?? []).map((response) => response.eventId)]
+    ? [...new Set([
+      rootActionOverlayAction.rootEventId,
+      rootActionOverlayAction.publicCounterRead?.eventId,
+      ...(rootActionOverlayAction.responses ?? []).map((response) => response.eventId),
+      ...(duelNegationGraphCandidate?.rootEvent.id === rootActionOverlayAction.rootEventId
+        ? duelNegationGraphCandidate.responseNodes.map(({ event }) => event.id) : []),
+    ].filter((eventId): eventId is string => Boolean(eventId)))]
     : [];
+  const duelGraphOwnedPhysicalCardIds = new Set(rootActionOverlayOwnsComposition && rootActionOverlayAction?.cardKind === "Duel"
+    ? [rootActionOverlayAction.cardFace?.id, ...(rootActionOverlayAction.responses ?? []).map((response) => response.cardFace?.id)]
+      .filter((cardId): cardId is string => Boolean(cardId))
+    : []);
   const rootActionOverlayDisplayMode = rootActionOverlayGraphReady ? "graph" : rootActionOverlayMeasuring ? "measuring" : "fallback";
   const rootActionOverlayFallbackReason = rootActionOverlayDisplayMode !== "fallback" ? undefined
     : !rootActionOverlayAction ? "no-proven-root"
@@ -4518,7 +4585,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const activeOverlaySettlementEventId = rootActionOverlayAction?.settlement?.eventId ?? null;
   const activeOverlaySettlementExiting = rootActionOverlayAction?.settlement?.exiting === true;
   const visibleNegationReadAction = singleTargetNegationGraphActionKey
-    && rootActionOverlayAction?.key === singleTargetNegationGraphActionKey
+    && (rootActionOverlayAction?.key === singleTargetNegationGraphActionKey
+      || rootActionOverlayAction?.cardKind === "Duel" && rootActionOverlayAction.rootEventId === duelNegationGraphCandidate?.rootEvent.id)
     && rootActionOverlayAction.publicCounterRead?.eventId
     ? rootActionOverlayAction
     : null;
@@ -4527,6 +4595,13 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     visibleNegationReadActionRef.current = visibleNegationReadAction;
   }, [visibleNegationReadAction]);
   const visibleNegationReadActionKey = visibleNegationReadAction?.key ?? null;
+  useEffect(() => {
+    if (!visibleNegationReadAction || activePublicNegationRead?.key !== visibleNegationReadAction.key
+      || activePublicNegationRead.action.publicCounterRead?.eventId === visibleNegationReadAction.publicCounterRead?.eventId) return;
+    setActivePublicNegationRead((current) => current?.key === visibleNegationReadAction.key
+      ? { ...current, action: visibleNegationReadAction }
+      : current);
+  }, [activePublicNegationRead, visibleNegationReadAction]);
   const visibleNegationReadEventId = visibleNegationReadAction?.publicCounterRead?.eventId ?? null;
   useEffect(() => {
     if (!visibleNegationReadActionKey || !visibleNegationReadEventId || !rootActionOverlayGraphReady
@@ -5037,7 +5112,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     ? sequenceEventsWithoutRetiredAttackDodge.filter((event) => event.id !== rootActionOverlayAction.rootEventId
       && event.id !== rootActionOverlayAction.settlement?.eventId
       && event.id !== rootActionOverlayAction.response?.eventId
+      && !duelGraphOwnedEventIds.includes(event.id)
       && !duelExchangeEventIds.has(event.id)
+      && !eventCards(event).some((card) => duelGraphOwnedPhysicalCardIds.has(card.id))
       && (!rootActionOverlayAction.cardFace || !eventCards(event).some((card) => card.id === rootActionOverlayAction.cardFace!.id))
       && !rootActionOverlayAction.responses?.some((response) => event.id === response.eventId
         || response.cardFace && eventCards(event).some((card) => card.id === response.cardFace!.id))
@@ -5061,9 +5138,10 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       || duelExchangeGraphCandidate?.responseEvent && displayedEvent.id === duelExchangeGraphCandidate.responseEvent.id
       || attackDodgeGraphCandidate && eventCards(displayedEvent).some((card) => card.id === attackDodgeGraphCandidate.responseEvent.card.id)
       || singleTargetNegationGraphCandidate?.responseEvent && eventCards(displayedEvent).some((card) => card.id === singleTargetNegationGraphCandidate.responseEvent.card.id));
-  const activeRootDuelEvent = rootActionOverlayOwnsComposition && duelExchangeGraphCandidate && displayedEvent
-    && (duelExchangeEventIds.has(displayedEvent.id)
-      || eventCards(displayedEvent).some((card) => duelExchangePhysicalCardIds.has(card.id)));
+  const activeRootDuelEvent = rootActionOverlayOwnsComposition && rootActionOverlayAction?.cardKind === "Duel" && displayedEvent
+    && (duelGraphOwnedEventIds.includes(displayedEvent.id)
+      || eventCards(displayedEvent).some((card) => duelGraphOwnedPhysicalCardIds.has(card.id)
+        || duelExchangePhysicalCardIds.has(card.id)));
   const completedAttackDodgeResponseEvent = completedAttackDodgeSequenceCandidate && displayedEvent
     && eventCards(displayedEvent).some((card) => card.id === completedAttackDodgeSequenceCandidate.responseEvent.card.id);
   const displayedEventIsRetiredAttackDodge = Boolean(displayedEvent

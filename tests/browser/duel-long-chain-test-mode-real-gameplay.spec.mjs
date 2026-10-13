@@ -17,7 +17,7 @@ async function postRoomAction(request, action, code, token, values = {}) {
   return body.room ?? body;
 }
 
-async function createTestGame(request, page, presetId, hostName, viewport = { width: 390, height: 844 }, handsBySeat) {
+async function createTestGame(request, page, presetId, hostName, viewport = { width: 390, height: 844 }, handsBySeat, options = {}) {
   const created = await request.post(`${API}/api/rooms`, { data: { action: "create", name: hostName } });
   const body = await created.json();
   expect(created.status(), JSON.stringify(body)).toBe(201);
@@ -32,7 +32,7 @@ async function createTestGame(request, page, presetId, hostName, viewport = { wi
   for (let selection = 0; room.status === "heroes" && selection < 8; selection += 1) {
     const chooser = room.players.find((player) => player.id === room.meId);
     const seat = chooser?.seat ?? room.players.find((player) => !player.hero)?.seat ?? 0;
-    const preferredHeroId = preferredHeroesBySeat[seat];
+    const preferredHeroId = options.preferredHeroesBySeat?.[seat] ?? preferredHeroesBySeat[seat];
     const hero = room.myHeroOptions.find((candidate) => candidate.id === preferredHeroId)
       ?? room.myHeroOptions.find((candidate) => candidate.id !== "liu-bei")
       ?? room.myHeroOptions[0];
@@ -49,8 +49,19 @@ async function createTestGame(request, page, presetId, hostName, viewport = { wi
   }, { roomCode: code, sessionToken: token, name: hostName });
   await page.goto(`${API}/`);
   await expect(page.locator(".game-shell")).toBeVisible();
+  const host = room.players.find((player) => player.isHost);
+  expect(host, "the authenticated test controller has one HOST seat").toBeTruthy();
   const initialViewerId = await page.locator(".local-player-dock").getAttribute("data-player-anchor");
-  const initialSwitchIds = room.players.filter((player) => player.isTestPlayer && player.id !== initialViewerId).map(({ id }) => id);
+  if (initialViewerId !== host.id) {
+    const hostViewResponse = page.waitForResponse((response) => {
+      if (response.request().method() !== "GET" || !response.url().startsWith(`${API}/api/rooms?`)) return false;
+      return new URL(response.url()).searchParams.get("testViewerId") === host.id;
+    });
+    await page.getByTestId("test-view-return-host").click();
+    expect((await hostViewResponse).status()).toBe(200);
+  }
+  await expect(page.locator(`.local-player-dock[data-player-anchor="${host.id}"]`)).toHaveCount(1);
+  const initialSwitchIds = room.players.filter((player) => player.isTestPlayer && player.id !== host.id).map(({ id }) => id);
   await expect(page.getByTestId(/^test-view-switch-/)).toHaveCount(initialSwitchIds.length);
   return { code, token, room, seats };
 }
@@ -192,24 +203,117 @@ async function playDuel(page, request, game, actorId, cardId, targetName) {
   expect(response.status()).toBe(200);
 }
 
-async function passDuelNegationWindows(page, request, game, viewerIds) {
+async function passDuelNegationWindows(page, request, game, viewerIds, testInfo, rootViewerId) {
+  let initialNegation = null;
   for (let prompt = 0; prompt < game.room.players.length + 1; prompt += 1) {
     const views = await readAllPerspectivesThroughViewerControls(page, request, game, viewerIds);
     const exchange = views[0].presentationSnapshot.duelExchange;
     if (exchange?.semantics === "PROVEN" && exchange.responseCount === 0) {
+      if (!initialNegation) {
+        await testInfo.attach("duel-b1-negation-window-not-observed.json", {
+          body: JSON.stringify(views.map((view) => ({
+            meId: view.meId,
+            isTestController: view.isTestController,
+            currentAction: view.currentAction,
+            stage: view.presentationSnapshot?.interaction?.stage,
+            reactionChain: view.presentationSnapshot?.reactionChain,
+            duelExchange: view.presentationSnapshot?.duelExchange,
+            pendingKind: view.pending?.kind,
+            continuation: view.pending?.continuation,
+            handKinds: view.myHand.map(({ kind, id }) => ({ kind, id })),
+            recentEvents: view.timeline.slice(-12).map((event) => ({ id: event.id, type: event.type, action: event.action,
+              player: event.player, cardKind: event.card?.kind, presentation: event.presentation, privateToPlayerId: event.privateToPlayerId })),
+          })), null, 2),
+          contentType: "application/json",
+        });
+        await testInfo.attach("duel-b1-negation-window-not-observed.png", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
+      }
       const rootPhysicalCardId = views.flatMap(({ timeline }) => timeline).find((event) => event.id === exchange.root.eventId)?.card?.id;
       for (const view of views) expect(view.presentationSnapshot.duelExchange, `public Duel proof for viewer ${view.meId}; v2=${JSON.stringify({ exchange: view.presentationV2?.duelExchange, scene: view.presentationV2?.interactionScene, stable: view.presentationV2?.stableBoundary, pending: view.pending, pendingDuel: view.pendingDuel, continuation: view.pending?.continuation, currentAction: view.currentAction, causalEnvelope: view.causalEnvelope, rootMatches: view.timeline.filter((event) => event.id === exchange.root.eventId || rootPhysicalCardId && JSON.stringify(event).includes(rootPhysicalCardId)).map(({ id, type, action, presentation, privateToPlayerId, playedAs, card, cards }) => ({ id, type, action, presentation, privateToPlayerId, playedAs, cardKind: card?.kind, cardId: card?.id, cards: cards?.map(({ kind, id }) => ({ kind, id })) })) })}`).toEqual(exchange);
-      return { views, exchange };
+      return { views, exchange, initialNegation };
     }
     const activeActionView = views.find((view) => view.currentAction?.actorId);
     const actorId = activeActionView?.currentAction?.actorId;
-    expect(actorId, `one authenticated viewer exposes the current Negation-window CurrentAction and public stage: ${JSON.stringify(views.map(({ meId, currentAction, presentationSnapshot }) => ({ meId, currentAction, stage: presentationSnapshot?.interactionScene?.stage, proof: presentationSnapshot?.duelExchange?.semantics })))}`).toBeTruthy();
+    expect(actorId, `one authenticated viewer exposes the current Negation-window CurrentAction and public stage: ${JSON.stringify(views.map(({ meId, currentAction, presentationSnapshot }) => ({ meId, currentAction, stage: presentationSnapshot?.interaction?.stage, proof: presentationSnapshot?.duelExchange?.semantics })))}`).toBeTruthy();
     const actorView = await switchViewer(page, request, game, actorId);
     expect(actorView.currentAction?.actorId).toBe(actorId);
     expect(actorView.currentAction?.kind).toBe("response");
     expect(actorView.currentAction?.legalActions).toContain("decline_response");
     await expect(page.getByText("Play Negation or Skip.", { exact: true })).toBeVisible();
-    await postRoomAction(request, "decline_response", game.code, game.token);
+    if (prompt === 0) await testInfo.attach("duel-b1-negation-proof-diagnostic.json", {
+      body: JSON.stringify({
+        snapshot: actorView.presentationSnapshot,
+        presentationV2: actorView.presentationV2,
+        pending: actorView.pending,
+        pendingNegation: actorView.pendingNegation,
+        pendingDuel: actorView.pendingDuel,
+        duelEvents: actorView.timeline.filter((event) => event.type === "card" && event.card?.kind === "Duel"),
+        players: actorView.players.map(({ id, seat, isTestPlayer, isHost, hero }) => ({ id, seat, isTestPlayer, isHost, hero })),
+      }, null, 2),
+      contentType: "application/json",
+    });
+    await expect(page.locator('[data-root-action-overlay="true"]')).toHaveAttribute("data-root-action-ready", "true", { timeout: 20_000 });
+    await expect(page.locator(".interaction-stage")).toHaveCount(0);
+    if (prompt === 0) {
+      const geometry = await snapshotDuelGraph(page, viewerIds);
+      const publicRootEventId = actorView.presentationSnapshot?.reactionChain?.publicEventLinks?.root?.eventId;
+      expect(actorView.presentationSnapshot?.interaction?.stage).toBe("NEGATION");
+      expect(actorView.presentationSnapshot?.duelExchange).toBeNull();
+      expect(geometry.rootEventId).toBe(publicRootEventId);
+      expect(geometry.rootCardFaceKind).toBe("Duel");
+      expect(geometry.phaseNotice).toBe("NEGATION MAY BE PLAYED");
+      expect(geometry.responseCount).toBe(0);
+      expect(geometry.nodes).toHaveLength(0);
+      const rootViewer = await switchViewer(page, request, game, rootViewerId);
+      expect(rootViewer.presentationSnapshot?.interaction?.stage).toBe("NEGATION");
+      const stableViewerGeometry = await snapshotDuelGraph(page, viewerIds);
+      expect(stableViewerGeometry.rootEventId).toBe(geometry.rootEventId);
+      const stableViewerScreenshot = await attachFrame(page, testInfo, "duel-b1-real-negation-window-root-view-390x844");
+      await switchViewer(page, request, game, actorId);
+      const negationDom = await page.evaluate(() => {
+        const overlay = document.querySelector('[data-root-action-overlay="true"]');
+        const stage = document.querySelector(".interaction-stage");
+        return {
+          overlay: overlay ? {
+            ready: overlay.getAttribute("data-root-action-ready"),
+            cardKind: overlay.getAttribute("data-root-action-card-kind"),
+            rootEventId: overlay.getAttribute("data-root-action-event-id"),
+            html: overlay.outerHTML,
+          } : null,
+          interactionStage: stage ? { text: stage.textContent?.trim(), html: stage.outerHTML } : null,
+          localDockPlayerId: document.querySelector(".local-player-dock")?.getAttribute("data-player-anchor"),
+        };
+      });
+      const publicRoot = actorView.timeline.filter((event) => event.type === "card" && event.action === "play" && event.card?.kind === "Duel")
+        .map(({ id, resolutionId, card, privateToPlayerId }) => ({ id, resolutionId, physicalCardId: card.id, kind: card.kind, privateToPlayerId: privateToPlayerId ?? null }));
+      const evidence = testInfo.outputPath("duel-b1-negation-window-baseline.json");
+      await writeFile(evidence, JSON.stringify({
+        metadata: { meId: actorView.meId, isTestController: actorView.isTestController, players: actorView.players.map(({ id, seat, isTestPlayer, isHost, hero }) => ({ id, seat, isTestPlayer, isHost, hero })) },
+        stage: actorView.presentationSnapshot?.interaction,
+        stableBoundary: actorView.presentationSnapshot?.stableBoundary,
+        duelExchange: actorView.presentationSnapshot?.duelExchange,
+        reactionChain: actorView.presentationSnapshot?.reactionChain,
+        publicRoot,
+        dom: negationDom,
+        geometry: { ...geometry, overlayHtml: undefined },
+        rootViewerGeometry: { ...stableViewerGeometry, overlayHtml: undefined },
+        rootViewerId,
+      }, null, 2));
+      await testInfo.attach("duel-b1-negation-window-baseline.json", { path: evidence, contentType: "application/json" });
+      const negationFrame = await attachFrame(page, testInfo, "duel-b1-real-negation-window-390x844");
+      expect(negationDom.overlay?.ready).toBe("true");
+      expect(negationDom.overlay?.cardKind).toBe("Duel");
+      expect(negationDom.interactionStage).toBeNull();
+      await testInfo.attach("duel-b1-negation-window-baseline.png", { path: negationFrame, contentType: "image/png" });
+      initialNegation = { viewerId: rootViewerId, actorId, screenshot: negationFrame, rootViewerScreenshot: stableViewerScreenshot,
+        geometry: stableViewerGeometry, activeResponderGeometry: geometry };
+    }
+    const skip = page.locator(`.local-player-dock[data-player-anchor="${actorId}"] [data-action-slot="decline"] button`);
+    await expect(skip).toHaveText("Skip");
+    await expect(skip).toBeEnabled();
+    const skipped = page.waitForResponse((response) => isRoomAction(response, "decline_response"));
+    await skip.click();
+    expect((await skipped).status()).toBe(200);
     await refreshViewerAfterServerAction(page, request, game, actorId);
   }
   throw new Error("the test-mode Duel did not reach its server-proven open response window after legal Negation skips");
@@ -355,9 +459,16 @@ async function snapshotDuelGraph(page, playerIds) {
         sourceId: path.dataset.responseSemanticSourceId ?? null,
         targetId: path.dataset.responseTargetId ?? null,
         targetResponseEventId: path.dataset.counterTargetResponseEventId ?? null,
-        active: path.dataset.responseActive ?? null,
+        active: path.dataset.responseActive ?? path.dataset.duelSourceTrunkActive ?? null,
+        sourceSide: path.dataset.responseSourceLane ?? null,
         currentRound: path.dataset.responseCurrentRound ?? null,
         latest: path.dataset.responseLatest ?? null,
+        trunkActorId: path.dataset.duelSourceTrunkPlayerId ?? null,
+        trunkEventIds: path.dataset.duelSourceTrunkResponseEventIds?.split(",") ?? [],
+        sourceElbow: path.dataset.responseSourceElbowX && path.dataset.responseSourceElbowY
+          ? { x: Number(path.dataset.responseSourceElbowX) + rect(path.ownerSVGElement).left,
+            y: Number(path.dataset.responseSourceElbowY) + rect(path.ownerSVGElement).top }
+          : null,
       };
     };
     const overlay = document.querySelector('[data-root-action-overlay="true"]');
@@ -390,11 +501,18 @@ async function snapshotDuelGraph(page, playerIds) {
     const legacyActiveRevealEventIds = [...document.querySelectorAll(".table-resolution-layer .active-table-reveal[data-settlement-event-id]")]
       .filter((node) => node.getClientRects().length > 0 && getComputedStyle(node).display !== "none")
       .map((node) => node.dataset.settlementEventId);
+    const fixedZones = [
+      ["guidance", document.querySelector(".console-guidance")],
+      ["hand", document.querySelector(".local-hand-section")],
+      ["system-menu", document.querySelector(".stage-system-menu-actions:not([hidden])")],
+      ["response-timer", document.querySelector(".visible-countdown-response")],
+    ].flatMap(([name, element]) => element?.getClientRects().length ? [{ name, rect: rect(element) }] : []);
     return {
       viewport: { width: innerWidth, height: innerHeight },
       shell: rect(document.querySelector(".game-shell")),
       overlay: rect(overlay),
       graphReady: overlay?.dataset.rootActionReady ?? null,
+      rootElementCount: overlay?.querySelectorAll('[data-root-action-card="true"]').length ?? 0,
       responseCount: Number(overlay?.dataset.rootActionResponseCount ?? 0),
       visibleResponseCount: Number(overlay?.dataset.rootActionVisibleResponseCount ?? 0),
       collapsedResponseCount: Number(overlay?.dataset.rootActionCollapsedResponseCount ?? 0),
@@ -404,12 +522,24 @@ async function snapshotDuelGraph(page, playerIds) {
       rootTargetId: overlay?.dataset.rootActionTargetId ?? null,
       rootCardId: root?.dataset.rootActionPhysicalCardId ?? null,
       rootCardFaceKind: root?.dataset.rootActionCardFaceKind ?? null,
+      phaseNotice: overlay?.querySelector('[data-root-action-phase-notice="true"]')?.textContent?.trim() ?? null,
+      fitStep: overlay?.dataset.rootActionCardFitStep ?? null,
+      duelUsable: overlay ? {
+        left: Number(overlay.dataset.duelUsableLeft) + rect(overlay).left,
+        top: Number(overlay.dataset.duelUsableTop) + rect(overlay).top,
+        right: Number(overlay.dataset.duelUsableRight) + rect(overlay).left,
+        bottom: Number(overlay.dataset.duelUsableBottom) + rect(overlay).top,
+        centerX: Number(overlay.dataset.duelCenterX) + rect(overlay).left,
+      } : null,
       table: rect(document.querySelector(".play-table")),
       dock: rect(document.querySelector(".local-player-dock")),
+      localPlayerId: document.querySelector(".local-player-dock")?.getAttribute("data-player-anchor") ?? null,
       anchors,
+      fixedZones,
       nodes,
       rootSourcePaths: edges("source"),
-      rootTargetPaths: edges("root-target-context"),
+      rootTargetPaths: ["target", "root-target-context", "root-target-blocked"].flatMap(edges),
+      responseSourceTrunks: edges("duel-source-trunk"),
       responseSourcePaths: edges("response-source"),
       responseTargetPaths: edges("duel-response-target"),
       legacySettledEventIds,
@@ -636,8 +766,32 @@ function orthogonalPathContainsPoint(path, point) {
   });
 }
 
+function pathIntersectsRect(edge, rect) {
+  const path = inspectOrthogonalPath(edge.d);
+  const matrix = edge.svgScreenMatrix;
+  const toScreen = (point) => ({
+    x: point.x * matrix.a + point.y * matrix.c + matrix.e,
+    y: point.x * matrix.b + point.y * matrix.d + matrix.f,
+  });
+  return path.segments.some(({ start, end }) => {
+    const first = toScreen(start);
+    const last = toScreen(end);
+    if (Math.abs(first.y - last.y) <= 1) return first.y > rect.top + .5 && first.y < rect.bottom - .5
+      && Math.max(Math.min(first.x, last.x), rect.left) < Math.min(Math.max(first.x, last.x), rect.right);
+    if (Math.abs(first.x - last.x) <= 1) return first.x > rect.left + .5 && first.x < rect.right - .5
+      && Math.max(Math.min(first.y, last.y), rect.top) < Math.min(Math.max(first.y, last.y), rect.bottom);
+    return true;
+  });
+}
+
+function rectanglesOverlap(first, second) {
+  return first.left < second.right && second.left < first.right
+    && first.top < second.bottom && second.top < first.bottom;
+}
+
 function assertDuelGeometry(geometry, proof) {
   expect(geometry.graphReady).toBe("true");
+  expect(geometry.rootElementCount).toBe(1);
   expect(geometry.rootCardFaceKind).toBe("Duel");
   expect(geometry.rootEventId).toBe(proof.root.eventId);
   expect(geometry.rootCardId).toBeTruthy();
@@ -646,8 +800,10 @@ function assertDuelGeometry(geometry, proof) {
   expect(geometry.responseCount).toBe(proof.responseCount);
   expect(geometry.nodes.map(({ eventId }) => eventId)).toEqual(proof.responses.slice(-4).map(({ responseEventId }) => responseEventId));
   expect(geometry.nodes.every(({ faceKind }) => faceKind === "Attack")).toBe(true);
+  expect(geometry.nodes.every(({ physicalCardId }) => Boolean(physicalCardId))).toBe(true);
   expect(geometry.responseSourcePaths).toHaveLength(geometry.nodes.length);
   expect(geometry.responseTargetPaths).toHaveLength(geometry.nodes.length);
+  expect(geometry.responseSourceTrunks).toHaveLength(new Set(geometry.nodes.map(({ actorId }) => actorId)).size);
   expect(geometry.rootSourcePaths).toHaveLength(1);
   expect(geometry.rootTargetPaths).toHaveLength(1);
   const graphEventIds = [proof.root.eventId, ...proof.responses.map(({ responseEventId }) => responseEventId)];
@@ -657,98 +813,157 @@ function assertDuelGeometry(geometry, proof) {
   expect(geometry.table.bottom).toBeLessThanOrEqual(geometry.dock.top + 1);
   expect(geometry.dock.bottom).toBeLessThanOrEqual(geometry.viewport.height + 1);
   for (const anchors of Object.values(geometry.anchors)) expect(anchors).toHaveLength(1);
+  expect(geometry.duelUsable).toBeTruthy();
 
   const sourceAnchor = geometry.anchors[proof.root.sourceId][0];
   const targetAnchor = geometry.anchors[proof.root.targetId][0];
-  const midpointX = ((sourceAnchor.left + sourceAnchor.right) + (targetAnchor.left + targetAnchor.right)) / 4;
+  const sourceLocal = proof.root.sourceId === geometry.localPlayerId;
+  const targetLocal = proof.root.targetId === geometry.localPlayerId;
+  const localDockSeamTolerance = Math.max(6, geometry.dock.top - geometry.table.bottom + 1);
+  const sourceX = (sourceAnchor.left + sourceAnchor.right) / 2;
+  const targetX = (targetAnchor.left + targetAnchor.right) / 2;
+  const battlefieldCenterX = (geometry.table.left + geometry.table.right) / 2;
+  let participantSides;
+  if (sourceLocal !== targetLocal) {
+    const outside = (sourceLocal ? targetX : sourceX) < battlefieldCenterX ? "left" : "right";
+    participantSides = sourceLocal
+      ? { [proof.root.sourceId]: outside === "left" ? "right" : "left", [proof.root.targetId]: outside }
+      : { [proof.root.sourceId]: outside, [proof.root.targetId]: outside === "left" ? "right" : "left" };
+  } else if (Math.abs(sourceX - targetX) > 8) {
+    participantSides = sourceX < targetX
+      ? { [proof.root.sourceId]: "left", [proof.root.targetId]: "right" }
+      : { [proof.root.sourceId]: "right", [proof.root.targetId]: "left" };
+  } else participantSides = { [proof.root.sourceId]: "left", [proof.root.targetId]: "right" };
+
   const nodeByEventId = new Map(geometry.nodes.map((node) => [node.eventId, node]));
   const edgeByEventId = new Map(geometry.responseTargetPaths.map((edge) => [edge.eventId, edge]));
-  const touches = (edge, rect) => Math.min(pointRectDistance(edge.start, rect), pointRectDistance(edge.end, rect)) < 3;
-  expect(touches(geometry.rootSourcePaths[0], sourceAnchor), JSON.stringify({
-    sourceId: proof.root.sourceId, sourceAnchor, anchors: geometry.anchors,
-    path: geometry.rootSourcePaths[0], root: geometry.root,
-  })).toBe(true);
-  expect(touches(geometry.rootSourcePaths[0], geometry.root)).toBe(true);
-  expect(touches(geometry.rootTargetPaths[0], targetAnchor)).toBe(true);
-  expect(touches(geometry.rootTargetPaths[0], geometry.root)).toBe(true);
-  for (const node of geometry.nodes) {
-    const actorAnchor = geometry.anchors[node.actorId]?.[0];
-    expect(actorAnchor).toBeTruthy();
-    const actorX = (actorAnchor.left + actorAnchor.right) / 2;
-    const expectedSide = actorX < midpointX ? "left" : "right";
-    expect(Math.abs(actorX - midpointX)).toBeGreaterThan(1);
-    const cardCenterX = (node.rect.left + node.rect.right) / 2;
-    const measuredCardSide = cardCenterX < midpointX ? "left" : "right";
-    expect(measuredCardSide, JSON.stringify({ ordinal: node.ordinal, actorId: node.actorId, actorAnchor, midpointX, expectedSide, measuredCardSide, projectedSide: node.side, rect: node.rect })).toBe(expectedSide);
-    const activeRound = node.currentRound === "true";
-    const activeEffect = node.ordinal === proof.responseCount;
-    expect(node.active).toBe(activeRound ? "true" : "false");
-    if (!activeRound) expect(node.className).toContain("is-prior-round");
-    const sourceEdge = geometry.responseSourcePaths.find((edge) => edge.eventId === node.eventId);
-    const targetEdge = edgeByEventId.get(node.eventId);
-    expect(sourceEdge).toBeTruthy();
-    expect(targetEdge).toBeTruthy();
-    const sourcePath = inspectOrthogonalPath(sourceEdge.d);
-    for (const edge of [sourceEdge, targetEdge]) expect(inspectOrthogonalPath(edge.d).valid, edge.d).toBe(true);
-    expect(touches(sourceEdge, actorAnchor)).toBe(true);
-    expect(touches(sourceEdge, node.rect)).toBe(true);
-    const actorIsAboveCard = actorAnchor.bottom <= node.rect.top;
-    const expectedAnchorEdgeY = actorIsAboveCard ? actorAnchor.bottom : actorAnchor.top;
-    expect(Math.abs(sourcePath.startPoint.y - expectedAnchorEdgeY), JSON.stringify({
-      ordinal: node.ordinal, actorAnchor, expectedAnchorEdgeY, sourceStart: sourcePath.startPoint,
-    })).toBeLessThanOrEqual(1);
-    expect(sourcePath.startPoint.x).toBeGreaterThanOrEqual(actorAnchor.left - 1);
-    expect(sourcePath.startPoint.x).toBeLessThanOrEqual(actorAnchor.right + 1);
-    const sourceCardEntry = [sourceEdge.start, sourceEdge.end].find((point) => pointRectDistance(point, node.rect) < 3);
-    expect(sourceCardEntry).toBeTruthy();
-    const sourceX = (actorAnchor.left + actorAnchor.right) / 2;
-    const sourceFacingX = sourceX < cardCenterX ? node.rect.left : node.rect.right;
-    expect(Math.abs(sourceCardEntry.x - sourceFacingX), JSON.stringify({ ordinal: node.ordinal, sourceX, sourceFacingX, sourceCardEntry, rect: node.rect })).toBeLessThanOrEqual(3);
-    expect(Math.abs(sourceCardEntry.y - (node.rect.top + node.rect.bottom) / 2)).toBeLessThanOrEqual(3);
-    const targetResponse = node.targetResponseEventId ? nodeByEventId.get(node.targetResponseEventId) : null;
-    const targetEndpoint = targetResponse?.rect ?? geometry.anchors[node.targetId]?.[0];
-    expect(targetEndpoint, `Duel response ${node.ordinal} has a proven card or Seat/Dock endpoint`).toBeTruthy();
-    expect(touches(targetEdge, node.rect)).toBe(true);
-    expect(touches(targetEdge, targetEndpoint)).toBe(true);
-    expect(targetEdge.markerEnd).toMatch(/^url\(#/);
-    if (!activeRound) {
-      expect(sourceEdge.stroke).toBe("rgb(166, 224, 197)");
-      expect(sourceEdge.opacity).toBeLessThan(.5);
-      expect(sourceEdge.className).toContain("is-subdued");
-    } else {
-      expect(sourceEdge.stroke).toBe("rgb(166, 224, 197)");
-      expect(sourceEdge.opacity).toBeGreaterThan(.9);
-      expect(sourceEdge.className).not.toContain("is-subdued");
-    }
-    expect(targetEdge.stroke).toBe("rgb(255, 75, 75)");
-    if (!activeEffect) {
-      expect(targetEdge.opacity).toBeLessThan(.5);
-      expect(targetEdge.className).toContain("is-subdued");
-    } else {
-      expect(targetEdge.opacity).toBeGreaterThan(.9);
-      expect(targetEdge.className).not.toContain("is-subdued");
-    }
-    const priorEventId = proof.responses[node.ordinal - 2]?.responseEventId;
-    if (node.ordinal > 1) {
-      expect(node.targetId).toBe(proof.responses[node.ordinal - 2].responseActorId);
-      expect(targetEdge.targetResponseEventId).toBe(priorEventId);
-      expect(nodeByEventId.has(priorEventId)).toBe(true);
-    }
-  }
+  const sourceByEventId = new Map(geometry.responseSourcePaths.map((edge) => [edge.eventId, edge]));
+  // A local Dock starts five pixels below the table edge; its authenticated tether ends at that shared seam.
+  const touches = (edge, rect, tolerance = 6) => Math.min(pointRectDistance(edge.start, rect), pointRectDistance(edge.end, rect)) <= tolerance;
+  expect(touches(geometry.rootSourcePaths[0], sourceAnchor, sourceLocal ? localDockSeamTolerance : 2), JSON.stringify({ edge: geometry.rootSourcePaths[0], sourceAnchor, localPlayerId: geometry.localPlayerId, viewport: geometry.viewport })).toBe(true);
+  expect(touches(geometry.rootSourcePaths[0], geometry.root), JSON.stringify({ edge: geometry.rootSourcePaths[0], root: geometry.root })).toBe(true);
+  expect(touches(geometry.rootTargetPaths[0], targetAnchor, targetLocal ? localDockSeamTolerance : 2), JSON.stringify({ edge: geometry.rootTargetPaths[0], targetAnchor, localPlayerId: geometry.localPlayerId, viewport: geometry.viewport })).toBe(true);
+  expect(touches(geometry.rootTargetPaths[0], geometry.root), JSON.stringify({ edge: geometry.rootTargetPaths[0], root: geometry.root })).toBe(true);
+  expect(geometry.rootTargetPaths[0].markerEnd).toMatch(/^url\(#/);
   expect(inspectOrthogonalPath(geometry.rootSourcePaths[0].d).valid).toBe(true);
   expect(inspectOrthogonalPath(geometry.rootTargetPaths[0].d).valid).toBe(true);
-  const currentNodes = geometry.nodes.filter((node) => node.currentRound === "true");
-  if (currentNodes.length === 2) expect(Math.abs(currentNodes[0].rect.top - currentNodes[1].rect.top)).toBeLessThanOrEqual(1);
-  const priorNodes = geometry.nodes.filter((node) => node.currentRound === "false");
-  if (priorNodes.length === 2) {
-    expect(Math.abs(priorNodes[0].rect.top - priorNodes[1].rect.top)).toBeLessThanOrEqual(1);
-    const fullCurrent = currentNodes[0].rect;
-    for (const node of priorNodes) {
-      expect(node.rect.width / fullCurrent.width).toBeGreaterThanOrEqual(.84);
-      expect(node.rect.width / fullCurrent.width).toBeLessThanOrEqual(.86);
-      expect(node.rect.height / fullCurrent.height).toBeGreaterThanOrEqual(.84);
-      expect(node.rect.height / fullCurrent.height).toBeLessThanOrEqual(.86);
+  const rootCenter = { x: geometry.root.left + geometry.root.width / 2, y: geometry.root.top + geometry.root.height / 2 };
+  expect(Math.abs(rootCenter.x - geometry.duelUsable.centerX), JSON.stringify({
+    rootCenter,
+    usableCenterX: geometry.duelUsable.centerX,
+    table: geometry.table,
+    viewport: geometry.viewport,
+  })).toBeLessThanOrEqual(6);
+
+  for (const node of geometry.nodes) {
+    const expectedSide = participantSides[node.actorId];
+    expect(expectedSide).toBeTruthy();
+    expect(node.side).toBe(expectedSide);
+    const cardCenter = { x: (node.rect.left + node.rect.right) / 2, y: (node.rect.top + node.rect.bottom) / 2 };
+    expect(expectedSide === "left" ? cardCenter.x < geometry.duelUsable.centerX : cardCenter.x > geometry.duelUsable.centerX).toBe(true);
+    const normalizedX = (cardCenter.x - geometry.duelUsable.left) / (geometry.duelUsable.right - geometry.duelUsable.left);
+    expect(expectedSide === "left" ? normalizedX : 1 - normalizedX).toBeGreaterThanOrEqual(.25);
+    expect(expectedSide === "left" ? normalizedX : 1 - normalizedX).toBeLessThanOrEqual(.35);
+    expect(node.active).toBe(node.currentRound === "true" ? "true" : "false");
+    if (node.currentRound === "false") expect(node.className).toContain("is-prior-round");
+    for (const zone of geometry.fixedZones) expect(rectanglesOverlap(node.rect, zone.rect), `${node.eventId} overlaps ${zone.name}`).toBe(false);
+
+    const sourceEdge = sourceByEventId.get(node.eventId);
+    const targetEdge = edgeByEventId.get(node.eventId);
+    const sourcePath = inspectOrthogonalPath(sourceEdge.d);
+    const targetPath = inspectOrthogonalPath(targetEdge.d);
+    expect(sourcePath.valid, sourceEdge.d).toBe(true);
+    expect(targetPath.valid, targetEdge.d).toBe(true);
+    expect(sourceEdge.stroke).toBe("rgb(166, 224, 197)");
+    expect(targetEdge.stroke).toBe("rgb(255, 75, 75)");
+    expect(targetEdge.markerEnd).toMatch(/^url\(#/);
+    const outsideSide = expectedSide === "left" ? "left" : "right";
+    const expectedOutsideX = outsideSide === "left" ? node.rect.left : node.rect.right;
+    expect(Math.abs(sourceEdge.end.x - expectedOutsideX)).toBeLessThanOrEqual(2);
+    expect(Math.abs(sourceEdge.end.y - cardCenter.y)).toBeLessThanOrEqual(2);
+    expect(Math.abs(sourceEdge.start.x - sourceEdge.end.x)).toBeGreaterThanOrEqual(20);
+    expect(sourceEdge.sourceSide).toBe(expectedSide);
+    expect(sourceEdge.sourceElbow).toBeTruthy();
+    expect(Math.hypot(sourceEdge.start.x - sourceEdge.sourceElbow.x, sourceEdge.start.y - sourceEdge.sourceElbow.y)).toBeLessThanOrEqual(1);
+    const actorAnchor = geometry.anchors[node.actorId][0];
+    const trunk = geometry.responseSourceTrunks.find((edge) => edge.trunkActorId === node.actorId);
+    expect(trunk).toBeTruthy();
+    expect(inspectOrthogonalPath(trunk.d).valid).toBe(true);
+    expect(trunk.trunkEventIds).toContain(node.eventId);
+    const elbowInSvg = { x: sourceEdge.sourceElbow.x - sourceEdge.svgRect.left, y: sourceEdge.sourceElbow.y - sourceEdge.svgRect.top };
+    // The seat edge may jog a few pixels to the stable trunk lane; every response fork must meet the trunk itself.
+    expect(orthogonalPathContainsPoint(inspectOrthogonalPath(trunk.d), elbowInSvg)).toBe(true);
+    expect([trunk.start, trunk.end].some((point) => pointRectDistance(point, actorAnchor) <= (node.actorId === geometry.localPlayerId ? localDockSeamTolerance : 2))).toBe(true);
+    expect(trunk.trunkEventIds.every((eventId) => geometry.nodes.some((candidate) => candidate.eventId === eventId && candidate.actorId === node.actorId))).toBe(true);
+    expect(sourceEdge.active).toBe(node.currentRound === "true" ? "true" : "false");
+    if (node.currentRound === "false") {
+      expect(sourceEdge.opacity).toBeLessThan(.5);
+      expect(targetEdge.opacity).toBeLessThan(.5);
+    } else if (node.latest === "true") {
+      expect(sourceEdge.opacity).toBeGreaterThan(.9);
+      expect(targetEdge.opacity).toBeGreaterThan(.9);
     }
+
+    const targetNode = node.targetResponseEventId ? nodeByEventId.get(node.targetResponseEventId) : null;
+    const targetEndpoint = targetNode?.rect ?? geometry.anchors[node.targetId]?.[0];
+    expect(targetEndpoint).toBeTruthy();
+    expect(touches(targetEdge, targetEndpoint,
+      !targetNode && node.targetId === geometry.localPlayerId ? localDockSeamTolerance : 6), JSON.stringify({
+      viewport: geometry.viewport,
+      eventId: node.eventId,
+      ordinal: node.ordinal,
+      actorId: node.actorId,
+      targetId: node.targetId,
+      targetResponseEventId: node.targetResponseEventId,
+      targetEdge,
+      targetEndpoint,
+      targetNode,
+    })).toBe(true);
+    expect(touches(targetEdge, node.rect)).toBe(true);
+    if (targetNode) expect(targetEdge.targetResponseEventId).toBe(targetNode.eventId);
+    if (node.ordinal > 1) expect(node.targetId).toBe(proof.responses[node.ordinal - 2].responseActorId);
+    if (targetEdge.end.y > targetEdge.start.y) expect(targetEdge.markerEnd).toMatch(/^url\(#/);
+    if (!targetNode && targetEdge.end.y > targetEdge.start.y) {
+      const lastSegment = targetPath.segments.at(-1);
+      expect(lastSegment).toBeTruthy();
+      expect(lastSegment.end.y).toBeGreaterThan(lastSegment.start.y);
+      expect(Math.abs(lastSegment.end.x - lastSegment.start.x)).toBeLessThanOrEqual(1);
+    }
+    const expectedInsideX = expectedSide === "left" ? node.rect.right : node.rect.left;
+    expect(Math.abs(targetEdge.start.x - expectedInsideX)).toBeLessThanOrEqual(2);
+    for (const zone of geometry.fixedZones) {
+      expect(pathIntersectsRect(sourceEdge, zone.rect), `${node.eventId} source path overlaps ${zone.name}`).toBe(false);
+      expect(pathIntersectsRect(targetEdge, zone.rect), `${node.eventId} target path overlaps ${zone.name}`).toBe(false);
+    }
+  }
+
+  const currentNodes = geometry.nodes.filter((node) => node.currentRound === "true");
+  const priorNodes = geometry.nodes.filter((node) => node.currentRound === "false");
+  if (currentNodes.length === 2) {
+    const left = currentNodes.find((node) => node.side === "left");
+    const right = currentNodes.find((node) => node.side === "right");
+    expect(left).toBeTruthy();
+    expect(right).toBeTruthy();
+    const leftCenterX = (left.rect.left + left.rect.right) / 2;
+    const rightCenterX = (right.rect.left + right.rect.right) / 2;
+    expect(Math.abs((leftCenterX + rightCenterX) / 2 - geometry.duelUsable.centerX)).toBeLessThanOrEqual(2);
+    expect(Math.abs((left.rect.top + left.rect.bottom) / 2 - (right.rect.top + right.rect.bottom) / 2)).toBeLessThanOrEqual(8);
+  }
+  if (priorNodes.length === 2) {
+    expect(priorNodes.every((node) => node.rect.top > (currentNodes[0]?.rect.top ?? -Infinity))).toBe(true);
+    expect(Math.abs((priorNodes[0].rect.top + priorNodes[0].rect.bottom) / 2 - (priorNodes[1].rect.top + priorNodes[1].rect.bottom) / 2)).toBeLessThanOrEqual(8);
+    expect(priorNodes.map(({ side }) => side).sort()).toEqual(["left", "right"]);
+    const currentSize = currentNodes[0]?.rect;
+    if (currentSize) for (const node of priorNodes) {
+      expect(node.rect.width / currentSize.width).toBeGreaterThanOrEqual(.84);
+      expect(node.rect.width / currentSize.width).toBeLessThanOrEqual(.86);
+      expect(node.rect.height / currentSize.height).toBeGreaterThanOrEqual(.84);
+      expect(node.rect.height / currentSize.height).toBeLessThanOrEqual(.86);
+    }
+  }
+  for (const edge of [...geometry.rootSourcePaths, ...geometry.rootTargetPaths, ...geometry.responseSourceTrunks]) {
+    expect(inspectOrthogonalPath(edge.d).valid, edge.d).toBe(true);
+    for (const zone of geometry.fixedZones) expect(pathIntersectsRect(edge, zone.rect), `path overlaps ${zone.name}`).toBe(false);
   }
 }
 
@@ -760,32 +975,49 @@ async function attachFrame(page, testInfo, name) {
   return path;
 }
 
-test("test-mode Duel uses four real committed Attacks in one proof-backed two-round graph", async ({ page, request }, testInfo) => {
+test("test-mode Sima Yi Duel uses four real committed Attacks in one proof-backed two-row graph", async ({ page, request }, testInfo) => {
   test.setTimeout(180_000);
   const game = await createTestGame(request, page, "custom", "B1 DUEL HOST", { width: 390, height: 844 }, {
     0: ["Attack", "Attack", "Attack", "Attack"],
-    1: ["Duel", "Attack", "Attack", "Attack"],
+    1: ["Duel", "Attack", "Attack", "Negation"],
     2: ["Attack", "Attack", "Attack", "Attack"],
-    3: ["Attack", "Attack", "Attack", "Attack"],
-  });
+    3: ["Attack", "Attack", "Attack", "Negation"],
+  }, { preferredHeroesBySeat: { 1: "simayi" } });
   const attacker = game.seats[1];
   const defender = game.seats[2];
   const observer = game.seats[3];
+  const host = Object.values(game.seats).find(({ isHost }) => isHost);
+  expect(host).toBeTruthy();
+  expect(game.room.isTestController).toBe(true);
+  expect(attacker).toMatchObject({ hero: "simayi", isTestPlayer: true, isHost: false });
+  expect(defender.isTestPlayer).toBe(true);
+  await expect(page.getByTestId(`test-view-switch-${attacker.id}`)).toBeVisible();
   expect(attacker).toBeTruthy();
   expect(defender).toBeTruthy();
   expect(observer).toBeTruthy();
-  for (const [player, expectedAttacks] of [[attacker, 3], [defender, 4]]) {
+  for (const [player, expectedAttacks] of [[attacker, 2], [defender, 4]]) {
     const openingView = await readRoom(request, game, player.id);
     expect(openingView.myHand.filter(({ kind }) => kind === "Attack"), `seat ${player.seat + 1} opens with its configured physical Attack cards; hand=${JSON.stringify(openingView.myHand.map(({ id, kind }) => ({ id, kind })))}`).toHaveLength(expectedAttacks);
   }
+  expect((await readRoom(request, game, observer.id)).myHand.filter(({ kind }) => kind === "Negation")).toHaveLength(1);
 
   await advanceToActor(page, request, game, attacker.id);
   const attackerView = await switchViewer(page, request, game, attacker.id);
+  expect(attackerView.currentAction?.actorId).toBe(attacker.id);
+  expect(attackerView.myHand.filter(({ kind }) => kind === "Attack")).toHaveLength(2);
+  await expect(page.locator(`.local-player-dock[data-player-anchor="${attacker.id}"] .local-hand [data-hand-card-id]`)).toHaveCount(attackerView.myHand.length);
+  const hostView = await switchViewer(page, request, game, host.id);
+  expect(hostView.meId).toBe(host.id);
+  await expect(page.locator(`.local-player-dock[data-player-anchor="${host.id}"] .local-hand [data-hand-card-id]`)).toHaveCount(hostView.myHand.length);
+  const restoredAttackerView = await switchViewer(page, request, game, attacker.id);
+  expect(restoredAttackerView.currentAction?.actorId).toBe(attacker.id);
+  await expect(page.locator(`.local-player-dock[data-player-anchor="${attacker.id}"] .local-hand [data-hand-card-id]`)).toHaveCount(restoredAttackerView.myHand.length);
   const duelCard = attackerView.myHand.find(({ kind }) => kind === "Duel");
   expect(duelCard, "the selected test-hand preset supplies a physical Duel to seat 2").toBeTruthy();
   await playDuel(page, request, game, attacker.id, duelCard.id, defender.name);
   const playerIds = Object.values(game.seats).map(({ id }) => id);
-  const { views: initialViews, exchange: initialProof } = await passDuelNegationWindows(page, request, game, playerIds);
+  const { views: initialViews, exchange: initialProof, initialNegation } = await passDuelNegationWindows(page, request, game, playerIds, testInfo, attacker.id);
+  expect(initialNegation?.viewerId).toBe(attacker.id);
   expect(initialProof).toMatchObject({
     semantics: "PROVEN", responseCount: 0,
     root: { sourceId: attacker.id, targetId: defender.id, cardKind: "Duel" },
@@ -796,9 +1028,11 @@ test("test-mode Duel uses four real committed Attacks in one proof-backed two-ro
   const rootCard = page.locator('[data-root-action-card="true"]');
   await expect(rootCard).toHaveAttribute("data-root-action-card-face-kind", "Duel");
   const rootPhysicalCardId = await rootCard.getAttribute("data-root-action-physical-card-id");
-  const rootBoundsByFrame = [];
+  const initialRootBounds = initialNegation.geometry.root;
   const frames = [];
   const screenshots = {};
+  screenshots.negationOpportunity = initialNegation.screenshot;
+  screenshots.negationRootView = initialNegation.rootViewerScreenshot;
   let frameThreePrior = null;
   let finalProof = initialProof;
   const duelCardIds = new Set([rootPhysicalCardId]);
@@ -809,6 +1043,8 @@ test("test-mode Duel uses four real committed Attacks in one proof-backed two-ro
     const decisionActorId = actingView.currentAction?.actorId;
     expect(decisionActorId).toBe(ordinal % 2 === 1 ? defender.id : attacker.id);
     const responderView = await switchViewer(page, request, game, decisionActorId);
+    expect(responderView.currentAction).toMatchObject({ actorId: decisionActorId });
+    expect(responderView.currentAction.legalActions).toContain("respond");
     const attackCard = responderView.myHand.find(({ kind }) => kind === "Attack");
     expect(attackCard, `seat ${responderView.players.find(({ id }) => id === decisionActorId)?.seat + 1} has a physical Attack for response ${ordinal}; hand=${JSON.stringify(responderView.myHand.map(({ id, kind }) => ({ id, kind })))}`).toBeTruthy();
     await respondWithAttack(page, request, game, decisionActorId, attackCard.id);
@@ -869,14 +1105,17 @@ test("test-mode Duel uses four real committed Attacks in one proof-backed two-ro
     const geometry = await snapshotDuelGraph(page, playerIds);
     assertDuelGeometry(geometry, finalProof);
     expect(geometry.rootCardId).toBe(rootPhysicalCardId);
+    const publicResponseCardIds = finalProof.responses.map((response) => {
+      const event = view.timeline.find((candidate) => candidate.id === response.responseEventId);
+      expect(event, `one public event exists for Duel response ${response.responseEventId}`).toBeTruthy();
+      return event.card?.id;
+    });
+    expect(geometry.nodes.map(({ physicalCardId }) => physicalCardId)).toEqual(publicResponseCardIds.slice(-4));
     const rootBounds = geometry.root;
-    if (rootBoundsByFrame.length > 0) {
-      const original = rootBoundsByFrame[0];
-      expect(Math.abs(rootBounds.left - original.left)).toBeLessThanOrEqual(1);
-      expect(Math.abs(rootBounds.top - original.top)).toBeLessThanOrEqual(1);
-      expect(Math.abs(rootBounds.width - original.width)).toBeLessThanOrEqual(1);
-      expect(Math.abs(rootBounds.height - original.height)).toBeLessThanOrEqual(1);
-    } else rootBoundsByFrame.push(rootBounds);
+    expect(Math.abs(rootBounds.left - initialRootBounds.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(rootBounds.top - initialRootBounds.top)).toBeLessThanOrEqual(1);
+    expect(Math.abs(rootBounds.width - initialRootBounds.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(rootBounds.height - initialRootBounds.height)).toBeLessThanOrEqual(1);
     const framePath = await attachFrame(page, testInfo, `duel-b1-real-${ordinal}-390x844-attacker`);
     screenshots[`response${ordinal}`] = framePath;
 
@@ -954,19 +1193,31 @@ test("test-mode Duel uses four real committed Attacks in one proof-backed two-ro
       for (const pair of [[1, 3], [2, 4]]) {
         const older = frames[2].geometry.responseSourcePaths.find(({ eventId }) => eventId === finalProof.responses[pair[0] - 1].responseEventId);
         const newer = geometry.responseSourcePaths.find(({ eventId }) => eventId === finalProof.responses[pair[1] - 1].responseEventId);
-        const olderPath = inspectOrthogonalPath(older.d);
-        const newerPath = inspectOrthogonalPath(newer.d);
         expect(older.actorId).toBe(newer.actorId);
-        expect(Math.abs(newerPath.startPoint.x - olderPath.startPoint.x), JSON.stringify({
-          pair, olderStart: olderPath.startPoint, newerStart: newerPath.startPoint,
-        })).toBeLessThanOrEqual(1);
-        const sharedFork = olderPath.elbows.find((elbow) => orthogonalPathContainsPoint(newerPath, elbow));
-        expect(sharedFork, JSON.stringify({ pair, older: { d: older.d, elbows: olderPath.elbows }, newer: { d: newer.d, elbows: newerPath.elbows } })).toBeTruthy();
+        const trunk = geometry.responseSourceTrunks.find(({ trunkActorId }) => trunkActorId === newer.actorId);
+        expect(trunk).toBeTruthy();
+        expect(trunk.trunkEventIds).toContain(older.eventId);
+        expect(trunk.trunkEventIds).toContain(newer.eventId);
+        const historicalJunction = {
+          x: older.sourceElbow.x - older.svgRect.left,
+          y: older.sourceElbow.y - older.svgRect.top,
+        };
+        const currentFork = {
+          x: newer.sourceElbow.x - newer.svgRect.left,
+          y: newer.sourceElbow.y - newer.svgRect.top,
+        };
+        const trunkPath = inspectOrthogonalPath(trunk.d);
+        expect(orthogonalPathContainsPoint(trunkPath, historicalJunction), JSON.stringify({ pair, historicalJunction, trunk: trunk.d })).toBe(true);
+        expect(orthogonalPathContainsPoint(trunkPath, currentFork), JSON.stringify({ pair, currentFork, trunk: trunk.d })).toBe(true);
+        expect(Math.abs(currentFork.x - historicalJunction.x)).toBeLessThanOrEqual(1);
         frameEvidence.forkCoordinates.push({
+          actorId: newer.actorId,
           previousEventId: older.eventId,
           currentEventId: newer.eventId,
-          x: sharedFork.x,
-          y: sharedFork.y,
+          trunkPath: trunk.d,
+          historicalJunction,
+          currentFork,
+          branchPath: newer.d,
         });
       }
     }
@@ -983,7 +1234,7 @@ test("test-mode Duel uses four real committed Attacks in one proof-backed two-ro
   }
 
   const finalViewScreenshots = {};
-  for (const [perspective, player] of [["attacker", attacker], ["defender", defender], ["observer", observer]]) {
+  for (const [perspective, player] of [["host", host], ["simayi", attacker], ["defender", defender], ["observer", observer]]) {
     await page.setViewportSize({ width: 390, height: 844 });
     const perspectiveRoom = await switchViewer(page, request, game, player.id);
     expect(perspectiveRoom.presentationSnapshot.duelExchange).toEqual(finalProof);
@@ -1000,6 +1251,12 @@ test("test-mode Duel uses four real committed Attacks in one proof-backed two-ro
   await writeFile(evidencePath, JSON.stringify({
     kind: "real test-mode server-backed gameplay; no seeded-game endpoint",
     presetId: "duel_chain",
+    testSeatClassification: {
+      host: { id: host.id, isHost: host.isHost, isTestPlayer: host.isTestPlayer },
+      simaYi: { id: attacker.id, hero: attacker.hero, isHost: attacker.isHost, isTestPlayer: attacker.isTestPlayer },
+      roomIsTestController: game.room.isTestController,
+      switchControl: "test-view-switch-<generated-Sima-Yi-seat-id>",
+    },
     viewportFrames: frames,
     root: {
       eventId: finalProof.root.eventId,

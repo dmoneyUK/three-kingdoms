@@ -6236,3 +6236,72 @@
     height: 68.85px;
   }
 }
+
+/* UX2 B1 corrective fit tiers and compact initial Negation notice. */
+.interaction-root-overlay[data-root-action-ready="false"] .interaction-root-duel-phase-notice {
+  visibility: hidden;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-duel-phase-notice {
+  position: absolute;
+  z-index: 3;
+  width: max-content;
+  max-width: min(176px, calc(100vw - 24px));
+  transform: translateX(-50%);
+  padding: 3px 7px;
+  border: 1px solid #b69b5c77;
+  border-radius: 999px;
+  background: #11150fe8;
+  color: #dfc77f;
+  font: 700 8px/1.15 Arial, sans-serif;
+  letter-spacing: .075em;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px #0008;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"][data-root-action-card-fit-step="compact"] .interaction-root-action-card.is-card-face,
+.interaction-root-overlay[data-root-action-card-kind="Duel"][data-root-action-card-fit-step="compact"] .interaction-root-response-card.is-card-face {
+  width: 52px;
+  height: 78px;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"][data-root-action-card-fit-step="compact"] .interaction-root-response-card.is-prior-round {
+  width: 44.2px;
+  height: 66.3px;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"][data-root-action-card-fit-step="minimum"] .interaction-root-action-card.is-card-face,
+.interaction-root-overlay[data-root-action-card-kind="Duel"][data-root-action-card-fit-step="minimum"] .interaction-root-response-card.is-card-face {
+  width: 46px;
+  height: 69px;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"][data-root-action-card-fit-step="minimum"] .interaction-root-response-card.is-prior-round {
+  width: 39.1px;
+  height: 58.65px;
+}
+
+@media (max-width: 400px) {
+  .interaction-root-overlay[data-root-action-card-kind="Duel"][data-root-action-card-fit-step="compact"] .interaction-root-action-card.is-card-face,
+  .interaction-root-overlay[data-root-action-card-kind="Duel"][data-root-action-card-fit-step="compact"] .interaction-root-response-card.is-card-face {
+    width: 48px;
+    height: 72px;
+  }
+
+  .interaction-root-overlay[data-root-action-card-kind="Duel"][data-root-action-card-fit-step="compact"] .interaction-root-response-card.is-prior-round {
+    width: 40.8px;
+    height: 61.2px;
+  }
+
+  .interaction-root-overlay[data-root-action-card-kind="Duel"][data-root-action-card-fit-step="minimum"] .interaction-root-action-card.is-card-face,
+  .interaction-root-overlay[data-root-action-card-kind="Duel"][data-root-action-card-fit-step="minimum"] .interaction-root-response-card.is-card-face {
+    width: 44px;
+    height: 66px;
+  }
+
+  .interaction-root-overlay[data-root-action-card-kind="Duel"][data-root-action-card-fit-step="minimum"] .interaction-root-response-card.is-prior-round {
+    width: 37.4px;
+    height: 56.1px;
+  }
+}
