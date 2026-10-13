@@ -11,6 +11,7 @@ type PublicCardDisplayResponseNode = {
   actorId: string;
   actorName: string;
   cardFace?: Card;
+  semanticLabel?: string;
   ariaLabel: string;
 };
 
@@ -20,6 +21,11 @@ type PublicCardDisplayMotion = {
   scopeKey: string;
   rootFresh: boolean;
   responseFresh: boolean;
+} | {
+  type: "duel";
+  /** Room and proven Duel identity keep retained card state isolated. */
+  scopeKey: string;
+  freshEventIds: readonly string[];
 };
 
 /**
@@ -70,6 +76,7 @@ type JourneyCard = {
   phase: "reveal" | "move" | "parked";
   rect: CardRect;
   target: CardRect;
+  historyCount?: number;
 };
 type JourneyState = { scopeKey: string; cards: JourneyCard[]; center: CardRect | null };
 
@@ -418,6 +425,300 @@ function AttackDodgeCardJourney({
   </section>;
 }
 
+type DuelJourneyEvent = Pick<JourneyCard,
+  "eventId" | "actorId" | "actorName" | "cardFace" | "ariaLabel" | "role" | "semanticLabel" | "historyCount"
+>;
+type DuelJourneyState = {
+  scopeKey: string;
+  cards: JourneyCard[];
+  active: JourneyCard | null;
+  queue: DuelJourneyEvent[];
+  center: CardRect | null;
+};
+
+function latestDuelEventsByActor(events: readonly DuelJourneyEvent[]) {
+  const latest = new Map<string, DuelJourneyEvent>();
+  for (const event of events) latest.set(event.actorId, event);
+  return [...latest.values()];
+}
+
+function parkedDuelCard(event: DuelJourneyEvent, center: CardRect): JourneyCard {
+  const target = actorParkedCard(event.actorId) ?? center;
+  return { ...event, phase: "parked", rect: target, target };
+}
+
+function revealingDuelCard(event: DuelJourneyEvent, center: CardRect): JourneyCard {
+  const target = actorParkedCard(event.actorId) ?? center;
+  return { ...event, phase: "reveal", rect: center, target };
+}
+
+function completeDuelJourneyEvent(state: DuelJourneyState, eventId: string): DuelJourneyState {
+  const active = state.active;
+  if (!active || active.eventId !== eventId || !state.center) return state;
+  const parked = { ...active, phase: "parked" as const, rect: active.target };
+  const cards = [...state.cards.filter((card) => card.actorId !== active.actorId), parked];
+  const [nextEvent, ...queue] = state.queue;
+  return {
+    ...state,
+    cards,
+    active: nextEvent ? revealingDuelCard(nextEvent, state.center) : null,
+    queue,
+  };
+}
+
+/**
+ * A Duel is presented as one currently active public card plus the latest
+ * public card at each duelist's actual Seat/Dock. The server-proven exchange
+ * supplies event order and authors; React never infers who acts next.
+ */
+function DuelCardJourney({
+  action,
+  enabled,
+  sourceName,
+  targetName,
+  resultReadRemainingMs,
+}: {
+  action: PublicCardDisplayAction;
+  enabled: boolean;
+  sourceName: string | null;
+  targetName: string | null;
+  resultReadRemainingMs: number | null;
+}) {
+  const scopeKey = action.motion?.type === "duel" ? action.motion.scopeKey : action.rootEventId;
+  const [journey, setJourney] = useState<DuelJourneyState>({ scopeKey: "", cards: [], active: null, queue: [], center: null });
+  const journeyRef = useRef(journey);
+  const actionRef = useRef(action);
+  const sourceNameRef = useRef(sourceName);
+  const mountedRef = useRef(false);
+
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  useLayoutEffect(() => {
+    actionRef.current = action;
+    sourceNameRef.current = sourceName;
+  }, [action, sourceName]);
+
+  useLayoutEffect(() => {
+    journeyRef.current = journey;
+  }, [journey]);
+
+  const responseSignature = (action.responses ?? []).map((response) => response.eventId).join(",");
+  const freshSignature = action.motion?.type === "duel" ? [...action.motion.freshEventIds].join(",") : "";
+  useLayoutEffect(() => {
+    const currentAction = actionRef.current;
+    const currentMotion = currentAction.motion;
+    const currentSourceName = sourceNameRef.current;
+    if (!enabled || currentMotion?.type !== "duel" || !currentSourceName) return;
+
+    const center = battlefieldCenterCard();
+    const responseCounts = new Map<string, number>();
+    const incoming: DuelJourneyEvent[] = [];
+    if (currentAction.cardFace) incoming.push({
+      eventId: currentAction.rootEventId,
+      actorId: currentAction.sourceId,
+      actorName: currentSourceName,
+      cardFace: currentAction.cardFace,
+      ariaLabel: currentAction.ariaLabel,
+      role: "root",
+      historyCount: 0,
+    });
+    for (const response of currentAction.responses ?? []) {
+      const historyCount = responseCounts.get(response.actorId) ?? 0;
+      responseCounts.set(response.actorId, historyCount + 1);
+      if (!response.cardFace) continue;
+      incoming.push({
+        eventId: response.eventId,
+        actorId: response.actorId,
+        actorName: response.actorName,
+        cardFace: response.cardFace,
+        ariaLabel: response.ariaLabel,
+        role: "response",
+        ...(response.semanticLabel ? { semanticLabel: response.semanticLabel } : {}),
+        historyCount,
+      });
+    }
+
+    const fresh = new Set(currentMotion.freshEventIds);
+    const previous = journeyRef.current;
+    let next: DuelJourneyState;
+    if (previous.scopeKey !== scopeKey) {
+      const parked = latestDuelEventsByActor(incoming.filter((event) => !fresh.has(event.eventId)))
+        .map((event) => parkedDuelCard(event, center));
+      const queue = incoming.filter((event) => fresh.has(event.eventId));
+      const [first, ...remaining] = queue;
+      next = {
+        scopeKey,
+        cards: parked,
+        active: first ? revealingDuelCard(first, center) : null,
+        queue: remaining,
+        center,
+      };
+    } else {
+      const known = new Set([
+        ...previous.cards.map((card) => card.eventId),
+        ...(previous.active ? [previous.active.eventId] : []),
+        ...previous.queue.map((event) => event.eventId),
+      ]);
+      const additions = incoming.filter((event) => fresh.has(event.eventId) && !known.has(event.eventId));
+      const queue = [...previous.queue, ...additions];
+      const pendingActors = new Set([
+        ...(previous.active ? [previous.active.actorId] : []),
+        ...queue.map((event) => event.actorId),
+      ]);
+      const missingParked = latestDuelEventsByActor(incoming.filter((event) => !fresh.has(event.eventId) && !known.has(event.eventId)))
+        .filter((event) => !pendingActors.has(event.actorId));
+      const cards = [...previous.cards];
+      for (const event of missingParked) {
+        const index = cards.findIndex((card) => card.actorId === event.actorId);
+        const parked = parkedDuelCard(event, center);
+        if (index >= 0) cards[index] = parked;
+        else cards.push(parked);
+      }
+      let active = previous.active;
+      let remaining = queue;
+      if (!active && remaining.length) {
+        const [first, ...tail] = remaining;
+        active = revealingDuelCard(first, center);
+        remaining = tail;
+      }
+      next = { ...previous, center, cards, active, queue: remaining };
+    }
+    journeyRef.current = next;
+    setJourney(next);
+  }, [enabled, scopeKey, responseSignature, freshSignature]);
+
+  const timerEventId = journey.active?.eventId ?? null;
+  const timerPhase = journey.active?.phase ?? null;
+  const timerActorId = journey.active?.actorId ?? null;
+  useEffect(() => {
+    if (!enabled || journey.scopeKey !== scopeKey || !timerEventId || !timerPhase || !timerActorId) return;
+    const timer = window.setTimeout(() => {
+      if (!mountedRef.current) return;
+      if (timerPhase === "reveal") {
+        const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+        setJourney((current) => {
+          const currentActive = current.active;
+          if (current.scopeKey !== scopeKey || !currentActive || currentActive.eventId !== timerEventId || currentActive.phase !== "reveal") return current;
+          if (reducedMotion) return completeDuelJourneyEvent(current, timerEventId);
+          const target = actorParkedCard(timerActorId) ?? current.center ?? currentActive.target;
+          return { ...current, active: { ...currentActive, phase: "move", target, rect: target } };
+        });
+      } else if (timerPhase === "move") {
+        setJourney((current) => completeDuelJourneyEvent(current, timerEventId));
+      }
+    }, timerPhase === "reveal" ? REVEAL_HOLD_MS : MOVE_DURATION_MS + 30);
+    return () => window.clearTimeout(timer);
+  }, [enabled, scopeKey, journey.scopeKey, timerEventId, timerPhase, timerActorId]);
+
+  useLayoutEffect(() => {
+    if (!enabled || journey.scopeKey !== scopeKey) return;
+    let observer: ResizeObserver | null = null;
+    const reposition = () => {
+      const center = battlefieldCenterCard();
+      setJourney((current) => {
+        if (current.scopeKey !== scopeKey) return current;
+        const updateCard = (card: JourneyCard): JourneyCard => {
+          const target = actorParkedCard(card.actorId) ?? center;
+          return {
+            ...card,
+            target,
+            rect: card.phase === "parked" || card.phase === "move" ? target : center,
+          };
+        };
+        const cards = current.cards.map(updateCard);
+        const active = current.active ? updateCard(current.active) : null;
+        const unchangedRect = (a: CardRect | null, b: CardRect | null) => a === b || Boolean(a && b
+          && a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height);
+        const sameCard = (a: JourneyCard, b: JourneyCard) => unchangedRect(a.rect, b.rect) && unchangedRect(a.target, b.target);
+        if (unchangedRect(current.center, center)
+          && cards.every((card, index) => sameCard(card, current.cards[index]))
+          && (!active || current.active && sameCard(active, current.active))) return current;
+        return { ...current, center, cards, active };
+      });
+      document.querySelectorAll<HTMLElement>("[data-player-anchor]").forEach((anchor) => observer?.observe(anchor));
+    };
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", reposition);
+    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reposition);
+    const shell = document.querySelector<HTMLElement>(".game-shell");
+    if (shell) observer?.observe(shell);
+    document.querySelectorAll<HTMLElement>("[data-player-anchor]").forEach((anchor) => observer?.observe(anchor));
+    const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(reposition);
+    if (shell) mutationObserver?.observe(shell, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-player-anchor"] });
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+      viewport?.removeEventListener("resize", reposition);
+      observer?.disconnect();
+      mutationObserver?.disconnect();
+    };
+  }, [enabled, journey.scopeKey, scopeKey]);
+
+  if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
+  const latestResponse = action.responses?.at(-1) ?? null;
+  const activeEvent = journey.active;
+  const activeEventId = activeEvent?.eventId ?? latestResponse?.eventId ?? action.rootEventId;
+  const activeCard = activeEvent?.cardFace ?? latestResponse?.cardFace ?? action.cardFace ?? null;
+  const activeActorId = activeEvent?.actorId ?? latestResponse?.actorId ?? action.sourceId;
+  const activeLabel = activeEvent?.semanticLabel
+    ?? latestResponse?.semanticLabel
+    ?? (activeCard ? cardDefinition(activeCard.kind).name.toUpperCase() : action.cardLabel);
+  const activeMessage = activeEvent?.ariaLabel ?? latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
+  const copyTop = journey.center.top + REVEAL_CARD.height + 7;
+  const cards = [...journey.cards, ...(journey.active ? [journey.active] : [])];
+  return <section
+    className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}`}
+    role="status"
+    aria-live="polite"
+    aria-atomic="false"
+    aria-label={activeEvent?.ariaLabel ?? latestResponse?.ariaLabel ?? action.ariaLabel}
+    data-public-card-display="true"
+    data-public-card-ready="true"
+    data-public-card-motion="duel"
+    data-public-card-event-id={activeEventId}
+    data-public-card-root-event-id={action.rootEventId}
+    data-public-card-id={activeCard?.id}
+    data-public-card-actor-id={activeActorId}
+    data-public-card-source-id={action.sourceId}
+    data-public-card-target-id={action.targetId ?? undefined}
+    data-public-card-settlement-event-id={action.settlement?.eventId}
+    data-public-card-settlement-outcome={action.settlement?.outcome}
+    data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
+  >
+    {cards.map((card) => {
+      const isCurrent = card.eventId === activeEventId;
+      const isHistorical = !isCurrent && Boolean(journey.active || latestResponse);
+      return <div
+        key={card.eventId}
+        className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${isCurrent ? "is-current" : ""} ${isHistorical ? "is-prior" : ""}`}
+        data-public-card-journey-event-id={card.eventId}
+        data-public-card-journey-actor-id={card.actorId}
+        data-public-card-journey-card-id={card.cardFace.id}
+        data-public-card-journey-phase={card.phase}
+        data-public-card-journey-size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
+        data-public-card-primary-card={isCurrent ? "true" : undefined}
+        aria-hidden="true"
+        style={{ left: card.rect.left, top: card.rect.top, width: card.rect.width, height: card.rect.height }}
+      >
+        <CardFace card={card.cardFace} />
+        {card.semanticLabel && <small className="public-card-journey-semantic">{card.semanticLabel}</small>}
+        {card.historyCount ? <small className="public-card-journey-history" aria-label={`${card.historyCount} earlier Duel Attack${card.historyCount === 1 ? "" : "s"}`}>+{card.historyCount}</small> : null}
+      </div>;
+    })}
+    <div className="public-card-display-copy public-card-display-journey-copy" style={{ top: copyTop }}>
+      <small>{activeLabel}</small>
+      <b>{activeMessage}</b>
+      {action.phaseNotice && <span>{action.phaseNotice}</span>}
+      {settlementLabel(action, targetName) && <strong data-public-card-result={action.settlement?.outcome}>{settlementLabel(action, targetName)}</strong>}
+    </div>
+  </section>;
+}
+
 export function publicCardActionKey(action: PresentationSnapshotRootAction): string {
   return [action.interactionId, action.rootFrameId, action.checkpointId, action.presentationRevision, action.rootEventId, action.sourceId, action.targetId].join(":");
 }
@@ -438,6 +739,9 @@ export function PublicCardDisplay({
   if (!action) return null;
   if (action.motion?.type === "attack-dodge") {
     return <AttackDodgeCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} resultReadRemainingMs={resultReadRemainingMs} />;
+  }
+  if (action.motion?.type === "duel") {
+    return <DuelCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} resultReadRemainingMs={resultReadRemainingMs} />;
   }
   if (!enabled || !sourceName) return null;
   const latestResponse = action.response ?? action.responses?.at(-1) ?? null;

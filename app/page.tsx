@@ -3434,6 +3434,15 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       phaseNotice: duelNegationProofCandidate.responseNodes.length
         ? "NEGATION RESPONSE"
         : duelNegationProofCandidate.chain.rootEffectState === "BLOCKED" ? "DUEL NEGATED" : "NEGATION MAY BE PLAYED",
+      ...(!duelNegationProofCandidate.responseNodes.length ? {
+        motion: {
+          type: "duel" as const,
+          scopeKey: [room.code, duelNegationProofCandidate.chain.interactionId, clientPresentation.rootFrameId!, duelNegationProofCandidate.rootEvent.id].join(":"),
+          freshEventIds: publicCardJourneySeenEventIds.has(duelNegationProofCandidate.rootEvent.id)
+            ? []
+            : [duelNegationProofCandidate.rootEvent.id],
+        },
+      } : {}),
       ...(duelNegationProofCandidate.responseNodes.length ? {
         responses: duelNegationProofCandidate.responseNodes.map(({ event, node }) => ({
           eventId: event.id,
@@ -3607,12 +3616,23 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       cardFace: duelExchangeDisplayCandidate.rootEvent.card,
       cardLabel: "DUEL",
       ariaLabel: `${duelExchangeDisplayCandidate.source.name} played Duel targeting ${duelExchangeDisplayCandidate.target.name}`,
+      motion: {
+        type: "duel",
+        scopeKey: [room.code, duelExchangeDisplayCandidate.exchange.interactionId, duelExchangeDisplayCandidate.exchange.rootFrameId, duelExchangeDisplayCandidate.exchange.root.eventId].join(":"),
+        freshEventIds: [
+          duelExchangeDisplayCandidate.exchange.root.eventId,
+          ...duelExchangeDisplayCandidate.responses.map(({ response }) => response.responseEventId),
+        ].filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
+      },
       ...(duelExchangeDisplayCandidate.responses.length ? {
         responses: duelExchangeDisplayCandidate.responses.map(({ response, responseEvent, responseActor, responseTarget }) => ({
           eventId: response.responseEventId,
           actorId: response.responseActorId,
           actorName: responseActor.name,
           cardFace: responseEvent.card,
+          ...(responseEvent.card.kind !== "Attack" && responseEvent.playedAs?.toLowerCase() === "attack"
+            ? { semanticLabel: "AS ATTACK" }
+            : {}),
           ariaLabel: `${responseActor.name} played Attack targeting ${responseTarget.name}`,
         })),
       } : {}),
@@ -3724,11 +3744,15 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     && !rootActionTemporarilyBlocked);
   const publicCardDisplayReady = publicCardDisplayEnabled;
   const publicCardDisplayOwnsPresentation = publicCardDisplayReady;
-  const publicCardJourneyRootEventId = publicCardDisplayAction?.motion?.type === "attack-dodge" ? publicCardDisplayAction.rootEventId : null;
-  const publicCardJourneyResponseEventId = publicCardDisplayAction?.motion?.type === "attack-dodge" ? publicCardDisplayAction.response?.eventId ?? null : null;
+  const publicCardJourneyEventIds = publicCardDisplayAction?.motion?.type === "attack-dodge"
+    ? [publicCardDisplayAction.rootEventId, publicCardDisplayAction.response?.eventId].filter((eventId): eventId is string => Boolean(eventId))
+    : publicCardDisplayAction?.motion?.type === "duel"
+      ? [publicCardDisplayAction.rootEventId, ...(publicCardDisplayAction.responses ?? []).map((response) => response.eventId)]
+      : [];
+  const publicCardJourneyEventIdKey = publicCardJourneyEventIds.join("|");
   useEffect(() => {
-    if (!publicCardDisplayReady || !publicCardJourneyRootEventId) return;
-    const eventIds = [publicCardJourneyRootEventId, publicCardJourneyResponseEventId].filter((eventId): eventId is string => Boolean(eventId));
+    if (!publicCardDisplayReady || !publicCardJourneyEventIdKey) return;
+    const eventIds = publicCardJourneyEventIdKey.split("|");
     const timer = window.setTimeout(() => {
       setPublicCardJourneySeen((current) => {
         const seen = current.roomCode === room.code
@@ -3739,7 +3763,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [room.code, room.timeline, publicCardDisplayReady, publicCardJourneyRootEventId, publicCardJourneyResponseEventId]);
+  }, [room.code, room.timeline, publicCardDisplayReady, publicCardJourneyEventIdKey]);
   const publicDisplayOwnedEventIds = publicCardDisplayOwnsPresentation && publicCardDisplayAction
     ? [...new Set([
       publicCardDisplayAction.rootEventId,
