@@ -5,12 +5,13 @@ Mode: `USER-DIRECTED UX REFINEMENT`
 
 ## Latest result
 
-- `25a2f6512113e2189f3f79939b0f8776bd6159ed` adds Duel's proof-backed centre reveal and actor-seat parking: the same root scope persists from the Negation opportunity into exchange, committed Attack events queue individually, and each duelist keeps only their latest card with an earlier-Attack count. The presenter remains read-only and uses the existing server proof and `CurrentAction` contracts. Run [`38473860996`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38473860996) passed Browser smoke, API tests, Lint/fast and deploy. Production `/` returned HTTP 200 and `/api/health` returned `{"ok":true,"worker":"available"}`. No local automated tests were run; awaiting the user's manual visual check.
+- `064b30801cd11b5dad523c82599a95e123e39175` highlights the current player's existing Seat/Local Dock in place. Local emphasis follows the active Local Dock decision state; remote response emphasis follows validated Presentation decision ownership. The shared Negation window does not identify pending intent owners on other seats. Run [`38476099724`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38476099724) passed API tests, Lint/fast, Browser smoke and deploy. Production `/` and `/api/health` returned HTTP 200 (`{"ok":true,"worker":"available"}`). No local automated tests were run; awaiting the user's manual visual check.
+- The earlier Duel reveal slice remains on `25a2f6512113e2189f3f79939b0f8776bd6159ed`; its independent visual acceptance is still unreported.
 
 ## Design checkpoint
 
-Reviewed `docs/UX2-refine.md` at `83ad06cb33c5e959f2d76b5072b0848c17698805` (blob `b3e3d3642534ae97e8aa0c356c48d669f493ac9a`). It replaces relationship graphs with one centre reveal and actor-seat thumbnails. The design document is unchanged.
+Reviewed `docs/UX2-refine.md` at `33bbeeaef1f7e419c55e8c61062540cf02b735f1` (blob `9786393fb4ffc2e0b2144c00a5672b53a0f6c01e`), including §§2.3, 4.2–4.3 and 9. The approved shared Negation window is not a task queue; no design document was changed for the current-action highlight.
 
 ## Current boundary
 
-`UX2-CENTRE-REVEAL-SEAT-CARDS-02 — Duel slice` is deployed; the direct “可以继续” authorized this extension before Attack/Dodge visual acceptance. Current stop: the user manually checks Duel root reveal, each committed Attack reveal/parking, latest-per-duelist cards and earlier count. Do not continue into Negation response animation or Group/AOE until the user reviews this slice.
+`UX2-CURRENT-ACTION-PLAYER-HIGHLIGHT-01` is deployed and awaits the user's manual visual check. Stop here; do not start shared Negation implementation or further Duel presentation work without a new user instruction.
