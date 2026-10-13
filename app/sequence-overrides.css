@@ -2665,6 +2665,11 @@
     grid-row: 3;
   }
 
+  .opponent-inspection-floating-shell .hero-focus-inspect-public-zones {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
   .opponent-inspection-floating-shell .hero-focus-inspect-public-zones .opponent-inspection-zone {
     padding: 2px;
   }
