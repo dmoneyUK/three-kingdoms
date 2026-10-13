@@ -68,7 +68,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     await expect(stage.getByText("INSPECT · Player 2", { exact: true })).toHaveCount(1);
     await expect(inspect.locator(".hero-focus-identity")).not.toContainText("Player 2");
     await expect(inspect.locator(".hero-focus-identity-hero")).toBeVisible();
-    await expect(inspect.locator(".hero-focus-identity b")).toHaveCount(0);
+    await expect(inspect.locator(".hero-focus-inspect-profile b")).toHaveCount(0);
     await expect(inspect.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill').first()).toBeVisible();
     const skills = inspect.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill');
     await expect(skills).toHaveCount(2);
@@ -116,7 +116,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     const upwardShift = stageBox.y + stageBox.height / 2 - (shellBox.y + shellBox.height / 2);
     expect(upwardShift).toBeGreaterThanOrEqual(43);
     expect(upwardShift).toBeLessThanOrEqual(53);
-    expect(shellBox.height / stageBox.height).toBeLessThanOrEqual(0.5);
+    expect(shellBox.height / stageBox.height).toBeLessThanOrEqual(0.53);
     expect(shellBox.height).toBeLessThan(stageBox.height);
     expect(identityType.hero).toBeGreaterThanOrEqual(12);
     expect(identityType.hp).toBeGreaterThanOrEqual(10);
@@ -198,17 +198,19 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       const style = getComputedStyle(element);
       const lineHeight = Number.parseFloat(style.lineHeight);
       const verticalPadding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+      const elementBox = element.getBoundingClientRect();
+      const scrollportBox = element.parentElement.getBoundingClientRect();
       return {
         naturalLines: range.getClientRects().length,
-        visibleLines: Math.floor((element.clientHeight - verticalPadding + 0.5) / lineHeight),
+        visibleLines: Math.floor((Math.min(elementBox.bottom, scrollportBox.bottom) - Math.max(elementBox.top, scrollportBox.top) - verticalPadding + 0.5) / lineHeight),
         maxHeight: Number.parseFloat(style.maxHeight),
         lineHeight,
         scrollHeight: element.scrollHeight,
         clientHeight: element.clientHeight,
       };
     });
-    expect(descriptionGeometry.visibleLines).toBeGreaterThanOrEqual(Math.min(4, descriptionGeometry.naturalLines));
-    expect(descriptionGeometry.maxHeight).toBeLessThanOrEqual(4 * descriptionGeometry.lineHeight + 1);
+    expect(descriptionGeometry.visibleLines).toBeGreaterThanOrEqual(Math.min(5, descriptionGeometry.naturalLines));
+    expect(descriptionGeometry.maxHeight).toBeLessThanOrEqual(5 * descriptionGeometry.lineHeight + 1);
     await stauchness.click();
     await expect(description).toHaveCount(0);
     await expect(stauchness).toHaveAttribute("aria-expanded", "false");
@@ -253,14 +255,17 @@ for (const count of [6, 8]) {
     const judgmentCard = judgment.locator('.opponent-inspection-card[aria-label="Explain Lightning"]');
     const publicZones = inspect.locator(".hero-focus-inspect-public-zones");
     await expect(judgmentCard).toHaveCount(1);
-    const [inspectBox, publicZonesBox, judgmentBox] = await Promise.all([
+    const [inspectBox, publicZonesBox, judgmentBox, profileBox] = await Promise.all([
       inspect.boundingBox(),
       publicZones.boundingBox(),
       judgment.boundingBox(),
+      inspect.locator(".hero-focus-inspect-profile").boundingBox(),
     ]);
     expect(inspectBox).not.toBeNull();
     expect(publicZonesBox).not.toBeNull();
-    expect(publicZonesBox.width).toBeGreaterThan(inspectBox.width * 0.7);
+    expect(profileBox).not.toBeNull();
+    expect(publicZonesBox.x).toBeGreaterThanOrEqual(profileBox.x + profileBox.width);
+    expect(publicZonesBox.width).toBeGreaterThan(inspectBox.width * 0.3);
     expect(judgmentBox).not.toBeNull();
     await expect(inspect.locator(".hero-focus-identity [data-public-hand-count]")).toBeVisible();
     await expect(inspect.locator('[aria-label="Concealed Hand"]')).toHaveCount(0);
@@ -286,8 +291,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     expect(zoneBox).not.toBeNull();
     expect(detailsBox).not.toBeNull();
     expect(zoneBox.height).toBeLessThanOrEqual(38);
-    expect(zoneBox.x).toBeGreaterThanOrEqual(detailsBox.x);
-    expect(zoneBox.x + zoneBox.width).toBeLessThanOrEqual(detailsBox.x + detailsBox.width);
+    const [profileBox, publicZonesBox] = await Promise.all([
+      inspect.locator(".hero-focus-inspect-profile").boundingBox(),
+      inspect.locator(".hero-focus-inspect-public-zones").boundingBox(),
+    ]);
+    expect(profileBox).not.toBeNull();
+    expect(publicZonesBox).not.toBeNull();
+    expect(publicZonesBox.x).toBeGreaterThanOrEqual(profileBox.x + profileBox.width);
+    expect(zoneBox.x).toBeGreaterThanOrEqual(publicZonesBox.x);
+    expect(zoneBox.x + zoneBox.width).toBeLessThanOrEqual(publicZonesBox.x + publicZonesBox.width);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
   });
 }

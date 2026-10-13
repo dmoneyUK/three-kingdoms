@@ -772,6 +772,19 @@ for (const viewport of [
     await inspectButton.click();
     await expect(panel).toBeVisible();
 
+    const [profileBox, identityStatsBox, skillsBox, publicZonesBox, equipmentBox, judgementBox] = await Promise.all([
+      panel.locator(".hero-focus-inspect-profile").boundingBox(),
+      panel.locator(".hero-focus-identity-stats").boundingBox(),
+      panel.locator('[aria-label="Public Skills"]').boundingBox(),
+      panel.locator(".hero-focus-inspect-public-zones").boundingBox(),
+      panel.locator('[aria-label="Equipment"]').boundingBox(),
+      panel.locator('[aria-label="Judgement Zone"]').boundingBox(),
+    ]);
+    for (const box of [profileBox, identityStatsBox, skillsBox, publicZonesBox, equipmentBox, judgementBox]) expect(box).not.toBeNull();
+    expect(publicZonesBox.x).toBeGreaterThanOrEqual(profileBox.x + profileBox.width);
+    expect(skillsBox.y).toBeGreaterThanOrEqual(identityStatsBox.y + identityStatsBox.height - 1);
+    expect(Math.abs(publicZonesBox.y - profileBox.y)).toBeLessThanOrEqual(2);
+
     const details = panel.locator(".hero-focus-inspect-details");
     const skill = panel.getByRole("button", { name: "Show Stauchness description" });
     await skill.focus();
@@ -789,15 +802,15 @@ for (const viewport of [
       const verticalPadding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
       return {
         naturalLines: range.getClientRects().length,
-        visibleLines: Math.floor((element.clientHeight - verticalPadding + 0.5) / lineHeight),
+        visibleLines: Math.floor((Math.min(element.getBoundingClientRect().bottom, element.parentElement.getBoundingClientRect().bottom) - element.getBoundingClientRect().top - verticalPadding + 0.5) / lineHeight),
         maxHeight: Number.parseFloat(style.maxHeight),
         lineHeight,
         scrollHeight: element.scrollHeight,
         clientHeight: element.clientHeight,
       };
     });
-    expect(descriptionGeometry.visibleLines).toBeGreaterThanOrEqual(Math.min(4, descriptionGeometry.naturalLines));
-    expect(descriptionGeometry.maxHeight).toBeLessThanOrEqual(4 * descriptionGeometry.lineHeight + 1);
+    expect(descriptionGeometry.visibleLines).toBeGreaterThanOrEqual(Math.min(5, descriptionGeometry.naturalLines));
+    expect(descriptionGeometry.maxHeight).toBeLessThanOrEqual(5 * descriptionGeometry.lineHeight + 1);
     await testInfo.attach(`inspect-expanded-details-geometry-${viewport.width}`, { body: JSON.stringify({ detailsGeometry, descriptionGeometry }), contentType: "application/json" });
     await attachScreenshot(testInfo, `server-unified-inspect-expanded-${viewport.width}`, page);
     await saveInspectionScreenshot(page, `server-unified-inspect-expanded-${viewport.width}.png`);
@@ -824,13 +837,13 @@ for (const viewport of [
     expect(dockBefore).not.toBeNull();
     expect(menuBox).not.toBeNull();
     expect(guidanceBox).not.toBeNull();
-    const layoutGeometry = { stageBox, surfaceBox, panelBox, detailsBox, equipmentCardBoxes, dockBefore, menuBox, guidanceBox, seatBoxes, detailsGeometry, descriptionGeometry };
+    const layoutGeometry = { stageBox, surfaceBox, panelBox, profileBox, identityStatsBox, skillsBox, publicZonesBox, equipmentBox, judgementBox, detailsBox, equipmentCardBoxes, dockBefore, menuBox, guidanceBox, seatBoxes, detailsGeometry, descriptionGeometry };
     await testInfo.attach(`inspect-layout-geometry-${viewport.width}`, { body: JSON.stringify(layoutGeometry, null, 2), contentType: "application/json" });
     saveInspectionEvidence(`server-unified-inspect-layout-${viewport.width}.json`, JSON.stringify(layoutGeometry, null, 2));
     const overlaps = (a, b) => Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x)
       && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
     expect(surfaceBox.width).toBeLessThan(stageBox.width);
-    expect(surfaceBox.height).toBeLessThanOrEqual(stageBox.height * 0.5 + 1);
+    expect(surfaceBox.height).toBeLessThanOrEqual(stageBox.height * 0.53 + 1);
     expect(surfaceBox.y).toBeGreaterThanOrEqual(stageBox.y - 1);
     expect(surfaceBox.y + surfaceBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height + 1);
     expect(panelBox.x).toBeGreaterThanOrEqual(surfaceBox.x);
@@ -839,19 +852,25 @@ for (const viewport of [
     expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(surfaceBox.y + surfaceBox.height);
     expect(detailsBox.y).toBeGreaterThanOrEqual(panelBox.y);
     expect(detailsBox.y + detailsBox.height).toBeLessThanOrEqual(panelBox.y + panelBox.height + 1);
+    expect(publicZonesBox.x).toBeGreaterThanOrEqual(profileBox.x + profileBox.width);
+    expect(skillsBox.y).toBeGreaterThanOrEqual(identityStatsBox.y + identityStatsBox.height - 1);
     expect(overlaps(surfaceBox, menuBox)).toBe(false);
     expect(overlaps(surfaceBox, guidanceBox)).toBe(false);
     expect(overlaps(surfaceBox, dockBefore)).toBe(false);
     for (const seatBox of seatBoxes) expect(overlaps(surfaceBox, seatBox)).toBe(false);
-    if (viewport.width > 520) {
-      expect(detailsBox.x).toBeGreaterThan(panelBox.x);
-      expect(detailsBox.width).toBeLessThan(panelBox.width);
-    }
+    expect(detailsBox.x).toBeGreaterThanOrEqual(panelBox.x);
+    expect(detailsBox.width).toBeLessThanOrEqual(panelBox.width);
     for (const cardBox of equipmentCardBoxes) {
-      expect(cardBox.x).toBeGreaterThanOrEqual(detailsBox.x);
-      expect(cardBox.y).toBeGreaterThanOrEqual(detailsBox.y);
-      expect(cardBox.x + cardBox.width).toBeLessThanOrEqual(detailsBox.x + detailsBox.width);
-      expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(detailsBox.y + detailsBox.height + 1);
+      const equipmentBox = await panel.locator('[aria-label="Equipment"]').boundingBox();
+      expect(cardBox.x).toBeGreaterThanOrEqual(equipmentBox.x);
+      expect(cardBox.y).toBeGreaterThanOrEqual(equipmentBox.y);
+      expect(cardBox.x + cardBox.width).toBeLessThanOrEqual(equipmentBox.x + equipmentBox.width);
+      expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(equipmentBox.y + equipmentBox.height + 1);
+    }
+    if (viewport.width <= 480) {
+      expect(equipmentCardBoxes).toHaveLength(2);
+      expect(Math.abs(equipmentCardBoxes[0].y - equipmentCardBoxes[1].y)).toBeLessThanOrEqual(1);
+      for (const cardBox of equipmentCardBoxes) expect(cardBox.width).toBeGreaterThanOrEqual(27);
     }
     if (viewport.width <= 520) expect(surfaceBox.width / stageBox.width).toBeGreaterThanOrEqual(0.88);
     expect(surfaceBox.width / stageBox.width).toBeLessThanOrEqual(0.94);
@@ -876,6 +895,86 @@ for (const viewport of [
     expect(submissions).toHaveLength(1);
   });
 }
+
+test("server-backed compact inspector keeps public zones beside identity and shows five skill lines at 390px", async ({ page, request }, testInfo) => {
+  const hidden = card("Peach", "real-inspect-five-line-hidden");
+  const crossbow = card("ZhugeCrossbow", "real-inspect-five-line-crossbow", "♦", "A");
+  const shield = card("NioShield", "real-inspect-five-line-shield");
+  const lightning = card("Lightning", "real-inspect-five-line-lightning", "♠", "A");
+  const seed = await seedGame(request, [
+    { name: "VIEWER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
+    { name: "INSPECTED", role: "Rebel", hero: "zhou-yu", hp: 3, maxHp: 4, hand: [hidden], equipment: { weapon: crossbow, armor: shield }, judgement: [lightning] },
+    { name: "THIRD", role: "Loyalist", hero: "guo-jia", hp: 4, maxHp: 4, hand: [] },
+    { name: "FOURTH", role: "Renegade", hero: "gan-ning", hp: 4, maxHp: 4, hand: [] },
+  ]);
+  const viewport = { width: 390, height: 844 };
+  await openGame(page, seed, 0, viewport);
+  const submissions = [];
+  page.on("request", (requestEvent) => {
+    if (requestEvent.url() === `${API}/api/rooms` && requestEvent.method() === "POST") submissions.push(requestEvent.postData() ?? "");
+  });
+  await page.locator(`[data-player-anchor="${seed.players[1].id}"] .opponent-hero-target`).click();
+  const panel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
+  await expect(panel).toBeVisible();
+  const profile = panel.locator(".hero-focus-inspect-profile");
+  const stats = panel.locator(".hero-focus-identity-stats");
+  const skills = panel.locator('[aria-label="Public Skills"]');
+  const zones = panel.locator(".hero-focus-inspect-public-zones");
+  const equipment = panel.locator('[aria-label="Equipment"]');
+  const judgement = panel.locator('[aria-label="Judgement Zone"]');
+  await expect(skills).toContainText("Sowing Distrust");
+  await expect(equipment.locator(".opponent-inspection-card")).toHaveCount(2);
+  await expect(judgement.locator(".opponent-inspection-card")).toHaveCount(1);
+  await expect(panel.locator('[aria-label="Concealed Hand"]')).toHaveCount(0);
+  expect(await page.locator("body").innerText()).not.toContain(hidden.id);
+  const [profileBox, statsBox, skillsBox, zonesBox, equipmentBox, judgementBox] = await Promise.all([
+    profile.boundingBox(), stats.boundingBox(), skills.boundingBox(), zones.boundingBox(), equipment.boundingBox(), judgement.boundingBox(),
+  ]);
+  for (const box of [profileBox, statsBox, skillsBox, zonesBox, equipmentBox, judgementBox]) expect(box).not.toBeNull();
+  expect(zonesBox.x).toBeGreaterThanOrEqual(profileBox.x + profileBox.width);
+  expect(skillsBox.y).toBeGreaterThanOrEqual(statsBox.y + statsBox.height - 1);
+  expect(Math.abs(zonesBox.y - profileBox.y)).toBeLessThanOrEqual(2);
+  const equipmentCards = await equipment.locator(".opponent-inspection-card").evaluateAll((cards) => cards.map((cardElement) => {
+    const box = cardElement.getBoundingClientRect();
+    return { x: box.x, y: box.y, width: box.width, height: box.height };
+  }));
+  expect(Math.abs(equipmentCards[0].y - equipmentCards[1].y)).toBeLessThanOrEqual(1);
+  for (const box of equipmentCards) expect(box.width).toBeGreaterThanOrEqual(27);
+
+  const skill = panel.getByRole("button", { name: "Show Sowing Distrust description" });
+  await skill.click();
+  const description = panel.getByRole("region", { name: "Sowing Distrust description" });
+  await expect(description).toBeVisible();
+  const details = panel.locator(".hero-focus-inspect-details");
+  const descriptionGeometry = await description.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const style = getComputedStyle(element);
+    const lineHeight = Number.parseFloat(style.lineHeight);
+    const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+    const elementBox = element.getBoundingClientRect();
+    const scrollportBox = element.parentElement.getBoundingClientRect();
+    const visibleHeight = Math.max(0, Math.min(elementBox.bottom, scrollportBox.bottom) - Math.max(elementBox.top, scrollportBox.top));
+    return {
+      naturalLines: range.getClientRects().length,
+      visibleLines: Math.floor((visibleHeight - padding + 0.5) / lineHeight),
+      maxHeight: Number.parseFloat(style.maxHeight),
+      lineHeight,
+      elementHeight: element.clientHeight,
+      scrollportHeight: element.parentElement.clientHeight,
+      scrollportScrollHeight: element.parentElement.scrollHeight,
+    };
+  });
+  expect(descriptionGeometry.naturalLines).toBeGreaterThanOrEqual(5);
+  expect(descriptionGeometry.visibleLines).toBeGreaterThanOrEqual(5);
+  expect(descriptionGeometry.maxHeight).toBeLessThanOrEqual(5 * descriptionGeometry.lineHeight + 1);
+  expect(submissions).toEqual([]);
+  const layout = { profileBox, statsBox, skillsBox, zonesBox, equipmentBox, judgementBox, equipmentCards, descriptionGeometry };
+  await testInfo.attach("server-five-line-skill-layout-390", { body: JSON.stringify(layout, null, 2), contentType: "application/json" });
+  await attachScreenshot(testInfo, "server-five-line-skill-390", page);
+  saveInspectionEvidence("server-five-line-skill-layout-390.json", JSON.stringify(layout, null, 2));
+  await saveInspectionScreenshot(page, "server-five-line-skill-390.png");
+});
 
 test.describe("iPhone 17 Pro Max mobile browser emulation", () => {
   const iphoneDevice = Object.fromEntries(Object.entries(devices["iPhone 17 Pro Max"]).filter(([key]) => key !== "defaultBrowserType"));

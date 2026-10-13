@@ -826,9 +826,11 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, onInfoCar
     <div className="hero-focus-body">
       <span className={hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={hero?.id}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
       <div className="hero-focus-identity">
-        <div className="hero-focus-identity-line">
-          <span className="hero-focus-identity-hero">{hero?.name ?? "Unknown Hero"}</span>
-          <div className="hero-focus-identity-stats"><small>HP {player.hp ?? "?"}/{player.maxHp ?? "?"}</small><small data-public-hand-count={player.handCount}>Hand · {player.handCount}</small></div>
+        <div className="hero-focus-inspect-profile">
+          <div className="hero-focus-identity-line">
+            <span className="hero-focus-identity-hero">{hero?.name ?? "Unknown Hero"}</span>
+            <div className="hero-focus-identity-stats"><small>HP {player.hp ?? "?"}/{player.maxHp ?? "?"}</small><small data-public-hand-count={player.handCount}>Hand · {player.handCount}</small></div>
+          </div>
           <section className="opponent-inspection-zone hero-focus-inspect-public-skills" aria-label="Public Skills">
             <h3>Public Skills</h3>
             <div className="hero-focus-inspect-skills">{skills.length ? skills.map((skill) => {
@@ -838,14 +840,14 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, onInfoCar
             }) : <span className="opponent-inspection-empty">None</span>}</div>
           </section>
         </div>
+        <div className="hero-focus-inspect-public-zones">
+          <section className="opponent-inspection-zone" aria-label="Equipment"><h3>Equipment</h3><div className="opponent-inspection-card-row">{player.equipmentCards.length ? player.equipmentCards.map((card) => renderInspectionCard(card)) : <span className="opponent-inspection-empty">None</span>}</div></section>
+          <section className="opponent-inspection-zone" aria-label="Judgement Zone"><h3>Judgement Zone</h3><div className="opponent-inspection-card-row">{player.judgementCards.length ? player.judgementCards.map((card) => renderInspectionCard(card, judgementInFlight?.has(card.id))) : <span className="opponent-inspection-empty">None</span>}</div></section>
+        </div>
       </div>
     </div>
     <div className="hero-focus-inspect-details hero-focus-context">
       {expandedSkill && <p className="hero-focus-inspect-skill-description" id={`${baseId}-skill-${expandedSkill.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`} role="region" aria-label={`${expandedSkill.name} description`}>{expandedSkill.description}</p>}
-      <div className="hero-focus-inspect-public-zones">
-        <section className="opponent-inspection-zone" aria-label="Equipment"><h3>Equipment</h3><div className="opponent-inspection-card-row">{player.equipmentCards.length ? player.equipmentCards.map((card) => renderInspectionCard(card)) : <span className="opponent-inspection-empty">None</span>}</div></section>
-        <section className="opponent-inspection-zone" aria-label="Judgement Zone"><h3>Judgement Zone</h3><div className="opponent-inspection-card-row">{player.judgementCards.length ? player.judgementCards.map((card) => renderInspectionCard(card, judgementInFlight?.has(card.id))) : <span className="opponent-inspection-empty">None</span>}</div></section>
-      </div>
     </div>
   </section>;
 }
