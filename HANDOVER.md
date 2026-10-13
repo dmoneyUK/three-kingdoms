@@ -1,61 +1,80 @@
 # WTK Coding Agent — Active Handover
 
 Branch: **ux-v2**
-Mode: **USER-DIRECTED RULE/PRIVACY REFINEMENT**
-Current priority: **NEGATION-ORDER-PRIVACY-01**
-Design authority: **docs/UX2-refine.md §9** (2026-10-13). Read this section completely before editing code.
+Mode: **USER-DIRECTED NEGATION RULE/PRIVACY REFINEMENT**
+**Current task:** NEGATION-SHARED-WINDOW-01
+**Design authority:** docs/UX2-refine.md **§9** (“Shared-window Negation with ordered server priority — approved 2026-10-13”). READ THE WHOLE SECTION before any implementation.
 
-## Latest reviewed baseline (not a new implementation result)
+## Review / previous result (context only)
 
-- Attack/Dodge UX2 graph removal, short centre reveal, seat thumbnail and manual test-player switching were previously deployed at commit 9d00b03c54833a4337b35be521c290a61ce21fc1. The user's manual visual acceptance remains outstanding. Do not present this as new work or rerun the previous handover's finished steps.
-- The earlier Duel reveal slice is **deferred**, not cancelled. Do **not** bundle it into this Negation rule/privacy task. Do not add counter arrows or legacy causal graphs.
+- Existing Attack/Dodge no-graph centre reveal → seat thumbnails and manually authorized test-seat switching previously deployed at 9d00b03c54833a4337b35be521c290a61ce21fc1. User's mobile visual acceptance of those visuals remains unconfirmed. Do NOT redo them.
+- Duel reveal/seat-card extension remains deferred until this Negation correctness task is accepted. The now-superseded **NEGATION-ORDER-PRIVACY-01 (8s per seat)** was **never implemented** and must NOT be executed. This handover deliberately replaces that stale specification with the user's explicitly approved shared-window design.
 
-## Next work — NEGATION-ORDER-PRIVACY-01
+## User decision (highest priority)
 
-**User's correction:** WTK Negation is **sequential by seat**, not one shared/simultaneous response window. Preserve the order and fix ownership leakage and excessive deadline.
+**One shared 8-second Negation response window for ALL living players; everyone may privately submit at the same time. At deadline the SERVER selects the FIRST valid submitted Negation by fixed canonical seat order, commits ONLY that card, and starts a NEW shared 8-second counter-Negation window.**
 
-**What current source does:**
-- app/api/rooms/route.ts HUMAN_RESPONSE_TIMEOUT_MS = 60_000.
-- nextEligibleNegationResponder() filters for players who can actually provide a Negation, and advanceNegation() arms/waits only for that eligible actor; players without the card are immediately skipped. This leaks possible hand capability through elapsed time.
-- CurrentAction and pendingNegation.actorId already hide active Negation actor from non-acting viewers, but roomState also serializes raw causalEnvelope; inspect checkpoint/frame resolvingPlayerId, derived projections and diagnostics for leakage to an observer. Never assume visual masking equals transport privacy.
-- Browser timer, privacy and Negation tests already exist; update them, do not replace with fixture-only screenshots.
+- NOT per-seat 8s turns.
+- NOT fastest network submit wins.
+- NOT multiple cards committed in one window.
+- NOT auto-countering with unselected submissions from previous window.
+- NOT public disclosure of who can respond or who chose Pass.
+- Other actions retain their existing timeouts/legality.
 
-**Mandatory acceptance scenario:** Five alive seats 1→2→3→4→5. Seat 1 plays Duel on seat 3. Seats 1/2/3 may Pass even without Negation. Seat 4 must still get the genuine private chance to play Negation before Duel Attack exchange starts. A subsequently accepted counter-Negation must be offered a new sequential full-seat response pass before effect resolution.
+**Mandatory scenario:** Five living seats 1→2→3→4→5; seat 1 uses Duel against seat 3. Suppose seats 2 and 4 both privately submit Negation within the first 8s. Seat 2 wins by priority **even if seat 4 submitted first**, only seat 2's card is consumed/revealed, and seat 4's card remains in Hand. Next 8s counter window priority is 3→4→5→1→2; 4 may freshly choose to counter 2. Duel Attack exchange may start ONLY after all shared Negation/counter windows finish and Duel is ultimately active. If 4 alone submits, 4 wins; if nobody submits, original effect resolves after **one** shared 8s window.
 
-### Step A — Ordered server decisions (first commit/checkpoint)
+## Confirmed source baseline (inspect before editing)
 
-1. Keep current effect-specific start ordering for ordinary single target, Duel, delayed judgement, Group/AOE and Harvest. Enumerate **all living seats**, not only holders, in each full Negation pass, beginning at the correct seat for the effect. Apply to initial start, successful Negation, counter-Negation, explicit Pass and expiry. No simultaneous choice collection.
-2. Do not use canRespondWithNegation to decide who has a response opportunity. Use it only to compute the currently active player's **private legal providers**. No-provider actor has private decline_response only; provider-capable actor has Negation and Pass.
-3. Handle one active responder at a time. On an actual Negation card, publish verified card/actor and start a new ordered pass; only after full pass finishes resume/negate Duel or another stratagem. Keep server causal identities, committed-card history, resource conservation, stale action guards and atomic claims.
-4. **Stop point A:** targeted API test demonstrates seat 4 receives the response even when seats 2 and 3 have empty hands and that Duel has not entered Attack exchange.
+- app/api/rooms/route.ts: HUMAN_RESPONSE_TIMEOUT_MS = 60_000, nextResponseDeadline, nextEligibleNegationResponder, advanceNegationDecision, advanceNegation, startNegation, startJudgementNegation, per-target group/harvest openers, canonical respond/decline_response branch around line 6324, advance_timers.
+- Current server chooses one eligible responder and skips players with no Negation immediately; this *must be REPLACED* only for the Negation family. UI currently has one active action actor, not per-viewer shared choices.
+- roomState provides currentAction, pendingNegation and raw causalEnvelope; check that raw response and derived projections do not reveal current responder / confidential intent.
+- app/page.tsx submitResponseProvider() currently creates an optimistic public-looking card event for a selected response (around line 2403); submitting a **tentative shared-window Negation intent must NEVER create this**. Only server-committed winning Negation creates the normal validated public reveal.
+- tests/api/privacy-response.test.mjs currently includes “Negation skips ineligible seats privately...” and tests/api/stratagems.test.mjs assumes the old one-actor Negation responses. These must be revised for shared-window protocol, NOT preserved as contradictory positive tests.
+- UX2 visual authority is docs/UX2-refine.md §§1–4 and 9; no graph arrows or giant combat panels.
 
-### Step B — Time and wire privacy (second checkpoint)
+## Implementation — three checkpoints, commit/test each before continuing
 
-1. Add **NEGATION_RESPONSE_TIMEOUT_MS = 8_000** per acting seat **only**. Keep all non-Negation response timeouts at 60_000 unless existing rules differ. A new seat gets a new authoritative 8s clock; no-card seats cannot be auto-skipped. An actor's private Pass can advance early, expiry is silent Pass. Refresh/poll/duplicate timer/competing requests must not extend any active seat's deadline.
-2. Adjust responseCountdownVisibleAt to subtract the correct *family* duration; preserve current compact countdown, no new timer UI. The server arms even if the active human is disconnected. Preserve advance_timers progress, concurrency and revision safety.
-3. Sanitize **actual serialized observer API JSON**: actionPlayerId, currentAction.actorId/options/provider IDs, pendingNegation.actorId, causalEnvelope checkpoint/frame resolvingPlayerId, PresentationV2, snapshots, timeline and available traces/diagnostics. Publicly known root source/target and **committed** Negation actor must remain true; **pending** responder stays secret.
-4. **Stop point B:** API tests for three independent human tokens and timing prove empty-handed acting player still waits with authorized Pass, remote observers do not learn the responder or provider, and no other response timing changes.
+### A. Durable shared-window engine + deterministic settlement
 
-### Step C — UI, regression and real-room verification (third checkpoint)
+1. Plan new canonical server state: **windowId**, original root/causal identity, current chain state, effect-specific start seat, canonical **all living** seat order, **opensAt/deadline** (8,000ms), server-private per-player intents/Pass, version/settled state. Negation/counter windows are repeatable. Persist in D1 / existing pending with safe transactional semantics; nothing critical lives only in a Worker global variable.
+2. Inspect source/target anchors for ordinary stratagems/Duel, delayed Judgement, Group/AOE per-target and Harvest per-target Negation. The **first** window priority preserves the established effect-specific starting anchor; after a **committed** Negation, the new window starts with the next living seat after its true actor and wraps all living seats.
+3. Each living player gets a PRIVATE decision against the SAME window. Capability resolution only affects their own legal provider options. Someone with no Negation can Pass or not submit; non-submission at deadline is Pass. Player may submit **one** intent or Pass, locked for that window. Exact retry is idempotent; conflicting update is rejected. Submitting an intent does not remove the card or generate a public event.
+4. **Always wait until the shared server deadline**. Early Passes, all players submitting, no-card hands, reconnects, and public animation must not shorten/extend the shared 8s. At close, atomically accept exactly one highest-seat-priority valid submitted Negation from the window's frozen ordering; network arrival order is irrelevant. Validate authenticated player, provider/selection, deadline and windowId; spend the winner's actual card exactly once and write true public actor/card/causal proof. Losers' cards stay untouched, and their stored intents are discarded.
+5. If there is a winner, use existing negation semantic/effect toggle and open a **new shared counter window** (all living players get fresh decisions; NEVER reapply the losers' previous choices). If there is no winner, finalize current effect exactly once and resume deferred stratagem/Duel from authoritative continuation. No arbitrary counter chain cutoff unless justified by real game rules. Preserve card conservation, hero skill providers, effect-specific scopes and statuses.
+6. **Checkpoint A tests:** authenticated 5-seat Duel, 2 vs 4 priority independent of POST order, only 2 consumed, 4 may counter next round; 4-alone wins; nobody submits ⇒ one 8s window, not 40s; no premature Duel exchange.
 
-1. The current acting player's Local Dock displays authoritative Negation/Pass, or private “No Negation available. Pass.” if no options; others see neutral “Waiting for Negation...”. Do not fabricate pending cards, prompt all simultaneously, automatically Pass empty-handed users, or block the response control behind animations.
-2. Update tests/api/privacy-response.test.mjs assertions that expect capability-based skip. Add five-seat Duel scenario; real counter-Negation restoring the Duel; no-card full pass; multiple counter rounds; alive/dead seats; judgement/group/harvest; early Pass/timeout and reconnect; stale/duplicate requests; causal proof, card conservation and 60s ordinary response regression. Fake/fast-forward deadlines rather than waiting 8s*seats in required CI.
-3. Extend tests/browser/negation-response-guidance.spec.mjs and response-timer.spec.mjs. Verify a genuine authenticated multi-user room, 390px/~440px/480px/wide responsive layout, server 8s timer, no false public Pass/card, correct counter card identity, and no uncommitted responder in response payload or presentation.
-4. Run focused rules/privacy tests, lint, fast, API, regular push-to-Cloudflare CI and smoke; preserve <=6 minute normal pipeline where practical. Record exact commit/deploy SHA, test output, real screenshots and any unverified manual/mobile acceptance.
+### B. Concurrent actions, immutable deadline, strict wire privacy
 
-## Hard boundaries
+1. Extend server authorization and canonical per-viewer CurrentAction. No single pending.actorId can represent the whole Negation response family. Every living player gets own legal Negation provider(s) + Pass, or Pass alone. After own submission: private **“Response submitted — waiting”** with controls disabled. Peers' windows/decisions must remain active; one person's mutation must not make another's actionRevision stale. Use stable windowId and own intent revision or a proper child submission table, with conditional writes to avoid lost submissions and double close.
+2. Define **NEGATION_WINDOW_MS = 8_000**, separate from HUMAN_RESPONSE_TIMEOUT_MS = 60_000. open/close uses server clock; common deadline survives polling, retries, refresh, Worker restart and disconnect. Existing responseCountdownVisibleAt must be computed for the shared 8s Negation window, not blindly subtracting 60s; ordinary Attack/Dodge, Duel Attack, Rescue/trigger timeouts must not change.
+3. Audit **actual HTTP JSON** from multiple different human tokens, not just DOM. Observer fields / pending / causalEnvelope checkpoint and frames / presentationV2 and snapshot / logs, event history and diagnostic traces MUST NOT expose anyone's *uncommitted* Negation provider, intended card, submitted status, actor identity, eligible seats, submitted counts or ranking. Keep public source/target and only truly **committed** Negation actor/card public.
+4. Handle race: two POSTs at once, repeated exact POST, expired submit, duplicate advance_timers, stale windowId from previous counter round, concurrent close and a late intent. Ensure exactly-once spend/settle and no lost intent at D1/Cloudflare runtime. No in-memory-only mutex. Timer advancing from an authorized viewer is fine; if nobody connected, resume safely on next action. Do not use UI-only timeout for correctness.
+5. **Checkpoint B tests:** three isolated human tokens verify secrecy and valid simultaneous private actions; same deadline visible to all; no-response round fixed 8s; disconnect + reconnect; invariant ordinary 60s response; stale actions rejected without corrupting next window.
 
-- **Do not** redesign Negation into a shared/simultaneous window, seat voting, public seat marker, or visible Pass list.
-- **Do not** reintroduce response graph arrows, duplicate central cards, giant Negation panel, or touch-blocking animation. Obey docs/UX2-refine.md §§1–4, 6 and 9.
-- Treat CurrentAction and authoritative server transitions as the only legal control source; no hand inference for opponents.
-- Deploy and **STOP for user/Reviewer acceptance** after this task. Do not silently resume the deferred Duel visual extension.
+### C. Frontend, regression, production path and deploy
 
-## Agent result template (fill in after implementation)
+1. Reuse existing compact lower-right response countdown for shared 8s; no extra giant stage or progress indicator. Local Dock states from server CurrentAction: Negation/Pass, Pass-only if no provider, submitted/waiting after intent. Hand selection only uses the viewer's legal options. Other players' Hand/intent/Pass always secret.
+2. **Suppress optimistic public card presentation on Negation intent submit** in app/page.tsx. A physical Negation CardFace and seat thumbnail may appear only after the server has selected and committed the winner. Losers' local selection must clear without fake played-card effects. On a counter window, players deliberately choose again rather than reusing previous intent. Animations may not block/extend the real clock.
+3. Update tests/api/privacy-response.test.mjs, tests/api/stratagems.test.mjs, browser/negation-response-guidance.spec.mjs, browser/response-timer.spec.mjs. Add multi-round parity, group/judgement/harvest, 4/6/8 seats, dead players, skill-generated Negation, conservation, real public proof IDs, no no-card speed-leak, all-Pass full shared time, network races and real-user auth privacy. Fake/fast-forward server time in CI rather than waiting 8s × many rounds.
+4. Run targeted rule/privacy tests, lint, fast/API, genuine authenticated multi-client browser flow, full normal push-to-Cloudflare CI + deployment smoke. Show exact SHA, tests, privacy payload diff, server log/causal evidence, mobile screenshots 390px/~440px/480px and desktop, any failures/limitations.
+5. STOP after deployment and report for User/Planner review. Do not begin previously deferred Duel visual expansion or other UX families without explicit approval.
 
-- Code commit and deployed build SHA:
-- Step A/B/C code changes and key files:
-- Server/HTTP/browser tests with actual results:
-- Five-seat Duel + seat-4 Negation proof:
-- Raw API spectator secrecy proof:
-- 8s Negation / existing non-Negation timeout proof:
-- Known issues and on-device review status:
+## Acceptance checklist (all required)
+
+- [ ] Fixed 8s **per full shared window**, irrespective of number of living players, card ownership, Pass speeds or POST order.
+- [ ] First valid submitted Negation by **canonical seat priority** wins; exactly one consumed/played and the rest preserved.
+- [ ] Counter-Negation opens new shared window in next-seat order; earlier losing intent **never auto-counters**.
+- [ ] All clients privately offered their own correct options, with server enforcement; raw HTTP/public proof cannot disclose any other player's options or uncommitted submission.
+- [ ] Only accepted physical cards are public; no optimistic ghost public card or leaked pending actor through causalEnvelope.
+- [ ] Duel Attack exchange begins only when Negation chain closes and Duel effect is active.
+- [ ] Other timers and approved no-graph UX unchanged; refresh/reconnect/concurrency safe.
+- [ ] Deploy/build SHA, focused/API/browser/CI evidence and any manual acceptance gap recorded.
+
+## Agent result (fill only after doing actual implementation)
+
+- Code commits and deployed SHA:
+- Checkpoint A engine/tests:
+- Checkpoint B privacy/deadline/concurrency tests:
+- Checkpoint C browser/real-room and UI evidence:
+- Seat 2/4 Duel and counter-Negation exact results:
+- Limitations / unverified items:
