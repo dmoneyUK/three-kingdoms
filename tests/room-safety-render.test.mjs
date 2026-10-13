@@ -128,7 +128,7 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.equal((html.match(/data-player-anchor="/g) ?? []).length, 2, "retiring the Stage preserves both physical player anchors");
   assert.equal((html.match(/class="local-player-dock/g) ?? []).length, 1, "retiring the Stage keeps one local dock");
   assert.equal((html.match(/data-console-surface="local-operation"/g) ?? []).length, 1, "retiring the Stage keeps one footer console");
-  assert.doesNotMatch(html, /<header><span>INTERACTION STAGE<\/span>|<strong>Attack Response<\/strong>|<small>CURRENT EFFECT<\/small>/, "legacy combat panel copy is absent");
+  assert.doesNotMatch(html, /aria-label="Interaction Stage"/, "legacy combat panel semantics are absent");
   assert.doesNotMatch(html, /data-reaction-node=|data-group-composition=|data-hero-focus-player-id=/, "legacy reaction and participant compositions are absent");
   assert.match(html, /data-presentation-kind="CHOICE"/);
   assert.match(html, /data-presentation-has-interaction="true"/);
