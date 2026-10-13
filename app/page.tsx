@@ -243,7 +243,7 @@ export default function Home() {
   const testViewerRoomCodeRef = useRef<string | null>(null);
   const testViewerRevisionRef = useRef(0);
 
-  const fetchRoom = useCallback(async (roomCode: string, playerToken: string, quiet = false, requestedViewerId?: string) => {
+  const fetchRoom = useCallback(async function fetchRoomRequest(roomCode: string, playerToken: string, quiet = false, requestedViewerId?: string) {
     if (testViewerRoomCodeRef.current !== roomCode) {
       testViewerRoomCodeRef.current = roomCode;
       testViewerIdRef.current = null;
@@ -274,6 +274,19 @@ export default function Home() {
       const nextRoom = normalizeRoomData(roomPayload) as Room | null;
       if (!nextRoom || !nextRoom.meId) throw new Error("Your player session is no longer valid.");
       if (selectedTestViewerId && nextRoom.meId !== selectedTestViewerId) throw new Error("The selected test-player view is no longer available.");
+      // Test controllers follow the server-selected seat while choosing
+      // Generals, then start gameplay from HOST until a SWITCH button is
+      // explicitly used. Do not let the default action-player projection
+      // silently choose a gameplay perspective on a fresh/reloaded client.
+      if (!selectedTestViewerId && nextRoom.isTestController && nextRoom.status !== "heroes") {
+        const hostId = nextRoom.players.find((player) => player.isHost)?.id;
+        if (hostId) {
+          testViewerRoomCodeRef.current = nextRoom.code;
+          testViewerIdRef.current = hostId;
+          testViewerRevisionRef.current += 1;
+          return fetchRoomRequest(roomCode, playerToken, quiet, hostId);
+        }
+      }
       if (serverDiagnostic) {
         recordAttackDodgeUxTrace("server-projection-evaluation", sanitizeAttackDodgeUxTraceData(
           serverDiagnostic,
@@ -397,7 +410,23 @@ export default function Home() {
         }
       }
       const data = { ...rawData, room: normalizeRoomData(rawData.room) as Room | null };
-      const preservedTestViewerId = room?.isTestController ? testViewerIdRef.current : null;
+      const testHeroSelectionAdvances = room?.isTestController && room.status === "heroes"
+        && data.room?.status === "heroes";
+      const gameplayViewStartsForHost = room?.isTestController && room.status === "heroes"
+        && data.room?.status === "playing"
+        ? data.room.players.find((player) => player.isHost)?.id ?? null
+        : null;
+      const preservedTestViewerId = gameplayViewStartsForHost
+        ?? (room?.isTestController && room.status !== "heroes" ? testViewerIdRef.current : null);
+      if (testHeroSelectionAdvances && data.room) {
+        testViewerRoomCodeRef.current = data.room.code;
+        testViewerIdRef.current = data.room.meId;
+      }
+      if (gameplayViewStartsForHost && data.room) {
+        testViewerRoomCodeRef.current = data.room.code;
+        testViewerIdRef.current = gameplayViewStartsForHost;
+        testViewerRevisionRef.current += 1;
+      }
       const preserveTestViewer = Boolean(data.room && preservedTestViewerId);
       if (preserveTestViewer && data.room) {
         await fetchRoom(data.room.code, token, true, preservedTestViewerId!);
