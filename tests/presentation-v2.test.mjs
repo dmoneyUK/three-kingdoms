@@ -454,6 +454,12 @@ test("Duel exchange links one persistent root to only submitted server-directed 
     root: { eventId: root.id, resolutionId: root.resolutionId, sourceId: "A", targetId: "B", cardKind: "Duel" },
     responseCount: 0, responses: [], currentParticipantId: "B", decisionActorId: "B",
   }, "an open response window contains no fabricated Attack response");
+  const ownerTimeline = [
+    { type: "card", id: "private-duel-draw", player: "A", target: "A", card: root.card, action: "draw", presentation: false, privateToPlayerId: "A" },
+    root,
+  ];
+  assert.equal(project("B", "A", 0, 0, ownerTimeline).duelExchange?.root.eventId, root.id,
+    "the source's private acquisition record for the now-public physical Duel does not suppress the public root proof");
 
   const answered = project("A", "B", 1, 1, [root, response]);
   assert.deepEqual(answered.duelExchange?.responses, [{

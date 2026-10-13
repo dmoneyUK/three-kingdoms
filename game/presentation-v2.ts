@@ -2492,7 +2492,16 @@ function duelExchangeFor(
 
   const rootCardId = stringValue(rootCardsOfDuelKind[0].id);
   if (!rootCardId) return null;
-  const rootMatches = timeline.filter((event) => eventCardIds(event).includes(rootCardId));
+  // The source may see a private draw event for the physical Duel card in
+  // their own timeline. Once played, that identity is public; only its exact
+  // public play event can identify the exchange root. Private acquisition
+  // history must neither duplicate nor suppress the public causal proof.
+  const rootMatches = timeline.filter((event) => event.type === "card"
+    && event.action === "play" && event.presentation !== false
+    && record(event)?.privateToPlayerId === undefined
+    && event.playedAs === undefined
+    && record(event.card)?.kind === "Duel"
+    && eventCardIds(event).includes(rootCardId));
   if (rootMatches.length !== 1) return null;
   const rootEvent = rootMatches[0];
   const rootCard = record(rootEvent.card);

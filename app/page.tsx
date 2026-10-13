@@ -3437,34 +3437,46 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     const source = room.players.find((player) => player.id === exchange.root.sourceId);
     const target = room.players.find((player) => player.id === exchange.root.targetId);
     if (!source?.name || !target?.name) return null;
-    const response = exchange.responses.at(-1) ?? null;
-    if (!response) return { exchange, rootEvent, source, target, response: null, responseEvent: null, responseActor: null, decisionActor: null, responseTarget: null };
-    if (response.ordinal !== exchange.responseCount || response.relation !== "DUEL_EXCHANGE"
-      || response.rootEventId !== exchange.root.eventId || response.rootResolutionId !== exchange.root.resolutionId
-      || response.rootSourceId !== exchange.root.sourceId || response.rootTargetId !== exchange.root.targetId
-      || response.responseCardKind !== "Attack" || response.sourceId !== response.decisionActorId
-      || response.sourceId === response.targetId
-      || ![exchange.root.sourceId, exchange.root.targetId].includes(response.sourceId)
-      || ![exchange.root.sourceId, exchange.root.targetId].includes(response.targetId)) return null;
-    const responseMatches = room.timeline.filter((event) => event.id === response.responseEventId);
-    if (responseMatches.length !== 1) return null;
-    const responseEvent = responseMatches[0];
-    const eventProof = responseEvent.type === "card" ? responseEvent.duelAttackResponse : undefined;
-    if (responseEvent.type !== "card" || responseEvent.action !== "play" || responseEvent.presentation === false
-      || responseEvent.resolutionId !== response.responseResolutionId
-      || responseEvent.card.kind !== "Attack" && responseEvent.playedAs?.toLowerCase() !== "attack"
-      || !eventProof || eventProof.interactionId !== exchange.interactionId
-      || eventProof.rootFrameId !== exchange.rootFrameId || eventProof.rootEventId !== exchange.root.eventId
-      || eventProof.rootResolutionId !== exchange.root.resolutionId
-      || eventProof.rootSourceId !== exchange.root.sourceId || eventProof.rootTargetId !== exchange.root.targetId
-      || eventProof.ordinal !== response.ordinal || eventProof.sourceId !== response.sourceId
-      || eventProof.targetId !== response.targetId || eventProof.decisionActorId !== response.decisionActorId
-      || eventProof.responseActorId !== response.responseActorId || eventProof.responseCardKind !== "Attack") return null;
-    const responseActor = room.players.find((player) => player.id === response.responseActorId);
-    const decisionActor = room.players.find((player) => player.id === response.decisionActorId);
-    const responseTarget = room.players.find((player) => player.id === response.targetId);
-    if (!responseActor?.name || !decisionActor?.name || !responseTarget?.name) return null;
-    return { exchange, rootEvent, source, target, response, responseEvent, responseActor, decisionActor, responseTarget };
+    const responses = exchange.responses.flatMap((response, index) => {
+      if (response.ordinal !== index + 1 || response.relation !== "DUEL_EXCHANGE"
+        || response.rootEventId !== exchange.root.eventId || response.rootResolutionId !== exchange.root.resolutionId
+        || response.rootSourceId !== exchange.root.sourceId || response.rootTargetId !== exchange.root.targetId
+        || response.responseResolutionId !== exchange.root.resolutionId
+        || response.responseCardKind !== "Attack" || response.sourceId !== response.decisionActorId
+        || response.sourceId === response.targetId
+        || ![exchange.root.sourceId, exchange.root.targetId].includes(response.sourceId)
+        || ![exchange.root.sourceId, exchange.root.targetId].includes(response.targetId)) return [];
+      const responseMatches = room.timeline.filter((event) => event.id === response.responseEventId);
+      if (responseMatches.length !== 1) return [];
+      const responseEvent = responseMatches[0];
+      const eventProof = responseEvent.type === "card" ? responseEvent.duelAttackResponse : undefined;
+      if (responseEvent.type !== "card" || responseEvent.action !== "play" || responseEvent.presentation === false
+        || responseEvent.resolutionId !== response.responseResolutionId
+        || responseEvent.card.kind !== "Attack" && responseEvent.playedAs?.toLowerCase() !== "attack"
+        || !eventProof || eventProof.semantics !== "PROVEN" || eventProof.relation !== "DUEL_EXCHANGE"
+        || eventProof.interactionId !== exchange.interactionId
+        || eventProof.rootFrameId !== exchange.rootFrameId || eventProof.rootEventId !== exchange.root.eventId
+        || eventProof.rootResolutionId !== exchange.root.resolutionId
+        || eventProof.rootSourceId !== exchange.root.sourceId || eventProof.rootTargetId !== exchange.root.targetId
+        || eventProof.ordinal !== response.ordinal || eventProof.sourceId !== response.sourceId
+        || eventProof.targetId !== response.targetId || eventProof.decisionActorId !== response.decisionActorId
+        || eventProof.responseActorId !== response.responseActorId || eventProof.responseCardKind !== "Attack") return [];
+      const responseActor = room.players.find((player) => player.id === response.responseActorId);
+      const decisionActor = room.players.find((player) => player.id === response.decisionActorId);
+      const responseTarget = room.players.find((player) => player.id === response.targetId);
+      if (!responseActor?.name || !decisionActor?.name || !responseTarget?.name) return [];
+      return [{ response, responseEvent, responseActor, decisionActor, responseTarget }];
+    });
+    if (responses.length !== exchange.responseCount) return null;
+    const latest = responses.at(-1) ?? null;
+    return {
+      exchange, rootEvent, source, target, responses,
+      response: latest?.response ?? null,
+      responseEvent: latest?.responseEvent ?? null,
+      responseActor: latest?.responseActor ?? null,
+      decisionActor: latest?.decisionActor ?? null,
+      responseTarget: latest?.responseTarget ?? null,
+    };
   })();
   const singleTargetNegationGraphCandidates = (() => {
     const negationStage = buildInteractionStageView(clientPresentation, (playerId) => room.players.find((player) => player.id === playerId)?.name ?? null);
@@ -4330,26 +4342,44 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     : duelExchangeGraphCandidate
     ? {
       key: ["duel", duelExchangeGraphCandidate.exchange.interactionId, duelExchangeGraphCandidate.exchange.rootFrameId, duelExchangeGraphCandidate.exchange.root.eventId, duelExchangeGraphCandidate.exchange.root.sourceId, duelExchangeGraphCandidate.exchange.root.targetId].join(":"),
+      rootPlacementKey: duelExchangeGraphCandidate.exchange.root.eventId,
+      interactionId: duelExchangeGraphCandidate.exchange.interactionId,
+      rootFrameId: duelExchangeGraphCandidate.exchange.rootFrameId,
+      checkpointId: duelExchangeGraphCandidate.exchange.checkpointId,
+      presentationRevision: duelExchangeGraphCandidate.exchange.presentationRevision,
       rootEventId: duelExchangeGraphCandidate.exchange.root.eventId,
       sourceId: duelExchangeGraphCandidate.exchange.root.sourceId,
       targetId: duelExchangeGraphCandidate.exchange.root.targetId,
       cardKind: "Duel",
+      cardFace: duelExchangeGraphCandidate.rootEvent.card,
       cardLabel: "DUEL",
       ariaLabel: `${duelExchangeGraphCandidate.source.name} played Duel targeting ${duelExchangeGraphCandidate.target.name}`,
       mode: "targeted",
       compactRoot: true,
-      ...(duelExchangeGraphCandidate.response && duelExchangeGraphCandidate.responseEvent && duelExchangeGraphCandidate.responseActor && duelExchangeGraphCandidate.decisionActor && duelExchangeGraphCandidate.responseTarget ? {
-        response: {
-          eventId: duelExchangeGraphCandidate.response.responseEventId,
-          actorId: duelExchangeGraphCandidate.response.responseActorId,
-          actorName: duelExchangeGraphCandidate.responseActor.name,
-          decisionActorId: duelExchangeGraphCandidate.response.decisionActorId,
-          targetId: duelExchangeGraphCandidate.response.targetId,
-          cardLabel: "ATTACK",
-          ariaLabel: duelExchangeGraphCandidate.response.responseActorId === duelExchangeGraphCandidate.response.decisionActorId
-            ? `${duelExchangeGraphCandidate.responseActor.name} played Attack targeting ${duelExchangeGraphCandidate.responseTarget.name} in ${duelExchangeGraphCandidate.source.name}'s Duel against ${duelExchangeGraphCandidate.target.name}`
-            : `${duelExchangeGraphCandidate.responseActor.name} provided Attack for ${duelExchangeGraphCandidate.decisionActor.name}, targeting ${duelExchangeGraphCandidate.responseTarget.name}, in ${duelExchangeGraphCandidate.source.name}'s Duel against ${duelExchangeGraphCandidate.target.name}`,
-        },
+      ...(duelExchangeGraphCandidate.responses.length ? {
+        responses: duelExchangeGraphCandidate.responses.map(({ response, responseEvent, responseActor, decisionActor, responseTarget }, index) => {
+          const priorResponse = index > 0 ? duelExchangeGraphCandidate.responses[index - 1]?.response : undefined;
+          const relatedResponseEventId = priorResponse?.responseActorId === response.targetId
+            ? priorResponse.responseEventId
+            : undefined;
+          return {
+            index: response.ordinal - 1,
+            eventId: response.responseEventId,
+            actorId: response.responseActorId,
+            actorName: responseActor.name,
+            cardFace: responseEvent.card,
+            cardLabel: "ATTACK",
+            ariaLabel: response.responseActorId === response.decisionActorId
+              ? `${responseActor.name} played Attack targeting ${responseTarget.name} in ${duelExchangeGraphCandidate.source.name}'s Duel against ${duelExchangeGraphCandidate.target.name}`
+              : `${responseActor.name} provided Attack for ${decisionActor.name}, targeting ${responseTarget.name}, in ${duelExchangeGraphCandidate.source.name}'s Duel against ${duelExchangeGraphCandidate.target.name}`,
+            counterTarget: {
+              kind: "DUEL_TARGET" as const,
+              decisionActorId: response.decisionActorId,
+              targetId: response.targetId,
+              ...(relatedResponseEventId ? { relatedResponseEventId } : {}),
+            },
+          };
+        }),
       } : {}),
     }
     : committedSingleTargetNegationGraphOwnsRoot
@@ -4475,6 +4505,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   // if measurement fails, the legacy presentation remains the safe fallback.
   const rootActionOverlayVisible = rootActionOverlayGraphReady;
   const rootActionOverlayOwnsComposition = rootActionOverlayGraphReady;
+  const duelGraphOwnedEventIds = rootActionOverlayOwnsComposition && rootActionOverlayAction?.cardKind === "Duel"
+    ? [rootActionOverlayAction.rootEventId, ...(rootActionOverlayAction.responses ?? []).map((response) => response.eventId)]
+    : [];
   const rootActionOverlayDisplayMode = rootActionOverlayGraphReady ? "graph" : rootActionOverlayMeasuring ? "measuring" : "fallback";
   const rootActionOverlayFallbackReason = rootActionOverlayDisplayMode !== "fallback" ? undefined
     : !rootActionOverlayAction ? "no-proven-root"
@@ -4968,6 +5001,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const duelExchangeEventIds = new Set(duelExchangeGraphCandidate
     ? [duelExchangeGraphCandidate.exchange.root.eventId, ...duelExchangeGraphCandidate.exchange.responses.map((response) => response.responseEventId)]
     : []);
+  const duelExchangePhysicalCardIds = new Set(duelExchangeGraphCandidate
+    ? [duelExchangeGraphCandidate.rootEvent.card.id, ...duelExchangeGraphCandidate.responses.map(({ responseEvent }) => responseEvent.card.id)]
+    : []);
   const completedAttackDodgeSequenceCandidate = visibleActiveAttackDodgeSettlement?.phase === "complete"
     && completedAttackDodgeSettlementCandidate?.proof.responseEventId === visibleActiveAttackDodgeSettlement.eventId
     ? completedAttackDodgeSettlementCandidate
@@ -5025,12 +5061,15 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       || duelExchangeGraphCandidate?.responseEvent && displayedEvent.id === duelExchangeGraphCandidate.responseEvent.id
       || attackDodgeGraphCandidate && eventCards(displayedEvent).some((card) => card.id === attackDodgeGraphCandidate.responseEvent.card.id)
       || singleTargetNegationGraphCandidate?.responseEvent && eventCards(displayedEvent).some((card) => card.id === singleTargetNegationGraphCandidate.responseEvent.card.id));
+  const activeRootDuelEvent = rootActionOverlayOwnsComposition && duelExchangeGraphCandidate && displayedEvent
+    && (duelExchangeEventIds.has(displayedEvent.id)
+      || eventCards(displayedEvent).some((card) => duelExchangePhysicalCardIds.has(card.id)));
   const completedAttackDodgeResponseEvent = completedAttackDodgeSequenceCandidate && displayedEvent
     && eventCards(displayedEvent).some((card) => card.id === completedAttackDodgeSequenceCandidate.responseEvent.card.id);
   const displayedEventIsRetiredAttackDodge = Boolean(displayedEvent
     && (retiredAttackDodgeEvents.has(displayedEvent.id)
       || eventCards(displayedEvent).some((card) => retiredAttackDodgeCards.has(card.id))));
-  const displayedTableEvent = activeRootAttackEvent || activeRootSelfTargetEvent || activeRootResponseEvent || completedAttackDodgeResponseEvent || displayedEventIsRetiredAttackDodge ? null : displayedEvent;
+  const displayedTableEvent = activeRootAttackEvent || activeRootSelfTargetEvent || activeRootResponseEvent || activeRootDuelEvent || completedAttackDodgeResponseEvent || displayedEventIsRetiredAttackDodge ? null : displayedEvent;
   const tablePresentationVisible = displayedSequenceEvents.length > 0 || Boolean(displayedTableEvent && eventCards(displayedTableEvent).length);
   const attackDodgeTraceSeat = (playerId: string | null | undefined) => playerId
     ? room.players.find((player) => player.id === playerId)?.seat ?? null
@@ -5433,7 +5472,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       {privateDrawVisible && <div className="played-card-stage private-draw-stage" role="status"><div className="private-draw-content"><div className="card-action-title"><b>PRIVATE DRAW</b><span>Only you can see these cards</span></div><div className="private-draw-row" role="region" aria-label="Private drawn cards; scroll horizontally to view all" tabIndex={privateDrawCards.length > 3 ? 0 : undefined}>{privateDrawCards.map((drawn) => <CardFace card={drawn} key={drawn.id} />)}</div></div></div>}
       {privateDistribution && !presentationBusy && <PrivateCardDistributionDialog key={room.actionRevision} cards={privateDistribution.cards} players={room.players.filter((player) => privateDistribution.eligibleRecipientIds.includes(player.id) && player.alive)} disabled={busy} error={error} onSubmit={(assignments) => onAction("trigger", { providerId: "private_card_distribution", assignments })} />}
       {privateDeckReorder && <PrivateDeckReorderDialog key={room.actionRevision} cards={privateDeckReorder.cards} minTop={privateDeckReorder.minTop} maxTop={privateDeckReorder.maxTop} disabled={busy} error={error} onSubmit={(topCardIds, bottomCardIds) => onAction("trigger", { providerId: "private_deck_reorder", topCardIds, bottomCardIds })} />}
-      {tablePresentationVisible && <TableResolutionSequence events={displayedSequenceEvents} activeEvent={displayedTableEvent} players={room.players} myTableIndex={myTableIndex} concluding={resolutionClosing} />}
+      {tablePresentationVisible && <TableResolutionSequence events={displayedSequenceEvents} activeEvent={displayedTableEvent} players={room.players} myTableIndex={myTableIndex} concluding={resolutionClosing} graphOwnedEventIds={duelGraphOwnedEventIds} />}
       {room.pendingHarvest && !presentationBusy && <div className="game-event-stage harvest-choice-stage" role="dialog" aria-label="Bumper Harvest card choice"><div><span>BUMPER HARVEST</span><b>{room.pendingHarvest.complete ? "All choices complete" : harvestSubmitting ? "Your choice is submitted" : canChooseHarvest ? "Your turn — choose one card" : `${actor?.name ?? "The next player"} is choosing`}</b><small>{room.pendingHarvest.complete ? "The final shaded card remains visible before Bumper Harvest closes." : harvestSubmitting ? "Your card is shaded immediately while the next choice is prepared." : canChooseHarvest ? "Tap any available card to change your selection, then confirm. Selection changes are instant." : "Watch the current player's card rise, then become shaded when confirmed."}</small><div className="harvest-card-row">{room.pendingHarvest.revealed.map((choice) => { const takenBy = room.pendingHarvest?.choices.find((entry) => entry.cardId === choice.id); const submittedByMe = harvestSubmitting?.cardId === choice.id; const available = room.pendingHarvest?.availableIds.includes(choice.id); const awaitingConfirmation = !submittedByMe && activeHarvestSelection === choice.id; return <button type="button" className={`harvest-card-choice ${takenBy || submittedByMe ? "taken" : ""} ${awaitingConfirmation ? "pending-choice" : ""}`} disabled={!canChooseHarvest || Boolean(harvestSubmitting) || busy || !available} aria-pressed={awaitingConfirmation} aria-label={takenBy ? `${cardDefinition(choice.kind).name}, taken by ${takenBy.playerName}` : submittedByMe ? `${cardDefinition(choice.kind).name}, choice submitted by ${harvestSubmitting?.playerName ?? "ME"}` : `${cardDefinition(choice.kind).name}, ${awaitingConfirmation ? `selected by ${actor?.name ?? "current player"}, awaiting confirmation` : "available"}`} key={choice.id} onClick={() => { const nextCardId = activeHarvestSelection === choice.id ? "" : choice.id; setHarvestSelected(nextCardId); void publishHarvestPreview(nextCardId); }}><CardFace card={choice} />{takenBy && <strong className="harvest-taken-label">Taken by {takenBy.playerName}</strong>}{submittedByMe && !takenBy && <strong className="harvest-taken-label">Chosen by {harvestSubmitting?.playerName ?? "ME"}</strong>}{awaitingConfirmation && <strong className="harvest-pending-label">Selected by {actor?.name ?? "player"}</strong>}</button>; })}</div>{canChooseHarvest && (harvestSubmitting ? <div className="harvest-confirm-row"><small>Choice submitted · moving to the next player</small></div> : <div className="harvest-confirm-row"><small>{harvestSelectedCard ? `${cardDefinition(harvestSelectedCard.kind).name} selected` : "Select a card before confirming"}</small><button type="button" className="primary" disabled={busy || !harvestSelectedCard} onClick={async () => { if (!harvestSelectedCard || !me) return; const submission = { cardId: harvestSelectedCard.id, playerId: me.id, playerName: me.name }; queuedHarvestPreview.current = null; setHarvestSubmitting(submission); setHarvestSelected(""); const accepted = await onAction("choose_harvest", { cardId: submission.cardId }); if (!accepted) setHarvestSubmitting(null); }}>Confirm choice</button></div>)}</div></div>}
       <div className="play-center" aria-label="Card piles"><div className="draw-stack" data-draw-anchor="true" aria-label={`Draw pile, ${room.deckCount} cards`}><b>{room.deckCount}</b><span>DECK</span></div><div className="discard-stack" data-discard-anchor="true" data-discard-kind={visibleDiscardTop?.kind} aria-label={visibleDiscardTop ? `Discard pile, ${cardDefinition(visibleDiscardTop.kind).name}` : "Discard pile, empty"}>{visibleDiscardTop ? <CardFace card={visibleDiscardTop} /> : <b className="discard-empty">—</b>}<span>DISCARD</span></div></div>
       {pendingTargetCardUsesUnifiedModal && pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget && supportsAuthoritativeTargetCardSelection(pendingTargetCardSelectableSelection, pendingTargetCardSelectableTarget) && room.pendingTargetCard && pendingTargetCardActionName && <TargetCardPicker option={null} presentationCopy={{ title: pendingTargetCardActionName, accessibleName: `${pendingTargetCardActionName} target card selection`, instruction: room.pendingTargetCard.cardKind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard", actionLabel: `Use ${pendingTargetCardActionName}` }} selection={pendingTargetCardSelectableSelection} target={pendingTargetCardSelectableTarget} selectedKeys={pendingTargetCardSelectedKeys} disabled={busy || presentationBusy || !canUseAction(room.currentAction, "choose_target_card")} canDecline={false} showCancel error={error} onToggle={togglePendingTargetCardSelection} onUse={submitPendingTargetCardPicker} onCancel={clearPendingTargetCardSelection} onDecline={() => undefined} />}
@@ -5488,7 +5527,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
     </section>
-    <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} displayMode={rootActionOverlayDisplayMode} layoutReadiness={rootActionLayoutState} fallbackReason={rootActionOverlayFallbackReason} resultReadRemainingMs={rootActionOverlayResultReadRemainingMs} onLayoutReadinessChange={onRootActionOverlayLayoutReadinessChange} />
+    <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} displayMode={rootActionOverlayDisplayMode} layoutReadiness={rootActionLayoutState} fallbackReason={rootActionOverlayFallbackReason} resultReadRemainingMs={rootActionOverlayResultReadRemainingMs} viewerId={room.meId} onLayoutReadinessChange={onRootActionOverlayLayoutReadinessChange} />
     <footer className="play-command">
     <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setExpandedOpponentId(null); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onSwitchTestViewer={room.isTestController ? onSwitchTestViewer : undefined} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
       heroSkillControl={
@@ -6158,10 +6197,12 @@ function playerSettlementPoint(table: HTMLElement, anchor: HTMLElement): TablePo
     : { x: anchorRect.left - tableRect.left - 38, y: center.y };
 }
 
-function TableResolutionSequence({ events, activeEvent, players, myTableIndex, concluding }: { events: GameEvent[]; activeEvent: GameEvent | null; players: Player[]; myTableIndex: number; concluding: boolean }) {
-  const cards = events.filter(retainsAtPlayer).flatMap((event) => event.type === "card" ? [{ event, card: event.card, key: event.id }] : event.type === "cards" ? event.cards.map((card) => ({ event, card, key: `${event.id}-${card.id}` })) : []);
+function TableResolutionSequence({ events, activeEvent, players, myTableIndex, concluding, graphOwnedEventIds = [] }: { events: GameEvent[]; activeEvent: GameEvent | null; players: Player[]; myTableIndex: number; concluding: boolean; graphOwnedEventIds?: readonly string[] }) {
+  const graphOwnedEventIdSet = new Set(graphOwnedEventIds);
+  const cards = events.filter((event) => retainsAtPlayer(event) && !graphOwnedEventIdSet.has(event.id)).flatMap((event) => event.type === "card" ? [{ event, card: event.card, key: event.id }] : event.type === "cards" ? event.cards.map((card) => ({ event, card, key: `${event.id}-${card.id}` })) : []);
   const cardPlayers = players.filter((player) => cards.some(({ event }) => !settlesInJudgement(event) && publicPlayerName(event.player) === publicPlayerName(player.name)));
-  const activeCards = activeEvent?.type === "card" ? [activeEvent.card] : activeEvent?.type === "cards" ? activeEvent.cards : [];
+  const activeEventOwnedByGraph = activeEvent ? graphOwnedEventIdSet.has(activeEvent.id) : false;
+  const activeCards = activeEventOwnedByGraph ? [] : activeEvent?.type === "card" ? [activeEvent.card] : activeEvent?.type === "cards" ? activeEvent.cards : [];
   const activeCardIds = new Set(activeCards.map((card) => card.id));
   const equipmentFlightId = activeEvent?.type === "card" && activeEvent.action === "equip" && !activeEvent.playedAs ? activeEvent.card.id : null;
   const judgementFlightId = activeEvent && settlesInJudgement(activeEvent) ? activeEvent.card.id : null;
@@ -6242,11 +6283,11 @@ function TableResolutionSequence({ events, activeEvent, players, myTableIndex, c
     return () => observer.disconnect();
   }, [cardPlayerIds, myTableIndex, players]);
   return <div className={`table-resolution-layer ${concluding ? "concluding" : ""}`} role="status">
-    {activeCards.length > 0 && !concluding && <div ref={revealRef} className={`active-table-reveal ${equipmentFlightId ? "equipment-flight" : ""} ${judgementFlightId ? "judgement-flight" : ""} ${isJudgementReveal(activeEvent) ? "judgement-reveal" : ""} ${directDiscard ? "direct-discard" : ""}`} key={activeEvent?.id}><div>{activeCards.map((shown) => <CardFace card={shown} key={shown.id} />)}</div></div>}
+    {activeCards.length > 0 && !concluding && <div ref={revealRef} className={`active-table-reveal ${equipmentFlightId ? "equipment-flight" : ""} ${judgementFlightId ? "judgement-flight" : ""} ${isJudgementReveal(activeEvent) ? "judgement-reveal" : ""} ${directDiscard ? "direct-discard" : ""}`} data-settlement-event-id={activeEvent?.id} key={activeEvent?.id}><div>{activeCards.map((shown) => <CardFace card={shown} key={shown.id} />)}</div></div>}
     {cardPlayers.map((player) => {
       const playerCards = cards.filter(({ event }) => !settlesInJudgement(event) && publicPlayerName(event.player) === publicPlayerName(player.name));
       const equipmentOnly = playerCards.every(({ event }) => event.type === "card" && event.action === "equip");
-      return <div className={`player-played-cards ${equipmentOnly ? "equipment-only" : ""}`} data-player-settlement-id={player.id} key={player.id}><span>{publicPlayerName(player.name)}</span><div>{playerCards.map(({ card, key }, index) => activeCardIds.has(card.id) ? null : <div className="table-played-card settled" key={key}><em>{index + 1}</em><CardFace card={card} /></div>)}</div></div>;
+      return <div className={`player-played-cards ${equipmentOnly ? "equipment-only" : ""}`} data-player-settlement-id={player.id} key={player.id}><span>{publicPlayerName(player.name)}</span><div>{playerCards.map(({ event, card, key }, index) => activeCardIds.has(card.id) ? null : <div className="table-played-card settled" data-settlement-event-id={event.id} key={key}><em>{index + 1}</em><CardFace card={card} /></div>)}</div></div>;
     })}
   </div>;
 }

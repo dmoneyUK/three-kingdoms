@@ -982,7 +982,12 @@ function duelAttackResponseProof(
       publicCardEvents.push({ entryKind: marker === "@card:" ? "card" : "cards", event: JSON.parse(entry.slice(marker.length)) as RecordLike });
     } catch { /* Unrelated malformed history cannot prove this Duel response. */ }
   }
-  const rootMatches = publicCardEvents.filter(({ event }) => record(event.card)?.id === rootCards[0].id);
+  const rootMatches = publicCardEvents.filter(({ event }) => event.action === "play"
+    && event.presentation !== false
+    && event.privateToPlayerId === undefined
+    && event.playedAs === undefined
+    && record(event.card)?.kind === "Duel"
+    && record(event.card)?.id === rootCards[0].id);
   if (rootMatches.length !== 1 || rootMatches[0].entryKind !== "card") return undefined;
   const rootEvent = rootMatches[0].event;
   const rootCard = record(rootEvent.card);

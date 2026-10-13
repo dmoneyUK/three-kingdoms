@@ -1616,6 +1616,9 @@ test("engine-backed Duel alternates response actors without changing the root co
   const firstAttack = card("Attack", "projector-duel-first");
   const secondAttack = card("Attack", "projector-duel-second");
   setHand(source.id, [duel, secondAttack], 4, 4); setHand(target.id, [firstAttack], 4, 4); setTurn(game.code, source.seat);
+  const privateDraw = { id: "private-projector-duel-draw", player: source.name, target: source.name, card: duel, action: "draw", presentation: false, privateToPlayerId: source.id, drawPlayerId: source.id };
+  const storedLog = JSON.parse(query(`SELECT log_json FROM rooms WHERE code=${quote(game.code)}`));
+  sql(`UPDATE rooms SET log_json=${quote(JSON.stringify([...storedLog, `@card:${JSON.stringify(privateDraw)}`]))} WHERE code=${quote(game.code)}`);
   const started = await request("play_card", { code: game.code, token: host.token, cardId: duel.id, targetId: target.id });
   assert.equal(started.status, 200, JSON.stringify(started.data));
   const first = await assertProjectionMatchesEngine(game.code, alice.token);
@@ -1650,6 +1653,8 @@ test("engine-backed Duel alternates response actors without changing the root co
   const firstOtherViewer = await state(game.code, host.token);
   assert.deepEqual(firstOtherViewer.data.presentationV2.interactionScene, first.presentationV2.interactionScene, "Duel public scene is equal across the first response checkpoint");
   assert.deepEqual(firstOtherViewer.data.presentationV2.duelExchange, first.presentationV2.duelExchange, "Duel root authority is public and viewer-equal");
+  const sourceRoot = await assertProjectionMatchesEngine(game.code, host.token);
+  assert.deepEqual(sourceRoot.presentationSnapshot.duelExchange, first.presentationSnapshot.duelExchange, "the source's private acquisition record does not duplicate or suppress the public Duel root");
   assert.equal(firstOtherViewer.data.presentationV2.interactionScene?.decisionActorId, target.id);
   const firstRepeat = await state(game.code, alice.token);
   assert.deepEqual(firstRepeat.data.presentationV2.interactionScene, first.presentationV2.interactionScene, "repeated Duel reads do not create a new public scene");
@@ -1684,6 +1689,7 @@ test("engine-backed Duel alternates response actors without changing the root co
     responseEventId: firstDuelResponseEvent.id,
     responseResolutionId: rootDuelEvent.resolutionId,
   }]);
+  assert.equal(second.presentationSnapshot.duelExchange?.responseCount, 1, "the private acquisition record does not prevent proving the first public Attack response");
   assert.deepEqual(second.presentationV2.duelExchange?.root, first.presentationV2.duelExchange.root, "the public root identity remains stable across actor handoff");
   assert.equal(JSON.stringify(second.presentationV2.duelExchange).includes(duel.id), false, "public Duel proof omits physical card IDs");
   assert.equal(JSON.stringify(second.presentationV2.duelExchange).includes(firstAttack.id), false, "public response proof omits physical Attack card IDs");

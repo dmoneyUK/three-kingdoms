@@ -6203,3 +6203,127 @@
     visibility: visible;
   }
 }
+
+/* UX2 B1: keep a full current Duel round above one compact historical round. */
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-action-card.is-card-face,
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-response-card.is-card-face {
+  box-sizing: border-box;
+  width: 60px;
+  height: 90px;
+  min-height: 0;
+  padding: 0;
+  gap: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-action-card.is-card-face > .played-card,
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-response-card.is-card-face > .played-card {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 5px 4px;
+  border-radius: 6px;
+  box-shadow: 0 5px 14px #000b, 0 0 0 1px #d8b86e88;
+  animation: none;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-action-card.is-card-face > .played-card > i,
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-response-card.is-card-face > .played-card > i {
+  left: 4px;
+  top: 3px;
+  font-size: 9px;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-action-card.is-card-face > .played-card > i small,
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-response-card.is-card-face > .played-card > i small {
+  font-size: 7px;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-action-card.is-card-face > .played-card > .card-name-mark,
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-response-card.is-card-face > .played-card > .card-name-mark {
+  max-width: 88%;
+  font-size: clamp(9px, 2.1vw, 11px);
+  line-height: 1;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-action-card.is-card-face > .played-card > b,
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-response-card.is-card-face > .played-card > b {
+  font-size: clamp(14px, 4vw, 20px);
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-action-card.is-card-face > .played-card > strong,
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-response-card.is-card-face > .played-card > strong {
+  margin-top: 2px;
+  font-size: 6px;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-response-source-tether.is-subdued {
+  stroke: #a6e0c5;
+  stroke-width: 3px;
+  opacity: .34;
+  filter: none;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-response-target-arrow.is-subdued {
+  stroke: #ff4b4b;
+  stroke-width: 3.5px;
+  opacity: .34;
+  filter: none;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-source-tether.is-contextual {
+  stroke: #a6e0c5;
+  stroke-width: 3.5px;
+  opacity: .42;
+  filter: none;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-response-card.is-prior-round {
+  width: 51px;
+  height: 76.5px;
+  opacity: .34;
+  filter: saturate(.9) brightness(.82);
+  box-shadow: 0 3px 9px #0008, 0 0 0 1px #df9d7a30;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-source-tether:not(.is-contextual),
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-response-source-tether:not(.is-subdued) {
+  stroke: #a6e0c5;
+  stroke-width: clamp(5.5px, 1.5vw, 6.5px);
+  opacity: 1;
+  filter: drop-shadow(0 0 2px #a6e0c588);
+  vector-effect: non-scaling-stroke;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-target-arrow,
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-response-target-arrow:not(.is-subdued) {
+  stroke: #ff4b4b;
+  stroke-width: clamp(6px, 1.8vw, 8px);
+  opacity: 1;
+  filter: drop-shadow(0 0 3px #ff4b4b88);
+  vector-effect: non-scaling-stroke;
+}
+
+.interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-connectors marker[id^="root-target-arrow"] path {
+  fill: context-stroke;
+  stroke: #4a211b;
+  stroke-width: 1.2px;
+}
+
+@media (max-width: 400px) {
+  .interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-action-card.is-card-face,
+  .interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-response-card.is-card-face {
+    width: 54px;
+    height: 81px;
+  }
+
+  .interaction-root-overlay[data-root-action-card-kind="Duel"] .interaction-root-response-card.is-prior-round {
+    width: 45.9px;
+    height: 68.85px;
+  }
+}

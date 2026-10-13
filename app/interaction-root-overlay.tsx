@@ -118,6 +118,7 @@ type RootActionLayout = {
   height: number;
   card: Rect;
   orthogonalAttackRouting?: boolean;
+  orthogonalDuelRouting?: boolean;
   orthogonalAttackerSide?: "left" | "right";
   orthogonalAttackControlsSide?: "left" | "right";
   sourcePath: string;
@@ -130,6 +131,7 @@ type RootActionLayout = {
   counterPath: string | null;
   blockPath: string | null;
   responseCards: readonly Rect[];
+  responseSides?: readonly ("left" | "right")[];
   responseSourcePaths: readonly string[];
   responseCounterPaths: readonly string[];
   historySummary?: Rect | null;
@@ -153,11 +155,13 @@ type InteractionRootOverlayResponseNode = {
   cardFace?: Card;
   cardLabel: string;
   ariaLabel: string;
-  counterTarget: { kind: "ROOT" } | { kind: "RESPONSE"; index: number } | { kind: "GROUP_TARGET_EFFECT"; targetId: string } | { kind: "ORDERED_TARGET_EFFECT"; targetId: string };
+  counterTarget: { kind: "ROOT" } | { kind: "RESPONSE"; index: number } | { kind: "GROUP_TARGET_EFFECT"; targetId: string } | { kind: "ORDERED_TARGET_EFFECT"; targetId: string } | { kind: "DUEL_TARGET"; decisionActorId: string; targetId: string; relatedResponseEventId?: string };
 };
 
 type DisplayResponseNode = Omit<InteractionRootOverlayResponseNode, "counterTarget"> & {
   originalIndex: number;
+  duelRound?: number;
+  isCurrentRound?: boolean;
   counterTarget: InteractionRootOverlayResponseNode["counterTarget"] | { kind: "HISTORY" };
 };
 
@@ -171,6 +175,27 @@ function compactResponseGraph(responses: readonly InteractionRootOverlayResponse
     || !response.eventId || !response.actorId || !response.actorName.trim()
     || !response.cardLabel.trim() || !response.ariaLabel.trim())
     || new Set(responses.map((response) => response.eventId)).size !== responses.length) return null;
+  const isDuelExchange = responses.some((response) => response.counterTarget.kind === "DUEL_TARGET");
+  if (isDuelExchange) {
+    if (responses.some((response) => response.counterTarget.kind !== "DUEL_TARGET"
+      || !response.counterTarget.decisionActorId || !response.counterTarget.targetId
+      || response.counterTarget.decisionActorId === response.counterTarget.targetId)) return null;
+    if (responses.some((response, index) => response.counterTarget.kind === "DUEL_TARGET"
+      && response.counterTarget.relatedResponseEventId
+      && (index === 0
+        || responses[index - 1]?.eventId !== response.counterTarget.relatedResponseEventId
+        || responses[index - 1]?.actorId !== response.counterTarget.targetId))) return null;
+    const currentRoundStart = Math.floor(Math.max(0, responses.length - 1) / 2) * 2;
+    const firstVisibleIndex = Math.max(0, currentRoundStart - 2);
+    const visible = responses.slice(firstVisibleIndex).map((response, index) => ({
+      ...response,
+      index,
+      originalIndex: response.index,
+      duelRound: Math.floor(response.index / 2) + 1,
+      isCurrentRound: response.index >= currentRoundStart,
+    }));
+    return { nodes: visible, collapsedCount: firstVisibleIndex };
+  }
   for (let index = 0; index < responses.length; index += 1) {
     const counterTarget = responses[index].counterTarget;
     if (index === 0) {
@@ -345,7 +370,17 @@ function pathBetween(start: Point, end: Point, curve: number): string {
 type OrthogonalAxis = "horizontal" | "vertical";
 type OrthogonalEdge = "top" | "right" | "bottom" | "left";
 
-function orthogonalPath(start: Point, end: Point, obstacles: readonly Rect[], bounds: Rect, preferredFirst: OrthogonalAxis, clearance = 5): string | null {
+function orthogonalPath(
+  start: Point,
+  end: Point,
+  obstacles: readonly Rect[],
+  bounds: Rect,
+  preferredFirst: OrthogonalAxis,
+  clearance = 5,
+  requiredFirst?: OrthogonalAxis,
+  requiredLast?: OrthogonalAxis,
+  allowMultiChannelDetour = false,
+): string | null {
   const expandedObstacles = obstacles.map((obstacle) => expandRect(obstacle, clearance));
   const inBounds = (point: Point) => point.x >= bounds.left && point.x <= bounds.right
     && point.y >= bounds.top && point.y <= bounds.bottom;
@@ -363,6 +398,8 @@ function orthogonalPath(start: Point, end: Point, obstacles: readonly Rect[], bo
       || points.some((point) => !inBounds(point))) return;
     if (points.slice(1).some((point, index) => !clearSegment(points[index]!, point))) return;
     const first = Math.abs(points[1]!.x - points[0]!.x) > .1 ? "horizontal" : "vertical";
+    const last = Math.abs(points.at(-1)!.x - points.at(-2)!.x) > .1 ? "horizontal" : "vertical";
+    if ((requiredFirst && first !== requiredFirst) || (requiredLast && last !== requiredLast)) return;
     candidates.push({
       points,
       bends: Math.max(0, points.length - 2),
@@ -388,6 +425,17 @@ function orthogonalPath(start: Point, end: Point, obstacles: readonly Rect[], bo
   for (const y of yChannels) {
     if (y < bounds.top || y > bounds.bottom) continue;
     addCandidate([start, { x: start.x, y }, { x: end.x, y }, end]);
+  }
+  if (allowMultiChannelDetour && candidates.length === 0) {
+    for (const y of yChannels) {
+      for (const x of xChannels) {
+        // Use one extra channel only when the compact route candidates cannot
+        // pass existing cards. This keeps the usual path short while allowing
+        // an older Duel tether to route around a newer response card.
+        addCandidate([start, { x: start.x, y }, { x, y }, { x, y: end.y }, end]);
+        addCandidate([start, { x, y: start.y }, { x, y }, { x: end.x, y }, end]);
+      }
+    }
   }
   const selected = candidates.sort((left, right) => left.bends - right.bends
     || left.preferencePenalty - right.preferencePenalty || left.length - right.length)[0];
@@ -425,17 +473,29 @@ function orthogonalEdgeSamples(rect: Rect, edge: OrthogonalEdge, toward: Point):
     .map((position) => horizontal ? { x: position, y: fixed } : { x: fixed, y: position });
 }
 
-function orthogonalRouteBetweenRects(startRect: Rect, endRect: Rect, obstacles: readonly Rect[], bounds: Rect, startEdge: OrthogonalEdge, endEdge: OrthogonalEdge, preferredFirst: OrthogonalAxis): string | null {
+function orthogonalRouteBetweenRects(
+  startRect: Rect,
+  endRect: Rect,
+  obstacles: readonly Rect[],
+  bounds: Rect,
+  startEdge: OrthogonalEdge,
+  endEdge: OrthogonalEdge,
+  preferredFirst: OrthogonalAxis,
+  requireNormalAnchors = false,
+  allowMultiChannelDetour = false,
+): string | null {
   const startCenter = center(startRect);
   const endCenter = center(endRect);
   const startIsHorizontal = startEdge === "top" || startEdge === "bottom";
   const endIsHorizontal = endEdge === "top" || endEdge === "bottom";
-  const startToward = startIsHorizontal ? endCenter : startCenter;
-  const endToward = endIsHorizontal ? endCenter : startCenter;
+  const startToward = requireNormalAnchors ? endCenter : startIsHorizontal ? endCenter : startCenter;
+  const endToward = requireNormalAnchors ? startCenter : endIsHorizontal ? endCenter : startCenter;
   const candidates: { path: string; bends: number; anchorDrift: number; distance: number }[] = [];
   for (const start of orthogonalEdgeSamples(startRect, startEdge, startToward)) {
     for (const end of orthogonalEdgeSamples(endRect, endEdge, endToward)) {
-      const path = orthogonalPath(start, end, obstacles, bounds, preferredFirst);
+      const requiredFirst = requireNormalAnchors ? startIsHorizontal ? "vertical" : "horizontal" : undefined;
+      const requiredLast = requireNormalAnchors ? endIsHorizontal ? "vertical" : "horizontal" : undefined;
+      const path = orthogonalPath(start, end, obstacles, bounds, preferredFirst, 5, requiredFirst, requiredLast, allowMultiChannelDetour);
       if (!path) continue;
       const startAxisPosition = startIsHorizontal ? start.x : start.y;
       const endAxisPosition = endIsHorizontal ? end.x : end.y;
@@ -619,7 +679,7 @@ function layoutGroupRootAction(
     && (!targets.some(({ playerId, status }) => playerId === targetEffectState.targetId && status === "CURRENT")
       || targetEffectState.state !== "ACTIVE" && targetEffectState.state !== "BLOCKED")) return fail();
   if (action.responses && (responseElements.length !== action.responses.length
-    || action.responses.some((response, index) => response.index !== index))) return fail();
+    || action.responses.some((response, index) => response.index !== index || response.counterTarget.kind === "DUEL_TARGET"))) return fail();
   if (shellBounds.width <= 0 || shellBounds.height <= 0 || cardBounds.width <= 0 || cardBounds.height <= 0) return fail();
 
   const anchorFor = (playerId: string) => {
@@ -865,7 +925,7 @@ function layoutSimultaneousRootAction(
   if (!table || !targets?.length || new Set(targets.map(({ playerId }) => playerId)).size !== targets.length
     || targets.some(({ playerId, playerName }) => !playerId || !playerName.trim())
     || action.responses && (responseElements.length !== action.responses.length
-      || action.responses.some((response, index) => response.index !== index))
+      || action.responses.some((response, index) => response.index !== index || response.counterTarget.kind === "DUEL_TARGET"))
     || shellBounds.width <= 0 || shellBounds.height <= 0 || cardBounds.width <= 0 || cardBounds.height <= 0) return null;
 
   const anchorFor = (playerId: string) => {
@@ -1064,18 +1124,26 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const isOrthogonalAttackRoot = action.cardKind === "Attack" && action.cardFace?.kind === "Attack" && action.mode === "targeted"
     && Boolean(action.targetId) && !action.groupTargets?.length && !action.orderedTargets?.length
     && !action.simultaneousTargets?.length && !action.responses?.length;
+  const isOrthogonalDuelRoot = action.cardKind === "Duel" && action.cardFace?.kind === "Duel" && action.mode === "targeted"
+    && Boolean(action.targetId) && !action.groupTargets?.length && !action.orderedTargets?.length
+    && !action.simultaneousTargets?.length;
+  const duelGraphRowGap = 10;
   const sourceElement = anchorFor(action.sourceId);
   const isSelfTarget = action.mode === "self-target";
   const targetElement = isSelfTarget ? sourceElement : action.targetId ? anchorFor(action.targetId) : null;
   const responseSourceElement = action.response ? anchorFor(action.response.actorId) : null;
   const responseTargetElement = action.response?.targetId ? anchorFor(action.response.targetId) : null;
   const responseChainSources = (action.responses ?? []).map((response) => anchorFor(response.actorId));
+  const responseChainTargets = (action.responses ?? []).map((response) => response.counterTarget.kind === "DUEL_TARGET"
+    ? anchorFor(response.counterTarget.targetId)
+    : null);
   if (!sourceElement || !targetElement || isSelfTarget !== (sourceElement === targetElement)
     || isSelfTarget !== (action.sourceId === action.targetId)
     || action.response && !responseSourceElement
     || action.response?.targetId && !responseTargetElement
     || action.responses && (responseElements.length !== action.responses.length
-      || responseChainSources.some((element) => !element))) {
+      || responseChainSources.some((element) => !element)
+      || action.responses.some((response, index) => response.counterTarget.kind === "DUEL_TARGET" && !responseChainTargets[index]))) {
     reportFitDiagnostic("missing-or-invalid-player-anchor");
     return null;
   }
@@ -1251,10 +1319,11 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   };
   attackUsableField.height = attackUsableField.bottom - attackUsableField.top;
   const attackFieldCenter = center(attackUsableField);
+  const orthogonalAttackParticipantMidpointX = (center(sourceRect).x + center(targetRect).x) / 2;
   const rootRemainsOnAttackerHalf = (candidate: Rect) => !orthogonalAttackerSide
     || (orthogonalAttackerSide === "left"
-      ? candidate.right <= attackFieldCenter.x - 1
-      : candidate.left >= attackFieldCenter.x + 1);
+      ? candidate.right <= orthogonalAttackParticipantMidpointX - 1
+      : candidate.left >= orthogonalAttackParticipantMidpointX + 1);
   const localTargetHorizontalLead = isUnansweredAttackRoot && targetElement.classList.contains("local-player-dock")
     ? Math.min(20, attackUsableField.width * .05)
     : 0;
@@ -1271,7 +1340,10 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   }, { x: 0, y: 0 });
   const attackBiasLength = Math.min(20, Math.min(attackUsableField.width, attackUsableField.height) * .04);
   const attackBiasMagnitude = Math.hypot(attackBiasDirection.x, attackBiasDirection.y);
-  const attackCompositionCenter = isOrthogonalAttackRoot ? attackFieldCenter : attackBiasMagnitude > .1 ? {
+  const attackCompositionCenter = isOrthogonalAttackRoot ? {
+    x: orthogonalAttackParticipantMidpointX,
+    y: attackFieldCenter.y,
+  } : attackBiasMagnitude > .1 ? {
     x: attackFieldCenter.x + attackBiasDirection.x / attackBiasMagnitude * attackBiasLength,
     y: attackFieldCenter.y + attackBiasDirection.y / attackBiasMagnitude * attackBiasLength,
   } : attackFieldCenter;
@@ -1401,6 +1473,33 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const routeObstaclesFor = (ignored: HTMLElement) => [
     ...obstacleElements.filter((element) => element !== ignored).map((element) => relativeRect(element, shellBounds)),
   ];
+  const orthogonalDuelRoutesForCard = (duelCard: Rect, relatedCards: readonly Rect[] = []) => {
+    if (!isOrthogonalDuelRoot) return null;
+    const sourceDirection = facingOrthogonalEdges(sourceRect, duelCard);
+    const targetDirection = facingOrthogonalEdges(duelCard, targetRect);
+    const extraObstacles = [...relatedCards];
+    const sourcePath = orthogonalRouteBetweenRects(
+      sourceRect,
+      duelCard,
+      [...routeObstaclesFor(sourcePathElement), ...extraObstacles],
+      connectorBounds,
+      sourceDirection.start,
+      sourceDirection.end,
+      sourceDirection.first,
+      true,
+    );
+    const targetPath = orthogonalRouteBetweenRects(
+      duelCard,
+      targetRect,
+      [...routeObstaclesFor(targetElement), ...extraObstacles],
+      connectorBounds,
+      targetDirection.start,
+      targetDirection.end,
+      targetDirection.first,
+      true,
+    );
+    return sourcePath && targetPath ? { sourcePath, targetPath } : null;
+  };
   const attackRoutesForCard = (candidateCard: Rect) => {
     if (!isOrthogonalAttackRoot || !action.targetId || !orthogonalAttackerSide || !orthogonalDefenderSide) return null;
     const candidateCenter = center(candidateCard);
@@ -1410,8 +1509,9 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     });
     const sourcePath = sourceElement.classList.contains("local-player-dock") && sourceRect.top >= candidateCard.bottom
       ? (() => {
-        const x = Math.max(sourceRect.left + 8, Math.min(candidateCenter.x, sourceRect.right - 8));
-        return orthogonalPath({ x, y: sourceRect.top }, { x, y: candidateCard.bottom },
+        const sourceLaneX = orthogonalAttackerSide === "left" ? candidateCard.left - 12 : candidateCard.right + 12;
+        const x = Math.max(sourceRect.left + 8, Math.min(sourceLaneX, sourceRect.right - 8));
+        return orthogonalPath({ x, y: sourceRect.top }, sideEdgePoint(candidateCard, orthogonalAttackerSide),
           routeObstaclesFor(sourceElement), connectorBounds, "vertical");
       })()
       : sourceRect.bottom <= candidateCard.top
@@ -1957,7 +2057,78 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const selectedCandidate = cachedRootFits && stableRootCard
     ? { card: stableRootCard, reservedDodge: preferredResponseCard, score: 0 }
     : candidates[0];
-  const card = selectedCandidate?.card;
+  let card = selectedCandidate?.card ?? null;
+  if (isOrthogonalDuelRoot) {
+    const activeResponseElement = responseElements.find((element) => element.dataset.responseCurrentRound === "true");
+    const activeResponseBounds = activeResponseElement?.getBoundingClientRect();
+    const activeResponseHeight = activeResponseBounds && activeResponseBounds.height > 0 ? activeResponseBounds.height : cardHeight;
+    const priorResponseHeight = activeResponseHeight * .85;
+    const roundGap = duelGraphRowGap;
+    const graphHeight = cardHeight + roundGap + activeResponseHeight + roundGap + priorResponseHeight;
+    const minimumRootTop = Math.max(tableRect.top + margin, topSeatBottom);
+    // The first authoritative Duel response can expand the Local Dock's
+    // response guidance by one compact control row. Reserve that known
+    // battlefield space before the first card so the authenticated root does
+    // not jump when the local viewer becomes the responder.
+    const responseGuidanceReserve = 28;
+    const systemControlCeiling = Math.min(tableRect.bottom,
+      ...controlObstacleElements.map((element) => relativeRect(element, shellBounds))
+        .filter((obstacle) => obstacle.top < tableRect.bottom && obstacle.bottom > tableRect.top)
+        .map((obstacle) => obstacle.top - 8));
+    const unreservedMaximumRootTop = Math.min(
+      tableRect.bottom - margin - graphHeight - responseGuidanceReserve,
+      systemControlCeiling - graphHeight,
+    );
+    // The first committed Duel response can slightly resize the Dock and its
+    // shared guidance area. Leave a bounded top reserve in the initial graph
+    // so its authenticated root keeps the same coordinates through that
+    // server-driven handoff; once responses exist, use the full measured fit.
+    const initialResponseGrowthReserve = action.responses?.length ? 0
+      : Math.min(16, Math.max(0, unreservedMaximumRootTop - minimumRootTop));
+    const maximumRootTop = unreservedMaximumRootTop - initialResponseGrowthReserve;
+    const participantMidpointX = (center(sourceRect).x + center(targetRect).x) / 2;
+    const fitsDuelRoot = (candidate: Rect) => candidate.left >= tableRect.left + margin
+      && candidate.right <= tableRect.right - margin
+      && candidate.top >= minimumRootTop
+      && candidate.top <= maximumRootTop
+      && candidate.bottom + roundGap + activeResponseHeight + roundGap + priorResponseHeight <= tableRect.bottom - margin + .5
+      && !obstacleElements.some((element) => overlaps(candidate, relativeRect(element, shellBounds), 8))
+      && Boolean(orthogonalDuelRoutesForCard(candidate));
+    const cachedDuelRoot = preferredRootCard && maximumRootTop >= minimumRootTop
+      ? {
+        ...preferredRootCard,
+        width: cardWidth,
+        height: cardHeight,
+        right: preferredRootCard.left + cardWidth,
+        bottom: preferredRootCard.top + cardHeight,
+      }
+      : null;
+    const rootCandidates: Rect[] = [];
+    if (maximumRootTop >= minimumRootTop) {
+      const xOffsets = [0, -8, 8, -16, 16, -24, 24, -36, 36, -52, 52, -72, 72];
+      const topCandidates = [
+        maximumRootTop,
+        maximumRootTop - 8,
+        maximumRootTop - 16,
+        maximumRootTop - 24,
+        maximumRootTop - 32,
+        maximumRootTop - 48,
+        maximumRootTop - 64,
+        minimumRootTop,
+      ].filter((top, index, all) => top >= minimumRootTop && all.indexOf(top) === index);
+      for (const top of topCandidates) {
+        for (const offset of xOffsets) {
+          const left = participantMidpointX - cardWidth / 2 + offset;
+          rootCandidates.push({ left, top, right: left + cardWidth, bottom: top + cardHeight, width: cardWidth, height: cardHeight });
+        }
+      }
+    }
+    card = cachedDuelRoot && fitsDuelRoot(cachedDuelRoot)
+      ? cachedDuelRoot
+      : rootCandidates.filter(fitsDuelRoot).sort((left, right) =>
+        Math.abs(center(left).x - participantMidpointX) + Math.abs(maximumRootTop - left.top) * .4
+        - Math.abs(center(right).x - participantMidpointX) - Math.abs(maximumRootTop - right.top) * .4)[0] ?? null;
+  }
   const reservedDodgeCard = selectedCandidate?.reservedDodge ?? null;
   // An unanswered mobile Attack has a known public Dodge response layout.
   // If this fit step can place the root but cannot reserve that response,
@@ -2062,65 +2233,251 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   if (action.historyCount > 0 && !historySummary) return null;
   if (action.responses?.length) {
     if (action.responses.some((response, index) => response.index !== index)) return null;
+    if (isOrthogonalDuelRoot && action.responses.some((response) => response.counterTarget.kind !== "DUEL_TARGET")) {
+      reportFitDiagnostic("duel-response-target-proof-missing");
+      return null;
+    }
     const responseCards: Rect[] = [];
+    const responseSides: ("left" | "right")[] = [];
     const responseSourcePaths: string[] = [];
     const responseCounterPaths: string[] = [];
-    for (let index = 0; index < action.responses.length; index += 1) {
-      const response = action.responses[index];
-      const responseElement = responseElements[index];
-      const actorElement = responseChainSources[index];
-      if (!responseElement || !actorElement || !actorElement.isConnected || actorElement.getClientRects().length !== 1) return null;
-      const actorBounds = actorElement.getBoundingClientRect();
-      const responseBounds = responseElement.getBoundingClientRect();
-      if (actorBounds.width <= 0 || actorBounds.height <= 0 || responseBounds.width <= 0 || responseBounds.height <= 0) return null;
-      const actorRect = relativeRect(actorElement, shellBounds);
-      const actorCenter = center(actorRect);
-      const targetResponse = response.counterTarget.kind === "RESPONSE"
-        ? responseCards[response.counterTarget.index]
-        : null;
-      if (response.counterTarget.kind === "RESPONSE"
-        && (response.counterTarget.index < 0 || response.counterTarget.index >= index || !targetResponse)) return null;
-      const counterTargetRect = response.counterTarget.kind === "HISTORY"
-        ? historySummary
-        : targetResponse ?? card;
-      if (response.counterTarget.kind === "HISTORY" && !counterTargetRect) return null;
-      const counterTargetCenter = center(counterTargetRect);
-      const responseLineX = counterTargetCenter.x - actorCenter.x;
-      const responseLineY = counterTargetCenter.y - actorCenter.y;
-      const responseLineLength = Math.hypot(responseLineX, responseLineY) || 1;
-      const responseNormal = { x: -responseLineY / responseLineLength, y: responseLineX / responseLineLength };
-      const responseWidth = responseBounds.width;
-      const responseHeight = responseBounds.height;
-      const preferredFraction = .62;
-      const responsePreferred = {
-        x: actorCenter.x + responseLineX * preferredFraction,
-        y: actorCenter.y + responseLineY * preferredFraction,
-      };
-      const responseObstacles = [...obstacles, card, ...(historySummary ? [historySummary] : []), ...responseCards];
-      const fractions = [.5, .62, .74, .84];
-      const offsets = [0, -38, 38, -64, 64, -92, 92];
-      const candidatesForResponse = fractions.flatMap((fraction) => offsets.flatMap((offset) => {
-        const candidate = {
-          x: actorCenter.x + responseLineX * fraction + responseNormal.x * offset,
-          y: actorCenter.y + responseLineY * fraction + responseNormal.y * offset,
+    if (isOrthogonalDuelRoot) {
+      const activeResponseElement = responseElements.find((element) => element.dataset.responseCurrentRound === "true");
+      const activeResponseBounds = activeResponseElement?.getBoundingClientRect();
+      const activeWidth = activeResponseBounds?.width && activeResponseBounds.width > 0 ? activeResponseBounds.width : cardWidth;
+      const activeHeight = activeResponseBounds?.height && activeResponseBounds.height > 0 ? activeResponseBounds.height : cardHeight;
+      const participantMidpointX = (center(sourceRect).x + center(targetRect).x) / 2;
+      const currentRowTop = card.bottom + duelGraphRowGap;
+      const priorRowTop = currentRowTop + activeHeight + duelGraphRowGap;
+      const laneGap = 12;
+      const activeLaneOffset = activeWidth / 2 + laneGap;
+      const sideSlots = new Map<string, number>();
+      for (let index = 0; index < action.responses.length; index += 1) {
+        const response = action.responses[index];
+        const responseElement = responseElements[index];
+        const actorElement = responseChainSources[index];
+        const targetElement = responseChainTargets[index];
+        if (!responseElement || !actorElement || !targetElement
+          || !actorElement.isConnected || actorElement.getClientRects().length !== 1
+          || !targetElement.isConnected || targetElement.getClientRects().length !== 1) return null;
+        const actorBounds = actorElement.getBoundingClientRect();
+        const targetBounds = targetElement.getBoundingClientRect();
+        const responseBounds = responseElement.getBoundingClientRect();
+        if (actorBounds.width <= 0 || actorBounds.height <= 0 || targetBounds.width <= 0 || targetBounds.height <= 0
+          || responseBounds.width <= 0 || responseBounds.height <= 0) return null;
+        const actorCenterX = center(relativeRect(actorElement, shellBounds)).x;
+        if (Math.abs(actorCenterX - participantMidpointX) < 1) {
+          reportFitDiagnostic("duel-response-side-ambiguous", { responseIndex: index, actorId: response.actorId });
+          return null;
+        }
+        const side = actorCenterX < participantMidpointX ? "left" : "right";
+        const isCurrentRound = response.isCurrentRound === true;
+        const roundKey = `${response.duelRound ?? 0}:${side}`;
+        const sideSlot = sideSlots.get(roundKey) ?? 0;
+        sideSlots.set(roundKey, sideSlot + 1);
+        const laneDirection = side === "left" ? -1 : 1;
+        const laneCenterX = participantMidpointX + laneDirection * (activeLaneOffset + sideSlot * (activeWidth + 8));
+        const responseWidth = responseBounds.width;
+        const responseHeight = responseBounds.height;
+        const top = isCurrentRound ? currentRowTop : priorRowTop;
+        const left = laneCenterX - responseWidth / 2;
+        const responseRect: Rect = {
+          left,
+          top,
+          right: left + responseWidth,
+          bottom: top + responseHeight,
+          width: responseWidth,
+          height: responseHeight,
         };
-        const left = Math.max(tableRect.left + margin, Math.min(candidate.x - responseWidth / 2, tableRect.right - margin - responseWidth));
-        const top = Math.max(tableRect.top + margin, Math.min(candidate.y - responseHeight / 2, tableRect.bottom - margin - responseHeight));
-        const responseRect: Rect = { left, top, right: left + responseWidth, bottom: top + responseHeight, width: responseWidth, height: responseHeight };
-        if (responseObstacles.some((obstacle) => overlaps(responseRect, obstacle, 8))) return [];
-        const distance = Math.hypot(left + responseWidth / 2 - responsePreferred.x, top + responseHeight / 2 - responsePreferred.y);
-        return [{ responseRect, score: distance + Math.abs(fraction - preferredFraction) * 80 + Math.abs(offset) * .12 }];
-      })).sort((left, right) => left.score - right.score);
-      const responseRect = candidatesForResponse[0]?.responseRect;
-      if (!responseRect) return null;
-      const responseCenter = center(responseRect);
-      const counterStart = rectangleEdge(responseRect, counterTargetCenter);
-      const counterEnd = rectangleEdge(counterTargetRect, responseCenter);
-      const responseSourceStart = rectangleEdge(actorRect, responseCenter);
-      const responseSourceEnd = rectangleEdge(responseRect, actorCenter);
-      responseCards.push(responseRect);
-      responseSourcePaths.push(pathBetween(responseSourceStart, responseSourceEnd, Math.min(20, Math.hypot(responseSourceEnd.x - responseSourceStart.x, responseSourceEnd.y - responseSourceStart.y) * .025)));
-      responseCounterPaths.push(pathBetween(counterStart, counterEnd, 0));
+        const routeObstacles = [...allObstacles, card, ...(historySummary ? [historySummary] : []), ...responseCards];
+        if (responseRect.left < tableRect.left + margin || responseRect.right > tableRect.right - margin
+          || responseRect.top < tableRect.top + margin || responseRect.bottom > tableRect.bottom - margin
+          || overlaps(responseRect, card, 8)
+          || routeObstacles.some((obstacle) => overlaps(responseRect, obstacle, 8))) {
+          reportFitDiagnostic("duel-response-card-fit-unavailable", {
+            responseIndex: index,
+            responseRect,
+            side,
+            currentRound: isCurrentRound,
+          });
+          return null;
+        }
+        responseCards.push(responseRect);
+        responseSides.push(side);
+      }
+
+      const rootRoutes = orthogonalDuelRoutesForCard(card, [...(historySummary ? [historySummary] : []), ...responseCards]);
+      if (!rootRoutes) {
+        reportFitDiagnostic("duel-root-orthogonal-route-unavailable");
+        return null;
+      }
+      for (let index = 0; index < action.responses.length; index += 1) {
+        const response = action.responses[index];
+        const responseRect = responseCards[index];
+        const actorElement = responseChainSources[index];
+        const targetElement = responseChainTargets[index];
+        if (!responseRect || !actorElement || !targetElement || response.counterTarget.kind !== "DUEL_TARGET") return null;
+        const actorRect = relativeRect(actorElement, shellBounds);
+        const targetRect = relativeRect(targetElement, shellBounds);
+        const responseCenter = center(responseRect);
+        const sourceSide = responseSides[index];
+        if (!sourceSide) return null;
+        const actorIsAbove = center(actorRect).y < responseCenter.y;
+        const sourceEnd = {
+          x: sourceSide === "left" ? responseRect.left : responseRect.right,
+          y: responseCenter.y,
+        };
+        const localDockSideOffset = Math.min(48, actorRect.width * .1);
+        const sourceStart = {
+          // The Local Dock spans the field, so choose a point on its real
+          // inward edge using a stable side lane, independent of the current
+          // CardFace scale. Reusing this lane lets later Duel responses
+          // continue the proven Dock-to-card trunk through the preceding
+          // response's source elbow instead of inventing a new route beside
+          // the card or through the fixed system controls.
+          x: actorElement.classList.contains("local-player-dock")
+            ? center(actorRect).x + (sourceSide === "left" ? -1 : 1) * localDockSideOffset
+            : center(actorRect).x,
+          y: actorIsAbove ? actorRect.bottom : actorRect.top,
+        };
+        const sourceObstacles = [
+          ...routeObstaclesFor(actorElement),
+          card,
+          ...(historySummary ? [historySummary] : []),
+          ...responseCards.filter((_, cardIndex) => cardIndex !== index),
+        ];
+        const sourcePath = orthogonalPath(sourceStart, sourceEnd, sourceObstacles, connectorBounds, "vertical", 3, "vertical", "horizontal", true);
+        if (!sourcePath) {
+          reportFitDiagnostic("duel-response-source-fork-unavailable", { responseIndex: index, actorId: response.actorId });
+          return null;
+        }
+        responseSourcePaths.push(sourcePath);
+
+        const relatedResponseIndex = response.counterTarget.relatedResponseEventId
+          ? action.responses.findIndex((candidate) => candidate.eventId === response.counterTarget.relatedResponseEventId)
+          : -1;
+        let targetPath: string | null = null;
+        if (relatedResponseIndex >= 0) {
+          const relatedResponseRect = responseCards[relatedResponseIndex];
+          const relatedSide = responseSides[relatedResponseIndex];
+          if (!relatedResponseRect || !relatedSide) return null;
+          const relatedCenter = center(relatedResponseRect);
+          const towardTarget = relatedCenter.x < responseCenter.x ? "left" : "right";
+          const start = { x: towardTarget === "left" ? responseRect.left : responseRect.right, y: responseCenter.y };
+          const end = { x: towardTarget === "left" ? relatedResponseRect.right : relatedResponseRect.left, y: relatedCenter.y };
+          const targetObstacles = [
+            ...allObstacles,
+            card,
+            ...(historySummary ? [historySummary] : []),
+            ...responseCards.filter((_, cardIndex) => cardIndex !== index && cardIndex !== relatedResponseIndex),
+          ];
+          targetPath = orthogonalPath(start, end, targetObstacles, connectorBounds, "horizontal", 3, "horizontal", "horizontal", true);
+        } else {
+          const targetCenter = center(targetRect);
+          const towardTarget = targetCenter.x < responseCenter.x ? "left" : "right";
+          const start = { x: towardTarget === "left" ? responseRect.left : responseRect.right, y: responseCenter.y };
+          const targetIsBelow = targetRect.top >= responseRect.bottom;
+          const targetIsAbove = targetRect.bottom <= responseRect.top;
+          if (targetIsBelow || targetIsAbove) {
+            const endpointX = targetElement.classList.contains("local-player-dock")
+              ? Math.max(targetRect.left + 8, Math.min(participantMidpointX, targetRect.right - 8))
+              : Math.max(targetRect.left + 8, Math.min(start.x, targetRect.right - 8));
+            const end = {
+              x: endpointX,
+              y: targetIsBelow ? targetRect.top : targetRect.bottom,
+            };
+            const targetObstacles = [
+              ...routeObstaclesFor(targetElement),
+              card,
+              ...(historySummary ? [historySummary] : []),
+              ...responseCards.filter((_, cardIndex) => cardIndex !== index),
+            ];
+            targetPath = orthogonalPath(start, end, targetObstacles, connectorBounds, "horizontal", 3, "horizontal", "vertical", true);
+          } else {
+            const targetDirection = facingOrthogonalEdges(responseRect, targetRect);
+            targetPath = orthogonalRouteBetweenRects(responseRect, targetRect,
+              [...routeObstaclesFor(targetElement), card, ...(historySummary ? [historySummary] : []), ...responseCards.filter((_, cardIndex) => cardIndex !== index)],
+              connectorBounds, targetDirection.start, targetDirection.end, targetDirection.first, true, true);
+          }
+        }
+        if (!targetPath) {
+          reportFitDiagnostic("duel-response-target-route-unavailable", { responseIndex: index, targetId: response.counterTarget.targetId });
+          return null;
+        }
+        responseCounterPaths.push(targetPath);
+      }
+    } else {
+      for (let index = 0; index < action.responses.length; index += 1) {
+        const response = action.responses[index];
+        const responseElement = responseElements[index];
+        const actorElement = responseChainSources[index];
+        if (!responseElement || !actorElement || !actorElement.isConnected || actorElement.getClientRects().length !== 1) return null;
+        const actorBounds = actorElement.getBoundingClientRect();
+        const responseBounds = responseElement.getBoundingClientRect();
+        if (actorBounds.width <= 0 || actorBounds.height <= 0 || responseBounds.width <= 0 || responseBounds.height <= 0) return null;
+        const actorRect = relativeRect(actorElement, shellBounds);
+        const actorCenter = center(actorRect);
+        const responseTargetElement = response.counterTarget.kind === "DUEL_TARGET" ? responseChainTargets[index] : null;
+        const responseTargetBounds = responseTargetElement?.getBoundingClientRect();
+        if (response.counterTarget.kind === "DUEL_TARGET"
+          && (!responseTargetElement?.isConnected || responseTargetElement.getClientRects().length !== 1
+            || !responseTargetBounds || responseTargetBounds.width <= 0 || responseTargetBounds.height <= 0)) return null;
+        const targetResponse = response.counterTarget.kind === "RESPONSE"
+          ? responseCards[response.counterTarget.index]
+          : null;
+        if (response.counterTarget.kind === "RESPONSE"
+          && (response.counterTarget.index < 0 || response.counterTarget.index >= index || !targetResponse)) return null;
+        const counterTargetRect = response.counterTarget.kind === "HISTORY"
+          ? historySummary
+          : responseTargetElement ? relativeRect(responseTargetElement, shellBounds)
+          : targetResponse ?? card;
+        if (response.counterTarget.kind === "HISTORY" && !counterTargetRect) return null;
+        const counterTargetCenter = center(counterTargetRect);
+        const responseLineX = counterTargetCenter.x - actorCenter.x;
+        const responseLineY = counterTargetCenter.y - actorCenter.y;
+        const responseLineLength = Math.hypot(responseLineX, responseLineY) || 1;
+        const responseNormal = { x: -responseLineY / responseLineLength, y: responseLineX / responseLineLength };
+        const responseWidth = responseBounds.width;
+        const responseHeight = responseBounds.height;
+        const preferredFraction = .62;
+        const responsePreferred = {
+          x: actorCenter.x + responseLineX * preferredFraction,
+          y: actorCenter.y + responseLineY * preferredFraction,
+        };
+        const responseObstacles = [...obstacles, card, ...(historySummary ? [historySummary] : []), ...responseCards];
+        const fractions = [.5, .62, .74, .84];
+        const offsets = [0, -38, 38, -64, 64, -92, 92];
+        const candidatesForResponse = fractions.flatMap((fraction) => offsets.flatMap((offset) => {
+          const candidate = {
+            x: actorCenter.x + responseLineX * fraction + responseNormal.x * offset,
+            y: actorCenter.y + responseLineY * fraction + responseNormal.y * offset,
+          };
+          const left = Math.max(tableRect.left + margin, Math.min(candidate.x - responseWidth / 2, tableRect.right - margin - responseWidth));
+          const top = Math.max(tableRect.top + margin, Math.min(candidate.y - responseHeight / 2, tableRect.bottom - margin - responseHeight));
+          const responseRect: Rect = { left, top, right: left + responseWidth, bottom: top + responseHeight, width: responseWidth, height: responseHeight };
+          if (responseObstacles.some((obstacle) => overlaps(responseRect, obstacle, 8))) return [];
+          const distance = Math.hypot(left + responseWidth / 2 - responsePreferred.x, top + responseHeight / 2 - responsePreferred.y);
+          return [{ responseRect, score: distance + Math.abs(fraction - preferredFraction) * 80 + Math.abs(offset) * .12 }];
+        })).sort((left, right) => left.score - right.score);
+        const responseRect = candidatesForResponse[0]?.responseRect;
+        if (!responseRect) return null;
+        responseCards.push(responseRect);
+        const responseCenter = center(responseRect);
+        const counterStart = rectangleEdge(responseRect, counterTargetCenter);
+        const counterEnd = rectangleEdge(counterTargetRect, responseCenter);
+        const responseSourceStart = rectangleEdge(actorRect, responseCenter);
+        const responseSourceEnd = rectangleEdge(responseRect, actorCenter);
+        responseSourcePaths.push(pathBetween(responseSourceStart, responseSourceEnd, Math.min(20, Math.hypot(responseSourceEnd.x - responseSourceStart.x, responseSourceEnd.y - responseSourceStart.y) * .025)));
+        responseCounterPaths.push(pathBetween(counterStart, counterEnd, 0));
+      }
+    }
+    let duelRootSourcePath: string | null = null;
+    let duelRootTargetPath: string | null = null;
+    if (isOrthogonalDuelRoot) {
+      const rootRoutes = orthogonalDuelRoutesForCard(card, [...(historySummary ? [historySummary] : []), ...responseCards]);
+      if (!rootRoutes) return null;
+      duelRootSourcePath = rootRoutes.sourcePath;
+      duelRootTargetPath = rootRoutes.targetPath;
     }
     let targetBlockPath: string | null = null;
     if (action.rootEffectState === "BLOCKED") {
@@ -2137,8 +2494,9 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       height: shellBounds.height,
       card,
       orthogonalAttackRouting: isOrthogonalAttackRoot,
-      sourcePath: pathBetween(sourceStart, sourceEnd, rootPathCurve),
-      targetPath: pathBetween(rectangleEdge(card, targetCenter), rectangleEdge(targetRect, cardCenter), action.cardKind === "Attack" ? 0 : Math.min(34, lineLength * .05)),
+      orthogonalDuelRouting: isOrthogonalDuelRoot,
+      sourcePath: duelRootSourcePath ?? pathBetween(sourceStart, sourceEnd, rootPathCurve),
+      targetPath: duelRootTargetPath ?? pathBetween(rectangleEdge(card, targetCenter), rectangleEdge(targetRect, cardCenter), action.cardKind === "Attack" ? 0 : Math.min(34, lineLength * .05)),
       responseTargetPath: null,
       targetBlockPath,
       responseCard: null,
@@ -2146,6 +2504,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       counterPath: null,
       blockPath: null,
       responseCards,
+      responseSides,
       responseSourcePaths,
       responseCounterPaths,
       historySummary,
@@ -2500,6 +2859,11 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     }
     const responseCard = responseCandidates[0]?.responseCard;
     if (!responseCard) return null;
+    const duelRootRoutes = orthogonalDuelRoutesForCard(card, [...(historySummary ? [historySummary] : []), responseCard]);
+    if (isOrthogonalDuelRoot && !duelRootRoutes) {
+      reportFitDiagnostic("duel-root-orthogonal-route-unavailable");
+      return null;
+    }
     const responseCenter = center(responseCard);
     const counterStart = targetsPlayer ? null : countersRoot ? rectangleEdge(responseCard, cardCenter) : rectangleEdge(card, responseCenter);
     const counterEnd = targetsPlayer ? null : countersRoot ? rectangleEdge(card, responseCenter) : rectangleEdge(responseCard, cardCenter);
@@ -2606,10 +2970,11 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
       height: shellBounds.height,
       card,
       orthogonalAttackRouting: isOrthogonalAttackRoot,
+      orthogonalDuelRouting: isOrthogonalDuelRoot,
       orthogonalAttackerSide,
       orthogonalAttackControlsSide,
-      sourcePath: orthogonalRootPaths?.sourcePath ?? pathBetween(sourceStart, sourceEnd, rootPathCurve),
-      targetPath,
+      sourcePath: duelRootRoutes?.sourcePath ?? orthogonalRootPaths?.sourcePath ?? pathBetween(sourceStart, sourceEnd, rootPathCurve),
+      targetPath: duelRootRoutes?.targetPath ?? targetPath,
       responseTargetPath,
       targetBlockPath,
       responseCard,
@@ -2633,6 +2998,7 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
   const targetStart = rectangleEdge(card, targetCenter);
   const targetEnd = rectangleEdge(targetRect, cardCenter);
   const orthogonalRoutes = attackRoutesForCard(card);
+  const duelRootRoutes = orthogonalDuelRoutesForCard(card, historySummary ? [historySummary] : []);
   if (isOrthogonalAttackRoot && !orthogonalRoutes) {
     reportFitDiagnostic("no-attack-root-candidate", {
       candidateCount: candidates.length,
@@ -2640,15 +3006,20 @@ function layoutRootAction(shell: HTMLElement, cardElement: HTMLElement, response
     });
     return null;
   }
+  if (isOrthogonalDuelRoot && !duelRootRoutes) {
+    reportFitDiagnostic("duel-root-orthogonal-route-unavailable");
+    return null;
+  }
   return {
     width: shellBounds.width,
     height: shellBounds.height,
     card,
     orthogonalAttackRouting: isOrthogonalAttackRoot,
+    orthogonalDuelRouting: isOrthogonalDuelRoot,
     orthogonalAttackerSide,
     orthogonalAttackControlsSide,
-    sourcePath: orthogonalRoutes?.sourcePath ?? pathBetween(sourceStart, sourceEnd, rootPathCurve),
-    targetPath: orthogonalRoutes?.targetPath ?? pathBetween(targetStart, targetEnd, action.cardKind === "Attack" ? 0 : Math.min(34, lineLength * .05)),
+    sourcePath: duelRootRoutes?.sourcePath ?? orthogonalRoutes?.sourcePath ?? pathBetween(sourceStart, sourceEnd, rootPathCurve),
+    targetPath: duelRootRoutes?.targetPath ?? orthogonalRoutes?.targetPath ?? pathBetween(targetStart, targetEnd, action.cardKind === "Attack" ? 0 : Math.min(34, lineLength * .05)),
     responseTargetPath: null,
     targetBlockPath: null,
     responseCard: reservedDodgeCard,
@@ -2676,6 +3047,7 @@ export function InteractionRootOverlay({
   layoutReadiness,
   fallbackReason,
   resultReadRemainingMs,
+  viewerId,
   onLayoutReadinessChange,
 }: {
   action: InteractionRootOverlayAction | null;
@@ -2686,13 +3058,14 @@ export function InteractionRootOverlay({
   layoutReadiness: "measuring" | "ready" | "unavailable" | null;
   fallbackReason?: string;
   resultReadRemainingMs?: number | null;
+  viewerId: string;
   onLayoutReadinessChange: (readiness: { key: string; state: "measuring" | "ready" | "unavailable" } | null) => void;
 }) {
   const layerRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const responseCardRef = useRef<HTMLDivElement>(null);
   const historySummaryRef = useRef<HTMLDivElement>(null);
-  const stableRootPlacementRef = useRef<{ rootKey: string; width: number; height: number; fitStep: "target" | "compact" | "minimum"; card: Rect; reservedResponseCard: Rect | null } | null>(null);
+  const stableRootPlacementByViewerRef = useRef(new Map<string, { viewerId: string; rootKey: string; width: number; height: number; fitStep: "target" | "compact" | "minimum"; card: Rect; reservedResponseCard: Rect | null }>());
   const actionRef = useRef(action);
   const [layout, setLayout] = useState<RootActionLayout | null>(null);
   const actionSignature = JSON.stringify(action);
@@ -2703,14 +3076,16 @@ export function InteractionRootOverlay({
   const responseActorId = action?.response?.actorId ?? null;
   const responseTargetId = action?.response?.targetId ?? null;
   const responseCountersRoot = action?.response?.countersRoot === true;
+  const duelResponseGraph = Boolean(action?.responses?.some((response) => response.counterTarget.kind === "DUEL_TARGET"));
   const attackDodgeInterception = action?.cardKind === "Attack"
     && isAttackDodgeSemanticResponse(action.response)
     && responseCountersRoot
     && (action.rootEffectState === "BLOCKED" || action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE");
-  const responseTargetsPlayer = Boolean(responseTargetId);
+  const responseTargetsPlayer = Boolean(responseTargetId) || duelResponseGraph;
+  const responseHistoryLabel = duelResponseGraph ? "Duel Attack response" : "Negation response";
   const markerId = key ? `root-target-arrow-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}` : "root-target-arrow";
-  const targetMarkerWidth = action?.cardKind === "Attack" ? 30 : 8;
-  const targetMarkerHeight = action?.cardKind === "Attack" ? 22 : 8;
+  const targetMarkerWidth = action?.cardKind === "Attack" || action?.cardKind === "Duel" ? 30 : 8;
+  const targetMarkerHeight = action?.cardKind === "Attack" || action?.cardKind === "Duel" ? 22 : 8;
   const counterMarkerId = key ? `root-counter-arrow-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}` : "root-counter-arrow";
 
   useLayoutEffect(() => {
@@ -2754,7 +3129,8 @@ export function InteractionRootOverlay({
       state: "measuring",
       enabled,
       responseCardExpected: isAttackDodgeSemanticResponse(initialAction.response),
-      stableRootPresent: stableRootPlacementRef.current?.rootKey === (initialAction.rootPlacementKey ?? initialAction.rootEventId),
+      stableRootPresent: [...stableRootPlacementByViewerRef.current.values()].some((placement) => placement.viewerId === viewerId
+        && placement.rootKey === (initialAction.rootPlacementKey ?? initialAction.rootEventId)),
     });
     onLayoutReadinessChange({ key: initialAction.key, state: "measuring" });
 
@@ -2794,7 +3170,10 @@ export function InteractionRootOverlay({
         : responseCard ? [responseCard] : [];
       const historySummaryElement = historySummaryRef.current;
       const shellBounds = shell.getBoundingClientRect();
-      const rememberedRoot = stableRootPlacementRef.current;
+      const placementWidth = Math.round(shellBounds.width * 2) / 2;
+      const placementHeight = Math.round(shellBounds.height * 2) / 2;
+      const placementCacheKey = `${viewerId}:${placementWidth}x${placementHeight}`;
+      const rememberedRoot = stableRootPlacementByViewerRef.current.get(placementCacheKey) ?? null;
       const currentRootPlacementKey = currentAction.rootPlacementKey ?? currentAction.rootEventId;
       const rememberedPlacementMatches = rememberedRoot?.rootKey === currentRootPlacementKey
         && Math.abs(rememberedRoot.width - shellBounds.width) < .5
@@ -2932,14 +3311,22 @@ export function InteractionRootOverlay({
         && currentAction.cardKind === "Attack"
         && isAttackDodgeSemanticResponse(currentAction.response)
         && currentAction.response.countersRoot);
-      if (nextLayout && currentRootPlacementKey) stableRootPlacementRef.current = {
-        rootKey: currentRootPlacementKey,
-        width: nextLayout.width,
-        height: nextLayout.height,
-        fitStep: selectedFitStep,
-        card: keepPreDodgeRootPlacement && rememberedRoot ? rememberedRoot.card : nextLayout.card,
-        reservedResponseCard: keepPreDodgeRootPlacement && rememberedRoot ? rememberedRoot.reservedResponseCard : nextLayout.responseCard,
-      };
+      if (nextLayout && currentRootPlacementKey) {
+        stableRootPlacementByViewerRef.current.set(placementCacheKey, {
+          viewerId,
+          rootKey: currentRootPlacementKey,
+          width: nextLayout.width,
+          height: nextLayout.height,
+          fitStep: selectedFitStep,
+          card: keepPreDodgeRootPlacement && rememberedRoot ? rememberedRoot.card : nextLayout.card,
+          reservedResponseCard: keepPreDodgeRootPlacement && rememberedRoot ? rememberedRoot.reservedResponseCard : nextLayout.responseCard,
+        });
+        while (stableRootPlacementByViewerRef.current.size > 32) {
+          const oldestPlacementKey = stableRootPlacementByViewerRef.current.keys().next().value;
+          if (!oldestPlacementKey) break;
+          stableRootPlacementByViewerRef.current.delete(oldestPlacementKey);
+        }
+      }
       setLayout((current) => {
         if (!nextLayout || !current) return nextLayout;
         const unchanged = Math.abs(current.width - nextLayout.width) < .5
@@ -3022,7 +3409,7 @@ export function InteractionRootOverlay({
       if (scheduledMeasure !== null) window.cancelAnimationFrame(scheduledMeasure);
       onLayoutReadinessChange(null);
     };
-  }, [actionSignature, enabled, onLayoutReadinessChange]);
+  }, [actionSignature, enabled, onLayoutReadinessChange, viewerId]);
 
   useEffect(() => {
     if (!isAttackDodgeUxTraceActive()) return;
@@ -3165,7 +3552,7 @@ export function InteractionRootOverlay({
   const simultaneousNamesKnown = Boolean(action.simultaneousTargets?.length && action.simultaneousTargets.every((target) => target.playerName.trim()));
   const accessibleDescription = [
     action.ariaLabel,
-    ...(historyCount > 0 ? [`${historyCount} earlier committed Negation response${historyCount === 1 ? "" : "s"} collapsed`] : []),
+    ...(historyCount > 0 ? [`${historyCount} earlier committed ${responseHistoryLabel}${historyCount === 1 ? "" : "s"} collapsed`] : []),
     ...(action.response ? [action.response.ariaLabel] : []),
     ...visibleResponses.map((response) => response.ariaLabel),
     ...(action.settlement?.outcome === "ATTACK_BLOCKED_BY_DODGE" ? ["Attack resolution complete"] : []),
@@ -3215,6 +3602,7 @@ export function InteractionRootOverlay({
     data-oath-recipient-count={action.simultaneousTargets?.length ?? undefined}
     data-root-action-mode={action.mode}
     data-root-action-orthogonal-attack-routing={layout?.orthogonalAttackRouting ? "true" : "false"}
+    data-root-action-orthogonal-duel-routing={layout?.orthogonalDuelRouting ? "true" : "false"}
     data-root-action-orthogonal-attacker-side={layout?.orthogonalAttackerSide}
     data-root-action-orthogonal-controls-side={layout?.orthogonalAttackControlsSide}
     data-root-action-card-kind={action.cardKind}
@@ -3270,13 +3658,18 @@ export function InteractionRootOverlay({
         height={layout.targetHalo.height}
         rx="9"
       />}
-      <path className="interaction-root-source-tether" data-root-action-edge="source" d={layout.sourcePath} />
+      <path
+        className={`interaction-root-source-tether${duelResponseGraph ? " is-contextual" : ""}`}
+        data-root-action-edge="source"
+        data-root-action-source-contextual={duelResponseGraph ? "true" : undefined}
+        d={layout.sourcePath}
+      />
       {layout.targetPath && <path
         className={attackDodgeInterception ? "interaction-root-target-arrow interaction-root-dodge-interception-path" : responseTargetsPlayer ? "interaction-root-target-context" : responseCountersRoot || responseChainRootBlocked ? "interaction-root-target-subdued" : "interaction-root-target-arrow"}
         data-root-action-edge={attackDodgeInterception ? "attack-dodge-interception" : responseTargetsPlayer ? "root-target-context" : responseCountersRoot || responseChainRootBlocked ? "root-target-blocked" : "target"}
         data-root-action-target-state={attackDodgeInterception ? "intercepted" : responseTargetsPlayer ? "context" : responseCountersRoot || responseChainRootBlocked ? "blocked" : "active"}
         d={layout.targetPath}
-        markerEnd={attackDodgeInterception || responseCountersRoot || responseChainRootBlocked ? undefined : `url(#${markerId})`}
+        markerEnd={attackDodgeInterception || duelResponseGraph || responseCountersRoot || responseChainRootBlocked ? undefined : `url(#${markerId})`}
       />}
       {layout.groupTargetPaths?.map((branch) => {
         const target = action.groupTargets?.find(({ playerId }) => playerId === branch.playerId)
@@ -3364,33 +3757,59 @@ export function InteractionRootOverlay({
         d={layout.responseTargetPath}
         markerEnd={`url(#${markerId})`}
       />}
-      {layout.responseSourcePaths.map((path, index) => <path
-        key={`response-source-${index}`}
-        className="interaction-root-response-source-tether"
-        data-root-action-edge="response-source"
-        data-response-node-index={index}
-        d={path}
-      />)}
+      {layout.responseSourcePaths.map((path, index) => {
+        const response = visibleResponses[index];
+        const duelTarget = response?.counterTarget.kind === "DUEL_TARGET";
+        const active = duelTarget ? response.isCurrentRound === true : index === visibleResponses.length - 1;
+        return <path
+          key={`response-source-${index}`}
+          className={`interaction-root-response-source-tether${duelTarget && !active ? " is-subdued" : ""}`}
+          data-root-action-edge="response-source"
+          data-response-node-index={index}
+          data-response-event-id={response?.eventId}
+          data-response-actor-id={response?.actorId}
+          data-response-active={active ? "true" : "false"}
+          data-response-current-round={duelTarget ? active ? "true" : "false" : undefined}
+          data-response-latest={duelTarget ? index === visibleResponses.length - 1 ? "true" : "false" : undefined}
+          data-response-round={duelTarget ? response.duelRound : undefined}
+          d={path}
+        />;
+      })}
       {layout.responseCounterPaths.map((path, index) => {
         const counterTarget = visibleResponses[index]?.counterTarget;
-        const active = index === visibleResponses.length - 1;
-        const edge = counterTarget?.kind === "ROOT" ? "negation-counters-root"
+        const duelTarget = counterTarget?.kind === "DUEL_TARGET";
+        const latest = index === visibleResponses.length - 1;
+        const active = latest;
+        const relatedResponseId = counterTarget?.kind === "DUEL_TARGET" ? counterTarget.relatedResponseEventId : undefined;
+        const relatedResponseEventId = relatedResponseId && visibleResponses.some((response) => response.eventId === relatedResponseId)
+          ? relatedResponseId : undefined;
+        const edge = duelTarget ? "duel-response-target"
+          : counterTarget?.kind === "ROOT" ? "negation-counters-root"
           : counterTarget?.kind === "GROUP_TARGET_EFFECT" ? "negation-counters-group-target-effect"
             : counterTarget?.kind === "ORDERED_TARGET_EFFECT" ? "negation-counters-ordered-target-effect"
             : counterTarget?.kind === "HISTORY" ? "negation-counters-history"
             : "negation-counters-response";
         return <path
           key={`response-counter-${index}`}
-          className={`interaction-root-counter-relation interaction-root-negation-counter${active ? "" : " is-subdued"}`}
+          className={duelTarget
+            ? `interaction-root-response-target-arrow${active ? "" : " is-subdued"}`
+            : `interaction-root-counter-relation interaction-root-negation-counter${active ? "" : " is-subdued"}`}
           data-root-action-edge={edge}
           data-response-node-index={index}
+          data-response-event-id={visibleResponses[index]?.eventId}
           data-response-active={active ? "true" : "false"}
+          data-response-current-round={duelTarget ? visibleResponses[index]?.isCurrentRound ? "true" : "false" : undefined}
+          data-response-latest={duelTarget ? latest ? "true" : "false" : undefined}
+          data-response-round={duelTarget ? visibleResponses[index]?.duelRound : undefined}
+          data-response-semantic-source-id={duelTarget ? counterTarget.decisionActorId : undefined}
+          data-response-target-id={duelTarget ? counterTarget.targetId : undefined}
+          data-counter-target-response-event-id={relatedResponseEventId}
           data-counter-target-index={counterTarget?.kind === "RESPONSE" ? counterTarget.index : undefined}
           data-counter-target-group-player-id={counterTarget?.kind === "GROUP_TARGET_EFFECT" ? counterTarget.targetId : undefined}
           data-counter-target-ordered-player-id={counterTarget?.kind === "ORDERED_TARGET_EFFECT" ? counterTarget.targetId : undefined}
           data-counter-target-history={counterTarget?.kind === "HISTORY" ? "true" : undefined}
           d={path}
-          markerEnd={`url(#${counterMarkerId})`}
+          markerEnd={`url(#${duelTarget ? markerId : counterMarkerId})`}
         />;
       })}
     </svg>}
@@ -3400,6 +3819,7 @@ export function InteractionRootOverlay({
       data-root-action-card="true"
       data-root-action-card-kind={action.cardKind}
       data-root-action-card-face-kind={action.cardFace?.kind}
+      data-root-action-physical-card-id={action.cardFace?.id}
       data-root-action-node-type={action.nodeType ?? "CARD"}
       data-root-action-effect-id={action.nodeType === "EFFECT" ? action.effectId : undefined}
       data-root-action-settled={action.settlement ? "true" : undefined}
@@ -3428,7 +3848,7 @@ export function InteractionRootOverlay({
       data-root-action-response-history="true"
       data-collapsed-response-count={historyCount}
       role="img"
-      aria-label={`${historyCount} earlier committed Negation response${historyCount === 1 ? "" : "s"}`}
+      aria-label={`${historyCount} earlier committed ${responseHistoryLabel}${historyCount === 1 ? "" : "s"}`}
       aria-hidden="true"
       style={layout?.historySummary ? { left: layout.historySummary.left, top: layout.historySummary.top, transform: "none" } : undefined}
     >
@@ -3439,6 +3859,7 @@ export function InteractionRootOverlay({
       className={`interaction-root-action-card interaction-root-response-card${action.response.cardFace ? " is-card-face" : ""}${responseTargetsPlayer ? " is-active" : ""}`}
       data-root-action-response-card="true"
       data-response-card-face-kind={action.response.cardFace?.kind}
+      data-response-physical-card-id={action.response.cardFace?.id}
       data-response-semantic-action={action.response.semanticAction}
       data-response-event-id={action.response.eventId}
       data-response-actor-id={action.response.actorId}
@@ -3458,19 +3879,35 @@ export function InteractionRootOverlay({
       {action.response.semanticLabel && <span className="interaction-root-response-semantic">{action.response.semanticLabel}</span>}
     </div>}
     {visibleResponses.map((response, index) => {
-      const active = index === visibleResponses.length - 1;
+      const duelTarget = response.counterTarget.kind === "DUEL_TARGET";
+      const latest = index === visibleResponses.length - 1;
+      const active = duelTarget ? response.isCurrentRound === true : latest;
+      const relatedResponseId = response.counterTarget.kind === "DUEL_TARGET" ? response.counterTarget.relatedResponseEventId : undefined;
+      const relatedResponseEventId = relatedResponseId && visibleResponses.some((candidate) => candidate.eventId === relatedResponseId)
+        ? relatedResponseId : undefined;
       const box = layout?.responseCards[index];
       return <div
         key={response.eventId}
-        className={`interaction-root-action-card interaction-root-response-card${active ? " is-active" : " is-subdued"}`}
+        className={`interaction-root-action-card interaction-root-response-card${response.cardFace ? " is-card-face" : ""}${active ? " is-active" : " is-subdued"}${duelTarget && !active ? " is-prior-round" : ""}`}
         data-root-action-response-card="true"
         data-root-action-response-node="true"
         data-response-node-index={index}
         data-response-original-index={response.originalIndex}
+        data-response-ordinal={response.originalIndex + 1}
         data-response-event-id={response.eventId}
         data-response-actor-id={response.actorId}
+        data-response-decision-actor-id={duelTarget ? response.counterTarget.decisionActorId : undefined}
+        data-response-target-id={duelTarget ? response.counterTarget.targetId : undefined}
+        data-response-card-face-kind={response.cardFace?.kind}
+        data-response-physical-card-id={response.cardFace?.id}
         data-response-active={active ? "true" : "false"}
-        data-response-relation={response.counterTarget.kind === "ROOT" ? "COUNTERS_ROOT"
+        data-response-current-round={duelTarget ? active ? "true" : "false" : undefined}
+        data-response-latest={duelTarget ? latest ? "true" : "false" : undefined}
+        data-response-round={duelTarget ? response.duelRound : undefined}
+        data-response-side={duelTarget ? (layout?.responseSides?.[index] ?? undefined) : undefined}
+        data-counter-target-response-event-id={relatedResponseEventId}
+        data-response-relation={duelTarget ? "TARGETS_PLAYER"
+          : response.counterTarget.kind === "ROOT" ? "COUNTERS_ROOT"
           : response.counterTarget.kind === "GROUP_TARGET_EFFECT" ? "COUNTERS_GROUP_TARGET_EFFECT"
             : response.counterTarget.kind === "ORDERED_TARGET_EFFECT" ? "COUNTERS_ORDERED_TARGET_EFFECT"
             : response.counterTarget.kind === "HISTORY" ? "COUNTERS_HISTORY" : "COUNTERS_RESPONSE"}
@@ -3483,8 +3920,10 @@ export function InteractionRootOverlay({
         aria-hidden="true"
         style={box ? { left: box.left, top: box.top, transform: "none" } : undefined}
       >
-        <small>{response.actorName}</small>
-        <strong>{response.cardLabel}</strong>
+        {response.cardFace ? <CardFace card={response.cardFace} /> : <>
+          <small>{response.actorName}</small>
+          <strong>{response.cardLabel}</strong>
+        </>}
       </div>;
     })}
     </div>

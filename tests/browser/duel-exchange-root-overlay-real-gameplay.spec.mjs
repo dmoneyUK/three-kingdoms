@@ -202,7 +202,7 @@ async function assertResponseGeometry(page, { sourceId, targetId, decisionActorI
 }
 
 for (const viewport of viewports) {
-  test(`real physical Duel graph keeps one stable root and only its latest Attack at ${viewport.width}×${viewport.height}`, async ({ page, browser, request }) => {
+  test(`real physical Duel graph keeps one stable root and both committed round-one Attacks at ${viewport.width}×${viewport.height}`, async ({ page, browser, request }) => {
     test.setTimeout(90_000);
     const seed = await seedDuelGame(request);
     const [sourceId, targetId] = seed.players.slice(0, 2).map((player) => player.id);
@@ -257,19 +257,46 @@ for (const viewport of viewports) {
       await submitAttackResponse(page, seed.cards.secondAttack.id);
       await expect.poll(async () => (await roomView(request, seed, 0)).presentationSnapshot.duelExchange?.responseCount ?? 0, { timeout: 20_000 }).toBe(2);
       const secondProof = (await roomView(request, seed, 0)).presentationSnapshot.duelExchange;
+      expect(secondProof.responses).toHaveLength(2);
       const secondResponse = secondProof.responses[1];
-      await expect(page.locator('[data-root-action-response-card="true"]')).toHaveCount(1);
-      await expect(page.locator('[data-root-action-response-card="true"]')).toHaveAttribute("data-response-event-id", secondResponse.responseEventId);
-      await expect(page.locator('[data-root-action-response-card="true"]')).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET in SOURCE's Duel against TARGET");
-      const secondGeometry = await assertResponseGeometry(page, {
-        sourceId, targetId, decisionActorId: sourceId, responseActorId: sourceId, stableSeatIds,
+      expect(secondProof.responses.map(({ responseEventId }) => responseEventId)).toEqual([
+        firstResponse.responseEventId, secondResponse.responseEventId,
+      ]);
+      expect(secondResponse).toMatchObject({
+        ordinal: 2, decisionActorId: sourceId, responseActorId: sourceId,
+        targetId, responseCardKind: "Attack",
       });
-      expect(Math.abs(secondGeometry.root.left - firstRootGeometry.root.left)).toBeLessThan(1);
-      expect(Math.abs(secondGeometry.root.top - firstRootGeometry.root.top)).toBeLessThan(8);
-      expect(secondGeometry.responseEventId).toBe(secondResponse.responseEventId);
-      for (const seatId of stableSeatIds) expect(secondGeometry.anchors[seatId]).toEqual(firstRootGeometry.anchors[seatId]);
-      expect(secondGeometry.dock.bottom).toBeLessThanOrEqual(viewport.height + 1);
+      const responseCards = page.locator('[data-root-action-response-card="true"]');
+      await expect(responseCards).toHaveCount(2);
+      const firstResponseCard = page.locator(`[data-root-action-response-card="true"][data-response-event-id="${firstResponse.responseEventId}"]`);
+      const secondResponseCard = page.locator(`[data-root-action-response-card="true"][data-response-event-id="${secondResponse.responseEventId}"]`);
+      await expect(firstResponseCard).toHaveAttribute("data-response-round", "1");
+      await expect(firstResponseCard).toHaveAttribute("data-response-current-round", "true");
+      await expect(secondResponseCard).toHaveAttribute("data-response-event-id", secondResponse.responseEventId);
+      await expect(secondResponseCard).toHaveAttribute("data-response-actor-id", sourceId);
+      await expect(secondResponseCard).toHaveAttribute("data-response-target-id", targetId);
+      await expect(secondResponseCard).toHaveAttribute("data-response-round", "1");
+      await expect(secondResponseCard).toHaveAttribute("aria-label", "SOURCE played Attack targeting TARGET in SOURCE's Duel against TARGET");
+      const firstAfterRect = await firstResponseCard.boundingBox();
+      const secondGeometry = await snapshotGeometry(page, [sourceId, targetId, ...stableSeatIds]);
+      expect(secondGeometry.graphReady).toBe("true");
+      expect(secondGeometry.stageCount).toBe(0);
       expect(secondGeometry.overflow).toBeLessThanOrEqual(1);
+      expect(secondGeometry.root).not.toBeNull();
+      expect(secondGeometry.rootContextEdgeCount).toBe(1);
+      expect(secondGeometry.dock.bottom).toBeLessThanOrEqual(viewport.height + 1);
+      expect(firstAfterRect).not.toBeNull();
+      expect(Math.abs(firstAfterRect.x - firstGeometry.response.left)).toBeLessThanOrEqual(1);
+      expect(Math.abs(firstAfterRect.y - firstGeometry.response.top)).toBeLessThanOrEqual(1);
+      const latestSource = page.locator(`[data-root-action-edge="response-source"][data-response-event-id="${secondResponse.responseEventId}"]`);
+      const latestTarget = page.locator(`[data-root-action-edge="duel-response-target"][data-response-event-id="${secondResponse.responseEventId}"]`);
+      await expect(latestSource).toHaveAttribute("data-response-actor-id", sourceId);
+      await expect(latestTarget).toHaveAttribute("data-response-semantic-source-id", sourceId);
+      await expect(latestTarget).toHaveAttribute("data-response-target-id", targetId);
+      await expect(latestTarget).toHaveAttribute("marker-end", /url\(#/);
+      expect(Math.abs(secondGeometry.root.left - firstRootGeometry.root.left)).toBeLessThan(1);
+      expect(Math.abs(secondGeometry.root.top - firstRootGeometry.root.top)).toBeLessThan(1);
+      for (const seatId of stableSeatIds) expect(secondGeometry.anchors[seatId]).toEqual(firstRootGeometry.anchors[seatId]);
       await expect(page.locator('.table-resolution-layer .table-played-card')).toHaveCount(0);
     } finally {
       await targetPage.close();
