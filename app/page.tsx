@@ -4598,9 +4598,12 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   useEffect(() => {
     if (!visibleNegationReadAction || activePublicNegationRead?.key !== visibleNegationReadAction.key
       || activePublicNegationRead.action.publicCounterRead?.eventId === visibleNegationReadAction.publicCounterRead?.eventId) return;
-    setActivePublicNegationRead((current) => current?.key === visibleNegationReadAction.key
-      ? { ...current, action: visibleNegationReadAction }
-      : current);
+    const timer = window.setTimeout(() => {
+      setActivePublicNegationRead((current) => current?.key === visibleNegationReadAction.key
+        ? { ...current, action: visibleNegationReadAction }
+        : current);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [activePublicNegationRead, visibleNegationReadAction]);
   const visibleNegationReadEventId = visibleNegationReadAction?.publicCounterRead?.eventId ?? null;
   useEffect(() => {
