@@ -84,9 +84,12 @@ export async function requestAndSettle(action, values = {}) {
   return result;
 }
 
-export async function state(code, token, audit = false) {
+export async function state(code, token, audit = false, testViewerId = null) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const response = await fetch(`${baseUrl}/api/rooms?code=${code}&token=${token}${audit ? "&audit=1" : ""}`);
+    const query = new URLSearchParams({ code, token });
+    if (audit) query.set("audit", "1");
+    if (testViewerId) query.set("testViewerId", testViewerId);
+    const response = await fetch(`${baseUrl}/api/rooms?${query.toString()}`);
     const text = await response.text();
     if (text) {
       try { return { status: response.status, data: JSON.parse(text) }; }

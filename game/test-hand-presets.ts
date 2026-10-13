@@ -5,6 +5,7 @@ export const TEST_HAND_PRESET_OPTIONS = [
   { id: "random", name: "Random Hands (Default)" },
   { id: "attack_dodge", name: "Attack / Dodge Test" },
   { id: "attack_negation", name: "Attack / Negation Test" },
+  { id: "duel_chain", name: "Duel / Attack / Negation Test" },
   { id: "custom", name: "Custom Hands" },
 ] as const;
 
@@ -23,6 +24,16 @@ const PRESET_HANDS: Record<Exclude<TestHandPresetId, "custom">, Record<number, C
   attack_negation: {
     0: ["DrawTwo", "Attack", "Negation", "Negation"],
     1: ["Negation", "Negation", "Dodge"],
+  },
+  // Use real Standard copies only. Seats 2–4 can initiate a Duel and every
+  // seat has Attack; the host/seat 1 and seat 2 hold enough Attack cards for
+  // five alternating responses. Standard contains only three Duel and three
+  // Negation cards, so those physical copies are spread across the roster.
+  duel_chain: {
+    0: ["Attack", "Attack", "Attack"],
+    1: ["Duel", "Attack", "Attack", "Negation"],
+    2: ["Duel", "Attack", "Negation"],
+    3: ["Duel", "Attack", "Negation"],
   },
 };
 

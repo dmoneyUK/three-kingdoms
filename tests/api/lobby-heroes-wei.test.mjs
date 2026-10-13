@@ -55,6 +55,78 @@ test("test controller accepts displayed Lord and non-first candidates through th
   assert.ok(room.players.every((player) => player.hero));
 });
 
+test("Duel test preset keeps physical Standard inventory and test-view selection independent of the acting player", async () => {
+  const created = await requestAndSettle("create", { name: "Duel Test Host" });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const { code } = created.data.room;
+  const token = created.data.token;
+  const added = await requestAndSettle("add_test_players", { code, token });
+  assert.equal(added.status, 200, JSON.stringify(added.data));
+  const enabled = await requestAndSettle("enable_test_room", { code, token });
+  assert.equal(enabled.status, 200, JSON.stringify(enabled.data));
+
+  const configured = await requestAndSettle("configure_test_hands", { code, token, presetId: "duel_chain", expectedRevision: 0 });
+  assert.equal(configured.status, 200, JSON.stringify(configured.data));
+  assert.deepEqual(configured.data.room.testHandPreset.handsBySeat, {
+    0: ["Attack", "Attack", "Attack"],
+    1: ["Duel", "Attack", "Attack", "Negation"],
+    2: ["Duel", "Attack", "Negation"],
+    3: ["Duel", "Attack", "Negation"],
+  });
+
+  let room = (await requestAndSettle("start", { code, token })).data.room;
+  while (room.status === "heroes") {
+    const candidate = room.myHeroOptions[0];
+    assert.ok(candidate, "the test controller can choose the current seat's hero");
+    room = (await requestAndSettle("choose_hero", { code, token, heroId: candidate.id })).data.room;
+  }
+  assert.equal(room.status, "playing");
+
+  const views = await Promise.all(room.players.map((player) => state(code, token, false, player.id)));
+  assert.ok(views.every((view) => view.status === 200));
+  assert.ok(views.every((view, index) => view.data.meId === room.players[index].id));
+  const allHandCards = views.flatMap((view) => view.data.myHand);
+  assert.equal(allHandCards.length, 16);
+  assert.equal(new Set(allHandCards.map((held) => held.id)).size, 16, "every dealt physical card identity is unique");
+  assert.equal(room.deckCount + allHandCards.length, 108, "opening hand allocation conserves all 108 Standard cards");
+  for (const held of allHandCards) assert.equal(roomCardCount(code, held.id), 1, `${held.id} appears in exactly one live room zone`);
+  const presetBySeat = {
+    0: ["Attack", "Attack", "Attack"],
+    1: ["Duel", "Attack", "Attack", "Negation"],
+    2: ["Duel", "Attack", "Negation"],
+    3: ["Duel", "Attack", "Negation"],
+  };
+  for (const [seatText, kinds] of Object.entries(presetBySeat)) {
+    const seat = Number(seatText);
+    const hand = views[seat].data.myHand;
+    for (const kind of kinds) assert.ok(hand.some((held) => held.kind === kind), `seat ${seat + 1} receives its configured ${kind}`);
+  }
+
+  const actingPlayerId = room.currentAction?.actorId ?? room.actionPlayerId;
+  const selectedViewer = room.players.find((player) => player.id !== actingPlayerId);
+  const nextActor = room.players.find((player) => player.id !== actingPlayerId && player.id !== selectedViewer?.id);
+  assert.ok(actingPlayerId && selectedViewer && nextActor, "the test fixture has distinct viewer and acting seats");
+  let selectedView = await state(code, token, false, selectedViewer.id);
+  assert.equal(selectedView.status, 200);
+  assert.equal(selectedView.data.meId, selectedViewer.id);
+  assert.equal(selectedView.data.currentAction.actorId, actingPlayerId);
+  assert.equal(selectedView.data.isMyAction, false);
+  assert.deepEqual(selectedView.data.currentAction.legalActions, [], "a manual observer view receives no other seat's legal actions");
+
+  setTurn(code, nextActor.seat, "play");
+  selectedView = await state(code, token, false, selectedViewer.id);
+  assert.equal(selectedView.data.meId, selectedViewer.id, "the selected perspective remains fixed after the acting seat changes");
+  assert.equal(selectedView.data.currentAction.actorId, nextActor.id);
+  assert.deepEqual(selectedView.data.currentAction.legalActions, []);
+  const invalidViewer = await state(code, token, false, "not-a-controlled-player");
+  assert.equal(invalidViewer.status, 403, "the server rejects a viewer outside the authenticated test roster");
+
+  const humanGame = await createHumanGame();
+  const humanTarget = humanGame.room.players.find((player) => player.id !== humanGame.room.meId);
+  const unauthorizedViewer = await state(humanGame.code, humanGame.members[0].token, false, humanTarget.id);
+  assert.equal(unauthorizedViewer.status, 403, "an ordinary member cannot request another player's private view");
+});
+
 test("explicit TEST GAME lets the host assign specific unused Standard heroes to each controlled seat", async () => {
   const created = await requestAndSettle("create", { name: "Hero Test Host" });
   assert.equal(created.status, 201, JSON.stringify(created.data));

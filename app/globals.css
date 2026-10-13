@@ -1352,3 +1352,41 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
   .game-shell .play-table > .interaction-safe-zone > .effect-notice { animation: none; }
   .game-shell .play-table > .interaction-safe-zone > .effect-notice.is-exiting { opacity: 1; transform: none; transition: none; }
 }
+
+.test-view-switch-button {
+  position: absolute;
+  z-index: 5;
+  top: 5px;
+  left: 5px;
+  display: grid;
+  min-width: 42px;
+  height: 28px;
+  place-items: center;
+  padding: 0 4px;
+  border: 1px solid #d3b56b;
+  border-radius: 10px;
+  background: #17140fe8;
+  color: #f2d98e;
+  box-shadow: 0 1px 4px #0009;
+  font: 700 8px/1 Arial, sans-serif;
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+.test-view-switch-button[aria-pressed="true"] {
+  background: #d6b35f;
+  color: #241c0e;
+  box-shadow: 0 0 0 1px #fff5, 0 1px 4px #0009;
+}
+.test-view-switch-button:hover,
+.test-view-switch-button:focus-visible {
+  border-color: #fff0b4;
+  outline: 2px solid #fff0b4;
+  outline-offset: 1px;
+}
+.local-test-view-switch-button {
+  top: 4px;
+  left: 4px;
+  min-width: 42px;
+  height: 28px;
+  font-size: 8px;
+}

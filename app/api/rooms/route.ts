@@ -4513,7 +4513,7 @@ function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: P
 }
 
 
-async function roomState(code: string, token?: string, includeAttackDodgeDiagnostics = false) {
+async function roomState(code: string, token?: string, includeAttackDodgeDiagnostics = false, requestedViewerId?: string | null) {
   const db = env.DB;
   const room = await db.prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
   if (!room) return null;
@@ -4554,8 +4554,10 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const projectedActionPlayerId = heroSelectionPlayer?.id ?? actualActionPlayerId;
   const controlledPlayerIds = new Set(sessionPlayers.map((player) => player.id));
   const controllerFallback = sessionPlayers.find((player) => player.id === room.host_player_id) ?? sessionPlayers[0];
+  const requestedViewer = requestedViewerId ? sessionPlayers.find((player) => player.id === requestedViewerId) : null;
   const me = isTestController
-    ? projectedActionPlayerId && controlledPlayerIds.has(projectedActionPlayerId) ? players.find((player) => player.id === projectedActionPlayerId) ?? controllerFallback : controllerFallback
+    ? requestedViewerId ? requestedViewer ?? controllerFallback
+      : projectedActionPlayerId && controlledPlayerIds.has(projectedActionPlayerId) ? players.find((player) => player.id === projectedActionPlayerId) ?? controllerFallback : controllerFallback
     : sessionPlayers[0];
   const negationWaitingForOther = responseContinuation?.kind === "negation" && me?.id !== actualActionPlayerId;
   const pendingNegation = pendingNegationBase ? { ...pendingNegationBase, actorId: negationWaitingForOther ? null : pendingNegationBase.actorId } : null;
@@ -4728,6 +4730,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = (url.searchParams.get("code") ?? "").toUpperCase();
   const token = url.searchParams.get("token") ?? "";
+  const requestedViewerId = url.searchParams.get("testViewerId");
   const requestedTraceId = url.searchParams.get("uxTraceId") ?? "";
   const uxTraceId = /^[a-zA-Z0-9-]{8,80}$/.test(requestedTraceId) ? requestedTraceId : null;
   if (url.searchParams.get("audit") === "1") {
@@ -4738,8 +4741,11 @@ export async function GET(request: Request) {
     const result = await env.DB.prepare("SELECT id,event_key,event_type,actor_id,actor_name,action,phase_before,phase_after,turn_seat_before,turn_seat_after,acting_player_before,acting_player_after,detail_json,created_at FROM game_audit WHERE room_id = ? ORDER BY id").bind(room.id).all();
     return json({ code, audit: result.results ?? [] });
   }
-  const state = await roomState(code, token, Boolean(uxTraceId));
+  const state = await roomState(code, token, Boolean(uxTraceId), requestedViewerId);
   if (!state) return json({ error: "Room not found." }, 404);
+  if (requestedViewerId && state.meId !== requestedViewerId) {
+    return json({ error: "That test viewer is not controlled by this session." }, 403);
+  }
   if (uxTraceId) {
     if (!state.meId) return json({ error: "A valid room member session is required for UX diagnostics." }, 403);
     const trace = attackDodgeProjectionTrace(uxTraceId, state);

@@ -248,13 +248,24 @@ export default function Home() {
   const mutationInFlight = useRef<string | null>(null);
   const latestAppliedMutation = useRef(0);
   const lastPublicCounterReadIdentity = useRef<string | null>(null);
+  const testViewerIdRef = useRef<string | null>(null);
+  const testViewerRoomCodeRef = useRef<string | null>(null);
+  const testViewerRevisionRef = useRef(0);
 
-  const fetchRoom = useCallback(async (roomCode: string, playerToken: string, quiet = false) => {
+  const fetchRoom = useCallback(async (roomCode: string, playerToken: string, quiet = false, requestedViewerId?: string) => {
+    if (testViewerRoomCodeRef.current !== roomCode) {
+      testViewerRoomCodeRef.current = roomCode;
+      testViewerIdRef.current = null;
+      testViewerRevisionRef.current += 1;
+    }
     const epoch = stateEpoch.current;
+    const testViewerRevision = testViewerRevisionRef.current;
+    const selectedTestViewerId = requestedViewerId ?? testViewerIdRef.current;
     const uxTraceId = getAttackDodgeUxTraceId();
     try {
       if (uxTraceId) recordAttackDodgeUxTrace("room-poll-request", { traceId: uxTraceId });
       const query = new URLSearchParams({ code: roomCode, token: playerToken });
+      if (selectedTestViewerId) query.set("testViewerId", selectedTestViewerId);
       if (uxTraceId) query.set("uxTraceId", uxTraceId);
       const response = await fetch(`/api/rooms?${query.toString()}`, { cache: "no-store" });
       if (uxTraceId) recordAttackDodgeUxTrace("room-poll-response", { traceId: uxTraceId, status: response.status, ok: response.ok });
@@ -271,6 +282,7 @@ export default function Home() {
       }
       const nextRoom = normalizeRoomData(roomPayload) as Room | null;
       if (!nextRoom || !nextRoom.meId) throw new Error("Your player session is no longer valid.");
+      if (selectedTestViewerId && nextRoom.meId !== selectedTestViewerId) throw new Error("The selected test-player view is no longer available.");
       if (serverDiagnostic) {
         recordAttackDodgeUxTrace("server-projection-evaluation", sanitizeAttackDodgeUxTraceData(
           serverDiagnostic,
@@ -281,7 +293,16 @@ export default function Home() {
       }
       recordPublicGameRoomSnapshot(nextRoom, "poll");
       if (nextRoom.status === "finished") stopAttackDodgeUxTrace("game-finished");
-      if (epoch === stateEpoch.current) setRoom(nextRoom as Room);
+      if (epoch === stateEpoch.current && testViewerRevision === testViewerRevisionRef.current) {
+        if (nextRoom.isTestController) {
+          testViewerRoomCodeRef.current = nextRoom.code;
+          testViewerIdRef.current = selectedTestViewerId ?? nextRoom.meId;
+        } else {
+          testViewerRoomCodeRef.current = nextRoom.code;
+          testViewerIdRef.current = null;
+        }
+        setRoom(nextRoom as Room);
+      }
       return true;
     } catch (cause) {
       if (uxTraceId) recordAttackDodgeUxTrace("room-poll-failure", { traceId: uxTraceId, kind: cause instanceof Error ? cause.name : "unknown" });
@@ -385,13 +406,18 @@ export default function Home() {
         }
       }
       const data = { ...rawData, room: normalizeRoomData(rawData.room) as Room | null };
-      if (data.room) recordPublicGameRoomSnapshot(data.room, "action");
+      const preservedTestViewerId = room?.isTestController ? testViewerIdRef.current : null;
+      const preserveTestViewer = Boolean(data.room && preservedTestViewerId);
+      if (preserveTestViewer && data.room) {
+        await fetchRoom(data.room.code, token, true, preservedTestViewerId!);
+      }
+      if (data.room && !preserveTestViewer) recordPublicGameRoomSnapshot(data.room, "action");
       if (data.room?.status === "finished") stopAttackDodgeUxTrace("game-finished");
-      if (data.room && mutationSequence >= latestAppliedMutation.current && (nonBlocking || epoch === stateEpoch.current)) { latestAppliedMutation.current = Math.max(latestAppliedMutation.current, mutationSequence); setToken(data.token ?? token); setRoom(data.room); setCode(data.room.code); }
+      if (data.room && !preserveTestViewer && mutationSequence >= latestAppliedMutation.current && (nonBlocking || epoch === stateEpoch.current)) { latestAppliedMutation.current = Math.max(latestAppliedMutation.current, mutationSequence); setToken(data.token ?? token); setRoom(data.room); setCode(data.room.code); }
       if (!response.ok || action !== "heartbeat" && !data.room) throw new Error(data.error ?? "Something went wrong.");
       if (action === "heartbeat") return true;
       const nextToken = data.token ?? token;
-      if (epoch === stateEpoch.current && mutationSequence >= latestAppliedMutation.current) { latestAppliedMutation.current = mutationSequence; setToken(nextToken); setRoom(data.room); setCode(data.room.code); }
+      if (!preserveTestViewer && epoch === stateEpoch.current && mutationSequence >= latestAppliedMutation.current) { latestAppliedMutation.current = mutationSequence; setToken(nextToken); setRoom(data.room); setCode(data.room.code); }
       localStorage.setItem("three-realms-session", JSON.stringify({ code: data.room.code, token: nextToken, name: name.trim() }));
       return true;
     } catch (cause) {
@@ -400,6 +426,14 @@ export default function Home() {
       return false;
     }
     finally { if (!nonBlocking) { if (mutationInFlight.current === mutationKey) mutationInFlight.current = null; setBusy(false); } }
+  }
+
+  async function switchTestViewer(playerId: string) {
+    if (!room?.isTestController || !room.players.some((player) => player.id === playerId)) return;
+    testViewerRoomCodeRef.current = room.code;
+    testViewerIdRef.current = playerId;
+    testViewerRevisionRef.current += 1;
+    await fetchRoom(room.code, token, true, playerId);
   }
 
   useEffect(() => {
@@ -441,12 +475,15 @@ export default function Home() {
 
   function leave() {
     stopAttackDodgeUxTrace("player-left-game");
+    testViewerIdRef.current = null;
+    testViewerRoomCodeRef.current = null;
+    testViewerRevisionRef.current += 1;
     stateEpoch.current += 1; setRoom(null); setError(""); setPublicCounterReadUntil(0); lastPublicCounterReadIdentity.current = null;
   }
 
   const presentationView = room ? buildPresentationClientView(room.presentationSnapshot, room.meId) : null;
 
-  if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <GameRoomErrorBoundary room={room} onRecover={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy} error={error} onAction={send} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} /></GameRoomErrorBoundary>;
+  if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <GameRoomErrorBoundary room={room} onRecover={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy} error={error} onAction={send} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary>;
   if (room?.status === "heroes") return <HeroSelection room={room} busy={busy} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} />;
   if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onAddTestPlayers={() => send("add_test_players")} onEnableTestRoom={() => send("enable_test_room")} onConfigureTestHands={(presetId, handsBySeat, expectedRevision) => send("configure_test_hands", { presetId, handsBySeat, expectedRevision })} onLeave={leave} />;
 
@@ -593,8 +630,11 @@ type OpponentPlayerCardProps = {
   interactionRoles: InteractionSeatSemanticRoles;
   targetSelectionActive: boolean;
   targetablePlayer: boolean;
+  testViewerController: boolean;
+  isTestViewer: boolean;
   onTarget: () => void;
   onInspect: () => void;
+  onSwitchTestViewer: () => void;
   onInfoCard: (card: Card) => void;
   judgementInFlight: ReadonlySet<string>;
   serpentSelected: string[];
@@ -621,7 +661,7 @@ function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
   return <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M1.2 11.7h11.4l-1-2.2.3-2-1.3-2-1.8-.5L7.4 7H5.1L3.8 4.2l-1.6.4.8 2.9-1.2 1.7Z" /><path d="M4 11.6v1.2m5.8-1.2v1.2" /></svg>;
 }
 
-function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isActionPlayer, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, targetablePlayer, onTarget, onInspect, onInfoCard, judgementInFlight }: OpponentPlayerCardProps) {
+function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isActionPlayer, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, targetablePlayer, testViewerController, isTestViewer, onTarget, onInspect, onSwitchTestViewer, onInfoCard, judgementInFlight }: OpponentPlayerCardProps) {
   const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex);
   const fourPlayerTopRow = totalPlayers === 4;
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
@@ -653,6 +693,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
         </button>
         {!fourPlayerTopRow && equipmentSummary.length > 0 && <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment">{equipmentSummary}</div>}
         {playerHero && <button type="button" className="hero-card-info-button" aria-label={`Inspect ${player.name}`} onClick={onInspect}>i</button>}
+        {playerHero && testViewerController && <button type="button" className="test-view-switch-button" data-testid={`test-view-switch-${player.id}`} data-test-viewer-id={player.id} aria-label={`Switch test perspective to ${player.name}`} aria-pressed={isTestViewer} title={`View as ${player.name}`} onClick={(event) => { event.stopPropagation(); onSwitchTestViewer(); }}>VIEW</button>}
       </div>
       {player.judgementCards.length > 0 && <section className="opponent-judgement-zone" aria-label="Judgement Zone">
         <span className="opponent-zone-label">Judgement</span>
@@ -1974,6 +2015,7 @@ type LocalPlayerDockProps = {
   selfTargetSelected: boolean;
   onSelfTarget: () => void;
   onHeroInfo: (hero: Hero) => void;
+  onSwitchTestViewer?: (playerId: string) => void;
   onInfoCard: (card: Card) => void;
   equipmentSelection?: { eligibleIds: string[]; selectedIds: string[]; max: number; disabled: boolean; onToggle: (cardId: string) => void } | null;
   hiddenCardIds?: ReadonlySet<string>;
@@ -1981,7 +2023,7 @@ type LocalPlayerDockProps = {
   preserveGuidanceHeight?: boolean;
 };
 
-export function LocalPlayerDock({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), isGroupPreview = false, preserveGuidanceHeight = false }: LocalPlayerDockProps) {
+export function LocalPlayerDock({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onSwitchTestViewer, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), isGroupPreview = false, preserveGuidanceHeight = false }: LocalPlayerDockProps) {
   const dockRef = useRef<HTMLElement | null>(null);
   const guidanceHeightRef = useRef<number | null>(null);
   const preserveGuidanceHeightRef = useRef(preserveGuidanceHeight);
@@ -2069,6 +2111,7 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
             onClick={() => selfTargetable ? onSelfTarget() : onHeroInfo(hero)}
           ><span className="local-hero-portrait" data-hero-id={hero.id} aria-hidden="true"><HeroPortrait hero={hero} /><span className="local-hero-overlay"><span className="local-hero-label">{hero.name}</span><span className="local-hero-vitals"><strong className="local-hero-role">{player?.role ?? "Role pending"}</strong><span className="local-hero-hp">HP {player?.hp ?? 0}/{player?.maxHp ?? 0}</span><span className="local-hero-hearts">{hpDisplay(player?.hp ?? null)}</span></span></span></span></button>
           {selfTargetable && <button type="button" className="hero-card-info-button local-hero-info-button" aria-label={`Explain ${hero.name}`} onClick={(event) => { event.stopPropagation(); onHeroInfo(hero); }}>i</button>}
+          {player && onSwitchTestViewer && <button type="button" className="test-view-switch-button local-test-view-switch-button" data-testid={`test-view-switch-${player.id}`} data-test-viewer-id={player.id} aria-label={`Switch test perspective to ${player.name}`} aria-pressed={true} title={`View as ${player.name}`} onClick={() => onSwitchTestViewer(player.id)}>VIEW</button>}
         </> : <div className="local-hero-card local-hero-card-empty" aria-label="Hero not selected"><span className="local-hero-portrait" aria-hidden="true"><span className="local-hero-label">HERO</span></span></div>}
         {judgementCards.length > 0 && <div ref={judgementRailRef} className="local-judgement-cards local-judgement-overlay" data-judgement-layout={judgementCardLayout.measured ? "measured" : "pending"} style={{ justifyContent: judgementCards.length === 1 ? "center" : "flex-start" }} role="group" aria-label="Persistent Judgement cards">
           {judgementCards.map((card, index) => <div className="local-judgement-card-slot" key={card.id} style={{ marginLeft: index === 0 ? 0 : `${judgementCardLayout.step - judgementCardWidth}px` }}>{renderZoneCard(card)}</div>)}
@@ -2120,7 +2163,7 @@ function captureHandViewportSnapshot(rail: HTMLElement, viewerId: string | null)
   };
 }
 
-export function GameRoom({ room, presentationView, busy, error, onAction, onLeave, onPublicCounterReadVisible }: { room: Room; presentationView?: PresentationClientView; busy: boolean; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void; onPublicCounterReadVisible: (identity: string, durationMs?: number, renew?: boolean) => void }) {
+export function GameRoom({ room, presentationView, busy, error, onAction, onLeave, onPublicCounterReadVisible, onSwitchTestViewer = async () => undefined }: { room: Room; presentationView?: PresentationClientView; busy: boolean; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void; onPublicCounterReadVisible: (identity: string, durationMs?: number, renew?: boolean) => void; onSwitchTestViewer?: (playerId: string) => Promise<void> }) {
   const initialPendingSequence = pendingTimelineSequence(room);
   const initialHeldCardIds = new Set(initialPendingSequence.flatMap(eventCards).map((item) => item.id));
   const clientPresentation = useMemo(() => presentationView ?? buildPresentationClientView(room.presentationSnapshot ?? null, room.meId), [presentationView, room.presentationSnapshot, room.meId]);
@@ -5427,8 +5470,11 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
             interactionRoles={projectInteractionSeatRoles(clientPresentation, player.id)}
             targetSelectionActive={targetSelectionActive}
             targetablePlayer={targetablePlayer}
+            testViewerController={Boolean(room.isTestController)}
+            isTestViewer={player.id === room.meId}
             onTarget={() => { if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id); else { setTarget(player.id); setTargetCardIndex(null); } setExpandedOpponentId(player.id); }}
             onInspect={() => setExpandedOpponentId(player.id)}
+            onSwitchTestViewer={() => { void onSwitchTestViewer(player.id); }}
             onInfoCard={setInfoCard}
             judgementInFlight={judgementInFlight}
             serpentSelected={serpentSelected}
@@ -5444,7 +5490,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     </section>
     <InteractionRootOverlay action={rootActionOverlayAction} enabled={rootActionOverlayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} displayMode={rootActionOverlayDisplayMode} layoutReadiness={rootActionLayoutState} fallbackReason={rootActionOverlayFallbackReason} resultReadRemainingMs={rootActionOverlayResultReadRemainingMs} onLayoutReadinessChange={onRootActionOverlayLayoutReadinessChange} />
     <footer className="play-command">
-    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setExpandedOpponentId(null); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
+    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setExpandedOpponentId(null); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onSwitchTestViewer={room.isTestController ? onSwitchTestViewer : undefined} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
       heroSkillControl={
         <section className="hero-skills local-hero-skills" aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => skill.passive
