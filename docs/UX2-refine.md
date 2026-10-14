@@ -1,6 +1,6 @@
 # WTK UX2 — Simplified Public Card UX
 
-**Version:** 2026-10-14 · **Branch:** `ux-v2` · **Status:** New product direction approved; §8.1–§8.4 delivered for aggregate review; §9.4 Gate A is current.
+**Version:** 2026-10-14 · **Branch:** `ux-v2` · **Status:** New product direction approved; §8.1–§8.4 and §9.4 Gate A delivered pending aggregate review; §9.4 Gate B is current.
 
 This file is the **single active UX2 product/design authority**. It replaces the superseded, much longer UX2 design; previous revisions exist only in Git history. Older `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, historical roadmap records, old tests and screenshots are references to prior implementation, **not** permission to reinstate old visual requirements.
 
@@ -332,12 +332,13 @@ Five seats clockwise **1→2→3→4→5**; seat 1 plays Duel against seat 3.
 ### 9.4 Agent delivery in reviewable checkpoints
 
 **A. Canonical window engine (no UX changes first)**
-**Current assignment:** `ux-v2` Coding Agent is implementing this checkpoint under the user's 2026-10-14 instruction. The historical per-checkpoint STOP below is superseded for this run by the direct instruction to continue and defer review until the user and Reviewer inspect the delivered work together. Keep Gate A bounded and preserve its acceptance criteria.
+**Delivered 2026-10-14:** Gate A's five-seat Duel API regressions prove canonical seat-two priority for both POST orders, preservation of seat four's losing card, an independently submitted counter window, and a single fixed eight-second no-submission wait. Implementation is on `9f2bc6be007065f7b458f70e02964124386de28f`; the missing Drizzle snapshot repair is `1306d519afd6094200dfe2e36646b3bb3fa1cdd6`. Exact-SHA Actions run `38555940573` passed Lint/fast, API, browser smoke, D1 migrations, Worker deploy, and production smoke. Gate A is delivered and pending aggregate user/Reviewer review. Continue under the user's 2026-10-14 instruction without pausing between checkpoints.
 - Inspect app/api/rooms/route.ts: nextEligibleNegationResponder, advanceNegation, advanceNegationDecision, startNegation, startJudgementNegation, per-target Group/Harvest opening, canonical respond/decline_response, resume/resolveDeferredStratagem and window expiry. Inspect game/pending.ts, game/response-decision.ts and causal-envelopes.
 - Design the durable window state and per-player submission protocol; use existing effect anchors, provider resolver, real card/event proofs and concurrency guards. Before editing heavy route code, record the new types, settlement transitions and handling of legacy persisted old Negation pending. Implement parallel collection + deterministic one-winner close + proper counter cycles.
 - **Gate A:** five-seat Duel unit/API test proving seat 2 and 4 both submit in window #1; seat 2 wins regardless of POST order; seat 4 retains its card; counter window opens after seat 2 and seat 4 may counter independently. Also test nobody submits → exactly one 8s wait.
 
 **B. Privacy, deadline and real network behavior**
+**Current assignment:** Implement Gate B only; preserve Gate A and do not start Gate C in this task.
 - Project private CurrentAction and public common window safely, including all raw serialized causal/trace surfaces, shared responseCountdownVisibleAt, and immutable server deadline. Ensure duplicate/stale/competing intents and timer actions cannot double-commit or overwrite other intents; old windowId cannot act on the new window.
 - **Gate B:** three authenticated human tokens; each can submit own private intent or Pass without revealing others' options/hand/progress; shared exact deadline; 60-second non-Negation regression; disconnected clients and late replay safe. Audit API payload, not just browser labels.
 
