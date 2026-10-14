@@ -33,6 +33,32 @@ async function openPlayer(page, room, index) {
   return player;
 }
 
+async function watchPublicCardPhases(page, cardId) {
+  await page.addInitScript((watchedCardId) => {
+    const seen = new Set();
+    window.__publicCardPhaseLog = [];
+    const capture = () => {
+      for (const element of document.querySelectorAll("[data-public-card-journey-card-id][data-public-card-journey-phase]")) {
+        if (element.getAttribute("data-public-card-journey-card-id") !== watchedCardId) continue;
+        const phase = element.getAttribute("data-public-card-journey-phase");
+        const key = `${watchedCardId}:${phase}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const rect = element.getBoundingClientRect();
+        window.__publicCardPhaseLog.push({ cardId: watchedCardId, phase, at: performance.now(), width: rect.width, height: rect.height });
+      }
+    };
+    const observer = new MutationObserver(capture);
+    const start = () => {
+      if (!document.documentElement) return;
+      observer.observe(document.documentElement, { attributes: true, childList: true, subtree: true, attributeFilter: ["data-public-card-journey-phase"] });
+      capture();
+    };
+    start();
+    document.addEventListener("DOMContentLoaded", start, { once: true });
+  }, cardId);
+}
+
 function watchErrors(page) {
   const boundaryErrors = [];
   const runtimeErrors = [];
@@ -81,12 +107,23 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   const attackerErrors = watchErrors(attackerPage);
   const defenderErrors = watchErrors(page);
   const attacker = await openPlayer(attackerPage, room, 0);
+  await watchPublicCardPhases(page, room.attack.id);
   const defender = await openPlayer(page, room, 1);
 
   await playAttack({ page: attackerPage, room, attacker, defender, attack: room.attack });
   await assertJourneyMounted(attackerPage, room.attack.id);
   const defenderDisplay = await assertJourneyMounted(page, room.attack.id);
   expect(await defenderDisplay.getAttribute("data-public-card-root-event-id")).toBeTruthy();
+  const attackCardJourney = defenderDisplay.locator(`[data-public-card-journey-card-id="${room.attack.id}"]`);
+  await expect(attackCardJourney).toHaveAttribute("data-public-card-journey-phase", "reveal");
+  await page.waitForFunction((cardId) => window.__publicCardPhaseLog?.some((entry) => entry.cardId === cardId && entry.phase === "move"), room.attack.id, { timeout: 8_000 });
+  const phaseTiming = await page.evaluate((cardId) => {
+    const entries = window.__publicCardPhaseLog.filter((entry) => entry.cardId === cardId);
+    return { reveal: entries.find((entry) => entry.phase === "reveal"), move: entries.find((entry) => entry.phase === "move") };
+  }, room.attack.id);
+  expect(phaseTiming.reveal).toMatchObject({ width: 60, height: 90 });
+  expect(phaseTiming.move.at - phaseTiming.reveal.at).toBeGreaterThanOrEqual(3_800);
+  expect(phaseTiming.move.at - phaseTiming.reveal.at).toBeLessThan(4_800);
 
   const defenderDock = page.locator(`.local-player-dock[data-player-anchor="${defender.id}"]`);
   const dodge = defenderDock.locator(`[data-hand-card-id="${room.responseCard.id}"] .game-card`);

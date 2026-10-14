@@ -2707,7 +2707,9 @@ test("engine-backed Judgement replacement exposes reveal and resume evidence", {
   const setup = await prepareGuoJudgement({ original, replacement });
   const opened = await request("draw", { code: setup.game.code, token: setup.guoMember.token });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
-  await waitForState(setup.game.code, setup.simaMember.token, (view) => view.currentAction?.triggerEvent === "judgement_revealed");
+  const windowId = opened.data.room.currentAction?.negationWindowId;
+  assert.ok(windowId, "the public Judgement waits behind its Negation window");
+  await advanceNegationWindow(setup.game.code, setup.guoMember.token, windowId);
   const revealView = await assertProjectionMatchesEngine(setup.game.code, setup.simaMember.token);
   const revealPending = authoritativePending(setup.game.code);
   const judgementRoot = revealView.causalEnvelope;
@@ -2778,7 +2780,9 @@ test("engine-backed delayed Judgement families share the same initial public che
     const setup = await prepareGuoJudgement({ original, replacement, purposeCard: card(kind, `family-${purposeKey}-delayed`, delayedSuit) });
     const opened = await request("draw", { code: setup.game.code, token: setup.guoMember.token });
     assert.equal(opened.status, 200, `${kind}: ${JSON.stringify(opened.data)}`);
-    await waitForState(setup.game.code, setup.simaMember.token, (view) => view.currentAction?.triggerEvent === "judgement_revealed");
+    const windowId = opened.data.room.currentAction?.negationWindowId;
+    assert.ok(windowId, `${kind}: public Judgement waits behind its Negation window`);
+    await advanceNegationWindow(setup.game.code, setup.guoMember.token, windowId);
     const revealView = await assertProjectionMatchesEngine(setup.game.code, setup.simaMember.token);
     const otherView = (await state(setup.game.code, setup.guoMember.token)).data;
     const pending = authoritativePending(setup.game.code);

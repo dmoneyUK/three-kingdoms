@@ -5,6 +5,7 @@ import { performance } from "node:perf_hooks";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { parseTestTimings } from "./test-timing.mjs";
 
 const port = Number(process.env.GAME_TEST_PORT ?? 3137);
 const inspectorPort = Number(process.env.GAME_TEST_INSPECTOR_PORT ?? (port + 6000));
@@ -51,7 +52,7 @@ try {
   for (const stream of [tests.stdout, tests.stderr]) stream.on("data", (chunk) => { const text = chunk.toString(); testOutput += text; process.stdout.write(text); });
   process.exitCode = await new Promise((resolve) => tests.on("exit", resolve)) ?? 1;
   const durationMs = performance.now() - startedAt;
-  const timings = [...testOutput.matchAll(/✔ (.+?) \(([\d.]+)ms\)/g)].map(([, name, duration]) => ({ name, duration: Number(duration) })).sort((a, b) => b.duration - a.duration);
+  const timings = parseTestTimings(testOutput).sort((a, b) => b.duration - a.duration);
   const testCount = Number(testOutput.match(/^\s*(?:#|ℹ)\s+tests\s+(\d+)\s*$/m)?.[1] ?? 0);
   console.log(`\nTiming: API tests=${testCount}, duration=${(durationMs / 1000).toFixed(2)}s, files=${apiTestFiles.length}`);
   console.log("Top 10 slowest API tests:");

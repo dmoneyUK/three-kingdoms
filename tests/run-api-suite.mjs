@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { performance } from "node:perf_hooks";
+import { parseTestTimings } from "./test-timing.mjs";
 
 const root = new URL("../", import.meta.url);
 const files = readdirSync(new URL("./api/", import.meta.url))
@@ -41,7 +42,7 @@ const results = await Promise.all(shardGroups.map((shardFiles, index) => new Pro
 const durationMs = performance.now() - startedAt;
 const testCount = results.reduce((count, result) => count + Number(result.output.match(/^\s*(?:#|ℹ)\s+tests\s+(\d+)\s*$/m)?.[1] ?? 0), 0);
 console.log(`\nTiming: API tests=${testCount}, duration=${(durationMs / 1000).toFixed(2)}s, files=${files.length}, shards=${shardGroups.length}`);
-const timings = results.flatMap((result) => [...result.output.matchAll(/✔ (.+?) \(([\d.]+)ms\)/g)].map(([, name, duration]) => ({ name, duration: Number(duration) }))).sort((a, b) => b.duration - a.duration);
+const timings = results.flatMap((result) => parseTestTimings(result.output)).sort((a, b) => b.duration - a.duration);
 console.log("Top 10 slowest API tests across shards:");
 for (const entry of timings.slice(0, 10)) console.log(`  ${(entry.duration / 1000).toFixed(2)}s  ${entry.name}`);
 for (const result of results) {

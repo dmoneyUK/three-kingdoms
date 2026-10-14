@@ -186,12 +186,13 @@ function coalescePresentationQueue(current: GameEvent[], incoming: GameEvent[]) 
 
 const UI_TIMING = {
   roomPoll: 8000,
+  activeGamePoll: 2000,
   activePoll: 1000,
   hiddenPoll: 60000,
   presenceHeartbeat: 60000,
   inactivityCheck: 60000,
   turnDrawStart: 100,
-  playedCard: 2000,
+  playedCard: 4000,
   // Judgement cards need about two extra seconds for every seat to read the result.
   judgementCard: 4000,
   privateDraw: 3000,
@@ -355,10 +356,10 @@ export default function Home() {
     const interval = !pageVisible ? UI_TIMING.hiddenPoll
       : room?.phase === "response" || room?.phase === "dying" || publicReadActive
         ? UI_TIMING.activePoll
-        : UI_TIMING.roomPoll;
+        : room?.status === "playing" ? UI_TIMING.activeGamePoll : UI_TIMING.roomPoll;
     const timer = setInterval(() => fetchRoom(roomCode, token, true), interval);
     return () => clearInterval(timer);
-  }, [roomCode, token, busy, pageVisible, fetchRoom, room?.phase, publicCounterReadUntil]);
+  }, [roomCode, token, busy, pageVisible, fetchRoom, room?.phase, room?.status, publicCounterReadUntil]);
   useEffect(() => {
     if (!publicCounterReadUntil) return;
     const timer = setTimeout(() => setPublicCounterReadUntil((current) => current === publicCounterReadUntil ? 0 : current),
@@ -1813,7 +1814,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const triggerSelectionComplete = Boolean(triggerSelection && ((triggerSelectionUsesCards && triggerSelectedCardIds.length >= triggerSelection.min && triggerSelectedCardIds.length <= triggerSelection.max) || (triggerSelectionUsesChoice && triggerChoice && triggerSelectionKeys.length === triggerChoiceHandCount)));
   const responseReadyAfterEventId = room.currentAction?.presentation?.readyAfterEventId ?? null;
   const responseBarrierEvent = responseReadyAfterEventId ? room.timeline.find((event) => event.id === responseReadyAfterEventId) : null;
-  const responsePresentationReady = !responseReadyAfterEventId
+  // Shared Negation's eight-second deadline starts when the server opens the
+  // window. A preceding public-card reveal must not consume that response time
+  // by withholding the viewer's legal controls.
+  const responsePresentationReady = Boolean(room.currentAction?.negationWindowId)
+    || !responseReadyAfterEventId
     || responseBarrierEvent?.type === "message"
     || responseBarrierEvent?.importance === "informational"
     || presentedEventIds.has(responseReadyAfterEventId);
@@ -4734,7 +4739,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       participant.playerId === room.meId && (participant.status === "CURRENT" || participant.status === "PAUSED"),
     ),
   );
-  const responseDeclineLabel = rainingArrowsDamageDecline ? "TAKE DAMAGE" : "Skip";
+  const sharedNegationWindow = Boolean(room.currentAction?.negationWindowId);
+  const negationWindowSubmitted = sharedNegationWindow && room.pendingNegation?.submitted === true;
+  const responseDeclineLabel = rainingArrowsDamageDecline ? "TAKE DAMAGE" : sharedNegationWindow ? "Pass" : "Skip";
   const rainingArrowsDodgeProviderCardIds = new Set(
     rainingArrowsDamageDecline
       && responseSelection?.type === "cards"
@@ -4767,8 +4774,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && responseDamageAction === "decline_response"
   );
   const consoleAuthoritativeDecision = Boolean(room.currentAction && room.currentAction.kind !== "none" && (consoleIsDecisionActor || room.isMyTurn && room.currentAction.kind === "turn" && currentActionOwnedByViewer));
-  const consoleInstruction = negationResponseGuidance
-    ? "Play Negation or Skip."
+  const consoleInstruction = sharedNegationWindow
+    ? room.currentAction?.reason || "Negation response window"
+    : negationResponseGuidance
+      ? "Play Negation or Skip."
     : rainingArrowsDamageDecline
       ? "Respond to Raining Arrows."
     : consoleIsDecisionActor
@@ -4884,7 +4893,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       } guidance={
         <div className="console-guidance" data-console-guidance="true">
           <div className="console-guidance-row">
-            <div className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`} data-console-decision-kind={consoleDecision.kind} data-console-coherent={consoleDecision.coherent ? "true" : "false"} data-console-primary={consoleDecision.primary?.label ?? "none"} data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"} data-console-selection-count={consoleDecision.selectionCount ?? undefined} data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"} data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"} role="status" aria-live="polite" aria-atomic="true"><small>{localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{consoleDecision.instruction}</strong>{daqiaoDeflectionSelectionActive ? <div className="deflection-selection-guidance" data-testid="deflection-selection-guidance" role="group" aria-label="Deflection selections"><span data-daqiao-selection="card">Discard card: {daqiaoDeflectionCardCount}/1 {daqiaoDeflectionCardCount === 1 ? "✓" : "— Select an eligible hand or equipment card"}</span><span data-daqiao-selection="target">Transfer target: {daqiaoDeflectionTargetCount}/1 {daqiaoDeflectionTargetCount === 1 ? "✓" : "— Tap an eligible hero portrait"}</span>{daqiaoDeflectionCardCount === 1 && daqiaoDeflectionTargetCount === 1 && <strong>Ready to redirect Attack</strong>}</div> : !negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}{consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true"><b>{canClearTargetCardPickerSelection ? "CLEAR SELECTION" : "LOCAL CANCEL"}</b><span>{canClearTargetCardPickerSelection ? "Remove your selected card." : "Change your selection before submitting."}</span></span>}</div>
+            <div className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`} data-console-decision-kind={consoleDecision.kind} data-console-coherent={consoleDecision.coherent ? "true" : "false"} data-console-primary={consoleDecision.primary?.label ?? "none"} data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"} data-console-selection-count={consoleDecision.selectionCount ?? undefined} data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"} data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"} role="status" aria-live="polite" aria-atomic="true"><small>{negationWindowSubmitted ? "RESPONSE SUBMITTED" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{consoleDecision.instruction}</strong>{daqiaoDeflectionSelectionActive ? <div className="deflection-selection-guidance" data-testid="deflection-selection-guidance" role="group" aria-label="Deflection selections"><span data-daqiao-selection="card">Discard card: {daqiaoDeflectionCardCount}/1 {daqiaoDeflectionCardCount === 1 ? "✓" : "— Select an eligible hand or equipment card"}</span><span data-daqiao-selection="target">Transfer target: {daqiaoDeflectionTargetCount}/1 {daqiaoDeflectionTargetCount === 1 ? "✓" : "— Tap an eligible hero portrait"}</span>{daqiaoDeflectionCardCount === 1 && daqiaoDeflectionTargetCount === 1 && <strong>Ready to redirect Attack</strong>}</div> : !negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}{consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true"><b>{canClearTargetCardPickerSelection ? "CLEAR SELECTION" : "LOCAL CANCEL"}</b><span>{canClearTargetCardPickerSelection ? "Remove your selected card." : "Change your selection before submitting."}</span></span>}</div>
             <GameSystemMenu onLeave={onLeave} messages={gameMessages} messagesCollapsed={messagesCollapsed} onToggleMessages={() => setMessagesCollapsed((collapsed) => !collapsed)} />
           </div>
           {invalidResponseState && <p className="error" role="status">Waiting for the latest response state…</p>}

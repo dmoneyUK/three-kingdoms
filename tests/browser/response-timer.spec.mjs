@@ -5,37 +5,45 @@ function overlaps(left, right) {
     && Math.min(left.bottom, right.bottom) > Math.max(left.top, right.top);
 }
 
-test("UX2 response timer stays in the Stage and System Menu occupies the Dock guidance edge", async ({ page }) => {
+test("UX2 shared Negation timer is eight seconds and System Menu occupies the Dock guidance edge", async ({ page }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/tests/browser/fixture.html?state=negation&count=10&timedResponse=1&timedObserver=1");
+  await page.goto("/tests/browser/fixture.html?state=negation&count=10&timedResponse=1&privateNegationResponder=1&negationAuthority=missing-provider");
 
   const table = page.locator('.play-table[data-seat-topology="side-column"]');
   const safeZone = table.locator(":scope > .interaction-safe-zone");
   const cluster = safeZone.locator(":scope > .stage-system-cluster");
   const timer = cluster.locator(":scope > .visible-countdown-response");
   const menu = page.locator(".local-player-dock .console-guidance-row .stage-system-menu-trigger");
-  const stage = safeZone.locator('.interaction-stage[data-stage="NEGATION"]');
 
   await expect(timer).toBeVisible();
   await expect(timer).toHaveAttribute("role", "timer");
-  await expect(timer).toHaveAttribute("data-countdown-urgency", "calm");
-  await expect(timer).toHaveAttribute("aria-label", "Response Time 60 seconds");
+  await expect(timer).toHaveAttribute("data-countdown-urgency", "urgent");
+  await expect(timer).toHaveAttribute("aria-label", "Response Time 8 seconds");
   await expect(timer.locator(".countdown-hourglass")).toHaveAttribute("aria-hidden", "true");
-  await expect(timer).toContainText("60s");
+  await expect(timer).toContainText("8s");
   await expect(timer).not.toContainText("Response Time");
   await expect(timer).not.toContainText(/Player\s+\d/i);
-  await expect(stage).toBeVisible();
-  await expect(stage).not.toContainText("Player 4");
+  await expect(safeZone.locator('.interaction-stage[data-stage="NEGATION"]')).toHaveCount(0);
   await expect(menu).toHaveAttribute("aria-expanded", "false");
-  await expect(page.locator('[data-action-slot="primary"] button, [data-action-slot="decline"] button')).toHaveCount(0);
+  await expect(page.locator('[data-action-slot="primary"] button')).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Pass", exact: true })).toBeEnabled();
 
   const clockState = await page.evaluate(() => ({
     now: Date.now(),
     deadline: window.__browserRoom.currentAction.deadline,
   }));
-  const pauseAt = clockState.now + 5_000;
-  await page.clock.pauseAt(pauseAt);
+  expect(clockState.deadline - clockState.now).toBeGreaterThan(7_000);
+  expect(clockState.deadline - clockState.now).toBeLessThanOrEqual(8_000);
+  const urgentBorder = await timer.evaluate((element) => getComputedStyle(element).borderTopColor);
+  await page.clock.fastForward(2_000);
+  await expect(timer).toHaveAttribute("data-countdown-urgency", "urgent");
+  await expect(timer).toHaveAttribute("aria-label", "Response Time 6 seconds");
+  await page.clock.fastForward(1_000);
+  await expect(timer).toHaveAttribute("data-countdown-urgency", "critical");
+  await expect(timer).toHaveAttribute("aria-label", "Response Time 5 seconds");
+  const criticalBorder = await timer.evaluate((element) => getComputedStyle(element).borderTopColor);
+  expect(criticalBorder).not.toBe(urgentBorder);
 
   for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
     await page.setViewportSize(viewport);
@@ -51,7 +59,6 @@ test("UX2 response timer stays in the Stage and System Menu occupies the Dock gu
       };
       const tableNode = document.querySelector('.play-table[data-seat-topology="side-column"]');
       const safe = tableNode.querySelector(":scope > .interaction-safe-zone");
-      const stageNode = safe.querySelector('.interaction-stage[data-stage="NEGATION"]');
       const clusterNode = safe.querySelector(":scope > .stage-system-cluster");
       const timerNode = clusterNode.querySelector(":scope > .visible-countdown-response");
       const menuNode = document.querySelector(".local-player-dock .console-guidance-row .stage-system-menu-trigger");
@@ -62,7 +69,7 @@ test("UX2 response timer stays in the Stage and System Menu occupies the Dock gu
       return {
         safeZone: rect(safe), cluster: rect(clusterNode), timer: rect(timerNode), menu: rect(menuNode), guidanceRow: rect(guidanceRowNode),
         guidance: rect(guidanceNode), dock: rect(dockNode), pageWidth: document.documentElement.scrollWidth,
-        stageContent: [...stageNode.children].filter(visible).map(rect),
+        publicContent: [...safe.querySelectorAll('.public-card-display, .table-resolution-layer, .active-table-reveal, .interaction-stage')].filter(visible).map(rect),
         seats: [...tableNode.querySelectorAll('.player-board[data-player-count="10"] [data-player-anchor]')].map(rect),
       };
     });
@@ -83,24 +90,10 @@ test("UX2 response timer stays in the Stage and System Menu occupies the Dock gu
     expect(geometry.guidance.top - geometry.cluster.bottom).toBeGreaterThanOrEqual(8);
     expect(geometry.guidance.top - geometry.cluster.bottom).toBeLessThanOrEqual(12);
     expect(geometry.cluster.bottom).toBeLessThanOrEqual(geometry.dock.top);
-    expect(geometry.stageContent.filter((content) => overlaps(geometry.cluster, content))).toEqual([]);
+    expect(geometry.publicContent.filter((content) => overlaps(geometry.cluster, content))).toEqual([]);
     expect(geometry.seats.filter((seat) => overlaps(geometry.cluster, seat))).toEqual([]);
   }
 
-  const calmBorder = await timer.evaluate((element) => getComputedStyle(element).borderTopColor);
-  const untilNineSeconds = clockState.deadline - pauseAt - 9_000;
-  expect(untilNineSeconds).toBeGreaterThan(0);
-  await page.clock.fastForward(untilNineSeconds);
-  await expect(timer).toHaveAttribute("data-countdown-urgency", "urgent");
-  await expect(timer).toHaveAttribute("aria-label", "Response Time 9 seconds");
-  const urgentBorder = await timer.evaluate((element) => getComputedStyle(element).borderTopColor);
-  expect(urgentBorder).not.toBe(calmBorder);
-
-  await page.clock.fastForward(5_000);
-  await expect(timer).toHaveAttribute("data-countdown-urgency", "critical");
-  await expect(timer).toHaveAttribute("aria-label", "Response Time 4 seconds");
-  const criticalBorder = await timer.evaluate((element) => getComputedStyle(element).borderTopColor);
-  expect(criticalBorder).not.toBe(urgentBorder);
 });
 
 test("UX2 System Menu is keyboard-accessible and confirms Exit without changing leave callback semantics", async ({ page }) => {
@@ -151,14 +144,13 @@ test("UX2 System Menu is keyboard-accessible and confirms Exit without changing 
       return style.display !== "none" && style.visibility !== "hidden" && box.width > 0 && box.height > 0;
     };
     const popup = document.querySelector(".stage-system-menu-actions");
-    const stage = document.querySelector('.interaction-stage[data-stage="NEGATION"]');
     const guidance = document.querySelector(".console-guidance");
     const menu = document.querySelector(".stage-system-menu-trigger");
     return {
       viewportWidth: innerWidth,
       popup: bounds(popup),
       menu: bounds(menu),
-      content: [...stage.children].filter(visible).map(bounds),
+      content: [...document.querySelectorAll('.public-card-display, .table-resolution-layer, .active-table-reveal, .interaction-stage')].filter(visible).map(bounds),
       guidance: bounds(guidance),
       pageWidth: document.documentElement.scrollWidth,
     };
@@ -197,7 +189,7 @@ test("UX2 response timer describes a shared window without exposing its responde
 
   let sharedDeadline;
   for (const view of ["responder", "observer"]) {
-    const observerQuery = view === "observer" ? "&timedObserver=1" : "";
+    const observerQuery = view === "observer" ? "&timedObserver=1" : "&privateNegationResponder=1";
     await page.goto(`/tests/browser/fixture.html?state=negation&timedResponse=1${observerQuery}`);
 
     const timer = page.locator(".stage-system-cluster > .visible-countdown-response");
@@ -215,19 +207,23 @@ test("UX2 response timer describes a shared window without exposing its responde
     if (view === "observer") {
       expect(viewState.currentAction.deadline).toBe(sharedDeadline);
       expect(viewState.actionPlayerId).toBeNull();
-      expect(viewState.currentAction.actorId).toBeNull();
-      expect(viewState.currentAction.legalActions).toEqual([]);
-      expect(viewState.currentAction).not.toHaveProperty("options");
+      expect(viewState.currentAction.actorId).toBe(viewState.meId);
+      expect(viewState.currentAction.presentation.readyAfterEventId).toBe("browser-unpresented-negation-root");
+      expect(viewState.currentAction.legalActions).toEqual(["decline_response"]);
+      expect(viewState.currentAction.options).toEqual([]);
       expect(viewState.handCount).toBe(0);
       await expect(page.locator('[data-action-slot="primary"] button')).toHaveCount(0);
-      await expect(page.locator('[data-action-slot="decline"] button')).toHaveCount(0);
+      await expect(page.locator('[data-action-slot="decline"] button')).toHaveText("Pass");
+      await expect(page.locator('[data-action-slot="decline"] button')).toBeEnabled();
     } else {
       sharedDeadline = viewState.currentAction.deadline;
-      expect(viewState.actionPlayerId).toBe(viewState.meId);
+      // Shared windows deliberately keep the public actionPlayerId anonymous;
+      // the private CurrentAction still grants this viewer their own controls.
+      expect(viewState.actionPlayerId).toBeNull();
       expect(viewState.currentAction.legalActions).toContain("respond");
       expect(viewState.handCount).toBeGreaterThan(0);
       await expect(page.locator('[data-action-slot="primary"] button')).toHaveText("Confirm");
-      await expect(page.locator('[data-action-slot="decline"] button')).toHaveText("Skip");
+      await expect(page.locator('[data-action-slot="decline"] button')).toHaveText("Pass");
     }
   }
 });
@@ -242,4 +238,5 @@ test("UX2 response timer stays hidden when the authoritative deadline is absent"
   expect(currentAction.kind).toBe("response");
   expect(currentAction.actorId).toBeNull();
   expect(currentAction.deadline).toBe(0);
+  expect(currentAction.negationWindowId).toBeUndefined();
 });

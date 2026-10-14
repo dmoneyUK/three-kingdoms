@@ -51,12 +51,12 @@
 }
 @keyframes equipmentCardToSlot {
   0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
-  10%, 72% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
+  10%, 85% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
   100% { left: var(--equipment-x, 50%); top: var(--equipment-y, 50%); opacity: 1; transform: scale(var(--equipment-scale-x, .4), var(--equipment-scale-y, .4)); }
 }
 @keyframes judgementCardToZone {
   0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
-  10%, 72% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
+  10%, 85% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
   100% { left: var(--judgement-x, 50%); top: var(--judgement-y, 50%); opacity: 1; transform: scale(var(--judgement-scale-x, .32), var(--judgement-scale-y, .32)); }
 }
 
@@ -65,14 +65,14 @@
 @keyframes sequenceCardToOwner {
   0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
   10% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
-  65% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
-  78%, 100% { left: var(--settle-x, 50%); top: var(--settle-y, 50%); opacity: 1; transform: scale(var(--settle-scale)); }
+  85% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
+  100% { left: var(--settle-x, 50%); top: var(--settle-y, 50%); opacity: 1; transform: scale(var(--settle-scale)); }
 }
 
 @keyframes revealedCardsToDiscard {
   0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
   10% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
-  72% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
+  85% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
   100% { left: var(--discard-x, 50%); top: var(--discard-y, 50%); opacity: 0; transform: scale(.12) rotate(3deg); }
 }
 

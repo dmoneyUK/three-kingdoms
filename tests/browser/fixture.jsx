@@ -554,7 +554,7 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
   };
 }
 
-function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority, negationSettlementOutcome }) {
+function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, negationSettlementOutcome }) {
   const huaTuoFirstAidFixture = state.startsWith("hua-tuo-first-aid");
   const huaTuoFirstAidObserver = state === "hua-tuo-first-aid-observer";
   const dyingFixture = state === "dying" || huaTuoFirstAidFixture;
@@ -647,7 +647,9 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     : state === "dodge" || state === "dodge-mismatch"
       ? [card("browser-dodge", "Dodge", "♣")]
     : state === "negation" || state === "confirm-skip"
-      ? [card("browser-negation", "Negation", "♣")]
+      ? privateNegationResponder && negationAuthority === "missing-provider"
+        ? []
+        : [card("browser-negation", "Negation", "♣")]
       : state === "dying"
         ? [card("browser-peach", "Peach", "♥")]
         : state === "group"
@@ -684,22 +686,33 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
           : state === "active-negation-unfocused-observer" ? meId
           : dyingFixture ? dyingTargetId : judgementStage ? state === "judgement" ? "p2" : "p1" : actorId;
   const currentActionBase = state === "rest" || bumperHarvestComplete || negationSettlementOutcome ? null : currentActionFor(bumperHarvestLocalFixture || oathNegationLocalFixture || groupNegationLocalFixture ? "negation" : bumperHarvestFixture && bumperHarvestChild || oathNegationFixture || groupNegationFixture ? "active-negation-observer" : bumperHarvestFixture ? "group-observer" : state, actorId, hand[0]?.id ?? "", { targetHandCount, targetCardCase, targetCardKind });
-  const responseDeadline = timedResponse && state === "negation" ? Date.parse("2026-01-01T00:01:00.000Z") : 0;
+  const responseDeadline = timedResponse && state === "negation" ? Date.parse("2026-01-01T00:00:08.000Z") : 0;
   const resolvedCurrentAction = currentActionBase && state === "hua-xiong-triumphant-observer"
     ? { version: 3, kind: "response", actorId, deadline: 0, reason: "Waiting for the acting player", legalActions: [] }
     : currentActionBase && duelObserverView
     ? { version: 3, kind: "response", actorId, deadline: 0, reason: "Waiting for the current Duel participant", legalActions: [] }
     : currentActionBase && bumperHarvestChild && !bumperHarvestLocalFixture
       ? { version: 3, kind: "response", actorId: null, deadline: 0, reason: "Waiting for Negation...", legalActions: [] }
+    : currentActionBase && timedNegationObserver && responseDeadline > 0
+      ? { ...currentActionBase, actorId: meId, deadline: responseDeadline, reason: "No Negation available. Pass.", negationWindowId: "browser-shared-negation-window", legalActions: ["decline_response"], options: [], presentation: { resolutionId: "browser-shared-negation-resolution", readyAfterEventId: "browser-unpresented-negation-root" } }
     : currentActionBase && timedNegationObserver
       ? { version: 3, kind: "response", actorId: null, deadline: responseDeadline, reason: "Waiting for Negation...", legalActions: [] }
       : currentActionBase && responseDeadline > 0 ? { ...currentActionBase, deadline: responseDeadline } : currentActionBase;
   const currentAction = resolvedCurrentAction && privateNegationResponder && state === "negation"
     ? {
       ...resolvedCurrentAction,
+      reason: privateNegationSubmitted
+        ? "Response submitted — waiting"
+        : negationAuthority === "missing-provider"
+          ? "No Negation available. Pass."
+          : negationAuthority === "missing-response" || negationAuthority === "missing-decline"
+            ? "Negation response window"
+            : "Play Negation or Pass",
+      ...(privateNegationSubmitted ? { negationWindowId: "browser-shared-negation-window", legalActions: [], options: [] } : { negationWindowId: "browser-shared-negation-window" }),
+      presentation: { resolutionId: "browser-shared-negation-resolution", readyAfterEventId: "browser-unpresented-negation-root" },
       ...(negationAuthority === "missing-response" ? { legalActions: ["decline_response"] } : {}),
       ...(negationAuthority === "missing-decline" ? { legalActions: ["respond"] } : {}),
-      ...(negationAuthority === "missing-provider" ? { options: [] } : {}),
+      ...(negationAuthority === "missing-provider" ? { legalActions: ["decline_response"], options: [] } : {}),
     }
     : resolvedCurrentAction;
   const projectedActiveTargets = targetShiftFixture && targetShiftCase === "missing-active" || state === "pending-target-card" && targetCardCase === "unfocused"
@@ -863,9 +876,9 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     log: [],
     timeline: bumperHarvestNegationTimeline,
     isMyTurn: state === "normal" || state === "interaction" || state === "group" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" || state === "stargazing-offer" || state.startsWith("zhou-yu-sowing-distrust") || state.startsWith("liu-bei-benevolence") || state.startsWith("lady-gan-") || borrowedSwordFixture,
-    actionPlayerId: currentAction?.actorId ?? null,
+    actionPlayerId: currentAction?.negationWindowId ? null : currentAction?.actorId ?? null,
     actionReason: currentAction?.reason ?? "Waiting for the next legal action",
-    isMyAction: Boolean(currentAction?.actorId === meId),
+    isMyAction: Boolean(currentAction?.actorId === meId && !privateNegationSubmitted),
     actionRevision: `browser-${state}-action`,
     presentationSnapshot: state === "ma-chao-cavalry" || state === "sima-yi-necromancy" || state === "cao-cao-treachery" || state.startsWith("xiahou-dun-stauchness") || state.startsWith("zhou-yu-sowing-distrust") || state.startsWith("liu-bei-benevolence") ? null : presentationSnapshot,
     currentAction,
@@ -876,7 +889,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     pendingFrostSword: null,
     pendingDuel: state === "duel" || state === "duel-response" ? { kind: "duel", sourceId: "p1", targetId: "p2", actorId: "p2", opponentId: "p1", deadline: 0 } : null,
     pendingGroup: state === "group-observer" || groupNegationFixture || rainingArrowsResponseFixture ? { kind: "group", cardKind: "RainingArrows", sourceId: "p4", requiredKind: "Dodge" } : state === "group" ? { kind: "group", cardKind: "RainingArrows", sourceId: "p1", requiredKind: "Dodge" } : null,
-    pendingNegation: !negationSettlementOutcome && (state === "negation" || state === "confirm-skip" || activeNegationObserver || groupNegationFixture || oathNegationFixture || bumperHarvestChild) ? { kind: "negation", sourceId: oathNegationFixture || bumperHarvestFixture ? "p1" : "p4", actorId: groupNegationFixture || oathNegationFixture || bumperHarvestFixture || timedNegationObserver || privateNegationResponder ? null : "p2", effectTargetId: bumperHarvestFixture ? bumperCurrentId : "p1", cardName: groupNegationFixture ? "RainingArrows" : oathNegationFixture ? "Oath of the Peach Garden" : bumperHarvestFixture ? "BumperHarvest" : "Dismantle", negated: false, deadline: responseDeadline } : null,
+    pendingNegation: !negationSettlementOutcome && (state === "negation" || state === "confirm-skip" || activeNegationObserver || groupNegationFixture || oathNegationFixture || bumperHarvestChild) ? { kind: "negation", sourceId: oathNegationFixture || bumperHarvestFixture ? "p1" : "p4", actorId: groupNegationFixture || oathNegationFixture || bumperHarvestFixture || timedNegationObserver || privateNegationResponder ? null : "p2", effectTargetId: bumperHarvestFixture ? bumperCurrentId : "p1", cardName: groupNegationFixture ? "RainingArrows" : oathNegationFixture ? "Oath of the Peach Garden" : bumperHarvestFixture ? "BumperHarvest" : "Dismantle", negated: false, deadline: responseDeadline, ...(privateNegationResponder ? { submitted: privateNegationSubmitted } : {}) } : null,
     pendingHarvest: bumperHarvestClosing || bumperHarvestChoosing ? (() => {
       const revealed = [
         card("browser-harvest-closing-1", "Attack", "♠"),
@@ -923,6 +936,7 @@ function readFixture() {
   const timedResponse = params.get("timedResponse") === "1";
   const timedObserver = params.get("timedObserver") === "1";
   const privateNegationResponder = params.get("privateNegationResponder") === "1";
+  const privateNegationSubmitted = params.get("privateNegationSubmitted") === "1";
   const negationAuthority = params.get("negationAuthority") || "";
   const duelObserver = params.get("duelObserver") === "1";
   const duelParticipantMissing = params.get("duelParticipant") === "missing";
@@ -932,13 +946,13 @@ function readFixture() {
   const targetShiftCase = params.get("targetShift") || "valid";
   const targetCardCase = params.get("targetCardCase") || "valid";
   const targetCardKind = params.get("targetCardKind") === "Steal" ? "Steal" : "Dismantle";
-  return { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority };
+  return { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority };
 }
 
-const { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority } = readFixture();
+const { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority } = readFixture();
 const acknowledgeLocalPreview = new URLSearchParams(window.location.search).get("ackPreview") === "1";
 const root = createRoot(document.getElementById("root"));
-let fixtureRoom = browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority });
+let fixtureRoom = browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority });
 window.__browserActions = [];
 window.__browserLeaves = 0;
 window.__browserRoom = fixtureRoom;

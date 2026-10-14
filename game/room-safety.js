@@ -245,6 +245,7 @@ function normalizeCurrentAction(value) {
     actorId: typeof value.actorId === "string" ? value.actorId : null,
     deadline: typeof value.deadline === "number" ? value.deadline : 0,
     reason: typeof value.reason === "string" ? value.reason : "Waiting for the next legal action",
+    ...(typeof value.negationWindowId === "string" ? { negationWindowId: value.negationWindowId } : {}),
     legalActions: Array.isArray(value.legalActions) ? value.legalActions.filter((action) => typeof action === "string" && GAMEPLAY_ACTION_SET.has(action)) : [],
     ...(typeof value.canDeclareAttack === "boolean" ? { canDeclareAttack: value.canDeclareAttack } : {}),
     ...(playPhaseActions.length ? { playPhaseActions } : {}),
