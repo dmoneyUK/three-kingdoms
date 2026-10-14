@@ -1288,8 +1288,10 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-journey-card.is-moving{opacity:.62}
 .public-card-journey-card.is-current.is-revealing{z-index:36}
 .public-card-journey-semantic{position:absolute;right:-5px;bottom:-5px;z-index:2;padding:2px 4px;border:1px solid #d9c17f;background:#181913;color:#f5dda1;font:700 6px/1 Arial,sans-serif;letter-spacing:.06em;white-space:nowrap}
-.public-card-journey-card.is-deflection .public-card-journey-semantic{padding:3px 5px;font-size:8px;letter-spacing:.08em}
-.public-card-display-journey[data-public-card-active-event-kind="deflection"] .public-card-display-journey-copy>small{color:#f5d77f;font-size:12px;letter-spacing:.16em}
+.public-card-journey-card.is-deflection::before{content:"";position:absolute;z-index:0;left:50%;top:-17px;width:calc(100% + 12px);min-width:66px;height:calc(100% + 21px);transform:translateX(-50%);box-sizing:border-box;border:1px solid #d9c17f88;border-radius:3px;background:#18191333;pointer-events:none}
+.public-card-journey-card.is-deflection>.played-card{position:relative;z-index:1}
+.public-card-journey-card.is-deflection .public-card-journey-semantic{left:50%;right:auto;top:-14px;bottom:auto;transform:translateX(-50%);padding:2px 4px;background:#181913;color:#f5dda1;font-size:7px;letter-spacing:.06em}
+.public-card-display-journey[data-public-card-active-event-kind="deflection"] .public-card-display-journey-copy>small{display:none}
 .public-card-display-journey-copy{position:fixed;left:50%;z-index:2;width:min(calc(100vw - 24px),360px);max-width:360px;min-height:0;margin:0;padding:5px 8px;translate:-50% 0;border:1px solid #8e784866;background:#11140fd9;box-shadow:0 4px 12px #0008;text-align:center;pointer-events:none}
 .public-card-display-journey-copy>small{display:block;font-size:8px}.public-card-display-journey-copy>b{display:block;max-width:100%;font:700 10px/1.3 Arial,sans-serif;-webkit-line-clamp:2}.public-card-display-journey-copy>span{font-size:7px}.public-card-display-journey-copy>strong{display:block;margin-top:2px;font-size:9px}
 .public-card-duel-parked-card{direction:ltr}

@@ -6113,15 +6113,17 @@ export async function POST(request: Request) {
       }
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That target decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
-      if (execution) log = addTriggeredEffectNotice(log, me.name, triggerExecution.presentation?.label ?? "an optional effect").log;
+      const deflectionDiscardEventId = redirect && redirectTarget && redirectCost ? crypto.randomUUID() : null;
+      const deflectionProof = execution?.effectId === "daqiao_deflection" && redirect && redirectTarget && redirectCost && deflectionDiscardEventId
+        ? daQiaoDeflectionActionProofFor(liveRoom, continuation.declaration, source, target, redirectTarget, redirectCost, deflectionDiscardEventId, log)
+        : undefined;
+      // The dedicated public cost-card journey and verified main sentence fully
+      // explain a proven Deflection. Keep the generic toast when proof is absent.
+      if (execution && !deflectionProof) log = addTriggeredEffectNotice(log, me.name, triggerExecution.presentation?.label ?? "an optional effect").log;
       if (redirect && redirectTarget && redirectCost) {
         const nextTargetHand = targetHand.filter((card) => card.id !== redirectCost.id);
         const nextTargetEquipment = Object.fromEntries(Object.entries(targetEquipment).filter(([, card]) => !card || card.id !== redirectCost.id)) as EquipmentZone;
         discard.push(redirectCost);
-        const deflectionDiscardEventId = crypto.randomUUID();
-        const deflectionProof = execution?.effectId === "daqiao_deflection"
-          ? daQiaoDeflectionActionProofFor(liveRoom, continuation.declaration, source, target, redirectTarget, redirectCost, deflectionDiscardEventId, log)
-          : undefined;
         log = addCardGroupEventWithId(
           log,
           target.name,
@@ -6131,7 +6133,7 @@ export async function POST(request: Request) {
           target.name,
           undefined,
           deflectionProof ? { resolutionId: deflectionProof.rootResolutionId, publicDeflectionAction: deflectionProof } : undefined,
-          deflectionDiscardEventId,
+          deflectionDiscardEventId ?? crypto.randomUUID(),
         ).log;
         log = addLog(log, `${target.name} uses Deflection to transfer the Attack to ${redirectTarget.name}.`);
         continuationPlayers = players.map((player) => player.id === target.id ? { ...player, hand_json: JSON.stringify(nextTargetHand), equipment_json: JSON.stringify(nextTargetEquipment) } : player);
