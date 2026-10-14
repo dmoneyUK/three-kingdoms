@@ -26,8 +26,8 @@ type PublicCardDisplayMotion = {
   responseFresh: boolean;
   deflectionFresh: boolean;
 } | {
-  type: "negation";
-  /** Stable across committed counters for this proven root interaction. */
+  type: "negation" | "single-target";
+  /** Stable across committed counters and settlement for this proven root. */
   scopeKey: string;
   freshEventIds: readonly string[];
 } | {
@@ -120,12 +120,12 @@ function journeyGeometryMatches(left: JourneyState, right: JourneyState) {
     });
 }
 
-// Attack/Dodge keeps its compact reveal size; Duel uses a full Hand-card-sized
-// reveal before both presentations shrink proportionally to their parked face.
+// Single-target and Attack/Dodge use standard Hand-card proportions; Duel uses
+// the larger family-specific reveal before shrinking to its parked history.
 const REVEAL_CARD = { width: 60, height: 90 };
 const DUEL_REVEAL_CARD = { width: 90, height: 135 };
 const PARKED_CARD = { width: 48, height: 72 };
-const ATTACK_DODGE_REVEAL_HOLD_MS = 4000;
+const STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS = 4000;
 const DUEL_REVEAL_HOLD_MS = 4000;
 const MOVE_DURATION_MS = 380;
 
@@ -474,7 +474,7 @@ function AttackDodgeCardJourney({
             return parked;
           });
         }, MOVE_DURATION_MS + 30);
-      }, ATTACK_DODGE_REVEAL_HOLD_MS);
+      }, STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS);
     }
   }, [enabled, scopeKey, eventSignature]);
 
@@ -598,7 +598,7 @@ function AttackDodgeCardJourney({
   </section>;
 }
 
-function withFirstQueuedNegationReveal(cards: NegationJourneyCard[], center: CardRect | null) {
+function withFirstQueuedSingleTargetReveal(cards: SingleTargetJourneyCard[], center: CardRect | null) {
   if (!center || cards.some((card) => card.phase === "reveal" || card.phase === "move")) return cards;
   const firstQueuedIndex = cards.findIndex((card) => card.phase === "queued");
   if (firstQueuedIndex < 0) return cards;
@@ -607,7 +607,7 @@ function withFirstQueuedNegationReveal(cards: NegationJourneyCard[], center: Car
     : card);
 }
 
-function negationJourneyEvents(action: PublicCardDisplayAction, sourceName: string | null): JourneyCard[] {
+function singleTargetJourneyEvents(action: PublicCardDisplayAction, sourceName: string | null): JourneyCard[] {
   const events: JourneyCard[] = [];
   if (action.cardFace && sourceName) events.push({
     eventId: action.rootEventId,
@@ -638,13 +638,14 @@ function negationJourneyEvents(action: PublicCardDisplayAction, sourceName: stri
   return events;
 }
 
-function NegationCardJourney({
+function SingleTargetCardJourney({
   action,
   enabled,
   sourceName,
   targetName,
   viewerId,
   resultReadRemainingMs,
+  onJourneySettled,
 }: {
   action: PublicCardDisplayAction;
   enabled: boolean;
@@ -652,15 +653,17 @@ function NegationCardJourney({
   targetName: string | null;
   viewerId: string;
   resultReadRemainingMs: number | null;
+  onJourneySettled?: (settlementEventId: string) => void;
 }) {
-  const motion = action.motion?.type === "negation" ? action.motion : null;
+  const motion = action.motion?.type === "negation" || action.motion?.type === "single-target" ? action.motion : null;
   const scopeKey = motion?.scopeKey ?? action.rootEventId;
-  const [journey, setJourney] = useState<NegationJourneyState>({ scopeKey: "", viewerId: "", cards: [], center: null });
+  const [journey, setJourney] = useState<SingleTargetJourneyState>({ scopeKey: "", viewerId: "", cards: [], center: null });
   const journeyRef = useRef(journey);
   const actionRef = useRef(action);
   const sourceNameRef = useRef(sourceName);
   const mountedRef = useRef(false);
-  const incoming = negationJourneyEvents(action, sourceName);
+  const notifiedSettlementEventIdRef = useRef<string | null>(null);
+  const incoming = singleTargetJourneyEvents(action, sourceName);
   const eventSignature = incoming.map((event) => `${event.eventId}:${event.actorId}:${event.cardFace.id}`).join(",");
   const freshSignature = motion?.freshEventIds.join(",") ?? "";
 
@@ -678,7 +681,7 @@ function NegationCardJourney({
 
   useLayoutEffect(() => {
     const currentAction = actionRef.current;
-    const currentMotion = currentAction.motion?.type === "negation" ? currentAction.motion : null;
+    const currentMotion = currentAction.motion?.type === "negation" || currentAction.motion?.type === "single-target" ? currentAction.motion : null;
     const currentSourceName = sourceNameRef.current;
     if (!enabled || !currentMotion || !currentSourceName) return;
     const center = battlefieldCenterCard();
@@ -689,7 +692,7 @@ function NegationCardJourney({
     const fresh = new Set(currentMotion.freshEventIds);
     const occupied: CardRect[] = [];
     const actorIndexes = new Map<string, number>();
-    const cards = negationJourneyEvents(currentAction, currentSourceName).map((event) => {
+    const cards = singleTargetJourneyEvents(currentAction, currentSourceName).map((event) => {
       const old = priorById.get(event.eventId);
       const actorIndex = actorIndexes.get(event.actorId) ?? 0;
       actorIndexes.set(event.actorId, actorIndex + 1);
@@ -708,13 +711,13 @@ function NegationCardJourney({
         semanticLabel: event.semanticLabel,
         target,
       };
-      const phase: NegationJourneyPhase = old ? "parked" : fresh.has(event.eventId) ? "queued" : "parked";
+      const phase: SingleTargetJourneyPhase = old ? "parked" : fresh.has(event.eventId) ? "queued" : "parked";
       return { ...event, phase, rect: phase === "parked" ? target : center, target };
     });
-    const next: NegationJourneyState = {
+    const next: SingleTargetJourneyState = {
       scopeKey,
       viewerId,
-      cards: withFirstQueuedNegationReveal(cards, center),
+      cards: withFirstQueuedSingleTargetReveal(cards, center),
       center,
     };
     journeyRef.current = next;
@@ -728,7 +731,7 @@ function NegationCardJourney({
   const activePhase = activeCard?.phase ?? null;
   useEffect(() => {
     if (!enabled || journey.scopeKey !== scopeKey || !activeCard || !activePhase) return;
-    const delay = activePhase === "reveal" ? ATTACK_DODGE_REVEAL_HOLD_MS : MOVE_DURATION_MS;
+    const delay = activePhase === "reveal" ? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS : MOVE_DURATION_MS;
     const timer = window.setTimeout(() => {
       if (!mountedRef.current) return;
       setJourney((current) => {
@@ -739,7 +742,7 @@ function NegationCardJourney({
             ? { ...candidate, phase: "move" as const, rect: candidate.target }
             : { ...candidate, phase: "parked" as const, rect: candidate.target }
           : candidate);
-        const next = { ...current, cards: activePhase === "move" ? withFirstQueuedNegationReveal(cards, current.center) : cards };
+        const next = { ...current, cards: activePhase === "move" ? withFirstQueuedSingleTargetReveal(cards, current.center) : cards };
         journeyRef.current = next;
         return next;
       });
@@ -772,7 +775,7 @@ function NegationCardJourney({
           && cardRectsMatch(card.rect, current.cards[index].rect)
           && cardRectsMatch(card.target, current.cards[index].target));
       if (unchanged) return;
-      const next = { ...current, center, cards: withFirstQueuedNegationReveal(cards, center) };
+      const next = { ...current, center, cards: withFirstQueuedSingleTargetReveal(cards, center) };
       journeyRef.current = next;
       setJourney(next);
     };
@@ -784,14 +787,21 @@ function NegationCardJourney({
     };
   }, [enabled, journey.scopeKey, scopeKey]);
 
-  if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
   const currentCard = activeCard ?? journey.cards.find((card) => card.eventId === activeEventId) ?? null;
   const allParked = journey.cards.length > 0 && journey.cards.every((card) => card.phase === "parked");
   const currentPublicCard = currentCard?.cardFace ?? action.cardFace ?? null;
   const currentLabel = currentCard?.semanticLabel ?? (currentPublicCard ? cardDefinition(currentPublicCard.kind).name.toUpperCase() : action.cardLabel);
   const currentNotice = currentCard?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
   const result = allParked ? settlementLabel(action, targetName) : null;
-  const copyTop = journey.center.top + REVEAL_CARD.height + 7;
+  const copyTop = journey.center ? journey.center.top + REVEAL_CARD.height + 7 : 0;
+  useEffect(() => {
+    const settlementEventId = action.settlement?.eventId;
+    if (!enabled || journey.scopeKey !== scopeKey || !allParked || !settlementEventId
+      || notifiedSettlementEventIdRef.current === settlementEventId) return;
+    notifiedSettlementEventIdRef.current = settlementEventId;
+    onJourneySettled?.(settlementEventId);
+  }, [action.settlement?.eventId, allParked, enabled, journey.scopeKey, onJourneySettled, scopeKey]);
+  if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
   return <section
     className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}`}
     role="status"
@@ -800,7 +810,7 @@ function NegationCardJourney({
     aria-label={currentCard?.ariaLabel ?? action.ariaLabel}
     data-public-card-display="true"
     data-public-card-ready="true"
-    data-public-card-motion="negation"
+    data-public-card-motion={motion?.type ?? "single-target"}
     data-public-card-viewer-id={viewerId}
     data-public-card-event-id={activeEventId}
     data-public-card-root-event-id={action.rootEventId}
@@ -808,7 +818,8 @@ function NegationCardJourney({
     data-public-card-actor-id={currentCard?.actorId ?? action.sourceId}
     data-public-card-source-id={action.sourceId}
     data-public-card-target-id={action.targetId ?? undefined}
-    data-public-card-negation-outcome={allParked ? action.settlement?.outcome : undefined}
+    data-public-card-negation-outcome={motion?.type === "negation" && allParked ? action.settlement?.outcome : undefined}
+    data-public-card-settlement-outcome={allParked ? action.settlement?.outcome : undefined}
     data-public-card-settlement-event-id={action.settlement?.eventId}
     data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
@@ -832,7 +843,7 @@ function NegationCardJourney({
         <CardFace card={card.cardFace} />
       </div>;
     })}
-    <div className="public-card-display-copy public-card-display-journey-copy is-negation-waiting" style={{ top: copyTop }}>
+    <div className={`public-card-display-copy public-card-display-journey-copy${action.phaseNotice?.includes("NEGATION") ? " is-negation-waiting" : ""}`} style={{ top: copyTop }}>
       <small>{currentLabel}</small>
       <b>{currentNotice}</b>
       {action.phaseNotice && <span data-public-card-phase-notice="true">{action.phaseNotice}</span>}
@@ -862,14 +873,14 @@ type DuelJourneyState = {
   center: CardRect | null;
   suppressTransitions: boolean;
 };
-type NegationJourneyPhase = "queued" | "reveal" | "move" | "parked";
-type NegationJourneyCard = Omit<JourneyCard, "phase"> & {
-  phase: NegationJourneyPhase;
+type SingleTargetJourneyPhase = "queued" | "reveal" | "move" | "parked";
+type SingleTargetJourneyCard = Omit<JourneyCard, "phase"> & {
+  phase: SingleTargetJourneyPhase;
 };
-type NegationJourneyState = {
+type SingleTargetJourneyState = {
   scopeKey: string;
   viewerId: string;
-  cards: NegationJourneyCard[];
+  cards: SingleTargetJourneyCard[];
   center: CardRect | null;
 };
 
@@ -1300,6 +1311,7 @@ export function PublicCardDisplay({
   viewerId,
   viewerSeat,
   resultReadRemainingMs = null,
+  onJourneySettled,
 }: {
   action: PublicCardDisplayAction | null;
   enabled: boolean;
@@ -1308,13 +1320,14 @@ export function PublicCardDisplay({
   viewerId: string;
   viewerSeat: number | null;
   resultReadRemainingMs?: number | null;
+  onJourneySettled?: (settlementEventId: string) => void;
 }) {
   if (!action) return null;
   if (action.motion?.type === "attack-dodge") {
     return <AttackDodgeCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} resultReadRemainingMs={resultReadRemainingMs} />;
   }
-  if (action.motion?.type === "negation") {
-    return <NegationCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} />;
+  if (action.motion?.type === "single-target" || action.motion?.type === "negation") {
+    return <SingleTargetCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onJourneySettled={onJourneySettled} />;
   }
   if (action.motion?.type === "duel") {
     return <DuelCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} />;

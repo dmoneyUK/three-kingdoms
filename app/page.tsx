@@ -1584,7 +1584,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
   const effectNoticeScope = useRef(JSON.stringify([room.code, room.meId]));
   const [activeSkillEffectSettlement, setActiveSkillEffectSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
-  const [activeDismantleSettlement, setActiveDismantleSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
+  const [activeDismantleSettlement, setActiveDismantleSettlement] = useState<{ eventId: string; exiting: boolean; journeySettled: boolean } | null>(null);
   const [activeStealSettlement, setActiveStealSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeAttackHitSettlement, setActiveAttackHitSettlement] = useState<{ eventId: string; exiting: boolean; firstRenderedAt: number | null; lifecycle: AttackHitSettlementHoldIdentity } | null>(null);
   const [activeGroupSettlement, setActiveGroupSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
@@ -2356,7 +2356,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ? [proof]
         : [];
     });
-    if (freshDismantleSettlements.length === 1) setActiveDismantleSettlement({ eventId: freshDismantleSettlements[0].eventId, exiting: false });
+    if (freshDismantleSettlements.length === 1) setActiveDismantleSettlement({ eventId: freshDismantleSettlements[0].eventId, exiting: false, journeySettled: false });
     const freshStealSettlements = fresh.flatMap((event) => {
       if (event.type !== "message") return [];
       const proofs = stealSettlements.filter((proof) => proof.eventId === event.id);
@@ -3545,8 +3545,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || activePublicNegationRead.action.cardKind === "Duel" && activePublicNegationRead.action.rootEventId === duelNegationProofCandidate?.rootEvent.id)
     ? {
       ...activePublicNegationRead.action,
-      ...(activePublicNegationRead.action.motion?.type === "negation" && activeNegationReadSettled ? { phaseNotice: undefined } : {}),
-      ...(activePublicNegationRead.action.motion?.type === "negation" && activeNegationReadSettled && clientPresentation.negationSettlement ? {
+      ...((activePublicNegationRead.action.motion?.type === "single-target" || activePublicNegationRead.action.motion?.type === "negation") && activeNegationReadSettled
+        ? { phaseNotice: undefined }
+        : {}),
+      ...((activePublicNegationRead.action.motion?.type === "single-target" || activePublicNegationRead.action.motion?.type === "negation")
+        && activeNegationReadSettled && clientPresentation.negationSettlement ? {
         settlement: {
           eventId: clientPresentation.negationSettlement.eventId,
           outcome: clientPresentation.negationSettlement.outcome,
@@ -3607,8 +3610,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         : undefined,
       ...(singleTargetNegationUsesJourney ? {
         motion: {
-          type: "negation" as const,
-          scopeKey: [room.code, singleTargetNegationProofCandidate.chain.interactionId, singleTargetNegationProofCandidate.rootEvent.id].join(":"),
+          type: singleTargetNegationProofCandidate.root.cardKind === "Dismantle" ? "single-target" as const : "negation" as const,
+          scopeKey: singleTargetNegationProofCandidate.root.cardKind === "Dismantle"
+            ? [room.code, singleTargetNegationProofCandidate.rootEvent.id].join(":")
+            : [room.code, singleTargetNegationProofCandidate.chain.interactionId, singleTargetNegationProofCandidate.rootEvent.id].join(":"),
           freshEventIds: [singleTargetNegationProofCandidate.rootEvent.id, ...singleTargetNegationResponses.map((response) => response.eventId)]
             .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
         },
@@ -3772,6 +3777,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardFace: dismantleSettlementCandidate.rootEvent.card,
       cardLabel: "BURNING BRIDGE",
       ariaLabel: `${dismantleSettlementCandidate.source.name} played Burning Bridge targeting ${dismantleSettlementCandidate.target.name}`,
+      motion: {
+        type: "single-target",
+        scopeKey: [room.code, dismantleSettlementCandidate.action.rootEventId].join(":"),
+        freshEventIds: publicCardJourneySeenEventIds.has(dismantleSettlementCandidate.action.rootEventId)
+          ? []
+          : [dismantleSettlementCandidate.action.rootEventId],
+      },
       settlement: { eventId: dismantleSettlementCandidate.action.eventId, outcome: dismantleSettlementCandidate.action.outcome, exiting: dismantleSettlementCandidate.exiting },
     }
     : stealSettlementCandidate
@@ -3870,6 +3882,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           && canUseAction(room.currentAction, "respond")
           ? { publicNotice: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "A player"} attacked you. Play Dodge or Skip.` }
           : {}),
+      } : rootAction.cardKind === "Dismantle" ? {
+        motion: {
+          type: "single-target" as const,
+          scopeKey: [room.code, rootAction.rootEventId].join(":"),
+          freshEventIds: publicCardJourneySeenEventIds.has(rootAction.rootEventId) ? [] : [rootAction.rootEventId],
+        },
       } : {}),
     }
     : attackDodgeDisplayCandidate
@@ -4006,7 +4024,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     || publicCardDisplayAction?.motion?.type === "duel" && rootActionSource?.name && rootActionTarget?.name);
   const publicCardJourneyEventIds = publicCardDisplayAction?.motion?.type === "attack-dodge"
     ? [publicCardDisplayAction.rootEventId, publicCardDisplayAction.response?.eventId, publicCardDisplayAction.deflection?.eventId].filter((eventId): eventId is string => Boolean(eventId))
-    : publicCardDisplayAction?.motion?.type === "negation"
+    : publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation"
       ? [publicCardDisplayAction.rootEventId, ...(publicCardDisplayAction.responses ?? []).map((response) => response.eventId)]
     : publicCardDisplayAction?.motion?.type === "duel"
       ? [publicCardDisplayAction.rootEventId, ...(publicCardDisplayAction.responses ?? []).map((response) => response.eventId)]
@@ -4083,7 +4101,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       const next: ActivePublicNegationRead = {
         key: visibleNegationReadActionKey,
         action,
-        expiresAt: Date.now() + (action.motion?.type === "negation"
+        expiresAt: Date.now() + (action.motion?.type === "single-target" || action.motion?.type === "negation"
           ? Math.max(UI_TIMING.publicCounterRead,
             ((action.responses?.length ?? 0) + 1) * UI_TIMING.publicCardJourneyRead
               + UI_TIMING.publicCounterSettlementConfirm + UI_TIMING.publicCounterFade)
@@ -4171,8 +4189,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeDismantleSettlementExiting = publicCardDisplayAction?.settlement?.outcome === "DISMANTLE_RESOLVED"
     && publicCardDisplayAction.settlement.exiting;
   useEffect(() => {
-    if (!activeDismantleSettlementEventId || !publicCardDisplayReady
-      || activeDismantleSettlement?.eventId !== activeDismantleSettlementEventId || activeDismantleSettlement.exiting) return;
+    if (!activeDismantleSettlementEventId || !publicCardDisplayReady || !activeDismantleSettlement
+      || activeDismantleSettlement.eventId !== activeDismantleSettlementEventId
+      || !activeDismantleSettlement.journeySettled || activeDismantleSettlement.exiting) return;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const timer = window.setTimeout(() => {
       setActiveDismantleSettlement((current) => current?.eventId === activeDismantleSettlementEventId
@@ -4180,7 +4199,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         : current);
     }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
     return () => window.clearTimeout(timer);
-  }, [activeDismantleSettlement?.eventId, activeDismantleSettlement?.exiting, activeDismantleSettlementEventId, publicCardDisplayReady]);
+  }, [activeDismantleSettlement?.eventId, activeDismantleSettlement?.exiting, activeDismantleSettlement?.journeySettled, activeDismantleSettlementEventId, publicCardDisplayReady]);
   useEffect(() => {
     if (!activeDismantleSettlementExiting || !activeDismantleSettlementEventId
       || activeDismantleSettlement?.eventId !== activeDismantleSettlementEventId) return;
@@ -5008,7 +5027,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         })}
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
-      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} />
+      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} onJourneySettled={(settlementEventId) => {
+        setActiveDismantleSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
+          ? { ...current, journeySettled: true }
+          : current);
+      }} />
     </section>
     <footer className="play-command">
     <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setExpandedOpponentId(null); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={(card) => { setInfoCardContext("public-zone"); setInfoCard(card); }} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} attackResponsePrompt={Boolean(rootAction?.action === "ATTACK" && rootActionCardFace && rootAction.targetId === room.meId && room.currentAction?.kind === "response" && room.currentAction.requirement === "dodge" && room.currentAction.actorId === room.meId && canUseAction(room.currentAction, "respond"))} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
