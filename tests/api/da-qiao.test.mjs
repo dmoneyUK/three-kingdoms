@@ -1,13 +1,20 @@
 import test from "node:test";
-import { attackRootProjectionDiagnosticsFor } from "../../game/presentation-v2.ts";
+import { attackRootProjectionDiagnosticsFor, projectPresentationV2 } from "../../game/presentation-v2.ts";
 import { buildPresentationClientView } from "../../game/presentation-client.ts";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
 import {
-  advanceNegationWindow, assert, card, createHumanGame, discardIds, passNegationWindows, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state,
+  advanceNegationWindow, assert, card, createHumanGame, discardIds, passNegationWindows, query, quote, request, requestAndSettle, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state,
 } from "./test-support.mjs";
 
-async function openAttack({ targetCard = card("Peach", "deflection-cost"), targetCards, replacementHand = [], targetEquipment = {}, replacementHero = "zhao-yun", sourceHero = "zhao-yun", sourceEquipment = {}, sourceAttackSuit = "♠", attackCards } = {}) {
-  const game = await createHumanGame();
+async function openAttack({ targetCard = card("Peach", "deflection-cost"), targetCards, replacementHand = [], targetEquipment = {}, replacementHero = "zhao-yun", sourceHero = "zhao-yun", sourceEquipment = {}, sourceAttackSuit = "♠", attackCards, playerCount = 4 } = {}) {
+  const roles = playerCount === 6
+    ? ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"]
+    : playerCount === 8
+      ? ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"]
+      : null;
+  const game = roles
+    ? await seedPlayingGame({ players: roles.map((role, index) => ({ name: `Test Player ${index + 1}`, role, hero: "zhao-yun", hp: 4, maxHp: 4 })), turnSeat: 0, phase: "play" })
+    : await createHumanGame();
   const [source, daqiao, replacement, fourth] = game.room.players;
   const [sourceMember, daqiaoMember, replacementMember, fourthMember] = game.members;
   sql(`UPDATE players SET hero=${quote(sourceHero)}, hp=4, max_hp=4 WHERE id=${quote(source.id)}`);
@@ -31,6 +38,10 @@ async function openAttack({ targetCard = card("Peach", "deflection-cost"), targe
 
 function deflectionOption(view) {
   return view.currentAction?.triggerOptions?.find((option) => option.effectId === "daqiao_deflection");
+}
+
+function deflectionActions(view) {
+  return view.presentationSnapshot?.deflectionActions ?? [];
 }
 
 function attackRootDiagnostics(view, code) {
@@ -78,6 +89,9 @@ test("Attack root is public during Da Qiao Deflection and remains through declin
   assert.equal(targetView.currentAction.kind, "trigger", JSON.stringify(targetView));
   assert.equal(targetView.currentAction.actorId, opened.daqiao.id);
   assert.deepEqual(deflectionOption(targetView).selection.targetIds, [opened.replacement.id]);
+  assert.deepEqual(deflectionActions(targetView), [], "an available but uncommitted skill has no public cost proof");
+  assert.deepEqual(deflectionActions(sourceView), []);
+  assert.deepEqual(deflectionActions(observerView), []);
   assert.equal(sourceView.currentAction.triggerOptions?.some((option) => option.effectId === "daqiao_deflection") ?? false, false);
   const rootAction = targetView.presentationSnapshot.rootAction;
   assert.equal(rootAction?.action, "ATTACK", JSON.stringify({ projection: attackRootDiagnostics(targetView, opened.game.code), presentationRoot: targetView.presentationV2.rootAction, scene: targetView.presentationV2.interactionScene, stable: targetView.presentationV2.stableBoundary }));
@@ -97,6 +111,7 @@ test("Attack root is public during Da Qiao Deflection and remains through declin
   assert.equal(dodge.currentAction.kind, "response", JSON.stringify(dodge));
   assert.equal(dodge.currentAction.actorId, opened.daqiao.id);
   assert.equal(dodge.currentAction.requirement, "dodge");
+  assert.deepEqual(deflectionActions(dodge), [], "declining Deflection creates no public Deflection association");
   assert.deepEqual(dodge.presentationSnapshot.rootAction, rootAction, "declining the trigger preserves the exact Attack root through the Dodge response");
   assert.deepEqual(attackerDodge.presentationSnapshot.rootAction, rootAction);
   assert.deepEqual(observerDodge.presentationSnapshot.rootAction, rootAction);
@@ -235,6 +250,17 @@ test("Captivating uses Sima Yi's final replacement Judgement result in both dire
 
 test("Deflection discards one hand card, preserves Attack identity/source, and starts normal Dodge for the replacement", async () => {
   const opened = await openAttack();
+  const beforeCommitViews = await Promise.all([
+    state(opened.game.code, opened.sourceMember.token),
+    state(opened.game.code, opened.daqiaoMember.token),
+    state(opened.game.code, opened.replacementMember.token),
+    state(opened.game.code, opened.fourthMember.token),
+  ]);
+  for (const response of beforeCommitViews) assert.deepEqual(deflectionActions(response.data), []);
+  assert.equal(JSON.stringify(beforeCommitViews[0].data.timeline).includes("peach-deflection-cost"), false,
+    "the attacker's public projection does not expose the uncommitted private cost");
+  const initialRoot = beforeCommitViews[1].data.presentationSnapshot.rootAction;
+  assert.ok(initialRoot, "the original Attack root is proven before Deflection commits");
   assert.equal((await request("trigger", {
     code: opened.game.code,
     token: opened.daqiaoMember.token,
@@ -242,7 +268,12 @@ test("Deflection discards one hand card, preserves Attack identity/source, and s
     cardId: "peach-deflection-cost",
     targetId: opened.replacement.id,
   })).status, 200);
-  const replacementView = (await state(opened.game.code, opened.replacementMember.token)).data;
+  const [sourceView, daqiaoView, replacementView, observerView] = (await Promise.all([
+    state(opened.game.code, opened.sourceMember.token),
+    state(opened.game.code, opened.daqiaoMember.token),
+    state(opened.game.code, opened.replacementMember.token),
+    state(opened.game.code, opened.fourthMember.token),
+  ])).map((response) => response.data);
   assert.equal(replacementView.currentAction.kind, "response", JSON.stringify(replacementView));
   assert.equal(replacementView.currentAction.actorId, opened.replacement.id);
   assert.equal(replacementView.currentAction.requirement, "dodge");
@@ -251,6 +282,45 @@ test("Deflection discards one hand card, preserves Attack identity/source, and s
   assert.equal(replacementView.players.find((player) => player.id === opened.daqiao.id).hp, 4);
   assert.equal(replacementView.pendingAttack.physicalCardId, "attack-deflection-attack");
   assert.deepEqual(discardIds(opened.game.code), ["attack-deflection-attack", "peach-deflection-cost"]);
+  assert.equal(countCardInZones(opened.game.code, "peach-deflection-cost"), 1, "the cost card exists once in the public discard zone");
+  const proof = deflectionActions(replacementView)[0];
+  assert.ok(proof, "the committed cost discard carries one public Deflection proof");
+  assert.equal(proof.effectId, "daqiao_deflection");
+  assert.equal(proof.costCardId, "peach-deflection-cost");
+  assert.equal(proof.actorId, opened.daqiao.id);
+  assert.equal(proof.originalTargetId, opened.daqiao.id);
+  assert.equal(proof.replacementTargetId, opened.replacement.id);
+  assert.equal(proof.sourceId, opened.source.id);
+  assert.equal(proof.rootEventId, initialRoot.rootEventId);
+  assert.equal(proof.rootFrameId, initialRoot.rootFrameId);
+  assert.equal(proof.interactionId, initialRoot.interactionId);
+  for (const view of [sourceView, daqiaoView, replacementView, observerView]) {
+    assert.deepEqual(deflectionActions(view), [proof], "all players receive the same committed public proof");
+    assert.deepEqual(buildPresentationClientView(view.presentationSnapshot, view.meId).deflectionActions, [proof]);
+  }
+  const costEvent = replacementView.timeline.find((event) => event.id === proof.eventId);
+  assert.equal(costEvent?.type, "cards");
+  assert.equal(costEvent?.action, "discard");
+  assert.equal(costEvent?.cards.length, 1);
+  assert.deepEqual(costEvent.cards[0], proof.costCard, "the proof's physical identity matches the genuine grouped discard event");
+  assert.equal(replacementView.timeline.find((event) => event.id === proof.rootEventId)?.action, "play");
+
+  const invalidTimeline = replacementView.timeline.map((event) => event.id === proof.eventId
+    ? { ...event, publicDeflectionAction: { ...event.publicDeflectionAction, replacementTargetId: opened.source.id } }
+    : event);
+  const invalidV2 = projectPresentationV2({ pending: null, currentAction: replacementView.currentAction,
+    actionRevision: replacementView.actionRevision, timeline: invalidTimeline, causalEnvelope: replacementView.causalEnvelope });
+  assert.deepEqual(invalidV2.deflectionActions, [], "V2 rejects a proof whose redirect target contradicts the active causal frame");
+  const invalidProof = { ...proof, replacementTargetId: opened.source.id };
+  const invalidSnapshot = composePresentationSnapshot({
+    presentationV2: { ...replacementView.presentationV2, deflectionActions: [invalidProof] },
+    currentAction: replacementView.currentAction,
+    actionRevision: replacementView.actionRevision,
+    viewerId: replacementView.meId,
+  });
+  assert.deepEqual(invalidSnapshot.deflectionActions, [], "snapshot validation rejects an illegal identity relationship");
+  assert.deepEqual(buildPresentationClientView({ ...replacementView.presentationSnapshot, deflectionActions: [invalidProof] }, replacementView.meId).deflectionActions, [],
+    "the public client view revalidates the typed proof");
   assert.equal((await request("decline_response", { code: opened.game.code, token: opened.replacementMember.token })).status, 200);
   const settled = (await state(opened.game.code, opened.replacementMember.token)).data;
   assert.equal(settled.players.find((player) => player.id === opened.replacement.id).hp, 3, JSON.stringify(settled));
@@ -267,13 +337,61 @@ test("Deflection accepts equipment as its one discarded card and excludes attack
   sql(`UPDATE players SET alive=0, hp=0 WHERE id=${quote(opened.replacement.id)}`);
   const staleTarget = await request("trigger", { code: opened.game.code, token: opened.daqiaoMember.token, providerId: "daqiao_deflection", cardId: "nioshield-equipment-cost", targetId: opened.replacement.id });
   assert.equal(staleTarget.status, 409, JSON.stringify(staleTarget.data));
+  assert.deepEqual(deflectionActions((await state(opened.game.code, opened.fourthMember.token)).data), [], "a stale target creates no public proof");
   sql(`UPDATE players SET alive=1, hp=4 WHERE id=${quote(opened.replacement.id)}`);
   const illegalAttacker = await request("trigger", { code: opened.game.code, token: opened.daqiaoMember.token, providerId: "daqiao_deflection", cardId: "nioshield-equipment-cost", targetId: opened.source.id });
   assert.equal(illegalAttacker.status, 409, JSON.stringify(illegalAttacker.data));
   assert.equal((await request("trigger", { code: opened.game.code, token: opened.daqiaoMember.token, providerId: "daqiao_deflection", cardId: "nioshield-equipment-cost", targetId: opened.replacement.id })).status, 200);
-  const redirected = (await state(opened.game.code, opened.replacementMember.token)).data;
+  const [sourceView, daqiaoView, redirected, observerView] = (await Promise.all([
+    state(opened.game.code, opened.sourceMember.token),
+    state(opened.game.code, opened.daqiaoMember.token),
+    state(opened.game.code, opened.replacementMember.token),
+    state(opened.game.code, opened.fourthMember.token),
+  ])).map((response) => response.data);
   assert.equal(redirected.currentAction.requirement, "dodge");
   assert.deepEqual(discardIds(opened.game.code), ["attack-deflection-attack", "nioshield-equipment-cost"]);
+  assert.equal(countCardInZones(opened.game.code, "nioshield-equipment-cost"), 1);
+  const proof = deflectionActions(redirected)[0];
+  assert.equal(proof?.costCard.kind, "NioShield", "the Equipment cost retains its true public physical identity");
+  for (const view of [sourceView, daqiaoView, redirected, observerView]) assert.deepEqual(deflectionActions(view), [proof]);
+  const discardEvent = redirected.timeline.find((event) => event.id === proof.eventId);
+  assert.deepEqual(discardEvent?.cards, [proof.costCard]);
+});
+
+test("Deflection public proof is identical for every viewer in six- and eight-player rooms", async () => {
+  for (const playerCount of [6, 8]) {
+    const opened = await openAttack({ playerCount });
+    const before = await Promise.all(opened.game.members.map((member) => state(opened.game.code, member.token)));
+    for (const response of before) assert.deepEqual(deflectionActions(response.data), []);
+    assert.equal((await request("trigger", {
+      code: opened.game.code,
+      token: opened.daqiaoMember.token,
+      providerId: "daqiao_deflection",
+      cardId: "peach-deflection-cost",
+      targetId: opened.replacement.id,
+    })).status, 200);
+    const viewers = (await Promise.all(opened.game.members.map((member) => state(opened.game.code, member.token)))).map((response) => response.data);
+    const proof = deflectionActions(viewers[0])[0];
+    assert.ok(proof, `${playerCount}-seat room publishes the committed proof`);
+    for (const view of viewers) assert.deepEqual(deflectionActions(view), [proof], `${playerCount}-seat public projections agree`);
+    assert.equal(countCardInZones(opened.game.code, proof.costCardId), 1);
+  }
+});
+
+test("Concurrent repeated Deflection submissions publish one proof and discard the cost once", async () => {
+  const opened = await openAttack();
+  const submissions = await Promise.all([1, 2].map(() => request("trigger", {
+    code: opened.game.code,
+    token: opened.daqiaoMember.token,
+    providerId: "daqiao_deflection",
+    cardId: "peach-deflection-cost",
+    targetId: opened.replacement.id,
+  })));
+  assert.equal(submissions.filter((result) => result.status === 200).length, 1, JSON.stringify(submissions));
+  const publicView = (await state(opened.game.code, opened.fourthMember.token)).data;
+  assert.equal(deflectionActions(publicView).length, 1);
+  assert.deepEqual(discardIds(opened.game.code), ["attack-deflection-attack", "peach-deflection-cost"]);
+  assert.equal(countCardInZones(opened.game.code, "peach-deflection-cost"), 1);
 });
 
 test("Deflection uses Da Qiao's effective range, including weapon and mount/Militia composition, not Ma Chao Horse Riding", async () => {
@@ -302,6 +420,7 @@ test("Deflection uses Da Qiao's effective range, including weapon and mount/Mili
 test("Deflection rejects stale cost, target, and range submissions without consuming the cost", async () => {
   const opened = await openAttack();
   const costId = "peach-deflection-cost";
+  assert.deepEqual(deflectionActions((await state(opened.game.code, opened.fourthMember.token)).data), []);
   setHand(opened.daqiao.id, [], 4, 4);
   const staleCard = await request("trigger", { code: opened.game.code, token: opened.daqiaoMember.token, providerId: "daqiao_deflection", cardId: costId, targetId: opened.replacement.id });
   assert.equal(staleCard.status, 409, JSON.stringify(staleCard.data));
@@ -318,6 +437,7 @@ test("Deflection rejects stale cost, target, and range submissions without consu
   const staleRange = await request("trigger", { code: opened.game.code, token: opened.daqiaoMember.token, providerId: "daqiao_deflection", cardId: costId, targetId: opened.replacement.id });
   assert.equal(staleRange.status, 409, JSON.stringify(staleRange.data));
   assert.deepEqual(discardIds(opened.game.code), ["attack-deflection-attack"]);
+  assert.deepEqual(deflectionActions((await state(opened.game.code, opened.fourthMember.token)).data), [], "stale submissions never publish an uncommitted effect");
 });
 
 test("Ma Chao Cavalry resolves before Da Qiao Deflection and restarts for the redirected target", async () => {
@@ -374,6 +494,12 @@ test("Ma Chao Cavalry resolves before Da Qiao Deflection and restarts for the re
   assert.deepEqual((await state(opened.game.code, opened.replacementMember.token)).data.presentationSnapshot.rootAction, redirectedRoot);
   assert.deepEqual((await state(opened.game.code, opened.fourthMember.token)).data.presentationSnapshot.rootAction, redirectedRoot,
     "attacker, original target, new target, and observer share the same public redirected relation");
+  const deflectionProof = deflectionActions(replacementWindow)[0];
+  assert.equal(deflectionProof?.rootEventId, initialRoot?.rootEventId,
+    "the cost proof remains attached to the original Attack after the source-owned trigger resolves");
+  assert.equal(deflectionProof?.sourceId, opened.source.id);
+  assert.equal(deflectionProof?.originalTargetId, opened.daqiao.id);
+  assert.equal(deflectionProof?.replacementTargetId, opened.replacement.id);
   assert.deepEqual(replacementWindow.presentationV2.attackDodgeResponses ?? [], [], "Deflection does not fabricate a Dodge proof");
   assert.equal((await request("decline_trigger", { code: opened.game.code, token: opened.sourceMember.token })).status, 200);
   const dodge = (await state(opened.game.code, opened.replacementMember.token)).data;
@@ -434,6 +560,7 @@ test("A redirected Attack reopens a replacement target's normal Yin-Yang Swords 
   assert.equal(replacementView.currentAction.kind, "trigger", JSON.stringify(replacementView));
   assert.equal(replacementView.currentAction.actorId, opened.replacement.id);
   assert.equal(replacementView.currentAction.triggerOptions[0].effectId, "yin_yang_swords_attack_targeted");
+  assert.equal(deflectionActions(replacementView).length, 1, "the Deflection proof survives the replacement's equipment-trigger window");
 });
 
 test("Deflection changes only the current Sky Piercing Halberd target and preserves the remaining group", async () => {
@@ -455,6 +582,17 @@ test("Deflection changes only the current Sky Piercing Halberd target and preser
   assert.equal((await request("trigger", { code: game.code, token: daqiaoMember.token, providerId: "daqiao_deflection", cardId: "peach-halberd-deflection-cost", targetId: replacement.id })).status, 200);
   const replacementView = (await state(game.code, replacementMember.token)).data;
   assert.equal(replacementView.currentAction.kind, "response", JSON.stringify(replacementView));
+  const proof = deflectionActions(replacementView)[0];
+  assert.ok(proof, "Halberd's active target branch retains a public Deflection proof");
+  assert.equal(proof.rootCardId, attack.id);
+  assert.equal(proof.sourceId, source.id);
+  assert.equal(proof.originalTargetId, daqiao.id);
+  assert.equal(proof.replacementTargetId, replacement.id);
+  assert.equal(replacementView.timeline.find((event) => event.id === proof.rootEventId)?.card?.id, attack.id);
+  assert.equal(proof.interactionId, replacementView.causalEnvelope.interactionId);
+  for (const token of [sourceMember.token, firstMember.token, daqiaoMember.token, replacementMember.token]) {
+    assert.deepEqual(deflectionActions((await state(game.code, token)).data), [proof]);
+  }
   assert.equal((await request("decline_response", { code: game.code, token: replacementMember.token })).status, 200);
   const settled = (await state(game.code, replacementMember.token)).data;
   assert.equal(settled.players.find((player) => player.id === first.id).hp, 3, JSON.stringify(settled));

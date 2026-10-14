@@ -1,5 +1,5 @@
 import type { CurrentAction } from "./protocol";
-import { CARD_KINDS, type CardKind } from "./model";
+import { CARD_KINDS, type Card, type CardKind } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestParticipantProgressStatus } from "./pending";
 import { isProvenOrderedAttackRootProof, isProvenRootActionCardProof } from "./presentation-v2";
 import type {
@@ -20,6 +20,7 @@ import type {
   PresentationSkillEffectSettlement,
   PresentationAttackDodgeResponse,
   PresentationDuelExchange,
+  PresentationDeflectionAction,
   PresentationOrderedAttackRootProof,
   PresentationSelfTargetAction,
   PresentationStableBoundary,
@@ -85,6 +86,7 @@ export type PresentationSnapshotBumperHarvestSettlement = PresentationBumperHarv
 export type PresentationSnapshotAttackDodgeResponse = PresentationAttackDodgeResponse;
 export type PresentationSnapshotDuelExchange = PresentationDuelExchange;
 export type PresentationSnapshotSelfTargetAction = PresentationSelfTargetAction;
+export type PresentationSnapshotDeflectionAction = PresentationDeflectionAction;
 
 export type PresentationSnapshot = {
   identity: PresentationSnapshotIdentity | null;
@@ -105,6 +107,7 @@ export type PresentationSnapshot = {
   duelExchange: PresentationSnapshotDuelExchange | null;
   attackDodgeResponses?: readonly PresentationSnapshotAttackDodgeResponse[];
   selfTargetActions?: readonly PresentationSnapshotSelfTargetAction[];
+  deflectionActions: readonly PresentationSnapshotDeflectionAction[];
   decision: PresentationSnapshotDecision | null;
   localControl: PresentationSnapshotLocalControl;
   /** Explicit public Negation disposition; legacy final-result hints never populate it. */
@@ -154,6 +157,60 @@ export function provenSelfTargetActions(value: unknown): PresentationSnapshotSel
     sourceId: action.sourceId,
     targetId: action.targetId,
     cardKind: "Peach",
+  }));
+}
+
+function publicPhysicalCard(value: unknown): Card | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const card = value as Record<string, unknown>;
+  const suits = ["♥", "♦", "♣", "♠"];
+  const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+  return nonEmptyString(card.id) && typeof card.kind === "string" && CARD_KINDS.includes(card.kind as CardKind)
+    && typeof card.suit === "string" && suits.includes(card.suit)
+    && typeof card.rank === "string" && ranks.includes(card.rank)
+    ? { id: card.id, kind: card.kind as CardKind, suit: card.suit as Card["suit"], rank: card.rank as Card["rank"] }
+    : null;
+}
+
+export function provenDeflectionActions(value: unknown): PresentationSnapshotDeflectionAction[] {
+  if (!Array.isArray(value)) return [];
+  const actions = value.filter((candidate): candidate is PresentationSnapshotDeflectionAction => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+    const action = candidate as Partial<PresentationSnapshotDeflectionAction>;
+    const costCard = publicPhysicalCard(action.costCard);
+    return action.semantics === "PROVEN" && action.effectId === "daqiao_deflection"
+      && nonEmptyString(action.eventId) && nonEmptyString(action.costCardId) && action.costCardId === costCard?.id
+      && nonEmptyString(action.actorId) && nonEmptyString(action.rootEventId)
+      && nonEmptyString(action.rootResolutionId) && nonEmptyString(action.rootCardId)
+      && nonEmptyString(action.interactionId) && nonEmptyString(action.rootFrameId)
+      && nonEmptyString(action.sourceId) && nonEmptyString(action.originalTargetId)
+      && nonEmptyString(action.replacementTargetId) && action.actorId === action.originalTargetId
+      && action.actorId !== action.sourceId && action.actorId !== action.replacementTargetId
+      && action.sourceId !== action.replacementTargetId && action.eventId !== action.rootEventId;
+  });
+  const eventCounts = new Map<string, number>();
+  const rootActionCounts = new Map<string, number>();
+  actions.forEach((action) => eventCounts.set(action.eventId, (eventCounts.get(action.eventId) ?? 0) + 1));
+  actions.forEach((action) => {
+    const key = JSON.stringify([action.interactionId, action.rootEventId, action.rootFrameId]);
+    rootActionCounts.set(key, (rootActionCounts.get(key) ?? 0) + 1);
+  });
+  return actions.filter((action) => eventCounts.get(action.eventId) === 1
+    && rootActionCounts.get(JSON.stringify([action.interactionId, action.rootEventId, action.rootFrameId])) === 1).map((action) => ({
+    semantics: "PROVEN",
+    effectId: "daqiao_deflection",
+    eventId: action.eventId,
+    costCardId: action.costCardId,
+    costCard: { ...publicPhysicalCard(action.costCard)! },
+    actorId: action.actorId,
+    rootEventId: action.rootEventId,
+    rootResolutionId: action.rootResolutionId,
+    rootCardId: action.rootCardId,
+    interactionId: action.interactionId,
+    rootFrameId: action.rootFrameId,
+    sourceId: action.sourceId,
+    originalTargetId: action.originalTargetId,
+    replacementTargetId: action.replacementTargetId,
   }));
 }
 
@@ -1034,6 +1091,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     duelExchange: authority ? provenDuelExchange(input.presentationV2.duelExchange, authority.scene, authority.identity, authority.stable) : null,
     ...(input.presentationV2.attackDodgeResponses?.length ? { attackDodgeResponses: provenAttackDodgeResponses(input.presentationV2.attackDodgeResponses) } : {}),
     selfTargetActions: provenSelfTargetActions(input.presentationV2.selfTargetActions),
+    deflectionActions: provenDeflectionActions(input.presentationV2.deflectionActions),
     decision: authority && authority.stable.kind === "CHOICE"
       ? { actorId: authority.scene.decisionActorId, stage: authority.scene.stage }
       : null,

@@ -1,7 +1,7 @@
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
 import { CARD_DEFINITIONS } from "./cards";
-import { CARD_KINDS, type CardKind } from "./model";
+import { CARD_KINDS, type Card, type CardKind } from "./model";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type NegationHistoryRecord } from "./pending";
 
 export type PresentationV2Event = {
@@ -23,6 +23,7 @@ export type PresentationV2Event = {
   attackDodgeResponse?: unknown;
   duelAttackResponse?: unknown;
   publicSkillEffect?: { effectId?: unknown; sourceId?: unknown; targetId?: unknown };
+  publicDeflectionAction?: unknown;
   publicSkillEffectSettlement?: unknown;
   publicDismantleSettlement?: unknown;
   publicStealSettlement?: unknown;
@@ -159,6 +160,26 @@ export type PresentationSelfTargetAction = PresentationSelfTargetActionProof & {
   rootEventId: string;
   resolutionId: string;
 };
+
+/** Public proof linking Da Qiao's real discarded skill cost to one Attack redirect. */
+export type PresentationDeflectionActionProof = {
+  semantics: "PROVEN";
+  effectId: "daqiao_deflection";
+  eventId: string;
+  costCardId: string;
+  costCard: Card;
+  actorId: string;
+  rootEventId: string;
+  rootResolutionId: string;
+  rootCardId: string;
+  interactionId: string;
+  rootFrameId: string;
+  sourceId: string;
+  originalTargetId: string;
+  replacementTargetId: string;
+};
+
+export type PresentationDeflectionAction = PresentationDeflectionActionProof;
 
 export type PresentationNegationSettlementProof = {
   semantics: "PROVEN";
@@ -565,6 +586,7 @@ export type PresentationV2 = {
   bumperHarvestSettlements: readonly PresentationBumperHarvestSettlement[];
   duelExchange: PresentationDuelExchange | null;
   selfTargetActions?: readonly PresentationSelfTargetAction[];
+  deflectionActions?: readonly PresentationDeflectionAction[];
   dyingBarrier: PresentationDyingBarrier | null;
   reactionChain: PresentationReactionChain | null;
   negationSettlement: PresentationNegationSettlement | null;
@@ -2311,6 +2333,109 @@ function attackHitSettlementsFor(timeline: readonly PresentationV2Event[]): Pres
   });
 }
 
+const DEFLECTION_ATTACK_ORIGINS = new Set(["card", "serpent_spear", "green_dragon", "halberd", "SkyPiercingHalberdAttack", "duel", "triggered", "borrowed_sword"]);
+const PHYSICAL_CARD_SUITS = new Set(["♥", "♦", "♣", "♠"]);
+const PHYSICAL_CARD_RANKS = new Set(["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]);
+
+function publicPhysicalCard(value: unknown): Card | null {
+  const card = record(value);
+  return card && stringValue(card.id) && typeof card.kind === "string" && CARD_KINDS.includes(card.kind as CardKind)
+    && typeof card.suit === "string" && PHYSICAL_CARD_SUITS.has(card.suit)
+    && typeof card.rank === "string" && PHYSICAL_CARD_RANKS.has(card.rank)
+    ? { id: card.id, kind: card.kind as CardKind, suit: card.suit as Card["suit"], rank: card.rank as Card["rank"] }
+    : null;
+}
+
+function samePublicPhysicalCard(value: unknown, expected: Card): boolean {
+  const card = publicPhysicalCard(value);
+  return Boolean(card && card.id === expected.id && card.kind === expected.kind
+    && card.suit === expected.suit && card.rank === expected.rank);
+}
+
+function deflectionFrameEffectMatches(originEffect: string, currentEffect: string): boolean {
+  return currentEffect === originEffect
+    // The existing redirect continuation changes this semantic alias after a
+    // Halberd group branch becomes a single Attack response.
+    || originEffect === "SkyPiercingHalberdAttack" && currentEffect === "halberd";
+}
+
+function deflectionActionsFor(input: PresentationV2Input): PresentationDeflectionAction[] {
+  const eventIdCounts = new Map<string, number>();
+  for (const event of input.timeline) {
+    const eventId = stringValue(event.id);
+    if (eventId) eventIdCounts.set(eventId, (eventIdCounts.get(eventId) ?? 0) + 1);
+  }
+
+  const actions = input.timeline.flatMap((event) => {
+    const proof = record(event.publicDeflectionAction);
+    const eventId = stringValue(event.id);
+    const costCardId = stringValue(proof?.costCardId);
+    const costCard = publicPhysicalCard(proof?.costCard);
+    const actorId = stringValue(proof?.actorId);
+    const rootEventId = stringValue(proof?.rootEventId);
+    const rootResolutionId = stringValue(proof?.rootResolutionId);
+    const rootCardId = stringValue(proof?.rootCardId);
+    const interactionId = stringValue(proof?.interactionId);
+    const rootFrameId = stringValue(proof?.rootFrameId);
+    const sourceId = stringValue(proof?.sourceId);
+    const originalTargetId = stringValue(proof?.originalTargetId);
+    const replacementTargetId = stringValue(proof?.replacementTargetId);
+    const attachedEventId = stringValue(proof?.eventId);
+    const costCards = event.type === "card" ? [record(event.card)] : event.type === "cards" && Array.isArray(event.cards) ? event.cards.map(record) : [];
+    const envelope = input.causalEnvelope ?? null;
+    const attackFrame = envelope?.frames.find((frame) => frame.frameId === rootFrameId) ?? null;
+    const rootEvent = uniqueTimelineEventById(rootEventId, input.timeline);
+    const rootCardRecords = rootEvent?.type === "card"
+      ? [record(rootEvent.card)]
+      : rootEvent?.type === "cards" && Array.isArray(rootEvent.cards) ? rootEvent.cards.map(record) : [];
+    const rootIsAttack = rootEvent?.playedAs === "attack" || rootCardRecords.some((card) => card?.kind === "Attack");
+
+    if (!proof || proof.semantics !== "PROVEN" || proof.effectId !== "daqiao_deflection"
+      || !eventId || attachedEventId !== eventId || eventIdCounts.get(eventId) !== 1
+      || !costCardId || !costCard || costCardId !== costCard.id
+      || event.presentation === false || event.action !== "discard" || costCards.length !== 1
+      || !samePublicPhysicalCard(costCards[0], costCard)
+      || !actorId || !rootEventId || rootEventId === eventId || !rootResolutionId || !rootCardId
+      || !interactionId || !rootFrameId || !sourceId || !originalTargetId || !replacementTargetId
+      || actorId !== originalTargetId || actorId === sourceId || replacementTargetId === sourceId || replacementTargetId === actorId
+      || event.resolutionId !== rootResolutionId
+      || !rootEvent || (rootEvent.type !== "card" && rootEvent.type !== "cards")
+      || rootEvent.presentation === false || rootEvent.action !== "play" || rootEvent.resolutionId !== rootResolutionId
+      || !rootIsAttack || !eventCardIds(rootEvent).includes(rootCardId)
+      || !envelope || envelope.interactionId !== interactionId || !attackFrame
+      || !DEFLECTION_ATTACK_ORIGINS.has(attackFrame.origin.originEffect)
+      || attackFrame.origin.originSourceId !== sourceId || attackFrame.current.currentSourceId !== sourceId
+      || !attackFrame.origin.originalTargetIds.includes(originalTargetId)
+      || !attackFrame.current.currentTargetIds.includes(replacementTargetId)
+      || !deflectionFrameEffectMatches(attackFrame.origin.originEffect, attackFrame.current.currentEffect)
+      || attackFrame.current.resolvingPlayerId !== replacementTargetId
+      || (attackFrame.stage !== "ATTACK_RESPONSE" && attackFrame.stage !== "GROUP_RESOLUTION")) return [];
+
+    return [{
+      semantics: "PROVEN",
+      effectId: "daqiao_deflection",
+      eventId,
+      costCardId,
+      costCard,
+      actorId,
+      rootEventId,
+      rootResolutionId,
+      rootCardId,
+      interactionId,
+      rootFrameId,
+      sourceId,
+      originalTargetId,
+      replacementTargetId,
+    }];
+  });
+  const rootActionCounts = new Map<string, number>();
+  for (const action of actions) {
+    const key = JSON.stringify([action.interactionId, action.rootEventId, action.rootFrameId]);
+    rootActionCounts.set(key, (rootActionCounts.get(key) ?? 0) + 1);
+  }
+  return actions.filter((action) => rootActionCounts.get(JSON.stringify([action.interactionId, action.rootEventId, action.rootFrameId])) === 1);
+}
+
 function groupSettlementsFor(timeline: readonly PresentationV2Event[]): PresentationGroupSettlement[] {
   const eventIdCounts = new Map<string, number>();
   const rootIdCounts = new Map<string, number>();
@@ -2717,6 +2842,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const bumperHarvestSettlements = bumperHarvestSettlementsFor(input.timeline);
   const duelExchange = duelExchangeFor(envelope, interactionScene, input.pending, input.timeline);
   const selfTargetActions = selfTargetActionsFor(input.timeline);
+  const deflectionActions = deflectionActionsFor(input);
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
   const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene, input.timeline);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
@@ -2760,6 +2886,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     bumperHarvestSettlements,
     duelExchange,
     selfTargetActions,
+    deflectionActions,
     dyingBarrier,
     reactionChain,
     negationSettlement,
