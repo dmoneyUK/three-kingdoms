@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const rooms = sqliteTable("rooms", {
   id: text("id").primaryKey(),
@@ -65,3 +65,15 @@ export const auditScope = sqliteTable("audit_scope", {
   id: integer("id").primaryKey(),
   roomId: text("room_id").notNull(),
 });
+
+/** Private shared-window intents; never join these rows into public room projections. */
+export const negationWindowSubmissions = sqliteTable("negation_window_submissions", {
+  roomId: text("room_id").notNull(),
+  windowId: text("window_id").notNull(),
+  playerId: text("player_id").notNull(),
+  submissionJson: text("submission_json").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.windowId, table.playerId] }),
+  index("idx_negation_window_submissions_room").on(table.roomId),
+]);

@@ -4,7 +4,7 @@ import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts
 import { buildPresentationClientView } from "../../game/presentation-client.ts";
 import { oathRecipientIds } from "../../game/oath.ts";
 import {
-  assert, card, createHumanGame, openBorrowedSwordScenario, openGanglieGroup, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setTurn, sql, state, waitForState,
+  advanceNegationWindow, assert, card, createHumanGame, openBorrowedSwordScenario, openGanglieGroup, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setTurn, sql, state, waitForState,
 } from "./test-support.mjs";
 
 function authoritativePending(code) {
@@ -29,8 +29,18 @@ function assertStableDyingPersistence(code) {
 
 function assertProjectionMatchesEngine(code, token) {
   return state(code, token).then(({ data: view }) => {
+    const storedPending = authoritativePending(code);
+    const pending = storedPending?.kind === "negation_window" ? {
+      kind: "response",
+      actorId: null,
+      requirement: "negate",
+      reason: "Negation response window",
+      deadline: storedPending.deadline,
+      ...(storedPending.readyAfterEventId ? { readyAfterEventId: storedPending.readyAfterEventId } : {}),
+      continuation: { ...storedPending.continuation, remainingIds: [] },
+    } : storedPending;
     const expected = projectPresentationV2({
-      pending: authoritativePending(code),
+      pending,
       currentAction: view.currentAction,
       actionRevision: view.actionRevision,
       timeline: view.timeline,
@@ -2117,17 +2127,15 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   setTurn(game.code, source.seat);
   const opened = await request("play_card", { code: game.code, token: host.token, cardId: steal.id, targetId: target.id, targetCardIndex: 0 });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
-  const sourceWindow = await request("decline_response", { code: game.code, token: host.token });
-  assert.equal(sourceWindow.status, 200, JSON.stringify(sourceWindow.data));
   const sourceRoot = opened.data.room.causalEnvelope;
   const sourceWindowTargetView = (await state(game.code, alice.token)).data;
   assert.equal(sourceWindowTargetView.currentAction.actorId, target.id);
-  assert.equal(sourceWindowTargetView.pendingNegation.actorId, target.id);
+  assert.equal(sourceWindowTargetView.pendingNegation.actorId, null);
   assert.equal(sourceWindowTargetView.causalEnvelope.interactionId, sourceRoot.interactionId);
   assert.equal(sourceWindowTargetView.causalEnvelope.activeFrameId, sourceRoot.activeFrameId);
-  assert.equal(sourceWindowTargetView.causalEnvelope.frames[0].current.resolvingPlayerId, target.id);
-  assert.notEqual(sourceWindowTargetView.causalEnvelope.checkpoint.checkpointId, sourceRoot.checkpoint.checkpointId);
-  assert.equal(sourceWindowTargetView.causalEnvelope.presentationRevision, sourceRoot.presentationRevision + 1);
+  assert.equal(sourceWindowTargetView.causalEnvelope.frames[0].current.resolvingPlayerId, null);
+  assert.equal(sourceWindowTargetView.causalEnvelope.checkpoint.checkpointId, sourceRoot.checkpoint.checkpointId);
+  assert.equal(sourceWindowTargetView.causalEnvelope.presentationRevision, sourceRoot.presentationRevision);
   const first = await assertProjectionMatchesEngine(game.code, alice.token);
   const root = first.presentationV2.rootContext;
   const rootEvent = first.timeline.find((event) => event.card?.id === steal.id && event.card?.kind === "Steal" && event.action === "play");
@@ -2159,10 +2167,10 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(first.presentationV2.interactionScene?.continuity.relation, "ROOT_FRAME");
   assert.equal(first.presentationV2.interactionScene?.sourceId, source.id);
   assert.deepEqual(first.presentationV2.interactionScene?.targetIds, [target.id]);
-  assert.equal(first.presentationV2.interactionScene?.decisionActorId, target.id);
-  assert.deepEqual(first.presentationV2.interactionScene?.participantRoles, { sourceId: source.id, originalTargetIds: [target.id], activeTargetIds: [target.id], currentParticipantId: target.id, decisionActorId: target.id, activeResolverId: target.id, parentParticipantId: null, participantIds: [] });
+  assert.equal(first.presentationV2.interactionScene?.decisionActorId, null);
+  assert.deepEqual(first.presentationV2.interactionScene?.participantRoles, { sourceId: source.id, originalTargetIds: [target.id], activeTargetIds: [target.id], currentParticipantId: target.id, decisionActorId: null, activeResolverId: null, parentParticipantId: null, participantIds: [] });
   assert.equal(first.presentationV2.stableBoundary.kind, "CHOICE");
-  assert.equal(first.presentationV2.stableBoundary.decisionActorId, target.id);
+  assert.equal(first.presentationV2.stableBoundary.decisionActorId, null);
   const firstRepeat = await state(game.code, alice.token);
   const firstOtherViewer = await state(game.code, host.token);
   const firstObserver = await assertProjectionMatchesEngine(game.code, observer.token);
@@ -2178,14 +2186,18 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.deepEqual(firstOtherViewer.data.presentationV2.interactionScene?.participantRoles, first.presentationV2.interactionScene?.participantRoles);
   assert.deepEqual(firstOtherViewer.data.presentationV2.stableBoundary, first.presentationV2.stableBoundary);
   assert.ok(first.currentAction.options?.some((option) => option.providerId === "negation_card"), JSON.stringify(first.currentAction));
-  assert.equal(firstOtherViewer.data.currentAction.options, undefined, "Negation options remain private to the acting viewer");
+  assert.ok(firstOtherViewer.data.currentAction.options?.some((option) => option.providerId === "negation_card"), "each eligible viewer receives their own private response options");
+  assert.deepEqual(firstObserver.currentAction.options, [], "a viewer without a Negation provider receives Pass only");
   assert.equal(first.causalEnvelope.activeFrameId, authoritativePending(game.code).causal.frameId);
   assert.equal(first.causalEnvelope.frames.length, 1);
   assert.equal(first.causalEnvelope.frames[0].stage, "NEGATION");
   assert.equal(authoritativePending(game.code).causal.frameId, first.causalEnvelope.activeFrameId);
   assert.equal(authoritativePending(game.code).continuation.causal.frameId, first.causalEnvelope.activeFrameId);
+  const firstWindowId = first.currentAction.negationWindowId;
   const firstNegation = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "negation-projector-negation-first", preserveResponse: true });
   assert.equal(firstNegation.status, 200, JSON.stringify(firstNegation.data));
+  assert.equal((await state(game.code, alice.token)).data.pendingNegation.submitted, true);
+  await advanceNegationWindow(game.code, host.token, firstWindowId);
   const counter = await assertProjectionMatchesEngine(game.code, host.token);
   assert.equal(counter.currentAction.actorId, source.id);
   assert.deepEqual(counter.presentationSnapshot.reactionChain.rootCard, rootCard, "root identity remains bound across public Negation responses");
@@ -2203,9 +2215,10 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(JSON.stringify(counter.presentationSnapshot.reactionChain.publicEventLinks).includes(firstCard.id), false, "public event links never expose physical card IDs");
   const counterOtherViewer = await assertProjectionMatchesEngine(game.code, alice.token);
   assert.deepEqual(publicSnapshot(counterOtherViewer.presentationSnapshot), publicSnapshot(counter.presentationSnapshot), "submitted card history is viewer-equal");
-  assert.equal(counterOtherViewer.currentAction.options, undefined, "observer receives no local response options");
+  assert.ok(counterOtherViewer.currentAction.options?.some((option) => option.providerId === "negation_card"), "the prior winner may independently submit a counter intent in the new window");
   const counterObserver = await assertProjectionMatchesEngine(game.code, observer.token);
   assert.deepEqual(publicSnapshot(counterObserver.presentationSnapshot), publicSnapshot(counter.presentationSnapshot), "root and Negation event links are viewer-equal for an observer");
+  assert.deepEqual(counterObserver.currentAction.options, [], "a viewer without a Negation provider receives Pass only");
   assert.equal(counter.presentationV2.rootContext?.sourceId, root?.sourceId);
   assert.equal(counter.presentationV2.rootContext?.kind, root?.kind);
   assert.deepEqual(counter.presentationV2.rootContext?.originalTargetIds, root?.originalTargetIds);
@@ -2218,13 +2231,14 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(counter.presentationV2.interactionScene?.interactionId, first.presentationV2.interactionScene?.interactionId);
   assert.equal(counter.presentationV2.interactionScene?.rootFrameId, first.presentationV2.interactionScene?.rootFrameId);
   assert.equal(counter.presentationV2.interactionScene?.continuity.relation, "ROOT_FRAME");
-  assert.equal(counter.presentationV2.interactionScene?.decisionActorId, source.id);
-  assert.deepEqual(counter.presentationV2.interactionScene?.participantRoles, { sourceId: source.id, originalTargetIds: [target.id], activeTargetIds: [target.id], currentParticipantId: target.id, decisionActorId: source.id, activeResolverId: source.id, parentParticipantId: null, participantIds: [] });
+  assert.equal(counter.presentationV2.interactionScene?.decisionActorId, null);
+  assert.deepEqual(counter.presentationV2.interactionScene?.participantRoles, { sourceId: source.id, originalTargetIds: [target.id], activeTargetIds: [target.id], currentParticipantId: target.id, decisionActorId: null, activeResolverId: null, parentParticipantId: null, participantIds: [] });
   const counterPending = authoritativePending(game.code);
-  assert.equal(counterPending.actorId, source.id);
+  assert.equal(counterPending.kind, "negation_window");
+  assert.equal("actorId" in counterPending, false);
   assert.equal(counterPending.causal.frameId, counter.causalEnvelope.activeFrameId);
   assert.equal(counterPending.continuation.causal.frameId, counter.causalEnvelope.activeFrameId);
-  assert.equal(counter.causalEnvelope.frames[0].current.resolvingPlayerId, source.id);
+  assert.equal(counter.causalEnvelope.frames[0].current.resolvingPlayerId, null);
   assert.equal(counter.causalEnvelope.frames.length, 1);
   assert.equal(counter.causalEnvelope.frames[0].stage, "NEGATION");
   assert.equal(counter.causalEnvelope.frames[0].frameId, first.causalEnvelope.frames[0].frameId, "counter-Negation has no independently proven child frame");
@@ -2232,8 +2246,10 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(authoritativePending(game.code).continuation.causal.frameId, counter.causalEnvelope.activeFrameId);
   assert.equal(counter.presentationV2.parentContext, null, "engine exposes the negation effect descriptor but not a typed pending parent");
 
+  const secondWindowId = counter.currentAction.negationWindowId;
   const secondNegation = await requestAndSettle("respond", { code: game.code, token: host.token, cardId: sourceCounter.id, preserveResponse: true });
   assert.equal(secondNegation.status, 200, JSON.stringify(secondNegation.data));
+  await advanceNegationWindow(game.code, host.token, secondWindowId);
   const thirdCounter = await assertProjectionMatchesEngine(game.code, alice.token);
   assert.equal(thirdCounter.currentAction.actorId, target.id);
   assert.equal(thirdCounter.presentationSnapshot.reactionChain.nodes.length, 2);
@@ -2241,8 +2257,10 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(thirdCounter.presentationSnapshot.reactionChain.rootEffectState, "ACTIVE", "counter-Negation restores the root from server-owned continuation state");
   assert.equal(thirdCounter.presentationSnapshot.reactionChain.publicEventLinks.nodes.length, 2);
   assert.deepEqual(thirdCounter.presentationSnapshot.reactionChain.publicEventLinks.nodes.map(({ nodeId }) => nodeId), thirdCounter.presentationSnapshot.reactionChain.nodes.map(({ nodeId }) => nodeId));
+  const thirdWindowId = thirdCounter.currentAction.negationWindowId;
   const thirdNegation = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: secondCard.id, preserveResponse: true });
   assert.equal(thirdNegation.status, 200, JSON.stringify(thirdNegation.data));
+  await advanceNegationWindow(game.code, host.token, thirdWindowId);
   const fourthCounter = await assertProjectionMatchesEngine(game.code, host.token);
   const nodes = fourthCounter.presentationSnapshot.reactionChain.nodes;
   assert.equal(fourthCounter.currentAction.actorId, source.id);
@@ -2527,12 +2545,12 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.deepEqual(afterClose.presentationSnapshot.bumperHarvestSettlements, [settlement], "the exact public settlement survives causal cleanup");
 });
 
-test("FIX10 initial Negation skips ineligible seats without a fake blocker checkpoint", { timeout: 30_000 }, async () => {
+test("FIX10 shared Negation uses private viewer options and one stable public checkpoint", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [sourceMember, , blockerMember] = game.members;
   const [source, skipped, blocker, final] = game.room.players;
-  const drawTwo = card("DrawTwo", "fix10-initial-source");
-  const negation = card("Negation", "fix10-initial-blocker");
+  const drawTwo = card("DrawTwo", "fix10-shared-initial-source");
+  const negation = card("Negation", "fix10-shared-initial-blocker");
   setHand(source.id, [drawTwo], 4, 4);
   setHand(skipped.id, [], 4, 4);
   setHand(blocker.id, [negation], 4, 4);
@@ -2541,85 +2559,81 @@ test("FIX10 initial Negation skips ineligible seats without a fake blocker check
 
   const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: drawTwo.id });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const windowId = opened.data.room.currentAction.negationWindowId;
+  assert.ok(windowId);
   const view = (await state(game.code, blockerMember.token)).data;
   assert.equal(view.currentAction.actorId, blocker.id);
-  assert.equal(view.pendingNegation.actorId, blocker.id);
+  assert.equal(view.currentAction.negationWindowId, windowId);
+  assert.ok(view.currentAction.options.some((option) => option.providerId === "negation_card"));
+  assert.equal(view.pendingNegation.actorId, null);
+  assert.equal(view.actionPlayerId, null);
   assert.equal(view.causalEnvelope.frames.length, 1);
-  assert.equal(view.causalEnvelope.frames[0].current.resolvingPlayerId, blocker.id);
-  assert.equal(view.causalEnvelope.presentationRevision, 0, "initial creation and skipped-seat scan expose one meaningful checkpoint");
+  assert.equal(view.causalEnvelope.frames[0].current.resolvingPlayerId, null);
+  assert.equal(view.causalEnvelope.presentationRevision, 0);
   const pending = authoritativePending(game.code);
-  assert.equal(pending.actorId, blocker.id);
+  assert.equal(pending.kind, "negation_window");
+  assert.equal("actorId" in pending, false);
+  assert.deepEqual(pending.seatOrderPlayerIds, [source.id, skipped.id, blocker.id, final.id]);
   assert.equal(pending.causal.frameId, view.causalEnvelope.activeFrameId);
   assert.equal(pending.continuation.causal.frameId, view.causalEnvelope.activeFrameId);
 
   const armed = await request("start_response_timer", { code: game.code, token: blockerMember.token });
   assert.equal(armed.status, 200, JSON.stringify(armed.data));
-  assert.equal(armed.data.room.causalEnvelope.presentationRevision, view.causalEnvelope.presentationRevision, "arming the same actor does not create a semantic checkpoint");
+  assert.equal(armed.data.room.currentAction.deadline, view.currentAction.deadline);
+  assert.equal(armed.data.room.causalEnvelope.presentationRevision, view.causalEnvelope.presentationRevision);
 });
 
-test("FIX10 Negation decline skips an ineligible seat and advances one causal checkpoint", { timeout: 30_000 }, async () => {
+test("FIX10 a private Negation Pass stays locked until the shared deadline", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [sourceMember] = game.members;
-  const [source, skipped, blocker, final] = game.room.players;
-  const drawTwo = card("DrawTwo", "fix10-decline-source");
-  const sourceNegation = card("Negation", "fix10-decline-source-negation");
-  const blockerNegation = card("Negation", "fix10-decline-blocker");
+  const [source, , blocker] = game.room.players;
+  const drawTwo = card("DrawTwo", "fix10-shared-pass-source");
+  const sourceNegation = card("Negation", "fix10-shared-pass-source-negation");
+  const blockerNegation = card("Negation", "fix10-shared-pass-blocker");
   setHand(source.id, [drawTwo, sourceNegation], 4, 4);
-  setHand(skipped.id, [], 4, 4);
   setHand(blocker.id, [blockerNegation], 4, 4);
-  setHand(final.id, [], 4, 4);
   setTurn(game.code, source.seat);
 
   const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: drawTwo.id });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   const before = opened.data.room;
-  const beforeEnvelope = before.causalEnvelope;
-  assert.equal(before.currentAction.actorId, source.id);
-  const declined = await request("decline_response", { code: game.code, token: sourceMember.token });
-  assert.equal(declined.status, 200, JSON.stringify(declined.data));
-  const after = (await state(game.code, game.members[2].token)).data;
-  assert.equal(after.currentAction.actorId, blocker.id);
-  assert.equal(after.pendingNegation.actorId, blocker.id);
-  assert.equal(after.causalEnvelope.interactionId, beforeEnvelope.interactionId);
-  assert.equal(after.causalEnvelope.activeFrameId, beforeEnvelope.activeFrameId);
-  assert.equal(after.causalEnvelope.frames[0].current.resolvingPlayerId, blocker.id);
-  assert.notEqual(after.causalEnvelope.checkpoint.checkpointId, beforeEnvelope.checkpoint.checkpointId);
-  assert.equal(after.causalEnvelope.presentationRevision, beforeEnvelope.presentationRevision + 1);
+  const windowId = before.currentAction.negationWindowId;
+  const pass = await request("decline_response", { code: game.code, token: sourceMember.token });
+  assert.equal(pass.status, 200, JSON.stringify(pass.data));
+  assert.equal(pass.data.room.currentAction.negationWindowId, windowId);
+  assert.equal(pass.data.room.pendingNegation.submitted, true);
+  assert.equal(pass.data.room.causalEnvelope.checkpoint.checkpointId, before.causalEnvelope.checkpoint.checkpointId);
+  assert.equal(pass.data.room.causalEnvelope.frames[0].current.resolvingPlayerId, null);
+  assert.equal((await state(game.code, game.members[2].token)).data.currentAction.options[0].providerId, "negation_card");
+  assert.equal(pass.data.room.timeline.some((event) => event.card?.id === sourceNegation.id || event.card?.id === blockerNegation.id), false);
+
+  await advanceNegationWindow(game.code, sourceMember.token, windowId);
+  const after = (await state(game.code, sourceMember.token)).data;
+  assert.equal(after.phase, "play");
+  assert.equal(after.pendingNegation, null);
+  assert.equal(after.causalEnvelope, null);
+});
+
+test("FIX10 an expired shared Negation window settles without exposing a timed-out actor", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [sourceMember] = game.members;
+  const [source, , blocker] = game.room.players;
+  const drawTwo = card("DrawTwo", "fix10-shared-timeout-source");
+  setHand(source.id, [drawTwo], 4, 4);
+  setHand(blocker.id, [card("Negation", "fix10-shared-timeout-blocker")], 4, 4);
+  setTurn(game.code, source.seat);
+
+  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: drawTwo.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const before = opened.data.room;
+  const windowId = before.currentAction.negationWindowId;
   const pending = authoritativePending(game.code);
-  assert.equal(pending.actorId, blocker.id);
-  assert.equal(pending.causal.frameId, after.causalEnvelope.activeFrameId);
-  assert.equal(pending.continuation.causal.frameId, after.causalEnvelope.activeFrameId);
-  assert.notEqual(after.causalEnvelope.frames[0].current.resolvingPlayerId, skipped.id);
-});
-
-test("FIX10 Negation timeout skips an ineligible seat and advances one causal checkpoint", { timeout: 30_000 }, async () => {
-  const game = await createHumanGame();
-  const [sourceMember] = game.members;
-  const [source, skipped, blocker, final] = game.room.players;
-  const drawTwo = card("DrawTwo", "fix10-timeout-source");
-  const sourceNegation = card("Negation", "fix10-timeout-source-negation");
-  const blockerNegation = card("Negation", "fix10-timeout-blocker");
-  setHand(source.id, [drawTwo, sourceNegation], 4, 4);
-  setHand(skipped.id, [], 4, 4);
-  setHand(blocker.id, [blockerNegation], 4, 4);
-  setHand(final.id, [], 4, 4);
-  setTurn(game.code, source.seat);
-
-  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: drawTwo.id });
-  assert.equal(opened.status, 200, JSON.stringify(opened.data));
-  const before = opened.data.room;
-  sql(`UPDATE rooms SET pending_json=json_set(pending_json, '$.deadline', ${Date.now() - 1}) WHERE code=${quote(game.code)}`);
-  const timedOut = await request("advance_timers", { code: game.code, token: sourceMember.token });
-  assert.equal(timedOut.status, 200, JSON.stringify(timedOut.data));
-  const after = (await state(game.code, game.members[2].token)).data;
-  assert.equal(after.currentAction.actorId, blocker.id);
-  assert.equal(after.pendingNegation.actorId, blocker.id);
-  assert.equal(after.causalEnvelope.interactionId, before.causalEnvelope.interactionId);
-  assert.equal(after.causalEnvelope.activeFrameId, before.causalEnvelope.activeFrameId);
-  assert.equal(after.causalEnvelope.frames[0].current.resolvingPlayerId, blocker.id);
-  assert.equal(after.causalEnvelope.presentationRevision, before.causalEnvelope.presentationRevision + 1);
-  assert.equal(authoritativePending(game.code).continuation.causal.frameId, after.causalEnvelope.activeFrameId);
-  assert.notEqual(after.causalEnvelope.frames[0].current.resolvingPlayerId, skipped.id);
+  assert.equal(pending.deadline - pending.openedAt, 8_000);
+  await advanceNegationWindow(game.code, sourceMember.token, windowId);
+  const after = (await state(game.code, sourceMember.token)).data;
+  assert.equal(after.phase, "play");
+  assert.equal(after.pendingNegation, null);
+  assert.equal(after.log.some((entry) => /passes the Negation|Checking|Skipping|timed out/.test(entry)), false);
 });
 
 test("engine-backed Judgement replacement exposes reveal and resume evidence", { timeout: 30_000 }, async () => {

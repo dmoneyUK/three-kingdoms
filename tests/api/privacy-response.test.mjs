@@ -1,16 +1,28 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
 import {
-  assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
+  advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
 
-test("Negation skips ineligible seats privately and keeps the public wait generic", { timeout: 30_000 }, async () => {
+test("shared Negation windows keep submissions private and expose only each viewer's legal response", { timeout: 60_000 }, async () => {
   const nobody = await createHumanGame(); const [nobodySourceMember] = nobody.members; const [nobodySource, ...nobodyOthers] = nobody.room.players; const drawTwo = card("DrawTwo", "privacy-negation");
   setHand(nobodySource.id, [drawTwo], 4, 4); for (const player of nobodyOthers) setHand(player.id, [], 4, 4); setTurn(nobody.code, nobodySource.seat);
   const settled = await requestAndSettle("play_card", { code: nobody.code, token: nobodySourceMember.token, cardId: drawTwo.id, preserveResponse: true });
-  assert.equal(settled.status, 200); assert.equal(settled.data.room.pendingNegation, null); assert.equal(settled.data.room.phase, "play");
-  assert.ok(settled.data.room.log.some((entry) => entry.includes("No Negation responses remain")));
-  assert.equal(settled.data.room.log.some((entry) => /passes the Negation|Checking|Skipping/.test(entry)), false);
+  assert.equal(settled.status, 200); assert.equal(settled.data.room.phase, "response");
+  const emptyWindowId = settled.data.room.currentAction.negationWindowId;
+  assert.ok(emptyWindowId);
+  assert.equal(settled.data.room.currentAction.deadline - settled.data.room.responseCountdownVisibleAt, 8_000);
+  for (const member of nobody.members) {
+    const view = (await state(nobody.code, member.token)).data;
+    assert.equal(view.currentAction.negationWindowId, emptyWindowId);
+    assert.equal(view.currentAction.options?.length ?? 0, 0, "an ineligible seat receives no fictitious Negation option");
+    assert.equal(view.pendingNegation.actorId, null);
+  }
+  await advanceNegationWindow(nobody.code, nobodySourceMember.token, emptyWindowId);
+  const nobodySettled = (await state(nobody.code, nobodySourceMember.token)).data;
+  assert.equal(nobodySettled.pendingNegation, null); assert.equal(nobodySettled.phase, "play");
+  assert.ok(nobodySettled.log.some((entry) => entry.includes("No Negation responses remain")));
+  assert.equal(nobodySettled.log.some((entry) => /passes the Negation|Checking|Skipping/.test(entry)), false);
 
   async function openWithNegation(holderIndex) {
     const game = await createHumanGame(); const sourceMember = game.members[0]; const holderMember = game.members[holderIndex]; const otherMember = game.members[holderIndex === 1 ? 2 : 1]; const source = game.room.players[0]; const holder = game.room.players[holderIndex]; const root = card("DrawTwo", `privacy-holder-${holderIndex}`); const negation = card("Negation", `privacy-holder-${holderIndex}`);
@@ -23,14 +35,25 @@ test("Negation skips ineligible seats privately and keeps the public wait generi
   assert.equal(targetView.currentAction.requirement, "negate"); assert.ok(targetView.currentAction.options.some((option) => option.providerId === "negation_card")); assert.equal(targetView.isMyAction, true);
   assert.equal(publicTargetView.actionPlayerId, null); assert.equal(publicTargetView.pendingNegation.actorId, null); assert.equal(publicTargetView.actionReason, "Waiting for Negation..."); assert.equal(publicTargetView.currentAction.options?.length ?? 0, 0);
   assert.equal(targetOtherView.actionPlayerId, null); assert.equal(targetOtherView.pendingNegation.actorId, null); assert.equal(targetOtherView.actionReason, "Waiting for Negation...");
-  const targetPassed = await requestAndSettle("decline_response", { code: target.game.code, token: target.holderMember.token, preserveResponse: true }); assert.equal(targetPassed.status, 200); assert.equal(targetPassed.data.room.pendingNegation, null);
+  const targetWindowId = targetView.currentAction.negationWindowId;
+  const targetPassed = await requestAndSettle("decline_response", { code: target.game.code, token: target.holderMember.token, preserveResponse: true }); assert.equal(targetPassed.status, 200);
+  const targetAfterPass = (await state(target.game.code, target.holderMember.token)).data;
+  assert.equal(targetAfterPass.currentAction.negationWindowId, targetWindowId, "one Pass does not close the common window early");
+  assert.equal(targetAfterPass.pendingNegation.submitted, true);
+  assert.deepEqual(targetAfterPass.currentAction.options, []);
+  assert.equal((await state(target.game.code, target.sourceMember.token)).data.timeline.some((event) => event.card?.id === target.negation.id), false, "a private Pass or intent is not a public card event");
+  await advanceNegationWindow(target.game.code, target.sourceMember.token, targetWindowId);
+  assert.equal((await state(target.game.code, target.sourceMember.token)).data.pendingNegation, null);
 
   const nonTarget = await openWithNegation(2); const nonTargetView = (await state(nonTarget.game.code, nonTarget.holderMember.token)).data;
   assert.equal(nonTargetView.currentAction.requirement, "negate"); assert.ok(nonTargetView.currentAction.options.some((option) => option.providerId === "negation_card")); assert.equal(nonTargetView.isMyAction, true);
+  const nonTargetWindowId = nonTargetView.currentAction.negationWindowId;
   assert.equal((await requestAndSettle("decline_response", { code: nonTarget.game.code, token: nonTarget.holderMember.token, preserveResponse: true })).status, 200);
+  assert.equal((await state(nonTarget.game.code, nonTarget.holderMember.token)).data.currentAction.negationWindowId, nonTargetWindowId);
+  await advanceNegationWindow(nonTarget.game.code, nonTarget.sourceMember.token, nonTargetWindowId);
 });
 
-test("an eligible Negation responder times out as a silent Pass", async () => {
+test("all viewers share one immutable Negation deadline, including after a private response timer request", async () => {
   const game = await createHumanGame(); const [sourceMember, targetMember] = game.members;
   const [source, target] = game.room.players;
   const drawTwo = card("DrawTwo", "negation-timeout");
@@ -38,16 +61,21 @@ test("an eligible Negation responder times out as a silent Pass", async () => {
   setTurn(game.code, source.seat);
 
   const opened = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: drawTwo.id, preserveResponse: true });
-  assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation.actorId, null, "the source view does not reveal the waiting responder");
+  assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation.actorId, null, "the public view does not reveal an eligible responder");
+  const windowId = opened.data.room.currentAction.negationWindowId;
+  const deadline = opened.data.room.currentAction.deadline;
   const targetView = (await state(game.code, targetMember.token)).data;
-  assert.equal(targetView.currentAction.requirement, "negate"); assert.ok(targetView.currentAction.deadline > Date.now());
-
-  const pending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
-  pending.deadline = Date.now() - 1;
-  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(pending))} WHERE code=${quote(game.code)}`);
-  const advanced = await requestAndSettle("advance_timers", { code: game.code, token: sourceMember.token, preserveResponse: true });
-  assert.equal(advanced.status, 200); assert.equal(advanced.data.room.pendingNegation, null); assert.equal(advanced.data.room.phase, "play");
-  assert.equal(advanced.data.room.log.some((entry) => /passes the Negation|Checking|Skipping|timed out/.test(entry)), false);
+  assert.equal(targetView.currentAction.requirement, "negate"); assert.ok(deadline > Date.now());
+  assert.equal(targetView.currentAction.negationWindowId, windowId);
+  assert.equal(targetView.currentAction.deadline, deadline);
+  const armed = await request("start_response_timer", { code: game.code, token: targetMember.token });
+  assert.equal(armed.status, 200); assert.equal(armed.data.room.currentAction.deadline, deadline);
+  const early = await request("advance_timers", { code: game.code, token: sourceMember.token });
+  assert.equal(early.status, 200); assert.equal(early.data.room.currentAction.negationWindowId, windowId);
+  await advanceNegationWindow(game.code, sourceMember.token, windowId);
+  const advanced = (await state(game.code, sourceMember.token)).data;
+  assert.equal(advanced.pendingNegation, null); assert.equal(advanced.phase, "play");
+  assert.equal(advanced.log.some((entry) => /passes the Negation|Checking|Skipping|timed out/.test(entry)), false);
 });
 
 test("Dying rescue exposes only real Peach blockers and skips empty seats", { timeout: 30_000 }, async () => {
@@ -70,12 +98,16 @@ test("Dying rescue exposes only real Peach blockers and skips empty seats", { ti
   assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(holder.source.id)}`)).map((item) => item.id), ["peach-peach-holder"]);
 });
 
-test("AOE Negation skips empty seats before the target response", { timeout: 30_000 }, async () => {
+test("AOE uses one shared Negation window before opening its ordinary target response", { timeout: 30_000 }, async () => {
   for (const [kind, required] of [["RainingArrows", "dodge"], ["BarbarianInvasion", "attack"]]) {
     const game = await createHumanGame(); const [sourceMember, firstMember] = game.members; const [source, first, second, last] = game.room.players;
     const group = card(kind, `privacy-${kind}`); setHand(source.id, [group], 4, 4); setHand(first.id, [], 4, 4); setHand(second.id, [], 4, 4); setHand(last.id, [], 4, 4); setTurn(game.code, source.seat);
     const opened = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: group.id, preserveResponse: true });
-    assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation, null);
+    assert.equal(opened.status, 200);
+    const windowId = opened.data.room.currentAction.negationWindowId;
+    assert.ok(windowId);
+    assert.equal(opened.data.room.pendingNegation.actorId, null);
+    await advanceNegationWindow(game.code, sourceMember.token, windowId);
     const firstResponse = (await state(game.code, firstMember.token)).data;
     assert.equal(firstResponse.currentAction.requirement, required); assert.deepEqual(firstResponse.currentAction.options, []); assert.deepEqual(firstResponse.currentAction.legalActions, ["decline_response"]); assert.equal(firstResponse.pendingNegation, null);
   }

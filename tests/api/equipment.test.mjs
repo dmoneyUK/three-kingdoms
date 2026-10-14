@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
 import {
-  assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
+  advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestForViewer, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
 
 test("Raining Arrows and Barbarian Invasion resume through Xiahou Dun Stauchness", { timeout: 30_000 }, async () => {
@@ -105,7 +105,7 @@ test("host test flow exhausts each AOE Negation window before the target respons
   }
 });
 
-test("AOE counter rounds include their own Negation player last and resume the affected target", async () => {
+test("AOE counter rounds use fresh shared windows and resume the affected target", async () => {
   const created = await createTestGame(); const { token, room } = created.data;
   const [me, p1, p2, p3] = room.players;
   for (const p of room.players) setHand(p.id, [card("Negation", `self-${p.seat}`), card("Attack", `self-${p.seat}`)], 3, 3);
@@ -113,25 +113,53 @@ test("AOE counter rounds include their own Negation player last and resume the a
   setHand(p1.id, [card("Negation", "self-1"), card("Attack", "self-1")], 3, 3);
   setHand(p2.id, [card("Negation", "self-again"), card("Attack", "self-2")], 3, 3);
   setTurn(room.code, me.seat);
-  const act = (action, extra = {}) => requestAndSettle(action, { code: room.code, token, ...extra });
-  let result = await act("play_card", { cardId: "barbarianinvasion-self-root" });
-  assert.equal(result.data.room.actionPlayerId, me.id);
-  assert.equal(result.data.room.pendingNegation.deadline - result.data.room.responseCountdownVisibleAt, 60_000, "an eligible Negation response starts its server-owned 60-second countdown immediately");
-  await act("decline_response");
-  result = await act("respond", { cardId: "negation-self-1" });
-  assert.equal(result.data.room.actionPlayerId, p2.id); assert.equal(result.data.room.pendingNegation.chainDepth, 1); assert.equal(result.data.room.pendingNegation.negated, true); assert.equal(result.data.room.pendingNegation.latestNegationPlayerId, p1.id);
-  result = await act("respond", { cardId: "negation-self-again" });
-  assert.equal(result.data.room.pendingNegation.chainDepth, 2); assert.equal(result.data.room.pendingNegation.negated, false); assert.equal(result.data.room.pendingNegation.latestNegationPlayerId, p2.id);
-  for (const p of [p3, me]) {
-    assert.equal(result.data.room.actionPlayerId, p.id);
-    assert.equal(result.data.room.pendingNegation.responseTarget, `${p2.name}'s Negation`);
-    result = await act("decline_response");
+  const opened = await requestAndSettle("play_card", { code: room.code, token, cardId: "barbarianinvasion-self-root" });
+  assert.equal(opened.status, 200);
+  const firstWindowId = opened.data.room.currentAction.negationWindowId;
+  assert.ok(firstWindowId);
+  assert.equal(opened.data.room.actionPlayerId, null);
+  assert.equal(opened.data.room.currentAction.deadline - opened.data.room.responseCountdownVisibleAt, 8_000);
+  assert.equal(opened.data.room.pendingNegation.effectTargetId, p1.id);
+
+  for (const [player, action, cardId] of [
+    [me, "decline_response", undefined],
+    [p1, "respond", "negation-self-1"],
+  ]) {
+    const submitted = await requestForViewer(action, { code: room.code, token, ...(cardId ? { cardId } : {}), ...(action === "respond" ? { providerId: "negation_card" } : {}) }, player.id);
+    assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
   }
-  assert.equal(result.data.room.pendingNegation, null);
-  assert.equal(result.data.room.currentAction.actorId, p1.id);
-  assert.equal(result.data.room.pendingGroup.requiredKind, "Attack");
-  result = await act("respond", { cardId: "attack-self-1" });
-  assert.equal(result.data.room.pendingNegation.effectTargetId, p2.id);
+  await advanceNegationWindow(room.code, token, firstWindowId);
+  let result = await state(room.code, token, false, me.id);
+  assert.equal(result.data.pendingNegation.latestNegationPlayerId, p1.id);
+  assert.equal(result.data.pendingNegation.chainDepth, 1);
+  assert.equal(result.data.pendingNegation.negated, true);
+
+  const secondWindowId = result.data.currentAction.negationWindowId;
+  assert.ok(secondWindowId);
+  const secondNegation = await requestForViewer("respond", { code: room.code, token, providerId: "negation_card", cardId: "negation-self-again" }, p2.id);
+  assert.equal(secondNegation.status, 200, JSON.stringify(secondNegation.data));
+  await advanceNegationWindow(room.code, token, secondWindowId);
+  result = await state(room.code, token, false, p2.id);
+  assert.equal(result.data.pendingNegation.latestNegationPlayerId, p2.id);
+  assert.equal(result.data.pendingNegation.chainDepth, 2);
+  assert.equal(result.data.pendingNegation.negated, false);
+
+  const thirdWindowId = result.data.currentAction.negationWindowId;
+  assert.ok(thirdWindowId);
+  for (const player of [p3, me]) {
+    const passed = await requestForViewer("decline_response", { code: room.code, token }, player.id);
+    assert.equal(passed.status, 200, JSON.stringify(passed.data));
+    assert.equal(passed.data.room.currentAction.negationWindowId, thirdWindowId);
+    assert.equal(passed.data.room.pendingNegation.responseTarget, `${p2.name}'s Negation`);
+  }
+  await advanceNegationWindow(room.code, token, thirdWindowId);
+  result = await state(room.code, token, false, p1.id);
+  assert.equal(result.data.pendingNegation, null);
+  assert.equal(result.data.currentAction.actorId, p1.id);
+  assert.equal(result.data.pendingGroup.requiredKind, "Attack");
+  const answer = await requestForViewer("respond", { code: room.code, token, cardId: "attack-self-1" }, p1.id);
+  assert.equal(answer.status, 200, JSON.stringify(answer.data));
+  assert.equal(answer.data.room.pendingNegation.effectTargetId, p2.id);
 });
 
 test("AOE Attack capability preserves legal conversions and auto-damages only without a response", async () => {

@@ -88,6 +88,20 @@ export type NegationHistoryRecord = {
   kind: "NEGATION_CARD";
 };
 export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; /** Public root identity from the actual server-owned effective Stratagem card; legacy continuations may omit it. */ rootCardKind?: CardKind; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string; negationHistory?: NegationHistoryRecord[] } & CausalFields;
+/** One durable, shared Negation window. Private submissions live in D1 rows keyed by window/player, never in public Pending. */
+export type NegationWindowPending = CausalFields & {
+  kind: "negation_window";
+  windowId: string;
+  openedAt: number;
+  deadline: number;
+  startSeat: number;
+  /** Canonical living-seat order captured when this window opens; server-only. */
+  seatOrderPlayerIds: string[];
+  continuation: NegationContinuation;
+  readyAfterEventId?: string;
+  /** Lease protects deadline settlement and allows recovery after a worker restart. */
+  settlement?: { state: "CLAIMED"; claimId: string; leaseUntil: number };
+};
 export type ResponseContinuation = AttackContinuation | InfluencingAttackContinuation | GroupContinuation | DuelContinuation | NegationContinuation | BorrowedSwordAttackContinuation;
 
 /**
@@ -320,7 +334,7 @@ export type TriggerPending = CausalFields & {
 };
 export type DyingResumeEffect = { kind: "draw_cards"; playerId: string; amount: number; label: string };
 export type DyingPending = CausalFields & { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupResponsePending; resumeTrigger?: DamageSufferedTriggerContinuation; resumeEffect?: DyingResumeEffect; origin?: AttackOrigin; reason: string };
-export type Pending = HarvestPending | TargetCardPending | BorrowedSwordPending | CardDistributionPending | DeckReorderPending | ResponsePending | TriggerPending | DyingPending;
+export type Pending = HarvestPending | TargetCardPending | BorrowedSwordPending | CardDistributionPending | DeckReorderPending | ResponsePending | NegationWindowPending | TriggerPending | DyingPending;
 
 export function asTriggerPending(pending: Pending | null | undefined): TriggerPending | null {
   return pending?.kind === "trigger" ? pending : null;
