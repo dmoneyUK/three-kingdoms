@@ -11,7 +11,7 @@ async function seed(request, dodge) {
       phase: "play",
       turnSeat: 0,
       players: [
-        { name: "ATTACKER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [attack] },
+        { name: "ATTACKER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [attack, card("Negation", "private-attackers-hidden-negation", "♦")] },
         { name: "DEFENDER", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: responseCard ? [responseCard] : [] },
         { name: "THIRD PLAYER", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
         { name: "FOURTH PLAYER", role: "Renegade", hero: "simayi", hp: 4, maxHp: 4, hand: [] },
@@ -116,22 +116,69 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   expect(await defenderDisplay.getAttribute("data-public-card-root-event-id")).toBeTruthy();
   const attackCardJourney = defenderDisplay.locator(`[data-public-card-journey-card-id="${room.attack.id}"]`);
   await expect(attackCardJourney).toHaveAttribute("data-public-card-journey-phase", "reveal");
+  await expect(attackCardJourney).toBeDisabled();
+  await expect(attackCardJourney).toHaveAttribute("data-public-card-inspectable", "false");
   await page.waitForFunction((cardId) => window.__publicCardPhaseLog?.some((entry) => entry.cardId === cardId && entry.phase === "move"), room.attack.id, { timeout: 8_000 });
   const phaseTiming = await page.evaluate((cardId) => {
     const entries = window.__publicCardPhaseLog.filter((entry) => entry.cardId === cardId);
     return { reveal: entries.find((entry) => entry.phase === "reveal"), move: entries.find((entry) => entry.phase === "move") };
   }, room.attack.id);
-  expect(phaseTiming.reveal).toMatchObject({ width: 60, height: 90 });
+  expect(phaseTiming.reveal).toMatchObject({ width: 90, height: 135 });
   expect(phaseTiming.move.at - phaseTiming.reveal.at).toBeGreaterThanOrEqual(3_800);
   expect(phaseTiming.move.at - phaseTiming.reveal.at).toBeLessThan(4_800);
 
   const defenderDock = page.locator(`.local-player-dock[data-player-anchor="${defender.id}"]`);
   const dodge = defenderDock.locator(`[data-hand-card-id="${room.responseCard.id}"] .game-card`);
   await expect(dodge).toBeEnabled({ timeout: 20_000 });
+  const skip = defenderDock.locator('[data-action-slot="decline"] button');
+  await expect(skip).toBeVisible();
+  await expect(skip).toBeEnabled();
+  await expect(attackCardJourney).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 8_000 });
+  await expect(attackCardJourney).toBeEnabled();
+  await expect(attackCardJourney).toHaveAttribute("data-public-card-inspectable", "true");
+  await attackCardJourney.click();
+  const details = page.getByRole("dialog");
+  await expect(details).toHaveAttribute("data-card-details-context", "public-zone");
+  await expect(details).toHaveAttribute("data-card-details-card-id", room.attack.id);
+  await expect(details.getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
+  await expect(details.getByRole("textbox", { name: "Canonical rules for Attack" })).toHaveValue(/.+/);
+  await expect(details.locator(".card-details-illustration .played-card")).toBeVisible();
+  await expect(page.locator(".card-info-backdrop")).toHaveCount(0);
+  await expect(dodge).toBeVisible();
+  await expect(dodge).toBeEnabled();
+  await expect(skip).toBeVisible();
+  await expect(skip).toBeEnabled();
+  expect(await page.locator("body").innerHTML()).not.toContain("private-attackers-hidden-negation");
+  const detailsGeometry = await details.evaluate((element) => {
+    const panel = element.getBoundingClientRect();
+    const stageElement = element.parentElement;
+    const stage = stageElement.getBoundingClientRect();
+    const table = element.closest(".play-table").getBoundingClientRect();
+    return {
+      panel: { left: panel.left, right: panel.right, top: panel.top, bottom: panel.bottom },
+      stage: { left: stage.left, right: stage.right, top: stage.top, bottom: stage.bottom },
+      table: { left: table.left, right: table.right },
+      stagePointerEvents: getComputedStyle(stageElement).pointerEvents,
+      panelPointerEvents: getComputedStyle(element).pointerEvents,
+    };
+  });
+  expect(detailsGeometry.panel.left).toBeGreaterThanOrEqual(detailsGeometry.stage.left - 1);
+  expect(detailsGeometry.panel.right).toBeLessThanOrEqual(detailsGeometry.stage.right + 1);
+  expect(detailsGeometry.panel.top).toBeGreaterThanOrEqual(detailsGeometry.stage.top - 1);
+  expect(detailsGeometry.panel.bottom).toBeLessThanOrEqual(detailsGeometry.stage.bottom + 1);
+  expect(detailsGeometry.panel.left).toBeGreaterThanOrEqual(detailsGeometry.table.left - 1);
+  expect(detailsGeometry.panel.right).toBeLessThanOrEqual(detailsGeometry.table.right + 1);
+  expect(detailsGeometry.stagePointerEvents).toBe("none");
+  expect(detailsGeometry.panelPointerEvents).toBe("auto");
   await dodge.click();
+  await expect(dodge).toHaveClass(/selected/);
   const confirm = defenderDock.locator('[data-action-slot="primary"] button.primary');
   await expect(confirm).toHaveText("Confirm");
   await expect(confirm).toBeEnabled();
+  await expect(details).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(details).toHaveCount(0);
+  await expect(attackCardJourney).toBeFocused();
   const dodgeSubmission = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
     && response.request().method() === "POST"
     && response.request().postDataJSON()?.action === "respond");
@@ -143,6 +190,19 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   });
   await expect(defenderDisplay).toHaveAttribute("data-public-card-settlement-outcome", "ATTACK_BLOCKED_BY_DODGE", { timeout: 20_000 });
   await expect(defenderDisplay).toContainText("ATTACK BLOCKED BY DODGE");
+  const dodgeCardJourney = defenderDisplay.locator(`[data-public-card-journey-card-id="${room.responseCard.id}"]`);
+  await expect(dodgeCardJourney).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });
+  await expect(dodgeCardJourney).toBeEnabled();
+  await dodgeCardJourney.click();
+  await expect(details).toHaveAttribute("data-card-details-card-id", room.responseCard.id);
+  await expect(details.getByRole("heading", { name: "Dodge", exact: true })).toBeVisible();
+  await expect(details.getByRole("textbox", { name: "Canonical rules for Dodge" })).toHaveValue(/.+/);
+  await attackCardJourney.click();
+  await expect(details).toHaveAttribute("data-card-details-card-id", room.attack.id);
+  await expect(details.getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
+  await details.getByRole("button", { name: "Close card details" }).click();
+  await expect(details).toHaveCount(0);
+  await expect(attackCardJourney).toBeFocused();
 
   const settled = await dodgeResponse.json();
   expect(settled.room.players.find((player) => player.id === defender.id)?.hp).toBe(4);

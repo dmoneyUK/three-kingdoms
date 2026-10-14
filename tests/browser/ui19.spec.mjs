@@ -97,6 +97,7 @@ const HAND_SIZE_MATRIX = [
   { width: 1440, handSizes: [30] },
   { width: 650, handSizes: [30] },
   { width: 480, handSizes: [5, 25] },
+  { width: 390, handSizes: [5] },
   { width: 360, handSizes: [25, 30] },
   { width: 320, handSizes: [25, 30] },
 ];
@@ -161,10 +162,39 @@ for (const { width, handSizes } of HAND_SIZE_MATRIX) {
         });
       }
       await last.locator(".card-info-button").click();
-      await expect(page.getByRole("dialog").getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
-      await expect(page.getByText("PRIVATE CARD INFORMATION", { exact: true })).toBeVisible();
-      await expect(page.getByText("Only you can see this explanation.", { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Close card explanation" }).click();
+      const details = page.getByRole("dialog");
+      await expect(details.getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
+      await expect(details.getByRole("textbox", { name: "Canonical rules for Attack" })).toHaveValue(/.+/);
+      await expect(page.getByText("PRIVATE TO YOU", { exact: true })).toBeVisible();
+      await expect(details.locator(".card-details-illustration .played-card")).toBeVisible();
+      await expect(details).toHaveAttribute("data-card-details-context", "private-hand");
+      expect(await details.evaluate((element) => element.getAttribute("aria-modal"))).not.toBe("true");
+      await expect(page.locator(".card-info-backdrop")).toHaveCount(0);
+      const detailsGeometry = await details.evaluate((element) => {
+        const panel = element.getBoundingClientRect();
+        const stageElement = element.parentElement;
+        const stage = stageElement.getBoundingClientRect();
+        return {
+          panel: { left: panel.left, right: panel.right, top: panel.top, bottom: panel.bottom },
+          stage: { left: stage.left, right: stage.right, top: stage.top, bottom: stage.bottom },
+          stagePointerEvents: getComputedStyle(stageElement).pointerEvents,
+          panelPointerEvents: getComputedStyle(element).pointerEvents,
+        };
+      });
+      expect(detailsGeometry.panel.left).toBeGreaterThanOrEqual(detailsGeometry.stage.left - 1);
+      expect(detailsGeometry.panel.right).toBeLessThanOrEqual(detailsGeometry.stage.right + 1);
+      expect(detailsGeometry.panel.top).toBeGreaterThanOrEqual(detailsGeometry.stage.top - 1);
+      expect(detailsGeometry.panel.bottom).toBeLessThanOrEqual(detailsGeometry.stage.bottom + 1);
+      expect(detailsGeometry.stagePointerEvents).toBe("none");
+      expect(detailsGeometry.panelPointerEvents).toBe("auto");
+      const closeBounds = await details.getByRole("button", { name: "Close card details" }).boundingBox();
+      expect(closeBounds.width).toBeGreaterThanOrEqual(44);
+      expect(closeBounds.height).toBeGreaterThanOrEqual(44);
+      await page.keyboard.press("Escape");
+      await expect(details).toHaveCount(0);
+      await expect(last.locator(".card-info-button")).toBeFocused();
+      await expect(last.locator(".game-card")).toHaveClass(/selected/);
+      expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
       // The transparent space reserved for lifted cards must not steal skill hits.
       expect(await page.locator(".hero-skill-button").first().evaluate((button) => {
         const r = button.getBoundingClientRect();
@@ -227,6 +257,28 @@ test("UX2.0VIS-09B tapping a clipped edge reveals that same physical card", asyn
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 });
 
+test("UX2-10.6 UI-1 own equipped-card details do not change a skill selection", async ({ page }) => {
+  await loadFixture(page, { state: "local-equipment-target-card", width: 390, height: 844 });
+  const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
+  const equipment = dock.locator('[data-equipment-id="browser-local-equipment-eligible"]');
+  const detailsTrigger = equipment.locator(".zone-info-button");
+  await expect(equipment).toBeVisible();
+  await expect(detailsTrigger).toBeVisible();
+  await detailsTrigger.click();
+
+  const details = page.getByRole("dialog");
+  await expect(details).toHaveAttribute("data-card-details-context", "public-zone");
+  await expect(details).toHaveAttribute("data-card-details-card-id", "browser-local-equipment-eligible");
+  await expect(details.getByRole("heading", { name: "Nio Shield", exact: true })).toBeVisible();
+  await expect(details.locator(".card-details-illustration .played-card")).toBeVisible();
+  await expect(equipment).not.toHaveClass(/selected-cost/);
+  expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action !== "start_response_timer"))).toEqual([]);
+
+  await page.keyboard.press("Escape");
+  await expect(details).toHaveCount(0);
+  await expect(detailsTrigger).toBeFocused();
+});
+
 test.describe("UX2.0VIS-09B native touch navigation", () => {
   test.use({ hasTouch: true });
   for (const width of [320, 360, 480, 650]) {
@@ -280,7 +332,13 @@ test.describe("UX2.0VIS-09B native touch navigation", () => {
       const selected = rail.locator(`[data-hand-card-id="${tapTarget.id}"]`);
       await expect(selected.locator(".game-card")).toHaveClass(/selected/);
       await selected.locator(".card-info-button").tap();
-      await expect(page.getByRole("dialog").getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
+      const details = page.getByRole("dialog");
+      await expect(details.getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
+      await expect(details.getByRole("textbox", { name: "Canonical rules for Attack" })).toHaveValue(/.+/);
+      await expect(details.locator(".card-details-illustration .played-card")).toBeVisible();
+      await expect(details).toHaveAttribute("data-card-details-context", "private-hand");
+      await expect(page.locator(".card-info-backdrop")).toHaveCount(0);
+      await expect(selected.locator(".game-card")).toHaveClass(/selected/);
       expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
     });
   }

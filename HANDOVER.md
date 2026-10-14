@@ -2,14 +2,18 @@
 
 Branch: `ux-v2`
 
-Latest reviewed design: `docs/UX2-refine.md`, blob `aab1a8f47a2b7e91107d669b6951e5fef13efe30`. Progress markers only; design requirements are unchanged.
+Latest reviewed design: `docs/UX2-refine.md`, blob `6630d8385ee2327a066935cbc5eb185cc2d98ac5`. Design requirements remain unchanged; progress markers only.
 
 ## Latest result
 
-- §9.5 N3 verification delivered in `ecd3acfe48c8bd142e0e96b17f6a9e363bd02411`. Real Worker/D1 browser checks passed 3/3 across 390×844, 440×894 and 480×900; no post-commit reveal delay defect reproduced, so no production source change was justified.
-- Focused command: `npx playwright test --config tests/browser/playwright.config.mjs tests/browser/negation-immediate-public-reveal-real-gameplay.spec.mjs --workers=1` — 3 passed. Early winner/counter reveal painted 34.6–40.8ms after the authoritative action response at 390px, 22.7ms at 440px and 24ms at 480px; the 440px card remained 90×135 at 3.5s. Deadline settlement began +1.8ms/+1.7ms after the 8s deadline and painted in 14.7ms/20.5ms action-response time plus 22.7ms/24ms to first card paint.
-- Exact-SHA Actions run [`38631794199`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38631794199) for `ecd3acfe48c8bd142e0e96b17f6a9e363bd02411`: lint/fast tests, API tests, browser startup/room smoke and deploy all passed. Production `/api/health`: HTTP 200, `{"ok":true,"worker":"available"}`.
+- §9.5 N3 verification delivered at `ecd3acfe48c8bd142e0e96b17f6a9e363bd02411`; focused Worker/D1 checks passed at 390×844, 440×894 and 480×900. Exact-SHA Actions run [38631794199](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38631794199) passed lint/fast, API, browser startup/room smoke and deploy; production `/api/health` returned HTTP 200 with the Worker available.
+- User authorized continuous implementation through the design queue without waiting between tasks. Reviewer acceptance remains pending and will not be claimed by the Coding Agent.
+- UI-1 implementation is in the worktree. It replaces the card-information backdrop with one illustrated, canonical-rules non-modal preview, enables only parked proof-backed public CardFaces, preserves private Hand scope, restores focus, and leaves Hand selection and legal actions intact.
+- Focused local checks: `NODE_OPTIONS=--max-old-space-size=4096 npm run build` passed; 5 selected Playwright tests passed, including real Worker/D1 Attack→Dodge at 440×894 and UI fixture geometry at 390px/480px; targeted ESLint had 0 errors. Existing hook-dependency warnings remain in `app/page.tsx` (3) and `app/public-card-display.tsx` (7). `git diff --check` passed.
+- Pre-commit CI gate: `origin/ux-v2` is `32c0497d89fd259a28c0bdd2603161dfba4bf3a4`. The two commits after code SHA `ecd3acfe48c8bd142e0e96b17f6a9e363bd02411` change only Markdown and are excluded by workflow `paths-ignore`; latest code-bearing run [38631794199](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38631794199) has all four jobs green. UI-1 push CI is pending.
 
-## Current task — Wait for user/reviewer acceptance
+## Current task — UX2-10.6-UI-1-CARD-DETAILS
 
-§9.5 N0–N3 code delivery is complete; acceptance remains pending. The user is checking §8.7 on a phone; §10.5.3 phone acceptance is also pending. Wait for the user/reviewer to report acceptance or concrete changes. Do not start §10.2–§10.4 or §11 UX3 before the acceptance gate closes.
+Implement §10.6.1 UI-1 (U2 + U5) only: replace the blocking Card Details backdrop with one illustrated, canonical-rules, stage-bound non-modal preview; allow inspection only from own viewer-private Hand/Equipment controls and genuinely public settled/parked CardFace journeys. Moving or revealing public cards remain non-interactive. Preserve accepted opponent Inspector, legal actions, hidden-card privacy, and all gameplay behavior. Add focused browser coverage for viewer-private details, parked public card details, safe geometry, dismissal/focus restoration, direct card switching where proven, and unchanged game actions.
+
+After focused validation, update §10.6 with a progress-only “delivered; awaiting acceptance” marker, record exact SHA/CI/deploy status here, commit and push only task files, then review the latest remote design and advance to the next single bounded task. Do not wait for acceptance between authorized tasks; do not claim Reviewer acceptance. Stop this task after its delivery evidence is recorded.

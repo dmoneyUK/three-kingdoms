@@ -22,6 +22,7 @@ import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { CardFace } from "./card-face";
+import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
 import { PublicCardDisplay, publicCardActionKey, type PublicCardDisplayAction } from "./public-card-display";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
@@ -1375,7 +1376,7 @@ type LocalPlayerDockProps = {
   selfTargetSelected: boolean;
   onSelfTarget: () => void;
   onHeroInfo: (hero: Hero) => void;
-  onInfoCard: (card: Card) => void;
+  onInfoCard: (card: Card, trigger: HTMLElement) => void;
   equipmentSelection?: { eligibleIds: string[]; selectedIds: string[]; max: number; disabled: boolean; onToggle: (cardId: string) => void } | null;
   hiddenCardIds?: ReadonlySet<string>;
   isGroupPreview?: boolean;
@@ -1455,8 +1456,8 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
   ].filter(Boolean).join(" ");
   const renderZoneCard = (card: Card, selected = false, selectable = false) => <div className={`local-zone-card ${suitColorClass(card.suit)} ${selected ? "selected-cost" : ""}`} key={card.id} data-equipment-id={cardDefinition(card.kind).equipmentSlot ? card.id : undefined} data-judgement-id={!cardDefinition(card.kind).equipmentSlot ? card.id : undefined} style={{ visibility: hiddenCardIds.has(card.id) ? "hidden" : "visible" }}>
     <CardFace card={card} />
-    {selectable ? <button type="button" className="local-zone-card-button" aria-label={`Select ${cardDefinition(card.kind).name}`} aria-pressed={selected} disabled={!equipmentSelection || equipmentSelection.disabled || !equipmentSelection.eligibleIds.includes(card.id)} onClick={() => equipmentSelection?.onToggle(card.id)} /> : <button type="button" className="local-zone-card-button" aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={() => onInfoCard(card)} />}
-    <button type="button" className="zone-info-button" aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(card); }}>i</button>
+    {selectable ? <button type="button" className="local-zone-card-button" aria-label={`Select ${cardDefinition(card.kind).name}`} aria-pressed={selected} disabled={!equipmentSelection || equipmentSelection.disabled || !equipmentSelection.eligibleIds.includes(card.id)} onClick={() => equipmentSelection?.onToggle(card.id)} /> : <button type="button" className="local-zone-card-button" aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => onInfoCard(card, event.currentTarget)} />}
+    <button type="button" className="zone-info-button" aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(card, event.currentTarget); }}>i</button>
   </div>;
   return <section ref={dockRef} className={`local-player-dock${isGroupPreview ? " local-group-preview" : ""}${interactionRoleClasses ? ` ${interactionRoleClasses}` : ""}${attackResponsePrompt ? " local-dock-attack-response" : ""}`} data-player-anchor={player?.id ?? undefined} data-attack-response-prompt={attackResponsePrompt ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-guidance-height-preserved={preserveGuidanceHeight ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined} aria-label="Your player area">
     {guidance}
@@ -1569,8 +1570,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   );
   const [effectNotice, setEffectNotice] = useState<EffectNoticeState | null>(null);
   const [infoCard, setInfoCard] = useState<Card | null>(null);
-  const [infoCardContext, setInfoCardContext] = useState<"private-hand" | "public-zone">("private-hand");
+  const [infoCardContext, setInfoCardContext] = useState<CardDetailsContext>("private-hand");
   const [infoHero, setInfoHero] = useState<Hero | null>(null);
+  const cardInfoReturnFocusRef = useRef<HTMLElement | null>(null);
+  const openCardDetails = useCallback((card: Card, context: CardDetailsContext, trigger?: HTMLElement | null) => {
+    cardInfoReturnFocusRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setInfoCardContext(context);
+    setInfoHero(null);
+    setInfoCard(card);
+  }, []);
+  const closeCardDetails = useCallback(() => {
+    const trigger = cardInfoReturnFocusRef.current;
+    cardInfoReturnFocusRef.current = null;
+    setInfoCard(null);
+    if (trigger?.isConnected) window.requestAnimationFrame(() => {
+      if (trigger.isConnected) trigger.focus({ preventScroll: true });
+    });
+  }, []);
   const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
   const nestedInspectorCardDetailDismissRef = useRef<(() => boolean) | null>(null);
   const [submittedTargetPreview, setSubmittedTargetPreview] = useState<LocalTargetPreviewSubmission | null>(null);
@@ -2330,6 +2346,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     knownHandCards.current = result.baseline;
     if (result.switched) {
       setPrivateDrawPresentation({ playerId: room.meId, cards: [] });
+      cardInfoReturnFocusRef.current = null;
       setInfoCard(null); setTriggerSelectedKeys([]);
       return;
     }
@@ -2505,7 +2522,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || resolutionClosing || !resolutionEvents.length) return; const timer = setTimeout(() => setResolutionClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, room.phase, resolutionClosing, resolutionEvents.length]);
   useEffect(() => { if (!resolutionClosing) return; const closingRevision = resolutionRevision.current; const timer = setTimeout(() => { if (resolutionRevision.current !== closingRevision) { setResolutionClosing(false); return; } setResolutionEvents([]); setSequenceScopeStartId(""); setResolutionClosing(false); }, UI_TIMING.sequenceDiscard); return () => clearTimeout(timer); }, [resolutionClosing]);
   useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawPresentation({ playerId: room.meId, cards: [] }), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, room.meId, activeEvent, eventQueue.length]);
-  useEffect(() => { if (!infoCard && !infoHero && !expandedOpponentId) return; const close = (event: KeyboardEvent) => { if (event.key !== "Escape") return; if (infoCard || infoHero) { setInfoCard(null); setInfoHero(null); return; } if (nestedInspectorCardDetailDismissRef.current?.()) return; setExpandedOpponentId(null); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [infoCard, infoHero, expandedOpponentId]);
+  useEffect(() => { if (!infoCard && !infoHero && !expandedOpponentId) return; const close = (event: KeyboardEvent) => { if (event.key !== "Escape") return; if (infoCard) { closeCardDetails(); return; } if (infoHero) { setInfoHero(null); return; } if (nestedInspectorCardDetailDismissRef.current?.()) return; setExpandedOpponentId(null); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [infoCard, infoHero, expandedOpponentId, closeCardDetails]);
   useEffect(() => { const timer = setTimeout(() => { setSelected(""); setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setTargetIds([]); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setDiscardSelected([]); setSerpentMode(false); setSerpentSelected([]); setResponseProviderId(""); }, 0); return () => clearTimeout(timer); }, [room.turnSeat, room.phase, room.meId]);
   // A response may advance to another decision without changing the turn,
   // phase, or acting seat. The authoritative revision identifies that new
@@ -5109,14 +5126,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         })}
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
-      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} onJourneyEventParked={markPublicCardJourneyEventParked} onJourneySettled={(settlementEventId) => {
+      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardJourneyEventParked} onJourneySettled={(settlementEventId) => {
         setActiveDismantleSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
           ? { ...current, journeySettled: true }
           : current);
       }} />
+      {infoCard && <CardDetailsPreview card={infoCard} context={infoCardContext} onClose={closeCardDetails} />}
     </section>
     <footer className="play-command">
-    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setExpandedOpponentId(null); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={(card) => { setInfoCardContext("public-zone"); setInfoCard(card); }} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} attackResponsePrompt={Boolean(rootAction?.action === "ATTACK" && rootActionCardFace && rootAction.targetId === room.meId && room.currentAction?.kind === "response" && room.currentAction.requirement === "dodge" && room.currentAction.actorId === room.meId && canUseAction(room.currentAction, "respond"))} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
+    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setExpandedOpponentId(null); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} attackResponsePrompt={Boolean(rootAction?.action === "ATTACK" && rootActionCardFace && rootAction.targetId === room.meId && room.currentAction?.kind === "response" && room.currentAction.requirement === "dodge" && room.currentAction.actorId === room.meId && canUseAction(room.currentAction, "respond"))} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
       heroSkillControl={
         <section className="hero-skills local-hero-skills" aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => skill.passive
@@ -5158,7 +5176,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                   <button disabled={!maySelect || skillModeCardDisabled || responseCardDisabled(item)} onClick={() => toggleHandCard(item)} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}>
                     <span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-name-mark">{definition.name}</span><strong>{definition.category} card</strong>
                   </button>
-                  <button type="button" className="card-info-button" aria-label={`Explain ${definition.name}`} onClick={(event) => { event.stopPropagation(); setInfoCardContext("private-hand"); setInfoCard(item); }}>i</button>
+                  <button type="button" className="card-info-button" aria-label={`Explain ${definition.name}`} onClick={(event) => { event.stopPropagation(); openCardDetails(item, "private-hand", event.currentTarget); }}>i</button>
                 </div>
               </div>;
             };
@@ -5204,7 +5222,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       </div>
       </LocalPlayerDock>
     </footer>
-    {infoCard && <div className="card-info-backdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && setInfoCard(null)}><section className="card-info-dialog" role="dialog" aria-modal="true" aria-labelledby="card-info-title"><button type="button" className="card-info-close" onClick={() => setInfoCard(null)} aria-label="Close card explanation">×</button><span>{infoCardContext === "public-zone" ? "PUBLIC CARD DETAILS" : "PRIVATE CARD INFORMATION"}</span><small>{infoCard.rank}{infoCard.suit} · {cardDefinition(infoCard.kind).category} card</small><h2 id="card-info-title">{cardDefinition(infoCard.kind).name}</h2><p>{cardDefinition(infoCard.kind).rules}</p><em>{infoCardContext === "public-zone" ? "This card is visible to all players." : "Only you can see this explanation."}</em></section></div>}{infoHero && <HeroInfoDialog hero={infoHero} onClose={() => setInfoHero(null)} />}
+    {infoHero && <HeroInfoDialog hero={infoHero} onClose={() => setInfoHero(null)} />}
   </main>;
 }
 

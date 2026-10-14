@@ -114,6 +114,57 @@ type AttackDodgeJourneyLifecycle = {
 const attackDodgeJourneyLifecycles = new Map<string, AttackDodgeJourneyLifecycle>();
 const MAX_RETAINED_ATTACK_DODGE_JOURNEYS = 256;
 
+function PublicJourneyCard({
+  card,
+  className = "",
+  size,
+  primary = false,
+  parkingSide,
+  showOrdinal = false,
+  onInspectCard,
+}: {
+  card: JourneyCard;
+  className?: string;
+  size: string;
+  primary?: boolean;
+  parkingSide?: string;
+  showOrdinal?: boolean;
+  onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
+}) {
+  const inspectable = card.phase === "parked" && Boolean(onInspectCard);
+  const definition = cardDefinition(card.cardFace.kind);
+  return <button
+    type="button"
+    className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${className} ${inspectable ? "is-inspectable" : ""}`}
+    disabled={!inspectable}
+    tabIndex={inspectable ? 0 : -1}
+    aria-hidden={inspectable ? undefined : true}
+    aria-label={inspectable ? `View public ${card.actorName}'s ${definition.name} card details, ${card.cardFace.rank}${card.cardFace.suit}` : undefined}
+    onClick={inspectable ? (event) => onInspectCard?.(card.cardFace, event.currentTarget) : undefined}
+    data-public-card-journey-event-id={card.eventId}
+    data-public-card-journey-actor-id={card.actorId}
+    data-public-card-journey-card-id={card.cardFace.id}
+    data-public-card-journey-role={card.role}
+    data-public-card-journey-phase={card.phase}
+    data-public-card-journey-size={size}
+    data-public-card-journey-layout-reason={card.layoutChangeReason}
+    data-public-card-journey-reveal-started-at={card.revealStartedAtIso ?? undefined}
+    data-public-card-journey-target-left={card.target.left}
+    data-public-card-journey-target-top={card.target.top}
+    data-public-card-journey-target-width={card.target.width}
+    data-public-card-journey-target-height={card.target.height}
+    data-public-card-primary-card={primary ? "true" : undefined}
+    data-public-card-journey-parking-side={parkingSide}
+    data-public-card-journey-ordinal={card.globalOrdinal}
+    data-public-card-inspectable={inspectable ? "true" : "false"}
+    style={{ left: card.rect.left, top: card.rect.top, width: card.rect.width, height: card.rect.height }}
+  >
+    <CardFace card={card.cardFace} />
+    {card.semanticLabel && <small className="public-card-journey-semantic">{card.semanticLabel}</small>}
+    {showOrdinal && card.globalOrdinal !== undefined && <small className="public-card-journey-ordinal" aria-label={`Duel event ${card.globalOrdinal}`}>#{card.globalOrdinal}</small>}
+  </button>;
+}
+
 function attackDodgeJourneyLifecycleKey(roomCode: string, viewerId: string, rootEventId: string, scopeKey: string, eventId: string) {
   return `${roomCode}|${viewerId}|${rootEventId}|${scopeKey}|${eventId}`;
 }
@@ -379,6 +430,7 @@ function AttackDodgeCardJourney({
   roomCode,
   viewerId,
   resultReadRemainingMs,
+  onInspectCard,
   onJourneyEventParked,
 }: {
   action: PublicCardDisplayAction;
@@ -388,6 +440,7 @@ function AttackDodgeCardJourney({
   roomCode: string;
   viewerId: string;
   resultReadRemainingMs: number | null;
+  onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneyEventParked?: (eventId: string) => void;
 }) {
   const scopeKey = action.motion?.scopeKey ?? action.rootEventId;
@@ -964,28 +1017,14 @@ function AttackDodgeCardJourney({
     {cards.filter((card) => card.phase !== "queued").map((card) => {
       const isCurrent = card.eventId === activeEventId;
       const isHistorical = Boolean(latestResponse && card.role === "root" && card.phase === "parked");
-      return <div
+      return <PublicJourneyCard
         key={card.eventId}
-        className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${isCurrent ? "is-current" : ""} ${isHistorical ? "is-prior" : ""} ${card.role === "deflection" ? "is-deflection" : ""}`}
-        data-public-card-journey-event-id={card.eventId}
-        data-public-card-journey-actor-id={card.actorId}
-        data-public-card-journey-card-id={card.cardFace.id}
-        data-public-card-journey-role={card.role}
-        data-public-card-journey-phase={card.phase}
-        data-public-card-journey-size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
-        data-public-card-journey-layout-reason={card.layoutChangeReason}
-        data-public-card-journey-reveal-started-at={card.revealStartedAtIso ?? undefined}
-        data-public-card-journey-target-left={card.target.left}
-        data-public-card-journey-target-top={card.target.top}
-        data-public-card-journey-target-width={card.target.width}
-        data-public-card-journey-target-height={card.target.height}
-        data-public-card-primary-card={isCurrent ? "true" : undefined}
-        aria-hidden="true"
-        style={{ left: card.rect.left, top: card.rect.top, width: card.rect.width, height: card.rect.height }}
-      >
-        <CardFace card={card.cardFace} />
-        {card.semanticLabel && <small className="public-card-journey-semantic">{card.semanticLabel}</small>}
-      </div>;
+        card={card}
+        onInspectCard={onInspectCard}
+        size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
+        className={`${isCurrent ? "is-current" : ""} ${isHistorical ? "is-prior" : ""} ${card.role === "deflection" ? "is-deflection" : ""}`}
+        primary={isCurrent}
+      />;
     })}
     <div className="public-card-display-copy public-card-display-journey-copy" style={{ top: copyTop }}>
       <small>{activeLabel}</small>
@@ -1045,6 +1084,7 @@ function SingleTargetCardJourney({
   targetName,
   viewerId,
   resultReadRemainingMs,
+  onInspectCard,
   onJourneySettled,
   onJourneyEventParked,
 }: {
@@ -1054,6 +1094,7 @@ function SingleTargetCardJourney({
   targetName: string | null;
   viewerId: string;
   resultReadRemainingMs: number | null;
+  onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneySettled?: (settlementEventId: string) => void;
   onJourneyEventParked?: (eventId: string) => void;
 }) {
@@ -1428,29 +1469,14 @@ function SingleTargetCardJourney({
   >
     {journey.cards.filter((card) => card.phase !== "queued").map((card) => {
       const isCurrent = card.eventId === activeEventId;
-      return <div
+      return <PublicJourneyCard
         key={card.eventId}
-        className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${isCurrent ? "is-current" : "is-prior"}`}
-        data-public-card-journey-event-id={card.eventId}
-        data-public-card-journey-actor-id={card.actorId}
-        data-public-card-journey-card-id={card.cardFace.id}
-        data-public-card-journey-role={card.role}
-        data-public-card-journey-ordinal={card.globalOrdinal}
-        data-public-card-journey-phase={card.phase}
-        data-public-card-journey-size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
-        data-public-card-journey-layout-reason={card.layoutChangeReason}
-        data-public-card-journey-reveal-started-at={card.revealStartedAtIso ?? undefined}
-        data-public-card-journey-target-left={card.target.left}
-        data-public-card-journey-target-top={card.target.top}
-        data-public-card-journey-target-width={card.target.width}
-        data-public-card-journey-target-height={card.target.height}
-        data-public-card-primary-card={isCurrent ? "true" : undefined}
-        aria-hidden="true"
-        style={{ left: card.rect.left, top: card.rect.top, width: card.rect.width, height: card.rect.height }}
-      >
-        <CardFace card={card.cardFace} />
-        <small className="public-card-journey-ordinal" aria-label={`Public card event ${card.globalOrdinal}`}>#{card.globalOrdinal}</small>
-      </div>;
+        card={card}
+        onInspectCard={onInspectCard}
+        size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
+        className={isCurrent ? "is-current" : "is-prior"}
+        primary={isCurrent}
+      />;
     })}
     <ol className="duel-public-card-history-accessible" aria-label="Chronological public card history">
       {incoming.map((event) => <li key={event.eventId} value={event.globalOrdinal}>
@@ -1573,6 +1599,7 @@ function DuelCardJourney({
   viewerId,
   viewerSeat,
   resultReadRemainingMs,
+  onInspectCard,
   onJourneyEventParked,
 }: {
   action: PublicCardDisplayAction;
@@ -1582,6 +1609,7 @@ function DuelCardJourney({
   viewerId: string;
   viewerSeat: number | null;
   resultReadRemainingMs: number | null;
+  onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneyEventParked?: (eventId: string) => void;
 }) {
   const scopeKey = action.motion?.type === "duel" ? action.motion.scopeKey : action.rootEventId;
@@ -2006,31 +2034,16 @@ function DuelCardJourney({
     data-public-card-settlement-outcome={action.settlement?.outcome}
     data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
-    {journey.cards.filter((card) => card.phase !== "queued").map((card) => <div
+    {journey.cards.filter((card) => card.phase !== "queued").map((card) => <PublicJourneyCard
       key={card.eventId}
-      className={`public-card-journey-card public-card-duel-parked-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${card.phase === "parked" && card.eventId !== activeEventId ? "is-prior" : ""} ${card.eventId === activeEventId ? "is-current" : ""} ${card.role === "root" ? "is-duel-root" : "is-duel-response"}`}
-      data-public-card-journey-event-id={card.eventId}
-      data-public-card-journey-actor-id={card.actorId}
-      data-public-card-journey-card-id={card.cardFace.id}
-      data-public-card-journey-phase={card.phase}
-      data-public-card-journey-size={card.phase === "reveal" || card.phase === "move" && card.rect.width >= DUEL_REVEAL_CARD.width ? "duel-reveal" : "thumbnail"}
-      data-public-card-journey-ordinal={card.globalOrdinal}
-      data-public-card-journey-parking-side={card.parkingSide}
-      data-public-card-journey-layout-reason={card.layoutChangeReason}
-      data-public-card-journey-reveal-started-at={card.revealStartedAtIso ?? undefined}
-      data-public-card-journey-reveal-started-ms={card.revealStartedAtMs ?? undefined}
-      data-public-card-journey-target-left={card.target.left}
-      data-public-card-journey-target-top={card.target.top}
-      data-public-card-journey-target-width={card.target.width}
-      data-public-card-journey-target-height={card.target.height}
-      data-public-card-primary-card={card.eventId === activeEventId ? "true" : undefined}
-      aria-hidden="true"
-      style={{ left: card.rect.left, top: card.rect.top, width: card.rect.width, height: card.rect.height }}
-    >
-      <CardFace card={card.cardFace} />
-      {card.semanticLabel && <small className="public-card-journey-semantic">{card.semanticLabel}</small>}
-      <small className="public-card-journey-ordinal" aria-label={`Duel event ${card.globalOrdinal}`}>#{card.globalOrdinal}</small>
-    </div>)}
+      card={card}
+      onInspectCard={onInspectCard}
+      size={card.phase === "reveal" || card.phase === "move" && card.rect.width >= DUEL_REVEAL_CARD.width ? "duel-reveal" : "thumbnail"}
+      className={`public-card-duel-parked-card ${card.phase === "parked" && card.eventId !== activeEventId ? "is-prior" : ""} ${card.eventId === activeEventId ? "is-current" : ""} ${card.role === "root" ? "is-duel-root" : "is-duel-response"}`}
+      primary={card.eventId === activeEventId}
+      parkingSide={card.parkingSide}
+      showOrdinal
+    />)}
     <ol className="duel-public-card-history-accessible" aria-label="Chronological Duel card history">
       {incoming.map((event) => <li key={event.eventId} value={event.globalOrdinal}>
         Duel event {event.globalOrdinal}: {event.ariaLabel}
@@ -2058,6 +2071,7 @@ export function PublicCardDisplay({
   viewerId,
   viewerSeat,
   resultReadRemainingMs = null,
+  onInspectCard,
   onJourneyEventParked,
   onJourneySettled,
 }: {
@@ -2069,18 +2083,19 @@ export function PublicCardDisplay({
   viewerId: string;
   viewerSeat: number | null;
   resultReadRemainingMs?: number | null;
+  onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneyEventParked?: (eventId: string) => void;
   onJourneySettled?: (settlementEventId: string) => void;
 }) {
   if (!action) return null;
   if (action.motion?.type === "attack-dodge") {
-    return <AttackDodgeCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} roomCode={roomCode} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onJourneyEventParked={onJourneyEventParked} />;
+    return <AttackDodgeCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} roomCode={roomCode} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (action.motion?.type === "single-target" || action.motion?.type === "negation") {
-    return <SingleTargetCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} />;
+    return <SingleTargetCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (action.motion?.type === "duel") {
-    return <DuelCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onJourneyEventParked={onJourneyEventParked} />;
+    return <DuelCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (!enabled || !sourceName) return null;
   const latestResponse = action.response ?? action.responses?.at(-1) ?? null;

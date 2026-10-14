@@ -3725,3 +3725,29 @@
   transform: none;
   pointer-events: none;
 }
+
+/* UX2 §10.6 UI-1: a non-modal details surface is bounded to the battlefield
+   corridor; the surrounding stage never captures outside pointer input. */
+.game-shell .play-table>.card-details-stage{position:absolute;z-index:45;top:var(--interaction-safe-top,8%);right:8px;bottom:8px;left:8px;display:grid;place-items:center;pointer-events:none}
+.game-shell .play-table[data-seat-topology="side-column"]>.card-details-stage{inset:clamp(72px,14%,120px) var(--side-safe-edge,clamp(72px,21vw,140px))}
+.card-details-panel{position:relative;display:flex;flex-direction:column;gap:10px;width:min(92vw,340px,100%);height:min(278px,100%);max-height:100%;box-sizing:border-box;padding:12px;background:#151812f6;border:1px solid #c2a05b;box-shadow:0 12px 36px #000c;color:#eee3ca;pointer-events:auto}
+.card-details-close{right:7px;top:7px;width:44px;height:44px;min-width:44px;min-height:44px;background:#151812;border-color:#8c7545;font-size:24px}
+.card-details-heading{display:flex;align-items:center;gap:8px;min-height:24px;padding-right:42px}
+.card-details-heading>span{color:#e3c476;font:700 9px/1.2 Arial,sans-serif;letter-spacing:.16em}
+.card-details-heading>small{margin-left:auto;color:#aaa18c;font:700 7px Arial,sans-serif;letter-spacing:.1em}
+.card-details-body{display:grid;grid-template-columns:minmax(68px,32%) minmax(0,1fr);align-items:stretch;gap:12px;flex:1 1 auto;min-height:0;overflow:hidden}
+.card-details-illustration{display:grid;place-items:center;min-width:0;min-height:0}
+.card-details-illustration>.played-card{width:auto;height:min(156px,19dvh);max-width:100%;aspect-ratio:2/3;box-sizing:border-box;margin:0;padding:8px 4px;animation:none;border-radius:6px;box-shadow:0 4px 12px #0009}
+.card-details-illustration>.played-card>i{left:6px;top:5px;font-size:12px}
+.card-details-illustration>.played-card>i small{font-size:10px}
+.card-details-illustration>.played-card .card-name-mark{max-width:92%;font-size:clamp(12px,3.8vw,18px);line-height:1.02}
+.card-details-illustration>.played-card>strong{margin-top:5px;font-size:6px;letter-spacing:.07em}
+.card-details-copy{display:flex;flex-direction:column;gap:5px;min-width:0;min-height:0;padding-right:1px}
+.card-details-copy h2{margin:0;padding-right:38px;color:#edce85;font:700 16px/1.15 Georgia,serif;overflow-wrap:anywhere}
+.card-details-copy>small{color:#aaa18c;font:9px/1.2 Arial,sans-serif}
+.card-details-rules{flex:1 1 auto;min-height:0;width:100%;box-sizing:border-box;margin:2px 0 0;padding:0 3px 0 0;overflow:auto;overscroll-behavior:contain;resize:none;border:0;outline-offset:2px;background:transparent;color:#d0ccbd;font:12px/1.45 Arial,sans-serif;white-space:pre-wrap}
+.public-card-journey-card.is-inspectable{appearance:none;background:transparent;color:inherit;text-align:initial;cursor:pointer;pointer-events:auto}
+.public-card-journey-card.is-inspectable:hover{filter:brightness(1.12)}
+.public-card-journey-card.is-inspectable:focus-visible{outline:2px solid #f0ce7c;outline-offset:3px;z-index:37}
+.public-card-journey-card:not(.is-inspectable){pointer-events:none}
+@media(max-width:380px){.card-details-panel{padding:9px;gap:7px}.card-details-body{gap:8px}.card-details-copy h2{font-size:14px}.card-details-rules{font-size:11px}}
