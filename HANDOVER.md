@@ -2,15 +2,13 @@
 
 Branch: `ux-v2`
 
-Latest reviewed design: `docs/UX2-refine.md`, blob `677af530ff7e299716a70a24043e3bba8bebfcc6` (status annotations only; design requirements unchanged).
+Latest reviewed design: `docs/UX2-refine.md`, blob `29fa02625a42ee20055535168cfc768efcac5dea`. The design now records §8.7 Policy B as deployed pending real-phone acceptance and §9.5 as its new P0. By the user's latest direct instruction, execute §8.7 first; do not start §9.5 yet.
 
-## Latest implementation and review
+## Latest relevant result
 
-- §8.7 Policy B remains implemented at `871f3071056c21aeb1b1c961276d54115a888a22`; run [`38603216133`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38603216133) passed validation/deploy. Source audit confirms 4,000ms reveal, 380ms park and interruption gated by a new proven public response. Real-device timing and visual acceptance remain pending.
-- §10.5.3 shipped at `a191c08fb386b32f0d8ab24ecf3788bc86c89f50`; run [`38607911627`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38607911627) passed lint/fast, API, browser startup/room smoke and deploy. Production `/api/health` returned `{"ok":true,"worker":"available"}`. Generic notice suppression requires the same action's validated Deflection proof; the label now sits above its real cost card in a compact frame. Real-phone screenshots and visual acceptance remain pending.
-- §9 shared-window Negation was reviewed against §§9.1–9.4; no source-verifiable defect was found, so no implementation change was made. Gate C's authenticated Worker/D1 coverage and exact Actions evidence remain in the design status. Real-device/user acceptance remains pending.
-- No local automated tests or authenticated phone screenshots were run, following the user's testing preference.
+- §8.7 implementation is deployed from `871f3071056c21aeb1b1c961276d54115a888a22`; its Actions run `38603216133` passed validation/deploy. Current deployed build `a191c08fb386b32f0d8ab24ecf3788bc86c89f50` passed run [`38607911627`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38607911627): lint/fast, API, browser startup/room smoke and Cloudflare deploy. Production `/api/health` returned `{"ok":true,"worker":"available"}`; the open deployed page showed build `a191c08` but its game was already complete.
+- Source review confirms the 4,000ms first-visible-card hold, 380ms park and interruption gate on a new proven public response. No early-shrink defect has been source-proven. No local automated tests were run and no source files changed in this review.
 
-## Next task — gated §10.2 source review
+## Current task — UX2 §8.7 Policy B user acceptance
 
-After the user/reviewer accepts §8.7, §10.5.3 and §9, inspect one unfinished §10.2 card-family subgroup (Steal is a candidate) and define one bounded implementation task from current code. Do not reimplement delivered Negation, Dismantle or Deflection E1/E2. No §10.2–§10.4 implementation is active before that acceptance gate.
+Agent-side source/CI/deployment review is complete; no new source defect was proven and no code change is warranted from the evidence available. Await the user's real-phone review of (1) an uninterrupted 4s reveal and (2) interruption by a genuinely committed response. If either path fails, use its UX Trace to distinguish early park from valid interruption before making a bounded fix. The available browser session is match-complete and cannot reproduce the earlier report. Do not start §9.5 or §10.5.3/§9/§10.2–§10.4 work in this handoff.
