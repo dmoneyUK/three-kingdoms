@@ -560,6 +560,7 @@ function groupParticipantProgressFor(
   presentationV2: PresentationV2,
   scene: PresentationInteractionScene,
   identity: PresentationSnapshotIdentity,
+  stable: PresentationStableBoundary,
 ): PresentationSnapshotGroupProgress | null {
   const group = presentationV2.groupResolution;
   const targetIds = scene.targetIds;
@@ -1008,7 +1009,7 @@ function coherentPublicAuthority(presentationV2: PresentationV2): PublicAuthorit
 export function composePresentationSnapshot(input: PresentationSnapshotInput): PresentationSnapshot {
   const authority = coherentPublicAuthority(input.presentationV2);
   const groupParticipantProgress = authority
-    ? groupParticipantProgressFor(input.presentationV2, authority.scene, authority.identity)
+    ? groupParticipantProgressFor(input.presentationV2, authority.scene, authority.identity, authority.stable)
     : null;
   const reactionChain = authority
     ? reactionChainFor(input.presentationV2, authority.scene, authority.identity, groupParticipantProgress)

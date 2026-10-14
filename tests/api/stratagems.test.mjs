@@ -599,10 +599,10 @@ test("Negation cancels a stratagem and a counter-Negation restores it in ordered
   assert.equal(counterView.actionPlayerId, null);
   assert.equal(counterView.pendingNegation.responseTarget, "Alice's Negation", "the counter window names the latest Negation rather than the root Stratagem");
   assert.equal(counterView.discardTop.id, "negation-cancel", "the staged root remains outside discard until the complete effect resolves");
-  const counterWindowId = counterView.currentAction.negationWindowId;
+  const counterWindowIdAfterFirstCounter = counterView.currentAction.negationWindowId;
   const counterIntent = await request("respond", { code: game.code, token: host.token, providerId: "negation_card", cardId: "negation-counter" });
   assert.equal(counterIntent.status, 200, JSON.stringify(counterIntent.data));
-  await advanceNegationWindow(game.code, host.token, counterWindowId);
+  await advanceNegationWindow(game.code, host.token, counterWindowIdAfterFirstCounter);
   const counterCounterWindowId = (await state(game.code, host.token)).data.currentAction.negationWindowId;
   assert.ok(counterCounterWindowId, "restoring the root opens a fresh counter-counter window");
   await advanceNegationWindow(game.code, host.token, counterCounterWindowId);
