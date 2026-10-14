@@ -143,11 +143,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
 
     await inspect.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]').click();
-    await expect(page.getByRole("dialog", { name: "Zhuge Crossbow" })).toBeVisible();
-    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
-    await page.getByRole("button", { name: "Close card explanation" }).click();
-    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
-    await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
+    const cardDetail = inspect.locator('[data-inspector-card-detail="true"]');
+    await expect(cardDetail).toBeVisible();
+    await expect(cardDetail).toContainText("Zhuge Crossbow");
+    await expect(cardDetail).toContainText("Equip this weapon during your Play Phase");
+    await expect(cardDetail.locator(".hero-focus-inspect-card-metadata")).toHaveText("A♦ · EQUIPMENT CARD");
+    await expect(page.locator(".card-info-dialog")).toHaveCount(0);
+    await expect(inspect).toBeVisible();
+    await cardDetail.getByRole("button", { name: "Back to public cards" }).click();
+    await expect(cardDetail).toHaveCount(0);
     await expect(inspect).toBeVisible();
 
     await page.getByRole("button", { name: "Close Player 2 inspection", exact: true }).click();
@@ -158,7 +162,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
   });
 }
 
-for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
+for (const viewport of [{ width: 390, height: 844 }, { width: 440, height: 894 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
   test(`Inspect keeps one public skill compact beside one equipment card at ${viewport.width}px`, async ({ page }) => {
     await loadFixture(page, { ...viewport, targetHero: "xiahou-dun", equipmentCase: "weapon" });
     await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
@@ -191,6 +195,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     const description = inspect.getByRole("region", { name: "Stauchness description" });
     await expect(description).toContainText("After you take damage, you may enter Judgement phase");
     await expect(stauchness).toHaveAttribute("aria-expanded", "true");
+    const details = inspect.locator(".hero-focus-inspect-details");
+    const savedSkillScroll = await description.evaluate((element) => { element.scrollTop = element.scrollHeight; return element.scrollTop; });
+    const savedDetailsScroll = await details.evaluate((element) => { element.scrollTop = element.scrollHeight; return element.scrollTop; });
     const descriptionGeometry = await description.evaluate((element) => {
       const range = document.createRange();
       range.selectNodeContents(element);
@@ -210,14 +217,24 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     });
     expect(descriptionGeometry.visibleLines).toBeGreaterThanOrEqual(Math.min(5, descriptionGeometry.naturalLines));
     expect(descriptionGeometry.maxHeight).toBeLessThanOrEqual(5 * descriptionGeometry.lineHeight + 1);
-    await stauchness.click();
-    await expect(description).toHaveCount(0);
-    await expect(stauchness).toHaveAttribute("aria-expanded", "false");
     await equipmentCard.click();
-    await expect(page.getByRole("dialog", { name: "Zhuge Crossbow" })).toBeVisible();
-    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
-    await page.getByRole("button", { name: "Close card explanation" }).click();
-    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+    const cardDetail = inspect.locator('[data-inspector-card-detail="true"]');
+    await expect(cardDetail).toBeVisible();
+    await expect(cardDetail).toContainText("Zhuge Crossbow");
+    await expect(cardDetail).toContainText("unlimited number of Attack cards");
+    await expect(page.locator(".card-info-dialog")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(cardDetail).toHaveCount(0);
+    await expect(inspect).toBeVisible();
+    await expect(stauchness).toHaveAttribute("aria-expanded", "true");
+    await equipmentCard.click();
+    await expect(cardDetail).toBeVisible();
+    await cardDetail.getByRole("button", { name: "Back to Stauchness" }).click();
+    await expect(cardDetail).toHaveCount(0);
+    await expect(description).toBeVisible();
+    expect(await description.evaluate((element) => element.scrollTop)).toBe(savedSkillScroll);
+    expect(await details.evaluate((element) => element.scrollTop)).toBe(savedDetailsScroll);
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("Explain Zhuge Crossbow");
   });
 }
 
@@ -315,7 +332,7 @@ test("Inspect shows a compact None state when public Hero skills are unavailable
 });
 
 test("unified Inspector changes its subject without changing the legal target", async ({ page }) => {
-  await loadFixture(page, { state: "ordinary-turn", width: 480, height: 900, equipmentCase: "empty" });
+  await loadFixture(page, { state: "ordinary-turn", width: 480, height: 900, equipmentCase: "weapon" });
   await page.locator('[data-hand-card-id="browser-ordinary-5"] .game-card').click();
   await page.getByRole("button", { name: "Select Player 2", exact: true }).click();
   const panel = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel');
@@ -330,8 +347,12 @@ test("unified Inspector changes its subject without changing the legal target", 
   await expect(page.locator('[data-console-surface="local-operation"] button.local-target-cancel')).toBeVisible();
   expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
 
+  await panel.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]').click();
+  await expect(panel.locator('[data-inspector-card-detail="true"]')).toBeVisible();
+
   await page.getByRole("button", { name: "Inspect Player 3", exact: true }).click();
   await expect(panel).toHaveAttribute("data-inspect-player-id", "p3");
+  await expect(panel.locator("[data-inspector-card-detail]")).toHaveCount(0);
   await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
   await expect(page.locator('.opponent-player-card[data-player-anchor="p3"]')).not.toHaveClass(/selected-target/);
   await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
@@ -371,12 +392,27 @@ test("Side Column Inspect keeps public Judgement details inside the centre Stage
   await page.locator('[data-player-anchor="p3"] .opponent-hero-target').click();
   const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
   await expect(inspect).toBeVisible();
+  const judgmentCard = inspect.locator('[aria-label="Judgement Zone"] .opponent-inspection-card[aria-label="Explain Lightning"]');
+  await expect(judgmentCard).toHaveCount(1);
+  await judgmentCard.click();
+  const detail = inspect.locator('[data-inspector-card-detail="true"]');
+  await expect(detail).toBeVisible();
+  await expect(detail).toContainText("Lightning");
+  await expect(detail).toContainText("During your next Judgement Phase");
+  await expect(detail.locator(".hero-focus-inspect-card-metadata")).toHaveText("Q♥ · STRATAGEM CARD");
+  await expect(page.locator(".card-info-dialog")).toHaveCount(0);
+  await detail.getByRole("button", { name: "Back to public cards" }).click();
+  await expect(inspect).toBeVisible();
+  await expect(detail).toHaveCount(0);
+  expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("Explain Lightning");
+
+  const seatCardInfo = page.locator('[data-player-anchor="p3"] .opponent-judgement-cards .zone-info-button');
+  await expect(seatCardInfo).toHaveAccessibleName("Inspect Player 3 to explain Lightning");
+  await page.getByRole("button", { name: "Close Player 3 inspection" }).click();
+  await expect(inspect).toHaveCount(0);
+  await seatCardInfo.click();
+  await expect(inspect).toBeVisible();
   await expect(inspect.locator('[aria-label="Judgement Zone"] .opponent-inspection-card[aria-label="Explain Lightning"]')).toHaveCount(1);
-  await inspect.locator('[aria-label="Judgement Zone"] .opponent-inspection-card[aria-label="Explain Lightning"]').click();
-  await expect(page.getByRole("dialog", { name: "Lightning" })).toBeVisible();
-  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
-  await page.getByRole("button", { name: "Close card explanation" }).click();
-  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
   expect(await seatGeometry(page)).toEqual(before);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(480);
 });

@@ -162,6 +162,8 @@ for (const { width, handSizes } of HAND_SIZE_MATRIX) {
       }
       await last.locator(".card-info-button").click();
       await expect(page.getByRole("dialog").getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
+      await expect(page.getByText("PRIVATE CARD INFORMATION", { exact: true })).toBeVisible();
+      await expect(page.getByText("Only you can see this explanation.", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Close card explanation" }).click();
       // The transparent space reserved for lifted cards must not steal skill hits.
       expect(await page.locator(".hero-skill-button").first().evaluate((button) => {
