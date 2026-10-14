@@ -20,7 +20,7 @@ test("shared Duel Negation windows choose by canonical seat order and reopen aft
     players: names.map((name, index) => ({
       name,
       role: roles[index],
-      hero: null,
+      hero: ["cao-cao", "xiahou-dun", "zhang-liao", "simayi", "guojia"][index],
       hp: 4,
       maxHp: 4,
       hand: index === 0 ? [duel] : index === 1 ? [seatTwoNegation] : index === 3 ? [seatFourNegation] : [],
@@ -30,9 +30,9 @@ test("shared Duel Negation windows choose by canonical seat order and reopen aft
   const [oneMember, twoMember, threeMember, fourMember, fiveMember] = game.members;
   const declared = await request("play_card", { code: game.code, token: oneMember.token, cardId: duel.id, targetId: seatThree.id });
   assert.equal(declared.status, 200, JSON.stringify(declared.data));
-  const initialWindowId = declared.data.currentAction.negationWindowId;
+  const initialWindowId = declared.data.room.currentAction.negationWindowId;
   assert.ok(initialWindowId);
-  const initialDeadline = declared.data.currentAction.deadline;
+  const initialDeadline = declared.data.room.currentAction.deadline;
   assert.equal(initialDeadline - declared.data.responseCountdownVisibleAt, 8_000);
 
   const firstViews = await Promise.all(game.members.map((member) => state(game.code, member.token)));
@@ -104,7 +104,7 @@ test("shared Duel Negation priority is unchanged when the canonical winner submi
     players: ["Seat One", "Seat Two", "Seat Three", "Seat Four", "Seat Five"].map((name, index) => ({
       name,
       role: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"][index],
-      hero: null,
+      hero: ["cao-cao", "xiahou-dun", "zhang-liao", "simayi", "guojia"][index],
       hp: 4,
       maxHp: 4,
       hand: index === 0 ? [card("Duel", "shared-window-order-root")] : index === 1 ? [card("Negation", "shared-window-order-seat-two")] : index === 3 ? [card("Negation", "shared-window-order-seat-four")] : [],
@@ -114,7 +114,7 @@ test("shared Duel Negation priority is unchanged when the canonical winner submi
   const [oneMember, twoMember, , fourMember] = game.members;
   const opened = await request("play_card", { code: game.code, token: oneMember.token, cardId: "shared-window-order-root", targetId: seatThree.id });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
-  const windowId = opened.data.currentAction.negationWindowId;
+  const windowId = opened.data.room.currentAction.negationWindowId;
   const seatTwoIntent = await request("respond", { code: game.code, token: twoMember.token, providerId: "negation_card", cardId: "shared-window-order-seat-two" });
   const seatFourIntent = await request("respond", { code: game.code, token: fourMember.token, providerId: "negation_card", cardId: "shared-window-order-seat-four" });
   assert.equal(seatTwoIntent.status, 200, JSON.stringify(seatTwoIntent.data));
@@ -140,9 +140,9 @@ test("a shared Negation window waits the full fixed interval when nobody submits
   setTurn(game.code, source.seat);
   const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: drawTwo.id });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
-  const windowId = opened.data.currentAction.negationWindowId;
-  const openedAt = opened.data.responseCountdownVisibleAt;
-  const deadline = opened.data.currentAction.deadline;
+  const windowId = opened.data.room.currentAction.negationWindowId;
+  const openedAt = opened.data.room.responseCountdownVisibleAt;
+  const deadline = opened.data.room.currentAction.deadline;
   assert.ok(windowId);
   assert.equal(deadline - openedAt, 8_000);
   const early = await request("advance_timers", { code: game.code, token: sourceMember.token });

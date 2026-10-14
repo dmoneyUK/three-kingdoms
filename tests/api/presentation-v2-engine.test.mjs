@@ -2375,6 +2375,8 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: harvest.id });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   const firstWindow = await assertProjectionMatchesEngine(game.code, alice.token);
+  const firstWindowId = firstWindow.currentAction.negationWindowId;
+  assert.ok(firstWindowId);
   assert.equal(firstWindow.currentAction.actorId, first.id);
   const initialProgress = firstWindow.presentationSnapshot.bumperHarvestProgress;
   assert.ok(initialProgress, JSON.stringify({ envelope: { activeFrameId: firstWindow.causalEnvelope?.activeFrameId, checkpoint: firstWindow.causalEnvelope?.checkpoint, frames: firstWindow.causalEnvelope?.frames }, scene: firstWindow.presentationV2.interactionScene, stable: firstWindow.presentationV2.stableBoundary, progress: firstWindow.presentationV2.bumperHarvestProgress }));
@@ -2405,6 +2407,7 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
 
   const submitted = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: aliceNegation.id, preserveResponse: true });
   assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
+  await advanceNegationWindow(game.code, host.token, firstWindowId);
   const counterWindow = await assertProjectionMatchesEngine(game.code, bob.token);
   assert.equal(counterWindow.currentAction.actorId, second.id);
   assert.equal(counterWindow.presentationSnapshot.bumperHarvestProgress?.currentParticipantId, source.id, "the affected chooser remains the participant through counter-Negation");
@@ -2420,8 +2423,11 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(counterObserver.pendingNegation.actorId, null);
 
   sql(`UPDATE players SET alive=0,hp=0 WHERE id=${quote(third.id)}`);
+  const counterWindowId = counterWindow.currentAction.negationWindowId;
+  assert.ok(counterWindowId);
   const counterPassed = await request("decline_response", { code: game.code, token: bob.token });
   assert.equal(counterPassed.status, 200, JSON.stringify(counterPassed.data));
+  await advanceNegationWindow(game.code, host.token, counterWindowId);
   let nextWindow = await assertProjectionMatchesEngine(game.code, bob.token);
   let progress = nextWindow.presentationSnapshot.bumperHarvestProgress;
   assert.equal(progress?.currentParticipantId, first.id, "the following participant becomes current after the preceding choice is negated");
@@ -2451,8 +2457,11 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(malformed.presentationSnapshot.bumperHarvestProgress, null);
   sql(`UPDATE rooms SET pending_json=${quote(storedPending)} WHERE code=${quote(game.code)}`);
 
+  const currentWindowId = nextWindow.currentAction.negationWindowId;
+  assert.ok(currentWindowId);
   const currentWindowPassed = await request("decline_response", { code: game.code, token: bob.token });
   assert.equal(currentWindowPassed.status, 200, JSON.stringify(currentWindowPassed.data));
+  await advanceNegationWindow(game.code, host.token, currentWindowId);
   const choice = await assertProjectionMatchesEngine(game.code, alice.token);
   assert.equal(choice.currentAction.actorId, first.id);
   assert.equal(choice.presentationV2.interactionScene?.stage, "SEQUENTIAL_CHOICE");
@@ -2495,8 +2504,11 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(progress?.participants[2].status, "CURRENT");
   assert.equal(progress?.currentParticipantId, second.id);
 
+  const finalWindowId = nextWindow.currentAction.negationWindowId;
+  assert.ok(finalWindowId);
   const finalNegationPassed = await request("decline_response", { code: game.code, token: bob.token });
   assert.equal(finalNegationPassed.status, 200, JSON.stringify(finalNegationPassed.data));
+  await advanceNegationWindow(game.code, host.token, finalWindowId);
   const finalChoice = await assertProjectionMatchesEngine(game.code, bob.token);
   assert.equal(finalChoice.currentAction.actorId, second.id);
   const finalChoicePending = authoritativePending(game.code);

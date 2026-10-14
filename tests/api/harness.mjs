@@ -51,7 +51,7 @@ export async function request(action, values = {}) {
   if (["respond", "decline_response"].includes(action) && values.code && values.token) {
     const current = await state(values.code, values.token);
     const windowId = current.data.currentAction?.negationWindowId;
-    if (windowId && !values.context?.windowId) {
+    if (windowId && !values.context) {
       values = { ...values, context: { actionRevision: current.data.actionRevision, meId: current.data.meId, phase: current.data.phase, pendingKind: "response", actorId: current.data.actionPlayerId, windowId } };
     }
   }
@@ -91,8 +91,12 @@ export async function requestAndSettle(action, values = {}) {
     }) ?? options[0];
     if (selected) actionValues = { ...actionValues, providerId: action === "respond" ? selected.providerId : selected.effectId };
   }
+  const responseWindowId = values.code && ["respond", "decline_response"].includes(action)
+    ? (await state(values.code, values.token)).data.currentAction?.negationWindowId ?? null
+    : null;
   const result = await request(action, actionValues);
   if (actionValues.code && !preserveResponse && !["start_response_timer", "start_rescue_timer", "advance_timers"].includes(action)) {
+    if (result.status === 200 && responseWindowId) await advanceNegationWindow(actionValues.code, actionValues.token, responseWindowId);
     await drainEmptyPrivateDecisions(actionValues.code, actionValues.token);
     const refreshed = await state(actionValues.code, actionValues.token);
     result.data = { ...result.data, room: refreshed.data };
