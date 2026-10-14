@@ -907,7 +907,7 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCar
     <div ref={inspectDetailsRef} className="hero-focus-inspect-details hero-focus-context">
       {selectedCardDetail ? (() => {
         const definition = cardDefinition(selectedCardDetail.kind);
-        return <section className="hero-focus-inspect-card-detail" data-inspector-card-detail="true" role="region" aria-label={`${definition.name} public card explanation`}>
+        return <section className="hero-focus-inspect-card-detail" data-inspector-card-detail="true" aria-label={`${definition.name} public card explanation`}>
           <div className="hero-focus-inspect-card-detail-toolbar"><button type="button" className="hero-focus-inspect-card-back" onClick={() => { closeCardDetail(); }} aria-label={expandedSkill ? `Back to ${expandedSkill.name}` : "Back to public cards"}>Back</button><span>PUBLIC CARD DETAILS</span></div>
           <small className="hero-focus-inspect-card-metadata">{selectedCardDetail.rank}{selectedCardDetail.suit} · {definition.category.toUpperCase()} CARD</small>
           <h4 className="hero-focus-inspect-card-name">{definition.name}</h4>
