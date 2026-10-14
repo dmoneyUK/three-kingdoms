@@ -333,11 +333,10 @@ test("Stauchness take-damage choice enters the normal Dying flow and stale concu
     assert.equal(results.filter((result) => result.status === 200).length, 1);
     const loser = results.find((result) => result.status === 409);
     assert.ok(loser && loser.data.stale === true && loser.data.room);
-    assert.equal(loser.data.room.phase, "play-struck");
-    assert.equal(loser.data.room.pending, null);
-    assert.equal(loser.data.room.players.every((player) => player.handCards.length === 0), true);
+    const settled = await waitForState(race.code, race.sourceMember.token, (view) => view.phase === "play-struck" && view.pending === null);
+    assert.equal(settled.players.every((player) => player.handCards.length === 0), true);
     assert.equal(discardIds(race.code).filter((id) => id === `dodge-ganglie-race-${attempt}`).length, 1);
-    assert.equal((await state(race.code, race.sourceMember.token)).data.players.find((player) => player.id === race.target.id).hp, 2);
+    assert.equal(settled.players.find((player) => player.id === race.target.id).hp, 2);
   }
 });
 

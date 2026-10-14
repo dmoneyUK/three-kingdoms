@@ -5,7 +5,7 @@ Latest reviewed design: `docs/UX2-refine.md`, blob `5b4f54e4effd3a6f7c64aa2db043
 
 ## Latest delivered result
 
-§8.1–§8.4 and §9.4 Gate A are delivered pending aggregate user/Reviewer review. Gate A implementation is on `9f2bc6be007065f7b458f70e02964124386de28f`; missing Drizzle snapshot repair is `1306d519afd6094200dfe2e36646b3bb3fa1cdd6`. Exact-SHA Actions run `38555940573` passed Lint/fast, API, browser smoke, D1 migrations, Worker deploy, and production smoke. The deploy failure was a missing `drizzle/meta/0012_snapshot.json`: Drizzle generated duplicate migration 0013 after remote migration 0012 had already succeeded. Local `db:generate` now reports no changes; fresh local D1 migration 0000–0012 passed.
+§8.1–§8.4 and §9.4 Gate A are delivered pending aggregate user/Reviewer review. Gate A implementation is on `9f2bc6be007065f7b458f70e02964124386de28f`; missing Drizzle snapshot repair is `1306d519afd6094200dfe2e36646b3bb3fa1cdd6`. Exact-SHA Actions run `38555940573` passed all validation, D1 migrations, Worker deploy, and production smoke. Gate B regression commit `a899cf4d792298c0c17bd65ceedb53de82d4caf4` passes the focused local privacy API file 19/19, but run `38557262008` failed a pre-existing Stauchness race assertion (`judgement.test.mjs:336` observed the losing response's in-flight `resolving` snapshot). A focused test-only correction now waits for authoritative settlement; local judgement API file passed 12/12 and focused ESLint. CI repair commit/result pending.
 
 ## Current task
 
