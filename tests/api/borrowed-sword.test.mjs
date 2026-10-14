@@ -136,8 +136,9 @@ test("Borrowed Sword evaluates Empty Fortress after consuming its own card", { t
   const rejected = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id });
   assert.equal(rejected.status, 409);
   assert.match(rejected.data.error, /no complete legal path/);
-  assert.equal(rejected.data.room.pendingBorrowedSword, null);
-  assert.equal((await state(game.code, host.token)).data.myHand.some((card) => card.id === borrowed.id), true, "an invalid complete path does not consume the physical card");
+  const afterReject = (await state(game.code, host.token)).data;
+  assert.equal(afterReject.pendingBorrowedSword, null);
+  assert.equal(afterReject.myHand.some((card) => card.id === borrowed.id), true, "an invalid complete path does not consume the physical card");
 });
 
 test("Borrowed Sword revalidates the complete path after Negation before opening its target decision", { timeout: 60_000 }, async () => {

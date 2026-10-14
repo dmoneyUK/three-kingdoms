@@ -15,7 +15,7 @@ test("unknown semantic Dodge and Negate providers cross the real API and D1 boun
 
   sql(`UPDATE players SET hero='test-hero' WHERE id=${quote(alicePlayer.id)}`);
   setHand(hostPlayer.id, [card("Dismantle", "semantic-negate")], 4, 4); setHand(alicePlayer.id, [card("Attack", "semantic-kept")], 4, 4); setTurn(game.code, hostPlayer.seat);
-  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "dismantle-semantic-negate", targetId: alicePlayer.id, targetCardIndex: 0 });
+  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "dismantle-semantic-negate", targetId: alicePlayer.id, targetCardIndex: 0, preserveResponse: true });
   assert.equal(opened.status, 200); assert.equal(opened.data.room.actionPlayerId, null); const negateView = await state(game.code, alice.token); assert.ok(negateView.data.currentAction.options.some((option) => option.providerId === "test_semantic_negate"));
   const negated = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "test_semantic_negate" });
   assert.equal(negated.status, 200); assert.equal(negated.data.room.phase, "response"); assert.equal(negated.data.room.pendingNegation.chainDepth, 1); assert.equal(negated.data.room.pendingNegation.negated, true);

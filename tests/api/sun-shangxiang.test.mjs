@@ -76,7 +76,7 @@ test("Daredevil observes Steal taking Equipment into the attacker's Hand", async
   const weapon = card("ZhugeCrossbow", "steal-equipment");
   const steal = card("Steal", "steal-card");
   setHand(source.id, [steal], 4, 4); setHand(sun.id, [card("Dodge", "steal-spare")], 3, 3); setEquipment(sun.id, { weapon }); setTurn(game.code, source.seat, "play");
-  const played = await request("play_card", { code: game.code, token: game.members[0].token, cardId: steal.id, targetId: sun.id });
+  const played = await requestAndSettle("play_card", { code: game.code, token: game.members[0].token, cardId: steal.id, targetId: sun.id });
   assert.equal(played.status, 200, JSON.stringify(played.data));
   const chosen = await request("choose_target_card", { code: game.code, token: game.members[0].token, targetCardZone: "equipment", targetCardId: weapon.id });
   assert.equal(chosen.status, 200, JSON.stringify(chosen.data));

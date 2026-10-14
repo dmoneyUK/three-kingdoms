@@ -602,7 +602,8 @@ function groupParticipantProgressFor(
   if (active.length !== 1 || active[0]?.playerId !== group.currentParticipantId) return null;
   if (group.activeFrameId === group.groupFrameId) {
     const sharedNegation = stable.kind === "SPECIAL" && scene.stage === "NEGATION" && scene.decisionActorId === null;
-    if (active[0].status !== "CURRENT" || (!sharedNegation && (stable.kind !== "CHOICE" || stable.decisionActorId !== group.currentParticipantId))) return null;
+    if (active[0].status !== "CURRENT"
+      || (!sharedNegation && stable.kind === "CHOICE" && stable.decisionActorId !== group.currentParticipantId)) return null;
   } else if (active[0].status !== "PAUSED" || scene.continuity.relation !== "CHILD_FRAME") {
     return null;
   }

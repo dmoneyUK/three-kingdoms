@@ -41,7 +41,7 @@ test("shared Negation windows keep submissions private and expose only each view
   const targetAfterPass = (await state(target.game.code, target.holderMember.token)).data;
   assert.equal(targetAfterPass.currentAction.negationWindowId, targetWindowId, "one Pass does not close the common window early");
   assert.equal(targetAfterPass.pendingNegation.submitted, true);
-  assert.deepEqual(targetAfterPass.currentAction.options, []);
+  assert.equal(targetAfterPass.currentAction.options?.length ?? 0, 0);
   assert.equal((await state(target.game.code, target.sourceMember.token)).data.timeline.some((event) => event.card?.id === target.negation.id), false, "a private Pass or intent is not a public card event");
   await advanceNegationWindow(target.game.code, target.sourceMember.token, targetWindowId);
   assert.equal((await state(target.game.code, target.sourceMember.token)).data.pendingNegation, null);

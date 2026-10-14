@@ -117,7 +117,7 @@ test("Prudence follows Peach and Oath recovery, and Quick Test projects the acti
   const peachGame = await createHumanSetupGame();
   const peachSetup = setupLadyGan(peachGame, { hp: 2, hand: [card("Peach", "prudence-normal-peach")] , turnIndex: 0 });
   setTurn(peachGame.code, peachSetup.lady.seat, "play");
-  const peach = await request("play_card", { code: peachGame.code, token: peachSetup.ladyToken, cardId: "peach-prudence-normal-peach" });
+  const peach = await requestAndSettle("play_card", { code: peachGame.code, token: peachSetup.ladyToken, cardId: "peach-prudence-normal-peach" });
   assert.equal(peach.status, 200, JSON.stringify(peach.data));
   assert.equal(peach.data.room.currentAction.triggerEvent, "hp_recovered");
   const peachTarget = peach.data.room.players.find((player) => player.id !== peachSetup.lady.id && player.alive);
@@ -130,7 +130,7 @@ test("Prudence follows Peach and Oath recovery, and Quick Test projects the acti
   const other = oathGame.views[0].players[1];
   setHand(other.id, [], 2, 3);
   setTurn(oathGame.code, oathSetup.lady.seat, "play");
-  const oath = await request("play_card", { code: oathGame.code, token: oathSetup.ladyToken, cardId: "oath-prudence-oath" });
+  const oath = await requestAndSettle("play_card", { code: oathGame.code, token: oathSetup.ladyToken, cardId: "oath-prudence-oath" });
   assert.equal(oath.status, 200, JSON.stringify(oath.data));
   assert.equal(oath.data.room.currentAction.triggerEvent, "hp_recovered");
   const oathTarget = oath.data.room.players.find((player) => player.id !== oathSetup.lady.id && player.alive);

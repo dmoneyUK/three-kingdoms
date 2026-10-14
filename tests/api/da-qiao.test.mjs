@@ -3,7 +3,7 @@ import { attackRootProjectionDiagnosticsFor } from "../../game/presentation-v2.t
 import { buildPresentationClientView } from "../../game/presentation-client.ts";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
 import {
-  assert, card, createHumanGame, discardIds, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state,
+  advanceNegationWindow, assert, card, createHumanGame, discardIds, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state,
 } from "./test-support.mjs";
 
 async function openAttack({ targetCard = card("Peach", "deflection-cost"), targetCards, replacementHand = [], targetEquipment = {}, replacementHero = "zhao-yun", sourceHero = "zhao-yun", sourceEquipment = {}, sourceAttackSuit = "♠", attackCards } = {}) {
@@ -124,7 +124,7 @@ test("Captivating uses one Diamond hand card as Overindulgence and preserves its
   assert.deepEqual(option.selection.eligibleCardIds, [diamond.id]);
   assert.equal(option.selection.targetIds.includes(target.id), true);
   assert.equal(option.selection.targetIds.includes(other.id), false, "Captivating respects Modesty's Overindulgence immunity");
-  const used = await request("trigger", { code: game.code, token: daqiaoMember.token, providerId: "daqiao_captivating", cardIds: [diamond.id], targetId: target.id });
+  const used = await requestAndSettle("trigger", { code: game.code, token: daqiaoMember.token, providerId: "daqiao_captivating", cardIds: [diamond.id], targetId: target.id });
   assert.equal(used.status, 200, JSON.stringify(used.data));
   const placed = (await state(game.code, targetMember.token)).data;
   const delayed = placed.players.find((player) => player.id === target.id).judgementCards;
@@ -170,16 +170,21 @@ test("Captivating inherits the normal Negation-of-Negation chain", async () => {
   const started = await request("trigger", { code: opened.game.code, token: opened.daqiaoMember.token, providerId: "daqiao_captivating", cardIds: [opened.diamond.id], targetId: opened.target.id });
   assert.equal(started.status, 200, JSON.stringify(started.data));
 
-  const first = await requestAndSettle("respond", { code: opened.game.code, token: opened.targetMember.token, cardId: "negation-captivating-first" });
+  const initialWindow = (await state(opened.game.code, opened.targetMember.token)).data.currentAction.negationWindowId;
+  const first = await requestAndSettle("respond", { code: opened.game.code, token: opened.targetMember.token, cardId: "negation-captivating-first", preserveResponse: true });
   assert.equal(first.status, 200, JSON.stringify(first.data));
+  await advanceNegationWindow(opened.game.code, opened.daqiaoMember.token, initialWindow);
   const counterWindow = (await state(opened.game.code, opened.otherMember.token)).data;
   assert.equal(counterWindow.currentAction.requirement, "negate", JSON.stringify(counterWindow));
   assert.equal(counterWindow.pendingNegation.responseTarget, "Alice's Negation");
 
-  const restored = await requestAndSettle("respond", { code: opened.game.code, token: opened.otherMember.token, cardId: "negation-captivating-counter" });
+  const counterWindowId = counterWindow.currentAction.negationWindowId;
+  const restored = await requestAndSettle("respond", { code: opened.game.code, token: opened.otherMember.token, cardId: "negation-captivating-counter", preserveResponse: true });
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
-  assert.equal(restored.data.room.phase, "play");
-  const placed = restored.data.room.players.find((player) => player.id === opened.target.id).judgementCards;
+  await advanceNegationWindow(opened.game.code, opened.daqiaoMember.token, counterWindowId);
+  const settled = (await state(opened.game.code, opened.daqiaoMember.token)).data;
+  assert.equal(settled.phase, "play");
+  const placed = settled.players.find((player) => player.id === opened.target.id).judgementCards;
   assert.deepEqual(placed, [{ ...opened.diamond, kind: "Overindulgence" }]);
   assert.equal(discardIds(opened.game.code).filter((id) => id === opened.diamond.id).length, 0);
   assert.equal(discardIds(opened.game.code).filter((id) => id === "negation-captivating-first").length, 1);

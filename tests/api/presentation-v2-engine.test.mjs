@@ -1035,6 +1035,7 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
   assert.equal(otherViewer.data.currentAction.options, undefined, "viewer-private response options stay outside Group public semantics");
   const resumed = await requestAndSettle("decline_trigger", { code: opened.code, token: opened.targetMember.token, preserveResponse: true });
   assert.equal(resumed.status, 200, JSON.stringify(resumed.data));
+  await advanceNegationWindow(opened.code, opened.targetMember.token, resumed.data.room.currentAction.negationWindowId);
   const next = await state(opened.code, opened.bobMember.token);
   assert.equal(next.data.currentAction.kind, "response");
   const nextPending = authoritativePending(opened.code);
@@ -1107,6 +1108,7 @@ test("Group progress marks a no-longer-living ordered target without inferring f
   sql(`UPDATE players SET alive=0 WHERE id=${quote(skipped.id)}`);
   const answered = await requestAndSettle("respond", { code: game.code, token: firstMember.token, cardId: dodge.id, preserveResponse: true });
   assert.equal(answered.status, 200, JSON.stringify(answered.data));
+  await advanceNegationWindow(game.code, firstMember.token, answered.data.room.currentAction.negationWindowId);
   const finalView = (await state(game.code, finalMember.token)).data;
   assert.equal(finalView.currentAction.kind, "response", JSON.stringify(finalView));
   assert.equal(finalView.currentAction.actorId, final.id);
@@ -1156,9 +1158,11 @@ test("FIX14 Group failure Damage uses one child frame and resumes the next parti
 
   const targetAnswered = await request("respond", { code: game.code, token: targetMember.token, providerId: "card", cardId: targetDodge.id });
   assert.equal(targetAnswered.status, 200, JSON.stringify(targetAnswered.data));
-  assert.equal(targetAnswered.data.room.currentAction.actorId, damageTarget.id);
-  assert.equal(targetAnswered.data.room.causalEnvelope.interactionId, groupRoot.interactionId);
-  assert.equal(targetAnswered.data.room.causalEnvelope.activeFrameId, groupFrame.frameId, JSON.stringify(targetAnswered.data.room.causalEnvelope));
+  await advanceNegationWindow(game.code, targetMember.token, targetAnswered.data.room.currentAction.negationWindowId);
+  const afterTargetResponse = (await state(game.code, damageMember.token)).data;
+  assert.equal(afterTargetResponse.currentAction.actorId, damageTarget.id);
+  assert.equal(afterTargetResponse.causalEnvelope.interactionId, groupRoot.interactionId);
+  assert.equal(afterTargetResponse.causalEnvelope.activeFrameId, groupFrame.frameId, JSON.stringify(afterTargetResponse.causalEnvelope));
 
   const damageOpened = await requestAndSettle("decline_response", { code: game.code, token: damageMember.token });
   assert.equal(damageOpened.status, 200, JSON.stringify(damageOpened.data));
@@ -1376,7 +1380,9 @@ test("FIX15 Barbarian Invasion uses the same Group Damage child boundary", { tim
   assert.equal(first.currentAction.requirement, "attack", JSON.stringify(first));
   const answered = await requestAndSettle("respond", { code: game.code, token: targetMember.token, cardId: targetAttack.id, preserveResponse: true });
   assert.equal(answered.status, 200, JSON.stringify(answered.data));
-  assert.deepEqual(answered.data.room.presentationV2.groupResolution?.participantProgress, [
+  await advanceNegationWindow(game.code, sourceMember.token, answered.data.room.currentAction.negationWindowId);
+  const afterAttack = (await state(game.code, sourceMember.token)).data;
+  assert.deepEqual(afterAttack.presentationV2.groupResolution?.participantProgress, [
     { playerId: target.id, order: 1, status: "RESOLVED" },
     { playerId: damageTarget.id, order: 2, status: "CURRENT" },
     { playerId: finalTarget.id, order: 3, status: "PENDING" },
@@ -1406,10 +1412,12 @@ test("FIX15 Barbarian Invasion uses the same Group Damage child boundary", { tim
 
   const resumed = await requestAndSettle("decline_trigger", { code: game.code, token: damageMember.token, preserveResponse: true });
   assert.equal(resumed.status, 200, JSON.stringify(resumed.data));
-  assert.equal(resumed.data.room.currentAction.kind, "response", JSON.stringify(resumed.data.room));
-  assert.equal(resumed.data.room.currentAction.actorId, finalTarget.id);
-  assert.equal(resumed.data.room.causalEnvelope.activeFrameId, child.parentFrameId);
-  assert.deepEqual(resumed.data.room.presentationV2.groupResolution?.participantProgress, [
+  await advanceNegationWindow(game.code, sourceMember.token, resumed.data.room.currentAction.negationWindowId);
+  const resumedGroup = (await state(game.code, sourceMember.token)).data;
+  assert.equal(resumedGroup.currentAction.kind, "response", JSON.stringify(resumedGroup));
+  assert.equal(resumedGroup.currentAction.actorId, finalTarget.id);
+  assert.equal(resumedGroup.causalEnvelope.activeFrameId, child.parentFrameId);
+  assert.deepEqual(resumedGroup.presentationV2.groupResolution?.participantProgress, [
     { playerId: target.id, order: 1, status: "RESOLVED" },
     { playerId: damageTarget.id, order: 2, status: "RESOLVED", outcome: "DAMAGED" },
     { playerId: finalTarget.id, order: 3, status: "CURRENT" },
@@ -1503,6 +1511,7 @@ test("FIX9 persists the Group root and keeps nested Negation in the same Frame",
   assert.equal(started.status, 200, JSON.stringify(started.data));
   const initial = started.data.room;
   const root = initial.causalEnvelope;
+  const initialWindowId = initial.currentAction.negationWindowId;
   assert.ok(root, "the initial Group decision has a public causal envelope");
   assert.equal(root.frames.length, 1, "nested Group Negation stays in the Group frame");
   const frame = root.frames[0];
@@ -1546,20 +1555,22 @@ test("FIX9 persists the Group root and keeps nested Negation in the same Frame",
   assert.equal(other.causalEnvelope.checkpoint.checkpointId, root.checkpoint.checkpointId);
   const settled = await requestAndSettle("decline_response", { code: game.code, token: sourceMember.token, preserveResponse: true });
   assert.equal(settled.status, 200, JSON.stringify(settled.data));
-  assert.equal(settled.data.room.causalEnvelope.frames.length, 1);
-  assert.equal(settled.data.room.causalEnvelope.activeFrameId, frame.frameId);
-  assert.equal(settled.data.room.causalEnvelope.frames[0].stage, "GROUP_RESOLUTION");
-  assert.notEqual(settled.data.room.causalEnvelope.checkpoint.checkpointId, root.checkpoint.checkpointId);
-  assert.equal(settled.data.room.causalEnvelope.presentationRevision, root.presentationRevision + 1);
-  assert.equal(settled.data.room.presentationV2.groupResolution?.groupFrameId, frame.frameId);
-  assert.equal(settled.data.room.presentationV2.groupResolution?.activeFrameId, frame.frameId);
-  assert.equal(settled.data.room.presentationV2.groupResolution?.stage, "GROUP_RESOLUTION");
-  assert.deepEqual(settled.data.room.presentationV2.groupResolution?.participantProgress, [
+  await advanceNegationWindow(game.code, sourceMember.token, initialWindowId);
+  const postWindow = (await state(game.code, sourceMember.token)).data;
+  assert.equal(postWindow.causalEnvelope.frames.length, 1);
+  assert.equal(postWindow.causalEnvelope.activeFrameId, frame.frameId);
+  assert.equal(postWindow.causalEnvelope.frames[0].stage, "GROUP_RESOLUTION");
+  assert.notEqual(postWindow.causalEnvelope.checkpoint.checkpointId, root.checkpoint.checkpointId);
+  assert.equal(postWindow.causalEnvelope.presentationRevision, root.presentationRevision + 1);
+  assert.equal(postWindow.presentationV2.groupResolution?.groupFrameId, frame.frameId);
+  assert.equal(postWindow.presentationV2.groupResolution?.activeFrameId, frame.frameId);
+  assert.equal(postWindow.presentationV2.groupResolution?.stage, "GROUP_RESOLUTION");
+  assert.deepEqual(postWindow.presentationV2.groupResolution?.participantProgress, [
     { playerId: target.id, order: 1, status: "CURRENT" },
     { playerId: bob.id, order: 2, status: "PENDING" },
     { playerId: carol.id, order: 3, status: "PENDING" },
   ]);
-  let completedGroup = settled.data.room;
+  let completedGroup = postWindow;
   for (let guard = 0; guard < 8 && completedGroup.causalEnvelope; guard++) {
     const pending = authoritativePending(game.code);
     if (pending?.kind !== "response" || !pending.actorId) break;
@@ -2032,10 +2043,12 @@ test("UX2.7 Group Negated outcome is scoped to an authoritative AOE cancellation
     setHand(opened.target.id, [targetNegation], 3, 3);
 
     const initial = await assertProjectionMatchesEngine(opened.code, opened.sourceMember.token);
+    const initialWindowId = initial.currentAction.negationWindowId;
     assert.equal(initial.currentAction.actorId, opened.source.id);
     assert.ok(initial.presentationV2.groupResolution?.participantProgress?.every(({ outcome }) => outcome === undefined));
     const negated = await requestAndSettle("respond", { code: opened.code, token: opened.sourceMember.token, cardId: firstNegation.id, preserveResponse: true });
     assert.equal(negated.status, 200, `${kind}: ${JSON.stringify(negated.data)}`);
+    await advanceNegationWindow(opened.code, opened.sourceMember.token, initialWindowId);
 
     const openWindow = await assertProjectionMatchesEngine(opened.code, opened.targetMember.token);
     assert.equal(openWindow.currentAction.actorId, opened.target.id);
@@ -2056,6 +2069,7 @@ test("UX2.7 Group Negated outcome is scoped to an authoritative AOE cancellation
     assert.deepEqual(openWindow.presentationV2.groupResolution?.participantProgress?.[0], { playerId: opened.target.id, order: 1, status: "CURRENT" }, "the pending Negation is not public as a completed outcome");
     const passed = await requestAndSettle("decline_response", { code: opened.code, token: opened.targetMember.token, preserveResponse: true });
     assert.equal(passed.status, 200, `${kind}: ${JSON.stringify(passed.data)}`);
+    await advanceNegationWindow(opened.code, opened.targetMember.token, openWindow.currentAction.negationWindowId);
 
     const resumed = await assertProjectionMatchesEngine(opened.code, opened.bobMember.token);
     const participant = resumed.presentationV2.groupResolution?.participantProgress?.[0];
@@ -2082,8 +2096,11 @@ test("UX2.7 mismatched Group Negation target remains outcome-free", { timeout: 3
     skipNegationWindows: true,
   });
   setHand(opened.target.id, [targetNegation], 3, 3);
+  const initial = await assertProjectionMatchesEngine(opened.code, opened.sourceMember.token);
+  const initialWindowId = initial.currentAction.negationWindowId;
   const started = await requestAndSettle("respond", { code: opened.code, token: opened.sourceMember.token, cardId: firstNegation.id, preserveResponse: true });
   assert.equal(started.status, 200, JSON.stringify(started.data));
+  await advanceNegationWindow(opened.code, opened.sourceMember.token, initialWindowId);
   const livePending = authoritativePending(opened.code);
   assert.equal(livePending.continuation.negated, true);
   sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify({
@@ -2096,6 +2113,7 @@ test("UX2.7 mismatched Group Negation target remains outcome-free", { timeout: 3
 
   const passed = await requestAndSettle("decline_response", { code: opened.code, token: opened.targetMember.token, preserveResponse: true });
   assert.equal(passed.status, 200, JSON.stringify(passed.data));
+  await advanceNegationWindow(opened.code, opened.targetMember.token, malformedActiveWindow.currentAction.negationWindowId);
   const resumed = await assertProjectionMatchesEngine(opened.code, opened.targetMember.token);
   assert.equal(resumed.presentationV2.groupResolution?.participantProgress?.[0]?.status, "RESOLVED");
   assert.equal(resumed.presentationV2.groupResolution?.participantProgress?.[0]?.outcome, undefined, "a mismatched target identity fails closed even when the Negation chain says cancelled");
@@ -2358,8 +2376,10 @@ test("single-target Negation cancellation exposes an explicit public root dispos
   assert.equal(response.currentAction.actorId, target.id);
   assert.equal(response.presentationSnapshot.settlement, null, "an open Negation window has no terminal disposition");
 
+  const windowId = response.currentAction.negationWindowId;
   const cancelled = await requestAndSettle("respond", { code: game.code, token: targetMember.token, cardId: negation.id, preserveResponse: true });
   assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
+  await advanceNegationWindow(game.code, sourceMember.token, windowId);
   const cancelledView = await assertProjectionMatchesEngine(game.code, sourceMember.token);
   const settlement = cancelledView.presentationSnapshot.settlement;
   assert.equal(settlement?.outcome, "ROOT_CANCELLED");
@@ -2391,7 +2411,7 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   ]);
   setTurn(game.code, source.seat);
 
-  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: harvest.id });
+  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: harvest.id, preserveResponse: true });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   const firstWindow = await assertProjectionMatchesEngine(game.code, alice.token);
   const firstWindowId = firstWindow.currentAction.negationWindowId;
@@ -2600,7 +2620,7 @@ test("FIX10 shared Negation uses private viewer options and one stable public ch
   assert.equal(view.actionPlayerId, null);
   assert.equal(view.causalEnvelope.frames.length, 1);
   assert.equal(view.causalEnvelope.frames[0].current.resolvingPlayerId, null);
-  assert.equal(view.causalEnvelope.presentationRevision, 0);
+  assert.equal(view.causalEnvelope.presentationRevision, opened.data.room.causalEnvelope.presentationRevision);
   const pending = authoritativePending(game.code);
   assert.equal(pending.kind, "negation_window");
   assert.equal("actorId" in pending, false);
@@ -2797,7 +2817,7 @@ test("engine-backed Oath exposes a viewer-equal living wounded recipient scope a
   const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: oath.id });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   const pending = authoritativePending(game.code);
-  assert.equal(pending?.kind, "response");
+  assert.equal(pending?.kind, "negation_window");
   assert.equal(pending?.continuation?.kind, "negation");
   assert.equal(pending?.continuation?.effect?.kind, "oath");
 

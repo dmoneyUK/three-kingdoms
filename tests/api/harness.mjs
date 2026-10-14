@@ -131,7 +131,7 @@ export async function requestAndSettle(action, values = {}) {
   }
   const result = await request(action, actionValues);
   if (actionValues.code && result.status === 200 && !preserveResponse && !["start_response_timer", "start_rescue_timer", "advance_timers"].includes(action)) {
-    if (responseWindowId && !preserveNegationWindow && !submittedNegation) await advanceNegationWindow(actionValues.code, actionValues.token, responseWindowId);
+    if (responseWindowId && !preserveNegationWindow) await advanceNegationWindow(actionValues.code, actionValues.token, responseWindowId);
     else if (!responseWindowId && !submittedNegation && !["respond", "decline_response"].includes(action)) await fastForwardNegationWindow(actionValues.code, actionValues.token);
     await drainEmptyPrivateDecisions(actionValues.code, actionValues.token);
     const refreshed = await state(actionValues.code, actionValues.token);
@@ -499,7 +499,7 @@ export async function openGanglieGroup({ kind, judge, suffix, sourceExtraCards =
   setHand(carol.id, [card(required, `${suffix}-carol`)], 4, 4);
   setTurn(game.code, source.seat);
   setDeck(game.code, [judge]);
-  const started = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: `${kind.toLowerCase()}-${suffix}-source` });
+  const started = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: `${kind.toLowerCase()}-${suffix}-source`, preserveResponse: skipNegationWindows });
   assert.equal(started.status, 200, JSON.stringify(started.data));
   if (!skipNegationWindows) await passNegationWindows(game.code, game.members);
   const settled = await state(game.code, sourceMember.token);

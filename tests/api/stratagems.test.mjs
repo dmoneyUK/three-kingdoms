@@ -33,7 +33,7 @@ test("shared Duel Negation windows choose by canonical seat order and reopen aft
   const initialWindowId = declared.data.room.currentAction.negationWindowId;
   assert.ok(initialWindowId);
   const initialDeadline = declared.data.room.currentAction.deadline;
-  assert.equal(initialDeadline - declared.data.responseCountdownVisibleAt, 8_000);
+  assert.equal(initialDeadline - declared.data.room.responseCountdownVisibleAt, 8_000);
 
   const firstViews = await Promise.all(game.members.map((member) => state(game.code, member.token)));
   for (const [index, { data: view }] of firstViews.entries()) {
@@ -98,6 +98,9 @@ test("shared Duel Negation windows choose by canonical seat order and reopen aft
 });
 
 test("shared Duel Negation priority is unchanged when the canonical winner submits first", { timeout: 30_000 }, async () => {
+  const duel = card("Duel", "shared-window-order-root");
+  const seatTwoNegation = card("Negation", "shared-window-order-seat-two");
+  const seatFourNegation = card("Negation", "shared-window-order-seat-four");
   const game = await seedPlayingGame({
     phase: "play",
     turnSeat: 0,
@@ -107,25 +110,25 @@ test("shared Duel Negation priority is unchanged when the canonical winner submi
       hero: ["cao-cao", "xiahou-dun", "zhang-liao", "simayi", "guo-jia"][index],
       hp: 4,
       maxHp: 4,
-      hand: index === 0 ? [card("Duel", "shared-window-order-root")] : index === 1 ? [card("Negation", "shared-window-order-seat-two")] : index === 3 ? [card("Negation", "shared-window-order-seat-four")] : [],
+      hand: index === 0 ? [duel] : index === 1 ? [seatTwoNegation] : index === 3 ? [seatFourNegation] : [],
     })),
   });
   const [seatOne, seatTwo, seatThree, , seatFive] = game.room.players;
   const [oneMember, twoMember, , fourMember] = game.members;
-  const opened = await request("play_card", { code: game.code, token: oneMember.token, cardId: "shared-window-order-root", targetId: seatThree.id });
+  const opened = await request("play_card", { code: game.code, token: oneMember.token, cardId: duel.id, targetId: seatThree.id });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   const windowId = opened.data.room.currentAction.negationWindowId;
-  const seatTwoIntent = await request("respond", { code: game.code, token: twoMember.token, providerId: "negation_card", cardId: "shared-window-order-seat-two" });
-  const seatFourIntent = await request("respond", { code: game.code, token: fourMember.token, providerId: "negation_card", cardId: "shared-window-order-seat-four" });
+  const seatTwoIntent = await request("respond", { code: game.code, token: twoMember.token, providerId: "negation_card", cardId: seatTwoNegation.id });
+  const seatFourIntent = await request("respond", { code: game.code, token: fourMember.token, providerId: "negation_card", cardId: seatFourNegation.id });
   assert.equal(seatTwoIntent.status, 200, JSON.stringify(seatTwoIntent.data));
   assert.equal(seatFourIntent.status, 200, JSON.stringify(seatFourIntent.data));
 
   await advanceNegationWindow(game.code, oneMember.token, windowId);
   const resolved = (await state(game.code, oneMember.token)).data;
   assert.equal(resolved.pendingNegation.latestNegationPlayerId, seatTwo.id);
-  assert.ok(resolved.timeline.some((event) => event.card?.id === "shared-window-order-seat-two"));
-  assert.equal(resolved.timeline.some((event) => event.card?.id === "shared-window-order-seat-four"), false);
-  assert.ok((await state(game.code, fourMember.token)).data.myHand.some((held) => held.id === "shared-window-order-seat-four"));
+  assert.ok(resolved.timeline.some((event) => event.card?.id === seatTwoNegation.id));
+  assert.equal(resolved.timeline.some((event) => event.card?.id === seatFourNegation.id), false);
+  assert.ok((await state(game.code, fourMember.token)).data.myHand.some((held) => held.id === seatFourNegation.id));
   assert.equal(seatFive.id, game.room.players[4].id);
 });
 
@@ -324,7 +327,7 @@ test("host test flow follows the live actor for Something Out of Nothing and rej
   assert.equal(JSON.parse(query(`SELECT COUNT(*) FROM json_each((SELECT deck_json FROM rooms WHERE code=${quote(room.code)}))`)), 92, "host test flow uses the same 4-card opening deal as normal games");
   setHand(me.id, [], 3, 3); setHand(playerOne.id, [card("DrawTwo", "quick-live")], 3, 3); setHand(playerTwo.id, [card("Negation", "quick-live")], 3, 3); setHand(playerThree.id, [], 3, 3); setTurn(room.code, playerOne.seat, "play");
   const before = await state(room.code, token);
-  const played = await requestAndSettle("play_card", { code: room.code, token, cardId: "drawtwo-quick-live" });
+  const played = await requestAndSettle("play_card", { code: room.code, token, cardId: "drawtwo-quick-live", preserveResponse: true });
   assert.equal(played.status, 200); assert.equal(played.data.room.phase, "response");
   assert.equal(played.data.room.pendingNegation.kind, "negation", "the public pending DTO retains its discriminator for the client normalizer");
   assert.deepEqual(played.data.room.pending, { kind: "response" }, "the canonical pending view exposes one semantic response discriminator");
@@ -1016,7 +1019,7 @@ test("Negation cancels an AOE for one target and the card continues in seat orde
     setTurn(game.code, hostPlayer.seat);
     sql(`UPDATE rooms SET discard_json='[]' WHERE code=${quote(game.code)}`);
 
-    const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: `${kind.toLowerCase()}-per-target` });
+    const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: `${kind.toLowerCase()}-per-target`, preserveResponse: true });
     assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation.effectTargetId, alicePlayer.id); assert.equal(opened.data.room.actionPlayerId, null);
     assert.deepEqual(discardIds(game.code), [], `${kind} stays staged while Alice decides whether to Negate`);
     const aliceNegates = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: `negation-${kind}-alice` });
@@ -1325,7 +1328,7 @@ test("delayed placement settles before a later activation creates a fresh intera
   setHand(alicePlayer.id, [placementNegation], 4, 4);
   setHand(bobPlayer.id, [], 4, 4);
   setTurn(game.code, hostPlayer.seat, "play");
-  const placement = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: delayed.id, targetId: alicePlayer.id });
+  const placement = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: delayed.id, targetId: alicePlayer.id, preserveResponse: true });
   assert.equal(placement.status, 200, JSON.stringify(placement.data));
   const placementRoot = placement.data.room.causalEnvelope;
   assert.ok(placementRoot);
@@ -1543,7 +1546,7 @@ test("Rations Depleted targets at distance 1 and skips only a failed target's Dr
   setHand(hostPlayer.id, [card("RationsDepleted", "far")], 5, 5); setTurn(game.code, hostPlayer.seat, "play");
   assert.equal((await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "rationsdepleted-far", targetId: bobPlayer.id })).status, 409, "Rations Depleted cannot target a character at distance 2");
   setHand(hostPlayer.id, [card("RationsDepleted", "placement-negated")], 5, 5); setHand(alicePlayer.id, [card("Negation", "rations-placement")], 4, 4); setTurn(game.code, hostPlayer.seat, "play");
-  const placementWindow = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "rationsdepleted-placement-negated", targetId: alicePlayer.id });
+  const placementWindow = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "rationsdepleted-placement-negated", targetId: alicePlayer.id, preserveResponse: true });
   assert.equal(placementWindow.status, 200); assert.equal(placementWindow.data.room.pendingNegation.cardName, "Rations Depleted");
   const placementCancelled = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "negation-rations-placement" });
   assert.equal(placementCancelled.status, 200); assert.deepEqual(placementCancelled.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, [], "Negation cancels Rations Depleted before placement");
