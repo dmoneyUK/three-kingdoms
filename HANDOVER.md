@@ -2,16 +2,15 @@
 
 Branch: `ux-v2`
 
-Latest reviewed design: `docs/UX2-refine.md`, blob `bbdb3ee60ac2b6606cd1f140c546249222b22049`.
+Latest reviewed design: `docs/UX2-refine.md`, blob `677af530ff7e299716a70a24043e3bba8bebfcc6` (status annotations only; design requirements unchanged).
 
-## Latest result
+## Latest implementation and review
 
-§8.7 Policy B is implemented at `871f3071056c21aeb1b1c961276d54115a888a22`. Exact-SHA Actions run [`38603216133`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38603216133) passed lint/fast tests, API tests, browser startup/room smoke, and deploy; production `/api/health` returned `{"ok":true,"worker":"available"}`. Current source audit confirms 4,000ms reveal, 380ms park, and interruption gated by a newly proven public response. Real-device timing/screenshots and user visual acceptance remain pending. No local automated tests were run.
+- §8.7 Policy B remains implemented at `871f3071056c21aeb1b1c961276d54115a888a22`; run [`38603216133`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38603216133) passed validation/deploy. Source audit confirms 4,000ms reveal, 380ms park and interruption gated by a new proven public response. Real-device timing and visual acceptance remain pending.
+- §10.5.3 shipped at `a191c08fb386b32f0d8ab24ecf3788bc86c89f50`; run [`38607911627`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38607911627) passed lint/fast, API, browser startup/room smoke and deploy. Production `/api/health` returned `{"ok":true,"worker":"available"}`. Generic notice suppression requires the same action's validated Deflection proof; the label now sits above its real cost card in a compact frame. Real-phone screenshots and visual acceptance remain pending.
+- §9 shared-window Negation was reviewed against §§9.1–9.4; no source-verifiable defect was found, so no implementation change was made. Gate C's authenticated Worker/D1 coverage and exact Actions evidence remain in the design status. Real-device/user acceptance remains pending.
+- No local automated tests or authenticated phone screenshots were run, following the user's testing preference.
 
-## Current task — `UX2-10.5.3-DEFLECTION-NOTICE-FRAME`
+## Next task — gated §10.2 source review
 
-Implement only the two §10.5.3 visual corrections: suppress the generic Effect Triggered notice when the same server action creates a valid public Deflection proof, and place the DEFLECTION label above the real cost CardFace in a compact frame while keeping the single truthful effect sentence. Preserve Deflection rules, card identity, public proof validation, and Policy B timing.
-
-Current changes are limited to `app/api/rooms/route.ts` and `app/globals.css`. `git diff --check` passed. No local automated tests or authenticated phone screenshots were run, per the user's testing preference. The base source SHA's CI/deploy passed; task CI/deploy is pending.
-
-**Acceptance / stop:** inspect the exact task SHA's Actions and deployment, update this handoff and add a progress-only status note to §10.5.3 without changing design details. Report that real-phone screenshots and user/reviewer visual acceptance remain pending. Do not start §10.2–§10.4 before prior tasks are accepted.
+After the user/reviewer accepts §8.7, §10.5.3 and §9, inspect one unfinished §10.2 card-family subgroup (Steal is a candidate) and define one bounded implementation task from current code. Do not reimplement delivered Negation, Dismantle or Deflection E1/E2. No §10.2–§10.4 implementation is active before that acceptance gate.
