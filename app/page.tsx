@@ -1689,6 +1689,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const triggerResponse = room.currentAction?.kind === "trigger" && room.isMyAction;
   const responseTimerActive = canRespond && room.phase !== "dying" || triggerResponse;
   const semanticResponseOptions = room.currentAction?.options ?? [];
+  const sharedNegationWindow = Boolean(room.currentAction?.negationWindowId);
   const genericResponse = canUseAction(room.currentAction, "respond");
   // Ordinary physical responses are implicit: their eligible cards are ready
   // to select immediately. Explicit abilities deliberately enter a provider
@@ -1768,7 +1769,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   // server-owned CurrentAction. A late card animation must not remove its
   // Confirm/Cancel controls after the player has selected legal Assault
   // targets; the server still revalidates the action and revision on submit.
-  const activeSkillSelectionBusy = Boolean(presentationBusy && !activeSkillTargetMode);
+  // A shared Negation window's response deadline starts independently of the
+  // root-card reveal. Its legal Confirm/Pass controls must not inherit visual
+  // presentation busy state; the separate network `busy` flag still blocks
+  // duplicate submissions while a request is in flight.
+  const activeSkillSelectionBusy = Boolean(presentationBusy && !activeSkillTargetMode && !sharedNegationWindow);
   // CurrentAction owns whether this local card may be played. The helper only
   // mirrors the already-public scope rule for a selected, legal group card.
   const groupScopePreview = buildGroupScopePreview({
@@ -1846,7 +1851,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   // Shared Negation's eight-second deadline starts when the server opens the
   // window. A preceding public-card reveal must not consume that response time
   // by withholding the viewer's legal controls.
-  const responsePresentationReady = Boolean(room.currentAction?.negationWindowId)
+  const responsePresentationReady = sharedNegationWindow
     || !responseReadyAfterEventId
     || responseBarrierEvent?.type === "message"
     || responseBarrierEvent?.importance === "informational"
@@ -4906,7 +4911,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       participant.playerId === room.meId && (participant.status === "CURRENT" || participant.status === "PAUSED"),
     ),
   );
-  const sharedNegationWindow = Boolean(room.currentAction?.negationWindowId);
   const negationWindowSubmitted = sharedNegationWindow && room.pendingNegation?.submitted === true;
   const responseDeclineLabel = rainingArrowsDamageDecline ? "TAKE DAMAGE" : sharedNegationWindow ? "Pass" : "Skip";
   const rainingArrowsDodgeProviderCardIds = new Set(
@@ -5064,7 +5068,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       } guidance={
         <div className="console-guidance" data-console-guidance="true">
           <div className="console-guidance-row">
-            <div className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`} data-console-decision-kind={consoleDecision.kind} data-console-coherent={consoleDecision.coherent ? "true" : "false"} data-console-primary={consoleDecision.primary?.label ?? "none"} data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"} data-console-selection-count={consoleDecision.selectionCount ?? undefined} data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"} data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"} role="status" aria-live="polite" aria-atomic="true"><small>{negationWindowSubmitted ? "RESPONSE SUBMITTED" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{consoleDecision.instruction}</strong>{daqiaoDeflectionSelectionActive ? <div className="deflection-selection-guidance" data-testid="deflection-selection-guidance" role="group" aria-label="Deflection selections"><span data-daqiao-selection="card">Discard card: {daqiaoDeflectionCardCount}/1 {daqiaoDeflectionCardCount === 1 ? "✓" : "— Select an eligible hand or equipment card"}</span><span data-daqiao-selection="target">Transfer target: {daqiaoDeflectionTargetCount}/1 {daqiaoDeflectionTargetCount === 1 ? "✓" : "— Tap an eligible hero portrait"}</span>{daqiaoDeflectionCardCount === 1 && daqiaoDeflectionTargetCount === 1 && <strong>Ready to redirect Attack</strong>}</div> : !negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}{consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true"><b>{canClearTargetCardPickerSelection ? "CLEAR SELECTION" : "LOCAL CANCEL"}</b><span>{canClearTargetCardPickerSelection ? "Remove your selected card." : "Change your selection before submitting."}</span></span>}</div>
+            <div className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`} data-console-decision-kind={consoleDecision.kind} data-console-coherent={consoleDecision.coherent ? "true" : "false"} data-console-primary={consoleDecision.primary?.label ?? "none"} data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"} data-console-selection-count={consoleDecision.selectionCount ?? undefined} data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"} data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"} data-console-negation-window={sharedNegationWindow ? "true" : "false"} data-console-response-presentation-ready={responsePresentationReady ? "true" : "false"} data-console-presentation-busy={presentationBusy ? "true" : "false"} data-console-active-skill-selection-busy={activeSkillSelectionBusy ? "true" : "false"} data-console-network-busy={busy ? "true" : "false"} role="status" aria-live="polite" aria-atomic="true"><small>{negationWindowSubmitted ? "RESPONSE SUBMITTED" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{consoleDecision.instruction}</strong>{daqiaoDeflectionSelectionActive ? <div className="deflection-selection-guidance" data-testid="deflection-selection-guidance" role="group" aria-label="Deflection selections"><span data-daqiao-selection="card">Discard card: {daqiaoDeflectionCardCount}/1 {daqiaoDeflectionCardCount === 1 ? "✓" : "— Select an eligible hand or equipment card"}</span><span data-daqiao-selection="target">Transfer target: {daqiaoDeflectionTargetCount}/1 {daqiaoDeflectionTargetCount === 1 ? "✓" : "— Tap an eligible hero portrait"}</span>{daqiaoDeflectionCardCount === 1 && daqiaoDeflectionTargetCount === 1 && <strong>Ready to redirect Attack</strong>}</div> : !negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}{consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true"><b>{canClearTargetCardPickerSelection ? "CLEAR SELECTION" : "LOCAL CANCEL"}</b><span>{canClearTargetCardPickerSelection ? "Remove your selected card." : "Change your selection before submitting."}</span></span>}</div>
             <GameSystemMenu onLeave={onLeave} messages={gameMessages} messagesCollapsed={messagesCollapsed} onToggleMessages={() => setMessagesCollapsed((collapsed) => !collapsed)} />
           </div>
           {invalidResponseState && <p className="error" role="status">Waiting for the latest response state…</p>}

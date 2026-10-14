@@ -225,3 +225,155 @@ test("real shared Negation keeps intent private until expiry and renders only th
     await holderContext.close();
   }
 });
+
+test("Negation selection, Confirm, and Pass stay usable through the live root reveal", async ({ page, browser, request }, testInfo) => {
+  const seedData = await seed(request);
+  const source = seedData.players[0];
+  const holder = seedData.players[1];
+  const passPlayer = seedData.players[2];
+  const rootId = "shared-negation-root";
+  const negationId = "shared-negation-private-card";
+  const holderContext = await browser.newContext({ viewport: { width: 440, height: 894 } });
+
+  try {
+    // Both authenticated clients are mounted before the action, so neither can
+    // treat the root as pre-existing history instead of a live visual reveal.
+    await openPlayer(page, seedData, 2);
+    const holderPage = await holderContext.newPage();
+    await openPlayer(holderPage, seedData, 1);
+    const rootRevealObserved = holderPage.waitForFunction((cardId) => {
+      const card = document.querySelector(`[data-public-card-journey-card-id="${cardId}"]`);
+      return card?.getAttribute("data-public-card-journey-phase") === "reveal" ? performance.now() : null;
+    }, rootId, { polling: "raf", timeout: 20_000 }).then(async (handle) => {
+      try { return await handle.jsonValue(); } finally { await handle.dispose(); }
+    });
+    const declaredResponse = await request.post(`${API}/api/rooms`, {
+      data: { action: "play_card", code: seedData.code, token: source.token, cardId: rootId },
+    });
+    expect(declaredResponse.ok()).toBeTruthy();
+    const declared = (await declaredResponse.json()).room;
+    const windowId = declared.currentAction.negationWindowId;
+    const openedAt = declared.responseCountdownVisibleAt;
+    const deadline = declared.currentAction.deadline;
+    expect(windowId).toBeTruthy();
+    expect(deadline - openedAt).toBe(8_000);
+
+    const revealObservedAt = await rootRevealObserved;
+    const rootDisplay = holderPage.locator(`[data-public-card-display="true"][data-public-card-id="${rootId}"]`);
+    const rootCard = rootDisplay.locator(`[data-public-card-journey-card-id="${rootId}"]`);
+    await expect(rootDisplay).toBeVisible();
+    await expect(rootCard).toHaveAttribute("data-public-card-journey-phase", "reveal");
+    const holderDock = holderPage.locator(`.local-player-dock[data-player-anchor="${holder.id}"]`);
+    const negationCard = holderDock.locator(`[data-hand-card-id="${negationId}"] .game-card`);
+    const confirm = holderDock.locator('[data-action-slot="primary"] button.primary');
+    const passButton = page.getByRole("button", { name: "Pass", exact: true });
+    const samples = [];
+
+    for (const elapsedMs of [200, 1_000, 2_000, 3_500]) {
+      await holderPage.waitForFunction((targetTime) => performance.now() >= targetTime, revealObservedAt + elapsedMs);
+      await expect(rootCard).toHaveAttribute("data-public-card-journey-phase", "reveal");
+      await expect(negationCard).toBeEnabled();
+      const passEnabled = await passButton.isEnabled();
+      if (elapsedMs === 200) {
+        await negationCard.click();
+        await expect(negationCard).toHaveClass(/selected/);
+        await expect(confirm).toBeEnabled();
+      }
+      const sample = await holderPage.evaluate(() => {
+        const shell = document.querySelector(".game-shell");
+        const status = document.querySelector(".console-guidance .decision-status");
+        const root = document.querySelector('[data-public-card-journey-card-id="shared-negation-root"]');
+        const confirmButton = document.querySelector('.local-player-dock [data-action-slot="primary"] button.primary');
+        if (!shell || !status || !root || !(root instanceof HTMLElement) || !(confirmButton instanceof HTMLButtonElement)) return null;
+        const rect = root.getBoundingClientRect();
+        return {
+          responsePresentationReady: status.getAttribute("data-console-response-presentation-ready"),
+          presentationBusy: status.getAttribute("data-console-presentation-busy"),
+          activeSkillSelectionBusy: status.getAttribute("data-console-active-skill-selection-busy"),
+          networkBusy: status.getAttribute("data-console-network-busy"),
+          negationWindow: status.getAttribute("data-console-negation-window"),
+          primaryEnabled: status.getAttribute("data-console-primary-enabled"),
+          confirmDisabled: confirmButton.disabled,
+          rootPhase: root.dataset.publicCardJourneyPhase,
+          rootRect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+        };
+      });
+      const actionView = elapsedMs === 200 ? await view(request, seedData, 1) : null;
+      const currentSample = {
+        elapsedFromRevealObservationMs: Math.round(await holderPage.evaluate((startAt) => performance.now() - startAt, revealObservedAt)),
+        elapsedFromWindowOpenMs: Date.now() - openedAt,
+        actionRevision: actionView?.actionRevision ?? samples[0]?.actionRevision,
+        windowId: actionView?.currentAction.negationWindowId ?? samples[0]?.windowId,
+        deadline: actionView?.currentAction.deadline ?? samples[0]?.deadline,
+        passEnabled,
+        ...sample,
+      };
+      if (actionView) {
+        expect(actionView.currentAction).toMatchObject({ actorId: holder.id, negationWindowId: windowId });
+        expect(actionView.currentAction.options).toContainEqual(expect.objectContaining({
+          providerId: "negation_card",
+          selection: expect.objectContaining({ eligibleCardIds: [negationId] }),
+        }));
+        expect(actionView.actionRevision).toBeTruthy();
+        const passView = await view(request, seedData, 2);
+        expect(passView.currentAction).toMatchObject({ actorId: passPlayer.id, negationWindowId: windowId, legalActions: ["decline_response"] });
+        currentSample.passActionRevision = passView.actionRevision;
+      }
+      samples.push(currentSample);
+      expect(sample, `missing live Negation reveal diagnostics at ${elapsedMs}ms`).not.toBeNull();
+      expect(sample, `Negation controls failed during the root reveal at ${elapsedMs}ms: ${JSON.stringify(currentSample)}`).toMatchObject({
+        responsePresentationReady: "true",
+        presentationBusy: "true",
+        activeSkillSelectionBusy: "false",
+        networkBusy: "false",
+        negationWindow: "true",
+        primaryEnabled: "true",
+        confirmDisabled: false,
+        rootPhase: "reveal",
+      });
+      expect(passEnabled, `Pass is disabled during the root reveal at ${elapsedMs}ms: ${JSON.stringify(currentSample)}`).toBe(true);
+      expect(currentSample.windowId).toBe(windowId);
+      expect(currentSample.deadline).toBe(deadline);
+
+      if (elapsedMs === 3_500) {
+        const confirmStartedAt = Date.now();
+        const confirmation = holderPage.waitForResponse((response) => response.url() === `${API}/api/rooms`
+          && response.request().method() === "POST"
+          && response.request().postDataJSON()?.action === "respond"
+          && response.request().postDataJSON()?.providerId === "negation_card");
+        await confirm.click();
+        const response = await confirmation;
+        currentSample.confirmElapsedFromWindowOpenMs = confirmStartedAt - openedAt;
+        currentSample.confirmResponseElapsedMs = Date.now() - confirmStartedAt;
+        expect(response.ok()).toBeTruthy();
+        expect(response.request().postDataJSON()).toMatchObject({ action: "respond", token: holder.token, providerId: "negation_card", cardId: negationId });
+      }
+    }
+
+    const passStartedAt = Date.now();
+    const passSubmission = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "decline_response");
+    await passButton.click();
+    const passResponse = await passSubmission;
+    expect(passResponse.ok()).toBeTruthy();
+    expect(passResponse.request().postDataJSON()).toMatchObject({ action: "decline_response", token: passPlayer.token });
+    samples.push({ passElapsedFromWindowOpenMs: passStartedAt - openedAt, passResponseElapsedMs: Date.now() - passStartedAt });
+
+    const holderSubmitted = await view(request, seedData, 1);
+    const passSubmitted = await view(request, seedData, 2);
+    const observerView = await view(request, seedData, 3);
+    expect(holderSubmitted.pendingNegation.submitted).toBe(true);
+    expect(holderSubmitted.myHand.some((held) => held.id === negationId)).toBe(true);
+    expect(passSubmitted.pendingNegation.submitted).toBe(true);
+    expect(observerView.pendingNegation.submitted).toBe(false);
+    expect(JSON.stringify(observerView)).not.toContain(negationId);
+    expect(observerView.currentAction.negationWindowId).toBe(windowId);
+    await testInfo.attach("negation-live-reveal-control-timing.json", {
+      body: JSON.stringify({ openedAt, deadline, windowId, actionRevision: samples[0]?.actionRevision, samples }, null, 2),
+      contentType: "application/json",
+    });
+  } finally {
+    await holderContext.close();
+  }
+});
