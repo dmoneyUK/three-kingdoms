@@ -205,6 +205,7 @@ const UI_TIMING = {
   attackHitSettlementRead: 2_000,
   attackHitSettlementFade: 180,
   publicCounterRead: 3000,
+  publicCardJourneyRead: 4_380,
   attackDodgeResultRead: 2_000,
   publicCounterSettlementConfirm: 120,
   publicCounterFade: 180,
@@ -3544,16 +3545,55 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || activePublicNegationRead.action.cardKind === "Duel" && activePublicNegationRead.action.rootEventId === duelNegationProofCandidate?.rootEvent.id)
     ? {
       ...activePublicNegationRead.action,
+      ...(activePublicNegationRead.action.motion?.type === "negation" && activeNegationReadSettled ? { phaseNotice: undefined } : {}),
+      ...(activePublicNegationRead.action.motion?.type === "negation" && activeNegationReadSettled && clientPresentation.negationSettlement ? {
+        settlement: {
+          eventId: clientPresentation.negationSettlement.eventId,
+          outcome: clientPresentation.negationSettlement.outcome,
+          exiting: activePublicNegationRead.phase === "exiting",
+        },
+      } : {}),
       publicCounterRead: {
         eventId: activePublicNegationRead.action.publicCounterRead!.eventId,
         exiting: activePublicNegationRead.phase === "exiting" && activeNegationReadSettled,
       },
     }
     : null;
+  const singleTargetNegationSettlement = (() => {
+    const candidate = singleTargetNegationProofCandidate;
+    const proof = clientPresentation.negationSettlement;
+    if (!candidate || !proof || proof.semantics !== "PROVEN"
+      || proof.interactionId !== candidate.chain.interactionId
+      || proof.rootFrameId !== clientPresentation.rootFrameId
+      || proof.rootCardKind !== candidate.root.cardKind
+      || proof.sourceId !== candidate.root.source.id
+      || proof.targetId !== candidate.root.targets[0]?.id) return null;
+    const settlementEvents = room.timeline.filter((event) => event.id === proof.eventId);
+    if (settlementEvents.length !== 1) return null;
+    const event = settlementEvents[0];
+    if (event.type !== "message" || event.presentation === false || event.resolutionId !== proof.resolutionId) return null;
+    return { eventId: proof.eventId, outcome: proof.outcome };
+  })();
+  const singleTargetNegationResponses = singleTargetNegationProofCandidate?.responseNodes.map(({ event, node }, index) => {
+    const counterTarget = node.counterTarget;
+    const counterLabel = counterTarget?.kind === "ROOT"
+      ? cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name
+      : `Negation ${index}`;
+    return {
+      eventId: event.id,
+      actorId: node.actor.id!,
+      actorName: node.actor.name,
+      cardFace: event.card,
+      ariaLabel: `${node.actor.name} played Negation to counter ${counterLabel}`,
+    };
+  }) ?? [];
+  const singleTargetNegationUsesJourney = Boolean(singleTargetNegationProofCandidate
+    && singleTargetNegationProofCandidate.root.cardKind !== "Duel"
+    && !new Set<string>(["BarbarianInvasion", "RainingArrows", "Oath", "BumperHarvest"]).has(singleTargetNegationProofCandidate.root.cardKind!));
   const singleTargetNegationPublicAction: PublicCardDisplayAction | null = singleTargetNegationProofCandidate
     ? {
       key: singleTargetNegationActionKey ?? "public-negation-read",
-      interactionId: clientPresentation.interactionId ?? undefined,
+      interactionId: singleTargetNegationProofCandidate.chain.interactionId,
       rootFrameId: clientPresentation.rootFrameId ?? undefined,
       rootEventId: singleTargetNegationProofCandidate.rootEvent.id,
       sourceId: singleTargetNegationProofCandidate.root.source.id!,
@@ -3562,27 +3602,31 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardFace: singleTargetNegationProofCandidate.rootEvent.card,
       cardLabel: cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name.toUpperCase(),
       ariaLabel: `${singleTargetNegationProofCandidate.root.source.name} played ${cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name} targeting ${singleTargetNegationProofCandidate.root.targets[0]!.name}`,
-      ...(singleTargetNegationProofCandidate.responseNodes.length ? {
-        publicCounterRead: {
-          eventId: singleTargetNegationProofCandidate.responseNodes.at(-1)!.event.id,
+      phaseNotice: singleTargetNegationUsesJourney
+        ? singleTargetNegationSettlement ? undefined : singleTargetNegationResponses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED"
+        : undefined,
+      ...(singleTargetNegationUsesJourney ? {
+        motion: {
+          type: "negation" as const,
+          scopeKey: [room.code, singleTargetNegationProofCandidate.chain.interactionId, singleTargetNegationProofCandidate.rootEvent.id].join(":"),
+          freshEventIds: [singleTargetNegationProofCandidate.rootEvent.id, ...singleTargetNegationResponses.map((response) => response.eventId)]
+            .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
+        },
+      } : {}),
+      ...(singleTargetNegationUsesJourney && singleTargetNegationSettlement ? {
+        settlement: {
+          ...singleTargetNegationSettlement,
           exiting: activePublicNegationRead?.key === singleTargetNegationActionKey
             && activePublicNegationRead.phase === "exiting" && activeNegationReadSettled,
         },
       } : {}),
-      ...(singleTargetNegationProofCandidate.responseNodes.length ? {
-        responses: singleTargetNegationProofCandidate.responseNodes.map(({ event, node }, index) => {
-          const counterTarget = node.counterTarget;
-          const counterLabel = counterTarget?.kind === "ROOT"
-            ? cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name
-            : `Negation ${index}`;
-          return {
-            eventId: event.id,
-            actorId: node.actor.id!,
-            actorName: node.actor.name,
-            cardFace: event.card,
-            ariaLabel: `${node.actor.name} played Negation to counter ${counterLabel}`,
-          };
-        }),
+      ...(singleTargetNegationResponses.length ? {
+        publicCounterRead: {
+          eventId: singleTargetNegationResponses.at(-1)!.eventId,
+          exiting: activePublicNegationRead?.key === singleTargetNegationActionKey
+            && activePublicNegationRead.phase === "exiting" && activeNegationReadSettled,
+        },
+        responses: singleTargetNegationResponses,
       } : {}),
     }
     : null;
@@ -3618,8 +3662,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       } : {}),
     }
     : null;
-  const committedSingleTargetNegationOwnsRoot = Boolean(singleTargetNegationProofCandidate?.responseNodes.length
-    && (!rootAction || rootAction.rootEventId === singleTargetNegationProofCandidate.rootEvent.id));
+  const singleTargetNegationOwnsRoot = Boolean(singleTargetNegationUsesJourney && singleTargetNegationProofCandidate
+    && (!rootAction || rootAction.rootEventId === singleTargetNegationProofCandidate.rootEvent.id)
+    && (clientPresentation.stage === "NEGATION" || singleTargetNegationProofCandidate.responseNodes.length > 0));
   const livePublicCardAction: PublicCardDisplayAction | null = heldPublicNegationReadAction
     ? heldPublicNegationReadAction
     : groupSettlementCandidate
@@ -3796,7 +3841,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         })),
       } : {}),
     }
-    : committedSingleTargetNegationOwnsRoot
+    : singleTargetNegationOwnsRoot
     ? singleTargetNegationPublicAction
     : rootAction && !attackDodgeResponseOwnsCurrentRoot
     ? !rootActionCardFace ? null : {
@@ -3961,6 +4006,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     || publicCardDisplayAction?.motion?.type === "duel" && rootActionSource?.name && rootActionTarget?.name);
   const publicCardJourneyEventIds = publicCardDisplayAction?.motion?.type === "attack-dodge"
     ? [publicCardDisplayAction.rootEventId, publicCardDisplayAction.response?.eventId, publicCardDisplayAction.deflection?.eventId].filter((eventId): eventId is string => Boolean(eventId))
+    : publicCardDisplayAction?.motion?.type === "negation"
+      ? [publicCardDisplayAction.rootEventId, ...(publicCardDisplayAction.responses ?? []).map((response) => response.eventId)]
     : publicCardDisplayAction?.motion?.type === "duel"
       ? [publicCardDisplayAction.rootEventId, ...(publicCardDisplayAction.responses ?? []).map((response) => response.eventId)]
       : [];
@@ -4036,7 +4083,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       const next: ActivePublicNegationRead = {
         key: visibleNegationReadActionKey,
         action,
-        expiresAt: Date.now() + UI_TIMING.publicCounterRead,
+        expiresAt: Date.now() + (action.motion?.type === "negation"
+          ? Math.max(UI_TIMING.publicCounterRead,
+            ((action.responses?.length ?? 0) + 1) * UI_TIMING.publicCardJourneyRead
+              + UI_TIMING.publicCounterSettlementConfirm + UI_TIMING.publicCounterFade)
+          : UI_TIMING.publicCounterRead),
         phase: "reading",
       };
       setActivePublicNegationRead((current) => current?.key === next.key ? current : next);
