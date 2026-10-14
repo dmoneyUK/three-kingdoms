@@ -2,13 +2,14 @@
 
 Branch: `ux-v2`
 
-Latest reviewed design: `docs/UX2-refine.md`, blob `29fa02625a42ee20055535168cfc768efcac5dea`. The design now records §8.7 Policy B as deployed pending real-phone acceptance and §9.5 as its new P0. By the user's latest direct instruction, execute §8.7 first; do not start §9.5 yet.
+Latest reviewed design: `docs/UX2-refine.md`, blob `f61772f79d448ac6bab57b96a763d5f78a26c875` (progress marker only; N0 requirements unchanged). The user is performing §8.7 mobile acceptance; this handoff tracks §9.5 N0.
 
 ## Latest relevant result
 
-- §8.7 implementation is deployed from `871f3071056c21aeb1b1c961276d54115a888a22`; its Actions run `38603216133` passed validation/deploy. Current deployed build `a191c08fb386b32f0d8ab24ecf3788bc86c89f50` passed run [`38607911627`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38607911627): lint/fast, API, browser startup/room smoke and Cloudflare deploy. Production `/api/health` returned `{"ok":true,"worker":"available"}`; the open deployed page showed build `a191c08` but its game was already complete.
-- Source review confirms the 4,000ms first-visible-card hold, 380ms park and interruption gate on a new proven public response. No early-shrink defect has been source-proven. No local automated tests were run and no source files changed in this review.
+- §8.7 Policy B implementation is deployed. Current live build is `a191c08fb386b32f0d8ab24ecf3788bc86c89f50`; push Actions run [`38607911627`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38607911627) succeeded. Production `/api/health` returned `{"ok":true,"worker":"available"}`.
+- §8.7 remains deployed and awaits the user's phone acceptance. No mobile timing or geometry evidence is claimed here.
+- N0 now checks persisted responses against every player ID in the opening seat snapshot only after an authenticated response write/retry. Focused local build, API tests and lint pass; this code has not yet been pushed, so its CI/deployment are pending.
 
-## Current task — UX2 §8.7 Policy B user acceptance
+## Current task — UX2 §9.5 N0 delivery verification
 
-Agent-side source/CI/deployment review is complete; no new source defect was proven and no code change is warranted from the evidence available. Await the user's real-phone review of (1) an uninterrupted 4s reveal and (2) interruption by a genuinely committed response. If either path fails, use its UX Trace to distinguish early park from valid interruption before making a bounded fix. The available browser session is match-complete and cannot reproduce the earlier report. Do not start §9.5 or §10.5.3/§9/§10.2–§10.4 work in this handoff.
+Implementation and focused validation are complete. `npm run build`; `GAME_TEST_FILES=tests/api/privacy-response.test.mjs node tests/run-tests.mjs` (23/23); `npx eslint app/api/rooms/route.ts tests/api/privacy-response.test.mjs`; `git diff --check`. Before delivery, inspect the latest push-triggered run for remote `ux-v2` head `cfc1ce9ee63be3811f2f1bb3e6b3508c217c7247` (latest relevant run [`38607911627`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38607911627), all jobs and deploy successful; newer docs-only commits are excluded by workflow). Commit/push this bounded change, then record exact-SHA CI/deploy results and acceptance status. Do not start N1 until this delivery gate is verified.

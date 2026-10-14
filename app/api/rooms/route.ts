@@ -2946,6 +2946,15 @@ function responseForNegationWindow(pending: NegationWindowPending, actor: Player
     continuation,
   };
 }
+async function negationWindowHasExplicitResponses(roomId: string, window: NegationWindowPending) {
+  if (window.seatOrderPlayerIds.length === 0) return false;
+  const result = await db().prepare("SELECT player_id, submission_json, created_at FROM negation_window_submissions WHERE room_id = ? AND window_id = ?")
+    .bind(roomId, window.windowId).all<{ player_id: string; submission_json: string; created_at: number }>();
+  const submittedPlayerIds = new Set((result.results ?? [])
+    .filter((row) => row.created_at < window.deadline && parseNegationWindowSubmission(row.submission_json) !== null)
+    .map((row) => row.player_id));
+  return window.seatOrderPlayerIds.every((playerId) => submittedPlayerIds.has(playerId));
+}
 function negationWindowEnvelope(envelope: CausalEnvelope | null, continuation: NegationContinuation): CausalEnvelope | null {
   const causal = continuation.causal;
   if (!envelope || !causal || envelope.interactionId !== causal.interactionId || envelope.activeFrameId !== causal.frameId
@@ -3231,7 +3240,7 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
   return [];
 }
 
-async function advanceNegation(roomId: string) {
+async function advanceNegation(roomId: string, options: { allowExplicitEarlySettlement?: boolean } = {}) {
   for (let guard = 0; guard < 8; guard++) {
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
     const stored = parse<Pending | null>(room?.pending_json ?? null);
@@ -3260,7 +3269,8 @@ async function advanceNegation(roomId: string) {
     const window = stored?.kind === "negation_window" ? stored : null;
     if (!window || room.phase !== "response" && room.phase !== "resolving") return;
     const now = Date.now();
-    if (room.phase === "response" && now < window.deadline) return;
+    if (room.phase === "response" && now < window.deadline
+      && (!options.allowExplicitEarlySettlement || !await negationWindowHasExplicitResponses(roomId, window))) return;
     if (room.phase === "resolving" && window.settlement && window.settlement.leaseUntil > now) return;
 
     const claimedWindow: NegationWindowPending = {
@@ -5138,15 +5148,20 @@ export async function POST(request: Request) {
         const already = await db.prepare("SELECT submission_json FROM negation_window_submissions WHERE window_id = ? AND player_id = ?").bind(livePending.windowId, me.id).first<{ submission_json: string }>();
         if (already) {
           if (already.submission_json !== submissionJson) return json({ error: "A different response was already submitted for this window.", stale: true, room: await roomState(code, token, false, isTestController ? me.id : undefined) }, 409);
+          await advanceNegation(room.id, { allowExplicitEarlySettlement: true });
           return json({ room: await roomState(code, token, false, isTestController ? me.id : undefined) });
         }
         const inserted = await db.prepare("INSERT OR IGNORE INTO negation_window_submissions (room_id, window_id, player_id, submission_json, created_at) SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM rooms WHERE id = ? AND phase = 'response' AND pending_json = ? AND json_extract(pending_json, '$.windowId') = ? AND json_extract(pending_json, '$.deadline') > ?)")
           .bind(room.id, livePending.windowId, me.id, submissionJson, Date.now(), room.id, liveRoom.pending_json, livePending.windowId, Date.now()).run();
         if ((inserted.meta.changes ?? 0) <= 0) {
           const winner = await db.prepare("SELECT submission_json FROM negation_window_submissions WHERE window_id = ? AND player_id = ?").bind(livePending.windowId, me.id).first<{ submission_json: string }>();
-          if (winner?.submission_json === submissionJson) return json({ room: await roomState(code, token, false, isTestController ? me.id : undefined) });
+          if (winner?.submission_json === submissionJson) {
+            await advanceNegation(room.id, { allowExplicitEarlySettlement: true });
+            return json({ room: await roomState(code, token, false, isTestController ? me.id : undefined) });
+          }
           return json({ error: "That Negation intent or Pass was not accepted before the shared deadline.", stale: true, room: await roomState(code, token, false, isTestController ? me.id : undefined) }, 409);
         }
+        await advanceNegation(room.id, { allowExplicitEarlySettlement: true });
         return json({ room: await roomState(code, token, false, isTestController ? me.id : undefined) });
       }
     }

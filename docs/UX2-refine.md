@@ -395,6 +395,8 @@ Five seats clockwise **1→2→3→4→5**; seat 1 plays Duel against seat 3.
 
 #### 9.5.2 Coding Agent — N0 server early-close rule, followed by N1–N3 UI repairs
 
+**Coding Agent progress (2026-10-14): N0 implementation and focused local API validation complete; exact-SHA CI/deployment and user/reviewer acceptance pending.** Acceptance requirements below are unchanged.
+
 **N0: Server-authoritative early settlement only after ALL living seats explicitly respond (NEW USER RULE):**
 - Inspect server createNegationWindow, stored negation_window_submissions, authenticated respond / decline_response writes, advanceNegation, settleNegationWindow, and privacy projections. Preserve all living seat IDs from the immutable opening snapshot, including no-card, disconnected, Hero-provider and conversion-provider seats. Never remove no-card seats or auto-insert Pass. All viewers retain a private legal CurrentAction (Pass-only if no card).
 - After successfully persisting each authenticated Negation intent OR explicit Pass, server checks the current window's stored submissions for EVERY snapshot seat. If all are present, attempt an atomic once-only settlement immediately; otherwise wait until original T0+8s. Deadline expiry alone permits treating missing seats as implicit Pass. The existing advanceNegation pre-deadline return must admit ONLY this server-proven all-submitted exception. Do not accept further conflicting submissions after settlement claim, change seat priority or reveal individual intents.

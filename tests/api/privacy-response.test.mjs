@@ -54,6 +54,186 @@ test("shared Negation windows keep submissions private and expose only each view
   await advanceNegationWindow(nonTarget.game.code, nonTarget.sourceMember.token, nonTargetWindowId);
 });
 
+test("shared Negation settles early after explicit responses from all seats in 4/5/6/8-player rooms", { timeout: 60_000 }, async () => {
+  const roleSets = {
+    4: ["Lord", "Loyalist", "Rebel", "Renegade"],
+    5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"],
+    6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"],
+    8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"],
+  };
+  for (const [seatCountText, roles] of Object.entries(roleSets)) {
+    const seatCount = Number(seatCountText);
+    const root = card("DrawTwo", `n0-all-pass-${seatCount}-root`);
+    const draws = [card("Attack", `n0-all-pass-${seatCount}-draw-1`), card("Dodge", `n0-all-pass-${seatCount}-draw-2`)];
+    const game = await seedPlayingGame({
+      phase: "play",
+      turnSeat: 0,
+      players: Array.from({ length: seatCount }, (_, index) => ({
+        name: `N0 Seat ${index + 1}`,
+        role: roles[index],
+        hero: "zhao-yun",
+        hp: 4,
+        maxHp: 4,
+        hand: index === 0 ? [root] : [],
+      })),
+    });
+    setDeck(game.code, draws);
+    const opened = await request("play_card", { code: game.code, token: game.members[0].token, cardId: root.id });
+    assert.equal(opened.status, 200, `${seatCount} seats: ${JSON.stringify(opened.data)}`);
+    const windowId = opened.data.room.currentAction.negationWindowId;
+    const deadline = opened.data.room.currentAction.deadline;
+    assert.ok(windowId);
+    assert.equal(deadline - opened.data.room.responseCountdownVisibleAt, 8_000);
+    assert.deepEqual(opened.data.room.currentAction.options, []);
+    for (const member of game.members.slice(0, seatCount - 2)) {
+      const passed = await request("decline_response", { code: game.code, token: member.token });
+      assert.equal(passed.status, 200, `${seatCount} seats: ${JSON.stringify(passed.data)}`);
+      assert.equal(passed.data.room.phase, "response", "the window stays open while any snapshot seat is silent");
+      assert.equal(passed.data.room.currentAction.negationWindowId, windowId);
+      assert.equal(passed.data.room.currentAction.deadline, deadline, "explicit Pass never moves the original deadline");
+    }
+
+    assert.ok(Date.now() < deadline, "the final responses exercise the before-deadline path");
+    const finalPasses = await Promise.all(game.members.slice(seatCount - 2).map((member) =>
+      request("decline_response", { code: game.code, token: member.token })));
+    for (const result of finalPasses) assert.equal(result.status, 200, `${seatCount} seats: ${JSON.stringify(result.data)}`);
+
+    const settled = (await state(game.code, game.members[0].token)).data;
+    assert.equal(settled.phase, "play", `${seatCount} seats: the last durable replies settle before the 8s maximum`);
+    assert.equal(settled.pendingNegation, null);
+    assert.equal(settled.timeline.filter((event) => event.message?.includes("draws 2 cards")).length, 1, "concurrent final Passes resolve the underlying effect exactly once");
+    assert.ok(settled.myHand.some((held) => held.id === draws[0].id));
+    assert.ok(settled.myHand.some((held) => held.id === draws[1].id));
+    assert.equal(roomCardCount(game.code, root.id), 1);
+    assert.equal(query(`SELECT COUNT(*) FROM negation_window_submissions WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)}) AND window_id=${quote(windowId)}`), "0", "private submissions are retired after the once-only settlement");
+    assert.equal(JSON.stringify(settled).includes("submission_json"), false);
+  }
+});
+
+test("early shared Negation settlement chooses the canonical seat winner, not the first intent", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [source, prioritySeat, passingSeat, fastSeat] = game.room.players;
+  const root = card("DrawTwo", "n0-priority-root");
+  const priorityNegation = card("Negation", "n0-priority-negation");
+  const fastNegation = card("Negation", "n0-fast-negation");
+  setHand(source.id, [root], 4, 4);
+  setHand(prioritySeat.id, [priorityNegation], 4, 4);
+  setHand(passingSeat.id, [], 4, 4);
+  setHand(fastSeat.id, [fastNegation], 4, 4);
+  setTurn(game.code, source.seat);
+
+  const opened = await request("play_card", { code: game.code, token: game.members[0].token, cardId: root.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const firstWindowId = opened.data.room.currentAction.negationWindowId;
+  const firstWindow = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.deepEqual(firstWindow.seatOrderPlayerIds, [source.id, prioritySeat.id, passingSeat.id, fastSeat.id]);
+
+  const fastIntent = await request("respond", { code: game.code, token: game.members[3].token, providerId: "negation_card", cardId: fastNegation.id });
+  assert.equal(fastIntent.status, 200, JSON.stringify(fastIntent.data));
+  assert.equal(fastIntent.data.room.currentAction.negationWindowId, firstWindowId, "an early intent remains private while seats are outstanding");
+  assert.equal(fastIntent.data.room.timeline.some((event) => event.card?.id === fastNegation.id), false);
+
+  for (const index of [0, 2]) {
+    const passed = await request("decline_response", { code: game.code, token: game.members[index].token });
+    assert.equal(passed.status, 200, JSON.stringify(passed.data));
+    assert.equal(passed.data.room.currentAction.negationWindowId, firstWindowId);
+  }
+  assert.ok(Date.now() < opened.data.room.currentAction.deadline);
+  const priorityIntent = await request("respond", { code: game.code, token: game.members[1].token, providerId: "negation_card", cardId: priorityNegation.id });
+  assert.equal(priorityIntent.status, 200, JSON.stringify(priorityIntent.data));
+
+  const counter = (await state(game.code, game.members[0].token)).data;
+  const counterWindowId = counter.currentAction.negationWindowId;
+  assert.ok(counterWindowId);
+  assert.notEqual(counterWindowId, firstWindowId, "the selected winner immediately opens a fresh counter window");
+  assert.equal(counter.pendingNegation.latestNegationPlayerId, prioritySeat.id, "canonical snapshot seat order beats the faster later-seat intent");
+  assert.equal(counter.timeline.filter((event) => event.card?.id === priorityNegation.id).length, 1);
+  assert.equal(counter.timeline.some((event) => event.card?.id === fastNegation.id), false);
+  assert.equal(roomCardCount(game.code, priorityNegation.id), 1, "only the winner's real Negation is consumed once");
+  assert.equal(roomCardCount(game.code, fastNegation.id), 1, "the losing intent retains its physical card");
+  assert.ok((await state(game.code, game.members[3].token)).data.myHand.some((held) => held.id === fastNegation.id));
+  assert.deepEqual(JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`)).seatOrderPlayerIds,
+    [passingSeat.id, fastSeat.id, source.id, prioritySeat.id], "the counter window takes a fresh seat snapshot and priority start");
+  assert.equal(counter.currentAction.deadline - counter.responseCountdownVisibleAt, 8_000);
+  for (const member of game.members) {
+    const view = (await state(game.code, member.token)).data;
+    assert.equal(view.currentAction.negationWindowId, counterWindowId);
+    assert.equal(view.pendingNegation.submitted, false, "the previous window's private responses do not carry over");
+  }
+});
+
+test("a skill-only Negation provider counts as an explicit response in the shared window", async () => {
+  const root = card("DrawTwo", "n0-skill-only-root");
+  const game = await seedPlayingGame({
+    phase: "play",
+    turnSeat: 0,
+    players: ["Lord", "Loyalist", "Rebel", "Renegade"].map((role, index) => ({
+      name: `N0 Skill Seat ${index + 1}`,
+      role,
+      hero: "zhao-yun",
+      hp: 4,
+      maxHp: 4,
+      hand: index === 0 ? [root] : [],
+    })),
+  });
+  const [source, skillSeat] = game.room.players;
+  sql(`UPDATE players SET hero='test-hero' WHERE id=${quote(skillSeat.id)}`);
+
+  const opened = await request("play_card", { code: game.code, token: game.members[0].token, cardId: root.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const windowId = opened.data.room.currentAction.negationWindowId;
+  const skillView = (await state(game.code, game.members[1].token)).data;
+  assert.ok(skillView.currentAction.options.some((option) => option.providerId === "test_semantic_negate"), "a no-card hero provider remains a real legal Negation option");
+
+  for (const index of [0, 2, 3]) {
+    const passed = await request("decline_response", { code: game.code, token: game.members[index].token });
+    assert.equal(passed.status, 200, JSON.stringify(passed.data));
+    assert.equal(passed.data.room.currentAction.negationWindowId, windowId, "no-card seats do not auto-pass the silent skill provider");
+  }
+  assert.ok(Date.now() < opened.data.room.currentAction.deadline);
+  const skillIntent = await request("respond", { code: game.code, token: game.members[1].token, providerId: "test_semantic_negate" });
+  assert.equal(skillIntent.status, 200, JSON.stringify(skillIntent.data));
+
+  const counter = (await state(game.code, game.members[0].token)).data;
+  assert.notEqual(counter.currentAction.negationWindowId, windowId, "the explicit skill response completes the window and starts a fresh counter window");
+  assert.equal(counter.pendingNegation.latestNegationPlayerId, skillSeat.id);
+  assert.equal(counter.pendingNegation.negated, true);
+  assert.ok(counter.timeline.some((event) => event.message?.includes("uses test_semantic_negate to cancel")));
+  assert.equal(roomCardCount(game.code, root.id), 1);
+  assert.equal(query(`SELECT COUNT(*) FROM negation_window_submissions WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)}) AND window_id=${quote(windowId)}`), "0");
+  assert.equal(source.alive, true);
+});
+
+test("an identical retry recovers early settlement after the last response was durably stored", async () => {
+  const game = await createHumanGame();
+  const root = card("DrawTwo", "n0-retry-root");
+  const draws = [card("Attack", "n0-retry-draw-1"), card("Dodge", "n0-retry-draw-2")];
+  const [source, , , finalSeat] = game.room.players;
+  setHand(source.id, [root], 4, 4);
+  for (const player of game.room.players.slice(1)) setHand(player.id, [], 4, 4);
+  setDeck(game.code, draws);
+  setTurn(game.code, source.seat);
+  const opened = await request("play_card", { code: game.code, token: game.members[0].token, cardId: root.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const windowId = opened.data.room.currentAction.negationWindowId;
+
+  for (const member of game.members.slice(0, 3)) {
+    assert.equal((await request("decline_response", { code: game.code, token: member.token })).status, 200);
+  }
+  assert.equal((await state(game.code, game.members[0].token)).data.currentAction.negationWindowId, windowId, "one seat remains silent before the retry");
+  sql(`INSERT INTO negation_window_submissions (room_id, window_id, player_id, submission_json, created_at) SELECT rooms.id, ${quote(windowId)}, players.id, '{"kind":"pass"}', ${Date.now()} FROM rooms JOIN players ON players.room_id=rooms.id WHERE rooms.code=${quote(game.code)} AND players.id=${quote(finalSeat.id)}`);
+
+  const retried = await request("decline_response", { code: game.code, token: game.members[3].token });
+  assert.equal(retried.status, 200, JSON.stringify(retried.data));
+  assert.equal(retried.data.room.phase, "play", "an idempotent retry resumes the all-seats completion check");
+  assert.equal(retried.data.room.pendingNegation, null);
+  const settled = (await state(game.code, game.members[0].token)).data;
+  assert.equal(settled.timeline.filter((event) => event.message?.includes("draws 2 cards")).length, 1);
+  assert.ok(settled.myHand.some((held) => held.id === draws[0].id));
+  assert.ok(settled.myHand.some((held) => held.id === draws[1].id));
+  assert.equal(roomCardCount(game.code, root.id), 1);
+});
+
 test("all viewers share one immutable Negation deadline, including after a private response timer request", async () => {
   const game = await createHumanGame(); const [sourceMember, targetMember] = game.members;
   const [source, target] = game.room.players;
