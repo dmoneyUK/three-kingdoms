@@ -82,6 +82,28 @@ type JourneyCard = {
 };
 type JourneyState = { scopeKey: string; cards: JourneyCard[]; center: CardRect | null };
 
+function cardRectsMatch(left: CardRect | null, right: CardRect | null) {
+  if (!left || !right) return left === right;
+  const epsilon = 0.25;
+  return Math.abs(left.left - right.left) < epsilon
+    && Math.abs(left.top - right.top) < epsilon
+    && Math.abs(left.width - right.width) < epsilon
+    && Math.abs(left.height - right.height) < epsilon;
+}
+
+function journeyGeometryMatches(left: JourneyState, right: JourneyState) {
+  return left.scopeKey === right.scopeKey
+    && cardRectsMatch(left.center, right.center)
+    && left.cards.length === right.cards.length
+    && left.cards.every((card, index) => {
+      const other = right.cards[index];
+      return card.eventId === other.eventId
+        && card.phase === other.phase
+        && cardRectsMatch(card.rect, other.rect)
+        && cardRectsMatch(card.target, other.target);
+    });
+}
+
 // Match the mobile Hand-card footprint; the parked card then scales down by
 // the same ratio for both its frame and its rank/suit corner.
 const REVEAL_CARD = { width: 60, height: 90 };
@@ -461,6 +483,14 @@ function AttackDodgeCardJourney({
   useLayoutEffect(() => {
     if (!enabled || !hasAttackDodgeMotion || journey.scopeKey !== scopeKey) return;
     let observer: ResizeObserver | null = null;
+    const observedAnchors = new WeakSet<Element>();
+    const observePlayerAnchors = () => {
+      document.querySelectorAll<HTMLElement>("[data-player-anchor]").forEach((anchor) => {
+        if (observedAnchors.has(anchor)) return;
+        observedAnchors.add(anchor);
+        observer?.observe(anchor);
+      });
+    };
     const reposition = () => {
       const center = battlefieldCenterCard();
       const next = {
@@ -475,9 +505,9 @@ function AttackDodgeCardJourney({
           };
         }),
       };
+      if (journeyGeometryMatches(journeyRef.current, next)) return;
       journeyRef.current = next;
       setJourney(next);
-      document.querySelectorAll<HTMLElement>("[data-player-anchor]").forEach((anchor) => observer?.observe(anchor));
     };
     window.addEventListener("resize", reposition);
     window.addEventListener("scroll", reposition, true);
@@ -486,10 +516,24 @@ function AttackDodgeCardJourney({
     observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reposition);
     const shell = document.querySelector<HTMLElement>(".game-shell");
     if (shell) observer?.observe(shell);
-    document.querySelectorAll<HTMLElement>("[data-player-anchor]").forEach((anchor) => observer?.observe(anchor));
-    const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(reposition);
-    if (shell) mutationObserver?.observe(shell, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-player-anchor"] });
-    relayout();
+    observePlayerAnchors();
+    const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
+      const containsPlayerAnchor = (node: Node) => node instanceof Element
+        && (node.matches("[data-player-anchor]") || Boolean(node.querySelector("[data-player-anchor]")));
+      const anchorsChanged = records.some((record) => record.type === "attributes"
+        || [...record.addedNodes, ...record.removedNodes].some(containsPlayerAnchor));
+      if (anchorsChanged) {
+        observePlayerAnchors();
+        reposition();
+      }
+    });
+    if (shell) mutationObserver?.observe(shell, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-player-anchor"],
+    });
+    reposition();
     return () => {
       window.removeEventListener("resize", reposition);
       window.removeEventListener("scroll", reposition, true);
