@@ -92,11 +92,39 @@ type JourneyCard = {
   semanticLabel?: string;
   role: "root" | "response" | "deflection";
   globalOrdinal?: number;
-  phase: "reveal" | "move" | "parked";
+  phase: "queued" | "reveal" | "move" | "parked";
   rect: CardRect;
   target: CardRect;
+  revealStartedAtMs?: number | null;
+  revealStartedAtIso?: string | null;
+  revealElapsedMs?: number;
+  revealRemainingMs?: number;
 };
 type JourneyState = { scopeKey: string; cards: JourneyCard[]; center: CardRect | null };
+type AttackDodgeJourneyLifecycle = {
+  phase: "reveal" | "move" | "parked";
+  revealStartedAtMs: number | null;
+  revealStartedAtIso: string | null;
+  revealElapsedMs: number;
+  revealRemainingMs: number;
+};
+
+const attackDodgeJourneyLifecycles = new Map<string, AttackDodgeJourneyLifecycle>();
+const MAX_RETAINED_ATTACK_DODGE_JOURNEYS = 256;
+
+function attackDodgeJourneyLifecycleKey(roomCode: string, viewerId: string, rootEventId: string, scopeKey: string, eventId: string) {
+  return `${roomCode}|${viewerId}|${rootEventId}|${scopeKey}|${eventId}`;
+}
+
+function rememberAttackDodgeJourneyLifecycle(key: string, lifecycle: AttackDodgeJourneyLifecycle) {
+  attackDodgeJourneyLifecycles.delete(key);
+  attackDodgeJourneyLifecycles.set(key, lifecycle);
+  while (attackDodgeJourneyLifecycles.size > MAX_RETAINED_ATTACK_DODGE_JOURNEYS) {
+    const oldestKey = attackDodgeJourneyLifecycles.keys().next().value;
+    if (!oldestKey) break;
+    attackDodgeJourneyLifecycles.delete(oldestKey);
+  }
+}
 
 function cardRectsMatch(left: CardRect | null, right: CardRect | null) {
   if (!left || !right) return left === right;
@@ -120,9 +148,28 @@ function journeyGeometryMatches(left: JourneyState, right: JourneyState) {
     });
 }
 
+function withFirstQueuedAttackDodgeReveal(cards: JourneyCard[], center: CardRect): JourneyCard[] {
+  if (cards.some((card) => card.phase === "reveal" || card.phase === "move")) return cards;
+  const firstQueuedIndex = cards.findIndex((card) => card.phase === "queued");
+  if (firstQueuedIndex < 0) return cards;
+  return cards.map((card, index) => index === firstQueuedIndex
+    ? {
+      ...card,
+      phase: "reveal" as const,
+      rect: center,
+      revealStartedAtMs: null,
+      revealStartedAtIso: null,
+      revealElapsedMs: 0,
+      revealRemainingMs: STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+    }
+    : card);
+}
+
 // Single-target and Attack/Dodge use standard Hand-card proportions; Duel uses
 // the larger family-specific reveal before shrinking to its parked history.
-const REVEAL_CARD = { width: 60, height: 90 };
+// Match the mobile Hand CardFace dimensions so the centre reveal is plainly
+// readable before it shrinks to the 48×72 parked thumbnail.
+const REVEAL_CARD = { width: 90, height: 135 };
 const DUEL_REVEAL_CARD = { width: 90, height: 135 };
 const PARKED_CARD = { width: 48, height: 72 };
 const STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS = 4000;
@@ -312,13 +359,19 @@ function AttackDodgeCardJourney({
   enabled,
   sourceName,
   targetName,
+  roomCode,
+  viewerId,
   resultReadRemainingMs,
+  onJourneyEventParked,
 }: {
   action: PublicCardDisplayAction;
   enabled: boolean;
   sourceName: string | null;
   targetName: string | null;
+  roomCode: string;
+  viewerId: string;
   resultReadRemainingMs: number | null;
+  onJourneyEventParked?: (eventId: string) => void;
 }) {
   const scopeKey = action.motion?.scopeKey ?? action.rootEventId;
   const [journey, setJourney] = useState<JourneyState>({ scopeKey: "", cards: [], center: null });
@@ -326,19 +379,32 @@ function AttackDodgeCardJourney({
   const actionRef = useRef(action);
   const sourceNameRef = useRef(sourceName);
   const mountedRef = useRef(false);
+  const enabledRef = useRef(enabled);
+  const documentVisibleRef = useRef(true);
+  const parkedNotifiedEventIdsRef = useRef(new Set<string>());
+  const traceSignaturesRef = useRef(new Map<string, string>());
+  const [documentVisible, setDocumentVisible] = useState(() => typeof document === "undefined" || document.visibilityState === "visible");
   const hasAttackDodgeMotion = action.motion?.type === "attack-dodge";
   const attackDodgeMotion = action.motion?.type === "attack-dodge" ? action.motion : null;
   const eventSignature = `${action.rootEventId}|${action.response?.eventId ?? ""}|${action.deflection?.eventId ?? ""}|${attackDodgeMotion?.rootFresh ? "new-root" : "parked-root"}|${attackDodgeMotion?.responseFresh ? "new-response" : "parked-response"}|${attackDodgeMotion?.deflectionFresh ? "new-deflection" : "parked-deflection"}`;
   const latestResponse = action.response ?? null;
   const latestDeflection = action.deflection ?? null;
-  const activeCard = latestResponse?.cardFace ?? latestDeflection?.cardFace ?? action.cardFace ?? null;
-  const activeEventId = latestResponse?.eventId ?? latestDeflection?.eventId ?? action.rootEventId;
-  const activeActorId = latestResponse?.actorId ?? latestDeflection?.actorId ?? action.sourceId;
+  const activeJourneyCard = journey.cards.find((card) => card.phase === "reveal" || card.phase === "move")
+    ?? [...journey.cards].reverse().find((card) => card.phase !== "queued")
+    ?? null;
+  const activeCard = activeJourneyCard?.cardFace ?? latestResponse?.cardFace ?? latestDeflection?.cardFace ?? action.cardFace ?? null;
+  const activeEventId = activeJourneyCard?.eventId ?? latestResponse?.eventId ?? latestDeflection?.eventId ?? action.rootEventId;
+  const activeActorId = activeJourneyCard?.actorId ?? latestResponse?.actorId ?? latestDeflection?.actorId ?? action.sourceId;
   const result = settlementLabel(action, targetName);
-  const activeLabel = latestResponse?.semanticLabel
-    ?? (latestResponse?.semanticAction === "DODGE" ? "DODGE" : latestDeflection ? "DEFLECTION" : action.cardLabel);
-  const activeAriaLabel = latestResponse?.ariaLabel ?? latestDeflection?.ariaLabel ?? action.ariaLabel;
-  const activeNotice = latestResponse?.ariaLabel ?? latestDeflection?.publicNotice ?? action.publicNotice ?? action.ariaLabel;
+  const activeLabel = activeJourneyCard?.semanticLabel
+    ?? (activeJourneyCard?.role === "response" && latestResponse?.semanticAction === "DODGE" ? "DODGE"
+      : activeJourneyCard?.role === "deflection" ? "DEFLECTION"
+        : activeCard ? cardDefinition(activeCard.kind).name.toUpperCase() : action.cardLabel);
+  const activeAriaLabel = activeJourneyCard?.ariaLabel ?? latestResponse?.ariaLabel ?? latestDeflection?.ariaLabel ?? action.ariaLabel;
+  const activeNotice = activeJourneyCard?.ariaLabel ?? latestResponse?.ariaLabel ?? latestDeflection?.publicNotice ?? action.publicNotice ?? action.ariaLabel;
+  const activePhase = activeJourneyCard?.phase ?? null;
+  const activeRevealStartedAtMs = activeJourneyCard?.revealStartedAtMs ?? null;
+  const activeRevealRemainingMs = activeJourneyCard?.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS;
 
   useLayoutEffect(() => {
     mountedRef.current = true;
@@ -353,6 +419,18 @@ function AttackDodgeCardJourney({
   useLayoutEffect(() => {
     journeyRef.current = journey;
   }, [journey]);
+
+  useLayoutEffect(() => {
+    enabledRef.current = enabled;
+    documentVisibleRef.current = documentVisible;
+  }, [enabled, documentVisible]);
+
+  useEffect(() => {
+    const updateVisibility = () => setDocumentVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", updateVisibility);
+    updateVisibility();
+    return () => document.removeEventListener("visibilitychange", updateVisibility);
+  }, []);
 
   useLayoutEffect(() => {
     const currentAction = actionRef.current;
@@ -392,15 +470,12 @@ function AttackDodgeCardJourney({
       reveal: motion.deflectionFresh,
     }] : [];
     const incoming = [...root, ...response, ...deflection];
-    const additions: JourneyCard[] = [];
-    const clearCenterEvents: string[] = [];
+    let centerOccupied = previous.some((card) => card.phase === "reveal" || card.phase === "move");
     const nextCards = incoming.map((candidate) => {
       const prior = previous.find((card) => card.eventId === candidate.eventId);
       const target = actorParkedCard(candidate.actorId);
       const parkedTarget = target ?? center;
       if (prior) {
-        const moveRootOutOfCenter = candidate.role === "root" && response.length > 0 && prior.phase === "reveal";
-        if (moveRootOutOfCenter) clearCenterEvents.push(candidate.eventId);
         return {
           ...prior,
           actorId: candidate.actorId,
@@ -408,12 +483,23 @@ function AttackDodgeCardJourney({
           cardFace: candidate.cardFace,
           ariaLabel: candidate.ariaLabel,
           semanticLabel: candidate.semanticLabel,
-          phase: moveRootOutOfCenter ? "move" as const : prior.phase,
           target: parkedTarget,
-          rect: moveRootOutOfCenter || prior.phase === "parked" ? parkedTarget : prior.phase === "reveal" ? center : prior.rect,
+          rect: prior.phase === "parked" ? parkedTarget : prior.phase === "reveal" ? center : prior.rect,
         };
       }
       const showCenterReveal = candidate.reveal && Boolean(target);
+      const lifecycleKey = attackDodgeJourneyLifecycleKey(roomCode, viewerId, currentAction.rootEventId, scopeKey, candidate.eventId);
+      const retained = showCenterReveal ? attackDodgeJourneyLifecycles.get(lifecycleKey) : undefined;
+      const retainedReveal = retained?.phase === "reveal";
+      const phase: JourneyCard["phase"] = retainedReveal
+        ? "reveal"
+        : retained?.phase === "parked" || retained?.phase === "move"
+          ? "parked"
+          : showCenterReveal ? centerOccupied ? "queued" : "reveal" : "parked";
+      if (phase === "reveal") centerOccupied = true;
+      if (retained?.phase === "move") {
+        rememberAttackDodgeJourneyLifecycle(lifecycleKey, { ...retained, phase: "parked", revealStartedAtMs: null, revealRemainingMs: 0 });
+      }
       const next: JourneyCard = {
         eventId: candidate.eventId,
         actorId: candidate.actorId,
@@ -422,61 +508,238 @@ function AttackDodgeCardJourney({
         ariaLabel: candidate.ariaLabel,
         semanticLabel: candidate.semanticLabel,
         role: candidate.role,
-        phase: showCenterReveal ? "reveal" : "parked",
-        rect: showCenterReveal ? center : parkedTarget,
+        phase,
+        rect: phase === "reveal" ? center : parkedTarget,
         target: parkedTarget,
+        revealStartedAtMs: retainedReveal ? null : retained?.revealStartedAtMs ?? null,
+        revealStartedAtIso: retained?.revealStartedAtIso ?? null,
+        revealElapsedMs: retained?.revealElapsedMs ?? 0,
+        revealRemainingMs: retained?.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
       };
-      if (showCenterReveal) additions.push(next);
       return next;
     });
+    const presentEventIds = new Set(nextCards.map((card) => card.eventId));
+    for (const previouslyProvenCard of previous) {
+      if (presentEventIds.has(previouslyProvenCard.eventId)) continue;
+      const target = actorParkedCard(previouslyProvenCard.actorId) ?? previouslyProvenCard.target;
+      nextCards.push({
+        ...previouslyProvenCard,
+        target,
+        rect: previouslyProvenCard.phase === "parked" ? target : previouslyProvenCard.rect,
+      });
+    }
+    const roleOrder: Record<JourneyCard["role"], number> = { root: 0, response: 1, deflection: 2 };
+    nextCards.sort((left, right) => roleOrder[left.role] - roleOrder[right.role]);
     const nextState = { scopeKey, cards: nextCards, center };
     journeyRef.current = nextState;
     setJourney(nextState);
-
-    for (const eventId of clearCenterEvents) {
-      window.setTimeout(() => {
-        if (!mountedRef.current) return;
-        setJourney((current) => {
-          if (current.scopeKey !== scopeKey) return current;
-          return {
-            ...current,
-            cards: current.cards.map((card) => card.eventId === eventId && card.phase === "move"
-              ? { ...card, phase: "parked", rect: card.target }
-              : card),
-          };
-        });
-      }, MOVE_DURATION_MS + 30);
-    }
-
-    for (const addition of additions) {
-      window.setTimeout(() => {
-        if (!mountedRef.current) return;
-        setJourney((current) => {
-          if (current.scopeKey !== scopeKey) return current;
-          const moving = {
-            ...current,
-            cards: current.cards.map((card) => card.eventId === addition.eventId && card.phase === "reveal"
-              ? { ...card, phase: "move" as const, rect: card.target }
-              : card),
-          };
-          return moving;
-        });
-        window.setTimeout(() => {
-          if (!mountedRef.current) return;
-          setJourney((current) => {
-            if (current.scopeKey !== scopeKey) return current;
-            const parked = {
-              ...current,
-              cards: current.cards.map((card) => card.eventId === addition.eventId && card.phase === "move"
-                ? { ...card, phase: "parked", rect: card.target }
-                : card),
-            };
-            return parked;
-          });
-        }, MOVE_DURATION_MS + 30);
-      }, STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS);
-    }
   }, [enabled, scopeKey, eventSignature]);
+
+  useEffect(() => {
+    if (!enabled || !documentVisible || journey.scopeKey !== scopeKey
+      || !activeJourneyCard || activePhase !== "reveal" || activeRevealStartedAtMs !== null) return;
+    let firstFrame = 0;
+    let secondFrame = 0;
+    const tryMarkFirstPaint = () => {
+      if (!enabledRef.current || !documentVisibleRef.current || document.visibilityState !== "visible") return;
+      const element = [...document.querySelectorAll<HTMLElement>("[data-public-card-journey-event-id]")]
+        .find((candidate) => candidate.dataset.publicCardJourneyEventId === activeJourneyCard.eventId);
+      const face = element?.querySelector<HTMLElement>(".played-card");
+      const rect = element?.getBoundingClientRect();
+      const style = element ? window.getComputedStyle(element) : null;
+      const faceStyle = face ? window.getComputedStyle(face) : null;
+      const visiblyPainted = Boolean(element && face && rect && style && faceStyle
+        && element.isConnected && element.getClientRects().length > 0
+        && style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0
+        && faceStyle.display !== "none" && faceStyle.visibility !== "hidden" && Number(faceStyle.opacity) > 0
+        && Math.abs(rect.width - REVEAL_CARD.width) < 1 && Math.abs(rect.height - REVEAL_CARD.height) < 1
+        && rect.right > 0 && rect.left < window.innerWidth && rect.bottom > 0 && rect.top < window.innerHeight);
+      if (!visiblyPainted) {
+        firstFrame = window.requestAnimationFrame(tryMarkFirstPaint);
+        return;
+      }
+      const startedAtMs = performance.now();
+      const startedAtIso = new Date().toISOString();
+      rememberAttackDodgeJourneyLifecycle(
+        attackDodgeJourneyLifecycleKey(roomCode, viewerId, action.rootEventId, scopeKey, activeJourneyCard.eventId),
+        {
+          phase: "reveal",
+          revealStartedAtMs: startedAtMs,
+          revealStartedAtIso: activeJourneyCard.revealStartedAtIso ?? startedAtIso,
+          revealElapsedMs: activeJourneyCard.revealElapsedMs ?? 0,
+          revealRemainingMs: activeJourneyCard.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+        },
+      );
+      setJourney((current) => {
+        const card = current.cards.find((candidate) => candidate.eventId === activeJourneyCard.eventId);
+        if (current.scopeKey !== scopeKey || !card || card.phase !== "reveal" || card.revealStartedAtMs != null) return current;
+        const next = {
+          ...current,
+          cards: current.cards.map((candidate) => candidate.eventId === card.eventId
+            ? { ...candidate, revealStartedAtMs: startedAtMs, revealStartedAtIso: candidate.revealStartedAtIso ?? startedAtIso }
+            : candidate),
+        };
+        journeyRef.current = next;
+        return next;
+      });
+    };
+    firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(tryMarkFirstPaint);
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
+  }, [enabled, documentVisible, journey.scopeKey, scopeKey, activeJourneyCard?.eventId, activePhase, activeRevealStartedAtMs]);
+
+  useEffect(() => {
+    if (!enabled || !documentVisible || journey.scopeKey !== scopeKey || !activeJourneyCard || !activePhase) return;
+    const eventId = activeJourneyCard.eventId;
+    if (activePhase === "reveal" && activeRevealStartedAtMs === null) return;
+    const startedAtMs = activePhase === "reveal" ? activeRevealStartedAtMs : null;
+    const delay = activePhase === "reveal"
+      ? Math.max(0, activeRevealRemainingMs - (performance.now() - (startedAtMs ?? performance.now())))
+      : MOVE_DURATION_MS;
+    const timer = window.setTimeout(() => {
+      const current = journeyRef.current;
+      const currentCard = current.cards.find((candidate) => candidate.eventId === eventId);
+      if (current.scopeKey !== scopeKey || !currentCard || currentCard.phase !== activePhase) return;
+      let cards = current.cards.map((candidate) => {
+        if (candidate.eventId !== eventId) return candidate;
+        if (activePhase === "reveal") {
+          const visibleSegmentMs = Math.max(0, performance.now() - (startedAtMs ?? performance.now()));
+          const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          const transitioned: JourneyCard = {
+            ...candidate,
+            phase: reducedMotion ? "parked" as const : "move" as const,
+            rect: candidate.target,
+            revealStartedAtMs: null,
+            revealElapsedMs: Math.max(STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS, (candidate.revealElapsedMs ?? 0) + visibleSegmentMs),
+            revealRemainingMs: 0,
+          };
+          rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, viewerId, actionRef.current.rootEventId, scopeKey, eventId), {
+            phase: transitioned.phase,
+            revealStartedAtMs: null,
+            revealStartedAtIso: transitioned.revealStartedAtIso ?? null,
+            revealElapsedMs: transitioned.revealElapsedMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+            revealRemainingMs: 0,
+          });
+          return transitioned;
+        }
+        const parked: JourneyCard = { ...candidate, phase: "parked", rect: candidate.target };
+        rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, viewerId, actionRef.current.rootEventId, scopeKey, eventId), {
+          phase: "parked",
+          revealStartedAtMs: null,
+          revealStartedAtIso: parked.revealStartedAtIso ?? null,
+          revealElapsedMs: parked.revealElapsedMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+          revealRemainingMs: 0,
+        });
+        return parked;
+      });
+      if (activePhase === "move" || cards.every((card) => card.phase !== "reveal" && card.phase !== "move")) {
+        cards = withFirstQueuedAttackDodgeReveal(cards, current.center ?? battlefieldCenterCard());
+      }
+      const next = { ...current, cards };
+      journeyRef.current = next;
+      setJourney(next);
+    }, delay);
+    return () => {
+      window.clearTimeout(timer);
+      const shouldPause = !enabledRef.current || !documentVisibleRef.current || !mountedRef.current;
+      if (!shouldPause) return;
+      const current = journeyRef.current;
+      const currentCard = current.cards.find((candidate) => candidate.eventId === eventId);
+      if (current.scopeKey !== scopeKey || !currentCard) return;
+      if (activePhase === "move" && currentCard.phase === "move") {
+        const parked = { ...currentCard, phase: "parked" as const, rect: currentCard.target };
+        rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, viewerId, actionRef.current.rootEventId, scopeKey, eventId), {
+          phase: "parked",
+          revealStartedAtMs: null,
+          revealStartedAtIso: parked.revealStartedAtIso ?? null,
+          revealElapsedMs: parked.revealElapsedMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+          revealRemainingMs: 0,
+        });
+        if (!mountedRef.current) return;
+        const next = { ...current, cards: current.cards.map((card) => card.eventId === eventId ? parked : card) };
+        journeyRef.current = next;
+        setJourney(next);
+        return;
+      }
+      if (activePhase !== "reveal" || startedAtMs === null || currentCard.phase !== "reveal"
+        || currentCard.revealStartedAtMs !== startedAtMs) return;
+      const visibleSegmentMs = Math.max(0, performance.now() - startedAtMs);
+      const nextCard = {
+        ...currentCard,
+        revealStartedAtMs: null,
+        revealRemainingMs: Math.max(0, (currentCard.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS) - visibleSegmentMs),
+        revealElapsedMs: (currentCard.revealElapsedMs ?? 0) + visibleSegmentMs,
+      };
+      rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, viewerId, actionRef.current.rootEventId, scopeKey, eventId), {
+        phase: "reveal",
+        revealStartedAtMs: null,
+        revealStartedAtIso: nextCard.revealStartedAtIso ?? null,
+        revealElapsedMs: nextCard.revealElapsedMs ?? 0,
+        revealRemainingMs: nextCard.revealRemainingMs ?? 0,
+      });
+      if (!mountedRef.current) return;
+      const next = { ...current, cards: current.cards.map((card) => card.eventId === eventId ? nextCard : card) };
+      journeyRef.current = next;
+      setJourney(next);
+    };
+  }, [enabled, documentVisible, journey.scopeKey, scopeKey, activeJourneyCard?.eventId, activePhase, activeRevealStartedAtMs, activeRevealRemainingMs]);
+
+  useEffect(() => {
+    if (!enabled || journey.scopeKey !== scopeKey) return;
+    for (const card of journey.cards) {
+      if (card.phase !== "parked" || !card.revealStartedAtIso || parkedNotifiedEventIdsRef.current.has(card.eventId)) continue;
+      parkedNotifiedEventIdsRef.current.add(card.eventId);
+      onJourneyEventParked?.(card.eventId);
+    }
+  }, [enabled, journey.scopeKey, journey.cards, scopeKey, onJourneyEventParked]);
+
+  useEffect(() => {
+    if (!enabled || journey.scopeKey !== scopeKey) return;
+    const record = () => {
+      const elements = [...document.querySelectorAll<HTMLElement>("[data-public-card-journey-event-id]")];
+      for (const card of journey.cards) {
+        if (card.phase === "queued") continue;
+        const element = elements.find((candidate) => candidate.dataset.publicCardJourneyEventId === card.eventId);
+        const bounds = element?.getBoundingClientRect();
+        const actualRect = bounds ? {
+          left: Math.round(bounds.left * 10) / 10,
+          top: Math.round(bounds.top * 10) / 10,
+          width: Math.round(bounds.width * 10) / 10,
+          height: Math.round(bounds.height * 10) / 10,
+        } : card.rect;
+        const targetRect = { ...card.target, left: Math.round(card.target.left * 10) / 10, top: Math.round(card.target.top * 10) / 10 };
+        const revealElapsedMs = card.phase === "reveal" && card.revealStartedAtMs !== null && card.revealStartedAtMs !== undefined
+          ? (card.revealElapsedMs ?? 0) + Math.max(0, performance.now() - card.revealStartedAtMs)
+          : card.revealElapsedMs ?? 0;
+        const roundedElapsedMs = Math.round(revealElapsedMs);
+        const signature = JSON.stringify([card.phase, actualRect, targetRect, viewerId, card.revealStartedAtIso, roundedElapsedMs]);
+        if (traceSignaturesRef.current.get(card.eventId) === signature) continue;
+        traceSignaturesRef.current.set(card.eventId, signature);
+        recordAttackDodgeUxTrace("public-card-journey", {
+          eventId: card.eventId,
+          publicActorId: card.actorId,
+          publicViewerId: viewerId,
+          cardKind: card.cardFace.kind,
+          visualPhase: card.phase.toUpperCase(),
+          actualCardRect: actualRect,
+          targetParkingRect: targetRect,
+          revealStartedAt: card.revealStartedAtIso ?? null,
+          revealElapsedMs: roundedElapsedMs,
+          layoutChangeReason: card.phase === "reveal"
+            ? "full-size-centre-reveal"
+            : card.phase === "move" ? "four-second-reveal-complete" : "seat-parking-complete",
+        });
+      }
+    };
+    record();
+    if (!journey.cards.some((card) => card.phase === "reveal" || card.phase === "move")) return;
+    const interval = window.setInterval(record, 500);
+    return () => window.clearInterval(interval);
+  }, [enabled, journey.scopeKey, journey.cards, scopeKey, viewerId]);
 
   useLayoutEffect(() => {
     if (!enabled || !hasAttackDodgeMotion || journey.scopeKey !== scopeKey) return;
@@ -557,7 +820,7 @@ function AttackDodgeCardJourney({
     data-public-card-root-event-id={action.rootEventId}
     data-public-card-id={activeCard?.id}
     data-public-card-actor-id={activeActorId}
-    data-public-card-active-event-kind={latestResponse ? "response" : latestDeflection ? "deflection" : "root"}
+    data-public-card-active-event-kind={activeJourneyCard?.role ?? (latestResponse ? "response" : latestDeflection ? "deflection" : "root")}
     data-public-card-source-id={action.sourceId}
     data-public-card-target-id={action.targetId ?? undefined}
     data-public-card-settlement-event-id={action.settlement?.eventId}
@@ -565,9 +828,9 @@ function AttackDodgeCardJourney({
     data-public-card-deflection-event-id={latestDeflection?.eventId}
     data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
-    {cards.map((card) => {
+    {cards.filter((card) => card.phase !== "queued").map((card) => {
       const isCurrent = card.eventId === activeEventId;
-      const isHistorical = Boolean(latestResponse && card.role === "root");
+      const isHistorical = Boolean(latestResponse && card.role === "root" && card.phase === "parked");
       return <div
         key={card.eventId}
         className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${isCurrent ? "is-current" : ""} ${isHistorical ? "is-prior" : ""} ${card.role === "deflection" ? "is-deflection" : ""}`}
@@ -1308,23 +1571,27 @@ export function PublicCardDisplay({
   enabled,
   sourceName,
   targetName,
+  roomCode,
   viewerId,
   viewerSeat,
   resultReadRemainingMs = null,
+  onJourneyEventParked,
   onJourneySettled,
 }: {
   action: PublicCardDisplayAction | null;
   enabled: boolean;
   sourceName: string | null;
   targetName: string | null;
+  roomCode: string;
   viewerId: string;
   viewerSeat: number | null;
   resultReadRemainingMs?: number | null;
+  onJourneyEventParked?: (eventId: string) => void;
   onJourneySettled?: (settlementEventId: string) => void;
 }) {
   if (!action) return null;
   if (action.motion?.type === "attack-dodge") {
-    return <AttackDodgeCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} resultReadRemainingMs={resultReadRemainingMs} />;
+    return <AttackDodgeCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} roomCode={roomCode} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (action.motion?.type === "single-target" || action.motion?.type === "negation") {
     return <SingleTargetCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onJourneySettled={onJourneySettled} />;

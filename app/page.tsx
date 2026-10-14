@@ -1639,6 +1639,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     roomCode: room.code,
     eventIds: new Set((room.timeline ?? []).map((event) => event.id)),
   }));
+  const markPublicCardJourneyEventParked = useCallback((eventId: string) => {
+    setPublicCardJourneySeen((current) => {
+      const seen = current.roomCode === room.code
+        ? current.eventIds
+        : new Set((room.timeline ?? []).map((event) => event.id));
+      if (current.roomCode === room.code && seen.has(eventId)) return current;
+      return { roomCode: room.code, eventIds: new Set([...seen, eventId]) };
+    });
+  }, [room.code, room.timeline]);
   if (publicCardJourneySeen.roomCode !== room.code) {
     setPublicCardJourneySeen({ roomCode: room.code, eventIds: new Set((room.timeline ?? []).map((event) => event.id)) });
   }
@@ -4021,6 +4030,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && !rootActionTemporarilyBlocked);
   const publicCardDisplayReady = publicCardDisplayEnabled;
   const publicCardDisplayOwnsPresentation = Boolean(publicCardDisplayReady
+    || publicCardDisplayAction?.motion?.type === "attack-dodge"
+      && rootActionSource?.name
+      && (publicCardDisplayAction.targetId === null || rootActionTarget?.name)
     || publicCardDisplayAction?.motion?.type === "duel" && rootActionSource?.name && rootActionTarget?.name);
   const publicCardJourneyEventIds = publicCardDisplayAction?.motion?.type === "attack-dodge"
     ? [publicCardDisplayAction.rootEventId, publicCardDisplayAction.response?.eventId, publicCardDisplayAction.deflection?.eventId].filter((eventId): eventId is string => Boolean(eventId))
@@ -4032,6 +4044,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const publicCardJourneyEventIdKey = publicCardJourneyEventIds.join("|");
   useEffect(() => {
     if (!publicCardDisplayReady || !publicCardJourneyEventIdKey) return;
+    if (publicCardDisplayAction?.motion?.type === "attack-dodge") return;
     const eventIds = publicCardJourneyEventIdKey.split("|");
     const timer = window.setTimeout(() => {
       setPublicCardJourneySeen((current) => {
@@ -4043,7 +4056,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [room.code, room.timeline, publicCardDisplayReady, publicCardJourneyEventIdKey]);
+  }, [room.code, room.timeline, publicCardDisplayAction?.motion?.type, publicCardDisplayReady, publicCardJourneyEventIdKey]);
   const duelJourneyOwnsRootAndAttacks = publicCardDisplayAction?.motion?.type === "duel";
   const publicDisplayOwnedEventIds = publicCardDisplayOwnsPresentation && publicCardDisplayAction
     ? [...new Set([
@@ -4250,7 +4263,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const hasVisibleSettlementComposition = () => {
       const display = [...document.querySelectorAll<HTMLElement>('[data-public-card-display="true"]')]
         .find((element) => element.dataset.publicCardSettlementEventId === activeAttackHitSettlementEventId);
-      const cardFace = display?.querySelector<HTMLElement>("[data-public-card-primary-card='true'] .played-card");
+      const primaryCard = display?.querySelector<HTMLElement>("[data-public-card-primary-card='true']");
+      const cardFace = primaryCard?.querySelector<HTMLElement>(".played-card");
       const result = display?.querySelector<HTMLElement>('[data-public-card-result="ATTACK_DAMAGE_APPLIED"]');
       const visible = (element: Element | null | undefined) => {
         if (!element) return false;
@@ -4263,6 +4277,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         && display.dataset.publicCardRootEventId === activeAttackHitSettlement.lifecycle.rootEventId
         && display.dataset.publicCardTargetId === activeAttackHitSettlement.lifecycle.targetId
         && display.dataset.publicCardId === activeAttackHitSettlement.lifecycle.rootCardId
+        && primaryCard?.dataset.publicCardJourneyPhase === "parked"
         && visible(cardFace) && visible(result);
     };
 
@@ -4476,7 +4491,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const hasVisibleResultCard = () => {
       const display = [...document.querySelectorAll<HTMLElement>('[data-public-card-display="true"]')]
         .find((element) => element.dataset.publicCardEventId === eventId);
-      const cardFace = display?.querySelector<HTMLElement>("[data-public-card-primary-card='true'] .played-card");
+      const primaryCard = display?.querySelector<HTMLElement>("[data-public-card-primary-card='true']");
+      const cardFace = primaryCard?.querySelector<HTMLElement>(".played-card");
       const result = display?.querySelector<HTMLElement>('[data-public-card-result="ATTACK_BLOCKED_BY_DODGE"]');
       return display?.dataset.publicCardReady === "true"
         && display.dataset.publicCardSettlementEventId === eventId
@@ -4484,6 +4500,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         && display.dataset.publicCardRootEventId === held?.lifecycle.rootEventId
         && display.dataset.publicCardActorId === held?.proof.responseActorId
         && display.dataset.publicCardId === held?.action.response?.cardFace?.id
+        && primaryCard?.dataset.publicCardJourneyPhase === "parked"
         && visible(cardFace) && visible(result);
     };
     const retire = () => {
@@ -5027,7 +5044,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         })}
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
-      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} onJourneySettled={(settlementEventId) => {
+      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} onJourneyEventParked={markPublicCardJourneyEventParked} onJourneySettled={(settlementEventId) => {
         setActiveDismantleSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
           ? { ...current, journeySettled: true }
           : current);
