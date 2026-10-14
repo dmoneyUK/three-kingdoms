@@ -4726,11 +4726,14 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const privateActionReason = decisionResponsePending?.delegation
     ? delegatedResponseReason(decisionResponsePending, me, players)
     : pending && "reason" in pending ? pending.reason : (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
+  const sharedWindowDecision = negationWindow && sharedWindowResponse && me
+    ? responseDecisionFor(sharedWindowResponse, responseContext(me, players, room.turn_seat))
+    : null;
   const actionReason = negationWaitingForOther
     ? "Waiting for Negation..."
-    : negationWindow ? negationWindowSubmitted ? "Response submitted — waiting" : sharedWindowResponse?.reason ?? "Waiting for the Negation response window"
+    : negationWindow ? negationWindowSubmitted ? "Response submitted — waiting" : sharedWindowDecision?.options.length ? "Play Negation or Pass" : "No Negation available. Pass."
     : room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
-  const responseDecision = negationWindow ? sharedWindowResponse && me ? responseDecisionFor(sharedWindowResponse, responseContext(me, players, room.turn_seat)) : null
+  const responseDecision = negationWindow ? sharedWindowDecision
     : me?.id === actualActionPlayerId ? responseDecisionFor(responsePending ?? pending, me ? responseContext(me, players, room.turn_seat) : undefined) : null;
   const canDeclareAttack = me?.id === actualActionPlayerId && canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, room.phase);
   const playPhaseActions = me?.id === actualActionPlayerId && room.phase?.startsWith("play") ? getPlayPhaseActions(responseContext(me, players)) : [];

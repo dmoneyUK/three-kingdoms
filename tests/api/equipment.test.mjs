@@ -70,7 +70,7 @@ test("host test flow follows the Xiahou Dun Group trigger perspective", { timeou
   assert.equal(discardIds(room.code).filter((id) => id === "rainingarrows-quick-group-ganglie").length, 1);
 });
 
-test("host test flow exhausts each AOE Negation window before the target response, with one private hand", async () => {
+test("host test flow gives every seat a private AOE Negation choice in one shared window", async () => {
   for (const [kind, required] of [["RainingArrows", "Dodge"], ["BarbarianInvasion", "Attack"]]) {
   const created = await createTestGame(); const { token, room } = created.data;
   const [me, ...targets] = room.players;
@@ -78,20 +78,26 @@ test("host test flow exhausts each AOE Negation window before the target respons
   for (const target of targets) setHand(target.id, [card("Negation", `perspective-${target.seat}`), card(required, `perspective-${target.seat}`)], 3, 3);
   setTurn(room.code, me.seat);
   const act = (action, extra = {}) => requestAndSettle(action, { code: room.code, token, ...extra });
-  let result = await act("play_card", { cardId: `${kind.toLowerCase()}-perspective` }); assert.equal(result.status, 200, JSON.stringify(result.data));
+  let result = await request("play_card", { code: room.code, token, cardId: `${kind.toLowerCase()}-perspective` }); assert.equal(result.status, 200, JSON.stringify(result.data));
   for (const target of targets) {
-    const ordered = room.players;
-    for (const responder of ordered) {
-      const view = result.data.room;
-      assert.equal(view.meId, responder.id); assert.equal(view.actionPlayerId, responder.id);
+    const windowId = result.data.room.currentAction.negationWindowId;
+    assert.ok(windowId);
+    for (const responder of room.players) {
+      const view = (await state(room.code, token, false, responder.id)).data;
+      assert.equal(view.meId, responder.id); assert.equal(view.actionPlayerId, null);
+      assert.equal(view.currentAction.negationWindowId, windowId);
+      assert.equal(view.currentAction.actorId, responder.id);
       assert.ok(view.isMyAction); assert.ok(view.players.every((p) => p.handCards.length === 0));
       assert.deepEqual(view.myHand, JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(responder.id)}`)));
       assert.equal(view.myRole, view.players.find((p) => p.id === responder.id).role);
-      result = await act("decline_response"); assert.equal(result.status, 200);
+      result = await requestForViewer("decline_response", { code: room.code, token }, responder.id); assert.equal(result.status, 200);
+      assert.equal(result.data.room.currentAction.negationWindowId, windowId, "private Pass does not close the common window early");
     }
-    assert.equal(result.data.room.meId, target.id); assert.equal(result.data.room.pendingNegation, null);
-    assert.equal(result.data.room.currentAction.requirement, required.toLowerCase());
-    result = await act("respond", { cardId: `${required.toLowerCase()}-perspective-${target.seat}` }); assert.equal(result.status, 200);
+    await advanceNegationWindow(room.code, token, windowId);
+    result = await state(room.code, token, false, target.id);
+    assert.equal(result.data.meId, target.id); assert.equal(result.data.pendingNegation, null);
+    assert.equal(result.data.currentAction.requirement, required.toLowerCase());
+    result = await requestForViewer("respond", { code: room.code, token, providerId: "card", cardId: `${required.toLowerCase()}-perspective-${target.seat}` }, target.id); assert.equal(result.status, 200);
     if (result.data.room.currentAction?.triggerEvent === "damage_suffered") {
       result = await act("decline_trigger"); assert.equal(result.status, 200, JSON.stringify(result.data));
     }
@@ -113,7 +119,7 @@ test("AOE counter rounds use fresh shared windows and resume the affected target
   setHand(p1.id, [card("Negation", "self-1"), card("Attack", "self-1")], 3, 3);
   setHand(p2.id, [card("Negation", "self-again"), card("Attack", "self-2")], 3, 3);
   setTurn(room.code, me.seat);
-  const opened = await requestAndSettle("play_card", { code: room.code, token, cardId: "barbarianinvasion-self-root" });
+  const opened = await request("play_card", { code: room.code, token, cardId: "barbarianinvasion-self-root" });
   assert.equal(opened.status, 200);
   const firstWindowId = opened.data.room.currentAction.negationWindowId;
   assert.ok(firstWindowId);
@@ -263,24 +269,35 @@ test("human seat switching preserves private decisions across response and trigg
   assert.equal((await state(game.code, host.token)).data.players.find((player) => player.id === bobPlayer.id).hp, 4);
 });
 
-test("Negation opportunities follow reaction order, include the user, and reset only after a card", async () => {
+test("shared Negation keeps one public checkpoint across private Pass submissions", async () => {
   const game = await createHumanGame(); const players = game.room.players;
   for (const player of players) setHand(player.id, [card("Negation", `${player.seat}-one`), card("Negation", `${player.seat}-two`), card("Attack", `${player.seat}-reply`)], 4, 4);
   setHand(players[0].id, [card("Duel", "ordered"), card("Negation", "0-one"), card("Attack", "0-reply")], 4, 4);
   setTurn(game.code, players[0].seat);
-  const act = (seat, action, extra = {}) => requestAndSettle(action, { code: game.code, token: game.members[seat].token, ...extra });
-  let result = await act(0, "play_card", { cardId: "duel-ordered", targetId: players[2].id });
-  for (const seat of [0, 1, 2, 3]) {
-    const privateView = (await state(game.code, game.members[seat].token)).data;
-    assert.equal(privateView.actionPlayerId, players[seat].id);
-    assert.equal(privateView.currentAction.kind, "response");
-    result = await act(seat, "decline_response");
+  const opened = await request("play_card", { code: game.code, token: game.members[0].token, cardId: "duel-ordered", targetId: players[2].id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const windowId = opened.data.room.currentAction.negationWindowId;
+  const publicCheckpoint = opened.data.room.causalEnvelope.checkpoint.checkpointId;
+  assert.ok(windowId);
+  assert.equal(opened.data.room.actionPlayerId, null);
+  assert.equal(opened.data.room.causalEnvelope.frames[0].current.resolvingPlayerId, null);
+  for (const [seat, member] of game.members.entries()) {
+    const privateView = (await state(game.code, member.token)).data;
+    assert.equal(privateView.currentAction.negationWindowId, windowId);
+    assert.equal(privateView.currentAction.actorId, players[seat].id);
+    assert.equal(privateView.actionPlayerId, null);
+    assert.ok(privateView.currentAction.options.some((option) => option.providerId === "negation_card"));
+    const passed = await request("decline_response", { code: game.code, token: member.token });
+    assert.equal(passed.status, 200, JSON.stringify(passed.data));
+    assert.equal(passed.data.room.currentAction.negationWindowId, windowId, "one Pass does not close the common window");
+    assert.equal(passed.data.room.causalEnvelope.checkpoint.checkpointId, publicCheckpoint);
+    assert.equal(passed.data.room.causalEnvelope.frames[0].current.resolvingPlayerId, null);
   }
-  assert.equal(result.data.room.pendingNegation, null);
+  await advanceNegationWindow(game.code, game.members[0].token, windowId);
   const duelTargetView = await state(game.code, game.members[2].token);
+  assert.equal(duelTargetView.data.pendingNegation, null);
   assert.equal(duelTargetView.data.currentAction.kind, "response"); assert.equal(duelTargetView.data.currentAction.requirement, "attack"); assert.equal(duelTargetView.data.currentAction.actorId, players[2].id);
-  assert.equal((await act(2, "respond", { providerId: "card", cardId: "negation-2-two" })).status, 409, "closed window cannot be reopened");
-  result = await act(2, "respond", { providerId: "card", cardId: "attack-2-reply" });
+  const result = await request("respond", { code: game.code, token: game.members[2].token, providerId: "card", cardId: "attack-2-reply" });
   const nextDuelView = await state(game.code, game.members[0].token);
   assert.equal(result.status, 200); assert.equal(nextDuelView.data.currentAction.kind, "response"); assert.equal(nextDuelView.data.currentAction.requirement, "attack"); assert.equal(nextDuelView.data.currentAction.actorId, players[0].id);
 });

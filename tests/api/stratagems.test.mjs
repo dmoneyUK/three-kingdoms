@@ -20,7 +20,7 @@ test("shared Duel Negation windows choose by canonical seat order and reopen aft
     players: names.map((name, index) => ({
       name,
       role: roles[index],
-      hero: ["cao-cao", "xiahou-dun", "zhang-liao", "simayi", "guojia"][index],
+      hero: ["cao-cao", "xiahou-dun", "zhang-liao", "simayi", "guo-jia"][index],
       hp: 4,
       maxHp: 4,
       hand: index === 0 ? [duel] : index === 1 ? [seatTwoNegation] : index === 3 ? [seatFourNegation] : [],
@@ -104,7 +104,7 @@ test("shared Duel Negation priority is unchanged when the canonical winner submi
     players: ["Seat One", "Seat Two", "Seat Three", "Seat Four", "Seat Five"].map((name, index) => ({
       name,
       role: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"][index],
-      hero: ["cao-cao", "xiahou-dun", "zhang-liao", "simayi", "guojia"][index],
+      hero: ["cao-cao", "xiahou-dun", "zhang-liao", "simayi", "guo-jia"][index],
       hp: 4,
       maxHp: 4,
       hand: index === 0 ? [card("Duel", "shared-window-order-root")] : index === 1 ? [card("Negation", "shared-window-order-seat-two")] : index === 3 ? [card("Negation", "shared-window-order-seat-four")] : [],
@@ -567,28 +567,47 @@ test("Negation cancels a stratagem and a counter-Negation restores it in ordered
   setHand(hostPlayer.id, [card("Dismantle", "cancelled")], 5, 5);
   setHand(alicePlayer.id, [card("Attack", "protected"), card("Negation", "cancel")], 4, 4);
   setTurn(game.code, hostPlayer.seat);
-  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "dismantle-cancelled", targetId: alicePlayer.id, targetCardIndex: 0 });
+  const opened = await request("play_card", { code: game.code, token: host.token, cardId: "dismantle-cancelled", targetId: alicePlayer.id, targetCardIndex: 0 });
   assert.equal(opened.status, 200); assert.equal(opened.data.room.phase, "response"); assert.equal(opened.data.room.pendingNegation.cardName, "Burning Bridges"); assert.equal(opened.data.room.pendingNegation.responseTarget, "Burning Bridges's effect on Alice"); assert.equal(opened.data.room.actionPlayerId, null);
   assert.equal(opened.data.room.discardTop, null, "Burning Bridges stays outside discard while its Negation decision is open");
-  const cancelled = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "negation-cancel" });
-  assert.equal(cancelled.status, 200); assert.equal(cancelled.data.room.phase, "play"); assert.equal(cancelled.data.room.pendingNegation, null);
+  const firstWindowId = opened.data.room.currentAction.negationWindowId;
+  const cancelIntent = await request("respond", { code: game.code, token: alice.token, providerId: "negation_card", cardId: "negation-cancel" });
+  assert.equal(cancelIntent.status, 200, JSON.stringify(cancelIntent.data));
+  await advanceNegationWindow(game.code, host.token, firstWindowId);
+  const counterWindowId = (await state(game.code, host.token)).data.currentAction.negationWindowId;
+  assert.ok(counterWindowId, "a committed Negation opens a fresh counter window");
+  await advanceNegationWindow(game.code, host.token, counterWindowId);
+  const cancelled = await state(game.code, host.token);
+  assert.equal(cancelled.data.phase, "play"); assert.equal(cancelled.data.pendingNegation, null);
   assert.equal((await state(game.code, alice.token)).data.myHand.some((held) => held.id === "attack-protected"), true, "the cancelled stratagem does not discard its target card");
 
   setHand(hostPlayer.id, [card("Dismantle", "restored"), card("Negation", "counter")], 5, 5);
   setHand(alicePlayer.id, [card("Attack", "removed"), card("Negation", "first")], 4, 4);
   setTurn(game.code, hostPlayer.seat);
-  const reopened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "dismantle-restored", targetId: alicePlayer.id, targetCardIndex: 0 });
-  assert.equal(reopened.data.room.actionPlayerId, hostPlayer.id, "the initial response starts with the source when the source has a Negation capability");
+  const reopened = await request("play_card", { code: game.code, token: host.token, cardId: "dismantle-restored", targetId: alicePlayer.id, targetCardIndex: 0 });
+  assert.equal(reopened.status, 200, JSON.stringify(reopened.data));
+  assert.equal(reopened.data.room.actionPlayerId, null, "the shared window does not publish one Negation actor");
   assert.equal(reopened.data.room.discardTop.id, "negation-cancel", "the previous completed discard remains visible while the new sequence is pending");
-  await requestAndSettle("decline_response", { code: game.code, token: host.token });
-  assert.equal((await state(game.code, alice.token)).data.actionPlayerId, alicePlayer.id);
-  const firstPlayed = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "negation-first" });
+  const reopenedWindowId = reopened.data.room.currentAction.negationWindowId;
+  const sourcePass = await request("decline_response", { code: game.code, token: host.token });
+  assert.equal(sourcePass.status, 200, JSON.stringify(sourcePass.data));
+  const firstPlayed = await request("respond", { code: game.code, token: alice.token, providerId: "negation_card", cardId: "negation-first" });
+  assert.equal(firstPlayed.status, 200, JSON.stringify(firstPlayed.data));
+  await advanceNegationWindow(game.code, host.token, reopenedWindowId);
   const counterView = (await state(game.code, host.token)).data;
-  assert.equal(counterView.actionPlayerId, hostPlayer.id);
+  assert.equal(counterView.currentAction.actorId, hostPlayer.id);
+  assert.equal(counterView.actionPlayerId, null);
   assert.equal(counterView.pendingNegation.responseTarget, "Alice's Negation", "the counter window names the latest Negation rather than the root Stratagem");
-  assert.equal(firstPlayed.data.room.discardTop.id, "negation-cancel", "neither Burning Bridges nor the first Negation enters discard before the counter decision");
-  const restored = await requestAndSettle("respond", { code: game.code, token: host.token, cardId: "negation-counter" });
-  assert.equal(restored.status, 200); assert.equal(restored.data.room.phase, "response"); assert.equal(restored.data.room.pendingTargetCard.cardKind, "Dismantle");
+  assert.equal(counterView.discardTop.id, "negation-cancel", "the staged root remains outside discard until the complete effect resolves");
+  const counterWindowId = counterView.currentAction.negationWindowId;
+  const counterIntent = await request("respond", { code: game.code, token: host.token, providerId: "negation_card", cardId: "negation-counter" });
+  assert.equal(counterIntent.status, 200, JSON.stringify(counterIntent.data));
+  await advanceNegationWindow(game.code, host.token, counterWindowId);
+  const counterCounterWindowId = (await state(game.code, host.token)).data.currentAction.negationWindowId;
+  assert.ok(counterCounterWindowId, "restoring the root opens a fresh counter-counter window");
+  await advanceNegationWindow(game.code, host.token, counterCounterWindowId);
+  const restored = await state(game.code, host.token);
+  assert.equal(restored.data.phase, "response"); assert.equal(restored.data.pendingTargetCard.cardKind, "Dismantle");
   assert.equal((await state(game.code, alice.token)).data.myHand.some((held) => held.id === "attack-removed"), true, "the target card is not chosen before Negation finishes");
   const chosen = await requestAndSettle("choose_target_card", { code: game.code, token: host.token, targetCardZone: "hand", targetCardIndex: 0 });
   assert.equal(chosen.status, 200); assert.equal(chosen.data.room.phase, "play");
@@ -608,13 +627,22 @@ test("Steal chooses from the target's current zones only after counter-Negation"
   setHand(hostPlayer.id, [card("Steal", "post-negation"), card("Negation", "restore-steal")], 5, 5);
   setHand(alicePlayer.id, [card("Negation", "cancel-steal"), hiddenHandCard], 4, 4); setEquipment(alicePlayer.id, { weapon: spear }); setTurn(game.code, hostPlayer.seat);
 
-  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "steal-post-negation", targetId: alicePlayer.id });
+  const opened = await request("play_card", { code: game.code, token: host.token, cardId: "steal-post-negation", targetId: alicePlayer.id });
   assert.equal(opened.data.room.pendingTargetCard, null, "target cards are not selected or exposed before Negation responses finish");
-  await requestAndSettle("decline_response", { code: game.code, token: host.token });
-  await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "negation-cancel-steal" });
-  const restored = await requestAndSettle("respond", { code: game.code, token: host.token, cardId: "negation-restore-steal" });
-  assert.equal(restored.data.room.pendingTargetCard.targetId, alicePlayer.id); assert.equal(restored.data.room.players.find((player) => player.id === alicePlayer.id).handCount, 1);
-  assert.equal(restored.data.room.players.find((player) => player.id === alicePlayer.id).equipmentCards[0].id, spear.id);
+  const firstWindowId = opened.data.room.currentAction.negationWindowId;
+  await request("decline_response", { code: game.code, token: host.token });
+  await request("respond", { code: game.code, token: alice.token, providerId: "negation_card", cardId: "negation-cancel-steal" });
+  await advanceNegationWindow(game.code, host.token, firstWindowId);
+  const counterWindowId = (await state(game.code, host.token)).data.currentAction.negationWindowId;
+  assert.ok(counterWindowId);
+  await request("respond", { code: game.code, token: host.token, providerId: "negation_card", cardId: "negation-restore-steal" });
+  await advanceNegationWindow(game.code, host.token, counterWindowId);
+  const counterCounterWindowId = (await state(game.code, host.token)).data.currentAction.negationWindowId;
+  assert.ok(counterCounterWindowId);
+  await advanceNegationWindow(game.code, host.token, counterCounterWindowId);
+  const restored = await state(game.code, host.token);
+  assert.equal(restored.data.currentAction.targetCardSelection.targetId, alicePlayer.id); assert.equal(restored.data.players.find((player) => player.id === alicePlayer.id).handCount, 1);
+  assert.equal(restored.data.players.find((player) => player.id === alicePlayer.id).equipmentCards[0].id, spear.id);
   const sourceView = (await state(game.code, host.token)).data;
   const targetView = (await state(game.code, alice.token)).data;
   const rootAction = sourceView.presentationSnapshot.rootAction;
@@ -1148,12 +1176,18 @@ test("Overindulgence uses the Judgement Zone and skips only a failed target's Pl
   assert.ok(hostPlayer && alicePlayer && bobPlayer && bob);
 
   setHand(hostPlayer.id, [card("Overindulgence", "cancelled")], 5, 5); setHand(alicePlayer.id, [card("Negation", "overindulgence")], 4, 4); setTurn(game.code, hostPlayer.seat);
-  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "overindulgence-cancelled", targetId: alicePlayer.id });
+  const opened = await request("play_card", { code: game.code, token: host.token, cardId: "overindulgence-cancelled", targetId: alicePlayer.id });
   assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation.cardName, "Overindulgence"); assert.equal(opened.data.room.phase, "response");
   assert.equal(opened.data.room.discardTop.id, "overindulgence-cancelled", "the physical Overindulgence card is staged in discard while Negation is open");
-  const cancelled = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "negation-overindulgence" });
-  assert.equal(cancelled.status, 200); assert.equal(cancelled.data.room.pendingNegation, null); assert.equal(cancelled.data.room.phase, "play");
-  assert.deepEqual(cancelled.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, [], "Negation prevents initial Overindulgence placement");
+  const rootWindowId = opened.data.room.currentAction.negationWindowId;
+  await request("respond", { code: game.code, token: alice.token, providerId: "negation_card", cardId: "negation-overindulgence" });
+  await advanceNegationWindow(game.code, host.token, rootWindowId);
+  const counterWindowId = (await state(game.code, host.token)).data.currentAction.negationWindowId;
+  assert.ok(counterWindowId);
+  await advanceNegationWindow(game.code, host.token, counterWindowId);
+  const cancelled = await state(game.code, host.token);
+  assert.equal(cancelled.data.pendingNegation, null); assert.equal(cancelled.data.phase, "play");
+  assert.deepEqual(cancelled.data.players.find((player) => player.id === alicePlayer.id).judgementCards, [], "Negation prevents initial Overindulgence placement");
   assert.deepEqual(discardIds(game.code).filter((id) => ["overindulgence-cancelled", "negation-overindulgence"].includes(id)).sort(), ["negation-overindulgence", "overindulgence-cancelled"]);
 
   setHand(hostPlayer.id, [card("Overindulgence", "placed")], 5, 5); setHand(alicePlayer.id, [], 4, 4); setJudgement(alicePlayer.id, []); setTurn(game.code, hostPlayer.seat);
@@ -1200,18 +1234,24 @@ test("Overindulgence uses the Judgement Zone and skips only a failed target's Pl
   const negatedAtJudgement = { ...card("Overindulgence", "judgement-negated"), suit: "♥", rank: "6" };
   setHand(alicePlayer.id, [card("Negation", "judgement-window")], 4, 4); setJudgement(alicePlayer.id, [negatedAtJudgement]); setTurn(game.code, alicePlayer.seat, "draw");
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify([card("Dodge", "unused-judgement"), card("Attack", "post-negation-draw-1"), card("Attack", "post-negation-draw-2")]))}, discard_json='[]' WHERE code=${quote(game.code)}`);
-  const judgementWindow = await requestAndSettle("draw", { code: game.code, token: alice.token });
-  assert.equal(judgementWindow.status, 200); assert.equal(judgementWindow.data.room.phase, "response"); assert.equal(judgementWindow.data.room.pendingNegation.cardName, "Overindulgence"); assert.equal(judgementWindow.data.room.actionPlayerId, alicePlayer.id);
+  const judgementWindow = await request("draw", { code: game.code, token: alice.token });
+  assert.equal(judgementWindow.status, 200); assert.equal(judgementWindow.data.room.phase, "response"); assert.equal(judgementWindow.data.room.pendingNegation.cardName, "Overindulgence"); assert.equal(judgementWindow.data.room.actionPlayerId, null); assert.equal(judgementWindow.data.room.currentAction.actorId, alicePlayer.id);
+  const judgementWindowId = judgementWindow.data.room.currentAction.negationWindowId;
   const judgementNegationRoot = judgementWindow.data.room.causalEnvelope;
   assert.ok(judgementNegationRoot, "delayed Judgement Negation has an authoritative root");
   assert.equal(judgementNegationRoot.frames[0].stage, "NEGATION");
   const persistedJudgementNegation = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
   assert.equal(persistedJudgementNegation.causal.interactionId, judgementNegationRoot.interactionId);
   assert.equal(persistedJudgementNegation.causal.frameId, judgementNegationRoot.activeFrameId);
-  const judgementCancelled = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "negation-judgement-window" });
-  assert.equal(judgementCancelled.status, 200); assert.equal(judgementCancelled.data.room.phase, "draw"); assert.deepEqual(judgementCancelled.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, []);
-  assert.equal(judgementCancelled.data.room.causalEnvelope, null, "successful Negation settles the completed delayed Judgement root");
-  assert.equal(judgementCancelled.data.room.log.filter((entry) => /Overindulgence's effect on Alice is cancelled by Negation\./.test(entry)).length, 2, "each negated Overindulgence records one cancellation");
+  await request("respond", { code: game.code, token: alice.token, providerId: "negation_card", cardId: "negation-judgement-window" });
+  await advanceNegationWindow(game.code, host.token, judgementWindowId);
+  const judgementCounterWindowId = (await state(game.code, host.token)).data.currentAction.negationWindowId;
+  assert.ok(judgementCounterWindowId);
+  await advanceNegationWindow(game.code, host.token, judgementCounterWindowId);
+  const judgementCancelled = await state(game.code, alice.token);
+  assert.equal(judgementCancelled.data.phase, "draw"); assert.deepEqual(judgementCancelled.data.players.find((player) => player.id === alicePlayer.id).judgementCards, []);
+  assert.equal(judgementCancelled.data.causalEnvelope, null, "successful Negation settles the completed delayed Judgement root");
+  assert.equal(judgementCancelled.data.log.filter((entry) => /Overindulgence's effect on Alice is cancelled by Negation\./.test(entry)).length, 2, "each negated Overindulgence records one cancellation");
   const afterJudgementNegation = await requestAndSettle("draw", { code: game.code, token: alice.token });
   assert.equal(afterJudgementNegation.status, 200); assert.equal(afterJudgementNegation.data.room.phase, "play"); assert.equal(afterJudgementNegation.data.room.timeline.some((event) => event.card?.id === "dodge-unused-judgement"), false, "Negation cancels the delayed effect before a judgement card is drawn");
 
@@ -1234,7 +1274,7 @@ test("delayed Judgement Negation and counter-Negation reuse one activation frame
   setTurn(game.code, alicePlayer.seat, "draw");
   setDeck(game.code, [{ ...card("Dodge", "judgement-counter-judge"), suit: "♠", rank: "7" }]);
 
-  const opened = await requestAndSettle("draw", { code: game.code, token: alice.token });
+  const opened = await request("draw", { code: game.code, token: alice.token });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   assert.equal(opened.data.room.currentAction.actorId, alicePlayer.id);
   const root = opened.data.room.causalEnvelope;
@@ -1247,6 +1287,8 @@ test("delayed Judgement Negation and counter-Negation reuse one activation frame
 
   const firstResponse = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: first.id, preserveResponse: true });
   assert.equal(firstResponse.status, 200, JSON.stringify(firstResponse.data));
+  const firstWindowId = opened.data.room.currentAction.negationWindowId;
+  await advanceNegationWindow(game.code, alice.token, firstWindowId);
   const counter = await state(game.code, game.members.find((member) => member.name === "Bob").token);
   assert.equal(counter.data.currentAction.actorId, bobPlayer.id);
   assert.equal(counter.data.causalEnvelope.interactionId, root.interactionId);
@@ -1257,12 +1299,17 @@ test("delayed Judgement Negation and counter-Negation reuse one activation frame
   assert.equal(causalPending().causal.interactionId, root.interactionId);
   assert.equal(causalPending().causal.frameId, root.activeFrameId);
 
-  const settled = await requestAndSettle("respond", { code: game.code, token: game.members.find((member) => member.name === "Bob").token, cardId: second.id });
-  assert.equal(settled.status, 200, JSON.stringify(settled.data));
-  assert.equal(settled.data.room.causalEnvelope, null);
-  assert.deepEqual(settled.data.room.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
-  assert.equal(settled.data.room.pending, null);
-  assert.deepEqual(settled.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, []);
+  const secondWindowId = counter.data.currentAction.negationWindowId;
+  await request("respond", { code: game.code, token: game.members.find((member) => member.name === "Bob").token, providerId: "negation_card", cardId: second.id });
+  await advanceNegationWindow(game.code, alice.token, secondWindowId);
+  const thirdWindowId = (await state(game.code, alice.token)).data.currentAction.negationWindowId;
+  assert.ok(thirdWindowId);
+  await advanceNegationWindow(game.code, alice.token, thirdWindowId);
+  const settled = await state(game.code, alice.token);
+  assert.equal(settled.data.causalEnvelope, null);
+  assert.deepEqual(settled.data.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
+  assert.equal(settled.data.pending, null);
+  assert.deepEqual(settled.data.players.find((player) => player.id === alicePlayer.id).judgementCards, []);
 });
 
 test("delayed placement settles before a later activation creates a fresh interaction", { timeout: 30_000 }, async () => {

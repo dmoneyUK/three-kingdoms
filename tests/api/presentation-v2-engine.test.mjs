@@ -1579,7 +1579,7 @@ test("FIX9 persists the Group root and keeps nested Negation in the same Frame",
   assert.deepEqual(completedGroup.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
 });
 
-test("FIX10 nested Group Negation handoff skips an ineligible target in the same frame", { timeout: 30_000 }, async () => {
+test("FIX10 nested Group Negation stays public-seat neutral within the same frame", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [sourceMember, , bobMember] = game.members;
   const [source, target, bob, carol] = game.room.players;
@@ -1597,23 +1597,23 @@ test("FIX10 nested Group Negation handoff skips an ineligible target in the same
   assert.equal(root.frames.length, 1);
   assert.deepEqual(root.frames[0].origin.originalTargetIds, [target.id, bob.id, carol.id]);
   assert.deepEqual(root.frames[0].current.currentTargetIds, [target.id]);
-  const declined = await request("decline_response", { code: game.code, token: sourceMember.token });
-  assert.equal(declined.status, 200, JSON.stringify(declined.data));
+  const sourcePass = await request("decline_response", { code: game.code, token: sourceMember.token });
+  assert.equal(sourcePass.status, 200, JSON.stringify(sourcePass.data));
   const after = (await state(game.code, bobMember.token)).data;
   assert.equal(after.currentAction.actorId, bob.id);
+  assert.equal(after.actionPlayerId, null);
   assert.equal(after.causalEnvelope.interactionId, root.interactionId);
   assert.equal(after.causalEnvelope.activeFrameId, root.activeFrameId);
   assert.equal(after.causalEnvelope.frames.length, 1);
   assert.equal(after.causalEnvelope.frames[0].stage, "NEGATION");
-  assert.deepEqual(after.causalEnvelope.frames[0].origin.originalTargetIds, [target.id, bob.id, carol.id]);
-  assert.deepEqual(after.causalEnvelope.frames[0].current.currentTargetIds, [target.id]);
-  assert.equal(after.causalEnvelope.frames[0].current.resolvingPlayerId, bob.id);
+  assert.equal(after.causalEnvelope.frames[0].current.resolvingPlayerId, null);
+  assert.equal(after.causalEnvelope.checkpoint.checkpointId, root.checkpoint.checkpointId, "private Pass does not advance the public checkpoint");
+  assert.equal(after.causalEnvelope.presentationRevision, root.presentationRevision, "private Pass does not advance the public revision");
   assert.deepEqual(after.presentationV2.groupResolution?.targetIds, [target.id, bob.id, carol.id]);
   assert.equal(after.presentationV2.groupResolution?.currentParticipantId, target.id);
-  assert.notEqual(after.causalEnvelope.checkpoint.checkpointId, root.checkpoint.checkpointId);
-  assert.equal(after.causalEnvelope.presentationRevision, root.presentationRevision + 1);
   const pending = authoritativePending(game.code);
-  assert.equal(pending.actorId, bob.id);
+  assert.equal(pending.kind, "negation_window");
+  assert.equal("actorId" in pending, false);
   assert.equal(pending.causal.frameId, root.activeFrameId);
   assert.equal(pending.continuation.causal.frameId, root.activeFrameId);
 });
@@ -1631,6 +1631,7 @@ test("engine-backed Duel alternates response actors without changing the root co
   sql(`UPDATE rooms SET log_json=${quote(JSON.stringify([...storedLog, `@card:${JSON.stringify(privateDraw)}`]))} WHERE code=${quote(game.code)}`);
   const started = await request("play_card", { code: game.code, token: host.token, cardId: duel.id, targetId: target.id });
   assert.equal(started.status, 200, JSON.stringify(started.data));
+  await advanceNegationWindow(game.code, host.token, started.data.room.currentAction.negationWindowId);
   const first = await assertProjectionMatchesEngine(game.code, alice.token);
   const firstRoot = first.presentationV2.rootContext;
   const firstRevision = first.actionRevision;
@@ -1747,6 +1748,7 @@ test("engine-backed Duel damage opens a child Dying frame and clears after rescu
   setTurn(game.code, source.seat);
   const opened = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: duel.id, targetId: target.id, preserveResponse: true });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  await advanceNegationWindow(game.code, sourceMember.token, opened.data.room.currentAction.negationWindowId);
   const duelRoot = (await state(game.code, sourceMember.token)).data.causalEnvelope;
   assert.ok(duelRoot);
   assert.equal(duelRoot.frames.length, 1);
@@ -1817,15 +1819,16 @@ test("FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage
   assert.equal(authoritativePending(game.code).causal.frameId, frame.frameId);
   assert.equal(authoritativePending(game.code).continuation.causal.frameId, frame.frameId);
 
-  const declined = await requestAndSettle("decline_response", { code: game.code, token: host.token, preserveResponse: true });
+  const declined = await request("decline_response", { code: game.code, token: host.token });
   assert.equal(declined.status, 200, JSON.stringify(declined.data));
-  const resumed = declined;
-  assert.equal(resumed.data.room.pendingDuel.targetId, target.id);
-  assert.equal(resumed.data.room.causalEnvelope.activeFrameId, frame.frameId);
-  assert.equal(resumed.data.room.causalEnvelope.frames.length, 1);
-  assert.equal(resumed.data.room.causalEnvelope.frames[0].stage, "DUEL_EXCHANGE");
-  assert.notEqual(resumed.data.room.causalEnvelope.checkpoint.checkpointId, root.checkpoint.checkpointId);
-  assert.equal(resumed.data.room.causalEnvelope.presentationRevision, root.presentationRevision + 1);
+  await advanceNegationWindow(game.code, host.token, started.data.room.currentAction.negationWindowId);
+  const resumed = await state(game.code, host.token);
+  assert.equal(resumed.data.pendingDuel.targetId, target.id);
+  assert.equal(resumed.data.causalEnvelope.activeFrameId, frame.frameId);
+  assert.equal(resumed.data.causalEnvelope.frames.length, 1);
+  assert.equal(resumed.data.causalEnvelope.frames[0].stage, "DUEL_EXCHANGE");
+  assert.notEqual(resumed.data.causalEnvelope.checkpoint.checkpointId, root.checkpoint.checkpointId);
+  assert.equal(resumed.data.causalEnvelope.presentationRevision, root.presentationRevision + 1);
   assert.equal(JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`)).causal.frameId, frame.frameId);
 
   const answered = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "card", cardId: attack.id, preserveResponse: true });
@@ -1839,7 +1842,7 @@ test("FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage
   assert.equal(final.data.causalEnvelope, null);
 });
 
-test("FIX10 nested Duel Negation handoff skips an ineligible target in the same frame", { timeout: 30_000 }, async () => {
+test("FIX10 nested Duel Negation keeps the responder private within the same frame", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [sourceMember, , bobMember] = game.members;
   const [source, target, bob, carol] = game.room.players;
@@ -1860,14 +1863,17 @@ test("FIX10 nested Duel Negation handoff skips an ineligible target in the same 
   assert.equal(declined.status, 200, JSON.stringify(declined.data));
   const after = (await state(game.code, bobMember.token)).data;
   assert.equal(after.currentAction.actorId, bob.id);
+  assert.equal(after.actionPlayerId, null);
   assert.equal(after.causalEnvelope.interactionId, root.interactionId);
   assert.equal(after.causalEnvelope.activeFrameId, root.activeFrameId);
   assert.equal(after.causalEnvelope.frames.length, 1);
   assert.equal(after.causalEnvelope.frames[0].stage, "NEGATION");
-  assert.equal(after.causalEnvelope.frames[0].current.resolvingPlayerId, bob.id);
-  assert.equal(after.causalEnvelope.presentationRevision, root.presentationRevision + 1);
+  assert.equal(after.causalEnvelope.frames[0].current.resolvingPlayerId, null);
+  assert.equal(after.causalEnvelope.checkpoint.checkpointId, root.checkpoint.checkpointId);
+  assert.equal(after.causalEnvelope.presentationRevision, root.presentationRevision);
   const pending = authoritativePending(game.code);
-  assert.equal(pending.actorId, bob.id);
+  assert.equal(pending.kind, "negation_window");
+  assert.equal("actorId" in pending, false);
   assert.equal(pending.causal.frameId, root.activeFrameId);
   assert.equal(pending.continuation.causal.frameId, root.activeFrameId);
 });
@@ -1884,10 +1890,12 @@ test("FIX9 physical Duel counter-Negation stays in one frame and restores the Du
   const opened = await request("play_card", { code: game.code, token: host.token, cardId: duel.id, targetId: target.id });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   const root = opened.data.room.causalEnvelope;
+  const firstWindowId = opened.data.room.currentAction.negationWindowId;
   assert.equal(root.frames.length, 1);
   assert.equal(root.frames[0].stage, "NEGATION");
   const first = await requestAndSettle("respond", { code: game.code, token: host.token, cardId: firstNegation.id, preserveResponse: true });
   assert.equal(first.status, 200, JSON.stringify(first.data));
+  await advanceNegationWindow(game.code, host.token, firstWindowId);
   const counterPrompt = await state(game.code, alice.token);
   assert.equal(counterPrompt.data.currentAction.actorId, target.id);
   const counterPending = authoritativePending(game.code);
@@ -1898,13 +1906,16 @@ test("FIX9 physical Duel counter-Negation stays in one frame and restores the Du
   assert.equal(counterPending.continuation.causal.frameId, root.activeFrameId);
   assert.equal(counterPrompt.data.causalEnvelope.frames.length, 1);
   assert.equal(counterPrompt.data.causalEnvelope.frames[0].stage, "NEGATION");
+  const counterWindowId = counterPrompt.data.currentAction.negationWindowId;
   const restored = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: counterNegation.id, preserveResponse: true });
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
-  assert.equal(restored.data.room.pendingDuel.actorId, target.id);
-  assert.equal(restored.data.room.causalEnvelope.interactionId, root.interactionId);
-  assert.equal(restored.data.room.causalEnvelope.activeFrameId, root.activeFrameId);
-  assert.equal(restored.data.room.causalEnvelope.frames.length, 1);
-  assert.equal(restored.data.room.causalEnvelope.frames[0].stage, "DUEL_EXCHANGE");
+  await advanceNegationWindow(game.code, host.token, counterWindowId);
+  const resumed = await state(game.code, host.token);
+  assert.equal(resumed.data.pendingDuel.actorId, target.id);
+  assert.equal(resumed.data.causalEnvelope.interactionId, root.interactionId);
+  assert.equal(resumed.data.causalEnvelope.activeFrameId, root.activeFrameId);
+  assert.equal(resumed.data.causalEnvelope.frames.length, 1);
+  assert.equal(resumed.data.causalEnvelope.frames[0].stage, "DUEL_EXCHANGE");
 });
 
 test("FIX9 Group counter-Negation stays in one frame and restores Group resolution", { timeout: 30_000 }, async () => {
@@ -1915,11 +1926,14 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   const initial = await state(opened.code, opened.sourceMember.token);
   assert.equal(initial.data.currentAction.actorId, opened.source.id);
   assert.equal(initial.data.presentationV2.reactionChain?.groupTargetEffectScope?.effectState, "ACTIVE");
+  const firstWindowId = initial.data.currentAction.negationWindowId;
+  assert.ok(firstWindowId);
   const root = initial.data.causalEnvelope;
   assert.equal(root.frames.length, 1);
   assert.equal(root.frames[0].stage, "NEGATION");
   const first = await requestAndSettle("respond", { code: opened.code, token: opened.sourceMember.token, cardId: firstNegation.id, preserveResponse: true });
   assert.equal(first.status, 200, JSON.stringify(first.data));
+  await advanceNegationWindow(opened.code, opened.sourceMember.token, firstWindowId);
   const counter = await state(opened.code, opened.targetMember.token);
   assert.equal(counter.data.currentAction.actorId, opened.target.id);
   const firstEvent = counter.data.timeline.find((event) => event.type === "card" && event.card?.id === firstNegation.id);
@@ -1976,26 +1990,31 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   assert.deepEqual(counter.data.causalEnvelope.frames[0].current.currentTargetIds, [opened.target.id]);
   assert.equal(counter.data.presentationV2.interactionScene?.continuity.relation, "SAME_FRAME");
   assert.equal(counter.data.presentationV2.interactionScene?.activeFrameId, root.activeFrameId);
-  assert.equal(counter.data.presentationV2.interactionScene?.participantRoles.decisionActorId, opened.target.id);
-  assert.equal(counter.data.presentationV2.interactionScene?.participantRoles.activeResolverId, opened.target.id);
+  assert.equal(counter.data.presentationV2.interactionScene?.decisionActorId, null);
+  assert.equal(counter.data.presentationV2.interactionScene?.activeResolverId, null);
+  assert.equal(counter.data.presentationV2.interactionScene?.participantRoles.decisionActorId, null);
+  assert.equal(counter.data.presentationV2.interactionScene?.participantRoles.activeResolverId, null);
   assert.equal(counter.data.presentationV2.interactionScene?.participantRoles.parentParticipantId, null);
-  assert.equal(counter.data.presentationV2.stableBoundary.kind, "CHOICE");
-  assert.equal(counter.data.presentationV2.stableBoundary.decisionActorId, opened.target.id);
+  assert.equal(counter.data.presentationV2.stableBoundary.kind, "SPECIAL");
+  assert.equal(counter.data.presentationV2.stableBoundary.decisionActorId, null);
+  const counterWindowId = counter.data.currentAction.negationWindowId;
   const restored = await requestAndSettle("respond", { code: opened.code, token: opened.targetMember.token, cardId: counterNegation.id, preserveResponse: true });
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
-  assert.equal(restored.data.room.presentationV2.reactionChain, null, "history remains scoped to the active Negation continuation");
-  assert.equal(restored.data.room.presentationSnapshot.reactionChain, null);
-  assert.equal(restored.data.room.causalEnvelope.interactionId, root.interactionId);
-  assert.equal(restored.data.room.causalEnvelope.activeFrameId, root.activeFrameId);
-  assert.equal(restored.data.room.causalEnvelope.frames.length, 1);
-  assert.equal(restored.data.room.causalEnvelope.frames[0].stage, "GROUP_RESOLUTION");
-  assert.equal(restored.data.room.presentationV2.groupResolution?.groupFrameId, root.activeFrameId);
-  assert.equal(restored.data.room.presentationV2.groupResolution?.activeFrameId, root.activeFrameId);
-  assert.equal(restored.data.room.presentationV2.groupResolution?.stage, "GROUP_RESOLUTION");
-  assert.deepEqual(restored.data.room.presentationV2.groupResolution?.targetIds, [opened.target.id, opened.bob.id, opened.carol.id]);
-  assert.equal(restored.data.room.presentationV2.groupResolution?.currentParticipantId, opened.target.id);
-  assert.ok(restored.data.room.presentationV2.groupResolution?.participantProgress?.every(({ outcome }) => outcome === undefined), "counter-Negation restores the effect without claiming it was cancelled");
-  assert.equal(restored.data.room.presentationV2.interactionScene?.continuity.relation, "ROOT_FRAME");
+  await advanceNegationWindow(opened.code, opened.sourceMember.token, counterWindowId);
+  const resumed = (await state(opened.code, opened.sourceMember.token)).data;
+  assert.equal(resumed.presentationV2.reactionChain, null, "history remains scoped to the active Group continuation");
+  assert.equal(resumed.presentationSnapshot.reactionChain, null);
+  assert.equal(resumed.causalEnvelope.interactionId, root.interactionId);
+  assert.equal(resumed.causalEnvelope.activeFrameId, root.activeFrameId);
+  assert.equal(resumed.causalEnvelope.frames.length, 1);
+  assert.equal(resumed.causalEnvelope.frames[0].stage, "GROUP_RESOLUTION");
+  assert.equal(resumed.presentationV2.groupResolution?.groupFrameId, root.activeFrameId);
+  assert.equal(resumed.presentationV2.groupResolution?.activeFrameId, root.activeFrameId);
+  assert.equal(resumed.presentationV2.groupResolution?.stage, "GROUP_RESOLUTION");
+  assert.deepEqual(resumed.presentationV2.groupResolution?.targetIds, [opened.target.id, opened.bob.id, opened.carol.id]);
+  assert.equal(resumed.presentationV2.groupResolution?.currentParticipantId, opened.target.id);
+  assert.ok(resumed.presentationV2.groupResolution?.participantProgress?.every(({ outcome }) => outcome === undefined), "counter-Negation restores the effect without claiming it was cancelled");
+  assert.equal(resumed.presentationV2.interactionScene?.continuity.relation, "ROOT_FRAME");
 });
 
 test("UX2.7 Group Negated outcome is scoped to an authoritative AOE cancellation", { timeout: 30_000 }, async () => {
@@ -2169,7 +2188,7 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.deepEqual(first.presentationV2.interactionScene?.targetIds, [target.id]);
   assert.equal(first.presentationV2.interactionScene?.decisionActorId, null);
   assert.deepEqual(first.presentationV2.interactionScene?.participantRoles, { sourceId: source.id, originalTargetIds: [target.id], activeTargetIds: [target.id], currentParticipantId: target.id, decisionActorId: null, activeResolverId: null, parentParticipantId: null, participantIds: [] });
-  assert.equal(first.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(first.presentationV2.stableBoundary.kind, "SPECIAL");
   assert.equal(first.presentationV2.stableBoundary.decisionActorId, null);
   const firstRepeat = await state(game.code, alice.token);
   const firstOtherViewer = await state(game.code, host.token);

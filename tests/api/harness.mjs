@@ -47,7 +47,11 @@ export async function drainEmptyPrivateDecisions(code, fallbackToken) {
 }
 
 export async function request(action, values = {}) {
-  if (values.preserveResponse) { values = { ...values }; delete values.preserveResponse; }
+  if (values.preserveResponse || values.preserveNegationWindow) {
+    values = { ...values };
+    delete values.preserveResponse;
+    delete values.preserveNegationWindow;
+  }
   if (["respond", "decline_response"].includes(action) && values.code && values.token) {
     const current = await state(values.code, values.token);
     const windowId = current.data.currentAction?.negationWindowId;
@@ -72,13 +76,47 @@ export async function request(action, values = {}) {
   throw new Error(`${action} did not return a response`);
 }
 
+async function fastForwardNegationWindow(code, token) {
+  const current = await state(code, token);
+  const windowId = current.data.currentAction?.negationWindowId;
+  if (windowId) await advanceNegationWindow(code, token, windowId);
+}
+
+function isNegationIntentForViewer(view, values) {
+  const options = (view.currentAction?.options ?? []).filter((option) => option.satisfies === "negate");
+  if (!view.currentAction?.negationWindowId || !options.length) return false;
+  const ids = Array.isArray(values.cardIds) ? values.cardIds : values.cardId ? [values.cardId] : [];
+  return options.some((option) => {
+    if (values.providerId && values.providerId !== "card" && option.providerId !== values.providerId) return false;
+    const eligible = option.selection?.eligibleCardIds ?? [];
+    if (ids.length) return ids.length === 1 && eligible.includes(ids[0]);
+    return !option.selection;
+  });
+}
+
 export async function requestAndSettle(action, values = {}) {
   const preserveResponse = Boolean(values.preserveResponse);
+  const preserveNegationWindow = Boolean(values.preserveNegationWindow);
   if (values.code && !preserveResponse && !["respond", "decline_response", "trigger", "decline_trigger", "skip_rescue", "start_response_timer", "start_rescue_timer", "advance_timers"].includes(action)) await drainEmptyPrivateDecisions(values.code, values.token);
   const handBeforeAction = values.code && values.token && ["play_card", "draw"].includes(action)
     ? ((await state(values.code, values.token)).data.myHand ?? [])
     : null;
   let actionValues = values;
+  let responseWindowId = null;
+  let submittedNegation = false;
+  if (values.code && ["respond", "decline_response"].includes(action)) {
+    const preview = await state(values.code, values.token);
+    responseWindowId = preview.data.currentAction?.negationWindowId ?? null;
+    if (!preserveNegationWindow && !values.context) {
+      submittedNegation = action === "respond" && isNegationIntentForViewer(preview.data, actionValues);
+      if (responseWindowId && action === "respond" && !submittedNegation) {
+        await fastForwardNegationWindow(values.code, values.token);
+        responseWindowId = null;
+      } else if (responseWindowId && submittedNegation && actionValues.providerId === "card") {
+        actionValues = { ...actionValues, providerId: preview.data.currentAction.options.find((option) => option.satisfies === "negate" && (option.selection?.eligibleCardIds ?? []).includes(actionValues.cardId))?.providerId ?? actionValues.providerId };
+      }
+    }
+  }
   if ((action === "respond" || action === "trigger") && actionValues.providerId === undefined) {
     const preview = await state(actionValues.code, actionValues.token);
     const options = action === "respond" ? preview.data.currentAction?.options ?? [] : preview.data.currentAction?.triggerOptions ?? [];
@@ -91,12 +129,10 @@ export async function requestAndSettle(action, values = {}) {
     }) ?? options[0];
     if (selected) actionValues = { ...actionValues, providerId: action === "respond" ? selected.providerId : selected.effectId };
   }
-  const responseWindowId = values.code && ["respond", "decline_response"].includes(action)
-    ? (await state(values.code, values.token)).data.currentAction?.negationWindowId ?? null
-    : null;
   const result = await request(action, actionValues);
-  if (actionValues.code && !preserveResponse && !["start_response_timer", "start_rescue_timer", "advance_timers"].includes(action)) {
-    if (result.status === 200 && responseWindowId) await advanceNegationWindow(actionValues.code, actionValues.token, responseWindowId);
+  if (actionValues.code && result.status === 200 && !preserveResponse && !["start_response_timer", "start_rescue_timer", "advance_timers"].includes(action)) {
+    if (responseWindowId && !preserveNegationWindow && !submittedNegation) await advanceNegationWindow(actionValues.code, actionValues.token, responseWindowId);
+    else if (!responseWindowId && !submittedNegation && !["respond", "decline_response"].includes(action)) await fastForwardNegationWindow(actionValues.code, actionValues.token);
     await drainEmptyPrivateDecisions(actionValues.code, actionValues.token);
     const refreshed = await state(actionValues.code, actionValues.token);
     result.data = { ...result.data, room: refreshed.data };

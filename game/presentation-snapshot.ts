@@ -600,7 +600,8 @@ function groupParticipantProgressFor(
   const active = copied.filter(({ status }) => status === "CURRENT" || status === "PAUSED");
   if (active.length !== 1 || active[0]?.playerId !== group.currentParticipantId) return null;
   if (group.activeFrameId === group.groupFrameId) {
-    if (active[0].status !== "CURRENT") return null;
+    const sharedNegation = stable.kind === "SPECIAL" && scene.stage === "NEGATION" && scene.decisionActorId === null;
+    if (active[0].status !== "CURRENT" || (!sharedNegation && (stable.kind !== "CHOICE" || stable.decisionActorId !== group.currentParticipantId))) return null;
   } else if (active[0].status !== "PAUSED" || scene.continuity.relation !== "CHILD_FRAME") {
     return null;
   }
@@ -713,8 +714,10 @@ function bumperHarvestProgressFor(
     if (current.length || stable.kind !== "SPECIAL" || childRelation || scene.currentParticipantId !== null) return null;
   } else if (current.length !== 1 || current[0].playerId !== progress.currentParticipantId
     || scene.currentParticipantId !== progress.currentParticipantId) return null;
-  if (rootRelation && progress.currentParticipantId
-    && (stable.kind !== "CHOICE" || stable.decisionActorId !== progress.currentParticipantId)) return null;
+  if (rootRelation && progress.currentParticipantId) {
+    const sharedNegation = stable.kind === "SPECIAL" && scene.stage === "NEGATION" && scene.decisionActorId === null;
+    if (!sharedNegation && (stable.kind !== "CHOICE" || stable.decisionActorId !== progress.currentParticipantId)) return null;
+  }
   if (childRelation && stable.kind !== "SPECIAL") return null;
   if (rootRelation && progress.currentEffectState !== undefined
     || childRelation && progress.currentEffectState !== "ACTIVE" && progress.currentEffectState !== "BLOCKED") return null;

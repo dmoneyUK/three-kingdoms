@@ -1820,13 +1820,17 @@ function stableBoundaryFor(
   };
   const decisionActorId = proven ? scene?.decisionActorId ?? null : null;
   if (decisionActorId) return { kind: "CHOICE", ...identity, decisionActorId };
+  const item = record(pending);
+  const continuation = record(item?.continuation);
+  const continuationKind = stringValue(continuation?.kind);
+  const sharedNegationWindow = proven && scene?.stage === "NEGATION"
+    && item?.kind === "negation_window" && Boolean(stringValue(item.windowId))
+    && continuationKind === "negation" && pendingCausalMatchesScene(scene, pending);
+  if (sharedNegationWindow) return { kind: "SPECIAL", ...identity, decisionActorId: null };
   if (bumperHarvestProgress && (scene?.stage === "NEGATION" || bumperHarvestProgress.currentParticipantId === null)) {
     return { kind: "SPECIAL", ...identity, decisionActorId: null };
   }
 
-  const item = record(pending);
-  const continuation = record(item?.continuation);
-  const continuationKind = stringValue(continuation?.kind);
   const sourceOwnedTriggerCandidate = proven
     && item?.kind === "trigger"
     && stringValue(item.event) === "attack_targeted"

@@ -33,10 +33,11 @@ test("shared Negation windows keep submissions private and expose only each view
 
   const target = await openWithNegation(1); const targetView = (await state(target.game.code, target.holderMember.token)).data; const publicTargetView = (await state(target.game.code, target.sourceMember.token)).data; const targetOtherView = (await state(target.game.code, target.otherMember.token)).data;
   assert.equal(targetView.currentAction.requirement, "negate"); assert.ok(targetView.currentAction.options.some((option) => option.providerId === "negation_card")); assert.equal(targetView.isMyAction, true);
-  assert.equal(publicTargetView.actionPlayerId, null); assert.equal(publicTargetView.pendingNegation.actorId, null); assert.equal(publicTargetView.actionReason, "Waiting for Negation..."); assert.equal(publicTargetView.currentAction.options?.length ?? 0, 0);
-  assert.equal(targetOtherView.actionPlayerId, null); assert.equal(targetOtherView.pendingNegation.actorId, null); assert.equal(targetOtherView.actionReason, "Waiting for Negation...");
+  assert.equal(targetView.actionReason, "Play Negation or Pass");
+  assert.equal(publicTargetView.actionPlayerId, null); assert.equal(publicTargetView.pendingNegation.actorId, null); assert.equal(publicTargetView.actionReason, "No Negation available. Pass."); assert.equal(publicTargetView.currentAction.options?.length ?? 0, 0);
+  assert.equal(targetOtherView.actionPlayerId, null); assert.equal(targetOtherView.pendingNegation.actorId, null); assert.equal(targetOtherView.actionReason, "No Negation available. Pass.");
   const targetWindowId = targetView.currentAction.negationWindowId;
-  const targetPassed = await requestAndSettle("decline_response", { code: target.game.code, token: target.holderMember.token, preserveResponse: true }); assert.equal(targetPassed.status, 200);
+  const targetPassed = await requestAndSettle("decline_response", { code: target.game.code, token: target.holderMember.token, preserveResponse: true, preserveNegationWindow: true }); assert.equal(targetPassed.status, 200);
   const targetAfterPass = (await state(target.game.code, target.holderMember.token)).data;
   assert.equal(targetAfterPass.currentAction.negationWindowId, targetWindowId, "one Pass does not close the common window early");
   assert.equal(targetAfterPass.pendingNegation.submitted, true);
@@ -48,7 +49,7 @@ test("shared Negation windows keep submissions private and expose only each view
   const nonTarget = await openWithNegation(2); const nonTargetView = (await state(nonTarget.game.code, nonTarget.holderMember.token)).data;
   assert.equal(nonTargetView.currentAction.requirement, "negate"); assert.ok(nonTargetView.currentAction.options.some((option) => option.providerId === "negation_card")); assert.equal(nonTargetView.isMyAction, true);
   const nonTargetWindowId = nonTargetView.currentAction.negationWindowId;
-  assert.equal((await requestAndSettle("decline_response", { code: nonTarget.game.code, token: nonTarget.holderMember.token, preserveResponse: true })).status, 200);
+  assert.equal((await requestAndSettle("decline_response", { code: nonTarget.game.code, token: nonTarget.holderMember.token, preserveResponse: true, preserveNegationWindow: true })).status, 200);
   assert.equal((await state(nonTarget.game.code, nonTarget.holderMember.token)).data.currentAction.negationWindowId, nonTargetWindowId);
   await advanceNegationWindow(nonTarget.game.code, nonTarget.sourceMember.token, nonTargetWindowId);
 });
