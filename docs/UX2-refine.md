@@ -1,6 +1,6 @@
 # WTK UX2 — Simplified Public Card UX
 
-**Version:** 2026-10-14 · **Branch:** `ux-v2` · **Status:** §8.7 Policy-B P0 **active; not visually accepted**. §8.1 Duel and §§8.2–8.4 user-accepted. §8.5 Inspector, §9.4 shared Negation and §10.5 Deflection delivered but aggregate visual review pending. Dismantle centre-to-seat delivered, visual review pending.
+**Version:** 2026-10-14 · **Branch:** `ux-v2` · **Status:** §8.7 Policy-B P0 **active; not visually accepted**. §8.1 Duel and §§8.2–8.5 user-accepted. §9.4 shared Negation and §10.5 Deflection delivered but aggregate visual review pending. Dismantle centre-to-seat delivered, visual review pending.
 
 This file is the **single active UX2 product/design authority**. It replaces the superseded, much longer UX2 design; previous revisions exist only in Git history. Older `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, historical roadmap records, old tests and screenshots are references to prior implementation, **not** permission to reinstate old visual requirements.
 
@@ -11,12 +11,12 @@ This file is the **single active UX2 product/design authority**. It replaces the
 | Order | Section | State | What to do |
 | --- | --- | --- | --- |
 | **1** | **§8.7 + §3** | **ACTIVE P0** | Fix/verify **Policy B**: if no newly committed public response, large card holds 4s; a genuine new committed response interrupts immediately, becomes large, and starts its own default 4s. 380ms move/park, real owner, no ghost. An earlier code fix might still follow the *old queue-all policy*; audit it. |
-| **2** | **§8.5** | D1/D2 deployed, device review pending | Verify equipment miniatures and titled direct-switch Details; only repair a demonstrated regression, do not reimplement. |
+| **2** | **§8.5** | **ACCEPTED by user (2026-10-14)** | CLOSED: equipment miniature art/rank/suit, titled Details and one-tap switching. Preserve; reopen only for a newly observed regression. |
 | **3** | **§9.1–§9.4** | Shared 8s Negation A–C delivered | Preserve approved server rule/privacy; aggregate manual review, not a fresh rewrite. |
 | **4** | **§10.5** | Da Qiao Deflection E1/E2 deployed | Verify cost-card centre → Da Qiao seat and real redirected-target response; only fix observed defects. |
 | **5** | **§10.2–§10.4** | Next future bounded card UX | After §8.7 passes user visual review, Dismantle centre/park is already implemented; examine the next uncompleted subgroup (e.g. Steal). No whole-catalogue refactor. |
 
-**Precedence and scope:** The latest user decision **Policy B** in §8.7 overrides any historical queued-all-cards, uninterruptible 4s or brief-500ms wording. §§1–6 remain standing invariants as corrected by §8.7. §8.1 Duel layout and §§8.2–8.4 have user acceptance; do not restart. **§7 and §8.6 are archived context, NOT tasks.** Older coding-agent handover/current code may predate Policy B; the newest UX requirement prevails. Only the coding agent may modify HANDOVER.md; Planner/Reviewer must not.
+**Precedence and scope:** The latest user decision **Policy B** in §8.7 overrides any historical queued-all-cards, uninterruptible 4s or brief-500ms wording. §§1–6 remain standing invariants as corrected by §8.7. §8.1 Duel layout and §§8.2–8.5 have user acceptance; do not restart. **§7 and §8.6 are archived context, NOT tasks.** Older coding-agent handover/current code may predate Policy B; the newest UX requirement prevails. Only the coding agent may modify HANDOVER.md; Planner/Reviewer must not.
 
 **Historical baseline:** Graph removal and the initial centre-to-seat migration are already implemented; no graph migration rerun.
 ## 1. Authority, gameplay and privacy
@@ -230,16 +230,16 @@ These are **current functional requirements**, not old combat-graph tasks. They 
 
 ### 8.4 Inspect public equipment detail — in-panel, Hero state preserved (ACCEPTED)
 
-**ACCEPTED (user, 2026-10-14):** Public equipment detail stays inside Inspector, without destroying Hero context. Delivered in b1c06696ed4d19c54b6adaa3ff628b89148062c1 with lint fix 53460f685a482260d82e9d550dd13f84ea25b35f. **§8.5's newer one-tap switching supersedes any visible Back control**, and is separately delivered pending aggregate visual review.
+**ACCEPTED (user, 2026-10-14):** Public equipment detail stays inside Inspector, without destroying Hero context. Delivered in b1c06696ed4d19c54b6adaa3ff628b89148062c1 with lint fix 53460f685a482260d82e9d550dd13f84ea25b35f. **§8.5's newer one-tap switching supersedes any visible Back control and is now user-accepted.**
 
 - Tapping a visible public equipped CardFace (or public Judgement CardFace) **must not invoke onCloseInspect before showing information**. Keep the same player's Inspector mounted and retain its active hero, expanded skill, currently selected target, and scroll state. Avoid opening a screen-filling global PRIVATE CARD INFORMATION dialog for an opponent's already-public equipment.
 - Keep an **inline named explanation** inside the same Inspector Details pane with the Hero summary visible. **The previous nested Back/Exit button is superseded by §8.5:** touching another public equipment, Judgement card or skill instantly replaces the detail. The Inspector top-right × remains the only visible close control; no secondary modal is introduced.
 - Keep the existing generic card-info dialog where appropriate for a *local Hand card*, but its label must not falsely describe public equipped cards as private. Switching the shared Details selection must not alter a selected combat target, submitted action, Hand selection, or current server CurrentAction. Preserve keyboard Escape as a fallback and sensible focus on the selected skill/equipment; **do not add a visible nested Back or Exit control (§8.5)**.
 - Switching from Hero A to Hero B intentionally updates Inspector subject and resets only subject-dependent nested detail; merely switching from skill to equipment and back within the **same** Hero does not lose context.
 
-### 8.5 Public equipment miniatures and unified titled skill/equipment details — DELIVERED, visual review pending
+### 8.5 Public equipment miniatures and unified titled skill/equipment details — ACCEPTED / CLOSED
 
-**Delivery status (2026-10-14): D1/D2 implemented and deployed; aggregate user visual review pending.** The user explicitly **confirms §8.2, §8.3 and §8.4 complete** after two real iPhone screenshots of Da Qiao with public equipment and Frost Sword detail. Preserve these improvements, including hidden central piles, compact Inspector geometry, long description scrolling and staying inside the same Inspector. §8.1 Duel acceptance is separate, not implied. This refinement replaces only the visible tiny-card text and nested Back navigation of the earlier Inspector design; do not rebuild Inspector or modify rules.
+**Delivery and acceptance (2026-10-14): D1/D2 implemented, deployed and expressly accepted by user; no outstanding §8.5 task.** The user explicitly **confirms §8.2, §8.3 and §8.4 complete** after two real iPhone screenshots of Da Qiao with public equipment and Frost Sword detail. Preserve these improvements, including hidden central piles, compact Inspector geometry, long description scrolling and staying inside the same Inspector. §8.1 Duel acceptance is separate, not implied. This refinement replaces only the visible tiny-card text and nested Back navigation of the earlier Inspector design; do not rebuild Inspector or modify rules.
 
 **Historical pre-D1/D2 source review (NOT a current-code assertion):** app/page.tsx OpponentPublicInspector initially rendered generic CardFace for each public equipment miniature. app/card-face.tsx adds both the full card name (card-name-mark) and category (strong) on top of the illustration. app/sequence-overrides.css scales the whole suit/rank corner down with scale(.38), and scale(.34) on small screens. The skill detail rendering uses expandedSkill.description but **does not display expandedSkill.name as a title**. Equipment detail already displays definition.name and rules but has a visible Back button, even though clicking another skill/equipment already swaps content. Those were the exact issues addressed by D1/D2; do not repeat without a current verified regression.
 
@@ -257,17 +257,17 @@ These are **current functional requirements**, not old combat-graph tasks. They 
 - **Remove the nested visible Back/Exit control and its toolbar space** for both skill and equipment details. Only the existing upper-right **Inspector ×** closes the whole panel. Switching a detail needs no closing action: one tap on another Equipment thumbnail or skill directly changes the visible title and description. Test **Captivating → Frost Sword → second equipped card → Deflection** without Back or closing Inspector. Selecting the already chosen item should not suddenly blank the pane.
 - When switching, make the new heading and beginning of its description visible (reset that detail scroll to top), preserve the currently inspected Hero, legitimate target selection, Hand, action controls, ongoing server timer and focus. Keep clear selected-state styling and appropriate aria-pressed/expanded. Escape may remain a keyboard fallback but is not an extra visible close control. Tapping an informational skill name MUST NOT activate that skill or dispatch a gameplay action.
 
-#### 8.5.3 D1/D2 delivery record and remaining visual acceptance — NO NEW IMPLEMENTATION
+#### 8.5.3 D1/D2 completed delivery record — NO NEW WORK
 
 **D1 requirements fulfilled in delivered code:** Inspector-scoped Equipment miniatures retain genuine art, high-contrast rank/suit, no visible central name/category, and accessible card identity. Do not globally alter CardFace. Phone review may still raise a narrow regression.
 
 **D1 delivered (2026-10-14):** Inspector Equipment alone now hides visible name/category words and renders readable physical rank/suit over authentic CardFace art. Commit `f6729775f0953e31367f5abf96b2fcfca6ddaecc`; focused browser geometry/screenshots cover A/2/10/Q/K, both suit colors, 1/2/4 cards at 390×844, 440×894, 480×900 and 1440×900. All 12 focused cases passed. Actions run `38583881507` passed API, lint/fast, browser smoke and deploy; production `/api/health` returned `{"ok":true,"worker":"available"}`. Continue with D2.
 
-**D2 requirements fulfilled in delivered code:** Skill Details show canonical names, public card Details show true names/rules, all items switch on one tap with no nested Back, and Hero/target/currentAction/focus are preserved. Browser tests were revised; aggregate real-device visual acceptance remains pending. Do not run the old Back-based flow as a positive acceptance test.
+**D2 requirements fulfilled in delivered code:** Skill Details show canonical names, public card Details show true names/rules, all items switch on one tap with no nested Back, and Hero/target/currentAction/focus are preserved. Browser tests were revised; **user acceptance closes §8.5**. Do not run the old Back-based flow as a positive acceptance test.
 
-**D2 delivered (2026-10-14):** The shared Inspector Details region now shows canonical skill headings, supports direct skill/Equipment/Judgement switching, keeps repeated selections open, and marks selected items accessibly. The visible nested Back control and its CSS were removed; Escape retains prior skill scroll and card-trigger focus. Focused browser regressions were added/updated for Da Qiao's two skills and two Equipment cards at 4/6/8 seats, Hua Tuo, Judgement, keyboard/touch, Escape, target/control preservation and no gameplay submissions. Commit `ce9d0e356a260f5e4117b43d2507aeef784da66d`; Actions run `38586039139` passed lint/fast, API, browser startup/room smoke and deploy; production `/api/health` returned `{"ok":true,"worker":"available"}`. Per the user's instruction, the focused Inspector spec was not run locally; the normal push workflow's browser job covers one room-start smoke and does not execute that spec. D2-specific screenshots and aggregate visual acceptance remain pending.
+**D2 delivered (2026-10-14):** The shared Inspector Details region now shows canonical skill headings, supports direct skill/Equipment/Judgement switching, keeps repeated selections open, and marks selected items accessibly. The visible nested Back control and its CSS were removed; Escape retains prior skill scroll and card-trigger focus. Focused browser regressions were added/updated for Da Qiao's two skills and two Equipment cards at 4/6/8 seats, Hua Tuo, Judgement, keyboard/touch, Escape, target/control preservation and no gameplay submissions. Commit `ce9d0e356a260f5e4117b43d2507aeef784da66d`; Actions run `38586039139` passed lint/fast, API, browser startup/room smoke and deploy; production `/api/health` returned `{"ok":true,"worker":"available"}`. Per the user's instruction, the focused Inspector spec was not run locally; the normal push workflow's browser job covers one room-start smoke and does not execute that spec. D2-specific agent screenshots were not supplied at original delivery; **subsequent user acceptance on 2026-10-14 closes §8.5**.
 
-**Remaining §8.5 action:** aggregate user/device visual review of delivered D1/D2, with a focused defect fix only if the actual screen fails. CI alone does not prove phone UX. Keep §§8.2–8.4 accepted, §9's completed shared window untouched, and HANDOVER.md coding-agent owned.
+**§8.5 CLOSED by user:** No further Inspector implementation or visual acceptance task. Reopen only for a newly demonstrated regression. Keep §§8.2–8.4 accepted, §9's completed shared window untouched, and HANDOVER.md coding-agent owned.
 
 ### 8.6 Historical Phase-1 delivery summary — ARCHIVE ONLY (DO NOT EXECUTE)
 
@@ -277,7 +277,7 @@ These are **current functional requirements**, not old combat-graph tasks. They 
 
 **Checkpoint C (Inspector layout and nested public card info):** delivered by b1c06696ed4d19c54b6adaa3ff628b89148062c1 plus lint fix 53460f685a482260d82e9d550dd13f84ea25b35f, and **user accepted as §§8.3–8.4**. Later §8.5 removed the nested Back and introduced direct titled switching. No old Back-based test or reimplementation is authorized.
 
-Only §8.7 is the current Phase-1 implementation task; §8.5 is delivered pending aggregate visual review. See the top-level work index. Preserve legitimate privacy, legal decisions and response timers.
+Only §8.7 is the current Phase-1 implementation task; §8.5 is accepted/closed. See the top-level work index. Preserve legitimate privacy, legal decisions and response timers.
 
 ### 8.7 P0 public-card reveal regression — confirmed interruption policy B (2026-10-14)
 
@@ -365,7 +365,7 @@ Five seats clockwise **1→2→3→4→5**; seat 1 plays Duel against seat 3.
 
 ### 10.1 Rollout authority and completed baseline — updated 2026-10-14
 
-**Attack/Dodge and Duel define the new graph-free WTK public-card baseline.** §8.1 Duel layout and §§8.2–8.4 are user-accepted; §8.5 Inspector, §9.4 shared Negation and §10.5 Da Qiao Deflection are delivered but await aggregate visual review. **The single active fix is §8.7 Policy B central-reveal timing, not repeating old A/B/C checkpoints.** Do not rebuild the retired graphs, arrows or giant panels.
+**Attack/Dodge and Duel define the new graph-free WTK public-card baseline.** §8.1 Duel layout and §§8.2–8.5 are user-accepted; §9.4 shared Negation and §10.5 Da Qiao Deflection are delivered but await aggregate visual review. **The single active fix is §8.7 Policy B central-reveal timing, not repeating old A/B/C checkpoints.** Do not rebuild the retired graphs, arrows or giant panels.
 
 §7 and §8.6 are historical summaries, never task lists. §9 is already implemented as the shared 8-second Negation mechanism. **§10 is a future review queue, except the delivered §10.5**, and no new family begins until §8.7 is actually user-accepted. Only coding agent maintains HANDOVER.md.
 
@@ -392,8 +392,8 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 
 ### 10.3 Required permission and stop/start gates
 
-1. **Active scope:** §8.7 is the ONLY current P0 implementation work. §8.1 and §§8.2–8.4 are user-accepted. §8.5 D1/D2, §9.4 A–C and §10.5 E1/E2 are delivered; Dismantle is delivered. These require device acceptance, not rebuilding. The coding agent's handover can lag the latest user-confirmed Policy B; §8.7 governs the behavior.
-2. **Before any NEW card-family implementation**, obtain user visual acceptance of §8.7 **both uninterrupted 4s and valid committed-response interruption** on real phone. Previously accepted Duel and Deck/Discard/Inspector baseline must not regress; pending §8.5, Negation and Deflection reviews can be scheduled separately.
+1. **Active scope:** §8.7 is the ONLY current P0 implementation work. §8.1 and §§8.2–8.5 are user-accepted/closed. §9.4 A–C, §10.5 E1/E2 and Dismantle are delivered pending user/device acceptance, not rebuilding. The coding agent's handover can lag the latest user-confirmed Policy B; §8.7 governs the behavior.
+2. **Before any NEW card-family implementation**, obtain user visual acceptance of §8.7 **both uninterrupted 4s and valid committed-response interruption** on real phone. Previously accepted Duel and Deck/Discard/Inspector baseline must not regress; Negation and Deflection device reviews remain open separately.
 3. **Card-family boundaries:** Only after §8.7 acceptance, source-review the next unimplemented subgroup in §10.2 (not completed Dismantle/Negation/Deflection). The user's earlier autonomous one-task-at-a-time instruction is **paused for NEW card families by the later P0 stop rule**, not a licence for a speculative global rewrite or game-rule change.
 4. **Implement, deploy, prove and STOP at the active P0 acceptance gate.** Keep only one code task at a time in coding-agent-owned HANDOVER.md. Preserve proof, privacy and legal controls. CI does not equal visual acceptance. A correct existing family is reported as no change, not recoded.
 5. **Preserve delivered §9:** Shared 8s Negation is an already-implemented server/transport contract. Never apply its 8s deadline to Attack/Dodge, Duel Attack or rescue, nor change private intent authorization while polishing cards. Its public committed Negation CardFaces follow §8.7 Policy B.
