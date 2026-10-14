@@ -2,14 +2,14 @@
 
 Branch: `ux-v2`
 
-Latest reviewed design: `docs/UX2-refine.md`, blob `d7b0869b51545bdc06c50f9a815d4b09fb62b9dd`. The user is reviewing §8.7 on a phone; no acceptance is recorded here.
+Latest reviewed design: `docs/UX2-refine.md`, blob `3c74c75a45f127a029a184978d4a3ac208878bde`; N2 progress markers only were updated after review. The user is reviewing §8.7 by phone. No user/reviewer acceptance is recorded.
 
 ## Latest result
 
-- §9.5 N0/N1 are delivered. N1 commit `7645fef192f06818eaaacdd01cc448f19a012e62`; Actions run `38621260318` passed API tests, lint/fast, browser smoke, and deploy. Production health returned HTTP 200 with the Worker available.
-- §9.5 N2 is implemented locally. Focused Presentation/Snapshot/Client tests passed 128/128; Worker/D1 API tests passed 40/40; `npm run build` passed; real-browser Duel 4/6/8-seat, Group-target, and single-target history regressions passed. N2 push CI and deployment are pending.
-- N2 adds exact Group root-play event proof to the server continuation and validated public projections, and renders complete, uniquely proven Negation histories at authors' seats. No private losing card is included.
+- §9.5 N2 delivered in `8223bd24f313cfbec64e311a11caeb24abe898a4`. Focused Presentation/Snapshot/Client tests: 128/128; Worker/D1 API: 40/40; `npm run build`: passed; real-browser Worker/D1 Duel 4/6/8-seat, Group-target and single-target history regressions: passed.
+- Exact-SHA Actions run [`38627866006`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38627866006): API tests, lint/fast, browser smoke and deploy all passed. Production `/api/health`: HTTP 200, `{"ok":true,"worker":"available"}`.
+- N2 code delivery is complete; user/reviewer acceptance remains pending.
 
-## Current task — UX2 §9.5 N2 delivery
+## Current task — UX2 §9.5 N3: immediate post-commit public reveal
 
-Commit only N2 implementation, regressions, and progress documentation. Verify exact-SHA Actions jobs and deployment; if CI fails, diagnose and fix it before proceeding. Once N2 CI/deploy are green, update this handoff to the single next task, §9.5 N3 immediate post-commit public presentation, then continue per the approved sequence. Do not modify design requirements, claim §8.7 phone acceptance, start a new card family, or implement §11 UX3.
+Trace both approved window-close paths from stored private intent through authoritative winner commit, public event receipt and first full-size CardFace paint. Remove any extra held-root/read/poll delay after the actual public commit while preserving seat-priority selection, privacy, card conservation, and immediate counter-window legality. Cover early all-Pass, early competing intents, one-silent-seat expiry, nested counter windows, refresh, and 390/440/480px real-browser timing. Do not implement §11 UX3 or begin another card family before the §9.5/§8.7/§10.5.3 acceptance gate.
