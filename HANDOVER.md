@@ -2,20 +2,18 @@
 
 Branch: `ux-v2`
 
-Latest reviewed design: `docs/UX2-refine.md`, blob `939c260f746b7608fdfa9a590f38c5770606eda8`.
+Latest reviewed design: `docs/UX2-refine.md`, blob `b93a6478fb095a64e88f8c9bdab107d09bad15ff` (remote §8.7 P0 plus Dismantle delivery record).
 
-Latest user decision: §8.1 Duel layout passed visual validation; continue autonomous, one bounded task at a time. Aggregate review of other delivered UX work remains pending.
+Latest user decision: §8.1 Duel layout passed visual validation. The newly reported §8.7 four-second Attack reveal timing remains a separate P0 acceptance gap.
 
 ## Latest result
 
-`UX2-NEGATION-CENTRE-PARK-01` delivered at `9efc94b8567136ff3157ab8bbc813e1590402748`. Actions run `38594143195` passed Lint/fast, API, browser startup/room smoke and deploy. Production `/api/health` returned `{"ok":true,"worker":"available"}`. No local automated gameplay tests or screenshots were run; aggregate visual review is pending.
+`UX2-DISMANTLE-CENTRE-PARK-01` delivered at `6160457e99ea5caf698acc3e335583e876a5d5b2`. Actions run `38596523717` for that SHA: Lint/fast, API, browser startup/room smoke and Cloudflare deploy job pages all reported success (2m22s, 2m27s, 1m09s, 49s). The run summary page still showed stale “In progress”; all four required jobs were individually observed succeeded. Production `/api/health` returned `{"ok":true,"worker":"available"}`. No local automated gameplay tests or screenshots were run; aggregate visual review is pending.
 
-## Current task — UX2-DISMANTLE-CENTRE-PARK-01 (§10.2 B)
+## Current task — UX2-CENTRE-REVEAL-4S-P0 (§8.7)
 
-Observed gap: the proven Burning Bridges/Dismantle root is rendered statically during its normal action/settlement path; it does not receive the centre reveal → actor-seat parking lifecycle. Existing typed `PresentationDismantleSettlement` proves the root event, source, target and completed outcome.
+Diagnose and fix the user-reported ordinary Attack reveal that shrinks/parks in under one second despite the 4-second requirement. Do not assume a cause: inspect event queueing, first-painted reveal timing, `moveRootOutOfCenter`, seen-event persistence, temporary presenter disable/remount, and competing legacy ownership. Keep one committed physical card full-size and visibly centered for 4,000 ms from its first painted frame; queue fast committed responses, then move the same card once in about 380 ms to its proven actor Seat/Dock.
 
-Implement one Dismantle public-card journey: reveal the exact committed root at normal Hand size for 4 seconds, move that same CardFace in 380 ms to its actual author's Seat/Dock, then show only the matched server-proven Dismantle result. Keep the root stable across Negation-window and settlement projections and suppress legacy copies only for the exact owned event/card.
+**Boundaries:** preserve server-authoritative Attack/Dodge, Duel histories, Deflection identity, Negation privacy/timing, all `CurrentAction` controls and gameplay deadlines. No graph UI, unrelated rules, or card-family expansion. Missing proof fails closed.
 
-**Boundaries:** no game-rule or target-picker changes; keep `CurrentAction` as the sole legal-control source and preserve anonymous target Hand/Equipment/Judgement selection. Do not include Steal, Borrowed Sword, DrawTwo, Duel, Group/AOE, or graph UI. Missing or mismatched root/settlement proof fails closed.
-
-**Validation:** no local automated gameplay tests per the user's instruction; use the exact-SHA CI/deploy gate and leave visual acceptance pending for aggregate manual review.
+**Validation / stop:** diagnose on the real server-backed gameplay path and retain actual timing/geometry evidence where available. Do not run local automated test suites per the user's instruction; verify exact-SHA CI/deploy. The §8.7 design calls for visual validation of this P0 before beginning another card family. Do not claim visual acceptance without the user's review.
