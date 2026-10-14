@@ -105,12 +105,13 @@ function journeyGeometryMatches(left: JourneyState, right: JourneyState) {
     });
 }
 
-// Match the mobile Hand-card footprint; the parked card then scales down by
-// the same ratio for both its frame and its rank/suit corner.
+// Attack/Dodge keeps its compact reveal size; Duel uses a full Hand-card-sized
+// reveal before both presentations shrink proportionally to their parked face.
 const REVEAL_CARD = { width: 60, height: 90 };
+const DUEL_REVEAL_CARD = { width: 90, height: 135 };
 const PARKED_CARD = { width: 48, height: 72 };
 const ATTACK_DODGE_REVEAL_HOLD_MS = 4000;
-const DUEL_REVEAL_HOLD_MS = 3000;
+const DUEL_REVEAL_HOLD_MS = 4000;
 const MOVE_DURATION_MS = 380;
 
 function boundCardRect(left: number, top: number, width: number, height: number): CardRect {
@@ -124,12 +125,12 @@ function boundCardRect(left: number, top: number, width: number, height: number)
   };
 }
 
-function battlefieldCenterCard(): CardRect {
+function battlefieldCenterCard(size: { width: number; height: number } = REVEAL_CARD): CardRect {
   const table = document.querySelector<HTMLElement>(".play-table");
-  if (!table) return boundCardRect((window.innerWidth - REVEAL_CARD.width) / 2, (window.innerHeight - REVEAL_CARD.height) / 2, REVEAL_CARD.width, REVEAL_CARD.height);
+  if (!table) return boundCardRect((window.innerWidth - size.width) / 2, (window.innerHeight - size.height) / 2, size.width, size.height);
   const bounds = table.getBoundingClientRect();
-  const preferredTop = bounds.top + bounds.height * 0.5 - REVEAL_CARD.height / 2;
-  const preferredLeft = bounds.left + (bounds.width - REVEAL_CARD.width) / 2;
+  const preferredTop = bounds.top + bounds.height * 0.5 - size.height / 2;
+  const preferredLeft = bounds.left + (bounds.width - size.width) / 2;
   const obstacles = [...document.querySelectorAll<HTMLElement>(
     ".opponent-player-card[data-player-anchor], .player-board-status, .visible-countdown",
   )].map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
@@ -140,8 +141,8 @@ function battlefieldCenterCard(): CardRect {
   const safe = offsets.map(([x, y]) => ({
     left: preferredLeft + x,
     top: preferredTop + y,
-    width: REVEAL_CARD.width,
-    height: REVEAL_CARD.height,
+    width: size.width,
+    height: size.height,
   })).find((candidate) => candidate.left >= bounds.left + 8
     && candidate.left + candidate.width <= bounds.right - 8
     && candidate.top >= bounds.top + 8
@@ -154,7 +155,7 @@ function battlefieldCenterCard(): CardRect {
       || candidate.left - 8 >= obstacle.right
       || candidate.top + candidate.height + 8 <= obstacle.top
       || candidate.top - 8 >= obstacle.bottom));
-  return safe ?? boundCardRect(preferredLeft, preferredTop, REVEAL_CARD.width, REVEAL_CARD.height);
+  return safe ?? boundCardRect(preferredLeft, preferredTop, size.width, size.height);
 }
 
 function actorParkedCard(actorId: string, cardIndex = 0): CardRect | null {
@@ -207,7 +208,6 @@ function duelCardParking(actorId: string, actorIndex: number, occupied: readonly
   const seatCenterX = seat.left + seat.width / 2;
   const seatCenterY = seat.top + seat.height / 2;
   const gap = 6;
-  const stride = PARKED_CARD.width + gap;
   const safeTop = Math.max(4, tableRect.top + 4);
   const safeBottom = Math.min(window.innerHeight - PARKED_CARD.height - 4, tableRect.bottom - PARKED_CARD.height - 4, dock?.top ? dock.top - PARKED_CARD.height - 4 : window.innerHeight - PARKED_CARD.height - 4);
   let side: DuelCardParking["side"];
@@ -238,12 +238,20 @@ function duelCardParking(actorId: string, actorIndex: number, occupied: readonly
     }
   }
 
-  const isSide = side === "left" || side === "right";
-  const preferred = { left: baseLeft + (isSide ? direction : 1) * actorIndex * stride, top: baseTop, ...PARKED_CARD };
+  // Top-row opponent histories descend below their Hero; side and local
+  // histories progress horizontally toward the battlefield interior.
+  const horizontalProgression = side !== "top";
+  const progressionStride = horizontalProgression ? PARKED_CARD.width + gap : PARKED_CARD.height + gap;
+  const perpendicularStride = horizontalProgression ? PARKED_CARD.height + gap : PARKED_CARD.width + gap;
+  const preferred = {
+    left: baseLeft + (horizontalProgression ? direction * actorIndex * progressionStride : 0),
+    top: baseTop + (horizontalProgression ? 0 : actorIndex * progressionStride),
+    ...PARKED_CARD,
+  };
   const offsets = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6];
   const candidates = offsets.map((offset) => ({
-    left: preferred.left + (isSide ? 0 : offset * stride),
-    top: preferred.top + (isSide ? offset * stride : 0),
+    left: preferred.left + (horizontalProgression ? 0 : offset * perpendicularStride),
+    top: preferred.top + (horizontalProgression ? offset * perpendicularStride : 0),
     ...PARKED_CARD,
   }));
   const anchors = [...document.querySelectorAll<HTMLElement>("[data-player-anchor]")]
@@ -685,7 +693,7 @@ function DuelCardJourney({
     const currentSourceName = sourceNameRef.current;
     if (!enabled || currentMotion?.type !== "duel" || !currentSourceName) return;
 
-    const center = battlefieldCenterCard();
+    const center = battlefieldCenterCard(DUEL_REVEAL_CARD);
     const events = duelJourneyEvents(currentAction, currentSourceName);
     const fresh = new Set(currentMotion.freshEventIds);
     const previous = journeyRef.current;
@@ -819,7 +827,7 @@ function DuelCardJourney({
           const viewportSignature = `${window.innerWidth}:${window.innerHeight}:${window.visualViewport?.width ?? 0}:${window.visualViewport?.height ?? 0}:${window.visualViewport?.scale ?? 1}`;
           if (viewportSignature === lastViewport) return;
           lastViewport = viewportSignature;
-          const center = battlefieldCenterCard();
+          const center = battlefieldCenterCard(DUEL_REVEAL_CARD);
           setJourney((current) => {
             if (current.scopeKey !== scopeKey) return current;
             const events = duelJourneyEvents(actionRef.current, sourceNameRef.current);
@@ -887,7 +895,7 @@ function DuelCardJourney({
     ?? latestResponse?.semanticLabel
     ?? (currentPublicCard ? cardDefinition(currentPublicCard.kind).name.toUpperCase() : action.cardLabel);
   const activeMessage = activeEvent?.ariaLabel ?? latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
-  const copyTop = (journey.center?.top ?? 0) + REVEAL_CARD.height + 7;
+  const copyTop = (journey.center?.top ?? 0) + DUEL_REVEAL_CARD.height + 7;
 
   useEffect(() => {
     if (!enabled || journey.scopeKey !== scopeKey) return;
@@ -956,7 +964,7 @@ function DuelCardJourney({
       data-public-card-journey-actor-id={card.actorId}
       data-public-card-journey-card-id={card.cardFace.id}
       data-public-card-journey-phase={card.phase}
-      data-public-card-journey-size={card.phase === "reveal" || card.phase === "move" && card.rect.width >= REVEAL_CARD.width ? "reveal" : "thumbnail"}
+      data-public-card-journey-size={card.phase === "reveal" || card.phase === "move" && card.rect.width >= DUEL_REVEAL_CARD.width ? "duel-reveal" : "thumbnail"}
       data-public-card-journey-ordinal={card.globalOrdinal}
       data-public-card-journey-parking-side={card.parkingSide}
       data-public-card-journey-layout-reason={card.layoutChangeReason}

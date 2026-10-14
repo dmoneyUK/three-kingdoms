@@ -78,6 +78,7 @@ async function geometry(page, eventId) {
       eventId: element.getAttribute("data-public-card-journey-event-id"),
       actorId: element.getAttribute("data-public-card-journey-actor-id"),
       phase: element.getAttribute("data-public-card-journey-phase"),
+      side: element.getAttribute("data-public-card-journey-parking-side"),
       viewerId: element.closest("[data-public-card-motion='duel']")?.getAttribute("data-public-card-viewer-id"),
       revealStartedAt: element.getAttribute("data-public-card-journey-reveal-started-at"),
       revealStartedAtMs: Number(element.getAttribute("data-public-card-journey-reveal-started-ms")),
@@ -153,7 +154,7 @@ async function playHandAttack(page, room, player, cardId) {
   expect(result.request().postDataJSON()).toMatchObject({ action: "respond", code: room.code, token: player.token, providerId: "card", cardId });
 }
 
-test("server-backed Duel cards reveal for three seconds, park by real owner anchors, and survive phase/view changes", async ({ page, browser, request }, testInfo) => {
+test("server-backed Duel cards reveal at full size for four seconds, then park by seat orientation", async ({ page, browser, request }, testInfo) => {
   test.setTimeout(120_000);
   const room = await seed(request);
   const target = room.players[1];
@@ -200,19 +201,27 @@ test("server-backed Duel cards reveal for three seconds, park by real owner anch
     await waitForElapsed(page, rootEvent.id, 500);
     let rootGeometry = await geometry(page, rootEvent.id);
     expect(rootGeometry.phase).toBe("reveal");
-    expect(rootGeometry.actualRect.width).toBeCloseTo(60, 0);
-    expect(rootGeometry.actualRect.height).toBeCloseTo(90, 0);
+    expect(rootGeometry.actualRect.width).toBeCloseTo(90, 0);
+    expect(rootGeometry.actualRect.height).toBeCloseTo(135, 0);
     checkpoints.push({ checkpoint: "duel-0.5s", elapsedMs: Math.round(await page.evaluate((start) => performance.now() - start, revealStart)), ...rootGeometry });
     await screenshot(page, testInfo, "duel-reveal-0.5s-440x894");
 
     await waitForElapsed(page, rootEvent.id, 2_500);
     rootGeometry = await geometry(page, rootEvent.id);
     expect(rootGeometry.phase).toBe("reveal");
-    expect(rootGeometry.actualRect.width).toBeCloseTo(60, 0);
-    expect(rootGeometry.actualRect.height).toBeCloseTo(90, 0);
+    expect(rootGeometry.actualRect.width).toBeCloseTo(90, 0);
+    expect(rootGeometry.actualRect.height).toBeCloseTo(135, 0);
     checkpoints.push({ checkpoint: "duel-2.5s", elapsedMs: Math.round(await page.evaluate((start) => performance.now() - start, revealStart)), ...rootGeometry });
     await captureDuelMove(page, rootEvent.id);
     await screenshot(page, testInfo, "duel-reveal-2.5s-440x894");
+
+    await waitForElapsed(page, rootEvent.id, 3_500);
+    rootGeometry = await geometry(page, rootEvent.id);
+    expect(rootGeometry.phase).toBe("reveal");
+    expect(rootGeometry.actualRect.width).toBeCloseTo(90, 0);
+    expect(rootGeometry.actualRect.height).toBeCloseTo(135, 0);
+    checkpoints.push({ checkpoint: "duel-3.5s-full-size", elapsedMs: Math.round(await page.evaluate((start) => performance.now() - start, revealStart)), ...rootGeometry });
+    await screenshot(page, testInfo, "duel-reveal-3.5s-440x894");
 
     const waitingCopy = page.locator(".public-card-display-journey-copy[data-public-card-phase-notice]");
     await expect(waitingCopy).toContainText("NEGATION MAY BE PLAYED");
@@ -229,7 +238,7 @@ test("server-backed Duel cards reveal for three seconds, park by real owner anch
       height: moveCapture.samples[0].height,
     } };
     const moveElapsedMs = await page.evaluate((start) => performance.now() - start, revealStart);
-    expect(moveElapsedMs).toBeGreaterThanOrEqual(3_000);
+    expect(moveElapsedMs).toBeGreaterThanOrEqual(4_000);
     expect(moveGeometry.phase).toBe("move");
     expect(moveGeometry.actualRect.width).toBeGreaterThan(48);
     expect(moveGeometry.actualRect.height).toBeGreaterThan(72);
@@ -238,7 +247,7 @@ test("server-backed Duel cards reveal for three seconds, park by real owner anch
     const middleSample = completedMove.samples.find((sample) => sample.at - completedMove.startedAt >= 120 && sample.at - completedMove.startedAt <= 300);
     expect(middleSample).toBeTruthy();
     expect(middleSample.width).toBeGreaterThan(48);
-    expect(middleSample.width).toBeLessThan(60);
+    expect(middleSample.width).toBeLessThan(90);
     await expect(root).toHaveAttribute("data-public-card-journey-phase", "parked");
     checkpoints.push({ checkpoint: "duel-direct-move-start", elapsedMs: Math.round(moveElapsedMs), ...moveGeometry, middleSample, completedMove: completedMove.samples.at(-1) });
     rootGeometry = await geometry(page, rootEvent.id);
@@ -284,22 +293,30 @@ test("server-backed Duel cards reveal for three seconds, park by real owner anch
     await waitForElapsed(page, firstAttackEvent.id, 500);
     let attackGeometry = await geometry(page, firstAttackEvent.id);
     expect(attackGeometry.phase).toBe("reveal");
-    expect(attackGeometry.actualRect.width).toBeCloseTo(60, 0);
-    expect(attackGeometry.actualRect.height).toBeCloseTo(90, 0);
+    expect(attackGeometry.actualRect.width).toBeCloseTo(90, 0);
+    expect(attackGeometry.actualRect.height).toBeCloseTo(135, 0);
     checkpoints.push({ checkpoint: "attack-1-0.5s", ...attackGeometry });
     await screenshot(page, testInfo, "duel-attack-1-reveal-0.5s-440x894");
 
     await waitForElapsed(page, firstAttackEvent.id, 2_500);
     attackGeometry = await geometry(page, firstAttackEvent.id);
     expect(attackGeometry.phase).toBe("reveal");
-    expect(attackGeometry.actualRect.width).toBeCloseTo(60, 0);
-    expect(attackGeometry.actualRect.height).toBeCloseTo(90, 0);
+    expect(attackGeometry.actualRect.width).toBeCloseTo(90, 0);
+    expect(attackGeometry.actualRect.height).toBeCloseTo(135, 0);
     const rootAfterFirstAttack = await geometry(page, rootEvent.id);
     expect(rootAfterFirstAttack.actualRect).toEqual(parkedRootRect);
     checkpoints.push({ checkpoint: "attack-1-2.5s", ...attackGeometry, rootAfterPolling: rootAfterFirstAttack.actualRect });
     await screenshot(page, testInfo, "duel-attack-1-reveal-2.5s-440x894");
 
-    await expect(firstAttack).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 5_000 });
+    await waitForElapsed(page, firstAttackEvent.id, 3_500);
+    attackGeometry = await geometry(page, firstAttackEvent.id);
+    expect(attackGeometry.phase).toBe("reveal");
+    expect(attackGeometry.actualRect.width).toBeCloseTo(90, 0);
+    expect(attackGeometry.actualRect.height).toBeCloseTo(135, 0);
+    checkpoints.push({ checkpoint: "attack-1-3.5s-full-size", ...attackGeometry });
+    await screenshot(page, testInfo, "duel-attack-1-reveal-3.5s-440x894");
+
+    await expect(firstAttack).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 6_000 });
     attackGeometry = await geometry(page, firstAttackEvent.id);
     const targetSeat = page.locator(`.opponent-player-card[data-player-anchor="${target.id}"]`);
     const targetSeatRect = await targetSeat.evaluate((element) => {
@@ -374,6 +391,35 @@ test("server-backed Duel cards reveal for three seconds, park by real owner anch
     expect(finalPageState.scrollWidth).toBeLessThanOrEqual(finalPageState.viewportWidth);
     checkpoints.push({ checkpoint: "switch-to-other-duelist", viewerId: switchToOtherDuelist.id, root: rootOnOtherDuelist, firstAttack: firstAttackOnOther, cards: otherViewCards, page: finalPageState });
     await screenshot(page, testInfo, "duel-switch-to-other-duelist-440x894");
+
+    const targetSecondCardId = "duel-parking-target-attack-2";
+    await playHandAttack(page, room, target, targetSecondCardId);
+    const afterTargetSecondAttack = await view(request, room, 3);
+    const thirdAttackEvent = afterTargetSecondAttack.timeline.find((event) => event.card?.id === targetSecondCardId);
+    expect(thirdAttackEvent?.duelAttackResponse).toMatchObject({ semantics: "PROVEN", ordinal: 3, sourceId: target.id });
+    const thirdAttack = page.locator(`[data-public-card-journey-event-id="${thirdAttackEvent.id}"]`);
+    await expect(thirdAttack).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 10_000 });
+    const secondTargetOnDock = await geometry(page, thirdAttackEvent.id);
+    expect(secondTargetOnDock.actualRect.left).toBeGreaterThan(firstAttackOnOther.actualRect.left);
+    expect(Math.abs(secondTargetOnDock.actualRect.top - firstAttackOnOther.actualRect.top)).toBeLessThanOrEqual(2);
+    checkpoints.push({ checkpoint: "second-target-card-on-local-dock", first: firstAttackOnOther, second: secondTargetOnDock });
+
+    await restoreViewer(page, room, 3);
+    const firstTargetOnTopSeat = await geometry(page, firstAttackEvent.id);
+    const secondTargetOnTopSeat = await geometry(page, thirdAttackEvent.id);
+    expect(firstTargetOnTopSeat.side).toBe("top");
+    expect(secondTargetOnTopSeat.side).toBe("top");
+    expect(Math.abs(secondTargetOnTopSeat.actualRect.left - firstTargetOnTopSeat.actualRect.left)).toBeLessThanOrEqual(1);
+    expect(secondTargetOnTopSeat.actualRect.top - firstTargetOnTopSeat.actualRect.top).toBeGreaterThanOrEqual(78);
+    const targetSeatOnObserver = page.locator(`.opponent-player-card[data-player-anchor="${target.id}"]`);
+    const targetSeatOnObserverRect = await targetSeatOnObserver.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, bottom: rect.bottom, width: rect.width };
+    });
+    expect(Math.abs(firstTargetOnTopSeat.actualRect.left - (targetSeatOnObserverRect.left + (targetSeatOnObserverRect.width - 48) / 2))).toBeLessThanOrEqual(1);
+    expect(Math.abs(firstTargetOnTopSeat.actualRect.top - (targetSeatOnObserverRect.bottom + 6))).toBeLessThanOrEqual(1);
+    checkpoints.push({ checkpoint: "top-seat-vertical-history-after-view-switch", first: firstTargetOnTopSeat, second: secondTargetOnTopSeat, targetSeat: targetSeatOnObserverRect });
+    await screenshot(page, testInfo, "duel-top-seat-vertical-history-440x894");
 
     expect(pageErrors).toEqual([]);
     const traceDocument = await page.evaluate(() => sessionStorage.getItem("wtk.game-ux-trace.document.v2"));
