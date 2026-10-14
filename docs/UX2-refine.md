@@ -1,16 +1,16 @@
 # WTK UX2 — Simplified Public Card UX
 
-**Version:** 2026-10-14 · **Branch:** `ux-v2` · **Status:** §8.1 Duel layout user-validated; §8.2–§8.4 user-accepted; §8.5 D1/D2 delivered pending aggregate review; §9.4 Gates A–C delivered pending aggregate review; §10.5 Gates E1–E2 delivered pending aggregate visual review.
+**Version:** 2026-10-14 · **Branch:** `ux-v2` · **Status:** P0 user-reported 4-second central reveal regression (§8.7), NOT accepted; §8.1 Duel layout previously user-validated; §8.2–§8.4 accepted; §8.5, §9.4 and §10.5 code delivered pending aggregate review.
 
 This file is the **single active UX2 product/design authority**. It replaces the superseded, much longer UX2 design; previous revisions exist only in Git history. Older `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, historical roadmap records, old tests and screenshots are references to prior implementation, **not** permission to reinstate old visual requirements.
 
 **Product decision:** Remove all visible causal/relationship diagrams. There are **no** green source tethers, red target arrows, card-to-card counter lines, route forks, graph lanes or central causal graphs in the new UX2. Explain public gameplay with **one short centre-screen card reveal, real public cards parked at their proven authors' actual Seat/Dock according to seat topology, succinct text and the existing local decision controls**. **Duel exception:** keep every committed Duel/Attack as a seat-attached history (top Seats stack vertically; left/right Seats fan horizontally inward; local player expands horizontally above Dock), with cross-player global sequence labels (§8.1). No duplicate central Hero portrait or large `EFFECT`/`REACTION CHAIN` panel.
 
-**CURRENT execution priority (start at §8, not the historical §7 migration tasks):**
+**CURRENT execution priority: fix P0 §8.7 before unstarted card-family rollout.**
 
-1. **PHASE 1 — §8:** Duel history (§8.1) delivered and user-validated; **§8.2–§8.4 accepted by user**. Inspector refinement §8.5 D1 and D2 are delivered, pending aggregate visual review; original A–C delivery records remain in §8.6.
+1. **P0 — §8.7:** Current genuine iPhone test reports the Attack central large CardFace is visible for under 1 second before shrinking/parking, contrary to the required 4 seconds. Fix and visually verify before other new card UX. §8.1 previously validated, §8.2–§8.4 accepted, §8.5 delivered pending review.
 2. **PHASE 2 — §9:** The approved **8-second shared Negation window** Gates A–C are delivered, pending aggregate review. Preserve the approved shared-window rule and its privacy/concurrency invariants.
-3. **PHASE 3 — §10:** **§10.5 Gates E1–E2 — Da Qiao Deflection proof and card journey** are delivered pending aggregate visual review. On 2026-10-14 the user directly authorized autonomous, one-task-at-a-time execution from §8 onward; the current task is selected in `HANDOVER.md`.
+3. **PHASE 3 — §10:** Da Qiao Deflection E1/E2 delivered pending visual review; planned Dismantle and later card-family work must wait for P0 §8.7 reveal timing regression acceptance. Coding agent owns HANDOVER.md; Planner must not edit it.
 
 **Historical context only:** The initial UX2 migration consisted of `UX2-NO-GRAPH-REMOVAL-01` and `UX2-CENTRE-REVEAL-SEAT-CARDS-02` (documented in §7). Their initial baseline is deployed; **do not restart these tasks**. Chapters 1–6 remain the normative design/quality requirements. The Coding Agent alone owns `HANDOVER.md`; Planner/Reviewer does not edit it.
 
@@ -60,12 +60,12 @@ The screen has three stable areas:
 
 For each newly **server-confirmed, visible public played-card event**:
 
-1. **REVEAL:** Show the real physical CardFace at Hand size in the centre and the public action sentence. Initial readable beat **~500–800ms**; the user may adjust after actual phone review.
-2. **MOVE:** Move that same CardFace centre → the proven author's seat-front location and shrink to medium thumbnail. Initial animation **~250–450ms**. Use a card moving through free space, **not** a colored connecting stroke.
+1. **REVEAL — updated mandatory 2026-10-14:** Show the real server-committed physical CardFace at **readable Hand-card size** in the battlefield centre for a **full 4,000ms of visibly rendered large-card time**, measured starting after the first painted full-size frame, not from server submission/HTTP/poll. The earlier ~500–800ms proposal is superseded by the user's direct phone feedback. See P0 §8.7.
+2. **MOVE:** After its own full four-second visible central hold, move/shrink that **same** physical CardFace in **380ms** to its actual author's Seat/Dock, with no premature jump to a miniature. Use a card sprite, not a connecting stroke.
 3. **PARK/WAIT:** For ordinary public reactions, keep the public thumbnail at the genuine author's Seat/Dock while waiting. **Duel exception:** preserve the full committed-card history *split by the actual author*, stacked vertically below top Seats, extended inward horizontally at left/right Seats, and horizontally above the local player's Dock (§8.1). Every card carries its real cross-player order index. Never show an uncommitted response. The Local Dock alone presents `CurrentAction`.
 4. **RESPONSE:** A later genuinely committed public response gets its **own** centre reveal and then parks before **its own author**, independent of who is currently the viewer.
 5. **SETTLEMENT:** Show a **server-proven** blocked/damage/negated/otherwise resolved result close to the affected real Seat/Dock. Initial result readability target **~2 seconds**; next independent proven action supersedes old display promptly. Keep the author cards long enough to understand the result; no animation can hold up gameplay.
-6. **RETIRE:** Remove expired public cards, overlays and labels without a ghost copy or sudden reappearance.
+6. **RETIRE:** Remove expired public cards, overlays and labels without a ghost copy or sudden reappearance. A fast committed follow-up response is visually **queued**, not permitted to shorten a currently visible card's four-second hold. Server gameplay deadlines continue independently.
 
 **Identity/dedupe requirements:** Use real event IDs + public root/interaction + author/card identity and server revision as appropriate. Polling an unchanged room must not restart reveal. Switching test viewers or reloading into an already active interaction should **resume in PARK/WAIT**, not replay old centre reveal. A newly observed authentic event may reveal once to that viewer. Ignore stale/retired independent interactions; make rapid successive submissions queue **at most genuine committed public reveals**, with latest settled truth and controls always immediately available.
 
@@ -193,7 +193,7 @@ These are **current functional requirements**, not old combat-graph tasks. They 
 **Step A — Shared event and presentation ownership**
 - Replace the temporary static display with one typed *read-only* public card view model: root/interaction ID, distinct public event ID, true actor ID, actual physical card ID and CardFace, validated displayed-as action, public target/outcome when proven, authoritative sequence/settlement identity and viewer-local presentation checkpoint.
 - State per new public committed event: `REVEAL → MOVE → PARK`, with `SETTLEMENT → RETIRE` for the root. Never guess hidden response cards, infer events from private `CurrentAction`, or play reveal twice for one event across polls.
-- Keep reveal timing advisory only and independent of gameplay; use ~500–800ms legible centre beat + ~250–450ms movement; use a static reduced-motion alternative. Rapid events must be queued/deduplicated without blocking server decision controls.
+- Keep timing independent of gameplay; the later **mandatory 4,000ms full-size visible reveal + 380ms motion** (§3 and §8.7) supersedes the obsolete ~500–800ms / ~250–450ms historical suggestion. For reduced motion, hold the large card statically for four seconds, then park without translation. Fast committed events queue/dedupe without blocking real response controls.
 
 **Step B — True physical seat placement**
 - Obtain real DOM rectangles of every existing opponent Seat and the Local Dock by authoritative player ID. Compute usable battlefield bounds by excluding actual Seats, Guidance, Hand, system cluster and response timer.
@@ -326,6 +326,37 @@ These are **current functional requirements**, not old combat-graph tasks. They 
 **Required delivery/report:** State precisely which checkpoints shipped (never claim all if only some). Run focused render/browser regression plus lint/fast/API and real Worker/D1 authenticated paths as practical. Use tests for proof-backed Duel progression and Inspector navigation; no screenshot-only or fixture-only acceptance. Check actual geometry at 390×844, 440×894, 480×900 and wide, capture visible screenshots (Hero skills actually readable, root Duel still present after several Attack responses, piles absent, Inspector preserved after Back), test reduced motion. Document code files, exact source/build/deployment SHA, tests/pass/fail, manual-phone acceptance gaps, and **STOP for user/Planner review** after each independently deployable checkpoint.
 
 **Ownership:** This Planner/Reviewer specification belongs **only** in docs/UX2-refine.md. **HANDOVER.md belongs to the coding agent and MUST NOT be edited by Planner.**
+
+
+### 8.7 P0 regression — large centre CardFace must visibly remain four seconds (2026-10-14 phone report)
+
+**Latest user-reported defect:** A real iPhone Chrome screen during ordinary Attack Response shows the Attack big card for **less than one second**, then an early small parked card. This does NOT meet the agreed UX and must be treated as a failed visual acceptance regardless of whether a source file contains a 4000ms constant. **P0: pause unstarted Dismantle / wider card-family animation expansion until this is diagnosed, corrected and visually accepted.** Do not change Attack/Dodge, shared Negation, Duel, Hero skill legality, the authoritative 8-second Negation decision window or server gameplay deadlines.
+
+**Code review — investigated risks, not yet a proven cause of this particular screenshot:**
+- app/public-card-display.tsx defines ATTACK_DODGE_REVEAL_HOLD_MS and DUEL_REVEAL_HOLD_MS as 4000; MOVE_DURATION_MS is 380. But AttackDodgeCardJourney includes an explicit moveRootOutOfCenter branch that turns an already-revealing Attack root into moving as soon as a new committed response is present, **without waiting for the original 4-second deadline**. Fast Dodge/redirect may hit this path.
+- app/page.tsx marks publicCardJourneySeen IDs **at zero delay on first publicCardDisplayReady**, not when their full-size reveal finishes. On transient disabled state, changing projection or component remount this can mark an uncompleted real event as not fresh and rebuild it immediately as parked. Diagnose this and related stale activeEvent/TableResolutionSequence ownership before claiming a precise root cause.
+- publicCardDisplayEnabled also depends on targetPreview, opponent Inspector, target picker and other transient modes; passing enabled=false while a reveal is active can hide it, and reopening may not restore the full remaining hold. Test ordinary rerenders and polling.
+- The Attack/Dodge/Negation/Deflection reveal token is presently 60×90 CSS px versus Duel 90×135 and parked 48×72; measure the actual centre and Hand dimensions on 390, 440 and 480 px. The user must visually perceive a **real large card**, not a near-thumbnail, throughout the interval.
+
+#### 8.7.1 Expected final UX
+
+1. For each **newly confirmed public physical card**, show its true CardFace (real rank/suit/art/name, correct source) at a clearly legible centre **Hand-card-readable size for at least 4.0 seconds** after first real painted large frame in an active foreground viewer. At 0.5s, 2.5s and 3.5s it must still be visibly large at the centre, with no shrinking/moving/hidden frame. At >=4.0s begin a single ~380ms centre-to-proven-actor-seat motion, then park it in the appropriate interaction history.
+2. **Do not shorten the existing card** when a defender immediately confirms Dodge, a Negation/counter arrives, a target is redirected by Deflection, or the server advances to damage/settlement. Queue the newly committed visual card **behind** the current one; each gets its own uninterrupted four seconds. All server-authorized decisions and response timers remain available and continue immediately. Never delay real game resolution to wait for animations. Avoid an unbounded backlog when a totally unrelated root starts: specify safe root retirement.
+3. Persist the current visual lifecycle by exact room/root/event ID and first-paint timestamp through polling, harmless re-rendering, response state changes, countdown updates and observer views. Distinguish queued, revealing, moving, parked and completed; **do not mark complete at first mount**. A late join/reload of an already historical interaction should reconstruct parked truth, not replay history as fresh.
+4. **Large card size must actually differ enough from parked size to read comfortably**, not just differ in DOM class names. Standardize central readable size with a real Hand card or existing Duel large-card reference where space allows; maintain mobile collision safety and do not globally resize Hand/equipment. Honour reduced motion with the same four-second static full-size reading interval and no move animation.
+5. The contract covers real physical committed Attack/Dodge, Duel + Duel Attack, single-target root/Negation/counter and Deflection cost-card journeys. It does not apply to private card previews, secret intent, Hero Inspector or purely textual effect notices. Preserve exact physical event/card ownership and do not display fake cards or duplicate TableResolutionSequence animations.
+
+#### 8.7.2 Coding agent P0 repair checkpoints
+
+**P0-A — Reproduce and measure:** In a genuine authorized multiplayer room recreate the uploaded Attack screenshot: attacker uses Attack on Test Player 2 while the observer watches. Capture timeline traces for each genuine event ID: first actual full-size frame, measured bounding rectangle, phase transitions, timestamp relative to first paint, enabled flag and action scope; trace why it exited (response arrival, seen-event flag, temporary disable, legacy duplicate presenter or actual animation timeout). Test immediate Dodge within 0.5s, slower Dodge and no Dodge, polling every 1–2s, and viewer/Inspector changes. Report evidence rather than guessing.
+
+**P0-B — Fix the minimum offending lifecycle:** Protect each newly painted large card's four-second hold from competing root/response updates. Correct any confirmed moveRootOutOfCenter/seen-too-early/unmount/reconstruct problem without rewriting authoritative gameplay. Preserve the full Duel seat-oriented history, true attack source, Deflection physical discard identity and all Negation privacy. The centre only presents **one genuine committed card at a time**; a rapid response queues behind it.
+
+**P0-C — Regression with actual time/size:** Expand existing focused Duel journey test and Attack/Dodge/Deflection/Negation browser coverage. Assert the actual centre CardFace size and phase at 0.5, 2.5, 3.5 seconds after recorded first paint; move start >=4.0s; park after approximately 380ms. For immediate Dodge ensure both Attack **and** Dodge get their own four seconds without blocking legal control. Run responsive 390×844, 440×894, 480×900 and desktop scenarios, touch interaction, reduced motion, reconnect and fast event sequence. Record before/after real mobile screenshots or a short video and actual timestamps/rects: **CI and a screenshot without timing evidence cannot establish acceptance**.
+
+**P0-D — Deploy, report, STOP:** Run focused tests, lint/fast/API and normal CI/Cloudflare smoke. Report code/deploy SHA, real measured visible durations, root cause, fixed files and untested gaps. **Stop for user/Planner validation before starting another new card-family UX such as Dismantle.** If local authenticated gameplay testing cannot run, report this as not visually verified, rather than claiming 4s fixed.
+
+**File ownership:** Planner edits this UX design only. The coding agent maintains its own HANDOVER.md, writes the code and reports test/deployment results. Do not change HANDOVER.md from the Planner.
 
 ## 9. PHASE 2 — Shared-window Negation rule and privacy — approved 2026-10-13
 
