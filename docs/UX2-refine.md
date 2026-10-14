@@ -542,6 +542,7 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 #### 10.6.1 Implementation checkpoints — SMALL AND SEPARATE (code + automated verification, no speculative rewrite)
 
 **UI-1 — battlefield Card Details component (U2 + U5).**
+**Coding Agent progress (2026-10-14): delivered in `e8f0777`; focused checks and exact-SHA CI/deploy passed; awaiting Reviewer acceptance.**
 - Investigate app/page.tsx infoCard/infoCardContext and the currently blocking card-info-backdrop, existing Hero/Inspector popovers, and the public card journey elements in app/public-card-display.tsx. Consolidate own private Hand/Equipment info and legally public parked-card info into a single **stage-bound** readable Card Details component that uses a real illustrated CardFace and canonical card rules.
 - Provide inspect handlers from individual PUBLIC parked/settled mini cards only; enable pointer events only on true clickable thumbnails (the main public journey overlay currently has pointer-events: none), with direct access to event cardFace and no extra card copy in the game stage. Keep private card access viewer-scoped.
 - Responsive focus, Escape, direct item switching, z-index/seat area, action usability and privacy automated browser tests. Do not modify accepted opponent Inspector.
