@@ -10,10 +10,8 @@ Latest user decision: §8.1 viewer-relative Duel layout passed validation.
 
 ## Current task
 
-§8.5 D1 — Inspector equipment miniature art and rank/suit presentation.
+§8.5 D1 — Inspector equipment miniature art and rank/suit presentation. Preserve real CardFace art, rank/suit, IDs, accessible names and 2:3 ratio; hide only the visual card name/category in public Inspector Equipment thumbnails. Do not change Judgement, Hand, Seat or other CardFaces; do not start §8.5 D2 yet.
 
-Use the authentic equipment CardFace art and physical rank/suit; remove visible card-name/category words only from the public Inspector equipment thumbnails. Keep each real card ID, 2:3 ratio, accessible full-card button label, focus feedback and canonical detail pane. Do not change other CardFaces or implement §8.5 D2 yet.
+Local implementation is ready to push: Inspector-scoped variant and focused browser coverage for A/2/10/Q/K, both suit colors, 1/2/4 cards at 390×844, 440×894, 480×900 and 1440×900. The 12 D1 Playwright cases pass and `npm run build` passes. Targeted local ESLint OOMs on Node 26 at both default and 4GB heap; exact-SHA Actions lint is pending. Screenshots and geometry JSON are attached to the Playwright HTML report. A separate existing Judgement navigation check reports an empty accessible name while its Lightning reveal is hidden by a pending presentation event; D1 does not change that path.
 
-Extend `tests/browser/opponent-inspect-hero-focus.spec.mjs` to cover A, 2, 10, Q, K, red/black suits, 1/2/4 cards, and viewport widths 390, 440, 480 and desktop. Capture actual screenshots, assert miniature geometry and no horizontal overflow, and confirm Hand/Seat/Judgement CardFaces remain unchanged.
-
-Next action: implement this isolated visual variant, run focused browser/lint/build checks, update the design status and this handoff, then push and verify the exact SHA's Actions/deployment. After D1, move the single current task to §8.5 D2 and continue without waiting for aggregate review. Do not claim Reviewer acceptance.
+Before-commit gate checked: current remote `ux-v2` is `e3f05e10ab6e5f8b41989600d1f2e9e69c9aa166`; latest relevant code push run is `38581603361` for `e7b51a4949ebb9c1215ca29db57ddab91691f460`, with API, lint/fast, browser smoke and deploy all successful. Next: push this bounded D1 implementation, wait for its exact-SHA Actions result, then mark D1 delivered and move the handoff to §8.5 D2.

@@ -868,7 +868,7 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCar
       observer.disconnect();
     };
   }, [expandedSkill?.name, expandedSkill?.description, selectedCardDetail, updateSkillDescriptionScrollable]);
-  const renderInspectionCard = (card: Card, hidden = false) => <button key={card.id} type="button" className="opponent-inspection-card" style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); openCardDetail(card, event.currentTarget); }}><CardFace card={card} /></button>;
+  const renderInspectionCard = (card: Card, { hidden = false, equipmentMiniature = false }: { hidden?: boolean; equipmentMiniature?: boolean } = {}) => <button key={card.id} type="button" className={`opponent-inspection-card${equipmentMiniature ? " opponent-inspection-equipment-card" : ""}`} style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); openCardDetail(card, event.currentTarget); }}><CardFace card={card} /></button>;
   return <section key={player.id} className="hero-focus hero-focus-inspect opponent-inspection-panel" role="dialog" aria-label={`${player.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={player.id}>
     <div className="hero-focus-heading"><strong>{`INSPECT · ${player.name}`}</strong><button type="button" className="hero-focus-inspect-close" aria-label={`Close ${player.name} inspection`} onClick={onClose}>×</button></div>
     <div className="hero-focus-body">
@@ -900,8 +900,8 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCar
           </section>
         </div>
         <div className="hero-focus-inspect-public-zones">
-          <section className="opponent-inspection-zone" aria-label="Equipment"><h3>Equipment</h3><div className="opponent-inspection-card-row">{player.equipmentCards.length ? player.equipmentCards.map((card) => renderInspectionCard(card)) : <span className="opponent-inspection-empty">None</span>}</div></section>
-          <section className="opponent-inspection-zone" aria-label="Judgement Zone"><h3>Judgement Zone</h3><div className="opponent-inspection-card-row">{player.judgementCards.length ? player.judgementCards.map((card) => renderInspectionCard(card, judgementInFlight?.has(card.id))) : <span className="opponent-inspection-empty">None</span>}</div></section>
+          <section className="opponent-inspection-zone" aria-label="Equipment"><h3>Equipment</h3><div className="opponent-inspection-card-row">{player.equipmentCards.length ? player.equipmentCards.map((card) => renderInspectionCard(card, { equipmentMiniature: true })) : <span className="opponent-inspection-empty">None</span>}</div></section>
+          <section className="opponent-inspection-zone" aria-label="Judgement Zone"><h3>Judgement Zone</h3><div className="opponent-inspection-card-row">{player.judgementCards.length ? player.judgementCards.map((card) => renderInspectionCard(card, { hidden: judgementInFlight?.has(card.id) })) : <span className="opponent-inspection-empty">None</span>}</div></section>
         </div>
       </div>
     </div>

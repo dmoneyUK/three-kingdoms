@@ -261,6 +261,118 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
   });
 }
 
+const inspectorMiniatureViewports = [
+  { width: 390, height: 844 },
+  { width: 440, height: 894 },
+  { width: 480, height: 900 },
+  { width: 1440, height: 900 },
+];
+const inspectorMiniatureScenarios = [
+  {
+    equipmentCase: "weapon",
+    cards: [{ name: "Zhuge Crossbow", rank: "A", suit: "♦", suitClass: "red-suit" }],
+  },
+  {
+    equipmentCase: "miniaturePair",
+    cards: [
+      { name: "Nio Shield", rank: "2", suit: "♣", suitClass: "black-suit" },
+      { name: "Shadowrunner", rank: "10", suit: "♥", suitClass: "red-suit" },
+    ],
+  },
+  {
+    equipmentCase: "miniatureSet",
+    cards: [
+      { name: "Zhuge Crossbow", rank: "A", suit: "♦", suitClass: "red-suit" },
+      { name: "Nio Shield", rank: "2", suit: "♣", suitClass: "black-suit" },
+      { name: "Shadowrunner", rank: "Q", suit: "♥", suitClass: "red-suit" },
+      { name: "Fergana Steed", rank: "K", suit: "♠", suitClass: "black-suit" },
+    ],
+  },
+];
+
+for (const viewport of inspectorMiniatureViewports) {
+  for (const scenario of inspectorMiniatureScenarios) {
+    test(`Inspector equipment miniature preserves art and readable rank/suit (${scenario.cards.length} cards, ${viewport.width}px)`, async ({ page }, testInfo) => {
+      await loadFixture(page, { ...viewport, targetHero: "xiahou-dun", equipmentCase: scenario.equipmentCase });
+      await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
+      const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+      const equipment = inspect.locator('[aria-label="Equipment"]');
+      const cards = equipment.locator(".opponent-inspection-equipment-card");
+      await expect(cards).toHaveCount(scenario.cards.length);
+
+      const equipmentBox = await equipment.boundingBox();
+      expect(equipmentBox).not.toBeNull();
+      const geometry = [];
+      for (let index = 0; index < scenario.cards.length; index += 1) {
+        const expected = scenario.cards[index];
+        const button = cards.nth(index);
+        const face = button.locator(".played-card");
+        const corner = face.locator(":scope > i");
+        await expect(button).toHaveAttribute("aria-label", `Explain ${expected.name}`);
+        await expect(face).toHaveClass(new RegExp(expected.suitClass));
+        await expect(face.locator(":scope > .card-name-mark")).toHaveCSS("display", "none");
+        await expect(face.locator(":scope > strong")).toHaveCSS("display", "none");
+        await expect(corner.locator("small")).toHaveText(expected.suit);
+
+        const [buttonBox, faceBox, cornerBox, rank, cornerStyle, faceStyle] = await Promise.all([
+          button.boundingBox(),
+          face.boundingBox(),
+          corner.boundingBox(),
+          corner.evaluate((element) => element.firstChild?.textContent?.trim()),
+          corner.evaluate((element) => ({
+            transform: getComputedStyle(element).transform,
+            fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+            suitFontSize: Number.parseFloat(getComputedStyle(element.querySelector("small")).fontSize),
+          })),
+          face.evaluate((element) => getComputedStyle(element).backgroundImage),
+        ]);
+        expect(buttonBox).not.toBeNull();
+        expect(faceBox).not.toBeNull();
+        expect(cornerBox).not.toBeNull();
+        expect(rank).toBe(expected.rank);
+        expect(faceBox.height / faceBox.width).toBeGreaterThanOrEqual(1.45);
+        expect(faceBox.height / faceBox.width).toBeLessThanOrEqual(1.55);
+        expect(faceBox.width).toBeGreaterThanOrEqual(29);
+        expect(faceBox.width).toBeLessThanOrEqual(38);
+        expect(cornerBox.x).toBeGreaterThanOrEqual(faceBox.x - 0.5);
+        expect(cornerBox.y).toBeGreaterThanOrEqual(faceBox.y - 0.5);
+        expect(cornerBox.x + cornerBox.width).toBeLessThanOrEqual(faceBox.x + faceBox.width + 0.5);
+        expect(cornerBox.y + cornerBox.height).toBeLessThanOrEqual(faceBox.y + faceBox.height + 0.5);
+        expect(cornerBox.width).toBeGreaterThanOrEqual(11.5);
+        expect(cornerBox.height).toBeGreaterThanOrEqual(17);
+        expect(cornerStyle.transform).toBe("none");
+        expect(cornerStyle.fontSize).toBeGreaterThanOrEqual(7);
+        expect(cornerStyle.suitFontSize).toBeGreaterThanOrEqual(6);
+        expect(faceStyle).not.toBe("none");
+        expect(buttonBox.x).toBeGreaterThanOrEqual(equipmentBox.x);
+        expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(equipmentBox.x + equipmentBox.width);
+        geometry.push({
+          name: expected.name,
+          rank: expected.rank,
+          suit: expected.suit,
+          button: buttonBox,
+          face: faceBox,
+          corner: cornerBox,
+          cornerFontSize: cornerStyle.fontSize,
+          suitFontSize: cornerStyle.suitFontSize,
+        });
+      }
+
+      await expect(page.locator(".local-hand-rail .game-card .card-name-mark").first()).toBeVisible();
+      await expect(page.locator(".local-hand-rail .game-card > strong").first()).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+      await testInfo.attach("equipment-miniature-geometry.json", {
+        body: Buffer.from(JSON.stringify({ viewport, equipmentCase: scenario.equipmentCase, cards: geometry }, null, 2)),
+        contentType: "application/json",
+      });
+      await testInfo.attach("equipment-miniature.png", {
+        body: await page.screenshot({ animations: "disabled" }),
+        contentType: "image/png",
+      });
+    });
+  }
+}
+
 for (const count of [6, 8]) {
   test(`Inspect keeps public Hand count private and Judgment compact with ${count} seats`, async ({ page }) => {
     const viewport = { width: 390, height: 844 };
@@ -394,6 +506,7 @@ test("Side Column Inspect keeps public Judgement details inside the centre Stage
   await expect(inspect).toBeVisible();
   const judgmentCard = inspect.locator('[aria-label="Judgement Zone"] .opponent-inspection-card[aria-label="Explain Lightning"]');
   await expect(judgmentCard).toHaveCount(1);
+  await expect(judgmentCard).not.toHaveClass(/opponent-inspection-equipment-card/);
   await judgmentCard.click();
   const detail = inspect.locator('[data-inspector-card-detail="true"]');
   await expect(detail).toBeVisible();
