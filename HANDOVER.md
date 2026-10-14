@@ -1,10 +1,14 @@
 # WTK UX2 — Current Handoff
 
 Branch: `ux-v2`  
-Design: `docs/UX2-refine.md`, blob `c587ab660015e1c227371b31cba48cc944d618db`
+Design: `docs/UX2-refine.md`, blob `147b256740ca0db32ca6c59ada0cc5d5c8fe010b`
+
+## Latest completed task
+
+`UX2-8.3-INSPECTOR-LAYOUT-01` delivered at `81d015fd85408ac9e74ecc19fb23020aee24ef79`. Actions run `38532334896` passed Lint/fast tests, API tests, browser startup/room smoke, Worker deploy and production smoke. No local automated suites or authenticated device screenshots were run; user/Reviewer aggregate acceptance is pending.
 
 ## Current task
 
-`UX2-8.3-INSPECTOR-LAYOUT-01` — keep the opponent Inspector inside the battlefield safe zone; show complete long public skill descriptions in a clearly scrollable detail area despite 0/1/2/4 equipment cards; proportionally scale rank/suit corners on public equipment thumbnails. Preserve public identity, legal target, close/focus behavior and privacy. Acceptance: 390×844, 440×894, 480×900 and desktop; long Hua Tuo skill readable to its end with equipment-rich layout and no Dock/Guidance/Hand overlap. Do not implement §8.4 nested card explanations in this task. CI-first; no local automated suites.
+`UX2-8.4-INSPECTOR-CARD-DETAIL-01` — show public Equipment and Judgement card explanations inside the same opponent Inspector, preserving the active Hero, selected combat target, prior skill detail and scroll offset. Back/Escape returns focus to the tapped public card and restores the prior skill context; only the Inspector × closes the Inspector. Keep local Hand card information in its existing private dialog, prevent public cards from being mislabeled private, and do not alter Hand selection, submitted actions, CurrentAction or target selection. Reset nested details only when switching Inspector subject. Follow UX2 §8.4 and Checkpoint C. CI-first; no local automated suite runs.
 
-§8.2 central Deck/Discard visuals were removed; hidden 1px noninteractive anchors preserve card-flight measurement, while server pile data and resolution behavior are unchanged. Deployed SHA `4a3d93f35153f21ece8bf116a519e7b8f7489276`; Actions `38530925109` passed lint/fast, API, browser startup smoke, D1 migration, Worker deploy and production smoke. Initial source commit `af229c1` found one stale empty-pile test assertion, fixed separately in `4a3d93f`. No local automated tests or authenticated gameplay screenshots were captured; §8.2 is pending aggregate user/Reviewer review.
+Acceptance: skill → scroll → public Equipment/Judgement explanation → Back/Escape restores the same skill and scroll position; subject switch resets nested detail; local Hand info remains unchanged; no change to selected target, legal controls, action state or privacy. Update this handoff and mark §8.4 delivered/pending aggregate acceptance after the exact pushed SHA's CI/deployment result.
