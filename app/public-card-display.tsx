@@ -24,6 +24,7 @@ type PublicCardDisplayMotion = {
   scopeKey: string;
   rootFresh: boolean;
   responseFresh: boolean;
+  deflectionFresh: boolean;
 } | {
   type: "duel";
   /** Room and proven Duel identity keep retained card state isolated. */
@@ -64,6 +65,15 @@ export type PublicCardDisplayAction = {
     semanticAction?: "DODGE";
     semanticLabel?: string;
   };
+  /** A proven Da Qiao discard cost, shown as a distinct physical public card. */
+  deflection?: {
+    eventId: string;
+    actorId: string;
+    actorName: string;
+    cardFace: Card;
+    ariaLabel: string;
+    publicNotice: string;
+  };
   responses?: readonly PublicCardDisplayResponseNode[];
 };
 
@@ -75,7 +85,7 @@ type JourneyCard = {
   cardFace: Card;
   ariaLabel: string;
   semanticLabel?: string;
-  role: "root" | "response";
+  role: "root" | "response" | "deflection";
   globalOrdinal?: number;
   phase: "reveal" | "move" | "parked";
   rect: CardRect;
@@ -310,14 +320,18 @@ function AttackDodgeCardJourney({
   const sourceNameRef = useRef(sourceName);
   const mountedRef = useRef(false);
   const hasAttackDodgeMotion = action.motion?.type === "attack-dodge";
-  const eventSignature = `${action.rootEventId}|${action.response?.eventId ?? ""}|${action.motion?.rootFresh ? "new-root" : "parked-root"}|${action.motion?.responseFresh ? "new-response" : "parked-response"}`;
+  const attackDodgeMotion = action.motion?.type === "attack-dodge" ? action.motion : null;
+  const eventSignature = `${action.rootEventId}|${action.response?.eventId ?? ""}|${action.deflection?.eventId ?? ""}|${attackDodgeMotion?.rootFresh ? "new-root" : "parked-root"}|${attackDodgeMotion?.responseFresh ? "new-response" : "parked-response"}|${attackDodgeMotion?.deflectionFresh ? "new-deflection" : "parked-deflection"}`;
   const latestResponse = action.response ?? null;
-  const activeCard = latestResponse?.cardFace ?? action.cardFace ?? null;
-  const activeEventId = latestResponse?.eventId ?? action.rootEventId;
-  const activeActorId = latestResponse?.actorId ?? action.sourceId;
+  const latestDeflection = action.deflection ?? null;
+  const activeCard = latestResponse?.cardFace ?? latestDeflection?.cardFace ?? action.cardFace ?? null;
+  const activeEventId = latestResponse?.eventId ?? latestDeflection?.eventId ?? action.rootEventId;
+  const activeActorId = latestResponse?.actorId ?? latestDeflection?.actorId ?? action.sourceId;
   const result = settlementLabel(action, targetName);
   const activeLabel = latestResponse?.semanticLabel
-    ?? (latestResponse?.semanticAction === "DODGE" ? "DODGE" : action.cardLabel);
+    ?? (latestResponse?.semanticAction === "DODGE" ? "DODGE" : latestDeflection ? "DEFLECTION" : action.cardLabel);
+  const activeAriaLabel = latestResponse?.ariaLabel ?? latestDeflection?.ariaLabel ?? action.ariaLabel;
+  const activeNotice = latestResponse?.ariaLabel ?? latestDeflection?.publicNotice ?? action.publicNotice ?? action.ariaLabel;
 
   useLayoutEffect(() => {
     mountedRef.current = true;
@@ -336,7 +350,8 @@ function AttackDodgeCardJourney({
   useLayoutEffect(() => {
     const currentAction = actionRef.current;
     const currentSourceName = sourceNameRef.current;
-    if (!enabled || !currentAction.motion) return;
+    const motion = currentAction.motion?.type === "attack-dodge" ? currentAction.motion : null;
+    if (!enabled || !motion) return;
     const center = battlefieldCenterCard();
     const previous = journeyRef.current.scopeKey === scopeKey ? journeyRef.current.cards : [];
     const root = currentAction.cardFace && currentSourceName ? [{
@@ -347,7 +362,7 @@ function AttackDodgeCardJourney({
       ariaLabel: currentAction.ariaLabel,
       semanticLabel: undefined,
       role: "root" as const,
-      reveal: currentAction.motion.rootFresh,
+      reveal: motion.rootFresh,
     }] : [];
     const response = currentAction.response?.cardFace ? [{
       eventId: currentAction.response.eventId,
@@ -357,9 +372,19 @@ function AttackDodgeCardJourney({
       ariaLabel: currentAction.response.ariaLabel,
       semanticLabel: currentAction.response.semanticLabel,
       role: "response" as const,
-      reveal: currentAction.motion.responseFresh,
+      reveal: motion.responseFresh,
     }] : [];
-    const incoming = [...root, ...response];
+    const deflection = currentAction.deflection ? [{
+      eventId: currentAction.deflection.eventId,
+      actorId: currentAction.deflection.actorId,
+      actorName: currentAction.deflection.actorName,
+      cardFace: currentAction.deflection.cardFace,
+      ariaLabel: currentAction.deflection.ariaLabel,
+      semanticLabel: "DEFLECTION",
+      role: "deflection" as const,
+      reveal: motion.deflectionFresh,
+    }] : [];
+    const incoming = [...root, ...response, ...deflection];
     const additions: JourneyCard[] = [];
     const clearCenterEvents: string[] = [];
     const nextCards = incoming.map((candidate) => {
@@ -517,7 +542,7 @@ function AttackDodgeCardJourney({
     role="status"
     aria-live="polite"
     aria-atomic="false"
-    aria-label={latestResponse?.ariaLabel ?? action.ariaLabel}
+    aria-label={activeAriaLabel}
     data-public-card-display="true"
     data-public-card-ready="true"
     data-public-card-motion="attack-dodge"
@@ -525,10 +550,12 @@ function AttackDodgeCardJourney({
     data-public-card-root-event-id={action.rootEventId}
     data-public-card-id={activeCard?.id}
     data-public-card-actor-id={activeActorId}
+    data-public-card-active-event-kind={latestResponse ? "response" : latestDeflection ? "deflection" : "root"}
     data-public-card-source-id={action.sourceId}
     data-public-card-target-id={action.targetId ?? undefined}
     data-public-card-settlement-event-id={action.settlement?.eventId}
     data-public-card-settlement-outcome={action.settlement?.outcome}
+    data-public-card-deflection-event-id={latestDeflection?.eventId}
     data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
     {cards.map((card) => {
@@ -536,12 +563,17 @@ function AttackDodgeCardJourney({
       const isHistorical = Boolean(latestResponse && card.role === "root");
       return <div
         key={card.eventId}
-        className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${isCurrent ? "is-current" : ""} ${isHistorical ? "is-prior" : ""}`}
+        className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${isCurrent ? "is-current" : ""} ${isHistorical ? "is-prior" : ""} ${card.role === "deflection" ? "is-deflection" : ""}`}
         data-public-card-journey-event-id={card.eventId}
         data-public-card-journey-actor-id={card.actorId}
         data-public-card-journey-card-id={card.cardFace.id}
+        data-public-card-journey-role={card.role}
         data-public-card-journey-phase={card.phase}
         data-public-card-journey-size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
+        data-public-card-journey-target-left={card.target.left}
+        data-public-card-journey-target-top={card.target.top}
+        data-public-card-journey-target-width={card.target.width}
+        data-public-card-journey-target-height={card.target.height}
         data-public-card-primary-card={isCurrent ? "true" : undefined}
         aria-hidden="true"
         style={{ left: card.rect.left, top: card.rect.top, width: card.rect.width, height: card.rect.height }}
@@ -552,7 +584,7 @@ function AttackDodgeCardJourney({
     })}
     <div className="public-card-display-copy public-card-display-journey-copy" style={{ top: copyTop }}>
       <small>{activeLabel}</small>
-      <b>{action.publicNotice ?? latestResponse?.ariaLabel ?? action.ariaLabel}</b>
+      <b>{activeNotice}</b>
       {action.phaseNotice && <span>{action.phaseNotice}</span>}
       {result && <strong data-public-card-result={action.settlement?.outcome}>{result}</strong>}
     </div>

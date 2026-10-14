@@ -3756,6 +3756,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         scopeKey: [room.code, attackHitSettlementCandidate.action.rootEventId].join(":"),
         rootFresh: !publicCardJourneySeenEventIds.has(attackHitSettlementCandidate.action.rootEventId),
         responseFresh: false,
+        deflectionFresh: false,
       },
       settlement: { eventId: attackHitSettlementCandidate.action.eventId, outcome: attackHitSettlementCandidate.action.outcome, exiting: attackHitSettlementCandidate.exiting },
     }
@@ -3815,6 +3816,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           scopeKey: [room.code, rootAction.rootEventId].join(":"),
           rootFresh: !publicCardJourneySeenEventIds.has(rootAction.rootEventId),
           responseFresh: false,
+          deflectionFresh: false,
         },
         ...(rootAction.targetId === room.meId
           && room.currentAction?.kind === "response"
@@ -3842,6 +3844,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           scopeKey: [room.code, attackDodgeDisplayCandidate.proof.rootEventId].join(":"),
           rootFresh: !publicCardJourneySeenEventIds.has(attackDodgeDisplayCandidate.proof.rootEventId),
           responseFresh: !publicCardJourneySeenEventIds.has(attackDodgeDisplayCandidate.proof.responseEventId),
+          deflectionFresh: false,
         },
         settlement: {
           eventId: attackDodgeDisplayCandidate.proof.responseEventId,
@@ -3889,9 +3892,62 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       },
     }
     : null;
-  const publicCardDisplayAction: PublicCardDisplayAction | null = heldPublicNegationReadAction
+  const selectedPublicCardAction: PublicCardDisplayAction | null = heldPublicNegationReadAction
     ?? heldAttackDodgeReadAction
     ?? livePublicCardAction;
+  const deflectionForPublicAction = (action: PublicCardDisplayAction | null) => {
+    if (!action || action.cardKind !== "Attack" || action.motion?.type !== "attack-dodge" || !action.targetId) return null;
+    const proofs = clientPresentation.deflectionActions.filter((proof) => proof.semantics === "PROVEN"
+      && proof.rootEventId === action.rootEventId
+      && proof.sourceId === action.sourceId
+      && proof.replacementTargetId === action.targetId
+      && (!action.interactionId || proof.interactionId === action.interactionId)
+      && (!action.rootFrameId || proof.rootFrameId === action.rootFrameId));
+    if (proofs.length !== 1) return null;
+    const proof = proofs[0];
+    const rootEvents = room.timeline.filter((event) => event.id === proof.rootEventId);
+    const costEvents = room.timeline.filter((event) => event.id === proof.eventId);
+    if (rootEvents.length !== 1 || costEvents.length !== 1) return null;
+    const rootEvent = rootEvents[0];
+    const costEvent = costEvents[0];
+    if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
+      || rootEvent.resolutionId !== proof.rootResolutionId
+      || rootEvent.card.id !== proof.rootCardId
+      || rootEvent.card.id !== action.cardFace?.id
+      || rootEvent.card.kind !== "Attack" && rootEvent.playedAs?.toLowerCase() !== "attack"
+      || costEvent.type !== "card" && costEvent.type !== "cards"
+      || costEvent.action !== "discard" || costEvent.presentation === false
+      || costEvent.resolutionId !== proof.rootResolutionId) return null;
+    const costCards = eventCards(costEvent);
+    const [costCard] = costCards;
+    if (costCards.length !== 1 || !costCard
+      || costCard.id !== proof.costCardId || costCard.kind !== proof.costCard.kind
+      || costCard.suit !== proof.costCard.suit || costCard.rank !== proof.costCard.rank) return null;
+    const actor = room.players.find((player) => player.id === proof.actorId);
+    const replacement = room.players.find((player) => player.id === proof.replacementTargetId);
+    if (!actor?.name || !replacement?.name || proof.actorId !== proof.originalTargetId
+      || proof.actorId === proof.sourceId || proof.actorId === proof.replacementTargetId) return null;
+    const publicNotice = `${actor.name} used Deflection, discarding ${cardDefinition(costCard.kind).name} and redirecting Attack to ${replacement.name}.`;
+    return {
+      eventId: proof.eventId,
+      actorId: proof.actorId,
+      actorName: actor.name,
+      cardFace: proof.costCard,
+      ariaLabel: publicNotice,
+      publicNotice,
+    };
+  };
+  const activeDeflectionAction = deflectionForPublicAction(selectedPublicCardAction);
+  const publicCardDisplayAction: PublicCardDisplayAction | null = selectedPublicCardAction ? {
+    ...selectedPublicCardAction,
+    ...(selectedPublicCardAction.motion?.type === "attack-dodge" ? {
+      motion: {
+        ...selectedPublicCardAction.motion,
+        deflectionFresh: Boolean(activeDeflectionAction && !publicCardJourneySeenEventIds.has(activeDeflectionAction.eventId)),
+      },
+    } : {}),
+    deflection: activeDeflectionAction ?? undefined,
+  } : null;
   const rootActionSource = publicCardDisplayAction ? room.players.find((player) => player.id === publicCardDisplayAction.sourceId) : null;
   const rootActionTarget = publicCardDisplayAction ? room.players.find((player) => player.id === publicCardDisplayAction.targetId) : null;
   const rootActionTemporarilyBlocked = Boolean(targetPreviewPresentation || opponentInspectionPresentation
@@ -3904,7 +3960,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const publicCardDisplayOwnsPresentation = Boolean(publicCardDisplayReady
     || publicCardDisplayAction?.motion?.type === "duel" && rootActionSource?.name && rootActionTarget?.name);
   const publicCardJourneyEventIds = publicCardDisplayAction?.motion?.type === "attack-dodge"
-    ? [publicCardDisplayAction.rootEventId, publicCardDisplayAction.response?.eventId].filter((eventId): eventId is string => Boolean(eventId))
+    ? [publicCardDisplayAction.rootEventId, publicCardDisplayAction.response?.eventId, publicCardDisplayAction.deflection?.eventId].filter((eventId): eventId is string => Boolean(eventId))
     : publicCardDisplayAction?.motion?.type === "duel"
       ? [publicCardDisplayAction.rootEventId, ...(publicCardDisplayAction.responses ?? []).map((response) => response.eventId)]
       : [];
@@ -3928,6 +3984,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? [...new Set([
       publicCardDisplayAction.rootEventId,
       publicCardDisplayAction.settlement?.eventId,
+      publicCardDisplayAction.deflection?.eventId,
       ...(!duelJourneyOwnsRootAndAttacks ? [publicCardDisplayAction.response?.eventId, publicCardDisplayAction.publicCounterRead?.eventId] : []),
       ...(publicCardDisplayAction.responses ?? [])
         .filter((response) => !duelJourneyOwnsRootAndAttacks || Number.isInteger(response.ordinal))
@@ -3937,6 +3994,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const publicDisplayOwnedPhysicalCardIds = new Set(publicCardDisplayOwnsPresentation && publicCardDisplayAction
     ? [
       publicCardDisplayAction.cardFace?.id,
+      publicCardDisplayAction.deflection?.cardFace.id,
       ...(!duelJourneyOwnsRootAndAttacks ? [publicCardDisplayAction.response?.cardFace?.id] : []),
       ...(publicCardDisplayAction.responses ?? [])
         .filter((response) => !duelJourneyOwnsRootAndAttacks || Number.isInteger(response.ordinal))
