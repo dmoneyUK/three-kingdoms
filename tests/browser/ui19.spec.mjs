@@ -1878,7 +1878,7 @@ async function readVis12oPileGeometry(page) {
     const visible = (element) => {
       const bounds = element.getBoundingClientRect();
       const style = getComputedStyle(element);
-      return bounds.width > 0 && bounds.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+      return bounds.width > 0 && bounds.height > 0 && style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0;
     };
     const table = document.querySelector(".play-table");
     const stage = document.querySelector(".interaction-stage");
@@ -1891,6 +1891,20 @@ async function readVis12oPileGeometry(page) {
       ["deck", document.querySelector(".draw-stack")],
       ["discard", document.querySelector(".discard-stack")],
     ].filter(([, element]) => element && visible(element)).map(([name, element]) => ({ name, bounds: rect(element) }));
+    const anchors = [
+      ["deck", document.querySelector("[data-draw-anchor='true']")],
+      ["discard", document.querySelector("[data-discard-anchor='true']")],
+    ].map(([name, element]) => {
+      const style = element ? getComputedStyle(element) : null;
+      return {
+        name,
+        bounds: element ? rect(element) : null,
+        opacity: style?.opacity ?? null,
+        pointerEvents: style?.pointerEvents ?? null,
+        childCount: element?.childElementCount ?? null,
+        text: element?.textContent.trim() ?? null,
+      };
+    });
     const contentSelectors = [
       ".interaction-stage .hero-focus",
       ".interaction-stage .group-target-scope",
@@ -1925,6 +1939,7 @@ async function readVis12oPileGeometry(page) {
       dock: dock && visible(dock) ? rect(dock) : null,
       seats,
       piles,
+      anchors,
       content,
       overlaps,
       seatOverlaps,
@@ -1935,7 +1950,7 @@ async function readVis12oPileGeometry(page) {
 
 for (const { state, required } of VIS_12O_STATES) {
   for (const viewport of [{ width: 480, height: 900 }, { width: 390, height: 640 }]) {
-    test(`UX2.0VIS-12O ${state} keeps Deck/Discard clear of Stage at ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
+    test(`UX2.0VIS-12O ${state} removes permanent piles at ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
       await loadFixture(page, { state, count: 4, ...viewport });
       const stage = page.locator(VIS_12N_STAGE_SELECTOR);
       for (const selector of required) await expect(stage.locator(selector)).toBeVisible();
@@ -1945,24 +1960,17 @@ for (const { state, required } of VIS_12O_STATES) {
       const layout = await assertVis12nTopRowGeometry(page, viewport.width);
       const piles = await readVis12oPileGeometry(page);
       expect(piles.viewport).toEqual({ width: viewport.width, height: viewport.height, scrollWidth: viewport.width });
-      expect(piles.piles).toHaveLength(2);
+      expect(piles.piles, "persistent piles are absent").toHaveLength(0);
+      expect(piles.anchors).toEqual([
+        { name: "deck", bounds: { left: expect.any(Number), top: expect.any(Number), right: expect.any(Number), bottom: expect.any(Number), width: 1, height: 1 }, opacity: "0", pointerEvents: "none", childCount: 0, text: "" },
+        { name: "discard", bounds: { left: expect.any(Number), top: expect.any(Number), right: expect.any(Number), bottom: expect.any(Number), width: 1, height: 1 }, opacity: "0", pointerEvents: "none", childCount: 0, text: "" },
+      ]);
+      await expect(page.locator(".play-center")).toHaveAttribute("aria-hidden", "true");
+      await expect(page.locator(".play-center")).toHaveText("");
       await testInfo.attach(`vis-12o-${state}-${viewport.width}x${viewport.height}-geometry`, {
         body: JSON.stringify({ ...layout, pileLayout: piles }, null, 2),
         contentType: "application/json",
       });
-      for (const pile of piles.piles) {
-        expect(pile.bounds.width, `${pile.name} remains visible`).toBeGreaterThan(0);
-        expect(pile.bounds.height, `${pile.name} remains visible`).toBeGreaterThan(0);
-        expect(pile.bounds.left, `${pile.name} remains within the table`).toBeGreaterThanOrEqual(piles.table.left);
-        expect(pile.bounds.right, `${pile.name} remains within the table`).toBeLessThanOrEqual(piles.table.right);
-        expect(pile.bounds.top, `${pile.name} remains within the table`).toBeGreaterThanOrEqual(piles.table.top);
-        expect(pile.bounds.bottom, `${pile.name} remains within the table`).toBeLessThanOrEqual(piles.table.bottom);
-      }
-      if (viewport.width <= 400 && viewport.height <= 700) {
-        expect(Math.max(...piles.piles.map(({ bounds }) => bounds.bottom)), "compact piles stay in the top-edge strip").toBeLessThanOrEqual(piles.table.top + 48);
-      } else {
-        expect(Math.min(...piles.piles.map(({ bounds }) => bounds.top)), "full-size piles stay in the bottom-edge zone").toBeGreaterThanOrEqual(piles.table.bottom - 86);
-      }
       expect(piles.overlaps, JSON.stringify({ safeZone: piles.safeZone, stage: piles.stage, piles: piles.piles, content: piles.content, overlaps: piles.overlaps })).toEqual([]);
       expect(piles.seats).toHaveLength(3);
       expect(piles.seatOverlaps, "Deck/Discard must not cover physical opponent seats").toEqual([]);
@@ -1973,7 +1981,7 @@ for (const { state, required } of VIS_12O_STATES) {
 
 for (const width of [390, 480, 650]) {
   for (const state of ["rest", "interaction"]) {
-    test(`UX2.0VIS-12C ${state} keeps mobile card piles secondary at ${width}px`, async ({ page }, testInfo) => {
+    test(`UX2.0VIS-12C ${state} hides mobile card piles and retains noninteractive anchors at ${width}px`, async ({ page }, testInfo) => {
       await loadFixture(page, { state, count: 4, width, height: 900 });
       const piles = await page.locator(".play-center").evaluate((center) => {
         const rect = (element) => {
@@ -1983,6 +1991,7 @@ for (const width of [390, 480, 650]) {
             left: box.left, top: box.top, right: box.right, bottom: box.bottom,
             width: box.width, height: box.height,
             background: style.backgroundColor, borderColor: style.borderTopColor,
+            opacity: style.opacity, pointerEvents: style.pointerEvents,
           };
         };
         const table = document.querySelector(".play-table").getBoundingClientRect();
@@ -1990,30 +1999,26 @@ for (const width of [390, 480, 650]) {
         const discard = center.querySelector(".discard-stack");
         return {
           center: rect(center), table: { left: table.left, top: table.top, width: table.width, height: table.height, bottom: table.bottom },
-          draw: { ...rect(draw), label: draw.getAttribute("aria-label"), text: draw.textContent },
-          discard: { ...rect(discard), label: discard.getAttribute("aria-label"), text: discard.textContent },
-          pileZ: getComputedStyle(center).zIndex,
+          draw: { ...rect(draw), text: draw.textContent.trim(), children: draw.childElementCount },
+          discard: { ...rect(discard), text: discard.textContent.trim(), children: discard.childElementCount },
           stageZ: document.querySelector(".interaction-stage") ? getComputedStyle(document.querySelector(".interaction-stage")).zIndex : null,
           pageWidth: document.documentElement.scrollWidth,
         };
       });
 
-      for (const [name, pile] of [["Deck", piles.draw], ["Discard", piles.discard]]) {
-        expect(pile.width, `${name} remains compact`).toBe(56);
-        expect(pile.height, `${name} remains compact`).toBe(78);
+      expect(piles.center.width).toBe(0);
+      expect(piles.center.height).toBe(0);
+      for (const [name, anchor] of [["Deck", piles.draw], ["Discard", piles.discard]]) {
+        expect(anchor.width, `${name} animation point stays tiny`).toBe(1);
+        expect(anchor.height, `${name} animation point stays tiny`).toBe(1);
+        expect(anchor.opacity, `${name} anchor has no visible frame`).toBe("0");
+        expect(anchor.pointerEvents, `${name} anchor cannot block the battlefield`).toBe("none");
+        expect(anchor.text, `${name} anchor contains no visible content`).toBe("");
+        expect(anchor.children).toBe(0);
       }
-      expect(piles.center.left + piles.center.width / 2).toBeCloseTo(piles.table.left + piles.table.width / 2, 0);
-      expect(piles.center.top + piles.center.height / 2).toBeGreaterThan(piles.table.top + piles.table.height * 0.45);
-      expect(piles.center.bottom).toBeLessThanOrEqual(piles.table.bottom);
-      expect(piles.draw.background).toBe("rgb(18, 21, 16)");
-      expect(piles.discard.background).toBe("rgb(52, 49, 39)");
-      expect(piles.draw.label).toMatch(/^Draw pile, \d+ cards$/);
-      expect(piles.discard.label).toBe("Discard pile, empty");
-      expect(piles.draw.text).toContain("DECK");
-      expect(piles.discard.text).toContain("DISCARD");
+      await expect(page.locator(".play-center")).toHaveAttribute("aria-hidden", "true");
       expect(piles.pageWidth).toBeLessThanOrEqual(width);
       if (state === "interaction") {
-        expect(Number(piles.stageZ)).toBeGreaterThan(Number(piles.pileZ));
         await assertVisible(page.locator(".interaction-stage"), "active Interaction Stage remains prominent");
       }
       if (width === 480 && state === "interaction") {

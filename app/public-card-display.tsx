@@ -108,7 +108,7 @@ function battlefieldCenterCard(): CardRect {
   const preferredTop = bounds.top + bounds.height * 0.5 - REVEAL_CARD.height / 2;
   const preferredLeft = bounds.left + (bounds.width - REVEAL_CARD.width) / 2;
   const obstacles = [...document.querySelectorAll<HTMLElement>(
-    ".opponent-player-card[data-player-anchor], .draw-stack, .discard-stack, .player-board-status, .visible-countdown, .public-card-duel-history",
+    ".opponent-player-card[data-player-anchor], .player-board-status, .visible-countdown, .public-card-duel-history",
   )].map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
   const offsets: Array<[number, number]> = [
     [0, 0], [0, -40], [0, 40], [0, -80], [0, 80], [0, -120], [0, 120],
@@ -193,7 +193,7 @@ function duelHistoryViewport(actorId: string): DuelHistoryViewport | null {
   const board = document.querySelector<HTMLElement>(".player-board")?.getBoundingClientRect() ?? tableRect;
   const centerX = board.left + board.width / 2;
   const obstacles = [...document.querySelectorAll<HTMLElement>(
-    ".opponent-player-card[data-player-anchor], .draw-stack, .discard-stack, .player-board-status, .visible-countdown, .public-card-display-journey-copy",
+    ".opponent-player-card[data-player-anchor], .player-board-status, .visible-countdown, .public-card-display-journey-copy",
   )].filter((element) => element !== anchor)
     .map((element) => element.getBoundingClientRect())
     .filter((rect) => rect.width > 0 && rect.height > 0);

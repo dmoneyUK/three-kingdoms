@@ -528,8 +528,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /class="opponent-equipment-indicator"[^>]*title="Weapon: Blue Steel Sword"/);
   assert.match(html, /class="mini-zone-card judgement-mini"[^>]*data-judgement-id="opponent-judgement"/);
   assert.match(html, /class="local-hand"[^>]*data-card-origin-anchor="p1"/);
-  assert.match(html, /class="draw-stack"[^>]*data-draw-anchor="true"/);
-  assert.match(html, /class="discard-stack"[^>]*data-discard-anchor="true"/);
+  assert.match(html, /class="play-center" aria-hidden="true"><div class="draw-stack" data-draw-anchor="true"><\/div><div class="discard-stack" data-discard-anchor="true"><\/div><\/div>/, "card-flight anchors contain no visible pile content");
   assert.doesNotMatch(html, /class="player-square player-square-0/);
   assert.match(html, /class="local-player-dock\s*"/);
   assert.match(html, /data-hero-id="cao-cao"/);
@@ -615,7 +614,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(gameRoomSource, /data-hand-card-id=\{item\.id\}[\s\S]*className="card-info-button"/);
   assert.doesNotMatch(gameRoomSource, /local-selected-card-preview|selectedPreviewCard/);
   assert.match(gameRoomSource, /key={`rail-\$\{item\.id\}`}/);
-  assert.match(html, /class="discard-stack"[^>]*data-discard-kind="Dismantle"/);
+  assert.doesNotMatch(html, /data-discard-kind=/, "permanent Discard identity is no longer rendered into the battlefield");
   assert.match(html, /title="After you take damage, you may obtain the card that caused damage on you\."/);
   assert.doesNotMatch(html, /private-opponent-card/);
   const sequenceSource = gameRoomSource.slice(gameRoomSource.indexOf("function TableResolutionSequence"), gameRoomSource.indexOf("function CardFace"));
@@ -686,7 +685,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /player-square-1 \{[\s\S]*left: var\(--opponent-seat-x\);[\s\S]*top: var\(--side-seat-y\)/, "left opponent uses the shared side seat");
   assert.match(sequenceStyleSource, /player-square-2 \{[\s\S]*left: 50%;[\s\S]*top: var\(--top-seat-y\)/, "top opponent remains centred");
   assert.match(sequenceStyleSource, /player-square-3 \{[\s\S]*right: var\(--opponent-seat-x\);[\s\S]*top: var\(--side-seat-y\)/, "right opponent mirrors the left seat");
-  assert.match(sequenceStyleSource, /\.game-shell \.play-center \{[\s\S]*top: clamp\(290px, 66%, 520px\)/, "piles use the lower-middle board anchor");
+  assert.match(sequenceStyleSource, /\.game-shell \.play-center \{[\s\S]*top: clamp\(290px, 66%, 520px\)/, "nonvisual discard flights keep their lower-middle anchor");
+  assert.match(sequenceStyleSource, /\.game-shell \.play-center > \.draw-stack,[\s\S]*?\.game-shell \.play-center > \.discard-stack \{[^}]*width: 1px;[^}]*height: 1px;[^}]*opacity: 0;[^}]*pointer-events: none;/, "Deck/Discard geometry targets are tiny, invisible and noninteractive");
   assert.match(gameRoomSource, /className="opponent-equipment-summary"[\s\S]*\{equipmentSummary\}/, "opponent equipment is summarized by its public slots");
   assert.match(gameRoomSource, /className="opponent-equipment-indicator" data-slot=\{key\} data-equipment-id=\{equipment\.id\} data-card-kind=\{equipment\.kind\} role="img"/, "equipment indicators retain the projected physical card identity and slot");
   assert.match(gameRoomSource, /function OpponentEquipmentGlyph/, "each equipment slot has its own compact visual glyph");

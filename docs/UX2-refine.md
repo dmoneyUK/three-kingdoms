@@ -1,6 +1,6 @@
 # WTK UX2 — Simplified Public Card UX
 
-**Version:** 2026-10-14 · **Branch:** `ux-v2` · **Status:** New product direction approved; §8.1 implementation deployed, user visual acceptance pending.
+**Version:** 2026-10-14 · **Branch:** `ux-v2` · **Status:** New product direction approved; §8.1 delivered for aggregate review, §8.2 in progress.
 
 This file is the **single active UX2 product/design authority**. It replaces the superseded, much longer UX2 design; previous revisions exist only in Git history. Older `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, historical roadmap records, old tests and screenshots are references to prior implementation, **not** permission to reinstate old visual requirements.
 
@@ -8,7 +8,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 **CURRENT execution priority (start at §8, not the historical §7 migration tasks):**
 
-1. **PHASE 1 — §8 (START HERE):** Repair and visually verify the deployed Attack/Dodge/Duel baseline. Execute **§8.5 Checkpoint A — seat-aware complete Duel card histories**, then **Checkpoint B — hide permanent Deck/Discard**, then **Checkpoint C — Inspector skill/equipment layout and reversible detail**. Independently test/deploy/report each checkpoint and **STOP for user/Reviewer acceptance**; do not move on merely because CI is green.
+1. **PHASE 1 — §8 (START HERE):** Repair and visually verify the deployed Attack/Dodge/Duel baseline. Execute **§8.5 Checkpoint A — seat-aware complete Duel card histories**, then **Checkpoint B — hide permanent Deck/Discard**, then **Checkpoint C — Inspector skill/equipment layout and reversible detail**. Implement, report and push each checkpoint independently. Per the user's 2026-10-14 instruction, record each as delivered and continue; the user and Reviewer will inspect the completed work together later.
 2. **PHASE 2 — §9:** Implement the separately approved **8-second shared Negation window** with server seat-priority, privacy and concurrency protections. Only start upon an explicit assignment after Phase 1 review, and independently STOP for acceptance.
 3. **PHASE 3 — §10:** Review and improve other card families incrementally, **one approved slice at a time**. The §10.2 A–F queue is a roadmap, **not permission to implement everything**. Seat-attached complete Duel histories are a Duel-specific exception; do not apply them automatically to all card families.
 
@@ -267,7 +267,7 @@ These are **current functional requirements**, not old combat-graph tasks. They 
 ### 8.5 Agent execution — three independent reviewer checkpoints
 
 **Checkpoint A — Duel history (first):**
-**Status:** Implementation delivered and deployed on `ux-v2`; awaiting user visual/manual acceptance. This agent did not capture authenticated multi-client gameplay screenshots, so the real-game visual acceptance cases below remain for review. Do not start Checkpoint B before acceptance.
+**Status:** Implementation delivered and deployed on `ux-v2`; pending aggregate user/Reviewer review. This agent did not capture authenticated multi-client gameplay screenshots, so the real-game visual acceptance cases below remain for review. Per the user's 2026-10-14 instruction, continue with Checkpoint B while preserving this acceptance gap for aggregate review.
 1. Inspect latest ux-v2 source and its existing public proof pipeline; reproduce Duel root + first, second and third authentic Attack from alternating players with an authenticated four-player game and cross-perspective view. Distinguish whether a missing card comes from proof data loss versus UI latest-per-actor replacement; no guessing.
 2. Implement **full Duel history attached to each true actor's Seat/Dock** (§8.1): top-row opponents stack cards down, left/right opponents expand inward horizontally, local player expands horizontally above Dock. Keep globally numbered true Duel/Attack chronology across both opponents and retain centre reveals; eliminate actorId replacement and +N-only reduction. Keep ordinary Attack/Dodge unchanged.
 3. Verify exact card/event order and cross-player ordinal labels, root preservation, 1/2/3/6+ Attack responses, repeated same actor, *both opponents top-row with two vertical histories*, *both side-column with two inward horizontal histories*, *local duelist with horizontal Dock history*, 390/~440/480px and wide, correct overflow scroll, new root reset, final settlement, mid-Duel reload, viewer switching, reduced motion, rapid events, no duplicate/ghost cards and no blocking of Inspect/Guidance/Hand/Confirm/Skip. STOP and provide real screenshots from initiator, responder and observer on ~440px before other refactors.

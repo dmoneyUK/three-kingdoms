@@ -511,59 +511,6 @@
   padding: 7px clamp(8px, 2vw, 24px);
 }
 
-.play-center {
-  z-index: 2;
-}
-
-.discard-stack .played-card {
-  width: 54px;
-  height: 76px;
-  border-width: 1px;
-  border-radius: 3px;
-  box-shadow: 0 5px 12px #0008;
-  animation: none;
-}
-
-.discard-stack .played-card > i {
-  left: 4px;
-  top: 3px;
-  font-size: 9px;
-}
-
-.discard-stack .played-card > i small {
-  font-size: 8px;
-}
-
-.discard-stack .played-card .card-name-mark {
-  max-width: 90%;
-  font-size: 9px;
-}
-
-.discard-stack .played-card > strong {
-  font-size: 4px;
-  margin-top: 4px;
-}
-
-/* The centre discard uses the same corner shield as a normal CardFace, scaled
-   to the small pile card rather than inheriting the full-size reveal marker. */
-.discard-stack .played-card > i {
-  left: -1px;
-  top: -1px;
-  width: 17px;
-  min-height: 24px;
-  padding: 1px 1px 3px;
-  border-width: 1px;
-  border-radius: 0 0 4px 0;
-  font-size: 7px;
-  line-height: .9;
-}
-
-.discard-stack .played-card > i small {
-  margin-top: 0;
-  font-size: 5px;
-  line-height: 1;
-}
-
 /* LocalPlayerDock layout. Each visible region owns its complete panel border. */
 .local-player-dock {
   --hand-panel-height: 108px;
@@ -830,7 +777,7 @@
 
 @media (max-width: 700px) {
   /* Keep the table proportionate above the dock on phone heights. The board
-     still owns the centred piles and all four player slots; the lower empty
+     still owns the nonvisual discard-flight anchor and all four player slots; the lower empty
      track is simply smaller so the side seats do not float too far above the
      local dock. */
   .local-player-dock { --top-panel-height: 116px; grid-template-columns: 121px minmax(0, 1fr); grid-template-rows: auto var(--top-panel-height) var(--hand-panel-height) minmax(62px, auto); }
@@ -1622,7 +1569,7 @@
 
 /* Mobile board seats: the relative seat classes remain the source of truth,
    but the four-player composition uses one shared arc instead of three grid
-   bands. The pile stays below that arc and above the local dock. */
+   bands. The invisible discard-flight anchor stays below that arc and above the local dock. */
 .game-shell .player-board {
   --opponent-seat-x: clamp(3px, 2.5vw, 28px);
   --top-seat-y: clamp(8px, 5%, 42px);
@@ -2592,50 +2539,7 @@
 
 }
 
-/* UX2.0VIS-12C: keep the ordinary mobile piles compact and in the background.
-   A top discard card retains its existing face/art; only the persistent pile
-   envelope, empty surface and labels are visually quieter. */
-@media (max-width: 650px) {
-  .game-shell .play-center {
-    gap: 8px;
-  }
-
-  .game-shell .draw-stack,
-  .game-shell .discard-stack {
-    width: 56px;
-    height: 78px;
-    box-shadow: 0 6px 14px #0007;
-  }
-
-  .game-shell .draw-stack {
-    background: #121510;
-    border-color: #736548;
-    color: #bca96d;
-  }
-
-  .game-shell .discard-stack {
-    background: #343127;
-    border-color: #786945;
-    color: #c9b98e;
-    transform: none;
-  }
-
-  .game-shell .draw-stack b,
-  .game-shell .discard-stack b {
-    font-size: 16px;
-  }
-
-  .game-shell .draw-stack span,
-  .game-shell .discard-stack span {
-    margin-top: 6px;
-    font-size: 7px;
-    letter-spacing: .1em;
-  }
-}
-
-/* UX2.0VIS-12O: keep persistent piles outside the active four-player Stage.
-   Taller mobile boards have a clear bottom edge; compact short boards reserve
-   the narrow strip above the opponent row for readable pile summaries. */
+/* Keep the off-screen discard-flight anchor in a safe band on taller phones. */
 @media (min-width: 401px) and (max-width: 650px) and (min-height: 700px) {
   .game-shell .play-table[data-seat-topology="top-row"] > .play-center {
     top: auto;
@@ -2644,71 +2548,11 @@
   }
 }
 
-/* A short interaction safe zone cannot hold a full portrait spine. Preserve
-   the causal order in a compact Source -> Effect -> Target row, like Dying's
-   established short-safe-zone treatment, without invading the Dock. */
-
 @media (max-width: 400px) and (max-height: 700px) {
   .game-shell .play-table[data-seat-topology="top-row"] > .play-center {
     top: 6px;
     left: 50%;
-    gap: 6px;
-    align-items: center;
     translate: -50% 0;
-  }
-
-  .game-shell .play-table[data-seat-topology="top-row"] > .play-center > .draw-stack,
-  .game-shell .play-table[data-seat-topology="top-row"] > .play-center > .discard-stack {
-    display: flex;
-    width: 58px;
-    height: 40px;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    padding: 2px;
-    border-radius: 3px;
-  }
-
-  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .draw-stack b,
-  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .discard-stack b {
-    font-size: 11px;
-    line-height: 1;
-  }
-
-  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .draw-stack span,
-  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .discard-stack span {
-    margin-top: 0;
-    font-size: 6px;
-    letter-spacing: .04em;
-    line-height: 1;
-  }
-
-  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .discard-stack .played-card {
-    width: 26px;
-    height: 36px;
-    border-radius: 2px;
-    box-shadow: none;
-  }
-
-  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .discard-stack .played-card > i {
-    width: 13px;
-    min-height: 18px;
-    font-size: 6px;
-  }
-
-  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .discard-stack .played-card > i small {
-    font-size: 4px;
-  }
-
-  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .discard-stack .played-card > b {
-    font-size: 5px;
-    line-height: 1;
-  }
-
-  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .discard-stack .played-card > strong {
-    margin-top: 1px;
-    font-size: 3px;
-    line-height: 1;
   }
 }
 
@@ -3684,14 +3528,6 @@
   }
 }
 
-/* UX2 §6.27: free a stable Attack/Dodge lane on dense 8-player phones. Keep
-   both persistent piles visible and move them only within the otherwise
-   seat-free center band; Seats, Dock, and controls remain fixed. */
-
-/* UX2 B1: keep a full current Duel round above one compact historical round. */
-
-/* UX2 B1 corrective fit tiers and compact initial Negation notice. */
-
 /* Current actor emphasis follows CurrentAction locally and validated public
    decision ownership for opponent seats. The in-place outline preserves the
    fixed Seat/Dock geometry and remains distinct from the gold turn marker. */
@@ -3701,4 +3537,35 @@
   border-color: #a6e0c5;
   outline: 3px solid #78b7b0;
   outline-offset: -3px;
+}
+
+/* UX2 §8.2: retain measurable noninteractive points for card-flight code, but
+   remove all Deck/Discard frames, labels and persistent card faces. */
+.game-shell .play-center {
+  display: block;
+  width: 0;
+  height: 0;
+  gap: 0;
+  pointer-events: none;
+}
+
+.game-shell .play-center > .draw-stack,
+.game-shell .play-center > .discard-stack {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: transparent;
+  opacity: 0;
+  transform: none;
+  pointer-events: none;
 }
