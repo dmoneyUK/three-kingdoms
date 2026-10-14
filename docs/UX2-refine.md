@@ -1,6 +1,6 @@
 # WTK UX2 — Simplified Public Card UX
 
-**Version:** 2026-10-14 · **Branch:** `ux-v2` · **Status:** New product direction approved; §8.1 and §8.2 delivered for aggregate review, §8.3 in progress.
+**Version:** 2026-10-14 · **Branch:** `ux-v2` · **Status:** New product direction approved; §8.1–§8.4 delivered for aggregate review; §9.4 Gate A is current.
 
 This file is the **single active UX2 product/design authority**. It replaces the superseded, much longer UX2 design; previous revisions exist only in Git history. Older `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, historical roadmap records, old tests and screenshots are references to prior implementation, **not** permission to reinstate old visual requirements.
 
@@ -8,8 +8,8 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 **CURRENT execution priority (start at §8, not the historical §7 migration tasks):**
 
-1. **PHASE 1 — §8 (START HERE):** Repair and visually verify the deployed Attack/Dodge/Duel baseline. Execute **§8.5 Checkpoint A — seat-aware complete Duel card histories**, then **Checkpoint B — hide permanent Deck/Discard**, then **Checkpoint C — Inspector skill/equipment layout and reversible detail**. Implement, report and push each checkpoint independently. Per the user's 2026-10-14 instruction, record each as delivered and continue; the user and Reviewer will inspect the completed work together later.
-2. **PHASE 2 — §9:** Implement the separately approved **8-second shared Negation window** with server seat-priority, privacy and concurrency protections. Only start upon an explicit assignment after Phase 1 review, and independently STOP for acceptance.
+1. **PHASE 1 — §8:** Checkpoints A (Duel history), B (hide permanent Deck/Discard), and C (Inspector skill/equipment layout and reversible detail) are delivered. Real-device visual evidence gaps remain recorded under each checkpoint; aggregate user/Reviewer acceptance is pending.
+2. **PHASE 2 — §9:** The separately approved **8-second shared Negation window** is now assigned by the user's 2026-10-14 instruction to continue sequentially from Chapter 8 without interim pauses. Execute §9.4 A, B, and C as bounded checkpoints with their specified gates; record delivery and acceptance gaps, then continue. The aggregate review of §8 remains pending.
 3. **PHASE 3 — §10:** Review and improve other card families incrementally, **one approved slice at a time**. The §10.2 A–F queue is a roadmap, **not permission to implement everything**. Seat-attached complete Duel histories are a Duel-specific exception; do not apply them automatically to all card families.
 
 **Historical context only:** The initial UX2 migration consisted of `UX2-NO-GRAPH-REMOVAL-01` and `UX2-CENTRE-REVEAL-SEAT-CARDS-02` (documented in §7). Their initial baseline is deployed; **do not restart these tasks**. Chapters 1–6 remain the normative design/quality requirements. The Coding Agent alone owns `HANDOVER.md`; Planner/Reviewer does not edit it.
@@ -263,6 +263,8 @@ These are **current functional requirements**, not old combat-graph tasks. They 
 
 ### 8.4 Inspect equipment description — nested, reversible, not destructive
 
+**Status (Coding Agent, 2026-10-14):** Delivered in feature commit `b1c06696ed4d19c54b6adaa3ff628b89148062c1`; the initial run `38533927630` failed only on a redundant JSX region role. A separate one-line lint repair at `53460f685a482260d82e9d550dd13f84ea25b35f` passed run `38534219671` (Lint/fast tests, API tests, browser startup/room smoke, Worker deploy, and production smoke). No local automated suites or authenticated device screenshots were run. This checkpoint and the rest of §8 are pending aggregate user/Reviewer acceptance; continue per the user's 2026-10-14 instruction.
+
 - Tapping a visible public equipped CardFace (or public Judgement CardFace) **must not invoke onCloseInspect before showing information**. Keep the same player's Inspector mounted and retain its active hero, expanded skill, currently selected target, and scroll state. Avoid opening a screen-filling global PRIVATE CARD INFORMATION dialog for an opponent's already-public equipment.
 - Preferred UX: show an **inline card explanation in the Inspector's detail region** (equipment card name, rank/suit, authentic canonical rules, clear Back/Close detail affordance), while the hero header/profile and public equipment stay visible. Only one of the skill description and card description need occupy the Detail region at a time. Back returns to the previously open skill text and previous scroll offset without closing Inspector. The Inspector's top-level × alone dismisses the whole Inspector; tapping outside follows existing non-destructive interaction policy.
 - Keep the existing generic card-info dialog where appropriate for a *local Hand card*, but its label must not falsely describe public equipped cards as private. Opening/closing the nested explanation must not alter a selected combat target, submitted action, Hand selection, or current server CurrentAction. Preserve keyboard Escape/back handling and sensible focus return to the previously tapped equipment.
@@ -282,6 +284,7 @@ These are **current functional requirements**, not old combat-graph tasks. They 
 2. Verify no visible DECK/DISCARD block in 390/440/480/wide screenshot; no dead central hitboxes; card movement/retirement remains correct. STOP for reviewer screenshot.
 
 **Checkpoint C — Inspector layout + equipment nested detail:**
+**Status:** Delivered by `b1c06696ed4d19c54b6adaa3ff628b89148062c1` plus the separate lint repair `53460f685a482260d82e9d550dd13f84ea25b35f`; Actions run `38534219671` passed all jobs including production smoke. No authenticated device screenshots were captured. Pending aggregate user/Reviewer acceptance; continue to §9 by direct user instruction.
 1. Reproduce 0/1/2/4 public equipment items with a long Hero skill (Hua Tuo First Aid / Prodigal Healer) at 440px; inspect computed dimensions and overflow for shell, summary, equipment, details. Replace conflicting max-height/nested-clip rules with predictable contained scroll, and fix proportional rank/suit sizing for miniature cards.
 2. Remove the destructive onCloseInspect-before-onInfoCard sequence in InteractionStage, add local nested card explanation and return-to-prior-skill/scroll/focus behavior. Keep ordinary self-Hand info and server legal target selection unaffected.
 3. Test tap skill→scroll to **end**→tap public equipment→read full rules→Back→original skill expanded and same hero target/scroll→close Inspector; also skill A↔B, public Judgement card, equipment-rich four-player, 6/8-seat topologies, iPhone Safari/Chrome, Escape/back and local player self-card. Validate no private Hand leaks or speculative CardFaces.
@@ -329,6 +332,7 @@ Five seats clockwise **1→2→3→4→5**; seat 1 plays Duel against seat 3.
 ### 9.4 Agent delivery in reviewable checkpoints
 
 **A. Canonical window engine (no UX changes first)**
+**Current assignment:** `ux-v2` Coding Agent is implementing this checkpoint under the user's 2026-10-14 instruction. The historical per-checkpoint STOP below is superseded for this run by the direct instruction to continue and defer review until the user and Reviewer inspect the delivered work together. Keep Gate A bounded and preserve its acceptance criteria.
 - Inspect app/api/rooms/route.ts: nextEligibleNegationResponder, advanceNegation, advanceNegationDecision, startNegation, startJudgementNegation, per-target Group/Harvest opening, canonical respond/decline_response, resume/resolveDeferredStratagem and window expiry. Inspect game/pending.ts, game/response-decision.ts and causal-envelopes.
 - Design the durable window state and per-player submission protocol; use existing effect anchors, provider resolver, real card/event proofs and concurrency guards. Before editing heavy route code, record the new types, settlement transitions and handling of legacy persisted old Negation pending. Implement parallel collection + deterministic one-winner close + proper counter cycles.
 - **Gate A:** five-seat Duel unit/API test proving seat 2 and 4 both submit in window #1; seat 2 wins regardless of POST order; seat 4 retains its card; counter window opens after seat 2 and seat 4 may counter independently. Also test nobody submits → exactly one 8s wait.
