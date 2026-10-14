@@ -1,14 +1,12 @@
 # WTK UX2 — Current Handoff
 
 Branch: `ux-v2`  
-Mode: `USER-AUTHORIZED AUTONOMOUS UI / LAYOUT`
+Design: `docs/UX2-refine.md`, blob `15bec8812274b6beb09e332d7a7400fde35b3ac4`
 
 ## Current task
 
-`UX2-8.1-DUEL-SEAT-HISTORY-01` — Implement the §8.1 Duel history using the validated root and response proofs. Preserve every committed physical card and global ordinal, partition by actual actor, and place top-row histories vertically, side-seat histories inward horizontally, and local history horizontally above the Dock. Keep scroll contained, centre reveal stable, and all gameplay/privacy behavior unchanged.
+`UX2-8.1-DUEL-SEAT-HISTORY-01` — implementation is deployed; waiting for user visual/manual acceptance. Do not start Checkpoint B or another UX2 task before acceptance.
 
-Design reviewed: `docs/UX2-refine.md`, blob `74e3d2bce83cd7ccfa212c82cd5166ce7f6c31e7`.
+Implementation SHA: `15f0c0a53fb22bdb1a24bd79b3d995da68feb4f1`. Actions run `38527792209` passed Lint/fast tests, API tests, browser startup/room smoke, D1 migrations, build, Worker deploy and production smoke. Production `/api/health` returned `{"ok":true,"worker":"available"}`.
 
-Source audit: the server-backed projection validates the root and every response event/identity/ordinal. The renderer caused the loss by reducing events to the latest card per actor and deleting prior cards from the same actor.
-
-Current status: implementation in progress. After push, report exact-SHA Actions/deploy evidence and await the user's manual visual acceptance before selecting another task. Do not claim reviewer acceptance or start §8.2.
+Agent did not capture authenticated multi-client Duel screenshots; real-game visual acceptance remains open. No local automated tests were run. After user acceptance, select the next task from the then-current design and update this handoff.
