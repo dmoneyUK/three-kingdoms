@@ -2478,6 +2478,7 @@ function groupResponseDecision(
   resolutionId?: string,
   damageCards: Card[] = heldCards.slice(0, 1),
   physicalSuit?: Card["suit"],
+  rootEventId?: string,
 ): CausalCreation<GroupResponsePending> {
   const root = createCausalRoot({
     stage: "GROUP_RESOLUTION",
@@ -2486,7 +2487,7 @@ function groupResponseDecision(
   });
   const causal = root.context;
   const participantProgress = groupParticipantProgressFor(cardKind, resolutionSemantics, causal, orderedTargetIds);
-  return { value: { kind: "response", actorId, causal, requirement: { kind: requiredKind === "Attack" ? "attack" : "dodge", sourceId, actorId, context: requiredKind === "Attack" ? "barbarian_invasion" : undefined }, reason, deadline, ...(resolutionId ? { resolutionId } : {}), continuation: { kind: "group", cardKind, sourceId, remainingIds, requiredKind, resumePhase, heldCards, damageCards, causal, ...(physicalSuit ? { physicalSuit } : {}), sequenceStartCardId: damageCards[0]?.id ?? heldCards[0]?.id ?? "", ...(resolutionId ? { resolutionId } : {}), ...(participantProgress ? { participantProgress } : {}) } }, createdEnvelope: root.envelope };
+  return { value: { kind: "response", actorId, causal, requirement: { kind: requiredKind === "Attack" ? "attack" : "dodge", sourceId, actorId, context: requiredKind === "Attack" ? "barbarian_invasion" : undefined }, reason, deadline, ...(resolutionId ? { resolutionId } : {}), continuation: { kind: "group", cardKind, sourceId, remainingIds, requiredKind, resumePhase, heldCards, damageCards, causal, ...(physicalSuit ? { physicalSuit } : {}), sequenceStartCardId: damageCards[0]?.id ?? heldCards[0]?.id ?? "", ...(rootEventId ? { rootEventId } : {}), ...(resolutionId ? { resolutionId } : {}), ...(participantProgress ? { participantProgress } : {}) } }, createdEnvelope: root.envelope };
 }
 
 function groupResolutionEnvelopeForParticipant(envelope: CausalEnvelope | null, response: ResponsePending, continuation: GroupContinuation, actorId: string) {
@@ -7405,7 +7406,7 @@ export async function POST(request: Request) {
         const requiredKind = card.kind === "BarbarianInvasion" ? "Attack" : "Dodge"; const cardName = card.kind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows";
         const presentation = addCardEventWithId(log, me.name, card, "All other players"); log = addLog(presentation.log, `${me.name} plays ${cardName}.`);
         const orderedTargetIds = targets.map((player) => player.id);
-        const groupCreation = groupResponseDecision(card.kind, "GROUP", me.id, targets[0].id, orderedTargetIds, orderedTargetIds.slice(1), requiredKind, liveRoom.phase, `Respond to ${cardName}: select ${requiredKind} or take 1 damage`, nextResponseDeadline(targets[0]), [card], latestResolutionId(log), [card]);
+        const groupCreation = groupResponseDecision(card.kind, "GROUP", me.id, targets[0].id, orderedTargetIds, orderedTargetIds.slice(1), requiredKind, liveRoom.phase, `Respond to ${cardName}: select ${requiredKind} or take 1 damage`, nextResponseDeadline(targets[0]), [card], latestResolutionId(log), [card], undefined, presentation.eventId);
         const pending = withPresentationBarrier(groupCreation.value, log, presentation.eventId);
         await beginStratagemUse(liveRoom, me, players, card, card, "all other players", targets[0].id, { kind: "group", pending }, hand, deck, discard, log, groupCreation.createdEnvelope);
       } else if (card.kind === "Lightning" && !playableAttack) {

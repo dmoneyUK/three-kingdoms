@@ -21,12 +21,13 @@ import type {
   PresentationAttackDodgeResponse,
   PresentationDuelExchange,
   PresentationDeflectionAction,
+  PresentationGroupRootCardProof,
   PresentationOrderedAttackRootProof,
   PresentationSelfTargetAction,
   PresentationStableBoundary,
   PresentationV2,
 } from "./presentation-v2";
-import { isSupportedAttackDodgeResponseProof } from "./presentation-v2";
+import { isProvenGroupRootCardProof, isSupportedAttackDodgeResponseProof } from "./presentation-v2";
 
 /** The only public identity a future presentation client may use. */
 export type PresentationSnapshotIdentity = {
@@ -70,6 +71,7 @@ export type PresentationSnapshotGroupProgress = {
   targetIds: readonly string[];
   currentParticipantId: string;
   participants: readonly PresentationSnapshotGroupParticipantProgress[];
+  rootCardProof?: PresentationGroupRootCardProof;
   orderedAttackRoot?: PresentationOrderedAttackRootProof;
 };
 
@@ -673,6 +675,16 @@ function groupParticipantProgressFor(
     && sameIds(rootProof.targetIds, targetIds)
     ? { ...rootProof, targetIds: [...rootProof.targetIds] }
     : undefined;
+  const rawGroupRootCardProof = group.rootCardProof;
+  const rootCardProof = group.cardKind !== "SkyPiercingHalberdAttack" && resolutionSemantics === "GROUP"
+    && isProvenGroupRootCardProof(rawGroupRootCardProof)
+    && rawGroupRootCardProof.interactionId === group.interactionId
+    && rawGroupRootCardProof.groupFrameId === group.groupFrameId
+    && rawGroupRootCardProof.sourceId === group.sourceId
+    && rawGroupRootCardProof.cardKind === group.cardKind
+    && sameIds(rawGroupRootCardProof.targetIds, targetIds)
+    ? { ...rawGroupRootCardProof, targetIds: [...rawGroupRootCardProof.targetIds] }
+    : undefined;
 
   return {
     cardKind: group.cardKind,
@@ -685,6 +697,7 @@ function groupParticipantProgressFor(
     targetIds: [...targetIds],
     currentParticipantId: group.currentParticipantId,
     participants: copied,
+    ...(rootCardProof ? { rootCardProof } : {}),
     ...(orderedAttackRoot ? { orderedAttackRoot } : {}),
   };
 }

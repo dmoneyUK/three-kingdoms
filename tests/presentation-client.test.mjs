@@ -865,6 +865,45 @@ test("adapter preserves only a Halberd root link that matches ordered progress",
   }
 });
 
+test("adapter forwards a public Group root-card proof equally and rejects mismatched links", () => {
+  const base = groupProgressSnapshot();
+  const progress = base.groupParticipantProgress;
+  const rootCardProof = {
+    semantics: "PROVEN",
+    relation: "GROUP_ROOT_CARD",
+    interactionId: base.identity.interactionId,
+    groupFrameId: progress.groupFrameId,
+    rootEventId: "raining-arrows-event",
+    rootEventResolutionId: "raining-arrows-resolution",
+    rootCardId: "raining-arrows-card",
+    sourceId: "A",
+    cardKind: "RainingArrows",
+    targetIds: [...progress.targetIds],
+  };
+  const baseWithProof = { ...base, groupParticipantProgress: { ...progress, rootCardProof } };
+  const acting = buildPresentationClientView(baseWithProof, "B");
+  const observer = buildPresentationClientView({
+    ...baseWithProof,
+    localControl: { ...baseWithProof.localControl, actorId: null, entitled: false },
+  }, "A");
+  assert.deepEqual(acting.groupResolution?.rootCardProof, rootCardProof);
+  assert.deepEqual(observer.groupResolution?.rootCardProof, rootCardProof, "public root proof is viewer-equal");
+
+  for (const invalidProof of [
+    { ...rootCardProof, interactionId: "stale-interaction" },
+    { ...rootCardProof, groupFrameId: "other-group-frame" },
+    { ...rootCardProof, sourceId: "other-source" },
+    { ...rootCardProof, targetIds: [...rootCardProof.targetIds].reverse() },
+  ]) {
+    const view = buildPresentationClientView({
+      ...baseWithProof,
+      groupParticipantProgress: { ...progress, rootCardProof: invalidProof },
+    }, "B");
+    assert.ok(view.groupResolution, "participant progress remains available");
+    assert.equal(view.groupResolution.rootCardProof, undefined, "mismatched root proof fails closed at the client boundary");
+  }
+});
+
 test("adapter keeps ordered Halberd progress when child Dying foregrounds its paused target", () => {
   const base = groupProgressSnapshot({ child: true, cardKind: "SkyPiercingHalberdAttack" });
   const targetIds = [...base.groupParticipantProgress.targetIds];

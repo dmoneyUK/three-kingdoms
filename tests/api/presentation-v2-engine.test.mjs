@@ -1947,6 +1947,25 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   const initial = await state(opened.code, opened.sourceMember.token);
   assert.equal(initial.data.currentAction.actorId, opened.source.id);
   assert.equal(initial.data.presentationV2.reactionChain?.groupTargetEffectScope?.effectState, "ACTIVE");
+  const groupContinuation = authoritativePending(opened.code).continuation.effect.pending.continuation;
+  const groupRootEvent = initial.data.timeline.find((event) => event.id === groupContinuation.rootEventId);
+  assert.ok(groupRootEvent, "the public Group root has its exact physical card event");
+  const groupRootProof = {
+    semantics: "PROVEN",
+    relation: "GROUP_ROOT_CARD",
+    interactionId: initial.data.presentationV2.groupResolution.interactionId,
+    groupFrameId: initial.data.presentationV2.groupResolution.groupFrameId,
+    rootEventId: groupRootEvent.id,
+    rootEventResolutionId: groupRootEvent.resolutionId,
+    rootCardId: groupRootEvent.card.id,
+    sourceId: opened.source.id,
+    cardKind: "RainingArrows",
+    targetIds: [opened.target.id, opened.bob.id, opened.carol.id],
+  };
+  assert.deepEqual(initial.data.presentationV2.groupResolution.rootCardProof, groupRootProof,
+    "the Group projection joins its exact public root event to the authoritative Group frame");
+  assert.deepEqual(initial.data.presentationSnapshot.groupParticipantProgress.rootCardProof, groupRootProof,
+    "the root proof crosses the public PresentationSnapshot boundary");
   const firstWindowId = initial.data.currentAction.negationWindowId;
   assert.ok(firstWindowId);
   const root = initial.data.causalEnvelope;
@@ -1994,6 +2013,8 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   }, "a submitted Negation in the Group continuation is bound to its proven Group frame");
   const counterOtherViewer = await assertProjectionMatchesEngine(opened.code, opened.sourceMember.token);
   assert.deepEqual(publicSnapshot(counterOtherViewer.presentationSnapshot), publicSnapshot(counter.data.presentationSnapshot), "the nested Group Negation history is viewer-equal");
+  assert.deepEqual(counterOtherViewer.presentationSnapshot.groupParticipantProgress?.rootCardProof, groupRootProof,
+    "the exact public root proof is viewer-equal");
   assert.equal(counter.data.currentAction.options?.some((option) => option.providerId === "negation_card"), true);
   assert.deepEqual(counterOtherViewer.currentAction.options, [], "the non-acting Group viewer receives no private Negation options");
   const pending = authoritativePending(opened.code);
@@ -2004,6 +2025,8 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   assert.equal(counter.data.causalEnvelope.frames.length, 1);
   assert.equal(counter.data.causalEnvelope.frames[0].stage, "NEGATION");
   assert.equal(counter.data.presentationV2.groupResolution?.groupFrameId, root.activeFrameId);
+  assert.deepEqual(counter.data.presentationV2.groupResolution?.rootCardProof, groupRootProof,
+    "the same root event remains proven during nested Group Negation");
   assert.equal(counter.data.presentationV2.groupResolution?.stage, "NEGATION");
   assert.deepEqual(counter.data.presentationV2.groupResolution?.targetIds, [opened.target.id, opened.bob.id, opened.carol.id]);
   assert.equal(counter.data.presentationV2.groupResolution?.currentParticipantId, opened.target.id);

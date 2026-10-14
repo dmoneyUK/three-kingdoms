@@ -405,6 +405,32 @@ export type PresentationOrderedAttackRootProof = {
   targetIds: readonly string[];
 };
 
+/** Exact public root-card link for a standard Group interaction. */
+export type PresentationGroupRootCardProof = {
+  semantics: "PROVEN";
+  relation: "GROUP_ROOT_CARD";
+  interactionId: string;
+  groupFrameId: string;
+  rootEventId: string;
+  rootEventResolutionId: string;
+  rootCardId: string;
+  sourceId: string;
+  cardKind: "BarbarianInvasion" | "RainingArrows";
+  targetIds: readonly string[];
+};
+
+export function isProvenGroupRootCardProof(value: unknown): value is PresentationGroupRootCardProof {
+  const proof = record(value);
+  return Boolean(proof && proof.semantics === "PROVEN" && proof.relation === "GROUP_ROOT_CARD"
+    && stringValue(proof.interactionId) && stringValue(proof.groupFrameId)
+    && stringValue(proof.rootEventId) && stringValue(proof.rootEventResolutionId)
+    && stringValue(proof.rootCardId) && stringValue(proof.sourceId)
+    && (proof.cardKind === "BarbarianInvasion" || proof.cardKind === "RainingArrows")
+    && Array.isArray(proof.targetIds) && proof.targetIds.length > 0
+    && proof.targetIds.every((targetId) => typeof targetId === "string" && targetId.length > 0)
+    && new Set(proof.targetIds).size === proof.targetIds.length);
+}
+
 export function isProvenOrderedAttackRootProof(value: unknown): value is PresentationOrderedAttackRootProof {
   const proof = record(value);
   if (!proof || proof.semantics !== "PROVEN" || proof.relation !== "ORDERED_ATTACK_ROOT"
@@ -615,6 +641,7 @@ export type PresentationV2 = {
     participantIds: readonly string[];
     activeParticipantId: string | null;
     participantProgress: readonly { playerId: string; order: number; status: GroupParticipantProgressStatus; outcome?: GroupParticipantProgressOutcome }[] | null;
+    rootCardProof?: PresentationGroupRootCardProof;
     orderedAttackRoot?: PresentationOrderedAttackRootProof;
   } | null;
   decision: { kind: CurrentAction["kind"] | null; actorId: string | null; actionRevision: string; resolutionId: string | null; readyAfterEventId: string | null; deadline: number } | null;
@@ -1075,6 +1102,7 @@ function groupPresentation(
     resolutionSemantics: GroupResolutionSemantics;
     participants: Array<{ playerId: string; order: number; status: GroupParticipantProgressStatus; outcome?: GroupParticipantProgressOutcome }>;
   } | null,
+  rootCardProof: PresentationGroupRootCardProof | null,
   orderedAttackRoot: PresentationOrderedAttackRootProof | null,
 ) {
   if (!scene || !groupValues) return null;
@@ -1100,6 +1128,7 @@ function groupPresentation(
     participantIds: scene.participantIds,
     activeParticipantId: groupValues.activeParticipantId,
     participantProgress: participantProgress?.participants ?? null,
+    ...(rootCardProof ? { rootCardProof } : {}),
     ...(orderedAttackRoot ? { orderedAttackRoot } : {}),
   };
 }
@@ -1439,6 +1468,60 @@ function orderedAttackRootProofFor(
     targetIds: [...participantProgress.participants.map(({ playerId }) => playerId)],
   };
   return isProvenOrderedAttackRootProof(proof) ? proof : null;
+}
+
+function groupRootCardProofFor(
+  envelope: CausalEnvelope | null,
+  group: RecordLike | null,
+  values: GroupProjectionValues | null,
+  scene: PresentationInteractionScene | null,
+  participantProgress: ReturnType<typeof groupParticipantProgress>,
+  timeline: readonly PresentationV2Event[],
+): PresentationGroupRootCardProof | null {
+  const causal = record(group?.causal);
+  const root = values?.groupFrame;
+  const rootEventId = stringValue(group?.rootEventId);
+  const rootCardId = stringValue(group?.sequenceStartCardId);
+  const rootResolutionId = stringValue(group?.resolutionId);
+  const heldCards = Array.isArray(group?.heldCards) ? group.heldCards.map(record) : [];
+  const heldRootCards = heldCards.filter((heldCard) => heldCard?.id === rootCardId);
+  const heldRootCard = heldRootCards.length === 1 ? heldRootCards[0] : null;
+  const rootEvent = uniqueTimelineEventById(rootEventId, timeline);
+  const cardEvents = rootCardId ? timeline.filter((event) => eventCardIds(event).includes(rootCardId)) : [];
+  const sourceId = values?.sourceId;
+  const targetIds = values?.targetIds ?? [];
+
+  if (!envelope || !group || group.kind !== "group" || !values || !participantProgress
+    || participantProgress.resolutionSemantics !== "GROUP"
+    || group.cardKind !== "BarbarianInvasion" && group.cardKind !== "RainingArrows"
+    || !causal || causal.interactionId !== envelope.interactionId || causal.frameId !== root?.frameId
+    || !root || root.parentFrameId !== null || !["GROUP_RESOLUTION", "NEGATION"].includes(root.stage)
+    || root.origin.originEffect !== group.cardKind || root.origin.originSourceId !== sourceId
+    || root.current.currentSourceId !== sourceId || !sourceId
+    || root.origin.originalTargetIds.length !== targetIds.length
+    || root.origin.originalTargetIds.some((targetId, index) => targetId !== targetIds[index])
+    || !scene || scene.semantics !== "PROVEN" || scene.interactionId !== envelope.interactionId
+    || scene.rootFrameId !== root.frameId || scene.sourceId !== sourceId
+    || scene.targetIds.length !== targetIds.length || scene.targetIds.some((targetId, index) => targetId !== targetIds[index])
+    || !rootEventId || !rootCardId || !rootResolutionId || !heldRootCard
+    || heldRootCard.kind !== group.cardKind || !rootEvent || cardEvents.length !== 1 || cardEvents[0] !== rootEvent
+    || rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
+    || rootEvent.playedAs !== undefined || rootEvent.card?.kind !== group.cardKind || rootEvent.card.id !== rootCardId
+    || rootEvent.resolutionId !== rootResolutionId) return null;
+
+  const proof: PresentationGroupRootCardProof = {
+    semantics: "PROVEN",
+    relation: "GROUP_ROOT_CARD",
+    interactionId: envelope.interactionId,
+    groupFrameId: root.frameId,
+    rootEventId,
+    rootEventResolutionId: rootResolutionId,
+    rootCardId,
+    sourceId,
+    cardKind: group.cardKind,
+    targetIds: [...targetIds],
+  };
+  return isProvenGroupRootCardProof(proof) ? proof : null;
 }
 
 function groupTargetEffectScopeFor(
@@ -2846,6 +2929,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
   const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene, input.timeline);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
+  const groupRootCardProof = groupRootCardProofFor(envelope, group, groupValues, interactionScene, projectedGroupParticipantProgress, input.timeline);
   const orderedAttackRoot = orderedAttackRootProofFor(envelope, group, groupValues, interactionScene, projectedGroupParticipantProgress, input.timeline);
   const dyingBarrier = dyingBarrierFor(envelope, input.pending);
   const reactionChain = reactionChainFor(input.timeline, envelope, input.pending, interactionScene, projectedBumperHarvestProgress, groupValues, projectedGroupParticipantProgress);
@@ -2893,7 +2977,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     ...(attackDodgeResponses.length ? { attackDodgeResponses } : {}),
     oathRecipientScope,
     bumperHarvestProgress: projectedBumperHarvestProgress,
-    groupResolution: groupCardKind ? groupPresentation(interactionScene, groupValues, projectedGroupParticipantProgress, orderedAttackRoot) : null,
+    groupResolution: groupCardKind ? groupPresentation(interactionScene, groupValues, projectedGroupParticipantProgress, groupRootCardProof, orderedAttackRoot) : null,
     decision: input.currentAction ? { kind: input.currentAction.kind, actorId: isBumperHarvestNegationPending(input.pending) ? null : input.currentAction.actorId, actionRevision: input.actionRevision, resolutionId: input.currentAction.presentation?.resolutionId ?? null, readyAfterEventId: barrierId, deadline: input.currentAction.deadline } : null,
     settlement: settlementEvent ? { eventId: settlementEvent.id, resolutionId: settlementEvent.resolutionId ?? null } : null,
     transitionEvents: input.timeline.filter((event) => event.presentation !== false && relevantIds.includes(event.id)).map((event) => ({ eventId: event.id, type: event.type, resolutionId: event.resolutionId ?? null })),

@@ -650,6 +650,51 @@ test("snapshot drops AOE progress on root identity, order, participant, or statu
   }
 });
 
+test("snapshot forwards only a Group root-card proof bound to its public interaction scope", () => {
+  const interaction = groupScene();
+  const targetIds = [...interaction.targetIds];
+  const rootCardProof = {
+    semantics: "PROVEN",
+    relation: "GROUP_ROOT_CARD",
+    interactionId: interaction.interactionId,
+    groupFrameId: interaction.rootFrameId,
+    rootEventId: "raining-arrows-event",
+    rootEventResolutionId: "raining-arrows-resolution",
+    rootCardId: "raining-arrows-card",
+    sourceId: "A",
+    cardKind: "RainingArrows",
+    targetIds,
+  };
+  const base = groupResolution(interaction, { rootCardProof });
+  const projected = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: base },
+    currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "group-root-proof",
+    viewerId: "B",
+  });
+  assert.deepEqual(projected.groupParticipantProgress?.rootCardProof, rootCardProof);
+
+  for (const invalidProof of [
+    { ...rootCardProof, interactionId: "other-interaction" },
+    { ...rootCardProof, groupFrameId: "other-frame" },
+    { ...rootCardProof, rootEventId: "" },
+    { ...rootCardProof, rootEventResolutionId: "" },
+    { ...rootCardProof, rootCardId: "" },
+    { ...rootCardProof, sourceId: "other-source" },
+    { ...rootCardProof, cardKind: "BarbarianInvasion" },
+    { ...rootCardProof, targetIds: [...targetIds].reverse() },
+  ]) {
+    const result = composePresentationSnapshot({
+      presentationV2: { ...presentation(interaction), groupResolution: { ...base, rootCardProof: invalidProof } },
+      currentAction: { kind: "response", actorId: "B" },
+      actionRevision: "group-root-proof-invalid",
+      viewerId: "B",
+    });
+    assert.ok(result.groupParticipantProgress, "independent participant progress remains usable");
+    assert.equal(result.groupParticipantProgress.rootCardProof, undefined, "mismatched public root identity is withheld");
+  }
+});
+
 test("snapshot preserves only a resolved Raining Arrows Damaged outcome", () => {
   const interaction = groupScene({ currentParticipantId: "C" });
   const base = groupResolution(interaction, { currentParticipantId: "C", participantProgress: [

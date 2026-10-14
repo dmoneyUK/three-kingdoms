@@ -2928,6 +2928,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
       || rootEvent.playedAs !== undefined || rootEvent.card?.kind !== root.cardKind
       || rootEvent.resolutionId !== links.root.resolutionId) return [];
+    const responseEventIds = new Set([rootEvent.id]);
+    const responseCardIds = new Set([rootEvent.card.id]);
     const responseNodes = chain.negationNodes.flatMap((node, index) => {
       const responseLink = links.nodes[index];
       const expectedCounterTarget = index === 0
@@ -2935,11 +2937,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         : node.counterTarget?.kind === "NEGATION_NODE" && node.counterTarget.index === index - 1;
       const responseEvents = responseLink ? room.timeline.filter((event) => event.id === responseLink.eventId) : [];
       const responseEvent = responseEvents.length === 1 ? responseEvents[0] : null;
-      if (!responseLink || !expectedCounterTarget || !node.actor.id || !responseEvent
+      const responseActor = node.actor.id ? room.players.find((player) => player.id === node.actor.id) : undefined;
+      if (!responseLink || !expectedCounterTarget || !node.actor.known || !responseActor?.name || !responseEvent
+        || node.eventId !== responseLink.eventId || node.resolutionId !== responseLink.resolutionId
         || responseEvent.type !== "card" || responseEvent.action !== "play" || responseEvent.presentation === false
         || responseEvent.playedAs !== undefined || responseEvent.card?.kind !== "Negation"
+        || !responseEvent.card.id || responseEvent.player !== responseActor.name
         || responseEvent.resolutionId !== responseLink.resolutionId) return [];
-      return [{ node, event: responseEvent }];
+      if (responseEventIds.has(responseEvent.id) || responseCardIds.has(responseEvent.card.id)) return [];
+      responseEventIds.add(responseEvent.id);
+      responseCardIds.add(responseEvent.card.id);
+      return [{ node, event: responseEvent, actor: responseActor }];
     });
     if (responseNodes.length !== chain.negationNodes.length) return [];
     return [{ chain, root, rootEvent, responseNodes }];
@@ -2987,14 +2995,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const rootEvent = rootMatches[0];
     if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
       || rootEvent.playedAs !== undefined || rootEvent.card?.kind !== "Oath"
-      || rootEvent.resolutionId !== scope.rootResolutionId) return null;
+      || rootEvent.resolutionId !== scope.rootResolutionId || !rootEvent.card.id) return null;
     const source = room.players.find((player) => player.id === scope.sourceId);
-    if (!source?.name) return null;
+    if (!source?.name || rootEvent.player !== source.name) return null;
     const recipients = scope.recipientIds.map((playerId) => {
       const player = room.players.find((candidate) => candidate.id === playerId);
       return player?.name ? { playerId, playerName: player.name } : null;
     });
     if (recipients.some((recipient) => recipient === null)) return null;
+    const responseEventIds = new Set([rootEvent.id]);
+    const responseCardIds = new Set([rootEvent.card.id]);
     const responses = chain.nodes.map((node, index) => {
       const link = chain.publicNodeEventLinks?.[index];
       const matches = link ? room.timeline.filter((event) => event.id === link.eventId) : [];
@@ -3005,13 +3015,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         || event.type !== "card" || event.action !== "play" || event.presentation === false
         || event.playedAs !== undefined || event.card?.kind !== "Negation"
         || event.resolutionId !== link.resolutionId || event.id === rootEvent.id
-        || event.resolutionId === scope.rootResolutionId
+        || event.resolutionId === scope.rootResolutionId || event.player !== actor.name || !event.card.id
+        || responseEventIds.has(event.id) || responseCardIds.has(event.card.id)
         || chain.publicNodeEventLinks?.slice(0, index).some((previous) => previous.eventId === event.id || previous.resolutionId === event.resolutionId)) return null;
+      responseEventIds.add(event.id);
+      responseCardIds.add(event.card.id);
       return {
         index,
+        ordinal: index + 1,
         eventId: event.id,
         actorId: actor.id,
         actorName: actor.name,
+        cardFace: event.card,
         cardLabel: "NEGATION",
         ariaLabel: `${actor.name} played Negation to counter ${index === 0 ? "Oath of the Peach Garden" : `Negation ${index}`}`,
         counterTarget: index === 0 ? { kind: "ROOT" as const } : { kind: "RESPONSE" as const, index: index - 1 },
@@ -3061,14 +3076,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || rootEvent.playedAs !== undefined || rootEvent.card?.kind !== "BumperHarvest"
       || rootEvent.card.id !== progress.rootCardId || rootEvent.resolutionId !== progress.rootResolutionId) return null;
     const source = room.players.find((player) => player.id === progress.sourceId);
-    if (!source?.name) return null;
+    if (!source?.name || rootEvent.player !== source.name) return null;
     const targets = progress.participants.map((participant) => {
       const player = room.players.find((candidate) => candidate.id === participant.playerId);
       return player?.name ? { ...participant, playerName: player.name } : null;
     });
     if (targets.some((target) => target === null)) return null;
 
-    let responses: { index: number; eventId: string; actorId: string; actorName: string; cardLabel: string; ariaLabel: string; counterTarget: { kind: "ORDERED_TARGET_EFFECT"; targetId: string } | { kind: "RESPONSE"; index: number } }[] = [];
+    let responses: { index: number; ordinal: number; eventId: string; actorId: string; actorName: string; cardFace: Card; cardLabel: string; ariaLabel: string; counterTarget: { kind: "ORDERED_TARGET_EFFECT"; targetId: string } | { kind: "RESPONSE"; index: number } }[] = [];
     if (isNegationScene) {
       const chain = clientPresentation.reactionChain;
       if (!chain || chain.semantics !== "PROVEN" || chain.rootCard !== null
@@ -3076,24 +3091,32 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         || !Array.isArray(chain.nodes) || !Array.isArray(chain.publicNodeEventLinks)
         || chain.publicNodeEventLinks.length !== chain.nodes.length
         || progress.currentEffectState !== (chain.nodes.length % 2 === 0 ? "ACTIVE" : "BLOCKED")) return null;
+      const responseEventIds = new Set([rootEvent.id]);
+      const responseCardIds = new Set([rootEvent.card.id]);
       const mapped = chain.nodes.map((node, index) => {
         const link = chain.publicNodeEventLinks?.[index];
         const matches = link ? room.timeline.filter((event) => event.id === link.eventId) : [];
         const event = matches.length === 1 ? matches[0] : null;
         const actor = room.players.find((player) => player.id === node.actorId);
         const previousNodeId = index === 0 ? null : chain.nodes[index - 1]?.nodeId;
-        if (!link || link.nodeId !== node.nodeId || node.frameId !== progress.activeFrameId
+        if (!link || link.nodeId !== node.nodeId || node.eventId !== link.eventId || node.resolutionId !== link.resolutionId
+          || node.frameId !== progress.activeFrameId
           || node.causedByNodeId !== previousNodeId || !event || !actor?.name
           || event.type !== "card" || event.action !== "play" || event.presentation === false
           || event.playedAs !== undefined || event.card?.kind !== "Negation"
-          || !link.eventId || !link.resolutionId || event.id === rootEvent.id
-          || event.resolutionId !== link.resolutionId
+          || !link.eventId || !link.resolutionId || !event.card.id || event.player !== actor.name
+          || event.id === rootEvent.id || event.resolutionId !== link.resolutionId
+          || responseEventIds.has(event.id) || responseCardIds.has(event.card.id)
           || chain.publicNodeEventLinks?.slice(0, index).some((previous) => previous.eventId === event.id || previous.resolutionId === event.resolutionId)) return null;
+        responseEventIds.add(event.id);
+        responseCardIds.add(event.card.id);
         return {
           index,
+          ordinal: index + 1,
           eventId: event.id,
           actorId: actor.id,
           actorName: actor.name,
+          cardFace: event.card,
           cardLabel: "NEGATION",
           ariaLabel: `${actor.name} played Negation to counter ${index === 0 ? `Bumper Harvest's effect on ${room.players.find((player) => player.id === progress.currentParticipantId)?.name ?? "the current participant"}` : `Negation ${index}`}`,
           counterTarget: index === 0
@@ -3233,17 +3256,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         || participant.status !== clientPresentation.groupParticipantProgress[index]?.status
         || participant.outcome !== clientPresentation.groupParticipantProgress[index]?.outcome)) return null;
 
-    // The group projection proves source, target set and participant state.
-    // The compatibility rootContext contributes only a timeline identity; it
-    // is accepted only when that exact public event is the played physical
-    // root card named by the independently validated Group projection.
-    const rootEventId = room.presentationV2?.rootContext?.eventId;
-    if (!rootEventId) return null;
+    // The Group root proof joins the event to the exact server-held physical
+    // card and root frame. Legacy Group continuations without that identity
+    // remain fail-closed instead of guessing from a timeline position.
+    const rootProof = group.rootCardProof;
+    if (!rootProof || rootProof.semantics !== "PROVEN" || rootProof.interactionId !== group.interactionId
+      || rootProof.groupFrameId !== group.groupFrameId || rootProof.sourceId !== clientPresentation.sourceId
+      || rootProof.cardKind !== group.cardKind || rootProof.targetIds.length !== group.targetIds.length
+      || rootProof.targetIds.some((targetId, index) => targetId !== group.targetIds[index])) return null;
+    const rootEventId = rootProof.rootEventId;
     const rootEvents = room.timeline.filter((event) => event.id === rootEventId);
     if (rootEvents.length !== 1) return null;
     const rootEvent = rootEvents[0];
     if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
-      || rootEvent.playedAs !== undefined || rootEvent.card.kind !== group.cardKind) return null;
+      || rootEvent.playedAs !== undefined || rootEvent.card.kind !== group.cardKind
+      || rootEvent.card.id !== rootProof.rootCardId || rootEvent.resolutionId !== rootProof.rootEventResolutionId) return null;
+    const responseEventIds = new Set([rootEvent.id]);
+    const responseCardIds = new Set([rootEvent.card.id]);
     const responses = isGroupNegationScene ? negationChain!.negationNodes.map((node, index) => {
       const responseEvent = node.eventId
         ? room.timeline.filter((event) => event.id === node.eventId)
@@ -3254,15 +3283,20 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           && node.counterTarget.targetId === groupTargetEffectScope!.targetId
         : node.counterTarget?.kind === "NEGATION_NODE" && node.counterTarget.index === index - 1;
       const actor = node.actor.id ? room.players.find((player) => player.id === node.actor.id) : null;
-      if (!node.eventId || !node.resolutionId || !actor?.name || !expectedCounterTarget || !event
+      if (!node.eventId || !node.resolutionId || !node.actor.known || !actor?.name || !expectedCounterTarget || !event
         || event.type !== "card" || event.action !== "play" || event.presentation === false
         || event.playedAs !== undefined || event.card?.kind !== "Negation"
-        || event.resolutionId !== node.resolutionId || event.player !== actor.name) return null;
+        || !event.card.id || event.id !== node.eventId || event.resolutionId !== node.resolutionId
+        || event.player !== actor.name || responseEventIds.has(event.id) || responseCardIds.has(event.card.id)) return null;
+      responseEventIds.add(event.id);
+      responseCardIds.add(event.card.id);
       return {
         index,
+        ordinal: index + 1,
         eventId: node.eventId,
         actorId: actor.id,
         actorName: actor.name,
+        cardFace: event.card,
         cardLabel: "NEGATION",
         ariaLabel: `${actor.name} played Negation to counter ${index === 0
           ? `${cardDefinition(group.cardKind).name} effect on ${room.players.find((player) => player.id === groupTargetEffectScope!.targetId)?.name ?? "the proven target"}`
@@ -3274,7 +3308,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }) : [];
     if (isGroupNegationScene && (responses.length !== negationChain!.negationNodes.length || responses.some((response) => response === null))) return null;
     const source = room.players.find((player) => player.id === clientPresentation.sourceId);
-    if (!source?.name) return null;
+    if (!source?.name || rootEvent.player !== source.name) return null;
     const targets = participants.map((participant) => {
       const player = room.players.find(({ id }) => id === participant.playerId);
       return player?.name ? { ...participant, playerName: player.name } : null;
@@ -3591,17 +3625,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (event.type !== "message" || event.presentation === false || event.resolutionId !== proof.resolutionId) return null;
     return { eventId: proof.eventId, outcome: proof.outcome };
   })();
-  const singleTargetNegationResponses = singleTargetNegationProofCandidate?.responseNodes.map(({ event, node }, index) => {
+  const singleTargetNegationResponses = singleTargetNegationProofCandidate?.responseNodes.map(({ event, node, actor }, index) => {
     const counterTarget = node.counterTarget;
     const counterLabel = counterTarget?.kind === "ROOT"
       ? cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name
       : `Negation ${index}`;
     return {
       eventId: event.id,
+      ordinal: index + 1,
       actorId: node.actor.id!,
-      actorName: node.actor.name,
+      actorName: actor.name,
       cardFace: event.card,
-      ariaLabel: `${node.actor.name} played Negation to counter ${counterLabel}`,
+      ariaLabel: `${actor.name} played Negation to counter ${counterLabel}`,
     };
   }) ?? [];
   const singleTargetNegationUsesJourney = Boolean(singleTargetNegationProofCandidate
@@ -3668,9 +3703,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       motion: {
         type: "duel",
         scopeKey: [room.code, duelNegationProofCandidate.chain.interactionId, clientPresentation.rootFrameId!, duelNegationProofCandidate.rootEvent.id].join(":"),
-        freshEventIds: publicCardJourneySeenEventIds.has(duelNegationProofCandidate.rootEvent.id)
-          ? []
-          : [duelNegationProofCandidate.rootEvent.id],
+        freshEventIds: [duelNegationProofCandidate.rootEvent.id, ...singleTargetNegationResponses.map((response) => response.eventId)]
+          .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
       },
       ...(duelNegationProofCandidate.responseNodes.length ? {
         publicCounterRead: {
@@ -3679,6 +3713,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             && activePublicNegationRead.phase === "exiting" && activeNegationReadSettled,
         },
       } : {}),
+      ...(singleTargetNegationResponses.length ? { responses: singleTargetNegationResponses } : {}),
     }
     : null;
   const singleTargetNegationOwnsRoot = Boolean(singleTargetNegationUsesJourney && singleTargetNegationProofCandidate
@@ -3720,6 +3755,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardKind: "Oath",
       cardLabel: cardDefinition("Oath").name.toUpperCase(),
       ariaLabel: `${oathSimultaneousRootCandidate.source.name} played Oath of the Peach Garden.`,
+      phaseNotice: oathSimultaneousRootCandidate.responses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED",
+      motion: {
+        type: "negation",
+        scopeKey: [room.code, oathSimultaneousRootCandidate.scope.interactionId, oathSimultaneousRootCandidate.rootEvent.id].join(":"),
+        freshEventIds: [oathSimultaneousRootCandidate.rootEvent.id, ...oathSimultaneousRootCandidate.responses.map((response) => response.eventId)]
+          .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
+      },
       ...(oathSimultaneousRootCandidate.responses.length ? { responses: oathSimultaneousRootCandidate.responses } : {}),
     }
     : bumperHarvestRootCandidate
@@ -3729,9 +3771,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       sourceId: bumperHarvestRootCandidate.progress.sourceId,
       targetId: null,
       cardFace: bumperHarvestRootCandidate.rootEvent.card,
-      ...(bumperHarvestRootCandidate.progress.currentEffectState && bumperHarvestRootCandidate.responses.length
-        ? { responses: bumperHarvestRootCandidate.responses }
-        : {}),
+      ...(bumperHarvestRootCandidate.progress.currentEffectState !== undefined ? {
+        phaseNotice: bumperHarvestRootCandidate.responses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED",
+        motion: {
+          type: "negation" as const,
+          scopeKey: [room.code, bumperHarvestRootCandidate.progress.interactionId, bumperHarvestRootCandidate.rootEvent.id,
+            bumperHarvestRootCandidate.progress.currentParticipantId ?? ""].join(":"),
+          freshEventIds: [bumperHarvestRootCandidate.rootEvent.id, ...bumperHarvestRootCandidate.responses.map((response) => response.eventId)]
+            .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
+        },
+        ...(bumperHarvestRootCandidate.responses.length ? { responses: bumperHarvestRootCandidate.responses } : {}),
+      } : {}),
       cardKind: "BumperHarvest",
       cardLabel: cardDefinition("BumperHarvest").name.toUpperCase(),
       ariaLabel: `${bumperHarvestRootCandidate.source.name} played Bumper Harvest.`,
@@ -3755,9 +3805,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       sourceId: clientPresentation.sourceId!,
       targetId: null,
       cardFace: groupTargetBranchCandidate.rootEvent.card,
-      ...(groupTargetBranchCandidate.groupTargetEffectScope && groupTargetBranchCandidate.responses.length
-        ? { responses: groupTargetBranchCandidate.responses }
-        : {}),
+      ...(groupTargetBranchCandidate.groupTargetEffectScope ? {
+        phaseNotice: groupTargetBranchCandidate.responses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED",
+        motion: {
+          type: "negation" as const,
+          scopeKey: [room.code, groupTargetBranchCandidate.group.interactionId, groupTargetBranchCandidate.group.groupFrameId,
+            groupTargetBranchCandidate.rootEvent.id, groupTargetBranchCandidate.groupTargetEffectScope.targetId].join(":"),
+          freshEventIds: [groupTargetBranchCandidate.rootEvent.id, ...groupTargetBranchCandidate.responses.map((response) => response.eventId)]
+            .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
+        },
+        ...(groupTargetBranchCandidate.responses.length ? { responses: groupTargetBranchCandidate.responses } : {}),
+      } : {}),
       cardKind: groupTargetBranchCandidate.group.cardKind,
       cardLabel: cardDefinition(groupTargetBranchCandidate.group.cardKind).name.toUpperCase(),
       ariaLabel: `${groupTargetBranchCandidate.source.name} played ${cardDefinition(groupTargetBranchCandidate.group.cardKind).name}.`,

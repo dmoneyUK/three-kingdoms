@@ -59,6 +59,8 @@ export type GroupContinuation = {
   damageCards?: Card[];
   physicalSuit?: Card["suit"];
   sequenceStartCardId?: string;
+  /** Exact public card-play event that began this Group interaction. */
+  rootEventId?: string;
   resolutionId?: string;
   participantProgress?: GroupParticipantProgress;
   /** Server-only marker consumed when the matching paused participant resolves. */

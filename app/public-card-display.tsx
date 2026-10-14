@@ -9,7 +9,7 @@ import { recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
 
 type PublicCardDisplayResponseNode = {
   eventId: string;
-  /** Duel Attack ordinal supplied by the validated server proof. */
+  /** One-based order from the validated Duel or Negation response proof. */
   ordinal?: number;
   actorId: string;
   actorName: string;
@@ -1014,12 +1014,13 @@ function singleTargetJourneyEvents(action: PublicCardDisplayAction, sourceName: 
     cardFace: action.cardFace,
     ariaLabel: action.ariaLabel,
     role: "root",
+    globalOrdinal: 1,
     phase: "parked",
     rect: { left: 0, top: 0, ...PARKED_CARD },
     target: { left: 0, top: 0, ...PARKED_CARD },
   });
   for (const response of action.responses ?? []) {
-    if (!response.cardFace) continue;
+    if (!response.cardFace || !Number.isInteger(response.ordinal) || !response.ordinal || response.ordinal < 1) continue;
     events.push({
       eventId: response.eventId,
       actorId: response.actorId,
@@ -1028,12 +1029,13 @@ function singleTargetJourneyEvents(action: PublicCardDisplayAction, sourceName: 
       ariaLabel: response.ariaLabel,
       semanticLabel: response.semanticLabel,
       role: "response",
+      globalOrdinal: response.ordinal + 1,
       phase: "parked",
       rect: { left: 0, top: 0, ...PARKED_CARD },
       target: { left: 0, top: 0, ...PARKED_CARD },
     });
   }
-  return events;
+  return events.sort((left, right) => (left.globalOrdinal ?? 0) - (right.globalOrdinal ?? 0));
 }
 
 function SingleTargetCardJourney({
@@ -1433,6 +1435,7 @@ function SingleTargetCardJourney({
         data-public-card-journey-actor-id={card.actorId}
         data-public-card-journey-card-id={card.cardFace.id}
         data-public-card-journey-role={card.role}
+        data-public-card-journey-ordinal={card.globalOrdinal}
         data-public-card-journey-phase={card.phase}
         data-public-card-journey-size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
         data-public-card-journey-layout-reason={card.layoutChangeReason}
@@ -1446,8 +1449,14 @@ function SingleTargetCardJourney({
         style={{ left: card.rect.left, top: card.rect.top, width: card.rect.width, height: card.rect.height }}
       >
         <CardFace card={card.cardFace} />
+        <small className="public-card-journey-ordinal" aria-label={`Public card event ${card.globalOrdinal}`}>#{card.globalOrdinal}</small>
       </div>;
     })}
+    <ol className="duel-public-card-history-accessible" aria-label="Chronological public card history">
+      {incoming.map((event) => <li key={event.eventId} value={event.globalOrdinal}>
+        Public card event {event.globalOrdinal}: {event.ariaLabel}
+      </li>)}
+    </ol>
     <div className={`public-card-display-copy public-card-display-journey-copy${action.phaseNotice?.includes("NEGATION") ? " is-negation-waiting" : ""}`} style={{ top: copyTop }}>
       <small>{currentLabel}</small>
       <b>{currentNotice}</b>

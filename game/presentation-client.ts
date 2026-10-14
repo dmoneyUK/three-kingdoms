@@ -1,7 +1,7 @@
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressStatus, type HarvestParticipantProgressStatus } from "./pending";
 import { CARD_KINDS, type CardKind } from "./model";
 import { CARD_DEFINITIONS } from "./cards";
-import { isProvenOrderedAttackRootProof, isProvenRootActionCardProof } from "./presentation-v2";
+import { isProvenGroupRootCardProof, isProvenOrderedAttackRootProof, isProvenRootActionCardProof } from "./presentation-v2";
 import { provenAttackDodgeResponses, provenAttackHitSettlements, provenBumperHarvestSettlements, provenDeflectionActions, provenDismantleSettlements, provenDuelExchange, provenGroupSettlements, provenSelfTargetActions, provenSkillEffectAction, provenSkillEffectSettlements, provenStealSettlements, type PresentationSnapshot, type PresentationSnapshotAttackDodgeResponse, type PresentationSnapshotAttackHitSettlement, type PresentationSnapshotBumperHarvestProgress, type PresentationSnapshotBumperHarvestSettlement, type PresentationSnapshotDeflectionAction, type PresentationSnapshotDismantleSettlement, type PresentationSnapshotDuelExchange, type PresentationSnapshotGroupParticipantProgress, type PresentationSnapshotGroupProgress, type PresentationSnapshotGroupSettlement, type PresentationSnapshotOathRecipientScope, type PresentationSnapshotRootAction, type PresentationSnapshotSelfTargetAction, type PresentationSnapshotSkillEffectAction, type PresentationSnapshotSkillEffectSettlement, type PresentationSnapshotStealSettlement } from "./presentation-snapshot";
 import type {
   PresentationGroupTargetEffectScope,
@@ -520,10 +520,22 @@ function groupProgressForSnapshot(
     && sameStringIds(rootProof.targetIds, progress.targetIds)
     ? { ...rootProof, targetIds: [...rootProof.targetIds] }
     : undefined;
+  const rootCardProof = progress.cardKind !== "SkyPiercingHalberdAttack" && resolutionSemantics === "GROUP"
+    && isProvenGroupRootCardProof(progress.rootCardProof)
+    && progress.rootCardProof.interactionId === progress.interactionId
+    && progress.rootCardProof.groupFrameId === progress.groupFrameId
+    && progress.rootCardProof.sourceId === scene.sourceId
+    && progress.rootCardProof.cardKind === progress.cardKind
+    && sameStringIds(progress.rootCardProof.targetIds, progress.targetIds)
+    ? { ...progress.rootCardProof, targetIds: [...progress.rootCardProof.targetIds] }
+    : undefined;
+  const progressWithoutRootCardProof = { ...progress };
+  delete progressWithoutRootCardProof.rootCardProof;
   return {
-    ...progress,
+    ...progressWithoutRootCardProof,
     targetIds: [...progress.targetIds],
     participants,
+    rootCardProof,
     orderedAttackRoot,
   };
 }
