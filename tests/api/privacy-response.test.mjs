@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
 import {
-  advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
+  advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
 
 test("shared Negation windows keep submissions private and expose only each viewer's legal response", { timeout: 60_000 }, async () => {
@@ -77,6 +77,180 @@ test("all viewers share one immutable Negation deadline, including after a priva
   const advanced = (await state(game.code, sourceMember.token)).data;
   assert.equal(advanced.pendingNegation, null); assert.equal(advanced.phase, "play");
   assert.equal(advanced.log.some((entry) => /passes the Negation|Checking|Skipping|timed out/.test(entry)), false);
+});
+
+test("shared Negation keeps three human submissions private and rejects conflicting or late window replays", { timeout: 60_000 }, async () => {
+  const root = card("DrawTwo", "gate-b-private-root");
+  const seatTwoCard = card("Negation", "gate-b-seat-two");
+  const seatThreeCard = card("Negation", "gate-b-seat-three");
+  const seatFourCard = card("Negation", "gate-b-seat-four");
+  const seatFiveCard = card("Negation", "gate-b-seat-five");
+  const game = await seedPlayingGame({
+    phase: "play",
+    turnSeat: 0,
+    players: [
+      { name: "Source", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [root] },
+      { name: "Seat Two", role: "Loyalist", hero: "xiahou-dun", hp: 4, maxHp: 4, hand: [seatTwoCard] },
+      { name: "Seat Three", role: "Rebel", hero: "zhang-liao", hp: 4, maxHp: 4, hand: [seatThreeCard] },
+      { name: "Seat Four", role: "Rebel", hero: "simayi", hp: 4, maxHp: 4, hand: [seatFourCard] },
+      { name: "Seat Five", role: "Renegade", hero: "guo-jia", hp: 4, maxHp: 4, hand: [seatFiveCard] },
+    ],
+  });
+  const [source, seatTwo, seatThree, seatFour, seatFive] = game.room.players;
+  const [sourceMember, seatTwoMember, seatThreeMember, seatFourMember, seatFiveMember] = game.members;
+  const secretCardIds = [seatTwoCard.id, seatThreeCard.id, seatFourCard.id, seatFiveCard.id];
+
+  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: root.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const firstWindowId = opened.data.room.currentAction.negationWindowId;
+  const sharedDeadline = opened.data.room.currentAction.deadline;
+  const sharedVisibleAt = opened.data.room.responseCountdownVisibleAt;
+  assert.ok(firstWindowId);
+  assert.equal(sharedDeadline - sharedVisibleAt, 8_000);
+  assert.equal(new Set(game.members.map(({ token }) => token)).size, 5, "every fixture seat uses its own authenticated human token");
+
+  const beforeSubmissions = await Promise.all(game.members.map(({ token }) => state(game.code, token)));
+  for (const [index, response] of beforeSubmissions.entries()) {
+    const view = response.data;
+    assert.equal(view.isTestController, false);
+    assert.equal(view.meId, game.room.players[index].id);
+    assert.equal(view.currentAction.actorId, game.room.players[index].id);
+    assert.equal(view.currentAction.negationWindowId, firstWindowId);
+    assert.equal(view.currentAction.deadline, sharedDeadline);
+    assert.equal(view.responseCountdownVisibleAt, sharedVisibleAt);
+    assert.equal(view.actionPlayerId, null);
+    assert.equal(view.pendingNegation.actorId, null);
+    assert.equal(view.pendingNegation.submitted, false);
+    assert.equal("seatOrderPlayerIds" in view.pendingNegation, false);
+    const options = view.currentAction.options ?? [];
+    if (index === 0) assert.equal(options.some(({ providerId }) => providerId === "negation_card"), false);
+    else assert.ok(options.some(({ providerId }) => providerId === "negation_card"));
+    const serialized = JSON.stringify(view);
+    for (const hiddenCardId of secretCardIds) {
+      if (hiddenCardId !== secretCardIds[index - 1]) assert.equal(serialized.includes(hiddenCardId), false, `seat ${index + 1} cannot see another hand's physical Negation ID`);
+    }
+    assert.equal(serialized.includes("submission_json"), false);
+    assert.equal(serialized.includes("submittedIds"), false);
+  }
+
+  const [seatTwoIntent, seatThreePass] = await Promise.all([
+    request("respond", { code: game.code, token: seatTwoMember.token, providerId: "negation_card", cardId: seatTwoCard.id }),
+    request("decline_response", { code: game.code, token: seatThreeMember.token }),
+  ]);
+  assert.equal(seatTwoIntent.status, 200, JSON.stringify(seatTwoIntent.data));
+  assert.equal(seatThreePass.status, 200, JSON.stringify(seatThreePass.data));
+  assert.equal((await request("respond", { code: game.code, token: seatFourMember.token, providerId: "negation_card", cardId: seatFourCard.id })).status, 200);
+  assert.equal((await request("respond", { code: game.code, token: seatTwoMember.token, providerId: "negation_card", cardId: seatTwoCard.id })).status, 200, "an exact duplicate intent is idempotent");
+  assert.equal((await request("decline_response", { code: game.code, token: seatThreeMember.token })).status, 200, "an exact duplicate Pass is idempotent");
+  assert.equal((await request("decline_response", { code: game.code, token: seatTwoMember.token })).status, 409, "a player cannot replace a locked intent with Pass");
+  assert.equal((await request("respond", { code: game.code, token: seatThreeMember.token, providerId: "negation_card", cardId: seatThreeCard.id })).status, 409, "a player cannot replace a locked Pass with an intent");
+  assert.equal(query(`SELECT COUNT(*) FROM negation_window_submissions WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)}) AND window_id=${quote(firstWindowId)}`), "3", "independent seats keep their own single submission row");
+
+  const afterSubmissions = await Promise.all(game.members.map(({ token }) => state(game.code, token)));
+  for (const [index, response] of afterSubmissions.entries()) {
+    const view = response.data;
+    assert.equal(view.currentAction.negationWindowId, firstWindowId);
+    assert.equal(view.currentAction.deadline, sharedDeadline, "submissions do not shorten or restart the shared deadline");
+    assert.equal(view.responseCountdownVisibleAt, sharedVisibleAt);
+    assert.equal(view.pendingNegation.submitted, [false, true, true, true, false][index], "submission status is visible only to its owner");
+    const serialized = JSON.stringify(view);
+    for (const hiddenCardId of secretCardIds) {
+      if (hiddenCardId !== secretCardIds[index - 1]) assert.equal(serialized.includes(hiddenCardId), false, `seat ${index + 1} cannot see another private intent or card ID`);
+    }
+    assert.equal(view.timeline.some((event) => secretCardIds.includes(event.card?.id)), false, "uncommitted intents do not become public card events");
+    if (index === 0 || index === 4) {
+      assert.deepEqual(view.currentAction.options, beforeSubmissions[index].data.currentAction.options, "other seats' submissions do not change this viewer's legal options");
+      assert.equal(view.actionReason, beforeSubmissions[index].data.actionReason, "other seats' submission progress is not exposed through guidance");
+      assert.equal(view.actionRevision, beforeSubmissions[index].data.actionRevision, "another seat's private submission does not stale this viewer's action");
+    }
+  }
+
+  const timerRequest = await request("start_response_timer", { code: game.code, token: seatFiveMember.token });
+  assert.equal(timerRequest.status, 200);
+  assert.equal(timerRequest.data.room.currentAction.deadline, sharedDeadline, "a timer request cannot move the common deadline");
+  const earlyAdvance = await request("advance_timers", { code: game.code, token: sourceMember.token });
+  assert.equal(earlyAdvance.status, 200);
+  assert.equal(earlyAdvance.data.room.currentAction.negationWindowId, firstWindowId, "a silent/disconnected living seat does not let submissions close the window early");
+
+  const expiredAt = Date.now() - 1;
+  sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.openedAt',${expiredAt - 8000},'$.deadline',${expiredAt}) WHERE code=${quote(game.code)} AND json_extract(pending_json,'$.windowId')=${quote(firstWindowId)}`);
+  const [firstTimerAdvance, racingTimerAdvance] = await Promise.all([
+    request("advance_timers", { code: game.code, token: sourceMember.token }),
+    request("advance_timers", { code: game.code, token: seatTwoMember.token }),
+  ]);
+  assert.equal(firstTimerAdvance.status, 200, JSON.stringify(firstTimerAdvance.data));
+  assert.equal(racingTimerAdvance.status, 200, JSON.stringify(racingTimerAdvance.data));
+  const counter = (await state(game.code, sourceMember.token)).data;
+  const counterWindowId = counter.currentAction.negationWindowId;
+  assert.ok(counterWindowId);
+  assert.notEqual(counterWindowId, firstWindowId);
+  assert.equal(counter.pendingNegation.latestNegationPlayerId, seatTwo.id);
+  assert.equal(counter.timeline.some((event) => event.card?.id === seatTwoCard.id), true);
+  assert.equal(counter.timeline.some((event) => event.card?.id === seatThreeCard.id || event.card?.id === seatFourCard.id), false);
+  assert.equal(roomCardCount(game.code, seatTwoCard.id), 1, "the canonical winner's card is consumed exactly once");
+  assert.equal(roomCardCount(game.code, seatThreeCard.id), 1, "a passing player's hand card is retained");
+  assert.equal(roomCardCount(game.code, seatFourCard.id), 1, "a losing submission's hand card is retained");
+  assert.equal(roomCardCount(game.code, seatFiveCard.id), 1, "a disconnected seat's hand card is retained");
+  assert.ok((await state(game.code, seatFourMember.token)).data.myHand.some((held) => held.id === seatFourCard.id), "the losing submitter's card remains private and available after the deadline");
+
+  const reconnectView = (await state(game.code, seatFiveMember.token)).data;
+  const counterDeadline = reconnectView.currentAction.deadline;
+  const counterVisibleAt = reconnectView.responseCountdownVisibleAt;
+  assert.equal(counterDeadline - counterVisibleAt, 8_000);
+  const staleReplay = await request("respond", {
+    code: game.code,
+    token: seatFiveMember.token,
+    providerId: "negation_card",
+    cardId: seatFiveCard.id,
+    context: {
+      actionRevision: reconnectView.actionRevision,
+      meId: seatFive.id,
+      phase: reconnectView.phase,
+      pendingKind: reconnectView.pending?.kind ?? null,
+      actorId: reconnectView.actionPlayerId,
+      windowId: firstWindowId,
+    },
+  });
+  assert.equal(staleReplay.status, 409, "a reconnected client cannot replay its old window ID in the counter window");
+  assert.equal(staleReplay.data.room.currentAction.negationWindowId, counterWindowId);
+  assert.equal(staleReplay.data.room.currentAction.deadline, counterDeadline, "a stale replay cannot restart the counter deadline");
+  assert.equal(staleReplay.data.room.responseCountdownVisibleAt, counterVisibleAt);
+  assert.equal(staleReplay.data.room.pendingNegation.submitted, false);
+  assert.equal(roomCardCount(game.code, seatFiveCard.id), 1);
+
+  await advanceNegationWindow(game.code, sourceMember.token, counterWindowId);
+  const resolved = (await state(game.code, sourceMember.token)).data;
+  assert.equal(resolved.pendingNegation, null);
+  assert.equal(resolved.phase, "play");
+  assert.equal(roomCardCount(game.code, root.id), 1, "the root physical card remains conserved after the completed counter deadline");
+  assert.equal(roomCardCount(game.code, seatTwoCard.id), 1, "duplicate timer advances cannot consume the winning intent twice");
+});
+
+test("shared Negation leaves ordinary human responses on the 60-second timeout", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [attackerMember, defenderMember] = game.members;
+  const [attacker, defender] = game.room.players;
+  const attack = card("Attack", "gate-b-normal-response-timeout");
+  setHand(attacker.id, [attack], 4, 4);
+  setHand(defender.id, [card("Dodge", "gate-b-normal-response-timeout")], 4, 4);
+  setTurn(game.code, attacker.seat);
+
+  const opened = await request("play_card", { code: game.code, token: attackerMember.token, cardId: attack.id, targetId: defender.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  assert.equal(opened.data.room.currentAction.deadline, 0, "the ordinary response waits for the established client-ready timer");
+  const armed = await request("start_response_timer", { code: game.code, token: defenderMember.token });
+  assert.equal(armed.status, 200, JSON.stringify(armed.data));
+  const deadline = armed.data.room.currentAction.deadline;
+  const visibleAt = armed.data.room.responseCountdownVisibleAt;
+  assert.equal(deadline - visibleAt, 60_000);
+  const attackerView = (await state(game.code, attackerMember.token)).data;
+  const defenderView = (await state(game.code, defenderMember.token)).data;
+  assert.equal(attackerView.currentAction.deadline, deadline);
+  assert.equal(defenderView.currentAction.deadline, deadline);
+  assert.equal(attackerView.responseCountdownVisibleAt, visibleAt);
+  assert.equal(defenderView.responseCountdownVisibleAt, visibleAt);
+  const repeated = await request("start_response_timer", { code: game.code, token: defenderMember.token });
+  assert.equal(repeated.data.room.currentAction.deadline, deadline, "repeated timer requests preserve the original 60-second deadline");
 });
 
 test("Dying rescue exposes only real Peach blockers and skips empty seats", { timeout: 30_000 }, async () => {
