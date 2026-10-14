@@ -3,7 +3,7 @@ import { attackRootProjectionDiagnosticsFor } from "../../game/presentation-v2.t
 import { buildPresentationClientView } from "../../game/presentation-client.ts";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
 import {
-  advanceNegationWindow, assert, card, createHumanGame, discardIds, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state,
+  advanceNegationWindow, assert, card, createHumanGame, discardIds, passNegationWindows, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state,
 } from "./test-support.mjs";
 
 async function openAttack({ targetCard = card("Peach", "deflection-cost"), targetCards, replacementHand = [], targetEquipment = {}, replacementHero = "zhao-yun", sourceHero = "zhao-yun", sourceEquipment = {}, sourceAttackSuit = "♠", attackCards } = {}) {
@@ -182,6 +182,7 @@ test("Captivating inherits the normal Negation-of-Negation chain", async () => {
   const restored = await requestAndSettle("respond", { code: opened.game.code, token: opened.otherMember.token, cardId: "negation-captivating-counter", preserveResponse: true });
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
   await advanceNegationWindow(opened.game.code, opened.daqiaoMember.token, counterWindowId);
+  await passNegationWindows(opened.game.code, opened.game.members);
   const settled = (await state(opened.game.code, opened.daqiaoMember.token)).data;
   assert.equal(settled.phase, "play");
   const placed = settled.players.find((player) => player.id === opened.target.id).judgementCards;

@@ -1520,6 +1520,9 @@ function reactionChainFor(
       || effect.pending?.actorId !== bumperProgress.currentParticipantId
       || bumperProgress.activeFrameId !== frame.frameId
       || scene.decisionActorId !== null || scene.activeResolverId !== null) return null;
+  } else if (item.sharedNegationWindow === true) {
+    if (item.actorId !== null || !stringValue(item.negationWindowId)
+      || scene.decisionActorId !== null || scene.activeResolverId !== null) return null;
   } else if (!stringValue(scene.decisionActorId) || item.actorId !== scene.decisionActorId) return null;
   const groupTargetEffectScopeIdentity = effect?.kind === "group"
     ? groupTargetEffectScopeFor(envelope, pending, scene, groupValues, groupProgress)
@@ -1823,8 +1826,11 @@ function stableBoundaryFor(
   const item = record(pending);
   const continuation = record(item?.continuation);
   const continuationKind = stringValue(continuation?.kind);
+  const sharedWindowId = item?.kind === "negation_window"
+    ? stringValue(item.windowId)
+    : item?.sharedNegationWindow === true ? stringValue(item.negationWindowId) : null;
   const sharedNegationWindow = proven && scene?.stage === "NEGATION"
-    && item?.kind === "negation_window" && Boolean(stringValue(item.windowId))
+    && Boolean(sharedWindowId)
     && continuationKind === "negation" && pendingCausalMatchesScene(scene, pending);
   if (sharedNegationWindow) return { kind: "SPECIAL", ...identity, decisionActorId: null };
   if (bumperHarvestProgress && (scene?.stage === "NEGATION" || bumperHarvestProgress.currentParticipantId === null)) {

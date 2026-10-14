@@ -39,12 +39,15 @@ function scene(overrides = {}) {
 
 function groupScene({ child = false, currentParticipantId = "B", effect = "Raining Arrows" } = {}) {
   const targetIds = ["B", "C", "D"];
+  const decisionActorId = child ? "C" : currentParticipantId;
   return scene({
     rootFrameId: "group-frame",
     activeFrameId: child ? "damage-frame" : "group-frame",
     parentFrameId: child ? "group-frame" : null,
     stage: child ? "DAMAGE" : "GROUP_RESOLUTION",
     effect,
+    decisionActorId,
+    activeResolverId: decisionActorId,
     targetIds,
     currentParticipantId,
     activeTargetIds: [currentParticipantId],
@@ -81,7 +84,7 @@ function groupResolution(groupSceneValue, overrides = {}) {
   };
 }
 
-function presentation(interactionScene, stableBoundary = coherentBoundary()) {
+function presentation(interactionScene, stableBoundary = coherentBoundary({ decisionActorId: interactionScene.decisionActorId })) {
   return {
     interactionScene,
     stableBoundary,

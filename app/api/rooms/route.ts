@@ -3039,8 +3039,8 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
         ? db().prepare("UPDATE players SET hand_json = ? WHERE id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND phase = 'resolving' AND pending_json = ?)").bind(JSON.stringify(hand), source.id, roomId, expectedPendingJson)
         : db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), source.id),
       expectedPendingJson
-        ? db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json = ?").bind(pending.resumePhase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId, expectedPendingJson)
-        : db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId),
+        ? db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = NULL WHERE id = ? AND phase = 'resolving' AND pending_json = ?").bind(pending.resumePhase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId, expectedPendingJson)
+        : db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = NULL WHERE id = ?").bind(pending.resumePhase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId),
     ]);
     if ((settled[1]?.meta.changes ?? 0) > 0 && source) await continueAfterDying(roomId, source.id);
     return draw.drawn;
@@ -4665,7 +4665,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     ? { ...responseContinuation, actorId: projectedResponsePending.actorId, reason: projectedResponsePending.reason, deadline: projectedResponsePending.deadline }
     : null;
   const pendingNegationBase = responseContinuation?.kind === "negation"
-    ? { kind: "negation" as const, sourceId: responseContinuation.sourceId, actorId: projectedResponsePending.actorId, effectTargetId: responseContinuation.effectTargetId, cardName: responseContinuation.cardName, responseTarget: responseContinuation.responseTarget ?? responseContinuation.cardName, latestNegationPlayerId: responseContinuation.latestNegationPlayerId ?? null, latestNegationCardId: responseContinuation.latestNegationCardId ?? null, chainDepth: responseContinuation.chainDepth ?? 0, negated: responseContinuation.negated, deadline: projectedResponsePending.deadline ?? 0 }
+    ? { kind: "negation" as const, sourceId: responseContinuation.sourceId, actorId: null, effectTargetId: responseContinuation.effectTargetId, cardName: responseContinuation.cardName, responseTarget: responseContinuation.responseTarget ?? responseContinuation.cardName, latestNegationPlayerId: responseContinuation.latestNegationPlayerId ?? null, latestNegationCardId: responseContinuation.latestNegationCardId ?? null, chainDepth: responseContinuation.chainDepth ?? 0, negated: responseContinuation.negated, deadline: projectedResponsePending.deadline ?? 0 }
     : null;
   const tokenHash = token ? await hash(token) : "";
   const actualActionPlayerId = actionPlayerIdForPending(room, pending, players);
@@ -4704,7 +4704,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     deadline: negationWindow.deadline,
     submitted: negationWindowSubmitted,
   } : null;
-  const pendingNegation = windowNegationBase ?? (pendingNegationBase ? { ...pendingNegationBase, actorId: negationWaitingForOther ? null : pendingNegationBase.actorId } : null);
+  const pendingNegation = windowNegationBase ?? pendingNegationBase;
   // Reading a room must not create D1 writes. Presence is refreshed by the
   // throttled heartbeat action below, never by normal room polling.
   const viewerPlayerIds = new Set(sessionPlayers.map((player) => player.id));
@@ -4785,10 +4785,13 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     pending: negationWindow ? {
       kind: "response",
       actorId: null,
+      sharedNegationWindow: true,
+      negationWindowId: negationWindow.windowId,
       requirement: "negate",
       reason: "Negation response window",
       deadline: negationWindow.deadline,
       ...(negationWindow.readyAfterEventId ? { readyAfterEventId: negationWindow.readyAfterEventId } : {}),
+      ...(negationWindow.causal ? { causal: negationWindow.causal } : {}),
       continuation: { ...negationWindow.continuation, remainingIds: [] },
     } : pending,
     currentAction,

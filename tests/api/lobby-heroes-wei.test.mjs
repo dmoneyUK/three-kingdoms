@@ -871,7 +871,7 @@ test("Qixi projects only living targets with affectable cards and keeps material
 test("Qixi uses the ordinary Burning Bridges Negation and target-card continuations", async () => {
   const game = await createHumanGame(); const source = game.room.players[0]; const target = game.room.players[1]; const material = card("BorrowedSword", "qixi-negation-material", "♣"); const negation = card("Negation", "qixi-negation"); const targetCard = card("Peach", "qixi-negation-target");
   sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(source.id)}`); setHand(source.id, [material], 4, 4); setHand(target.id, [negation, targetCard], 4, 4); setTurn(game.code, source.seat);
-  const opened = await requestAndSettle("trigger", { code: game.code, token: game.members[0].token, providerId: "gan_ning_qixi", cardIds: [material.id], targetId: target.id });
+  const opened = await request("trigger", { code: game.code, token: game.members[0].token, providerId: "gan_ning_qixi", cardIds: [material.id], targetId: target.id });
   assert.equal(opened.status, 200); assert.equal(opened.data.room.actionPlayerId, null); assert.equal(opened.data.room.pendingNegation.actorId, null); assert.equal((await state(game.code, game.members[1].token)).data.currentAction.requirement, "negate");
   const declined = await requestAndSettle("decline_response", { code: game.code, token: game.members[1].token });
   assert.equal(declined.status, 200); assert.equal(declined.data.room.pendingTargetCard.cardKind, "Dismantle");
@@ -880,7 +880,7 @@ test("Qixi uses the ordinary Burning Bridges Negation and target-card continuati
 
   const negatedGame = await createHumanGame(); const negatedSource = negatedGame.room.players[0]; const negatedTarget = negatedGame.room.players[1]; const negatedMaterial = card("BorrowedSword", "qixi-negated-material", "♠"); const negatingCard = card("Negation", "qixi-negating-card"); const preservedTargetCard = card("Peach", "qixi-negated-target");
   sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(negatedSource.id)}`); setHand(negatedSource.id, [negatedMaterial], 4, 4); setHand(negatedTarget.id, [negatingCard, preservedTargetCard], 4, 4); setTurn(negatedGame.code, negatedSource.seat);
-  const negated = await requestAndSettle("trigger", { code: negatedGame.code, token: negatedGame.members[0].token, providerId: "gan_ning_qixi", cardIds: [negatedMaterial.id], targetId: negatedTarget.id });
+  const negated = await request("trigger", { code: negatedGame.code, token: negatedGame.members[0].token, providerId: "gan_ning_qixi", cardIds: [negatedMaterial.id], targetId: negatedTarget.id });
   assert.equal(negated.status, 200); const answered = await requestAndSettle("respond", { code: negatedGame.code, token: negatedGame.members[1].token, cardId: negatingCard.id });
   assert.equal(answered.status, 200); assert.equal(answered.data.room.phase, "play"); assert.ok(discardIds(negatedGame.code).includes(negatedMaterial.id)); assert.ok(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(negatedTarget.id)}`)).some((held) => held.id === preservedTargetCard.id));
 });

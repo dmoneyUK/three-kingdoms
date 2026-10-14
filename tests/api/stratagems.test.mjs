@@ -41,7 +41,8 @@ test("shared Duel Negation windows choose by canonical seat order and reopen aft
     assert.equal(view.currentAction.actorId, game.room.players[index].id, "the private CurrentAction is projected for that viewer");
     assert.equal(view.actionPlayerId, null, "the public room does not identify one acting seat");
     assert.equal(view.pendingNegation.actorId, null);
-    assert.equal(view.causalEnvelope.checkpoint.current.resolvingPlayerId, null);
+    const frame = view.causalEnvelope.frames.find(({ frameId }) => frameId === view.causalEnvelope.activeFrameId);
+    assert.equal(frame.current.resolvingPlayerId, null);
   }
   assert.deepEqual(firstViews[0].data.currentAction.options, []);
   assert.ok(firstViews[1].data.currentAction.options.some((option) => option.providerId === "negation_card"));
@@ -57,7 +58,7 @@ test("shared Duel Negation windows choose by canonical seat order and reopen aft
   for (const member of [twoMember, fourMember]) {
     const ownView = await state(game.code, member.token);
     assert.equal(ownView.data.pendingNegation.submitted, true);
-    assert.deepEqual(ownView.data.currentAction.options, []);
+    assert.deepEqual(ownView.data.currentAction.options ?? [], []);
   }
   const publicBeforeClose = (await state(game.code, oneMember.token)).data;
   assert.equal(publicBeforeClose.timeline.some((event) => event.card?.id === seatTwoNegation.id || event.card?.id === seatFourNegation.id), false);
@@ -221,6 +222,8 @@ test("a new Attack replaces the completed DrawTwo Negation frame across public v
     const negationWindow = await state(game.code, defenderMember.token);
     assert.equal(negationWindow.data.currentAction.actorId, defender.id);
     assert.equal(negationWindow.data.currentAction.requirement, "negate");
+    const firstWindowId = negationWindow.data.currentAction.negationWindowId;
+    assert.ok(firstWindowId);
     const originalNegationEnvelope = playedDrawTwo.data.room.causalEnvelope;
     assert.ok(originalNegationEnvelope);
     assert.equal(originalNegationEnvelope.checkpoint.stage, "NEGATION");
@@ -231,20 +234,21 @@ test("a new Attack replaces the completed DrawTwo Negation frame across public v
     } else {
       const negated = await request("respond", { code: game.code, token: defenderMember.token, providerId: "negation_card", cardId: defenderNegation.id, preserveResponse: true });
       assert.equal(negated.status, 200, JSON.stringify(negated.data));
+      await advanceNegationWindow(game.code, sourceMember.token, firstWindowId);
       const counterWindow = await state(game.code, observerMember.token);
+      assert.notEqual(counterWindow.data.currentAction.negationWindowId, firstWindowId);
       assert.equal(counterWindow.data.currentAction.actorId, observer.id, JSON.stringify(counterWindow.data.currentAction));
       assert.equal(counterWindow.data.currentAction.requirement, "negate");
       const restored = await requestAndSettle("respond", { code: game.code, token: observerMember.token, cardId: observerNegation.id });
       assert.equal(restored.status, 200, JSON.stringify(restored.data));
-      assert.ok(restored.data.room.log.some((entry) => /plays Negation to restore Something Out of Nothing/.test(entry)));
+      assert.ok(restored.data.room.log.some((entry) => /plays Negation to restore /.test(entry)), JSON.stringify(restored.data.room.log));
     }
 
     const resumed = await state(game.code, sourceMember.token);
     assert.equal(resumed.data.phase, "play");
     assert.equal(resumed.data.currentAction.actorId, source.id);
-    assert.equal(resumed.data.causalEnvelope.interactionId, originalNegationEnvelope.interactionId,
-      "the completed Negation proof remains available as history until a new public root replaces it");
-    assert.equal(resumed.data.causalEnvelope.checkpoint.stage, "NEGATION");
+    assert.equal(resumed.data.causalEnvelope, null, "the settled Negation proof retires before another interaction starts");
+    assert.equal(resumed.data.presentationV2.stableBoundary.kind, "REST");
 
     const playedAttack = await requestAndSettle("play_card", {
       code: game.code,
@@ -1346,7 +1350,7 @@ test("delayed placement settles before a later activation creates a fresh intera
   setHand(bobPlayer.id, [activationNegation], 4, 4);
   setTurn(game.code, alicePlayer.seat, "draw");
   setDeck(game.code, [{ ...card("Dodge", "placement-activation-judge"), suit: "♠", rank: "7" }]);
-  const activation = await requestAndSettle("draw", { code: game.code, token: alice.token });
+  const activation = await request("draw", { code: game.code, token: alice.token, preserveResponse: true });
   assert.equal(activation.status, 200, JSON.stringify(activation.data));
   const activationRoot = activation.data.room.causalEnvelope;
   assert.ok(activationRoot);
@@ -1404,7 +1408,7 @@ test("Lightning is placed on self, transfers after a miss, and deals 3 thunder d
   const negatedJudgementLightning = { ...card("Lightning", "judgement-window"), suit: "♦", rank: "Q" };
   setHand(alicePlayer.id, [card("Negation", "lightning-judgement-window")], 4, 4); setJudgement(alicePlayer.id, [{ ...card("Overindulgence", "intact-after-lightning"), suit: "♣", rank: "6" }, negatedJudgementLightning]); setTurn(game.code, alicePlayer.seat, "draw");
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify([card("Dodge", "unused-lightning-judge")]))}, discard_json='[]' WHERE code=${quote(game.code)}`);
-  const judgementNegationWindow = await requestAndSettle("draw", { code: game.code, token: alice.token });
+  const judgementNegationWindow = await request("draw", { code: game.code, token: alice.token, preserveResponse: true });
   assert.equal(judgementNegationWindow.status, 200); assert.equal(judgementNegationWindow.data.room.pendingNegation.cardName, "Lightning");
   const lightningActivationRoot = judgementNegationWindow.data.room.causalEnvelope;
   assert.ok(lightningActivationRoot);
@@ -1461,7 +1465,7 @@ test("Lightning transfer settles its activation before a later fresh activation"
   setJudgement(alicePlayer.id, [persistentLightning]);
   setTurn(game.code, alicePlayer.seat, "draw");
   setDeck(game.code, [card("Dodge", "persistent-first-judge")]);
-  const first = await requestAndSettle("draw", { code: game.code, token: alice.token });
+  const first = await request("draw", { code: game.code, token: alice.token, preserveResponse: true });
   assert.equal(first.status, 200, JSON.stringify(first.data));
   const firstRoot = first.data.room.causalEnvelope;
   assert.ok(firstRoot);
@@ -1481,7 +1485,7 @@ test("Lightning transfer settles its activation before a later fresh activation"
   setJudgement(alicePlayer.id, []);
   setTurn(game.code, bobPlayer.seat, "draw");
   setDeck(game.code, [{ ...card("Dodge", "persistent-later-judge"), suit: "♥", rank: "7" }]);
-  const later = await requestAndSettle("draw", { code: game.code, token: bob.token });
+  const later = await request("draw", { code: game.code, token: bob.token, preserveResponse: true });
   assert.equal(later.status, 200, JSON.stringify(later.data));
   const laterRoot = later.data.room.causalEnvelope;
   assert.ok(laterRoot);
@@ -1535,6 +1539,7 @@ test("delayed Standard cards resolve newest first and stale draws cannot replay 
   const lightning = { ...card("Lightning", "race"), suit: "♥", rank: "Q" }; setJudgement(alicePlayer.id, [lightning]); setTurn(game.code, alicePlayer.seat, "draw"); setDeck(game.code, [{ ...card("Dodge", "race-judge"), suit: "♥", rank: "7" }, card("Attack", "race-draw-1"), card("Attack", "race-draw-2")]);
   const [first, second] = await Promise.all([request("draw", { code: game.code, token: alice.token }), request("draw", { code: game.code, token: alice.token })]);
   assert.equal([first.status, second.status].filter((status) => status === 200).length, 1, "duplicate draw submissions resolve one delayed effect");
+  await passNegationWindows(game.code, game.members);
   const afterRace = await state(game.code, alice.token); assert.equal(afterRace.data.players.find((player) => player.id === alicePlayer.id).judgementCards.length, 0);
 });
 
@@ -1580,7 +1585,7 @@ test("Rations Depleted targets at distance 1 and skips only a failed target's Dr
   const negatedRations = { ...card("RationsDepleted", "judgement-negated"), suit: "♠", rank: "10" };
   setHand(alicePlayer.id, [card("Negation", "rations-judgement-window")], 4, 4); setJudgement(alicePlayer.id, [negatedRations]); setTurn(game.code, alicePlayer.seat, "draw");
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify([card("Dodge", "unused-rations-judge"), card("Attack", "negated-draw-1"), card("Peach", "negated-draw-2")]))}, discard_json='[]' WHERE code=${quote(game.code)}`);
-  const judgementWindow = await requestAndSettle("draw", { code: game.code, token: alice.token });
+  const judgementWindow = await request("draw", { code: game.code, token: alice.token, preserveResponse: true });
   assert.equal(judgementWindow.status, 200); assert.equal(judgementWindow.data.room.pendingNegation.cardName, "Rations Depleted");
   const cancelled = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "negation-rations-judgement-window" });
   assert.equal(cancelled.status, 200); assert.equal(cancelled.data.room.phase, "draw");

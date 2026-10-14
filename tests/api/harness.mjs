@@ -165,6 +165,17 @@ export async function state(code, token, audit = false, testViewerId = null) {
 
 export async function requestForViewer(action, values, viewerId) {
   const view = await state(values.code, values.token, false, viewerId);
+  let actionValues = values;
+  if (action === "respond" && values.providerId === undefined) {
+    const ids = Array.isArray(values.cardIds) ? values.cardIds : values.cardId ? [values.cardId] : [];
+    const provider = (view.data.currentAction?.options ?? []).find((option) => {
+      const selection = option.selection;
+      if (!selection) return ids.length === 0;
+      const eligible = selection.eligibleCardIds ?? [];
+      return ids.length >= selection.min && ids.length <= selection.max && ids.every((id) => eligible.includes(id));
+    });
+    if (provider) actionValues = { ...values, providerId: provider.providerId };
+  }
   const context = {
     actionRevision: view.data.actionRevision,
     meId: viewerId,
@@ -173,7 +184,7 @@ export async function requestForViewer(action, values, viewerId) {
     actorId: view.data.actionPlayerId,
     ...(view.data.currentAction?.negationWindowId ? { windowId: view.data.currentAction.negationWindowId } : {}),
   };
-  return request(action, { ...values, context });
+  return request(action, { ...actionValues, context });
 }
 
 export async function seedPlayingGame(input = {}) {

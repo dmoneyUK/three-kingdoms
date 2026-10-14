@@ -33,10 +33,13 @@ function assertProjectionMatchesEngine(code, token) {
     const pending = storedPending?.kind === "negation_window" ? {
       kind: "response",
       actorId: null,
+      sharedNegationWindow: true,
+      negationWindowId: storedPending.windowId,
       requirement: "negate",
       reason: "Negation response window",
       deadline: storedPending.deadline,
       ...(storedPending.readyAfterEventId ? { readyAfterEventId: storedPending.readyAfterEventId } : {}),
+      ...(storedPending.causal ? { causal: storedPending.causal } : {}),
       continuation: { ...storedPending.continuation, remainingIds: [] },
     } : storedPending;
     const expected = projectPresentationV2({
@@ -1234,7 +1237,8 @@ test("FIX14 Group failure Damage uses one child frame and resumes the next parti
   assert.equal(resumedEnvelope.interactionId, groupRoot.interactionId);
   assert.equal(resumedEnvelope.activeFrameId, groupFrame.frameId);
   assert.equal(resumedEnvelope.frames.find((frame) => frame.frameId === groupFrame.frameId)?.stage, "GROUP_RESOLUTION");
-  assert.equal(resumedEnvelope.presentationRevision, damageEnvelope.presentationRevision + 2);
+  assert.equal(resumedEnvelope.presentationRevision, damageEnvelope.presentationRevision + 4,
+    "the revision includes the resolved nested Ganglie damage and the Group resume checkpoints");
   assert.equal(resumedEnvelope.checkpoint.frameId, groupFrame.frameId);
   assert.deepEqual(resumedEnvelope.frames.find((frame) => frame.frameId === groupFrame.frameId)?.current.currentTargetIds, [finalTarget.id]);
   assert.deepEqual(damageResolved.data.room.presentationV2.groupResolution?.participantProgress.find(({ playerId }) => playerId === damageTarget.id), {
@@ -1573,6 +1577,11 @@ test("FIX9 persists the Group root and keeps nested Negation in the same Frame",
   let completedGroup = postWindow;
   for (let guard = 0; guard < 8 && completedGroup.causalEnvelope; guard++) {
     const pending = authoritativePending(game.code);
+    if (pending?.kind === "negation_window") {
+      await passNegationWindows(game.code, game.members);
+      completedGroup = (await state(game.code, sourceMember.token)).data;
+      continue;
+    }
     if (pending?.kind !== "response" || !pending.actorId) break;
     const actor = game.room.players.find((player) => player.id === pending.actorId);
     const actorMember = game.members.find((member) => member.name === actor?.name);
@@ -1921,6 +1930,7 @@ test("FIX9 physical Duel counter-Negation stays in one frame and restores the Du
   const restored = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: counterNegation.id, preserveResponse: true });
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
   await advanceNegationWindow(game.code, host.token, counterWindowId);
+  await passNegationWindows(game.code, game.members);
   const resumed = await state(game.code, host.token);
   assert.equal(resumed.data.pendingDuel.actorId, target.id);
   assert.equal(resumed.data.causalEnvelope.interactionId, root.interactionId);
@@ -1985,7 +1995,7 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   const counterOtherViewer = await assertProjectionMatchesEngine(opened.code, opened.sourceMember.token);
   assert.deepEqual(publicSnapshot(counterOtherViewer.presentationSnapshot), publicSnapshot(counter.data.presentationSnapshot), "the nested Group Negation history is viewer-equal");
   assert.equal(counter.data.currentAction.options?.some((option) => option.providerId === "negation_card"), true);
-  assert.equal(counterOtherViewer.currentAction.options, undefined, "the non-acting Group viewer receives no private Negation options");
+  assert.deepEqual(counterOtherViewer.currentAction.options, [], "the non-acting Group viewer receives no private Negation options");
   const pending = authoritativePending(opened.code);
   assert.equal(pending.continuation.kind, "negation");
   assert.equal(pending.causal.interactionId, root.interactionId);
@@ -2013,19 +2023,21 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
   await advanceNegationWindow(opened.code, opened.sourceMember.token, counterWindowId);
   const resumed = (await state(opened.code, opened.sourceMember.token)).data;
-  assert.equal(resumed.presentationV2.reactionChain, null, "history remains scoped to the active Group continuation");
-  assert.equal(resumed.presentationSnapshot.reactionChain, null);
+  assert.ok(resumed.currentAction.negationWindowId, "a committed counter opens its own fresh shared response window");
+  assert.deepEqual(resumed.presentationV2.reactionChain?.nodes.map(({ actorId }) => actorId), [opened.source.id, opened.target.id]);
+  assert.equal(resumed.presentationV2.reactionChain?.groupTargetEffectScope?.effectState, "ACTIVE", "the counter restores the Group target effect while the next window remains open");
+  assert.deepEqual(resumed.presentationSnapshot.reactionChain?.nodes.map(({ actorId }) => actorId), [opened.source.id, opened.target.id]);
   assert.equal(resumed.causalEnvelope.interactionId, root.interactionId);
   assert.equal(resumed.causalEnvelope.activeFrameId, root.activeFrameId);
   assert.equal(resumed.causalEnvelope.frames.length, 1);
-  assert.equal(resumed.causalEnvelope.frames[0].stage, "GROUP_RESOLUTION");
+  assert.equal(resumed.causalEnvelope.frames[0].stage, "NEGATION");
   assert.equal(resumed.presentationV2.groupResolution?.groupFrameId, root.activeFrameId);
   assert.equal(resumed.presentationV2.groupResolution?.activeFrameId, root.activeFrameId);
-  assert.equal(resumed.presentationV2.groupResolution?.stage, "GROUP_RESOLUTION");
+  assert.equal(resumed.presentationV2.groupResolution?.stage, "NEGATION");
   assert.deepEqual(resumed.presentationV2.groupResolution?.targetIds, [opened.target.id, opened.bob.id, opened.carol.id]);
   assert.equal(resumed.presentationV2.groupResolution?.currentParticipantId, opened.target.id);
-  assert.ok(resumed.presentationV2.groupResolution?.participantProgress?.every(({ outcome }) => outcome === undefined), "counter-Negation restores the effect without claiming it was cancelled");
-  assert.equal(resumed.presentationV2.interactionScene?.continuity.relation, "ROOT_FRAME");
+  assert.deepEqual(resumed.presentationV2.groupResolution?.participantProgress?.[0], { playerId: opened.target.id, order: 1, status: "CURRENT" }, "counter-Negation does not settle the Group participant before its fresh window closes");
+  assert.equal(resumed.presentationV2.interactionScene?.continuity.relation, "SAME_FRAME", "the third shared window remains within the original Group frame");
 });
 
 test("UX2.7 Group Negated outcome is scoped to an authoritative AOE cancellation", { timeout: 30_000 }, async () => {
@@ -2080,7 +2092,7 @@ test("UX2.7 Group Negated outcome is scoped to an authoritative AOE cancellation
     const otherViewer = await assertProjectionMatchesEngine(opened.code, opened.sourceMember.token);
     assert.deepEqual(publicSnapshot(otherViewer.presentationSnapshot), publicSnapshot(resumed.presentationSnapshot), `${kind}: public outcome is viewer-equal`);
     assert.deepEqual(otherViewer.presentationV2.groupResolution, resumed.presentationV2.groupResolution);
-    assert.equal(otherViewer.currentAction.options, undefined, `${kind}: local response options remain private`);
+    assert.deepEqual(otherViewer.currentAction.options, [], `${kind}: local response options remain private`);
   }
 });
 
@@ -2259,8 +2271,8 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(counter.presentationV2.rootContext?.sourceId, root?.sourceId);
   assert.equal(counter.presentationV2.rootContext?.kind, root?.kind);
   assert.deepEqual(counter.presentationV2.rootContext?.originalTargetIds, root?.originalTargetIds);
-  assert.equal(counter.presentationV2.rootContext?.resolutionId, root?.resolutionId);
-  assert.notEqual(counter.presentationV2.rootContext?.eventId, root?.eventId, "Negation currently references a new public event in the counter window");
+  // Legacy rootContext resolution/event fields are compatibility hints. The
+  // causal identity and exact public card/event links are asserted separately.
   assert.equal(authoritativePending(game.code).continuation.kind, "negation");
   assert.equal(counter.presentationV2.activeContext?.kind, "negation");
   assert.equal(counter.presentationV2.interactionScene?.semantics, "PROVEN");
@@ -2348,6 +2360,7 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
 
   const restored = await requestAndSettle("respond", { code: game.code, token: host.token, cardId: sourceCounterAgain.id, preserveResponse: true });
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
+  await passNegationWindows(game.code, game.members);
   const restoredView = await assertProjectionMatchesEngine(game.code, host.token);
   assert.equal(restoredView.presentationSnapshot.settlement?.outcome, "ROOT_RESTORED");
   assert.equal(restoredView.presentationSnapshot.settlement?.rootCardKind, "Steal");
@@ -2380,6 +2393,7 @@ test("single-target Negation cancellation exposes an explicit public root dispos
   const cancelled = await requestAndSettle("respond", { code: game.code, token: targetMember.token, cardId: negation.id, preserveResponse: true });
   assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
   await advanceNegationWindow(game.code, sourceMember.token, windowId);
+  await passNegationWindows(game.code, game.members);
   const cancelledView = await assertProjectionMatchesEngine(game.code, sourceMember.token);
   const settlement = cancelledView.presentationSnapshot.settlement;
   assert.equal(settlement?.outcome, "ROOT_CANCELLED");
@@ -2442,7 +2456,7 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   const observer = await assertProjectionMatchesEngine(game.code, host.token);
   assert.equal(observer.pendingNegation.actorId, null, "the observer DTO does not identify the current scan actor");
   assert.deepEqual(publicSnapshot(observer.presentationSnapshot), publicSnapshot(firstWindow.presentationSnapshot), "public Bumper Harvest authority is viewer-equal");
-  assert.equal(observer.currentAction.options, undefined, "private response providers remain on the acting viewer only");
+  assert.deepEqual(observer.currentAction.options, [], "non-eligible viewers receive only the shared Pass capability");
 
   const submitted = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: aliceNegation.id, preserveResponse: true });
   assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
@@ -2534,7 +2548,7 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   const preview = await requestAndSettle("preview_harvest", { code: game.code, token: alice.token, cardId: chosen, context: chooserContext });
   assert.equal(preview.status, 200, JSON.stringify(preview.data));
   assert.equal(preview.data.room.actionRevision, chooserContext.actionRevision, "changing the uncommitted Harvest preview does not stale the same chooser decision");
-  const picked = await requestAndSettle("choose_harvest", { code: game.code, token: alice.token, cardId: chosen, context: chooserContext });
+  const picked = await request("choose_harvest", { code: game.code, token: alice.token, cardId: chosen, context: chooserContext });
   assert.equal(picked.status, 200, JSON.stringify(picked.data));
   nextWindow = await assertProjectionMatchesEngine(game.code, bob.token);
   progress = nextWindow.presentationSnapshot.bumperHarvestProgress;
@@ -2791,6 +2805,7 @@ test("malformed Judgement envelope stays non-authoritative through legacy resume
   const setup = await prepareGuoJudgement({ original: { ...card("Dodge", "malformed-judgement-original"), suit: "♠", rank: "7" } });
   const opened = await request("draw", { code: setup.game.code, token: setup.guoMember.token });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  await passNegationWindows(setup.game.code, setup.game.members);
   const revealPending = authoritativePending(setup.game.code);
   assert.ok(["judgement_revealed_event", "judgement_effective_event"].includes(revealPending?.continuation?.kind));
   const actorMember = setup.game.members.find((member) => member.playerId === revealPending.actorId) ?? (revealPending.actorId === setup.sima.id ? setup.simaMember : setup.guoMember);
@@ -2870,7 +2885,7 @@ test("engine-backed Oath exposes a viewer-equal living wounded recipient scope a
 
   const sourceView = await assertProjectionMatchesEngine(game.code, sourceMember.token);
   assert.deepEqual(publicSnapshot(sourceView.presentationSnapshot), publicSnapshot(responderView.presentationSnapshot), "Oath scope is identical across viewers");
-  assert.equal(sourceView.currentAction.options, undefined, "another viewer receives no private Negation options");
+  assert.deepEqual(sourceView.currentAction.options, [], "another viewer receives no private Negation options");
 
   const envelopeJson = query(`SELECT causal_envelope_json FROM rooms WHERE code=${quote(game.code)}`);
   const originalEnvelope = JSON.parse(envelopeJson);

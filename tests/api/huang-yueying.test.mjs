@@ -98,6 +98,7 @@ test("Cultivation decline, Negation, Duel, group, and delayed Stratagems preserv
   const duelOpened = await requestAndSettle("play_card", { code: duel.code, token: duel.members[0].token, cardId: duelCard.id, targetId: duelTarget.id });
   assert.equal(duelOpened.data.room.currentAction.triggerEvent, "stratagem_used");
   await requestAndSettle("decline_trigger", { code: duel.code, token: duel.members[0].token, preserveResponse: true });
+  await passNegationWindows(duel.code, duel.members);
   const duelTargetView = await state(duel.code, duel.members[1].token);
   assert.equal(duelTargetView.data.currentAction.kind, "response");
   assert.equal(duelTargetView.data.currentAction.requirement, "attack");
