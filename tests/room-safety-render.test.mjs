@@ -812,7 +812,7 @@ test("normalized malformed and unknown response states render safely", () => {
   });
   assert.ok(waitingRoom);
   const waitingHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: waitingRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.match(waitingHtml, /class="discard-empty"/, "an empty discard pile renders safely");
+  assert.match(waitingHtml, /class="play-center" aria-hidden="true"><div class="draw-stack" data-draw-anchor="true"><\/div><div class="discard-stack" data-discard-anchor="true"><\/div><\/div>/, "an empty discard pile retains only its nonvisual flight anchor");
   assert.doesNotMatch(waitingHtml, /Skip · take 1 damage/);
   assert.match(waitingHtml, /Waiting for the latest response state/);
 
