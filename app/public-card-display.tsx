@@ -835,7 +835,7 @@ function DuelCardJourney({
       if (!layout) return null;
       // Keyboard users need focus on the scrollable history to browse older cards.
       // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-      return <div
+      return <div tabIndex={0}
         key={actorId}
         className="public-card-duel-history"
         data-duel-history-actor-id={actorId}
@@ -843,7 +843,6 @@ function DuelCardJourney({
         data-duel-history-orientation={layout.orientation}
         data-duel-history-count={events.length}
         role="region"
-        tabIndex={0}
         aria-label={`${events[0]?.actorName ?? "Player"} Duel card history, ${events.length} committed card${events.length === 1 ? "" : "s"}`}
         style={{ left: layout.rect.left, top: layout.rect.top, width: layout.rect.width, height: layout.rect.height }}
       >
