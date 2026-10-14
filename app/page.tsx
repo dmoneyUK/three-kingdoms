@@ -232,6 +232,7 @@ export default function Home() {
   const [room, setRoom] = useState<Room | null>(null);
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [pageVisible, setPageVisible] = useState(true);
   const [publicCounterReadUntil, setPublicCounterReadUntil] = useState(0);
@@ -374,7 +375,7 @@ export default function Home() {
     const epoch = nonBlocking ? stateEpoch.current : ++stateEpoch.current; const mutationSequence = nonBlocking ? latestAppliedMutation.current : epoch;
     if (action === "create" || action === "join") beginAttackDodgeUxTraceSession();
     const uxTraceId = getAttackDodgeUxTraceId();
-    if (!nonBlocking) { setBusy(true); setError(""); }
+    if (!nonBlocking) { setBusy(true); setBusyAction(action); setError(""); }
     try {
       if (action === "join") {
         const saved = localStorage.getItem("three-realms-session");
@@ -445,7 +446,7 @@ export default function Home() {
       if (!backgroundPreview) setError(cause instanceof Error ? cause.message : "Something went wrong.");
       return false;
     }
-    finally { if (!nonBlocking) { if (mutationInFlight.current === mutationKey) mutationInFlight.current = null; setBusy(false); } }
+    finally { if (!nonBlocking) { if (mutationInFlight.current === mutationKey) mutationInFlight.current = null; setBusy(false); setBusyAction(null); } }
   }
 
   async function switchTestViewer(playerId: string) {
@@ -504,7 +505,7 @@ export default function Home() {
 
   const presentationView = room ? buildPresentationClientView(room.presentationSnapshot, room.meId) : null;
 
-  if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <GameRoomErrorBoundary room={room} onRecover={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy} error={error} onAction={send} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary>;
+  if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <GameRoomErrorBoundary room={room} onRecover={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy} busyAction={busyAction} error={error} onAction={send} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary>;
   if (room?.status === "heroes") return <HeroSelection room={room} busy={busy} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} />;
   if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onAddTestPlayers={() => send("add_test_players")} onEnableTestRoom={() => send("enable_test_room")} onConfigureTestHands={(presetId, handsBySeat, expectedRevision) => send("configure_test_hands", { presetId, handsBySeat, expectedRevision })} onLeave={leave} />;
 
@@ -1407,7 +1408,7 @@ function captureHandViewportSnapshot(rail: HTMLElement, viewerId: string | null)
   };
 }
 
-export function GameRoom({ room, presentationView, busy, error, onAction, onLeave, onPublicCounterReadVisible, onSwitchTestViewer = async () => undefined }: { room: Room; presentationView?: PresentationClientView; busy: boolean; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void; onPublicCounterReadVisible: (identity: string, durationMs?: number, renew?: boolean) => void; onSwitchTestViewer?: (playerId: string) => Promise<void> }) {
+export function GameRoom({ room, presentationView, busy, busyAction = null, error, onAction, onLeave, onPublicCounterReadVisible, onSwitchTestViewer = async () => undefined }: { room: Room; presentationView?: PresentationClientView; busy: boolean; busyAction?: string | null; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void; onPublicCounterReadVisible: (identity: string, durationMs?: number, renew?: boolean) => void; onSwitchTestViewer?: (playerId: string) => Promise<void> }) {
   const initialPendingSequence = pendingTimelineSequence(room);
   const initialHeldCardIds = new Set(initialPendingSequence.flatMap(eventCards).map((item) => item.id));
   const clientPresentation = useMemo(() => presentationView ?? buildPresentationClientView(room.presentationSnapshot ?? null, room.meId), [presentationView, room.presentationSnapshot, room.meId]);
@@ -1587,6 +1588,19 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const activeSkillOptions = (room.currentAction?.kind === "turn" || room.currentAction?.kind === "trigger") && room.isMyAction
     ? triggerOptions.filter((option) => heroSkillEffectIds.has(option.effectId) && option.selection?.type !== "choice")
     : [];
+  const canActivateDaqiaoDeflection = Boolean(
+    me?.hero === "daqiao"
+    && room.currentAction?.kind === "trigger"
+    && room.currentAction.triggerEvent === "attack_targeted"
+    && room.currentAction.actorId === room.meId
+    && room.isMyAction
+    && canUseAction(room.currentAction, "trigger")
+    && activeSkillOptions.some((option) => option.effectId === "daqiao_deflection"),
+  );
+  const canActivateDaqiaoDeflectionDuringTimerStart = canActivateDaqiaoDeflection && busyAction === "start_response_timer";
+  // Arming the authoritative response timer can briefly set busy. Deflection
+  // only begins a local selection here; cost, target and submission remain
+  // guarded by CurrentAction and its server-projected option.
   const activeSkillOption = activeSkillOptions.find((option) => option.effectId === kingSkillId) ?? null;
   const heroTriggerEffectIds = new Set(activeSkillOptions.map((option) => option.effectId).filter((effectId) => heroSkillEffectIds.has(effectId)));
   const activeSkillSelection = normalizeActiveCardSkillSelection(activeSkillOption?.selection ?? null);
@@ -4737,7 +4751,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         <section className="hero-skills local-hero-skills" aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => skill.passive
             ? <div key={skill.name} className="hero-skill-button hero-skill-passive" role="group" aria-label={`${skill.name}, passive skill`}>{skill.name}</div>
-            : <button type="button" key={skill.name} className={`hero-skill-button ${skill.active ? "active" : ""}`} aria-label={skill.name} aria-pressed={skill.active} title={skill.description} disabled={!skill.enabled || busy || presentationBusy && !skill.active} onClick={() => skill.onClick?.()}>{skill.active && (me?.hero === "guan-yu" || me?.hero === "zhao-yun") ? `Cancel ${skill.name}` : skill.name}</button>)}
+            : <button type="button" key={skill.name} className={`hero-skill-button ${skill.active ? "active" : ""}`} aria-label={skill.name} aria-pressed={skill.active} title={skill.description} disabled={!skill.enabled || (busy && !(skill.name === "Deflection" && canActivateDaqiaoDeflectionDuringTimerStart)) || (presentationBusy && !skill.active && !(skill.name === "Deflection" && canActivateDaqiaoDeflection))} onClick={() => skill.onClick?.()}>{skill.active && (me?.hero === "guan-yu" || me?.hero === "zhao-yun") ? `Cancel ${skill.name}` : skill.name}</button>)}
         </section>
       } guidance={
         <div className="console-guidance" data-console-guidance="true">

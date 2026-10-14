@@ -8,6 +8,7 @@ type SeedPlayer = {
   hero?: string;
   hp?: number;
   maxHp?: number;
+  alive?: boolean;
   hand?: Card[];
   equipment?: EquipmentZone;
   judgement?: Card[];
@@ -21,7 +22,7 @@ export type SeedPlayingGameInput = {
   discard?: Card[];
 };
 
-type FixturePlayer = Required<Pick<SeedPlayer, "name" | "role" | "hero" | "hp" | "maxHp" | "hand" | "equipment" | "judgement">>;
+type FixturePlayer = Required<Pick<SeedPlayer, "name" | "role" | "hero" | "hp" | "maxHp" | "alive" | "hand" | "equipment" | "judgement">>;
 
 const DEFAULT_ROLES: SeedPlayer["role"][] = ["Lord", "Loyalist", "Rebel", "Renegade"];
 const DEFAULT_HEROES = ["guan-yu", "simayi", "zhao-yun", "xiahou-dun"];
@@ -76,12 +77,15 @@ function normalizePlayer(input: SeedPlayer | undefined, index: number): FixtureP
   const maxHp = input?.maxHp ?? definition.hp + (role === "Lord" ? 1 : 0);
   const hp = input?.hp ?? maxHp;
   if (!Number.isInteger(maxHp) || maxHp < 0 || !Number.isInteger(hp) || hp < 0 || hp > maxHp) fixtureError(`players[${index}] HP is invalid.`);
+  const alive = input?.alive ?? true;
+  if (!alive && hp !== 0) fixtureError(`players[${index}] must have 0 HP when marked eliminated.`);
   return {
     name: input?.name?.trim() || `Fixture Player ${index + 1}`,
     role,
     hero,
     hp,
     maxHp,
+    alive,
     hand: validCards(input?.hand, `players[${index}].hand`),
     equipment: validEquipment(input?.equipment, `players[${index}].equipment`),
     judgement: validCards(input?.judgement, `players[${index}].judgement`),
@@ -148,8 +152,8 @@ export async function seedPlayingGame(db: D1Database, input: SeedPlayingGameInpu
     const statements = [
       db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at, turn_seat, phase, deck_json, discard_json, log_json, pending_json, skill_state_json, last_activity_at) VALUES (?, ?, ?, 'playing', ?, ?, ?, ?, ?, ?, '[]', NULL, ?, ?)")
         .bind(roomId, code, host.id, players.length, createdAt, turnSeat, phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify({ turnPlayerId: credentials[turnSeat].id }), createdAt),
-      ...credentials.map((player) => db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, role, ready, hero, hp, max_hp, hero_options_json, hand_json, judgement_json, equipment_json, alive, connected_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, '[]', ?, ?, ?, 1, ?)")
-        .bind(player.id, roomId, player.name, player.tokenHash, player.seat, player.role, player.hero, player.hp, player.maxHp, JSON.stringify(player.hand), JSON.stringify(player.judgement), JSON.stringify(player.equipment), createdAt)),
+      ...credentials.map((player) => db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, role, ready, hero, hp, max_hp, hero_options_json, hand_json, judgement_json, equipment_json, alive, connected_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, '[]', ?, ?, ?, ?, ?)")
+        .bind(player.id, roomId, player.name, player.tokenHash, player.seat, player.role, player.hero, player.hp, player.maxHp, JSON.stringify(player.hand), JSON.stringify(player.judgement), JSON.stringify(player.equipment), player.alive ? 1 : 0, createdAt)),
     ];
     try {
       await db.batch(statements);
