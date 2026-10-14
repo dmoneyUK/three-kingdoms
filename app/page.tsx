@@ -4033,7 +4033,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     || publicCardDisplayAction?.motion?.type === "attack-dodge"
       && rootActionSource?.name
       && (publicCardDisplayAction.targetId === null || rootActionTarget?.name)
-    || publicCardDisplayAction?.motion?.type === "duel" && rootActionSource?.name && rootActionTarget?.name);
+    || publicCardDisplayAction?.motion?.type === "duel" && rootActionSource?.name && rootActionTarget?.name
+    || (publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation")
+      && rootActionSource?.name
+      && (publicCardDisplayAction.targetId === null || rootActionTarget?.name));
   const publicCardJourneyEventIds = publicCardDisplayAction?.motion?.type === "attack-dodge"
     ? [publicCardDisplayAction.rootEventId, publicCardDisplayAction.response?.eventId, publicCardDisplayAction.deflection?.eventId].filter((eventId): eventId is string => Boolean(eventId))
     : publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation"
@@ -4044,7 +4047,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const publicCardJourneyEventIdKey = publicCardJourneyEventIds.join("|");
   useEffect(() => {
     if (!publicCardDisplayReady || !publicCardJourneyEventIdKey) return;
-    if (publicCardDisplayAction?.motion?.type === "attack-dodge") return;
+    if (publicCardDisplayAction?.motion) return;
     const eventIds = publicCardJourneyEventIdKey.split("|");
     const timer = window.setTimeout(() => {
       setPublicCardJourneySeen((current) => {

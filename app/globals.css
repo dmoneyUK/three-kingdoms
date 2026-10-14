@@ -1285,6 +1285,8 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-duel-parked-card[data-public-card-journey-size="duel-reveal"]>.played-card>strong{font-size:7.5px}
 .public-card-journey-card.is-prior{opacity:.43;filter:saturate(.78)}
 .public-card-journey-card.is-current.public-card-duel-parked-card{z-index:35}
+.public-card-journey-card.is-moving{opacity:.62}
+.public-card-journey-card.is-current.is-revealing{z-index:36}
 .public-card-journey-semantic{position:absolute;right:-5px;bottom:-5px;z-index:2;padding:2px 4px;border:1px solid #d9c17f;background:#181913;color:#f5dda1;font:700 6px/1 Arial,sans-serif;letter-spacing:.06em;white-space:nowrap}
 .public-card-journey-card.is-deflection .public-card-journey-semantic{padding:3px 5px;font-size:8px;letter-spacing:.08em}
 .public-card-display-journey[data-public-card-active-event-kind="deflection"] .public-card-display-journey-copy>small{color:#f5d77f;font-size:12px;letter-spacing:.16em}
