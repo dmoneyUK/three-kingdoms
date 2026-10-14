@@ -122,7 +122,12 @@ async function assertDeflectionEnabledDuringReveal({ page, seed, viewport, proje
     selection: { type: "cards", min: 1, max: 1, eligibleCardIds: expect.any(Array), targetIds: expect.any(Array) },
   });
   await expect(page.locator(".decision-status")).toContainText("Use Deflection", { timeout: 20_000 });
-  await expect(page.locator("[data-public-card-display='true']")).toHaveCount(1);
+  const publicCardDisplay = page.locator("[data-public-card-display='true']");
+  await expect(publicCardDisplay).toHaveCount(1);
+  const announcement = publicCardDisplay.locator('[data-public-card-announcement="true"]');
+  await expect(announcement).toHaveCount(1);
+  await expect(announcement).toContainText("ATTACKER played Attack targeting DA QIAO");
+  await expect(announcement).not.toContainText("Play Dodge or Skip.");
   const immediate = {
     viewport,
     actionRevision: projected.actionRevision,
@@ -372,6 +377,12 @@ test("real Da Qiao may discard equipped armor for Deflection", async ({ browser,
     page, request, seed, daQiaoDock: dock, skill, option,
     costId: equipmentCost.id, targetId: seed.players[2].id, actionRevision, viewport,
   });
+  const publicCardDisplay = page.locator('[data-public-card-display="true"]');
+  await expect(publicCardDisplay).toHaveCount(1);
+  await expect(publicCardDisplay).toHaveAttribute("data-public-card-id", equipmentCost.id);
+  const deflectionAnnouncement = publicCardDisplay.locator('[data-public-card-announcement="true"]');
+  await expect(deflectionAnnouncement).toContainText("used Deflection");
+  await expect(deflectionAnnouncement.locator("small,span,strong")).toHaveCount(0);
   const responder = await roomView(request, seed, 2);
   expect(responder.currentAction).toMatchObject({ kind: "response", actorId: seed.players[2].id, requirement: "dodge" });
   expect(responder.players.find((player) => player.id === seed.players[1].id).equipmentCards).toEqual([]);

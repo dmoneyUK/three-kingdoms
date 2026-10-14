@@ -32,8 +32,11 @@ async function act(request, seed, playerIndex, action, extra = {}) {
   const before = await roomView(request, seed, playerIndex);
   expect(before.isMyAction, `${action} actor owns CurrentAction`).toBe(true);
   expect(before.currentAction.legalActions, `${action} is authorized by CurrentAction`).toContain(action);
+  const context = before.currentAction.negationWindowId
+    ? { context: { windowId: before.currentAction.negationWindowId } }
+    : {};
   const response = await request.post(`${API}/api/rooms`, {
-    data: { action, code: seed.code, token: seed.players[playerIndex].token, ...extra },
+    data: { action, code: seed.code, token: seed.players[playerIndex].token, ...context, ...extra },
   });
   if (!response.ok()) throw new Error(`${action} failed: ${await response.text()}`);
   return response.json();
@@ -169,6 +172,15 @@ for (const kind of ["Steal", "Dismantle"]) {
     await openGame(page, seed);
     await playCardThroughPage(page, material.id, "TARGET");
     await passEmptyResponses(request, seed);
+
+    if (kind === "Dismantle") {
+      const publicCardDisplay = page.locator('[data-public-card-display="true"]');
+      await expect(publicCardDisplay).toHaveCount(1);
+      const announcement = publicCardDisplay.locator('[data-public-card-announcement="true"]');
+      await expect(announcement).toHaveCount(1);
+      await expect(announcement).toContainText("SOURCE played Burning Bridge targeting TARGET");
+      await expect(announcement.locator("small,span,strong")).toHaveCount(0);
+    }
 
     const actorView = await roomView(request, seed, 0);
     expect(actorView.currentAction).toMatchObject({ kind: "target_card", actorId: seed.players[0].id });

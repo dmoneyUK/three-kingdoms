@@ -157,6 +157,7 @@ function PublicJourneyCard({
     data-public-card-journey-parking-side={parkingSide}
     data-public-card-journey-ordinal={card.globalOrdinal}
     data-public-card-inspectable={inspectable ? "true" : "false"}
+    data-public-card-copy-anchor-event-id={card.eventId}
     style={{ left: card.rect.left, top: card.rect.top, width: card.rect.width, height: card.rect.height }}
   >
     <CardFace card={card.cardFace} />
@@ -225,6 +226,9 @@ function withFirstQueuedAttackDodgeReveal(cards: JourneyCard[], center: CardRect
 const REVEAL_CARD = { width: 90, height: 135 };
 const DUEL_REVEAL_CARD = { width: 90, height: 135 };
 const PARKED_CARD = { width: 48, height: 72 };
+const PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH = 360;
+const PUBLIC_CARD_ANNOUNCEMENT_HEIGHT = 25;
+const PUBLIC_CARD_ANNOUNCEMENT_GAP = 7;
 const STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS = 4000;
 const DUEL_REVEAL_HOLD_MS = 4000;
 const MOVE_DURATION_MS = 380;
@@ -258,18 +262,35 @@ function battlefieldCenterCard(size: { width: number; height: number } = REVEAL_
     top: preferredTop + y,
     width: size.width,
     height: size.height,
-  })).find((candidate) => candidate.left >= bounds.left + 8
-    && candidate.left + candidate.width <= bounds.right - 8
-    && candidate.top >= bounds.top + 8
-    && candidate.top + candidate.height <= bounds.bottom - 8
-    && candidate.left >= 8
-    && candidate.left + candidate.width <= window.innerWidth - 8
-    && candidate.top >= 8
-    && candidate.top + candidate.height <= window.innerHeight - 8
-    && obstacles.every((obstacle) => candidate.left + candidate.width + 8 <= obstacle.left
-      || candidate.left - 8 >= obstacle.right
-      || candidate.top + candidate.height + 8 <= obstacle.top
-      || candidate.top - 8 >= obstacle.bottom));
+  })).find((candidate) => {
+    const announcementWidth = Math.min(PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH, window.innerWidth - 24, bounds.width - 16);
+    const announcement = {
+      left: candidate.left + candidate.width / 2 - announcementWidth / 2,
+      top: candidate.top - PUBLIC_CARD_ANNOUNCEMENT_HEIGHT - PUBLIC_CARD_ANNOUNCEMENT_GAP,
+      width: announcementWidth,
+      height: PUBLIC_CARD_ANNOUNCEMENT_HEIGHT,
+    };
+    const cardFits = candidate.left >= bounds.left + 8
+      && candidate.left + candidate.width <= bounds.right - 8
+      && candidate.top >= bounds.top + 8
+      && candidate.top + candidate.height <= bounds.bottom - 8
+      && candidate.left >= 8
+      && candidate.left + candidate.width <= window.innerWidth - 8
+      && candidate.top >= 8
+      && candidate.top + candidate.height <= window.innerHeight - 8
+      && obstacles.every((obstacle) => candidate.left + candidate.width + 8 <= obstacle.left
+        || candidate.left - 8 >= obstacle.right
+        || candidate.top + candidate.height + 8 <= obstacle.top
+        || candidate.top - 8 >= obstacle.bottom);
+    const announcementFits = announcement.left >= bounds.left + 8
+      && announcement.left + announcement.width <= bounds.right - 8
+      && announcement.top >= bounds.top + 8
+      && announcement.top + announcement.height <= candidate.top - PUBLIC_CARD_ANNOUNCEMENT_GAP
+      && announcement.left >= 12
+      && announcement.left + announcement.width <= window.innerWidth - 12
+      && obstacles.every((obstacle) => !rectsOverlap(announcement, obstacle, 2));
+    return cardFits && announcementFits;
+  });
   return safe ?? boundCardRect(preferredLeft, preferredTop, size.width, size.height);
 }
 
@@ -422,6 +443,203 @@ function settlementLabel(action: PublicCardDisplayAction, targetName: string | n
   }
 }
 
+function publicCardAnnouncement(
+  action: PublicCardDisplayAction,
+  notice: string,
+  actorName: string | null,
+  sourceName: string | null,
+  targetName: string | null,
+) {
+  const outcome = action.settlement?.outcome;
+  const source = sourceName ?? "A player";
+  const target = targetName ?? "the target";
+  const actor = actorName ?? targetName ?? "The target";
+  const cardName = action.cardLabel.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+
+  switch (outcome) {
+    case "ATTACK_DAMAGE_APPLIED":
+      return targetName ? `${targetName} took damage from ${source}'s Attack.` : notice;
+    case "ATTACK_BLOCKED_BY_DODGE":
+      return `${actor} dodged ${source}'s Attack${targetName && targetName !== actor ? ` on ${targetName}` : ""}.`;
+    case "SUITS_MATCHED":
+    case "SUITS_DIFFERED":
+    case "GROUP_RESOLVED":
+    case "BUMPER_HARVEST_RESOLVED":
+      return action.ariaLabel
+        .replace(/\.\s+(Resolved:)/i, "; $1")
+        .replace(/\.\s+(\d+\s+(?:targets|choices) resolved\.)/i, "; $1");
+    case "DISMANTLE_RESOLVED":
+      return `${source} resolved ${cardName} on ${target}.`;
+    case "STEAL_RESOLVED":
+      return `${source} resolved ${cardName} on ${target}.`;
+    case "ROOT_CANCELLED":
+      return `${actor} negated ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
+    case "ROOT_RESTORED":
+      return `${actor} restored ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
+    default:
+      return settlementLabel(action, targetName) ?? notice;
+  }
+}
+
+function publicCardPhaseClause(phaseNotice: string | undefined) {
+  if (!phaseNotice) return null;
+  if (phaseNotice.includes("NEGATION MAY BE PLAYED")) return "Negation can be played";
+  if (phaseNotice.includes("NEGATION RESPONSE")) return "a Negation response is open";
+  if (phaseNotice.includes("DUEL NEGATED")) return "the Duel was negated";
+  return null;
+}
+
+function withPublicCardPhaseNotice(message: string, phaseNotice: string | undefined) {
+  const concise = message.trim()
+    .replace(/\.\s+Play Dodge or Skip\.$/i, ".")
+    .replace(/\.\s+(Resolved:)/i, "; $1")
+    .replace(/\.\s+(\d+\s+(?:targets|choices) resolved\.)/i, "; $1");
+  const clause = publicCardPhaseClause(phaseNotice);
+  if (!clause) return concise;
+  return `${concise.replace(/[.!?]+$/, "")}; ${clause}.`;
+}
+
+function PublicCardAnnouncement({
+  eventId,
+  phase,
+  message,
+  fallbackCardRect,
+  phaseNotice,
+  outcome,
+  negationWaiting = false,
+}: {
+  eventId: string;
+  phase: JourneyCard["phase"] | "static";
+  message: string;
+  fallbackCardRect: CardRect | null;
+  phaseNotice?: string;
+  outcome?: NonNullable<PublicCardDisplayAction["settlement"]>["outcome"];
+  negationWaiting?: boolean;
+}) {
+  const copyRef = useRef<HTMLDivElement>(null);
+  const measuredCenterRef = useRef<{ eventId: string; rect: CardRect } | null>(null);
+
+  useLayoutEffect(() => {
+    const copy = copyRef.current;
+    const display = copy?.closest<HTMLElement>(".public-card-display");
+    if (!copy || !display) return;
+
+    const getAnchor = () => Array.from(display.querySelectorAll<HTMLElement>("[data-public-card-copy-anchor-event-id]"))
+      .find((element) => element.dataset.publicCardCopyAnchorEventId === eventId) ?? null;
+    const toCardRect = (rect: DOMRect): CardRect => ({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+    let resizeObserver: ResizeObserver | null = null;
+    let anchorObserver: MutationObserver | null = null;
+    let frame = 0;
+
+    const place = () => {
+      const anchor = getAnchor();
+      const actualRect = anchor?.getBoundingClientRect();
+      const hasActualCardRect = Boolean(actualRect && actualRect.width > 0 && actualRect.height > 0);
+      let cardRect: CardRect | null = null;
+
+      if (phase === "reveal" && hasActualCardRect) {
+        cardRect = toCardRect(actualRect!);
+        measuredCenterRef.current = { eventId, rect: cardRect };
+      } else if (measuredCenterRef.current?.eventId === eventId) {
+        cardRect = measuredCenterRef.current.rect;
+      } else if (fallbackCardRect) {
+        cardRect = fallbackCardRect;
+      } else if (hasActualCardRect) {
+        cardRect = toCardRect(actualRect!);
+      }
+      if (!cardRect) {
+        const tableRect = document.querySelector<HTMLElement>(".play-table")?.getBoundingClientRect();
+        if (!tableRect) return;
+        cardRect = {
+          left: tableRect.left + tableRect.width / 2,
+          top: tableRect.top + tableRect.height * 0.45,
+          width: 0,
+          height: 0,
+        };
+      }
+
+      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+      const gap = 7;
+      const copyRect = copy.getBoundingClientRect();
+      const copyWidth = copyRect.width || Math.min(360, viewportWidth - 24);
+      const copyHeight = copyRect.height;
+      const centerX = cardRect.left + cardRect.width / 2;
+      const left = Math.max(12, Math.min(viewportWidth - copyWidth - 12, centerX - copyWidth / 2));
+      const right = left + copyWidth;
+      let safeTop = 8;
+      const obstacles = document.querySelectorAll<HTMLElement>(
+        ".opponent-player-card, .visible-countdown, .stage-system-cluster, [data-public-card-copy-anchor-event-id]",
+      );
+      for (const obstacle of obstacles) {
+        if (obstacle === anchor || display.contains(obstacle) && obstacle.dataset.publicCardCopyAnchorEventId === eventId) continue;
+        const rect = obstacle.getBoundingClientRect();
+        const style = window.getComputedStyle(obstacle);
+        if (style.display === "none" || style.visibility === "hidden" || rect.width <= 0 || rect.height <= 0) continue;
+        const horizontalOverlap = left < rect.right && right > rect.left;
+        if (horizontalOverlap && rect.bottom <= cardRect.top - gap) safeTop = Math.max(safeTop, rect.bottom + 5);
+      }
+
+      const desiredTop = cardRect.top - copyHeight - gap;
+      const availableAbove = cardRect.top - gap - safeTop;
+      copy.classList.toggle("is-condensed", availableAbove < copyHeight);
+      const measuredHeight = copy.getBoundingClientRect().height;
+      const condensedTop = cardRect.top - measuredHeight - gap;
+      let top = condensedTop >= safeTop ? condensedTop : desiredTop;
+      if (top < safeTop) top = safeTop;
+
+      copy.style.left = `${left}px`;
+      copy.style.top = `${Math.round(top * 10) / 10}px`;
+      copy.dataset.publicCardAnnouncementPositioned = "true";
+      copy.style.visibility = "visible";
+    };
+    const schedule = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(place);
+    };
+    const onResize = schedule;
+
+    place();
+    window.addEventListener("resize", onResize);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", onResize);
+    resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onResize);
+    const table = document.querySelector<HTMLElement>(".play-table");
+    const playerBoard = document.querySelector<HTMLElement>(".player-board");
+    if (table) resizeObserver?.observe(table);
+    if (playerBoard) resizeObserver?.observe(playerBoard);
+    const anchor = getAnchor();
+    if (anchor) {
+      resizeObserver?.observe(anchor);
+      anchorObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
+      anchorObserver?.observe(anchor, { attributes: true, attributeFilter: ["style", "data-public-card-journey-phase"] });
+    }
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      viewport?.removeEventListener("resize", onResize);
+      resizeObserver?.disconnect();
+      anchorObserver?.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, [eventId, fallbackCardRect, fallbackCardRect?.height, fallbackCardRect?.left, fallbackCardRect?.top, fallbackCardRect?.width, phase]);
+
+  return <div
+    ref={copyRef}
+    className={`public-card-display-copy public-card-display-journey-copy${negationWaiting ? " is-negation-waiting" : ""}`}
+    role="status"
+    aria-live="polite"
+    aria-atomic="true"
+    data-public-card-announcement="true"
+    data-public-card-announcement-event-id={eventId}
+    data-public-card-copy-anchor-event-id={eventId}
+    data-public-card-phase-notice={phaseNotice}
+    data-public-card-result={outcome}
+    style={{ top: 0, left: 0, visibility: "hidden" }}
+  >
+    <b>{message}</b>
+  </div>;
+}
+
 function AttackDodgeCardJourney({
   action,
   enabled,
@@ -466,16 +684,15 @@ function AttackDodgeCardJourney({
   const activeCard = activeJourneyCard?.cardFace ?? latestResponse?.cardFace ?? latestDeflection?.cardFace ?? action.cardFace ?? null;
   const activeEventId = activeJourneyCard?.eventId ?? latestResponse?.eventId ?? latestDeflection?.eventId ?? action.rootEventId;
   const activeActorId = activeJourneyCard?.actorId ?? latestResponse?.actorId ?? latestDeflection?.actorId ?? action.sourceId;
-  const result = settlementLabel(action, targetName);
-  const activeLabel = activeJourneyCard?.semanticLabel
-    ?? (activeJourneyCard?.role === "response" && latestResponse?.semanticAction === "DODGE" ? "DODGE"
-      : activeJourneyCard?.role === "deflection" ? "DEFLECTION"
-        : activeCard ? cardDefinition(activeCard.kind).name.toUpperCase() : action.cardLabel);
-  const activeAriaLabel = activeJourneyCard?.ariaLabel ?? latestResponse?.ariaLabel ?? latestDeflection?.ariaLabel ?? action.ariaLabel;
   const activeNotice = activeJourneyCard?.ariaLabel ?? latestResponse?.ariaLabel ?? latestDeflection?.publicNotice ?? action.publicNotice ?? action.ariaLabel;
   const activePhase = activeJourneyCard?.phase ?? null;
+  const activeActorName = activeJourneyCard?.actorName ?? latestResponse?.actorName ?? latestDeflection?.actorName ?? sourceName;
   const activeRevealStartedAtMs = activeJourneyCard?.revealStartedAtMs ?? null;
   const activeRevealRemainingMs = activeJourneyCard?.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS;
+  const announcement = withPublicCardPhaseNotice(
+    publicCardAnnouncement(action, activeNotice, activeActorName, sourceName, targetName),
+    action.settlement ? undefined : action.phaseNotice,
+  );
 
   useLayoutEffect(() => {
     mountedRef.current = true;
@@ -992,13 +1209,8 @@ function AttackDodgeCardJourney({
 
   if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
   const cards = journey.cards;
-  const copyTop = journey.center.top + REVEAL_CARD.height + 7;
   return <section
     className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}`}
-    role="status"
-    aria-live="polite"
-    aria-atomic="false"
-    aria-label={activeAriaLabel}
     data-public-card-display="true"
     data-public-card-ready="true"
     data-public-card-motion="attack-dodge"
@@ -1026,12 +1238,15 @@ function AttackDodgeCardJourney({
         primary={isCurrent}
       />;
     })}
-    <div className="public-card-display-copy public-card-display-journey-copy" style={{ top: copyTop }}>
-      <small>{activeLabel}</small>
-      <b>{activeNotice}</b>
-      {action.phaseNotice && <span>{action.phaseNotice}</span>}
-      {result && <strong data-public-card-result={action.settlement?.outcome}>{result}</strong>}
-    </div>
+    <PublicCardAnnouncement
+      eventId={activeEventId}
+      phase={activeJourneyCard?.phase ?? "static"}
+      message={announcement}
+      fallbackCardRect={journey.center}
+      phaseNotice={action.phaseNotice}
+      outcome={action.settlement?.outcome}
+      negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
+    />
   </section>;
 }
 
@@ -1434,10 +1649,11 @@ function SingleTargetCardJourney({
     return () => window.clearInterval(interval);
   }, [action.targetId, enabled, journey.cards, journey.scopeKey, scopeKey, viewerId]);
   const currentPublicCard = currentCard?.cardFace ?? action.cardFace ?? null;
-  const currentLabel = currentCard?.semanticLabel ?? (currentPublicCard ? cardDefinition(currentPublicCard.kind).name.toUpperCase() : action.cardLabel);
   const currentNotice = currentCard?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
-  const result = allParked ? settlementLabel(action, targetName) : null;
-  const copyTop = journey.center ? journey.center.top + REVEAL_CARD.height + 7 : 0;
+  const announcement = withPublicCardPhaseNotice(
+    publicCardAnnouncement(action, currentNotice, currentCard?.actorName ?? sourceName, sourceName, targetName),
+    action.settlement ? undefined : action.phaseNotice,
+  );
   useEffect(() => {
     const settlementEventId = action.settlement?.eventId;
     if (!enabled || journey.scopeKey !== scopeKey || !allParked || !settlementEventId
@@ -1448,10 +1664,6 @@ function SingleTargetCardJourney({
   if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
   return <section
     className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}`}
-    role="status"
-    aria-live="polite"
-    aria-atomic="false"
-    aria-label={currentCard?.ariaLabel ?? action.ariaLabel}
     data-public-card-display="true"
     data-public-card-ready="true"
     data-public-card-motion={motion?.type ?? "single-target"}
@@ -1483,12 +1695,15 @@ function SingleTargetCardJourney({
         Public card event {event.globalOrdinal}: {event.ariaLabel}
       </li>)}
     </ol>
-    <div className={`public-card-display-copy public-card-display-journey-copy${action.phaseNotice?.includes("NEGATION") ? " is-negation-waiting" : ""}`} style={{ top: copyTop }}>
-      <small>{currentLabel}</small>
-      <b>{currentNotice}</b>
-      {action.phaseNotice && <span data-public-card-phase-notice="true">{action.phaseNotice}</span>}
-      {result && <strong data-public-card-result={action.settlement?.outcome}>{result}</strong>}
-    </div>
+    <PublicCardAnnouncement
+      eventId={activeEventId}
+      phase={currentCard?.phase ?? "static"}
+      message={announcement}
+      fallbackCardRect={journey.center}
+      phaseNotice={action.phaseNotice}
+      outcome={allParked ? action.settlement?.outcome : undefined}
+      negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
+    />
   </section>;
 }
 
@@ -1957,11 +2172,11 @@ function DuelCardJourney({
   const activeEventId = activeEvent?.eventId ?? action.rootEventId;
   const currentPublicCard = activeEvent?.cardFace ?? latestResponse?.cardFace ?? action.cardFace ?? null;
   const activeActorId = activeEvent?.actorId ?? latestResponse?.actorId ?? action.sourceId;
-  const activeLabel = activeEvent?.semanticLabel
-    ?? latestResponse?.semanticLabel
-    ?? (currentPublicCard ? cardDefinition(currentPublicCard.kind).name.toUpperCase() : action.cardLabel);
   const activeMessage = activeEvent?.ariaLabel ?? latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
-  const copyTop = (journey.center?.top ?? 0) + DUEL_REVEAL_CARD.height + 7;
+  const announcement = withPublicCardPhaseNotice(
+    publicCardAnnouncement(action, activeMessage, activeEvent?.actorName ?? latestResponse?.actorName ?? sourceName, sourceName, targetName),
+    action.settlement ? undefined : action.phaseNotice,
+  );
 
   useEffect(() => {
     if (!enabled || journey.scopeKey !== scopeKey) return;
@@ -2016,10 +2231,6 @@ function DuelCardJourney({
 
   return <section
     className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}`}
-    role="status"
-    aria-live="polite"
-    aria-atomic="false"
-    aria-label={activeEvent?.ariaLabel ?? latestResponse?.ariaLabel ?? action.ariaLabel}
     data-public-card-display="true"
     data-public-card-ready="true"
     data-public-card-motion="duel"
@@ -2049,12 +2260,15 @@ function DuelCardJourney({
         Duel event {event.globalOrdinal}: {event.ariaLabel}
       </li>)}
     </ol>
-    <div className={`public-card-display-copy public-card-display-journey-copy${action.phaseNotice?.includes("NEGATION") ? " is-negation-waiting" : ""}`} style={{ top: copyTop }} data-public-card-phase-notice={action.phaseNotice ?? undefined}>
-      <small>{activeLabel}</small>
-      <b>{activeMessage}</b>
-      {action.phaseNotice && <span>{action.phaseNotice}</span>}
-      {settlementLabel(action, targetName) && <strong data-public-card-result={action.settlement?.outcome}>{settlementLabel(action, targetName)}</strong>}
-    </div>
+    <PublicCardAnnouncement
+      eventId={activeEventId}
+      phase={activeEvent?.phase ?? "static"}
+      message={announcement}
+      fallbackCardRect={journey.center}
+      phaseNotice={action.phaseNotice}
+      outcome={action.settlement?.outcome}
+      negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
+    />
   </section>;
 }
 
@@ -2102,16 +2316,13 @@ export function PublicCardDisplay({
   const card = latestResponse?.cardFace ?? action.cardFace ?? null;
   const eventId = latestResponse?.eventId ?? action.rootEventId;
   const actorId = latestResponse?.actorId ?? action.sourceId;
-  const label = latestResponse?.semanticAction === "DODGE"
-    ? latestResponse.semanticLabel ?? "DODGE"
-    : card ? cardDefinition(card.kind).name.toUpperCase() : action.cardLabel;
-  const result = settlementLabel(action, targetName);
+  const notice = latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
+  const announcement = withPublicCardPhaseNotice(
+    publicCardAnnouncement(action, notice, latestResponse?.actorName ?? sourceName, sourceName, targetName),
+    action.settlement ? undefined : action.phaseNotice,
+  );
   return <section
     className={`public-card-display${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}`}
-    role="status"
-    aria-live="polite"
-    aria-atomic="true"
-    aria-label={latestResponse?.ariaLabel ?? action.ariaLabel}
     data-public-card-display="true"
     data-public-card-ready="true"
     data-public-card-event-id={eventId}
@@ -2124,12 +2335,15 @@ export function PublicCardDisplay({
     data-public-card-settlement-outcome={action.settlement?.outcome}
     data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
-    {card && <CardFace card={card} />}
-    <div className="public-card-display-copy">
-      <small>{label}</small>
-      <b>{latestResponse ? latestResponse.ariaLabel : action.ariaLabel}</b>
-      {action.phaseNotice && <span>{action.phaseNotice}</span>}
-      {result && <strong data-public-card-result={action.settlement?.outcome}>{result}</strong>}
-    </div>
+    {card && <div className="public-card-display-static-card" data-public-card-copy-anchor-event-id={eventId}><CardFace card={card} /></div>}
+    <PublicCardAnnouncement
+      eventId={eventId}
+      phase="static"
+      message={announcement}
+      fallbackCardRect={null}
+      phaseNotice={action.phaseNotice}
+      outcome={action.settlement?.outcome}
+      negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
+    />
   </section>;
 }

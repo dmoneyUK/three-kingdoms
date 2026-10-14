@@ -1249,14 +1249,12 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 /* Temporary single-owner public card reveal; replaces the retired graph layer. */
 .public-card-display{position:absolute;left:50%;top:45%;translate:-50% -50%;z-index:17;display:flex;align-items:center;justify-content:center;gap:10px;width:min(94%,430px);padding:8px;background:#11140ff2;border:1px solid #8e7848;box-shadow:0 8px 24px #000a;color:#ead7a5;pointer-events:none}
 .public-card-display>.played-card{flex:0 0 auto;width:clamp(78px,23vw,108px);height:clamp(114px,33vw,152px);animation:none;box-shadow:0 0 0 1px #d4b46f99,0 7px 18px #000b}
+.public-card-display-static-card{flex:0 0 auto}.public-card-display-static-card>.played-card{width:clamp(78px,23vw,108px);height:clamp(114px,33vw,152px);animation:none;box-shadow:0 0 0 1px #d4b46f99,0 7px 18px #000b}
 .public-card-display-copy{display:flex;flex:1 1 auto;min-width:0;flex-direction:column;gap:5px}
-.public-card-display-copy>small{color:#d9bc72;font:700 9px Arial,sans-serif;letter-spacing:.14em}
 .public-card-display-copy>b{display:-webkit-box;overflow:hidden;color:#f3ead8;font:700 clamp(10px,2.8vw,13px)/1.3 Arial,sans-serif;-webkit-box-orient:vertical;-webkit-line-clamp:3}
-.public-card-display-copy>span{color:#b9ab88;font:700 8px Arial,sans-serif;letter-spacing:.1em}
-.public-card-display-copy>strong{color:#f1cf83;font:700 10px Arial,sans-serif;letter-spacing:.08em}
 .public-card-display.is-exiting{animation:publicCardDisplayOut .24s ease-in both}
 @keyframes publicCardDisplayOut{to{opacity:0;scale:.96}}
-@media(max-width:480px){.public-card-display{top:44%;gap:7px;width:calc(100% - 14px);padding:6px}.public-card-display>.played-card{width:clamp(72px,22vw,88px);height:clamp(104px,32vw,128px)}.public-card-display-copy>small{font-size:8px}.public-card-display-copy>b{font-size:10px;-webkit-line-clamp:3}.public-card-display-copy>strong{font-size:9px}}
+@media(max-width:480px){.public-card-display{top:44%;gap:7px;width:calc(100% - 14px);padding:6px}.public-card-display>.played-card,.public-card-display-static-card>.played-card{width:clamp(72px,22vw,88px);height:clamp(104px,32vw,128px)}.public-card-display-copy>b{font-size:10px;-webkit-line-clamp:3}}
 
 /* Proof-backed public card journeys reveal at the battlefield centre, then
    park at the event author's real Seat or Dock. */
@@ -1291,9 +1289,8 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-journey-card.is-deflection::before{content:"";position:absolute;z-index:0;left:50%;top:-17px;width:calc(100% + 12px);min-width:66px;height:calc(100% + 21px);transform:translateX(-50%);box-sizing:border-box;border:1px solid #d9c17f88;border-radius:3px;background:#18191333;pointer-events:none}
 .public-card-journey-card.is-deflection>.played-card{position:relative;z-index:1}
 .public-card-journey-card.is-deflection .public-card-journey-semantic{left:50%;right:auto;top:-14px;bottom:auto;transform:translateX(-50%);padding:2px 4px;background:#181913;color:#f5dda1;font-size:7px;letter-spacing:.06em}
-.public-card-display-journey[data-public-card-active-event-kind="deflection"] .public-card-display-journey-copy>small{display:none}
-.public-card-display-journey-copy{position:fixed;left:50%;z-index:2;width:min(calc(100vw - 24px),360px);max-width:360px;min-height:0;margin:0;padding:5px 8px;translate:-50% 0;border:1px solid #8e784866;background:#11140fd9;box-shadow:0 4px 12px #0008;text-align:center;pointer-events:none}
-.public-card-display-journey-copy>small{display:block;font-size:8px}.public-card-display-journey-copy>b{display:block;max-width:100%;font:700 10px/1.3 Arial,sans-serif;-webkit-line-clamp:2}.public-card-display-journey-copy>span{font-size:7px}.public-card-display-journey-copy>strong{display:block;margin-top:2px;font-size:9px}
+.public-card-display-journey-copy{position:fixed;left:0;top:0;z-index:2;width:min(calc(100vw - 24px),360px);max-width:360px;min-height:0;margin:0;padding:5px 8px;translate:none;border:1px solid #8e784866;background:#11140fd9;box-shadow:0 4px 12px #0008;text-align:center;pointer-events:none}
+.public-card-display-journey-copy>b{display:-webkit-box;overflow:hidden;max-width:100%;color:#f3ead8;font:700 10px/1.25 Arial,sans-serif;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}.public-card-display-journey-copy.is-condensed{padding:3px 6px}.public-card-display-journey-copy.is-condensed>b{font-size:9px;line-height:1.15;-webkit-line-clamp:2}
 .public-card-duel-parked-card{direction:ltr}
 .public-card-duel-parked-card.is-prior{opacity:1;filter:none}
 .public-card-duel-parked-card .public-card-journey-semantic{left:2px;right:auto;bottom:2px}

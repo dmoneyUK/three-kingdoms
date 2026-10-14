@@ -95,14 +95,67 @@ async function assertJourneyMounted(page, rootCardId) {
   await expect(display).toBeVisible({ timeout: 20_000 });
   await expect(display).toHaveAttribute("data-public-card-id", rootCardId);
   await expect(display.locator(".public-card-journey-card")).toHaveCount(1);
+  await expect(display.locator('[data-public-card-announcement="true"]')).toHaveCount(1);
   await expect(display.locator("svg")).toHaveCount(0);
   await expect(page.getByText("GAME SCREEN ERROR")).toHaveCount(0);
   return display;
 }
 
-test("Attack and Dodge mount the card journey and settle without a GameRoom crash at 440x894", async ({ browser, page, request }) => {
+async function assertAnnouncementAboveCurrentCard(display, eventId) {
+  const announcement = display.locator('[data-public-card-announcement="true"]');
+  await expect(announcement).toBeVisible();
+  await expect(announcement).toHaveAttribute("data-public-card-copy-anchor-event-id", eventId);
+  await expect(announcement.locator("small,span,strong")).toHaveCount(0);
+  const measure = () => display.evaluate((root, selectedEventId) => {
+    const message = root.querySelector('[data-public-card-announcement="true"]');
+    const card = [...root.querySelectorAll("[data-public-card-copy-anchor-event-id]")]
+      .find((element) => element !== message && element.getAttribute("data-public-card-copy-anchor-event-id") === selectedEventId);
+    if (!message || !card) return null;
+    const box = (element) => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+    };
+    const messageBox = box(message);
+    const cardBox = box(card);
+    const obstacles = [...document.querySelectorAll(".opponent-player-card,.visible-countdown,.stage-system-cluster,.local-player-dock,.decision-status,.public-card-journey-card")]
+      .filter((element) => element !== card && element !== message)
+      .filter((element) => getComputedStyle(element).display !== "none" && getComputedStyle(element).visibility !== "hidden")
+      .map((element) => box(element));
+    return {
+      message: messageBox,
+      card: cardBox,
+      viewport: { width: document.documentElement.clientWidth, height: document.documentElement.clientHeight },
+      overlaps: obstacles.filter((obstacle) => messageBox.left < obstacle.right && messageBox.right > obstacle.left
+        && messageBox.top < obstacle.bottom && messageBox.bottom > obstacle.top),
+      liveStatusCount: root.querySelectorAll('[role="status"][aria-live="polite"]').length,
+      positioned: message.getAttribute("data-public-card-announcement-positioned"),
+    };
+  }, eventId);
+  let latestGeometry = null;
+  try {
+    await expect.poll(async () => {
+      latestGeometry = await measure();
+      return Boolean(latestGeometry && latestGeometry.message.bottom <= latestGeometry.card.top - 5);
+    }, { timeout: 3_000 }).toBe(true);
+  } catch (error) {
+    throw new Error(`${error.message}\nLatest public-card announcement geometry: ${JSON.stringify(latestGeometry)}`);
+  }
+  const geometry = await measure();
+  expect(geometry).not.toBeNull();
+  expect(geometry.positioned).toBe("true");
+  expect(geometry.message.left).toBeGreaterThanOrEqual(8);
+  expect(geometry.message.right).toBeLessThanOrEqual(geometry.viewport.width - 8);
+  expect(geometry.message.bottom).toBeLessThanOrEqual(geometry.card.top - 5);
+  expect(geometry.overlaps).toEqual([]);
+  expect(geometry.liveStatusCount).toBe(1);
+  return geometry;
+}
+
+test("Attack and Dodge mount the card journey and settle without a GameRoom crash at 440x894", async ({ browser, page, request }, testInfo) => {
   test.setTimeout(90_000);
   const room = await seed(request, true);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const reducedMotion = await page.evaluate(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const attackerPage = await browser.newPage({ viewport: { width: 440, height: 894 } });
   const attackerErrors = watchErrors(attackerPage);
   const defenderErrors = watchErrors(page);
@@ -113,19 +166,48 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   await playAttack({ page: attackerPage, room, attacker, defender, attack: room.attack });
   await assertJourneyMounted(attackerPage, room.attack.id);
   const defenderDisplay = await assertJourneyMounted(page, room.attack.id);
+  const attackEventId = await defenderDisplay.getAttribute("data-public-card-event-id");
+  expect(attackEventId).toBeTruthy();
+  const standardGeometry = await assertAnnouncementAboveCurrentCard(defenderDisplay, attackEventId);
+  await testInfo.attach("attack-announcement-440x894.json", {
+    body: JSON.stringify(standardGeometry, null, 2),
+    contentType: "application/json",
+  });
+  await testInfo.attach("attack-announcement-440x894.png", {
+    body: await page.screenshot({ animations: "disabled" }),
+    contentType: "image/png",
+  });
   expect(await defenderDisplay.getAttribute("data-public-card-root-event-id")).toBeTruthy();
   const attackCardJourney = defenderDisplay.locator(`[data-public-card-journey-card-id="${room.attack.id}"]`);
   await expect(attackCardJourney).toHaveAttribute("data-public-card-journey-phase", "reveal");
   await expect(attackCardJourney).toBeDisabled();
   await expect(attackCardJourney).toHaveAttribute("data-public-card-inspectable", "false");
-  await page.waitForFunction((cardId) => window.__publicCardPhaseLog?.some((entry) => entry.cardId === cardId && entry.phase === "move"), room.attack.id, { timeout: 8_000 });
+  await page.setViewportSize({ width: 390, height: 700 });
+  const shortViewportGeometry = await assertAnnouncementAboveCurrentCard(defenderDisplay, attackEventId);
+  await testInfo.attach("attack-announcement-390x700.json", {
+    body: JSON.stringify(shortViewportGeometry, null, 2),
+    contentType: "application/json",
+  });
+  await testInfo.attach("attack-announcement-390x700.png", {
+    body: await page.screenshot({ animations: "disabled" }),
+    contentType: "image/png",
+  });
+  await page.setViewportSize({ width: 440, height: 894 });
+  await page.waitForFunction((cardId) => window.__publicCardPhaseLog?.some((entry) => entry.cardId === cardId && (entry.phase === "move" || entry.phase === "parked")), room.attack.id, { timeout: 8_000 });
   const phaseTiming = await page.evaluate((cardId) => {
     const entries = window.__publicCardPhaseLog.filter((entry) => entry.cardId === cardId);
-    return { reveal: entries.find((entry) => entry.phase === "reveal"), move: entries.find((entry) => entry.phase === "move") };
+    return {
+      reveal: entries.find((entry) => entry.phase === "reveal"),
+      move: entries.find((entry) => entry.phase === "move"),
+      parked: entries.find((entry) => entry.phase === "parked"),
+    };
   }, room.attack.id);
   expect(phaseTiming.reveal).toMatchObject({ width: 90, height: 135 });
-  expect(phaseTiming.move.at - phaseTiming.reveal.at).toBeGreaterThanOrEqual(3_800);
-  expect(phaseTiming.move.at - phaseTiming.reveal.at).toBeLessThan(4_800);
+  const revealElapsed = (reducedMotion ? phaseTiming.parked : phaseTiming.move).at - phaseTiming.reveal.at;
+  expect(revealElapsed).toBeGreaterThanOrEqual(3_800);
+  expect(revealElapsed).toBeLessThan(4_800);
+  if (reducedMotion) expect(phaseTiming.move).toBeUndefined();
+  else expect(phaseTiming.move).toBeTruthy();
 
   const defenderDock = page.locator(`.local-player-dock[data-player-anchor="${defender.id}"]`);
   const dodge = defenderDock.locator(`[data-hand-card-id="${room.responseCard.id}"] .game-card`);
@@ -189,7 +271,9 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
     action: "respond", code: room.code, token: defender.token, cardId: room.responseCard.id,
   });
   await expect(defenderDisplay).toHaveAttribute("data-public-card-settlement-outcome", "ATTACK_BLOCKED_BY_DODGE", { timeout: 20_000 });
-  await expect(defenderDisplay).toContainText("ATTACK BLOCKED BY DODGE");
+  const settledAnnouncement = defenderDisplay.locator('[data-public-card-announcement="true"]');
+  await expect(settledAnnouncement).toContainText(/DEFENDER dodged ATTACKER's Attack/);
+  await expect(settledAnnouncement).toHaveAttribute("data-public-card-result", "ATTACK_BLOCKED_BY_DODGE");
   const dodgeCardJourney = defenderDisplay.locator(`[data-public-card-journey-card-id="${room.responseCard.id}"]`);
   await expect(dodgeCardJourney).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });
   await expect(dodgeCardJourney).toBeEnabled();
@@ -249,7 +333,10 @@ test("skipping Attack response shows only server-proven damage at 440x894", asyn
     return projected.players.find((player) => player.id === defender.id)?.hp;
   }, { timeout: 20_000 }).toBe(3);
   await expect(display).toHaveAttribute("data-public-card-settlement-outcome", "ATTACK_DAMAGE_APPLIED", { timeout: 20_000 });
-  await expect(display).toContainText(`TAKE DAMAGE · ${defender.name}`);
+  const damageAnnouncement = display.locator('[data-public-card-announcement="true"]');
+  await expect(damageAnnouncement).toContainText(`${defender.name} took damage from ${attacker.name}'s Attack.`);
+  await expect(damageAnnouncement).toHaveAttribute("data-public-card-result", "ATTACK_DAMAGE_APPLIED");
+  await expect(damageAnnouncement.locator("small,span,strong")).toHaveCount(0);
   await expect(attackerPage.getByText("GAME SCREEN ERROR")).toHaveCount(0);
   await expect(page.getByText("GAME SCREEN ERROR")).toHaveCount(0);
   expect(attackerErrors.boundaryErrors).toEqual([]);

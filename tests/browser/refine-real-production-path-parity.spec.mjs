@@ -612,6 +612,10 @@ test("real Raining Arrows without Dodge offers only TAKE DAMAGE and advances ser
   const publicCard = targetPage.locator(`.public-card-display[data-public-card-display="true"][data-public-card-id="${root.id}"]`);
   await expect(publicCard).toBeVisible();
   await expect(publicCard).toHaveAttribute("data-public-card-actor-id", seed.players[0].id);
+  const announcement = publicCard.locator('[data-public-card-announcement="true"]');
+  await expect(announcement).toHaveCount(1);
+  await expect(announcement).toContainText("SOURCE played Raining Arrows");
+  await expect(announcement.locator("small,span,strong")).toHaveCount(0);
   await expect(targetPage.locator(".interaction-stage")).toHaveCount(0);
   const dock = targetPage.locator(`.local-player-dock[data-player-anchor="${target.id}"]`);
   await expect(dock.locator('[data-action-slot="decline"] button')).toHaveText("TAKE DAMAGE");

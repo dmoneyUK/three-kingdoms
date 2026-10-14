@@ -196,7 +196,7 @@ async function geometry(page, eventId) {
       side: element.getAttribute("data-public-card-journey-parking-side"),
       viewerId: element.closest("[data-public-card-motion='duel']")?.getAttribute("data-public-card-viewer-id"),
       revealStartedAt: element.getAttribute("data-public-card-journey-reveal-started-at"),
-      revealStartedAtMs: Number(element.getAttribute("data-public-card-journey-reveal-started-ms")),
+      revealStartedAtMs: Date.parse(element.getAttribute("data-public-card-journey-reveal-started-at") ?? ""),
       actualRect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
       targetRect: {
         left: Number(element.getAttribute("data-public-card-journey-target-left")),
@@ -213,8 +213,8 @@ async function waitForElapsed(page, eventId, elapsedMs) {
   await page.waitForFunction(({ id, elapsed }) => {
     const cardElement = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
       .find((element) => element.getAttribute("data-public-card-journey-event-id") === id);
-    const startedAt = Number(cardElement?.getAttribute("data-public-card-journey-reveal-started-ms"));
-    return Number.isFinite(startedAt) && performance.now() - startedAt >= elapsed;
+    const startedAt = Date.parse(cardElement?.getAttribute("data-public-card-journey-reveal-started-at") ?? "");
+    return Number.isFinite(startedAt) && Date.now() - startedAt >= elapsed;
   }, { id: eventId, elapsed: elapsedMs });
 }
 
@@ -310,15 +310,20 @@ test("server-backed Duel cards reveal at full size for four seconds, then park b
     await expect(page.locator('[data-public-card-motion="duel"]')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("GAME SCREEN ERROR")).toHaveCount(0);
     await expect(root).toHaveAttribute("data-public-card-journey-phase", "reveal");
-    await expect(root).toHaveAttribute("data-public-card-journey-reveal-started-ms", /\d+/);
-    const revealStart = Number(await root.getAttribute("data-public-card-journey-reveal-started-ms"));
+    await expect(root).toHaveAttribute("data-public-card-journey-reveal-started-at", /.+/);
+    const revealStart = Date.parse(await root.getAttribute("data-public-card-journey-reveal-started-at"));
 
     await waitForElapsed(page, rootEvent.id, 500);
     let rootGeometry = await geometry(page, rootEvent.id);
     expect(rootGeometry.phase).toBe("reveal");
     expect(rootGeometry.actualRect.width).toBeCloseTo(90, 0);
     expect(rootGeometry.actualRect.height).toBeCloseTo(135, 0);
-    checkpoints.push({ checkpoint: "duel-0.5s", elapsedMs: Math.round(await page.evaluate((start) => performance.now() - start, revealStart)), ...rootGeometry });
+    const rootAnnouncement = page.locator(`[data-public-card-announcement="true"][data-public-card-announcement-event-id="${rootEvent.id}"]`);
+    await expect(rootAnnouncement).toBeVisible();
+    const announcementRect = await rootAnnouncement.boundingBox();
+    expect(announcementRect).toBeTruthy();
+    expect(announcementRect.y + announcementRect.height).toBeLessThanOrEqual(rootGeometry.actualRect.top - 5);
+    checkpoints.push({ checkpoint: "duel-0.5s", elapsedMs: Date.now() - revealStart, ...rootGeometry });
     await screenshot(page, testInfo, "duel-reveal-0.5s-440x894");
 
     await waitForElapsed(page, rootEvent.id, 2_500);
@@ -326,7 +331,7 @@ test("server-backed Duel cards reveal at full size for four seconds, then park b
     expect(rootGeometry.phase).toBe("reveal");
     expect(rootGeometry.actualRect.width).toBeCloseTo(90, 0);
     expect(rootGeometry.actualRect.height).toBeCloseTo(135, 0);
-    checkpoints.push({ checkpoint: "duel-2.5s", elapsedMs: Math.round(await page.evaluate((start) => performance.now() - start, revealStart)), ...rootGeometry });
+    checkpoints.push({ checkpoint: "duel-2.5s", elapsedMs: Date.now() - revealStart, ...rootGeometry });
     await captureDuelMove(page, rootEvent.id);
     await screenshot(page, testInfo, "duel-reveal-2.5s-440x894");
 
@@ -335,11 +340,12 @@ test("server-backed Duel cards reveal at full size for four seconds, then park b
     expect(rootGeometry.phase).toBe("reveal");
     expect(rootGeometry.actualRect.width).toBeCloseTo(90, 0);
     expect(rootGeometry.actualRect.height).toBeCloseTo(135, 0);
-    checkpoints.push({ checkpoint: "duel-3.5s-full-size", elapsedMs: Math.round(await page.evaluate((start) => performance.now() - start, revealStart)), ...rootGeometry });
+    checkpoints.push({ checkpoint: "duel-3.5s-full-size", elapsedMs: Date.now() - revealStart, ...rootGeometry });
     await screenshot(page, testInfo, "duel-reveal-3.5s-440x894");
 
     const waitingCopy = page.locator(".public-card-display-journey-copy[data-public-card-phase-notice]");
-    await expect(waitingCopy).toContainText("NEGATION MAY BE PLAYED");
+    await expect(waitingCopy).toHaveAttribute("data-public-card-phase-notice", "NEGATION MAY BE PLAYED");
+    await expect(waitingCopy).toContainText("Negation can be played");
     const pass = page.getByRole("button", { name: /^(?:Skip|Pass)$/ });
     await expect(pass).toBeEnabled();
     await screenshot(page, testInfo, "duel-negation-waiting-controls-live-440x894");
@@ -352,7 +358,7 @@ test("server-backed Duel cards reveal at full size for four seconds, then park b
       width: moveCapture.samples[0].width,
       height: moveCapture.samples[0].height,
     } };
-    const moveElapsedMs = await page.evaluate((start) => performance.now() - start, revealStart);
+    const moveElapsedMs = Date.now() - revealStart;
     expect(moveElapsedMs).toBeGreaterThanOrEqual(4_000);
     expect(moveGeometry.phase).toBe("move");
     expect(moveGeometry.actualRect.width).toBeGreaterThan(48);
@@ -751,6 +757,9 @@ test("server-proven Group-target Negation counters retain physical cards at thei
   await expect(page.locator(`.local-player-dock[data-player-anchor="${room.players[0].id}"]`)).toBeVisible();
   const display = page.locator('[data-public-card-motion="negation"]');
   await expect(display).toBeVisible({ timeout: 20_000 });
+  const announcement = display.locator('[data-public-card-announcement="true"]');
+  await expect(announcement).toHaveCount(1);
+  await expect(announcement.locator("small,span,strong")).toHaveCount(0);
   await expect(display.locator('[data-public-card-journey-event-id]')).toHaveCount(3);
   for (const [event, player, cardId, ordinal] of [
     [rootEvent, room.players[0], room.rootCardId, "1"],
