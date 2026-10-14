@@ -286,7 +286,7 @@ These are **current functional requirements**, not old combat-graph tasks. They 
 
 **Checkpoint C (Inspector layout and nested public card info):** delivered by b1c06696ed4d19c54b6adaa3ff628b89148062c1 plus lint fix 53460f685a482260d82e9d550dd13f84ea25b35f, and **user accepted as §§8.3–8.4**. Later §8.5 removed the nested Back and introduced direct titled switching. No old Back-based test or reimplementation is authorized.
 
-**Phase-1 delivery status:** §8.7 Reveal Policy B is **implemented/deployed, awaiting real-phone acceptance**; §8.5 is accepted/closed. **Current new P0 is §9.5 Negation UX.** See the top-level work index; preserve response deadlines and legal controls.
+**Latest phone review:** §8.7 default ~4s centre reveal and true-actor park PASS, but §10.7 R1 **P0** shows ordinary real defender responses are blocked during the visual hold; genuine early-response interruption remains UNCONFIRMED until R1 is repaired. §8.5 is accepted/closed. Preserve response deadlines and authorized legal choices.
 
 ### 8.7 Reveal Policy B — implemented/deployed; real-phone timing review pending (2026-10-14)
 
@@ -326,7 +326,7 @@ These are **current functional requirements**, not old combat-graph tasks. They 
 
 **Ownership:** Coding agent owns code, tests, deployment and HANDOVER.md. Planner/Reviewer owns only this design document and does not edit the handover.
 
-## 9. PHASE 2 — Shared-window Negation (A–C delivered; §9.5 NEW P0 UX repair)
+## 9. PHASE 2 — Shared-window Negation (A–C and N0–N3 delivered; §10.7 R2 public-history issue open)
 
 **UX2 Negation Plan A — latest confirmed user rule (2026-10-14):** Open one confidential shared window for **ALL living seats**, with immutable **maximum 8-second deadline**. Every player may explicitly submit a valid Negation intent or Pass (including those with no Negation card). **As soon as ALL living seats have persisted a response, the server may atomically settle the window early.** If even one living seat is silent, do NOT infer their Hand, auto-Pass or shorten the window; resolve at the original 8s deadline, treating the missing submission as timeout/implicit Pass then. In either case choose only one actually valid Negation by canonical seat order; open a fresh maximum-8s counter window after each actual winner. Legal Confirm/Pass is available from T0 regardless of root reveal; successful submissions are acknowledged privately, and only the chosen physical winning card is public after settlement. **No immediate-public-on-individual-Confirm (deferred UX3 §11).**
 
@@ -427,7 +427,7 @@ Five seats clockwise **1→2→3→4→5**; seat 1 plays Duel against seat 3.
 
 ### 10.1 Rollout authority and completed baseline — updated 2026-10-14
 
-**Attack/Dodge and Duel are the accepted graph-free baseline.** §§8.1–8.5 accepted; §8.7 Reveal Policy B, §9.5 N0–N3 and §10.5.3 are delivered awaiting phone review. **§10.6 contains new, specifically requested iPhone UX changes** and is the next bounded coding queue; do not redo the engine/graphs or implement deferred UX3 Negation Plan B.
+**Attack/Dodge and Duel accepted graph-free baseline:** §§8.1–8.5 accepted; §10.5.3 Da Qiao accepted/closed; §9.5 Confirm and early settle PASS but public card history R2 remains OPEN; §8.7 4s/no-wrong-author PASS but response gating R1 remains OPEN. UI-1 original tests passed, UI-2 original tests passed with newly changed TAKE DAMAGE request. §10.6 UI-3 delivered, UI-4 currently in flight; **§10.7 is the next bounded coding queue after UI-4**, not another family redesign.
 
 §7 and §8.6 are historical archive. §9's existing shared 8s secret winner-selection engine remains UX2 Plan A; fix its broken end-to-end controls/history/reveal via §9.5. §10 remains a future card-family review queue; no new family until §9.5, §8.7 and §10.5.3 pass real-phone acceptance. Only coding agent owns HANDOVER.md.
 
@@ -435,7 +435,7 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 
 ### 10.2 Card-family review and rollout queue
 
-**Only after §9.5 Negation UX, §8.7 Reveal Policy B and §10.5.3 pass real-phone user acceptance**, resume source review of other families **one bounded slice at a time**. Some rows have partially or fully delivered work and are marked accordingly; listing a card never proves it needs changing. The next not-yet-delivered single-target subflow (e.g. Steal) may be investigated after P0; Dismantle and Negation must not be reimplemented.
+**Only after §10.7 R1–R4 and the already delivered §9.5/§8.7 behavior pass the remaining relevant phone checks**, resume other card families **one bounded slice at a time**. §10.5.3 is already accepted and must not be retested as an unfinished task. Some rows have partially or fully delivered work and are marked accordingly; listing a card never proves it needs changing. The next not-yet-delivered single-target subflow (e.g. Steal) may be investigated after P0; Dismantle and Negation must not be reimplemented.
 
 | Priority | Card family (actual in-repository examples) | Expected UX / implementation boundary |
 | --- | --- | --- |
@@ -454,7 +454,7 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 
 ### 10.3 Required permission and stop/start gates
 
-1. **Active code scope:** §10.6 is the new user-requested, four-checkpoint UI task. §9.5 N0–N3, §8.7 Reveal Policy B and §10.5.3 corrections are delivered pending user feedback. §§8.1–8.5 accepted; §9.4 A–C and Dismantle previously delivered. UX3 §11 is never an active coding task.
+1. **Active code scope:** Finish in-flight §10.6 UI-4 (Diao Chan), then start §10.7 R1 (P0), R2 (P1), R3 (P2), R4 (P3) separately. UI-1 original three checks and UI-2 original three checks passed, with newly requested R3/R4 changes. §10.5.3 and §§8.1–8.5 user-accepted/closed. §9.5 N0–N3 and §8.7 code delivered but have the specific R1/R2 follow-up defects. UX3 §11 is future only.
 2. **Before any NEW CARD-FAMILY rollout under §10.2**, close outstanding user feedback for §9.5, §8.7 and §10.5.3. **Explicitly requested §10.6 cross-cutting UI corrections are allowed ahead of that later rollout**, with no rule changes and no regression to already accepted Inspector/Duel/Deck/Discard. Automated test/CI proof does not imply user UX approval.
 3. **Card-family boundaries:** Only after §10.6 and open core UX changes are delivered/reviewed, source-review the next unimplemented subgroup in §10.2 (not completed Dismantle/Negation/Deflection). The user's earlier autonomous one-task-at-a-time instruction is **paused for NEW card families by the later P0 stop rule**, not a licence for a speculative global rewrite or game-rule change.
 4. **Implement §10.6 as four bounded UI checkpoints, with focused automated verification and exact source/deploy evidence; do not expand into other families.** Keep only one code task at a time in coding-agent-owned HANDOVER.md. Preserve proof, privacy and legal controls. CI does not equal visual acceptance. A correct existing family is reported as no change, not recoded.
@@ -513,9 +513,9 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 
 **Coding-agent progress (2026-10-14):** The scoped toast suppression and label-above-cost-card frame shipped as `a191c08fb386b32f0d8ab24ecf3788bc86c89f50`; exact Actions run [`38607911627`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38607911627) passed lint/fast, API, browser startup/room smoke, and deploy. Production `/api/health` returned `{"ok":true,"worker":"available"}`. No local automated tests or real-phone screenshots were run; visual acceptance remains pending.
 
-**Priority/ownership updated:** §9.5 is the active P0; §8.7 Reveal Policy B and §10.5.3 are deployed pending real-phone acceptance. §10.5.3 is a separately approved small Deflection visual defect repair, **not** a restart of already shipped E1/E2 or general skill UX. Coding Agent owns code/tests/deploy/HANDOVER.md; Planner edits only this design document.
+**Priority/ownership updated after phone review:** §10.5.3 Deflection passed all three criteria and is **CLOSED**. Current P0 is §10.7 R1 response gating; R2–R4 follow. This is not a restart of E1/E2 or broader Hero-skill work. Coding Agent owns code/tests/deploy/HANDOVER.md; Planner edits only this design document.
 
-**Outcome:** Attack/Dodge/Duel baseline accepted; §9.5 Negation N0–N3, §8.7 Reveal Policy B and §10.5.3 Deflection delivered, awaiting user review. **§10.6 contains eight newly specified mobile UX corrections.** No later unstarted card-family rollout before these core UX issues are addressed. UX3 §11 remains backlog only.
+**Outcome after 2026-10-14 phone review:** §10.5.3 Deflection **accepted and closed**; UI-1 original 3/3 and UI-2 original 3/3 passed. §9.5 / §8.7 partially passed with actual gaps now specified by §10.7 R1/R2. §10.6 UI-3 code delivered, UI-4 in progress; R3/R4 are NEW improvement requests. No new card-family rollout before those higher-priority defects. UX3 §11 remains future only.
 
 
 
@@ -544,13 +544,13 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 #### 10.6.1 Implementation checkpoints — SMALL AND SEPARATE (code + automated verification, no speculative rewrite)
 
 **UI-1 — battlefield Card Details component (U2 + U5).**
-**Coding Agent progress (2026-10-14): delivered in `e8f0777`; focused checks and exact-SHA CI/deploy passed; awaiting Reviewer acceptance.**
+**Coding Agent delivery record:** UI-1 code e8f0777 passed CI/deploy. **USER ACCEPTED original UI-1 criteria 3/3 on 2026-10-14 23:23Z.** Follow-on R4 is a new request, not failure of the original UI-1.
 - Investigate app/page.tsx infoCard/infoCardContext and the currently blocking card-info-backdrop, existing Hero/Inspector popovers, and the public card journey elements in app/public-card-display.tsx. Consolidate own private Hand/Equipment info and legally public parked-card info into a single **stage-bound** readable Card Details component that uses a real illustrated CardFace and canonical card rules.
 - Provide inspect handlers from individual PUBLIC parked/settled mini cards only; enable pointer events only on true clickable thumbnails (the main public journey overlay currently has pointer-events: none), with direct access to event cardFace and no extra card copy in the game stage. Keep private card access viewer-scoped.
 - Responsive focus, Escape, direct item switching, z-index/seat area, action usability and privacy automated browser tests. Do not modify accepted opponent Inspector.
 
 **UI-2 — easy own-card Details + accurate response button + visible player identity (U1 + U6 + U7).**
-**Coding Agent progress (2026-10-14): delivered in `5357c39`; stale SSR assertion repaired in `f35dff5`; Actions run `38647247626` and production smoke passed; awaiting Reviewer acceptance.**
+**Coding Agent delivery record:** UI-2 code 5357c39 and SSR repair f35dff5 passed CI/deploy. **USER CONFIRMED the original three checks 3/3 on 2026-10-14 23:23Z.** Expanded TAKE DAMAGE meaning (R3) and card-attached Details (R4) are NEW requested changes.
 - Replace tiny selected-card 16x16 i with a stable ≥44x44 touch control and never confuse selecting versus playing a Hand card; preserve scroll/tap and skill-cost multi-selection.
 - Label decline TAKE DAMAGE only in actual authoritative damage-response flows with no legal defence; preserve Negation Pass and optional trigger Skip, existing backend action and damage-prevention behavior.
 - Fix player-name CSS for top/side Seats in 4/6/8/10 viewers; accessibility/long-name tests. Separate narrow UI selectors and component changes from game-rule logic.
