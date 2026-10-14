@@ -548,6 +548,7 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 - Responsive focus, Escape, direct item switching, z-index/seat area, action usability and privacy automated browser tests. Do not modify accepted opponent Inspector.
 
 **UI-2 — easy own-card Details + accurate response button + visible player identity (U1 + U6 + U7).**
+**Coding Agent progress (2026-10-14): delivered in `5357c39`; stale SSR assertion repaired in `f35dff5`; Actions run `38647247626` and production smoke passed; awaiting Reviewer acceptance.**
 - Replace tiny selected-card 16x16 i with a stable ≥44x44 touch control and never confuse selecting versus playing a Hand card; preserve scroll/tap and skill-cost multi-selection.
 - Label decline TAKE DAMAGE only in actual authoritative damage-response flows with no legal defence; preserve Negation Pass and optional trigger Skip, existing backend action and damage-prevention behavior.
 - Fix player-name CSS for top/side Seats in 4/6/8/10 viewers; accessibility/long-name tests. Separate narrow UI selectors and component changes from game-rule logic.
