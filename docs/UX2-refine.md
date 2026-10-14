@@ -409,6 +409,8 @@ After current baseline fixes pass the **real phone visual acceptance gate**, con
 
 **For each family first inspect current ux-v2 code and reproduce a concrete behaviour, then classify it as acceptable, bug, missing UX, privacy issue or design proposal.** No observed gap means report **no change**. Never do speculative global layout rewrites just to make every card identical; preserve family-specific effect rules, legal selections and specialty displays. Prefer a small code change and an independently reviewable test instead of bundling families together.
 
+**Coding agent delivery — `UX2-NEGATION-CENTRE-PARK-01`, 2026-10-14; pending aggregate visual review:** Proven non-Duel single-target roots and each committed Negation now use one queued normal-size centre reveal (4 seconds) followed by a 380 ms move to the true author's Seat/Dock. The exact committed root/counter events are owned by this presenter; only matching public `ROOT_CANCELLED` / `ROOT_RESTORED` proof supplies the outcome. Commit `9efc94b8567136ff3157ab8bbc813e1590402748`; Actions run `38594143195` passed Lint/fast, API, browser smoke and deploy. Production `/api/health` returned `{"ok":true,"worker":"available"}`. No local automated gameplay tests or screenshots were run; aggregate visual review remains pending.
+
 ### 10.3 Required permission and stop/start gates
 
 1. **Bounded scopes:** §8.1 Duel layout and §8.2–§8.4 are user-accepted; §8.5 D1/D2, §9.4 Gates A–C and §10.5 Gates E1–E2 are delivered pending aggregate review. The user directly authorized autonomous, one-task-at-a-time execution from §8 onward on 2026-10-14; the current task is recorded in `HANDOVER.md`.
