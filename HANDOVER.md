@@ -1,17 +1,19 @@
 # WTK UX2 — Current Handoff
 
 Branch: `ux-v2`
-Latest design reviewed: `docs/UX2-refine.md`, blob `2cdc93417133e22681fc71b8d20cc79f5667bfa8`
+Latest design reviewed: `docs/UX2-refine.md`, blob `daf9e1852f7408f4a68961bcd70595b7fd1b87c9`
 Latest user decision: §8.1 viewer-relative Duel layout passed validation.
+
+## Latest delivered result
+
+§9.4 Gate C shipped in `e7b51a4949ebb9c1215ca29db57ddab91691f460`. Actions run `38581603361` passed API, lint/fast, browser smoke, D1 migrations, Worker deploy and production smoke. `/api/health` returned `{"ok":true,"worker":"available"}`. Aggregate user/Reviewer review remains pending; the user directed autonomous continuation without waiting.
 
 ## Current task
 
-§9.4 Gate C — shared Negation Local Dock controls, public proof and client regression.
+§8.5 D1 — Inspector equipment miniature art and rank/suit presentation.
 
-Implement per-viewer private Negation intent/Pass and submitted state; show no speculative public Negation card; reveal only the server-committed winner; keep legal controls and the fixed 8-second window independent of card animation. Preserve CurrentAction legality, public proof and private-hand isolation.
+Use the authentic equipment CardFace art and physical rank/suit; remove visible card-name/category words only from the public Inspector equipment thumbnails. Keep each real card ID, 2:3 ratio, accessible full-card button label, focus feedback and canonical detail pane. Do not change other CardFaces or implement §8.5 D2 yet.
 
-Local validation is complete: `npm run build`; focused API (`privacy-response.test.mjs` + `presentation-v2-engine.test.mjs`, 59/59); focused real Worker/D1 browser flow and guidance/timer regressions (16/16); changed-file ESLint (0 errors; one intentionally ignored fixture warning); `git diff --check`.
+Extend `tests/browser/opponent-inspect-hero-focus.spec.mjs` to cover A, 2, 10, Q, K, red/black suits, 1/2/4 cards, and viewport widths 390, 440, 480 and desktop. Capture actual screenshots, assert miniature geometry and no horizontal overflow, and confirm Hand/Seat/Judgement CardFaces remain unchanged.
 
-Remote baseline: `origin/ux-v2` is `4d27d7a9b73de5df48f0f1a90e97a6a93d7792f2`. Latest code-triggered Actions run `38574560118` for `2b3b0c2cfe69914627e0b8f361850e49973f6cff` passed browser startup smoke, lint/fast, API and deploy/production smoke. The current remote commit changes only Markdown, which the workflow excludes; the local Gate C candidate has not yet been pushed and has no CI/deployment result.
-
-Next action: commit and push the validated Gate C candidate, then verify the exact SHA's Actions jobs and actual deployment/smoke result. If a job fails, inspect its failing step and repair it before continuing. After this task closes, continue to the separately bounded §8.5 D1 Inspector miniature task without waiting for aggregate review, per the user's instruction. Do not claim Reviewer acceptance.
+Next action: implement this isolated visual variant, run focused browser/lint/build checks, update the design status and this handoff, then push and verify the exact SHA's Actions/deployment. After D1, move the single current task to §8.5 D2 and continue without waiting for aggregate review. Do not claim Reviewer acceptance.
