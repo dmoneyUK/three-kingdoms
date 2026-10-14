@@ -8,6 +8,8 @@ import { CardFace } from "./card-face";
 
 type PublicCardDisplayResponseNode = {
   eventId: string;
+  /** Duel Attack ordinal supplied by the validated server proof. */
+  ordinal?: number;
   actorId: string;
   actorName: string;
   cardFace?: Card;
@@ -73,10 +75,10 @@ type JourneyCard = {
   ariaLabel: string;
   semanticLabel?: string;
   role: "root" | "response";
+  globalOrdinal?: number;
   phase: "reveal" | "move" | "parked";
   rect: CardRect;
   target: CardRect;
-  historyCount?: number;
 };
 type JourneyState = { scopeKey: string; cards: JourneyCard[]; center: CardRect | null };
 
@@ -84,6 +86,7 @@ type JourneyState = { scopeKey: string; cards: JourneyCard[]; center: CardRect |
 // the same ratio for both its frame and its rank/suit corner.
 const REVEAL_CARD = { width: 60, height: 90 };
 const PARKED_CARD = { width: 48, height: 72 };
+const DUEL_CARD = { width: 48, height: 72 };
 const REVEAL_HOLD_MS = 4000;
 const MOVE_DURATION_MS = 380;
 
@@ -104,8 +107,8 @@ function battlefieldCenterCard(): CardRect {
   const bounds = table.getBoundingClientRect();
   const preferredTop = bounds.top + bounds.height * 0.5 - REVEAL_CARD.height / 2;
   const preferredLeft = bounds.left + (bounds.width - REVEAL_CARD.width) / 2;
-  const obstacles = [...table.querySelectorAll<HTMLElement>(
-    ".opponent-player-card[data-player-anchor], .draw-stack, .discard-stack, .player-board-status, .visible-countdown",
+  const obstacles = [...document.querySelectorAll<HTMLElement>(
+    ".opponent-player-card[data-player-anchor], .draw-stack, .discard-stack, .player-board-status, .visible-countdown, .public-card-duel-history",
   )].map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
   const offsets: Array<[number, number]> = [
     [0, 0], [0, -40], [0, 40], [0, -80], [0, 80], [0, -120], [0, 120],
@@ -163,6 +166,126 @@ function actorParkedCard(actorId: string): CardRect | null {
   }
 
   return boundCardRect(anchorCenterX - PARKED_CARD.width / 2, bounds.top - PARKED_CARD.height - 7, PARKED_CARD.width, PARKED_CARD.height);
+}
+
+type DuelHistoryOrientation = "vertical" | "horizontal";
+type DuelHistorySide = "local" | "top" | "left" | "right";
+type DuelHistoryViewport = { orientation: DuelHistoryOrientation; side: DuelHistorySide; rect: CardRect };
+
+function rectsOverlap(a: CardRect, b: DOMRect, gap = 0) {
+  return a.left < b.right + gap && a.left + a.width > b.left - gap
+    && a.top < b.bottom + gap && a.top + a.height > b.top - gap;
+}
+
+/**
+ * Measure an actor-owned, collision-bounded scroll viewport from the rendered
+ * Seat/Dock. No seat number, turn order, or player name participates in layout.
+ */
+function duelHistoryViewport(actorId: string): DuelHistoryViewport | null {
+  const anchor = [...document.querySelectorAll<HTMLElement>("[data-player-anchor]")]
+    .find((candidate) => candidate.dataset.playerAnchor === actorId);
+  const table = document.querySelector<HTMLElement>(".play-table");
+  if (!anchor || !table) return null;
+  const seat = anchor.getBoundingClientRect();
+  const tableRect = table.getBoundingClientRect();
+  if (seat.width <= 0 || seat.height <= 0 || tableRect.width <= 0 || tableRect.height <= 0) return null;
+  const dock = document.querySelector<HTMLElement>(".local-player-dock")?.getBoundingClientRect() ?? null;
+  const board = document.querySelector<HTMLElement>(".player-board")?.getBoundingClientRect() ?? tableRect;
+  const centerX = board.left + board.width / 2;
+  const obstacles = [...document.querySelectorAll<HTMLElement>(
+    ".opponent-player-card[data-player-anchor], .draw-stack, .discard-stack, .player-board-status, .visible-countdown, .public-card-display-journey-copy",
+  )].filter((element) => element !== anchor)
+    .map((element) => element.getBoundingClientRect())
+    .filter((rect) => rect.width > 0 && rect.height > 0);
+  const insideTable = (rect: CardRect) => rect.left >= tableRect.left + 4
+    && rect.left + rect.width <= tableRect.right - 4
+    && rect.top >= tableRect.top + 4
+    && rect.top + rect.height <= Math.min(tableRect.bottom - 4, dock?.top ? dock.top - 4 : window.innerHeight - 4);
+
+  if (anchor.classList.contains("local-player-dock")) {
+    const width = Math.max(DUEL_CARD.width, Math.min(tableRect.width - 16, window.innerWidth - 16));
+    const left = Math.max(tableRect.left + 8, Math.min(window.innerWidth - width - 8, tableRect.left + (tableRect.width - width) / 2));
+    const preferredTop = Math.min(dock?.top ?? tableRect.bottom, tableRect.bottom) - DUEL_CARD.height - 8;
+    const offsets = [0, -DUEL_CARD.height - 6, -2 * (DUEL_CARD.height + 6), -3 * (DUEL_CARD.height + 6), -4 * (DUEL_CARD.height + 6)];
+    for (const offset of offsets) {
+      const rect = { left, top: preferredTop + offset, width, height: DUEL_CARD.height };
+      if (insideTable(rect) && obstacles.every((obstacle) => !rectsOverlap(rect, obstacle, 5))) {
+        return { orientation: "horizontal", side: "local", rect };
+      }
+    }
+    return { orientation: "horizontal", side: "local", rect: boundCardRect(left, preferredTop, width, DUEL_CARD.height) };
+  }
+
+  const centerSeatX = seat.left + seat.width / 2;
+  const centerY = seat.top + seat.height / 2;
+  const topDistance = Math.abs(centerY - tableRect.top);
+  const leftDistance = Math.abs(centerSeatX - tableRect.left);
+  const rightDistance = Math.abs(tableRect.right - centerSeatX);
+  const isTopSeat = topDistance <= leftDistance && topDistance <= rightDistance;
+
+  if (isTopSeat) {
+    const preferredLeft = seat.left + (seat.width - DUEL_CARD.width) / 2;
+    const xOffsets = [0, -(DUEL_CARD.width + 7), DUEL_CARD.width + 7, -2 * (DUEL_CARD.width + 7), 2 * (DUEL_CARD.width + 7)];
+    const safeBottom = Math.min(tableRect.bottom - 8, dock?.top ? dock.top - 8 : window.innerHeight - 8);
+    const options = xOffsets.flatMap((offset, preference) => {
+      const left = Math.max(tableRect.left + 8, Math.min(tableRect.right - DUEL_CARD.width - 8, preferredLeft + offset));
+      const top = seat.bottom + 6;
+      const blockingTop = obstacles
+        .filter((obstacle) => obstacle.left < left + DUEL_CARD.width + 5 && obstacle.right > left - 5 && obstacle.bottom > top)
+        .map((obstacle) => obstacle.top - 6)
+        .filter((bottom) => bottom > top)
+        .reduce((nearest, bottom) => Math.min(nearest, bottom), safeBottom);
+      const height = Math.min(safeBottom, blockingTop) - top;
+      if (height < DUEL_CARD.height) return [];
+      return [{ preference, rect: { left, top, width: DUEL_CARD.width, height } }];
+    });
+    options.sort((a, b) => a.preference - b.preference);
+    const rect = options[0]?.rect;
+    if (rect) return { orientation: "vertical", side: "top", rect };
+    return {
+      orientation: "vertical",
+      side: "top",
+      rect: { left: preferredLeft, top: Math.min(safeBottom - DUEL_CARD.height, seat.bottom + 6), width: DUEL_CARD.width, height: DUEL_CARD.height },
+    };
+  }
+
+  const onLeft = seat.left + seat.width / 2 < centerX;
+  const side = onLeft ? "left" : "right";
+  const centerGap = REVEAL_CARD.width / 2 + 8;
+  const left = onLeft ? seat.right + 6 : centerX + centerGap;
+  const right = onLeft ? centerX - centerGap : seat.left - 6;
+  const width = Math.max(DUEL_CARD.width, right - left);
+  const x = onLeft ? left : right - width;
+  const safeTop = tableRect.top + 8;
+  const safeBottom = Math.min(tableRect.bottom - DUEL_CARD.height - 8, dock?.top ? dock.top - DUEL_CARD.height - 8 : window.innerHeight - DUEL_CARD.height - 8);
+  const yOffsets = [0, -DUEL_CARD.height - 8, DUEL_CARD.height + 8, -2 * (DUEL_CARD.height + 8), 2 * (DUEL_CARD.height + 8), -3 * (DUEL_CARD.height + 8), 3 * (DUEL_CARD.height + 8)];
+  for (const offset of yOffsets) {
+    const top = Math.max(safeTop, Math.min(safeBottom, centerY - DUEL_CARD.height / 2 + offset));
+    const rect = { left: x, top, width, height: DUEL_CARD.height };
+    if (insideTable(rect) && obstacles.every((obstacle) => !rectsOverlap(rect, obstacle, 5))) {
+      return { orientation: "horizontal", side, rect };
+    }
+  }
+  return {
+    orientation: "horizontal",
+    side,
+    rect: { left: x, top: Math.max(safeTop, Math.min(safeBottom, centerY - DUEL_CARD.height / 2)), width, height: DUEL_CARD.height },
+  };
+}
+
+function duelHistorySlotRect(eventId: string): CardRect | null {
+  const slot = [...document.querySelectorAll<HTMLElement>("[data-duel-history-slot-event-id]")]
+    .find((candidate) => candidate.dataset.duelHistorySlotEventId === eventId);
+  if (!slot) return null;
+  const bounds = slot.getBoundingClientRect();
+  if (bounds.width <= 0 || bounds.height <= 0) return null;
+  return boundCardRect(bounds.left, bounds.top, DUEL_CARD.width, DUEL_CARD.height);
+}
+
+function ensureDuelHistorySlotVisible(eventId: string) {
+  const slot = [...document.querySelectorAll<HTMLElement>("[data-duel-history-slot-event-id]")]
+    .find((candidate) => candidate.dataset.duelHistorySlotEventId === eventId);
+  slot?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 function settlementLabel(action: PublicCardDisplayAction, targetName: string | null) {
@@ -366,6 +489,7 @@ function AttackDodgeCardJourney({
     document.querySelectorAll<HTMLElement>("[data-player-anchor]").forEach((anchor) => observer?.observe(anchor));
     const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(reposition);
     if (shell) mutationObserver?.observe(shell, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-player-anchor"] });
+    relayout();
     return () => {
       window.removeEventListener("resize", reposition);
       window.removeEventListener("scroll", reposition, true);
@@ -426,7 +550,7 @@ function AttackDodgeCardJourney({
 }
 
 type DuelJourneyEvent = Pick<JourneyCard,
-  "eventId" | "actorId" | "actorName" | "cardFace" | "ariaLabel" | "role" | "semanticLabel" | "historyCount"
+  "eventId" | "actorId" | "actorName" | "cardFace" | "ariaLabel" | "role" | "semanticLabel" | "globalOrdinal"
 >;
 type DuelJourneyState = {
   scopeKey: string;
@@ -436,19 +560,39 @@ type DuelJourneyState = {
   center: CardRect | null;
 };
 
-function latestDuelEventsByActor(events: readonly DuelJourneyEvent[]) {
-  const latest = new Map<string, DuelJourneyEvent>();
-  for (const event of events) latest.set(event.actorId, event);
-  return [...latest.values()];
+function duelJourneyEvents(action: PublicCardDisplayAction, sourceName: string | null): DuelJourneyEvent[] {
+  const events: DuelJourneyEvent[] = [];
+  if (action.cardFace && sourceName) events.push({
+    eventId: action.rootEventId,
+    actorId: action.sourceId,
+    actorName: sourceName,
+    cardFace: action.cardFace,
+    ariaLabel: action.ariaLabel,
+    role: "root",
+    globalOrdinal: 1,
+  });
+  for (const response of action.responses ?? []) {
+    if (!response.cardFace || !Number.isInteger(response.ordinal) || !response.ordinal || response.ordinal < 1) continue;
+    events.push({
+      eventId: response.eventId,
+      actorId: response.actorId,
+      actorName: response.actorName,
+      cardFace: response.cardFace,
+      ariaLabel: response.ariaLabel,
+      role: "response",
+      globalOrdinal: response.ordinal + 1,
+      ...(response.semanticLabel ? { semanticLabel: response.semanticLabel } : {}),
+    });
+  }
+  return events.sort((a, b) => (a.globalOrdinal ?? 0) - (b.globalOrdinal ?? 0));
 }
 
 function parkedDuelCard(event: DuelJourneyEvent, center: CardRect): JourneyCard {
-  const target = actorParkedCard(event.actorId) ?? center;
-  return { ...event, phase: "parked", rect: target, target };
+  return { ...event, phase: "parked", rect: center, target: center };
 }
 
 function revealingDuelCard(event: DuelJourneyEvent, center: CardRect): JourneyCard {
-  const target = actorParkedCard(event.actorId) ?? center;
+  const target = duelHistorySlotRect(event.eventId) ?? center;
   return { ...event, phase: "reveal", rect: center, target };
 }
 
@@ -456,7 +600,8 @@ function completeDuelJourneyEvent(state: DuelJourneyState, eventId: string): Due
   const active = state.active;
   if (!active || active.eventId !== eventId || !state.center) return state;
   const parked = { ...active, phase: "parked" as const, rect: active.target };
-  const cards = [...state.cards.filter((card) => card.actorId !== active.actorId), parked];
+  const cards = [...state.cards.filter((card) => card.eventId !== active.eventId), parked]
+    .sort((a, b) => (a.globalOrdinal ?? 0) - (b.globalOrdinal ?? 0));
   const [nextEvent, ...queue] = state.queue;
   return {
     ...state,
@@ -467,9 +612,9 @@ function completeDuelJourneyEvent(state: DuelJourneyState, eventId: string): Due
 }
 
 /**
- * A Duel is presented as one currently active public card plus the latest
- * public card at each duelist's actual Seat/Dock. The server-proven exchange
- * supplies event order and authors; React never infers who acts next.
+ * A Duel is presented as one chronological history partitioned into the
+ * actual authors' measured Seat/Dock regions. The validated server proof
+ * supplies each event, author and ordinal; React only measures placement.
  */
 function DuelCardJourney({
   action,
@@ -486,6 +631,7 @@ function DuelCardJourney({
 }) {
   const scopeKey = action.motion?.type === "duel" ? action.motion.scopeKey : action.rootEventId;
   const [journey, setJourney] = useState<DuelJourneyState>({ scopeKey: "", cards: [], active: null, queue: [], center: null });
+  const [historyLayoutRevision, setHistoryLayoutRevision] = useState(0);
   const journeyRef = useRef(journey);
   const actionRef = useRef(action);
   const sourceNameRef = useRef(sourceName);
@@ -505,7 +651,8 @@ function DuelCardJourney({
     journeyRef.current = journey;
   }, [journey]);
 
-  const responseSignature = (action.responses ?? []).map((response) => response.eventId).join(",");
+  const incoming = duelJourneyEvents(action, sourceName);
+  const responseSignature = incoming.map((event) => `${event.eventId}:${event.globalOrdinal ?? 0}`).join(",");
   const freshSignature = action.motion?.type === "duel" ? [...action.motion.freshEventIds].join(",") : "";
   useLayoutEffect(() => {
     const currentAction = actionRef.current;
@@ -514,40 +661,15 @@ function DuelCardJourney({
     if (!enabled || currentMotion?.type !== "duel" || !currentSourceName) return;
 
     const center = battlefieldCenterCard();
-    const responseCounts = new Map<string, number>();
-    const incoming: DuelJourneyEvent[] = [];
-    if (currentAction.cardFace) incoming.push({
-      eventId: currentAction.rootEventId,
-      actorId: currentAction.sourceId,
-      actorName: currentSourceName,
-      cardFace: currentAction.cardFace,
-      ariaLabel: currentAction.ariaLabel,
-      role: "root",
-      historyCount: 0,
-    });
-    for (const response of currentAction.responses ?? []) {
-      const historyCount = responseCounts.get(response.actorId) ?? 0;
-      responseCounts.set(response.actorId, historyCount + 1);
-      if (!response.cardFace) continue;
-      incoming.push({
-        eventId: response.eventId,
-        actorId: response.actorId,
-        actorName: response.actorName,
-        cardFace: response.cardFace,
-        ariaLabel: response.ariaLabel,
-        role: "response",
-        ...(response.semanticLabel ? { semanticLabel: response.semanticLabel } : {}),
-        historyCount,
-      });
-    }
+    const events = duelJourneyEvents(currentAction, currentSourceName);
 
     const fresh = new Set(currentMotion.freshEventIds);
     const previous = journeyRef.current;
     let next: DuelJourneyState;
     if (previous.scopeKey !== scopeKey) {
-      const parked = latestDuelEventsByActor(incoming.filter((event) => !fresh.has(event.eventId)))
+      const parked = events.filter((event) => !fresh.has(event.eventId))
         .map((event) => parkedDuelCard(event, center));
-      const queue = incoming.filter((event) => fresh.has(event.eventId));
+      const queue = events.filter((event) => fresh.has(event.eventId));
       const [first, ...remaining] = queue;
       next = {
         scopeKey,
@@ -562,21 +684,13 @@ function DuelCardJourney({
         ...(previous.active ? [previous.active.eventId] : []),
         ...previous.queue.map((event) => event.eventId),
       ]);
-      const additions = incoming.filter((event) => fresh.has(event.eventId) && !known.has(event.eventId));
-      const queue = [...previous.queue, ...additions];
-      const pendingActors = new Set([
-        ...(previous.active ? [previous.active.actorId] : []),
-        ...queue.map((event) => event.actorId),
-      ]);
-      const missingParked = latestDuelEventsByActor(incoming.filter((event) => !fresh.has(event.eventId) && !known.has(event.eventId)))
-        .filter((event) => !pendingActors.has(event.actorId));
-      const cards = [...previous.cards];
-      for (const event of missingParked) {
-        const index = cards.findIndex((card) => card.actorId === event.actorId);
-        const parked = parkedDuelCard(event, center);
-        if (index >= 0) cards[index] = parked;
-        else cards.push(parked);
-      }
+      const additions = events.filter((event) => fresh.has(event.eventId) && !known.has(event.eventId));
+      const queue = [...previous.queue, ...additions]
+        .sort((a, b) => (a.globalOrdinal ?? 0) - (b.globalOrdinal ?? 0));
+      const missingParked = events.filter((event) => !fresh.has(event.eventId) && !known.has(event.eventId));
+      const cards = [...previous.cards, ...missingParked.map((event) => parkedDuelCard(event, center))]
+        .filter((card, index, all) => all.findIndex((candidate) => candidate.eventId === card.eventId) === index)
+        .sort((a, b) => (a.globalOrdinal ?? 0) - (b.globalOrdinal ?? 0));
       let active = previous.active;
       let remaining = queue;
       if (!active && remaining.length) {
@@ -590,20 +704,42 @@ function DuelCardJourney({
     setJourney(next);
   }, [enabled, scopeKey, responseSignature, freshSignature]);
 
+  useLayoutEffect(() => {
+    if (!enabled || journey.scopeKey !== scopeKey) return;
+    const frame = window.requestAnimationFrame(() => {
+      const current = journeyRef.current;
+      if (current.scopeKey !== scopeKey) return;
+      const events = duelJourneyEvents(actionRef.current, sourceNameRef.current);
+      const latestByActor = new Map<string, DuelJourneyEvent>();
+      for (const event of events) latestByActor.set(event.actorId, event);
+      latestByActor.forEach((event) => ensureDuelHistorySlotVisible(event.eventId));
+      if (current.active) ensureDuelHistorySlotVisible(current.active.eventId);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [enabled, scopeKey, journey.scopeKey, responseSignature, freshSignature]);
+
   const timerEventId = journey.active?.eventId ?? null;
   const timerPhase = journey.active?.phase ?? null;
-  const timerActorId = journey.active?.actorId ?? null;
   useEffect(() => {
-    if (!enabled || journey.scopeKey !== scopeKey || !timerEventId || !timerPhase || !timerActorId) return;
+    if (!enabled || journey.scopeKey !== scopeKey || !timerEventId || !timerPhase) return;
     const timer = window.setTimeout(() => {
       if (!mountedRef.current) return;
       if (timerPhase === "reveal") {
         const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+        ensureDuelHistorySlotVisible(timerEventId);
         setJourney((current) => {
           const currentActive = current.active;
           if (current.scopeKey !== scopeKey || !currentActive || currentActive.eventId !== timerEventId || currentActive.phase !== "reveal") return current;
-          if (reducedMotion) return completeDuelJourneyEvent(current, timerEventId);
-          const target = actorParkedCard(timerActorId) ?? current.center ?? currentActive.target;
+          const center = current.center ?? currentActive.rect;
+          const target = duelHistorySlotRect(timerEventId) ?? {
+            left: center.left + (center.width - DUEL_CARD.width) / 2,
+            top: center.top + (center.height - DUEL_CARD.height) / 2,
+            ...DUEL_CARD,
+          };
+          if (reducedMotion) return completeDuelJourneyEvent({
+            ...current,
+            active: { ...currentActive, target, rect: target },
+          }, timerEventId);
           return { ...current, active: { ...currentActive, phase: "move", target, rect: target } };
         });
       } else if (timerPhase === "move") {
@@ -611,7 +747,7 @@ function DuelCardJourney({
       }
     }, timerPhase === "reveal" ? REVEAL_HOLD_MS : MOVE_DURATION_MS + 30);
     return () => window.clearTimeout(timer);
-  }, [enabled, scopeKey, journey.scopeKey, timerEventId, timerPhase, timerActorId]);
+  }, [enabled, scopeKey, journey.scopeKey, timerEventId, timerPhase]);
 
   useLayoutEffect(() => {
     if (!enabled || journey.scopeKey !== scopeKey) return;
@@ -620,46 +756,50 @@ function DuelCardJourney({
       const center = battlefieldCenterCard();
       setJourney((current) => {
         if (current.scopeKey !== scopeKey) return current;
-        const updateCard = (card: JourneyCard): JourneyCard => {
-          const target = actorParkedCard(card.actorId) ?? center;
-          return {
-            ...card,
-            target,
-            rect: card.phase === "parked" || card.phase === "move" ? target : center,
-          };
+        if (current.active) ensureDuelHistorySlotVisible(current.active.eventId);
+        const updateActive = (card: JourneyCard): JourneyCard => {
+          if (card.phase === "reveal") return { ...card, rect: center };
+          const target = duelHistorySlotRect(card.eventId) ?? card.target;
+          return { ...card, target, rect: target };
         };
-        const cards = current.cards.map(updateCard);
-        const active = current.active ? updateCard(current.active) : null;
+        const cards = current.cards;
+        const active = current.active ? updateActive(current.active) : null;
         const unchangedRect = (a: CardRect | null, b: CardRect | null) => a === b || Boolean(a && b
           && a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height);
         const sameCard = (a: JourneyCard, b: JourneyCard) => unchangedRect(a.rect, b.rect) && unchangedRect(a.target, b.target);
         if (unchangedRect(current.center, center)
-          && cards.every((card, index) => sameCard(card, current.cards[index]))
           && (!active || current.active && sameCard(active, current.active))) return current;
         return { ...current, center, cards, active };
       });
-      document.querySelectorAll<HTMLElement>("[data-player-anchor]").forEach((anchor) => observer?.observe(anchor));
+      document.querySelectorAll<HTMLElement>("[data-player-anchor], [data-duel-history-actor-id]").forEach((anchor) => observer?.observe(anchor));
     };
-    window.addEventListener("resize", reposition);
+    const relayout = () => {
+      setHistoryLayoutRevision((revision) => revision + 1);
+      reposition();
+    };
     window.addEventListener("scroll", reposition, true);
     const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", reposition);
-    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reposition);
+    window.addEventListener("resize", relayout);
+    viewport?.addEventListener("resize", relayout);
+    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(relayout);
     const shell = document.querySelector<HTMLElement>(".game-shell");
     if (shell) observer?.observe(shell);
-    document.querySelectorAll<HTMLElement>("[data-player-anchor]").forEach((anchor) => observer?.observe(anchor));
-    const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(reposition);
+    document.querySelectorAll<HTMLElement>("[data-player-anchor], [data-duel-history-actor-id]").forEach((anchor) => observer?.observe(anchor));
+    const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(relayout);
     if (shell) mutationObserver?.observe(shell, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-player-anchor"] });
     return () => {
-      window.removeEventListener("resize", reposition);
+      window.removeEventListener("resize", relayout);
       window.removeEventListener("scroll", reposition, true);
-      viewport?.removeEventListener("resize", reposition);
+      viewport?.removeEventListener("resize", relayout);
       observer?.disconnect();
       mutationObserver?.disconnect();
     };
   }, [enabled, journey.scopeKey, scopeKey]);
 
   if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
+  const eventsByActor = new Map<string, DuelJourneyEvent[]>();
+  for (const event of incoming) eventsByActor.set(event.actorId, [...(eventsByActor.get(event.actorId) ?? []), event]);
+  const parkedByEventId = new Map(journey.cards.map((card) => [card.eventId, card]));
   const latestResponse = action.responses?.at(-1) ?? null;
   const activeEvent = journey.active;
   const activeEventId = activeEvent?.eventId ?? latestResponse?.eventId ?? action.rootEventId;
@@ -670,7 +810,6 @@ function DuelCardJourney({
     ?? (activeCard ? cardDefinition(activeCard.kind).name.toUpperCase() : action.cardLabel);
   const activeMessage = activeEvent?.ariaLabel ?? latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
   const copyTop = journey.center.top + REVEAL_CARD.height + 7;
-  const cards = [...journey.cards, ...(journey.active ? [journey.active] : [])];
   return <section
     className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}`}
     role="status"
@@ -680,6 +819,7 @@ function DuelCardJourney({
     data-public-card-display="true"
     data-public-card-ready="true"
     data-public-card-motion="duel"
+    data-duel-history-layout-revision={historyLayoutRevision}
     data-public-card-event-id={activeEventId}
     data-public-card-root-event-id={action.rootEventId}
     data-public-card-id={activeCard?.id}
@@ -690,26 +830,72 @@ function DuelCardJourney({
     data-public-card-settlement-outcome={action.settlement?.outcome}
     data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
-    {cards.map((card) => {
-      const isCurrent = card.eventId === activeEventId;
-      const isHistorical = !isCurrent && Boolean(journey.active || latestResponse);
+    {[...eventsByActor.entries()].map(([actorId, events]) => {
+      const layout = duelHistoryViewport(actorId);
+      if (!layout) return null;
       return <div
-        key={card.eventId}
-        className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${isCurrent ? "is-current" : ""} ${isHistorical ? "is-prior" : ""}`}
-        data-public-card-journey-event-id={card.eventId}
-        data-public-card-journey-actor-id={card.actorId}
-        data-public-card-journey-card-id={card.cardFace.id}
-        data-public-card-journey-phase={card.phase}
-        data-public-card-journey-size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
-        data-public-card-primary-card={isCurrent ? "true" : undefined}
-        aria-hidden="true"
-        style={{ left: card.rect.left, top: card.rect.top, width: card.rect.width, height: card.rect.height }}
+        key={actorId}
+        className="public-card-duel-history"
+        data-duel-history-actor-id={actorId}
+        data-duel-history-side={layout.side}
+        data-duel-history-orientation={layout.orientation}
+        data-duel-history-count={events.length}
+        role="region"
+        tabIndex={0}
+        aria-label={`${events[0]?.actorName ?? "Player"} Duel card history, ${events.length} committed card${events.length === 1 ? "" : "s"}`}
+        style={{ left: layout.rect.left, top: layout.rect.top, width: layout.rect.width, height: layout.rect.height }}
       >
-        <CardFace card={card.cardFace} />
-        {card.semanticLabel && <small className="public-card-journey-semantic">{card.semanticLabel}</small>}
-        {card.historyCount ? <small className="public-card-journey-history" aria-label={`${card.historyCount} earlier Duel Attack${card.historyCount === 1 ? "" : "s"}`}>+{card.historyCount}</small> : null}
+        <div className={`public-card-duel-history-content is-${layout.orientation}`}>
+          {events.map((event) => {
+            const parked = parkedByEventId.get(event.eventId);
+            return <div
+              key={event.eventId}
+              className="public-card-duel-history-slot"
+              data-duel-history-slot-event-id={event.eventId}
+              data-duel-history-slot-ordinal={event.globalOrdinal}
+              aria-hidden="true"
+            >
+              {parked && <div
+                className={`public-card-journey-card public-card-duel-history-card is-parked is-prior ${parked.role === "root" ? "is-duel-root" : "is-duel-response"}`}
+                data-public-card-journey-event-id={parked.eventId}
+                data-public-card-journey-actor-id={parked.actorId}
+                data-public-card-journey-card-id={parked.cardFace.id}
+                data-public-card-journey-phase="parked"
+                data-public-card-journey-size="thumbnail"
+                data-public-card-journey-ordinal={parked.globalOrdinal}
+                aria-hidden="true"
+              >
+                <CardFace card={parked.cardFace} />
+                {parked.semanticLabel && <small className="public-card-journey-semantic">{parked.semanticLabel}</small>}
+                <small className="public-card-journey-ordinal" aria-label={`Duel event ${parked.globalOrdinal}`}>#{parked.globalOrdinal}</small>
+              </div>}
+            </div>;
+          })}
+        </div>
       </div>;
     })}
+    {journey.active && <div
+      key={journey.active.eventId}
+      className={`public-card-journey-card public-card-duel-history-card ${journey.active.phase === "reveal" ? "is-revealing" : "is-moving"} is-current`}
+      data-public-card-journey-event-id={journey.active.eventId}
+      data-public-card-journey-actor-id={journey.active.actorId}
+      data-public-card-journey-card-id={journey.active.cardFace.id}
+      data-public-card-journey-phase={journey.active.phase}
+      data-public-card-journey-size={journey.active.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
+      data-public-card-journey-ordinal={journey.active.globalOrdinal}
+      data-public-card-primary-card="true"
+      aria-hidden="true"
+      style={{ left: journey.active.rect.left, top: journey.active.rect.top, width: journey.active.rect.width, height: journey.active.rect.height }}
+    >
+      <CardFace card={journey.active.cardFace} />
+      {journey.active.semanticLabel && <small className="public-card-journey-semantic">{journey.active.semanticLabel}</small>}
+      <small className="public-card-journey-ordinal" aria-label={`Duel event ${journey.active.globalOrdinal}`}>#{journey.active.globalOrdinal}</small>
+    </div>}
+    <ol className="public-card-duel-history-accessible" aria-label="Chronological Duel card history">
+      {incoming.map((event) => <li key={event.eventId} value={event.globalOrdinal}>
+        Duel event {event.globalOrdinal}: {event.ariaLabel}
+      </li>)}
+    </ol>
     <div className="public-card-display-copy public-card-display-journey-copy" style={{ top: copyTop }}>
       <small>{activeLabel}</small>
       <b>{activeMessage}</b>

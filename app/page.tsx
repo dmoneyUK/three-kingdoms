@@ -3686,6 +3686,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ...(duelExchangeDisplayCandidate.responses.length ? {
         responses: duelExchangeDisplayCandidate.responses.map(({ response, responseEvent, responseActor, responseTarget }) => ({
           eventId: response.responseEventId,
+          ordinal: response.ordinal,
           actorId: response.responseActorId,
           actorName: responseActor.name,
           cardFace: responseEvent.card,
