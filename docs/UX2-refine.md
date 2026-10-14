@@ -428,7 +428,7 @@ Five seats clockwise **1→2→3→4→5**; seat 1 plays Duel against seat 3.
 
 ### 10.1 Rollout authority and completed baseline — updated 2026-10-14
 
-**Attack/Dodge and Duel accepted graph-free baseline:** §§8.1–8.5 accepted; §10.5.3 Da Qiao accepted/closed; §9.5 Confirm and early settle PASS but public card history R2 remains OPEN; §8.7 4s/no-wrong-author PASS but response gating R1 remains OPEN. UI-1 original tests passed, UI-2 original tests passed with newly changed TAKE DAMAGE request. §10.6 UI-3 delivered, UI-4 currently in flight; **§10.7 is the next bounded coding queue after UI-4**, not another family redesign.
+**Attack/Dodge and Duel accepted graph-free baseline:** §§8.1–8.5 accepted; §10.5.3 Da Qiao accepted/closed; §9.5 Confirm and early settle PASS but public card history R2 remains OPEN; §8.7 4s/no-wrong-author PASS but response gating R1 remains OPEN. UI-1 original tests passed, UI-2 original tests passed with newly changed TAKE DAMAGE request. §10.6 UI-3 and UI-4 now delivered; **§10.7 R1 is the active P0**, with R2–R4 and then new §10.8 H1–H3 queued, not another family redesign.
 
 §7 and §8.6 are historical archive. §9's existing shared 8s secret winner-selection engine remains UX2 Plan A; fix its broken end-to-end controls/history/reveal via §9.5. §10 remains a future card-family review queue; no new family until §9.5, §8.7 and §10.5.3 pass real-phone acceptance. Only coding agent owns HANDOVER.md.
 
@@ -455,7 +455,7 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 
 ### 10.3 Required permission and stop/start gates
 
-1. **Active code scope:** Finish in-flight §10.6 UI-4 (Diao Chan), then start §10.7 R1 (P0), R2 (P1), R3 (P2), R4 (P3) separately. UI-1 original three checks and UI-2 original three checks passed, with newly requested R3/R4 changes. §10.5.3 and §§8.1–8.5 user-accepted/closed. §9.5 N0–N3 and §8.7 code delivered but have the specific R1/R2 follow-up defects. UX3 §11 is future only.
+1. **Active code scope:** §10.6 UI-4 (Diao Chan) was delivered in 604c15a; **§10.7 R1 (P0) is currently active**, then R2 (P1), R3 (P2), R4 (P3), followed by §10.8 H1–H3 as scoped independent UI patches. UI-1 original three checks and UI-2 original three checks passed, with newly requested R3/R4 changes. §10.5.3 and §§8.1–8.5 user-accepted/closed. §9.5 N0–N3 and §8.7 code delivered but have the specific R1/R2 follow-up defects. UX3 §11 is future only.
 2. **Before any NEW CARD-FAMILY rollout under §10.2**, close outstanding user feedback for §9.5, §8.7 and §10.5.3. **Explicitly requested §10.6 cross-cutting UI corrections are allowed ahead of that later rollout**, with no rule changes and no regression to already accepted Inspector/Duel/Deck/Discard. Automated test/CI proof does not imply user UX approval.
 3. **Card-family boundaries:** Only after §10.6 and open core UX changes are delivered/reviewed, source-review the next unimplemented subgroup in §10.2 (not completed Dismantle/Negation/Deflection). The user's earlier autonomous one-task-at-a-time instruction is **paused for NEW card families by the later P0 stop rule**, not a licence for a speculative global rewrite or game-rule change.
 4. **Implement §10.6 as four bounded UI checkpoints, with focused automated verification and exact source/deploy evidence; do not expand into other families.** Keep only one code task at a time in coding-agent-owned HANDOVER.md. Preserve proof, privacy and legal controls. CI does not equal visual acceptance. A correct existing family is reported as no change, not recoded.
@@ -516,7 +516,7 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 
 **Priority/ownership updated after phone review:** §10.5.3 Deflection passed all three criteria and is **CLOSED**. Current P0 is §10.7 R1 response gating; R2–R4 follow. This is not a restart of E1/E2 or broader Hero-skill work. Coding Agent owns code/tests/deploy/HANDOVER.md; Planner edits only this design document.
 
-**Outcome after 2026-10-14 phone review:** §10.5.3 Deflection **accepted and closed**; UI-1 original 3/3 and UI-2 original 3/3 passed. §9.5 / §8.7 partially passed with actual gaps now specified by §10.7 R1/R2. §10.6 UI-3 code delivered, UI-4 in progress; R3/R4 are NEW improvement requests. No new card-family rollout before those higher-priority defects. UX3 §11 remains future only.
+**Outcome after 2026-10-14 phone review:** §10.5.3 Deflection **accepted and closed**; UI-1 original 3/3 and UI-2 original 3/3 passed. §9.5 / §8.7 partially passed with actual gaps now specified by §10.7 R1/R2. §10.6 UI-3 and UI-4 code delivered (no reviewer completion claimed for those); R3/R4 and §10.8 H1–H3 are NEW improvements. No new card-family rollout before those higher-priority defects. UX3 §11 remains future only.
 
 
 
@@ -562,6 +562,7 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 **Coding Agent progress (2026-10-15): UI-3 delivered in `946f6f697b938a87e78708e0bf5b52199b8544b5`; focused Worker/D1 browser checks, production build and targeted ESLint completed. Actions run [`38650930258`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38650930258), attempt 2, passed API, lint/fast, browser smoke and Cloudflare deploy/smoke; production `/api/health` returned HTTP 200. Awaiting Reviewer acceptance; no acceptance is claimed.**
 
 **UI-4 — Diao Chan public skill activation and proven result (U3).**
+**Coding Agent delivery record:** Delivered in 604c15a, exact deployed branch SHA 9c815e2b15387142e4f58c747a2dfd1c2d3c7cae; focused API and authenticated Worker/D1 browser checks passed, Actions run 38654422695 passed API/lint/fast/browser/deploy/production smoke. This means code delivered, NOT user accepted. Preserve the skill-rule and privacy proof. No new implementation under this old UI-4 task absent a reproduced defect.
 - Trace real Lust and Beauty events in app/api/rooms/route.ts, game/capabilities/heroes/diao-chan.ts, public timeline, skill triggers, Duel settlement and client display. Reuse proven public messages but supply a distinct visible skill-activation notice and separate concise final effect when it actually resolves, scoped to the same causal effect/root and visible to all viewers.
 - Tests: Lust with two male targets and correct first Duel actor, responses through several Attack rounds, first actor failure/damage and prevention, Equipment versus Hand cost, real skill decline/stale action, Beauty accepted versus declined, exactly one privately drawn card, spectators' hidden Hand privacy, refresh/poll dedupe and no duplicate generic toast. Verify no game-rule changes and do not fabricate a public skill/CardFace.
 **Coding Agent progress (2026-10-15):** UI-4 delivered in `604c15a` and pushed in `9c815e2b15387142e4f58c747a2dfd1c2d3c7cae`. Focused API (8/8), authenticated Worker/D1 browser (2/2), build, Actions run [`38654422695`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38654422695) and Cloudflare deploy/production smoke passed; production `/api/health` returned HTTP 200. No Reviewer acceptance is claimed.
@@ -578,7 +579,7 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 - §9.5: Negation Confirm works during root reveal and all-living-players-explicit early settlement/8s maximum work. **Counter/root actor-attached miniatures intermittently missing; R2 OPEN.** Genuine long-chain display not accepted.
 - §8.7: uninterrupted default ~4s reveal and correct parked card actor PASS. **A legal defender Dodge/response cannot be played until root reveal ends; R1 OPEN P0.** Early committed-response interruption not yet confirmed.
 - §10.5.3: duplicate Deflection toast removed; real cost card framed with skill ABOVE; true Da Qiao parking and redirected target response correct. **3/3 PASS, CLOSED.**
-- UI-3 code delivered at 946f6f697b938a87e78708e0bf5b52199b8544b5, not assessed in this review. UI-4 is still coding-agent in progress.
+- UI-3 code delivered at 946f6f697b938a87e78708e0bf5b52199b8544b5, not assessed in this review. UI-4 was subsequently delivered in 604c15a; this earlier phone review did not cover it.
 
 #### 10.7.1 R1 — P0: visual card reveal cannot block a legal defender response
 
@@ -610,7 +611,7 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 
 **Tests:** 3/5/8 Hand cards at 390/440/480px, selection vs Details vs Play, horizontal scroll, skill multi-cost selection, equipment and public parked card detail, Hand-private versus observer privacy, keyboard/focus, no controls covered. Do not change skill/combat rules.
 
-**Sequence:** Finish existing in-flight UI-4 task without cross-cutting edits; then work R1 → R2 → R3 → R4 as narrow separate code changes with focused automated tests. No new card-family rollout, no UX3 server change, and do not reimplement already accepted Da Qiao/Inspector.
+**Sequence (updated):** UI-4 was subsequently delivered. Execute current R1 → R2 → R3 → R4 as narrow separate code changes with focused automated tests, then §10.8 H1 → H2 → H3. Do not rerun UI-4 as an unfinished code task. No new card-family rollout, no UX3 server change, and do not reimplement already accepted Da Qiao/Inspector.
 
 
 ### 10.8 NEW own-Hero and opponent-seat legibility / public-event typography refinements — user request (2026-10-15)
