@@ -1,6 +1,6 @@
 # WTK UX2 — Simplified Public Card UX
 
-**Version:** 2026-10-14 · **Branch:** `ux-v2` · **Status:** New product direction approved; §8.1–§8.4 and §9.4 Gate A delivered pending aggregate review; §9.4 Gate B is current.
+**Version:** 2026-10-14 · **Branch:** `ux-v2` · **Status:** New product direction approved; §8.1–§8.4 and §9.4 Gates A–B delivered pending aggregate review; §9.4 Gate C is current.
 
 This file is the **single active UX2 product/design authority**. It replaces the superseded, much longer UX2 design; previous revisions exist only in Git history. Older `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, historical roadmap records, old tests and screenshots are references to prior implementation, **not** permission to reinstate old visual requirements.
 
@@ -338,11 +338,11 @@ Five seats clockwise **1→2→3→4→5**; seat 1 plays Duel against seat 3.
 - **Gate A:** five-seat Duel unit/API test proving seat 2 and 4 both submit in window #1; seat 2 wins regardless of POST order; seat 4 retains its card; counter window opens after seat 2 and seat 4 may counter independently. Also test nobody submits → exactly one 8s wait.
 
 **B. Privacy, deadline and real network behavior**
-**Current assignment:** Implement Gate B only; preserve Gate A and do not start Gate C in this task.
+**Delivered 2026-10-14; pending aggregate user/Reviewer review:** Added three-authenticated-human API regression coverage for viewer-private legal options, Hand identity and submission state; shared immutable deadline; idempotent duplicate, conflicting and stale submissions; timer settlement; disconnected-seat implicit Pass; and the unchanged 60-second ordinary response timeout. Focused local privacy API tests passed 19/19; the focused Stauchness race test file passed 12/12 after a test-only correction to await authoritative settlement rather than treating the losing request's in-flight response as final. Gate B coverage is on `a899cf4d792298c0c17bd65ceedb53de82d4caf4` with CI repair `31e385c94140442df18509d8b35d6ef1bfb91216`; exact-SHA Actions run `38557911474` passed Lint/fast, API, browser startup smoke, D1 migrations, Worker deployment and production smoke. No production-rule change was needed for Gate B. Continue autonomously with Gate C.
 - Project private CurrentAction and public common window safely, including all raw serialized causal/trace surfaces, shared responseCountdownVisibleAt, and immutable server deadline. Ensure duplicate/stale/competing intents and timer actions cannot double-commit or overwrite other intents; old windowId cannot act on the new window.
 - **Gate B:** three authenticated human tokens; each can submit own private intent or Pass without revealing others' options/hand/progress; shared exact deadline; 60-second non-Negation regression; disconnected clients and late replay safe. Audit API payload, not just browser labels.
 
-**C. Client controls, proofs and regression**
+**C. Client controls, proofs and regression — current task**
 - Update Local Dock for per-viewer Negation intent and submitted state, suppress optimistic event before server winner, and keep old confirmed centre/seat-card renderer for the true committed Negation only. Extend tests/api/privacy-response.test.mjs, stratagems.test.mjs, tests/browser/negation-response-guidance.spec.mjs and response-timer.spec.mjs; replace old “skip ineligible responders” expectations with one shared window.
 - Include Duel negated/restored after 2+ counters; root and per-target Group/AOE/Harvest/Judgement; 4/6/8 seats, dead seats, skill providers, stale simultaneous submissions, state refresh/reconnect, card conservation and causal/public proofs. Advance test clock/DB deadline artificially; do not sleep 8s repeatedly in mandatory CI.
 - Run focused tests, lint, fast/API, genuine authenticated browser room flow, normal push/deploy smoke. Supply exact commit/build SHA, request/response proofs, screenshots 390px/~440px/480px/wide, gaps and limitations. **STOP for user/Reviewer acceptance** before deferred Duel visual expansion.
