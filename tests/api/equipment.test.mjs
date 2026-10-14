@@ -82,7 +82,7 @@ test("host test flow gives every seat a private AOE Negation choice in one share
   for (const target of targets) {
     const windowId = result.data.room.currentAction.negationWindowId;
     assert.ok(windowId);
-    for (const responder of room.players) {
+    for (const [index, responder] of room.players.entries()) {
       const view = (await state(room.code, token, false, responder.id)).data;
       assert.equal(view.meId, responder.id); assert.equal(view.actionPlayerId, null);
       assert.equal(view.currentAction.negationWindowId, windowId);
@@ -91,9 +91,16 @@ test("host test flow gives every seat a private AOE Negation choice in one share
       assert.deepEqual(view.myHand, JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(responder.id)}`)));
       assert.equal(view.myRole, view.players.find((p) => p.id === responder.id).role);
       result = await requestForViewer("decline_response", { code: room.code, token }, responder.id); assert.equal(result.status, 200);
-      assert.equal(result.data.room.currentAction.negationWindowId, windowId, "private Pass does not close the common window early");
+      if (index < room.players.length - 1) {
+        assert.equal(result.data.room.currentAction.negationWindowId, windowId, "the shared window stays open while a snapshot seat is silent");
+      } else {
+        const resumed = (await state(room.code, token, false, target.id)).data;
+        assert.equal(resumed.pendingNegation, null, "the final explicit Pass closes the shared window immediately");
+        assert.equal(resumed.currentAction.kind, "response");
+        assert.equal(resumed.currentAction.actorId, target.id);
+        assert.equal(resumed.currentAction.requirement, required.toLowerCase());
+      }
     }
-    await advanceNegationWindow(room.code, token, windowId);
     result = await state(room.code, token, false, target.id);
     assert.equal(result.data.meId, target.id); assert.equal(result.data.pendingNegation, null);
     assert.equal(result.data.currentAction.requirement, required.toLowerCase());
@@ -289,12 +296,14 @@ test("shared Negation keeps one public checkpoint across private Pass submission
     assert.ok(privateView.currentAction.options.some((option) => option.providerId === "negation_card"));
     const passed = await request("decline_response", { code: game.code, token: member.token });
     assert.equal(passed.status, 200, JSON.stringify(passed.data));
-    assert.equal(passed.data.room.currentAction.negationWindowId, windowId, "one Pass does not close the common window");
-    assert.equal(passed.data.room.causalEnvelope.checkpoint.checkpointId, publicCheckpoint);
-    assert.equal(passed.data.room.causalEnvelope.frames[0].current.resolvingPlayerId, null);
+    if (seat < game.members.length - 1) {
+      assert.equal(passed.data.room.currentAction.negationWindowId, windowId, "the common window stays open while a snapshot seat is silent");
+      assert.equal(passed.data.room.causalEnvelope.checkpoint.checkpointId, publicCheckpoint);
+      assert.equal(passed.data.room.causalEnvelope.frames[0].current.resolvingPlayerId, null);
+    }
   }
-  await advanceNegationWindow(game.code, game.members[0].token, windowId);
   const duelTargetView = await state(game.code, game.members[2].token);
+  assert.notEqual(duelTargetView.data.currentAction.negationWindowId, windowId, "the final explicit Pass closes this window before its 8-second maximum");
   assert.equal(duelTargetView.data.pendingNegation, null);
   assert.equal(duelTargetView.data.currentAction.kind, "response"); assert.equal(duelTargetView.data.currentAction.requirement, "attack"); assert.equal(duelTargetView.data.currentAction.actorId, players[2].id);
   const result = await request("respond", { code: game.code, token: game.members[2].token, providerId: "card", cardId: "attack-2-reply" });
