@@ -833,6 +833,8 @@ function DuelCardJourney({
     {[...eventsByActor.entries()].map(([actorId, events]) => {
       const layout = duelHistoryViewport(actorId);
       if (!layout) return null;
+      // Keyboard users need focus on the scrollable history to browse older cards.
+      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
       return <div
         key={actorId}
         className="public-card-duel-history"
