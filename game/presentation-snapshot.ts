@@ -21,6 +21,7 @@ import type {
   PresentationAttackDodgeResponse,
   PresentationDuelExchange,
   PresentationDeflectionAction,
+  PresentationDiaoChanSkillNotice,
   PresentationGroupRootCardProof,
   PresentationOrderedAttackRootProof,
   PresentationSelfTargetAction,
@@ -80,6 +81,7 @@ export type PresentationSnapshotBumperHarvestProgress = PresentationBumperHarves
 export type PresentationSnapshotRootAction = PresentationRootAction;
 export type PresentationSnapshotSkillEffectAction = PresentationSkillEffectAction;
 export type PresentationSnapshotSkillEffectSettlement = PresentationSkillEffectSettlement;
+export type PresentationSnapshotDiaoChanSkillNotice = PresentationDiaoChanSkillNotice;
 export type PresentationSnapshotDismantleSettlement = PresentationDismantleSettlement;
 export type PresentationSnapshotStealSettlement = PresentationStealSettlement;
 export type PresentationSnapshotAttackHitSettlement = PresentationAttackHitSettlement;
@@ -101,6 +103,7 @@ export type PresentationSnapshot = {
   rootAction: PresentationSnapshotRootAction | null;
   skillEffectAction: PresentationSnapshotSkillEffectAction | null;
   skillEffectSettlements: readonly PresentationSnapshotSkillEffectSettlement[];
+  diaoChanSkillNotices: readonly PresentationSnapshotDiaoChanSkillNotice[];
   dismantleSettlements: readonly PresentationSnapshotDismantleSettlement[];
   stealSettlements: readonly PresentationSnapshotStealSettlement[];
   attackHitSettlements: readonly PresentationSnapshotAttackHitSettlement[];
@@ -252,6 +255,63 @@ export function provenSkillEffectSettlements(value: unknown): PresentationSnapsh
     targetId: settlement.targetId,
     outcome: settlement.outcome,
   }));
+}
+
+export function provenDiaoChanSkillNotices(value: unknown): PresentationSnapshotDiaoChanSkillNotice[] {
+  if (!Array.isArray(value)) return [];
+  const candidates = value.filter((candidate): candidate is PresentationSnapshotDiaoChanSkillNotice => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+    const notice = candidate as PresentationSnapshotDiaoChanSkillNotice;
+    if (notice.semantics !== "PROVEN" || !nonEmptyString(notice.eventId) || !nonEmptyString(notice.rootEventId)
+      || !nonEmptyString(notice.sourceId)) return false;
+    if (notice.effectId === "diao_chan_lust" && notice.notice === "ACTIVATION") {
+      return notice.eventId === notice.rootEventId
+        && nonEmptyString(notice.firstParticipantId) && nonEmptyString(notice.secondParticipantId)
+        && nonEmptyString(notice.firstActorId) && notice.sourceId !== notice.firstParticipantId
+        && notice.sourceId !== notice.secondParticipantId && notice.firstParticipantId !== notice.secondParticipantId
+        && (notice.firstActorId === notice.firstParticipantId || notice.firstActorId === notice.secondParticipantId);
+    }
+    if (notice.effectId === "diao_chan_lust" && notice.notice === "DUEL_RESULT") {
+      return notice.eventId !== notice.rootEventId && nonEmptyString(notice.firstParticipantId)
+        && nonEmptyString(notice.secondParticipantId) && nonEmptyString(notice.firstActorId)
+        && nonEmptyString(notice.failedPlayerId) && nonEmptyString(notice.damageSourceId)
+        && (notice.failedPlayerId === notice.firstParticipantId || notice.failedPlayerId === notice.secondParticipantId)
+        && (notice.damageSourceId === notice.firstParticipantId || notice.damageSourceId === notice.secondParticipantId)
+        && notice.failedPlayerId !== notice.damageSourceId && Number.isSafeInteger(notice.damageAmount)
+        && notice.damageAmount >= 0 && notice.outcome === (notice.damageAmount === 0 ? "DAMAGE_PREVENTED" : "DAMAGE_APPLIED");
+    }
+    if (notice.effectId === "diao_chan_beauty_outshining_moon" && notice.notice === "ACTIVATION") {
+      return notice.eventId === notice.rootEventId;
+    }
+    if (notice.effectId === "diao_chan_beauty_outshining_moon" && notice.notice === "DRAWN") {
+      return notice.eventId !== notice.rootEventId && notice.drawCount === 1;
+    }
+    return false;
+  });
+  const eventCounts = new Map<string, number>();
+  const activationByRoot = new Map<string, PresentationSnapshotDiaoChanSkillNotice>();
+  for (const notice of candidates) {
+    eventCounts.set(notice.eventId, (eventCounts.get(notice.eventId) ?? 0) + 1);
+    if (notice.notice === "ACTIVATION") activationByRoot.set(notice.rootEventId, notice);
+  }
+  const rootCounts = new Map<string, number>();
+  for (const notice of candidates) {
+    if (notice.notice !== "ACTIVATION") rootCounts.set(notice.rootEventId, (rootCounts.get(notice.rootEventId) ?? 0) + 1);
+  }
+  return candidates.filter((notice) => {
+    if (eventCounts.get(notice.eventId) !== 1) return false;
+    if (notice.notice === "ACTIVATION") return true;
+    if (rootCounts.get(notice.rootEventId) !== 1) return false;
+    const activation = activationByRoot.get(notice.rootEventId);
+    if (!activation || activation.effectId !== notice.effectId || activation.sourceId !== notice.sourceId) return false;
+    if (notice.effectId === "diao_chan_lust" && notice.notice === "DUEL_RESULT") {
+      return activation.effectId === "diao_chan_lust" && activation.notice === "ACTIVATION"
+        && activation.firstParticipantId === notice.firstParticipantId
+        && activation.secondParticipantId === notice.secondParticipantId
+        && activation.firstActorId === notice.firstActorId;
+    }
+    return true;
+  });
 }
 
 export function provenDismantleSettlements(value: unknown): PresentationSnapshotDismantleSettlement[] {
@@ -1096,6 +1156,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     rootAction: authority ? rootActionFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
     skillEffectAction: provenSkillEffectAction(input.presentationV2.skillEffectAction),
     skillEffectSettlements: provenSkillEffectSettlements(input.presentationV2.skillEffectSettlements),
+    diaoChanSkillNotices: provenDiaoChanSkillNotices(input.presentationV2.diaoChanSkillNotices),
     dismantleSettlements: provenDismantleSettlements(input.presentationV2.dismantleSettlements),
     stealSettlements: provenStealSettlements(input.presentationV2.stealSettlements),
     attackHitSettlements: provenAttackHitSettlements(input.presentationV2.attackHitSettlements),

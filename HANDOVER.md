@@ -2,13 +2,13 @@
 
 Branch: `ux-v2`
 
-Latest reviewed design: `docs/UX2-refine.md`, blob `ae32bf5f35e8d0ddd2d505f38da2cbf257556f7c`.
+Design reviewed: `docs/UX2-refine.md` blob `af63aa17cf970b2863b00d6e68af5115d8f3027f`; progress-only note added locally (new blob `6ed1c76889fcc3953b5bd435eaabaccc8e585e79`).
 
 ## Latest result
 
-- UI-3 delivered at `946f6f697b938a87e78708e0bf5b52199b8544b5`. Focused Worker/D1 browser checks (6 cases plus a separate skip/damage case), production build, and targeted ESLint passed; ESLint reported 7 existing hook-dependency warnings. Full `npx tsc --noEmit` still reports unrelated baseline diagnostics in untouched code.
-- Actions run [38650930258](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38650930258), attempt 2, passed API, lint/fast, browser smoke, Cloudflare deploy and production smoke. `/api/health` returned HTTP 200. Attempt 1's API job had a transient Worker fetch failure; the exact failed job passed on rerun. UI-3 awaits Reviewer acceptance; none is claimed.
+- UI-3 remains delivered at `946f6f697b938a87e78708e0bf5b52199b8544b5`; run [38650930258](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38650930258) passed API, lint/fast, browser smoke, Cloudflare deploy and production smoke. `/api/health` returned HTTP 200. No Reviewer acceptance is claimed.
+- UI-4 implementation is locally complete; focused API (8/8), authenticated Worker/D1 browser checks (2/2), production build, and `git diff --check` passed. Targeted ESLint passed on route/game/test files; `app/page.tsx` ESLint exhausted Node heap at 2 GB and 4 GB. `npx tsc --noEmit` still reports the repository's unrelated baseline diagnostics. UI-4 push-CI/deployment is pending.
 
 ## Current task — §10.6.1 UI-4 (U3)
 
-Implement truthful, deduplicated public activation and proven outcome notices for Diao Chan's Lust and Beauty Outshining the Moon. Trace the authoritative public events and current presentation ownership first. Show Lust's confirmed user, two chosen Duel participants and first actor, then a separate verified settlement result; show Beauty's draw result only when the optional draw occurred, without exposing the drawn card. Preserve existing gameplay rules, privacy, event identities, Policy-B card timing, and all unrelated skill notices. Add focused authenticated Worker/D1 browser coverage for the named cases in design §10.6.1. No fabricated skill/CardFace; finish with exact validation/CI/deploy evidence and mark awaiting Reviewer acceptance in the design before planning any later task.
+Commit and push the scoped Diao Chan Lust/Beauty public-notice implementation and handoff progress. Verify exact-SHA Actions jobs and deployment. Preserve rules/privacy and do not modify product design details. After closure, re-read the latest design before planning exactly one next bounded task; §10.3 currently gates new card-family rollout on outstanding phone acceptance for §§9.5, 8.7 and 10.5.3.

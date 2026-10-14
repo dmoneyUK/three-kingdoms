@@ -25,7 +25,7 @@ import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { attackRootProjectionDiagnosticsFor, projectPresentationV2, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof } from "../../../game/presentation-v2";
+import { attackRootProjectionDiagnosticsFor, projectPresentationV2, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
@@ -36,7 +36,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDeflectionAction?: PresentationDeflectionActionProof; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type AttackDodgeProofDiagnostic = {
   result: "PROVEN" | "REJECTED" | "NOT_ATTEMPTED";
   reason: string;
@@ -667,7 +667,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
 function dismantleSettlementProofFor(room: RoomRow, pending: TargetCardPending, log: string[]): PresentationDismantleSettlementProof | undefined {
   if (pending.cardKind !== "Dismantle") return undefined;
@@ -841,6 +841,17 @@ function addLog(log: string[], message: string, drawPlayerId?: string, meta?: Pr
 function addLogWithId(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) {
   const id = crypto.randomUUID();
   return { log: [...log.slice(-199), `@event:${JSON.stringify({ id, message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`], eventId: id };
+}
+function attachDiaoChanNotice(log: string[], proof: DiaoChanSkillNoticeProof): string[] {
+  const index = log.length - 1;
+  const entry = log[index];
+  if (!entry?.startsWith("@event:")) return log;
+  try {
+    const event = JSON.parse(entry.slice(7)) as Record<string, unknown>;
+    if (typeof event.id !== "string" || !event.id || typeof event.message !== "string"
+      || event.presentation === false) return log;
+    return [...log.slice(0, index), `@event:${JSON.stringify({ ...event, importance: "essential", finalResult: true, publicDiaoChanNotice: proof })}`];
+  } catch { return log; }
 }
 function fanjianSettlementProofFor(log: string[], continuation: HeroChoiceTriggerContinuation, outcome: PresentationSkillEffectSettlementProof["outcome"]): PresentationSkillEffectSettlementProof | undefined {
   const effectRoot = continuation.effectRoot;
@@ -2092,7 +2103,7 @@ async function advanceEquipmentLostEvents(roomId: string, records: EquipmentLost
     const owner = players.find((player) => player.id === resume.ownerId && player.alive);
     const first = players.find((player) => player.id === resume.firstId && player.alive);
     const second = players.find((player) => player.id === resume.secondId && player.alive);
-    if (owner && first && second) await beginLustDuel({ ...room, phase: "resolving", pending_json: null }, owner, first, second, discard, log);
+    if (owner && first && second) await beginLustDuel({ ...room, phase: "resolving", pending_json: null }, owner, first, second, discard, log, resume.rootEventId);
     if (handLoss) await maybeOpenHandLossTrigger(roomId, handLoss.playerId, handLoss.beforeHand);
     return;
   }
@@ -2517,23 +2528,29 @@ function groupResolutionEnvelopeForParticipant(envelope: CausalEnvelope | null, 
   });
 }
 
-function duelResponseDecision(sourceId: string, targetId: string, opponentId: string, resumePhase: string, reason: string, deadline: number, damageCards?: Card[], wushuangPlayerId?: string, resumePlayerId?: string): CausalCreation<ResponsePending> {
+function duelResponseDecision(sourceId: string, targetId: string, opponentId: string, resumePhase: string, reason: string, deadline: number, damageCards?: Card[], wushuangPlayerId?: string, resumePlayerId?: string, lust?: NonNullable<DuelContinuation["lust"]>): CausalCreation<ResponsePending> {
   const requiredAttackCount = wushuangPlayerId && targetId !== wushuangPlayerId ? 2 : 1;
   const root = createCausalRoot({ stage: "DUEL_EXCHANGE", origin: { originSourceId: sourceId, originEffect: "duel", originalTargetIds: [targetId, opponentId] }, current: { currentSourceId: sourceId, currentEffect: "duel", currentTargetIds: [targetId, opponentId], resolvingPlayerId: targetId } });
   const causal = root.context;
-  return { value: { kind: "response", actorId: targetId, causal, requirement: { kind: "attack", sourceId, actorId: targetId, count: requiredAttackCount, context: "duel" }, reason, deadline, continuation: { kind: "duel", sourceId, targetId, opponentId, resumePhase, causal, attackResponseCount: 0, ...(resumePlayerId ? { resumePlayerId } : {}), requiredAttackCount, ...(wushuangPlayerId ? { wushuangPlayerId } : {}), ...(damageCards ? { damageCards } : {}) } }, createdEnvelope: root.envelope };
+  return { value: { kind: "response", actorId: targetId, causal, requirement: { kind: "attack", sourceId, actorId: targetId, count: requiredAttackCount, context: "duel" }, reason, deadline, continuation: { kind: "duel", sourceId, targetId, opponentId, resumePhase, causal, attackResponseCount: 0, ...(resumePlayerId ? { resumePlayerId } : {}), requiredAttackCount, ...(wushuangPlayerId ? { wushuangPlayerId } : {}), ...(damageCards ? { damageCards } : {}), ...(lust ? { lust } : {}) } }, createdEnvelope: root.envelope };
 }
 
 /** Starts Lust after its cost and any Equipment-loss reactions have settled. */
-async function beginLustDuel(room: RoomRow, owner: PlayerRow, first: PlayerRow, second: PlayerRow, discard: Card[], log: string[]) {
+async function beginLustDuel(room: RoomRow, owner: PlayerRow, first: PlayerRow, second: PlayerRow, discard: Card[], log: string[], rootEventId?: string) {
   if (!owner.alive || !first.alive || !second.alive || first.id === second.id) return;
   const wushuangPlayerId = first.hero === "lü-bu" ? first.id : second.hero === "lü-bu" ? second.id : undefined;
-  const presentation = addLogWithId(log, `${owner.name} uses Lust: ${first.name} and ${second.name} enter a Duel. ${first.name} plays Attack first.`);
-  const pendingResult = duelResponseDecision(first.id, first.id, second.id, "play", "Respond to Lust Duel: select Attack or take 1 damage", nextResponseDeadline(first), [], wushuangPlayerId, owner.id);
-  const pending = withPresentationBarrier(pendingResult.value, presentation.log, presentation.eventId);
+  const lust = rootEventId ? {
+    rootEventId,
+    ownerId: owner.id,
+    firstParticipantId: first.id,
+    secondParticipantId: second.id,
+    firstActorId: first.id,
+  } : undefined;
+  const pendingResult = duelResponseDecision(first.id, first.id, second.id, "play", "Respond to Lust Duel: select Attack or take 1 damage", nextResponseDeadline(first), [], wushuangPlayerId, owner.id, lust);
+  const pending = rootEventId ? withPresentationBarrier(pendingResult.value, log, rootEventId) : pendingResult.value;
   await db().batch([
     db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving'")
-      .bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(presentation.log), JSON.stringify(pendingResult.createdEnvelope), room.id),
+      .bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(log), JSON.stringify(pendingResult.createdEnvelope), room.id),
   ]);
 }
 
@@ -2886,6 +2903,20 @@ async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePendi
     cause: "duel",
     label: "Duel damage",
     damageDescription: (amount) => `${loser.name} fails to play Attack and takes ${amount} Duel damage from ${opponent.name}`,
+    ...(pending.continuation.lust ? { finalizeDamageLog: (damageLog: string[], damageAmount: number) => attachDiaoChanNotice(damageLog, {
+      semantics: "PROVEN",
+      effectId: "diao_chan_lust",
+      notice: "DUEL_RESULT",
+      rootEventId: pending.continuation.lust!.rootEventId,
+      sourceId: pending.continuation.lust!.ownerId,
+      firstParticipantId: pending.continuation.lust!.firstParticipantId,
+      secondParticipantId: pending.continuation.lust!.secondParticipantId,
+      firstActorId: pending.continuation.lust!.firstActorId,
+      failedPlayerId: loser.id,
+      damageSourceId: opponent.id,
+      damageAmount,
+      outcome: damageAmount > 0 ? "DAMAGE_APPLIED" : "DAMAGE_PREVENTED",
+    }) } : {}),
   });
 }
 
@@ -3796,7 +3827,7 @@ type SourcedDamageTransition = {
   resumeDamageSuffered?: DamageSufferedTriggerContinuation;
   resumeTurnEnd?: TurnEndTriggerContinuation;
   onDamageApplied?: (hp: number) => Promise<void> | void;
-  finalizeDamageLog?: (log: string[]) => string[];
+  finalizeDamageLog?: (log: string[], resolvedDamageAmount: number) => string[];
   finalizeAttackHitLog?: (log: string[]) => string[];
 };
 
@@ -3811,7 +3842,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
   const hp = applyDamage(target.hp ?? 1, finalAmount);
   const description = typeof damageDescription === "function" ? damageDescription(finalAmount) : damageDescription ?? `${target.name} takes ${finalAmount} damage${label !== "Attack" && label ? ` from ${label}` : ""}`;
   const unfinalizedDamageLog = addLog(log, `${description}${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`);
-  const damageLog = finalizeDamageLog ? finalizeDamageLog(unfinalizedDamageLog) : unfinalizedDamageLog;
+  const damageLog = finalizeDamageLog ? finalizeDamageLog(unfinalizedDamageLog, finalAmount) : unfinalizedDamageLog;
   const damageContinuation: DamageSufferedTriggerContinuation = {
     kind: "damage_suffered_event",
     ...(source ? { sourceId: source.id } : {}),
@@ -5410,17 +5441,31 @@ export async function POST(request: Request) {
         const lostEquipment = selected.filter((card) => liveEquipment.some((equipped) => equipped.id === card.id));
         discard.push(selected[0]);
         log = addDiscardEvent(log, liveMe.name, selected);
-        log = addLog(log, `${liveMe.name} uses Lust; ${first?.name ?? "the first selected character"} must play Attack first against ${second?.name ?? "the other selected character"}.`);
+        const lustActivation = first && second
+          ? addLogWithId(log, `${liveMe.name} uses Lust: ${first.name} and ${second.name} enter a Duel. ${first.name} plays Attack first.`, undefined, {
+            importance: "essential",
+            publicDiaoChanNotice: {
+              semantics: "PROVEN",
+              effectId: "diao_chan_lust",
+              notice: "ACTIVATION",
+              sourceId: liveMe.id,
+              firstParticipantId: first.id,
+              secondParticipantId: second.id,
+              firstActorId: first.id,
+            },
+          })
+          : null;
+        log = lustActivation?.log ?? addLog(log, `${liveMe.name} uses Lust, but the selected Duel participants are no longer available.`);
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(hand), JSON.stringify(equipment), liveMe.id),
           db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), room.id),
         ]);
         if (first && second) {
           if (lostEquipment.length) {
-            await advanceEquipmentLostEvents(room.id, equipmentLostRecords(liveMe.id, lostEquipment, "lust"), { kind: "lust_duel", ownerId: liveMe.id, firstId: first.id, secondId: second.id, resumePhase: "play", handLoss: { playerId: liveMe.id, beforeHand: liveHand } });
+            await advanceEquipmentLostEvents(room.id, equipmentLostRecords(liveMe.id, lostEquipment, "lust"), { kind: "lust_duel", ownerId: liveMe.id, firstId: first.id, secondId: second.id, resumePhase: "play", rootEventId: lustActivation!.eventId, handLoss: { playerId: liveMe.id, beforeHand: liveHand } });
             await maybeOpenHandLossTrigger(room.id, liveMe.id, liveHand);
           } else {
-            await beginLustDuel({ ...liveRoom, phase: "resolving", pending_json: null }, liveMe, first, second, discard, log);
+            await beginLustDuel({ ...liveRoom, phase: "resolving", pending_json: null }, liveMe, first, second, discard, log, lustActivation!.eventId);
             await maybeOpenHandLossTrigger(room.id, liveMe.id, liveHand);
           }
         }
@@ -5765,9 +5810,31 @@ export async function POST(request: Request) {
         deck = draw.deck;
         nextDiscard = draw.discard;
         const nextHand = [...parse<Card[]>(source.hand_json, []), ...draw.drawn];
-        let nextLog = addTriggeredEffectNotice(draw.log, source.name, triggerExecution.presentation?.label ?? "Beauty Outshining the Moon").log;
+        const activation = addLogWithId(draw.log, `${source.name} activated Beauty Outshining the Moon.`, undefined, {
+          importance: "essential",
+          publicDiaoChanNotice: {
+            semantics: "PROVEN",
+            effectId: "diao_chan_beauty_outshining_moon",
+            notice: "ACTIVATION",
+            sourceId: source.id,
+          },
+        });
+        let nextLog = activation.log;
+        if (draw.drawn.length === 1) {
+          nextLog = addLogWithId(nextLog, `${source.name} used Beauty and drew 1 card.`, undefined, {
+            importance: "essential",
+            finalResult: true,
+            publicDiaoChanNotice: {
+              semantics: "PROVEN",
+              effectId: "diao_chan_beauty_outshining_moon",
+              notice: "DRAWN",
+              rootEventId: activation.eventId,
+              sourceId: source.id,
+              drawCount: 1,
+            },
+          }).log;
+        }
         for (const drawn of draw.drawn) nextLog = addPrivateDrawEvent(nextLog, source, drawn);
-        nextLog = addHistory(nextLog, `${source.name} draws ${draw.drawn.length} card with Beauty Outshining the Moon.`, source.id);
         const resolved = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), triggerExecution.effectId])] } satisfies TurnEndTriggerContinuation;
         const nextPlayers = players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(nextHand) } : player);
         await db.batch([

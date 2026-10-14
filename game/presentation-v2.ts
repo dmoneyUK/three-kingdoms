@@ -23,6 +23,7 @@ export type PresentationV2Event = {
   attackDodgeResponse?: unknown;
   duelAttackResponse?: unknown;
   publicSkillEffect?: { effectId?: unknown; sourceId?: unknown; targetId?: unknown };
+  publicDiaoChanNotice?: unknown;
   publicDeflectionAction?: unknown;
   publicSkillEffectSettlement?: unknown;
   publicDismantleSettlement?: unknown;
@@ -57,6 +58,14 @@ export type PresentationSkillEffectSettlementProof = {
 export type PresentationSkillEffectSettlement = PresentationSkillEffectSettlementProof & {
   eventId: string;
 };
+
+export type DiaoChanSkillNoticeProof =
+  | { semantics: "PROVEN"; effectId: "diao_chan_lust"; notice: "ACTIVATION"; sourceId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string }
+  | { semantics: "PROVEN"; effectId: "diao_chan_lust"; notice: "DUEL_RESULT"; rootEventId: string; sourceId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string; failedPlayerId: string; damageSourceId: string; damageAmount: number; outcome: "DAMAGE_APPLIED" | "DAMAGE_PREVENTED" }
+  | { semantics: "PROVEN"; effectId: "diao_chan_beauty_outshining_moon"; notice: "ACTIVATION"; sourceId: string }
+  | { semantics: "PROVEN"; effectId: "diao_chan_beauty_outshining_moon"; notice: "DRAWN"; rootEventId: string; sourceId: string; drawCount: 1 };
+
+export type PresentationDiaoChanSkillNotice = DiaoChanSkillNoticeProof & { eventId: string; rootEventId: string };
 
 /** Server-authored result for a resolved Dismantle target-card choice. */
 export type PresentationDismantleSettlementProof = {
@@ -605,6 +614,7 @@ export type PresentationV2 = {
   rootAction: PresentationRootAction | null;
   skillEffectAction: PresentationSkillEffectAction | null;
   skillEffectSettlements: readonly PresentationSkillEffectSettlement[];
+  diaoChanSkillNotices: readonly PresentationDiaoChanSkillNotice[];
   dismantleSettlements: readonly PresentationDismantleSettlement[];
   stealSettlements: readonly PresentationStealSettlement[];
   attackHitSettlements: readonly PresentationAttackHitSettlement[];
@@ -2301,6 +2311,87 @@ function skillEffectSettlementsFor(input: PresentationV2Input): PresentationSkil
   });
 }
 
+function diaoChanSkillNoticesFor(timeline: readonly PresentationV2Event[]): PresentationDiaoChanSkillNotice[] {
+  const eventCounts = new Map<string, number>();
+  for (const event of timeline) {
+    const id = stringValue(event.id);
+    if (id) eventCounts.set(id, (eventCounts.get(id) ?? 0) + 1);
+  }
+  const uniqueMessage = (id: string) => {
+    const matches = timeline.filter((event) => event.id === id);
+    return eventCounts.get(id) === 1 && matches.length === 1 && matches[0].type === "message"
+      && matches[0].presentation !== false ? matches[0] : null;
+  };
+  const notices: PresentationDiaoChanSkillNotice[] = [];
+  for (const event of timeline) {
+    const eventId = stringValue(event.id);
+    const proof = record(event.publicDiaoChanNotice);
+    if (!eventId || eventCounts.get(eventId) !== 1 || event.type !== "message"
+      || event.presentation === false || event.importance !== "essential" || !proof
+      || proof.semantics !== "PROVEN") continue;
+
+    if (proof.effectId === "diao_chan_lust" && proof.notice === "ACTIVATION") {
+      const sourceId = stringValue(proof.sourceId);
+      const firstParticipantId = stringValue(proof.firstParticipantId);
+      const secondParticipantId = stringValue(proof.secondParticipantId);
+      const firstActorId = stringValue(proof.firstActorId);
+      if (!sourceId || !firstParticipantId || !secondParticipantId || !firstActorId
+        || sourceId === firstParticipantId || sourceId === secondParticipantId
+        || firstParticipantId === secondParticipantId
+        || firstActorId !== firstParticipantId && firstActorId !== secondParticipantId
+        || event.finalResult === true) continue;
+      notices.push({ semantics: "PROVEN", effectId: "diao_chan_lust", notice: "ACTIVATION", eventId, rootEventId: eventId, sourceId, firstParticipantId, secondParticipantId, firstActorId });
+      continue;
+    }
+
+    if (proof.effectId === "diao_chan_lust" && proof.notice === "DUEL_RESULT") {
+      const rootEventId = stringValue(proof.rootEventId);
+      const sourceId = stringValue(proof.sourceId);
+      const firstParticipantId = stringValue(proof.firstParticipantId);
+      const secondParticipantId = stringValue(proof.secondParticipantId);
+      const firstActorId = stringValue(proof.firstActorId);
+      const failedPlayerId = stringValue(proof.failedPlayerId);
+      const damageSourceId = stringValue(proof.damageSourceId);
+      const damageAmount = proof.damageAmount;
+      const root = rootEventId ? uniqueMessage(rootEventId) : null;
+      const rootProof = record(root?.publicDiaoChanNotice);
+      const validAmount = Number.isSafeInteger(damageAmount) && (damageAmount as number) >= 0;
+      const expectedOutcome = validAmount && damageAmount === 0 ? "DAMAGE_PREVENTED" : "DAMAGE_APPLIED";
+      if (!rootEventId || rootEventId === eventId || !sourceId || !firstParticipantId || !secondParticipantId
+        || !firstActorId || !failedPlayerId || !damageSourceId || !validAmount
+        || proof.outcome !== expectedOutcome || event.finalResult !== true
+        || !rootProof || rootProof.semantics !== "PROVEN" || rootProof.effectId !== "diao_chan_lust" || rootProof.notice !== "ACTIVATION"
+        || rootProof.sourceId !== sourceId || rootProof.firstParticipantId !== firstParticipantId
+        || rootProof.secondParticipantId !== secondParticipantId || rootProof.firstActorId !== firstActorId
+        || failedPlayerId !== firstParticipantId && failedPlayerId !== secondParticipantId
+        || damageSourceId !== firstParticipantId && damageSourceId !== secondParticipantId
+        || failedPlayerId === damageSourceId) continue;
+      notices.push({ semantics: "PROVEN", effectId: "diao_chan_lust", notice: "DUEL_RESULT", eventId, rootEventId, sourceId, firstParticipantId, secondParticipantId, firstActorId, failedPlayerId, damageSourceId, damageAmount: damageAmount as number, outcome: expectedOutcome });
+      continue;
+    }
+
+    if (proof.effectId === "diao_chan_beauty_outshining_moon" && proof.notice === "ACTIVATION") {
+      const sourceId = stringValue(proof.sourceId);
+      if (!sourceId || event.finalResult === true) continue;
+      notices.push({ semantics: "PROVEN", effectId: "diao_chan_beauty_outshining_moon", notice: "ACTIVATION", eventId, rootEventId: eventId, sourceId });
+      continue;
+    }
+
+    if (proof.effectId === "diao_chan_beauty_outshining_moon" && proof.notice === "DRAWN") {
+      const rootEventId = stringValue(proof.rootEventId);
+      const sourceId = stringValue(proof.sourceId);
+      const root = rootEventId ? uniqueMessage(rootEventId) : null;
+      const rootProof = record(root?.publicDiaoChanNotice);
+      if (!rootEventId || rootEventId === eventId || !sourceId || proof.drawCount !== 1
+        || event.finalResult !== true || !rootProof || rootProof.semantics !== "PROVEN"
+        || rootProof.effectId !== "diao_chan_beauty_outshining_moon" || rootProof.notice !== "ACTIVATION"
+        || rootProof.sourceId !== sourceId) continue;
+      notices.push({ semantics: "PROVEN", effectId: "diao_chan_beauty_outshining_moon", notice: "DRAWN", eventId, rootEventId, sourceId, drawCount: 1 });
+    }
+  }
+  return notices;
+}
+
 function dismantleSettlementsFor(timeline: readonly PresentationV2Event[]): PresentationDismantleSettlement[] {
   const eventIdCounts = new Map<string, number>();
   const rootIdCounts = new Map<string, number>();
@@ -2918,6 +3009,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     ?? singleTargetTargetCardRootActionFor(envelope, interactionScene, input.pending, input.timeline, "Steal");
   const skillEffectAction = skillEffectActionFor(input);
   const skillEffectSettlements = skillEffectSettlementsFor(input);
+  const diaoChanSkillNotices = diaoChanSkillNoticesFor(input.timeline);
   const dismantleSettlements = dismantleSettlementsFor(input.timeline);
   const stealSettlements = stealSettlementsFor(input.timeline);
   const attackHitSettlements = attackHitSettlementsFor(input.timeline);
@@ -2963,6 +3055,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     rootAction,
     skillEffectAction,
     skillEffectSettlements,
+    diaoChanSkillNotices,
     dismantleSettlements,
     stealSettlements,
     attackHitSettlements,

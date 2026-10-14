@@ -11,7 +11,7 @@ import { normalizeRoomData } from "../game/room-safety.js";
 import { canUseAction, type CurrentAction, type GameplayAction, type TriggerOptionView } from "../game/protocol.js";
 import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
-import type { PresentationSnapshot } from "../game/presentation-snapshot";
+import type { PresentationSnapshot, PresentationSnapshotDiaoChanSkillNotice } from "../game/presentation-snapshot";
 import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
 import { attackDodgeResponseEventMatchesProof } from "../game/presentation-v2";
 import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
@@ -64,12 +64,12 @@ function persistAttackHitSettlementRetirement(held: AttackHitSettlementHoldIdent
 
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
 type PresentationImportance = "essential" | "informational";
-type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicDiaoChanNotice?: unknown; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type CardEvent = PresentationEventMeta & { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" | "draw"; drawPlayerId?: string; presentation?: boolean };
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
 
 type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | ({ type: "message"; id: string; message: string; drawPlayerId?: string; presentation?: boolean } & PresentationEventMeta);
-type EffectNoticeState = { roomCode: string; viewerId: string; eventId: string; message: string; exiting: boolean };
+type EffectNoticeState = { roomCode: string; viewerId: string; eventId: string; heading: string; message: string; exiting: boolean };
 
 function attackDodgeProofKeysFromTimeline(timeline: readonly GameEvent[]): Set<string> {
   return new Set(timeline.flatMap((event) => {
@@ -79,6 +79,40 @@ function attackDodgeProofKeysFromTimeline(timeline: readonly GameEvent[]): Set<s
   }));
 }
 type Player = { id: string; name: string; seat: number; hero: string | null; generalReady: boolean; ready: boolean; hp: number | null; maxHp: number | null; alive: boolean; connected: boolean; handCount: number; judgementCards: Card[]; equipmentCards: Card[]; attackRange: number; distance: number | null; isHost: boolean; isTestPlayer: boolean; role: string | null };
+function diaoChanNoticeCopy(proof: PresentationSnapshotDiaoChanSkillNotice, players: readonly Player[]) {
+  const owner = players.find((player) => player.id === proof.sourceId && player.hero === "diao-chan");
+  if (!owner) return null;
+  if (proof.effectId === "diao_chan_lust" && proof.notice === "ACTIVATION") {
+    const first = players.find((player) => player.id === proof.firstParticipantId);
+    const second = players.find((player) => player.id === proof.secondParticipantId);
+    const firstActor = players.find((player) => player.id === proof.firstActorId);
+    if (!first || !second || !firstActor) return null;
+    return { heading: "LUST", message: `Diao Chan used Lust: ${first.name} and ${second.name} enter a Duel. ${firstActor.name} plays Attack first.` };
+  }
+  if (proof.effectId === "diao_chan_lust" && proof.notice === "DUEL_RESULT") {
+    const failed = players.find((player) => player.id === proof.failedPlayerId);
+    const damageSource = players.find((player) => player.id === proof.damageSourceId);
+    if (!failed || !damageSource) return null;
+    return { heading: "LUST · RESULT", message: proof.damageAmount === 0
+      ? `${failed.name} failed to play Attack; Duel damage was prevented.`
+      : `${failed.name} failed to play Attack; ${proof.damageAmount} Duel damage from ${damageSource.name} applies.` };
+  }
+  if (proof.effectId === "diao_chan_beauty_outshining_moon" && proof.notice === "ACTIVATION") {
+    return { heading: "BEAUTY", message: "Diao Chan activated Beauty Outshining the Moon." };
+  }
+  if (proof.effectId === "diao_chan_beauty_outshining_moon" && proof.notice === "DRAWN" && proof.drawCount === 1) {
+    return { heading: "BEAUTY RESULT", message: "Diao Chan used Beauty and drew 1 card." };
+  }
+  return null;
+}
+function diaoChanNoticeMatchesEvent(value: unknown, proof: PresentationSnapshotDiaoChanSkillNotice) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const actual = value as Record<string, unknown>;
+  const expected = Object.fromEntries(Object.entries(proof).filter(([key]) => key !== "eventId"
+    && !(key === "rootEventId" && proof.notice === "ACTIVATION" && proof.rootEventId === proof.eventId)));
+  return Object.keys(actual).length === Object.keys(expected).length
+    && Object.entries(expected).every(([key, fieldValue]) => actual[key] === fieldValue);
+}
 type LocalTargetPreviewPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null };
 type LocalTargetPreviewSubmission = { targetId: string; presentationKey: string; actionRevision: string; currentActionKey: string };
 type LocalOpponentInspectionPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null; handCount: number; equipmentCards: Card[]; judgementCards: Card[] };
@@ -1568,7 +1602,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     isAttackDodgeUxTraceActive,
     getAttackDodgeUxTraceServerSnapshot,
   );
-  const [effectNotice, setEffectNotice] = useState<EffectNoticeState | null>(null);
+  const [effectNotices, setEffectNotices] = useState<EffectNoticeState[]>([]);
+  const effectNotice = effectNotices[0] ?? null;
   const [infoCard, setInfoCard] = useState<Card | null>(null);
   const [infoCardContext, setInfoCardContext] = useState<CardDetailsContext>("private-hand");
   const [infoHero, setInfoHero] = useState<Hero | null>(null);
@@ -1599,6 +1634,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const knownHandCards = useRef(baselineHand(room.meId, hasInitialDeal ? [] : room.myHand, hasInitialDeal ? [] : room.timeline));
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
   const effectNoticeScope = useRef(JSON.stringify([room.code, room.meId]));
+  const seenDiaoChanNoticeEventIds = useRef(new Set((room.presentationSnapshot?.diaoChanSkillNotices ?? []).map((notice) => notice.eventId)));
   const [activeSkillEffectSettlement, setActiveSkillEffectSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeDismantleSettlement, setActiveDismantleSettlement] = useState<{ eventId: string; exiting: boolean; journeySettled: boolean } | null>(null);
   const [activeStealSettlement, setActiveStealSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
@@ -2369,8 +2405,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (effectNoticeScope.current !== noticeScopeKey) {
       effectNoticeScope.current = noticeScopeKey;
       seenEvents.current = new Set((room.timeline ?? []).map((event) => event.id));
+      seenDiaoChanNoticeEventIds.current = new Set((room.presentationSnapshot?.diaoChanSkillNotices ?? []).map((notice) => notice.eventId));
       setProcessedTimelineKey(timelineKey);
-      setEffectNotice(null);
+      setEffectNotices([]);
     }
     const fresh = (room.timeline ?? []).filter((event) => !seenEvents.current.has(event.id));
     fresh.forEach((event) => seenEvents.current.add(event.id));
@@ -2478,7 +2515,25 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (freshBumperHarvestSettlements.length === 1) setActiveBumperHarvestSettlement({ eventId: freshBumperHarvestSettlements[0].eventId, exiting: false });
     const effect = fresh.filter((event) => event.type === "message" && event.effectNotice === true
       && Boolean(event.id.trim()) && room.timeline.filter((candidate) => candidate.id === event.id).length === 1).at(-1);
-    if (effect?.type === "message") setEffectNotice({ roomCode: room.code, viewerId: room.meId, eventId: effect.id, message: effect.message, exiting: false });
+    const projectedDiaoChanNotices = room.presentationSnapshot?.diaoChanSkillNotices ?? [];
+    const queuedNotices = room.timeline.flatMap((event) => {
+      if (event.type !== "message" || !event.id.trim()
+        || room.timeline.filter((candidate) => candidate.id === event.id).length !== 1) return [];
+      const proofs = projectedDiaoChanNotices.filter((proof) => proof.eventId === event.id);
+      if (proofs.length === 1 && diaoChanNoticeMatchesEvent(event.publicDiaoChanNotice, proofs[0])
+        && !seenDiaoChanNoticeEventIds.current.has(event.id)) {
+        const copy = diaoChanNoticeCopy(proofs[0], room.players);
+        if (copy) {
+          seenDiaoChanNoticeEventIds.current.add(event.id);
+          return [{ roomCode: room.code, viewerId: room.meId, eventId: event.id, ...copy, exiting: false }];
+        }
+      }
+      return effect?.id === event.id ? [{ roomCode: room.code, viewerId: room.meId, eventId: event.id, heading: "EFFECT TRIGGERED", message: event.message, exiting: false }] : [];
+    });
+    if (queuedNotices.length) setEffectNotices((current) => {
+      const known = new Set(current.map((notice) => notice.eventId));
+      return [...current, ...queuedNotices.filter((notice) => !known.has(notice.eventId))];
+    });
     const immediatelyPresented = new Set<string>();
     const visible = fresh.filter((event) => {
       if (event.presentation === false) return false;
@@ -2508,7 +2563,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       } else setEventQueue((queue) => coalescePresentationQueue(queue, visible));
     }
     setProcessedTimelineKey(timelineKey);
-  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements]);
+  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.presentationSnapshot?.diaoChanSkillNotices, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements]);
   const effectNoticeEventId = effectNotice?.eventId ?? "";
   const effectNoticeRoomCode = effectNotice?.roomCode ?? "";
   const effectNoticeViewerId = effectNotice?.viewerId ?? "";
@@ -2518,11 +2573,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const eventId = effectNoticeEventId;
     const roomCode = effectNoticeRoomCode;
     const viewerId = effectNoticeViewerId;
-    const exitTimer = window.setTimeout(() => setEffectNotice((current) => current?.eventId === eventId
-      && current.roomCode === roomCode && current.viewerId === viewerId ? { ...current, exiting: true } : current),
+    const exitTimer = window.setTimeout(() => setEffectNotices((current) => current.map((notice) => notice.eventId === eventId
+      && notice.roomCode === roomCode && notice.viewerId === viewerId ? { ...notice, exiting: true } : notice)),
     Math.max(0, UI_TIMING.effectNotice - UI_TIMING.effectNoticeExit));
-    const removeTimer = window.setTimeout(() => setEffectNotice((current) => current?.eventId === eventId
-      && current.roomCode === roomCode && current.viewerId === viewerId ? null : current), UI_TIMING.effectNotice);
+    const removeTimer = window.setTimeout(() => setEffectNotices((current) => current[0]?.eventId === eventId
+      && current[0]?.roomCode === roomCode && current[0]?.viewerId === viewerId ? current.slice(1) : current), UI_TIMING.effectNotice);
     return () => { window.clearTimeout(exitTimer); window.clearTimeout(removeTimer); };
   }, [effectNoticeEventId, effectNoticeRoomCode, effectNoticeViewerId, room.code, room.meId]);
   useEffect(() => { if (!optimisticPlay) return; const timer = setTimeout(() => setOptimisticPlay(null), UI_TIMING.playedCard); return () => clearTimeout(timer); }, [optimisticPlay]);
@@ -5087,7 +5142,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           : null}
         eventTimer={<>{privateDrawTimer}{harvestEventTimer}</>}
       />
-      {effectNotice && effectNotice.roomCode === room.code && effectNotice.viewerId === room.meId && <div key={effectNotice.eventId} className={`effect-notice${effectNotice.exiting ? " is-exiting" : ""}`} role="status" aria-live="polite" aria-atomic="true" data-effect-notice-event-id={effectNotice.eventId}><span>EFFECT TRIGGERED</span><b>{effectNotice.message}</b></div>}
+      {effectNotice && effectNotice.roomCode === room.code && effectNotice.viewerId === room.meId && <div key={effectNotice.eventId} className={`effect-notice${effectNotice.exiting ? " is-exiting" : ""}`} role="status" aria-live="polite" aria-atomic="true" data-effect-notice-event-id={effectNotice.eventId}><span>{effectNotice.heading}</span><b>{effectNotice.message}</b></div>}
       </div>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
       {canChooseBorrowedSword && <div className="turn-notice borrowed-sword-notice" role="status"><span>BORROWED SWORD</span><b>{borrowedSwordTargetId ? "Target selected · confirm below" : "Choose a legal Attack target"}</b></div>}

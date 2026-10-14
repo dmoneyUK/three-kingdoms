@@ -78,6 +78,7 @@ async function completeSkillSelection({ page, request, seed, skillName, provider
   if (targetIndexes.length === 1) expect(submitted.request().postDataJSON().targetId).toBe(seed.players[targetIndexes[0]].id);
   if (targetIndexes.length > 1) expect(submitted.request().postDataJSON().targetIds).toEqual(targetIndexes.map((index) => seed.players[index].id));
   await expect(duplicate).toHaveCount(0);
+  return await submitted.json();
 }
 
 test("real Benevolence uses its server-selected Hand card and target", async ({ page, request }) => {
@@ -142,5 +143,18 @@ test("real Lust submits its ordered two-target selection", async ({ page, reques
     ],
   });
   await openSkillUser(page, seed);
-  await completeSkillSelection({ page, request, seed, skillName: "Lust", providerId: "diao_chan_lust", cardIds: [cost.id], targetIndexes: [1, 2] });
+  const started = await completeSkillSelection({ page, request, seed, skillName: "Lust", providerId: "diao_chan_lust", cardIds: [cost.id], targetIndexes: [1, 2] });
+  const activation = started.room.presentationSnapshot.diaoChanSkillNotices.find((notice) => notice.notice === "ACTIVATION");
+  expect(activation).toMatchObject({
+    effectId: "diao_chan_lust", sourceId: seed.players[0].id,
+    firstParticipantId: seed.players[1].id, secondParticipantId: seed.players[2].id, firstActorId: seed.players[1].id,
+  });
+  await expect(page.locator(`[data-effect-notice-event-id="${activation.eventId}"]`)).toContainText("FIRST MAN plays Attack first.");
+  await page.reload();
+  await expect(page.locator(".effect-notice")).toHaveCount(0);
+
+  const failed = await request.post(`${API}/api/rooms`, { data: { action: "decline_response", code: seed.code, token: seed.players[1].token } });
+  expect(failed.ok()).toBeTruthy();
+  await expect(page.locator(".effect-notice")).toContainText("LUST · RESULT");
+  await expect(page.locator(".effect-notice")).toContainText("FIRST MAN failed to play Attack; 1 Duel damage from SECOND MAN applies.");
 });

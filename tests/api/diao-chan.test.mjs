@@ -32,6 +32,13 @@ test("Lust offers ordered male Duel targets, accepts one Hand cost, bypasses Neg
 
   const started = await requestAndSettle("trigger", { code: game.code, token: game.members[0].token, providerId: "diao_chan_lust", cardIds: [setup.cost.id], targetIds: [setup.first.id, setup.second.id], preserveResponse: true });
   assert.equal(started.status, 200, JSON.stringify(started.data));
+  const lustActivation = started.data.room.timeline.filter((event) => event.publicDiaoChanNotice?.notice === "ACTIVATION");
+  assert.equal(lustActivation.length, 1, JSON.stringify(started.data.room.timeline));
+  assert.deepEqual(lustActivation[0].publicDiaoChanNotice, {
+    semantics: "PROVEN", effectId: "diao_chan_lust", notice: "ACTIVATION", sourceId: setup.diao.id,
+    firstParticipantId: setup.first.id, secondParticipantId: setup.second.id, firstActorId: setup.first.id,
+  });
+  assert.equal(started.data.room.presentationSnapshot.diaoChanSkillNotices.filter((notice) => notice.notice === "ACTIVATION").length, 1);
   const firstView = (await state(game.code, game.members[1].token)).data;
   assert.equal(firstView.currentAction.actorId, setup.first.id);
   assert.equal(firstView.currentAction.requirement, "attack");
@@ -63,6 +70,16 @@ test("Lust offers ordered male Duel targets, accepts one Hand cost, bypasses Neg
   assert.equal(finished.data.room.players.find((player) => player.id === setup.second.id).hp, 4);
   assert.equal(finished.data.room.players.find((player) => player.id === setup.diao.id).hp, 3);
   assert.ok(finished.data.room.log.some((entry) => entry.includes(`${setup.second.name}`) && entry.includes(`${setup.first.name}`)), JSON.stringify(finished.data.room.log));
+  const lustResults = finished.data.room.presentationSnapshot.diaoChanSkillNotices.filter((notice) => notice.notice === "DUEL_RESULT");
+  assert.equal(lustResults.length, 1, JSON.stringify(finished.data.room.presentationSnapshot.diaoChanSkillNotices));
+  assert.deepEqual(lustResults[0], {
+    semantics: "PROVEN", effectId: "diao_chan_lust", notice: "DUEL_RESULT", eventId: lustResults[0].eventId,
+    rootEventId: lustActivation[0].id, sourceId: setup.diao.id, firstParticipantId: setup.first.id,
+    secondParticipantId: setup.second.id, firstActorId: setup.first.id, failedPlayerId: setup.first.id,
+    damageSourceId: setup.second.id, damageAmount: 1, outcome: "DAMAGE_APPLIED",
+  });
+  const otherViewer = (await state(game.code, game.members[3].token)).data;
+  assert.deepEqual(otherViewer.presentationSnapshot.diaoChanSkillNotices, finished.data.room.presentationSnapshot.diaoChanSkillNotices);
   assert.equal(finished.data.room.phase, "play");
   assert.equal(finished.data.room.causalEnvelope, null, "the settled Duel root clears after the exchange");
   assert.equal(JSON.parse(query(`SELECT skill_state_json FROM rooms WHERE code=${quote(game.code)}`)).lustUsed, true);
@@ -84,6 +101,7 @@ test("Lust accepts owned Equipment, rejects stale or duplicate selections, and r
 
   const used = await requestAndSettle("trigger", { code: game.code, token: game.members[0].token, providerId: "diao_chan_lust", cardIds: [equipmentCost.id], targetIds: [setup.second.id, setup.first.id], preserveResponse: true });
   assert.equal(used.status, 200, JSON.stringify(used.data));
+  assert.equal(used.data.room.presentationSnapshot.diaoChanSkillNotices[0].firstActorId, setup.second.id);
   assert.equal(used.data.room.currentAction.actorId, setup.second.id);
   assert.equal(used.data.room.players.find((player) => player.id === setup.diao.id).equipmentCards.length, 0);
   assert.equal(discardIds(game.code).includes(equipmentCost.id), true);
@@ -103,6 +121,38 @@ test("Lust accepts owned Equipment, rejects stale or duplicate selections, and r
   }
   assert.equal((await requestAndSettle("draw", { code: game.code, token: game.members[0].token })).status, 200);
   assert.equal((await state(game.code, game.members[0].token)).data.currentAction.triggerOptions.some((entry) => entry.effectId === "diao_chan_lust"), true);
+});
+
+test("Lust activation proof stays bound through several real Duel Attack rounds", async () => {
+  const game = await createHumanGame();
+  const firstAttacks = [card("Attack", "lust-round-one"), card("Attack", "lust-round-three")];
+  const secondAttack = card("Attack", "lust-round-two");
+  const setup = configureLust(game, { firstHand: firstAttacks, secondHand: [secondAttack] });
+  const started = await requestAndSettle("trigger", { code: game.code, token: game.members[0].token, providerId: "diao_chan_lust", cardIds: [setup.cost.id], targetIds: [setup.first.id, setup.second.id], preserveResponse: true });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  const root = started.data.room.timeline.find((event) => event.publicDiaoChanNotice?.notice === "ACTIVATION");
+  assert.ok(root);
+  const rounds = [
+    [game.members[1], firstAttacks[0], setup.second.id],
+    [game.members[2], secondAttack, setup.first.id],
+    [game.members[1], firstAttacks[1], setup.second.id],
+  ];
+  for (const [member, attack, nextActorId] of rounds) {
+    const accepted = await requestAndSettle("respond", { code: game.code, token: member.token, providerId: "card", cardId: attack.id, preserveResponse: true });
+    assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+    assert.equal(accepted.data.room.currentAction.actorId, nextActorId);
+  }
+  const failed = await requestAndSettle("decline_response", { code: game.code, token: game.members[2].token, preserveResponse: true });
+  assert.equal(failed.status, 200, JSON.stringify(failed.data));
+  const result = failed.data.room.presentationSnapshot.diaoChanSkillNotices.find((notice) => notice.notice === "DUEL_RESULT");
+  assert.ok(result, JSON.stringify(failed.data.room.presentationSnapshot.diaoChanSkillNotices));
+  assert.deepEqual(result, {
+    semantics: "PROVEN", effectId: "diao_chan_lust", notice: "DUEL_RESULT", eventId: result.eventId,
+    rootEventId: root.id, sourceId: setup.diao.id, firstParticipantId: setup.first.id,
+    secondParticipantId: setup.second.id, firstActorId: setup.first.id, failedPlayerId: setup.second.id,
+    damageSourceId: setup.first.id, damageAmount: 1, outcome: "DAMAGE_APPLIED",
+  });
+  assert.equal(failed.data.room.players.find((player) => player.id === setup.second.id).hp, 3);
 });
 
 test("Lust uses generic Duel target legality, including Empty Fortress, and preserves Lü Bu's Unrivaled count", async () => {
@@ -188,7 +238,11 @@ test("Beauty Outshining the Moon is an optional private own-turn draw and shares
   assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
   assert.equal((await state(game.code, game.members[0].token)).data.myHand.some((held) => held.id === draw.id), true);
   assert.equal((await state(game.code, game.members[1].token)).data.players.find((player) => player.id === diao.id).handCount, 1);
-  assert.equal(JSON.stringify((await state(game.code, game.members[1].token)).data).includes(draw.id), false);
+  const publicBeautyView = (await state(game.code, game.members[1].token)).data;
+  assert.equal(JSON.stringify(publicBeautyView).includes(draw.id), false);
+  assert.deepEqual(publicBeautyView.presentationSnapshot.diaoChanSkillNotices.map((notice) => notice.notice), ["ACTIVATION", "DRAWN"]);
+  assert.equal(publicBeautyView.presentationSnapshot.diaoChanSkillNotices.find((notice) => notice.notice === "DRAWN").drawCount, 1);
+  assert.equal(publicBeautyView.timeline.filter((event) => event.effectNotice === true && event.message.includes("Beauty")).length, 0);
   const stale = await request("trigger", { code: game.code, token: game.members[0].token, providerId: "diao_chan_beauty_outshining_moon", context: { actionRevision: reloaded.data.actionRevision, meId: diao.id, phase: "response", pendingKind: "trigger", actorId: diao.id } });
   assert.equal(stale.status, 409);
   assert.equal(roomCardCount(game.code, draw.id), 1);
@@ -208,6 +262,7 @@ test("Beauty Outshining the Moon is an optional private own-turn draw and shares
   const declinedResult = await requestAndSettle("decline_trigger", { code: declined.code, token: declined.members[0].token });
   assert.equal(declinedResult.status, 200, JSON.stringify(declinedResult.data));
   assert.equal((await state(declined.code, declined.members[0].token)).data.myHand.some((held) => held.id === "beauty-decline-draw"), false);
+  assert.equal((await state(declined.code, declined.members[1].token)).data.presentationSnapshot.diaoChanSkillNotices.length, 0);
 });
 
 test("Quick Test keeps Lust projected to the acting controlled Diao Chan seat", async () => {

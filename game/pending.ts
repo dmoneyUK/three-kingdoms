@@ -79,7 +79,7 @@ export function isGroupParticipantProgressOutcomeAllowed(
   if (outcome === "DEFEATED") return cardKind === "RainingArrows" || cardKind === "BarbarianInvasion";
   return false;
 }
-export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; /** Count of server-accepted Attack responses; absent on legacy persisted Duels. */ attackResponseCount?: number; wushuangPlayerId?: string } & CausalFields;
+export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; /** Count of server-accepted Attack responses; absent on legacy persisted Duels. */ attackResponseCount?: number; wushuangPlayerId?: string; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } & CausalFields;
 export type NegationHistoryRecord = {
   nodeId: string;
   interactionId: string;
@@ -280,7 +280,7 @@ export type HandLossTriggerContinuation = {
 export type EquipmentLostRecord = { playerId: string; lostCards: Card[]; reason?: string };
 export type EquipmentLostResume =
   | { kind: "phase"; phase: string; playerId?: string; handLoss?: { playerId: string; beforeHand: Card[] } }
-  | { kind: "lust_duel"; ownerId: string; firstId: string; secondId: string; resumePhase: string; handLoss?: { playerId: string; beforeHand: Card[] } }
+  | { kind: "lust_duel"; ownerId: string; firstId: string; secondId: string; resumePhase: string; rootEventId?: string; handLoss?: { playerId: string; beforeHand: Card[] } }
   | { kind: "attack_targeted"; continuation: AttackTargetedTriggerContinuation; handLoss?: { playerId: string; beforeHand: Card[] } }
   | { kind: "attack_dodged"; continuation: AttackDodgedTriggerContinuation; handLoss?: { playerId: string; beforeHand: Card[] } }
   | { kind: "forced_damage"; sourceId: string; targetId: string; amount: number; resumePhase: string; resumePlayerId?: string; sequenceStartCardId: string; origin?: AttackOrigin; damageCards?: Card[]; label: string; damageDescription?: string; handLoss?: { playerId: string; beforeHand: Card[] } }

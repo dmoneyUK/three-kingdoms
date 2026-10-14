@@ -111,6 +111,12 @@ test("real Beauty Outshining the Moon appears only after Diao Chan ends her turn
   expect((await view(request, seedData, 0)).currentAction.triggerOptions.map((option) => option.effectId)).toContain("diao_chan_beauty_outshining_moon");
   const activated = await activateDirectSkill({ page, request, seedData, playerIndex: 0, label: "Beauty Outshining the Moon", providerId: "diao_chan_beauty_outshining_moon" });
   expect(activated.result.room.myHand.map((held) => held.id)).toContain("real-beauty-draw");
+  await expect(page.locator(".effect-notice")).toContainText("BEAUTY");
+  await expect(page.locator(".effect-notice")).toContainText("Diao Chan activated Beauty Outshining the Moon.");
+  await expect(page.locator(".effect-notice")).toContainText("BEAUTY RESULT", { timeout: 8_000 });
+  await expect(page.locator(".effect-notice")).toContainText("Diao Chan used Beauty and drew 1 card.");
+  await page.reload();
+  await expect(page.locator(".effect-notice")).toHaveCount(0);
 });
 
 test("real Second Wind is reached after Lu Xun spends his last Attack and draws from Skills", async ({ page, request }) => {
