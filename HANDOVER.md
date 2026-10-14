@@ -2,18 +2,20 @@
 
 Branch: `ux-v2`
 
-Latest reviewed design: `docs/UX2-refine.md`, blob `20e41dd7e18a31dfd115871ad12db8fea4bb27d3`.
+Latest reviewed design: `docs/UX2-refine.md`, blob `74214873ee314613e88e6d06eac090bdac206198`.
 
-Latest user decision: §8.1 Duel layout is user-validated; continue autonomously. Reviewer acceptance remains separate.
+Latest user decision: §8.1 Duel layout passed visual validation. Continue autonomous, one-task-at-a-time execution from §8; aggregate reviewer acceptance remains pending.
 
 ## Latest result
 
-§10.5 Gate E1 public Deflection proof is delivered pending aggregate review. Implementation: `5934a4b9d800d331d59bc8372cc0ead236a480c4`; a follow-up corrected one stale projection expectation: `01596218e03d225e99bcd47ceb7cac1d65177d4b`. The focused `node --import tsx --test tests/presentation-client.test.mjs` passed 60/60. Actions run `38589559366` passed Lint/fast, API, browser smoke, and deploy; production `/api/health` returned `{"ok":true,"worker":"available"}`. The earlier run `38589052415` failed only because the expected client-view fixture omitted the new empty field; the focused repair passed before push. No real-browser Deflection screenshots were captured in E1.
+§10.5 Gate E2 proof-backed Da Qiao Deflection card journey was pushed at `2a099194ea3bd4fdfc9722a30cf67fff681b9d9d`. Actions run `38591470165` passed Lint/fast, API, browser startup smoke and deploy. Production `/api/health` returned `{"ok":true,"worker":"available"}`. No local gameplay automation or authenticated gameplay screenshots were run; visual acceptance is pending.
 
-## Current task — §10.5 Gate E2: Deflection centre reveal and Seat/Dock parking
+## Current task — UX2-NEGATION-CENTRE-PARK-01 (§10.2 A, non-Duel single-target roots)
 
-Use the E1 typed public proof to present the genuine discarded cost card with a `DEFLECTION` label: one centre reveal, then park that same physical card at Da Qiao's actual Seat/Dock. Suppress the competing generic discard animation only for this uniquely proven cost event. Show the server-proven redirected target; never duplicate the original Attack or fabricate a response. Keep private choices, timers, legal controls, equipment effects, card conservation, reconnect and viewer-specific seat placement intact.
+Observed gap: `singleTargetNegationPublicAction` is built from the validated public reaction-chain events, but has no centre-to-seat motion. `PublicCardDisplay` renders a static card and only the latest Negation response, omitting the committed root/counter history.
 
-**Acceptance:** extend the real gameplay browser path for attacker, Da Qiao, replacement and observer; verify actual proof IDs and the centre-to-seat motion, no duplicate card, correct Dodge/damage outcomes and no private leak. Capture evidence at 390×844, ~440×894, 480×900, desktop, and 6/8-seat layouts. Run focused API/browser coverage and rely on the exact-SHA CI/deploy gate. Do not change game rules or other Hero skills.
+Implement a proof-backed sequence for non-Duel, single-target Negation roots: reveal each genuine committed root or Negation at normal Hand-card size for 4 seconds, then move it once in 380 ms and park it at its actual author's Seat/Dock. Queue fast commits one at a time. Keep all committed cards readable through the proven `ROOT_CANCELLED` / `ROOT_RESTORED` outcome, and suppress a duplicate owner only for the exact events the presenter owns.
 
-**Boundary:** Gate E2 only. Do not start another Hero family or AOE in this handoff. Report delivery as pending aggregate visual review; only the human Reviewer declares acceptance.
+**Boundaries:** `CurrentAction` remains the source of legal controls and the shared 8-second Negation rules remain unchanged. Never reveal pending/private Negation intent. Exclude Duel, Group/AOE and other card families. Use only the existing validated root, counter and settlement proof; missing or ambiguous proof fails closed. Do not reintroduce graph lines or giant panels.
+
+**Validation:** follow the user's instruction to avoid local automated gameplay tests; rely on the exact-SHA CI/deploy gate and leave visual acceptance pending for the user's aggregate manual review.
