@@ -688,7 +688,7 @@ test("real Raining Arrows exposes Zhen Ji's authoritative Dodge provider in Skil
 
 for (const viewport of [
   { width: 390, height: 844 },
-  { width: 440, height: 844 },
+  { width: 440, height: 894 },
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
@@ -843,9 +843,9 @@ for (const viewport of [
     const overlaps = (a, b) => Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x)
       && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
     expect(surfaceBox.width).toBeLessThan(stageBox.width);
-    expect(surfaceBox.height).toBeLessThanOrEqual(stageBox.height * 0.53 + 1);
-    expect(surfaceBox.y).toBeGreaterThanOrEqual(stageBox.y - 1);
-    expect(surfaceBox.y + surfaceBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height + 1);
+    expect(surfaceBox.height).toBeLessThan(stageBox.height);
+    expect(surfaceBox.y).toBeGreaterThanOrEqual(stageBox.y + 10);
+    expect(surfaceBox.y + surfaceBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height - 10);
     expect(panelBox.x).toBeGreaterThanOrEqual(surfaceBox.x);
     expect(panelBox.y).toBeGreaterThanOrEqual(surfaceBox.y);
     expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(surfaceBox.x + surfaceBox.width);

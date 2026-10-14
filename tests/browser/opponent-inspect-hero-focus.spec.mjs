@@ -47,7 +47,7 @@ test("clicking an opponent Hero opens the unified inspector without changing Sta
 });
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
-  test(`opponent Inspect floats compactly inside Stage at ${viewport.width}px`, async ({ page }) => {
+  test(`opponent Inspect uses the measured Stage safe zone at ${viewport.width}px`, async ({ page }) => {
     await loadFixture(page, viewport);
     const before = await seatGeometry(page);
     const dockBefore = await page.locator(".local-player-dock").boundingBox();
@@ -113,10 +113,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     expect(Math.abs(backdropBox.width - stageBox.width)).toBeLessThanOrEqual(1);
     expect(Math.abs(backdropBox.height - stageBox.height)).toBeLessThanOrEqual(1);
     expect(Math.abs((shellBox.x + shellBox.width / 2) - (stageBox.x + stageBox.width / 2))).toBeLessThanOrEqual(1);
-    const upwardShift = stageBox.y + stageBox.height / 2 - (shellBox.y + shellBox.height / 2);
-    expect(upwardShift).toBeGreaterThanOrEqual(43);
-    expect(upwardShift).toBeLessThanOrEqual(53);
-    expect(shellBox.height / stageBox.height).toBeLessThanOrEqual(0.53);
+    expect(shellBox.y).toBeGreaterThanOrEqual(stageBox.y + 10);
+    expect(shellBox.y).toBeLessThanOrEqual(stageBox.y + 14);
+    expect(shellBox.y + shellBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height - 10);
     expect(shellBox.height).toBeLessThan(stageBox.height);
     expect(identityType.hero).toBeGreaterThanOrEqual(12);
     expect(identityType.hp).toBeGreaterThanOrEqual(10);

@@ -799,10 +799,29 @@ function supportsLocalEquipmentTargetSelection(selection: PublicTargetCardSelect
 
 function OpponentPublicInspector({ player, judgementInFlight, onClose, onInfoCard }: { player: LocalOpponentInspectionPresentation; judgementInFlight?: ReadonlySet<string>; onClose?: () => void; onInfoCard?: (card: Card) => void }) {
   const [expandedSkillName, setExpandedSkillName] = useState<string | null>(null);
+  const [skillDescriptionScrollable, setSkillDescriptionScrollable] = useState(false);
+  const skillDescriptionRef = useRef<HTMLParagraphElement>(null);
   const hero = player.hero;
   const skills = hero?.skills ?? [];
   const expandedSkill = skills.find((skill) => skill.name === expandedSkillName) ?? null;
   const baseId = `opponent-inspect-${player.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+  const updateSkillDescriptionScrollable = useCallback(() => {
+    const description = skillDescriptionRef.current;
+    const scrollable = Boolean(description && description.scrollHeight > description.clientHeight + 1);
+    setSkillDescriptionScrollable((current) => current === scrollable ? current : scrollable);
+  }, []);
+  useEffect(() => {
+    const description = skillDescriptionRef.current;
+    if (!description) return;
+    const observer = new ResizeObserver(updateSkillDescriptionScrollable);
+    observer.observe(description);
+    if (description.parentElement) observer.observe(description.parentElement);
+    const frame = requestAnimationFrame(updateSkillDescriptionScrollable);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [expandedSkill?.name, expandedSkill?.description, updateSkillDescriptionScrollable]);
   const renderInspectionCard = (card: Card, hidden = false) => <button key={card.id} type="button" className="opponent-inspection-card" style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard?.(card); }}><CardFace card={card} /></button>;
   return <section key={player.id} className="hero-focus hero-focus-inspect opponent-inspection-panel" role="dialog" aria-label={`${player.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={player.id}>
     <div className="hero-focus-heading"><strong>{`INSPECT · ${player.name}`}</strong><button type="button" className="hero-focus-inspect-close" aria-label={`Close ${player.name} inspection`} onClick={onClose}>×</button></div>
@@ -819,7 +838,7 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, onInfoCar
             <div className="hero-focus-inspect-skills">{skills.length ? skills.map((skill) => {
               const detailId = `${baseId}-skill-${skill.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
               const expanded = expandedSkillName === skill.name;
-              return <button type="button" className="hero-focus-inspect-skill" key={skill.name} aria-label={`Show ${skill.name} description`} aria-expanded={expanded} aria-controls={detailId} onClick={() => setExpandedSkillName((current) => current === skill.name ? null : skill.name)}>{skill.name}</button>;
+              return <button type="button" className="hero-focus-inspect-skill" key={skill.name} aria-label={`Show ${skill.name} description`} aria-expanded={expanded} aria-controls={detailId} onClick={() => { setSkillDescriptionScrollable(false); setExpandedSkillName((current) => current === skill.name ? null : skill.name); }}>{skill.name}</button>;
             }) : <span className="opponent-inspection-empty">None</span>}</div>
           </section>
         </div>
@@ -830,7 +849,10 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, onInfoCar
       </div>
     </div>
     <div className="hero-focus-inspect-details hero-focus-context">
-      {expandedSkill && <p className="hero-focus-inspect-skill-description" id={`${baseId}-skill-${expandedSkill.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`} role="region" aria-label={`${expandedSkill.name} description`}>{expandedSkill.description}</p>}
+      {expandedSkill && <>
+        {skillDescriptionScrollable && <small className="hero-focus-inspect-scroll-hint" aria-hidden="true">Scroll to read the full skill</small>}
+        <p ref={skillDescriptionRef} className="hero-focus-inspect-skill-description" id={`${baseId}-skill-${expandedSkill.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`} role="region" aria-label={`${expandedSkill.name} description`}>{expandedSkill.description}</p>
+      </>}
     </div>
   </section>;
 }
