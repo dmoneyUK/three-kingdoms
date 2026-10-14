@@ -219,6 +219,10 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
     "zhao-yun-longdan-attack-response": { providerId: "zhao_yun_dodge_as_attack", label: "Use Braveheart as Attack", satisfies: "attack", cardId: "browser-longdan-dodge-as-attack" },
     "zhao-yun-longdan-dodge-response": { providerId: "zhao_yun_attack_as_dodge", label: "Use Braveheart as Dodge", satisfies: "dodge", cardId: "browser-longdan-attack-as-dodge" },
   }[state];
+  if (state === "dodge-no-provider" || state === "duel-no-attack") {
+    const requirement = state === "duel-no-attack" ? "attack" : "dodge";
+    return { version: 3, kind: "response", actorId, deadline: 0, reason: requirement === "attack" ? "Respond to Duel" : "Dodge the Attack", legalActions: ["decline_response"], requirement, options: [] };
+  }
   if (conversionResponse) return {
     version: 3, kind: "response", actorId, deadline: 0, reason: "Choose a response card", legalActions: ["respond", "decline_response"], requirement: conversionResponse.satisfies,
     options: [{ providerId: conversionResponse.providerId, label: conversionResponse.label, satisfies: conversionResponse.satisfies, activation: "explicit", playedAs: conversionResponse.satisfies, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [conversionResponse.cardId] } }],
@@ -557,7 +561,7 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
   };
 }
 
-function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, negationSettlementOutcome }) {
+function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, negationSettlementOutcome, playerNamePrefix }) {
   const huaTuoFirstAidFixture = state.startsWith("hua-tuo-first-aid");
   const huaTuoFirstAidObserver = state === "hua-tuo-first-aid-observer";
   const dyingFixture = state === "dying" || huaTuoFirstAidFixture;
@@ -606,7 +610,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
   const retaliationModalFixture = state === "retaliation-modal";
   const playerIds = Array.from({ length: count }, (_, index) => `p${index + 1}`);
   const bumperCurrentId = bumperHarvestComplete ? null : state === "bumper-harvest-returned" ? playerIds[2] ?? playerIds[1] : state === "bumper-harvest-dense" ? playerIds[playerIds.length - 2] : playerIds[1];
-  const meId = huaTuoFirstAidFixture ? "p1" : state === "hua-xiong-triumphant-observer" ? "p2" : bumperHarvestSourceViewer || oathNegationSourceViewer ? "p1" : bumperHarvestLocalFixture || oathNegationLocalFixture ? "p3" : groupNegationLocalFixture ? "p1" : bumperHarvestFixture ? "p4" : activeNegationObserver || timedNegationObserver ? "p4" : duelObserverView ? "p3" : judgementStage ? state === "judgement-local" ? "p1" : "p4" : borrowedSwordActiveFixture ? count === 2 ? "p1" : "p4" : targetShiftFixture ? count >= 5 ? "p5" : "p3" : frostSwordSelectionFixture || kirinBowSelectionFixture ? "p2" : state === "active-attack-observer" || state === "group-observer" || unfocusedGroup || groupNegationFixture || oathNegationFixture ? "p3" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "negation" || state === "confirm-skip" || state === "picker" || state === "picker-hand-zone" || state === "fanjian-selectable" ? "p2" : state === "dying" ? "p3" : "p1";
+  const meId = huaTuoFirstAidFixture ? "p1" : state === "hua-xiong-triumphant-observer" ? "p2" : bumperHarvestSourceViewer || oathNegationSourceViewer ? "p1" : bumperHarvestLocalFixture || oathNegationLocalFixture ? "p3" : groupNegationLocalFixture ? "p1" : bumperHarvestFixture ? "p4" : activeNegationObserver || timedNegationObserver ? "p4" : duelObserverView ? "p3" : judgementStage ? state === "judgement-local" ? "p1" : "p4" : borrowedSwordActiveFixture ? count === 2 ? "p1" : "p4" : targetShiftFixture ? count >= 5 ? "p5" : "p3" : frostSwordSelectionFixture || kirinBowSelectionFixture ? "p2" : state === "active-attack-observer" || state === "group-observer" || unfocusedGroup || groupNegationFixture || oathNegationFixture ? "p3" : state === "duel" || state === "duel-response" || state === "duel-no-attack" || state === "dodge" || state === "dodge-mismatch" || state === "dodge-no-provider" || state === "negation" || state === "confirm-skip" || state === "picker" || state === "picker-hand-zone" || state === "fanjian-selectable" ? "p2" : state === "dying" ? "p3" : "p1";
   const actorId = huaTuoFirstAidObserver ? "p2" : huaTuoFirstAidFixture ? "p1" : state === "hua-xiong-triumphant-observer" ? "p1" : state === "stargazing-active-observer" ? "p2" : bumperHarvestFixture ? bumperHarvestChild ? "p3" : bumperCurrentId : oathNegationFixture ? oathNegationLocalFixture ? "p3" : "p2" : timedNegationObserver || duelObserverView ? "p2" : judgementStage ? state === "judgement" ? "p3" : "p2" : borrowedSwordActiveFixture ? "p2" : targetShiftFixture ? "p4" : state === "active-attack-observer" ? "p2" : activeNegationObserver ? "p3" : state === "group-observer" || unfocusedGroup || groupNegationFixture ? "p1" : state === "dying" ? "p3" : meId;
   // Geometry-only large-hand fixture; IDs are synthetic, not a dealt deck.
   const hand = huaTuoFirstAidFixture
@@ -623,6 +627,10 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     ? [card("browser-longdan-attack-as-dodge", "Attack", "♠"), card("browser-longdan-ineligible-dodge", "Dodge", "♣")]
     : state === "conversion-no-provider"
     ? [card("browser-conversion-no-provider-attack", "Attack", "♠"), card("browser-conversion-no-provider-dodge", "Dodge", "♣")]
+    : state === "dodge-no-provider"
+      ? [card("browser-illegal-unprojected-dodge", "Dodge", "♣")]
+    : state === "duel-no-attack"
+      ? [card("browser-illegal-unprojected-attack", "Attack", "♠")]
     : genericResponseFixture
     ? genericResponseFixture.hand.map(([id, kind, suit]) => card(id, kind, suit))
     : timedNegationObserver
@@ -664,8 +672,8 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     : groupProgressCase && state === "group-observer"
       ? ["p2", "p1", ...playerIds.filter((id) => id !== "p1" && id !== "p2" && id !== "p4")]
       : null;
-  const targets = bumperHarvestFixture ? bumperHarvestChild ? bumperCurrentId ? [bumperCurrentId] : [] : playerIds : denseGroup ? playerIds.filter((id) => id !== "p4") : unfocusedGroup ? ["p1", "p2"] : groupNegationFixture ? ["p1", "p2", "p3"] : rainingArrowsResponseFixture ? playerIds.filter((id) => id !== "p4") : oathNegationFixture ? ["p1"] : state === "active-negation-multi-observer" ? ["p2", "p5"] : activeNegationObserver ? ["p2"] : duelObserverView ? ["p2", "p1"] : judgementStage ? state === "judgement" ? ["p2"] : ["p1"] : state === "group-observer" ? orderedGroupTargets ?? ["p1", "p2", "p3"] : borrowedSwordActiveFixture ? count === 2 ? ["p1"] : ["p3"] : targetShiftFixture ? ["p2"] : frostSwordSelectionFixture ? targetCardCase === "unfocused" ? ["p3"] : ["p1"] : kirinBowSelectionFixture ? targetCardCase === "unfocused" ? ["p3"] : ["p1"] : state === "fanjian-selectable" ? targetCardCase === "unfocused" ? ["p3"] : ["p2"] : retaliationModalFixture ? ["p1"] : dyingFixture ? [dyingTargetId] : state === "group" ? playerIds.filter((id) => id !== "p1") : [state === "duel" || state === "negation" || state === "confirm-skip" ? "p1" : "p2"];
-  const standardStage = bumperHarvestFixture ? bumperHarvestChild ? "NEGATION" : "SEQUENTIAL_CHOICE" : state === "duel" || state === "duel-response" ? "DUEL_EXCHANGE" : state === "negation" || state === "confirm-skip" || activeNegationObserver || groupNegationFixture || oathNegationFixture ? "NEGATION" : judgementStage ? "JUDGEMENT" : retaliationModalFixture ? "DAMAGE" : dyingFixture ? "DYING" : state === "group" || state === "group-observer" || unfocusedGroup || rainingArrowsResponseFixture ? "GROUP_RESOLUTION" : "ATTACK_RESPONSE";
+  const targets = bumperHarvestFixture ? bumperHarvestChild ? bumperCurrentId ? [bumperCurrentId] : [] : playerIds : denseGroup ? playerIds.filter((id) => id !== "p4") : unfocusedGroup ? ["p1", "p2"] : groupNegationFixture ? ["p1", "p2", "p3"] : rainingArrowsResponseFixture ? playerIds.filter((id) => id !== "p4") : oathNegationFixture ? ["p1"] : state === "active-negation-multi-observer" ? ["p2", "p5"] : activeNegationObserver ? ["p2"] : duelObserverView ? ["p2", "p1"] : judgementStage ? state === "judgement" ? ["p2"] : ["p1"] : state === "group-observer" ? orderedGroupTargets ?? ["p1", "p2", "p3"] : borrowedSwordActiveFixture ? count === 2 ? ["p1"] : ["p3"] : targetShiftFixture ? ["p2"] : frostSwordSelectionFixture ? targetCardCase === "unfocused" ? ["p3"] : ["p1"] : kirinBowSelectionFixture ? targetCardCase === "unfocused" ? ["p3"] : ["p1"] : state === "fanjian-selectable" ? targetCardCase === "unfocused" ? ["p3"] : ["p2"] : retaliationModalFixture ? ["p1"] : dyingFixture ? [dyingTargetId] : state === "group" ? playerIds.filter((id) => id !== "p1") : [state === "duel" || state === "duel-response" || state === "duel-no-attack" || state === "negation" || state === "confirm-skip" ? "p1" : "p2"];
+  const standardStage = bumperHarvestFixture ? bumperHarvestChild ? "NEGATION" : "SEQUENTIAL_CHOICE" : state === "duel" || state === "duel-response" || state === "duel-no-attack" ? "DUEL_EXCHANGE" : state === "negation" || state === "confirm-skip" || activeNegationObserver || groupNegationFixture || oathNegationFixture ? "NEGATION" : judgementStage ? "JUDGEMENT" : retaliationModalFixture ? "DAMAGE" : dyingFixture ? "DYING" : state === "group" || state === "group-observer" || unfocusedGroup || rainingArrowsResponseFixture ? "GROUP_RESOLUTION" : "ATTACK_RESPONSE";
   const stage = orderedProgressCase ? orderedProgressCase === "paused" ? "DAMAGE" : "ATTACK_RESPONSE" : resolvedGroupProgressCase === "paused" ? "DAMAGE" : standardStage;
   const projectedStageTargets = state === "dying" && dyingParticipantCase === "mismatch" ? ["p4"] : targets;
   const projectedCurrentParticipantId = bumperHarvestFixture ? bumperCurrentId : oathNegationFixture ? null
@@ -805,11 +813,12 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
   }
   const players = playerIds.map((id, index) => ({
     id,
-    name: `Player ${index + 1}`,
+    name: `${playerNamePrefix ?? "Player"} ${index + 1}`,
     seat: index,
     hero: index === 0 && heroOverride ? heroOverride : index === 1 && targetHeroOverride ? targetHeroOverride : index === 0 && state.startsWith("sun-shangxiang-") ? "sun-shangxiang" : index === 0 && (state === "confirm-cancel-skip" || state === "long-guidance") ? "zhang-liao" : HERO_IDS[index],
     generalReady: true,
     ready: true,
+    ...(playerNamePrefix && index > 0 ? { isTestPlayer: true } : {}),
     hp: oathNegationFixture ? id === "p1" ? 3 : id === "p2" ? 2 : id === "p4" ? 0 : denseOathScope && Number(id.slice(1)) >= 5 ? 3 : 4 : 4,
     maxHp: 4,
     alive: oathNegationFixture ? id !== "p4" : true,
@@ -891,7 +900,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     pendingGreenDragon: null,
     pendingRockCleaving: null,
     pendingFrostSword: null,
-    pendingDuel: state === "duel" || state === "duel-response" ? { kind: "duel", sourceId: "p1", targetId: "p2", actorId: "p2", opponentId: "p1", deadline: 0 } : null,
+    pendingDuel: state === "duel" || state === "duel-response" || state === "duel-no-attack" ? { kind: "duel", sourceId: "p1", targetId: "p2", actorId: "p2", opponentId: "p1", deadline: 0 } : null,
     pendingGroup: state === "group-observer" || groupNegationFixture || rainingArrowsResponseFixture ? { kind: "group", cardKind: "RainingArrows", sourceId: "p4", requiredKind: "Dodge" } : state === "group" ? { kind: "group", cardKind: "RainingArrows", sourceId: "p1", requiredKind: "Dodge" } : null,
     pendingNegation: !negationSettlementOutcome && (state === "negation" || state === "confirm-skip" || activeNegationObserver || groupNegationFixture || oathNegationFixture || bumperHarvestChild) ? { kind: "negation", sourceId: oathNegationFixture || bumperHarvestFixture ? "p1" : "p4", actorId: groupNegationFixture || oathNegationFixture || bumperHarvestFixture || timedNegationObserver || privateNegationResponder ? null : "p2", effectTargetId: bumperHarvestFixture ? bumperCurrentId : "p1", cardName: groupNegationFixture ? "RainingArrows" : oathNegationFixture ? "Oath of the Peach Garden" : bumperHarvestFixture ? "BumperHarvest" : "Dismantle", negated: false, deadline: responseDeadline, ...(privateNegationResponder ? { submitted: privateNegationSubmitted } : {}) } : null,
     pendingHarvest: bumperHarvestClosing || bumperHarvestChoosing ? (() => {
@@ -951,13 +960,14 @@ function readFixture() {
   const targetShiftCase = params.get("targetShift") || "valid";
   const targetCardCase = params.get("targetCardCase") || "valid";
   const targetCardKind = params.get("targetCardKind") === "Steal" ? "Steal" : "Dismantle";
-  return { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority };
+  const playerNamePrefix = params.get("playerNamePrefix") || null;
+  return { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, playerNamePrefix };
 }
 
-const { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority } = readFixture();
+const { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, playerNamePrefix } = readFixture();
 const acknowledgeLocalPreview = new URLSearchParams(window.location.search).get("ackPreview") === "1";
 const root = createRoot(document.getElementById("root"));
-let fixtureRoom = browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority });
+let fixtureRoom = browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, playerNamePrefix });
 window.__browserActions = [];
 window.__browserLeaves = 0;
 window.__browserRoom = fixtureRoom;

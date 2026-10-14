@@ -47,10 +47,10 @@ function expectedVis12bSeatWidth(boardWidth) {
   return Math.min(146, (boardWidth - 18) / 3);
 }
 
-async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false, handSize, equipmentCase, hero, source }) {
+async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false, handSize, equipmentCase, hero, source, playerNamePrefix }) {
   await page.setViewportSize({ width, height });
   await page.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
-  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${handSize === undefined ? "" : `&handSize=${handSize}`}${equipmentCase ? `&equipmentCase=${equipmentCase}` : ""}${hero ? `&hero=${encodeURIComponent(hero)}` : ""}${source ? `&source=${encodeURIComponent(source)}` : ""}`);
+  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${handSize === undefined ? "" : `&handSize=${handSize}`}${equipmentCase ? `&equipmentCase=${equipmentCase}` : ""}${hero ? `&hero=${encodeURIComponent(hero)}` : ""}${source ? `&source=${encodeURIComponent(source)}` : ""}${playerNamePrefix ? `&playerNamePrefix=${encodeURIComponent(playerNamePrefix)}` : ""}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
@@ -161,7 +161,11 @@ for (const { width, handSizes } of HAND_SIZE_MATRIX) {
           contentType: "image/png",
         });
       }
-      await last.locator(".card-info-button").click();
+      const detailsAction = page.getByTestId("hand-card-details-action");
+      const detailsActionBounds = await detailsAction.boundingBox();
+      expect(detailsActionBounds.width).toBeGreaterThanOrEqual(44);
+      expect(detailsActionBounds.height).toBeGreaterThanOrEqual(44);
+      await detailsAction.click();
       const details = page.getByRole("dialog");
       await expect(details.getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
       await expect(details.getByRole("textbox", { name: "Canonical rules for Attack" })).toHaveValue(/.+/);
@@ -192,7 +196,7 @@ for (const { width, handSizes } of HAND_SIZE_MATRIX) {
       expect(closeBounds.height).toBeGreaterThanOrEqual(44);
       await page.keyboard.press("Escape");
       await expect(details).toHaveCount(0);
-      await expect(last.locator(".card-info-button")).toBeFocused();
+      await expect(detailsAction).toBeFocused();
       await expect(last.locator(".game-card")).toHaveClass(/selected/);
       expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
       // The transparent space reserved for lifted cards must not steal skill hits.
@@ -331,7 +335,11 @@ test.describe("UX2.0VIS-09B native touch navigation", () => {
       await page.touchscreen.tap(tapTarget.x, tapTarget.y);
       const selected = rail.locator(`[data-hand-card-id="${tapTarget.id}"]`);
       await expect(selected.locator(".game-card")).toHaveClass(/selected/);
-      await selected.locator(".card-info-button").tap();
+      const detailsAction = page.getByTestId("hand-card-details-action");
+      const detailsActionBounds = await detailsAction.boundingBox();
+      expect(detailsActionBounds.width).toBeGreaterThanOrEqual(44);
+      expect(detailsActionBounds.height).toBeGreaterThanOrEqual(44);
+      await detailsAction.tap();
       const details = page.getByRole("dialog");
       await expect(details.getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
       await expect(details.getByRole("textbox", { name: "Canonical rules for Attack" })).toHaveValue(/.+/);

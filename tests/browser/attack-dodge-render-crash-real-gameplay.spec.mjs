@@ -233,13 +233,13 @@ test("skipping Attack response shows only server-proven damage at 440x894", asyn
   const defenderDock = page.locator(`.local-player-dock[data-player-anchor="${defender.id}"]`);
   await expect.poll(async () => defenderDock.getAttribute("data-player-anchor")).toBe(defender.id);
 
-  const skip = defenderDock.locator('[data-action-slot="decline"] button');
-  await expect(skip).toHaveText("Skip", { timeout: 20_000 });
-  await expect(skip).toBeEnabled();
+  const takeDamage = defenderDock.locator('[data-action-slot="decline"] button');
+  await expect(takeDamage).toHaveText("TAKE DAMAGE", { timeout: 20_000 });
+  await expect(takeDamage).toBeEnabled();
   const submitted = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
     && response.request().method() === "POST"
     && response.request().postDataJSON()?.action === "decline_response");
-  await skip.click();
+  await takeDamage.click();
   const response = await submitted;
   expect(response.ok()).toBeTruthy();
   expect(response.request().postDataJSON()).toMatchObject({ action: "decline_response", code: room.code, token: defender.token });

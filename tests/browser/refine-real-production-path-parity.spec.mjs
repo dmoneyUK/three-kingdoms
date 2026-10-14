@@ -55,7 +55,13 @@ async function apiAction(request, seed, playerIndex, action, extra = {}) {
   expect(before.isMyAction, `${action} is owned by this CurrentAction actor`).toBe(true);
   expect(before.currentAction.legalActions, `${action} is authorized by CurrentAction`).toContain(action);
   const response = await request.post(`${API}/api/rooms`, {
-    data: { action, code: seed.code, token: seed.players[playerIndex].token, ...extra },
+    data: {
+      action,
+      code: seed.code,
+      token: seed.players[playerIndex].token,
+      ...(before.currentAction.negationWindowId ? { context: { windowId: before.currentAction.negationWindowId } } : {}),
+      ...extra,
+    },
   });
   if (!response.ok()) throw new Error(`${action} failed: ${await response.text()}`);
   return response.json();
@@ -603,9 +609,9 @@ test("real Raining Arrows without Dodge offers only TAKE DAMAGE and advances ser
     return latest.currentAction?.actorId === target.id && latest.currentAction?.requirement === "dodge";
   }).toBe(true);
 
-  const targetGroupGraph = targetPage.locator('[data-root-action-overlay="true"][data-root-action-group-target-graph="true"]');
-  await expect(targetGroupGraph).toHaveAttribute("data-root-action-ready", "true");
-  await expect(targetGroupGraph.locator('[data-group-root-action="RainingArrows"]')).toBeVisible();
+  const publicCard = targetPage.locator(`.public-card-display[data-public-card-display="true"][data-public-card-id="${root.id}"]`);
+  await expect(publicCard).toBeVisible();
+  await expect(publicCard).toHaveAttribute("data-public-card-actor-id", seed.players[0].id);
   await expect(targetPage.locator(".interaction-stage")).toHaveCount(0);
   const dock = targetPage.locator(`.local-player-dock[data-player-anchor="${target.id}"]`);
   await expect(dock.locator('[data-action-slot="decline"] button')).toHaveText("TAKE DAMAGE");
@@ -628,7 +634,7 @@ test("real Raining Arrows without Dodge offers only TAKE DAMAGE and advances ser
   const after = await roomView(request, seed, 1);
   const progressAfter = after.presentationV2.groupResolution.participantProgress.find((entry) => entry.playerId === target.id);
   expect(progressAfter.status).not.toBe("CURRENT");
-  expect(after.currentAction.actorId).not.toBe(target.id);
+  expect(after.currentAction).not.toMatchObject({ actorId: target.id, requirement: "dodge" });
   await expect(targetPage.getByRole("button", { name: "TAKE DAMAGE", exact: true })).toHaveCount(0);
 });
 
@@ -648,9 +654,9 @@ test("real Raining Arrows exposes Zhen Ji's authoritative Dodge provider in Skil
     satisfies: "dodge",
     selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [blackCard.id] },
   });
-  const targetGroupGraph = targetPage.locator('[data-root-action-overlay="true"][data-root-action-group-target-graph="true"]');
-  await expect(targetGroupGraph).toHaveAttribute("data-root-action-ready", "true");
-  await expect(targetGroupGraph.locator('[data-group-root-action="RainingArrows"]')).toBeVisible();
+  const publicCard = targetPage.locator(`.public-card-display[data-public-card-display="true"][data-public-card-id="${root.id}"]`);
+  await expect(publicCard).toBeVisible();
+  await expect(publicCard).toHaveAttribute("data-public-card-actor-id", seed.players[0].id);
   await expect(targetPage.locator(".interaction-stage")).toHaveCount(0);
 
   const dock = targetPage.locator(`.local-player-dock[data-player-anchor="${target.id}"]`);
@@ -659,7 +665,7 @@ test("real Raining Arrows exposes Zhen Ji's authoritative Dodge provider in Skil
   const takeDamage = dock.locator('[data-action-slot="decline"] button');
   await expect(skill).toBeEnabled();
   await expect(extras.getByRole("button", { name: /Empress Dowager/ })).toHaveCount(0);
-  await expect(takeDamage).toHaveText("TAKE DAMAGE");
+  await expect(takeDamage).toHaveText("Skip");
   await expect(dock.locator('[data-action-slot="primary"] button')).toHaveCount(0);
 
   await skill.click();
@@ -669,12 +675,12 @@ test("real Raining Arrows exposes Zhen Ji's authoritative Dodge provider in Skil
   const ineligible = dock.locator(`[data-hand-card-id="${unrelated.id}"] .game-card`);
   await expect(eligible).toBeEnabled();
   await expect(ineligible).toBeDisabled();
-  await expect(takeDamage).toHaveText("TAKE DAMAGE");
+  await expect(takeDamage).toHaveText("Skip");
   await expect(dock.locator('[data-action-slot="primary"] button')).toBeDisabled();
   await eligible.click();
   const confirm = dock.locator('[data-action-slot="primary"] button.primary');
   await expect(confirm).toBeEnabled();
-  await expect(takeDamage).toHaveText("TAKE DAMAGE");
+  await expect(takeDamage).toHaveText("Skip");
   const responsePromise = actionResponse(targetPage, "respond");
   await attachScreenshot(testInfo, "raining-arrows-zhen-ji-dodge-selected-480", targetPage);
   await confirm.click();
@@ -682,7 +688,10 @@ test("real Raining Arrows exposes Zhen Ji's authoritative Dodge provider in Skil
   expect(submitted.ok()).toBeTruthy();
   const payload = JSON.parse(submitted.request().postData() ?? "{}");
   expect(payload).toMatchObject({ action: "respond", providerId: "zhen_ji_black_card_dodge", cardId: blackCard.id });
-  expect((await roomView(request, seed, 1)).currentAction.actorId).not.toBe(target.id);
+  const settled = await roomView(request, seed, 1);
+  const progress = settled.presentationV2.groupResolution.participantProgress.find((entry) => entry.playerId === target.id);
+  expect(progress.status).not.toBe("CURRENT");
+  expect(settled.currentAction).not.toMatchObject({ actorId: target.id, requirement: "dodge" });
   await expect(extras.getByRole("button", { name: /Empress Dowager/ })).toHaveCount(0);
 });
 

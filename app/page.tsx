@@ -715,7 +715,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
           {playerHero && <span className="player-square-portrait opponent-hero-portrait" data-hero-id={playerHero.id}><HeroPortrait hero={playerHero} /></span>}
         </button>
         <div className="opponent-hero-overlay">
-          <span className="opponent-player-name">{player.name}</span>
+          <span className="opponent-player-name" aria-label={player.name} title={player.name}>{player.name}</span>
           {targetSelectionActive
             ? <button type="button" className="opponent-hero-name opponent-hero-inspect-name" aria-label={`Inspect ${player.name}`} onClick={(event) => { event.stopPropagation(); onInspect(); }}>{playerHero?.name ?? heroName(player.hero)}</button>
             : <span className="opponent-hero-name">{playerHero?.name ?? heroName(player.hero)}</span>}
@@ -1862,6 +1862,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const triggerSelectionKeys = triggerSelectionUsesChoice ? triggerSelectedKeys : [];
   const triggerChoiceHandCount = triggerSelectionUsesChoice && triggerChoice ? triggerSelection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0;
   const triggerSelectionComplete = Boolean(triggerSelection && ((triggerSelectionUsesCards && triggerSelectedCardIds.length >= triggerSelection.min && triggerSelectedCardIds.length <= triggerSelection.max) || (triggerSelectionUsesChoice && triggerChoice && triggerSelectionKeys.length === triggerChoiceHandCount)));
+  const selectedHandDetailsCardId = room.phase === "discard"
+    ? discardSelected.at(-1) ?? ""
+    : activeSkillSelection
+      ? activeSkillStateIsCurrent ? activeSkillSelectedCardIds.at(-1) ?? "" : ""
+      : triggerResponse
+        ? triggerSelectionUsesCards ? triggerSelectedCardIds.at(-1) ?? "" : ""
+        : canRespond && responseSelectionUsesCards
+          ? responseSelectionMax > 1 ? responseSelectedCardIds.at(-1) ?? "" : selected
+          : serpentMode ? serpentSelected.at(-1) ?? "" : selected;
+  const selectedHandDetailsCard = selectedHandDetailsCardId
+    ? room.myHand.find((item) => item.id === selectedHandDetailsCardId) ?? null
+    : null;
   const responseReadyAfterEventId = room.currentAction?.presentation?.readyAfterEventId ?? null;
   const responseBarrierEvent = responseReadyAfterEventId ? room.timeline.find((event) => event.id === responseReadyAfterEventId) : null;
   // Shared Negation's eight-second deadline starts when the server opens the
@@ -4987,7 +4999,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ),
   );
   const negationWindowSubmitted = sharedNegationWindow && room.pendingNegation?.submitted === true;
-  const responseDeclineLabel = rainingArrowsDamageDecline ? "TAKE DAMAGE" : sharedNegationWindow ? "Pass" : "Skip";
+  const responseRequirementForDecline = room.currentAction?.requirement;
+  const hasLegalResponseProvider = Boolean(responseRequirementForDecline && semanticResponseOptions.some((option) => option.satisfies === responseRequirementForDecline));
+  const declineAcceptsDamageWithoutLegalDefence = Boolean(
+    currentActionOwnedByViewer
+    && room.currentAction?.kind === "response"
+    && (responseRequirementForDecline === "attack" || responseRequirementForDecline === "dodge")
+    && canUseAction(room.currentAction, "decline_response")
+    && !hasLegalResponseProvider,
+  );
+  const responseDeclineLabel = declineAcceptsDamageWithoutLegalDefence ? "TAKE DAMAGE" : sharedNegationWindow ? "Pass" : "Skip";
   const rainingArrowsDodgeProviderCardIds = new Set(
     rainingArrowsDamageDecline
       && responseSelection?.type === "cards"
@@ -5176,7 +5197,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                   <button disabled={!maySelect || skillModeCardDisabled || responseCardDisabled(item)} onClick={() => toggleHandCard(item)} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}>
                     <span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-name-mark">{definition.name}</span><strong>{definition.category} card</strong>
                   </button>
-                  <button type="button" className="card-info-button" aria-label={`Explain ${definition.name}`} onClick={(event) => { event.stopPropagation(); openCardDetails(item, "private-hand", event.currentTarget); }}>i</button>
                 </div>
               </div>;
             };
@@ -5187,6 +5207,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         </div>
       <div className="turn-controls" data-console-surface="local-operation" aria-label="Local operation console">
         <div data-action-extras="true">
+          {selectedHandDetailsCard && <button type="button" className="hand-card-details-action" data-testid="hand-card-details-action" aria-label={`Details for ${cardDefinition(selectedHandDetailsCard.kind).name}`} onClick={(event) => openCardDetails(selectedHandDetailsCard, "private-hand", event.currentTarget)}>DETAILS</button>}
           {triggerResponse && responseDecisionReady && inlineChoiceTriggerOption?.selection?.type === "choice" && inlineChoiceTriggerOption.selection.choices.map((choice) => <button type="button" key={`${inlineChoiceTriggerOption.effectId}:${choice.id}`} className="serpent-control" data-trigger-choice-provider={inlineChoiceTriggerOption.effectId} data-trigger-choice-action={choice.id} aria-label={`${inlineChoiceTriggerOption.label}: ${choice.label}`} disabled={responseControlsDisabled || !canUseAction(room.currentAction, "trigger")} onClick={() => void onAction("trigger", { providerId: inlineChoiceTriggerOption.effectId, choice: choice.id })}>{choice.label}</button>)}
           {triggerResponse && genericTriggerOptions.map((option) => option.selection?.type === "target_cards" || option.selection?.type === "choice" && option.allowDecline === false ? null : option.selection ? <button key={option.effectId} className={`serpent-control ${responseProviderId === option.effectId ? "active" : ""}`} disabled={responseControlsDisabled} onClick={() => { const active = responseProviderId === option.effectId; if (active) resetLocalTargetFlow("trigger"); else { setResponseProviderId(option.effectId); setSelected(""); setTargetIds([]); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); } }}>{responseProviderId === option.effectId ? `Cancel ${option.label}` : option.selection.type === "target" ? `Use ${option.label}` : option.label}</button> : <button key={option.effectId} className="serpent-control" disabled={responseControlsDisabled} onClick={() => onAction("trigger", { providerId: option.effectId })}>{`Use ${option.label}`}</button>)}
           {canRespond && genericResponse && semanticResponseOptions.length > 0 && genericResponseOptions.map((option) => option.selection ? <button key={option.providerId} className={`serpent-control ${responseProviderId === option.providerId ? "active" : ""}`} disabled={responseControlsDisabled} onClick={() => { const active = responseProviderId === option.providerId; setResponseProviderId(active ? "" : option.providerId); setSelected(""); setSerpentSelected([]); }}>{responseProviderId === option.providerId ? `Cancel ${option.label}` : option.label}</button> : <button key={option.providerId} className="serpent-control" disabled={responseControlsDisabled} onClick={() => submitResponseProvider(option)}>{busy ? "Resolving…" : option.label}</button>)}
