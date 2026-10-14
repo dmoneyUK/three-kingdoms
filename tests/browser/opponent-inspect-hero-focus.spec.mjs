@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-async function loadFixture(page, { count = 4, width, height = 900, state = "rest", equipmentCase = "matrix", targetHero = null }) {
+async function loadFixture(page, { count = 4, width, height = 900, state = "rest", equipmentCase = "matrix", targetHero = null, judgementCase = null }) {
   await page.setViewportSize({ width, height });
   const params = new URLSearchParams({ state, count: String(count), equipmentCase });
   if (targetHero) params.set("targetHero", targetHero);
+  if (judgementCase) params.set("judgementCase", judgementCase);
   await page.goto(`/tests/browser/fixture.html?${params}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
@@ -150,8 +151,12 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     await expect(cardDetail.locator(".hero-focus-inspect-card-metadata")).toHaveText("A♦ · EQUIPMENT CARD");
     await expect(page.locator(".card-info-dialog")).toHaveCount(0);
     await expect(inspect).toBeVisible();
-    await cardDetail.getByRole("button", { name: "Back to public cards" }).click();
+    await expect(inspect.getByRole("button", { name: /^Back/ })).toHaveCount(0);
+    const firstSkill = inspect.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill').first();
+    const firstSkillName = await firstSkill.innerText();
+    await firstSkill.click();
     await expect(cardDetail).toHaveCount(0);
+    await expect(inspect.locator(".hero-focus-inspect-skill-name")).toHaveText(firstSkillName);
     await expect(inspect).toBeVisible();
 
     await page.getByRole("button", { name: "Close Player 2 inspection", exact: true }).click();
@@ -222,19 +227,24 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 440, height: 894 }
     await expect(cardDetail).toBeVisible();
     await expect(cardDetail).toContainText("Zhuge Crossbow");
     await expect(cardDetail).toContainText("unlimited number of Attack cards");
+    await expect(equipmentCard).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator(".card-info-dialog")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(cardDetail).toHaveCount(0);
     await expect(inspect).toBeVisible();
     await expect(stauchness).toHaveAttribute("aria-expanded", "true");
-    await equipmentCard.click();
-    await expect(cardDetail).toBeVisible();
-    await cardDetail.getByRole("button", { name: "Back to Stauchness" }).click();
-    await expect(cardDetail).toHaveCount(0);
-    await expect(description).toBeVisible();
+    await expect(inspect.locator(".hero-focus-inspect-skill-name")).toHaveText("Stauchness");
     expect(await description.evaluate((element) => element.scrollTop)).toBe(savedSkillScroll);
     expect(await details.evaluate((element) => element.scrollTop)).toBe(savedDetailsScroll);
-    expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("Explain Zhuge Crossbow");
+    await equipmentCard.click();
+    await expect(cardDetail).toBeVisible();
+    await stauchness.click();
+    await expect(cardDetail).toHaveCount(0);
+    await expect(description).toBeVisible();
+    await expect(inspect.locator(".hero-focus-inspect-skill-name")).toHaveText("Stauchness");
+    expect(await description.evaluate((element) => element.scrollTop)).toBe(0);
+    expect(await details.evaluate((element) => element.scrollTop)).toBe(0);
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("Show Stauchness description");
   });
 }
 
@@ -460,7 +470,18 @@ test("unified Inspector changes its subject without changing the legal target", 
   expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
 
   await panel.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]').click();
-  await expect(panel.locator('[data-inspector-card-detail="true"]')).toBeVisible();
+  const cardDetail = panel.locator('[data-inspector-card-detail="true"]');
+  const crossbow = panel.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]');
+  await expect(cardDetail).toBeVisible();
+  await expect(crossbow).toHaveAttribute("aria-pressed", "true");
+  await expect(panel.getByRole("button", { name: /^Back/ })).toHaveCount(0);
+  const publicSkill = panel.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill').first();
+  const publicSkillName = await publicSkill.innerText();
+  await publicSkill.click();
+  await expect(cardDetail).toHaveCount(0);
+  await expect(panel.locator(".hero-focus-inspect-skill-name")).toHaveText(publicSkillName);
+  await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
+  await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
 
   await page.getByRole("button", { name: "Inspect Player 3", exact: true }).click();
   await expect(panel).toHaveAttribute("data-inspect-player-id", "p3");
@@ -499,7 +520,7 @@ test("Inspect restores authoritative Hero Focus without changing Stage identity 
 });
 
 test("Side Column Inspect keeps public Judgement details inside the centre Stage", async ({ page }) => {
-  await loadFixture(page, { count: 6, width: 480, height: 900 });
+  await loadFixture(page, { count: 6, width: 480, height: 900, judgementCase: "public-lightning" });
   const before = await seatGeometry(page);
   await page.locator('[data-player-anchor="p3"] .opponent-hero-target').click();
   const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
@@ -514,18 +535,123 @@ test("Side Column Inspect keeps public Judgement details inside the centre Stage
   await expect(detail).toContainText("During your next Judgement Phase");
   await expect(detail.locator(".hero-focus-inspect-card-metadata")).toHaveText("Q♥ · STRATAGEM CARD");
   await expect(page.locator(".card-info-dialog")).toHaveCount(0);
-  await detail.getByRole("button", { name: "Back to public cards" }).click();
-  await expect(inspect).toBeVisible();
+  await expect(inspect.getByRole("button", { name: /^Back/ })).toHaveCount(0);
+  const publicSkill = inspect.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill').first();
+  const skillName = await publicSkill.innerText();
+  await publicSkill.click();
   await expect(detail).toHaveCount(0);
-  expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("Explain Lightning");
-
-  const seatCardInfo = page.locator('[data-player-anchor="p3"] .opponent-judgement-cards .zone-info-button');
-  await expect(seatCardInfo).toHaveAccessibleName("Inspect Player 3 to explain Lightning");
-  await page.getByRole("button", { name: "Close Player 3 inspection" }).click();
-  await expect(inspect).toHaveCount(0);
-  await seatCardInfo.click();
-  await expect(inspect).toBeVisible();
-  await expect(inspect.locator('[aria-label="Judgement Zone"] .opponent-inspection-card[aria-label="Explain Lightning"]')).toHaveCount(1);
+  await expect(inspect.locator(".hero-focus-inspect-skill-name")).toHaveText(skillName);
+  expect(await page.evaluate(() => document.activeElement?.textContent?.trim())).toBe(skillName);
+  await judgmentCard.click();
+  await expect(detail).toBeVisible();
+  await expect(detail).toContainText("Lightning");
+  expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
   expect(await seatGeometry(page)).toEqual(before);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(480);
+});
+
+for (const viewport of [{ count: 4, width: 390, height: 844 }, { count: 6, width: 440, height: 894 }, { count: 8, width: 480, height: 900 }]) {
+  test(`Da Qiao Inspector switches named details in either direction (${viewport.count} seats, ${viewport.width}px)`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, targetHero: "daqiao", equipmentCase: "inspectorNamedDetails" });
+    await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
+    const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+    await expect(inspect.locator(".hero-focus-identity-hero")).toHaveText("Da Qiao");
+    await expect(inspect.locator("[data-public-hand-count]")).toHaveText("Hand · 2");
+    await expect(inspect.locator('[aria-label="Concealed Hand"]')).toHaveCount(0);
+    const actionsBefore = await page.evaluate(() => window.__browserActions.length);
+    const skills = inspect.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill');
+    const captivating = skills.filter({ hasText: "Captivating" });
+    const deflection = skills.filter({ hasText: "Deflection" });
+    const frostSword = inspect.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Frost Sword"]');
+    const nioShield = inspect.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Nio Shield"]');
+    const cardDetail = inspect.locator('[data-inspector-card-detail="true"]');
+
+    await captivating.focus();
+    await expect(captivating).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(inspect.locator(".hero-focus-inspect-skill-name")).toHaveText("Captivating");
+    await expect(inspect.getByRole("region", { name: "Captivating description" })).toContainText("♦ suit card");
+    await expect(captivating).toHaveAttribute("aria-expanded", "true");
+
+    await frostSword.click();
+    await expect(cardDetail).toBeVisible();
+    await expect(cardDetail).toContainText("Frost Sword");
+    await expect(cardDetail).toContainText("prevent that damage");
+    await expect(cardDetail.locator(".hero-focus-inspect-card-metadata")).toHaveText("J♠ · EQUIPMENT CARD");
+    await expect(frostSword).toHaveAttribute("aria-pressed", "true");
+    await expect(captivating).toHaveAttribute("aria-expanded", "false");
+    await frostSword.click();
+    await expect(cardDetail).toContainText("Frost Sword");
+    await expect(frostSword).toHaveAttribute("aria-pressed", "true");
+
+    await nioShield.click();
+    await expect(cardDetail).toContainText("Nio Shield");
+    await expect(cardDetail).toContainText("immune to the effects of black Attack cards");
+    await expect(nioShield).toHaveAttribute("aria-pressed", "true");
+    await expect(frostSword).toHaveAttribute("aria-pressed", "false");
+
+    await deflection.click();
+    await expect(cardDetail).toHaveCount(0);
+    await expect(inspect.locator(".hero-focus-inspect-skill-name")).toHaveText("Deflection");
+    await expect(inspect.getByRole("region", { name: "Deflection description" })).toContainText("transfer this [Attack]");
+    await expect(deflection).toHaveAttribute("aria-expanded", "true");
+    await expect(inspect.getByRole("button", { name: /^Back/ })).toHaveCount(0);
+
+    await deflection.click();
+    await expect(inspect.locator(".hero-focus-inspect-skill-name")).toHaveText("Deflection");
+    await nioShield.click();
+    await expect(cardDetail).toContainText("Nio Shield");
+    await frostSword.click();
+    await expect(cardDetail).toContainText("Frost Sword");
+    await captivating.click();
+    await expect(cardDetail).toHaveCount(0);
+    await expect(inspect.locator(".hero-focus-inspect-skill-name")).toHaveText("Captivating");
+    expect(await page.evaluate(() => window.__browserActions.length)).toBe(actionsBefore);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+  });
+}
+
+test("Hua Tuo's long skill stays titled and direct switching preserves local controls", async ({ page }) => {
+  await loadFixture(page, { state: "interaction", width: 390, height: 844, targetHero: "hua-tuo", equipmentCase: "inspectorNamedDetails" });
+  await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
+  const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+  const prodigalHealer = inspect.getByRole("button", { name: "Show Prodigal Healer description" });
+  const firstAid = inspect.getByRole("button", { name: "Show First Aid description" });
+  const actionsBefore = await page.evaluate(() => window.__browserActions.length);
+  const controlsBefore = await page.locator('[data-console-surface="local-operation"] button').evaluateAll((buttons) => buttons.map((button) => ({ text: button.textContent.trim(), disabled: button.disabled, pressed: button.getAttribute("aria-pressed") })));
+  expect(controlsBefore.length).toBeGreaterThan(0);
+
+  await prodigalHealer.click();
+  await expect(inspect.locator(".hero-focus-inspect-skill-name")).toHaveText("Prodigal Healer");
+  await expect(inspect.getByRole("region", { name: "Prodigal Healer description" })).toContainText("discard 1 card from your hand");
+  await firstAid.click();
+  await expect(inspect.locator(".hero-focus-inspect-skill-name")).toHaveText("First Aid");
+  await expect(inspect.getByRole("region", { name: "First Aid description" })).toContainText("Red suited card as a [Peach]");
+  await prodigalHealer.click();
+  await expect(inspect.locator(".hero-focus-inspect-skill-name")).toHaveText("Prodigal Healer");
+  const controlsAfter = await page.locator('[data-console-surface="local-operation"] button').evaluateAll((buttons) => buttons.map((button) => ({ text: button.textContent.trim(), disabled: button.disabled, pressed: button.getAttribute("aria-pressed") })));
+  expect(controlsAfter).toEqual(controlsBefore);
+  expect(await page.evaluate(() => window.__browserActions.length)).toBe(actionsBefore);
+});
+
+test("Inspector skill and equipment details activate with touch", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  try {
+    await loadFixture(page, { width: 390, height: 844, targetHero: "daqiao", equipmentCase: "inspectorNamedDetails" });
+    await page.locator('[data-player-anchor="p2"] .opponent-hero-target').tap();
+    const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+    const actionsBefore = await page.evaluate(() => window.__browserActions.length);
+    const captivating = inspect.getByRole("button", { name: "Show Captivating description" });
+    const frostSword = inspect.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Frost Sword"]');
+    await captivating.tap();
+    await expect(inspect.locator(".hero-focus-inspect-skill-name")).toHaveText("Captivating");
+    expect(await page.evaluate(() => window.__browserActions.length)).toBe(actionsBefore);
+    await frostSword.tap();
+    await expect(inspect.locator('[data-inspector-card-detail="true"]')).toContainText("Frost Sword");
+    await captivating.tap();
+    await expect(inspect.locator(".hero-focus-inspect-skill-name")).toHaveText("Captivating");
+  } finally {
+    await context.close();
+  }
 });

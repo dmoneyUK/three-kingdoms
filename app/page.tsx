@@ -803,6 +803,7 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCar
   const [selectedCardDetail, setSelectedCardDetail] = useState<Card | null>(null);
   const [skillDescriptionScrollable, setSkillDescriptionScrollable] = useState(false);
   const skillDescriptionRef = useRef<HTMLParagraphElement>(null);
+  const cardRulesRef = useRef<HTMLParagraphElement>(null);
   const inspectDetailsRef = useRef<HTMLDivElement>(null);
   const cardDetailRef = useRef<Card | null>(null);
   const lastCardTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -814,6 +815,9 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCar
   const skills = hero?.skills ?? [];
   const expandedSkill = skills.find((skill) => skill.name === expandedSkillName) ?? null;
   const baseId = `opponent-inspect-${player.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+  const detailsId = `${baseId}-details`;
+  const selectedDetailKey = selectedCardDetail ? `card:${selectedCardDetail.id}` : expandedSkill ? `skill:${expandedSkill.name}` : null;
+  const previousDetailKeyRef = useRef(selectedDetailKey);
   const openCardDetail = useCallback((card: Card, trigger: HTMLButtonElement) => {
     if (!cardDetailRef.current) {
       priorSkillScrollTopRef.current = skillDescriptionRef.current?.scrollTop ?? 0;
@@ -846,16 +850,25 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCar
   useLayoutEffect(() => {
     const wasOpen = previousCardDetailRef.current !== null;
     previousCardDetailRef.current = selectedCardDetail;
-    if (!wasOpen || selectedCardDetail || !restoreSkillContextOnCloseRef.current) return;
-    restoreSkillContextOnCloseRef.current = false;
-    if (expandedSkillName) {
-      if (inspectDetailsRef.current) inspectDetailsRef.current.scrollTop = priorDetailsScrollTopRef.current;
-      if (skillDescriptionRef.current) skillDescriptionRef.current.scrollTop = priorSkillScrollTopRef.current;
+    if (wasOpen && !selectedCardDetail && restoreSkillContextOnCloseRef.current) {
+      restoreSkillContextOnCloseRef.current = false;
+      previousDetailKeyRef.current = selectedDetailKey;
+      if (expandedSkillName) {
+        if (inspectDetailsRef.current) inspectDetailsRef.current.scrollTop = priorDetailsScrollTopRef.current;
+        if (skillDescriptionRef.current) skillDescriptionRef.current.scrollTop = priorSkillScrollTopRef.current;
+      }
+      const trigger = lastCardTriggerRef.current;
+      lastCardTriggerRef.current = null;
+      trigger?.focus({ preventScroll: true });
+      return;
     }
-    const trigger = lastCardTriggerRef.current;
-    lastCardTriggerRef.current = null;
-    trigger?.focus({ preventScroll: true });
-  }, [expandedSkillName, selectedCardDetail]);
+    if (previousDetailKeyRef.current !== selectedDetailKey) {
+      previousDetailKeyRef.current = selectedDetailKey;
+      if (inspectDetailsRef.current) inspectDetailsRef.current.scrollTop = 0;
+      if (skillDescriptionRef.current) skillDescriptionRef.current.scrollTop = 0;
+      if (cardRulesRef.current) cardRulesRef.current.scrollTop = 0;
+    }
+  }, [expandedSkillName, selectedCardDetail, selectedDetailKey]);
   useEffect(() => {
     const description = skillDescriptionRef.current;
     if (!description) return;
@@ -868,7 +881,10 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCar
       observer.disconnect();
     };
   }, [expandedSkill?.name, expandedSkill?.description, selectedCardDetail, updateSkillDescriptionScrollable]);
-  const renderInspectionCard = (card: Card, { hidden = false, equipmentMiniature = false }: { hidden?: boolean; equipmentMiniature?: boolean } = {}) => <button key={card.id} type="button" className={`opponent-inspection-card${equipmentMiniature ? " opponent-inspection-equipment-card" : ""}`} style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); openCardDetail(card, event.currentTarget); }}><CardFace card={card} /></button>;
+  const renderInspectionCard = (card: Card, { hidden = false, equipmentMiniature = false }: { hidden?: boolean; equipmentMiniature?: boolean } = {}) => {
+    const selected = selectedCardDetail?.id === card.id;
+    return <button key={card.id} type="button" className={`opponent-inspection-card${equipmentMiniature ? " opponent-inspection-equipment-card" : ""}`} style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} aria-controls={detailsId} aria-pressed={selected} onClick={(event) => { event.stopPropagation(); openCardDetail(card, event.currentTarget); }}><CardFace card={card} /></button>;
+  };
   return <section key={player.id} className="hero-focus hero-focus-inspect opponent-inspection-panel" role="dialog" aria-label={`${player.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={player.id}>
     <div className="hero-focus-heading"><strong>{`INSPECT · ${player.name}`}</strong><button type="button" className="hero-focus-inspect-close" aria-label={`Close ${player.name} inspection`} onClick={onClose}>×</button></div>
     <div className="hero-focus-body">
@@ -882,9 +898,8 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCar
           <section className="opponent-inspection-zone hero-focus-inspect-public-skills" aria-label="Public Skills">
             <h3>Public Skills</h3>
             <div className="hero-focus-inspect-skills">{skills.length ? skills.map((skill) => {
-              const detailId = `${baseId}-skill-${skill.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
               const expanded = expandedSkillName === skill.name && !selectedCardDetail;
-              return <button type="button" className="hero-focus-inspect-skill" key={skill.name} aria-label={`Show ${skill.name} description`} aria-expanded={expanded} aria-controls={expanded ? detailId : undefined} onClick={() => {
+              return <button type="button" className="hero-focus-inspect-skill" key={skill.name} aria-label={`Show ${skill.name} description`} aria-expanded={expanded} aria-pressed={expanded} aria-controls={detailsId} onClick={() => {
                 setSkillDescriptionScrollable(false);
                 if (cardDetailRef.current) {
                   cardDetailRef.current = null;
@@ -894,7 +909,7 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCar
                   setExpandedSkillName(skill.name);
                   return;
                 }
-                setExpandedSkillName((current) => current === skill.name ? null : skill.name);
+                setExpandedSkillName(skill.name);
               }}>{skill.name}</button>;
             }) : <span className="opponent-inspection-empty">None</span>}</div>
           </section>
@@ -905,18 +920,22 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCar
         </div>
       </div>
     </div>
-    <div ref={inspectDetailsRef} className="hero-focus-inspect-details hero-focus-context">
+    <div ref={inspectDetailsRef} id={detailsId} className="hero-focus-inspect-details hero-focus-context">
       {selectedCardDetail ? (() => {
         const definition = cardDefinition(selectedCardDetail.kind);
         return <section className="hero-focus-inspect-card-detail" data-inspector-card-detail="true" aria-label={`${definition.name} public card explanation`}>
-          <div className="hero-focus-inspect-card-detail-toolbar"><button type="button" className="hero-focus-inspect-card-back" onClick={() => { closeCardDetail(); }} aria-label={expandedSkill ? `Back to ${expandedSkill.name}` : "Back to public cards"}>Back</button><span>PUBLIC CARD DETAILS</span></div>
+          <small className="hero-focus-inspect-detail-kicker">PUBLIC CARD DETAILS</small>
           <small className="hero-focus-inspect-card-metadata">{selectedCardDetail.rank}{selectedCardDetail.suit} · {definition.category.toUpperCase()} CARD</small>
           <h4 className="hero-focus-inspect-card-name">{definition.name}</h4>
-          <p className="hero-focus-inspect-card-rules">{definition.rules}</p>
+          <p ref={cardRulesRef} className="hero-focus-inspect-card-rules">{definition.rules}</p>
         </section>;
       })() : expandedSkill && <>
-        {skillDescriptionScrollable && <small className="hero-focus-inspect-scroll-hint" aria-hidden="true">Scroll to read the full skill</small>}
-        <p ref={skillDescriptionRef} className="hero-focus-inspect-skill-description" id={`${baseId}-skill-${expandedSkill.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`} role="region" aria-label={`${expandedSkill.name} description`}>{expandedSkill.description}</p>
+        <section className="hero-focus-inspect-skill-detail" aria-label={`${expandedSkill.name} skill details`}>
+          <small className="hero-focus-inspect-detail-kicker">HERO SKILL</small>
+          <h4 className="hero-focus-inspect-skill-name">{expandedSkill.name}</h4>
+          {skillDescriptionScrollable && <small className="hero-focus-inspect-scroll-hint" aria-hidden="true">Scroll to read the full skill</small>}
+          <p ref={skillDescriptionRef} className="hero-focus-inspect-skill-description" id={`${baseId}-skill-${expandedSkill.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`} role="region" aria-label={`${expandedSkill.name} description`}>{expandedSkill.description}</p>
+        </section>
       </>}
     </div>
   </section>;
