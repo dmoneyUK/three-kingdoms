@@ -4668,7 +4668,6 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     ? { kind: "negation" as const, sourceId: responseContinuation.sourceId, actorId: projectedResponsePending.actorId, effectTargetId: responseContinuation.effectTargetId, cardName: responseContinuation.cardName, responseTarget: responseContinuation.responseTarget ?? responseContinuation.cardName, latestNegationPlayerId: responseContinuation.latestNegationPlayerId ?? null, latestNegationCardId: responseContinuation.latestNegationCardId ?? null, chainDepth: responseContinuation.chainDepth ?? 0, negated: responseContinuation.negated, deadline: projectedResponsePending.deadline ?? 0 }
     : null;
   const tokenHash = token ? await hash(token) : "";
-  const turnPlayer = room.status === "playing" ? players.find((player) => player.seat === room.turn_seat && player.alive) : undefined;
   const actualActionPlayerId = actionPlayerIdForPending(room, pending, players);
   const sessionPlayers = players.filter((player) => player.token_hash === tokenHash);
   // A host token may control the host plus generated test seats. In a mixed
@@ -4973,7 +4972,6 @@ export async function POST(request: Request) {
     rawControllerPending = parsePersistedPending(room.pending_json);
   }
   let pendingForController = rawControllerPending;
-  let turnPlayerForController = allRoomPlayers.find((player) => player.seat === room.turn_seat);
   let actionPlayerIdForController = room.status === "heroes" ? nextGeneralSelector(allRoomPlayers)?.id : actionPlayerIdForPending(room, pendingForController, allRoomPlayers);
   let isTestController = sessionPlayers.length > 1 && sessionPlayers.some((player) => player.id === room.host_player_id);
   const controlledPlayerIds = new Set(sessionPlayers.map((player) => player.id));
@@ -5017,7 +5015,6 @@ export async function POST(request: Request) {
     sessionPlayers = allRoomPlayers.filter((player) => player.token_hash === tokenHash);
     const rawCurrentPending = parsePersistedPending(room.pending_json);
     pendingForController = rawCurrentPending;
-    turnPlayerForController = allRoomPlayers.find((player) => player.seat === room.turn_seat);
     actionPlayerIdForController = room.status === "heroes" ? nextGeneralSelector(allRoomPlayers)?.id : actionPlayerIdForPending(room, pendingForController, allRoomPlayers);
     isTestController = sessionPlayers.length > 1 && sessionPlayers.some((player) => player.id === room.host_player_id);
     me = isTestController
