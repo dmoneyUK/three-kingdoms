@@ -10,7 +10,7 @@ This file is the **single active UX2 product/design authority**. It replaces the
 
 1. **PHASE 1 — §8 (START HERE):** Repair and visually verify the deployed Attack/Dodge/Duel baseline. Execute **§8.5 Checkpoint A — full Duel chronological rail**, then **Checkpoint B — hide permanent Deck/Discard**, then **Checkpoint C — Inspector skill/equipment layout and reversible detail**. Independently test/deploy/report each checkpoint and **STOP for user/Reviewer acceptance**; do not move on merely because CI is green.
 2. **PHASE 2 — §9:** Implement the separately approved **8-second shared Negation window** with server seat-priority, privacy and concurrency protections. Only start upon an explicit assignment after Phase 1 review, and independently STOP for acceptance.
-3. **PHASE 3 — §10: Review and improve other card families incrementally, **one approved slice at a time**. The §10.2 A–F queue is a roadmap, **not permission to implement everything**. The full Duel rail is an exception; don't apply it to all card families.
+3. **PHASE 3 — §10:** Review and improve other card families incrementally, **one approved slice at a time**. The §10.2 A–F queue is a roadmap, **not permission to implement everything**. The full Duel rail is an exception; don't apply it to all card families.
 
 **Historical context only:** The initial UX2 migration consisted of `UX2-NO-GRAPH-REMOVAL-01` and `UX2-CENTRE-REVEAL-SEAT-CARDS-02` (documented in §7). Their initial baseline is deployed; **do not restart these tasks**. Chapters 1–6 remain the normative design/quality requirements. The Coding Agent alone owns `HANDOVER.md`; Planner/Reviewer does not edit it.
 
