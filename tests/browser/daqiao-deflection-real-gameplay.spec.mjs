@@ -3,6 +3,8 @@ import { expect, test } from "@playwright/test";
 const API = "http://127.0.0.1:3137";
 const attack = { id: "real-deflection-attack", kind: "Attack", suit: "♠", rank: "A" };
 const deflectionCost = { id: "real-deflection-cost", kind: "Peach", suit: "♥", rank: "7" };
+const alternateDeflectionCost = { id: "real-deflection-cost-alternate", kind: "Dodge", suit: "♦", rank: "8" };
+const rangeTwoWeapon = { id: "real-deflection-range-weapon", kind: "BlueSteelSword", suit: "♠", rank: "6" };
 const dodge = { id: "real-deflection-dodge", kind: "Dodge", suit: "♦", rank: "8" };
 const equipmentCost = { id: "real-deflection-equipment-cost", kind: "EightTrigrams", suit: "♣", rank: "2" };
 
@@ -66,6 +68,9 @@ async function observeDeflection(page) {
         publicCardEventId: display?.getAttribute("data-public-card-event-id") ?? null,
         publicCardPhase: display?.querySelector("[data-public-card-journey-phase]")?.getAttribute("data-public-card-journey-phase") ?? null,
         timer: [...document.querySelectorAll('[role="timer"][aria-label*="Response Time"]')].map((element) => element.getAttribute("aria-label")),
+        selections: [...document.querySelectorAll("[data-daqiao-selection]")].map((element) => ({ kind: element.getAttribute("data-daqiao-selection"), text: element.textContent?.trim() ?? "" })),
+        deflectionTargets: [...document.querySelectorAll(".opponent-player-card")].map((element) => ({ playerId: element.getAttribute("data-player-anchor"), selectable: element.getAttribute("data-deflection-targetable"), selected: element.classList.contains("selected-target") })),
+        inspectionOpen: Boolean(document.querySelector(".interaction-stage-inspect-only")),
       };
       const previous = window.__daqiaoDeflectionDomTrace.at(-1);
       if (!previous || JSON.stringify(previous) !== JSON.stringify(snapshot)) window.__daqiaoDeflectionDomTrace.push(snapshot);
@@ -151,7 +156,7 @@ async function assertDeflectionEnabledDuringReveal({ page, seed, viewport, proje
   return { dock, skill, option, actionRevision: projected.actionRevision };
 }
 
-async function selectDeflectionAndConfirm({ page, request, seed, daQiaoDock, skill, costId, targetId, actionRevision, viewport }) {
+async function selectDeflectionAndConfirm({ page, request, seed, daQiaoDock, skill, option, costId, targetId, actionRevision, viewport, selectionOrder = "card-target" }) {
   const confirm = daQiaoDock.locator('[data-action-slot="primary"] button.primary');
   await skill.click();
   await expect(skill).toHaveAttribute("aria-pressed", "true");
@@ -170,22 +175,133 @@ async function selectDeflectionAndConfirm({ page, request, seed, daQiaoDock, ski
   expect(timerArmed.currentAction.actorId).toBe(seed.players[1].id);
   expect(timerArmed.actionRevision).toBe(actionRevision);
 
-  // A target alone must leave Confirm disabled. Both valid selections enable it;
-  // removing the cost disables it again.
-  const target = page.getByRole("button", { name: new RegExp(`^Select ${seed.players.find((player) => player.id === targetId).name}$`) });
-  await target.click();
-  await expect(confirm).toBeDisabled();
-  await costControl.click();
-  await expect(confirm).toHaveText("Confirm");
-  await expect(confirm).toBeEnabled();
-  await costControl.click();
-  await expect(confirm).toBeDisabled();
-  await costControl.click();
-  await expect(confirm).toBeEnabled();
+  const guidance = page.getByTestId("deflection-selection-guidance");
+  const cardCount = guidance.locator('[data-daqiao-selection="card"]');
+  const targetCount = guidance.locator('[data-daqiao-selection="target"]');
+  const assertProgress = async (cards, targets, ready = false) => {
+    await expect(cardCount).toContainText(`Discard card: ${cards}/1`);
+    await expect(targetCount).toContainText(`Transfer target: ${targets}/1`);
+    if (ready) await expect(guidance).toContainText("Ready to redirect Attack");
+    else await expect(guidance).not.toContainText("Ready to redirect Attack");
+    if (cards === 1 && targets === 1) await expect(confirm).toBeEnabled();
+    else await expect(confirm).toBeDisabled();
+  };
+  await assertProgress(0, 0);
+
+  const authorizedTargetIds = option.selection.targetIds;
+  expect(authorizedTargetIds).toContain(targetId);
+  const alternateTargetId = authorizedTargetIds.find((id) => id !== targetId) ?? targetId;
+  const targetControl = (id) => page.locator(`[data-player-anchor="${id}"] .opponent-hero-target`);
+  for (const player of seed.players.filter((candidate) => candidate.id !== seed.players[1].id)) {
+    const playerSeat = page.locator(`.opponent-player-card[data-player-anchor="${player.id}"]`);
+    const eligible = authorizedTargetIds.includes(player.id);
+    if (eligible) {
+      await expect(playerSeat).toHaveAttribute("data-deflection-targetable", "true");
+      await expect(targetControl(player.id)).toBeEnabled();
+      await expect(targetControl(player.id)).toHaveAccessibleName(`Select ${player.name} as Deflection target`);
+    } else {
+      await expect(playerSeat).not.toHaveAttribute("data-deflection-targetable", "true");
+      await expect(targetControl(player.id)).toBeDisabled();
+      await expect(targetControl(player.id)).toHaveAccessibleName(`${player.name}, not an eligible Deflection target`);
+    }
+  }
+
+  const controlsForCost = (id) => {
+    const hand = daQiaoDock.locator(`[data-hand-card-id="${id}"] .game-card`);
+    const equipment = daQiaoDock.locator(`[data-equipment-id="${id}"] .local-zone-card-button`);
+    return { hand, equipment, control: hand.or(equipment) };
+  };
+  const initialCost = controlsForCost(costId);
+  const alternateCost = controlsForCost(costId === deflectionCost.id ? alternateDeflectionCost.id : deflectionCost.id);
+  await expect(initialCost.control).toBeEnabled({ timeout: 20_000 });
+  await expect(page.locator(".interaction-stage-inspect-only")).toHaveCount(0);
+  const inspectControl = page.locator(`[data-player-anchor="${targetId}"] .opponent-hero-inspect-name`);
+  await expect(inspectControl).toHaveCount(1);
+  await inspectControl.click();
+  await expect(page.locator(".interaction-stage-inspect-only")).toHaveCount(1);
+  await page.locator(".hero-focus-inspect-close").click();
+  await expect(page.locator(".interaction-stage-inspect-only")).toHaveCount(0);
+  await assertProgress(0, 0);
+
+  const pickInitialCard = async () => {
+    await initialCost.control.click();
+    await assertProgress(1, 0);
+    await expect(page.locator(".interaction-stage-inspect-only")).toHaveCount(0);
+  };
+  const pickInitialTarget = async () => {
+    await targetControl(targetId).click();
+    await expect(targetControl(targetId)).toHaveAccessibleName(`Deselect ${seed.players.find((player) => player.id === targetId).name} as Deflection target`);
+    await assertProgress(0, 1);
+    await expect(page.locator(".interaction-stage-inspect-only")).toHaveCount(0);
+  };
+  if (selectionOrder === "card-target") {
+    await pickInitialCard();
+    await targetControl(targetId).click();
+  } else {
+    await pickInitialTarget();
+    await initialCost.control.click();
+  }
+  await assertProgress(1, 1, true);
+  await expect(page.locator(".interaction-stage-inspect-only")).toHaveCount(0);
+
+  // Selecting another legal cost replaces the previous one; clicking that
+  // selected cost deselects it. Guidance and Confirm follow the same state.
+  const alternateCostLocator = await alternateCost.hand.count() ? alternateCost.hand : alternateCost.equipment;
+  if (await alternateCostLocator.count()) {
+    await expect(alternateCostLocator).toBeEnabled({ timeout: 20_000 });
+    await alternateCostLocator.click();
+    await assertProgress(1, 1, true);
+    await expect(alternateCostLocator).toHaveClass(/selected/);
+    if (await initialCost.hand.count()) await expect(initialCost.hand).not.toHaveClass(/selected/);
+    await alternateCostLocator.click();
+    await assertProgress(0, 1);
+    await alternateCostLocator.click();
+    await assertProgress(1, 1, true);
+    costId = costId === deflectionCost.id ? alternateDeflectionCost.id : costId;
+  } else {
+    await initialCost.control.click();
+    await assertProgress(0, 1);
+    await initialCost.control.click();
+    await assertProgress(1, 1, true);
+  }
+
+  // A target can be deselected and changed to another authorized player.
+  await targetControl(targetId).click();
+  await assertProgress(1, 0);
+  await expect(page.locator(`.opponent-player-card[data-player-anchor="${targetId}"]`)).not.toHaveClass(/selected-target/);
+  await targetControl(alternateTargetId).click();
+  await assertProgress(1, 1, true);
+  await expect(page.locator(`.opponent-player-card[data-player-anchor="${alternateTargetId}"]`)).toHaveClass(/selected-target/);
+  if (alternateTargetId !== targetId) await expect(page.locator(`.opponent-player-card[data-player-anchor="${targetId}"]`)).not.toHaveClass(/selected-target/);
+
   await test.info().attach(`daqiao-deflection-${viewport.width}-both-selections.png`, {
     body: await page.screenshot(),
     contentType: "image/png",
   });
+
+  // Local Cancel abandons the selection without declining the server trigger.
+  const cancel = daQiaoDock.locator('[data-action-slot="cancel"] button.local-target-cancel');
+  await expect(cancel).toHaveText("Cancel");
+  await cancel.click();
+  await expect(skill).toHaveAttribute("aria-pressed", "false");
+  await expect(guidance).toHaveCount(0);
+  const canceledCost = controlsForCost(costId);
+  const canceledCostControl = await canceledCost.hand.count() ? canceledCost.hand : canceledCost.equipment;
+  await expect(canceledCostControl).not.toHaveClass(/selected/);
+  await expect(page.locator(`.opponent-player-card[data-player-anchor="${alternateTargetId}"]`)).not.toHaveClass(/selected-target/);
+  await expect(page.locator(".interaction-stage-inspect-only")).toHaveCount(0);
+  await skill.click();
+  await expect(skill).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("deflection-selection-guidance")).toBeVisible();
+  const finalGuidance = page.getByTestId("deflection-selection-guidance");
+  await expect(finalGuidance.locator('[data-daqiao-selection="card"]')).toContainText("Discard card: 0/1");
+  await expect(finalGuidance.locator('[data-daqiao-selection="target"]')).toContainText("Transfer target: 0/1");
+  const finalCost = controlsForCost(costId);
+  const finalCostControl = await finalCost.hand.count() ? finalCost.hand : finalCost.equipment;
+  await finalCostControl.click();
+  await assertProgress(1, 0);
+  await targetControl(alternateTargetId).click();
+  await assertProgress(1, 1, true);
 
   const submission = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
     && response.request().method() === "POST"
@@ -197,41 +313,46 @@ async function selectDeflectionAndConfirm({ page, request, seed, daQiaoDock, ski
     action: "trigger",
     providerId: "daqiao_deflection",
     cardIds: [costId],
-    targetId,
+    targetId: alternateTargetId,
   });
-  return response.json();
+  return { result: await response.json(), costId, targetId: alternateTargetId };
 }
 
 for (const scenario of [
-  { viewport: { width: 390, height: 844 }, attackerHero: "cao-cao", replacementHero: "hua-tuo" },
-  { viewport: { width: 440, height: 894 }, attackerHero: "xiahou-dun", replacementHero: "simayi" },
-]) {
-  test(`real human multiplayer Deflection immediately activates and redirects to the authorized target at ${scenario.viewport.width}px`, async ({ browser, page, request }) => {
+  { viewport: { width: 390, height: 844 }, attackerHero: "cao-cao", replacementHero: "hua-tuo", daQiaoHand: [deflectionCost, alternateDeflectionCost], daQiaoEquipment: { weapon: rangeTwoWeapon } },
+  { viewport: { width: 440, height: 894 }, attackerHero: "xiahou-dun", replacementHero: "simayi", daQiaoHand: [deflectionCost, alternateDeflectionCost], daQiaoEquipment: { weapon: rangeTwoWeapon } },
+]) for (const selectionOrder of ["card-target", "target-card"]) {
+  test(`real human multiplayer Deflection redirects with ${selectionOrder} selection at ${scenario.viewport.width}px`, async ({ browser, page, request }) => {
     const seed = await seedGame(request, scenario);
     const { attackerPage, projected } = await attackDaQiaoFromHuman({ browser, page, request, seed, viewport: scenario.viewport });
     const { dock, skill, option, actionRevision } = await assertDeflectionEnabledDuringReveal({ page, seed, viewport: scenario.viewport, projected });
-    expect(option.selection.eligibleCardIds).toEqual([deflectionCost.id]);
+    expect(option.selection.eligibleCardIds).toHaveLength(3);
+    expect(option.selection.eligibleCardIds).toEqual(expect.arrayContaining([deflectionCost.id, alternateDeflectionCost.id, rangeTwoWeapon.id]));
     expect(option.selection.targetIds).toContain(seed.players[2].id);
-    expect(JSON.stringify(await roomView(request, seed, 0))).not.toContain(deflectionCost.id);
+    expect(option.selection.targetIds).toContain(seed.players[3].id);
+    const attackerProjection = JSON.stringify(await roomView(request, seed, 0));
+    expect(attackerProjection).not.toContain(deflectionCost.id);
+    expect(attackerProjection).not.toContain(alternateDeflectionCost.id);
 
-    const result = await selectDeflectionAndConfirm({
-      page, request, seed, daQiaoDock: dock, skill,
-      costId: deflectionCost.id, targetId: seed.players[2].id, actionRevision, viewport: scenario.viewport,
+    const { result, costId, targetId } = await selectDeflectionAndConfirm({
+      page, request, seed, daQiaoDock: dock, skill, option,
+      costId: deflectionCost.id, targetId: seed.players[2].id, actionRevision, viewport: scenario.viewport, selectionOrder,
     });
-    const responder = await roomView(request, seed, 2);
-    expect(responder.currentAction).toMatchObject({ kind: "response", actorId: seed.players[2].id, requirement: "dodge" });
-    expect(responder.pendingAttack).toMatchObject({ sourceId: seed.players[0].id, targetId: seed.players[2].id });
+    const responderIndex = seed.players.findIndex((player) => player.id === targetId);
+    const responder = await roomView(request, seed, responderIndex);
+    expect(responder.currentAction).toMatchObject({ kind: "response", actorId: targetId, requirement: "dodge" });
+    expect(responder.pendingAttack).toMatchObject({ sourceId: seed.players[0].id, targetId });
     expect(responder.presentationSnapshot.rootAction).toMatchObject({
       action: "ATTACK",
       physicalCardKind: "Attack",
-      targetId: seed.players[2].id,
+      targetId,
     });
     const attackEvent = responder.timeline.find((event) => event.type === "card" && event.card?.id === attack.id);
     expect(attackEvent).toBeTruthy();
     expect(attackEvent.id).toBe(responder.presentationSnapshot.rootAction.rootEventId);
-    expect(publicCardOccurrences(responder.timeline, deflectionCost.id)).toHaveLength(1);
+    expect(publicCardOccurrences(responder.timeline, costId)).toHaveLength(1);
     expect(responder.timeline.filter((event) => event.type === "card" && event.card?.id === attack.id)).toHaveLength(1);
-    expect(result.room.currentAction.actorId).toBe(seed.players[2].id);
+    expect(result.room.currentAction.actorId).toBe(targetId);
     await expect(attackerPage.getByText("GAME SCREEN ERROR")).toHaveCount(0);
     await attackerPage.close();
   });
@@ -247,8 +368,8 @@ test("real Da Qiao may discard equipped armor for Deflection", async ({ browser,
   const option = projected.currentAction.triggerOptions.find((item) => item.effectId === "daqiao_deflection");
   expect(option?.selection).toMatchObject({ type: "cards", eligibleCardIds: [equipmentCost.id] });
   const { dock, skill, actionRevision } = await assertDeflectionEnabledDuringReveal({ page, seed, viewport, projected });
-  const result = await selectDeflectionAndConfirm({
-    page, request, seed, daQiaoDock: dock, skill,
+  const { result } = await selectDeflectionAndConfirm({
+    page, request, seed, daQiaoDock: dock, skill, option,
     costId: equipmentCost.id, targetId: seed.players[2].id, actionRevision, viewport,
   });
   const responder = await roomView(request, seed, 2);
@@ -414,7 +535,13 @@ test("host Quick Test can switch to its Da Qiao test seat and resolve the server
   const cost = page.locator(`.local-player-dock[data-player-anchor="${daQiao.id}"] [data-hand-card-id="${costId}"] .game-card`);
   await expect(cost).toBeEnabled({ timeout: 20_000 });
   await cost.click();
-  await page.getByRole("button", { name: `Select ${replacement.name}`, exact: true }).click();
+  const target = page.getByRole("button", { name: `Select ${replacement.name} as Deflection target`, exact: true });
+  await expect(page.locator(`.opponent-player-card[data-player-anchor="${replacement.id}"]`)).toHaveAttribute("data-deflection-targetable", "true");
+  await target.click();
+  await expect(page.getByTestId("deflection-selection-guidance")).toContainText("Discard card: 1/1");
+  await expect(page.getByTestId("deflection-selection-guidance")).toContainText("Transfer target: 1/1");
+  await expect(page.getByTestId("deflection-selection-guidance")).toContainText("Ready to redirect Attack");
+  await expect(page.locator(".interaction-stage-inspect-only")).toHaveCount(0);
   const confirm = page.locator(`.local-player-dock[data-player-anchor="${daQiao.id}"] [data-action-slot="primary"] button.primary`);
   await expect(confirm).toBeEnabled();
   const deflect = page.waitForResponse((response) => response.url() === `${API}/api/rooms`

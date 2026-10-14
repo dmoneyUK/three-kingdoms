@@ -5,15 +5,15 @@ Mode: `USER-DIRECTED IMPLEMENTATION`
 
 ## Latest result
 
-- `WTK-DAQIAO-DEFLECTION-REAL-GAMEPLAY-FIX-01` is pushed as `567272bbba06ce9e7c3a4134017f199fb7508832`. Da Qiao's Deflection activation remains available through the public presentation reveal and response-timer start request only when the local authoritative `CurrentAction` is the `attack_targeted` trigger and its server-projected options include `daqiao_deflection`. Cost, target, confirmation, and submission remain server-authorized.
-- Real Worker/D1 browser validation passed 7/7 with `npm run test:browser -- tests/browser/daqiao-deflection-real-gameplay.spec.mjs --workers=1`: 390×844 and 440×894 human multiplayer redirects, hand/equipment costs, no legal target, no discardable card, decline then Dodge, and authorized Quick Test seat switching. The run records live trigger/button state and screenshots; the public Attack identity remains stable, the cost is discarded once, and the attacker projection does not expose Da Qiao's private card ID before use.
-- Focused ESLint and `npm run build` pass. `npx tsc --noEmit` still reports 512 repository diagnostics, including missing Cloudflare worker declarations and existing errors in unchanged code; it reports no diagnostics on the new `busyAction` logic.
-- Actions run [`38505861612`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38505861612) passed for the implementation SHA: Lint and fast tests, API tests, Browser startup and room smoke, and deploy. D1 migrations, production build, Worker deploy, and production smoke all succeeded. Direct production checks returned HTTP 200 for `/` and `/api/health` (`{"ok":true,"worker":"available"}`); the served client page bundle contains the exact implementation SHA.
+- Base synchronized to `0abe891177d93a1d483e790b5ae5bf18e322bb21`; feature changes for `WTK-DAQIAO-DEFLECTION-SELECTION-UX-FIX-02` are local and not yet pushed.
+- Deflection guidance now reports discard and target counts together. Target highlights, selected state, card/equipment costs, and Confirm derive from the server-authorized option and `activeSkillSelectionState`; choosing a target does not open inspection. Local Cancel remains available through the public reveal.
+- Local verification: `npm run build` passed; `node --import tsx --test tests/active-skill-interactions.test.mjs` passed 45/45; focused ESLint passed with an 8 GB Node heap; real Worker/D1 browser suite passed 9/9 at 390×844 and 440×894, including both selection orders, card/equipment costs, cancellation/change/deselection, redirect, human multiplayer and authorized Quick Test switching.
+- CI and deployment are pending the implementation push. No server legality, gameplay rules or UX2 design document were changed.
 
 ## Design checkpoint
 
-Reviewed latest `docs/UX2-refine.md` at commit `f44e3258b44be09289bfb0f8263ad3255f31838b` (blob `078c9c92a91285fee142648d8a80173f5dd2f6f2`). The updated design keeps the simplified no-graph presentation and sets new UX2 checkpoints; this gameplay fix makes no design-document change and starts no new UX2 task.
+Checked `docs/UX2-refine.md` at `0abe891177d93a1d483e790b5ae5bf18e322bb21` (blob `74e3d2bce83cd7ccfa212c82cd5166ce7f6c31e7`). That revision changes Duel history presentation; it does not alter this bounded Deflection selection fix.
 
 ## Current boundary
 
-After the implementation push's CI/deployment is verified, stop and await the user's manual Deflection acceptance. Do not begin another task.
+Commit and push this task, verify the exact-SHA Actions jobs and deployment, update this handoff with observed results, then stop for user acceptance. Do not start another UX task.

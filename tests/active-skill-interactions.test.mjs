@@ -927,25 +927,43 @@ test("Da Qiao Deflection is one mounted hero control with shared card/target sel
   assert.equal(profileButton.props.disabled, false);
   assert.equal(button(renderer, { children: "Skip" }).props.disabled, false);
   assert.equal(renderer.root.findAllByProps({ children: "Confirm" }).length, 0);
-  assert.equal(renderer.root.findAllByProps({ "aria-label": "Select ATTACKER" }).length, 0);
-  assert.equal(renderer.root.findAllByProps({ "aria-label": "Select LEGAL TARGET" }).length, 0);
+  assert.equal(renderer.root.findAllByProps({ "aria-label": "Select ATTACKER as Deflection target" }).length, 0);
+  assert.equal(renderer.root.findAllByProps({ "aria-label": "Select LEGAL TARGET as Deflection target" }).length, 0);
 
   await act(async () => { profileButton.props.onClick(); });
   assert.equal(recoveryRendered(renderer), false);
   assertOnlyDeflectionProfile(renderer);
+  const guidance = () => renderer.root.findAllByProps({ "data-testid": "deflection-selection-guidance" })[0];
+  const guidanceText = () => renderer.root.findAll((node) => node.props?.["data-daqiao-selection"])
+    .map((node) => node.children.join(""))
+    .join(" ");
+  assert.ok(guidance());
+  assert.match(guidanceText(), /Discard card: 0\/1/);
+  assert.match(guidanceText(), /Transfer target: 0\/1/);
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "Confirm is disabled before selecting a cost and target");
   assert.equal(handCardButton(renderer, "deflection-hand").props.disabled, false);
   assert.equal(handCardButton(renderer, "deflection-ineligible").props.disabled, true, "unprojected cards remain disabled");
-  assert.equal(button(renderer, { "aria-label": "Select ATTACKER" }).props.disabled, true);
-  assert.equal(button(renderer, { "aria-label": "Select LEGAL TARGET" }).props.disabled, false);
-  assert.equal(button(renderer, { "aria-label": "Select OUT OF WINDOW" }).props.disabled, true);
+  assert.equal(button(renderer, { "aria-label": "ATTACKER, not an eligible Deflection target" }).props.disabled, true);
+  assert.equal(button(renderer, { "aria-label": "Select LEGAL TARGET as Deflection target" }).props.disabled, false);
+  assert.equal(button(renderer, { "aria-label": "OUT OF WINDOW, not an eligible Deflection target" }).props.disabled, true);
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props["data-deflection-targetable"], "true");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p4").props["data-deflection-targetable"], undefined);
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true);
 
   await act(async () => { handCardButton(renderer, "deflection-hand").props.onClick(); });
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "Confirm stays disabled with only the cost selected");
-  await act(async () => { button(renderer, { "aria-label": "Select LEGAL TARGET" }).props.onClick(); });
+  assert.match(guidanceText(), /Discard card: 1\/1/);
+  assert.match(guidanceText(), /Transfer target: 0\/1/);
+  await act(async () => { button(renderer, { "aria-label": "Select LEGAL TARGET as Deflection target" }).props.onClick(); });
   assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), true);
   assertOnlyDeflectionProfile(renderer);
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
+  assert.equal(renderer.root.findAllByType("strong").some((node) => node.children.join("") === "Ready to redirect Attack"), true);
+  assert.equal(renderer.root.findAllByProps({ "data-local-ui-mode": "INSPECT" }).length, 0, "choosing a target does not open inspection");
+  await act(async () => { button(renderer, { "aria-label": "Deselect LEGAL TARGET as Deflection target" }).props.onClick(); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), false);
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true);
+  await act(async () => { button(renderer, { "aria-label": "Select LEGAL TARGET as Deflection target" }).props.onClick(); });
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
   const actionCountBeforeTargetCancel = actionCalls.length;
   await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
@@ -954,7 +972,7 @@ test("Da Qiao Deflection is one mounted hero control with shared card/target sel
   assert.equal(actionCalls.length, actionCountBeforeTargetCancel, "trigger Cancel does not decline the trigger");
   await act(async () => { button(renderer, { "aria-label": "Deflection" }).props.onClick(); });
   await act(async () => { handCardButton(renderer, "deflection-hand").props.onClick(); });
-  await act(async () => { button(renderer, { "aria-label": "Select LEGAL TARGET" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Select LEGAL TARGET as Deflection target" }).props.onClick(); });
   await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
   assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "daqiao_deflection", cardIds: ["deflection-hand"], targetId: "p3" }]);
   assert.equal(recoveryRendered(renderer), false);
@@ -1027,7 +1045,7 @@ test("Da Qiao Deflection can select projected Equipment and resets stale selecti
   assert.equal(equipmentButton.props.disabled, false);
   assert.equal(renderer.root.findAllByProps({ "data-hand-card-id": "deflection-equipment" }).length, 0);
   await act(async () => { equipmentButton.props.onClick(); });
-  await act(async () => { button(renderer, { "aria-label": "Select LEGAL TARGET" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Select LEGAL TARGET as Deflection target" }).props.onClick(); });
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
   await act(async () => { button(renderer, { "aria-label": "Deflection" }).props.onClick(); });
   assert.equal(renderer.root.findAllByProps({ children: "Confirm" }).length, 0, "cancelling clears the shared selection mode");

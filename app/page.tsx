@@ -651,6 +651,7 @@ type OpponentPlayerCardProps = {
   interactionRoles: InteractionSeatSemanticRoles;
   targetSelectionActive: boolean;
   targetablePlayer: boolean;
+  daqiaoDeflectionTargetMode: boolean;
   testViewerController: boolean;
   onTarget: () => void;
   onInspect: () => void;
@@ -681,7 +682,7 @@ function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
   return <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M1.2 11.7h11.4l-1-2.2.3-2-1.3-2-1.8-.5L7.4 7H5.1L3.8 4.2l-1.6.4.8 2.9-1.2 1.7Z" /><path d="M4 11.6v1.2m5.8-1.2v1.2" /></svg>;
 }
 
-function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, targetablePlayer, testViewerController, onTarget, onInspect, onSwitchTestViewer, onInfoCard, judgementInFlight }: OpponentPlayerCardProps) {
+function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, onInfoCard, judgementInFlight }: OpponentPlayerCardProps) {
   const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex);
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
   for (const equipment of player.equipmentCards) {
@@ -697,11 +698,17 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
     <button type="button" className="zone-info-button" aria-label={`Explain ${cardDefinition(judgement.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(judgement); }}>i</button>
   </span>);
   const targetButtonDisabled = targetSelectionActive && (!targetablePlayer || !player.alive);
+  const deflectionTargetSelectable = daqiaoDeflectionTargetMode && targetSelectionActive && targetablePlayer && player.alive;
+  const targetButtonLabel = daqiaoDeflectionTargetMode && targetSelectionActive
+    ? deflectionTargetSelectable
+      ? `${isSelectedTarget ? "Deselect" : "Select"} ${player.name} as Deflection target`
+      : `${player.name}, not an eligible Deflection target`
+    : `${targetSelectionActive ? "Select" : "Inspect"} ${player.name}`;
   const interactionRoleNames = Object.entries(interactionRoles).filter(([, active]) => active).map(([role]) => role.replace(/^is/, "").replace(/([A-Z])/g, "-$1").toLowerCase()).join(" ");
-  return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${isGroupPreview ? "local-group-preview" : ""} ${interactionRoles.isInteractionSource ? "interaction-seat-source" : ""} ${interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : ""} ${interactionRoles.isActiveTarget ? "interaction-seat-active-target" : ""} ${interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : ""} ${interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : ""} ${interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : ""} ${interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : ""} ${!player.alive ? "defeated-square" : ""}`} data-side-column={sideColumnSeat?.side} data-side-row={sideColumnSeat?.row} style={sideColumnSeat ? { gridRow: sideColumnSeat.row } : undefined} data-player-anchor={player.id} data-local-group-preview={isGroupPreview ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined}>
+  return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${targetSelectionActive && targetablePlayer && player.alive ? "targetable-target" : ""} ${isGroupPreview ? "local-group-preview" : ""} ${interactionRoles.isInteractionSource ? "interaction-seat-source" : ""} ${interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : ""} ${interactionRoles.isActiveTarget ? "interaction-seat-active-target" : ""} ${interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : ""} ${interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : ""} ${interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : ""} ${interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : ""} ${!player.alive ? "defeated-square" : ""}`} data-side-column={sideColumnSeat?.side} data-side-row={sideColumnSeat?.row} style={sideColumnSeat ? { gridRow: sideColumnSeat.row } : undefined} data-player-anchor={player.id} data-target-selectable={targetSelectionActive && targetablePlayer && player.alive ? "true" : undefined} data-deflection-targetable={deflectionTargetSelectable ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined}>
     <div className="opponent-public-zones">
       <div className="player-hero-card opponent-hero-card">
-        <button type="button" className="player-square-target opponent-hero-target" disabled={targetButtonDisabled} aria-label={`${targetSelectionActive ? "Select" : "Inspect"} ${player.name}`} onClick={targetSelectionActive ? onTarget : onInspect}>
+        <button type="button" className="player-square-target opponent-hero-target" disabled={targetButtonDisabled} aria-label={targetButtonLabel} onClick={targetSelectionActive ? onTarget : onInspect}>
           {playerHero && <span className="player-square-portrait opponent-hero-portrait" data-hero-id={playerHero.id}><HeroPortrait hero={playerHero} /></span>}
         </button>
         <div className="opponent-hero-overlay">
@@ -1618,6 +1625,22 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeSkillTargetMode = Boolean(activeSkillOption && activeSkillStateIsCurrent && activeSkillTargetIds.length > 0);
   const activeSkillSelectedTargetIds = activeSkillStateIsCurrent ? (activeSkillSelectionState?.targetIds ?? []).filter((id) => activeSkillTargetIds.includes(id)) : [];
   const activeSkillTargetId = activeSkillSelectedTargetIds[0] ?? "";
+  const daqiaoDeflectionSelectionActive = Boolean(
+    activeSkillOption?.effectId === "daqiao_deflection"
+    && activeSkillSelection
+    && activeSkillStateIsCurrent
+    && room.currentAction?.kind === "trigger"
+    && room.currentAction.triggerEvent === "attack_targeted",
+  );
+  const daqiaoDeflectionCardCount = daqiaoDeflectionSelectionActive ? activeSkillSelectedCardIds.length : 0;
+  const daqiaoDeflectionTargetCount = daqiaoDeflectionSelectionActive ? activeSkillSelectedTargetIds.length : 0;
+  const daqiaoDeflectionReady = Boolean(
+    daqiaoDeflectionSelectionActive
+    && daqiaoDeflectionCardCount === 1
+    && daqiaoDeflectionTargetCount === 1
+    && canUseAction(room.currentAction, "trigger")
+    && !busy,
+  );
   const activeSkillComplete = Boolean(activeSkillOption && activeSkillStateIsCurrent && (activeSkillSelection ? activeSkillSelectedCardIds.length >= activeSkillSelection.min && activeSkillSelectedCardIds.length <= activeSkillSelection.max : activeSkillTargetSelection) && (activeSkillTargetIds.length === 0 || activeSkillSelectedTargetIds.length >= activeSkillTargetMin && activeSkillSelectedTargetIds.length <= activeSkillTargetMax));
   const activeSkillSubmission = activeSkillOption && activeSkillSelection && activeSkillStateIsCurrent && activeSkillSelectionState
     ? buildActiveSkillSubmission(activeSkillOption.effectId, activeSkillSelection, activeSkillSelectionState)
@@ -1766,20 +1789,35 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       return;
     }
     if (activeSkillStateIsCurrent) {
+      if (daqiaoDeflectionSelectionActive && !activeSkillTargetIds.includes(playerId)) return;
       const max = activeSkillSelection?.targetMax ?? activeSkillTargetSelection?.max ?? 1;
       setActiveSkillSelectionState((state) => {
         if (!state) return state;
         const current = state.targetIds.filter((id) => activeSkillTargetIds.includes(id));
-        const next = max > 1
-          ? current.includes(playerId) ? current.filter((id) => id !== playerId) : current.length < max ? [...current, playerId] : current
-          : [playerId];
+        const next = daqiaoDeflectionSelectionActive
+          ? current.includes(playerId) ? [] : [playerId]
+          : max > 1
+            ? current.includes(playerId) ? current.filter((id) => id !== playerId) : current.length < max ? [...current, playerId] : current
+            : [playerId];
         return { ...state, targetIds: next };
       });
-      setTargetIds((current) => max > 1 ? current.includes(playerId) ? current.filter((id) => id !== playerId) : current.length < max ? [...current, playerId] : current : [playerId]);
+      if (!daqiaoDeflectionSelectionActive) {
+        setTargetIds((current) => max > 1 ? current.includes(playerId) ? current.filter((id) => id !== playerId) : current.length < max ? [...current, playerId] : current : [playerId]);
+      }
       return;
     }
     setTargetIds((ids) => activeSkillTargetIds.length ? [playerId] : halberdAttack ? ids.includes(playerId) ? ids.filter((id) => id !== playerId) : ids.length < 3 ? [...ids, playerId] : ids : [playerId]);
   };
+  const toggleActiveSkillCardSelection = (cardId: string) => setActiveSkillSelectionState((state) => {
+    if (!state || !activeSkillStateIsCurrent || !activeSkillSelection?.eligibleCardIds.includes(cardId)) return state;
+    const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id));
+    if (daqiaoDeflectionSelectionActive) {
+      return { ...state, cardIds: validIds.includes(cardId) ? [] : [cardId] };
+    }
+    return validIds.includes(cardId)
+      ? { ...state, cardIds: validIds.filter((id) => id !== cardId) }
+      : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, cardId] } : { ...state, cardIds: validIds };
+  });
   const attackTargetsValid = targetIds.length > 0 && targetIds.every((id) => room.players.some((player) => player.id === id && player.alive && player.id !== room.meId && (player.distance ?? 99) <= (me?.attackRange ?? 1)));
   const canFormSerpentAttack = hasSerpentSpear && room.myHand.length >= 2 && room.isMyTurn && canPlay && canDeclareAttack;
   const responseDeadline = room.currentAction?.deadline ?? room.pendingNegation?.deadline ?? room.pendingGreenDragon?.deadline ?? room.pendingRockCleaving?.deadline ?? room.pendingDuel?.deadline ?? room.pendingAttack?.deadline ?? 0;
@@ -1885,6 +1923,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     canConfirm: localTargetCanConfirm,
     hasLocalInput: localSelectionHasInput,
   });
+  const activeSkillConfirmEnabled = daqiaoDeflectionSelectionActive
+    ? daqiaoDeflectionReady
+    : Boolean(
+      canUseAction(room.currentAction, "trigger")
+      && activeSkillComplete
+      && activeSkillSubmission
+      && (!(activeSkillTargetSelection || Boolean(activeSkillSelection?.targetIds.length)) || localTargetSelection.canConfirm),
+    );
   const selectedExternalPreviewId = localTargetSelection.selectionActive
     ? [...localTargetSelection.selectedTargetIds].reverse().find((id) => id !== room.meId) ?? null
     : null;
@@ -2032,7 +2078,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (!accepted) targetCardPickerSubmissionRef.current = "";
   };
   const cancelLocalTargetSelection = () => {
-    if (!localTargetSelection.selectionActive || !localTargetFlow || busy || presentationBusy) return;
+    if (!localTargetSelection.selectionActive || !localTargetFlow || busy || presentationBusy && !(localTargetFlow === "active-skill" && daqiaoDeflectionSelectionActive)) return;
     resetLocalTargetFlow(localTargetFlow);
   };
   const canUseLongdanInResponse = Boolean(me?.hero === "zhao-yun" && responseDecisionReady && longdanResponseOptions.length > 0);
@@ -4539,7 +4585,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
   }, [attackDodgeTraceSnapshotJson]);
   const localEquipmentSelection = activeSkillSelection
-    ? { eligibleIds: activeSkillSelection.eligibleCardIds, selectedIds: activeSkillSelectedCardIds, max: activeSkillSelection.max, disabled: busy || presentationBusy, onToggle: (cardId: string) => setActiveSkillSelectionState((state) => { if (!state || !activeSkillStateIsCurrent) return state; const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)); return validIds.includes(cardId) ? { ...state, cardIds: validIds.filter((id) => id !== cardId) } : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, cardId] } : { ...state, cardIds: validIds }; }) }
+    ? { eligibleIds: activeSkillSelection.eligibleCardIds, selectedIds: activeSkillSelectedCardIds, max: activeSkillSelection.max, disabled: busy || presentationBusy, onToggle: toggleActiveSkillCardSelection }
     : targetCardPickerInLocalDock && targetCardPickerSelection && targetCardPickerTarget
       ? {
         eligibleIds: targetCardPickerSelection.eligibleKeys,
@@ -4567,8 +4613,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : room.currentAction?.kind === "turn" && currentActionOwnedByViewer ? "turn"
     : room.currentAction?.kind === "none" || !room.currentAction ? "rest"
     : "waiting";
-  const consoleSelection: ConsoleSelectionFact | undefined = localTargetSelection.selectionActive
-    ? { active: true, hasInput: localTargetSelection.canCancel, count: localTargetSelection.selectedTargetIds.length, min: localTargetSelection.minTargetCount, max: localTargetSelection.maxTargetCount, summary: localTargetSelection.instruction }
+  const consoleSelection: ConsoleSelectionFact | undefined = daqiaoDeflectionSelectionActive
+    ? { active: true, hasInput: daqiaoDeflectionCardCount > 0 || daqiaoDeflectionTargetCount > 0, count: daqiaoDeflectionCardCount + daqiaoDeflectionTargetCount, min: 2, max: 2, summary: "" }
+    : localTargetSelection.selectionActive
+      ? { active: true, hasInput: localTargetSelection.canCancel, count: localTargetSelection.selectedTargetIds.length, min: localTargetSelection.minTargetCount, max: localTargetSelection.maxTargetCount, summary: localTargetSelection.instruction }
     : activeSkillSelection && activeSkillStateIsCurrent
       ? { active: true, hasInput: activeSkillSelectedCardIds.length > 0 || activeSkillSelectedTargetIds.length > 0, count: activeSkillSelectedCardIds.length + activeSkillSelectedTargetIds.length, min: activeSkillSelection.min, max: activeSkillSelection.max, summary: `${activeSkillSelectedCardIds.length} card${activeSkillSelectedCardIds.length === 1 ? "" : "s"} selected` }
       : triggerSelection
@@ -4582,7 +4630,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             : undefined;
   const consolePrimaryCandidates = [
     ...(borrowedSwordTargetSelectionActive && canUseAction(room.currentAction, "choose_borrowed_sword_target") ? [{ id: "borrowed-sword", label: "Confirm", enabled: localTargetSelection.canConfirm, priority: 80 }] : []),
-    ...(activeSkillSelection || activeSkillTargetSelection ? [{ id: "active-skill", label: "Confirm", enabled: canUseAction(room.currentAction, "trigger") && Boolean(activeSkillComplete && activeSkillSubmission && (!activeSkillTargetSelection || localTargetSelection.canConfirm)), priority: 70 }] : []),
+    ...(activeSkillSelection || activeSkillTargetSelection ? [{ id: "active-skill", label: "Confirm", enabled: activeSkillConfirmEnabled, priority: 70 }] : []),
     ...(targetCardPickerInLocalDock ? [{ id: "target-card-picker", label: "Confirm", enabled: targetCardPickerSelectionComplete && !responseControlsDisabled, priority: 70 }] : []),
     ...(triggerResponse && canUseAction(room.currentAction, "trigger") && selectedTriggerOption?.selection?.type === "cards" ? [{ id: "trigger-cards", label: "Confirm", enabled: triggerSubmissionComplete, priority: 70 }] : []),
     ...(triggerResponse && canUseAction(room.currentAction, "trigger") && selectedTriggerOption?.selection?.type === "target" ? [{ id: "trigger-target", label: "Confirm", enabled: localTargetSelection.canConfirm, priority: 70 }] : []),
@@ -4722,13 +4770,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             playerHero={heroDefinition(player.hero)}
             relativeIndex={relativeIndex}
             isTurn={player.seat === room.turnSeat}
-            isSelectedTarget={borrowedSwordTargetId === player.id || targetIds.includes(player.id)}
+            isSelectedTarget={borrowedSwordTargetId === player.id || (daqiaoDeflectionSelectionActive ? activeSkillSelectedTargetIds.includes(player.id) : targetIds.includes(player.id))}
             isGroupPreview={groupScopePreview.affectedPlayerIds.includes(player.id)}
             interactionRoles={interactionRoles}
             targetSelectionActive={targetSelectionActive}
             targetablePlayer={targetablePlayer}
+            daqiaoDeflectionTargetMode={daqiaoDeflectionSelectionActive}
             testViewerController={Boolean(room.isTestController)}
-            onTarget={() => { if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id); else { setTarget(player.id); setTargetCardIndex(null); } setExpandedOpponentId(player.id); }}
+            onTarget={() => { if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id); else { setTarget(player.id); setTargetCardIndex(null); } if (!daqiaoDeflectionSelectionActive) setExpandedOpponentId(player.id); }}
             onInspect={() => setExpandedOpponentId(player.id)}
             onSwitchTestViewer={(playerId) => { void onSwitchTestViewer(playerId); }}
             onInfoCard={setInfoCard}
@@ -4756,7 +4805,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       } guidance={
         <div className="console-guidance" data-console-guidance="true">
           <div className="console-guidance-row">
-            <div className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`} data-console-decision-kind={consoleDecision.kind} data-console-coherent={consoleDecision.coherent ? "true" : "false"} data-console-primary={consoleDecision.primary?.label ?? "none"} data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"} data-console-selection-count={consoleDecision.selectionCount ?? undefined} data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"} data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"} role="status" aria-live="polite" aria-atomic="true"><small>{localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{consoleDecision.instruction}</strong>{!negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}{consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true"><b>{canClearTargetCardPickerSelection ? "CLEAR SELECTION" : "LOCAL CANCEL"}</b><span>{canClearTargetCardPickerSelection ? "Remove your selected card." : "Change your selection before submitting."}</span></span>}</div>
+            <div className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`} data-console-decision-kind={consoleDecision.kind} data-console-coherent={consoleDecision.coherent ? "true" : "false"} data-console-primary={consoleDecision.primary?.label ?? "none"} data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"} data-console-selection-count={consoleDecision.selectionCount ?? undefined} data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"} data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"} role="status" aria-live="polite" aria-atomic="true"><small>{localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{consoleDecision.instruction}</strong>{daqiaoDeflectionSelectionActive ? <div className="deflection-selection-guidance" data-testid="deflection-selection-guidance" role="group" aria-label="Deflection selections"><span data-daqiao-selection="card">Discard card: {daqiaoDeflectionCardCount}/1 {daqiaoDeflectionCardCount === 1 ? "✓" : "— Select an eligible hand or equipment card"}</span><span data-daqiao-selection="target">Transfer target: {daqiaoDeflectionTargetCount}/1 {daqiaoDeflectionTargetCount === 1 ? "✓" : "— Tap an eligible hero portrait"}</span>{daqiaoDeflectionCardCount === 1 && daqiaoDeflectionTargetCount === 1 && <strong>Ready to redirect Attack</strong>}</div> : !negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}{consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true"><b>{canClearTargetCardPickerSelection ? "CLEAR SELECTION" : "LOCAL CANCEL"}</b><span>{canClearTargetCardPickerSelection ? "Remove your selected card." : "Change your selection before submitting."}</span></span>}</div>
             <GameSystemMenu onLeave={onLeave} messages={gameMessages} messagesCollapsed={messagesCollapsed} onToggleMessages={() => setMessagesCollapsed((collapsed) => !collapsed)} />
           </div>
           {invalidResponseState && <p className="error" role="status">Waiting for the latest response state…</p>}
@@ -4770,11 +4819,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             const toggleHandCard = (item: Card) => {
               const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1;
               if (room.phase === "discard") setDiscardSelected((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids.length < excessCards ? [...ids, item.id] : ids);
-              else if (activeSkillSelection) setActiveSkillSelectionState((state) => {
-                if (!state || !activeSkillStateIsCurrent) return state;
-                const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id));
-                return validIds.includes(item.id) ? { ...state, cardIds: validIds.filter((id) => id !== item.id) } : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, item.id] } : { ...state, cardIds: validIds };
-              });
+              else if (activeSkillSelection) toggleActiveSkillCardSelection(item.id);
               else if (costSelection) setSerpentSelected((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids.length < responseSelectionLimit ? [...ids, item.id] : ids);
               else { setSelected((id) => id === item.id ? "" : item.id); setTarget(""); }
               setTargetCardIndex(null);
@@ -4823,7 +4868,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {targetCardPickerInLocalDock && consolePrimaryId === "target-card-picker" && <button className="primary" disabled={responseControlsDisabled || !targetCardPickerSelectionComplete || !consoleDecision.primary?.enabled} onClick={() => void submitTargetCardPicker(targetCardPickerSelectedKeys)}>{busy ? "Confirming…" : "Confirm"}</button>}
             {triggerResponse && selectedTriggerOption?.selection?.type === "cards" && consolePrimaryId === "trigger-cards" && <button className="primary" disabled={responseControlsDisabled || !triggerSubmissionComplete || !consoleDecision.primary?.enabled} onClick={() => submitWithLocalTargetPreview(() => onAction("trigger", { providerId: selectedTriggerOption.effectId, ...(triggerSelectedCardIds.length === 1 ? { cardId: triggerSelectedCardIds[0] } : { cardIds: triggerSelectedCardIds }), ...(triggerTargetSelection ? { targetId: targetIds[0] } : {}) }))}>Confirm</button>}
             {triggerResponse && selectedTriggerOption?.selection?.type === "target" && triggerTargetSelection && consolePrimaryId === "trigger-target" && <button className="primary" disabled={responseControlsDisabled || !localTargetSelection.canConfirm || !consoleDecision.primary?.enabled} onClick={() => submitWithLocalTargetPreview(() => onAction("trigger", { providerId: selectedTriggerOption.effectId, targetIds }))}>Confirm</button>}
-            {(activeSkillSelection || activeSkillTargetSelection) && consolePrimaryId === "active-skill" && <button className="primary" disabled={busy || !localTargetSelection.canConfirm && Boolean(activeSkillTargetSelection || activeSkillSelection?.targetIds.length) || !activeSkillComplete || !activeSkillSubmission || !consoleDecision.primary?.enabled} onClick={() => activeSkillSubmission && submitWithLocalTargetPreview(() => onAction("trigger", activeSkillSubmission))}>Confirm</button>}
+            {(activeSkillSelection || activeSkillTargetSelection) && consolePrimaryId === "active-skill" && <button className="primary" disabled={busy || !activeSkillConfirmEnabled || !consoleDecision.primary?.enabled} onClick={() => activeSkillSubmission && submitWithLocalTargetPreview(() => onAction("trigger", activeSkillSubmission))}>Confirm</button>}
             {canRespond && genericResponse && semanticResponseOptions.length > 0 && selectedResponseProvider && consolePrimaryId === "response" && <button className="primary" disabled={responseControlsDisabled || !responseSelectionComplete || !consoleDecision.primary?.enabled} onClick={() => submitResponseProvider()}>{busy ? "Confirming…" : "Confirm"}</button>}
             {room.isMyTurn && room.phase === "discard" && consolePrimaryId === "discard" && <button className="primary" disabled={busy || discardSelected.length !== excessCards || !consoleDecision.primary?.enabled} onClick={() => onAction("discard_cards", { cardIds: discardSelected })}>{busy ? "Discarding…" : `Discard ${excessCards} selected`}</button>}
             {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || presentationBusy || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || presentationBusy || !card || selectedCanPlayAsAttack && (!canDeclareAttack || !attackTargetsValid) || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play"}</button>}
