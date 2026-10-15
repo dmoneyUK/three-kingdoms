@@ -2208,19 +2208,12 @@ function DuelCardJourney({
   }, []);
   useEffect(() => {
     const settlement = action.motion?.type === "lust-duel" ? action.settlement : undefined;
-    if (!settlement) {
-      setExpiredLustSettlementEventId(null);
-      return;
-    }
+    if (!settlement || settlement.eventId === expiredLustSettlementEventId) return;
     const remainingMs = Math.max(0, settlement.readRemainingMs ?? 0);
-    if (remainingMs === 0) {
-      setExpiredLustSettlementEventId(settlement.eventId);
-      return;
-    }
-    setExpiredLustSettlementEventId(null);
+    if (remainingMs === 0) return;
     const timer = window.setTimeout(() => setExpiredLustSettlementEventId(settlement.eventId), remainingMs);
     return () => window.clearTimeout(timer);
-  }, [action.motion?.type, action.settlement?.eventId, action.settlement?.readRemainingMs]);
+  }, [action.motion?.type, action.settlement?.eventId, action.settlement?.readRemainingMs, expiredLustSettlementEventId]);
 
   const incoming = duelJourneyEvents(action, sourceName);
   const responseSignature = incoming.map((event) => `${event.eventId}:${event.globalOrdinal ?? 0}`).join(",");
@@ -2587,8 +2580,9 @@ function DuelCardJourney({
     return () => window.clearInterval(interval);
   }, [action.targetId, enabled, scopeKey, journey.scopeKey, journey.cards, viewerId, viewerSeat]);
 
-  if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center
-    || action.settlement?.eventId === expiredLustSettlementEventId) return null;
+  const lustSettlementExpired = action.motion?.type === "lust-duel" && action.settlement
+    && ((action.settlement.readRemainingMs ?? 0) === 0 || action.settlement.eventId === expiredLustSettlementEventId);
+  if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center || lustSettlementExpired) return null;
 
   return <section
     className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}`}
