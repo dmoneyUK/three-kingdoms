@@ -290,7 +290,7 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
     expect(option.selection.eligibleKeys).toHaveLength(weapon === "FrostSword" ? 3 : 2);
 
     const actionTitle = weapon === "FrostSword" ? "Frost Sword" : "Kirin Bow";
-    const instruction = weapon === "FrostSword" ? "Choose 1–2 cards to discard" : "Choose 1 Mount to discard";
+    const instruction = weapon === "FrostSword" ? "Choose 2 cards to discard" : "Choose 1 Mount to discard";
     const dialog = await expectModal(page, actionTitle, instruction, `Use ${actionTitle}`);
     const selectableCards = dialog.locator(".target-card-picker-card");
     if (weapon === "FrostSword") {

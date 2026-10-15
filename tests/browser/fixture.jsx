@@ -527,7 +527,7 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
       deadline: 0,
       reason: "Choose target cards for Frost Sword",
       legalActions: ["trigger", "decline_trigger"],
-      triggerOptions: [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", targetId: "p1", min: 1, max: 2, eligibleKeys } }],
+      triggerOptions: [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", targetId: "p1", min: 2, max: 2, eligibleKeys } }],
       declineAction: "decline_trigger",
     };
   }

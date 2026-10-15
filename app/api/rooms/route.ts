@@ -4040,11 +4040,12 @@ async function applyForcedDamageOutcome(room: RoomRow, continuation: AttackDodge
 }
 
 async function applyPreventDamageOutcome(room: RoomRow, continuation: DamageAboutToApplyTriggerContinuation, source: PlayerRow, target: PlayerRow, discard: Card[], log: string[], targetCardIds: string[]) {
+  if (targetCardIds.length !== 2) return false;
   const hand = parse<Card[]>(target.hand_json, []);
   const equipment = equipmentZone(target);
   const all = [...hand, ...equipmentCards(target)];
   const discarded = targetCardIds.map((id) => all.find((card) => card.id === id)).filter((card, index, cards): card is Card => Boolean(card) && cards.findIndex((item) => item?.id === card.id) === index);
-  if (!discarded.length || discarded.length !== targetCardIds.length) return false;
+  if (discarded.length !== 2 || discarded.length !== targetCardIds.length) return false;
   const ids = new Set(discarded.map((card) => card.id));
   const nextHand = hand.filter((card) => !ids.has(card.id));
   const nextEquipment = Object.fromEntries(Object.entries(equipment).filter(([, card]) => !card || !ids.has(card.id))) as EquipmentZone;
@@ -6293,7 +6294,7 @@ export async function POST(request: Request) {
       if (action === "apply_trigger" && triggerExecution?.outcome.kind === "prevent_damage") {
         const all = [...parse<Card[]>(target.hand_json, []), ...equipmentCards(target)];
         const selected = triggerExecution.outcome.targetCardIds;
-        if (!selected.length || selected.some((id) => !all.some((card) => card.id === id))) return json({ error: "The selected reaction no longer has its required cards.", stale: true, room: await roomState(code, token) }, 409);
+        if (selected.length !== 2 || selected.some((id) => !all.some((card) => card.id === id))) return json({ error: "The selected reaction no longer has its required two cards.", stale: true, room: await roomState(code, token) }, 409);
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That damage reaction has already moved on.", stale: true, room: await roomState(code, token) }, 409);
         await applyPreventDamageOutcome(liveRoom, continuation, source, target, discard, log, selected);

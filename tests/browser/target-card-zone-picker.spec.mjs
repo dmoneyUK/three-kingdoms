@@ -618,7 +618,7 @@ for (const viewport of [
     const [stageBefore, dockBefore] = await Promise.all([stage.boundingBox(), dock.boundingBox()]);
 
     await expect(dialog.locator("header strong")).toHaveText("FROST SWORD");
-    await expect(dialog.locator("header span")).toHaveText("Choose 1–2 cards to discard");
+    await expect(dialog.locator("header span")).toHaveText("Choose 2 cards to discard");
     await expect(dialog.locator(".target-card-picker-zone-hand h3")).toHaveText("HAND · 4");
     await expect(dialog.locator(".target-card-picker-zone-equipment h3")).toHaveText("EQUIPMENT");
     await expect(positions).toHaveCount(4);
@@ -668,7 +668,7 @@ test("Frost Sword keeps ten opaque Hand positions inside the modal's horizontall
   const positions = dialog.locator('[data-target-card-zone="hand-position"]');
   const row = dialog.locator(".target-card-picker-zone-hand .target-card-picker-card-row");
 
-  await expect(dialog.locator("header span")).toHaveText("Choose 1–2 cards to discard");
+  await expect(dialog.locator("header span")).toHaveText("Choose 2 cards to discard");
   await expect(dialog.locator(".target-card-picker-zone-hand h3")).toHaveText("HAND · 10");
   await expect(positions).toHaveCount(10);
   for (let index = 0; index < 10; index += 1) {
@@ -685,7 +685,7 @@ test("Frost Sword keeps ten opaque Hand positions inside the modal's horizontall
   await expect(row).toHaveCSS("overflow-x", "auto");
 });
 
-test("Frost Sword modal submits a mixed Hand + Equipment selection and enforces its two-card maximum", async ({ page }) => {
+test("Frost Sword modal submits a mixed Hand + Equipment selection and requires exactly two cards", async ({ page }) => {
   const { dialog } = await loadFrostSwordModal(page, { width: 390, height: 844 });
   const positions = dialog.locator('[data-target-card-zone="hand-position"]');
   const hiddenPosition = positions.nth(0);

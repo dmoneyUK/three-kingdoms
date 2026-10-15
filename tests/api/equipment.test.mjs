@@ -317,7 +317,7 @@ test("no-Dodge auto resolution keeps Frost Sword and shield checks and skips emp
   for (const player of game.room.players) { setHand(player.id, [], 3, 3); setEquipment(player.id); }
   sql(`UPDATE players SET hero=NULL WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)})`);
   setHand(me.id, [card("Attack", "no-dodge-frost")], 3, 3);
-  setHand(first.id, [card("Peach", "frost-kept")], 3, 3);
+  setHand(first.id, [card("Peach", "frost-kept"), card("Peach", "frost-second-card")], 3, 3);
   setEquipment(me.id, { weapon: card("FrostSword", "no-dodge") }); setTurn(game.code, me.seat);
   const frost = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-no-dodge-frost", targetId: first.id });
   assert.equal(frost.status, 200); assert.equal(frost.data.room.pendingAttack, null);
@@ -679,7 +679,7 @@ test("Sky Piercing Halberd keeps ORDERED progress through child Dying and resume
   assert.deepEqual(observer.presentationSnapshot.groupParticipantProgress, rescued.data.room.presentationSnapshot.groupParticipantProgress);
 });
 
-test("Frost Sword offers its owner the choice to prevent Attack damage and discard up to two target cards", async () => {
+test("Frost Sword prevents Attack damage only when its owner discards exactly two target cards", async () => {
   const game = await createHumanGame(); const [host, alice] = game.members; const [hostPlayer, alicePlayer] = game.room.players;
   setHand(hostPlayer.id, [card("FrostSword", "equip")], 4, 4); setTurn(game.code, hostPlayer.seat);
   const equipped = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "frostsword-equip" });
@@ -694,10 +694,25 @@ test("Frost Sword offers its owner the choice to prevent Attack damage and disca
   const frostSelection = frostTrigger.data.currentAction.triggerOptions.find((option) => option.effectId === "frost_sword_damage_about_to_apply")?.selection;
   const expectedFrostKeys = ["hand:0", "hand:1", "hand:2", "hand:3", "ferganasteed-frost-mount"];
   assert.deepEqual(frostSelection?.eligibleKeys, expectedFrostKeys, "Frost Sword projects every target Hand position");
+  assert.equal(frostSelection?.min, 2); assert.equal(frostSelection?.max, 2, "the owner must choose exactly two target cards");
+  assert.ok(!expectedFrostKeys.includes("peach-one"), "target Hand identities stay private to the target");
   const normalizedFrostTrigger = normalizeRoomData(frostTrigger.data);
   assert.deepEqual(normalizedFrostTrigger?.currentAction?.triggerOptions?.find((option) => option.effectId === "frost_sword_damage_about_to_apply")?.selection?.eligibleKeys, expectedFrostKeys, "room normalization preserves Frost Sword eligibility");
-  const frost = await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "frost_sword_damage_about_to_apply", cardKeys: ["hand:0", "hand:1"] });
-  assert.equal(frost.status, 200); assert.equal(frost.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "Frost Sword prevents the Attack damage"); assert.equal(frost.data.room.players.find((player) => player.id === alicePlayer.id).handCount, 2, "Frost Sword discards two target cards");
+  const oneCardAttempt = await request("trigger", { code: game.code, token: host.token, providerId: "frost_sword_damage_about_to_apply", cardKeys: ["hand:0"] });
+  assert.equal(oneCardAttempt.status, 409, "a single-card selection cannot prevent damage");
+  assert.equal((await state(game.code, host.token)).data.currentAction.kind, "trigger", "invalid selection leaves the authoritative choice open");
+  const frost = await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "frost_sword_damage_about_to_apply", cardKeys: ["hand:0", "ferganasteed-frost-mount"] });
+  assert.equal(frost.status, 200); assert.equal(frost.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "Frost Sword prevents the Attack damage"); assert.equal(frost.data.room.players.find((player) => player.id === alicePlayer.id).handCount, 3, "one Hand card and one Equipment card are discarded");
+  assert.equal(discardIds(game.code).filter((id) => id === "peach-one").length, 1);
+  assert.equal(discardIds(game.code).filter((id) => id === "ferganasteed-frost-mount").length, 1);
+
+  setHand(hostPlayer.id, [card("Attack", "one-eligible-attack")], 4, 4); setHand(alicePlayer.id, [card("Peach", "one-eligible-target")], 4, 4); setEquipment(alicePlayer.id); setTurn(game.code, hostPlayer.seat);
+  const oneEligibleAttack = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-one-eligible-attack", targetId: alicePlayer.id });
+  assert.equal(oneEligibleAttack.status, 200);
+  const oneEligibleDamage = await takeDamageIfPending(game.code, alice.token);
+  assert.equal(oneEligibleDamage.status, 200);
+  assert.equal(oneEligibleDamage.data.room.pendingFrostSword, null, "one eligible target card cannot open Frost Sword");
+  assert.equal(oneEligibleDamage.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3, "normal Attack damage applies when two cards cannot be discarded");
 
   setHand(hostPlayer.id, [card("Attack", "judgement-only")], 4, 4); setHand(alicePlayer.id, [], 4, 4); setEquipment(alicePlayer.id); setJudgement(alicePlayer.id, [card("Lightning", "protected-zone")]); setTurn(game.code, hostPlayer.seat);
   const judgementOnlyAttack = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-judgement-only", targetId: alicePlayer.id });
@@ -705,7 +720,7 @@ test("Frost Sword offers its owner the choice to prevent Attack damage and disca
   const judgementOnlyDamage = await takeDamageIfPending(game.code, alice.token);
   assert.equal(judgementOnlyDamage.status, 200);
   assert.equal(judgementOnlyDamage.data.room.pendingFrostSword, null, "a Judgement Zone card alone cannot open Frost Sword's discard branch");
-  assert.equal(judgementOnlyDamage.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3, "Attack damage is dealt when Frost Sword has no eligible Hand or Equipment card");
+  assert.equal(judgementOnlyDamage.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3, "Attack damage is dealt when only a Judgement card is present");
 
 
 });
