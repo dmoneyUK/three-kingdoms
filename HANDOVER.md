@@ -2,16 +2,43 @@
 
 Branch: `ux-v2`
 
-## Latest result
+## Latest verified Coding Agent result
 
 §10.8.2.1 H2-F is implemented in `aa71e75fb9981c27c7eb40c1819c22ebf37c52b1` and **PENDING REVIEW**. Four-seat phone Hero/player names now compute to 11px/9px. Focused real-browser coverage passed 25/25, including four Worker/D1 viewports, 4/6/8/10-seat geometry, long Latin/Chinese names and 0/1/4 Equipment cases. Targeted ESLint, `git diff --check`, and build passed. Exact-SHA Actions run [`38789249093`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38789249093) passed API, lint/fast, browser startup/room smoke, D1 migration, build, Worker deployment and production smoke; live `/` and `/api/health` returned 200. Evidence: `/tmp/wtk-h2f-after/`. Reviewer acceptance is pending.
 
-## Design revision reviewed
+## Planner review update (2026-10-15, late iPhone feedback)
 
-`docs/UX2-refine.md` remote blob `744e11924bfce35e810ba5f1c45551d5c3ec54b0`. Compared with the prior recorded revision, the intervening design change was H1-F progress only; §§10.8.4 and 10.9–10.12 were also reviewed for next-task planning.
+**Authoritative design:** `docs/UX2-refine.md` blob `6d71d7b9836905f3ae850874b74d6e99b26d22fb`, latest **§10.13 U13-A–H**. This handover change updates DESIGN/TASK QUEUE ONLY. No new code, tests, CI or deployment is claimed; no item below is USER-ACCEPTED merely because a design/spec was committed.
 
-## Current task
+User described four iPhone screenshots: local selected LUST attack-order too small; opponent Cao Cao Equipment +1 horse symbol illegible; LUST physical cost Frame huge, title too small beside card and unnecessary duplicated narration; current battlefield `Resolving…` badge too small and fails to show a publicly known genuine Duel responder; opponent Inspector stacked Equipment/Judgement and overlaps top Hero row; Diao Chan Lust/Beauty skill cells unequal; **discard mode selected two cards logically while only one visually lifts**.
 
-**§10.8.4 / H4-A/B/C — one stable public-announcement layout.** Start with an authenticated Worker/D1 reproduction of Attack→Dodge from a non-actor viewer, measuring the active public CardFace and announcement through REVEAL→MOVE→PARK. Then implement the shared stable, central narration band specified by H4-C: centered within 12px of the canonical battlefield centre, vertical movement ≤16px under unchanged geometry, readable 1–2-line H3 text, and no overlap with seats, parked cards, timer, Local Dock or Hand. Verify a root plus multiple genuine Negations in the same interaction, including two from one actor, across the specified phone sizes and seat topologies. Preserve public proof, response timing, Policy-B reveal and card parking. Do not change H3's accepted text styling or game rules. Mark H4 **PENDING REVIEW** after exact-SHA CI/deploy and measured browser evidence; do not claim acceptance.
+**Verified current code mechanisms:** `app/page.tsx renderHandCard()` uses `discardSelected.includes(id)` and `multiSelectMode`, but `singleSelected = !multiSelectMode && isSelected`; final effective `app/sequence-overrides.css` raises only `.single-selected` with unclipped overflow, while `details-selected` singles out last focused discard card. Thus multi-discard visuals likely diverge even though the original authoritative `discard_cards` selection remains multi-valued. Test actual Safari geometry before fixing. `LUST_COST_FRAME` is hardcoded 340×176, cost card presentation is real and must stay server-proven. `OpponentEquipmentGlyph` **already has** sword/shield/horse SVG in `app/page.tsx`; its plus/minus mount silhouettes cannot be distinguished. `game/public-activity.ts` fail-closes to `Resolving…` when strict public snapshot cannot prove an actor, and its Duel proof may not cover independent Lust-generated exchange; NEVER paste private local guidance into public output. On phones Inspector zone CSS forces one column; this is the source of its stacked shape.
 
-Resume point: inspect `PublicCardAnnouncement.place()`, phase/anchor lifecycle and current public-card browser coverage after capturing baseline geometry. Preserve untracked `HANDOVER 3.md`.
+## CURRENT IN-PROGRESS CODING TASK — H4-A/B/C (PRESERVE, DO NOT RESTART)
+
+**§10.8.4 / H4-A/B/C** remains the Coding Agent's recorded current task. Reproduce authenticated Attack→Dodge and multi-Negation root+counter from observer, trace public CardFace REVEAL→MOVE→PARK with per-frame DOMRects. Fix ONE stage-fixed central public event reading band (horizontal centering ≤12px; top drift ≤16px at unchanged geometry), no squeezing into upper opponents/parked cards, font and 1–2-line copy remain accepted H3; preserve Policy B/response timing/privacy. Test phone 390×844/390×700/440×894/480×900 and 4/6/8/10 seat geometry, real browser, normal exact-SHA CI/deploy. Mark H4 technical delivery **PENDING REVIEW** when actually validated; human acceptance is separate. **Do not undo ongoing H4 work just because this handover was updated.**
+
+## NEXT BOUNDED TASK AFTER H4 — U13-A (P0, multi-discard UI mismatch)
+
+**Task ID:** `UX2-10.13-U13-A-MULTI-DISCARD-SELECTED-CARDS-01`
+
+**READ FIRST:** `docs/UX2-refine.md §10.13.0 / §10.13.1 / §10.13.9`, current `app/page.tsx` Hand rendering and *last-effective* `app/sequence-overrides.css` selectors. This is a USER-REPORTED problem that affects the correctness of actionable UI feedback, not a request to alter server discard rules.
+
+1. **Reproduce BEFORE code:** Authenticated Worker/D1 in real discard phase needing 2 cards and a 5+ overlapping-card Hand at 390×844, 390×700; tap card A then card B. Capture `discardSelected`-derived data/DOM aria-pressed, both original IDs, `game-card.selected` classes, computed transforms, clip/overflow, rects/visible lifts and the `2 of 2 selected` instruction. Specifically check whether only the last `details-selected` card really rises while A remains selected invisibly.
+2. **Smallest safe FIX:** Give every currently selected card-slot, regardless of multi-select mode, a dedicated persistent `is-selected`/`multi-selected` class/data attribute and **visibly equal 14–22px raised treatment** plus subtle border; adjust rail lift clearance/slot overflow/z-index to prevent cropping multiple selected faces. Keep Details-selected state separate and only one Details preview control if that's the existing contract. The same actual set of IDs must drive Guidance count/enablement/aria-pressed/class and final `onAction("discard_cards", {cardIds: discardSelected})` exactly once on Confirm. No automatic deselect A when B clicked.
+3. **Independent acceptance:** A visibly up→A+B both up (2/2)→tap A, only B remains up (1/2)→select C, B+C both up→Confirm discards precisely B,C; no `play_card` request. Check overlap with adjacent cards, DETAILS inset/Hand scroll, reduced motion and true iPhone touch. Also run normal one-card Play, serpent 2-card cost, Lust cost, responses, 3/5/8 Hand and 4/6/8/10 seats regressions.
+4. **Evidence:** actual browser before/after screenshots and computed rect/transform tables at 390×844/390×700/440×894/480×900; focused test added to repo (not only private screenshots), lint/build/tests and exact-SHA normal CI/deploy; log SHA/tests/results in HANDOVER. Mark **U13-A PENDING REVIEW**, NEVER user-accepted. Next fetch the latest doc before U13-B.
+
+## Remaining seven narrowly scoped approved §10.13 jobs (ONE AT A TIME)
+
+| ID | Scope | Critical acceptance |
+| --- | --- | --- |
+| **U13-B — P0** | Proven PUBLIC turn/waiting actor and larger quiet lower-stage status plaque (`game/public-activity.ts`, chip, Local Guidance); use Lust exchange proof where independently validated | Actual public Duel waiter shown on ALL viewer tokens; `Resolving…` only when no actor is public; secret shared Negation ALWAYS generic with no name/submit leak; chip doesn't collide with timer or returned cards |
+| **U13-C — P1** | Raise local owner-only `lustTargetOrderText` emphasis to ~12–14px readable, still within actual Guidance | True first/second targets clearly readable, no precommit leak |
+| **U13-D — P1** | Existing opponent mini `OpponentEquipmentGlyph()`: sword, shield, `+1`, `−1`, readable sizing | Preserve authentic equipped ID, 4-slot slot meaning and full public equipment Inspector, no invented empty equipment |
+| **U13-E — P1** | Adaptive compact centered actual-cost `LUST` Frame/title above CardFace; remove only identity-verified duplicate “Last Deal”/ `LUST Duel:` notice | No huge 340px empty Frame, H4-safe geometry, real paid material stays attached and parks with actor, true Duel Attack history not lost |
+| **U13-F — P1** | Tasteful thin gold ornamental styling of the ONE existing stable H4 public narration surface | H3 type/copy retained; never spawn second toast, shift during real card move or cover Hero/timer |
+| **U13-G — P1** | Lower/compact genuine opponent Inspector, one horizontal two-column zone band: LEFT 2 Judgement placeholders, RIGHT 4 Equipment positions | 3+ genuine Judgements remain inspectable via overflow, no fake physical cards, no top Hero overlap and no Local Dock obstruction |
+| **U13-H — P2** | Exactly equal Diao Chan two skill button dimensions; balanced `Beauty Outshining the Moon` 2-line wording | Real measured width/height equal, legible and accessible ≥44px tap area, active/passive skill legality untouched |
+
+**Global boundary:** Other READY tasks R2-D, §10.9 W2–W6, §10.10 T1–T3, §10.11 G1–G2 and previously delivered H1-F/R4-F/H2-F remain in the UX2 index; do not drop, redo or mark user-accepted. Don't change game rules, card identities, secret Negation Plan A, genuinely paid Lust material, physical Duel vs generated Lust Duel proof, actor-owned parked real cards or Policy-B response timing. Tests and user review remain separate. Agent must keep HANDOVER SHORT by replacing stale current/result on actual new work, not appending unbounded old runs.
