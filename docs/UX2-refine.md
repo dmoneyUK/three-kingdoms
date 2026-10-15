@@ -1,6 +1,6 @@
 # WTK UX2 — Simplified Public Card UX
 
-**Version:** 2026-10-15 · **Branch:** `ux-v2` · **Latest user decision:** approved UX2 tasks now run continuously under the Coding Agent; human UX acceptance is asynchronous. Delivered R1, UI-3 and UI-4 are PENDING REVIEW; R2 is active, followed by R3/R4/H1–H3 and §10.2 family source reviews. Preserve accepted work. UX3 remains future-only.
+**Version:** 2026-10-15 · **Branch:** `ux-v2` · **Latest user decision:** approved UX2 tasks now run continuously under the Coding Agent; human UX acceptance is asynchronous. Delivered R1, R2, UI-3 and UI-4 are PENDING REVIEW; R3/R4/H1–H3 and §10.2 family source reviews follow. Preserve accepted work. UX3 remains future-only.
 
 This file is the **single active UX2 product/design authority**. It replaces the superseded, much longer UX2 design; previous revisions exist only in Git history. Older `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, historical roadmap records, old tests and screenshots are references to prior implementation, **not** permission to reinstate old visual requirements.
 
@@ -12,9 +12,9 @@ This is a short status directory, **not a substitute for the full requirements a
 
 | Status | Design items | Agent / Reviewer action |
 | --- | --- | --- |
-| **IN PROGRESS** | §10.7.2 **R2 (P1)**: Steal → Negation → later Dismantle/counter causal proof and true-author parking | Complete R2-A → B → C as one bounded task, test, deploy through normal verified CI, mark **PENDING REVIEW**, automatically continue. |
+| **PENDING REVIEW** | §10.7.2 **R2 (P1)**: Steal → Negation → later Dismantle/counter causal proof and true-author parking | R2-A → B → C delivered and deployed; user/reviewer acceptance remains pending. R3 is next in the approved sequence. |
 | **PENDING REVIEW** | §10.7.1 **R1**; §10.6 **UI-3**, **UI-4** (delivered/deployed) | User reviews one at a time. R1: defence during large reveal; UI-3: concise above-card notices; UI-4: Diao Chan skill notices. **Review does not block Agent progression.** |
-| **PENDING REVIEW — remaining UX coverage** | §8.7 Policy B phone timing; §9.5 Negation N0–N3/complete counters; delivered §10.2 Negation and Dismantle public-card journeys | Preserve partial passes; R2 chain is still an unresolved defect, so these paths are not fully accepted. Verify without duplicate implementation. |
+| **PENDING REVIEW — remaining UX coverage** | §8.7 Policy B phone timing; §9.5 Negation N0–N3/complete counters and R2 chain; delivered §10.2 Negation and Dismantle public-card journeys | Preserve partial passes; R2 is technically delivered, while real-phone/user visual acceptance remains pending. Verify without duplicate implementation. |
 | **READY TO EXECUTE** | §10.7 **R3 → R4**; §10.8 **H1 → H2 → H3** | Implement as small independently tested slices, then label **PENDING REVIEW** and automatically advance. |
 | **READY FOR SOURCE REVIEW / CONDITIONAL FIX** | Remaining §10.2 card families: single-target, group/AOE/recovery, Judgement/delayed, equipment/triggered, basic/Hero skills | After above scoped refinements, inspect each family autonomously, one bounded slice at a time. Fix proven gaps; otherwise record **NO CHANGE**. No prior human sign-off dependency. |
 | **ACCEPTED / CLOSED** | §§8.1–8.5, §10.5.3 Da Qiao, original UI-1/UI-2 acceptance checks | Preserve rather than redo; R3/R4/H1–H3 are new follow-on requirements. |
@@ -335,7 +335,7 @@ These are **current functional requirements**, not old combat-graph tasks. They 
 
 **Ownership:** Coding agent owns code, tests, deployment and HANDOVER.md. Planner/Reviewer owns only this design document and does not edit the handover.
 
-## 9. PHASE 2 — Shared-window Negation (A–C and N0–N3 delivered; §10.7 R2 public-history issue open)
+## 9. PHASE 2 — Shared-window Negation (A–C and N0–N3 delivered; §10.7 R2 public-history fix pending review)
 
 **UX2 Negation Plan A — latest confirmed user rule (2026-10-14):** Open one confidential shared window for **ALL living seats**, with immutable **maximum 8-second deadline**. Every player may explicitly submit a valid Negation intent or Pass (including those with no Negation card). **As soon as ALL living seats have persisted a response, the server may atomically settle the window early.** If even one living seat is silent, do NOT infer their Hand, auto-Pass or shorten the window; resolve at the original 8s deadline, treating the missing submission as timeout/implicit Pass then. In either case choose only one actually valid Negation by canonical seat order; open a fresh maximum-8s counter window after each actual winner. Legal Confirm/Pass is available from T0 regardless of root reveal; successful submissions are acknowledged privately, and only the chosen physical winning card is public after settlement. **No immediate-public-on-individual-Confirm (deferred UX3 §11).**
 
@@ -436,7 +436,7 @@ Five seats clockwise **1→2→3→4→5**; seat 1 plays Duel against seat 3.
 
 ### 10.1 Rollout authority and completed baseline — updated 2026-10-14
 
-**Current graph-free baseline:** §§8.1–8.5 and §10.5.3 are accepted/closed; §9.5 Negation legality/early settle passed but R2 counter-card history is open; §8.7 Policy B default hold passed and R1 is delivered/PENDING REVIEW. UI-1/UI-2 original checks accepted; UI-3/UI-4 delivered/PENDING REVIEW. **Proceed autonomously R2 → R3 → R4 → H1 → H2 → H3 and §10.2 family source reviews without waiting for Reviewer acceptance.**
+**Current graph-free baseline:** §§8.1–8.5 and §10.5.3 are accepted/closed; §9.5 Negation legality/early settle passed and the R2 counter-card history fix is delivered/PENDING REVIEW; §8.7 Policy B default hold passed and R1 is delivered/PENDING REVIEW. UI-1/UI-2 original checks accepted; UI-3/UI-4 delivered/PENDING REVIEW. **Proceed autonomously R3 → R4 → H1 → H2 → H3 and §10.2 family source reviews without waiting for Reviewer acceptance.**
 
 §7 and §8.6 are history only. §9 Plan A secret 8s-maximum Negation rules stay. §10 is an approved bounded **autonomous source-review/conditional-fix sequence** after the current UX2 refinements; **no prerequisite that §8.7/§9.5 obtain human phone acceptance first**. Coding Agent owns `HANDOVER.md`.
 
@@ -463,7 +463,7 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 
 ### 10.3 Autonomous execution scope and technical safety boundaries
 
-1. **Autonomous code scope:** R1 and UI-4 are delivered; R2 is active, then execute R3, R4, H1, H2, H3, then conditional §10.2 family review. Keep each code/validation step small; mark **PENDING REVIEW** and automatically continue. Original UI-1/UI-2 and §10.5.3/§§8.1–8.5 accepted; UX3 future-only.
+1. **Autonomous code scope:** R1, R2 and UI-4 are delivered/PENDING REVIEW; execute R3, R4, H1, H2, H3, then conditional §10.2 family review. Keep each code/validation step small; mark **PENDING REVIEW** and automatically continue. Original UI-1/UI-2 and §10.5.3/§§8.1–8.5 accepted; UX3 future-only.
 2. **Asynchronous acceptance:** Open §9.5/§8.7/§10.6 human UX checks remain PENDING REVIEW, **not blockers to other approved UX2 implementation**. Preserve all accepted controls, rules, responsive behavior and privacy boundaries.
 3. **Card-family boundaries:** Sequentially source-review the next not-yet-reviewed §10.2 subgroup once current bounded refinements are implemented; **no waiting for past human acceptance**. Fix only real missing approved UX, not broad speculative changes. Do not rebuild completed Dismantle/Negation/Deflection.
 4. **Bounded task cadence:** Coding Agent maintains exactly one active bounded implementation task in `HANDOVER.md`, captures real focused tests and exact-SHA CI/deploy evidence, marks completion **PENDING REVIEW**, re-reads latest design and autonomously starts the next. CI never implies human UX acceptance.
@@ -584,7 +584,7 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 **Acceptance ledger (do not conflate original acceptance with NEW requirements):**
 - UI-1 original tests 3/3 PASS: battlefield-only illustrated Card Details, inspect genuine parked cards, and uninterrupted Play/End plus selected state. **Accepted; do not rebuild.** New usability/copy improvement in R4.
 - UI-2 original tests 3/3 PASS: Details button can open without playing, no-defence TAKE DAMAGE, and real opponent name + Hero visible. **New consequence-driven TAKE DAMAGE policy in R3 supersedes old absence-of-defence criterion.**
-- §9.5: Negation Confirm works during root reveal and all-living-players-explicit early settlement/8s maximum work. **Counter/root actor-attached miniatures intermittently missing; R2 OPEN.** Genuine long-chain display not accepted.
+- §9.5: Negation Confirm works during root reveal and all-living-players-explicit early settlement/8s maximum work. **R2's counter/root actor-attached history defect is technically fixed; pending user visual review.** Genuine long-chain display remains pending review.
 - §8.7: uninterrupted default ~4s reveal and correct parked card actor PASS. **R1 delivered and deployed:** legal Dodge, no-Dodge decline, Longdan conversion and Duel Attack can complete while their root still reveals, and a newly committed response appears immediately. Reviewer acceptance pending.
 - §10.5.3: duplicate Deflection toast removed; real cost card framed with skill ABOVE; true Da Qiao parking and redirected target response correct. **3/3 PASS, CLOSED.**
 - UI-3 code delivered at 946f6f697b938a87e78708e0bf5b52199b8544b5, not assessed in this review. UI-4 was subsequently delivered in 604c15a; this earlier phone review did not cover it.
@@ -636,6 +636,8 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 - Assert all truly public event IDs appear ONCE and are visible at their real Seat/Dock while the chain is ACTIVE. Measure browser DOM markers for eventId, actorId, role, phase and actual getBoundingClientRect; compare to the real actor anchor with a bounded explicit threshold. Assert no permanent centre thumbnail without supported reason. Distinguish ordinary retirement AFTER interaction settlement from premature removal DURING the chain.
 - Instrument safe timestamps for authoritative public commit, event arrival, first centre paint, first move, final parked rect, actual target rect and legitimate retirement. Show PROVEN stage/rootAction continuity during each second-root response, not only first frame. Keep server legality, card conservation and private intentions unchanged. Capture actual before/after screenshots or short recording with exact source SHA and note which tests really ran.
 
+**Coding Agent progress (2026-10-15):** The Worker/D1 reproduction confirmed that a fresh independent Dismantle root could select the persisted envelope from the previously negated Steal. `startNegation` now uses the new `causalRoot.envelope` for a fresh root and permits same-frame reuse only for a verified inherited continuation; Negation rules and privacy are unchanged. Code commit `520cc5ebcc4ffacebe135adade7fb43651b303f9`; focused API 41/41, local fast 276/276, API 283/283 and authenticated Worker/D1 browser chain 1/1 passed, along with targeted ESLint, syntax, production build and diff checks. The browser regression covered four authenticated views, 4/6/8-seat layouts, refresh/switch/resize and public event/card identities. Push tip `ed597cd6272b7110dec9a0896c5d93e778784f21`; exact-SHA Actions run [`38661520037`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38661520037) passed Browser startup/room smoke, API, Lint/fast and deploy, including production smoke. Production `/` and `/api/health` returned HTTP 200; health reported the Worker available. R2 is delivered and **PENDING REVIEW**; no user visual acceptance is claimed.
+
 **R2 technical delivery and asynchronous review — overrides old deployment prohibition:** R1 delivered; execute R2-A → R2-B → R2-C as one bounded task. Run `npm run test:fast`, `npm run test:api`, focused Playwright and applicable build/static checks; distinguish D1-proven cause from hypothesis. **Reviewer approval is NOT required before a normal tested R2 commit/push/deploy.** After exact-SHA CI/deployment checks and truthful evidence, mark **PENDING REVIEW**, publish changes/tests/screenshots and automatically advance to R3. Preserve rules/privacy, the 8s-max/all-explicit Negation protocol and previously accepted UX. Coding Agent maintains its own `HANDOVER.md`.
 
 
@@ -653,7 +655,7 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 
 **Tests:** 3/5/8 Hand cards at 390/440/480px, selection vs Details vs Play, horizontal scroll, skill multi-cost selection, equipment and public parked card detail, Hand-private versus observer privacy, keyboard/focus, no controls covered. Do not change skill/combat rules.
 
-**Sequence (updated):** UI-4 was subsequently delivered. Execute current R1 → R2 → R3 → R4 as narrow separate code changes with focused automated tests, then §10.8 H1 → H2 → H3. Do not rerun UI-4 as an unfinished code task. No new card-family rollout, no UX3 server change, and do not reimplement already accepted Da Qiao/Inspector.
+**Sequence (updated):** UI-4, R1 and R2 were subsequently delivered. Continue with R3 → R4 as narrow separate code changes with focused automated tests, then §10.8 H1 → H2 → H3. Do not rerun UI-4 as an unfinished code task. No new card-family rollout, no UX3 server change, and do not reimplement already accepted Da Qiao/Inspector.
 
 
 ### 10.8 NEW own-Hero and opponent-seat legibility / public-event typography refinements — user request (2026-10-15)
