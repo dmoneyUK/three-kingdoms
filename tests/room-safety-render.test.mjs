@@ -523,7 +523,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /class="player-square[^>]*data-player-anchor="p2"/);
   assert.match(html, /class="player-square[^>]*data-player-anchor="p3"/);
   assert.match(html, /class="opponent-equipment-indicator" data-slot="weapon" data-equipment-id="opponent-weapon" data-card-kind="BlueSteelSword" role="img" aria-label="Weapon equipped: Blue Steel Sword"/);
-  assert.match(html, /class="opponent-hero-overlay"[\s\S]*class="opponent-hero-name">Liu Bei<\/span>[\s\S]*class="player-hp">HP 3\/4<\/span>[\s\S]*class="player-hearts">♥♥♥<\/span>/);
+  assert.match(html, /class="opponent-hero-overlay"[\s\S]*class="opponent-hero-name" title="Liu Bei">Liu Bei<\/span>[\s\S]*class="player-hp opponent-hp-badge">HP 3\/4<\/span>/, "Hero name and authoritative HP stay over the portrait");
+  assert.match(html, /class="opponent-player-name-strip"[\s\S]*class="opponent-player-name" aria-label="ALICE" title="ALICE">ALICE<\/span>[\s\S]*class="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count="1"[\s\S]*data-slot="weapon"[^>]*>/, "player identity and real public Equipment occupy distinct lower rows");
   assert.doesNotMatch(html, /class="opponent-hand-footer"|class="player-hand-count"/);
   assert.match(html, /class="opponent-equipment-indicator"[^>]*title="Weapon: Blue Steel Sword"/);
   assert.match(html, /class="mini-zone-card judgement-mini"[^>]*data-judgement-id="opponent-judgement"/);
@@ -589,9 +590,10 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /aria-label="Explain Blue Steel Sword"/); assert.match(html, /aria-label="Explain Lightning"/);
   assert.match(html, /data-equipment-id="weapon"[\s\S]*class="played-card bluesteelsword black-suit/);
   assert.match(html, /data-judgement-id="lightning"[\s\S]*class="played-card lightning black-suit/);
-  assert.match(html, /class="opponent-public-zones"[\s\S]*class="player-hero-card opponent-hero-card"[\s\S]*class="opponent-equipment-summary" role="group" aria-label="Public Equipment"[\s\S]*class="opponent-equipment-indicator" data-slot="weapon" data-equipment-id="opponent-weapon"/, "public opponent Equipment is summarized in the seat without adding a separate row");
+  assert.match(html, /class="opponent-public-zones"[\s\S]*class="player-hero-card opponent-hero-card"[\s\S]*class="opponent-player-name-strip"[\s\S]*class="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count="1"[\s\S]*class="opponent-equipment-indicator" data-slot="weapon" data-equipment-id="opponent-weapon"/, "public equipment is in the stable row below the player-name strip");
   assert.equal((html.match(/class="opponent-equipment-indicator"/g) ?? []).length, 1, "only the occupied public opponent equipment slot renders an indicator");
-  assert.equal((html.match(/class="opponent-equipment-summary"/g) ?? []).length, 1, "empty opponent equipment does not reserve a summary row");
+  assert.equal((html.match(/class="opponent-equipment-summary"/g) ?? []).length, 3, "each opponent reserves the same row height even when no public slot is occupied");
+  assert.equal((html.match(/data-slot-count="0"/g) ?? []).length, 2, "empty rows expose no fake equipment glyphs");
   assert.match(html, /class="opponent-judgement-zone"[\s\S]*data-judgement-id="opponent-judgement"/, "Judgement is a separate side zone with its card anchor");
   assert.doesNotMatch(html, /class="opponent-card-zones"/, "the old portrait-overlay zone wrapper is removed");
   assert.match(gameRoomSource, /const renderZoneCard[\s\S]*<CardFace card=\{card\}/, "local zones reuse the shared card artwork renderer");

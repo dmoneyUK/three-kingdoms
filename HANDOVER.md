@@ -2,12 +2,12 @@
 
 Branch: `ux-v2`
 
-Latest reviewed design: `docs/UX2-refine.md` blob `b3b30952be4907284f6b22514e92b69f0b00e52f`. Full §§8–11 review found no product-criteria delta since the R4 progress-only addition. §8.7 Policy B and §9 secret all-living-seat, 8s-maximum Negation remain; §§8.1–8.5 and §10.5.3 are closed. New §10.8 review details govern H2/H3; §11 UX3 remains out of scope.
+Latest reviewed design: `docs/UX2-refine.md` blob `37a3a30f80b9a4b2ceb5176445770247772a81c2`; H2 requirements in §10.8.2 were reviewed. After H2 closes, re-fetch and carefully review the latest design from Chapter 8 onward before selecting the next task. Do not change product criteria while recording progress. §11 UX3 remains out of scope.
 
 ## Latest result
 
-H1 delivered in `727b5dabb06889ec6ec6df3079b429518d52c85b` with lint correction `fbe8e3c5ad5674dec09b3ba27c770327c915a572`. Exact-SHA Actions run [38665890985](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38665890985) passed all jobs and production smoke; Worker version `4e677d1c-9e47-46e5-acd5-9847452673da`. `room-safety-render` passed 19/19; isolated ESLint pattern check passed. Whole-file local ESLint hit Node heap limits; CI lint passed. H1-specific authenticated mobile screenshots were not captured. H1 is **PENDING REVIEW**, not accepted.
+H2 opponent-seat layout is implemented locally: Hero name on portrait, player name in its own strip, prominent HP chip, and a stable public-equipment row containing only occupied slots. Turn/target/defeat state and seat anchors remain intact. Focused browser geometry suite: 42/42; `room-safety-render`: 19/19; targeted ESLint: 0 errors (three existing Hook dependency warnings in `app/page.tsx`); `git diff --check` clean. Playwright screenshots and seat-rectangle evidence are in `tests/browser/playwright-report/`. H2 exact-SHA CI/deployment is pending. Latest relevant remote source run is `38665890985` for `fbe8e3c5ad5674dec09b3ba27c770327c915a572` (success); `origin/ux-v2` is `2e8fe28d56efefa330fabe6bd0663cb66c9baec1`, a Markdown-only commit excluded by workflow path filters.
 
-## Current task — §10.8.2 H2: opponent-seat identity, HP and Equipment layout
+## Current task — §10.8.2 H2
 
-Reflow only opponent Hero seats: Hero name over/inside the portrait, actual player name in the lower strip, larger current HP chip upper-right, and a public Equipment row below the name strip. Preserve server identities, target/Switch hit areas, equipment order, Seat anchors and actor-attached histories. Inspect final responsive CSS across 4/6/8/10 seats. Validate 0/1/4 Equipment slots, long names, low HP, turn/target emphasis and history collisions at 390/440/480px and desktop using real browser rectangles. No gameplay/server changes; do not begin H3 or §11. Push, verify exact-SHA CI/deploy, record factual progress and mark **PENDING REVIEW**.
+Commit and push the six H2 implementation/regression files with this handoff, then verify the exact source SHA's Actions jobs and deployment. On success, record factual H2 progress as **PENDING REVIEW** in §10.8.2 without changing its requirements, then review the newest Chapter 8+ design and replace this handoff with exactly one newly authorized bounded task. No gameplay/server changes, no §11.

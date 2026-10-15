@@ -35,7 +35,7 @@ async function readLayout(page) {
       guidance: bounds(guidance),
       dock: bounds(dock),
       menu: bounds(document.querySelector(".local-player-dock .console-guidance-row .stage-system-menu-trigger")),
-      stage: [stage, ...stage.querySelectorAll("*")].filter(visible).map(bounds),
+      stage: stage ? [stage, ...stage.querySelectorAll("*")].filter(visible).map(bounds) : [],
       seats: [...board.querySelectorAll(":scope > [data-player-anchor]")].map((seat) => {
         const target = seat.querySelector(".opponent-hero-target");
         const targetBounds = bounds(target);

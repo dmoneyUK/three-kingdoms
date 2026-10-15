@@ -561,7 +561,7 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
   };
 }
 
-function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, negationSettlementOutcome, playerNamePrefix }) {
+function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, negationSettlementOutcome, playerNamePrefix, lowHpSeat, defeatedSeat, turnSeatOverride }) {
   const huaTuoFirstAidFixture = state.startsWith("hua-tuo-first-aid");
   const huaTuoFirstAidObserver = state === "hua-tuo-first-aid-observer";
   const dyingFixture = state === "dying" || huaTuoFirstAidFixture;
@@ -819,9 +819,9 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     generalReady: true,
     ready: true,
     ...(playerNamePrefix && index > 0 ? { isTestPlayer: true } : {}),
-    hp: oathNegationFixture ? id === "p1" ? 3 : id === "p2" ? 2 : id === "p4" ? 0 : denseOathScope && Number(id.slice(1)) >= 5 ? 3 : 4 : 4,
+    hp: oathNegationFixture ? id === "p1" ? 3 : id === "p2" ? 2 : id === "p4" ? 0 : denseOathScope && Number(id.slice(1)) >= 5 ? 3 : 4 : id === defeatedSeat ? 0 : id === lowHpSeat ? 1 : 4,
     maxHp: 4,
-    alive: oathNegationFixture ? id !== "p4" : true,
+    alive: oathNegationFixture ? id !== "p4" : id !== defeatedSeat,
     connected: true,
     handCount: (state === "picker-hand-zone" || frostSwordSelectionFixture || state === "fanjian-selectable") && id === "p1" || retaliationModalFixture && id === "p2" || state === "pending-target-card" && id === "p2" ? targetHandCount : id === meId ? hand.length : 2,
     judgementCards: state === "picker-hand-zone" && id === "p1"
@@ -882,7 +882,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     myHeroOptions: [],
     players,
     myHand: hand,
-    turnSeat: state === "group-observer" ? 3 : dyingFixture ? 1 : 0,
+    turnSeat: turnSeatOverride ?? (state === "group-observer" ? 3 : dyingFixture ? 1 : 0),
     phase: dyingFixture ? "dying" : state === "rest" || state === "group" || state === "normal" || state === "interaction" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" || state === "stargazing-offer" || state.startsWith("zhou-yu-sowing-distrust") || state.startsWith("liu-bei-benevolence") || state.startsWith("lady-gan-") || borrowedSwordFixture ? "play" : "response",
     deckCount: 20,
     discardTop: null,
@@ -961,13 +961,17 @@ function readFixture() {
   const targetCardCase = params.get("targetCardCase") || "valid";
   const targetCardKind = params.get("targetCardKind") === "Steal" ? "Steal" : "Dismantle";
   const playerNamePrefix = params.get("playerNamePrefix") || null;
-  return { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, playerNamePrefix };
+  const lowHpSeat = params.get("lowHpSeat") || null;
+  const defeatedSeat = params.get("defeatedSeat") || null;
+  const parsedTurnSeat = params.has("turnSeat") ? Number.parseInt(params.get("turnSeat"), 10) : Number.NaN;
+  const turnSeatOverride = Number.isInteger(parsedTurnSeat) ? parsedTurnSeat : null;
+  return { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, playerNamePrefix, lowHpSeat, defeatedSeat, turnSeatOverride };
 }
 
-const { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, playerNamePrefix } = readFixture();
+const { state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, playerNamePrefix, lowHpSeat, defeatedSeat, turnSeatOverride } = readFixture();
 const acknowledgeLocalPreview = new URLSearchParams(window.location.search).get("ackPreview") === "1";
 const root = createRoot(document.getElementById("root"));
-let fixtureRoom = browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, playerNamePrefix });
+let fixtureRoom = browserRoom({ state, count, handSize, targetHandCount, targetCardCase, targetCardKind, equipmentCase, judgementCase, heroOverride, targetHeroOverride, sourceOverride, effectOverride, groupParticipantOverride, groupProgressCase, groupRootOriginCase, orderedProgressCase, negationHistoryCase, negationSettlementOutcome, rootCardMissing, targetShiftCase, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, privateNegationSubmitted, negationAuthority, playerNamePrefix, lowHpSeat, defeatedSeat, turnSeatOverride });
 window.__browserActions = [];
 window.__browserLeaves = 0;
 window.__browserRoom = fixtureRoom;
