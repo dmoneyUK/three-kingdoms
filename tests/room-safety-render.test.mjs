@@ -620,6 +620,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.equal((html.match(/class="card-info-button"/g) ?? []).length, 0, "physical hand cards do not carry tiny overlapping information controls");
   assert.doesNotMatch(gameRoomSource, /data-hand-card-id=\{item\.id\}[\s\S]*className="card-info-button"/);
   assert.match(gameRoomSource, /selectedHandDetailsCard\?\.id === item\.id && selectedHandDetailsCard && <button type="button" className="hand-card-details-action" data-testid="hand-card-details-action"[\s\S]*openCardDetails\(selectedHandDetailsCard, "private-hand"/, "the selected physical card owns its attached Details action");
+  assert.match(gameRoomSource, /<div className="hand-card-visual">[\s\S]*?className="hand-card-details-action"[\s\S]*?<\/button>\}\s*<\/div>/, "Details is layered inside the selected CardFace visual wrapper");
   assert.match(gameRoomSource, /detailsSelected \? "details-selected"/, "the selected card is framed and lifted with its Details action");
   assert.doesNotMatch(html, /class="play-hand"/, "the legacy private play-hand renderer is removed");
   assert.match(html, /class="local-hand"[\s\S]*class="local-hand-rail"/);
@@ -676,6 +677,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.doesNotMatch(heroSkillEligibleRule, /transform\s*:/, "eligibility must not move every hand card");
   assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot:not\(\.single-selected\) \.game-card\.selected\s*\{\s*transform: translateY\(-5px\)/, "multi-select cards rise from the normal baseline");
   assert.match(sequenceStyleSource, /\.local-hand-rail \.hand-card-details-action\s*\{[^}]*width: 44px; min-width: 44px; height: 44px; min-height: 44px;/, "the attached Details hit area remains at least 44 by 44 CSS pixels");
+  assert.match(sequenceStyleSource, /\.local-hand-rail \.hand-card-details-action\s*\{[^}]*top: calc\(var\(--hand-card-height\) - 44px\)/, "the DETAILS hit target starts at the CardFace's lower interior edge");
+  assert.match(sequenceStyleSource, /\.card-slot\.details-selected \.hand-card-details-action\s*\{\s*transform: translateY\(calc\(0px - var\(--selected-face-rise\)\)\)/, "DETAILS follows the selected card's face movement");
   assert.match(sequenceStyleSource, /\.local-hand-rail \.game-card \.corner\s*\{[\s\S]*width: 17px[\s\S]*min-height: 23px/);
   assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*z-index: 50/);
   assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls\s*\{[\s\S]*z-index: 100/);

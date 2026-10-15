@@ -1752,11 +1752,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     setInfoHero(null);
     setInfoCard(card);
   }, []);
-  const closeCardDetails = useCallback(() => {
+  const closeCardDetails = useCallback((restoreFocus = true) => {
     const trigger = cardInfoReturnFocusRef.current;
     cardInfoReturnFocusRef.current = null;
     setInfoCard(null);
-    if (trigger?.isConnected) window.requestAnimationFrame(() => {
+    if (restoreFocus && trigger?.isConnected) window.requestAnimationFrame(() => {
       if (trigger.isConnected) trigger.focus({ preventScroll: true });
     });
   }, []);
@@ -5752,8 +5752,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                   <button disabled={!maySelect || skillModeCardDisabled || responseCardDisabled(item)} onClick={() => toggleHandCard(item)} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}>
                     <span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-name-mark">{definition.name}</span><strong>{definition.category} card</strong>
                   </button>
+                  {selectedHandDetailsCard?.id === item.id && selectedHandDetailsCard && <button type="button" className="hand-card-details-action" data-testid="hand-card-details-action" aria-label={`Details for ${definition.name}`} onClick={(event) => openCardDetails(selectedHandDetailsCard, "private-hand", event.currentTarget)}>DETAILS</button>}
                 </div>
-                {selectedHandDetailsCard?.id === item.id && selectedHandDetailsCard && <button type="button" className="hand-card-details-action" data-testid="hand-card-details-action" aria-label={`Details for ${definition.name}`} onClick={(event) => openCardDetails(selectedHandDetailsCard, "private-hand", event.currentTarget)}>DETAILS</button>}
               </div>;
             };
             // The native scroll region needs keyboard focus; it has no custom selection role.

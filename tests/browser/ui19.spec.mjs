@@ -167,8 +167,10 @@ for (const { width, handSizes } of HAND_SIZE_MATRIX) {
       expect(detailsActionBounds.height).toBeGreaterThanOrEqual(44);
       expect(await detailsAction.innerText()).toBe("DETAILS");
       const selectedFaceBounds = await last.locator(".game-card").boundingBox();
-      expect(detailsActionBounds.x + detailsActionBounds.width / 2).toBeCloseTo(selectedFaceBounds.x + selectedFaceBounds.width / 2, 0);
-      expect(detailsActionBounds.y).toBeCloseTo(selectedFaceBounds.y + selectedFaceBounds.height, 0);
+      expect(detailsActionBounds.x).toBeGreaterThanOrEqual(selectedFaceBounds.x - 1);
+      expect(detailsActionBounds.y).toBeGreaterThanOrEqual(selectedFaceBounds.y - 1);
+      expect(detailsActionBounds.x + detailsActionBounds.width).toBeLessThanOrEqual(selectedFaceBounds.x + selectedFaceBounds.width + 1);
+      expect(detailsActionBounds.y + detailsActionBounds.height).toBeCloseTo(selectedFaceBounds.y + selectedFaceBounds.height, 0);
       expect(detailsActionBounds.y + detailsActionBounds.height).toBeLessThan(selected.actionTop);
       await expect(page.locator(".turn-controls .hand-card-details-action")).toHaveCount(0);
       await detailsAction.click();
@@ -177,7 +179,9 @@ for (const { width, handSizes } of HAND_SIZE_MATRIX) {
       await expect(details.getByRole("heading", { name: /Attack/ })).toHaveCount(1);
       await expect(details.locator(".card-details-copy > h2:not(.card-details-sr-only)")).toHaveCount(0);
       await expect(details.getByRole("textbox", { name: "Canonical rules for Attack" })).toHaveValue(/.+/);
-      await expect(page.getByText("PRIVATE TO YOU", { exact: true })).toBeVisible();
+      await expect(details).toHaveAccessibleDescription("Private card details, visible only to you.");
+      await expect(details.locator("#card-details-context")).toBeHidden();
+      await expect(details.locator(".card-details-heading, .card-details-rules-label")).toHaveCount(0);
       await expect(details.locator(".card-details-illustration .played-card")).toBeVisible();
       await expect(details).toHaveAttribute("data-card-details-context", "private-hand");
       expect(await details.evaluate((element) => element.getAttribute("aria-modal"))).not.toBe("true");
@@ -199,6 +203,7 @@ for (const { width, handSizes } of HAND_SIZE_MATRIX) {
       expect(detailsGeometry.panel.bottom).toBeLessThanOrEqual(detailsGeometry.stage.bottom + 1);
       expect(detailsGeometry.stagePointerEvents).toBe("none");
       expect(detailsGeometry.panelPointerEvents).toBe("auto");
+      expect(detailsGeometry.panel.bottom - detailsGeometry.panel.top).toBeLessThan(210);
       const closeBounds = await details.getByRole("button", { name: "Close card details" }).boundingBox();
       expect(closeBounds.width).toBeGreaterThanOrEqual(44);
       expect(closeBounds.height).toBeGreaterThanOrEqual(44);
@@ -281,10 +286,13 @@ test("UX2-10.6 UI-1 own equipped-card details do not change a skill selection", 
   const details = page.getByRole("dialog");
   await expect(details).toHaveAttribute("data-card-details-context", "public-zone");
   await expect(details).toHaveAttribute("data-card-details-card-id", "browser-local-equipment-eligible");
+  await expect(details).toHaveAccessibleDescription("Public card details.");
+  await expect(details.locator(".card-details-heading, .card-details-rules-label")).toHaveCount(0);
   await expect(details.locator(".card-details-illustration .card-name-mark")).toContainText("Nio Shield");
   await expect(details.getByRole("heading", { name: /Nio Shield/ })).toHaveCount(1);
   await expect(details.locator(".card-details-copy > h2:not(.card-details-sr-only)")).toHaveCount(0);
   await expect(details.locator(".card-details-illustration .played-card")).toBeVisible();
+  expect((await details.boundingBox()).height).toBeLessThan(210);
   await expect(equipment).not.toHaveClass(/selected-cost/);
   expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action !== "start_response_timer"))).toEqual([]);
 
