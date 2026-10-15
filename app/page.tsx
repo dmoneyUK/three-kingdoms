@@ -21,9 +21,11 @@ import { buildPresentationTransition, type PresentationTransitionKind } from "..
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
+import { derivePublicActivityStatus } from "../game/public-activity";
 import { CardFace } from "./card-face";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
 import { PublicCardDisplay, publicCardActionKey, type PublicCardDisplayAction } from "./public-card-display";
+import { PublicActivityChip } from "./public-activity-chip";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
 
@@ -2828,6 +2830,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }
   };
   const decisionPresentation = buildDecisionPresentation(room, clientPresentation);
+  const publicActivityStatus = derivePublicActivityStatus(room);
+  const publicActivitySeatLayoutKey = room.players.map((player) => `${player.id}:${player.seat}`).join("|");
   const currentActionOwnedByViewer = Boolean(room.currentAction?.actorId === room.meId && room.isMyAction && room.currentAction.kind !== "none");
   const targetCardPickerSelectedKeys = targetCardPickerSelection
     ? triggerSelectedKeys.filter((key) => targetCardPickerSelection.eligibleKeys.includes(key))
@@ -5330,6 +5334,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           ? { ...current, journeySettled: true }
           : current);
       }} />
+      <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey} />
       {infoCard && <CardDetailsPreview card={infoCard} context={infoCardContext} onClose={closeCardDetails} />}
       {infoHero && me && <HeroDetailsPreview hero={infoHero} currentHp={me.hp} maximumHp={me.maxHp} onClose={closeHeroDetails} />}
     </section>

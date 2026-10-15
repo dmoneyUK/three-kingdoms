@@ -4097,6 +4097,32 @@
   height: 10px;
 }
 
+/* L1: one quiet, geometry-aware public activity chip in the lower battlefield. */
+.game-shell .play-table > .public-activity-chip {
+  position: absolute;
+  z-index: 21;
+  box-sizing: border-box;
+  display: block;
+  width: max-content;
+  max-width: calc(100% - 16px);
+  min-height: 22px;
+  padding: 4px 9px;
+  border: 1px solid #b49a62;
+  border-radius: 999px;
+  background: rgb(12 14 10 / 84%);
+  box-shadow: 0 3px 10px #0008;
+  color: #e5d4a6;
+  font: 11px/1.2 Arial, sans-serif;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  translate: none;
+  transform: none;
+  visibility: hidden;
+}
+
 @media (max-width: 650px) {
   .game-shell .player-board[data-seat-topology="side-column"][data-player-count="10"] {
     row-gap: 3px;
