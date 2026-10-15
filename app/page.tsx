@@ -701,6 +701,8 @@ export function HeroDetailsPreview({ hero, currentHp, maximumHp, onClose }: { he
           <strong>HP {currentHp ?? "—"}/{maximumHp ?? hero.hp}</strong>
         </div>
       </div>
+      {/* The scrollable skills region needs keyboard focus to expose long descriptions. */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex */}
       <div className="hero-details-skills" role="region" aria-label={`${hero.name} skills and descriptions`} tabIndex={0}>
         {skills.map((skill) => <section className="hero-details-skill" key={skill.name}>
           <h3>{skill.name}</h3>
@@ -2670,7 +2672,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => { if (!resolutionClosing) return; const closingRevision = resolutionRevision.current; const timer = setTimeout(() => { if (resolutionRevision.current !== closingRevision) { setResolutionClosing(false); return; } setResolutionEvents([]); setSequenceScopeStartId(""); setResolutionClosing(false); }, UI_TIMING.sequenceDiscard); return () => clearTimeout(timer); }, [resolutionClosing]);
   useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawPresentation({ playerId: room.meId, cards: [] }), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, room.meId, activeEvent, eventQueue.length]);
   useEffect(() => { if (!infoCard && !infoHero && !expandedOpponentId) return; const close = (event: KeyboardEvent) => { if (event.key !== "Escape") return; if (infoCard) { closeCardDetails(); return; } if (infoHero) { closeHeroDetails(); return; } if (nestedInspectorCardDetailDismissRef.current?.()) return; setExpandedOpponentId(null); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [infoCard, infoHero, expandedOpponentId, closeCardDetails, closeHeroDetails]);
-  useEffect(() => { heroInfoReturnFocusRef.current = null; setInfoHero(null); }, [room.code, room.meId]);
+  useEffect(() => { heroInfoReturnFocusRef.current = null; const timer = setTimeout(() => setInfoHero(null), 0); return () => clearTimeout(timer); }, [room.code, room.meId]);
   useEffect(() => { const timer = setTimeout(() => { setSelected(""); setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setTargetIds([]); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setDiscardSelected([]); setSerpentMode(false); setSerpentSelected([]); setResponseProviderId(""); }, 0); return () => clearTimeout(timer); }, [room.turnSeat, room.phase, room.meId]);
   // A response may advance to another decision without changing the turn,
   // phase, or acting seat. The authoritative revision identifies that new
