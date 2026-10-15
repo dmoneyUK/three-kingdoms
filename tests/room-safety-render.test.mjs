@@ -15,6 +15,17 @@ const gameRoomSource = readFileSync(new URL("../app/page.tsx", import.meta.url),
 const globalStyleSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const sequenceStyleSource = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
 
+function localDecisionStatusMarkup(html) {
+  const start = html.indexOf('<div class="decision-status');
+  const end = html.indexOf('<div class="stage-system-menu"', start);
+  assert.ok(start >= 0 && end > start, "rendered Local Dock includes its decision guidance before the System Menu");
+  return html.slice(start, end);
+}
+
+function assertNoTransientBusyGuidance(html) {
+  assert.doesNotMatch(localDecisionStatusMarkup(html), /Resolving…|Skipping…/);
+}
+
 test("game messages start minimized while retaining the fold control", () => {
   assert.match(gameRoomSource, /const \[messagesCollapsed, setMessagesCollapsed\] = useState\(true\)/);
   assert.match(gameRoomSource, /aria-label=\{messagesCollapsed \? "Expand game messages" : "Collapse game messages"\}/);
@@ -880,7 +891,7 @@ test("normalized malformed and unknown response states render safely", () => {
   const luoshenBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: luoshenRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Godess of Luo River<\/button>/);
   assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Skip<\/button>/);
-  assert.doesNotMatch(luoshenBusyHtml, /Resolving…|Skipping…/);
+  assertNoTransientBusyGuidance(luoshenBusyHtml);
 
   const pickerRoom = normalizeRoomData({
     code: "SAFE-PICKER", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
@@ -901,7 +912,7 @@ test("normalized malformed and unknown response states render safely", () => {
   const pickerBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: pickerRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(pickerBusyHtml, /<button[^>]*disabled=""[^>]*>Skip<\/button>/);
   assert.match(pickerBusyHtml, /<button[^>]*disabled=""[^>]*>Use Frost Sword<\/button>/);
-  assert.doesNotMatch(pickerBusyHtml, /Resolving…|Skipping…/);
+  assertNoTransientBusyGuidance(pickerBusyHtml);
 
   const choicePayload = {
     code: "SAFE-CHOICE", status: "playing", maxPlayers: 4, isHost: false, isTestController: true, meId: "p2", myRole: "Rebel", myHeroOptions: [],
@@ -924,7 +935,7 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.doesNotMatch(choiceHtml, /Skip/, "mandatory Yin-Yang choice has no Skip action");
   const choiceBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: choiceRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(choiceBusyHtml, /<button[^>]*disabled=""[^>]*>Confirm choice<\/button>/);
-  assert.doesNotMatch(choiceBusyHtml, /Resolving…|Skipping…/);
+  assertNoTransientBusyGuidance(choiceBusyHtml);
 
   const triumphantPayload = normalizeRoomData({ ...choicePayload, meId: "p1", myRole: "Lord", actionPlayerId: "p1", actionReason: "Triumphant", isMyAction: true, currentAction: { ...choicePayload.currentAction, actorId: "p1", reason: "Triumphant", legalActions: ["trigger", "decline_trigger"], triggerOptions: [{ effectId: "hua_xiong_triumphant", label: "Triumphant", allowDecline: true, selection: { type: "choice", choices: [{ id: "recover", label: "Recover 1 HP" }, { id: "draw", label: "Draw 1 card" }], eligibleHandKeys: [] } }], declineAction: "decline_trigger" } });
   const triumphantHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: triumphantPayload, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
