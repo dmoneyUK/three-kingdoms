@@ -203,6 +203,8 @@ export function provenPublicCardEffects(value: unknown): PresentationSnapshotPub
     return effect.semantics === "PROVEN" && validIds.has(effect.effectId)
       && classesById[effect.effectId]?.includes(effect.effectClass)
       && nonEmptyString(effect.eventId) && nonEmptyString(effect.activationOwnerId)
+      && (effect.activationEventId === undefined || nonEmptyString(effect.activationEventId)
+        && effect.activationEventId !== effect.eventId && effect.effectId === "diao_chan_lust" && effect.effectClass === "COST")
       && cards.length > 0 && cards.every((card): card is Card => Boolean(card))
       && new Set(cards.map((card) => card!.id)).size === cards.length
       && Array.isArray(effect.materials) && effect.materials.length === effect.cards.length
@@ -237,6 +239,7 @@ export function provenPublicCardEffects(value: unknown): PresentationSnapshotPub
     effectId: effect.effectId,
     effectClass: effect.effectClass,
     eventId: effect.eventId,
+    ...(effect.activationEventId ? { activationEventId: effect.activationEventId } : {}),
     activationOwnerId: effect.activationOwnerId,
     materials: effect.materials.map(({ cardId, ownerId, fromZone, toZone }) => ({ cardId, ownerId, fromZone, toZone })),
     ...(effect.rootEventId ? { rootEventId: effect.rootEventId, rootResolutionId: effect.rootResolutionId! } : {}),
@@ -341,7 +344,10 @@ export function provenSkillEffectSettlements(value: unknown): PresentationSnapsh
   }));
 }
 
-export function provenDiaoChanSkillNotices(value: unknown): PresentationSnapshotDiaoChanSkillNotice[] {
+export function provenDiaoChanSkillNotices(
+  value: unknown,
+  publicCardEffects: readonly PresentationSnapshotPublicCardEffect[] = [],
+): PresentationSnapshotDiaoChanSkillNotice[] {
   if (!Array.isArray(value)) return [];
   const candidates = value.filter((candidate): candidate is PresentationSnapshotDiaoChanSkillNotice => {
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
@@ -353,6 +359,7 @@ export function provenDiaoChanSkillNotices(value: unknown): PresentationSnapshot
         && nonEmptyString(notice.firstParticipantId) && nonEmptyString(notice.secondParticipantId)
         && nonEmptyString(notice.firstActorId) && notice.sourceId !== notice.firstParticipantId
         && notice.sourceId !== notice.secondParticipantId && notice.firstParticipantId !== notice.secondParticipantId
+        && (notice.costEventId === undefined || nonEmptyString(notice.costEventId))
         && (notice.firstActorId === notice.firstParticipantId || notice.firstActorId === notice.secondParticipantId);
     }
     if (notice.effectId === "diao_chan_lust" && notice.notice === "DUEL_RESULT") {
@@ -382,7 +389,7 @@ export function provenDiaoChanSkillNotices(value: unknown): PresentationSnapshot
   for (const notice of candidates) {
     if (notice.notice !== "ACTIVATION") rootCounts.set(notice.rootEventId, (rootCounts.get(notice.rootEventId) ?? 0) + 1);
   }
-  return candidates.filter((notice) => {
+  const accepted = candidates.filter((notice) => {
     if (eventCounts.get(notice.eventId) !== 1) return false;
     if (notice.notice === "ACTIVATION") return true;
     if (rootCounts.get(notice.rootEventId) !== 1) return false;
@@ -395,6 +402,34 @@ export function provenDiaoChanSkillNotices(value: unknown): PresentationSnapshot
         && activation.firstActorId === notice.firstActorId;
     }
     return true;
+  });
+  return accepted.map((notice) => {
+    if (notice.effectId === "diao_chan_lust" && notice.notice === "ACTIVATION") {
+      const linkedCosts = notice.costEventId ? publicCardEffects.filter((effect) => effect.eventId === notice.costEventId
+        && effect.effectId === "diao_chan_lust" && effect.effectClass === "COST"
+        && effect.activationEventId === notice.eventId && effect.activationOwnerId === notice.sourceId
+        && effect.outcome === "DUEL_DECLARED"
+        && effect.targetIds?.length === 2
+        && effect.targetIds[0] === notice.firstParticipantId && effect.targetIds[1] === notice.secondParticipantId
+        && effect.materials.length === 1 && effect.cards.length === 1
+        && effect.materials[0]?.cardId === effect.cards[0]?.id
+        && effect.materials[0]?.ownerId === notice.sourceId
+        && (effect.materials[0]?.fromZone === "HAND" || effect.materials[0]?.fromZone === "EQUIPMENT")
+        && effect.materials[0]?.toZone === "DISCARD") : [];
+      return {
+        semantics: "PROVEN",
+        effectId: "diao_chan_lust",
+        notice: "ACTIVATION",
+        eventId: notice.eventId,
+        rootEventId: notice.rootEventId,
+        sourceId: notice.sourceId,
+        firstParticipantId: notice.firstParticipantId,
+        secondParticipantId: notice.secondParticipantId,
+        firstActorId: notice.firstActorId,
+        ...(linkedCosts?.length === 1 ? { costEventId: notice.costEventId } : {}),
+      } satisfies PresentationSnapshotDiaoChanSkillNotice;
+    }
+    return notice;
   });
 }
 
@@ -1223,6 +1258,7 @@ function coherentPublicAuthority(presentationV2: PresentationV2): PublicAuthorit
  */
 export function composePresentationSnapshot(input: PresentationSnapshotInput): PresentationSnapshot {
   const authority = coherentPublicAuthority(input.presentationV2);
+  const publicCardEffects = provenPublicCardEffects(input.presentationV2.publicCardEffects);
   const groupParticipantProgress = authority
     ? groupParticipantProgressFor(input.presentationV2, authority.scene, authority.identity, authority.stable)
     : null;
@@ -1240,7 +1276,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     rootAction: authority ? rootActionFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
     skillEffectAction: provenSkillEffectAction(input.presentationV2.skillEffectAction),
     skillEffectSettlements: provenSkillEffectSettlements(input.presentationV2.skillEffectSettlements),
-    diaoChanSkillNotices: provenDiaoChanSkillNotices(input.presentationV2.diaoChanSkillNotices),
+    diaoChanSkillNotices: provenDiaoChanSkillNotices(input.presentationV2.diaoChanSkillNotices, publicCardEffects),
     dismantleSettlements: provenDismantleSettlements(input.presentationV2.dismantleSettlements),
     stealSettlements: provenStealSettlements(input.presentationV2.stealSettlements),
     attackHitSettlements: provenAttackHitSettlements(input.presentationV2.attackHitSettlements),
@@ -1250,7 +1286,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     ...(input.presentationV2.attackDodgeResponses?.length ? { attackDodgeResponses: provenAttackDodgeResponses(input.presentationV2.attackDodgeResponses) } : {}),
     selfTargetActions: provenSelfTargetActions(input.presentationV2.selfTargetActions),
     deflectionActions: provenDeflectionActions(input.presentationV2.deflectionActions),
-    publicCardEffects: provenPublicCardEffects(input.presentationV2.publicCardEffects),
+    publicCardEffects,
     decision: authority && authority.stable.kind === "CHOICE"
       ? { actorId: authority.scene.decisionActorId, stage: authority.scene.stage }
       : null,

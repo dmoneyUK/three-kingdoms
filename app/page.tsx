@@ -11,7 +11,7 @@ import { normalizeRoomData } from "../game/room-safety.js";
 import { canUseAction, type CurrentAction, type GameplayAction, type TriggerOptionView } from "../game/protocol.js";
 import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
-import type { PresentationSnapshot, PresentationSnapshotDiaoChanSkillNotice } from "../game/presentation-snapshot";
+import type { PresentationSnapshot, PresentationSnapshotDiaoChanSkillNotice, PresentationSnapshotPublicCardEffect } from "../game/presentation-snapshot";
 import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationPublicCardEffectProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
 import { attackDodgeResponseEventMatchesProof } from "../game/presentation-v2";
 import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
@@ -66,7 +66,7 @@ function persistAttackHitSettlementRetirement(held: AttackHitSettlementHoldIdent
 
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
 type PresentationImportance = "essential" | "informational";
-type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; publicDiaoChanNotice?: unknown; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; privateToPlayerId?: string; publicDiaoChanNotice?: unknown; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type CardEvent = PresentationEventMeta & { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" | "draw"; drawPlayerId?: string; presentation?: boolean };
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
 
@@ -109,16 +109,91 @@ function diaoChanNoticeCopy(proof: PresentationSnapshotDiaoChanSkillNotice, play
 }
 function diaoChanNoticeMatchesEvent(value: unknown, proof: PresentationSnapshotDiaoChanSkillNotice) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const actual = value as Record<string, unknown>;
+  const actual = { ...(value as Record<string, unknown>) };
+  // The activation can remain a truthful standalone notice when its optional
+  // cost relation fails validation. Ignore only that unproven relation field;
+  // all actor, participant and first-actor facts must still match exactly.
+  if (proof.effectId === "diao_chan_lust" && proof.notice === "ACTIVATION"
+    && proof.costEventId === undefined && typeof actual.costEventId === "string") delete actual.costEventId;
   const expected = Object.fromEntries(Object.entries(proof).filter(([key]) => key !== "eventId"
     && !(key === "rootEventId" && proof.notice === "ACTIVATION" && proof.rootEventId === proof.eventId)));
   return Object.keys(actual).length === Object.keys(expected).length
     && Object.entries(expected).every(([key, fieldValue]) => actual[key] === fieldValue);
 }
+type LustActivationNotice = Extract<PresentationSnapshotDiaoChanSkillNotice, {
+  effectId: "diao_chan_lust";
+  notice: "ACTIVATION";
+}>;
+type VerifiedLustCostFrameProof = {
+  activation: LustActivationNotice & { costEventId: string };
+  activationEvent: Extract<GameEvent, { type: "message" }>;
+  costEvent: CardEvent | CardGroupEvent;
+  costCard: Card;
+  owner: Player;
+  firstParticipant: Player;
+  secondParticipant: Player;
+  firstActor: Player;
+};
+function verifiedLustCostFrameForEvent(
+  timeline: readonly GameEvent[],
+  notices: readonly PresentationSnapshotDiaoChanSkillNotice[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  activationEventId?: string,
+): VerifiedLustCostFrameProof | null {
+  const activations = notices.filter((notice): notice is VerifiedLustCostFrameProof["activation"] =>
+    notice.effectId === "diao_chan_lust" && notice.notice === "ACTIVATION" && Boolean(notice.costEventId)
+      && (!activationEventId || notice.eventId === activationEventId));
+  if (activations.length !== 1) return null;
+  const activation = activations[0];
+  const activationMatches = timeline.filter((event) => event.id === activation.eventId);
+  const activationEvent = activationMatches.length === 1 && activationMatches[0].type === "message"
+    ? activationMatches[0] : null;
+  if (!activationEvent || activationEvent.presentation === false || activationEvent.privateToPlayerId
+    || activationEvent.importance !== "essential"
+    || !diaoChanNoticeMatchesEvent(activationEvent.publicDiaoChanNotice, activation)) return null;
+
+  const costMatches = timeline.filter((event) => event.id === activation.costEventId);
+  const costEvent = costMatches.length === 1 && (costMatches[0].type === "card" || costMatches[0].type === "cards")
+    ? costMatches[0] : null;
+  if (!costEvent || costEvent.presentation === false || costEvent.privateToPlayerId
+    || costEvent.action !== "discard" || !costEvent.resolutionId) return null;
+  const matchingEffects = effects.filter((effect) => effect.eventId === costEvent.id
+    && effect.effectId === "diao_chan_lust" && effect.effectClass === "COST");
+  const matchingRawEffects = (costEvent.publicCardEffects ?? []).filter((effect) =>
+    effect.effectId === "diao_chan_lust" && effect.effectClass === "COST");
+  if (matchingEffects.length !== 1 || matchingRawEffects.length !== 1) return null;
+  const effect = matchingEffects[0];
+  const rawEffect = matchingRawEffects[0];
+  const costCards = costEvent.type === "card" ? [costEvent.card] : costEvent.cards;
+  const [costCard] = costCards;
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  if (costCards.length !== 1 || !costCard || !material || !rawMaterial || !projectedCard
+    || effect.activationEventId !== activation.eventId || rawEffect.activationEventId !== activation.eventId
+    || effect.activationOwnerId !== activation.sourceId || rawEffect.activationOwnerId !== activation.sourceId
+    || effect.outcome !== "DUEL_DECLARED" || rawEffect.outcome !== "DUEL_DECLARED"
+    || effect.targetIds?.length !== 2 || rawEffect.targetIds?.length !== 2
+    || effect.targetIds[0] !== activation.firstParticipantId || effect.targetIds[1] !== activation.secondParticipantId
+    || rawEffect.targetIds[0] !== activation.firstParticipantId || rawEffect.targetIds[1] !== activation.secondParticipantId
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || material.cardId !== costCard.id || rawMaterial.cardId !== costCard.id || projectedCard.id !== costCard.id
+    || material.ownerId !== activation.sourceId || rawMaterial.ownerId !== activation.sourceId
+    || (material.fromZone !== "HAND" && material.fromZone !== "EQUIPMENT")
+    || rawMaterial.fromZone !== material.fromZone || material.toZone !== "DISCARD" || rawMaterial.toZone !== "DISCARD"
+    || projectedCard.kind !== costCard.kind || projectedCard.suit !== costCard.suit || projectedCard.rank !== costCard.rank) return null;
+  const owner = players.find((player) => player.id === activation.sourceId && player.hero === "diao-chan");
+  const firstParticipant = players.find((player) => player.id === activation.firstParticipantId);
+  const secondParticipant = players.find((player) => player.id === activation.secondParticipantId);
+  const firstActor = players.find((player) => player.id === activation.firstActorId);
+  if (!owner?.name || !firstParticipant?.name || !secondParticipant?.name || !firstActor?.name) return null;
+  return { activation, activationEvent, costEvent, costCard, owner, firstParticipant, secondParticipant, firstActor };
+}
 type LocalTargetPreviewPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null };
 type LocalTargetPreviewSubmission = { targetId: string; presentationKey: string; actionRevision: string; currentActionKey: string };
 type LocalOpponentInspectionPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null; handCount: number; equipmentCards: Card[]; judgementCards: Card[] };
-type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; latestNegationCardId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealed: Card[]; choices: { cardId: string; playerId: string; playerName: string }[]; previewCardId: string | null; complete: boolean; countdownUntil: number } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
+type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number; attackResponseCount?: number; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; latestNegationCardId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealed: Card[]; choices: { cardId: string; playerId: string; playerName: string }[]; previewCardId: string | null; complete: boolean; countdownUntil: number } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
 
 export const HERO_ART_BY_ID: Record<string, string> = {
   "cao-cao": "/hero-cao-cao.jpg",
@@ -2242,6 +2317,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     equipmentCards: inspectionPlayer.equipmentCards,
     judgementCards: inspectionPlayer.judgementCards,
   } : null;
+  const lustFramePresentationBlocked = Boolean(targetPreviewPresentation || opponentInspectionPresentation || expandedOpponentId || groupScopePreview.active);
   const pendingTargetCardSelectableTarget = pickerTarget
     && pendingTargetCardSelectableSelection?.targetId === pickerTarget.id
     && pickerTarget.alive
@@ -2623,6 +2699,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       const proofs = projectedDiaoChanNotices.filter((proof) => proof.eventId === event.id);
       if (proofs.length === 1 && diaoChanNoticeMatchesEvent(event.publicDiaoChanNotice, proofs[0])
         && !seenDiaoChanNoticeEventIds.current.has(event.id)) {
+        const committedLustFrame = proofs[0].effectId === "diao_chan_lust" && proofs[0].notice === "ACTIVATION"
+          && !lustFramePresentationBlocked
+          ? verifiedLustCostFrameForEvent(room.timeline, projectedDiaoChanNotices,
+            room.presentationSnapshot?.publicCardEffects ?? [], room.players, event.id)
+          : null;
+        if (committedLustFrame) {
+          seenDiaoChanNoticeEventIds.current.add(event.id);
+          return [];
+        }
         const copy = diaoChanNoticeCopy(proofs[0], room.players);
         if (copy) {
           seenDiaoChanNoticeEventIds.current.add(event.id);
@@ -2664,7 +2749,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       } else setEventQueue((queue) => coalescePresentationQueue(queue, visible));
     }
     setProcessedTimelineKey(timelineKey);
-  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.presentationSnapshot?.diaoChanSkillNotices, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements]);
+  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, lustFramePresentationBlocked, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements]);
   const effectNoticeEventId = effectNotice?.eventId ?? "";
   const effectNoticeRoomCode = effectNotice?.roomCode ?? "";
   const effectNoticeViewerId = effectNotice?.viewerId ?? "";
@@ -3904,11 +3989,52 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ...(singleTargetNegationResponses.length ? { responses: singleTargetNegationResponses } : {}),
     }
     : null;
+  const lustCostFrameCandidate = (() => {
+    const notices = room.presentationSnapshot?.diaoChanSkillNotices ?? [];
+    const settledRoots = new Set(notices.filter((notice) => notice.effectId === "diao_chan_lust" && notice.notice === "DUEL_RESULT")
+      .map((notice) => notice.rootEventId));
+    const unsettledActivations = notices.filter((notice) => notice.effectId === "diao_chan_lust"
+      && notice.notice === "ACTIVATION" && !settledRoots.has(notice.eventId));
+    const proved = unsettledActivations.flatMap((notice) => {
+      const frame = verifiedLustCostFrameForEvent(room.timeline, notices,
+        room.presentationSnapshot?.publicCardEffects ?? [], room.players, notice.eventId);
+      return frame ? [frame] : [];
+    });
+    if (proved.length !== 1) return null;
+    const frame = proved[0];
+    const activeLust = room.pendingDuel?.lust;
+    if (room.pendingDuel && (!activeLust || activeLust.rootEventId !== frame.activation.eventId
+      || (room.pendingDuel.attackResponseCount ?? 0) > 0)) return null;
+    return frame;
+  })();
+  const lustCostFrameAction: PublicCardDisplayAction | null = lustCostFrameCandidate ? {
+    key: ["lust-cost", lustCostFrameCandidate.activation.eventId, lustCostFrameCandidate.costEvent.id].join(":"),
+    rootEventId: lustCostFrameCandidate.costEvent.id,
+    sourceId: lustCostFrameCandidate.activation.sourceId,
+    targetId: null,
+    cardFace: lustCostFrameCandidate.costCard,
+    cardLabel: "LUST COST",
+    ariaLabel: `Diao Chan used Lust. ${lustCostFrameCandidate.firstParticipant.name} and ${lustCostFrameCandidate.secondParticipant.name} enter a Duel. ${lustCostFrameCandidate.firstActor.name} plays Attack first.`,
+    motion: {
+      type: "lust-cost",
+      scopeKey: [room.code, lustCostFrameCandidate.activation.eventId, lustCostFrameCandidate.costEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(lustCostFrameCandidate.costEvent.id)
+        ? [] : [lustCostFrameCandidate.costEvent.id],
+    },
+    lustCostFrame: {
+      activationEventId: lustCostFrameCandidate.activation.eventId,
+      title: "LUST",
+      message: `Diao Chan used Lust: ${lustCostFrameCandidate.firstParticipant.name} and ${lustCostFrameCandidate.secondParticipant.name} enter a Duel; ${lustCostFrameCandidate.firstActor.name} plays Attack first.`,
+      compactMessage: `Diao Chan used Lust: ${lustCostFrameCandidate.firstParticipant.hero ? heroName(lustCostFrameCandidate.firstParticipant.hero) : lustCostFrameCandidate.firstParticipant.name} and ${lustCostFrameCandidate.secondParticipant.hero ? heroName(lustCostFrameCandidate.secondParticipant.hero) : lustCostFrameCandidate.secondParticipant.name} enter a Duel; ${lustCostFrameCandidate.firstActor.hero ? heroName(lustCostFrameCandidate.firstActor.hero) : lustCostFrameCandidate.firstActor.name} plays Attack first.`,
+    },
+  } : null;
   const singleTargetNegationOwnsRoot = Boolean(singleTargetNegationUsesJourney && singleTargetNegationProofCandidate
     && (!rootAction || rootAction.rootEventId === singleTargetNegationProofCandidate.rootEvent.id)
     && (clientPresentation.stage === "NEGATION" || singleTargetNegationProofCandidate.responseNodes.length > 0));
   const livePublicCardAction: PublicCardDisplayAction | null = heldPublicNegationReadAction
     ? heldPublicNegationReadAction
+    : lustCostFrameAction
+    ? lustCostFrameAction
     : groupSettlementCandidate
     ? {
       key: ["group", groupSettlementCandidate.settlement.interactionId, groupSettlementCandidate.settlement.groupFrameId, groupSettlementCandidate.rootEvent.id].join(":"),
@@ -4295,6 +4421,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? [publicCardDisplayAction.rootEventId, publicCardDisplayAction.response?.eventId, publicCardDisplayAction.deflection?.eventId].filter((eventId): eventId is string => Boolean(eventId))
     : publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation"
       ? [publicCardDisplayAction.rootEventId, ...(publicCardDisplayAction.responses ?? []).map((response) => response.eventId)]
+    : publicCardDisplayAction?.motion?.type === "lust-cost"
+      ? [publicCardDisplayAction.rootEventId]
     : publicCardDisplayAction?.motion?.type === "duel"
       ? [publicCardDisplayAction.rootEventId, ...(publicCardDisplayAction.responses ?? []).map((response) => response.eventId)]
       : [];
@@ -4318,6 +4446,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const publicDisplayOwnedEventIds = publicCardDisplayOwnsPresentation && publicCardDisplayAction
     ? [...new Set([
       publicCardDisplayAction.rootEventId,
+      publicCardDisplayAction.lustCostFrame?.activationEventId,
       publicCardDisplayAction.settlement?.eventId,
       publicCardDisplayAction.deflection?.eventId,
       ...(!duelJourneyOwnsRootAndAttacks ? [publicCardDisplayAction.response?.eventId, publicCardDisplayAction.publicCounterRead?.eventId] : []),
@@ -5298,7 +5427,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           : null}
         eventTimer={<>{privateDrawTimer}{harvestEventTimer}</>}
       />
-      {effectNotice && effectNotice.roomCode === room.code && effectNotice.viewerId === room.meId && <div key={effectNotice.eventId} className={`effect-notice${effectNotice.exiting ? " is-exiting" : ""}`} role="status" aria-live="polite" aria-atomic="true" data-effect-notice-event-id={effectNotice.eventId}><span>{effectNotice.heading}</span><b>{effectNotice.message}</b></div>}
+      {effectNotice && effectNotice.roomCode === room.code && effectNotice.viewerId === room.meId
+        && !(publicCardDisplayReady && publicCardDisplayAction?.motion?.type === "lust-cost"
+          && publicCardDisplayAction.lustCostFrame?.activationEventId === effectNotice.eventId)
+        && <div key={effectNotice.eventId} className={`effect-notice${effectNotice.exiting ? " is-exiting" : ""}`} role="status" aria-live="polite" aria-atomic="true" data-effect-notice-event-id={effectNotice.eventId}><span>{effectNotice.heading}</span><b>{effectNotice.message}</b></div>}
       </div>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
       {canChooseBorrowedSword && <div className="turn-notice borrowed-sword-notice" role="status"><span>BORROWED SWORD</span><b>{borrowedSwordTargetId ? "Target selected · confirm below" : "Choose a legal Attack target"}</b></div>}

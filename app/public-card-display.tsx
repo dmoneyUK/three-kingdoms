@@ -35,6 +35,11 @@ type PublicCardDisplayMotion = {
   /** Room and proven Duel identity keep retained card state isolated. */
   scopeKey: string;
   freshEventIds: readonly string[];
+} | {
+  type: "lust-cost";
+  /** The paired activation/cost IDs keep this public frame event-scoped. */
+  scopeKey: string;
+  freshEventIds: readonly string[];
 };
 
 /**
@@ -79,6 +84,12 @@ export type PublicCardDisplayAction = {
     ariaLabel: string;
     publicNotice: string;
   };
+  lustCostFrame?: {
+    activationEventId: string;
+    title: string;
+    message: string;
+    compactMessage?: string;
+  };
   responses?: readonly PublicCardDisplayResponseNode[];
 };
 
@@ -121,6 +132,7 @@ function PublicJourneyCard({
   primary = false,
   parkingSide,
   showOrdinal = false,
+  lustCostFrame,
   onInspectCard,
 }: {
   card: JourneyCard;
@@ -129,13 +141,14 @@ function PublicJourneyCard({
   primary?: boolean;
   parkingSide?: string;
   showOrdinal?: boolean;
+  lustCostFrame?: PublicCardDisplayAction["lustCostFrame"];
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
   const inspectable = card.phase === "parked" && Boolean(onInspectCard);
   const definition = cardDefinition(card.cardFace.kind);
   return <button
     type="button"
-    className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${className} ${inspectable ? "is-inspectable" : ""}`}
+    className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${className} ${lustCostFrame ? "is-lust-cost" : ""} ${inspectable ? "is-inspectable" : ""}`}
     disabled={!inspectable}
     tabIndex={inspectable ? 0 : -1}
     aria-hidden={inspectable ? undefined : true}
@@ -160,6 +173,23 @@ function PublicJourneyCard({
     data-public-card-copy-anchor-event-id={card.eventId}
     style={{ left: card.rect.left, top: card.rect.top, width: card.rect.width, height: card.rect.height }}
   >
+    {lustCostFrame && card.phase !== "parked" && <span
+      className={`public-card-lust-cost-frame-panel${card.phase === "move" ? " is-moving" : ""}`}
+      aria-hidden="true"
+      data-public-card-frame-kind="DIAO_CHAN_LUST_COST"
+      data-public-card-frame-event-id={lustCostFrame.activationEventId}
+      data-public-card-frame-card-event-id={card.eventId}
+      style={{
+        left: -LUST_COST_FRAME.cardOffsetLeft,
+        top: -LUST_COST_FRAME.cardOffsetTop,
+        width: `min(${LUST_COST_FRAME.width}px, calc(100vw - 16px))`,
+        height: LUST_COST_FRAME.height,
+        transform: `scale(${card.rect.width / REVEAL_CARD.width})`,
+        transformOrigin: `${LUST_COST_FRAME.cardOffsetLeft}px ${LUST_COST_FRAME.cardOffsetTop}px`,
+      }}
+    >
+      <strong className="public-card-lust-cost-frame-title">{lustCostFrame.title}</strong>
+    </span>}
     <CardFace card={card.cardFace} />
     {card.semanticLabel && <small className="public-card-journey-semantic">{card.semanticLabel}</small>}
     {showOrdinal && card.globalOrdinal !== undefined && <small className="public-card-journey-ordinal" aria-label={`Duel event ${card.globalOrdinal}`}>#{card.globalOrdinal}</small>}
@@ -226,6 +256,7 @@ function withFirstQueuedAttackDodgeReveal(cards: JourneyCard[], center: CardRect
 const REVEAL_CARD = { width: 90, height: 135 };
 const DUEL_REVEAL_CARD = { width: 90, height: 135 };
 const PARKED_CARD = { width: 48, height: 72 };
+const LUST_COST_FRAME = { width: 340, height: 176, cardOffsetLeft: 12, cardOffsetTop: 30 };
 const PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH = 520;
 // Two 15px mobile lines at 1.2 line-height plus 4px vertical padding and
 // borders. Used only before the mounted announcement can be measured.
@@ -318,6 +349,39 @@ function battlefieldCenterCard(size: { width: number; height: number } = REVEAL_
       && fitsFullWidthAnnouncement(candidate, COMPACT_PUBLIC_CARD_ANNOUNCEMENT_HEIGHT))
     ?? candidates.find(cardFits);
   return safe ?? boundCardRect(preferredLeft, preferredTop, size.width, size.height);
+}
+
+function battlefieldLustCostCard(): CardRect {
+  const table = document.querySelector<HTMLElement>(".play-table");
+  const bounds = table?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+  const safeLeft = Math.max(8, bounds.left + 8);
+  const safeRight = Math.min(window.innerWidth - 8, bounds.right - 8);
+  const frameWidth = Math.max(1, Math.min(LUST_COST_FRAME.width, safeRight - safeLeft));
+  const safeTop = Math.max(8, bounds.top + 8);
+  const safeBottom = Math.min(window.innerHeight - 8, bounds.bottom - 8);
+  const maxFrameLeft = Math.max(safeLeft, safeRight - frameWidth);
+  const maxFrameTop = Math.max(safeTop, safeBottom - LUST_COST_FRAME.height);
+  const frameLeft = Math.max(safeLeft, Math.min(maxFrameLeft, bounds.left + (bounds.width - frameWidth) / 2));
+  const frameTop = Math.max(safeTop, Math.min(maxFrameTop, bounds.top + (bounds.height - LUST_COST_FRAME.height) / 2));
+  return {
+    left: frameLeft + LUST_COST_FRAME.cardOffsetLeft,
+    top: frameTop + LUST_COST_FRAME.cardOffsetTop,
+    width: REVEAL_CARD.width,
+    height: REVEAL_CARD.height,
+  };
+}
+
+function battlefieldLustCostFrame(card: CardRect): CardRect {
+  const table = document.querySelector<HTMLElement>(".play-table");
+  const bounds = table?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+  const safeLeft = Math.max(8, bounds.left + 8);
+  const safeRight = Math.min(window.innerWidth - 8, bounds.right - 8);
+  return {
+    left: card.left - LUST_COST_FRAME.cardOffsetLeft,
+    top: card.top - LUST_COST_FRAME.cardOffsetTop,
+    width: Math.max(1, Math.min(LUST_COST_FRAME.width, safeRight - safeLeft)),
+    height: LUST_COST_FRAME.height,
+  };
 }
 
 function hasPaintedLargePublicCard(eventId: string, size: Pick<CardRect, "width" | "height">) {
@@ -547,6 +611,12 @@ function publicCardAnnouncementCopy(
   targetName: string | null,
   compactPlayerNamesById: CompactPublicPlayerNames,
 ) {
+  if (action.motion?.type === "lust-cost" && action.lustCostFrame) {
+    return {
+      message: action.lustCostFrame.message,
+      compactMessage: action.lustCostFrame.compactMessage,
+    };
+  }
   const message = publicCardAnnouncement(action, notice, actorName, sourceName, targetName);
   const compactMessage = publicCardAnnouncement(
     action,
@@ -570,6 +640,7 @@ function withPublicCardPhaseNotice(message: string, phaseNotice: string | undefi
 
 function PublicCardAnnouncement({
   eventId,
+  anchorEventId,
   phase,
   message,
   compactMessage,
@@ -577,8 +648,10 @@ function PublicCardAnnouncement({
   phaseNotice,
   outcome,
   negationWaiting = false,
+  stableCenterAnchor = false,
 }: {
   eventId: string;
+  anchorEventId?: string;
   phase: JourneyCard["phase"] | "static";
   message: string;
   compactMessage?: string;
@@ -586,6 +659,7 @@ function PublicCardAnnouncement({
   phaseNotice?: string;
   outcome?: NonNullable<PublicCardDisplayAction["settlement"]>["outcome"];
   negationWaiting?: boolean;
+  stableCenterAnchor?: boolean;
 }) {
   const copyRef = useRef<HTMLDivElement>(null);
   const measuredCenterRef = useRef<{ eventId: string; rect: CardRect } | null>(null);
@@ -596,8 +670,9 @@ function PublicCardAnnouncement({
     const display = copy?.closest<HTMLElement>(".public-card-display");
     if (!copy || !display) return;
 
+    const copyAnchorEventId = anchorEventId ?? eventId;
     const getAnchor = () => Array.from(display.querySelectorAll<HTMLElement>("[data-public-card-copy-anchor-event-id]"))
-      .find((element) => element.dataset.publicCardCopyAnchorEventId === eventId) ?? null;
+      .find((element) => element.dataset.publicCardCopyAnchorEventId === copyAnchorEventId) ?? null;
     const toCardRect = (rect: DOMRect): CardRect => ({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
     let resizeObserver: ResizeObserver | null = null;
     let anchorObserver: MutationObserver | null = null;
@@ -607,10 +682,12 @@ function PublicCardAnnouncement({
     const place = () => {
       const anchor = getAnchor();
       const actualRect = anchor?.getBoundingClientRect();
-      const hasActualCardRect = Boolean(actualRect && actualRect.width > 0 && actualRect.height > 0);
+      const hasActualCardRect = !stableCenterAnchor && Boolean(actualRect && actualRect.width > 0 && actualRect.height > 0);
       let cardRect: CardRect | null = null;
 
-      if (hasActualCardRect) {
+      if (stableCenterAnchor && fallbackCardRect) {
+        cardRect = fallbackCardRect;
+      } else if (hasActualCardRect) {
         cardRect = toCardRect(actualRect!);
         if (phase === "reveal") measuredCenterRef.current = { eventId, rect: cardRect };
       } else if (measuredCenterRef.current?.eventId === eventId) {
@@ -758,7 +835,7 @@ function PublicCardAnnouncement({
       observedAnchor?.removeEventListener("transitionend", onAnchorTransitionEnd);
       window.cancelAnimationFrame(frame);
     };
-  }, [compactMessage, displayedMessage, eventId, fallbackCardRect, fallbackCardRect?.height, fallbackCardRect?.left, fallbackCardRect?.top, fallbackCardRect?.width, message, phase]);
+  }, [anchorEventId, compactMessage, displayedMessage, eventId, fallbackCardRect, fallbackCardRect?.height, fallbackCardRect?.left, fallbackCardRect?.top, fallbackCardRect?.width, message, phase, stableCenterAnchor]);
 
   return <div
     ref={copyRef}
@@ -768,7 +845,7 @@ function PublicCardAnnouncement({
     aria-atomic="true"
     data-public-card-announcement="true"
     data-public-card-announcement-event-id={eventId}
-    data-public-card-copy-anchor-event-id={eventId}
+    data-public-card-copy-anchor-event-id={anchorEventId ?? eventId}
     data-public-card-phase-notice={phaseNotice}
     data-public-card-result={outcome}
     style={{ top: 0, left: 0, visibility: "hidden" }}
@@ -1487,7 +1564,7 @@ function SingleTargetCardJourney({
   onJourneySettled?: (settlementEventId: string) => void;
   onJourneyEventParked?: (eventId: string) => void;
 }) {
-  const motion = action.motion?.type === "negation" || action.motion?.type === "single-target" ? action.motion : null;
+  const motion = action.motion?.type === "negation" || action.motion?.type === "single-target" || action.motion?.type === "lust-cost" ? action.motion : null;
   const scopeKey = motion?.scopeKey ?? action.rootEventId;
   const [journey, setJourney] = useState<SingleTargetJourneyState>({ scopeKey: "", viewerId: "", cards: [], center: null });
   const journeyRef = useRef(journey);
@@ -1528,10 +1605,12 @@ function SingleTargetCardJourney({
 
   useLayoutEffect(() => {
     const currentAction = actionRef.current;
-    const currentMotion = currentAction.motion?.type === "negation" || currentAction.motion?.type === "single-target" ? currentAction.motion : null;
+    const currentMotion = currentAction.motion?.type === "negation" || currentAction.motion?.type === "single-target" || currentAction.motion?.type === "lust-cost" ? currentAction.motion : null;
     const currentSourceName = sourceNameRef.current;
     if (!enabled || !currentMotion || !currentSourceName) return;
-    const center = battlefieldCenterCard();
+    const center = currentMotion.type === "lust-cost" && currentAction.lustCostFrame
+      ? battlefieldLustCostCard()
+      : battlefieldCenterCard();
     const previous = journeyRef.current;
     const sameInteraction = previous.scopeKey === scopeKey;
     const viewerChanged = sameInteraction && previous.viewerId !== viewerId;
@@ -1760,7 +1839,10 @@ function SingleTargetCardJourney({
         resizeFrame = 0;
         const current = journeyRef.current;
         if (current.scopeKey !== scopeKey) return;
-        const center = battlefieldCenterCard();
+        const currentAction = actionRef.current;
+        const center = currentAction.motion?.type === "lust-cost" && currentAction.lustCostFrame
+          ? battlefieldLustCostCard()
+          : battlefieldCenterCard();
         const occupied: CardRect[] = [];
         const actorIndexes = new Map<string, number>();
         const cards = current.cards.map((card) => {
@@ -1905,6 +1987,7 @@ function SingleTargetCardJourney({
         size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
         className={isCurrent ? "is-current" : "is-prior"}
         primary={isCurrent}
+        lustCostFrame={action.motion?.type === "lust-cost" && card.role === "root" ? action.lustCostFrame : undefined}
       />;
     })}
     <ol className="duel-public-card-history-accessible" aria-label="Chronological public card history">
@@ -1913,14 +1996,16 @@ function SingleTargetCardJourney({
       </li>)}
     </ol>
     <PublicCardAnnouncement
-      eventId={activeEventId}
+      eventId={motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : activeEventId}
+      anchorEventId={activeEventId}
       phase={currentCard?.phase ?? "static"}
       message={announcement}
       compactMessage={compactAnnouncement}
-      fallbackCardRect={journey.center}
+      fallbackCardRect={motion?.type === "lust-cost" && journey.center ? battlefieldLustCostFrame(journey.center) : journey.center}
       phaseNotice={action.phaseNotice}
       outcome={allParked ? action.settlement?.outcome : undefined}
       negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
+      stableCenterAnchor={motion?.type === "lust-cost"}
     />
   </section>;
 }
@@ -2529,7 +2614,7 @@ export function PublicCardDisplay({
   if (action.motion?.type === "attack-dodge") {
     return <AttackDodgeCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
   }
-  if (action.motion?.type === "single-target" || action.motion?.type === "negation") {
+  if (action.motion?.type === "single-target" || action.motion?.type === "negation" || action.motion?.type === "lust-cost") {
     return <SingleTargetCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (action.motion?.type === "duel") {

@@ -79,6 +79,8 @@ export type PresentationPublicCardEffectProof = {
   effectId: PresentationPublicCardEffectId;
   effectClass: PresentationPublicCardEffectClass;
   eventId: string;
+  /** Exact public activation event paired with a Lust physical cost. */
+  activationEventId?: string;
   activationOwnerId: string;
   materials: readonly PresentationPublicCardEffectMaterial[];
   rootEventId?: string;
@@ -147,7 +149,7 @@ export type PresentationSkillEffectSettlement = PresentationSkillEffectSettlemen
 };
 
 export type DiaoChanSkillNoticeProof =
-  | { semantics: "PROVEN"; effectId: "diao_chan_lust"; notice: "ACTIVATION"; sourceId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string }
+  | { semantics: "PROVEN"; effectId: "diao_chan_lust"; notice: "ACTIVATION"; sourceId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string; costEventId?: string }
   | { semantics: "PROVEN"; effectId: "diao_chan_lust"; notice: "DUEL_RESULT"; rootEventId: string; sourceId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string; failedPlayerId: string; damageSourceId: string; damageAmount: number; outcome: "DAMAGE_APPLIED" | "DAMAGE_PREVENTED" }
   | { semantics: "PROVEN"; effectId: "diao_chan_beauty_outshining_moon"; notice: "ACTIVATION"; sourceId: string }
   | { semantics: "PROVEN"; effectId: "diao_chan_beauty_outshining_moon"; notice: "DRAWN"; rootEventId: string; sourceId: string; drawCount: 1 };
@@ -2399,16 +2401,59 @@ function skillEffectSettlementsFor(input: PresentationV2Input): PresentationSkil
   });
 }
 
-function diaoChanSkillNoticesFor(timeline: readonly PresentationV2Event[]): PresentationDiaoChanSkillNotice[] {
+function diaoChanSkillNoticesFor(
+  timeline: readonly PresentationV2Event[],
+  publicCardEffects: readonly PresentationPublicCardEffect[],
+): PresentationDiaoChanSkillNotice[] {
   const eventCounts = new Map<string, number>();
+  const lustCostReferenceCounts = new Map<string, number>();
   for (const event of timeline) {
     const id = stringValue(event.id);
     if (id) eventCounts.set(id, (eventCounts.get(id) ?? 0) + 1);
+    const notice = record(event.publicDiaoChanNotice);
+    const costEventId = stringValue(notice?.costEventId);
+    if (notice?.effectId === "diao_chan_lust" && notice.notice === "ACTIVATION" && costEventId) {
+      lustCostReferenceCounts.set(costEventId, (lustCostReferenceCounts.get(costEventId) ?? 0) + 1);
+    }
   }
   const uniqueMessage = (id: string) => {
     const matches = timeline.filter((event) => event.id === id);
-    return eventCounts.get(id) === 1 && matches.length === 1 && matches[0].type === "message"
-      && matches[0].presentation !== false ? matches[0] : null;
+      return eventCounts.get(id) === 1 && matches.length === 1 && matches[0].type === "message"
+        && matches[0].presentation !== false ? matches[0] : null;
+  };
+  const provesLustCostLink = (
+    costEventId: string,
+    activationEventId: string,
+    sourceId: string,
+    firstParticipantId: string,
+    secondParticipantId: string,
+  ) => {
+    if (lustCostReferenceCounts.get(costEventId) !== 1 || eventCounts.get(costEventId) !== 1) return false;
+    const events = timeline.filter((candidate) => candidate.id === costEventId);
+    const costEvent = events.length === 1 ? events[0] : null;
+    if (!costEvent || (costEvent.type !== "card" && costEvent.type !== "cards")
+      || costEvent.action !== "discard" || costEvent.presentation === false
+      || typeof costEvent.privateToPlayerId === "string") return false;
+    const effects = publicCardEffects.filter((effect) => effect.eventId === costEventId
+      && effect.effectId === "diao_chan_lust" && effect.effectClass === "COST");
+    if (effects.length !== 1) return false;
+    const effect = effects[0];
+    const cards = costEvent.type === "card" ? [costEvent.card] : costEvent.cards ?? [];
+    const [material] = effect.materials;
+    const [effectCard] = effect.cards;
+    return effect.activationEventId === activationEventId
+      && effect.activationOwnerId === sourceId
+      && effect.outcome === "DUEL_DECLARED"
+      && effect.targetIds?.length === 2
+      && effect.targetIds[0] === firstParticipantId
+      && effect.targetIds[1] === secondParticipantId
+      && cards.length === 1 && effect.cards.length === 1
+      && material !== undefined && effectCard !== undefined
+      && material.cardId === cards[0]?.id
+      && material.cardId === effectCard.id
+      && material.ownerId === sourceId
+      && (material.fromZone === "HAND" || material.fromZone === "EQUIPMENT")
+      && material.toZone === "DISCARD";
   };
   const notices: PresentationDiaoChanSkillNotice[] = [];
   for (const event of timeline) {
@@ -2428,7 +2473,10 @@ function diaoChanSkillNoticesFor(timeline: readonly PresentationV2Event[]): Pres
         || firstParticipantId === secondParticipantId
         || firstActorId !== firstParticipantId && firstActorId !== secondParticipantId
         || event.finalResult === true) continue;
-      notices.push({ semantics: "PROVEN", effectId: "diao_chan_lust", notice: "ACTIVATION", eventId, rootEventId: eventId, sourceId, firstParticipantId, secondParticipantId, firstActorId });
+      const costEventId = stringValue(proof.costEventId);
+      const costLink = costEventId && provesLustCostLink(costEventId, eventId, sourceId, firstParticipantId, secondParticipantId)
+        ? { costEventId } : {};
+      notices.push({ semantics: "PROVEN", effectId: "diao_chan_lust", notice: "ACTIVATION", eventId, rootEventId: eventId, sourceId, firstParticipantId, secondParticipantId, firstActorId, ...costLink });
       continue;
     }
 
@@ -2723,6 +2771,7 @@ function publicCardEffectsFor(input: PresentationV2Input): PresentationPublicCar
       const effectClass = stringValue(proof?.effectClass) as PresentationPublicCardEffectClass | null;
       const activationOwnerId = stringValue(proof?.activationOwnerId);
       const attachedEventId = stringValue(proof?.eventId);
+      const activationEventId = proof?.activationEventId === undefined ? undefined : stringValue(proof.activationEventId);
       const materials = Array.isArray(proof?.materials) ? proof.materials : [];
       const materialIds = materials.map((rawMaterial) => stringValue(record(rawMaterial)?.cardId));
       const validFromZones = new Set(["HAND", "EQUIPMENT", "DECK"]);
@@ -2751,6 +2800,8 @@ function publicCardEffectsFor(input: PresentationV2Input): PresentationPublicCar
       if (!proof || proof.semantics !== "PROVEN" || !effectId || !PUBLIC_CARD_EFFECT_CLASSES[effectId]
         || !effectClass || !PUBLIC_CARD_EFFECT_CLASSES[effectId].includes(effectClass)
         || !activationOwnerId || attachedEventId !== eventId
+        || proof.activationEventId !== undefined && !activationEventId
+        || activationEventId !== undefined && (activationEventId === eventId || effectId !== "diao_chan_lust" || effectClass !== "COST")
         || eventIdCounts.get(attachedEventId) !== 1
         || !materials.length || !validMaterials || materialIds.some((id) => !id)
         || materialIds.length !== cardIds.length || materialIds.some((id, index) => id !== cardIds[index])
@@ -2799,6 +2850,7 @@ function publicCardEffectsFor(input: PresentationV2Input): PresentationPublicCar
         effectId,
         effectClass,
         eventId,
+        ...(activationEventId ? { activationEventId } : {}),
         activationOwnerId,
         materials: materials as PresentationPublicCardEffectProof["materials"],
         ...(rootEventId ? { rootEventId, rootResolutionId: rootResolutionId! } : {}),
@@ -3218,7 +3270,8 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     ?? singleTargetTargetCardRootActionFor(envelope, interactionScene, input.pending, input.timeline, "Steal");
   const skillEffectAction = skillEffectActionFor(input);
   const skillEffectSettlements = skillEffectSettlementsFor(input);
-  const diaoChanSkillNotices = diaoChanSkillNoticesFor(input.timeline);
+  const publicCardEffects = publicCardEffectsFor(input);
+  const diaoChanSkillNotices = diaoChanSkillNoticesFor(input.timeline, publicCardEffects);
   const dismantleSettlements = dismantleSettlementsFor(input.timeline);
   const stealSettlements = stealSettlementsFor(input.timeline);
   const attackHitSettlements = attackHitSettlementsFor(input.timeline);
@@ -3227,7 +3280,6 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const duelExchange = duelExchangeFor(envelope, interactionScene, input.pending, input.timeline);
   const selfTargetActions = selfTargetActionsFor(input.timeline);
   const deflectionActions = deflectionActionsFor(input);
-  const publicCardEffects = publicCardEffectsFor(input);
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
   const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene, input.timeline);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);

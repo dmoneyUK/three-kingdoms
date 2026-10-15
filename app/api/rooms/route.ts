@@ -838,8 +838,8 @@ function addTriggeredEffectNotice(log: string[], actor: string, label: string) {
   return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined, { effectNotice: true });
 }
 function addLog(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) { return [...log.slice(-199), `@event:${JSON.stringify({ id: crypto.randomUUID(), message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`]; }
-function addLogWithId(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) {
-  const id = crypto.randomUUID();
+function addLogWithId(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta, eventId = crypto.randomUUID()) {
+  const id = eventId;
   return { log: [...log.slice(-199), `@event:${JSON.stringify({ id, message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`], eventId: id };
 }
 function attachDiaoChanNotice(log: string[], proof: DiaoChanSkillNoticeProof): string[] {
@@ -5691,12 +5691,15 @@ export async function POST(request: Request) {
         const lostEquipment = selected.filter((card) => liveEquipment.some((equipped) => equipped.id === card.id));
         discard.push(selected[0]);
         const materials = publicCardMaterials(selected, [{ playerId: liveMe.id, hand: liveHand, equipment: liveEquipment }], "DISCARD");
-        log = materials
+        const lustActivationEventId = first && second ? crypto.randomUUID() : undefined;
+        const lustCostPresentation = materials
           ? addCardGroupEventWithPublicEffect(log, liveMe.name, selected, "discard", liveMe.name, {
             effectId: "diao_chan_lust", effectClass: "COST", activationOwnerId: liveMe.id, materials,
             outcome: "DUEL_DECLARED",
-          }).log
-          : addDiscardEvent(log, liveMe.name, selected);
+            ...(lustActivationEventId ? { activationEventId: lustActivationEventId, targetIds: [firstId, secondId] } : {}),
+          })
+          : null;
+        log = lustCostPresentation?.log ?? addDiscardEvent(log, liveMe.name, selected);
         const lustActivation = first && second
           ? addLogWithId(log, `${liveMe.name} uses Lust: ${first.name} and ${second.name} enter a Duel. ${first.name} plays Attack first.`, undefined, {
             importance: "essential",
@@ -5708,8 +5711,9 @@ export async function POST(request: Request) {
               firstParticipantId: first.id,
               secondParticipantId: second.id,
               firstActorId: first.id,
+              ...(lustCostPresentation && lustActivationEventId ? { costEventId: lustCostPresentation.eventId } : {}),
             },
-          })
+          }, lustActivationEventId)
           : null;
         log = lustActivation?.log ?? addLog(log, `${liveMe.name} uses Lust, but the selected Duel participants are no longer available.`);
         await db.batch([

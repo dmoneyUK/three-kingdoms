@@ -36,16 +36,24 @@ test("Lust offers ordered male Duel targets, accepts one Hand cost, bypasses Neg
 
   const started = await requestAndSettle("trigger", { code: game.code, token: game.members[0].token, providerId: "diao_chan_lust", cardIds: [setup.cost.id], targetIds: [setup.first.id, setup.second.id], preserveResponse: true });
   assert.equal(started.status, 200, JSON.stringify(started.data));
+  const lustActivation = started.data.room.timeline.filter((event) => event.publicDiaoChanNotice?.notice === "ACTIVATION");
+  assert.equal(lustActivation.length, 1, JSON.stringify(started.data.room.timeline));
+  const activationEvent = lustActivation[0];
   const lustCostEvent = started.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === setup.cost.id));
   assert.deepEqual(lustCostEvent.publicCardEffects, [{
-    semantics: "PROVEN", eventId: lustCostEvent.id, effectId: "diao_chan_lust", effectClass: "COST",
+    semantics: "PROVEN", eventId: lustCostEvent.id, activationEventId: activationEvent.id,
+    effectId: "diao_chan_lust", effectClass: "COST",
     activationOwnerId: setup.diao.id,
     materials: [{ cardId: setup.cost.id, ownerId: setup.diao.id, fromZone: "HAND", toZone: "DISCARD" }],
+    targetIds: [setup.first.id, setup.second.id],
     outcome: "DUEL_DECLARED",
   }], "the public proof identifies only the committed physical cost and its true payer");
+  assert.equal(activationEvent.publicDiaoChanNotice.costEventId, lustCostEvent.id,
+    "the activation names its exact committed public cost event");
   const projectedLustCost = started.data.room.presentationSnapshot.publicCardEffects.find((effect) => effect.eventId === lustCostEvent.id);
   assert.deepEqual(projectedLustCost.cards, [setup.cost]);
   assert.deepEqual(projectedLustCost.materials, lustCostEvent.publicCardEffects[0].materials);
+  assert.equal(projectedLustCost.activationEventId, activationEvent.id);
   const sanitizedSnapshot = composePresentationSnapshot({
     presentationV2: {
       ...started.data.room.presentationV2,
@@ -61,13 +69,14 @@ test("Lust offers ordered male Duel targets, accepts one Hand cost, bypasses Neg
   assert.equal(JSON.stringify(publicObserver.presentationSnapshot.publicCardEffects).includes(hiddenCard.id), false,
     "unspent private Hand cards never enter the public cost proof");
   assert.deepEqual(publicObserver.presentationSnapshot.publicCardEffects, started.data.room.presentationSnapshot.publicCardEffects);
-  const lustActivation = started.data.room.timeline.filter((event) => event.publicDiaoChanNotice?.notice === "ACTIVATION");
-  assert.equal(lustActivation.length, 1, JSON.stringify(started.data.room.timeline));
-  assert.deepEqual(lustActivation[0].publicDiaoChanNotice, {
+  assert.deepEqual(activationEvent.publicDiaoChanNotice, {
     semantics: "PROVEN", effectId: "diao_chan_lust", notice: "ACTIVATION", sourceId: setup.diao.id,
     firstParticipantId: setup.first.id, secondParticipantId: setup.second.id, firstActorId: setup.first.id,
+    costEventId: lustCostEvent.id,
   });
+  const projectedActivation = started.data.room.presentationSnapshot.diaoChanSkillNotices.find((notice) => notice.notice === "ACTIVATION");
   assert.equal(started.data.room.presentationSnapshot.diaoChanSkillNotices.filter((notice) => notice.notice === "ACTIVATION").length, 1);
+  assert.equal(projectedActivation.costEventId, lustCostEvent.id);
   const firstView = (await state(game.code, game.members[1].token)).data;
   assert.equal(firstView.currentAction.actorId, setup.first.id);
   assert.equal(firstView.currentAction.requirement, "attack");

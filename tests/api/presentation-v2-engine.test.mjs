@@ -103,6 +103,55 @@ test("public card effect projection accepts only exact committed public proof an
     "an effect ID cannot claim a different semantic class");
 });
 
+test("Lust cost and activation pair only through their exact public event, owner, card and target order", () => {
+  const paid = card("Peach", "lust-linked-public-cost", "♥");
+  const costEventId = "lust-linked-cost-event";
+  const activationEventId = "lust-linked-activation-event";
+  const costProof = {
+    semantics: "PROVEN", effectId: "diao_chan_lust", effectClass: "COST", eventId: costEventId,
+    activationEventId, activationOwnerId: "diao-id",
+    materials: [{ cardId: paid.id, ownerId: "diao-id", fromZone: "HAND", toZone: "DISCARD" }],
+    targetIds: ["first-id", "second-id"], outcome: "DUEL_DECLARED",
+  };
+  const costEvent = {
+    type: "cards", id: costEventId, player: "Diao Chan", cards: [paid], action: "discard",
+    presentation: true, resolutionId: "lust-cost-resolution", publicCardEffects: [costProof],
+  };
+  const activationProof = {
+    semantics: "PROVEN", effectId: "diao_chan_lust", notice: "ACTIVATION", costEventId,
+    sourceId: "diao-id", firstParticipantId: "first-id", secondParticipantId: "second-id", firstActorId: "first-id",
+  };
+  const activationEvent = {
+    type: "message", id: activationEventId, message: "Diao Chan uses Lust.", presentation: true,
+    importance: "essential", publicDiaoChanNotice: activationProof,
+  };
+  const input = { pending: null, currentAction: null, actionRevision: "lust-linked", timeline: [activationEvent, costEvent] };
+  const projected = projectPresentationV2(input);
+  assert.equal(projected.publicCardEffects[0].activationEventId, activationEventId);
+  assert.equal(projected.diaoChanSkillNotices[0].costEventId, costEventId,
+    "the activation references one exact public cost event independent of timeline ordering");
+
+  const unlinkedActivation = { ...activationEvent, publicDiaoChanNotice: { ...activationProof, costEventId: "wrong-cost-id" } };
+  const unlinked = projectPresentationV2({ ...input, timeline: [costEvent, unlinkedActivation] });
+  assert.equal(unlinked.publicCardEffects.length, 1);
+  assert.equal(unlinked.diaoChanSkillNotices[0].notice, "ACTIVATION");
+  assert.equal(Object.hasOwn(unlinked.diaoChanSkillNotices[0], "costEventId"), false,
+    "an unproved cost relation preserves the truthful activation but cannot own a physical card Frame");
+
+  const reversedTargets = { ...costEvent, publicCardEffects: [{ ...costProof, targetIds: ["second-id", "first-id"] }] };
+  const wrongOrder = projectPresentationV2({ ...input, timeline: [reversedTargets, activationEvent] });
+  assert.equal(wrongOrder.diaoChanSkillNotices[0].notice, "ACTIVATION");
+  assert.equal(Object.hasOwn(wrongOrder.diaoChanSkillNotices[0], "costEventId"), false,
+    "the pairing fails closed when the ordered participants disagree");
+
+  const privateCost = { ...costEvent, privateToPlayerId: "diao-id" };
+  const privatePair = projectPresentationV2({ ...input, timeline: [privateCost, activationEvent] });
+  assert.deepEqual(privatePair.publicCardEffects, []);
+  assert.equal(privatePair.diaoChanSkillNotices[0].notice, "ACTIVATION");
+  assert.equal(Object.hasOwn(privatePair.diaoChanSkillNotices[0], "costEventId"), false,
+    "private cost events cannot be promoted into a public physical-card presentation");
+});
+
 test("public effect root links accept a genuine grouped physical root", () => {
   const rootCards = [card("Peach", "serpent-root-material-a", "♥"), card("Dodge", "serpent-root-material-b", "♠")];
   const response = card("Attack", "root-linked-response", "♣");
