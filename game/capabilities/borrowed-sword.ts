@@ -14,17 +14,20 @@ export type BorrowedSwordLegality = {
 };
 
 /**
- * Resolves Borrowed Sword as a complete executable path: the chosen character
- * must hold a Weapon and have at least one legal Attack target. The source is
- * a valid forced target when the holder can legally Attack them.
+ * Borrowed Sword may target any other living Weapon holder. The forced Attack
+ * target list is separate: when it is empty, resolution follows the card's
+ * fallback and the source obtains the holder's Weapon.
  */
 export function borrowedSwordLegality(players: BorrowedSwordPlayer[], sourceId: string): BorrowedSwordLegality {
   const source = players.find((player) => player.id === sourceId && Boolean(player.alive));
   if (!source) return { eligibleHolderIds: [], forcedTargetIdsByHolderId: {} };
 
-  const paths = players.flatMap((holder) => {
+  const eligibleHolderIds: string[] = [];
+  const forcedTargetIdsByHolderId: Record<string, string[]> = {};
+  for (const holder of players) {
     const weapon = holder.equipment.weapon;
-    if (!holder.alive || holder.id === source.id || !weapon) return [];
+    if (!holder.alive || holder.id === source.id || !weapon) continue;
+    eligibleHolderIds.push(holder.id);
     const attackRange = cardDefinition(weapon.kind).attackRange ?? 1;
     const forcedTargetIds = players.filter((target) => {
       if (!target.alive || target.id === holder.id) return false;
@@ -39,11 +42,8 @@ export function borrowedSwordLegality(players: BorrowedSwordPlayer[], sourceId: 
         cardKind: "Attack",
       });
     }).map((target) => target.id);
-    return forcedTargetIds.length ? [{ holderId: holder.id, forcedTargetIds }] : [];
-  });
+    forcedTargetIdsByHolderId[holder.id] = forcedTargetIds;
+  }
 
-  return {
-    eligibleHolderIds: paths.map((path) => path.holderId),
-    forcedTargetIdsByHolderId: Object.fromEntries(paths.map((path) => [path.holderId, path.forcedTargetIds])),
-  };
+  return { eligibleHolderIds, forcedTargetIdsByHolderId };
 }

@@ -2060,6 +2060,64 @@ function equipmentLostRecords(playerId: string, lostCards: Card[], reason?: stri
   return lostCards.map((card) => ({ playerId, lostCards: [card], ...(reason ? { reason } : {}) }));
 }
 
+/** Settles Borrowed Sword's fallback when its Weapon holder has no legal Attack target. */
+async function settleBorrowedSwordNoAttackTarget(input: {
+  roomId: string;
+  sourceId: string;
+  holderId: string;
+  expectedWeaponId?: string;
+  resumePhase: string;
+  resumePlayerId: string;
+  discard: Card[];
+  log: string[];
+  causalEnvelope: CausalEnvelope | null;
+  expectedPendingJson?: string | null;
+}) {
+  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(input.roomId).first<RoomRow>();
+  const expectedPendingJson = input.expectedPendingJson ?? room?.pending_json;
+  if (!room || room.phase !== "resolving" || !expectedPendingJson || room.pending_json !== expectedPendingJson) return;
+
+  const players: PlayerRow[] = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(input.roomId).all<PlayerRow>()).results ?? [];
+  const source = players.find((player: PlayerRow) => player.id === input.sourceId && player.alive);
+  const holder = players.find((player: PlayerRow) => player.id === input.holderId && player.alive);
+  const weapon = weaponCard(holder);
+  const exactWeaponStillPresent = Boolean(weapon && (!input.expectedWeaponId || weapon.id === input.expectedWeaponId));
+
+  if (source && holder && weapon && exactWeaponStillPresent) {
+    const equipment = equipmentZone(holder);
+    delete equipment.weapon;
+    const sourceHandBefore = parse<Card[]>(source.hand_json, []);
+    if (source.id === holder.id || sourceHandBefore.some((card) => card.id === weapon.id)) {
+      const settledLog = addLog(input.log, "Borrowed Sword ends without transfer because the Weapon is already present in the source's Hand.");
+      const settled = await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json = ?")
+        .bind(input.resumePhase, JSON.stringify(input.discard), JSON.stringify(settledLog), input.causalEnvelope ? JSON.stringify(input.causalEnvelope) : null, input.roomId, expectedPendingJson).run();
+      if ((settled.meta.changes ?? 0) > 0) await continueAfterDying(input.roomId, source.id);
+      return;
+    }
+    const sourceHand = [...sourceHandBefore, weapon];
+    const log = addLog(input.log, `${source.name} obtains ${cardDefinition(weapon.kind).name} from ${holder.name} because no legal forced Attack target is available.`);
+    const writes = await db().batch([
+      db().prepare("UPDATE players SET equipment_json = CASE WHEN id = ? THEN ? ELSE equipment_json END, hand_json = CASE WHEN id = ? THEN ? ELSE hand_json END WHERE id IN (?, ?) AND EXISTS (SELECT 1 FROM players WHERE id = ? AND equipment_json = ?) AND EXISTS (SELECT 1 FROM players WHERE id = ? AND hand_json = ?) AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND phase = 'resolving' AND pending_json = ?)")
+        .bind(holder.id, JSON.stringify(equipment), source.id, JSON.stringify(sourceHand), holder.id, source.id, holder.id, holder.equipment_json, source.id, source.hand_json, input.roomId, expectedPendingJson),
+      db().prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json = ? AND EXISTS (SELECT 1 FROM players WHERE id = ? AND equipment_json = ?) AND EXISTS (SELECT 1 FROM players WHERE id = ? AND hand_json = ?)")
+        .bind(JSON.stringify(input.discard), JSON.stringify(log), input.causalEnvelope ? JSON.stringify(input.causalEnvelope) : null, input.roomId, expectedPendingJson, holder.id, JSON.stringify(equipment), source.id, JSON.stringify(sourceHand)),
+    ]);
+    if ((writes[0]?.meta.changes ?? 0) !== 2 || (writes[1]?.meta.changes ?? 0) <= 0) return;
+    await advanceEquipmentLostEvents(input.roomId, equipmentLostRecords(holder.id, [weapon], "borrowed_sword"), {
+      kind: "phase", phase: input.resumePhase, playerId: input.resumePlayerId,
+    });
+    return;
+  }
+
+  const reason = !holder || !weapon || !exactWeaponStillPresent
+    ? "the targeted Weapon changed or disappeared before a legal Attack target was available"
+    : "the Borrowed Sword source is no longer alive";
+  const log = addLog(input.log, `Borrowed Sword ends because ${reason}; no Weapon is transferred.`);
+  const settled = await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json = ?")
+    .bind(input.resumePhase, JSON.stringify(input.discard), JSON.stringify(log), input.causalEnvelope ? JSON.stringify(input.causalEnvelope) : null, input.roomId, expectedPendingJson).run();
+  if ((settled.meta.changes ?? 0) > 0 && source) await continueAfterDying(input.roomId, source.id);
+}
+
 /** Opens one Daredevil opportunity per physical Equipment card that left a zone. */
 async function advanceEquipmentLostEvents(roomId: string, records: EquipmentLostRecord[], resume: EquipmentLostResume) {
   let remaining = [...records];
@@ -3215,9 +3273,17 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
       const forcedTargetIds = borrowedSwordForcedTargetIds(players, source.id, target.id);
       if (!forcedTargetIds.length) {
         discard.push(...heldCards);
-        log = addLog(log, `${pending.cardName} has no legal forced Attack target remaining, so its effect ends.`);
-        await causalRoomStateWrite(roomId, { phase: pending.resumePhase, pending: null, discard, log, causalEnvelope: resumedEnvelope }).run();
-        if (source) await continueAfterDying(roomId, source.id);
+        await settleBorrowedSwordNoAttackTarget({
+          roomId,
+          sourceId: source.id,
+          holderId: target.id,
+          resumePhase: pending.resumePhase,
+          resumePlayerId: source.id,
+          discard,
+          log,
+          causalEnvelope: resumedEnvelope,
+          expectedPendingJson,
+        });
       } else {
         const next: BorrowedSwordPending = { kind: "borrowed_sword", sourceId: source.id, actorId: source.id, targetId: target.id, holderId: target.id, resumePhase: pending.resumePhase, reason: `Choose a character within ${attackRangeFor(target)} range for ${target.name}'s forced Attack`, stage: "choose_target", weaponId: weapon.id, causal: pending.causal };
         await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(next), JSON.stringify(log), roomId).run();
@@ -6860,13 +6926,28 @@ export async function POST(request: Request) {
     const holder = players.find((player) => player.id === pending.holderId && player.alive);
     const liveWeapon = weaponCard(holder);
     const forcedTargetIds = borrowedSwordForcedTargetIds(players, pending.sourceId, pending.holderId);
-    if (!liveWeapon || liveWeapon.id !== pending.weaponId || !forcedTargetIds.length) {
+    if (!liveWeapon || liveWeapon.id !== pending.weaponId) {
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Borrowed Sword choice has already resolved.", stale: true, room: await roomState(code, token) }, 409);
-      const settledLog = addLog(parse<string[]>(liveRoom.log_json, []), !liveWeapon || liveWeapon.id !== pending.weaponId
-        ? "Borrowed Sword ends because its targeted Weapon changed or disappeared before a legal Attack target could be chosen."
-        : "Borrowed Sword ends because no legal forced Attack target remains.");
+      const settledLog = addLog(parse<string[]>(liveRoom.log_json, []), "Borrowed Sword ends because its targeted Weapon changed or disappeared before a legal Attack target could be chosen.");
       await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ? AND phase = 'resolving'").bind(pending.resumePhase, JSON.stringify(settledLog), room.id).run();
+      return json({ room: await roomState(code, token) });
+    }
+    if (!forcedTargetIds.length) {
+      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+      if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Borrowed Sword choice has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      await settleBorrowedSwordNoAttackTarget({
+        roomId: room.id,
+        sourceId: pending.sourceId,
+        holderId: pending.holderId,
+        expectedWeaponId: pending.weaponId,
+        resumePhase: pending.resumePhase,
+        resumePlayerId: pending.sourceId,
+        discard: parse<Card[]>(liveRoom.discard_json, []),
+        log: parse<string[]>(liveRoom.log_json, []),
+        causalEnvelope: parseCausalEnvelope(liveRoom.causal_envelope_json),
+        expectedPendingJson: liveRoom.pending_json,
+      });
       return json({ room: await roomState(code, token) });
     }
     const chosen = players.find((player) => player.id === String(body.targetId ?? "") && player.alive);
@@ -7511,7 +7592,7 @@ export async function POST(request: Request) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
         const liveSource = (rows.results ?? []).find((player) => player.id === me.id);
         const remainingHandCount = Math.max(0, parse<Card[]>(liveSource?.hand_json ?? me.hand_json, []).length - 1);
-        if (!borrowedSwordLegalityFor(rows.results ?? [], me.id, remainingHandCount).eligibleHolderIds.includes(target.id)) return json({ error: `${target.name} has no complete legal path for Borrowed Sword's forced Attack.` }, 409);
+        if (!borrowedSwordLegalityFor(rows.results ?? [], me.id, remainingHandCount).eligibleHolderIds.includes(target.id)) return json({ error: `${target.name} is not a living Weapon holder for Borrowed Sword.` }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name); log = addLog(log, `${me.name} plays Borrowed Sword on ${target.name}.`);
         await beginStratagemUse(liveRoom, me, rows.results ?? [], card, card, target.name, target.id, { kind: "borrowed_sword", targetId: target.id }, hand, deck, discard, log);
