@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Card, CardKind } from "../game/model";
 import type { PresentationSnapshotRootAction } from "../game/presentation-snapshot";
 import { cardDefinition } from "../game/cards";
@@ -403,6 +403,17 @@ function battlefieldLustCostFrame(card: CardRect): CardRect {
   };
 }
 
+function battlefieldLustDuelAnnouncementAnchor(card: CardRect): CardRect {
+  const frame = battlefieldLustCostFrame(card);
+  return {
+    ...frame,
+    // Keep the narration below the stable central LUST Frame. Top-seat cost
+    // cards park directly beneath their owner and would cross an above-frame
+    // narration band after the reveal completes.
+    top: frame.top + frame.height + 50 + PUBLIC_CARD_ANNOUNCEMENT_GAP + 8,
+  };
+}
+
 function hasPaintedLargePublicCard(eventId: string, size: Pick<CardRect, "width" | "height">) {
   const element = [...document.querySelectorAll<HTMLElement>("[data-public-card-journey-event-id]")]
     .find((candidate) => candidate.dataset.publicCardJourneyEventId === eventId);
@@ -696,6 +707,15 @@ function PublicCardAnnouncement({
   const copyRef = useRef<HTMLDivElement>(null);
   const measuredCenterRef = useRef<{ eventId: string; rect: CardRect } | null>(null);
   const [displayedMessage, setDisplayedMessage] = useState(message);
+  const fallbackLeft = fallbackCardRect?.left;
+  const fallbackTop = fallbackCardRect?.top;
+  const fallbackWidth = fallbackCardRect?.width;
+  const fallbackHeight = fallbackCardRect?.height;
+  const stableFallbackCardRect = useMemo(() => fallbackLeft === undefined || fallbackTop === undefined
+    || fallbackWidth === undefined || fallbackHeight === undefined
+    ? null
+    : { left: fallbackLeft, top: fallbackTop, width: fallbackWidth, height: fallbackHeight },
+  [fallbackHeight, fallbackLeft, fallbackTop, fallbackWidth]);
 
   useLayoutEffect(() => {
     const copy = copyRef.current;
@@ -717,15 +737,15 @@ function PublicCardAnnouncement({
       const hasActualCardRect = !stableCenterAnchor && Boolean(actualRect && actualRect.width > 0 && actualRect.height > 0);
       let cardRect: CardRect | null = null;
 
-      if (stableCenterAnchor && fallbackCardRect) {
-        cardRect = fallbackCardRect;
+      if (stableCenterAnchor && stableFallbackCardRect) {
+        cardRect = stableFallbackCardRect;
       } else if (hasActualCardRect) {
         cardRect = toCardRect(actualRect!);
         if (phase === "reveal") measuredCenterRef.current = { eventId, rect: cardRect };
       } else if (measuredCenterRef.current?.eventId === eventId) {
         cardRect = measuredCenterRef.current.rect;
-      } else if (fallbackCardRect) {
-        cardRect = fallbackCardRect;
+      } else if (stableFallbackCardRect) {
+        cardRect = stableFallbackCardRect;
       }
       if (!cardRect) {
         const tableRect = document.querySelector<HTMLElement>(".play-table")?.getBoundingClientRect();
@@ -772,6 +792,13 @@ function PublicCardAnnouncement({
         { message, compact: false },
         ...(compactMessage && compactMessage !== message ? [{ message: compactMessage, compact: true }] : []),
       ];
+      if (compactMessage && compactMessage !== message && textElement) {
+        copy.style.width = `${maxWidth}px`;
+        textElement.textContent = message;
+        const fullMessageRange = document.createRange();
+        fullMessageRange.selectNodeContents(textElement);
+        if (fullMessageRange.getClientRects().length > 2) announcementOptions.reverse();
+      }
       let selected: { left: number; top: number; width: number; height: number; lines: number; message: string; compact: boolean } | null = null;
       for (const option of announcementOptions) {
         if (textElement) textElement.textContent = option.message;
@@ -810,7 +837,10 @@ function PublicCardAnnouncement({
       }
 
       if (!selected) {
-        if (textElement) textElement.textContent = message;
+        const fallbackOption = announcementOptions.find((option) => option.compact)
+          ?? announcementOptions[0]
+          ?? { message, compact: false };
+        if (textElement) textElement.textContent = fallbackOption.message;
         const width = widths[0] ?? maxWidth;
         copy.style.width = `${width}px`;
         const height = copy.getBoundingClientRect().height;
@@ -820,7 +850,15 @@ function PublicCardAnnouncement({
         copy.style.top = `${top}px`;
         const range = document.createRange();
         if (textElement) range.selectNodeContents(textElement);
-        selected = { left, top, width, height, lines: textElement ? range.getClientRects().length : 0, message, compact: false };
+        selected = {
+          left,
+          top,
+          width,
+          height,
+          lines: textElement ? range.getClientRects().length : 0,
+          message: fallbackOption.message,
+          compact: fallbackOption.compact,
+        };
         copy.dataset.publicCardAnnouncementFallback = "true";
       } else {
         delete copy.dataset.publicCardAnnouncementFallback;
@@ -867,7 +905,7 @@ function PublicCardAnnouncement({
       observedAnchor?.removeEventListener("transitionend", onAnchorTransitionEnd);
       window.cancelAnimationFrame(frame);
     };
-  }, [anchorEventId, compactMessage, displayedMessage, eventId, fallbackCardRect, fallbackCardRect?.height, fallbackCardRect?.left, fallbackCardRect?.top, fallbackCardRect?.width, message, phase, stableCenterAnchor]);
+  }, [anchorEventId, compactMessage, displayedMessage, eventId, message, negationWaiting, phase, stableCenterAnchor, stableFallbackCardRect]);
 
   return <div
     ref={copyRef}
@@ -2224,15 +2262,18 @@ function DuelCardJourney({
     const currentSourceName = sourceNameRef.current;
     if (!enabled || currentMotion?.type !== "duel" && currentMotion?.type !== "lust-duel" || !currentSourceName) return;
 
-    const center = battlefieldCenterCard(DUEL_REVEAL_CARD);
     const events = duelJourneyEvents(currentAction, currentSourceName);
     const fresh = new Set(currentMotion.freshEventIds);
+    const latestFreshEvent = [...events].reverse().find((event) => fresh.has(event.eventId) && event.cardFace) ?? null;
+    const center = currentMotion.type === "lust-duel" && currentAction.lustCostFrame && latestFreshEvent?.role === "root"
+      ? battlefieldLustCostCard()
+      : battlefieldCenterCard(DUEL_REVEAL_CARD);
     const previous = journeyRef.current;
     const sameInteraction = previous.scopeKey === scopeKey;
     const viewerChanged = sameInteraction && previous.viewerId !== viewerId;
     const preserveTargets = sameInteraction && !viewerChanged;
     const priorById = new Map(previous.cards.map((card) => [card.eventId, card]));
-    const latestFreshEventId = [...events].reverse().find((event) => fresh.has(event.eventId))?.eventId ?? null;
+    const latestFreshEventId = latestFreshEvent?.eventId ?? null;
     const targets = duelParkingTargets(events, preserveTargets ? previous.cards : []);
     const cards = events.flatMap((event) => {
       const old = priorById.get(event.eventId);
@@ -2460,10 +2501,16 @@ function DuelCardJourney({
           const viewportSignature = `${window.innerWidth}:${window.innerHeight}:${window.visualViewport?.width ?? 0}:${window.visualViewport?.height ?? 0}:${window.visualViewport?.scale ?? 1}`;
           if (viewportSignature === lastViewport) return;
           lastViewport = viewportSignature;
-          const center = battlefieldCenterCard(DUEL_REVEAL_CARD);
+          const currentAction = actionRef.current;
+          const currentMotion = currentAction.motion;
+          const events = duelJourneyEvents(currentAction, sourceNameRef.current);
+          const fresh = new Set(currentMotion?.type === "duel" || currentMotion?.type === "lust-duel" ? currentMotion.freshEventIds : []);
+          const latestFreshEvent = [...events].reverse().find((event) => fresh.has(event.eventId) && event.cardFace) ?? null;
+          const center = currentMotion?.type === "lust-duel" && currentAction.lustCostFrame && latestFreshEvent?.role === "root"
+            ? battlefieldLustCostCard()
+            : battlefieldCenterCard(DUEL_REVEAL_CARD);
           setJourney((current) => {
             if (current.scopeKey !== scopeKey) return current;
-            const events = duelJourneyEvents(actionRef.current, sourceNameRef.current);
             const targets = duelParkingTargets(events);
             let cards = current.cards.map((card) => {
               const target = targets.get(card.eventId);
@@ -2619,13 +2666,16 @@ function DuelCardJourney({
     <PublicCardAnnouncement
       eventId={action.motion?.type === "lust-duel" && activeCard?.role === "root" && action.lustCostFrame
         ? action.lustCostFrame.activationEventId : activeEventId}
+      anchorEventId={activeEventId}
       phase={activeEvent?.phase ?? "static"}
       message={announcement}
       compactMessage={compactAnnouncement}
-      fallbackCardRect={journey.center}
+      fallbackCardRect={action.motion?.type === "lust-duel" && action.lustCostFrame
+        ? battlefieldLustDuelAnnouncementAnchor(journey.center) : journey.center}
       phaseNotice={action.phaseNotice}
       outcome={action.settlement?.outcome}
       negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
+      stableCenterAnchor={action.motion?.type === "lust-duel"}
     />
   </section>;
 }

@@ -791,6 +791,16 @@ export function HeroDetailsPreview({ hero, currentHp, maximumHp, onClose }: { he
 }
 
 function heroName(id?: string | null) { return id ? id.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") : "Unknown"; }
+function lustDuelOrderMessage(
+  first: { name: string; hero?: string | null },
+  second: { name: string; hero?: string | null },
+  firstActor: { name: string; hero?: string | null },
+) {
+  const name = (player: { name: string; hero?: string | null }) => player.hero
+    ? heroName(player.hero)
+    : player.name;
+  return `LUST Duel: ${name(first)} and ${name(second)}; ${name(firstActor)} plays Attack first.`;
+}
 function heroSkillNames(hero: Pick<Hero, "id" | "skills">) { return hero.skills?.map((skill) => skill.name) ?? [heroSkillName(hero.id) ?? "Hero"]; }
 function heroSkillName(id?: string | null) { return id ? HEROES.find((hero) => hero.id === id)?.skills[0]?.name ?? null : null; }
 function conciseActionLabel(label: string) {
@@ -4128,8 +4138,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     lustCostFrame: {
       activationEventId: lustCostFrameCandidate.activation.eventId,
       title: "LUST",
-      message: `Diao Chan used Lust: ${lustCostFrameCandidate.firstParticipant.name} and ${lustCostFrameCandidate.secondParticipant.name} enter a Duel; ${lustCostFrameCandidate.firstActor.name} plays Attack first.`,
-      compactMessage: `Diao Chan used Lust: ${lustCostFrameCandidate.firstParticipant.hero ? heroName(lustCostFrameCandidate.firstParticipant.hero) : lustCostFrameCandidate.firstParticipant.name} and ${lustCostFrameCandidate.secondParticipant.hero ? heroName(lustCostFrameCandidate.secondParticipant.hero) : lustCostFrameCandidate.secondParticipant.name} enter a Duel; ${lustCostFrameCandidate.firstActor.hero ? heroName(lustCostFrameCandidate.firstActor.hero) : lustCostFrameCandidate.firstActor.name} plays Attack first.`,
+      message: lustDuelOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor),
+      compactMessage: lustDuelOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor),
     },
   } : null;
   const lustDuelPublicAction: PublicCardDisplayAction | null = lustDuelExchangeDisplayCandidate ? {
@@ -4162,8 +4172,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     lustCostFrame: {
       activationEventId: lustDuelExchangeDisplayCandidate.exchange.root.activationEventId,
       title: "LUST",
-      message: `Diao Chan used Lust: ${lustDuelExchangeDisplayCandidate.costFrame.firstParticipant.name} and ${lustDuelExchangeDisplayCandidate.costFrame.secondParticipant.name} enter a Duel; ${lustDuelExchangeDisplayCandidate.costFrame.firstActor.name} plays Attack first.`,
-      compactMessage: `Lust Duel: ${lustDuelExchangeDisplayCandidate.costFrame.firstActor.hero ? heroName(lustDuelExchangeDisplayCandidate.costFrame.firstActor.hero) : lustDuelExchangeDisplayCandidate.costFrame.firstActor.name} plays Attack first.`,
+      message: lustDuelOrderMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor),
+      compactMessage: lustDuelOrderMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor),
     },
     ...(lustDuelExchangeDisplayCandidate.exchange.settlement ? {
       settlement: {
