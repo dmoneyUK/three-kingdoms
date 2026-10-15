@@ -3784,24 +3784,26 @@
 
 /* The local Hero preview shares Card Details' battlefield-only, pass-through
    stage. Keep identity and portrait fixed while long skill text scrolls. */
-.hero-details-panel{position:relative;display:flex;flex-direction:column;gap:10px;width:min(92vw,340px,100%);height:min(440px,100%);max-height:100%;min-height:0;box-sizing:border-box;padding:12px;background:#151812f6;border:1px solid #c2a05b;box-shadow:0 12px 36px #000c;color:#eee3ca;pointer-events:auto}
-.hero-details-heading{display:flex;flex:0 0 auto;align-items:center;justify-content:space-between;min-height:44px;padding-bottom:5px;border-bottom:1px solid #75623c;color:#e4c77f;font:700 10px Arial,sans-serif;letter-spacing:.16em}
-.hero-details-close{position:static;flex:0 0 44px;width:44px;height:44px;padding:0;border-color:#9c8249;border-radius:2px;font-size:24px;line-height:1}
+.hero-details-panel{position:relative;display:flex;flex-direction:column;gap:7px;width:min(92vw,340px,100%);height:auto;max-height:100%;min-height:0;box-sizing:border-box;padding:8px;background:#151812f6;border:1px solid #c2a05b;box-shadow:0 12px 36px #000c;color:#eee3ca;pointer-events:auto}
+.hero-details-close{position:static;grid-column:3;grid-row:1;align-self:start;flex:0 0 44px;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border-color:#9c8249;border-radius:2px;font-size:24px;line-height:1}
 .hero-details-close:focus-visible{outline:2px solid #ffe6a0;outline-offset:2px}
-.hero-details-profile{display:grid;flex:0 0 auto;grid-template-columns:82px minmax(0,1fr);align-items:center;gap:12px;min-width:0;padding-bottom:9px;border-bottom:1px solid #51462f}
-.hero-details-art{width:82px;height:108px;overflow:hidden;background:#20251d;border:1px solid #a18750;box-shadow:0 3px 10px #0009}
+.hero-details-profile{display:grid;flex:0 0 auto;grid-template-columns:82px minmax(0,1fr) 44px;align-items:center;gap:8px;min-width:0;padding-bottom:6px;border-bottom:1px solid #51462f}
+.hero-details-art{width:82px;aspect-ratio:3/4;overflow:hidden;background:#20251d;border:1px solid #a18750;box-shadow:0 3px 10px #0009}
 .hero-details-art>.hero-art-image{display:block;width:100%;height:100%;object-fit:cover;object-position:center 20%}
 .hero-details-art>.hero-art-fallback{font:700 18px Georgia,serif}
 .hero-details-identity{display:flex;min-width:0;flex-direction:column;gap:5px}
 .hero-details-identity h2{margin:0;color:#f0d28c;font:700 20px/1.08 Georgia,"Times New Roman",serif;overflow-wrap:anywhere}
-.hero-details-identity span{color:#d1c29e;font:700 11px/1.2 Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase}
-.hero-details-identity strong{color:#e7d7b6;font:700 12px/1.25 Arial,sans-serif}
-.hero-details-skills{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:2px 5px 2px 1px;scrollbar-color:#79633d #171a14;scrollbar-width:thin}
+.hero-details-skills{flex:0 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:2px 5px 2px 1px;scrollbar-color:#79633d #171a14;scrollbar-width:thin}
 .hero-details-skill+.hero-details-skill{margin-top:14px;padding-top:11px;border-top:1px solid #4c422e}
 .hero-details-skill h3{margin:0 0 5px;color:#e0bd72;font:700 11px/1.25 Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase}
 .hero-details-skill p{margin:0;color:#d0ccbd;font:13px/1.5 Arial,sans-serif;white-space:pre-wrap;overflow-wrap:anywhere}
-@media(max-width:380px){.hero-details-panel{padding:9px;gap:8px}.hero-details-profile{grid-template-columns:72px minmax(0,1fr);gap:9px}.hero-details-art{width:72px;height:96px}.hero-details-identity h2{font-size:18px}.hero-details-skill p{font-size:12px}}
-@media(max-height:560px){.hero-details-panel{height:100%}.hero-details-profile{grid-template-columns:60px minmax(0,1fr);gap:8px}.hero-details-art{width:60px;height:78px}}
+@media(max-width:380px){.hero-details-panel{padding:7px;gap:6px}.hero-details-profile{grid-template-columns:72px minmax(0,1fr) 44px;gap:7px}.hero-details-art{width:72px}.hero-details-identity h2{font-size:18px}.hero-details-skill p{font-size:12px}}
+@media(max-height:560px){.hero-details-panel{padding:6px;gap:5px}.hero-details-profile{grid-template-columns:60px minmax(0,1fr) 44px;gap:6px}.hero-details-art{width:60px}}
+.game-shell .play-table[data-seat-topology="side-column"] .hero-details-profile{position:relative;grid-template-columns:72px minmax(0,1fr);gap:8px}
+.game-shell .play-table[data-seat-topology="side-column"] .hero-details-art{width:72px}
+.game-shell .play-table[data-seat-topology="side-column"] .hero-details-identity{align-self:end;padding-bottom:8px}
+.game-shell .play-table[data-seat-topology="side-column"] .hero-details-identity h2{font-size:16px}
+.game-shell .play-table[data-seat-topology="side-column"] .hero-details-close{position:absolute;top:0;right:0}
 
 /* Keep both player identity and Hero identity visible in every opponent
    topology. Truncation changes only the visual copy; aria-label/title retain

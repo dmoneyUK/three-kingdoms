@@ -22,7 +22,7 @@ test("CurrentAction self target is selectable, inspectable, and submitted from t
   await expect(opponentTarget).toBeEnabled();
   const [targetBounds, infoBounds] = await Promise.all([
     selfTarget.boundingBox(),
-    page.getByRole("button", { name: "Explain Hua Tuo" }).boundingBox(),
+    page.getByRole("button", { name: "View Hua Tuo details" }).boundingBox(),
   ]);
   expect(targetBounds?.width).toBeGreaterThan(infoBounds?.width ?? 0);
   expect(targetBounds?.height).toBeGreaterThan(infoBounds?.height ?? 0);
@@ -38,10 +38,10 @@ test("CurrentAction self target is selectable, inspectable, and submitted from t
   await testInfo.attach("selected-self-target-local-dock", { body: screenshot, contentType: "image/png" });
 
   await expect(page.locator('.interaction-stage [data-hero-focus-player-id="p1"], .interaction-stage [data-medium-participant-player-id="p1"]')).toHaveCount(0);
-  await page.getByRole("button", { name: "Explain Hua Tuo" }).click();
+  await page.getByRole("button", { name: "View Hua Tuo details" }).click();
   await expect(page.getByRole("dialog", { name: "Hua Tuo" })).toBeVisible();
   await expect(selfTarget).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Close hero information" }).click();
+  await page.getByRole("button", { name: "Close Hua Tuo details" }).click();
   await expect(selfTarget).toHaveAttribute("aria-pressed", "true");
 
   const confirm = page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" });
@@ -63,9 +63,9 @@ test("generic CurrentAction trigger target can select and submit the viewer ID",
   await expect(selfTarget).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator('.interaction-stage [data-hero-focus-player-id="p1"], .interaction-stage [data-medium-participant-player-id="p1"]')).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Explain Hua Tuo" }).click();
+  await page.getByRole("button", { name: "View Hua Tuo details" }).click();
   await expect(page.getByRole("dialog", { name: "Hua Tuo" })).toBeVisible();
-  await page.getByRole("button", { name: "Close hero information" }).click();
+  await page.getByRole("button", { name: "Close Hua Tuo details" }).click();
   await expect(selfTarget).toHaveAttribute("aria-pressed", "true");
 
   const confirm = page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" });
@@ -89,7 +89,7 @@ test("a Local Dock Hero absent from CurrentAction targetIds is not targetable", 
   await expect(localHero).not.toHaveClass(/targetable-target/);
   await localHero.click();
   await expect(page.getByRole("dialog", { name: "Hua Tuo" })).toBeVisible();
-  await page.getByRole("button", { name: "Close hero information" }).click();
+  await page.getByRole("button", { name: "Close Hua Tuo details" }).click();
   await expect(localHero).not.toHaveClass(/selected-target/);
   await expect(page.getByRole("button", { name: "Select Player 2" })).toBeEnabled();
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);

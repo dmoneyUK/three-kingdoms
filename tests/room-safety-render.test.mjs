@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { buildActiveSkillSubmission, buildDecisionPresentation, calculateHandCardStep, GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroInfoDialog, HeroPortrait, HeroSelection, InteractionStage, MandatoryChoiceDialog, normalizeActiveCardSkillSelection, WaitingRoom } from "../app/page.tsx";
+import { buildActiveSkillSubmission, buildDecisionPresentation, calculateHandCardStep, GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroDetailsPreview, HeroInfoDialog, HeroPortrait, HeroSelection, InteractionStage, MandatoryChoiceDialog, normalizeActiveCardSkillSelection, WaitingRoom } from "../app/page.tsx";
 import { buildConsoleDecisionDisplay } from "../game/console-decision.ts";
 import { IMPLEMENTED_STANDARD_HERO_IDS, STANDARD_HEROES } from "../game/heroes.ts";
 import { buildPresentationClientView } from "../game/presentation-client.ts";
@@ -29,6 +29,29 @@ function assertNoTransientBusyGuidance(html) {
 test("game messages start minimized while retaining the fold control", () => {
   assert.match(gameRoomSource, /const \[messagesCollapsed, setMessagesCollapsed\] = useState\(true\)/);
   assert.match(gameRoomSource, /aria-label=\{messagesCollapsed \? "Expand game messages" : "Collapse game messages"\}/);
+});
+
+test("pre-game Hero information remains separate from the compact active-game preview", () => {
+  const hero = STANDARD_HEROES.find((candidate) => candidate.id === "huang-yueying");
+  assert.ok(hero);
+  const preview = renderToStaticMarkup(React.createElement(HeroDetailsPreview, { hero, onClose: () => {} }));
+
+  assert.match(preview, /role="dialog" aria-modal="false" aria-labelledby="hero-details-title"/);
+  assert.match(preview, /id="hero-details-title">Huang Yueying<\/h2>/);
+  assert.match(preview, /aria-label="Huang Yueying portrait"/);
+  assert.match(preview, /aria-label="Close Huang Yueying details"/);
+  assert.equal((preview.match(/class="hero-details-skill"/g) ?? []).length, hero.skills.length);
+  for (const skill of hero.skills) {
+    assert.ok(preview.includes(skill.name), `the real ${skill.name} label remains present`);
+    assert.ok(preview.includes(skill.description.slice(0, 36)), `the real ${skill.name} rules remain present`);
+  }
+  assert.doesNotMatch(preview, /HERO DETAILS|HP\s*4\/4|<span>Shu<\/span>/);
+
+  const pregame = renderToStaticMarkup(React.createElement(HeroInfoDialog, { hero: { ...hero, hp: 4 }, onClose: () => {} }));
+  assert.match(pregame, /class="card-info-dialog hero-info-dialog" role="dialog" aria-modal="true"/);
+  assert.match(pregame, /HERO INFORMATION/);
+  assert.match(pregame, /Cultivation/);
+  assert.match(pregame, /Wizardry/);
 });
 
 const presentationPlayers = [

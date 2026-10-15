@@ -743,10 +743,51 @@ export function HeroInfoDialog({ hero, onClose }: { hero: Hero; onClose: () => v
   return <div className="card-info-backdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && onClose()}><section className="card-info-dialog hero-info-dialog" role="dialog" aria-modal="true" aria-labelledby="hero-info-title"><button type="button" className="card-info-close" onClick={onClose} aria-label="Close hero information">×</button><span>HERO INFORMATION</span><small>{hero.faction} · {"♥".repeat(hero.hp)} · {hero.hp} HP</small><h2 id="hero-info-title">{hero.name}</h2>{skills.map((skill) => <div className="hero-info-skill-block" key={skill.name}><strong className="hero-info-skill">{skill.name}</strong><p>{skill.description}</p></div>)}<em>Only you can see this information.</em></section></div>;
 }
 
-export function HeroDetailsPreview({ hero, currentHp, maximumHp, onClose }: { hero: Hero; currentHp: number | null; maximumHp: number | null; onClose: (restoreFocus?: boolean) => void }) {
+export function HeroDetailsPreview({ hero, onClose }: { hero: Hero; onClose: (restoreFocus?: boolean) => void }) {
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
   const skills = hero.skills?.length ? hero.skills : [{ name: hero.skill ?? "Hero Skill", description: hero.ability }];
+
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    const table = stage?.closest(".play-table") as HTMLElement | null;
+    const dock = document.querySelector<HTMLElement>(".local-player-dock");
+    if (!stage || !table) return;
+
+    const initialStyle = getComputedStyle(stage);
+    const baseTop = Number.parseFloat(initialStyle.top) || 0;
+    const baseBottom = Number.parseFloat(initialStyle.bottom) || 0;
+    const seats = [...table.querySelectorAll<HTMLElement>(".player-board .opponent-player-card[data-player-anchor]")];
+    const measureSafeStage = () => {
+      const tableRect = table.getBoundingClientRect();
+      const panelBounds = panelRef.current?.getBoundingClientRect();
+      const intersectingSeatBottoms = panelBounds
+        ? seats.map((seat) => seat.getBoundingClientRect()).filter((seat) => seat.left < panelBounds.right && seat.right > panelBounds.left).map((seat) => seat.bottom)
+        : [];
+      const seatBottom = Math.max(0, ...intersectingSeatBottoms);
+      const dockTop = dock?.getBoundingClientRect().top;
+      const requiredTop = seatBottom ? Math.ceil(seatBottom + 8 - tableRect.top) : baseTop;
+      const top = Math.min(Math.max(baseTop, requiredTop), Math.max(0, tableRect.height - baseBottom - 1));
+      const requiredBottom = dockTop === undefined ? baseBottom : Math.ceil(tableRect.bottom - (dockTop - 8));
+      const bottom = Math.min(Math.max(baseBottom, requiredBottom), Math.max(0, tableRect.height - top - 1));
+      if (stage.style.top !== `${top}px`) stage.style.top = `${top}px`;
+      if (stage.style.bottom !== `${bottom}px`) stage.style.bottom = `${bottom}px`;
+    };
+
+    measureSafeStage();
+    window.addEventListener("resize", measureSafeStage);
+    window.visualViewport?.addEventListener("resize", measureSafeStage);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measureSafeStage);
+    observer?.observe(table);
+    if (dock) observer?.observe(dock);
+    seats.forEach((seat) => observer?.observe(seat));
+    return () => {
+      window.removeEventListener("resize", measureSafeStage);
+      window.visualViewport?.removeEventListener("resize", measureSafeStage);
+      observer?.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     closeButtonRef.current?.focus({ preventScroll: true });
@@ -764,19 +805,14 @@ export function HeroDetailsPreview({ hero, currentHp, maximumHp, onClose }: { he
     return () => document.removeEventListener("pointerdown", dismissOutsideTap);
   }, [onClose]);
 
-  return <div className="card-details-stage hero-details-stage" data-hero-details-stage="true">
+  return <div ref={stageRef} className="card-details-stage hero-details-stage" data-hero-details-stage="true">
     <section ref={panelRef} className="hero-details-panel" role="dialog" aria-modal="false" aria-labelledby="hero-details-title">
-      <header className="hero-details-heading">
-        <span>HERO DETAILS</span>
-        <button ref={closeButtonRef} type="button" className="card-info-close hero-details-close" onClick={() => onClose()} aria-label={`Close ${hero.name} details`}>×</button>
-      </header>
       <div className="hero-details-profile">
         <div className="hero-details-art" role="img" aria-label={`${hero.name} portrait`} data-hero-id={hero.id}><HeroPortrait hero={hero} /></div>
         <div className="hero-details-identity">
           <h2 id="hero-details-title">{hero.name}</h2>
-          <span>{hero.faction}</span>
-          <strong>HP {currentHp ?? "—"}/{maximumHp ?? hero.hp}</strong>
         </div>
+        <button ref={closeButtonRef} type="button" className="card-info-close hero-details-close" onClick={() => onClose()} aria-label={`Close ${hero.name} details`}>×</button>
       </div>
       {/* The scrollable skills region needs keyboard focus to expose long descriptions. */}
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex */}
@@ -5672,7 +5708,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       }} />
       <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey} />
       {infoCard && <CardDetailsPreview card={infoCard} context={infoCardContext} onClose={closeCardDetails} />}
-      {infoHero && me && <HeroDetailsPreview hero={infoHero} currentHp={me.hp} maximumHp={me.maxHp} onClose={closeHeroDetails} />}
+      {infoHero && me && <HeroDetailsPreview hero={infoHero} onClose={closeHeroDetails} />}
     </section>
     <footer className="play-command">
     <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setExpandedOpponentId(null); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={openHeroDetails} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} attackResponsePrompt={Boolean(rootAction?.action === "ATTACK" && rootActionCardFace && rootAction.targetId === room.meId && room.currentAction?.kind === "response" && room.currentAction.requirement === "dodge" && room.currentAction.actorId === room.meId && canUseAction(room.currentAction, "respond"))} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
