@@ -158,3 +158,76 @@ test("real Lust submits its ordered two-target selection", async ({ page, reques
   await expect(page.locator(".effect-notice")).toContainText("LUST · RESULT");
   await expect(page.locator(".effect-notice")).toContainText("FIRST MAN failed to play Attack; 1 Duel damage from SECOND MAN applies.");
 });
+
+test("real Lust guidance keeps its ordered selection local and the active skill tap cancels without committing", async ({ page, request }) => {
+  const cost = card("Dodge", "real-lust-toggle-cost");
+  const seed = await seedSkillRoom(request, {
+    hero: "diao-chan", hand: [cost],
+    targets: [
+      { name: "FIRST MAN", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [] },
+      { name: "SECOND MAN", role: "Rebel", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
+    ],
+  });
+  const user = await openSkillUser(page, seed);
+  await page.setViewportSize({ width: 440, height: 894 });
+
+  const dock = page.locator(`.local-player-dock[data-player-anchor="${user.id}"]`);
+  const skill = dock.locator(".local-hero-skills").getByRole("button", { name: "Lust", exact: true });
+  const guidance = dock.locator(".decision-status");
+  const confirm = dock.locator('[data-action-slot="primary"] button.primary');
+  const costButton = dock.locator(`[data-hand-card-id="${cost.id}"] .game-card`);
+  const firstTarget = page.getByRole("button", { name: "Select FIRST MAN", exact: true });
+  const secondTarget = page.getByRole("button", { name: "Select SECOND MAN", exact: true });
+  const actionPosts = [];
+  page.on("request", (browserRequest) => {
+    if (browserRequest.url() === `${API}/api/rooms` && browserRequest.method() === "POST") actionPosts.push(browserRequest.postDataJSON());
+  });
+
+  const before = await projectedRoom(request, seed, user);
+  expect(before.currentAction.triggerOptions.map((option) => option.effectId)).toContain("diao_chan_lust");
+  await expect(page.locator("[data-public-activity-chip]")).toContainText("SKILL USER's turn");
+
+  await skill.focus();
+  await skill.press("Enter");
+  await expect(skill).toHaveAttribute("aria-pressed", "true");
+  await expect(guidance).toContainText("Select 1 card and 2 Duel participants.");
+  await skill.press("Enter");
+  await expect(skill).toHaveAttribute("aria-pressed", "false");
+  expect(actionPosts).toEqual([]);
+
+  await skill.click();
+  await expect(guidance).toHaveAttribute("data-lust-local-selection", "true");
+  await expect(guidance).toContainText("Select 1 card and 2 Duel participants.");
+  await expect(guidance).not.toContainText("YOUR DECISION");
+  await expect(guidance).not.toContainText("LOCAL CANCEL");
+  await expect(guidance).toHaveAttribute("data-console-local-cancel", "false");
+  await expect(dock.locator('[data-action-slot="cancel"] button')).toHaveCount(0);
+  await expect(confirm).toBeDisabled();
+
+  await costButton.click();
+  await firstTarget.click();
+  await expect(confirm).toBeDisabled();
+  await secondTarget.click();
+  const order = guidance.getByTestId("lust-order-guidance");
+  await expect(order).toHaveText("Lust order: FIRST MAN plays Attack first, then SECOND MAN.");
+  await expect(page.locator(".console-guidance > small[role='status']")).toHaveCount(0);
+  await expect(confirm).toBeEnabled();
+
+  await skill.click();
+  await expect(skill).toHaveAttribute("aria-pressed", "false");
+  await expect(guidance).not.toHaveAttribute("data-lust-local-selection", "true");
+  await expect(costButton).not.toHaveClass(/selected/);
+  await expect(page.locator(`article.opponent-player-card[data-player-anchor="${seed.players[1].id}"]`)).not.toHaveClass(/selected-target/);
+  await expect(page.locator(`article.opponent-player-card[data-player-anchor="${seed.players[2].id}"]`)).not.toHaveClass(/selected-target/);
+  expect(actionPosts).toEqual([]);
+
+  const afterCancel = await projectedRoom(request, seed, user);
+  expect(afterCancel.myHand.map((item) => item.id)).toContain(cost.id);
+  expect(afterCancel.currentAction).toMatchObject({ kind: "turn", actorId: user.id });
+  expect(afterCancel.presentationSnapshot.diaoChanSkillNotices ?? []).toEqual([]);
+
+  const started = await completeSkillSelection({ page, request, seed, skillName: "Lust", providerId: "diao_chan_lust", cardIds: [cost.id], targetIndexes: [1, 2] });
+  expect(started.room.presentationSnapshot.diaoChanSkillNotices.some((notice) => notice.notice === "ACTIVATION")).toBe(true);
+  expect(actionPosts).toHaveLength(1);
+  expect(actionPosts[0]).toMatchObject({ action: "trigger", providerId: "diao_chan_lust", cardIds: [cost.id], targetIds: [seed.players[1].id, seed.players[2].id] });
+});

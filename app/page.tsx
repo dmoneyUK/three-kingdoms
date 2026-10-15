@@ -1877,6 +1877,20 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const activeSkillTargetMode = Boolean(activeSkillOption && activeSkillStateIsCurrent && activeSkillTargetIds.length > 0);
   const activeSkillSelectedTargetIds = activeSkillStateIsCurrent ? (activeSkillSelectionState?.targetIds ?? []).filter((id) => activeSkillTargetIds.includes(id)) : [];
   const activeSkillTargetId = activeSkillSelectedTargetIds[0] ?? "";
+  const lustLocalSelectionActive = Boolean(
+    activeSkillOption?.effectId === "diao_chan_lust"
+    && activeSkillSelection
+    && activeSkillStateIsCurrent,
+  );
+  const lustTargetOrderText = lustLocalSelectionActive
+    && activeSkillSelectedTargetIds.length === activeSkillTargetMin
+    && activeSkillTargetMin === activeSkillTargetMax
+    ? (() => {
+      const firstName = room.players.find((player) => player.id === activeSkillSelectedTargetIds[0])?.name;
+      const secondName = room.players.find((player) => player.id === activeSkillSelectedTargetIds[1])?.name;
+      return firstName && secondName ? `Lust order: ${firstName} plays Attack first, then ${secondName}.` : "";
+    })()
+    : "";
   const daqiaoDeflectionSelectionActive = Boolean(
     activeSkillOption?.effectId === "daqiao_deflection"
     && activeSkillSelection
@@ -2423,11 +2437,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       onClick: option ? () => {
         if (option.selection?.type === "cards" || option.selection?.type === "target" || option.selection?.type === "target_cards") {
           const activating = kingSkillId !== option.effectId;
-          // Target skills have an explicit local Cancel surface once a target
-          // is selected. Do not make a second click on the skill itself an
-          // ambiguous second cancellation of that local choice.
-          if (!activating && option.selection?.type === "target") return;
-          if (!activating && (option.selection?.type === "cards" || option.selection?.type === "target")) resetLocalTargetFlow("active-skill");
+          if (!activating && option.effectId === "diao_chan_lust") resetLocalTargetFlow("active-skill");
+          else if (!activating && option.selection?.type === "target") {
+            // Other target skills keep their explicit local Cancel surface.
+            // Lust alone uses a second skill tap to clear its ordered choice.
+            return;
+          } else if (!activating && option.selection?.type === "cards") resetLocalTargetFlow("active-skill");
           else {
             setKingSkillId(activating ? option.effectId : "");
             setActiveSkillSelectionState(activating ? { revision: activeActionRevision, effectId: option.effectId, cardIds: [], targetIds: [] } : null);
@@ -5106,6 +5121,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : "waiting";
   const consoleSelection: ConsoleSelectionFact | undefined = daqiaoDeflectionSelectionActive
     ? { active: true, hasInput: daqiaoDeflectionCardCount > 0 || daqiaoDeflectionTargetCount > 0, count: daqiaoDeflectionCardCount + daqiaoDeflectionTargetCount, min: 2, max: 2, summary: "" }
+    : lustLocalSelectionActive && activeSkillSelection
+      ? { active: true, hasInput: activeSkillSelectedCardIds.length > 0 || activeSkillSelectedTargetIds.length > 0, count: activeSkillSelectedCardIds.length + activeSkillSelectedTargetIds.length, min: activeSkillSelection.min + activeSkillTargetMin, max: activeSkillSelection.max + activeSkillTargetMax, summary: "" }
     : localTargetSelection.selectionActive
       ? { active: true, hasInput: localTargetSelection.canCancel, count: localTargetSelection.selectedTargetIds.length, min: localTargetSelection.minTargetCount, max: localTargetSelection.maxTargetCount, summary: localTargetSelection.instruction }
     : activeSkillSelection && activeSkillStateIsCurrent
@@ -5223,7 +5240,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && responseDamageAction === "decline_response"
   );
   const consoleAuthoritativeDecision = Boolean(room.currentAction && room.currentAction.kind !== "none" && (consoleIsDecisionActor || room.isMyTurn && room.currentAction.kind === "turn" && currentActionOwnedByViewer));
-  const consoleInstruction = sharedNegationWindow
+  const consoleInstruction = lustLocalSelectionActive && activeSkillSelection
+    ? `Select ${activeSkillSelection.min} card${activeSkillSelection.min === 1 ? "" : "s"} and ${activeSkillTargetMin} Duel participant${activeSkillTargetMin === 1 ? "" : "s"}.`
+    : sharedNegationWindow
     ? room.currentAction?.reason || "Negation response window"
     : negationResponseGuidance
       ? "Play Negation or Skip."
@@ -5246,6 +5265,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ...(canFormSerpentAttack ? [serpentMode ? "Normal" : "Spear"] : []),
     ...(room.isMyTurn && canPlay ? ["End"] : []),
   ].filter((label, index, all) => Boolean(label) && all.indexOf(label) === index);
+  const consoleLocalCancelVisible = !lustLocalSelectionActive && (
+    localTargetSelection.canCancel && !triggerHasProviderCancelSurface && !normalHasProviderCancelSurface
+    || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal)
+    || canClearTargetCardPickerSelection
+  );
+  const consoleLocalCancelEnabled = !lustLocalSelectionActive && (
+    localTargetSelection.canCancel
+    || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal)
+    || canClearTargetCardPickerSelection
+  );
   const consoleDecision = buildConsoleDecisionDisplay({
     kind: consoleKind,
     instruction: consoleInstruction,
@@ -5254,7 +5283,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     busy: busy || activeSkillSelectionBusy,
     selection: consoleSelection,
     primaryCandidates: consolePrimaryCandidates,
-    localCancel: { visible: localTargetSelection.canCancel && !triggerHasProviderCancelSurface && !normalHasProviderCancelSurface || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal) || canClearTargetCardPickerSelection, enabled: localTargetSelection.canCancel || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal) || canClearTargetCardPickerSelection },
+    localCancel: { visible: consoleLocalCancelVisible, enabled: consoleLocalCancelEnabled },
     authoritativeDecline: consoleDecline,
     secondaryControls: consoleSecondaryControls,
   });
@@ -5349,11 +5378,44 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       } guidance={
         <div className="console-guidance" data-console-guidance="true">
           <div className="console-guidance-row">
-            <div className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`} data-console-decision-kind={consoleDecision.kind} data-console-coherent={consoleDecision.coherent ? "true" : "false"} data-console-primary={consoleDecision.primary?.label ?? "none"} data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"} data-console-selection-count={consoleDecision.selectionCount ?? undefined} data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"} data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"} data-console-negation-window={sharedNegationWindow ? "true" : "false"} data-console-response-presentation-ready={responsePresentationReady ? "true" : "false"} data-console-response-decision-ready={responseDecisionReady ? "true" : "false"} data-console-presentation-busy={presentationBusy ? "true" : "false"} data-console-active-skill-selection-busy={activeSkillSelectionBusy ? "true" : "false"} data-console-network-busy={busy ? "true" : "false"} role="status" aria-live="polite" aria-atomic="true"><small>{negationWindowSubmitted ? "RESPONSE SUBMITTED" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{consoleDecision.instruction}</strong>{daqiaoDeflectionSelectionActive ? <div className="deflection-selection-guidance" data-testid="deflection-selection-guidance" role="group" aria-label="Deflection selections"><span data-daqiao-selection="card">Discard card: {daqiaoDeflectionCardCount}/1 {daqiaoDeflectionCardCount === 1 ? "✓" : "— Select an eligible hand or equipment card"}</span><span data-daqiao-selection="target">Transfer target: {daqiaoDeflectionTargetCount}/1 {daqiaoDeflectionTargetCount === 1 ? "✓" : "— Tap an eligible hero portrait"}</span>{daqiaoDeflectionCardCount === 1 && daqiaoDeflectionTargetCount === 1 && <strong>Ready to redirect Attack</strong>}</div> : !negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}{consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true"><b>{canClearTargetCardPickerSelection ? "CLEAR SELECTION" : "LOCAL CANCEL"}</b><span>{canClearTargetCardPickerSelection ? "Remove your selected card." : "Change your selection before submitting."}</span></span>}</div>
+            <div
+              className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`}
+              data-console-decision-kind={consoleDecision.kind}
+              data-console-coherent={consoleDecision.coherent ? "true" : "false"}
+              data-console-primary={consoleDecision.primary?.label ?? "none"}
+              data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"}
+              data-console-selection-count={consoleDecision.selectionCount ?? undefined}
+              data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"}
+              data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"}
+              data-console-negation-window={sharedNegationWindow ? "true" : "false"}
+              data-console-response-presentation-ready={responsePresentationReady ? "true" : "false"}
+              data-console-response-decision-ready={responseDecisionReady ? "true" : "false"}
+              data-console-presentation-busy={presentationBusy ? "true" : "false"}
+              data-console-active-skill-selection-busy={activeSkillSelectionBusy ? "true" : "false"}
+              data-console-network-busy={busy ? "true" : "false"}
+              data-lust-local-selection={lustLocalSelectionActive ? "true" : undefined}
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              {!lustLocalSelectionActive && <small>{negationWindowSubmitted ? "RESPONSE SUBMITTED" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
+              <strong>{consoleDecision.instruction}</strong>
+              {lustTargetOrderText && <em data-testid="lust-order-guidance">{lustTargetOrderText}</em>}
+              {daqiaoDeflectionSelectionActive
+                ? <div className="deflection-selection-guidance" data-testid="deflection-selection-guidance" role="group" aria-label="Deflection selections">
+                  <span data-daqiao-selection="card">Discard card: {daqiaoDeflectionCardCount}/1 {daqiaoDeflectionCardCount === 1 ? "✓" : "— Select an eligible hand or equipment card"}</span>
+                  <span data-daqiao-selection="target">Transfer target: {daqiaoDeflectionTargetCount}/1 {daqiaoDeflectionTargetCount === 1 ? "✓" : "— Tap an eligible hero portrait"}</span>
+                  {daqiaoDeflectionCardCount === 1 && daqiaoDeflectionTargetCount === 1 && <strong>Ready to redirect Attack</strong>}
+                </div>
+                : !negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}
+              {consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true">
+                <b>{canClearTargetCardPickerSelection ? "CLEAR SELECTION" : "LOCAL CANCEL"}</b>
+                <span>{canClearTargetCardPickerSelection ? "Remove your selected card." : "Change your selection before submitting."}</span>
+              </span>}
+            </div>
             <GameSystemMenu onLeave={onLeave} messages={gameMessages} messagesCollapsed={messagesCollapsed} onToggleMessages={() => setMessagesCollapsed((collapsed) => !collapsed)} />
           </div>
           {invalidResponseState && <p className="error" role="status">Waiting for the latest response state…</p>}
-          {(activeSkillSelection || activeSkillTargetSelection) && activeSkillOption?.effectId === "diao_chan_lust" && activeSkillSelectedTargetIds.length > 1 && <small role="status">Lust order: {room.players.find((player) => player.id === activeSkillSelectedTargetIds[0])?.name} plays Attack first, then {room.players.find((player) => player.id === activeSkillSelectedTargetIds[1])?.name}.</small>}
         </div>
       }>
         <div className="local-hand-section" data-raining-arrows-dodge-providers={rainingArrowsHasHandDodgeProvider ? "available" : undefined}>

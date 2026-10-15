@@ -700,12 +700,19 @@ for (const skill of activeSkills) {
     for (const targetId of skill.targetIds) await act(async () => { targetButton(renderer, targetId).props.onClick(); });
     assert.equal(useButton().props.disabled, false, `${skill.label} enables only after required selection`);
     if (skill.effectId === "diao_chan_lust") {
-      assert.match(statusText(renderer), /Lust order: TARGET ONE plays Attack first, then TARGET TWO\./, "Diao Chan Lust keeps its target-order guidance");
-      assert.equal(buttonsContaining(renderer, "Cancel").length, 1, "Diao Chan Lust keeps local Cancel with its guidance");
+      const decisionStatus = nodeWith(renderer, "data-lust-local-selection", "true");
+      assert.match(renderedNodeText(decisionStatus), /Select 1 card and 2 Duel participants\./, "Diao Chan Lust gives the local selection instruction");
+      assert.match(renderedNodeText(decisionStatus), /Lust order: TARGET ONE plays Attack first, then TARGET TWO\./, "Diao Chan Lust keeps target order inside the main guidance");
+      assert.equal(nodeWith(renderer, "data-testid", "lust-order-guidance").parent, decisionStatus, "Lust order is inside the main decision status");
+      assert.doesNotMatch(renderedNodeText(decisionStatus), /YOUR DECISION|LOCAL CANCEL|Change your selection/, "Lust guidance omits redundant headings and cancel text");
+      assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "Lust selection has no redundant Cancel button");
     }
     const actionCountBeforeCancel = actionCalls.length;
-    await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
-    assert.equal(actionCalls.length, actionCountBeforeCancel, `${skill.label} Cancel sends no action`);
+    await act(async () => {
+      if (skill.effectId === "diao_chan_lust") skillButton().props.onClick();
+      else button(renderer, { children: "Cancel" }).props.onClick();
+    });
+    assert.equal(actionCalls.length, actionCountBeforeCancel, `${skill.label} local cancellation sends no action`);
     assert.equal(button(renderer, { "aria-label": skill.skill }).props["aria-pressed"], false, `${skill.label} Cancel exits the active local skill flow`);
     for (const cardId of skill.cardIds) assert.equal(handCardButton(renderer, cardId).props.className.includes("selected"), false, `${skill.label} Cancel clears the selected card`);
     for (const targetId of skill.targetIds) assert.equal(nodeWith(renderer, "data-player-anchor", targetId).props.className.includes("selected-target"), false, `${skill.label} Cancel clears the selected target`);
