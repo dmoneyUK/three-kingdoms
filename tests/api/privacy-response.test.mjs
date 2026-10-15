@@ -497,8 +497,18 @@ test("the three faction lords expose their active skills through the semantic pr
   assert.deepEqual(zhihengOption.selection.eligibleCardIds, [discarded.id, equipped.id]);
   const zhiheng = await requestAndSettle("trigger", { code: zhihengGame.code, token: zhihengHost.token, providerId: "sun_quan_zhiheng", cardIds: [discarded.id, equipped.id] });
   assert.equal(zhiheng.status, 200, JSON.stringify(zhiheng.data));
+  const zhihengCostEvent = zhiheng.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === discarded.id));
+  assert.deepEqual(zhihengCostEvent.publicCardEffects?.[0]?.materials, [
+    { cardId: discarded.id, ownerId: zhihengSun.id, fromZone: "HAND", toZone: "DISCARD" },
+    { cardId: equipped.id, ownerId: zhihengSun.id, fromZone: "EQUIPMENT", toZone: "DISCARD" },
+  ], "Equilibrium proves only its exact Hand/Equipment payments");
+  assert.equal(zhihengCostEvent.publicCardEffects?.[0]?.activationOwnerId, zhihengSun.id);
   assert.deepEqual(new Set(zhiheng.data.room.myHand.map((held) => held.id)), new Set([drawn.id, drawnTwo.id]), "Equilibrium draws one replacement for each discarded card");
   assert.ok(discardIds(zhihengGame.code).includes(discarded.id)); assert.ok(discardIds(zhihengGame.code).includes(equipped.id));
+  const zhihengObserver = (await state(zhihengGame.code, zhihengGame.members[1].token)).data;
+  assert.equal(JSON.stringify(zhihengObserver.presentationSnapshot.publicCardEffects).includes(drawn.id), false);
+  assert.equal(JSON.stringify(zhihengObserver.presentationSnapshot.publicCardEffects).includes(drawnTwo.id), false,
+    "Equilibrium's private replacement draws never enter public proof");
   assert.deepEqual(JSON.parse(query(`SELECT equipment_json FROM players WHERE id=${quote(zhihengSun.id)}`)), {}, "an Equilibrium equipment cost leaves the Equipment Zone");
   assert.deepEqual(JSON.parse(query(`SELECT skill_state_json FROM rooms WHERE code=${quote(zhihengGame.code)}`)), { turnPlayerId: zhihengSun.id, zhihengUsed: true });
 

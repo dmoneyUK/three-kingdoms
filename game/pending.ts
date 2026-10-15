@@ -149,6 +149,8 @@ export type DamageAboutToApplyTriggerContinuation = CausalFields & {
   resumePhase: string;
   resumePlayerId?: string;
   sequenceStartCardId: string;
+  /** Exact public card event that originated this damage, when one exists. */
+  rootEventId?: string;
   origin?: AttackOrigin;
   physicalSuit?: Card["suit"];
 };
@@ -163,6 +165,8 @@ export type DamageSufferedTriggerContinuation = CausalFields & {
   resumePhase: string;
   resumePlayerId?: string;
   sequenceStartCardId: string;
+  /** Exact public card event that originated this damage, when one exists. */
+  rootEventId?: string;
   origin?: AttackOrigin;
   damageCause?: DamageCause;
   physicalSuit?: Card["suit"];

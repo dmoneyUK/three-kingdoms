@@ -424,6 +424,11 @@ test("Green Dragon Blade and Attack-use-limit rules preserve normal Attack flow"
   assert.equal(persistedDragonTrigger.kind, "trigger"); assert.equal(dragonTrigger.data.currentAction.presentation.readyAfterEventId, persistedDragonTrigger.readyAfterEventId, "the trigger records its own presentation barrier at creation");
   const followed = await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "green_dragon_blade_attack_dodged", cardId: "attack-dragon-follow-up" });
   assert.equal(followed.status, 200); assert.equal(followed.data.room.pendingAttack, null, "an exhausted defender takes follow-up damage without another response");
+  const greenDragonEvent = followed.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-dragon-follow-up");
+  assert.equal(greenDragonEvent.publicCardEffects?.[0]?.effectId, "green_dragon_blade_attack_dodged");
+  assert.equal(greenDragonEvent.publicCardEffects?.[0]?.activationOwnerId, hostPlayer.id);
+  assert.equal(greenDragonEvent.publicCardEffects?.[0]?.rootEventId, firstAttack.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-dragon-first")?.id,
+    "the follow-up Attack stays linked to its genuine original Attack");
   const damaged = await takeDamageIfPending(game.code, bob.token);
   assert.equal(damaged.status, 200); assert.equal(damaged.data.room.players.find((player) => player.id === bobPlayer.id).hp, 3); assert.equal(damaged.data.room.phase, "play-struck");
   assert.equal(damaged.data.room.timeline.filter((event) => event.type === "card" && event.player === "Host" && event.card.kind === "Attack").length, 2);
@@ -483,6 +488,15 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
   assert.equal(formed.data.room.pendingAttack.physicalCardId, undefined, "a formed Attack has no single physical Attack card");
   const formedEvent = formed.data.room.timeline.find((event) => event.type === "cards" && event.action === "play" && event.player === "Host");
   assert.deepEqual(formedEvent.cards.map((item) => item.id), ["peach-serpent-one", "dodge-serpent-two"]); assert.equal(formedEvent.target, "Bob");
+  assert.deepEqual(formedEvent.publicCardEffects?.[0], {
+    semantics: "PROVEN", eventId: formedEvent.id, effectId: "serpent_spear_attack", effectClass: "CONVERSION",
+    activationOwnerId: hostPlayer.id,
+    materials: [
+      { cardId: "peach-serpent-one", ownerId: hostPlayer.id, fromZone: "HAND", toZone: "DISCARD" },
+      { cardId: "dodge-serpent-two", ownerId: hostPlayer.id, fromZone: "HAND", toZone: "DISCARD" },
+    ],
+    targetId: bobPlayer.id, resultingCardKind: "Attack", outcome: "AS_ATTACK",
+  }, "the two real cards form one server-authored Attack without a fabricated Attack face");
   const serpentDecision = await state(game.code, bob.token); assert.equal(serpentDecision.data.currentAction.kind, "response"); assert.equal(serpentDecision.data.currentAction.requirement, "dodge"); assert.ok(serpentDecision.data.currentAction.options.some((option) => option.providerId === "card"));
   const dodged = await requestAndSettle("respond", { code: game.code, token: bob.token, providerId: "card", cardId: "dodge-serpent-answer" });
   assert.equal(dodged.status, 200); assert.equal(dodged.data.room.phase, "play-struck"); assert.ok(discardIds(game.code).includes("peach-serpent-one"));
@@ -494,6 +508,9 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
   const duelAnswer = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "serpent_spear_attack", cardIds: ["peach-duel-one", "dodge-duel-two"], preserveResponse: true });
   const hostAfterDuel = await state(game.code, host.token);
   assert.equal(duelAnswer.status, 200); assert.equal(hostAfterDuel.data.currentAction.kind, "response"); assert.equal(hostAfterDuel.data.currentAction.requirement, "attack"); assert.equal(hostAfterDuel.data.currentAction.actorId, hostPlayer.id); assert.ok(duelAnswer.data.room.timeline.some((event) => event.type === "cards" && event.action === "play" && event.player === "Alice"));
+  const duelSpearEvent = duelAnswer.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "peach-duel-one"));
+  assert.equal(duelSpearEvent.publicCardEffects?.[0]?.effectId, "serpent_spear_attack", "Duel responses expose the same physical proof path");
+  assert.equal(duelSpearEvent.publicCardEffects?.[0]?.targetId, hostPlayer.id);
 
   setEquipment(alicePlayer.id, { weapon: card("SerpentSpear", "invasion") });
   setHand(hostPlayer.id, [card("BarbarianInvasion", "serpent")], 4, 4); setHand(alicePlayer.id, [card("Peach", "invasion-one"), card("Dodge", "invasion-two")], 4, 4); setHand(bobPlayer.id, [], 4, 4); setHand(carolPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
@@ -549,6 +566,15 @@ test("Rock Cleaving Axe grants range 3 and can discard any two cards after Dodge
   assert.ok(discardIds(game.code).includes("peach-axe-cost")); assert.ok(discardIds(game.code).includes("rockcleavingaxe-cost"));
   const axeCostEvent = forced.data.room.timeline.find((event) => event.type === "cards" && event.message?.includes("Rock Cleaving Axe"));
   assert.deepEqual(axeCostEvent.cards.map((item) => item.id), ["peach-axe-cost", "rockcleavingaxe-cost"]);
+  const axeEffect = axeCostEvent.publicCardEffects?.[0];
+  assert.equal(axeEffect?.effectId, "rock_cleaving_axe_attack_dodged");
+  assert.equal(axeEffect?.effectClass, "COST", "the grouped play event remains semantically a payment");
+  assert.equal(axeEffect?.activationOwnerId, hostPlayer.id);
+  assert.deepEqual(axeEffect?.materials, [
+    { cardId: "peach-axe-cost", ownerId: hostPlayer.id, fromZone: "HAND", toZone: "DISCARD" },
+    { cardId: "rockcleavingaxe-cost", ownerId: hostPlayer.id, fromZone: "EQUIPMENT", toZone: "DISCARD" },
+  ]);
+  assert.equal(axeEffect?.rootEventId, forced.data.room.timeline.find((event) => event.type === "card" && event.card.id === "attack-axe-force")?.id);
 
 
 });
@@ -567,6 +593,10 @@ test("Sky Piercing Halberd expands a last-hand Attack to up to three ordered Dod
   assert.deepEqual(launched.data.room.causalEnvelope.frames[0].current.currentTargetIds, [alicePlayer.id]);
   assert.deepEqual(launched.data.room.presentationV2.groupResolution.targetIds, [alicePlayer.id, bobPlayer.id, carolPlayer.id]);
   assert.equal(launched.data.room.presentationV2.groupResolution.resolutionSemantics, "ORDERED");
+  const halberdAttack = launched.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-last");
+  assert.deepEqual(halberdAttack.publicCardEffects?.[0]?.targetIds, [alicePlayer.id, bobPlayer.id, carolPlayer.id]);
+  assert.equal(halberdAttack.publicCardEffects?.[0]?.effectId, "sky_piercing_halberd_attack");
+  assert.equal(halberdAttack.publicCardEffects?.[0]?.activationOwnerId, hostPlayer.id);
   assert.equal(launched.data.room.presentationV2.groupResolution.currentParticipantId, alicePlayer.id);
   assert.deepEqual(launched.data.room.presentationV2.groupResolution.participantProgress, [
     { playerId: alicePlayer.id, order: 1, status: "CURRENT" },
@@ -705,6 +735,13 @@ test("Frost Sword prevents Attack damage only when its owner discards exactly tw
   assert.equal(frost.status, 200); assert.equal(frost.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "Frost Sword prevents the Attack damage"); assert.equal(frost.data.room.players.find((player) => player.id === alicePlayer.id).handCount, 3, "one Hand card and one Equipment card are discarded");
   assert.equal(discardIds(game.code).filter((id) => id === "peach-one").length, 1);
   assert.equal(discardIds(game.code).filter((id) => id === "ferganasteed-frost-mount").length, 1);
+  const frostEvent = frost.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "peach-one"));
+  assert.equal(frostEvent.publicCardEffects?.[0]?.effectId, "frost_sword_damage_about_to_apply");
+  assert.equal(frostEvent.publicCardEffects?.[0]?.activationOwnerId, hostPlayer.id);
+  assert.deepEqual(frostEvent.publicCardEffects?.[0]?.materials, [
+    { cardId: "peach-one", ownerId: alicePlayer.id, fromZone: "HAND", toZone: "DISCARD" },
+    { cardId: "ferganasteed-frost-mount", ownerId: alicePlayer.id, fromZone: "EQUIPMENT", toZone: "DISCARD" },
+  ]);
 
   setHand(hostPlayer.id, [card("Attack", "one-eligible-attack")], 4, 4); setHand(alicePlayer.id, [card("Peach", "one-eligible-target")], 4, 4); setEquipment(alicePlayer.id); setTurn(game.code, hostPlayer.seat);
   const oneEligibleAttack = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-one-eligible-attack", targetId: alicePlayer.id });
@@ -742,6 +779,9 @@ test("Kirin Bow discards one damaged target Mount and then applies the Attack da
   const resolved = await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "kirin_bow_damage_about_to_apply", cardKeys: ["shadowrunner-defensive"] });
   assert.equal(resolved.status, 200); const target = resolved.data.room.players.find((player) => player.id === alicePlayer.id);
   assert.equal(target.hp, 3); assert.deepEqual(target.equipmentCards.map((item) => item.kind), ["FerganaSteed"]); assert.ok(discardIds(game.code).includes("shadowrunner-defensive"));
+  const kirinEvent = resolved.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "shadowrunner-defensive"));
+  assert.deepEqual(kirinEvent.publicCardEffects?.[0]?.materials, [{ cardId: "shadowrunner-defensive", ownerId: alicePlayer.id, fromZone: "EQUIPMENT", toZone: "DISCARD" }]);
+  assert.equal(kirinEvent.publicCardEffects?.[0]?.activationOwnerId, hostPlayer.id);
 
 });
 
@@ -785,6 +825,16 @@ test("Eight Trigrams offers optional red Judgement as Dodge and black Judgement 
   assert.ok(redView.data.currentAction.options.some((option) => option.providerId === "eight_trigrams_dodge"));
   const redResult = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "eight_trigrams_dodge" });
   assert.equal(redResult.status, 200); assert.equal(redResult.data.room.pendingAttack, null); assert.equal(redResult.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
+  const redJudgementEvent = redResult.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "peach-judgement-red");
+  assert.deepEqual(redJudgementEvent.publicCardEffects?.[0], {
+    semantics: "PROVEN", eventId: redJudgementEvent.id, effectId: "eight_trigrams_dodge", effectClass: "JUDGEMENT",
+    activationOwnerId: alicePlayer.id,
+    materials: [{ cardId: "peach-judgement-red", ownerId: null, fromZone: "DECK", toZone: "JUDGEMENT" }],
+    targetId: alicePlayer.id,
+    rootEventId: redResult.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-trigrams-red")?.id,
+    rootResolutionId: redResult.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-trigrams-red")?.resolutionId,
+    resultingCardKind: "Dodge", outcome: "JUDGEMENT_SUCCEEDED_AS_DODGE",
+  }, "only the actual revealed red Judgement is proven as a Dodge");
 
   sql(`UPDATE players SET hero='xiahou-dun' WHERE id=${quote(alicePlayer.id)}`);
   setHand(hostPlayer.id, [card("Attack", "trigrams-black")], 4, 4); setDeck(game.code, [{ ...card("Peach", "judgement-black"), suit: "♣", rank: "8" }]); setTurn(game.code, hostPlayer.seat);
@@ -826,6 +876,19 @@ test("Eight Trigrams offers optional red Judgement as Dodge and black Judgement 
   assert.equal(guicaiDodge.status, 200, JSON.stringify(guicaiDodge.data));
   assert.equal(guicaiDodge.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "a red Guicai replacement changes Eight Trigrams to a Dodge");
   assert.ok(discardIds(game.code).includes(originalBlack.id)); assert.ok(discardIds(game.code).includes(replacementRed.id));
+  const replacedJudgement = guicaiDodge.data.room.timeline.find((event) => event.type === "card" && event.card?.id === replacementRed.id);
+  const originalJudgementEvent = guicaiDodge.data.room.timeline.find((event) => event.type === "card" && event.card?.id === originalBlack.id);
+  const guicaiProof = replacedJudgement.publicCardEffects?.find((proof) => proof.effectId === "sima_yi_guicai");
+  const replacedEightProof = replacedJudgement.publicCardEffects?.find((proof) => proof.effectId === "eight_trigrams_dodge");
+  assert.equal(guicaiProof?.activationOwnerId, simaPlayer.id);
+  assert.deepEqual(guicaiProof?.materials, [{ cardId: replacementRed.id, ownerId: simaPlayer.id, fromZone: "HAND", toZone: "JUDGEMENT" }]);
+  assert.ok(originalJudgementEvent, "the real original Judgement remains publicly visible in the resolved timeline");
+  assert.equal(guicaiProof?.rootEventId, originalJudgementEvent.id,
+    "Necromancy remains linked to the original revealed Judgement");
+  assert.equal(guicaiProof?.rootResolutionId, originalJudgementEvent.resolutionId);
+  assert.equal(replacedEightProof?.rootEventId, guicaiAttack.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-trigrams-guicai-attack")?.id,
+    "the resulting Eight Trigrams proof remains linked to the actual Attack");
+  assert.equal(replacedEightProof?.outcome, "JUDGEMENT_SUCCEEDED_AS_DODGE");
 
 });
 
@@ -843,6 +906,9 @@ test("generic response executes Zhen Ji's black-card Dodge without a physical Do
   const resolved = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "zhen_ji_black_card_dodge", cardId: blackPeach.id });
   assert.equal(resolved.status, 200);
   assert.equal(resolved.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
+  const qingguoEvent = resolved.data.room.timeline.find((event) => event.type === "card" && event.card?.id === blackPeach.id);
+  assert.equal(qingguoEvent.publicCardEffects?.[0]?.effectId, "zhen_ji_black_card_dodge");
+  assert.deepEqual(qingguoEvent.publicCardEffects?.[0]?.materials, [{ cardId: blackPeach.id, ownerId: alicePlayer.id, fromZone: "HAND", toZone: "DISCARD" }]);
   assert.ok(discardIds(game.code).includes(blackPeach.id));
 });
 

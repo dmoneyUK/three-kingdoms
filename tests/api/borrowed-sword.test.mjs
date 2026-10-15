@@ -220,8 +220,39 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
     const targetDecision = (await state(s.game.code, s.game.members[2].token)).data;
     assert.deepEqual(targetDecision.currentAction.legalActions, ["trigger"]); assert.equal(targetDecision.currentAction.declineAction, undefined);
     const declined = await requestAndSettle("decline_trigger", { code: s.game.code, token: s.game.members[2].token }); assert.equal(declined.status, 409);
+    const observerBeforeCommit = (await state(s.game.code, s.host.token)).data;
+    assert.equal(observerBeforeCommit.timeline.some((event) => event.type === "card" && event.card?.id === discarded.id), false,
+      "the target's selected identity is not public while the choice is still open");
+    assert.equal(JSON.stringify(observerBeforeCommit.presentationSnapshot.publicCardEffects).includes(discarded.id), false,
+      "no public typed proof exists before the physical discard commits");
     const chosen = await requestAndSettle("trigger", { code: s.game.code, token: s.game.members[2].token, providerId: "yin_yang_swords_attack_targeted", choice: "discard", cardKeys: ["hand:0"] }); assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
     assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(s.target.id)}`)).some((item) => item.id === discarded.id), false, "the target loses the selected hand card");
+    const discardEvent = chosen.data.room.timeline.find((event) => event.type === "card" && event.action === "discard" && event.card?.id === discarded.id);
+    assert.ok(discardEvent, "the exact committed physical card has one public discard event");
+    const committedAttack = chosen.data.room.timeline.find((event) => event.type === "card" && event.card?.id === s.attackId);
+    assert.ok(committedAttack, "the original public Attack remains in the timeline");
+    const yinYangProof = discardEvent.publicCardEffects?.find((proof) => proof.effectId === "yin_yang_swords_attack_targeted");
+    assert.ok(yinYangProof, "the exact committed discard receives its typed effect proof");
+    assert.equal(yinYangProof.semantics, "PROVEN");
+    assert.equal(yinYangProof.eventId, discardEvent.id);
+    assert.equal(yinYangProof.activationOwnerId, s.holder.id, "the weapon holder owns the activation");
+    assert.deepEqual(yinYangProof.materials, [{ cardId: discarded.id, ownerId: s.target.id, fromZone: "HAND", toZone: "DISCARD" }]);
+    assert.equal(yinYangProof.rootEventId, committedAttack.id);
+    assert.equal(yinYangProof.rootResolutionId, committedAttack.resolutionId);
+    assert.equal(yinYangProof.targetId, s.target.id);
+    assert.equal(yinYangProof.outcome, "TARGET_DISCARDED");
+    assert.deepEqual(discardEvent.card, discarded, "the event carries the genuine physical card face");
+    assert.deepEqual(chosen.data.room.presentationV2.publicCardEffects.find((proof) => proof.eventId === discardEvent.id)?.cards, [discarded]);
+    const observerAfterCommit = (await state(s.game.code, s.host.token)).data;
+    assert.ok(observerAfterCommit.timeline.some((event) => event.type === "card" && event.card?.id === discarded.id),
+      "every viewer sees the identity only after it has entered the public discard");
+    const observerProof = observerAfterCommit.presentationSnapshot.publicCardEffects.find((proof) => proof.eventId === discardEvent.id);
+    assert.equal(observerProof?.activationOwnerId, s.holder.id);
+    assert.deepEqual(observerProof?.materials, yinYangProof.materials);
+    assert.equal(observerProof?.rootEventId, committedAttack.id);
+    assert.equal(observerProof?.rootResolutionId, committedAttack.resolutionId,
+      "the independent observer receives the same validated public root/material proof");
+    assert.equal(discardIds(s.game.code).filter((id) => id === discarded.id).length, 1, "the selected physical card is discarded exactly once");
     assert.equal(chosen.data.room.phase, "play");
   }
   const s = await openBorrowedSwordScenario({ weaponKind: "YinYangSwords" });

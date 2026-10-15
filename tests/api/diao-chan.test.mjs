@@ -1,4 +1,5 @@
 import test from "node:test";
+import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
 import {
   assert, card, createHumanGame, createTestGame, discardIds, query, quote, request, requestAndSettle, roomCardCount,
   setDeck, setEquipment, setHand, setTurn, sql, state,
@@ -22,16 +23,44 @@ function configureLust(game, { firstHero = "guan-yu", secondHero = "cao-cao", fi
 test("Lust offers ordered male Duel targets, accepts one Hand cost, bypasses Negation, and sources failure damage from the other duelist", async () => {
   const game = await createHumanGame();
   const setup = configureLust(game);
+  const hiddenCard = card("Dodge", "lust-private-unspent-card");
+  setHand(setup.diao.id, [setup.cost, hiddenCard], 3, 3);
   const opened = (await state(game.code, game.members[0].token)).data;
   const option = opened.currentAction.triggerOptions.find((entry) => entry.effectId === "diao_chan_lust");
   assert.ok(option, JSON.stringify(opened));
   assert.deepEqual(option.selection.targetIds, [setup.first.id, setup.second.id]);
   assert.equal(option.selection.targetMin, 2);
   assert.equal(option.selection.targetMax, 2);
-  assert.deepEqual(option.selection.eligibleCardIds, [setup.cost.id]);
+  assert.deepEqual(option.selection.eligibleCardIds, [setup.cost.id, hiddenCard.id],
+    "the active actor can legally pay with either Hand card; only the committed cost is publicly proved");
 
   const started = await requestAndSettle("trigger", { code: game.code, token: game.members[0].token, providerId: "diao_chan_lust", cardIds: [setup.cost.id], targetIds: [setup.first.id, setup.second.id], preserveResponse: true });
   assert.equal(started.status, 200, JSON.stringify(started.data));
+  const lustCostEvent = started.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === setup.cost.id));
+  assert.deepEqual(lustCostEvent.publicCardEffects, [{
+    semantics: "PROVEN", eventId: lustCostEvent.id, effectId: "diao_chan_lust", effectClass: "COST",
+    activationOwnerId: setup.diao.id,
+    materials: [{ cardId: setup.cost.id, ownerId: setup.diao.id, fromZone: "HAND", toZone: "DISCARD" }],
+    outcome: "DUEL_DECLARED",
+  }], "the public proof identifies only the committed physical cost and its true payer");
+  const projectedLustCost = started.data.room.presentationSnapshot.publicCardEffects.find((effect) => effect.eventId === lustCostEvent.id);
+  assert.deepEqual(projectedLustCost.cards, [setup.cost]);
+  assert.deepEqual(projectedLustCost.materials, lustCostEvent.publicCardEffects[0].materials);
+  const sanitizedSnapshot = composePresentationSnapshot({
+    presentationV2: {
+      ...started.data.room.presentationV2,
+      publicCardEffects: started.data.room.presentationV2.publicCardEffects.map((effect) => ({ ...effect, privateDebugCardId: hiddenCard.id })),
+    },
+    currentAction: started.data.room.currentAction,
+    actionRevision: started.data.room.actionRevision,
+    viewerId: setup.diao.id,
+  });
+  assert.equal(JSON.stringify(sanitizedSnapshot.publicCardEffects).includes(hiddenCard.id), false,
+    "snapshot composition copies only the approved public proof schema");
+  const publicObserver = (await state(game.code, game.members[3].token)).data;
+  assert.equal(JSON.stringify(publicObserver.presentationSnapshot.publicCardEffects).includes(hiddenCard.id), false,
+    "unspent private Hand cards never enter the public cost proof");
+  assert.deepEqual(publicObserver.presentationSnapshot.publicCardEffects, started.data.room.presentationSnapshot.publicCardEffects);
   const lustActivation = started.data.room.timeline.filter((event) => event.publicDiaoChanNotice?.notice === "ACTIVATION");
   assert.equal(lustActivation.length, 1, JSON.stringify(started.data.room.timeline));
   assert.deepEqual(lustActivation[0].publicDiaoChanNotice, {
@@ -192,6 +221,14 @@ test("Lust enters canonical Attack conversion providers for Guan Yu, Zhao Yun, a
     const answered = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: scenario.providerId, ...scenario.selection });
     assert.equal(answered.status, 200, JSON.stringify(answered.data));
     assert.equal(answered.data.room.players.find((player) => player.id === setup.second.id).hp, 3);
+    const materialId = scenario.selection.cardId ?? scenario.selection.cardIds[0];
+    const conversionEvent = answered.data.room.timeline.find((event) => (event.type === "card" && event.card?.id === materialId)
+      || event.type === "cards" && event.cards.some((item) => item.id === materialId));
+    const conversion = conversionEvent.publicCardEffects?.find((proof) => proof.effectId === scenario.providerId);
+    assert.ok(conversion, `${scenario.providerId} exposes proof for the real material event`);
+    assert.equal(conversion.activationOwnerId, setup.first.id);
+    assert.equal(conversion.resultingCardKind, "Attack");
+    assert.deepEqual(conversion.materials.map((entry) => entry.cardId), Array.isArray(scenario.selection.cardIds) ? scenario.selection.cardIds : [scenario.selection.cardId]);
     for (const held of scenario.hand) assert.equal(roomCardCount(game.code, held.id), 1);
   }
 });

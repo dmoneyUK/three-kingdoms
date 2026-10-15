@@ -11,12 +11,14 @@ export type PresentationV2Event = {
   target?: string;
   card?: { id?: string; kind?: string };
   cards?: readonly { id?: string; kind?: string }[];
+  message?: string;
   action?: string;
   playedAs?: "attack" | "dodge" | "peach";
   resolutionId?: string;
   importance?: "essential" | "informational";
   finalResult?: boolean;
   presentation?: boolean;
+  privateToPlayerId?: string;
   judgement?: boolean;
   negationSettlement?: unknown;
   selfTargetAction?: unknown;
@@ -25,6 +27,7 @@ export type PresentationV2Event = {
   publicSkillEffect?: { effectId?: unknown; sourceId?: unknown; targetId?: unknown };
   publicDiaoChanNotice?: unknown;
   publicDeflectionAction?: unknown;
+  publicCardEffects?: unknown;
   publicSkillEffectSettlement?: unknown;
   publicDismantleSettlement?: unknown;
   publicStealSettlement?: unknown;
@@ -34,6 +37,90 @@ export type PresentationV2Event = {
   /** Legacy persisted Raining Arrows metadata; normalized into groupSettlement. */
   publicRainingArrowsSettlement?: unknown;
   bumperHarvestRoot?: { semantics?: unknown; sourceId?: unknown; cardId?: unknown; interactionId?: unknown; rootFrameId?: unknown };
+};
+
+export type PresentationPublicCardEffectId =
+  | "yue_jin_dauntless"
+  | "lady_gan_divine_wisdom"
+  | "sun_quan_zhiheng"
+  | "sun_shangxiang_betrothment"
+  | "hua_tuo_prodigal_healer"
+  | "diao_chan_lust"
+  | "sima_yi_guicai"
+  | "xiahou_dun_ganglie"
+  | "rock_cleaving_axe_attack_dodged"
+  | "guan_yu_red_card_attack"
+  | "zhao_yun_dodge_as_attack"
+  | "zhao_yun_attack_as_dodge"
+  | "serpent_spear_attack"
+  | "zhen_ji_black_card_dodge"
+  | "gan_ning_qixi"
+  | "daqiao_captivating"
+  | "hua_tuo_first_aid"
+  | "frost_sword_damage_about_to_apply"
+  | "kirin_bow_damage_about_to_apply"
+  | "yin_yang_swords_attack_targeted"
+  | "green_dragon_blade_attack_dodged"
+  | "sky_piercing_halberd_attack"
+  | "eight_trigrams_dodge";
+
+export type PresentationPublicCardEffectClass = "COST" | "CONVERSION" | "EFFECT" | "JUDGEMENT";
+export type PresentationPublicCardZone = "HAND" | "EQUIPMENT" | "DECK" | "DISCARD" | "PUBLIC_PLAY" | "JUDGEMENT";
+export type PresentationPublicCardEffectMaterial = {
+  cardId: string;
+  ownerId: string | null;
+  fromZone: Extract<PresentationPublicCardZone, "HAND" | "EQUIPMENT" | "DECK">;
+  toZone: Extract<PresentationPublicCardZone, "DISCARD" | "PUBLIC_PLAY" | "JUDGEMENT">;
+};
+
+/** Server-authored identity and movement proof for one public physical-card effect. */
+export type PresentationPublicCardEffectProof = {
+  semantics: "PROVEN";
+  effectId: PresentationPublicCardEffectId;
+  effectClass: PresentationPublicCardEffectClass;
+  eventId: string;
+  activationOwnerId: string;
+  materials: readonly PresentationPublicCardEffectMaterial[];
+  rootEventId?: string;
+  rootResolutionId?: string;
+  interactionId?: string;
+  rootFrameId?: string;
+  targetId?: string;
+  targetIds?: readonly string[];
+  resultingCardKind?: CardKind;
+  outcome?: string;
+};
+
+export type PresentationPublicCardEffectDraft = Omit<PresentationPublicCardEffectProof, "semantics" | "eventId">;
+
+export type PresentationPublicCardEffect = PresentationPublicCardEffectProof & {
+  cards: readonly Card[];
+};
+
+const PUBLIC_CARD_EFFECT_CLASSES: Record<PresentationPublicCardEffectId, readonly PresentationPublicCardEffectClass[]> = {
+  yue_jin_dauntless: ["COST", "EFFECT"],
+  lady_gan_divine_wisdom: ["COST"],
+  sun_quan_zhiheng: ["COST"],
+  sun_shangxiang_betrothment: ["COST"],
+  hua_tuo_prodigal_healer: ["COST"],
+  diao_chan_lust: ["COST"],
+  sima_yi_guicai: ["JUDGEMENT"],
+  xiahou_dun_ganglie: ["COST"],
+  rock_cleaving_axe_attack_dodged: ["COST"],
+  guan_yu_red_card_attack: ["CONVERSION"],
+  zhao_yun_dodge_as_attack: ["CONVERSION"],
+  zhao_yun_attack_as_dodge: ["CONVERSION"],
+  serpent_spear_attack: ["CONVERSION"],
+  zhen_ji_black_card_dodge: ["CONVERSION"],
+  gan_ning_qixi: ["CONVERSION"],
+  daqiao_captivating: ["CONVERSION"],
+  hua_tuo_first_aid: ["CONVERSION"],
+  frost_sword_damage_about_to_apply: ["EFFECT"],
+  kirin_bow_damage_about_to_apply: ["EFFECT"],
+  yin_yang_swords_attack_targeted: ["EFFECT"],
+  green_dragon_blade_attack_dodged: ["EFFECT"],
+  sky_piercing_halberd_attack: ["EFFECT"],
+  eight_trigrams_dodge: ["JUDGEMENT"],
 };
 
 export type PresentationSkillEffectAction = {
@@ -623,6 +710,7 @@ export type PresentationV2 = {
   duelExchange: PresentationDuelExchange | null;
   selfTargetActions?: readonly PresentationSelfTargetAction[];
   deflectionActions?: readonly PresentationDeflectionAction[];
+  publicCardEffects: readonly PresentationPublicCardEffect[];
   dyingBarrier: PresentationDyingBarrier | null;
   reactionChain: PresentationReactionChain | null;
   negationSettlement: PresentationNegationSettlement | null;
@@ -2610,6 +2698,127 @@ function deflectionActionsFor(input: PresentationV2Input): PresentationDeflectio
   return actions.filter((action) => rootActionCounts.get(JSON.stringify([action.interactionId, action.rootEventId, action.rootFrameId])) === 1);
 }
 
+function publicCardEffectsFor(input: PresentationV2Input): PresentationPublicCardEffect[] {
+  const eventIdCounts = new Map<string, number>();
+  for (const event of input.timeline) {
+    const eventId = stringValue(event.id);
+    if (eventId) eventIdCounts.set(eventId, (eventIdCounts.get(eventId) ?? 0) + 1);
+  }
+  const candidates = input.timeline.flatMap((event) => {
+    const attached = Array.isArray(event.publicCardEffects) ? event.publicCardEffects : [];
+    const eventId = stringValue(event.id);
+    if (!eventId || eventIdCounts.get(eventId) !== 1 || event.presentation === false
+      || typeof event.privateToPlayerId === "string"
+      || (event.type !== "card" && event.type !== "cards")) return [];
+    const rawCards = event.type === "card" ? [event.card] : event.cards ?? [];
+    const cards = rawCards.map(publicPhysicalCard);
+    if (!rawCards.length || cards.some((card) => !card)) return [];
+    const publicCards = cards as Card[];
+    const cardIds = publicCards.map((card) => card.id);
+    if (new Set(cardIds).size !== cardIds.length) return [];
+
+    return attached.flatMap((rawProof) => {
+      const proof = record(rawProof);
+      const effectId = stringValue(proof?.effectId) as PresentationPublicCardEffectId | null;
+      const effectClass = stringValue(proof?.effectClass) as PresentationPublicCardEffectClass | null;
+      const activationOwnerId = stringValue(proof?.activationOwnerId);
+      const attachedEventId = stringValue(proof?.eventId);
+      const materials = Array.isArray(proof?.materials) ? proof.materials : [];
+      const materialIds = materials.map((rawMaterial) => stringValue(record(rawMaterial)?.cardId));
+      const validFromZones = new Set(["HAND", "EQUIPMENT", "DECK"]);
+      const validToZones = new Set(["DISCARD", "PUBLIC_PLAY", "JUDGEMENT"]);
+      const validMaterials = materials.every((rawMaterial) => {
+        const material = record(rawMaterial);
+        return Boolean(material && stringValue(material.cardId)
+          && (material.ownerId === null ? material.fromZone === "DECK" : Boolean(stringValue(material.ownerId)))
+          && typeof material.fromZone === "string" && validFromZones.has(material.fromZone)
+          && typeof material.toZone === "string" && validToZones.has(material.toZone)
+          && (material.fromZone !== "DECK" || material.toZone === "JUDGEMENT")
+          && (material.fromZone !== "EQUIPMENT" || material.toZone === "DISCARD"));
+      });
+      const rootEventId = stringValue(proof?.rootEventId);
+      const rootResolutionId = stringValue(proof?.rootResolutionId);
+      const interactionId = stringValue(proof?.interactionId);
+      const rootFrameId = stringValue(proof?.rootFrameId);
+      const targetId = proof?.targetId === undefined ? undefined : stringValue(proof.targetId);
+      const targetIds = proof?.targetIds === undefined ? undefined
+        : Array.isArray(proof.targetIds) && proof.targetIds.every((id) => Boolean(stringValue(id)))
+          ? proof.targetIds.map((id) => stringValue(id)!) : null;
+      const resultingCardKind = proof?.resultingCardKind === undefined ? undefined
+        : typeof proof.resultingCardKind === "string" && CARD_KINDS.includes(proof.resultingCardKind as CardKind)
+          ? proof.resultingCardKind as CardKind : null;
+      const outcome = proof?.outcome === undefined ? undefined : stringValue(proof.outcome);
+      if (!proof || proof.semantics !== "PROVEN" || !effectId || !PUBLIC_CARD_EFFECT_CLASSES[effectId]
+        || !effectClass || !PUBLIC_CARD_EFFECT_CLASSES[effectId].includes(effectClass)
+        || !activationOwnerId || attachedEventId !== eventId
+        || eventIdCounts.get(attachedEventId) !== 1
+        || !materials.length || !validMaterials || materialIds.some((id) => !id)
+        || materialIds.length !== cardIds.length || materialIds.some((id, index) => id !== cardIds[index])
+        || !stringValue(event.resolutionId)
+        || targetId === null || targetIds === null || targetIds && new Set(targetIds).size !== targetIds.length
+        || resultingCardKind === null || outcome === null || outcome !== undefined && outcome.length > 80
+        || (rootEventId === null) !== (rootResolutionId === null)
+        || (interactionId === null) !== (rootFrameId === null)
+        || event.action === "discard" && materials.some((rawMaterial) => record(rawMaterial)?.toZone !== "DISCARD")
+        || event.action === "play" && materials.some((rawMaterial) => !["DISCARD", "PUBLIC_PLAY", "JUDGEMENT"].includes(String(record(rawMaterial)?.toZone)))
+        || event.action === "reveal" && (event.judgement !== true || materials.some((rawMaterial) => record(rawMaterial)?.toZone !== "JUDGEMENT"))) return [];
+
+      const conversionResultById: Partial<Record<PresentationPublicCardEffectId, CardKind>> = {
+        guan_yu_red_card_attack: "Attack",
+        zhao_yun_dodge_as_attack: "Attack",
+        serpent_spear_attack: "Attack",
+        zhao_yun_attack_as_dodge: "Dodge",
+        zhen_ji_black_card_dodge: "Dodge",
+        gan_ning_qixi: "Dismantle",
+        daqiao_captivating: "Overindulgence",
+        hua_tuo_first_aid: "Peach",
+      };
+      const judgementResultById: Partial<Record<PresentationPublicCardEffectId, CardKind>> = {
+        eight_trigrams_dodge: "Dodge",
+      };
+      if (effectClass === "CONVERSION" && conversionResultById[effectId] !== resultingCardKind) return [];
+      if (effectClass === "JUDGEMENT" && resultingCardKind !== undefined && judgementResultById[effectId] !== resultingCardKind) return [];
+      if (effectClass !== "CONVERSION" && effectClass !== "JUDGEMENT" && resultingCardKind !== undefined) return [];
+
+      if (rootEventId) {
+        const root = uniqueTimelineEventById(rootEventId, input.timeline);
+        const rootCards = root?.type === "card" ? [root.card] : root?.type === "cards" ? root.cards ?? [] : [];
+        if (!root || root.id === eventId || root.presentation === false || typeof root.privateToPlayerId === "string"
+          || !rootCards.length || rootCards.some((card) => !publicPhysicalCard(card))
+          || !["play", "reveal"].includes(String(root.action))
+          || root.action === "reveal" && (root.type !== "card" || root.judgement !== true)
+          || root.resolutionId !== rootResolutionId) return [];
+      }
+      if (interactionId && rootFrameId) {
+        const envelope = input.causalEnvelope ?? null;
+        if (!envelope || envelope.interactionId !== interactionId || !envelope.frames.some((frame) => frame.frameId === rootFrameId)) return [];
+      }
+
+      return [{
+        semantics: "PROVEN" as const,
+        effectId,
+        effectClass,
+        eventId,
+        activationOwnerId,
+        materials: materials as PresentationPublicCardEffectProof["materials"],
+        ...(rootEventId ? { rootEventId, rootResolutionId: rootResolutionId! } : {}),
+        ...(interactionId ? { interactionId, rootFrameId: rootFrameId! } : {}),
+        ...(targetId ? { targetId } : {}),
+        ...(targetIds ? { targetIds } : {}),
+        ...(resultingCardKind ? { resultingCardKind } : {}),
+        ...(outcome ? { outcome } : {}),
+        cards: publicCards,
+      }];
+    });
+  });
+  const keys = new Map<string, number>();
+  for (const proof of candidates) {
+    const key = JSON.stringify([proof.eventId, proof.effectId]);
+    keys.set(key, (keys.get(key) ?? 0) + 1);
+  }
+  return candidates.filter((proof) => keys.get(JSON.stringify([proof.eventId, proof.effectId])) === 1);
+}
+
 function groupSettlementsFor(timeline: readonly PresentationV2Event[]): PresentationGroupSettlement[] {
   const eventIdCounts = new Map<string, number>();
   const rootIdCounts = new Map<string, number>();
@@ -3018,6 +3227,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const duelExchange = duelExchangeFor(envelope, interactionScene, input.pending, input.timeline);
   const selfTargetActions = selfTargetActionsFor(input.timeline);
   const deflectionActions = deflectionActionsFor(input);
+  const publicCardEffects = publicCardEffectsFor(input);
   const attackDodgeResponses = attackDodgeResponsesFor(input.timeline);
   const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene, input.timeline);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
@@ -3064,6 +3274,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     duelExchange,
     selfTargetActions,
     deflectionActions,
+    publicCardEffects,
     dyingBarrier,
     reactionChain,
     negationSettlement,

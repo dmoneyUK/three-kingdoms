@@ -27,6 +27,12 @@ test("Betrothment uses exactly two Hand cards, recovers Sun first then the injur
 
   const used = await request("trigger", { code: game.code, token: game.members[0].token, providerId: "sun_shangxiang_betrothment", cardIds: ["dodge-betrothment-a", "peach-betrothment-b"], targetId: target.id });
   assert.equal(used.status, 200, JSON.stringify(used.data));
+  const betrothmentEvent = used.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "dodge-betrothment-a"));
+  assert.deepEqual(betrothmentEvent.publicCardEffects?.[0]?.materials, [
+    { cardId: "dodge-betrothment-a", ownerId: sun.id, fromZone: "HAND", toZone: "DISCARD" },
+    { cardId: "peach-betrothment-b", ownerId: sun.id, fromZone: "HAND", toZone: "DISCARD" },
+  ]);
+  assert.equal(betrothmentEvent.publicCardEffects?.[0]?.activationOwnerId, sun.id);
   const resolved = (await state(game.code, game.members[0].token)).data;
   assert.equal(resolved.players.find((player) => player.id === sun.id).hp, 3);
   assert.equal(resolved.players.find((player) => player.id === target.id).hp, 3);

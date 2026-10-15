@@ -21,6 +21,8 @@ import type {
   PresentationAttackDodgeResponse,
   PresentationDuelExchange,
   PresentationDeflectionAction,
+  PresentationPublicCardEffect,
+  PresentationPublicCardEffectId,
   PresentationDiaoChanSkillNotice,
   PresentationGroupRootCardProof,
   PresentationOrderedAttackRootProof,
@@ -91,6 +93,7 @@ export type PresentationSnapshotAttackDodgeResponse = PresentationAttackDodgeRes
 export type PresentationSnapshotDuelExchange = PresentationDuelExchange;
 export type PresentationSnapshotSelfTargetAction = PresentationSelfTargetAction;
 export type PresentationSnapshotDeflectionAction = PresentationDeflectionAction;
+export type PresentationSnapshotPublicCardEffect = PresentationPublicCardEffect;
 
 export type PresentationSnapshot = {
   identity: PresentationSnapshotIdentity | null;
@@ -113,6 +116,7 @@ export type PresentationSnapshot = {
   attackDodgeResponses?: readonly PresentationSnapshotAttackDodgeResponse[];
   selfTargetActions?: readonly PresentationSnapshotSelfTargetAction[];
   deflectionActions: readonly PresentationSnapshotDeflectionAction[];
+  publicCardEffects: readonly PresentationSnapshotPublicCardEffect[];
   decision: PresentationSnapshotDecision | null;
   localControl: PresentationSnapshotLocalControl;
   /** Explicit public Negation disposition; legacy final-result hints never populate it. */
@@ -162,6 +166,86 @@ export function provenSelfTargetActions(value: unknown): PresentationSnapshotSel
     sourceId: action.sourceId,
     targetId: action.targetId,
     cardKind: "Peach",
+  }));
+}
+
+export function provenPublicCardEffects(value: unknown): PresentationSnapshotPublicCardEffect[] {
+  if (!Array.isArray(value)) return [];
+  const validIds = new Set<PresentationPublicCardEffectId>([
+    "yue_jin_dauntless", "lady_gan_divine_wisdom", "sun_quan_zhiheng", "sun_shangxiang_betrothment",
+    "hua_tuo_prodigal_healer", "diao_chan_lust", "sima_yi_guicai", "xiahou_dun_ganglie", "rock_cleaving_axe_attack_dodged",
+    "guan_yu_red_card_attack", "zhao_yun_dodge_as_attack", "zhao_yun_attack_as_dodge", "serpent_spear_attack",
+    "zhen_ji_black_card_dodge", "gan_ning_qixi", "daqiao_captivating", "hua_tuo_first_aid",
+    "frost_sword_damage_about_to_apply", "kirin_bow_damage_about_to_apply",
+    "yin_yang_swords_attack_targeted",
+    "green_dragon_blade_attack_dodged", "sky_piercing_halberd_attack", "eight_trigrams_dodge",
+  ]);
+  const classesById: Record<PresentationPublicCardEffectId, readonly string[]> = {
+    yue_jin_dauntless: ["COST", "EFFECT"], lady_gan_divine_wisdom: ["COST"], sun_quan_zhiheng: ["COST"],
+    sun_shangxiang_betrothment: ["COST"], hua_tuo_prodigal_healer: ["COST"], diao_chan_lust: ["COST"],
+    sima_yi_guicai: ["JUDGEMENT"], xiahou_dun_ganglie: ["COST"], rock_cleaving_axe_attack_dodged: ["COST"],
+    guan_yu_red_card_attack: ["CONVERSION"], zhao_yun_dodge_as_attack: ["CONVERSION"], zhao_yun_attack_as_dodge: ["CONVERSION"],
+    serpent_spear_attack: ["CONVERSION"], zhen_ji_black_card_dodge: ["CONVERSION"], gan_ning_qixi: ["CONVERSION"],
+    daqiao_captivating: ["CONVERSION"], hua_tuo_first_aid: ["CONVERSION"],
+    frost_sword_damage_about_to_apply: ["EFFECT"], kirin_bow_damage_about_to_apply: ["EFFECT"],
+    yin_yang_swords_attack_targeted: ["EFFECT"],
+    green_dragon_blade_attack_dodged: ["EFFECT"], sky_piercing_halberd_attack: ["EFFECT"], eight_trigrams_dodge: ["JUDGEMENT"],
+  };
+  const accepted = value.filter((candidate): candidate is PresentationSnapshotPublicCardEffect => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+    const effect = candidate as PresentationSnapshotPublicCardEffect;
+    const cards = Array.isArray(effect.cards) ? effect.cards.map(publicPhysicalCard) : [];
+    const conversionResult: Partial<Record<PresentationPublicCardEffectId, CardKind>> = {
+      guan_yu_red_card_attack: "Attack", zhao_yun_dodge_as_attack: "Attack", serpent_spear_attack: "Attack",
+      zhao_yun_attack_as_dodge: "Dodge", zhen_ji_black_card_dodge: "Dodge", gan_ning_qixi: "Dismantle",
+      daqiao_captivating: "Overindulgence", hua_tuo_first_aid: "Peach",
+    };
+    return effect.semantics === "PROVEN" && validIds.has(effect.effectId)
+      && classesById[effect.effectId]?.includes(effect.effectClass)
+      && nonEmptyString(effect.eventId) && nonEmptyString(effect.activationOwnerId)
+      && cards.length > 0 && cards.every((card): card is Card => Boolean(card))
+      && new Set(cards.map((card) => card!.id)).size === cards.length
+      && Array.isArray(effect.materials) && effect.materials.length === effect.cards.length
+      && effect.materials.every((material, index) => Boolean(material
+        && material.cardId === cards[index]?.id
+        && (material.ownerId === null || nonEmptyString(material.ownerId))
+        && ["HAND", "EQUIPMENT", "DECK"].includes(material.fromZone)
+        && ["DISCARD", "PUBLIC_PLAY", "JUDGEMENT"].includes(material.toZone)
+        && (material.ownerId !== null || material.fromZone === "DECK")
+        && (material.fromZone !== "DECK" || material.toZone === "JUDGEMENT")
+        && (material.fromZone !== "EQUIPMENT" || material.toZone === "DISCARD")))
+      && (Boolean(effect.rootEventId) === Boolean(effect.rootResolutionId))
+      && (!effect.rootEventId || nonEmptyString(effect.rootEventId) && nonEmptyString(effect.rootResolutionId))
+      && (Boolean(effect.interactionId) === Boolean(effect.rootFrameId))
+      && (!effect.interactionId || nonEmptyString(effect.interactionId) && nonEmptyString(effect.rootFrameId))
+      && (effect.targetId === undefined || nonEmptyString(effect.targetId))
+      && (effect.targetIds === undefined || Array.isArray(effect.targetIds) && effect.targetIds.length > 0
+        && effect.targetIds.every(nonEmptyString) && new Set(effect.targetIds).size === effect.targetIds.length)
+      && (effect.outcome === undefined || nonEmptyString(effect.outcome) && effect.outcome.length <= 80)
+      && (effect.effectClass !== "CONVERSION" || conversionResult[effect.effectId] === effect.resultingCardKind)
+      && (effect.effectClass !== "JUDGEMENT" || effect.resultingCardKind === undefined
+        || effect.effectId === "eight_trigrams_dodge" && effect.resultingCardKind === "Dodge")
+      && ((effect.effectClass === "CONVERSION" || effect.effectClass === "JUDGEMENT") || effect.resultingCardKind === undefined);
+  });
+  const proofCounts = new Map<string, number>();
+  for (const effect of accepted) {
+    const key = JSON.stringify([effect.eventId, effect.effectId]);
+    proofCounts.set(key, (proofCounts.get(key) ?? 0) + 1);
+  }
+  return accepted.filter((effect) => proofCounts.get(JSON.stringify([effect.eventId, effect.effectId])) === 1).map((effect) => ({
+    semantics: "PROVEN",
+    effectId: effect.effectId,
+    effectClass: effect.effectClass,
+    eventId: effect.eventId,
+    activationOwnerId: effect.activationOwnerId,
+    materials: effect.materials.map(({ cardId, ownerId, fromZone, toZone }) => ({ cardId, ownerId, fromZone, toZone })),
+    ...(effect.rootEventId ? { rootEventId: effect.rootEventId, rootResolutionId: effect.rootResolutionId! } : {}),
+    ...(effect.interactionId ? { interactionId: effect.interactionId, rootFrameId: effect.rootFrameId! } : {}),
+    ...(effect.targetId ? { targetId: effect.targetId } : {}),
+    ...(effect.targetIds ? { targetIds: [...effect.targetIds] } : {}),
+    ...(effect.resultingCardKind ? { resultingCardKind: effect.resultingCardKind } : {}),
+    ...(effect.outcome ? { outcome: effect.outcome } : {}),
+    cards: effect.cards.map(publicPhysicalCard).filter((card): card is Card => Boolean(card)),
   }));
 }
 
@@ -1166,6 +1250,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     ...(input.presentationV2.attackDodgeResponses?.length ? { attackDodgeResponses: provenAttackDodgeResponses(input.presentationV2.attackDodgeResponses) } : {}),
     selfTargetActions: provenSelfTargetActions(input.presentationV2.selfTargetActions),
     deflectionActions: provenDeflectionActions(input.presentationV2.deflectionActions),
+    publicCardEffects: provenPublicCardEffects(input.presentationV2.publicCardEffects),
     decision: authority && authority.stable.kind === "CHOICE"
       ? { actorId: authority.scene.decisionActorId, stage: authority.scene.stage }
       : null,

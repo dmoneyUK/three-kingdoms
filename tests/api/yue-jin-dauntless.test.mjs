@@ -44,6 +44,13 @@ test("Dauntless uses the shared turn_end event, private Basic cost, and target-o
   const activated = await requestAndSettle("trigger", { code: game.code, token: game.members[1].token, providerId: "yue_jin_dauntless", cardId: "peach-dauntless-peach", preserveResponse: true });
   assert.equal(activated.status, 200, JSON.stringify(activated.data));
   assert.equal(activated.data.room.currentAction.actorId, target.id);
+  const paidCost = activated.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "peach-dauntless-peach"));
+  assert.deepEqual(paidCost.publicCardEffects?.[0], {
+    semantics: "PROVEN", eventId: paidCost.id, effectId: "yue_jin_dauntless", effectClass: "COST",
+    activationOwnerId: yue.id,
+    materials: [{ cardId: "peach-dauntless-peach", ownerId: yue.id, fromZone: "HAND", toZone: "DISCARD" }],
+    targetId: target.id, outcome: "ACTIVATION_COST",
+  });
   const targetView = await state(game.code, game.members[0].token);
   assert.ok(targetView.data.currentAction.triggerOptions?.[0], JSON.stringify(targetView.data));
   assert.deepEqual(targetView.data.currentAction.triggerOptions[0].selection.eligibleKeys, ["greendragonblade-dauntless-weapon", "nioshield-dauntless-armor"]);
@@ -56,6 +63,13 @@ test("Dauntless uses the shared turn_end event, private Basic cost, and target-o
   assert.equal(selected.status, 200, JSON.stringify(selected.data));
   assert.equal(selected.data.room.players.find((player) => player.id === target.id).equipmentCards.length, 1);
   assert.equal(selected.data.room.players.find((player) => player.id === target.id).hp, 4, "Equipment settlement deals no damage");
+  const targetEquipment = selected.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "nioshield-dauntless-armor"));
+  assert.deepEqual(targetEquipment.publicCardEffects?.[0], {
+    semantics: "PROVEN", eventId: targetEquipment.id, effectId: "yue_jin_dauntless", effectClass: "EFFECT",
+    activationOwnerId: yue.id,
+    materials: [{ cardId: "nioshield-dauntless-armor", ownerId: target.id, fromZone: "EQUIPMENT", toZone: "DISCARD" }],
+    targetId: target.id, outcome: "DAMAGE_PREVENTED",
+  }, "the activation owner and the target-owned Equipment material remain distinct");
   assert.equal(discardIds(game.code).filter((id) => ["peach-dauntless-peach", "nioshield-dauntless-armor"].includes(id)).length, 2);
   assert.equal((await state(game.code, game.members[1].token)).data.phase, "draw", "turn-end continues to the next living seat exactly once");
 });

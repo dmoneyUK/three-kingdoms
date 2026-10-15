@@ -34,6 +34,11 @@ test("Lady Gan Divine Wisdom discards the authoritative whole hand, uses strict 
   const accepted = await request("trigger", { code: game.code, token: setup.ladyToken, providerId: "lady_gan_divine_wisdom" });
   assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
   const afterDiscard = (await state(game.code, setup.ladyToken)).data;
+  const divineWisdomEvent = afterDiscard.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === hand[0].id));
+  assert.deepEqual(divineWisdomEvent.publicCardEffects?.[0]?.materials, hand.map((item) => ({ cardId: item.id, ownerId: setup.lady.id, fromZone: "HAND", toZone: "DISCARD" })),
+    "the public all-Hand proof enumerates exactly the cards actually discarded");
+  assert.equal(divineWisdomEvent.publicCardEffects?.[0]?.activationOwnerId, setup.lady.id);
+  assert.equal(divineWisdomEvent.publicCardEffects?.[0]?.outcome, "RECOVERY_APPLIED");
   assert.equal(afterDiscard.myHand.length, 0);
   assert.equal(afterDiscard.players.find((player) => player.id === setup.lady.id).hp, 3);
   assert.equal(afterDiscard.players.find((player) => player.id === setup.lady.id).equipmentCards[0].id, equipment.id);

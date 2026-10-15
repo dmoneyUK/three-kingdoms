@@ -772,6 +772,10 @@ test("Wu hero skills complete through the normal semantic API", async () => {
   sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(qixiSource.id)}`); setHand(qixiSource.id, [blackCard], 4, 4); setHand(qixiTarget.id, [targetCard], 4, 4); setTurn(qixiGame.code, qixiSource.seat);
   const qixi = await requestAndSettle("trigger", { code: qixiGame.code, token: qixiGame.members[0].token, providerId: "gan_ning_qixi", cardIds: [blackCard.id], targetId: qixiTarget.id });
   assert.equal(qixi.status, 200, JSON.stringify(qixi.data)); assert.equal(qixi.data.room.pendingTargetCard.cardKind, "Dismantle");
+  const qixiEvent = qixi.data.room.timeline.find((event) => event.type === "card" && event.card?.id === blackCard.id);
+  assert.deepEqual(qixiEvent.publicCardEffects?.[0]?.materials, [{ cardId: blackCard.id, ownerId: qixiSource.id, fromZone: "HAND", toZone: "DISCARD" }]);
+  assert.equal(qixiEvent.publicCardEffects?.[0]?.resultingCardKind, "Dismantle");
+  assert.equal(qixiEvent.publicCardEffects?.[0]?.outcome, "AS_DISMANTLE");
   const qixiChosen = await requestAndSettle("choose_target_card", { code: qixiGame.code, token: qixiGame.members[0].token, targetCardZone: "hand", targetCardIndex: 0 });
   assert.equal(qixiChosen.status, 200, JSON.stringify(qixiChosen.data)); assert.ok(discardIds(qixiGame.code).includes(blackCard.id)); assert.ok(!JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(qixiTarget.id)}`)).some((item) => item.id === targetCard.id));
 

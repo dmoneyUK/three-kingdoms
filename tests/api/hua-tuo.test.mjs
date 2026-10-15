@@ -23,6 +23,9 @@ test("Prodigal Healer discards exactly one Hand card, heals self or another inju
 
   const used = await request("trigger", { code: game.code, token: game.members[0].token, providerId: "hua_tuo_prodigal_healer", cardIds: [cost.id], targetId: target.id });
   assert.equal(used.status, 200, JSON.stringify(used.data));
+  const prodigalEvent = used.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === cost.id));
+  assert.deepEqual(prodigalEvent.publicCardEffects?.[0]?.materials, [{ cardId: cost.id, ownerId: hua.id, fromZone: "HAND", toZone: "DISCARD" }]);
+  assert.equal(prodigalEvent.publicCardEffects?.[0]?.targetId, target.id);
   const healed = (await state(game.code, game.members[0].token)).data;
   assert.equal(healed.players.find((player) => player.id === target.id).hp, 3);
   assert.equal(healed.myHand.length, 0);
@@ -82,6 +85,10 @@ test("First Aid offers only private red non-Peach cards and preserves Lady Gan P
   const rescued = await request("respond", { code: game.code, token: game.members[2].token, providerId: "hua_tuo_first_aid", cardId: redAttack.id });
   assert.equal(rescued.status, 200, JSON.stringify(rescued.data));
   const afterRescue = (await state(game.code, game.members[1].token)).data;
+  const firstAidEvent = afterRescue.timeline.find((event) => event.type === "card" && event.card?.id === redAttack.id);
+  assert.deepEqual(firstAidEvent.publicCardEffects?.[0]?.materials, [{ cardId: redAttack.id, ownerId: hua.id, fromZone: "HAND", toZone: "PUBLIC_PLAY" }]);
+  assert.equal(firstAidEvent.publicCardEffects?.[0]?.resultingCardKind, "Peach");
+  assert.equal(firstAidEvent.publicCardEffects?.[0]?.outcome, "AS_PEACH");
   assert.equal(afterRescue.currentAction.triggerEvent, "hp_recovered");
   assert.deepEqual(afterRescue.currentAction.triggerOptions.map((option) => option.effectId), ["lady_gan_prudence"]);
   assert.equal((await state(game.code, game.members[2].token)).data.myHand.some((card) => card.id === redAttack.id), false);

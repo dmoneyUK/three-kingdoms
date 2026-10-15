@@ -141,6 +141,12 @@ test("Captivating uses one Diamond hand card as Overindulgence and preserves its
   assert.equal(option.selection.targetIds.includes(other.id), false, "Captivating respects Modesty's Overindulgence immunity");
   const used = await requestAndSettle("trigger", { code: game.code, token: daqiaoMember.token, providerId: "daqiao_captivating", cardIds: [diamond.id], targetId: target.id });
   assert.equal(used.status, 200, JSON.stringify(used.data));
+  const captivatingEvent = used.data.room.timeline.find((event) => event.type === "card" && event.card?.id === diamond.id);
+  assert.deepEqual(captivatingEvent.publicCardEffects?.[0]?.materials, [{ cardId: diamond.id, ownerId: daqiao.id, fromZone: "HAND", toZone: "JUDGEMENT" }],
+    "the committed conversion proof settles to the delayed card's actual Judgement Zone");
+  assert.equal(captivatingEvent.publicCardEffects?.[0]?.activationOwnerId, daqiao.id);
+  assert.equal(captivatingEvent.publicCardEffects?.[0]?.resultingCardKind, "Overindulgence");
+  assert.equal(captivatingEvent.publicCardEffects?.[0]?.outcome, "AS_OVERINDULGENCE");
   const placed = (await state(game.code, targetMember.token)).data;
   const delayed = placed.players.find((player) => player.id === target.id).judgementCards;
   assert.deepEqual(delayed, [{ ...diamond, kind: "Overindulgence" }]);
@@ -167,6 +173,11 @@ test("Captivating enters the ordinary Overindulgence Negation lifecycle", async 
   assert.equal(pending.currentAction.requirement, "negate");
   assert.equal(pending.pendingNegation.cardName, "Overindulgence");
   assert.equal(pending.players.find((player) => player.id === opened.target.id).judgementCards.length, 0);
+  const pendingCaptivating = pending.timeline.find((event) => event.type === "card" && event.card?.id === opened.diamond.id);
+  assert.equal(pendingCaptivating.publicCardEffects?.[0]?.materials[0]?.toZone, "PUBLIC_PLAY",
+    "the committed card remains in its public resolution stage while Negation is open");
+  assert.equal(pending.presentationSnapshot.publicCardEffects.find((proof) => proof.effectId === "daqiao_captivating")?.materials[0]?.toZone, "PUBLIC_PLAY",
+    "the server-authoritative snapshot preserves the pending public resolution zone");
   assert.equal(discardIds(opened.game.code).filter((id) => id === opened.diamond.id).length, 1, "the physical card is staged once while Negation is open");
   assert.equal(countCardInZones(opened.game.code, opened.diamond.id), 1);
 
@@ -174,6 +185,10 @@ test("Captivating enters the ordinary Overindulgence Negation lifecycle", async 
   assert.equal(negated.status, 200, JSON.stringify(negated.data));
   assert.equal(negated.data.room.phase, "play");
   assert.equal(negated.data.room.players.find((player) => player.id === opened.target.id).judgementCards.length, 0);
+  const settledCaptivating = negated.data.room.timeline.find((event) => event.type === "card" && event.card?.id === opened.diamond.id);
+  assert.equal(settledCaptivating.publicCardEffects?.[0]?.materials[0]?.toZone, "DISCARD",
+    "a negated conversion settles to discard instead of claiming Judgement placement");
+  assert.equal(negated.data.room.presentationSnapshot.publicCardEffects.find((proof) => proof.effectId === "daqiao_captivating")?.materials[0]?.toZone, "DISCARD");
   assert.equal(discardIds(opened.game.code).filter((id) => id === opened.diamond.id).length, 1);
   assert.equal(discardIds(opened.game.code).filter((id) => id === "negation-captivating-negation").length, 1);
   assert.equal(countCardInZones(opened.game.code, opened.diamond.id), 1);

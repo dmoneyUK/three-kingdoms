@@ -75,6 +75,58 @@ function assertDodgeReadLifecycle(proof, expectedTurnSeat) {
   assert.equal(proof.turnSeatAtCommit, expectedTurnSeat, "the public proof records the server-owned turn seat at commit");
 }
 
+test("public card effect projection accepts only exact committed public proof and strips private events", () => {
+  const material = card("Peach", "public-effect-material", "♥");
+  const proof = {
+    semantics: "PROVEN", effectId: "hua_tuo_prodigal_healer", effectClass: "COST", eventId: "public-effect-event",
+    activationOwnerId: "hua-id", materials: [{ cardId: material.id, ownerId: "hua-id", fromZone: "HAND", toZone: "DISCARD" }],
+    targetId: "target-id", outcome: "RECOVERY_APPLIED",
+  };
+  const event = {
+    type: "cards", id: "public-effect-event", player: "Hua Tuo", target: "Target", cards: [material],
+    action: "discard", presentation: true, resolutionId: "public-effect-resolution", publicCardEffects: [proof],
+  };
+  const input = { pending: null, currentAction: null, actionRevision: "settled", timeline: [event] };
+  const projected = projectPresentationV2(input).publicCardEffects;
+  assert.deepEqual(projected, [{ ...proof, cards: [material] }]);
+  assert.deepEqual(projectPresentationV2({ ...input, timeline: [{ ...event, privateToPlayerId: "hua-id" }] }).publicCardEffects, [],
+    "private events cannot be upgraded to public card proof");
+  assert.deepEqual(projectPresentationV2({ ...input, timeline: [{ ...event, presentation: false }] }).publicCardEffects, [],
+    "non-presented history cannot create a public frame candidate");
+  assert.deepEqual(projectPresentationV2({ ...input, timeline: [{ ...event, cards: [card("Peach", "different-public-card", "♥")] }] }).publicCardEffects, [],
+    "proof material IDs must exactly match the committed event faces");
+  assert.deepEqual(projectPresentationV2({ ...input, timeline: [event, { ...event }] }).publicCardEffects, [],
+    "duplicate event IDs fail closed");
+  assert.deepEqual(projectPresentationV2({ ...input, timeline: [{ ...event, publicCardEffects: [proof, proof] }] }).publicCardEffects, [],
+    "duplicate effect identities on one physical event fail closed");
+  assert.deepEqual(projectPresentationV2({ ...input, timeline: [{ ...event, publicCardEffects: [{ ...proof, effectClass: "EFFECT" }] }] }).publicCardEffects, [],
+    "an effect ID cannot claim a different semantic class");
+});
+
+test("public effect root links accept a genuine grouped physical root", () => {
+  const rootCards = [card("Peach", "serpent-root-material-a", "♥"), card("Dodge", "serpent-root-material-b", "♠")];
+  const response = card("Attack", "root-linked-response", "♣");
+  const root = {
+    type: "cards", id: "serpent-root-event", player: "Source", target: "Target", cards: rootCards,
+    action: "play", presentation: true, resolutionId: "serpent-root-resolution",
+  };
+  const effect = {
+    semantics: "PROVEN", effectId: "zhao_yun_attack_as_dodge", effectClass: "CONVERSION",
+    eventId: "root-linked-response-event", activationOwnerId: "target-id",
+    materials: [{ cardId: response.id, ownerId: "target-id", fromZone: "HAND", toZone: "DISCARD" }],
+    targetId: "source-id", rootEventId: root.id, rootResolutionId: root.resolutionId,
+    resultingCardKind: "Dodge", outcome: "AS_DODGE",
+  };
+  const responseEvent = {
+    type: "card", id: effect.eventId, player: "Target", target: "Source", card: response,
+    action: "play", playedAs: "dodge", presentation: true, resolutionId: "response-resolution", publicCardEffects: [effect],
+  };
+  const projected = projectPresentationV2({ pending: null, currentAction: null, actionRevision: "settled", timeline: [root, responseEvent] }).publicCardEffects;
+  assert.equal(projected.length, 1, "a grouped public root remains a valid physical root event");
+  assert.equal(projected[0].rootEventId, root.id);
+  assert.equal(projected[0].rootResolutionId, root.resolutionId);
+});
+
 test("engine-backed Sowing Distrust exposes only its exact public Effect root across both target choices", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [source, target] = game.room.players;
@@ -449,6 +501,9 @@ test("engine-backed Zhao Yun Attack-as-Dodge publishes only its exact physical-c
   const responseEvent = sourceView.timeline.find((event) => event.id === proof.responseEventId);
   assert.ok(responseEvent);
   assert.deepEqual(responseEvent.card, attack, "the public event retains the actual Attack art, suit, rank and physical ID");
+  assert.deepEqual(responseEvent.publicCardEffects?.[0]?.materials, [{ cardId: attack.id, ownerId: target.id, fromZone: "HAND", toZone: "DISCARD" }]);
+  assert.equal(responseEvent.publicCardEffects?.[0]?.effectId, "zhao_yun_attack_as_dodge");
+  assert.equal(responseEvent.publicCardEffects?.[0]?.resultingCardKind, "Dodge");
   assert.equal(responseEvent.playedAs, "dodge");
   assert.deepEqual(responseEvent.attackDodgeResponse, {
     semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
@@ -640,6 +695,12 @@ test("engine-backed Guan Yu Peach-as-Attack preserves its physical root through 
   assert.equal(rootEvent.action, "play");
   assert.deepEqual(rootEvent.card, redPeach, "the public event retains the actual physical card, suit, and rank");
   assert.equal(rootEvent.playedAs, "attack");
+  assert.deepEqual(rootEvent.publicCardEffects?.[0], {
+    semantics: "PROVEN", eventId: rootEvent.id, effectId: "guan_yu_red_card_attack", effectClass: "CONVERSION",
+    activationOwnerId: source.id,
+    materials: [{ cardId: redPeach.id, ownerId: source.id, fromZone: "HAND", toZone: "DISCARD" }],
+    targetId: target.id, resultingCardKind: "Attack", outcome: "AS_ATTACK",
+  });
   const scene = targetView.presentationV2.interactionScene;
   const rootAction = {
     semantics: "PROVEN",

@@ -39,6 +39,14 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
   const discarded = await requestAndSettle("trigger", { code: resolved.code, token: resolved.sourceMember.token, providerId: "xiahou_dun_ganglie", choice: "discard_two", cardKeys: ["hand:0", "hand:1"] });
   assert.equal(discarded.status, 200, JSON.stringify(discarded.data));
   assert.equal(discarded.data.room.phase, "play-struck");
+  const stauchnessCost = discarded.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "dodge-ganglie-cost-a"));
+  assert.equal(stauchnessCost.publicCardEffects?.[0]?.effectId, "xiahou_dun_ganglie");
+  assert.equal(stauchnessCost.publicCardEffects?.[0]?.activationOwnerId, resolved.target.id, "Xiahou Dun owns the skill activation");
+  assert.deepEqual(stauchnessCost.publicCardEffects?.[0]?.materials.map(({ cardId, ownerId, fromZone, toZone }) => ({ cardId, ownerId, fromZone, toZone })), [
+    { cardId: "dodge-ganglie-cost-a", ownerId: resolved.source.id, fromZone: "HAND", toZone: "DISCARD" },
+    { cardId: "peach-ganglie-cost-b", ownerId: resolved.source.id, fromZone: "HAND", toZone: "DISCARD" },
+  ], "the damage source owns the two paid cards even though Xiahou Dun activated Stauchness");
+  assert.equal(stauchnessCost.publicCardEffects?.[0]?.rootEventId, accepted.data.room.timeline.find((event) => event.type === "card" && event.card?.id === "attack-ganglie-discard-attack")?.id);
   assert.equal(discarded.data.room.players.find((player) => player.id === resolved.target.id).hp, 2);
   assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(resolved.source.id)}`)).length, 0);
   for (const id of ["dodge-ganglie-spade-judge", "dodge-ganglie-cost-a", "peach-ganglie-cost-b"]) assert.ok(discardIds(resolved.code).includes(id), `${id} is conserved in discard`);
