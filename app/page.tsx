@@ -666,6 +666,51 @@ export function HeroInfoDialog({ hero, onClose }: { hero: Hero; onClose: () => v
   return <div className="card-info-backdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && onClose()}><section className="card-info-dialog hero-info-dialog" role="dialog" aria-modal="true" aria-labelledby="hero-info-title"><button type="button" className="card-info-close" onClick={onClose} aria-label="Close hero information">×</button><span>HERO INFORMATION</span><small>{hero.faction} · {"♥".repeat(hero.hp)} · {hero.hp} HP</small><h2 id="hero-info-title">{hero.name}</h2>{skills.map((skill) => <div className="hero-info-skill-block" key={skill.name}><strong className="hero-info-skill">{skill.name}</strong><p>{skill.description}</p></div>)}<em>Only you can see this information.</em></section></div>;
 }
 
+export function HeroDetailsPreview({ hero, currentHp, maximumHp, onClose }: { hero: Hero; currentHp: number | null; maximumHp: number | null; onClose: (restoreFocus?: boolean) => void }) {
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const skills = hero.skills?.length ? hero.skills : [{ name: hero.skill ?? "Hero Skill", description: hero.ability }];
+
+  useEffect(() => {
+    closeButtonRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  useEffect(() => {
+    const dismissOutsideTap = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && panelRef.current?.contains(target)) return;
+      // The battlefield stage has pointer-events:none outside its panel, so
+      // dismissing here leaves the underlying gameplay control fully usable.
+      onClose(false);
+    };
+    document.addEventListener("pointerdown", dismissOutsideTap);
+    return () => document.removeEventListener("pointerdown", dismissOutsideTap);
+  }, [onClose]);
+
+  return <div className="card-details-stage hero-details-stage" data-hero-details-stage="true">
+    <section ref={panelRef} className="hero-details-panel" role="dialog" aria-modal="false" aria-labelledby="hero-details-title">
+      <header className="hero-details-heading">
+        <span>HERO DETAILS</span>
+        <button ref={closeButtonRef} type="button" className="card-info-close hero-details-close" onClick={() => onClose()} aria-label={`Close ${hero.name} details`}>×</button>
+      </header>
+      <div className="hero-details-profile">
+        <div className="hero-details-art" role="img" aria-label={`${hero.name} portrait`} data-hero-id={hero.id}><HeroPortrait hero={hero} /></div>
+        <div className="hero-details-identity">
+          <h2 id="hero-details-title">{hero.name}</h2>
+          <span>{hero.faction}</span>
+          <strong>HP {currentHp ?? "—"}/{maximumHp ?? hero.hp}</strong>
+        </div>
+      </div>
+      <div className="hero-details-skills" role="region" aria-label={`${hero.name} skills and descriptions`} tabIndex={0}>
+        {skills.map((skill) => <section className="hero-details-skill" key={skill.name}>
+          <h3>{skill.name}</h3>
+          <p>{skill.description}</p>
+        </section>)}
+      </div>
+    </section>
+  </div>;
+}
+
 function heroName(id?: string | null) { return id ? id.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") : "Unknown"; }
 function heroSkillNames(hero: Pick<Hero, "id" | "skills">) { return hero.skills?.map((skill) => skill.name) ?? [heroSkillName(hero.id) ?? "Hero"]; }
 function heroSkillName(id?: string | null) { return id ? HEROES.find((hero) => hero.id === id)?.skills[0]?.name ?? null : null; }
@@ -1409,7 +1454,7 @@ type LocalPlayerDockProps = {
   selfTargetable: boolean;
   selfTargetSelected: boolean;
   onSelfTarget: () => void;
-  onHeroInfo: (hero: Hero) => void;
+  onHeroInfo: (hero: Hero, trigger: HTMLElement) => void;
   onInfoCard: (card: Card, trigger: HTMLElement) => void;
   equipmentSelection?: { eligibleIds: string[]; selectedIds: string[]; max: number; disabled: boolean; onToggle: (cardId: string) => void } | null;
   hiddenCardIds?: ReadonlySet<string>;
@@ -1503,9 +1548,9 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
             className={`local-hero-card${selfTargetable ? " targetable-target" : ""}${selfTargetSelected ? " selected-target" : ""}`}
             aria-label={selfTargetable ? `Select ${player?.name ?? "your character"}` : `Explain ${hero.name}`}
             aria-pressed={selfTargetable ? selfTargetSelected : undefined}
-            onClick={() => selfTargetable ? onSelfTarget() : onHeroInfo(hero)}
+            onClick={(event) => selfTargetable ? onSelfTarget() : onHeroInfo(hero, event.currentTarget)}
           ><span className="local-hero-portrait" data-hero-id={hero.id} aria-hidden="true"><HeroPortrait hero={hero} /><span className="local-hero-overlay"><span className="local-hero-label">{hero.name}</span><span className="local-hero-vitals"><strong className="local-hero-role">{player?.role ?? "Role pending"}</strong><span className="local-hero-hp">HP {player?.hp ?? 0}/{player?.maxHp ?? 0}</span><span className="local-hero-hearts">{hpDisplay(player?.hp ?? null)}</span></span></span></span></button>
-          {selfTargetable && <button type="button" className="hero-card-info-button local-hero-info-button" aria-label={`Explain ${hero.name}`} onClick={(event) => { event.stopPropagation(); onHeroInfo(hero); }}>i</button>}
+          {selfTargetable && <button type="button" className="hero-card-info-button local-hero-info-button" aria-label={`View ${hero.name} details`} onClick={(event) => { event.stopPropagation(); onHeroInfo(hero, event.currentTarget); }}><span aria-hidden="true">i</span></button>}
         </> : <div className="local-hero-card local-hero-card-empty" aria-label="Hero not selected"><span className="local-hero-portrait" aria-hidden="true"><span className="local-hero-label">HERO</span></span></div>}
         {judgementCards.length > 0 && <div ref={judgementRailRef} className="local-judgement-cards local-judgement-overlay" data-judgement-layout={judgementCardLayout.measured ? "measured" : "pending"} style={{ justifyContent: judgementCards.length === 1 ? "center" : "flex-start" }} role="group" aria-label="Persistent Judgement cards">
           {judgementCards.map((card, index) => <div className="local-judgement-card-slot" key={card.id} style={{ marginLeft: index === 0 ? 0 : `${judgementCardLayout.step - judgementCardWidth}px` }}>{renderZoneCard(card)}</div>)}
@@ -1608,8 +1653,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [infoCardContext, setInfoCardContext] = useState<CardDetailsContext>("private-hand");
   const [infoHero, setInfoHero] = useState<Hero | null>(null);
   const cardInfoReturnFocusRef = useRef<HTMLElement | null>(null);
+  const heroInfoReturnFocusRef = useRef<HTMLElement | null>(null);
   const openCardDetails = useCallback((card: Card, context: CardDetailsContext, trigger?: HTMLElement | null) => {
     cardInfoReturnFocusRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    heroInfoReturnFocusRef.current = null;
     setInfoCardContext(context);
     setInfoHero(null);
     setInfoCard(card);
@@ -1622,6 +1669,24 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       if (trigger.isConnected) trigger.focus({ preventScroll: true });
     });
   }, []);
+  const closeHeroDetails = useCallback((restoreFocus = true) => {
+    const trigger = heroInfoReturnFocusRef.current;
+    heroInfoReturnFocusRef.current = null;
+    setInfoHero(null);
+    if (restoreFocus && trigger?.isConnected) window.requestAnimationFrame(() => {
+      if (trigger.isConnected) trigger.focus({ preventScroll: true });
+    });
+  }, []);
+  const openHeroDetails = useCallback((hero: Hero, trigger: HTMLElement) => {
+    if (infoHero?.id === hero.id) {
+      closeHeroDetails();
+      return;
+    }
+    heroInfoReturnFocusRef.current = trigger;
+    cardInfoReturnFocusRef.current = null;
+    setInfoCard(null);
+    setInfoHero(hero);
+  }, [closeHeroDetails, infoHero?.id]);
   const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
   const nestedInspectorCardDetailDismissRef = useRef<(() => boolean) | null>(null);
   const [submittedTargetPreview, setSubmittedTargetPreview] = useState<LocalTargetPreviewSubmission | null>(null);
@@ -2604,7 +2669,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || resolutionClosing || !resolutionEvents.length) return; const timer = setTimeout(() => setResolutionClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, room.phase, resolutionClosing, resolutionEvents.length]);
   useEffect(() => { if (!resolutionClosing) return; const closingRevision = resolutionRevision.current; const timer = setTimeout(() => { if (resolutionRevision.current !== closingRevision) { setResolutionClosing(false); return; } setResolutionEvents([]); setSequenceScopeStartId(""); setResolutionClosing(false); }, UI_TIMING.sequenceDiscard); return () => clearTimeout(timer); }, [resolutionClosing]);
   useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawPresentation({ playerId: room.meId, cards: [] }), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, room.meId, activeEvent, eventQueue.length]);
-  useEffect(() => { if (!infoCard && !infoHero && !expandedOpponentId) return; const close = (event: KeyboardEvent) => { if (event.key !== "Escape") return; if (infoCard) { closeCardDetails(); return; } if (infoHero) { setInfoHero(null); return; } if (nestedInspectorCardDetailDismissRef.current?.()) return; setExpandedOpponentId(null); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [infoCard, infoHero, expandedOpponentId, closeCardDetails]);
+  useEffect(() => { if (!infoCard && !infoHero && !expandedOpponentId) return; const close = (event: KeyboardEvent) => { if (event.key !== "Escape") return; if (infoCard) { closeCardDetails(); return; } if (infoHero) { closeHeroDetails(); return; } if (nestedInspectorCardDetailDismissRef.current?.()) return; setExpandedOpponentId(null); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [infoCard, infoHero, expandedOpponentId, closeCardDetails, closeHeroDetails]);
+  useEffect(() => { heroInfoReturnFocusRef.current = null; setInfoHero(null); }, [room.code, room.meId]);
   useEffect(() => { const timer = setTimeout(() => { setSelected(""); setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setTargetIds([]); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setDiscardSelected([]); setSerpentMode(false); setSerpentSelected([]); setResponseProviderId(""); }, 0); return () => clearTimeout(timer); }, [room.turnSeat, room.phase, room.meId]);
   // A response may advance to another decision without changing the turn,
   // phase, or acting seat. The authoritative revision identifies that new
@@ -5258,9 +5324,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           : current);
       }} />
       {infoCard && <CardDetailsPreview card={infoCard} context={infoCardContext} onClose={closeCardDetails} />}
+      {infoHero && me && <HeroDetailsPreview hero={infoHero} currentHp={me.hp} maximumHp={me.maxHp} onClose={closeHeroDetails} />}
     </section>
     <footer className="play-command">
-    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setExpandedOpponentId(null); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} attackResponsePrompt={Boolean(rootAction?.action === "ATTACK" && rootActionCardFace && rootAction.targetId === room.meId && room.currentAction?.kind === "response" && room.currentAction.requirement === "dodge" && room.currentAction.actorId === room.meId && canUseAction(room.currentAction, "respond"))} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
+    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { setExpandedOpponentId(null); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={openHeroDetails} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} attackResponsePrompt={Boolean(rootAction?.action === "ATTACK" && rootActionCardFace && rootAction.targetId === room.meId && room.currentAction?.kind === "response" && room.currentAction.requirement === "dodge" && room.currentAction.actorId === room.meId && canUseAction(room.currentAction, "respond"))} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
       heroSkillControl={
         <section className="hero-skills local-hero-skills" aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => skill.passive
@@ -5350,7 +5417,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       </div>
       </LocalPlayerDock>
     </footer>
-    {infoHero && <HeroInfoDialog hero={infoHero} onClose={() => setInfoHero(null)} />}
   </main>;
 }
 

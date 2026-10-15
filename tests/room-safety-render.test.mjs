@@ -344,7 +344,7 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.match(gameRoomSource, /const \[infoHero, setInfoHero\] = useState<Hero \| null>\(null\)/);
   assert.match(gameRoomSource, /className=\{`hero-choice-wrap \$\{effectiveSelected === hero\.id \? "selected" : ""\}`\}/);
   assert.match(gameRoomSource, /onClick=\{\(\) => setInfoHero\(hero\)\}/);
-  assert.match(gameRoomSource, /\{infoHero && <HeroInfoDialog hero=\{infoHero\}/);
+  assert.match(gameRoomSource, /\{infoHero && me && <HeroDetailsPreview hero=\{infoHero\}/);
   const artHeroes = ["cao-cao", "liu-bei", "sun-quan", "simayi", "xiahou-dun"].map((id) => STANDARD_HEROES.find((hero) => hero.id === id));
   assert.ok(artHeroes.every(Boolean));
   const zhangLiao = STANDARD_HEROES.find((hero) => hero.id === "zhang-liao");
