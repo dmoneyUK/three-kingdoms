@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 test.use({ hasTouch: true });
+
+const h2EvidenceRoot = process.env.H2_F_EVIDENCE_DIR;
 
 test("UI-2 Hand Details is a separate 44px action and preserves selected Hand state", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -106,11 +110,27 @@ for (const scenario of [
   });
 }
 
+const H2_VIEWPORTS = [
+  { width: 390, height: 900 },
+  { width: 440, height: 894 },
+  { width: 480, height: 900 },
+  { width: 1280, height: 900 },
+];
+const H2_FOUR_SEAT_VIEWPORTS = [
+  { width: 390, height: 844 },
+  { width: 390, height: 700 },
+  { width: 440, height: 894 },
+  { width: 480, height: 900 },
+  { width: 1280, height: 900 },
+];
+
 for (const count of [4, 6, 8, 10]) {
-  for (const width of [390, 440, 480, 1280]) {
-  test(`H2 separates opponent Hero, player, HP and Equipment at ${count} seats / ${width}px`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width, height: 900 });
-    const namePrefix = "A Long Player Identity Name";
+  const viewports = count === 4 ? H2_FOUR_SEAT_VIEWPORTS : H2_VIEWPORTS;
+  for (const viewport of viewports) {
+  const { width, height } = viewport;
+  test(`H2 separates opponent Hero, player, HP and Equipment at ${count} seats / ${width}x${height}`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    const namePrefix = width === 390 && height === 700 ? "诸葛孔明的长玩家姓名" : "A Long Player Identity Name";
     await page.goto(`/tests/browser/fixture.html?state=normal&count=${count}&equipmentCase=matrix&judgementCase=public-lightning&lowHpSeat=p2&defeatedSeat=p4&turnSeat=1&playerNamePrefix=${encodeURIComponent(namePrefix)}`);
 
     const board = page.locator(".player-board");
@@ -201,6 +221,12 @@ for (const count of [4, 6, 8, 10]) {
       expect(geometry.nameDisplay).not.toBe("none");
       expect(geometry.nameFontSize).toBeGreaterThanOrEqual(9);
       expect(geometry.heroFontSize).toBeGreaterThanOrEqual(9);
+      if (count === 4 && width >= 390 && width <= 480) {
+        expect(geometry.heroFontSize, "four-seat phone Hero names use the refined 10–11px size").toBeGreaterThanOrEqual(10);
+        expect(geometry.heroFontSize, "four-seat phone Hero names remain within the approved modest reduction").toBeLessThanOrEqual(11);
+        expect(geometry.nameFontSize, "four-seat phone player names use the refined 9–10px size").toBeGreaterThanOrEqual(9);
+        expect(geometry.nameFontSize, "four-seat phone player names remain legible").toBeLessThanOrEqual(10);
+      }
       expect(geometry.name.width).toBeGreaterThan(0);
       expect(geometry.name.height).toBeGreaterThan(0);
       expect(geometry.nameOverflowBehavior).toBe("hidden");
@@ -254,9 +280,15 @@ for (const count of [4, 6, 8, 10]) {
       contentType: "image/png",
     });
     await testInfo.attach(`H2-seat-rectangles-${count}-${width}`, {
-      body: Buffer.from(JSON.stringify({ viewport: { width, height: 900 }, seats: measuredSeats }, null, 2)),
+      body: Buffer.from(JSON.stringify({ viewport, seats: measuredSeats }, null, 2)),
       contentType: "application/json",
     });
+    if (h2EvidenceRoot) {
+      await mkdir(h2EvidenceRoot, { recursive: true });
+      const label = `${count}-seats-${width}x${height}`;
+      await page.screenshot({ path: join(h2EvidenceRoot, `${label}.png`), animations: "disabled" });
+      await writeFile(join(h2EvidenceRoot, `${label}.json`), `${JSON.stringify({ viewport, seats: measuredSeats }, null, 2)}\n`);
+    }
   });
   }
 }
