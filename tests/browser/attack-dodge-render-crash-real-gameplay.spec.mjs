@@ -11,10 +11,10 @@ async function seed(request, dodge) {
       phase: "play",
       turnSeat: 0,
       players: [
-        { name: "ATTACKER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [attack, card("Negation", "private-attackers-hidden-negation", "♦")] },
-        { name: "DEFENDER", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: responseCard ? [responseCard] : [] },
-        { name: "THIRD PLAYER", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
-        { name: "FOURTH PLAYER", role: "Renegade", hero: "simayi", hp: 4, maxHp: 4, hand: [] },
+        { name: "Cao Cao the Valiant Strategist", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [attack, card("Negation", "private-attackers-hidden-negation", "♦")] },
+        { name: "Zhao Yun of Changban", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: responseCard ? [responseCard] : [] },
+        { name: "Third Player of Wu with a Long Name", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
+        { name: "Fourth Player of Shu with a Long Name", role: "Renegade", hero: "simayi", hp: 4, maxHp: 4, hand: [] },
       ],
     },
   });
@@ -117,18 +117,53 @@ async function assertAnnouncementAboveCurrentCard(display, eventId) {
     };
     const messageBox = box(message);
     const cardBox = box(card);
-    const obstacles = [...document.querySelectorAll(".opponent-player-card,.visible-countdown,.stage-system-cluster,.local-player-dock,.decision-status,.public-card-journey-card")]
+    const tableElement = document.querySelector(".play-table");
+    const tableBox = tableElement ? box(tableElement) : null;
+    const obstacles = [...document.querySelectorAll(".opponent-player-card,.player-square,.player-board-status,.visible-countdown,.stage-system-cluster,.local-player-dock,.decision-status,.public-card-journey-card")]
       .filter((element) => element !== card && element !== message)
       .filter((element) => getComputedStyle(element).display !== "none" && getComputedStyle(element).visibility !== "hidden")
-      .map((element) => box(element));
+      .map((element) => ({ selector: element.className?.baseVal ?? element.className, ...box(element) }));
+    const messageWidth = messageBox.width;
+    const preferredLeft = tableBox ? tableBox.left + (tableBox.width - cardBox.width) / 2 : cardBox.left;
+    const preferredMessageLeft = preferredLeft + cardBox.width / 2 - messageWidth / 2;
+    const upperObstacles = obstacles.filter((obstacle) => obstacle.top < (tableBox?.top ?? 0) + (tableBox?.height ?? 0) * 0.6
+      && preferredMessageLeft < obstacle.right && preferredMessageLeft + messageWidth > obstacle.left);
+    const candidateTop = Math.max((tableBox?.top ?? 0) + 8, ...upperObstacles.map((obstacle) => obstacle.bottom + 2)) + messageBox.height + 7;
+    const candidateCard = { left: preferredLeft, right: preferredLeft + cardBox.width, top: candidateTop, bottom: candidateTop + cardBox.height };
+    const candidateMessage = { left: preferredMessageLeft, right: preferredMessageLeft + messageWidth, top: candidateTop - messageBox.height - 7, bottom: candidateTop - 7 };
     return {
       message: messageBox,
       card: cardBox,
+      cardTarget: {
+        left: Number(card.getAttribute("data-public-card-journey-target-left")),
+        top: Number(card.getAttribute("data-public-card-journey-target-top")),
+      },
       viewport: { width: document.documentElement.clientWidth, height: document.documentElement.clientHeight },
       overlaps: obstacles.filter((obstacle) => messageBox.left < obstacle.right && messageBox.right > obstacle.left
         && messageBox.top < obstacle.bottom && messageBox.bottom > obstacle.top),
+      obstacles,
+      geometryCandidate: {
+        card: candidateCard,
+        message: candidateMessage,
+        upperObstacles,
+        cardOverlaps: obstacles.filter((obstacle) => candidateCard.left < obstacle.right && candidateCard.right > obstacle.left
+          && candidateCard.top < obstacle.bottom && candidateCard.bottom > obstacle.top),
+        messageOverlaps: obstacles.filter((obstacle) => candidateMessage.left < obstacle.right && candidateMessage.right > obstacle.left
+          && candidateMessage.top < obstacle.bottom && candidateMessage.bottom > obstacle.top),
+      },
       liveStatusCount: root.querySelectorAll('[role="status"][aria-live="polite"]').length,
       positioned: message.getAttribute("data-public-card-announcement-positioned"),
+      fallback: message.getAttribute("data-public-card-announcement-fallback"),
+      declaredWidth: Number(message.getAttribute("data-public-card-announcement-width")),
+      declaredLines: Number(message.getAttribute("data-public-card-announcement-lines")),
+      text: message.textContent?.trim(),
+      table: box(document.querySelector(".play-table")),
+      cardLayoutReason: card.getAttribute("data-public-card-journey-layout-reason"),
+      typography: {
+        fontSize: Number.parseFloat(getComputedStyle(message.querySelector("b")).fontSize),
+        fontFamily: getComputedStyle(message.querySelector("b")).fontFamily,
+        letterSpacing: Number.parseFloat(getComputedStyle(message.querySelector("b")).letterSpacing),
+      },
     };
   }, eventId);
   let latestGeometry = null;
@@ -143,11 +178,20 @@ async function assertAnnouncementAboveCurrentCard(display, eventId) {
   const geometry = await measure();
   expect(geometry).not.toBeNull();
   expect(geometry.positioned).toBe("true");
+  if (geometry.fallback) throw new Error(`Public announcement had to use its overlap fallback: ${JSON.stringify(geometry)}`);
   expect(geometry.message.left).toBeGreaterThanOrEqual(8);
   expect(geometry.message.right).toBeLessThanOrEqual(geometry.viewport.width - 8);
   expect(geometry.message.bottom).toBeLessThanOrEqual(geometry.card.top - 5);
+  expect(geometry.message.width).toBeGreaterThanOrEqual(320);
+  expect(geometry.declaredWidth).toBe(Math.round(geometry.message.width));
+  expect(geometry.declaredLines).toBeLessThanOrEqual(2);
+  expect(geometry.typography.fontSize).toBeGreaterThanOrEqual(14);
+  expect(geometry.typography.fontSize).toBeLessThanOrEqual(16);
+  expect(geometry.typography.fontFamily).not.toMatch(/condensed|narrow/i);
+  expect(geometry.typography.letterSpacing).toBeLessThanOrEqual(0.3);
   expect(geometry.overlaps).toEqual([]);
   expect(geometry.liveStatusCount).toBe(1);
+  console.log(`H3 announcement geometry ${geometry.viewport.width}x${geometry.viewport.height}: ${JSON.stringify({ message: geometry.message, card: geometry.card, lines: geometry.declaredLines, fontSize: geometry.typography.fontSize })}`);
   return geometry;
 }
 
@@ -169,6 +213,7 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   const attackEventId = await defenderDisplay.getAttribute("data-public-card-event-id");
   expect(attackEventId).toBeTruthy();
   const standardGeometry = await assertAnnouncementAboveCurrentCard(defenderDisplay, attackEventId);
+  expect(standardGeometry.text).toBe("Cao Cao the Valiant Strategist played Attack on Zhao Yun of Changban.");
   await testInfo.attach("attack-announcement-440x894.json", {
     body: JSON.stringify(standardGeometry, null, 2),
     contentType: "application/json",
@@ -182,6 +227,26 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   await expect(attackCardJourney).toHaveAttribute("data-public-card-journey-phase", "reveal");
   await expect(attackCardJourney).toBeDisabled();
   await expect(attackCardJourney).toHaveAttribute("data-public-card-inspectable", "false");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const phoneGeometry = await assertAnnouncementAboveCurrentCard(defenderDisplay, attackEventId);
+  await testInfo.attach("attack-announcement-390x844.json", {
+    body: JSON.stringify(phoneGeometry, null, 2),
+    contentType: "application/json",
+  });
+  await testInfo.attach("attack-announcement-390x844.png", {
+    body: await page.screenshot({ animations: "disabled" }),
+    contentType: "image/png",
+  });
+  await page.setViewportSize({ width: 480, height: 900 });
+  const widePhoneGeometry = await assertAnnouncementAboveCurrentCard(defenderDisplay, attackEventId);
+  await testInfo.attach("attack-announcement-480x900.json", {
+    body: JSON.stringify(widePhoneGeometry, null, 2),
+    contentType: "application/json",
+  });
+  await testInfo.attach("attack-announcement-480x900.png", {
+    body: await page.screenshot({ animations: "disabled" }),
+    contentType: "image/png",
+  });
   await page.setViewportSize({ width: 390, height: 700 });
   const shortViewportGeometry = await assertAnnouncementAboveCurrentCard(defenderDisplay, attackEventId);
   await testInfo.attach("attack-announcement-390x700.json", {
@@ -276,7 +341,7 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   });
   await expect(defenderDisplay).toHaveAttribute("data-public-card-settlement-outcome", "ATTACK_BLOCKED_BY_DODGE", { timeout: 20_000 });
   const settledAnnouncement = defenderDisplay.locator('[data-public-card-announcement="true"]');
-  await expect(settledAnnouncement).toContainText(/DEFENDER dodged ATTACKER's Attack/);
+  await expect(settledAnnouncement).toContainText("Zhao Yun of Changban played Dodge against Cao Cao the Valiant Strategist's Attack.");
   await expect(settledAnnouncement).toHaveAttribute("data-public-card-result", "ATTACK_BLOCKED_BY_DODGE");
   const dodgeCardJourney = defenderDisplay.locator(`[data-public-card-journey-card-id="${room.responseCard.id}"]`);
   await expect(dodgeCardJourney).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });

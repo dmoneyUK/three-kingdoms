@@ -178,7 +178,7 @@ for (const kind of ["Steal", "Dismantle"]) {
       await expect(publicCardDisplay).toHaveCount(1);
       const announcement = publicCardDisplay.locator('[data-public-card-announcement="true"]');
       await expect(announcement).toHaveCount(1);
-      await expect(announcement).toContainText("SOURCE played Burning Bridge targeting TARGET");
+      await expect(announcement).toContainText("SOURCE played Burning Bridge on TARGET.");
       await expect(announcement.locator("small,span,strong")).toHaveCount(0);
     }
 

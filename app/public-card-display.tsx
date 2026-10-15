@@ -226,8 +226,10 @@ function withFirstQueuedAttackDodgeReveal(cards: JourneyCard[], center: CardRect
 const REVEAL_CARD = { width: 90, height: 135 };
 const DUEL_REVEAL_CARD = { width: 90, height: 135 };
 const PARKED_CARD = { width: 48, height: 72 };
-const PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH = 360;
-const PUBLIC_CARD_ANNOUNCEMENT_HEIGHT = 25;
+const PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH = 520;
+// Two 15px mobile lines at 1.2 line-height plus 4px vertical padding and
+// borders. Used only before the mounted announcement can be measured.
+const PUBLIC_CARD_ANNOUNCEMENT_HEIGHT = 46;
 const PUBLIC_CARD_ANNOUNCEMENT_GAP = 7;
 const STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS = 4000;
 const DUEL_REVEAL_HOLD_MS = 4000;
@@ -250,12 +252,30 @@ function battlefieldCenterCard(size: { width: number; height: number } = REVEAL_
   const bounds = table.getBoundingClientRect();
   const preferredTop = bounds.top + bounds.height * 0.5 - size.height / 2;
   const preferredLeft = bounds.left + (bounds.width - size.width) / 2;
+  const liveAnnouncement = document.querySelector<HTMLElement>(".public-card-display-journey-copy");
+  let measuredAnnouncementHeight = PUBLIC_CARD_ANNOUNCEMENT_HEIGHT;
+  if (liveAnnouncement) {
+    const announcementMaxWidth = Math.min(
+      liveAnnouncement.classList.contains("is-negation-waiting") ? 420 : PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH,
+      window.innerWidth - 16,
+      bounds.width - 16,
+    );
+    liveAnnouncement.style.width = `${announcementMaxWidth}px`;
+    measuredAnnouncementHeight = liveAnnouncement.getBoundingClientRect().height || measuredAnnouncementHeight;
+  }
   const obstacles = [...document.querySelectorAll<HTMLElement>(
-    ".opponent-player-card[data-player-anchor], .player-board-status, .visible-countdown",
+    ".opponent-player-card[data-player-anchor], .player-square, .player-board-status, .visible-countdown, .stage-system-cluster",
   )].map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
+  const announcementWidth = Math.min(PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH, window.innerWidth - 16, bounds.width - 16);
+  const preferredAnnouncementLeft = preferredLeft + size.width / 2 - announcementWidth / 2;
+  const upperAnnouncementObstacles = obstacles.filter((obstacle) => obstacle.top < bounds.top + bounds.height * 0.6
+    && preferredAnnouncementLeft < obstacle.right && preferredAnnouncementLeft + announcementWidth > obstacle.left);
+  const clearAnnouncementTop = Math.max(bounds.top + 8, ...upperAnnouncementObstacles.map((obstacle) => obstacle.bottom + 2));
+  const obstacleAwareVerticalOffset = clearAnnouncementTop + measuredAnnouncementHeight + PUBLIC_CARD_ANNOUNCEMENT_GAP - preferredTop;
   const offsets: Array<[number, number]> = [
-    [0, 0], [0, -40], [0, 40], [0, -80], [0, 80], [0, -120], [0, 120],
-    [-105, 0], [105, 0], [-105, -50], [105, -50], [-105, 50], [105, 50],
+    [0, obstacleAwareVerticalOffset],
+    [0, 0], [0, -40], [0, 40], [0, -80], [0, 80], [0, -100], [0, -120], [0, 120], [0, -160], [0, 160], [0, -200], [0, 200],
+    [-105, 0], [105, 0], [-105, -50], [105, -50], [-105, 50], [105, 50], [-105, 100], [105, 100], [-105, 150], [105, 150],
   ];
   const safe = offsets.map(([x, y]) => ({
     left: preferredLeft + x,
@@ -263,17 +283,16 @@ function battlefieldCenterCard(size: { width: number; height: number } = REVEAL_
     width: size.width,
     height: size.height,
   })).find((candidate) => {
-    const announcementWidth = Math.min(PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH, window.innerWidth - 24, bounds.width - 16);
     const announcement = {
       left: candidate.left + candidate.width / 2 - announcementWidth / 2,
-      top: candidate.top - PUBLIC_CARD_ANNOUNCEMENT_HEIGHT - PUBLIC_CARD_ANNOUNCEMENT_GAP,
+      top: candidate.top - measuredAnnouncementHeight - PUBLIC_CARD_ANNOUNCEMENT_GAP,
       width: announcementWidth,
-      height: PUBLIC_CARD_ANNOUNCEMENT_HEIGHT,
+      height: measuredAnnouncementHeight,
     };
     const cardFits = candidate.left >= bounds.left + 8
       && candidate.left + candidate.width <= bounds.right - 8
       && candidate.top >= bounds.top + 8
-      && candidate.top + candidate.height <= bounds.bottom - 8
+      && candidate.top + candidate.height <= bounds.bottom
       && candidate.left >= 8
       && candidate.left + candidate.width <= window.innerWidth - 8
       && candidate.top >= 8
@@ -286,8 +305,8 @@ function battlefieldCenterCard(size: { width: number; height: number } = REVEAL_
       && announcement.left + announcement.width <= bounds.right - 8
       && announcement.top >= bounds.top + 8
       && announcement.top + announcement.height <= candidate.top - PUBLIC_CARD_ANNOUNCEMENT_GAP
-      && announcement.left >= 12
-      && announcement.left + announcement.width <= window.innerWidth - 12
+      && announcement.left >= 8
+      && announcement.left + announcement.width <= window.innerWidth - 8
       && obstacles.every((obstacle) => !rectsOverlap(announcement, obstacle, 2));
     return cardFits && announcementFits;
   });
@@ -443,7 +462,23 @@ function settlementLabel(action: PublicCardDisplayAction, targetName: string | n
   }
 }
 
-function publicCardAnnouncement(
+function compactPublicNotice(notice: string, actorName: string | null) {
+  const negation = notice.trim().match(/^.+? played Negation to counter (.+?)[.!?]?$/i);
+  if (negation) return `${actorName ?? "A player"} played Negation against ${negation[1]}.`;
+
+  const deflection = notice.trim().match(/^.+? used Deflection, discarding (.+?) and redirecting Attack to (.+?)[.!?]?$/i);
+  if (deflection) return `Deflection: ${actorName ?? "A player"} redirected Attack to ${deflection[2]}; discarded ${deflection[1]}.`;
+
+  const playedTarget = notice.trim().match(/^.+? played (.+?) targeting (.+?)[.!?]?$/i);
+  if (playedTarget) return `${actorName ?? "A player"} played ${playedTarget[1]} on ${playedTarget[2]}.`;
+
+  const usedTarget = notice.trim().match(/^.+? used (.+?) targeting (.+?)[.!?]?$/i);
+  if (usedTarget) return `${actorName ?? "A player"} used ${usedTarget[1]} on ${usedTarget[2]}.`;
+
+  return notice.trim();
+}
+
+export function publicCardAnnouncement(
   action: PublicCardDisplayAction,
   notice: string,
   actorName: string | null,
@@ -460,24 +495,29 @@ function publicCardAnnouncement(
     case "ATTACK_DAMAGE_APPLIED":
       return targetName ? `${targetName} took damage from ${source}'s Attack.` : notice;
     case "ATTACK_BLOCKED_BY_DODGE":
-      return `${actor} dodged ${source}'s Attack${targetName && targetName !== actor ? ` on ${targetName}` : ""}.`;
+      return action.response?.semanticLabel === "AS DODGE"
+        ? `${actor} used Attack as Dodge against ${source}'s Attack.`
+        : `${actor} played Dodge against ${source}'s Attack.`;
     case "SUITS_MATCHED":
     case "SUITS_DIFFERED":
+      return `${source} used ${cardName} on ${target}; suits ${outcome === "SUITS_MATCHED" ? "matched" : "differed"}.`;
     case "GROUP_RESOLVED":
-    case "BUMPER_HARVEST_RESOLVED":
-      return action.ariaLabel
-        .replace(/\.\s+(Resolved:)/i, "; $1")
-        .replace(/\.\s+(\d+\s+(?:targets|choices) resolved\.)/i, "; $1");
+    case "BUMPER_HARVEST_RESOLVED": {
+      const count = action.ariaLabel.match(/(\d+)\s+(targets|choices) resolved/i);
+      return count
+        ? `${source} played ${cardName}; ${count[1]} ${count[2].toLowerCase()} resolved.`
+        : compactPublicNotice(action.ariaLabel, actorName);
+    }
     case "DISMANTLE_RESOLVED":
       return `${source} resolved ${cardName} on ${target}.`;
     case "STEAL_RESOLVED":
       return `${source} resolved ${cardName} on ${target}.`;
     case "ROOT_CANCELLED":
-      return `${actor} negated ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
+      return `${actor}'s Negation cancelled ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
     case "ROOT_RESTORED":
-      return `${actor} restored ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
+      return `${actor}'s Negation restored ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
     default:
-      return settlementLabel(action, targetName) ?? notice;
+      return settlementLabel(action, targetName) ?? compactPublicNotice(notice, actorName);
   }
 }
 
@@ -559,36 +599,86 @@ function PublicCardAnnouncement({
       }
 
       const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
-      const gap = 7;
-      const copyRect = copy.getBoundingClientRect();
-      const copyWidth = copyRect.width || Math.min(360, viewportWidth - 24);
-      const copyHeight = copyRect.height;
+      const gap = PUBLIC_CARD_ANNOUNCEMENT_GAP;
+      const tableRect = display.closest<HTMLElement>(".play-table")?.getBoundingClientRect() ?? null;
+      const safeLeft = Math.max(8, tableRect?.left != null ? tableRect.left + 8 : 8);
+      const safeRight = Math.min(viewportWidth - 8, tableRect?.right != null ? tableRect.right - 8 : viewportWidth - 8);
+      const maxWidth = Math.max(1, Math.min(
+        PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH,
+        negationWaiting ? 420 : PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH,
+        viewportWidth - 16,
+        safeRight - safeLeft,
+      ));
       const centerX = cardRect.left + cardRect.width / 2;
-      const left = Math.max(12, Math.min(viewportWidth - copyWidth - 12, centerX - copyWidth / 2));
-      const right = left + copyWidth;
-      let safeTop = 8;
-      const obstacles = document.querySelectorAll<HTMLElement>(
-        ".opponent-player-card, .visible-countdown, .stage-system-cluster, [data-public-card-copy-anchor-event-id]",
-      );
-      for (const obstacle of obstacles) {
-        if (obstacle === anchor || display.contains(obstacle) && obstacle.dataset.publicCardCopyAnchorEventId === eventId) continue;
-        const rect = obstacle.getBoundingClientRect();
-        const style = window.getComputedStyle(obstacle);
-        if (style.display === "none" || style.visibility === "hidden" || rect.width <= 0 || rect.height <= 0) continue;
-        const horizontalOverlap = left < rect.right && right > rect.left;
-        if (horizontalOverlap && rect.bottom <= cardRect.top - gap) safeTop = Math.max(safeTop, rect.bottom + 5);
+      const obstacles = [...document.querySelectorAll<HTMLElement>(
+        ".opponent-player-card, .player-square, .player-board-status, .visible-countdown, .stage-system-cluster, .local-player-dock, [data-public-card-copy-anchor-event-id]",
+      )].flatMap((element) => {
+        if (element === anchor || element === copy
+          || element.dataset.publicCardCopyAnchorEventId === eventId
+          || element.contains(copy)) return [];
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return style.display === "none" || style.visibility === "hidden" || rect.width <= 0 || rect.height <= 0
+          ? []
+          : [{ element, rect }];
+      });
+      const preferredTop = tableRect ? tableRect.top + 8 : 8;
+      const widths = [...new Set([maxWidth, 500, 480, 456, 440, 420, 400, 380, 360, 340, 320, 300, 280]
+        .map((width) => Math.min(width, maxWidth)))]
+        .filter((width) => width > 0)
+        .sort((left, right) => right - left);
+      let selected: { left: number; top: number; width: number; height: number; lines: number } | null = null;
+      for (const width of widths) {
+        copy.style.width = `${width}px`;
+        const height = copy.getBoundingClientRect().height;
+        const top = cardRect.top - height - gap;
+        if (top < preferredTop || top < 8 || top + height > window.innerHeight - 4) continue;
+        const minCandidateLeft = safeLeft;
+        const maxCandidateLeft = safeRight - width;
+        if (maxCandidateLeft < minCandidateLeft) continue;
+        const centeredLeft = Math.max(minCandidateLeft, Math.min(maxCandidateLeft, centerX - width / 2));
+        const maxShift = Math.min(96, maxCandidateLeft - minCandidateLeft);
+        const offsets = [0, ...Array.from({ length: Math.floor(maxShift / 8) }, (_, index) => (index + 1) * 8)
+          .flatMap((offset) => [-offset, offset])];
+        for (const offset of offsets) {
+          const left = centeredLeft + offset;
+          if (left < minCandidateLeft || left > maxCandidateLeft) continue;
+          copy.style.left = `${left}px`;
+          copy.style.top = `${top}px`;
+          const rect = copy.getBoundingClientRect();
+          const text = copy.querySelector<HTMLElement>("b");
+          const range = document.createRange();
+          if (text) range.selectNodeContents(text);
+          const lines = text ? range.getClientRects().length : 0;
+          if (lines > 2) continue;
+          const overlapsObstacle = obstacles.some(({ element, rect: obstacleRect }) => element !== anchor
+            && rect.left < obstacleRect.right && rect.right > obstacleRect.left
+            && rect.top < obstacleRect.bottom && rect.bottom > obstacleRect.top);
+          if (overlapsObstacle) continue;
+          selected = { left, top, width, height: rect.height, lines };
+          break;
+        }
+        if (selected) break;
       }
 
-      const desiredTop = cardRect.top - copyHeight - gap;
-      const availableAbove = cardRect.top - gap - safeTop;
-      copy.classList.toggle("is-condensed", availableAbove < copyHeight);
-      const measuredHeight = copy.getBoundingClientRect().height;
-      const condensedTop = cardRect.top - measuredHeight - gap;
-      let top = condensedTop >= safeTop ? condensedTop : desiredTop;
-      if (top < safeTop) top = safeTop;
-
-      copy.style.left = `${left}px`;
-      copy.style.top = `${Math.round(top * 10) / 10}px`;
+      if (!selected) {
+        const width = widths[0] ?? maxWidth;
+        copy.style.width = `${width}px`;
+        const height = copy.getBoundingClientRect().height;
+        const left = Math.max(safeLeft, Math.min(safeRight - width, centerX - width / 2));
+        const top = Math.max(preferredTop, cardRect.top - height - gap);
+        copy.style.left = `${left}px`;
+        copy.style.top = `${top}px`;
+        const text = copy.querySelector<HTMLElement>("b");
+        const range = document.createRange();
+        if (text) range.selectNodeContents(text);
+        selected = { left, top, width, height, lines: text ? range.getClientRects().length : 0 };
+        copy.dataset.publicCardAnnouncementFallback = "true";
+      } else {
+        delete copy.dataset.publicCardAnnouncementFallback;
+      }
+      copy.dataset.publicCardAnnouncementWidth = `${Math.round(selected.width)}`;
+      copy.dataset.publicCardAnnouncementLines = `${selected.lines}`;
       copy.dataset.publicCardAnnouncementPositioned = "true";
       copy.style.visibility = "visible";
     };

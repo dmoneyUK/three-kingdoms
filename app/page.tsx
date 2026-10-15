@@ -4121,7 +4121,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           && room.currentAction.requirement === "dodge"
           && room.currentAction.actorId === room.meId
           && canUseAction(room.currentAction, "respond")
-          ? { publicNotice: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "A player"} attacked you. Play Dodge or Skip.` }
+          ? { publicNotice: `${room.players.find((player) => player.id === rootAction.sourceId)?.name ?? "A player"} played Attack on you. Dodge or Skip.` }
           : {}),
       } : rootAction.cardKind === "Dismantle" ? {
         motion: {

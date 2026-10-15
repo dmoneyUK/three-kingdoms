@@ -126,7 +126,7 @@ async function assertDeflectionEnabledDuringReveal({ page, seed, viewport, proje
   await expect(publicCardDisplay).toHaveCount(1);
   const announcement = publicCardDisplay.locator('[data-public-card-announcement="true"]');
   await expect(announcement).toHaveCount(1);
-  await expect(announcement).toContainText("ATTACKER played Attack targeting DA QIAO");
+  await expect(announcement).toContainText("ATTACKER played Attack on DA QIAO.");
   await expect(announcement).not.toContainText("Play Dodge or Skip.");
   const immediate = {
     viewport,

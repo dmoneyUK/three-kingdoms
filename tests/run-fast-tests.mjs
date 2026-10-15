@@ -20,6 +20,7 @@ const fastTests = [
   "tests/presentation-causality.test.mjs",
   "tests/causal-context.test.mjs",
   "tests/attack-dodge-ux-trace.test.mjs",
+  "tests/public-card-announcement.test.mjs",
   "tests/wrangler-worker-supervisor.test.mjs",
 ];
 

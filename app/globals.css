@@ -1289,8 +1289,9 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-journey-card.is-deflection::before{content:"";position:absolute;z-index:0;left:50%;top:-17px;width:calc(100% + 12px);min-width:66px;height:calc(100% + 21px);transform:translateX(-50%);box-sizing:border-box;border:1px solid #d9c17f88;border-radius:3px;background:#18191333;pointer-events:none}
 .public-card-journey-card.is-deflection>.played-card{position:relative;z-index:1}
 .public-card-journey-card.is-deflection .public-card-journey-semantic{left:50%;right:auto;top:-14px;bottom:auto;transform:translateX(-50%);padding:2px 4px;background:#181913;color:#f5dda1;font-size:7px;letter-spacing:.06em}
-.public-card-display-journey-copy{position:fixed;left:0;top:0;z-index:2;width:min(calc(100vw - 24px),360px);max-width:360px;min-height:0;margin:0;padding:5px 8px;translate:none;border:1px solid #8e784866;background:#11140fd9;box-shadow:0 4px 12px #0008;text-align:center;pointer-events:none}
-.public-card-display-journey-copy>b{display:-webkit-box;overflow:hidden;max-width:100%;color:#f3ead8;font:700 10px/1.25 Arial,sans-serif;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}.public-card-display-journey-copy.is-condensed{padding:3px 6px}.public-card-display-journey-copy.is-condensed>b{font-size:9px;line-height:1.15;-webkit-line-clamp:2}
+.public-card-display-journey-copy{position:fixed;left:0;top:0;z-index:2;box-sizing:border-box;width:min(calc(100vw - 16px),520px);max-width:520px;min-height:0;margin:0;padding:6px 10px;translate:none;border:1px solid #8e784866;background:#11140fe8;box-shadow:0 4px 12px #0008;text-align:center;pointer-events:none}
+.public-card-display-journey-copy>b{display:block;max-width:100%;color:#f3ead8;font:600 15px/1.2 Arial,sans-serif;letter-spacing:.01em;white-space:normal;overflow-wrap:anywhere}
+.public-card-display-journey-copy.is-negation-waiting{width:min(calc(100vw - 24px),420px);padding:5px 8px;background:#11140fe8}
 .public-card-duel-parked-card{direction:ltr}
 .public-card-duel-parked-card.is-prior{opacity:1;filter:none}
 .public-card-duel-parked-card .public-card-journey-semantic{left:2px;right:auto;bottom:2px}
@@ -1298,8 +1299,10 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-journey-card.is-revealing>.public-card-journey-ordinal,.public-card-journey-card.is-moving>.public-card-journey-ordinal{right:3px;top:3px;font-size:8px}
 .duel-public-card-history-accessible{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 .public-card-display-journey.is-reflowing .public-card-journey-card{transition:none!important}
-.public-card-display-journey-copy.is-negation-waiting{width:min(calc(100vw - 36px),320px);padding:4px 7px;background:#11140fd0}
 .public-card-display-journey.is-exiting{animation:none;opacity:0;transition:opacity .18s ease}
+.public-card-display-journey-copy[data-public-card-announcement-positioned="true"]{height:auto}
+@media(min-width:801px){.public-card-display-journey-copy>b{font-size:16px}}
+@media(max-width:420px){.public-card-display-journey-copy{padding:4px 8px}.public-card-display-journey-copy.is-negation-waiting{padding:4px 8px}}
 .local-player-dock.local-dock-attack-response{position:relative;outline:2px solid #c94e43;outline-offset:-3px;box-shadow:inset 0 0 0 2px #c94e4355,0 0 18px #d15a4e33}
 @media(prefers-reduced-motion:reduce){.public-card-journey-card,.public-card-journey-card>.played-card>i,.public-card-journey-card>.played-card>i small{transition:none}.public-card-display-journey-copy{transition:none}}
 
