@@ -222,9 +222,9 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
   const spearDodge = await requestAndSettle("respond", { code: spearScenario.game.code, token: spearScenario.game.members[2].token, providerId: "card", cardId: targetDodge.id }); assert.equal(spearDodge.status, 200, JSON.stringify(spearDodge.data));
 
   const frostScenario = await openBorrowedSwordScenario({ weaponKind: "FrostSword" });
-  const frostTargetCard = card("Peach", "borrowed-frost-target"); const rescuePeach = card("Peach", "borrowed-frost-rescue");
+  const frostTargetCard = card("Peach", "borrowed-frost-target"); const frostSecondTargetCard = card("Peach", "borrowed-frost-target-second"); const rescuePeach = card("Peach", "borrowed-frost-rescue");
   sql(`UPDATE players SET hero='zhang-fei' WHERE id=${quote(frostScenario.target.id)}`);
-  setHand(frostScenario.source.id, [rescuePeach], 4, 5); setHand(frostScenario.target.id, [frostTargetCard], 1, 4);
+  setHand(frostScenario.source.id, [rescuePeach], 4, 5); setHand(frostScenario.target.id, [frostTargetCard, frostSecondTargetCard], 1, 4);
   const frostAttack = await requestAndSettle("respond", { code: frostScenario.game.code, token: frostScenario.alice.token, providerId: "card", cardId: frostScenario.attackId }); assert.equal(frostAttack.status, 200, JSON.stringify(frostAttack.data));
   const damagePending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(frostScenario.game.code)}`)); assert.equal(damagePending.continuation.origin, "borrowed_sword"); assert.equal(damagePending.continuation.sourceId, frostScenario.holder.id); assert.equal(damagePending.continuation.resumePlayerId, frostScenario.source.id);
   const frostDeclined = await requestAndSettle("decline_trigger", { code: frostScenario.game.code, token: frostScenario.alice.token }); assert.equal(frostDeclined.status, 200, JSON.stringify(frostDeclined.data));
