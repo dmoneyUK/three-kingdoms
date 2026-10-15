@@ -3,19 +3,36 @@ import { expect, test } from "@playwright/test";
 const API = "http://127.0.0.1:3137";
 const card = (kind, id, suit = "♠") => ({ id, kind, suit, rank: "7" });
 
-async function seed(request, dodge) {
+async function seed(request, dodge, playerCount = 4) {
   const attack = card("Attack", `p0-${dodge ? "dodge" : "skip"}-attack`);
   const responseCard = dodge ? card("Dodge", "p0-dodge-response", "♣") : null;
+  const heroes = ["cao-cao", "zhao-yun", "sun-quan", "simayi", "xiahou-dun", "zhang-liao", "guo-jia", "huang-gai"];
+  const rolesByCount = {
+    4: ["Lord", "Loyalist", "Rebel", "Renegade"],
+    6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"],
+    8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"],
+  };
+  const basePlayers = [
+    { name: "Cao Cao the Valiant Strategist", hand: [attack, card("Negation", "private-attackers-hidden-negation", "♦")] },
+    { name: "Zhao Yun of Changban", hand: responseCard ? [responseCard] : [] },
+    { name: "Third Player of Wu with a Long Name", hand: [] },
+    { name: "Fourth Player of Shu with a Long Name", hand: [] },
+  ];
+  const roles = rolesByCount[playerCount];
+  if (!roles) throw new Error(`Unsupported announcement geometry player count: ${playerCount}`);
+  const players = Array.from({ length: playerCount }, (_, index) => ({
+    name: basePlayers[index]?.name ?? `Additional Test Player ${index + 1} with a Long Seat Name`,
+    role: roles[index],
+    hero: heroes[index],
+    hp: 4,
+    maxHp: 4,
+    hand: basePlayers[index]?.hand ?? [],
+  }));
   const result = await request.post(`${API}/__test/seed-playing-game`, {
     data: {
       phase: "play",
       turnSeat: 0,
-      players: [
-        { name: "Cao Cao the Valiant Strategist", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [attack, card("Negation", "private-attackers-hidden-negation", "♦")] },
-        { name: "Zhao Yun of Changban", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: responseCard ? [responseCard] : [] },
-        { name: "Third Player of Wu with a Long Name", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
-        { name: "Fourth Player of Shu with a Long Name", role: "Renegade", hero: "simayi", hp: 4, maxHp: 4, hand: [] },
-      ],
+      players,
     },
   });
   if (!result.ok()) throw new Error(`Attack/Dodge room seed failed: ${await result.text()}`);
@@ -101,7 +118,7 @@ async function assertJourneyMounted(page, rootCardId) {
   return display;
 }
 
-async function assertAnnouncementAboveCurrentCard(display, eventId) {
+async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth = 320) {
   const announcement = display.locator('[data-public-card-announcement="true"]');
   await expect(announcement).toBeVisible();
   await expect(announcement).toHaveAttribute("data-public-card-copy-anchor-event-id", eventId);
@@ -110,6 +127,9 @@ async function assertAnnouncementAboveCurrentCard(display, eventId) {
     const message = root.querySelector('[data-public-card-announcement="true"]');
     const card = [...root.querySelectorAll("[data-public-card-copy-anchor-event-id]")]
       .find((element) => element !== message && element.getAttribute("data-public-card-copy-anchor-event-id") === selectedEventId);
+    const matchingAnchors = [...root.querySelectorAll("[data-public-card-copy-anchor-event-id]")]
+      .filter((element) => element.getAttribute("data-public-card-copy-anchor-event-id") === selectedEventId)
+      .map((element) => ({ tag: element.tagName, className: element.className?.baseVal ?? element.className, rect: (() => { const rect = element.getBoundingClientRect(); return { left: rect.left, top: rect.top, width: rect.width, height: rect.height }; })() }));
     if (!message || !card) return null;
     const box = (element) => {
       const rect = element.getBoundingClientRect();
@@ -154,9 +174,13 @@ async function assertAnnouncementAboveCurrentCard(display, eventId) {
       liveStatusCount: root.querySelectorAll('[role="status"][aria-live="polite"]').length,
       positioned: message.getAttribute("data-public-card-announcement-positioned"),
       fallback: message.getAttribute("data-public-card-announcement-fallback"),
+      compact: message.getAttribute("data-public-card-announcement-compact") === "true",
       declaredWidth: Number(message.getAttribute("data-public-card-announcement-width")),
       declaredLines: Number(message.getAttribute("data-public-card-announcement-lines")),
       text: message.textContent?.trim(),
+      accessibleText: message.querySelector("b")?.getAttribute("aria-label"),
+      cardPhase: card.getAttribute("data-public-card-journey-phase"),
+      matchingAnchors,
       table: box(document.querySelector(".play-table")),
       cardLayoutReason: card.getAttribute("data-public-card-journey-layout-reason"),
       typography: {
@@ -170,7 +194,10 @@ async function assertAnnouncementAboveCurrentCard(display, eventId) {
   try {
     await expect.poll(async () => {
       latestGeometry = await measure();
-      return Boolean(latestGeometry && latestGeometry.message.bottom <= latestGeometry.card.top - 5);
+      return Boolean(latestGeometry?.positioned === "true"
+        && latestGeometry.fallback == null
+        && latestGeometry.overlaps.length === 0
+        && (latestGeometry.cardPhase !== "reveal" || latestGeometry.message.bottom <= latestGeometry.card.top - 5));
     }, { timeout: 3_000 }).toBe(true);
   } catch (error) {
     throw new Error(`${error.message}\nLatest public-card announcement geometry: ${JSON.stringify(latestGeometry)}`);
@@ -181,8 +208,8 @@ async function assertAnnouncementAboveCurrentCard(display, eventId) {
   if (geometry.fallback) throw new Error(`Public announcement had to use its overlap fallback: ${JSON.stringify(geometry)}`);
   expect(geometry.message.left).toBeGreaterThanOrEqual(8);
   expect(geometry.message.right).toBeLessThanOrEqual(geometry.viewport.width - 8);
-  expect(geometry.message.bottom).toBeLessThanOrEqual(geometry.card.top - 5);
-  expect(geometry.message.width).toBeGreaterThanOrEqual(320);
+  if (geometry.cardPhase === "reveal") expect(geometry.message.bottom).toBeLessThanOrEqual(geometry.card.top - 5);
+  expect(geometry.message.width).toBeGreaterThanOrEqual(minimumWidth);
   expect(geometry.declaredWidth).toBe(Math.round(geometry.message.width));
   expect(geometry.declaredLines).toBeLessThanOrEqual(2);
   expect(geometry.typography.fontSize).toBeGreaterThanOrEqual(14);
@@ -373,6 +400,60 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   expect(defenderErrors.runtimeErrors).toEqual([]);
   await attackerPage.close();
 });
+
+for (const playerCount of [6, 8]) {
+  test(`public battle announcements avoid ${playerCount}-player side seats at mobile widths`, async ({ browser, page, request }, testInfo) => {
+    test.setTimeout(90_000);
+    const room = await seed(request, true, playerCount);
+    const attackerPage = await browser.newPage({ viewport: { width: 440, height: 894 } });
+    const attacker = await openPlayer(attackerPage, room, 0);
+    const defender = await openPlayer(page, room, 1);
+    await expect(page.locator('.play-table[data-seat-topology="side-column"]')).toBeVisible();
+
+    await playAttack({ page: attackerPage, room, attacker, defender, attack: room.attack });
+    const display = await assertJourneyMounted(page, room.attack.id);
+    const eventId = await display.getAttribute("data-public-card-event-id");
+    expect(eventId).toBeTruthy();
+    const revealCard = display.locator(`[data-public-card-journey-card-id="${room.attack.id}"]`);
+    await expect(revealCard).toHaveAttribute("data-public-card-journey-phase", "reveal");
+    const initialGeometry = await assertAnnouncementAboveCurrentCard(display, eventId, 180);
+    expect(initialGeometry.message.bottom).toBeLessThanOrEqual(initialGeometry.card.top - 5);
+    expect(initialGeometry.accessibleText).toBe("Cao Cao the Valiant Strategist played Attack on Zhao Yun of Changban.");
+    await testInfo.attach(`announcement-${playerCount}-seats-440x894.json`, {
+      body: JSON.stringify(initialGeometry, null, 2),
+      contentType: "application/json",
+    });
+    await testInfo.attach(`announcement-${playerCount}-seats-440x894.png`, {
+      body: await page.screenshot({ animations: "disabled" }),
+      contentType: "image/png",
+    });
+    const viewports = [
+      { width: 390, height: 844 },
+      { width: 440, height: 894 },
+      { width: 480, height: 900 },
+    ];
+    for (const viewport of viewports) {
+      await page.setViewportSize(viewport);
+      const geometry = await assertAnnouncementAboveCurrentCard(display, eventId, 180);
+      expect(geometry.text).toMatch(/^(Cao Cao the Valiant Strategist played Attack on Zhao Yun of Changban\.|Cao Cao played Attack on Zhao Yun of Changban\.|Cao Cao the Valiant Strategist played Attack on Zhao Yun\.|Cao Cao played Attack on Zhao Yun\.)$/);
+      expect(geometry.accessibleText).toBe("Cao Cao the Valiant Strategist played Attack on Zhao Yun of Changban.");
+      if (playerCount === 8) expect(geometry.compact).toBe(true);
+      await testInfo.attach(`announcement-${playerCount}-seats-${viewport.width}x${viewport.height}.json`, {
+        body: JSON.stringify(geometry, null, 2),
+        contentType: "application/json",
+      });
+      if (viewport.width === 440) {
+        await testInfo.attach(`announcement-${playerCount}-seats-${viewport.width}x${viewport.height}.png`, {
+          body: await page.screenshot({ animations: "disabled" }),
+          contentType: "image/png",
+        });
+      }
+    }
+    await expect(page.getByText("GAME SCREEN ERROR")).toHaveCount(0);
+    await expect(attackerPage.getByText("GAME SCREEN ERROR")).toHaveCount(0);
+    await attackerPage.close();
+  });
+}
 
 test("skipping Attack response shows only server-proven damage at 440x894", async ({ browser, page, request }) => {
   test.setTimeout(60_000);

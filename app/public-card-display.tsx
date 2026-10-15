@@ -252,44 +252,24 @@ function battlefieldCenterCard(size: { width: number; height: number } = REVEAL_
   const bounds = table.getBoundingClientRect();
   const preferredTop = bounds.top + bounds.height * 0.5 - size.height / 2;
   const preferredLeft = bounds.left + (bounds.width - size.width) / 2;
-  const liveAnnouncement = document.querySelector<HTMLElement>(".public-card-display-journey-copy");
-  let measuredAnnouncementHeight = PUBLIC_CARD_ANNOUNCEMENT_HEIGHT;
-  if (liveAnnouncement) {
-    const announcementMaxWidth = Math.min(
-      liveAnnouncement.classList.contains("is-negation-waiting") ? 420 : PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH,
-      window.innerWidth - 16,
-      bounds.width - 16,
-    );
-    liveAnnouncement.style.width = `${announcementMaxWidth}px`;
-    measuredAnnouncementHeight = liveAnnouncement.getBoundingClientRect().height || measuredAnnouncementHeight;
-  }
   const obstacles = [...document.querySelectorAll<HTMLElement>(
     ".opponent-player-card[data-player-anchor], .player-square, .player-board-status, .visible-countdown, .stage-system-cluster",
   )].map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
   const announcementWidth = Math.min(PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH, window.innerWidth - 16, bounds.width - 16);
-  const preferredAnnouncementLeft = preferredLeft + size.width / 2 - announcementWidth / 2;
-  const upperAnnouncementObstacles = obstacles.filter((obstacle) => obstacle.top < bounds.top + bounds.height * 0.6
-    && preferredAnnouncementLeft < obstacle.right && preferredAnnouncementLeft + announcementWidth > obstacle.left);
-  const clearAnnouncementTop = Math.max(bounds.top + 8, ...upperAnnouncementObstacles.map((obstacle) => obstacle.bottom + 2));
-  const obstacleAwareVerticalOffset = clearAnnouncementTop + measuredAnnouncementHeight + PUBLIC_CARD_ANNOUNCEMENT_GAP - preferredTop;
-  const offsets: Array<[number, number]> = [
-    [0, obstacleAwareVerticalOffset],
-    [0, 0], [0, -40], [0, 40], [0, -80], [0, 80], [0, -100], [0, -120], [0, 120], [0, -160], [0, 160], [0, -200], [0, 200],
-    [-105, 0], [105, 0], [-105, -50], [105, -50], [-105, 50], [105, 50], [-105, 100], [105, 100], [-105, 150], [105, 150],
-  ];
-  const safe = offsets.map(([x, y]) => ({
+  const offsets: Array<[number, number]> = [[0, 0]];
+  for (let distance = 8; distance <= 200; distance += 8) {
+    offsets.push([0, -distance], [0, distance]);
+  }
+  for (const distance of [24, 48, 72, 96, 120, 144, 168, 192]) {
+    offsets.push([-distance, 0], [distance, 0], [-distance, -24], [distance, -24], [-distance, 24], [distance, 24]);
+  }
+  const candidates = offsets.map(([x, y]) => ({
     left: preferredLeft + x,
     top: preferredTop + y,
     width: size.width,
     height: size.height,
-  })).find((candidate) => {
-    const announcement = {
-      left: candidate.left + candidate.width / 2 - announcementWidth / 2,
-      top: candidate.top - measuredAnnouncementHeight - PUBLIC_CARD_ANNOUNCEMENT_GAP,
-      width: announcementWidth,
-      height: measuredAnnouncementHeight,
-    };
-    const cardFits = candidate.left >= bounds.left + 8
+  }));
+  const cardFits = (candidate: CardRect) => candidate.left >= bounds.left + 8
       && candidate.left + candidate.width <= bounds.right - 8
       && candidate.top >= bounds.top + 8
       && candidate.top + candidate.height <= bounds.bottom
@@ -301,15 +281,22 @@ function battlefieldCenterCard(size: { width: number; height: number } = REVEAL_
         || candidate.left - 8 >= obstacle.right
         || candidate.top + candidate.height + 8 <= obstacle.top
         || candidate.top - 8 >= obstacle.bottom);
-    const announcementFits = announcement.left >= bounds.left + 8
+  const fitsFullWidthAnnouncement = (candidate: CardRect) => {
+    const announcement = {
+      left: candidate.left + candidate.width / 2 - announcementWidth / 2,
+      top: candidate.top - PUBLIC_CARD_ANNOUNCEMENT_HEIGHT - PUBLIC_CARD_ANNOUNCEMENT_GAP,
+      width: announcementWidth,
+      height: PUBLIC_CARD_ANNOUNCEMENT_HEIGHT,
+    };
+    return announcement.left >= bounds.left + 8
       && announcement.left + announcement.width <= bounds.right - 8
       && announcement.top >= bounds.top + 8
-      && announcement.top + announcement.height <= candidate.top - PUBLIC_CARD_ANNOUNCEMENT_GAP
       && announcement.left >= 8
       && announcement.left + announcement.width <= window.innerWidth - 8
       && obstacles.every((obstacle) => !rectsOverlap(announcement, obstacle, 2));
-    return cardFits && announcementFits;
-  });
+  };
+  const safe = candidates.find((candidate) => cardFits(candidate) && fitsFullWidthAnnouncement(candidate))
+    ?? candidates.find(cardFits);
   return safe ?? boundCardRect(preferredLeft, preferredTop, size.width, size.height);
 }
 
@@ -529,6 +516,28 @@ function publicCardPhaseClause(phaseNotice: string | undefined) {
   return null;
 }
 
+type CompactPublicPlayerNames = Readonly<Record<string, string>>;
+
+function publicCardAnnouncementCopy(
+  action: PublicCardDisplayAction,
+  notice: string,
+  actorName: string | null,
+  actorId: string,
+  sourceName: string | null,
+  targetName: string | null,
+  compactPlayerNamesById: CompactPublicPlayerNames,
+) {
+  const message = publicCardAnnouncement(action, notice, actorName, sourceName, targetName);
+  const compactMessage = publicCardAnnouncement(
+    action,
+    notice,
+    compactPlayerNamesById[actorId] ?? actorName,
+    compactPlayerNamesById[action.sourceId] ?? sourceName,
+    action.targetId ? compactPlayerNamesById[action.targetId] ?? targetName : targetName,
+  );
+  return { message, compactMessage: compactMessage === message ? undefined : compactMessage };
+}
+
 function withPublicCardPhaseNotice(message: string, phaseNotice: string | undefined) {
   const concise = message.trim()
     .replace(/\.\s+Play Dodge or Skip\.$/i, ".")
@@ -543,6 +552,7 @@ function PublicCardAnnouncement({
   eventId,
   phase,
   message,
+  compactMessage,
   fallbackCardRect,
   phaseNotice,
   outcome,
@@ -551,6 +561,7 @@ function PublicCardAnnouncement({
   eventId: string;
   phase: JourneyCard["phase"] | "static";
   message: string;
+  compactMessage?: string;
   fallbackCardRect: CardRect | null;
   phaseNotice?: string;
   outcome?: NonNullable<PublicCardDisplayAction["settlement"]>["outcome"];
@@ -558,6 +569,7 @@ function PublicCardAnnouncement({
 }) {
   const copyRef = useRef<HTMLDivElement>(null);
   const measuredCenterRef = useRef<{ eventId: string; rect: CardRect } | null>(null);
+  const [displayedMessage, setDisplayedMessage] = useState(message);
 
   useLayoutEffect(() => {
     const copy = copyRef.current;
@@ -570,6 +582,7 @@ function PublicCardAnnouncement({
     let resizeObserver: ResizeObserver | null = null;
     let anchorObserver: MutationObserver | null = null;
     let frame = 0;
+    const observedAnchor = getAnchor();
 
     const place = () => {
       const anchor = getAnchor();
@@ -577,9 +590,9 @@ function PublicCardAnnouncement({
       const hasActualCardRect = Boolean(actualRect && actualRect.width > 0 && actualRect.height > 0);
       let cardRect: CardRect | null = null;
 
-      if (phase === "reveal" && hasActualCardRect) {
+      if (hasActualCardRect) {
         cardRect = toCardRect(actualRect!);
-        measuredCenterRef.current = { eventId, rect: cardRect };
+        if (phase === "reveal") measuredCenterRef.current = { eventId, rect: cardRect };
       } else if (measuredCenterRef.current?.eventId === eventId) {
         cardRect = measuredCenterRef.current.rect;
       } else if (fallbackCardRect) {
@@ -623,45 +636,54 @@ function PublicCardAnnouncement({
           : [{ element, rect }];
       });
       const preferredTop = tableRect ? tableRect.top + 8 : 8;
-      const widths = [...new Set([maxWidth, 500, 480, 456, 440, 420, 400, 380, 360, 340, 320, 300, 280]
+      const widths = [...new Set([maxWidth, 500, 480, 456, 440, 420, 400, 380, 360, 340, 320, 300, 280, 260, 240, 224, 208, 200, 192, 184, 176, 168, 160]
         .map((width) => Math.min(width, maxWidth)))]
         .filter((width) => width > 0)
         .sort((left, right) => right - left);
-      let selected: { left: number; top: number; width: number; height: number; lines: number } | null = null;
-      for (const width of widths) {
-        copy.style.width = `${width}px`;
-        const height = copy.getBoundingClientRect().height;
-        const top = cardRect.top - height - gap;
-        if (top < preferredTop || top < 8 || top + height > window.innerHeight - 4) continue;
-        const minCandidateLeft = safeLeft;
-        const maxCandidateLeft = safeRight - width;
-        if (maxCandidateLeft < minCandidateLeft) continue;
-        const centeredLeft = Math.max(minCandidateLeft, Math.min(maxCandidateLeft, centerX - width / 2));
-        const maxShift = Math.min(96, maxCandidateLeft - minCandidateLeft);
-        const offsets = [0, ...Array.from({ length: Math.floor(maxShift / 8) }, (_, index) => (index + 1) * 8)
-          .flatMap((offset) => [-offset, offset])];
-        for (const offset of offsets) {
-          const left = centeredLeft + offset;
-          if (left < minCandidateLeft || left > maxCandidateLeft) continue;
-          copy.style.left = `${left}px`;
-          copy.style.top = `${top}px`;
-          const rect = copy.getBoundingClientRect();
-          const text = copy.querySelector<HTMLElement>("b");
-          const range = document.createRange();
-          if (text) range.selectNodeContents(text);
-          const lines = text ? range.getClientRects().length : 0;
-          if (lines > 2) continue;
-          const overlapsObstacle = obstacles.some(({ element, rect: obstacleRect }) => element !== anchor
-            && rect.left < obstacleRect.right && rect.right > obstacleRect.left
-            && rect.top < obstacleRect.bottom && rect.bottom > obstacleRect.top);
-          if (overlapsObstacle) continue;
-          selected = { left, top, width, height: rect.height, lines };
-          break;
+      const textElement = copy.querySelector<HTMLElement>("b");
+      const announcementOptions = [
+        { message, compact: false },
+        ...(compactMessage && compactMessage !== message ? [{ message: compactMessage, compact: true }] : []),
+      ];
+      let selected: { left: number; top: number; width: number; height: number; lines: number; message: string; compact: boolean } | null = null;
+      for (const option of announcementOptions) {
+        if (textElement) textElement.textContent = option.message;
+        for (const width of widths) {
+          copy.style.width = `${width}px`;
+          const height = copy.getBoundingClientRect().height;
+          const top = cardRect.top - height - gap;
+          if (top < preferredTop || top < 8 || top + height > window.innerHeight - 4) continue;
+          const minCandidateLeft = safeLeft;
+          const maxCandidateLeft = safeRight - width;
+          if (maxCandidateLeft < minCandidateLeft) continue;
+          const centeredLeft = Math.max(minCandidateLeft, Math.min(maxCandidateLeft, centerX - width / 2));
+          const maxShift = Math.min(96, maxCandidateLeft - minCandidateLeft);
+          const offsets = [0, ...Array.from({ length: Math.floor(maxShift / 8) }, (_, index) => (index + 1) * 8)
+            .flatMap((offset) => [-offset, offset])];
+          for (const offset of offsets) {
+            const left = centeredLeft + offset;
+            if (left < minCandidateLeft || left > maxCandidateLeft) continue;
+            copy.style.left = `${left}px`;
+            copy.style.top = `${top}px`;
+            const rect = copy.getBoundingClientRect();
+            const range = document.createRange();
+            if (textElement) range.selectNodeContents(textElement);
+            const lines = textElement ? range.getClientRects().length : 0;
+            if (lines > 2) continue;
+            const overlapsObstacle = obstacles.some(({ element, rect: obstacleRect }) => element !== anchor
+              && rect.left < obstacleRect.right && rect.right > obstacleRect.left
+              && rect.top < obstacleRect.bottom && rect.bottom > obstacleRect.top);
+            if (overlapsObstacle) continue;
+            selected = { left, top, width, height: rect.height, lines, message: option.message, compact: option.compact };
+            break;
+          }
+          if (selected) break;
         }
         if (selected) break;
       }
 
       if (!selected) {
+        if (textElement) textElement.textContent = message;
         const width = widths[0] ?? maxWidth;
         copy.style.width = `${width}px`;
         const height = copy.getBoundingClientRect().height;
@@ -669,14 +691,16 @@ function PublicCardAnnouncement({
         const top = Math.max(preferredTop, cardRect.top - height - gap);
         copy.style.left = `${left}px`;
         copy.style.top = `${top}px`;
-        const text = copy.querySelector<HTMLElement>("b");
         const range = document.createRange();
-        if (text) range.selectNodeContents(text);
-        selected = { left, top, width, height, lines: text ? range.getClientRects().length : 0 };
+        if (textElement) range.selectNodeContents(textElement);
+        selected = { left, top, width, height, lines: textElement ? range.getClientRects().length : 0, message, compact: false };
         copy.dataset.publicCardAnnouncementFallback = "true";
       } else {
         delete copy.dataset.publicCardAnnouncementFallback;
       }
+      if (displayedMessage !== selected.message) setDisplayedMessage(selected.message);
+      if (selected.compact) copy.dataset.publicCardAnnouncementCompact = "true";
+      else delete copy.dataset.publicCardAnnouncementCompact;
       copy.dataset.publicCardAnnouncementWidth = `${Math.round(selected.width)}`;
       copy.dataset.publicCardAnnouncementLines = `${selected.lines}`;
       copy.dataset.publicCardAnnouncementPositioned = "true";
@@ -687,6 +711,10 @@ function PublicCardAnnouncement({
       frame = window.requestAnimationFrame(place);
     };
     const onResize = schedule;
+    const onAnchorTransitionEnd = (event: TransitionEvent) => {
+      if (event.target !== observedAnchor || !["left", "top", "width", "height"].includes(event.propertyName)) return;
+      schedule();
+    };
 
     place();
     window.addEventListener("resize", onResize);
@@ -697,11 +725,11 @@ function PublicCardAnnouncement({
     const playerBoard = document.querySelector<HTMLElement>(".player-board");
     if (table) resizeObserver?.observe(table);
     if (playerBoard) resizeObserver?.observe(playerBoard);
-    const anchor = getAnchor();
-    if (anchor) {
-      resizeObserver?.observe(anchor);
+    if (observedAnchor) {
+      resizeObserver?.observe(observedAnchor);
+      observedAnchor.addEventListener("transitionend", onAnchorTransitionEnd);
       anchorObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
-      anchorObserver?.observe(anchor, { attributes: true, attributeFilter: ["style", "data-public-card-journey-phase"] });
+      anchorObserver?.observe(observedAnchor, { attributes: true, attributeFilter: ["style", "data-public-card-journey-phase"] });
     }
 
     return () => {
@@ -709,9 +737,10 @@ function PublicCardAnnouncement({
       viewport?.removeEventListener("resize", onResize);
       resizeObserver?.disconnect();
       anchorObserver?.disconnect();
+      observedAnchor?.removeEventListener("transitionend", onAnchorTransitionEnd);
       window.cancelAnimationFrame(frame);
     };
-  }, [eventId, fallbackCardRect, fallbackCardRect?.height, fallbackCardRect?.left, fallbackCardRect?.top, fallbackCardRect?.width, phase]);
+  }, [compactMessage, displayedMessage, eventId, fallbackCardRect, fallbackCardRect?.height, fallbackCardRect?.left, fallbackCardRect?.top, fallbackCardRect?.width, message, phase]);
 
   return <div
     ref={copyRef}
@@ -726,7 +755,7 @@ function PublicCardAnnouncement({
     data-public-card-result={outcome}
     style={{ top: 0, left: 0, visibility: "hidden" }}
   >
-    <b>{message}</b>
+    <b aria-label={message}>{displayedMessage}</b>
   </div>;
 }
 
@@ -735,6 +764,7 @@ function AttackDodgeCardJourney({
   enabled,
   sourceName,
   targetName,
+  compactPlayerNamesById,
   roomCode,
   viewerId,
   resultReadRemainingMs,
@@ -745,6 +775,7 @@ function AttackDodgeCardJourney({
   enabled: boolean;
   sourceName: string | null;
   targetName: string | null;
+  compactPlayerNamesById: CompactPublicPlayerNames;
   roomCode: string;
   viewerId: string;
   resultReadRemainingMs: number | null;
@@ -779,10 +810,11 @@ function AttackDodgeCardJourney({
   const activeActorName = activeJourneyCard?.actorName ?? latestResponse?.actorName ?? latestDeflection?.actorName ?? sourceName;
   const activeRevealStartedAtMs = activeJourneyCard?.revealStartedAtMs ?? null;
   const activeRevealRemainingMs = activeJourneyCard?.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS;
-  const announcement = withPublicCardPhaseNotice(
-    publicCardAnnouncement(action, activeNotice, activeActorName, sourceName, targetName),
-    action.settlement ? undefined : action.phaseNotice,
-  );
+  const announcementCopy = publicCardAnnouncementCopy(action, activeNotice, activeActorName, activeActorId, sourceName, targetName, compactPlayerNamesById);
+  const announcement = withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
+  const compactAnnouncement = announcementCopy.compactMessage
+    ? withPublicCardPhaseNotice(announcementCopy.compactMessage, action.settlement ? undefined : action.phaseNotice)
+    : undefined;
 
   useLayoutEffect(() => {
     mountedRef.current = true;
@@ -1236,6 +1268,7 @@ function AttackDodgeCardJourney({
   useLayoutEffect(() => {
     if (!enabled || !hasAttackDodgeMotion || journey.scopeKey !== scopeKey) return;
     let observer: ResizeObserver | null = null;
+    let reflowFrame = 0;
     const observedAnchors = new WeakSet<Element>();
     const observePlayerAnchors = () => {
       document.querySelectorAll<HTMLElement>("[data-player-anchor]").forEach((anchor) => {
@@ -1263,11 +1296,17 @@ function AttackDodgeCardJourney({
       journeyRef.current = next;
       setJourney(next);
     };
-    window.addEventListener("resize", reposition);
-    window.addEventListener("scroll", reposition, true);
+    const scheduleReposition = () => {
+      window.cancelAnimationFrame(reflowFrame);
+      reflowFrame = window.requestAnimationFrame(() => {
+        reflowFrame = window.requestAnimationFrame(reposition);
+      });
+    };
+    window.addEventListener("resize", scheduleReposition);
+    window.addEventListener("scroll", scheduleReposition, true);
     const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", reposition);
-    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reposition);
+    viewport?.addEventListener("resize", scheduleReposition);
+    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleReposition);
     const shell = document.querySelector<HTMLElement>(".game-shell");
     if (shell) observer?.observe(shell);
     observePlayerAnchors();
@@ -1278,7 +1317,7 @@ function AttackDodgeCardJourney({
         || [...record.addedNodes, ...record.removedNodes].some(containsPlayerAnchor));
       if (anchorsChanged) {
         observePlayerAnchors();
-        reposition();
+        scheduleReposition();
       }
     });
     if (shell) mutationObserver?.observe(shell, {
@@ -1287,13 +1326,14 @@ function AttackDodgeCardJourney({
       attributes: true,
       attributeFilter: ["data-player-anchor"],
     });
-    reposition();
+    scheduleReposition();
     return () => {
-      window.removeEventListener("resize", reposition);
-      window.removeEventListener("scroll", reposition, true);
-      viewport?.removeEventListener("resize", reposition);
+      window.removeEventListener("resize", scheduleReposition);
+      window.removeEventListener("scroll", scheduleReposition, true);
+      viewport?.removeEventListener("resize", scheduleReposition);
       observer?.disconnect();
       mutationObserver?.disconnect();
+      window.cancelAnimationFrame(reflowFrame);
     };
   }, [enabled, hasAttackDodgeMotion, journey.scopeKey, scopeKey]);
 
@@ -1332,6 +1372,7 @@ function AttackDodgeCardJourney({
       eventId={activeEventId}
       phase={activeJourneyCard?.phase ?? "static"}
       message={announcement}
+      compactMessage={compactAnnouncement}
       fallbackCardRect={journey.center}
       phaseNotice={action.phaseNotice}
       outcome={action.settlement?.outcome}
@@ -1387,6 +1428,7 @@ function SingleTargetCardJourney({
   enabled,
   sourceName,
   targetName,
+  compactPlayerNamesById,
   viewerId,
   resultReadRemainingMs,
   onInspectCard,
@@ -1397,6 +1439,7 @@ function SingleTargetCardJourney({
   enabled: boolean;
   sourceName: string | null;
   targetName: string | null;
+  compactPlayerNamesById: CompactPublicPlayerNames;
   viewerId: string;
   resultReadRemainingMs: number | null;
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
@@ -1782,10 +1825,11 @@ function SingleTargetCardJourney({
   }, [action.targetId, enabled, journey.cards, journey.scopeKey, scopeKey, viewerId]);
   const currentPublicCard = currentCard?.cardFace ?? action.cardFace ?? null;
   const currentNotice = currentCard?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
-  const announcement = withPublicCardPhaseNotice(
-    publicCardAnnouncement(action, currentNotice, currentCard?.actorName ?? sourceName, sourceName, targetName),
-    action.settlement ? undefined : action.phaseNotice,
-  );
+  const announcementCopy = publicCardAnnouncementCopy(action, currentNotice, currentCard?.actorName ?? sourceName, currentCard?.actorId ?? action.sourceId, sourceName, targetName, compactPlayerNamesById);
+  const announcement = withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
+  const compactAnnouncement = announcementCopy.compactMessage
+    ? withPublicCardPhaseNotice(announcementCopy.compactMessage, action.settlement ? undefined : action.phaseNotice)
+    : undefined;
   useEffect(() => {
     const settlementEventId = action.settlement?.eventId;
     if (!enabled || journey.scopeKey !== scopeKey || !allParked || !settlementEventId
@@ -1831,6 +1875,7 @@ function SingleTargetCardJourney({
       eventId={activeEventId}
       phase={currentCard?.phase ?? "static"}
       message={announcement}
+      compactMessage={compactAnnouncement}
       fallbackCardRect={journey.center}
       phaseNotice={action.phaseNotice}
       outcome={allParked ? action.settlement?.outcome : undefined}
@@ -1943,6 +1988,7 @@ function DuelCardJourney({
   enabled,
   sourceName,
   targetName,
+  compactPlayerNamesById,
   viewerId,
   viewerSeat,
   resultReadRemainingMs,
@@ -1953,6 +1999,7 @@ function DuelCardJourney({
   enabled: boolean;
   sourceName: string | null;
   targetName: string | null;
+  compactPlayerNamesById: CompactPublicPlayerNames;
   viewerId: string;
   viewerSeat: number | null;
   resultReadRemainingMs: number | null;
@@ -2305,10 +2352,11 @@ function DuelCardJourney({
   const currentPublicCard = activeEvent?.cardFace ?? latestResponse?.cardFace ?? action.cardFace ?? null;
   const activeActorId = activeEvent?.actorId ?? latestResponse?.actorId ?? action.sourceId;
   const activeMessage = activeEvent?.ariaLabel ?? latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
-  const announcement = withPublicCardPhaseNotice(
-    publicCardAnnouncement(action, activeMessage, activeEvent?.actorName ?? latestResponse?.actorName ?? sourceName, sourceName, targetName),
-    action.settlement ? undefined : action.phaseNotice,
-  );
+  const announcementCopy = publicCardAnnouncementCopy(action, activeMessage, activeEvent?.actorName ?? latestResponse?.actorName ?? sourceName, activeActorId, sourceName, targetName, compactPlayerNamesById);
+  const announcement = withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
+  const compactAnnouncement = announcementCopy.compactMessage
+    ? withPublicCardPhaseNotice(announcementCopy.compactMessage, action.settlement ? undefined : action.phaseNotice)
+    : undefined;
 
   useEffect(() => {
     if (!enabled || journey.scopeKey !== scopeKey) return;
@@ -2396,6 +2444,7 @@ function DuelCardJourney({
       eventId={activeEventId}
       phase={activeEvent?.phase ?? "static"}
       message={announcement}
+      compactMessage={compactAnnouncement}
       fallbackCardRect={journey.center}
       phaseNotice={action.phaseNotice}
       outcome={action.settlement?.outcome}
@@ -2413,6 +2462,7 @@ export function PublicCardDisplay({
   enabled,
   sourceName,
   targetName,
+  compactPlayerNamesById,
   roomCode,
   viewerId,
   viewerSeat,
@@ -2425,6 +2475,7 @@ export function PublicCardDisplay({
   enabled: boolean;
   sourceName: string | null;
   targetName: string | null;
+  compactPlayerNamesById: CompactPublicPlayerNames;
   roomCode: string;
   viewerId: string;
   viewerSeat: number | null;
@@ -2435,13 +2486,13 @@ export function PublicCardDisplay({
 }) {
   if (!action) return null;
   if (action.motion?.type === "attack-dodge") {
-    return <AttackDodgeCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} roomCode={roomCode} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
+    return <AttackDodgeCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (action.motion?.type === "single-target" || action.motion?.type === "negation") {
-    return <SingleTargetCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} />;
+    return <SingleTargetCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (action.motion?.type === "duel") {
-    return <DuelCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
+    return <DuelCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (!enabled || !sourceName) return null;
   const latestResponse = action.response ?? action.responses?.at(-1) ?? null;
@@ -2449,10 +2500,11 @@ export function PublicCardDisplay({
   const eventId = latestResponse?.eventId ?? action.rootEventId;
   const actorId = latestResponse?.actorId ?? action.sourceId;
   const notice = latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
-  const announcement = withPublicCardPhaseNotice(
-    publicCardAnnouncement(action, notice, latestResponse?.actorName ?? sourceName, sourceName, targetName),
-    action.settlement ? undefined : action.phaseNotice,
-  );
+  const announcementCopy = publicCardAnnouncementCopy(action, notice, latestResponse?.actorName ?? sourceName, actorId, sourceName, targetName, compactPlayerNamesById);
+  const announcement = withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
+  const compactAnnouncement = announcementCopy.compactMessage
+    ? withPublicCardPhaseNotice(announcementCopy.compactMessage, action.settlement ? undefined : action.phaseNotice)
+    : undefined;
   return <section
     className={`public-card-display${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}`}
     data-public-card-display="true"
@@ -2472,6 +2524,7 @@ export function PublicCardDisplay({
       eventId={eventId}
       phase="static"
       message={announcement}
+      compactMessage={compactAnnouncement}
       fallbackCardRect={null}
       phaseNotice={action.phaseNotice}
       outcome={action.settlement?.outcome}
