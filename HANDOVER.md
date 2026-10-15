@@ -8,7 +8,7 @@ Branch: `ux-v2`
 
 ## Planner review update (2026-10-15, late iPhone feedback)
 
-**Authoritative design:** `docs/UX2-refine.md` blob `6d71d7b9836905f3ae850874b74d6e99b26d22fb`, latest **§10.13 U13-A–H**. This handover change updates DESIGN/TASK QUEUE ONLY. No new code, tests, CI or deployment is claimed; no item below is USER-ACCEPTED merely because a design/spec was committed.
+**Authoritative design:** `docs/UX2-refine.md` blob `3b4c6a2f91111bae3f8a7e89af1d2c19065e296f`, latest **§10.13 U13-A–H**. This handover change updates DESIGN/TASK QUEUE ONLY. No new code, tests, CI or deployment is claimed; no item below is USER-ACCEPTED merely because a design/spec was committed.
 
 User described four iPhone screenshots: local selected LUST attack-order too small; opponent Cao Cao Equipment +1 horse symbol illegible; LUST physical cost Frame huge, title too small beside card and unnecessary duplicated narration; current battlefield `Resolving…` badge too small and fails to show a publicly known genuine Duel responder; opponent Inspector stacked Equipment/Judgement and overlaps top Hero row; Diao Chan Lust/Beauty skill cells unequal; **discard mode selected two cards logically while only one visually lifts**.
 
@@ -29,7 +29,21 @@ User described four iPhone screenshots: local selected LUST attack-order too sma
 3. **Independent acceptance:** A visibly up→A+B both up (2/2)→tap A, only B remains up (1/2)→select C, B+C both up→Confirm discards precisely B,C; no `play_card` request. Check overlap with adjacent cards, DETAILS inset/Hand scroll, reduced motion and true iPhone touch. Also run normal one-card Play, serpent 2-card cost, Lust cost, responses, 3/5/8 Hand and 4/6/8/10 seats regressions.
 4. **Evidence:** actual browser before/after screenshots and computed rect/transform tables at 390×844/390×700/440×894/480×900; focused test added to repo (not only private screenshots), lint/build/tests and exact-SHA normal CI/deploy; log SHA/tests/results in HANDOVER. Mark **U13-A PENDING REVIEW**, NEVER user-accepted. Next fetch the latest doc before U13-B.
 
-## Remaining seven narrowly scoped approved §10.13 jobs (ONE AT A TIME)
+## NEW UI-4B phone verdict — Beauty public notification NOT ACCEPTED (queue B1–B3)
+
+**New screenshot IMG_3186.jpeg user-reviewed 2026-10-15:** Diao Chan genuinely draws Q♥ Peach privately; public BEAUTY notice floats at upper-right and only reads `Diao Chan activated Beauty Outshining the Moon.`, not the true outcome `drew 1 card`. **§10.14 is the authoritative detailed plan, ready for Coding Agent; not a source-code change.**
+
+**Exact source finding:** `app/api/rooms/route.ts` logs linked Beauty `ACTIVATION` plus genuine `DRAWN` with `rootEventId`, `drawCount:1`, `finalResult:true` and separately logs owner-only actual CardFace. `game/presentation-v2.ts` checks the link. `app/page.tsx diaoChanNoticeCopy()` ALREADY has `Diao Chan used Beauty and drew 1 card.`; however `queuedNotices` adds both to a sequential `effectNotices` queue and shows activation at head for `UI_TIMING.effectNotice`. `app/globals.css .interaction-safe-zone>.effect-notice` hardcodes `top:8px;right:...`. The user saw this activation-only frame while real private draw was displayed. **Do not invent public CardFace, leak Q♥ or claim server draw proof is missing.**
+
+**Task group ID `UX2-10.14-UI4B-F-BEAUTY-PUBLIC-DRAW-01`:**
+
+- **B1 (event/proof UI, independent commit):** Update `app/page.tsx` to coalesce proved linked Beauty `ACTIVATION`/`DRAWN` into ONE event-group notice keyed to authoritative root; when DRAWN already exists show `Diao Chan used Beauty and drew 1 card.` IMMEDIATELY instead of letting a 2.4s activation toast obscure it; when draw proof arrives later UPGRADE IN PLACE; only truthful provisional activation if needed; no duplicate on poll/reconnect; declined/zero draw must NOT show success. Preserve all unrelated skill notifications and original server action/Hand accounting.
+- **B2 (public stage placement, after H4 code landed):** Route Beauty's PUBLIC *non-physical* notification through ONE shared canonical **H4 stage-centred** banner/geometry instead of top-right `.effect-notice`. Its visible owner-private `.private-draw-stage` with real Q♥ is a collision obstacle; on owner's phone show the banner above it with ≥8px gap, below opponent Seats; on other token no private card. Never show a phantom public card or cover current turn chip/timer/Hand. ≤12px horizontal centre difference from canonical stage, ≤16px top jitter under stable geometry. Use shared ornamental H3 text styling, no second toast or rule change.
+- **B3 (full real Worker/D1 four-viewer):** Verify proof, simultaneous/delayed event delivery, owner Q♥ only, spectator hidden-card privacy, 1 new private Hand card exactly, Decline/stale/zero card, rapid next public event, refresh, iPhone 390×700/844, 440×894, 480×900 and 4/6/8/10 seats; capture DOM rect and true event IDs plus exact-SHA lint/build/tests/CI/deploy. Mark `B1/B2/B3 PENDING REVIEW`, only human acceptance closes UI-4B.
+
+**Execution order remains:** Current H4 task → existing **P0 U13-A** multi-discard → existing **P0 U13-B** public waiter → **new Beauty B1→B3** → remaining U13-C…H. If H4 already developed by time you read this, fetch latest design/code before B2 and do not replay/undo H4. The user asked for phone review feedback, not immediate acceptance. Never interrupt a concurrent in-flight code edit with this handover update.
+
+## Remaining seven narrowly scoped approved §10.13 jobs (ONE AT A TIME; Beauty B1–B3 follows U13-B)
 
 | ID | Scope | Critical acceptance |
 | --- | --- | --- |
