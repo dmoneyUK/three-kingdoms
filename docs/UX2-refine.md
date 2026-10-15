@@ -657,6 +657,8 @@ One true server-confirmed public CardFace → **up to 4s large centre reveal sub
 
 **Tests:** 3/5/8 Hand cards at 390/440/480px, selection vs Details vs Play, horizontal scroll, skill multi-cost selection, equipment and public parked card detail, Hand-private versus observer privacy, keyboard/focus, no controls covered. Do not change skill/combat rules.
 
+**Coding Agent progress (2026-10-15):** R4 delivered in `e5ef24aa5d2de0ebaab5093895a372c978bf0042`. The selected Hand card now owns the framed 44×44 DETAILS action; card selection remains separate from opening the nonmodal preview. Duplicate visible card-name/rank/suit copy beside the illustrated CardFace was removed while accessible identity and canonical rules remain. No local automated tests were run per user instruction. Exact-SHA Actions run [`38664033947`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38664033947) passed Lint/fast, API, browser startup/room smoke (1 test), and deploy including D1 migration step, build, Worker deployment and production `/` + `/api/health` smoke. Worker version `4fba4a89-6feb-4562-afde-23b46f33bd07`. The routine browser smoke did not run the R4-specific visual cases; R4 is **PENDING REVIEW** and no UX acceptance is claimed.
+
 **Sequence (updated):** UI-4, R1 and R2 were subsequently delivered. Continue with R3 → R4 as narrow separate code changes with focused automated tests, then §10.8 H1 → H2 → H3. Do not rerun UI-4 as an unfinished code task. No new card-family rollout, no UX3 server change, and do not reimplement already accepted Da Qiao/Inspector.
 
 
