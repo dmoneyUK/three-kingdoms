@@ -1260,6 +1260,23 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
    park at the event author's real Seat or Dock. */
 .public-card-display-journey{position:fixed!important;inset:0;z-index:34;display:block;width:auto;max-width:none;height:auto;margin:0;padding:0;translate:none;border:0;background:transparent;box-shadow:none;overflow:visible;pointer-events:none}
 .public-card-journey-card{position:fixed;z-index:1;display:block;flex:none;margin:0;padding:0;border:0;border-radius:8px;transform:none;opacity:1;transition:left .38s cubic-bezier(.2,.7,.2,1),top .38s cubic-bezier(.2,.7,.2,1),width .38s cubic-bezier(.2,.7,.2,1),height .38s cubic-bezier(.2,.7,.2,1),opacity .18s ease,filter .18s ease;pointer-events:none}
+.public-card-duel-physical-group{position:absolute;inset:0;display:block;pointer-events:none}
+.public-card-duel-physical-face{position:absolute;top:0;width:100%;height:100%;transform:translateX(-50%);pointer-events:none}
+.public-card-duel-physical-face>.played-card{position:absolute;inset:0;width:100%;height:100%;min-width:0;min-height:0;padding:7px 4px;animation:none;border-radius:7px;box-shadow:0 0 0 1px #d4b46f99,0 8px 20px #000c}
+.public-card-duel-physical-face>.played-card>i{left:6px;top:5px;width:15px;min-height:20px;padding:1px 1px 3px;border-width:1px;border-radius:0 0 5px 0;font:700 7px/1 Arial,sans-serif;font-style:normal}
+.public-card-duel-physical-face>.played-card>i small{font-size:6px;line-height:1}
+.public-card-duel-physical-face>.played-card .card-name-mark{max-width:92%;font-size:clamp(10px,3vw,13px);line-height:1.02}
+.public-card-duel-physical-face>.played-card>strong{font-size:5px;letter-spacing:.05em}
+.public-card-journey-card[data-public-card-journey-size="duel-reveal"] .public-card-duel-physical-face>.played-card{padding:10.5px 6px;border-radius:7px}
+.public-card-journey-card[data-public-card-journey-size="duel-reveal"] .public-card-duel-physical-face>.played-card>i{left:9px;top:7.5px;width:22.5px;min-height:30px;padding:1.5px 1.5px 4.5px;border-width:1.5px;border-radius:0 0 7.5px 0;font-size:10.5px}
+.public-card-journey-card[data-public-card-journey-size="duel-reveal"] .public-card-duel-physical-face>.played-card>i small{font-size:9px}
+.public-card-journey-card[data-public-card-journey-size="duel-reveal"] .public-card-duel-physical-face>.played-card .card-name-mark{font-size:clamp(18px,4.5vw,20px)}
+.public-card-journey-card[data-public-card-journey-size="duel-reveal"] .public-card-duel-physical-face>.played-card>strong{font-size:7.5px}
+.public-card-journey-card[data-public-card-journey-size="thumbnail"] .public-card-duel-physical-face>.played-card{padding:5.6px 3.2px;border-radius:5.6px}
+.public-card-journey-card[data-public-card-journey-size="thumbnail"] .public-card-duel-physical-face>.played-card>i{left:5px;top:4px;width:12px;min-height:16px;padding:.8px .8px 2.4px;border-width:.8px;border-radius:0 0 4px 0;font-size:6px}
+.public-card-journey-card[data-public-card-journey-size="thumbnail"] .public-card-duel-physical-face>.played-card>i small{font-size:5px}
+.public-card-journey-card[data-public-card-journey-size="thumbnail"] .public-card-duel-physical-face>.played-card .card-name-mark{font-size:clamp(8px,2.4vw,10px)}
+.public-card-journey-card[data-public-card-journey-size="thumbnail"] .public-card-duel-physical-face>.played-card>strong{font-size:4px}
 .public-card-lust-cost-frame-panel{position:absolute;z-index:0;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:9px;padding:13px 13px 13px 112px;overflow:hidden;border:1px solid #d4b46f;background:#11140ff5;box-shadow:0 8px 24px #000b;color:#ead7a5;text-align:left;pointer-events:none}
 .public-card-lust-cost-frame-title{display:block;color:#e7c974;font:700 11px/1.2 Arial,sans-serif;letter-spacing:.09em;text-transform:uppercase}
 .public-card-journey-card.is-lust-cost>.played-card{position:relative;z-index:1;box-shadow:0 0 0 1px #d4b46f,0 8px 20px #000c}
@@ -1298,6 +1315,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-duel-parked-card{direction:ltr}
 .public-card-duel-parked-card.is-prior{opacity:1;filter:none}
 .public-card-duel-parked-card .public-card-journey-semantic{left:2px;right:auto;bottom:2px}
+.public-card-lust-cost-parked{position:absolute;left:50%;bottom:-8px;z-index:3;transform:translateX(-50%);padding:1px 3px;border:1px solid #d4b46f;border-radius:3px;background:#11140f;color:#f1d88e;font:700 5px/1.2 Arial,sans-serif;letter-spacing:.08em;pointer-events:none}
 .public-card-journey-ordinal{position:absolute;right:2px;top:2px;z-index:3;min-width:13px;padding:2px 3px;border:1px solid #d5b76e;border-radius:3px;background:#11140f;color:#f4dda1;box-shadow:0 2px 5px #000a;font:700 7px/1 Arial,sans-serif;text-align:center;white-space:nowrap;pointer-events:none}
 .public-card-journey-card.is-revealing>.public-card-journey-ordinal,.public-card-journey-card.is-moving>.public-card-journey-ordinal{right:3px;top:3px;font-size:8px}
 .duel-public-card-history-accessible{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}

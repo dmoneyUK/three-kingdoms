@@ -20,6 +20,7 @@ import type {
   PresentationSkillEffectSettlement,
   PresentationAttackDodgeResponse,
   PresentationDuelExchange,
+  PresentationLustDuelExchange,
   PresentationDeflectionAction,
   PresentationPublicCardEffect,
   PresentationPublicCardEffectId,
@@ -91,6 +92,7 @@ export type PresentationSnapshotGroupSettlement = PresentationGroupSettlement;
 export type PresentationSnapshotBumperHarvestSettlement = PresentationBumperHarvestSettlement;
 export type PresentationSnapshotAttackDodgeResponse = PresentationAttackDodgeResponse;
 export type PresentationSnapshotDuelExchange = PresentationDuelExchange;
+export type PresentationSnapshotLustDuelExchange = PresentationLustDuelExchange;
 export type PresentationSnapshotSelfTargetAction = PresentationSelfTargetAction;
 export type PresentationSnapshotDeflectionAction = PresentationDeflectionAction;
 export type PresentationSnapshotPublicCardEffect = PresentationPublicCardEffect;
@@ -113,6 +115,7 @@ export type PresentationSnapshot = {
   groupSettlements: readonly PresentationSnapshotGroupSettlement[];
   bumperHarvestSettlements: readonly PresentationSnapshotBumperHarvestSettlement[];
   duelExchange: PresentationSnapshotDuelExchange | null;
+  lustDuelExchange: PresentationSnapshotLustDuelExchange | null;
   attackDodgeResponses?: readonly PresentationSnapshotAttackDodgeResponse[];
   selfTargetActions?: readonly PresentationSnapshotSelfTargetAction[];
   deflectionActions: readonly PresentationSnapshotDeflectionAction[];
@@ -363,7 +366,12 @@ export function provenDiaoChanSkillNotices(
         && (notice.firstActorId === notice.firstParticipantId || notice.firstActorId === notice.secondParticipantId);
     }
     if (notice.effectId === "diao_chan_lust" && notice.notice === "DUEL_RESULT") {
-      return notice.eventId !== notice.rootEventId && nonEmptyString(notice.firstParticipantId)
+      const hasExchangeLifecycle = notice.interactionId !== undefined || notice.rootFrameId !== undefined
+        || notice.responseCount !== undefined || notice.settledAt !== undefined;
+      const exchangeLifecycleIsValid = !hasExchangeLifecycle || nonEmptyString(notice.interactionId)
+        && nonEmptyString(notice.rootFrameId) && nonNegativeInteger(notice.responseCount)
+        && Number.isSafeInteger(notice.settledAt) && (notice.settledAt as number) > 0;
+      return exchangeLifecycleIsValid && notice.eventId !== notice.rootEventId && nonEmptyString(notice.firstParticipantId)
         && nonEmptyString(notice.secondParticipantId) && nonEmptyString(notice.firstActorId)
         && nonEmptyString(notice.failedPlayerId) && nonEmptyString(notice.damageSourceId)
         && (notice.failedPlayerId === notice.firstParticipantId || notice.failedPlayerId === notice.secondParticipantId)
@@ -727,6 +735,165 @@ export function provenDuelExchange(
     responses,
     currentParticipantId: exchange.currentParticipantId as string,
     decisionActorId: exchange.decisionActorId as string | null,
+  };
+}
+
+/** Independently validates the generated-Duel variant without weakening printed Duel proof. */
+export function provenLustDuelExchange(
+  value: unknown,
+  scene?: PresentationInteractionScene | null,
+  identity?: PresentationSnapshotIdentity | null,
+  stable?: PresentationStableBoundary,
+): PresentationSnapshotLustDuelExchange | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const exchange = value as Record<string, unknown>;
+  const root = exchange.root && typeof exchange.root === "object" && !Array.isArray(exchange.root)
+    ? exchange.root as Record<string, unknown> : null;
+  const settlementRecord = exchange.settlement && typeof exchange.settlement === "object" && !Array.isArray(exchange.settlement)
+    ? exchange.settlement as Record<string, unknown> : null;
+  const hasSettlement = settlementRecord !== null;
+  const responseCount = exchange.responseCount;
+  if (exchange.semantics !== "PROVEN" || !nonEmptyString(exchange.interactionId)
+    || !nonEmptyString(exchange.rootFrameId) || !nonEmptyString(exchange.checkpointId)
+    || !nonNegativeInteger(exchange.presentationRevision) || !root
+    || !nonEmptyString(root.activationEventId) || !nonEmptyString(root.activationResolutionId)
+    || !nonEmptyString(root.costEventId) || !nonEmptyString(root.costResolutionId)
+    || !nonEmptyString(root.costCardId) || !nonEmptyString(root.ownerId)
+    || !nonEmptyString(root.firstParticipantId) || !nonEmptyString(root.secondParticipantId)
+    || root.ownerId === root.firstParticipantId || root.ownerId === root.secondParticipantId
+    || root.firstParticipantId === root.secondParticipantId
+    || !nonEmptyString(root.firstActorId)
+    || root.firstActorId !== root.firstParticipantId && root.firstActorId !== root.secondParticipantId
+    || root.activationEventId === root.costEventId
+    || !nonNegativeInteger(responseCount) || !Array.isArray(exchange.responses)
+    || exchange.responses.length !== responseCount
+    || hasSettlement && (exchange.currentParticipantId !== null || exchange.decisionActorId !== null)
+    || !hasSettlement && !nonEmptyString(exchange.currentParticipantId)
+    || exchange.decisionActorId !== null && !nonEmptyString(exchange.decisionActorId)) return null;
+
+  const settlement = settlementRecord ? {
+    eventId: settlementRecord.eventId,
+    failedPlayerId: settlementRecord.failedPlayerId,
+    damageSourceId: settlementRecord.damageSourceId,
+    damageAmount: settlementRecord.damageAmount,
+    outcome: settlementRecord.outcome,
+    settledAt: settlementRecord.settledAt,
+    readRemainingMs: settlementRecord.readRemainingMs,
+  } : null;
+  if (settlement && (!nonEmptyString(settlement.eventId)
+    || !nonEmptyString(settlement.failedPlayerId) || !nonEmptyString(settlement.damageSourceId)
+    || !Number.isSafeInteger(settlement.damageAmount) || (settlement.damageAmount as number) < 0
+    || settlement.outcome !== (settlement.damageAmount === 0 ? "DAMAGE_PREVENTED" : "DAMAGE_APPLIED")
+    || !Number.isSafeInteger(settlement.settledAt) || (settlement.settledAt as number) <= 0
+    || !Number.isSafeInteger(settlement.readRemainingMs) || (settlement.readRemainingMs as number) < 0
+    || (settlement.readRemainingMs as number) > 2000)) return null;
+
+  const participants = new Set([root.firstParticipantId as string, root.secondParticipantId as string]);
+  if (settlement && (!participants.has(settlement.failedPlayerId as string)
+    || !participants.has(settlement.damageSourceId as string)
+    || settlement.failedPlayerId === settlement.damageSourceId)) return null;
+  if (!settlement && !participants.has(exchange.currentParticipantId as string)
+    || exchange.decisionActorId !== null && exchange.decisionActorId !== exchange.currentParticipantId) return null;
+  const eventIds = new Set<string>([root.activationEventId as string, root.costEventId as string]);
+  if (settlement) {
+    if (eventIds.has(settlement.eventId as string)) return null;
+    eventIds.add(settlement.eventId as string);
+  }
+  const responses: PresentationSnapshotLustDuelExchange["responses"][number][] = [];
+  for (const [index, candidate] of exchange.responses.entries()) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+    const response = candidate as Record<string, unknown>;
+    const responseCardIds = Array.isArray(response.responseCardIds)
+      && response.responseCardIds.every(nonEmptyString) ? response.responseCardIds as string[] : null;
+    if (response.semantics !== "PROVEN" || response.relation !== "LUST_DUEL_EXCHANGE"
+      || response.interactionId !== exchange.interactionId || response.rootFrameId !== exchange.rootFrameId
+      || response.activationEventId !== root.activationEventId || response.activationResolutionId !== root.activationResolutionId
+      || response.costEventId !== root.costEventId || response.costCardId !== root.costCardId
+      || response.ownerId !== root.ownerId || response.firstParticipantId !== root.firstParticipantId
+      || response.secondParticipantId !== root.secondParticipantId || response.firstActorId !== root.firstActorId
+      || response.ordinal !== index + 1 || !nonEmptyString(response.responseEventId)
+      || !nonEmptyString(response.responseResolutionId) || response.responseResolutionId !== root.activationResolutionId
+      || !nonEmptyString(response.sourceId) || !nonEmptyString(response.targetId) || response.sourceId === response.targetId
+      || !participants.has(response.sourceId as string) || !participants.has(response.targetId as string)
+      || !nonEmptyString(response.decisionActorId) || !participants.has(response.decisionActorId as string)
+      || response.sourceId !== response.decisionActorId || !nonEmptyString(response.responseActorId)
+      || response.responseCardKind !== "Attack" || !responseCardIds
+      || new Set(responseCardIds).size !== responseCardIds.length
+      || eventIds.has(response.responseEventId as string)) return null;
+    eventIds.add(response.responseEventId as string);
+    responses.push({
+      semantics: "PROVEN",
+      relation: "LUST_DUEL_EXCHANGE",
+      interactionId: exchange.interactionId as string,
+      rootFrameId: exchange.rootFrameId as string,
+      activationEventId: root.activationEventId as string,
+      activationResolutionId: root.activationResolutionId as string,
+      costEventId: root.costEventId as string,
+      costCardId: root.costCardId as string,
+      ownerId: root.ownerId as string,
+      firstParticipantId: root.firstParticipantId as string,
+      secondParticipantId: root.secondParticipantId as string,
+      firstActorId: root.firstActorId as string,
+      ordinal: index + 1,
+      sourceId: response.sourceId as string,
+      targetId: response.targetId as string,
+      decisionActorId: response.decisionActorId as string,
+      responseActorId: response.responseActorId as string,
+      responseCardIds,
+      responseCardKind: "Attack",
+      responseEventId: response.responseEventId as string,
+      responseResolutionId: response.responseResolutionId as string,
+    });
+  }
+
+  if (scene !== undefined || identity !== undefined || stable !== undefined) {
+    if (hasSettlement) {
+      if (scene !== null || identity !== null || stable?.kind !== "REST") return null;
+    } else if (!scene || !identity || !stable || scene.semantics !== "PROVEN"
+      || scene.stage !== "DUEL_EXCHANGE" || stable.kind !== "CHOICE"
+      || scene.interactionId !== exchange.interactionId || identity.interactionId !== exchange.interactionId
+      || scene.rootFrameId !== exchange.rootFrameId || scene.activeFrameId !== exchange.rootFrameId
+      || identity.checkpointId !== exchange.checkpointId || scene.checkpointId !== exchange.checkpointId
+      || identity.presentationRevision !== exchange.presentationRevision || scene.presentationRevision !== exchange.presentationRevision
+      || stable.checkpointId !== identity.checkpointId || stable.presentationRevision !== identity.presentationRevision
+      || stable.decisionActorId !== scene.decisionActorId
+      || scene.sourceId !== root.firstActorId || scene.currentParticipantId !== exchange.currentParticipantId
+      || scene.decisionActorId !== exchange.decisionActorId
+      || scene.participantRoles.sourceId !== root.firstActorId
+      || scene.targetIds.length !== 2 || scene.targetIds.some((id) => !participants.has(id))
+      || scene.activeTargetIds.length !== 2 || scene.activeTargetIds.some((id) => !participants.has(id))) return null;
+  }
+
+  return {
+    semantics: "PROVEN",
+    interactionId: exchange.interactionId as string,
+    rootFrameId: exchange.rootFrameId as string,
+    checkpointId: exchange.checkpointId as string,
+    presentationRevision: exchange.presentationRevision as number,
+    root: {
+      activationEventId: root.activationEventId as string,
+      activationResolutionId: root.activationResolutionId as string,
+      costEventId: root.costEventId as string,
+      costResolutionId: root.costResolutionId as string,
+      costCardId: root.costCardId as string,
+      ownerId: root.ownerId as string,
+      firstParticipantId: root.firstParticipantId as string,
+      secondParticipantId: root.secondParticipantId as string,
+      firstActorId: root.firstActorId as string,
+    },
+    responseCount: responseCount as number,
+    responses,
+    currentParticipantId: exchange.currentParticipantId as string | null,
+    decisionActorId: exchange.decisionActorId as string | null,
+    ...(settlement ? { settlement: {
+      eventId: settlement.eventId as string,
+      failedPlayerId: settlement.failedPlayerId as string,
+      damageSourceId: settlement.damageSourceId as string,
+      damageAmount: settlement.damageAmount as number,
+      outcome: settlement.outcome as "DAMAGE_APPLIED" | "DAMAGE_PREVENTED",
+      settledAt: settlement.settledAt as number,
+      readRemainingMs: settlement.readRemainingMs as number,
+    } } : {}),
   };
 }
 
@@ -1283,6 +1450,8 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     groupSettlements: provenGroupSettlements(input.presentationV2.groupSettlements),
     bumperHarvestSettlements: provenBumperHarvestSettlements(input.presentationV2.bumperHarvestSettlements),
     duelExchange: authority ? provenDuelExchange(input.presentationV2.duelExchange, authority.scene, authority.identity, authority.stable) : null,
+    lustDuelExchange: provenLustDuelExchange(input.presentationV2.lustDuelExchange,
+      authority?.scene ?? null, authority?.identity ?? null, authority?.stable ?? REST_BOUNDARY),
     ...(input.presentationV2.attackDodgeResponses?.length ? { attackDodgeResponses: provenAttackDodgeResponses(input.presentationV2.attackDodgeResponses) } : {}),
     selfTargetActions: provenSelfTargetActions(input.presentationV2.selfTargetActions),
     deflectionActions: provenDeflectionActions(input.presentationV2.deflectionActions),

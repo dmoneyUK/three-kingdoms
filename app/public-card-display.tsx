@@ -14,6 +14,7 @@ type PublicCardDisplayResponseNode = {
   actorId: string;
   actorName: string;
   cardFace?: Card;
+  cardFaces?: readonly Card[];
   semanticLabel?: string;
   ariaLabel: string;
 };
@@ -33,6 +34,11 @@ type PublicCardDisplayMotion = {
 } | {
   type: "duel";
   /** Room and proven Duel identity keep retained card state isolated. */
+  scopeKey: string;
+  freshEventIds: readonly string[];
+} | {
+  type: "lust-duel";
+  /** Stable generated-Duel identity, separate from a printed Duel CardFace. */
   scopeKey: string;
   freshEventIds: readonly string[];
 } | {
@@ -61,8 +67,10 @@ export type PublicCardDisplayAction = {
   motion?: PublicCardDisplayMotion;
   settlement?: {
     eventId: string;
-    outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE" | "ATTACK_DAMAGE_APPLIED" | "DISMANTLE_RESOLVED" | "STEAL_RESOLVED" | "GROUP_RESOLVED" | "BUMPER_HARVEST_RESOLVED" | "ROOT_CANCELLED" | "ROOT_RESTORED";
+    outcome: "SUITS_MATCHED" | "SUITS_DIFFERED" | "ATTACK_BLOCKED_BY_DODGE" | "ATTACK_DAMAGE_APPLIED" | "DISMANTLE_RESOLVED" | "STEAL_RESOLVED" | "GROUP_RESOLVED" | "BUMPER_HARVEST_RESOLVED" | "ROOT_CANCELLED" | "ROOT_RESTORED" | "LUST_DUEL_DAMAGE_APPLIED" | "LUST_DUEL_DAMAGE_PREVENTED";
     exiting: boolean;
+    /** Server-derived remaining portion of the short post-settlement history read. */
+    readRemainingMs?: number;
   };
   publicCounterRead?: { eventId: string; exiting: boolean };
   phaseNotice?: string;
@@ -99,6 +107,7 @@ type JourneyCard = {
   actorId: string;
   actorName: string;
   cardFace: Card;
+  cardFaces?: readonly Card[];
   ariaLabel: string;
   semanticLabel?: string;
   role: "root" | "response" | "deflection";
@@ -157,6 +166,7 @@ function PublicJourneyCard({
     data-public-card-journey-event-id={card.eventId}
     data-public-card-journey-actor-id={card.actorId}
     data-public-card-journey-card-id={card.cardFace.id}
+    data-public-card-journey-card-ids={(card.cardFaces ?? [card.cardFace]).map((face) => face.id).join(",")}
     data-public-card-journey-role={card.role}
     data-public-card-journey-phase={card.phase}
     data-public-card-journey-size={size}
@@ -190,7 +200,16 @@ function PublicJourneyCard({
     >
       <strong className="public-card-lust-cost-frame-title">{lustCostFrame.title}</strong>
     </span>}
-    <CardFace card={card.cardFace} />
+    {card.cardFaces && card.cardFaces.length > 1
+      ? <span className="public-card-duel-physical-group">
+        {card.cardFaces.map((face, index) => <span
+          className="public-card-duel-physical-face"
+          key={face.id}
+          style={{ left: `calc(50% + ${(index - (card.cardFaces!.length - 1) / 2) * 6}px)`, zIndex: index + 1 }}
+        ><CardFace card={face} /></span>)}
+      </span>
+      : <CardFace card={card.cardFace} />}
+    {lustCostFrame && card.phase === "parked" && <small className="public-card-lust-cost-parked">LUST</small>}
     {card.semanticLabel && <small className="public-card-journey-semantic">{card.semanticLabel}</small>}
     {showOrdinal && card.globalOrdinal !== undefined && <small className="public-card-journey-ordinal" aria-label={`Duel event ${card.globalOrdinal}`}>#{card.globalOrdinal}</small>}
   </button>;
@@ -527,6 +546,8 @@ function settlementLabel(action: PublicCardDisplayAction, targetName: string | n
     case "STEAL_RESOLVED": return "STEAL RESOLVED";
     case "GROUP_RESOLVED": return "GROUP EFFECT RESOLVED";
     case "BUMPER_HARVEST_RESOLVED": return "BUMPER HARVEST RESOLVED";
+    case "LUST_DUEL_DAMAGE_APPLIED":
+    case "LUST_DUEL_DAMAGE_PREVENTED": return action.publicNotice ?? "LUST DUEL RESOLVED";
     case "ROOT_CANCELLED": return "EFFECT NEGATED";
     case "ROOT_RESTORED": return "EFFECT RESTORED";
     default: return null;
@@ -611,7 +632,18 @@ function publicCardAnnouncementCopy(
   targetName: string | null,
   compactPlayerNamesById: CompactPublicPlayerNames,
 ) {
-  if (action.motion?.type === "lust-cost" && action.lustCostFrame) {
+  if ((action.motion?.type === "lust-cost" || action.motion?.type === "lust-duel") && action.lustCostFrame) {
+    if (action.motion.type === "lust-duel" && action.settlement) {
+      const message = action.publicNotice ?? action.ariaLabel;
+      return { message };
+    }
+    const response = action.motion.type === "lust-duel"
+      ? action.responses?.find((entry) => entry.ariaLabel === notice && entry.actorId === actorId)
+      : undefined;
+    if (response) {
+      const compact = compactPublicNotice(notice, compactPlayerNamesById[actorId] ?? actorName);
+      return { message: notice, compactMessage: compact === notice ? undefined : compact };
+    }
     return {
       message: action.lustCostFrame.message,
       compactMessage: action.lustCostFrame.compactMessage,
@@ -1515,6 +1547,7 @@ function singleTargetJourneyEvents(action: PublicCardDisplayAction, sourceName: 
     actorId: action.sourceId,
     actorName: sourceName,
     cardFace: action.cardFace,
+    cardFaces: [action.cardFace],
     ariaLabel: action.ariaLabel,
     role: "root",
     globalOrdinal: 1,
@@ -1523,12 +1556,14 @@ function singleTargetJourneyEvents(action: PublicCardDisplayAction, sourceName: 
     target: { left: 0, top: 0, ...PARKED_CARD },
   });
   for (const response of action.responses ?? []) {
-    if (!response.cardFace || !Number.isInteger(response.ordinal) || !response.ordinal || response.ordinal < 1) continue;
+    const cardFaces = response.cardFaces ?? (response.cardFace ? [response.cardFace] : []);
+    if (!cardFaces.length || !Number.isInteger(response.ordinal) || !response.ordinal || response.ordinal < 1) continue;
     events.push({
       eventId: response.eventId,
       actorId: response.actorId,
       actorName: response.actorName,
-      cardFace: response.cardFace,
+      cardFace: cardFaces[0],
+      cardFaces,
       ariaLabel: response.ariaLabel,
       semanticLabel: response.semanticLabel,
       role: "response",
@@ -2011,7 +2046,7 @@ function SingleTargetCardJourney({
 }
 
 type DuelJourneyEvent = Pick<JourneyCard,
-  "eventId" | "actorId" | "actorName" | "cardFace" | "ariaLabel" | "role" | "semanticLabel" | "globalOrdinal"
+  "eventId" | "actorId" | "actorName" | "cardFace" | "cardFaces" | "ariaLabel" | "role" | "semanticLabel" | "globalOrdinal"
 >;
 type DuelJourneyPhase = "queued" | "reveal" | "move" | "parked";
 type DuelJourneyCard = DuelJourneyEvent & {
@@ -2052,17 +2087,20 @@ function duelJourneyEvents(action: PublicCardDisplayAction, sourceName: string |
     actorId: action.sourceId,
     actorName: sourceName,
     cardFace: action.cardFace,
+    cardFaces: [action.cardFace],
     ariaLabel: action.ariaLabel,
     role: "root",
     globalOrdinal: 1,
   });
   for (const response of action.responses ?? []) {
-    if (!response.cardFace || !Number.isInteger(response.ordinal) || !response.ordinal || response.ordinal < 1) continue;
+    const cardFaces = response.cardFaces ?? (response.cardFace ? [response.cardFace] : []);
+    if (!cardFaces.length || !Number.isInteger(response.ordinal) || !response.ordinal || response.ordinal < 1) continue;
     events.push({
       eventId: response.eventId,
       actorId: response.actorId,
       actorName: response.actorName,
-      cardFace: response.cardFace,
+      cardFace: cardFaces[0],
+      cardFaces,
       ariaLabel: response.ariaLabel,
       role: "response",
       globalOrdinal: response.ordinal + 1,
@@ -2132,8 +2170,9 @@ function DuelCardJourney({
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneyEventParked?: (eventId: string) => void;
 }) {
-  const scopeKey = action.motion?.type === "duel" ? action.motion.scopeKey : action.rootEventId;
+  const scopeKey = action.motion?.type === "duel" || action.motion?.type === "lust-duel" ? action.motion.scopeKey : action.rootEventId;
   const [journey, setJourney] = useState<DuelJourneyState>({ scopeKey: "", viewerId: "", viewerSeat: null, cards: [], center: null, suppressTransitions: false });
+  const [expiredLustSettlementEventId, setExpiredLustSettlementEventId] = useState<string | null>(null);
   const journeyRef = useRef(journey);
   const actionRef = useRef(action);
   const sourceNameRef = useRef(sourceName);
@@ -2167,15 +2206,30 @@ function DuelCardJourney({
     updateVisibility();
     return () => document.removeEventListener("visibilitychange", updateVisibility);
   }, []);
+  useEffect(() => {
+    const settlement = action.motion?.type === "lust-duel" ? action.settlement : undefined;
+    if (!settlement) {
+      setExpiredLustSettlementEventId(null);
+      return;
+    }
+    const remainingMs = Math.max(0, settlement.readRemainingMs ?? 0);
+    if (remainingMs === 0) {
+      setExpiredLustSettlementEventId(settlement.eventId);
+      return;
+    }
+    setExpiredLustSettlementEventId(null);
+    const timer = window.setTimeout(() => setExpiredLustSettlementEventId(settlement.eventId), remainingMs);
+    return () => window.clearTimeout(timer);
+  }, [action.motion?.type, action.settlement?.eventId, action.settlement?.readRemainingMs]);
 
   const incoming = duelJourneyEvents(action, sourceName);
   const responseSignature = incoming.map((event) => `${event.eventId}:${event.globalOrdinal ?? 0}`).join(",");
-  const freshSignature = action.motion?.type === "duel" ? [...action.motion.freshEventIds].join(",") : "";
+  const freshSignature = action.motion?.type === "duel" || action.motion?.type === "lust-duel" ? [...action.motion.freshEventIds].join(",") : "";
   useLayoutEffect(() => {
     const currentAction = actionRef.current;
     const currentMotion = currentAction.motion;
     const currentSourceName = sourceNameRef.current;
-    if (!enabled || currentMotion?.type !== "duel" || !currentSourceName) return;
+    if (!enabled || currentMotion?.type !== "duel" && currentMotion?.type !== "lust-duel" || !currentSourceName) return;
 
     const center = battlefieldCenterCard(DUEL_REVEAL_CARD);
     const events = duelJourneyEvents(currentAction, currentSourceName);
@@ -2533,13 +2587,14 @@ function DuelCardJourney({
     return () => window.clearInterval(interval);
   }, [action.targetId, enabled, scopeKey, journey.scopeKey, journey.cards, viewerId, viewerSeat]);
 
-  if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
+  if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center
+    || action.settlement?.eventId === expiredLustSettlementEventId) return null;
 
   return <section
     className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}`}
     data-public-card-display="true"
     data-public-card-ready="true"
-    data-public-card-motion="duel"
+    data-public-card-motion={action.motion?.type === "lust-duel" ? "lust-duel" : "duel"}
     data-public-card-viewer-id={viewerId}
     data-public-card-event-id={activeEventId}
     data-public-card-root-event-id={action.rootEventId}
@@ -2549,7 +2604,7 @@ function DuelCardJourney({
     data-public-card-target-id={action.targetId ?? undefined}
     data-public-card-settlement-event-id={action.settlement?.eventId}
     data-public-card-settlement-outcome={action.settlement?.outcome}
-    data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
+    data-public-card-result-remaining-ms={action.settlement?.readRemainingMs ?? resultReadRemainingMs ?? undefined}
   >
     {journey.cards.filter((card) => card.phase !== "queued").map((card) => <PublicJourneyCard
       key={card.eventId}
@@ -2560,6 +2615,7 @@ function DuelCardJourney({
       primary={card.eventId === activeEventId}
       parkingSide={card.parkingSide}
       showOrdinal
+      lustCostFrame={action.motion?.type === "lust-duel" && card.role === "root" ? action.lustCostFrame : undefined}
     />)}
     <ol className="duel-public-card-history-accessible" aria-label="Chronological Duel card history">
       {incoming.map((event) => <li key={event.eventId} value={event.globalOrdinal}>
@@ -2567,7 +2623,8 @@ function DuelCardJourney({
       </li>)}
     </ol>
     <PublicCardAnnouncement
-      eventId={activeEventId}
+      eventId={action.motion?.type === "lust-duel" && activeCard?.role === "root" && action.lustCostFrame
+        ? action.lustCostFrame.activationEventId : activeEventId}
       phase={activeEvent?.phase ?? "static"}
       message={announcement}
       compactMessage={compactAnnouncement}
@@ -2617,7 +2674,7 @@ export function PublicCardDisplay({
   if (action.motion?.type === "single-target" || action.motion?.type === "negation" || action.motion?.type === "lust-cost") {
     return <SingleTargetCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} />;
   }
-  if (action.motion?.type === "duel") {
+  if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {
     return <DuelCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (!enabled || !sourceName) return null;

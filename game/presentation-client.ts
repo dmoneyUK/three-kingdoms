@@ -2,7 +2,7 @@ import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgress
 import { CARD_KINDS, type CardKind } from "./model";
 import { CARD_DEFINITIONS } from "./cards";
 import { isProvenGroupRootCardProof, isProvenOrderedAttackRootProof, isProvenRootActionCardProof } from "./presentation-v2";
-import { provenAttackDodgeResponses, provenAttackHitSettlements, provenBumperHarvestSettlements, provenDeflectionActions, provenDismantleSettlements, provenDuelExchange, provenGroupSettlements, provenSelfTargetActions, provenSkillEffectAction, provenSkillEffectSettlements, provenStealSettlements, type PresentationSnapshot, type PresentationSnapshotAttackDodgeResponse, type PresentationSnapshotAttackHitSettlement, type PresentationSnapshotBumperHarvestProgress, type PresentationSnapshotBumperHarvestSettlement, type PresentationSnapshotDeflectionAction, type PresentationSnapshotDismantleSettlement, type PresentationSnapshotDuelExchange, type PresentationSnapshotGroupParticipantProgress, type PresentationSnapshotGroupProgress, type PresentationSnapshotGroupSettlement, type PresentationSnapshotOathRecipientScope, type PresentationSnapshotRootAction, type PresentationSnapshotSelfTargetAction, type PresentationSnapshotSkillEffectAction, type PresentationSnapshotSkillEffectSettlement, type PresentationSnapshotStealSettlement } from "./presentation-snapshot";
+import { provenAttackDodgeResponses, provenAttackHitSettlements, provenBumperHarvestSettlements, provenDeflectionActions, provenDismantleSettlements, provenDuelExchange, provenLustDuelExchange, provenGroupSettlements, provenSelfTargetActions, provenSkillEffectAction, provenSkillEffectSettlements, provenStealSettlements, type PresentationSnapshot, type PresentationSnapshotAttackDodgeResponse, type PresentationSnapshotAttackHitSettlement, type PresentationSnapshotBumperHarvestProgress, type PresentationSnapshotBumperHarvestSettlement, type PresentationSnapshotDeflectionAction, type PresentationSnapshotDismantleSettlement, type PresentationSnapshotDuelExchange, type PresentationSnapshotLustDuelExchange, type PresentationSnapshotGroupParticipantProgress, type PresentationSnapshotGroupProgress, type PresentationSnapshotGroupSettlement, type PresentationSnapshotOathRecipientScope, type PresentationSnapshotRootAction, type PresentationSnapshotSelfTargetAction, type PresentationSnapshotSkillEffectAction, type PresentationSnapshotSkillEffectSettlement, type PresentationSnapshotStealSettlement } from "./presentation-snapshot";
 import type {
   PresentationGroupTargetEffectScope,
   InteractionSceneContinuity,
@@ -40,6 +40,7 @@ export type PresentationClientView = {
   groupSettlements: readonly PresentationSnapshotGroupSettlement[];
   bumperHarvestSettlements: readonly PresentationSnapshotBumperHarvestSettlement[];
   duelExchange: PresentationSnapshotDuelExchange | null;
+  lustDuelExchange: PresentationSnapshotLustDuelExchange | null;
   attackDodgeResponses?: readonly PresentationSnapshotAttackDodgeResponse[];
   selfTargetActions: readonly PresentationSnapshotSelfTargetAction[];
   deflectionActions: readonly PresentationSnapshotDeflectionAction[];
@@ -224,6 +225,7 @@ function restView(snapshot: PresentationSnapshot | null, meId: string | null): P
     groupSettlements: provenGroupSettlements(snapshot?.groupSettlements),
     bumperHarvestSettlements: provenBumperHarvestSettlements(snapshot?.bumperHarvestSettlements),
     duelExchange: null,
+    lustDuelExchange: provenLustDuelExchange(snapshot?.lustDuelExchange, null, snapshot?.identity ?? null, snapshot?.stable),
     ...(attackDodgeResponses.length ? { attackDodgeResponses } : {}),
     selfTargetActions: provenSelfTargetActions(snapshot?.selfTargetActions),
     deflectionActions: provenDeflectionActions(snapshot?.deflectionActions),
@@ -819,6 +821,7 @@ export function buildPresentationClientView(
     groupSettlements: provenGroupSettlements(snapshot.groupSettlements),
     bumperHarvestSettlements: provenBumperHarvestSettlements(snapshot.bumperHarvestSettlements),
     duelExchange: provenDuelExchange(snapshot.duelExchange, scene, snapshot.identity, snapshot.stable),
+    lustDuelExchange: provenLustDuelExchange(snapshot.lustDuelExchange, scene, snapshot.identity, snapshot.stable),
     ...(attackDodgeResponses.length ? { attackDodgeResponses } : {}),
     selfTargetActions: provenSelfTargetActions(snapshot.selfTargetActions),
     deflectionActions: provenDeflectionActions(snapshot.deflectionActions),

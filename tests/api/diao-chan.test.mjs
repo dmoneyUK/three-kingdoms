@@ -115,9 +115,22 @@ test("Lust offers ordered male Duel targets, accepts one Hand cost, bypasses Neg
     rootEventId: lustActivation[0].id, sourceId: setup.diao.id, firstParticipantId: setup.first.id,
     secondParticipantId: setup.second.id, firstActorId: setup.first.id, failedPlayerId: setup.first.id,
     damageSourceId: setup.second.id, damageAmount: 1, outcome: "DAMAGE_APPLIED",
+    interactionId: started.data.room.presentationSnapshot.lustDuelExchange.interactionId,
+    rootFrameId: started.data.room.presentationSnapshot.lustDuelExchange.rootFrameId,
+    responseCount: 0, settledAt: lustResults[0].settledAt,
   });
+  const settledExchange = finished.data.room.presentationSnapshot.lustDuelExchange;
+  assert.equal(settledExchange.responseCount, 0);
+  assert.equal(settledExchange.settlement.failedPlayerId, setup.first.id);
+  assert.equal(settledExchange.settlement.damageSourceId, setup.second.id);
   const otherViewer = (await state(game.code, game.members[3].token)).data;
   assert.deepEqual(otherViewer.presentationSnapshot.diaoChanSkillNotices, finished.data.room.presentationSnapshot.diaoChanSkillNotices);
+  const normalizeSettlementWindow = (exchange) => {
+    const normalized = structuredClone(exchange);
+    delete normalized.settlement.readRemainingMs;
+    return normalized;
+  };
+  assert.deepEqual(normalizeSettlementWindow(otherViewer.presentationSnapshot.lustDuelExchange), normalizeSettlementWindow(settledExchange));
   assert.equal(finished.data.room.phase, "play");
   assert.equal(finished.data.room.causalEnvelope, null, "the settled Duel root clears after the exchange");
   assert.equal(JSON.parse(query(`SELECT skill_state_json FROM rooms WHERE code=${quote(game.code)}`)).lustUsed, true);
@@ -170,15 +183,58 @@ test("Lust activation proof stays bound through several real Duel Attack rounds"
   assert.equal(started.status, 200, JSON.stringify(started.data));
   const root = started.data.room.timeline.find((event) => event.publicDiaoChanNotice?.notice === "ACTIVATION");
   assert.ok(root);
+  const paidCost = started.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === setup.cost.id));
+  const initialExchange = started.data.room.presentationSnapshot.lustDuelExchange;
+  assert.equal(initialExchange.semantics, "PROVEN");
+  assert.equal(initialExchange.root.activationEventId, root.id);
+  assert.equal(initialExchange.root.costEventId, paidCost.id);
+  assert.equal(initialExchange.root.costCardId, setup.cost.id);
+  assert.equal(initialExchange.root.ownerId, setup.diao.id);
+  assert.equal(initialExchange.root.firstParticipantId, setup.first.id);
+  assert.equal(initialExchange.root.secondParticipantId, setup.second.id);
+  assert.equal(initialExchange.root.firstActorId, setup.first.id);
+  assert.equal(initialExchange.responseCount, 0);
+  assert.deepEqual(initialExchange.responses, []);
   const rounds = [
-    [game.members[1], firstAttacks[0], setup.second.id],
-    [game.members[2], secondAttack, setup.first.id],
-    [game.members[1], firstAttacks[1], setup.second.id],
+    [game.members[1], setup.first, firstAttacks[0], setup.second.id],
+    [game.members[2], setup.second, secondAttack, setup.first.id],
+    [game.members[1], setup.first, firstAttacks[1], setup.second.id],
   ];
-  for (const [member, attack, nextActorId] of rounds) {
+  const responseEventIds = [];
+  for (const [index, [member, actor, attack, nextActorId]] of rounds.entries()) {
     const accepted = await requestAndSettle("respond", { code: game.code, token: member.token, providerId: "card", cardId: attack.id, preserveResponse: true });
     assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
     assert.equal(accepted.data.room.currentAction.actorId, nextActorId);
+    const exchange = accepted.data.room.presentationSnapshot.lustDuelExchange;
+    assert.equal(exchange.semantics, "PROVEN");
+    assert.equal(exchange.responseCount, index + 1);
+    assert.equal(exchange.responses.length, index + 1);
+    const latest = exchange.responses.at(-1);
+    assert.equal(latest.relation, "LUST_DUEL_EXCHANGE");
+    assert.equal(latest.activationEventId, root.id);
+    assert.equal(latest.costEventId, paidCost.id);
+    assert.equal(latest.ordinal, index + 1);
+    assert.equal(latest.sourceId, actor.id);
+    assert.equal(latest.decisionActorId, actor.id);
+    assert.equal(latest.targetId, actor.id === setup.first.id ? setup.second.id : setup.first.id);
+    assert.equal(latest.responseActorId, actor.id);
+    assert.deepEqual(latest.responseCardIds, [attack.id]);
+    assert.equal(latest.responseEventId, accepted.data.room.timeline.find((event) => event.lustDuelAttackResponse?.ordinal === index + 1)?.id);
+    responseEventIds.push(latest.responseEventId);
+    const observer = (await state(game.code, game.members[3].token)).data;
+    assert.deepEqual(observer.presentationSnapshot.lustDuelExchange, exchange,
+      "every public viewer receives the same generated-Duel event proof without hidden Hand identities");
+    assert.equal(JSON.stringify(observer.presentationSnapshot.lustDuelExchange).includes("lust-private"), false);
+    const forged = composePresentationSnapshot({
+      presentationV2: {
+        ...accepted.data.room.presentationV2,
+        lustDuelExchange: { ...exchange, responses: exchange.responses.map((response, responseIndex) => responseIndex === index ? { ...response, sourceId: setup.diao.id } : response) },
+      },
+      currentAction: accepted.data.room.currentAction,
+      actionRevision: accepted.data.room.actionRevision,
+      viewerId: setup.diao.id,
+    });
+    assert.equal(forged.lustDuelExchange, null, "forged actor identity fails closed in the snapshot projection");
   }
   const failed = await requestAndSettle("decline_response", { code: game.code, token: game.members[2].token, preserveResponse: true });
   assert.equal(failed.status, 200, JSON.stringify(failed.data));
@@ -189,7 +245,24 @@ test("Lust activation proof stays bound through several real Duel Attack rounds"
     rootEventId: root.id, sourceId: setup.diao.id, firstParticipantId: setup.first.id,
     secondParticipantId: setup.second.id, firstActorId: setup.first.id, failedPlayerId: setup.second.id,
     damageSourceId: setup.first.id, damageAmount: 1, outcome: "DAMAGE_APPLIED",
+    interactionId: initialExchange.interactionId, rootFrameId: initialExchange.rootFrameId,
+    responseCount: 3, settledAt: result.settledAt,
   });
+  const settledExchange = failed.data.room.presentationSnapshot.lustDuelExchange;
+  assert.equal(settledExchange.semantics, "PROVEN");
+  assert.equal(settledExchange.interactionId, initialExchange.interactionId);
+  assert.equal(settledExchange.rootFrameId, initialExchange.rootFrameId);
+  assert.equal(settledExchange.currentParticipantId, null);
+  assert.equal(settledExchange.decisionActorId, null);
+  assert.equal(settledExchange.responseCount, 3);
+  assert.deepEqual(settledExchange.responses.map((response) => response.responseEventId), responseEventIds);
+  const stableSettlement = { ...settledExchange.settlement };
+  delete stableSettlement.readRemainingMs;
+  assert.deepEqual(stableSettlement, {
+    eventId: result.eventId, failedPlayerId: setup.second.id, damageSourceId: setup.first.id,
+    damageAmount: 1, outcome: "DAMAGE_APPLIED", settledAt: result.settledAt,
+  });
+  assert.ok(settledExchange.settlement.readRemainingMs > 0 && settledExchange.settlement.readRemainingMs <= 2000);
   assert.equal(failed.data.room.players.find((player) => player.id === setup.second.id).hp, 3);
 });
 

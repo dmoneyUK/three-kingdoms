@@ -25,7 +25,7 @@ import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { attackRootProjectionDiagnosticsFor, projectPresentationV2, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof } from "../../../game/presentation-v2";
+import { attackRootProjectionDiagnosticsFor, projectPresentationV2, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
@@ -36,7 +36,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof; selfTargetAction?: PresentationSelfTargetActionProof; attackDodgeResponse?: PresentationAttackDodgeResponseProof; duelAttackResponse?: PresentationDuelAttackResponseProof; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicSkillEffect?: PresentationSkillEffectActionEvent; publicDiaoChanNotice?: DiaoChanSkillNoticeProof; publicDeflectionAction?: PresentationDeflectionActionProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type AttackDodgeProofDiagnostic = {
   result: "PROVEN" | "REJECTED" | "NOT_ATTEMPTED";
   reason: string;
@@ -667,7 +667,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
 function dismantleSettlementProofFor(room: RoomRow, pending: TargetCardPending, log: string[]): PresentationDismantleSettlementProof | undefined {
   if (pending.cardKind !== "Dismantle") return undefined;
@@ -1199,6 +1199,93 @@ function duelAttackResponseProof(
     targetId: responseTargetId,
     decisionActorId,
     responseActorId: submittedById,
+    responseCardKind: "Attack",
+  };
+}
+
+/** Proves a Lust-generated Attack response from its exact public activation and paid cost. */
+function lustDuelAttackResponseProof(
+  log: string[],
+  response: ResponsePending,
+  submittedById: string,
+  responseTargetId: string,
+  decisionActorId: string,
+  ordinal: number,
+  responseCards: readonly Card[],
+): PresentationLustDuelAttackResponseProof | undefined {
+  if (response.continuation.kind !== "duel" || !response.continuation.lust
+    || !Number.isSafeInteger(ordinal) || ordinal < 1
+    || new Set(responseCards.map(({ id }) => id)).size !== responseCards.length) return undefined;
+  const continuation = response.continuation;
+  const lust = continuation.lust;
+  if (!lust) return undefined;
+  const causal = response.causal;
+  if (!causal?.interactionId || !causal.frameId
+    || continuation.causal?.interactionId !== causal.interactionId || continuation.causal.frameId !== causal.frameId
+    || semanticResponseActor(response) !== decisionActorId
+    || continuation.opponentId !== responseTargetId
+    || ![lust.firstParticipantId, lust.secondParticipantId].includes(decisionActorId)
+    || ![lust.firstParticipantId, lust.secondParticipantId].includes(responseTargetId)
+    || decisionActorId === responseTargetId || continuation.sourceId !== lust.firstActorId
+    || lust.firstActorId !== lust.firstParticipantId || lust.ownerId === lust.firstParticipantId
+    || lust.ownerId === lust.secondParticipantId || lust.firstParticipantId === lust.secondParticipantId) return undefined;
+
+  const timeline = gameTimeline(log);
+  const activationMatches = timeline.filter((event) => event.id === lust.rootEventId);
+  const activation = activationMatches.length === 1 ? activationMatches[0] : null;
+  const notice = record(activation?.publicDiaoChanNotice);
+  const activationResolutionId = typeof activation?.resolutionId === "string" ? activation.resolutionId : null;
+  const costEventId = typeof notice?.costEventId === "string" ? notice.costEventId : null;
+  if (!activation || activation.type !== "message" || activation.presentation === false
+    || typeof activation.privateToPlayerId === "string" || !activationResolutionId
+    || notice?.semantics !== "PROVEN" || notice.effectId !== "diao_chan_lust" || notice.notice !== "ACTIVATION"
+    || notice.sourceId !== lust.ownerId || notice.firstParticipantId !== lust.firstParticipantId
+    || notice.secondParticipantId !== lust.secondParticipantId || notice.firstActorId !== lust.firstActorId
+    || !costEventId || costEventId === lust.rootEventId) return undefined;
+
+  const costMatches = timeline.filter((event) => event.id === costEventId);
+  const costEvent = costMatches.length === 1 ? costMatches[0] : null;
+  const costCards = costEvent?.type === "card" ? [costEvent.card]
+    : costEvent?.type === "cards" && Array.isArray(costEvent.cards) ? costEvent.cards : [];
+  const costCard = costCards.length === 1 ? record(costCards[0]) : null;
+  const costCardId = typeof costCard?.id === "string" ? costCard.id : null;
+  const effects = Array.isArray(costEvent?.publicCardEffects) ? costEvent.publicCardEffects : [];
+  const effectMatches = effects.map(record).filter((proof) => proof?.semantics === "PROVEN"
+    && proof.eventId === costEventId && proof.effectId === "diao_chan_lust" && proof.effectClass === "COST");
+  const costEffect = effectMatches.length === 1 ? effectMatches[0] : null;
+  const materials = Array.isArray(costEffect?.materials) ? costEffect.materials.map(record) : [];
+  const material = materials.length === 1 ? materials[0] : null;
+  const costEventResolutionId = typeof costEvent?.resolutionId === "string" ? costEvent.resolutionId : null;
+  if (!costEvent || (costEvent.type !== "card" && costEvent.type !== "cards")
+    || costEvent.action !== "discard" || costEvent.presentation === false
+    || typeof costEvent.privateToPlayerId === "string" || !costEventResolutionId
+    || !costCardId || !costEffect || costEffect.activationEventId !== lust.rootEventId
+    || costEffect.activationOwnerId !== lust.ownerId || costEffect.outcome !== "DUEL_DECLARED"
+    || !Array.isArray(costEffect.targetIds) || costEffect.targetIds.length !== 2
+    || costEffect.targetIds[0] !== lust.firstParticipantId || costEffect.targetIds[1] !== lust.secondParticipantId
+    || !material || material.cardId !== costCardId || material.ownerId !== lust.ownerId
+    || (material.fromZone !== "HAND" && material.fromZone !== "EQUIPMENT") || material.toZone !== "DISCARD"
+    || costEventResolutionId !== activationResolutionId) return undefined;
+
+  return {
+    semantics: "PROVEN",
+    relation: "LUST_DUEL_EXCHANGE",
+    interactionId: causal.interactionId,
+    rootFrameId: causal.frameId,
+    activationEventId: lust.rootEventId,
+    activationResolutionId,
+    costEventId,
+    costCardId,
+    ownerId: lust.ownerId,
+    firstParticipantId: lust.firstParticipantId,
+    secondParticipantId: lust.secondParticipantId,
+    firstActorId: lust.firstActorId,
+    ordinal,
+    sourceId: decisionActorId,
+    targetId: responseTargetId,
+    decisionActorId,
+    responseActorId: submittedById,
+    responseCardIds: responseCards.map(({ id }) => id),
     responseCardKind: "Attack",
   };
 }
@@ -3070,6 +3157,21 @@ async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePendi
     })
     : null;
   const damageRoom = child ? { ...room, causal_envelope_json: JSON.stringify(child.envelope) } : room;
+  const responseCausal = pending.response.causal;
+  const continuationCausal = pending.continuation.causal;
+  const responseCount = pending.continuation.attackResponseCount;
+  const lustExchangeSettlement = pending.continuation.lust
+    && responseCausal?.interactionId && responseCausal.frameId
+    && continuationCausal?.interactionId === responseCausal.interactionId
+    && continuationCausal.frameId === responseCausal.frameId
+    && Number.isSafeInteger(responseCount) && responseCount >= 0
+    ? {
+      interactionId: responseCausal.interactionId,
+      rootFrameId: responseCausal.frameId,
+      responseCount,
+      settledAt: Date.now(),
+    }
+    : {};
   await resolveSourcedDamage({
     room: damageRoom,
     source: opponent,
@@ -3100,6 +3202,7 @@ async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePendi
       damageSourceId: opponent.id,
       damageAmount,
       outcome: damageAmount > 0 ? "DAMAGE_APPLIED" : "DAMAGE_PREVENTED",
+      ...lustExchangeSettlement,
     }) } : {}),
   });
 }
@@ -7382,14 +7485,20 @@ export async function POST(request: Request) {
       const duelProof = responseOrdinal === null
         ? undefined
         : duelAttackResponseProof(log, pending.response, me.id, opponent.id, semanticActor.id, responseOrdinal);
+      const lustDuelProof = responseOrdinal === null
+        ? undefined
+        : lustDuelAttackResponseProof(log, pending.response, me.id, opponent.id, semanticActor.id, responseOrdinal, attackCards);
       const responseMeta: PresentationMeta = {
         ...(responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : {}),
         ...(duelProof ? { resolutionId: duelProof.rootResolutionId, duelAttackResponse: duelProof } : {}),
+        ...(lustDuelProof ? { resolutionId: lustDuelProof.activationResolutionId, lustDuelAttackResponse: lustDuelProof } : {}),
       };
       const conversion = publicConversionDraft(responseExecution.providerId, me.id, attackCards, { playerId: me.id, hand: handBeforeDuel, equipment: equipmentCards(me) }, opponent.id, "Attack");
       const responseRoot = duelProof?.rootEventId && duelProof.rootResolutionId
         ? { rootEventId: duelProof.rootEventId, rootResolutionId: duelProof.rootResolutionId }
-        : null;
+        : lustDuelProof
+          ? { rootEventId: lustDuelProof.activationEventId, rootResolutionId: lustDuelProof.activationResolutionId }
+          : null;
       const provenConversion = conversion ? { ...conversion, ...(responseRoot ?? {}) } : null;
       const presentation = attackCards.length === 1
         ? provenConversion

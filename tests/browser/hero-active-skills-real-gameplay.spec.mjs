@@ -35,6 +35,44 @@ async function openSkillUser(page, seed, viewport = { width: 390, height: 844 })
   return user;
 }
 
+async function openSkillViewer(page, seed, player) {
+  await page.setViewportSize({ width: 440, height: 894 });
+  await page.addInitScript(({ code, token, name }) => {
+    localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
+  }, { code: seed.code, token: player.token, name: player.name });
+  await page.goto(`${API}/`);
+  await expect(page.locator(".game-shell")).toBeVisible();
+  return player;
+}
+
+async function waitForRevealElapsed(page, eventId, elapsedMs) {
+  await page.waitForFunction(({ eventId: expectedId, elapsedMs: requiredMs }) => {
+    const cardElement = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
+      .find((element) => element.getAttribute("data-public-card-journey-event-id") === expectedId);
+    const startedAt = cardElement?.getAttribute("data-public-card-journey-reveal-started-at");
+    return Boolean(startedAt && Date.parse(startedAt) > 0 && Date.now() - Date.parse(startedAt) >= requiredMs);
+  }, { eventId, elapsedMs }, { timeout: 12_000 });
+}
+
+async function submitDuelAttack(page, player, attackId, { alreadySelected = false } = {}) {
+  const dock = page.locator(`.local-player-dock[data-player-anchor="${player.id}"]`);
+  const cardButton = dock.locator(`[data-hand-card-id="${attackId}"] .game-card`);
+  await expect(cardButton).toBeEnabled();
+  if (!alreadySelected) await cardButton.click();
+  const confirm = dock.locator('[data-action-slot="primary"] button.primary');
+  await expect(confirm).toHaveText("Confirm");
+  await expect(confirm).toBeEnabled();
+  const submittedPromise = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+    && response.request().method() === "POST"
+    && response.request().postDataJSON()?.action === "respond"
+    && response.request().postDataJSON()?.providerId === "card");
+  await confirm.click();
+  const submitted = await submittedPromise;
+  expect(submitted.ok()).toBeTruthy();
+  expect(submitted.request().postDataJSON()).toMatchObject({ action: "respond", token: player.token, providerId: "card", cardId: attackId });
+  return submitted.json();
+}
+
 async function projectedRoom(request, seed, user) {
   const response = await request.get(`${API}/api/rooms?code=${seed.code}&token=${user.token}`);
   expect(response.ok()).toBeTruthy();
@@ -267,6 +305,226 @@ test("real Lust shows its linked public cost Frame for four seconds, parks once,
   expect(submitted.postDataJSON()).toMatchObject({ action: "decline_response", code: seed.code, token: firstViewer.token });
   await expect(page.locator(".effect-notice")).toContainText("LUST · RESULT");
   await expect(page.locator(".effect-notice")).toContainText("FIRST MAN failed to play Attack; 1 Duel damage from SECOND MAN applies.");
+});
+
+test("real Lust Duel keeps one cost root and appends committed Attack history at true author Seats", async ({ page, browser, request }, testInfo) => {
+  const cost = card("Dodge", "l4-lust-cost");
+  const privateCard = card("Peach", "l4-lust-unspent-private", "♥");
+  const firstAttack = card("Attack", "l4-lust-first-attack", "♣");
+  const secondAttack = card("Attack", "l4-lust-second-attack", "♦");
+  const seed = await seedSkillRoom(request, {
+    hero: "diao-chan", hand: [cost, privateCard],
+    targets: [
+      { name: "FIRST MAN", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [firstAttack] },
+      { name: "SECOND MAN", role: "Rebel", hero: "cao-cao", hp: 4, maxHp: 4, hand: [secondAttack] },
+    ],
+  });
+  const owner = seed.players[0];
+  const first = seed.players[1];
+  const second = seed.players[2];
+  const firstContext = await browser.newContext({ viewport: { width: 440, height: 894 } });
+  const secondContext = await browser.newContext({ viewport: { width: 440, height: 894 } });
+  const firstPage = await firstContext.newPage();
+  const secondPage = await secondContext.newPage();
+  const checkpoints = [];
+
+  try {
+    await openSkillUser(page, seed, { width: 440, height: 894 });
+    await openSkillViewer(firstPage, seed, first);
+    await openSkillViewer(secondPage, seed, second);
+    const started = await completeSkillSelection({ page, request, seed, skillName: "Lust", providerId: "diao_chan_lust", cardIds: [cost.id], targetIndexes: [1, 2] });
+    const activation = started.room.presentationSnapshot.diaoChanSkillNotices.find((notice) => notice.notice === "ACTIVATION");
+    const initialExchange = started.room.presentationSnapshot.lustDuelExchange;
+    const costEvent = started.room.timeline.find((event) => event.id === activation.costEventId);
+    expect(costEvent.cards).toEqual([cost]);
+    expect(initialExchange).toMatchObject({
+      semantics: "PROVEN", root: { activationEventId: activation.eventId, costEventId: costEvent.id, costCardId: cost.id, ownerId: owner.id },
+      responseCount: 0,
+    });
+
+    const ownerDisplay = page.locator('.public-card-display[data-public-card-motion="lust-duel"]');
+    const firstDisplay = firstPage.locator('.public-card-display[data-public-card-motion="lust-duel"]');
+    const rootOnOwner = ownerDisplay.locator(`[data-public-card-journey-event-id="${costEvent.id}"]`);
+    const rootOnFirst = firstDisplay.locator(`[data-public-card-journey-event-id="${costEvent.id}"]`);
+    await expect(ownerDisplay).toBeVisible();
+    await expect(firstDisplay).toBeVisible();
+    await expect(rootOnOwner).toHaveAttribute("data-public-card-journey-phase", "reveal");
+    await expect(rootOnFirst).toHaveAttribute("data-public-card-journey-phase", "reveal");
+    await expect(page.locator(`[data-effect-notice-event-id="${activation.eventId}"]`)).toHaveCount(0);
+    await expect(ownerDisplay.locator("[data-public-card-frame-kind='DIAO_CHAN_LUST_COST']")).toHaveCount(1);
+    await expect(ownerDisplay.locator("[data-public-card-journey-card-id]")).toHaveCount(1);
+
+    await waitForRevealElapsed(page, costEvent.id, 500);
+    const ownerRootAt500 = await rootOnOwner.boundingBox();
+    expect(ownerRootAt500).toMatchObject({ width: 90, height: 135 });
+    await page.screenshot({ path: testInfo.outputPath("l4-lust-root-440-after-500ms.png") });
+    await expect(firstPage.locator(`[data-hand-card-id="${firstAttack.id}"] .game-card`)).toBeEnabled();
+    const firstDock = firstPage.locator(`.local-player-dock[data-player-anchor="${first.id}"]`);
+    const skip = firstDock.locator('[data-action-slot="decline"] button');
+    await expect(skip).toHaveText("Skip");
+    await expect(skip).toBeEnabled();
+
+    await firstPage.locator(`[data-hand-card-id="${firstAttack.id}"] .game-card`).click();
+    const firstConfirm = firstDock.locator('[data-action-slot="primary"] button.primary');
+    await expect(firstConfirm).toHaveText("Confirm");
+    await expect(firstConfirm).toBeEnabled();
+    await waitForRevealElapsed(firstPage, costEvent.id, 3500);
+    await expect(rootOnFirst).toHaveAttribute("data-public-card-journey-phase", "reveal");
+    const firstRootAt3500 = await rootOnFirst.boundingBox();
+    expect(firstRootAt3500).toMatchObject({ width: 90, height: 135 });
+    expect(Math.abs(firstRootAt3500.x - ownerRootAt500.x)).toBeLessThan(2);
+    expect(Math.abs(firstRootAt3500.y - ownerRootAt500.y)).toBeLessThan(2);
+    await page.screenshot({ path: testInfo.outputPath("l4-lust-root-440-after-3500ms.png") });
+    await expect(rootOnFirst).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 1800 });
+    const rootTargetOnFirst = await rootOnFirst.evaluate((element) => ({
+      left: Number(element.dataset.publicCardJourneyTargetLeft), top: Number(element.dataset.publicCardJourneyTargetTop),
+    }));
+    const ownerSeatOnFirst = await firstPage.locator(`[data-player-anchor="${owner.id}"]`).boundingBox();
+    expect(Math.abs(rootTargetOnFirst.left + 24 - (ownerSeatOnFirst.x + ownerSeatOnFirst.width / 2))).toBeLessThan(1);
+    expect(Math.abs(rootTargetOnFirst.top - (ownerSeatOnFirst.y + ownerSeatOnFirst.height + 6))).toBeLessThan(1);
+
+    const firstAccepted = await submitDuelAttack(firstPage, first, firstAttack.id, { alreadySelected: true });
+    const firstEvent = firstAccepted.room.timeline.find((event) => event.type === "card" && event.card?.id === firstAttack.id);
+    expect(firstEvent.lustDuelAttackResponse).toMatchObject({
+      relation: "LUST_DUEL_EXCHANGE", activationEventId: activation.eventId,
+      costEventId: costEvent.id, ordinal: 1, sourceId: first.id, targetId: second.id,
+      decisionActorId: first.id, responseActorId: first.id, responseCardIds: [firstAttack.id],
+    });
+    expect(firstAccepted.room.presentationSnapshot.lustDuelExchange.responses).toHaveLength(1);
+    const firstResponseCard = firstDisplay.locator(`[data-public-card-journey-event-id="${firstEvent.id}"]`);
+    await expect(firstResponseCard).toHaveAttribute("data-public-card-journey-phase", "reveal");
+    await expect(firstResponseCard).toHaveAttribute("data-public-card-journey-ordinal", "2");
+    await expect(rootOnFirst).toHaveAttribute("data-public-card-journey-phase", "parked");
+    await waitForRevealElapsed(firstPage, firstEvent.id, 500);
+    const firstResponseAt500 = await firstResponseCard.boundingBox();
+    expect(firstResponseAt500).toMatchObject({ width: 90, height: 135 });
+    await page.screenshot({ path: testInfo.outputPath("l4-lust-attack-1-440-after-500ms.png") });
+    await waitForRevealElapsed(firstPage, firstEvent.id, 3500);
+    expect(await firstResponseCard.boundingBox()).toMatchObject({ width: 90, height: 135 });
+    await page.screenshot({ path: testInfo.outputPath("l4-lust-attack-1-440-after-3500ms.png") });
+    await expect(firstResponseCard).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 1800 });
+    const firstResponseTarget = await firstResponseCard.evaluate((element) => ({
+      left: Number(element.dataset.publicCardJourneyTargetLeft), top: Number(element.dataset.publicCardJourneyTargetTop),
+    }));
+    const firstDockBounds = await firstDock.boundingBox();
+    expect(Math.abs(firstResponseTarget.left - (firstDockBounds.x + 8))).toBeLessThan(1);
+    expect(Math.abs(firstResponseTarget.top - (firstDockBounds.y - 78))).toBeLessThan(1);
+    checkpoints.push({
+      checkpoint: "attack-1-parked-for-author", viewerId: first.id,
+      root: await rootOnFirst.boundingBox(), rootTarget: rootTargetOnFirst,
+      attack: await firstResponseCard.boundingBox(), attackTarget: firstResponseTarget,
+    });
+
+    const secondDock = secondPage.locator(`.local-player-dock[data-player-anchor="${second.id}"]`);
+    const secondResponse = await submitDuelAttack(secondPage, second, secondAttack.id);
+    const secondEvent = secondResponse.room.timeline.find((event) => event.type === "card" && event.card?.id === secondAttack.id);
+    expect(secondEvent.lustDuelAttackResponse).toMatchObject({
+      relation: "LUST_DUEL_EXCHANGE", activationEventId: activation.eventId,
+      costEventId: costEvent.id, ordinal: 2, sourceId: second.id, targetId: first.id,
+      decisionActorId: second.id, responseActorId: second.id, responseCardIds: [secondAttack.id],
+    });
+    expect(secondResponse.room.presentationSnapshot.lustDuelExchange.responses.map((response) => response.ordinal)).toEqual([1, 2]);
+    const secondDisplay = secondPage.locator('.public-card-display[data-public-card-motion="lust-duel"]');
+    const secondResponseCard = secondDisplay.locator(`[data-public-card-journey-event-id="${secondEvent.id}"]`);
+    const firstResponseInSecondView = secondDisplay.locator(`[data-public-card-journey-event-id="${firstEvent.id}"]`);
+    const rootInSecondView = secondDisplay.locator(`[data-public-card-journey-event-id="${costEvent.id}"]`);
+    await expect(secondResponseCard).toHaveAttribute("data-public-card-journey-phase", "reveal");
+    await expect(secondResponseCard).toHaveAttribute("data-public-card-journey-ordinal", "3");
+    await expect(firstResponseInSecondView).toHaveAttribute("data-public-card-journey-phase", "parked");
+    await expect(rootInSecondView).toHaveAttribute("data-public-card-journey-phase", "parked");
+    await waitForRevealElapsed(secondPage, secondEvent.id, 500);
+    const secondResponseAt500 = await secondResponseCard.boundingBox();
+    expect(secondResponseAt500).toMatchObject({ width: 90, height: 135 });
+    await secondPage.screenshot({ path: testInfo.outputPath("l4-lust-attack-2-440-after-500ms.png") });
+    await waitForRevealElapsed(secondPage, secondEvent.id, 3500);
+    expect(await secondResponseCard.boundingBox()).toMatchObject({ width: 90, height: 135 });
+    await secondPage.screenshot({ path: testInfo.outputPath("l4-lust-attack-2-440-after-3500ms.png") });
+    await expect(secondResponseCard).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 1800 });
+    const secondTarget = await secondResponseCard.evaluate((element) => ({
+      left: Number(element.dataset.publicCardJourneyTargetLeft), top: Number(element.dataset.publicCardJourneyTargetTop),
+    }));
+    const secondDockBounds = await secondDock.boundingBox();
+    expect(Math.abs(secondTarget.left - (secondDockBounds.x + 8))).toBeLessThan(1);
+    expect(Math.abs(secondTarget.top - (secondDockBounds.y - 78))).toBeLessThan(1);
+
+    await firstPage.reload();
+    await expect(firstPage.locator(`.public-card-display[data-public-card-viewer-id="${first.id}"]`)).toBeVisible();
+    for (const eventId of [costEvent.id, firstEvent.id, secondEvent.id]) {
+      await expect(firstPage.locator(`[data-public-card-journey-event-id="${eventId}"]`)).toHaveAttribute("data-public-card-journey-phase", "parked");
+      await expect(firstPage.locator(`[data-public-card-journey-event-id="${eventId}"]`)).toHaveCount(1);
+    }
+    await expect(firstPage.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(0);
+    await expect(firstPage.locator('.public-card-display[data-public-card-motion="duel"]')).toHaveCount(0);
+    expect(await firstPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const finalGeometry = await firstPage.locator("[data-public-card-journey-event-id]").evaluateAll((elements) => elements.map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        eventId: element.dataset.publicCardJourneyEventId,
+        actorId: element.dataset.publicCardJourneyActorId,
+        cardIds: element.dataset.publicCardJourneyCardIds,
+        ordinal: Number(element.dataset.publicCardJourneyOrdinal),
+        phase: element.dataset.publicCardJourneyPhase,
+        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+        target: {
+          left: Number(element.dataset.publicCardJourneyTargetLeft),
+          top: Number(element.dataset.publicCardJourneyTargetTop),
+          width: Number(element.dataset.publicCardJourneyTargetWidth),
+          height: Number(element.dataset.publicCardJourneyTargetHeight),
+        },
+      };
+    }));
+    checkpoints.push({ checkpoint: "all-events-restored-for-first-viewer", viewerId: first.id, cards: finalGeometry });
+    await firstPage.screenshot({ path: testInfo.outputPath("l4-lust-history-restored-for-first-viewer.png") });
+
+    const firstDockAfterReload = firstPage.locator(`.local-player-dock[data-player-anchor="${first.id}"]`);
+    const settlementSkip = firstDockAfterReload.locator('[data-action-slot="decline"] button');
+    await expect(settlementSkip).toHaveText("Skip");
+    await expect(settlementSkip).toBeEnabled();
+    const settledResponsePromise = firstPage.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "decline_response");
+    await settlementSkip.click();
+    const settledResponse = await settledResponsePromise;
+    expect(settledResponse.status()).toBe(200);
+    const settledRoom = (await settledResponse.json()).room;
+    const settlementNotice = settledRoom.presentationSnapshot.diaoChanSkillNotices.find((notice) => notice.notice === "DUEL_RESULT");
+    const settledExchange = settledRoom.presentationSnapshot.lustDuelExchange;
+    expect(settledExchange).toMatchObject({
+      semantics: "PROVEN", interactionId: initialExchange.interactionId,
+      rootFrameId: initialExchange.rootFrameId, responseCount: 2,
+      root: { activationEventId: activation.eventId, costEventId: costEvent.id, costCardId: cost.id },
+      settlement: {
+        eventId: settlementNotice.eventId, failedPlayerId: first.id, damageSourceId: second.id,
+        damageAmount: 1, outcome: "DAMAGE_APPLIED", settledAt: settlementNotice.settledAt,
+      },
+    });
+    expect(settledExchange.responses.map((response) => response.responseEventId)).toEqual([firstEvent.id, secondEvent.id]);
+    const settledDisplay = firstPage.locator('.public-card-display[data-public-card-motion="lust-duel"]');
+    await expect(settledDisplay).toHaveAttribute("data-public-card-settlement-event-id", settlementNotice.eventId);
+    await expect(settledDisplay.locator("[data-public-card-announcement='true']")).toContainText(
+      "FIRST MAN failed to play Attack; 1 Duel damage from SECOND MAN applies.");
+    await expect(firstPage.locator(`[data-effect-notice-event-id="${settlementNotice.eventId}"]`)).toHaveCount(0);
+    expect(Number(await settledDisplay.getAttribute("data-public-card-result-remaining-ms"))).toBeGreaterThan(0);
+    expect(Number(await settledDisplay.getAttribute("data-public-card-result-remaining-ms"))).toBeLessThanOrEqual(2000);
+    for (const eventId of [costEvent.id, firstEvent.id, secondEvent.id]) {
+      await expect(settledDisplay.locator(`[data-public-card-journey-event-id="${eventId}"]`)).toHaveAttribute("data-public-card-journey-phase", "parked");
+    }
+    await firstPage.screenshot({ path: testInfo.outputPath("l4-lust-settlement-history-440.png") });
+    checkpoints.push({ checkpoint: "settlement-history-retained", viewerId: first.id,
+      settlementEventId: settlementNotice.eventId,
+      cards: await settledDisplay.locator("[data-public-card-journey-event-id]").evaluateAll((elements) => elements.map((element) => ({
+        eventId: element.dataset.publicCardJourneyEventId,
+        actorId: element.dataset.publicCardJourneyActorId,
+        ordinal: Number(element.dataset.publicCardJourneyOrdinal),
+        phase: element.dataset.publicCardJourneyPhase,
+        rect: (() => { const rect = element.getBoundingClientRect(); return { left: rect.left, top: rect.top, width: rect.width, height: rect.height }; })(),
+      }))) });
+    await expect(settledDisplay).toHaveCount(0, { timeout: 2600 });
+    await testInfo.attach("l4-lust-duel-geometry.json", { body: JSON.stringify(checkpoints, null, 2), contentType: "application/json" });
+    console.log(`[L4 Duel measured geometry] ${JSON.stringify(checkpoints)}`);
+  } finally {
+    await Promise.all([firstContext.close(), secondContext.close()]);
+  }
 });
 
 test("real Lust guidance keeps its ordered selection local and the active skill tap cancels without committing", async ({ page, request }) => {

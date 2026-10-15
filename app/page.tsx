@@ -11,8 +11,8 @@ import { normalizeRoomData } from "../game/room-safety.js";
 import { canUseAction, type CurrentAction, type GameplayAction, type TriggerOptionView } from "../game/protocol.js";
 import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
-import type { PresentationSnapshot, PresentationSnapshotDiaoChanSkillNotice, PresentationSnapshotPublicCardEffect } from "../game/presentation-snapshot";
-import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationPublicCardEffectProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
+import type { PresentationSnapshot, PresentationSnapshotDiaoChanSkillNotice, PresentationSnapshotPublicCardEffect, PresentationSnapshotLustDuelExchange } from "../game/presentation-snapshot";
+import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationLustDuelAttackResponseProof, PresentationPublicCardEffectProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
 import { attackDodgeResponseEventMatchesProof } from "../game/presentation-v2";
 import { attackDodgeResponseMatchesRoot, attackDodgeResponseProofKey, filterAttackDodgeResponseArrivalsForRoot, newlyObservedAttackDodgeResponseKeys, selectAttackDodgeResponseCandidate, type AttackDodgeResponseRootIdentity } from "../game/attack-dodge-response-selection";
 import { attackDodgePublicActionEvents, attackDodgeSettlementSupersessionReason, attackHitSettlementSupersessionReason, parseRetiredAttackDodgeCompositionSnapshot, persistRetiredAttackDodgeComposition, retiredAttackDodgeCompositionServerSnapshot, retiredAttackDodgeCompositionStorageSnapshot, subscribeRetiredAttackDodgeComposition, type AttackDodgeSettlementHoldIdentity, type AttackHitSettlementHoldIdentity } from "../game/attack-dodge-settlement-lifecycle";
@@ -66,7 +66,7 @@ function persistAttackHitSettlementRetirement(held: AttackHitSettlementHoldIdent
 
 type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger" | "borrowed-sword";
 type PresentationImportance = "essential" | "informational";
-type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; privateToPlayerId?: string; publicDiaoChanNotice?: unknown; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
+type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; privateToPlayerId?: string; publicDiaoChanNotice?: unknown; lustDuelAttackResponse?: PresentationLustDuelAttackResponseProof; publicCardEffects?: readonly PresentationPublicCardEffectProof[]; publicSkillEffectSettlement?: PresentationSkillEffectSettlementProof; publicDismantleSettlement?: PresentationDismantleSettlementProof; publicStealSettlement?: PresentationStealSettlementProof; publicAttackHitSettlement?: PresentationAttackHitSettlementProof; publicGroupSettlement?: PresentationGroupSettlementProof; publicBumperHarvestSettlement?: PresentationBumperHarvestSettlementProof; bumperHarvestRoot?: { semantics: "PROVEN"; sourceId: string; cardId: string; interactionId?: string; rootFrameId?: string } };
 type CardEvent = PresentationEventMeta & { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" | "draw"; drawPlayerId?: string; presentation?: boolean };
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
 
@@ -3180,6 +3180,111 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       responseTarget: latest?.responseTarget ?? null,
     };
   })();
+  const lustDuelExchangeDisplayCandidate = (() => {
+    const exchange = clientPresentation.lustDuelExchange;
+    if (!exchange || exchange.semantics !== "PROVEN" || exchange.responseCount !== exchange.responses.length
+      || exchange.root.ownerId === exchange.root.firstParticipantId
+      || exchange.root.ownerId === exchange.root.secondParticipantId
+      || exchange.root.firstParticipantId === exchange.root.secondParticipantId) return null;
+    const costFrame = verifiedLustCostFrameForEvent(room.timeline,
+      room.presentationSnapshot?.diaoChanSkillNotices ?? [],
+      room.presentationSnapshot?.publicCardEffects ?? [], room.players, exchange.root.activationEventId);
+    if (!costFrame || costFrame.activation.eventId !== exchange.root.activationEventId
+      || costFrame.activation.costEventId !== exchange.root.costEventId
+      || costFrame.costEvent.id !== exchange.root.costEventId || costFrame.costCard.id !== exchange.root.costCardId
+      || costFrame.owner.id !== exchange.root.ownerId
+      || costFrame.firstParticipant.id !== exchange.root.firstParticipantId
+      || costFrame.secondParticipant.id !== exchange.root.secondParticipantId
+      || costFrame.firstActor.id !== exchange.root.firstActorId
+      || costFrame.activationEvent.resolutionId !== exchange.root.activationResolutionId
+      || costFrame.costEvent.resolutionId !== exchange.root.costResolutionId) return null;
+
+    const responses = exchange.responses.flatMap((response, index) => {
+      if (response.ordinal !== index + 1 || response.relation !== "LUST_DUEL_EXCHANGE"
+        || response.activationEventId !== exchange.root.activationEventId
+        || response.activationResolutionId !== exchange.root.activationResolutionId
+        || response.costEventId !== exchange.root.costEventId || response.costCardId !== exchange.root.costCardId
+        || response.ownerId !== exchange.root.ownerId
+        || response.firstParticipantId !== exchange.root.firstParticipantId
+        || response.secondParticipantId !== exchange.root.secondParticipantId
+        || response.firstActorId !== exchange.root.firstActorId
+        || response.responseResolutionId !== exchange.root.activationResolutionId
+        || response.responseCardKind !== "Attack" || response.sourceId !== response.decisionActorId
+        || response.sourceId === response.targetId
+        || ![exchange.root.firstParticipantId, exchange.root.secondParticipantId].includes(response.sourceId)
+        || ![exchange.root.firstParticipantId, exchange.root.secondParticipantId].includes(response.targetId)) return [];
+      const responseMatches = room.timeline.filter((event) => event.id === response.responseEventId);
+      if (responseMatches.length !== 1) return [];
+      const responseEvent = responseMatches[0];
+      const eventProof = responseEvent.lustDuelAttackResponse;
+      const cardFaces = eventCards(responseEvent);
+      const eventCardIds = cardFaces.map((card) => card.id);
+      const proofMatchesEvent = Boolean(eventProof && eventProof.semantics === "PROVEN"
+        && eventProof.relation === "LUST_DUEL_EXCHANGE"
+        && eventProof.interactionId === exchange.interactionId && eventProof.rootFrameId === exchange.rootFrameId
+        && eventProof.activationEventId === exchange.root.activationEventId
+        && eventProof.activationResolutionId === exchange.root.activationResolutionId
+        && eventProof.costEventId === exchange.root.costEventId && eventProof.costCardId === exchange.root.costCardId
+        && eventProof.ownerId === exchange.root.ownerId
+        && eventProof.firstParticipantId === exchange.root.firstParticipantId
+        && eventProof.secondParticipantId === exchange.root.secondParticipantId
+        && eventProof.firstActorId === exchange.root.firstActorId
+        && eventProof.ordinal === response.ordinal && eventProof.sourceId === response.sourceId
+        && eventProof.targetId === response.targetId && eventProof.decisionActorId === response.decisionActorId
+        && eventProof.responseActorId === response.responseActorId
+        && eventProof.responseCardKind === "Attack"
+        && eventProof.responseCardIds.length === response.responseCardIds.length
+        && eventProof.responseCardIds.every((id, cardIndex) => id === response.responseCardIds[cardIndex]));
+      const isPublicPhysicalPlay = (responseEvent.type === "card" || responseEvent.type === "cards")
+        && responseEvent.action === "play" && responseEvent.presentation !== false
+        && responseEvent.resolutionId === response.responseResolutionId
+        && eventCardIds.length === response.responseCardIds.length
+        && eventCardIds.every((id, cardIndex) => id === response.responseCardIds[cardIndex]);
+      const naturalAttack = isPublicPhysicalPlay && responseEvent.playedAs !== "attack"
+        && cardFaces.length > 0 && cardFaces.every((card) => card.kind === "Attack");
+      const convertedAttack = isPublicPhysicalPlay && responseEvent.playedAs === "attack"
+        && room.presentationSnapshot?.publicCardEffects.some((effect) => effect.eventId === responseEvent.id
+          && effect.effectClass === "CONVERSION" && effect.resultingCardKind === "Attack"
+          && effect.activationOwnerId === response.responseActorId && effect.targetId === response.targetId
+          && effect.materials.length === cardFaces.length
+          && effect.materials.every((material, cardIndex) => material.cardId === cardFaces[cardIndex]?.id
+            && material.ownerId === response.responseActorId && material.toZone === "DISCARD")) === true;
+      const noCardAttackNotice = responseEvent.type === "message" && responseEvent.effectNotice === true
+        && responseEvent.presentation !== false && response.responseCardIds.length === 0
+        && responseEvent.resolutionId === response.responseResolutionId;
+      const responseActor = room.players.find((player) => player.id === response.responseActorId);
+      const responseTarget = room.players.find((player) => player.id === response.targetId);
+      if (!proofMatchesEvent || !responseActor?.name || !responseTarget?.name
+        || !naturalAttack && !convertedAttack && !noCardAttackNotice) return [];
+      return [{ response, responseEvent, responseActor, responseTarget, cardFaces }];
+    });
+    if (responses.length !== exchange.responseCount) return null;
+    let settlementNotice: Extract<PresentationSnapshotDiaoChanSkillNotice, { effectId: "diao_chan_lust"; notice: "DUEL_RESULT" }> | null = null;
+    let settlementCopy: ReturnType<typeof diaoChanNoticeCopy> = null;
+    if (exchange.settlement) {
+      const candidateNotices = (room.presentationSnapshot?.diaoChanSkillNotices ?? []).filter((notice): notice is Extract<PresentationSnapshotDiaoChanSkillNotice, { effectId: "diao_chan_lust"; notice: "DUEL_RESULT" }> =>
+        notice.effectId === "diao_chan_lust" && notice.notice === "DUEL_RESULT"
+        && notice.eventId === exchange.settlement?.eventId);
+      const result = candidateNotices.length === 1 ? candidateNotices[0] : null;
+      const resultEvents = room.timeline.filter((event) => event.id === exchange.settlement?.eventId);
+      const resultEvent = resultEvents.length === 1 ? resultEvents[0] : null;
+      if (!result || !resultEvent || resultEvent.type !== "message" || resultEvent.finalResult !== true
+        || result.interactionId !== exchange.interactionId || result.rootFrameId !== exchange.rootFrameId
+        || result.rootEventId !== exchange.root.activationEventId || result.sourceId !== exchange.root.ownerId
+        || result.firstParticipantId !== exchange.root.firstParticipantId
+        || result.secondParticipantId !== exchange.root.secondParticipantId
+        || result.firstActorId !== exchange.root.firstActorId || result.responseCount !== exchange.responseCount
+        || result.settledAt !== exchange.settlement.settledAt
+        || result.failedPlayerId !== exchange.settlement.failedPlayerId
+        || result.damageSourceId !== exchange.settlement.damageSourceId
+        || result.damageAmount !== exchange.settlement.damageAmount || result.outcome !== exchange.settlement.outcome
+        || !diaoChanNoticeMatchesEvent(resultEvent.publicDiaoChanNotice, result)) return null;
+      settlementNotice = result;
+      settlementCopy = diaoChanNoticeCopy(result, room.players);
+      if (!settlementCopy || exchange.settlement.readRemainingMs <= 0) return null;
+    } else if (exchange.currentParticipantId === null || exchange.decisionActorId === null) return null;
+    return { exchange, costFrame, responses, settlementNotice, settlementCopy };
+  })();
   const singleTargetNegationProofCandidates = (() => {
     const negationStage = buildInteractionStageView(clientPresentation, (playerId) => room.players.find((player) => player.id === playerId)?.name ?? null);
     const chain = buildReactionChainView(negationStage);
@@ -4003,8 +4108,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (proved.length !== 1) return null;
     const frame = proved[0];
     const activeLust = room.pendingDuel?.lust;
-    if (room.pendingDuel && (!activeLust || activeLust.rootEventId !== frame.activation.eventId
-      || (room.pendingDuel.attackResponseCount ?? 0) > 0)) return null;
+    if (room.pendingDuel && (!activeLust || activeLust.rootEventId !== frame.activation.eventId)) return null;
     return frame;
   })();
   const lustCostFrameAction: PublicCardDisplayAction | null = lustCostFrameCandidate ? {
@@ -4028,11 +4132,69 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       compactMessage: `Diao Chan used Lust: ${lustCostFrameCandidate.firstParticipant.hero ? heroName(lustCostFrameCandidate.firstParticipant.hero) : lustCostFrameCandidate.firstParticipant.name} and ${lustCostFrameCandidate.secondParticipant.hero ? heroName(lustCostFrameCandidate.secondParticipant.hero) : lustCostFrameCandidate.secondParticipant.name} enter a Duel; ${lustCostFrameCandidate.firstActor.hero ? heroName(lustCostFrameCandidate.firstActor.hero) : lustCostFrameCandidate.firstActor.name} plays Attack first.`,
     },
   } : null;
+  const lustDuelPublicAction: PublicCardDisplayAction | null = lustDuelExchangeDisplayCandidate ? {
+    key: ["lust-duel", lustDuelExchangeDisplayCandidate.exchange.interactionId,
+      lustDuelExchangeDisplayCandidate.exchange.rootFrameId,
+      lustDuelExchangeDisplayCandidate.exchange.root.activationEventId,
+      lustDuelExchangeDisplayCandidate.exchange.root.costEventId].join(":"),
+    interactionId: lustDuelExchangeDisplayCandidate.exchange.interactionId,
+    rootFrameId: lustDuelExchangeDisplayCandidate.exchange.rootFrameId,
+    rootEventId: lustDuelExchangeDisplayCandidate.exchange.root.costEventId,
+    sourceId: lustDuelExchangeDisplayCandidate.exchange.root.ownerId,
+    targetId: null,
+    cardFace: lustDuelExchangeDisplayCandidate.costFrame.costCard,
+    cardLabel: "LUST",
+    ariaLabel: lustDuelExchangeDisplayCandidate.settlementCopy?.message
+      ?? `Diao Chan used Lust: ${lustDuelExchangeDisplayCandidate.costFrame.firstParticipant.name} and ${lustDuelExchangeDisplayCandidate.costFrame.secondParticipant.name} enter a Duel; ${lustDuelExchangeDisplayCandidate.costFrame.firstActor.name} plays Attack first.`,
+    publicNotice: lustDuelExchangeDisplayCandidate.settlementCopy?.message
+      ?? (lustDuelExchangeDisplayCandidate.responses.at(-1)?.responseEvent.type === "message"
+      ? lustDuelExchangeDisplayCandidate.responses.at(-1)?.responseActor.name + " provided an Attack in the Lust Duel."
+      : undefined),
+    motion: {
+      type: "lust-duel",
+      scopeKey: [room.code, lustDuelExchangeDisplayCandidate.exchange.interactionId,
+        lustDuelExchangeDisplayCandidate.exchange.rootFrameId,
+        lustDuelExchangeDisplayCandidate.exchange.root.activationEventId].join(":"),
+      freshEventIds: [lustDuelExchangeDisplayCandidate.exchange.root.costEventId,
+        ...lustDuelExchangeDisplayCandidate.responses.map(({ response }) => response.responseEventId)]
+        .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
+    },
+    lustCostFrame: {
+      activationEventId: lustDuelExchangeDisplayCandidate.exchange.root.activationEventId,
+      title: "LUST",
+      message: `Diao Chan used Lust: ${lustDuelExchangeDisplayCandidate.costFrame.firstParticipant.name} and ${lustDuelExchangeDisplayCandidate.costFrame.secondParticipant.name} enter a Duel; ${lustDuelExchangeDisplayCandidate.costFrame.firstActor.name} plays Attack first.`,
+      compactMessage: `Lust Duel: ${lustDuelExchangeDisplayCandidate.costFrame.firstActor.hero ? heroName(lustDuelExchangeDisplayCandidate.costFrame.firstActor.hero) : lustDuelExchangeDisplayCandidate.costFrame.firstActor.name} plays Attack first.`,
+    },
+    ...(lustDuelExchangeDisplayCandidate.exchange.settlement ? {
+      settlement: {
+        eventId: lustDuelExchangeDisplayCandidate.exchange.settlement.eventId,
+        outcome: lustDuelExchangeDisplayCandidate.exchange.settlement.outcome === "DAMAGE_APPLIED"
+          ? "LUST_DUEL_DAMAGE_APPLIED" as const : "LUST_DUEL_DAMAGE_PREVENTED" as const,
+        exiting: false,
+        readRemainingMs: lustDuelExchangeDisplayCandidate.exchange.settlement.readRemainingMs,
+      },
+    } : {}),
+    ...(lustDuelExchangeDisplayCandidate.responses.length ? {
+      responses: lustDuelExchangeDisplayCandidate.responses.map(({ response, responseActor, responseTarget, cardFaces, responseEvent }) => ({
+        eventId: response.responseEventId,
+        ordinal: response.ordinal,
+        actorId: response.responseActorId,
+        actorName: responseActor.name,
+        ...(cardFaces.length ? { cardFace: cardFaces[0], cardFaces } : {}),
+        ...(responseEvent.playedAs?.toLowerCase() === "attack" && cardFaces.some((card) => card.kind !== "Attack")
+          ? { semanticLabel: "AS ATTACK" }
+          : {}),
+        ariaLabel: `${responseActor.name} played Attack targeting ${responseTarget.name}`,
+      })),
+    } : {}),
+  } : null;
   const singleTargetNegationOwnsRoot = Boolean(singleTargetNegationUsesJourney && singleTargetNegationProofCandidate
     && (!rootAction || rootAction.rootEventId === singleTargetNegationProofCandidate.rootEvent.id)
     && (clientPresentation.stage === "NEGATION" || singleTargetNegationProofCandidate.responseNodes.length > 0));
   const livePublicCardAction: PublicCardDisplayAction | null = heldPublicNegationReadAction
     ? heldPublicNegationReadAction
+    : lustDuelPublicAction
+    ? lustDuelPublicAction
     : lustCostFrameAction
     ? lustCostFrameAction
     : groupSettlementCandidate
@@ -4414,6 +4576,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       && rootActionSource?.name
       && (publicCardDisplayAction.targetId === null || rootActionTarget?.name)
     || publicCardDisplayAction?.motion?.type === "duel" && rootActionSource?.name && rootActionTarget?.name
+    || publicCardDisplayAction?.motion?.type === "lust-duel" && rootActionSource?.name
     || (publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation")
       && rootActionSource?.name
       && (publicCardDisplayAction.targetId === null || rootActionTarget?.name));
@@ -4423,7 +4586,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ? [publicCardDisplayAction.rootEventId, ...(publicCardDisplayAction.responses ?? []).map((response) => response.eventId)]
     : publicCardDisplayAction?.motion?.type === "lust-cost"
       ? [publicCardDisplayAction.rootEventId]
-    : publicCardDisplayAction?.motion?.type === "duel"
+    : publicCardDisplayAction?.motion?.type === "duel" || publicCardDisplayAction?.motion?.type === "lust-duel"
       ? [publicCardDisplayAction.rootEventId, ...(publicCardDisplayAction.responses ?? []).map((response) => response.eventId)]
       : [];
   const publicCardJourneyEventIdKey = publicCardJourneyEventIds.join("|");
@@ -4442,7 +4605,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }, 0);
     return () => window.clearTimeout(timer);
   }, [room.code, room.timeline, publicCardDisplayAction?.motion?.type, publicCardDisplayReady, publicCardJourneyEventIdKey]);
-  const duelJourneyOwnsRootAndAttacks = publicCardDisplayAction?.motion?.type === "duel";
+  const duelJourneyOwnsRootAndAttacks = publicCardDisplayAction?.motion?.type === "duel"
+    || publicCardDisplayAction?.motion?.type === "lust-duel";
   const publicDisplayOwnedEventIds = publicCardDisplayOwnsPresentation && publicCardDisplayAction
     ? [...new Set([
       publicCardDisplayAction.rootEventId,
@@ -4462,7 +4626,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ...(!duelJourneyOwnsRootAndAttacks ? [publicCardDisplayAction.response?.cardFace?.id] : []),
       ...(publicCardDisplayAction.responses ?? [])
         .filter((response) => !duelJourneyOwnsRootAndAttacks || Number.isInteger(response.ordinal))
-        .map((response) => response.cardFace?.id),
+        .flatMap((response) => (response.cardFaces ?? (response.cardFace ? [response.cardFace] : [])).map((card) => card.id)),
     ].filter((cardId): cardId is string => Boolean(cardId))
     : []);
   const activePublicCardSettlementEventId = publicCardDisplayAction?.settlement?.eventId ?? null;
@@ -5428,8 +5592,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         eventTimer={<>{privateDrawTimer}{harvestEventTimer}</>}
       />
       {effectNotice && effectNotice.roomCode === room.code && effectNotice.viewerId === room.meId
-        && !(publicCardDisplayReady && publicCardDisplayAction?.motion?.type === "lust-cost"
-          && publicCardDisplayAction.lustCostFrame?.activationEventId === effectNotice.eventId)
+        && !(publicCardDisplayReady && (publicCardDisplayAction?.motion?.type === "lust-cost" || publicCardDisplayAction?.motion?.type === "lust-duel")
+          && (publicCardDisplayAction.lustCostFrame?.activationEventId === effectNotice.eventId
+            || publicCardDisplayAction.settlement?.eventId === effectNotice.eventId))
         && <div key={effectNotice.eventId} className={`effect-notice${effectNotice.exiting ? " is-exiting" : ""}`} role="status" aria-live="polite" aria-atomic="true" data-effect-notice-event-id={effectNotice.eventId}><span>{effectNotice.heading}</span><b>{effectNotice.message}</b></div>}
       </div>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
