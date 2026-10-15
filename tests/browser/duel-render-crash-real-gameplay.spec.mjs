@@ -97,15 +97,27 @@ test("real Duel renders through Negation and two Attack handoffs without GameRoo
     expect(JSON.stringify(initialPublicView)).not.toContain(privateCardId);
   }
 
-  const passed = await request.post(`${API}/api/rooms`, {
-    data: { action: "decline_response", code: seedData.code, token: seedData.players[2].token },
-  });
-  expect(passed.ok()).toBeTruthy();
+  const windowId = negationView.currentAction.negationWindowId;
+  expect(windowId).toBeTruthy();
+  for (const player of seedData.players) {
+    const passed = await request.post(`${API}/api/rooms`, {
+      data: { action: "decline_response", code: seedData.code, token: player.token, context: { windowId } },
+    });
+    expect(passed.ok()).toBeTruthy();
+  }
   expect((await view(request, seedData, 1)).currentAction).toMatchObject({
     kind: "response",
     actorId: seedData.players[1].id,
     requirement: "attack",
   });
+
+  const targetResponseView = await view(request, seedData, 1);
+  expect(targetResponseView.currentAction.options.some((option) => option.satisfies === "attack")).toBe(true);
+  const targetPage = await page.context().newPage();
+  await openPlayer(targetPage, seedData, 1);
+  const targetDock = targetPage.locator(`.local-player-dock[data-player-anchor="${seedData.players[1].id}"]`);
+  await expect(targetDock.locator('[data-action-slot="decline"] button')).toHaveText("TAKE DAMAGE");
+  await targetPage.close();
 
   await submitPhysicalAttack(request, seedData, 1, targetAttack);
   const firstAttackView = await view(request, seedData, 3);
@@ -146,4 +158,55 @@ test("real Duel renders through Negation and two Attack handoffs without GameRoo
   expect(sourceErrors.boundaryErrors).toEqual([]);
   expect(sourceErrors.runtimeErrors).toEqual([]);
   await sourcePage.close();
+});
+
+test("real Duel without a legal Attack labels decline from the proven Duel exchange", async ({ page, request }) => {
+  test.setTimeout(90_000);
+  const duel = card("Duel", "p0-duel-no-attack-root");
+  const seedData = await seed(request, [
+    { name: "DUEL SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [duel] },
+    { name: "DUEL TARGET", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [] },
+    { name: "PASS ONE", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
+    { name: "PASS TWO", role: "Renegade", hero: "simayi", hp: 4, maxHp: 4, hand: [] },
+  ]);
+  const opened = await request.post(`${API}/api/rooms`, {
+    data: { action: "play_card", code: seedData.code, token: seedData.players[0].token, cardId: duel.id, targetId: seedData.players[1].id },
+  });
+  expect(opened.ok()).toBeTruthy();
+
+  const negationWindow = await view(request, seedData, 0);
+  const windowId = negationWindow.currentAction?.negationWindowId;
+  expect(windowId).toBeTruthy();
+  for (const player of seedData.players) {
+    const passed = await request.post(`${API}/api/rooms`, {
+      data: { action: "decline_response", code: seedData.code, token: player.token, context: { windowId } },
+    });
+    expect(passed.ok()).toBeTruthy();
+  }
+
+  const targetView = await view(request, seedData, 1);
+  expect(targetView.currentAction).toMatchObject({
+    kind: "response",
+    actorId: seedData.players[1].id,
+    requirement: "attack",
+    legalActions: ["decline_response"],
+    options: [],
+  });
+  expect(targetView.presentationV2.duelExchange).toMatchObject({
+    semantics: "PROVEN",
+    currentParticipantId: seedData.players[1].id,
+  });
+
+  await openPlayer(page, seedData, 1);
+  const targetDock = page.locator(`.local-player-dock[data-player-anchor="${seedData.players[1].id}"]`);
+  const decline = targetDock.locator('[data-action-slot="decline"] button');
+  await expect(decline).toHaveText("TAKE DAMAGE");
+  await expect(targetDock.locator('[data-action-slot="primary"] button')).toHaveCount(0);
+  const declined = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+    && response.request().method() === "POST"
+    && response.request().postDataJSON()?.action === "decline_response");
+  await decline.click();
+  const submission = await declined;
+  expect(submission.ok()).toBeTruthy();
+  expect(submission.request().postDataJSON()).toMatchObject({ action: "decline_response", token: seedData.players[1].token });
 });

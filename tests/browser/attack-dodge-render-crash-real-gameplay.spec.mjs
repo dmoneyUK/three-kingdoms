@@ -212,9 +212,10 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   const defenderDock = page.locator(`.local-player-dock[data-player-anchor="${defender.id}"]`);
   const dodge = defenderDock.locator(`[data-hand-card-id="${room.responseCard.id}"] .game-card`);
   await expect(dodge).toBeEnabled({ timeout: 20_000 });
-  const skip = defenderDock.locator('[data-action-slot="decline"] button');
-  await expect(skip).toBeVisible();
-  await expect(skip).toBeEnabled();
+  const takeDamage = defenderDock.locator('[data-action-slot="decline"] button');
+  await expect(takeDamage).toHaveText("TAKE DAMAGE");
+  await expect(takeDamage).toBeVisible();
+  await expect(takeDamage).toBeEnabled();
   await expect(attackCardJourney).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 8_000 });
   await expect(attackCardJourney).toBeEnabled();
   await expect(attackCardJourney).toHaveAttribute("data-public-card-inspectable", "true");
@@ -228,8 +229,9 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   await expect(page.locator(".card-info-backdrop")).toHaveCount(0);
   await expect(dodge).toBeVisible();
   await expect(dodge).toBeEnabled();
-  await expect(skip).toBeVisible();
-  await expect(skip).toBeEnabled();
+  await expect(takeDamage).toHaveText("TAKE DAMAGE");
+  await expect(takeDamage).toBeVisible();
+  await expect(takeDamage).toBeEnabled();
   expect(await page.locator("body").innerHTML()).not.toContain("private-attackers-hidden-negation");
   const detailsGeometry = await details.evaluate((element) => {
     const panel = element.getBoundingClientRect();

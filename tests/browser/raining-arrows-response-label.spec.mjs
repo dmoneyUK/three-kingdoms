@@ -30,7 +30,7 @@ for (const viewport of [
   });
 }
 
-test("Raining Arrows with a legal Dodge keeps the generic decline label without enabling Confirm early", async ({ page }) => {
+test("Raining Arrows labels a legal Dodge decline by its damage consequence without enabling Confirm early", async ({ page }) => {
   await page.setViewportSize({ width: 480, height: 900 });
   await page.goto("/tests/browser/fixture.html?state=raining-arrows-response&groupProgress=valid");
 
@@ -45,15 +45,15 @@ test("Raining Arrows with a legal Dodge keeps the generic decline label without 
   expect(action.options).toHaveLength(1);
   expect(action.options[0].selection.eligibleCardIds).toEqual(["browser-raining-arrows-dodge"]);
 
-  await expect(decline).toHaveText("Skip");
+  await expect(decline).toHaveText("TAKE DAMAGE");
   await expect(confirm).toHaveText("Confirm");
   await expect(confirm).toBeDisabled();
   await page.locator('[data-hand-card-id="browser-raining-arrows-dodge"] .game-card').click();
   await expect(confirm).toBeEnabled();
-  await expect(decline).toHaveText("Skip");
+  await expect(decline).toHaveText("TAKE DAMAGE");
 });
 
-test("damage labels use the authoritative CurrentAction and Negation retains Pass", async ({ page }) => {
+test("damage labels fail closed without public cause proof; Negation and optional triggers keep their labels", async ({ page }) => {
   await page.setViewportSize({ width: 480, height: 900 });
   const decline = page.locator('[data-action-slot="decline"] button');
 
@@ -62,6 +62,9 @@ test("damage labels use the authoritative CurrentAction and Negation retains Pas
 
   await page.goto("/tests/browser/fixture.html?state=dodge");
   await expect(page.locator('.local-player-dock[data-player-anchor="p2"] [data-action-slot="decline"] button')).toHaveText("Skip");
+
+  await page.goto("/tests/browser/fixture.html?state=provider-extra");
+  await expect(page.locator('[data-action-slot="decline"] button')).toHaveText("Skip");
 
   await page.goto("/tests/browser/fixture.html?state=negation&privateNegationResponder=1&negationAuthority=missing-provider");
   await expect(page.locator('[data-action-slot="decline"] button')).toHaveText("Pass");

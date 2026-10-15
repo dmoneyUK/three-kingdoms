@@ -75,12 +75,14 @@ test("UI-2 Details remains separate from touch selection and multi-card skill co
 });
 
 for (const scenario of [
-  { state: "dodge-no-provider", requirement: "dodge", label: "TAKE DAMAGE" },
-  { state: "duel-no-attack", requirement: "attack", label: "TAKE DAMAGE" },
+  { state: "dodge-no-provider", requirement: "dodge", label: "Skip" },
+  { state: "duel-no-attack", requirement: "attack", label: "Skip" },
   { state: "dodge", requirement: "dodge", label: "Skip" },
-  { state: "raining-arrows-response", requirement: "dodge", label: "Skip" },
+  { state: "duel-response", requirement: "attack", label: "Skip" },
+  { state: "provider-extra", requirement: "attack", label: "Skip" },
+  { state: "raining-arrows-response", requirement: "dodge", label: "TAKE DAMAGE" },
 ]) {
-  test(`UI-2 ${scenario.state} labels decline from CurrentAction and providers`, async ({ page }) => {
+  test(`UI-2 ${scenario.state} uses only its proven damage-decline context`, async ({ page }) => {
     await page.setViewportSize({ width: 480, height: 900 });
     await page.goto(`/tests/browser/fixture.html?state=${scenario.state}&groupProgress=valid`);
 

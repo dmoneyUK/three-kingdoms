@@ -5070,15 +5070,50 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   );
   const negationWindowSubmitted = sharedNegationWindow && room.pendingNegation?.submitted === true;
   const responseRequirementForDecline = room.currentAction?.requirement;
-  const hasLegalResponseProvider = Boolean(responseRequirementForDecline && semanticResponseOptions.some((option) => option.satisfies === responseRequirementForDecline));
-  const declineAcceptsDamageWithoutLegalDefence = Boolean(
+  // Require a proven damage-causing interaction; the available response cards do not define the decline's consequence.
+  const groupDamageResponseDecline = (() => {
+    const group = clientPresentation.groupResolution;
+    const currentParticipant = group?.participants.find((participant) => participant.playerId === room.meId);
+    if (!group || clientPresentation.stage !== "GROUP_RESOLUTION"
+      || group.currentParticipantId !== room.meId
+      || (currentParticipant?.status !== "CURRENT" && currentParticipant?.status !== "PAUSED")) return false;
+    return (group.resolutionSemantics === "GROUP"
+      && group.cardKind === "BarbarianInvasion"
+      && responseRequirementForDecline === "attack")
+      || (group.resolutionSemantics === "ORDERED"
+        && group.cardKind === "SkyPiercingHalberdAttack"
+        && responseRequirementForDecline === "attack");
+  })();
+  const attackDamageResponseDecline = Boolean(
     currentActionOwnedByViewer
     && room.currentAction?.kind === "response"
-    && (responseRequirementForDecline === "attack" || responseRequirementForDecline === "dodge")
+    && responseRequirementForDecline === "dodge"
     && canUseAction(room.currentAction, "decline_response")
-    && !hasLegalResponseProvider,
+    && clientPresentation.hasInteraction
+    && clientPresentation.stage === "ATTACK_RESPONSE"
+    && clientPresentation.currentParticipantId === room.meId
+    && clientPresentation.activeTargetIds.includes(room.meId)
+    && clientPresentation.rootAction?.semantics === "PROVEN"
+    && clientPresentation.rootAction.action === "ATTACK"
+    && clientPresentation.rootAction.targetId === room.meId,
   );
-  const responseDeclineLabel = declineAcceptsDamageWithoutLegalDefence ? "TAKE DAMAGE" : sharedNegationWindow ? "Pass" : "Skip";
+  const duelDamageResponseDecline = Boolean(
+    currentActionOwnedByViewer
+    && room.currentAction?.kind === "response"
+    && responseRequirementForDecline === "attack"
+    && canUseAction(room.currentAction, "decline_response")
+    && clientPresentation.hasInteraction
+    && clientPresentation.stage === "DUEL_EXCHANGE"
+    && clientPresentation.duelExchange?.semantics === "PROVEN"
+    && clientPresentation.duelExchange.currentParticipantId === room.meId,
+  );
+  const declineAcceptsDamage = Boolean(
+    currentActionOwnedByViewer
+    && room.currentAction?.kind === "response"
+    && canUseAction(room.currentAction, "decline_response")
+    && (attackDamageResponseDecline || duelDamageResponseDecline || rainingArrowsDamageDecline || groupDamageResponseDecline),
+  );
+  const responseDeclineLabel = declineAcceptsDamage ? "TAKE DAMAGE" : sharedNegationWindow ? "Pass" : "Skip";
   const rainingArrowsDodgeProviderCardIds = new Set(
     rainingArrowsDamageDecline
       && responseSelection?.type === "cards"

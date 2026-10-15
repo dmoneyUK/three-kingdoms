@@ -669,7 +669,7 @@ test("real Raining Arrows exposes Zhen Ji's authoritative Dodge provider in Skil
   const takeDamage = dock.locator('[data-action-slot="decline"] button');
   await expect(skill).toBeEnabled();
   await expect(extras.getByRole("button", { name: /Empress Dowager/ })).toHaveCount(0);
-  await expect(takeDamage).toHaveText("Skip");
+  await expect(takeDamage).toHaveText("TAKE DAMAGE");
   await expect(dock.locator('[data-action-slot="primary"] button')).toHaveCount(0);
 
   await skill.click();
@@ -679,12 +679,12 @@ test("real Raining Arrows exposes Zhen Ji's authoritative Dodge provider in Skil
   const ineligible = dock.locator(`[data-hand-card-id="${unrelated.id}"] .game-card`);
   await expect(eligible).toBeEnabled();
   await expect(ineligible).toBeDisabled();
-  await expect(takeDamage).toHaveText("Skip");
+  await expect(takeDamage).toHaveText("TAKE DAMAGE");
   await expect(dock.locator('[data-action-slot="primary"] button')).toBeDisabled();
   await eligible.click();
   const confirm = dock.locator('[data-action-slot="primary"] button.primary');
   await expect(confirm).toBeEnabled();
-  await expect(takeDamage).toHaveText("Skip");
+  await expect(takeDamage).toHaveText("TAKE DAMAGE");
   const responsePromise = actionResponse(targetPage, "respond");
   await attachScreenshot(testInfo, "raining-arrows-zhen-ji-dodge-selected-480", targetPage);
   await confirm.click();
