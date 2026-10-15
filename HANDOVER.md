@@ -2,13 +2,13 @@
 
 Branch: `ux-v2`
 
-Latest reviewed remote design: `docs/UX2-refine.md` blob `c228d81e27df1d1fd2584e873cbd553b8de82bb2`; Coding Agent progress-only update blob `80fc7e966ad25b49ea821472f58b21e87fc0db64`.
+Latest reviewed remote design: `docs/UX2-refine.md` blob `67db4dbe3cb1f224d35b835dfbc62ab072524849` (remote head `e1c2355beca6faaec24a62d79e880147bf5e96d0`).
 
 ## Latest result
 
-- R1 delivered at `2d1556600d53199f59e3d7e5cddbc3dc9968a8d5`; authenticated Worker/D1 browser R1 7/7 and shared Negation 2/2, targeted ESLint, syntax, diff check and production build passed. 440px response first-frame measurements: Dodge 11ms, Duel Attack -9ms versus the Playwright-observed accepted-response time (same-frame arrival within clock tolerance).
-- Exact-SHA Actions run [38656810105](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38656810105) passed API, lint/fast, browser smoke, deploy and production smoke. Production `/` and `/api/health` both returned HTTP 200. Reviewer acceptance is not claimed.
+- R1 delivered at `2d1556600d53199f59e3d7e5cddbc3dc9968a8d5`; authenticated Worker/D1 browser regression passed 7/7 at 390/440/480px, with focused Negation checks 2/2 and targeted static/build validation. Exact-SHA Actions run [38656810105](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38656810105) passed browser smoke, API, lint/fast, deploy and production smoke. Later `ux-v2` commits are documentation-only and excluded from `deploy.yml`; deployed code remains R1 pending the next implementation push. Reviewer acceptance remains pending.
+- R2 implementation is committed locally as `520cc5ebcc4ffacebe135adade7fb43651b303f9` on `codex/r2-causal-envelope-audit`, based on current `origin/ux-v2` `e1c2355beca6faaec24a62d79e880147bf5e96d0`. Worker/D1 API regression 41/41, full local fast 276/276 and API 283/283, authenticated real-browser chain 1/1, targeted ESLint, syntax, production build and diff checks passed. The D1 reproduction confirmed a stale persisted envelope could be selected for a fresh independent root; the server now keeps fresh-root proof with its new context. R2 is not yet pushed; exact-SHA CI/deploy remains pending.
 
-## Current task — §10.7.2 R2: prove and repair Negation/CausalEnvelope history
+## Current task — publish and verify §10.7.2 R2
 
-First reproduce the reported Steal → Negation → Dismantle → counter-Negation chain in Worker/D1 and capture `pending_json` with `causal_envelope_json` at every root/counter. Prove or reject the stale-envelope hypothesis by matching interaction/frame/root/event/source/target identity and projection proof; repair server causal ownership only if a focused test proves the defect. Then trace public projection and presenter ownership, fix only the verified missing-card/parking gap, and run authenticated four-viewer geometry/lifecycle regressions. Preserve the 8s maximum/all-living-explicit Negation rule, privacy, card conservation and Policy B. **Do not push R2 to auto-deploying `ux-v2` or deploy without explicit Reviewer approval; use a local patch or dedicated development branch/PR for review.** No unrelated UI polish or card families.
+Push the fast-forward R2 commit to `ux-v2`, verify its exact-SHA Actions jobs and deployment/production smoke, then record R2 as **PENDING REVIEW**. The latest relevant pre-push workflow is run `38656810105` for deployed code SHA `2d1556600d53199f59e3d7e5cddbc3dc9968a8d5` (success); later Markdown-only remote commits do not trigger the workflow. Reviewer preapproval is not a deployment gate under the latest design. Preserve Negation rules/privacy and do not enter UX3.
