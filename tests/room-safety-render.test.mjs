@@ -606,7 +606,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.equal((html.match(/class="hand-card-visual"/g) ?? []).length, 4, "each physical hand card owns one shared visual wrapper");
   assert.equal((html.match(/class="card-info-button"/g) ?? []).length, 0, "physical hand cards do not carry tiny overlapping information controls");
   assert.doesNotMatch(gameRoomSource, /data-hand-card-id=\{item\.id\}[\s\S]*className="card-info-button"/);
-  assert.match(gameRoomSource, /selectedHandDetailsCard && <button type="button" className="hand-card-details-action" data-testid="hand-card-details-action"[\s\S]*openCardDetails\(selectedHandDetailsCard, "private-hand"/, "one stable selected-card Details action owns private preview access");
+  assert.match(gameRoomSource, /selectedHandDetailsCard\?\.id === item\.id && selectedHandDetailsCard && <button type="button" className="hand-card-details-action" data-testid="hand-card-details-action"[\s\S]*openCardDetails\(selectedHandDetailsCard, "private-hand"/, "the selected physical card owns its attached Details action");
+  assert.match(gameRoomSource, /detailsSelected \? "details-selected"/, "the selected card is framed and lifted with its Details action");
   assert.doesNotMatch(html, /class="play-hand"/, "the legacy private play-hand renderer is removed");
   assert.match(html, /class="local-hand"[\s\S]*class="local-hand-rail"/);
   assert.ok(html.indexOf('class="local-hand"') < html.indexOf('class="turn-controls"'), "the hand precedes contextual controls in the DOM");
@@ -661,7 +662,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(heroSkillEligibleRule, /border-color:/, "hero-skill-eligible keeps its eligibility styling");
   assert.doesNotMatch(heroSkillEligibleRule, /transform\s*:/, "eligibility must not move every hand card");
   assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot:not\(\.single-selected\) \.game-card\.selected\s*\{\s*transform: translateY\(-5px\)/, "multi-select cards rise from the normal baseline");
-  assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls \.hand-card-details-action\s*\{[\s\S]*min-width: 78px;[\s\S]*min-height: 44px;/);
+  assert.match(sequenceStyleSource, /\.local-hand-rail \.hand-card-details-action\s*\{[^}]*width: 44px; min-width: 44px; height: 44px; min-height: 44px;/, "the attached Details hit area remains at least 44 by 44 CSS pixels");
   assert.match(sequenceStyleSource, /\.local-hand-rail \.game-card \.corner\s*\{[\s\S]*width: 17px[\s\S]*min-height: 23px/);
   assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*z-index: 50/);
   assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls\s*\{[\s\S]*z-index: 100/);

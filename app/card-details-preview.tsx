@@ -37,12 +37,12 @@ export function CardDetailsPreview({
         <small>{context === "public-zone" ? "PUBLIC CARD" : "PRIVATE TO YOU"}</small>
       </header>
       <div className="card-details-body">
-        <div className="card-details-illustration" aria-label={`${card.rank} ${card.suit}, ${definition.name}`}>
+        <div className="card-details-illustration" role="img" aria-label={`${card.rank} ${card.suit}, ${definition.name}`}>
           <CardFace card={card} />
         </div>
         <div className="card-details-copy">
-          <h2 id="card-details-title">{definition.name}</h2>
-          <small>{card.rank}{card.suit} · {definition.category} card</small>
+          <h2 className="card-details-sr-only" id="card-details-title">{definition.name}, {card.rank}{card.suit}</h2>
+          <small className="card-details-rules-label">RULES</small>
           <textarea className="card-details-rules" aria-label={`Canonical rules for ${definition.name}`} readOnly value={definition.rules} />
         </div>
       </div>

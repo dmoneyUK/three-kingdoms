@@ -223,7 +223,9 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   const details = page.getByRole("dialog");
   await expect(details).toHaveAttribute("data-card-details-context", "public-zone");
   await expect(details).toHaveAttribute("data-card-details-card-id", room.attack.id);
-  await expect(details.getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
+  await expect(details.locator(".card-details-illustration .card-name-mark")).toContainText("Attack");
+  await expect(details.getByRole("heading", { name: /Attack/ })).toHaveCount(1);
+  await expect(details.locator(".card-details-copy > h2:not(.card-details-sr-only)")).toHaveCount(0);
   await expect(details.getByRole("textbox", { name: "Canonical rules for Attack" })).toHaveValue(/.+/);
   await expect(details.locator(".card-details-illustration .played-card")).toBeVisible();
   await expect(page.locator(".card-info-backdrop")).toHaveCount(0);
@@ -281,11 +283,15 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   await expect(dodgeCardJourney).toBeEnabled();
   await dodgeCardJourney.click();
   await expect(details).toHaveAttribute("data-card-details-card-id", room.responseCard.id);
-  await expect(details.getByRole("heading", { name: "Dodge", exact: true })).toBeVisible();
+  await expect(details.locator(".card-details-illustration .card-name-mark")).toContainText("Dodge");
+  await expect(details.getByRole("heading", { name: /Dodge/ })).toHaveCount(1);
+  await expect(details.locator(".card-details-copy > h2:not(.card-details-sr-only)")).toHaveCount(0);
   await expect(details.getByRole("textbox", { name: "Canonical rules for Dodge" })).toHaveValue(/.+/);
   await attackCardJourney.click();
   await expect(details).toHaveAttribute("data-card-details-card-id", room.attack.id);
-  await expect(details.getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
+  await expect(details.locator(".card-details-illustration .card-name-mark")).toContainText("Attack");
+  await expect(details.getByRole("heading", { name: /Attack/ })).toHaveCount(1);
+  await expect(details.locator(".card-details-copy > h2:not(.card-details-sr-only)")).toHaveCount(0);
   await details.getByRole("button", { name: "Close card details" }).click();
   await expect(details).toHaveCount(0);
   await expect(attackCardJourney).toBeFocused();
