@@ -2,12 +2,14 @@
 
 Branch: `ux-v2`
 
-Latest reviewed Planner design: `docs/UX2-refine.md` blob `6667521b11d7f6ccea0bf99f2fda0d2a30c757d3`. On 2026-10-15, Chapters 8–11 were reread from the latest remote document; no intervening design revision was present. Only the H3 progress marker was added after review; design criteria remain unchanged. §11 remains future-only.
-
 ## Latest result
 
-H3 announcement legibility was delivered at `529f33291ee9c888444d0deb3ad9ccd7714cafff`. Focused copy tests passed 2/2; `npm run build` passed; real Worker/D1 Attack→Dodge and Skip/damage browser flows passed. Announcement geometry passed at 440×894, 390×844, 480×900 and 390×700: 15px text, at most two lines, widths 424/374/464/374px, no overlap or fallback. Exact-SHA Actions run `38672449927` attempt 1 passed API, lint/fast, browser startup/room smoke and deploy. Production `/` and `/api/health` returned HTTP 200; health reported `{"ok":true,"worker":"available"}`. H3 is **PENDING REVIEW**; no Reviewer acceptance is claimed.
+H3 public-announcement short-height follow-up was delivered in `ce29287614478bed7745d3b8cd56ce37ca539651`. Local production build, focused ESLint, and the real Worker/D1 Attack/Dodge browser regression passed (5/5), including 390×700 geometry. Exact-SHA Actions run [`38675995133`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38675995133) passed API, lint/fast, browser startup/room smoke, and deploy; production `/` and `/api/health` returned HTTP 200, with the Worker available. H3 remains **PENDING REVIEW**; no reviewer acceptance is claimed.
 
-## Planning boundary — clarification required
+## Design review
 
-The design's next candidate after H3 is one bounded §10.2 source review of the **Steal** card family; do not start it until task authority is clear. The latest user instruction says to begin a new design task but “not enter the UX stage yet”; §10.2 is a card-family UX rollout, and the reviewed Chapters 8–11 contain no separate non-UX implementation task. Await clarification whether §10.2 is allowed now or another non-UX task is intended. No §11 UX3 work is authorized.
+Latest remote `docs/UX2-refine.md` reviewed at blob `9ff71f2cc85278cca1dad244fe87c47df0e3889b`. Compared with the previously recorded `6667521b11d7f6ccea0bf99f2fda0d2a30c757d3`, the only change is the H3 delivery-progress entry; no product requirement or acceptance criterion changed. Chapters 8.7–10.8 were reread, including the updated phone-review notes and the card-family rollout sequence. §11 remains future-only.
+
+## Current bounded task
+
+**UX2-10.2-B-STEAL-SOURCE-REVIEW-01 — source-only review.** Inspect the current Steal implementation and its closest tests under §10.2.B and §10.3–10.4. Verify server-owned target-card eligibility, anonymous Hand privacy, public event proof/card ownership, and the existing target-card picker/settlement path using the narrowest relevant server-backed regression. Classify the observed behavior and record **NO CHANGE** if no concrete gap is found. Per the current user instruction, do not begin visual UX work in this task; if a finding requires visual redesign or a new gameplay decision, record the evidence and stop at that boundary.
