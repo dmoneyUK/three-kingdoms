@@ -197,6 +197,50 @@ test("Something Out of Nothing preserves Play Phase and reveals the stratagem wi
   assert.equal(opponentView.data.myHand.some((held) => result.data.drawnCards.some((drawn) => drawn.id === held.id)), false);
 });
 
+test("Negating Something Out of Nothing consumes the committed cards without drawing", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [source, negator] = game.room.players;
+  const [sourceMember, negatorMember, thirdMember, fourthMember] = game.members;
+  const drawTwo = card("DrawTwo", "negated-draw-two-root");
+  const negation = card("Negation", "negated-draw-two-negation");
+  const undrawn = [card("Peach", "negated-draw-two-peach"), card("Attack", "negated-draw-two-attack")];
+  setHand(source.id, [drawTwo], 4, 4);
+  setHand(negator.id, [negation], 4, 4);
+  for (const player of game.room.players.slice(2)) setHand(player.id, [], 4, 4);
+  setDeck(game.code, undrawn);
+  setTurn(game.code, source.seat, "play");
+
+  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: drawTwo.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const windowId = opened.data.room.currentAction.negationWindowId;
+  assert.ok(windowId);
+  const negated = await request("respond", { code: game.code, token: negatorMember.token, providerId: "negation_card", cardId: negation.id });
+  assert.equal(negated.status, 200, JSON.stringify(negated.data));
+
+  for (const member of [sourceMember, thirdMember, fourthMember]) {
+    const passed = await request("decline_response", { code: game.code, token: member.token });
+    assert.equal(passed.status, 200, JSON.stringify(passed.data));
+  }
+
+  const counterWindowId = (await state(game.code, sourceMember.token)).data.currentAction.negationWindowId;
+  assert.ok(counterWindowId && counterWindowId !== windowId, "the committed Negation opens a fresh counter window");
+  for (const member of game.members) {
+    const passed = await request("decline_response", { code: game.code, token: member.token });
+    assert.equal(passed.status, 200, JSON.stringify(passed.data));
+  }
+
+  const settled = (await state(game.code, sourceMember.token)).data;
+  assert.equal(settled.phase, "play");
+  assert.equal(settled.pendingNegation, null);
+  assert.deepEqual(settled.myHand, [], "the cancelled DrawTwo grants no cards");
+  assert.deepEqual(JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(game.code)}`)).map((held) => held.id), undrawn.map((held) => held.id));
+  assert.equal(discardIds(game.code).filter((id) => id === drawTwo.id).length, 1);
+  assert.equal(discardIds(game.code).filter((id) => id === negation.id).length, 1);
+  for (const held of [drawTwo, negation, ...undrawn]) assert.equal(roomCardCount(game.code, held.id), 1, `${held.id} remains in exactly one physical zone`);
+  assert.equal(settled.timeline.some((event) => event.card?.id === negation.id && event.action === "play"), true);
+  assert.equal(settled.timeline.some((event) => event.message?.includes("plays Something Out of Nothing and draws")), false);
+});
+
 test("a new Attack replaces the completed DrawTwo Negation frame across public viewers", { timeout: 60_000 }, async () => {
   for (const negationOutcome of ["declined", "cancelled-and-restored"]) {
     const game = await createHumanGame();
