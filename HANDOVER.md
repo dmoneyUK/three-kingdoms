@@ -4,14 +4,14 @@ Branch: `ux-v2`
 
 ## Latest result
 
-H3 short-height follow-up: `ce29287614478bed7745d3b8cd56ce37ca539651`. Build, focused ESLint, real Worker/D1 Attack/Dodge regression (5/5), 390×700 geometry, Actions run [`38675995133`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38675995133) and production health smoke passed. H3 remains **PENDING REVIEW**.
+H3 short-height follow-up remains **PENDING REVIEW**: code SHA `ce29287614478bed7745d3b8cd56ce37ca539651`; Actions run [`38675995133`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38675995133) passed API, lint/fast, browser startup/room smoke and deploy. Production `/` and `/api/health` returned HTTP 200; health reported the Worker available.
 
-Steal source review: **NO CHANGE**. Stratagem API file passed 27/27; the real Worker/D1 browser Steal path passed 1/1. Server legality, actor-only anonymous Hand positions, current-zone revalidation, proof-linked public settlement, and acquired-Hand privacy matched the current contract.
+§10.2 source reviews: Steal **NO CHANGE** (API 27/27; real Worker/D1 browser 1/1) and Barbarian Invasion/Raining Arrows **NO CHANGE** (API 20/20; real Worker/D1 browser 2/2). No production code, visual behavior or game rules changed in these reviews. Markdown-only follow-up has no new Actions/deployment result; deploy workflow ignores `**/*.md`.
 
 ## Design review
 
-Planner requirements were reviewed from remote design blob `9ff71f2cc85278cca1dad244fe87c47df0e3889b`; the current `7bc68a4f75f80710737854f629f2f664a1d9c48c` adds only Coding Agent H3/Steal progress notes. Compared with the prior recorded `6667521b11d7f6ccea0bf99f2fda0d2a30c757d3`, no product requirement or acceptance criterion changed. Chapters 8.7–10.8 and the newer phone-review findings were reread; §11 remains future-only.
+Reviewed latest remote `docs/UX2-refine.md` at base commit `e5978edbf07196e85a0988943520cf55670b2180` (blob `0c9ff3c088c43726392b4f017d654dba7917b479`). Compared with Planner baseline blob `9ff71f2cc85278cca1dad244fe87c47df0e3889b`, the intervening design diff was the Coding Agent's Steal progress note; no normative criteria changed. Re-read §§8–11, including the new §10.7 R3/R4 and §10.8 H1–H3 follow-up criteria. Their code is delivered/PENDING REVIEW; preserve it and do not claim acceptance or redo already accepted work. §11 remains future-only. The AOE progress note in §10.2 is this task's status-only addition.
 
 ## Current bounded task
 
-**UX2-10.2-C-AOE-SOURCE-REVIEW-01 — source-only review of the shared Barbarian Invasion / Raining Arrows path.** Inspect authoritative root/participant/response projections, public event ownership, and privacy using the closest focused server-backed regressions. Per current user instruction, do not make visual UX changes or alter game rules; classify concrete findings and record **NO CHANGE** when none is reproduced.
+**UX2-10.2-C2-OATH-HARVEST-SOURCE-REVIEW-01 — source-only review of Oath of the Peach Garden and Bumper Harvest.** Check the official card reference and current server-authoritative root/participant/choice projections, public event ownership and private draw/selection boundaries, using the closest focused server-backed regressions. Per the user's current direction, do not enter visual UX work or change game rules. Record concrete evidence and **NO CHANGE** if no defect is reproduced.
