@@ -161,6 +161,8 @@ async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth
       viewport: { width: document.documentElement.clientWidth, height: document.documentElement.clientHeight },
       overlaps: obstacles.filter((obstacle) => messageBox.left < obstacle.right && messageBox.right > obstacle.left
         && messageBox.top < obstacle.bottom && messageBox.bottom > obstacle.top),
+      cardOverlaps: obstacles.filter((obstacle) => cardBox.left < obstacle.right && cardBox.right > obstacle.left
+        && cardBox.top < obstacle.bottom && cardBox.bottom > obstacle.top),
       obstacles,
       geometryCandidate: {
         card: candidateCard,
@@ -197,6 +199,7 @@ async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth
       return Boolean(latestGeometry?.positioned === "true"
         && latestGeometry.fallback == null
         && latestGeometry.overlaps.length === 0
+        && (latestGeometry.cardPhase !== "reveal" || latestGeometry.cardOverlaps.length === 0)
         && (latestGeometry.cardPhase !== "reveal" || latestGeometry.message.bottom <= latestGeometry.card.top - 5));
     }, { timeout: 3_000 }).toBe(true);
   } catch (error) {
@@ -217,6 +220,7 @@ async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth
   expect(geometry.typography.fontFamily).not.toMatch(/condensed|narrow/i);
   expect(geometry.typography.letterSpacing).toBeLessThanOrEqual(0.3);
   expect(geometry.overlaps).toEqual([]);
+  if (geometry.cardPhase === "reveal") expect(geometry.cardOverlaps).toEqual([]);
   expect(geometry.liveStatusCount).toBe(1);
   console.log(`H3 announcement geometry ${geometry.viewport.width}x${geometry.viewport.height}: ${JSON.stringify({ message: geometry.message, card: geometry.card, lines: geometry.declaredLines, fontSize: geometry.typography.fontSize })}`);
   return geometry;
@@ -429,6 +433,7 @@ for (const playerCount of [6, 8]) {
     });
     const viewports = [
       { width: 390, height: 844 },
+      { width: 390, height: 700 },
       { width: 440, height: 894 },
       { width: 480, height: 900 },
     ];

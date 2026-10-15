@@ -230,6 +230,9 @@ const PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH = 520;
 // Two 15px mobile lines at 1.2 line-height plus 4px vertical padding and
 // borders. Used only before the mounted announcement can be measured.
 const PUBLIC_CARD_ANNOUNCEMENT_HEIGHT = 46;
+// A single 15px line plus mobile padding and borders, used to reserve a
+// compact-copy position when the full sentence cannot fit above the card.
+const COMPACT_PUBLIC_CARD_ANNOUNCEMENT_HEIGHT = 32;
 const PUBLIC_CARD_ANNOUNCEMENT_GAP = 7;
 const STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS = 4000;
 const DUEL_REVEAL_HOLD_MS = 4000;
@@ -269,6 +272,20 @@ function battlefieldCenterCard(size: { width: number; height: number } = REVEAL_
     width: size.width,
     height: size.height,
   }));
+  // Eight-pixel stepping can miss the only safe fit on short screens by a
+  // fraction of a pixel: the full sentence may fit below the Hero row while
+  // the next stepped card position falls just past the battlefield's bottom.
+  // Add exact card positions derived from obstacle edges so the announcement
+  // can clear those edges without forcing the layout into its overlap fallback.
+  const boundaryCandidateTops = obstacles.flatMap((obstacle) => [
+    obstacle.bottom + PUBLIC_CARD_ANNOUNCEMENT_HEIGHT + PUBLIC_CARD_ANNOUNCEMENT_GAP + 2,
+    obstacle.bottom + COMPACT_PUBLIC_CARD_ANNOUNCEMENT_HEIGHT + PUBLIC_CARD_ANNOUNCEMENT_GAP + 2,
+    obstacle.top - size.height - 8,
+  ]);
+  for (const top of boundaryCandidateTops) {
+    if (candidates.some((candidate) => Math.abs(candidate.top - top) < 0.5 && candidate.left === preferredLeft)) continue;
+    candidates.push({ left: preferredLeft, top, width: size.width, height: size.height });
+  }
   const cardFits = (candidate: CardRect) => candidate.left >= bounds.left + 8
       && candidate.left + candidate.width <= bounds.right - 8
       && candidate.top >= bounds.top + 8
@@ -281,12 +298,12 @@ function battlefieldCenterCard(size: { width: number; height: number } = REVEAL_
         || candidate.left - 8 >= obstacle.right
         || candidate.top + candidate.height + 8 <= obstacle.top
         || candidate.top - 8 >= obstacle.bottom);
-  const fitsFullWidthAnnouncement = (candidate: CardRect) => {
+  const fitsFullWidthAnnouncement = (candidate: CardRect, height: number) => {
     const announcement = {
       left: candidate.left + candidate.width / 2 - announcementWidth / 2,
-      top: candidate.top - PUBLIC_CARD_ANNOUNCEMENT_HEIGHT - PUBLIC_CARD_ANNOUNCEMENT_GAP,
+      top: candidate.top - height - PUBLIC_CARD_ANNOUNCEMENT_GAP,
       width: announcementWidth,
-      height: PUBLIC_CARD_ANNOUNCEMENT_HEIGHT,
+      height,
     };
     return announcement.left >= bounds.left + 8
       && announcement.left + announcement.width <= bounds.right - 8
@@ -295,7 +312,10 @@ function battlefieldCenterCard(size: { width: number; height: number } = REVEAL_
       && announcement.left + announcement.width <= window.innerWidth - 8
       && obstacles.every((obstacle) => !rectsOverlap(announcement, obstacle, 2));
   };
-  const safe = candidates.find((candidate) => cardFits(candidate) && fitsFullWidthAnnouncement(candidate))
+  const safe = candidates.find((candidate) => cardFits(candidate)
+      && fitsFullWidthAnnouncement(candidate, PUBLIC_CARD_ANNOUNCEMENT_HEIGHT))
+    ?? candidates.find((candidate) => cardFits(candidate)
+      && fitsFullWidthAnnouncement(candidate, COMPACT_PUBLIC_CARD_ANNOUNCEMENT_HEIGHT))
     ?? candidates.find(cardFits);
   return safe ?? boundCardRect(preferredLeft, preferredTop, size.width, size.height);
 }
@@ -597,8 +617,6 @@ function PublicCardAnnouncement({
         cardRect = measuredCenterRef.current.rect;
       } else if (fallbackCardRect) {
         cardRect = fallbackCardRect;
-      } else if (hasActualCardRect) {
-        cardRect = toCardRect(actualRect!);
       }
       if (!cardRect) {
         const tableRect = document.querySelector<HTMLElement>(".play-table")?.getBoundingClientRect();
@@ -1269,6 +1287,9 @@ function AttackDodgeCardJourney({
     if (!enabled || !hasAttackDodgeMotion || journey.scopeKey !== scopeKey) return;
     let observer: ResizeObserver | null = null;
     let reflowFrame = 0;
+    let previousLayoutSignature = "";
+    let stableLayoutFrames = 0;
+    let sampledLayoutFrames = 0;
     const observedAnchors = new WeakSet<Element>();
     const observePlayerAnchors = () => {
       document.querySelectorAll<HTMLElement>("[data-player-anchor]").forEach((anchor) => {
@@ -1298,9 +1319,29 @@ function AttackDodgeCardJourney({
     };
     const scheduleReposition = () => {
       window.cancelAnimationFrame(reflowFrame);
-      reflowFrame = window.requestAnimationFrame(() => {
-        reflowFrame = window.requestAnimationFrame(reposition);
-      });
+      previousLayoutSignature = "";
+      stableLayoutFrames = 0;
+      sampledLayoutFrames = 0;
+      const repositionAfterLayoutSettles = () => {
+        const table = document.querySelector<HTMLElement>(".play-table");
+        const anchors = [...document.querySelectorAll<HTMLElement>("[data-player-anchor]")];
+        const signature = [window.innerWidth, window.innerHeight, window.visualViewport?.width ?? 0, window.visualViewport?.height ?? 0,
+          ...(table ? [table] : []), ...anchors].flatMap((elementOrValue) => {
+          if (typeof elementOrValue === "number") return [elementOrValue];
+          const rect = elementOrValue.getBoundingClientRect();
+          return [rect.left, rect.top, rect.width, rect.height];
+        }).map((value) => Math.round(value * 2) / 2).join(":");
+        stableLayoutFrames = signature === previousLayoutSignature ? stableLayoutFrames + 1 : 0;
+        previousLayoutSignature = signature;
+        sampledLayoutFrames += 1;
+        if (stableLayoutFrames < 2 && sampledLayoutFrames < 120) {
+          reflowFrame = window.requestAnimationFrame(repositionAfterLayoutSettles);
+          return;
+        }
+        reflowFrame = 0;
+        reposition();
+      };
+      reflowFrame = window.requestAnimationFrame(repositionAfterLayoutSettles);
     };
     window.addEventListener("resize", scheduleReposition);
     window.addEventListener("scroll", scheduleReposition, true);
