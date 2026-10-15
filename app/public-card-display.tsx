@@ -1547,44 +1547,86 @@ function SingleTargetCardJourney({
 
   useLayoutEffect(() => {
     if (!enabled || journey.scopeKey !== scopeKey) return;
-    const reflow = () => {
-      const current = journeyRef.current;
-      if (current.scopeKey !== scopeKey) return;
-      const center = battlefieldCenterCard();
-      const occupied: CardRect[] = [];
-      const actorIndexes = new Map<string, number>();
-      const cards = current.cards.map((card) => {
-        const actorIndex = actorIndexes.get(card.actorId) ?? 0;
-        actorIndexes.set(card.actorId, actorIndex + 1);
-        const target = seatHistoryCardParking(card.actorId, actorIndex, occupied)?.rect
-          ?? actorParkedCard(card.actorId, actorIndex)
-          ?? card.target;
-        occupied.push(target);
-        const phase = card.phase === "move" ? "parked" as const : card.phase;
-        return {
-          ...card,
-          phase,
-          target,
-          rect: phase === "reveal" ? center : phase === "parked" ? target : card.rect,
-          layoutChangeReason: "viewport-resize",
-        };
-      });
-      const unchanged = current.center && cardRectsMatch(current.center, center)
-        && cards.length === current.cards.length
-        && cards.every((card, index) => card.eventId === current.cards[index].eventId
-          && card.phase === current.cards[index].phase
-          && cardRectsMatch(card.rect, current.cards[index].rect)
-          && cardRectsMatch(card.target, current.cards[index].target));
-      if (unchanged) return;
-      const next = { ...current, center, cards: withFirstQueuedSingleTargetReveal(cards, center) };
-      journeyRef.current = next;
-      setJourney(next);
+    let resizeFrame = 0;
+    let previousLayoutSignature = "";
+    let stableFrames = 0;
+    let sampledFrames = 0;
+    let layoutObserver: ResizeObserver | null = null;
+    const observeLayout = () => {
+      const elements = [
+        document.querySelector<HTMLElement>(".play-table"),
+        document.querySelector<HTMLElement>(".player-board"),
+        ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
+      ];
+      for (const element of elements) if (element) layoutObserver?.observe(element);
     };
+    const reflow = () => {
+      window.cancelAnimationFrame(resizeFrame);
+      previousLayoutSignature = "";
+      stableFrames = 0;
+      sampledFrames = 0;
+      const measureWhenSettled = () => {
+        const layoutElements = [
+          document.querySelector<HTMLElement>(".play-table"),
+          document.querySelector<HTMLElement>(".player-board"),
+          ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
+        ].filter((element): element is HTMLElement => Boolean(element));
+        const layoutSignature = [window.innerWidth, window.innerHeight, window.visualViewport?.width ?? 0, window.visualViewport?.height ?? 0,
+          ...layoutElements.flatMap((element) => {
+            const rect = element.getBoundingClientRect();
+            return [rect.left, rect.top, rect.width, rect.height].map((value) => Math.round(value * 2) / 2);
+          })].join(":");
+        stableFrames = layoutSignature === previousLayoutSignature ? stableFrames + 1 : 0;
+        previousLayoutSignature = layoutSignature;
+        sampledFrames += 1;
+        if (stableFrames < 1 && sampledFrames < 120) {
+          resizeFrame = window.requestAnimationFrame(measureWhenSettled);
+          return;
+        }
+        resizeFrame = 0;
+        const current = journeyRef.current;
+        if (current.scopeKey !== scopeKey) return;
+        const center = battlefieldCenterCard();
+        const occupied: CardRect[] = [];
+        const actorIndexes = new Map<string, number>();
+        const cards = current.cards.map((card) => {
+          const actorIndex = actorIndexes.get(card.actorId) ?? 0;
+          actorIndexes.set(card.actorId, actorIndex + 1);
+          const target = seatHistoryCardParking(card.actorId, actorIndex, occupied)?.rect
+            ?? actorParkedCard(card.actorId, actorIndex)
+            ?? card.target;
+          occupied.push(target);
+          const phase = card.phase === "move" ? "parked" as const : card.phase;
+          return {
+            ...card,
+            phase,
+            target,
+            rect: phase === "reveal" ? center : phase === "parked" ? target : card.rect,
+            layoutChangeReason: "viewport-resize",
+          };
+        });
+        const unchanged = current.center && cardRectsMatch(current.center, center)
+          && cards.length === current.cards.length
+          && cards.every((card, index) => card.eventId === current.cards[index].eventId
+            && card.phase === current.cards[index].phase
+            && cardRectsMatch(card.rect, current.cards[index].rect)
+            && cardRectsMatch(card.target, current.cards[index].target));
+        if (unchanged) return;
+        const next = { ...current, center, cards: withFirstQueuedSingleTargetReveal(cards, center) };
+        journeyRef.current = next;
+        setJourney(next);
+      };
+      resizeFrame = window.requestAnimationFrame(measureWhenSettled);
+    };
+    layoutObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(reflow);
+    observeLayout();
     window.addEventListener("resize", reflow);
     window.visualViewport?.addEventListener("resize", reflow);
     return () => {
       window.removeEventListener("resize", reflow);
       window.visualViewport?.removeEventListener("resize", reflow);
+      layoutObserver?.disconnect();
+      window.cancelAnimationFrame(resizeFrame);
     };
   }, [enabled, journey.scopeKey, scopeKey]);
 

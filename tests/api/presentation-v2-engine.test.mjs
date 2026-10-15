@@ -4,7 +4,7 @@ import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts
 import { buildPresentationClientView } from "../../game/presentation-client.ts";
 import { oathRecipientIds } from "../../game/oath.ts";
 import {
-  advanceNegationWindow, assert, card, createHumanGame, openBorrowedSwordScenario, openGanglieGroup, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setTurn, sql, state, waitForState,
+  advanceNegationWindow, assert, card, createHumanGame, discardIds, openBorrowedSwordScenario, openGanglieGroup, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setTurn, sql, state, waitForState,
 } from "./test-support.mjs";
 
 function authoritativePending(code) {
@@ -2392,6 +2392,149 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   const restoredObserver = await assertProjectionMatchesEngine(game.code, alice.token);
   assert.deepEqual(publicSnapshot(restoredObserver.presentationSnapshot), publicSnapshot(restoredView.presentationSnapshot), "root restoration proof is public and viewer-equal");
   assert.equal(JSON.stringify(restoredView.presentationSnapshot.settlement).includes("projector-negation-counter"), false, "physical Negation card IDs remain private to the persisted continuation");
+});
+
+test("R2 D1 reproduction keeps fresh Negation roots bound to their persisted causal envelope", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [sima, xu, cao, target] = [...game.room.players].sort((a, b) => a.seat - b.seat);
+  const memberByPlayerId = new Map(game.room.players.map((player, index) => [player.id, game.members[index]]));
+  assert.deepEqual([sima.seat, xu.seat, cao.seat, target.seat], [0, 1, 2, 3]);
+  sql(`UPDATE players SET hero='simayi' WHERE id=${quote(sima.id)}`);
+  sql(`UPDATE players SET hero='xu-chu' WHERE id=${quote(xu.id)}`);
+  sql(`UPDATE players SET hero='cao-cao', role='Lord' WHERE id=${quote(cao.id)}`);
+  const firstNegation = card("Negation", "r2-steal-negation");
+  const dismantleNegation = card("Negation", "r2-dismantle-negation");
+  const counterNegation = card("Negation", "r2-dismantle-counter");
+  const steal = card("Steal", "r2-stolen-root");
+  const dismantle = card("Dismantle", "r2-fresh-root");
+  const targetAttack = card("Attack", "r2-target-attack");
+  setHand(sima.id, [firstNegation, dismantleNegation], 3, 3);
+  setHand(xu.id, [counterNegation, card("Peach", "r2-xu-spare")], 4, 4);
+  setHand(cao.id, [steal, dismantle], 4, 4);
+  setHand(target.id, [targetAttack, card("Dodge", "r2-target-spare")], 4, 4);
+  setTurn(game.code, cao.seat);
+
+  const trace = [];
+  const capture = async (label, rootCard) => {
+    const raw = query(`SELECT json_object('pending',json(pending_json),'envelope',json(causal_envelope_json)) FROM rooms WHERE code=${quote(game.code)}`);
+    const persisted = JSON.parse(raw);
+    const view = (await state(game.code, game.members[0].token)).data;
+    const pending = persisted.pending;
+    const continuation = pending?.kind === "negation_window" ? pending.continuation : pending?.continuation;
+    const causal = continuation?.causal ?? pending?.causal ?? null;
+    const envelope = persisted.envelope;
+    const frame = envelope?.frames?.find((candidate) => candidate.frameId === envelope.activeFrameId) ?? null;
+    const rootEvent = view.timeline.find((event) => event?.card?.id === rootCard.id) ?? null;
+    const scene = view.presentationV2?.interactionScene ?? null;
+    const reaction = view.presentationSnapshot?.reactionChain ?? null;
+    const row = {
+      label,
+      pendingKind: pending?.kind ?? null,
+      windowId: pending?.windowId ?? null,
+      causal: causal ? { interactionId: causal.interactionId, frameId: causal.frameId, sourceId: continuation?.sourceId ?? null, targetId: continuation?.effectTargetId ?? continuation?.effect?.targetId ?? null, cardName: continuation?.cardName ?? null } : null,
+      envelope: envelope ? { interactionId: envelope.interactionId, activeFrameId: envelope.activeFrameId, checkpointStage: envelope.checkpoint?.stage ?? null, frameStage: frame?.stage ?? null, sourceId: frame?.origin?.originSourceId ?? null, targetIds: frame?.origin?.originalTargetIds ?? [] } : null,
+      scene: scene ? { semantics: scene.semantics, stage: scene.stage, interactionId: scene.interactionId, rootFrameId: scene.rootFrameId, sourceId: scene.sourceId, targetIds: scene.targetIds } : null,
+      reaction: reaction ? { semantics: reaction.semantics, interactionId: reaction.interactionId, frameId: reaction.frameId, rootCard: reaction.rootCard, links: reaction.publicEventLinks, nodeActors: reaction.nodes?.map((node) => node.actorId) ?? [] } : null,
+      rootEventId: rootEvent?.id ?? null,
+      rootEventResolutionId: rootEvent?.resolutionId ?? null,
+      projectedTimelineHasRoot: Boolean(rootEvent),
+      publicNegationEventIds: view.timeline.filter((event) => event?.type === "card" && event.action === "play" && event.card?.kind === "Negation").map((event) => event.id),
+    };
+    trace.push(row);
+    if (causal) {
+      assert.equal(envelope?.interactionId, causal.interactionId, `${label}: persisted pending/envelope interaction identity: ${JSON.stringify(row)}`);
+      assert.equal(envelope?.activeFrameId, causal.frameId, `${label}: persisted pending/envelope frame identity: ${JSON.stringify(row)}`);
+    }
+    return { persisted, view, row };
+  };
+  const submitEverySeat = async (windowIntents, label, rootCard) => {
+    for (let windowIndex = 1; windowIndex <= 6; windowIndex++) {
+      const persisted = JSON.parse(query(`SELECT json_object('pending',json(pending_json),'envelope',json(causal_envelope_json)) FROM rooms WHERE code=${quote(game.code)}`));
+      const window = persisted.pending;
+      if (window?.kind !== "negation_window") break;
+      const intents = windowIntents[windowIndex - 1] ?? new Map();
+      for (const playerId of window.seatOrderPlayerIds) {
+        const latest = JSON.parse(query(`SELECT json_object('pending',json(pending_json),'envelope',json(causal_envelope_json)) FROM rooms WHERE code=${quote(game.code)}`)).pending;
+        if (latest?.kind !== "negation_window" || latest.windowId !== window.windowId) break;
+        const member = memberByPlayerId.get(playerId);
+        assert.ok(member, `the four-seat D1 reproduction has an authenticated member for ${playerId}`);
+        const cardId = intents.get(playerId);
+        const response = await requestAndSettle(cardId ? "respond" : "decline_response", {
+          code: game.code, token: member.token, ...(cardId ? { providerId: "negation_card", cardId } : {}), preserveResponse: true,
+        });
+        assert.equal(response.status, 200, `${label} explicit ${cardId ? "intent" : "Pass"}: ${JSON.stringify(response.data)}`);
+        await capture(`${label} window ${windowIndex} ${cardId ? "intent" : "Pass"} ${playerId}`, rootCard);
+      }
+      const after = JSON.parse(query(`SELECT json_object('pending',json(pending_json),'envelope',json(causal_envelope_json)) FROM rooms WHERE code=${quote(game.code)}`)).pending;
+      if (after?.kind === "negation_window" && after.windowId === window.windowId) assert.fail(`${label} did not settle after all living seats explicitly responded`);
+    }
+  };
+
+  const firstRootOpened = await requestAndSettle("play_card", {
+    code: game.code, token: memberByPlayerId.get(cao.id).token, cardId: steal.id, targetId: target.id, targetCardIndex: 0, preserveResponse: true,
+  });
+  assert.equal(firstRootOpened.status, 200, JSON.stringify(firstRootOpened.data));
+  const firstRoot = await capture("first Steal root opened", steal);
+  assert.equal(firstRoot.row.scene?.semantics, "PROVEN", JSON.stringify(trace));
+  const firstInteractionId = firstRoot.persisted.envelope.interactionId;
+  await submitEverySeat([new Map([[sima.id, firstNegation.id]])], "first Steal cancellation", steal);
+  const afterCancelledSteal = await capture("Steal cancelled; persisted envelope", steal);
+  assert.equal(afterCancelledSteal.persisted.pending, null, JSON.stringify(trace));
+  assert.equal(afterCancelledSteal.persisted.envelope?.interactionId, firstInteractionId, "the cancelled root may remain as settlement/history state until superseded");
+  assert.equal(roomCardCount(game.code, targetAttack.id), 1);
+
+  const secondRootOpened = await requestAndSettle("play_card", {
+    code: game.code, token: memberByPlayerId.get(cao.id).token, cardId: dismantle.id, targetId: target.id, preserveResponse: true,
+  });
+  assert.equal(secondRootOpened.status, 200, JSON.stringify(secondRootOpened.data));
+  const secondRoot = await capture("independent Dismantle root opened", dismantle);
+  const secondCausal = secondRoot.persisted.pending?.continuation?.causal;
+  const secondRootProof = JSON.stringify({
+    priorInteractionId: firstInteractionId,
+    pending: secondCausal ? { interactionId: secondCausal.interactionId, frameId: secondCausal.frameId } : null,
+    envelope: secondRoot.persisted.envelope ? { interactionId: secondRoot.persisted.envelope.interactionId, activeFrameId: secondRoot.persisted.envelope.activeFrameId, checkpointStage: secondRoot.persisted.envelope.checkpoint?.stage } : null,
+    scene: secondRoot.row.scene,
+    rootEventId: secondRoot.row.rootEventId,
+    rootEventResolutionId: secondRoot.row.rootEventResolutionId,
+  });
+  assert.ok(secondCausal, JSON.stringify(trace));
+  assert.notEqual(secondCausal.interactionId, firstInteractionId, "Dismantle starts a genuinely new public interaction");
+  assert.equal(secondRoot.persisted.envelope?.interactionId, secondCausal.interactionId, `pending and persisted envelope must describe the same new root: ${secondRootProof}`);
+  assert.equal(secondRoot.persisted.envelope?.activeFrameId, secondCausal.frameId, `fresh root frame must own the persisted envelope: ${secondRootProof}`);
+  assert.equal(secondRoot.row.scene?.semantics, "PROVEN", `the real Worker/D1 projection must prove the second root: ${secondRootProof}`);
+  assert.equal(secondRoot.row.scene?.interactionId, secondCausal.interactionId, `the projected scene must belong to the fresh interaction: ${secondRootProof}`);
+  assert.equal(secondRoot.row.scene?.rootFrameId, secondCausal.frameId, `the projected scene must belong to the fresh frame: ${secondRootProof}`);
+  assert.equal(secondRoot.row.scene?.sourceId, cao.id);
+  assert.deepEqual(secondRoot.row.scene?.targetIds, [target.id]);
+  assert.equal(secondRoot.row.reaction?.semantics, "PROVEN", secondRootProof);
+  assert.equal(secondRoot.row.reaction?.interactionId, secondCausal.interactionId, secondRootProof);
+  assert.equal(secondRoot.row.reaction?.links?.root?.eventId, secondRoot.row.rootEventId, secondRootProof);
+  await submitEverySeat([
+    new Map([[sima.id, dismantleNegation.id]]),
+    new Map([[xu.id, counterNegation.id]]),
+  ], "Dismantle Negation and counter-Negation", dismantle);
+  const dismantleNegationNode = trace.find((row) => row.causal?.interactionId === secondCausal.interactionId
+    && row.reaction?.nodeActors.length === 1 && row.label.startsWith("Dismantle Negation"));
+  const dismantleCounterNode = trace.find((row) => row.causal?.interactionId === secondCausal.interactionId
+    && row.reaction?.nodeActors.length === 2 && row.label.startsWith("Dismantle Negation"));
+  assert.ok(dismantleNegationNode, `the committed first Dismantle Negation is in the proven public chain: ${JSON.stringify(trace.filter((row) => row.label.startsWith("Dismantle Negation")))}`);
+  assert.deepEqual(dismantleNegationNode.reaction.nodeActors, [sima.id]);
+  assert.ok(dismantleCounterNode, `the committed counter-Negation extends the same proven chain: ${JSON.stringify(trace.filter((row) => row.label.startsWith("Dismantle Negation")))}`);
+  assert.deepEqual(dismantleCounterNode.reaction.nodeActors, [sima.id, xu.id]);
+  assert.equal(dismantleCounterNode.reaction.links.root.eventId, secondRoot.row.rootEventId);
+  assert.deepEqual(dismantleCounterNode.reaction.links.nodes.map((node) => node.eventId), dismantleCounterNode.publicNegationEventIds.slice(-2));
+  const resumed = await capture("Dismantle restored after counter-Negation", dismantle);
+  assert.equal(resumed.persisted.pending?.kind, "target_card", `Dismantle should resume its legal target choice: ${JSON.stringify(trace)}`);
+  assert.equal(resumed.persisted.pending?.sourceId, cao.id);
+  assert.equal(resumed.persisted.pending?.targetId, target.id);
+  assert.equal(resumed.row.scene?.semantics, "PROVEN", `the original Dismantle identity remains proven after counter-Negation: ${JSON.stringify(resumed.row)}`);
+  assert.equal(resumed.persisted.pending?.causal?.interactionId, secondCausal.interactionId);
+  assert.equal(resumed.persisted.pending?.causal?.frameId, secondCausal.frameId);
+
+  const discarded = await requestAndSettle("choose_target_card", { code: game.code, token: memberByPlayerId.get(cao.id).token, targetCardZone: "hand", targetCardIndex: 0, preserveResponse: true });
+  assert.equal(discarded.status, 200, JSON.stringify(discarded.data));
+  assert.equal(roomCardCount(game.code, targetAttack.id), 1, "Dismantle discards the target's actual Attack exactly once");
+  assert.ok(discardIds(game.code).includes(targetAttack.id));
 });
 
 test("single-target Negation cancellation exposes an explicit public root disposition", { timeout: 30_000 }, async () => {

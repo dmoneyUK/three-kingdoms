@@ -3429,7 +3429,10 @@ async function startNegation(room: RoomRow, source: PlayerRow, players: PlayerRo
     current: { currentSourceId: source.id, currentEffect: effectCardName, currentTargetIds: [effectTargetId], resolvingPlayerId: null },
   });
   const causal = inheritedCausal ?? causalRoot!.context;
-  const envelope = sameFrameEnvelope ?? inheritedEnvelope ?? causalRoot?.envelope ?? null;
+  // A stored room envelope is only eligible when it proves this exact inherited
+  // continuation. An independent root must own the envelope it just created;
+  // otherwise a completed Negation frame can shadow the fresh interaction.
+  const envelope = sameFrameEnvelope ?? (inheritedCausal ? null : causalRoot?.envelope ?? null);
   const presentation = addLogWithId(log, `Negation window opens for ${base.responseTarget}.`);
   log = presentation.log;
   const continuation: NegationContinuation = { kind: "negation", ...base, remainingIds: [], causal };
