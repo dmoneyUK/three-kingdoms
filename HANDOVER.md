@@ -9,6 +9,12 @@ Branch: `ux-v2`
 - **U13-C delivered; PENDING USER REVIEW.** Commit `f1ef527a806842309010dbad5d837f67132a27a0`; run [38961307985](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38961307985) passed API, Lint/fast, browser startup/room smoke, deploy and production smoke. Worker version `132798e8-92c9-4d1a-9882-cbc73df55841`. No local automated tests or long-name phone measurements were run.
 - Latest reviewed design source: remote `ux-v2` head `f1ef527a806842309010dbad5d837f67132a27a0`, `docs/UX2-refine.md` blob `d9271cc6880514914f1aefbd0bcebe77eb39d950`. Compared with prior reviewed blob `ab49c09580f9e2d9c422bf0e7cdd6ba229bea0fa`; the only intervening design change is the B2 progress marker. Re-read §§10.13.3–10.13.4, §10.13.9, and §10.14.3; product requirements are unchanged. Preserve pre-existing untracked `HANDOVER 3.md`.
 
+## Latest human phone review (2026-10-16)
+
+- **H1-F USER ACCEPTED/CLOSED** on iPhone: compact own-Hero details, portrait/name/full skills, no redundant visible title/faction/HP, nonmodal content-fit size. Preserve H1-F as delivered; do not reopen the older oversized H1 rejection.
+- **Next human-review item: H2-F** opponent 4-seat Hero name 11px/player name 9px. This is delivered and **PENDING USER REVIEW**; do not claim acceptance until the user verifies it.
+- The design authority is the latest `docs/UX2-refine.md` blob `af2abfab841312e1c4e12542361d9471443dac98`; preserve previously delivered Beauty B2/U13-C and current U13-D implementation queue. This is a documentation-only review update, not a new code deployment or CI result.
+
 ## Current bounded task
 
 **UX2-10.13-U13-D-OPPONENT-EQUIPMENT-GLYPHS-01.** Design: §10.13.4 and §10.13.9. Replace only the compact opponent-seat horse pictogram with clear `+1` / `−1` numerals; preserve sword/shield silhouettes, sparse real-equipped-only rendering, actual equipment IDs/names, and accessible “Plus-one horse” / “Minus-one horse” labels. Keep full Inspector and real CardFaces unchanged. Make the final-effective phone badge sizing legible at 390px without changing slots, rules, range, hit targets, or card motion. Do not run local automated tests; inspect the scoped diff and rely on exact-SHA CI. After delivery mark U13-D PENDING USER REVIEW and proceed to U13-E.
