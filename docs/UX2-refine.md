@@ -1526,6 +1526,69 @@ When viewerId / layout epoch / Seat topology / visual viewport / H2-G1 seat rect
 
 **Sequence and task ownership:** Current HANDOVER.md Q1 is still IN PROGRESS, with diagnostic changes reportedly local-only. **Do not reset, overwrite or begin Q2 in place of that uncommitted work.** Q1 → Q2 → Q3 → Q4 are four individually bounded Coding Agent tasks; finish one and then replace the handoff with the next. The first thing Agent must do on resumption is re-read this latest design revision and preserve its local Q1 instrumentation. No implementation, post-fix game verification, new H4 failure or user visual acceptance is claimed by this document revision.
 
+
+#### 10.15.6 Executable three-surface presentation specification — MUST / MUST NOT (2026-10-17 clarification)
+
+**P0 user requirement in one sentence:** For the **same proven real card**, the (A) central full-sized card, (B) returned small author-attached card and (C) shared public explanatory text must describe one coherent public event across time and viewpoints; they must not independently restart, move between owners, disagree, or resurrect old stages. This section is **normative over cosmetic placement preferences** and can be handed directly to the Coding Agent. The problem is **presentation arbitration and rehydration, not changes to the WTK rules or CurrentAction**.
+
+**Three surfaces have distinct jobs and must NEVER compete for authority:**
+
+| Surface | When it exists | Where it belongs | Exactly what it may display | What it must NEVER do |
+| --- | --- | --- | --- | --- |
+| **A. Centre REVEAL / MOVE CardFace** | Only for a **newly committed, server-proven physical card** whose event has not already completed its current viewer's reveal/move lifecycle; newer committed cards may interrupt | Central battlefield safe reveal area, then animate toward true author | ONE current full-size real card with real card ID, owner and event ID | Rerender an old parked root because the group advances to the next target; invent a second root from settlement; run again after TEST SWITCH/poll/refresh |
+| **B. PARKED miniature/history** | The same physical event after MOVE, or immediately on viewing already-committed history after switching/late joining/reconnecting | Actual **author's** Seat or own Dock in this observer's current topology (global chronological ordering retained) | The same real physical card, shrunk once, with genuine ordinal when applicable | Fly from a previous observer's seat; change owner; grow back into a centre card; disappear merely because next participant must answer |
+| **C. Public event narration (H4)** | While there is a **current, proven public stage/event** requiring a shared explanation; update or retire as proven semantic stage changes | Its **own fixed central safe reading band** (not a child of the card's position/transform) | Current proven actor, action, target, response or outcome text; accepted H3 typography/copy | Follow A or B; lag with a prior Negation/target message; duplicate a separate generic toast; overlap A/B, player HP, response countdown, Dock or accepted U13-B status plaque |
+
+**Strict state-transition contract for one root:**
+
+~~~text
+PROVEN NEW ROOT [event/card/author] -> REVEAL(max 4000ms by Policy B)
+                                  -> MOVE(about 380ms, to THIS viewer's true-author anchor)
+                                  -> PARKED (same real card; stay parked through all target decisions)
+                                  -> RETIRED (only when proven history-display policy retires it)
+
+PARKED + target-2/3 response = PARKED (no large re-display)
+PARKED + GROUP_RESOLVED      = PARKED (no new static large card)
+PARKED + presentationRevision/checkpoint changes = PARKED
+PARKED + TEST SWITCH / resize = PARKED at recalculated destination, SNAP WITHOUT TRANSITION
+PARKED + poll / reconnect / remount = PARKED, never replay by default
+NEW different committed response card = its OWN new centre lifecycle; prior root stays PARKED
+
+C: Proven public semantic stage N -> stage N+1 = replace/retire stage-N text;
+   C position remains in its safe band and is not coupled to A/B transforms.
+~~~
+
+**Timing and interruption:** The intended REVEAL hold is **up to approximately 4 seconds**, and MOVE about **380ms**, not an unconditional 4-second blocking delay. A newer, *genuinely committed and publicly proven* response may interrupt the prior centre reveal; no purely local response intent or transient UI checkpoint may do so. No new card? Then no fresh REVEAL. A network poll, target index advance, damage/skill settlement, stage revision or visual viewport change is **not** a new physical commitment. Reduced-motion users see equivalent identity/placement without forced flight. Do not infer timing/ownership from a DOM timer.
+
+**Cross-player contract using the recorded genuine Barbarian root:**
+
+| State / viewer | Expected A centre | Expected B miniature | Expected C narration |
+| --- | --- | --- | --- |
+| Viewer 0 first sees root 76af7aee… newly committed | One initial REVEAL, then MOVE | Same root parks under actual source 72383b7b… | Initial **server-proven** public root/action message; H4 safe band |
+| Viewer 0 watches target 2, then target 3 respond | **No second root** at centre (new genuine response CardFaces only if proved) | Root d7478792… remains under that same author | Text advances to the newly proven response/target; previous text removed |
+| TEST SWITCH viewer 0→1→2→3 during group response | **No root REVEAL restart** | Same physical root **snaps directly** to each new viewer's measured author Seat/Dock, zero flight from prior layout | Current public semantic message reprojects into the viewer's **own safe H4 band**, does not trail the card |
+| Group settles | **No 88×128px old-root static fallback** | Root history remains on true author until normal proven retirement | Only current group settlement outcome; obsolete response/Negation message gone |
+| Newly connected independent client after root was already public | **No historical replay as fresh commitment** | Reconstructed parked root in the actual author slot according to the existing history policy | Latest proven public stage, not delayed or cached private copy |
+
+**Renderer exclusivity is a functional requirement, not a styling tweak:** At any observation of a given physical root, the system must have a **single effective visual owner** (one typed Journey rather than Journey competing with static-fallback). No full-size static root CardFace is permitted once that root is PARKED, even if a Group settlement produces a different action object; no CSS-only hiding of a duplicate which is still independently driving stale notice state. Display identity must use proven interaction/root/card/author linkage and **must not depend on** checkpointId, presentationRevision, current target seat, current player name, current viewerId or DOM coordinates. Those fields can update **semantics** or **layout**, not reset the root's visual clock.
+
+**Presentation and geometry must be separated:** The root's logical phase/event history survives updates. On a viewerId/Seat topology/visualViewport change, invalidate old coordinates, measure new DOM anchors, and suppress transitions **before painting** any already parked historical card. A client may have one viewer-relative position per layout epoch, but may NEVER interpolate from previous-view x=338px to new-view x=196px for an already PARKED card. If current true-author anchor is unavailable, wait/withhold rendering; never guess location/owner. Same rule applies to legacy Attack/Dodge, Negation, Duel/Lust and other real physical card Journeys, without expanding Q2 beyond Group roots.
+
+**Public narration freshness:** The H4 text's semantic event ID/checkpoint must track current **PROVEN** server interaction state. At confirmed advance, replace the prior stage's visible copy atomically: e.g. “Waiting for Negation” cannot linger when response ownership has advanced to a proven group target; “target 1 responded” cannot still be the visible current instruction while target 2 is acting. The narration's placement is determined by a safe stage band; it must not be recalculated from A's shrinking card or B's parked anchor. When geometry changes (e.g. viewer switch) the safe band may legitimately reproject, but under **unchanged layout** its centre drifts no more than 12px horizontally and 16px vertically. Preserve the separate USER-ACCEPTED U13-B bottom activity chip; H4 provides *event meaning*, U13-B provides *whose action is awaited*.
+
+**Source evidence vs current release:** The uploaded old-build aa71e75 trace proves root REVEAL t=72.729, MOVE t=76.791, PARKED t=77.162, then later same-root full card sightings at t≈87.79 and 116.63; TEST SWITCH records x=338.3→196→53.7→14 for the same parked root. This evidence **does not by itself certify present H4 malfunction** or real four-client simultaneity. Audit the **deployed new SHA**. From latest source, untyped normal Group/settlement candidates and PublicCardDisplay static-fallback remain the main Q1/Q2 suspects; do not claim a bug fixed by specification alone.
+
+**Concrete Coding Agent acceptance gate, not optional:**
+
+1. **Q1 (current only):** Diagnose and log ONE root's stable `rootEventId`, `physicalCardId`, `actualAuthorId`, `interactionId`, `rootFrameId` from PROVEN server projection to chosen renderer, with `rendererKind`, `motionType`, `visualPhase`, `viewer/layoutEpoch` and all same-physical-card DOM paths/rects. Record whether a static fallback actually reappears after PARKED on **latest Worker**. Keep current uncommitted diagnostics safe; no behavior edit in Q1.
+2. **Q2:** Typed one-owner GROUP-root lifecycle through normal group target resolution and final settlement; guarantee zero old-root static resurrection and correct 4s/380ms behaviour. Dedicated browser regression must fail if any frame contains an old full-size root after PARKED.
+3. **Q3:** All historical PARKED cards rebase in the **first newly painted frame** after TEST SWITCH (or layout epoch change), anchor error ≤2px, no intermediate old-view flight, no lifecycle reset.
+4. **Q4:** Verify *latest* H4 (minimal fix **only if reproduced**) in 4 independent authenticated Worker/D1 clients plus a separate TEST SWITCH browser. At each target step confirm narration semantics, only one current H4 banner, fixed safe position, no collision with card/history, top Seats, timers, hand and U13-B chip.
+5. Capture matched **real event/card/author IDs** across clients for Barbarian Invasion **and** Raining Arrows through ≥3 actual target responses, Negation, damage and final settlement; separately test viewer switch both during initial reveal and after park, late join/refresh/resize, long names and small phones (390×700, 390×844, captured 440×766, 440×894, 480×900). Distinguish screenshots, instrumented DOM/trace, exact-SHA GitHub CI and **actual deployment**. A green build alone does not satisfy this gate.
+6. **Stop conditions:** if the public linkage/author is unproven, fail closed and report—not guessed render; if Q1 shows the current release is already correct, write evidence and NO CHANGE rather than rewrite H4; if the intended fix changes CurrentAction, deck rules, hidden Negation information, existing accepted UX or server protocol, stop for review. Mark each code delivery **PENDING HUMAN REVIEW**, never “accepted” without fresh user-phone sign-off.
+
+**Boundaries:** This specification authorizes **presentation** fixes only. Existing game's verified decisions, exact physical-card conservation, shared Negation Plan A, accepted H3 and U13-B, reveal interruption and real chronological author parking remain intact. Q1 is the sole active HANDOVER task; Q2–Q4 are future sequential tasks, **not** permission to start all four together.
+
 **Human retest after Q1–Q4:** Observe ONE Barbarian Invasion over ALL target responses and switch TEST Player 1→2→3→4; a real root returns under REAL author exactly once, never re-enlarges/re-animates on SWITCH or target advance, all viewers see same public timeline, and narration remains in a stage-fixed safe band while U13-B accurately shows who is awaited.
 
 ## 11. UX3 FUTURE backlog — Negation Plan B, immediate-public-on-Confirm (NOT AN UX2 TASK)
