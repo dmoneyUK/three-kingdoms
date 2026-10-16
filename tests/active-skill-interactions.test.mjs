@@ -848,7 +848,7 @@ test("Cultivation trigger has a routed skill control, generic prompt, and contin
     let opponentRenderer;
     await act(async () => { opponentRenderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: opponentRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: opponentRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("WAITING FOR HUANG YUEYING")).length, 1, "opponent waits for the trigger actor");
+    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("NO ACTION NEEDED")).length, 1, "the public plaque owns the waiting actor while the non-actor Local Dock stays concise");
     assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Waiting for the target to answer the attacker")).length, 0, "the Attack fallback prompt is absent");
     assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Use Cultivation")).length, 0, "Cultivation remains private");
     assert.equal(opponentRoom.actionPlayerId, "p1");
