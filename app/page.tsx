@@ -5,6 +5,7 @@ import { cardDefinition, isAttackCard } from "../game/cards";
 import type { Card, CardKind } from "../game/model";
 import { STANDARD_PRESET_CARD_KINDS, TEST_HAND_PRESET_OPTIONS, testHandPresetFor, type TestHandPreset, type TestHandPresetId } from "../game/test-hand-presets";
 import { baselineHand, updatePrivateHand } from "../game/private-hand.js";
+import { mergeEffectNoticeQueue, type EffectNoticeQueueEntry } from "./effect-notice-queue.js";
 import { getResponseOptions } from "../game/responses";
 import { HEROES, type HeroSkill } from "../game/heroes";
 import { normalizeRoomData } from "../game/room-safety.js";
@@ -71,7 +72,7 @@ type CardEvent = PresentationEventMeta & { id: string; player: string; target: s
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
 
 type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | ({ type: "message"; id: string; message: string; drawPlayerId?: string; presentation?: boolean } & PresentationEventMeta);
-type EffectNoticeState = { roomCode: string; viewerId: string; eventId: string; heading: string; message: string; exiting: boolean };
+type EffectNoticeState = EffectNoticeQueueEntry;
 
 function attackDodgeProofKeysFromTimeline(timeline: readonly GameEvent[]): Set<string> {
   return new Set(timeline.flatMap((event) => {
@@ -100,10 +101,10 @@ function diaoChanNoticeCopy(proof: PresentationSnapshotDiaoChanSkillNotice, play
       : `${failed.name} failed to play Attack; ${proof.damageAmount} Duel damage from ${damageSource.name} applies.` };
   }
   if (proof.effectId === "diao_chan_beauty_outshining_moon" && proof.notice === "ACTIVATION") {
-    return { heading: "BEAUTY", message: "Diao Chan activated Beauty Outshining the Moon." };
+    return { heading: "BEAUTY", message: `${owner.name} activated Beauty Outshining the Moon.` };
   }
   if (proof.effectId === "diao_chan_beauty_outshining_moon" && proof.notice === "DRAWN" && proof.drawCount === 1) {
-    return { heading: "BEAUTY RESULT", message: "Diao Chan used Beauty and drew 1 card." };
+    return { heading: "BEAUTY", message: `${owner.name} used Beauty and drew 1 card.` };
   }
   return null;
 }
@@ -2745,6 +2746,19 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       const proofs = projectedDiaoChanNotices.filter((proof) => proof.eventId === event.id);
       if (proofs.length === 1 && diaoChanNoticeMatchesEvent(event.publicDiaoChanNotice, proofs[0])
         && !seenDiaoChanNoticeEventIds.current.has(event.id)) {
+        const proof = proofs[0];
+        const linkedBeautyDrawExists = proof.effectId === "diao_chan_beauty_outshining_moon" && proof.notice === "ACTIVATION"
+          && projectedDiaoChanNotices.some((candidate) => {
+            if (candidate.effectId !== "diao_chan_beauty_outshining_moon" || candidate.notice !== "DRAWN"
+              || candidate.rootEventId !== proof.rootEventId || candidate.sourceId !== proof.sourceId) return false;
+            const drawEvents = room.timeline.filter((candidateEvent) => candidateEvent.id === candidate.eventId);
+            return drawEvents.length === 1 && drawEvents[0].type === "message"
+              && diaoChanNoticeMatchesEvent(drawEvents[0].publicDiaoChanNotice, candidate);
+          });
+        if (linkedBeautyDrawExists) {
+          seenDiaoChanNoticeEventIds.current.add(event.id);
+          return [];
+        }
         const committedLustFrame = proofs[0].effectId === "diao_chan_lust" && proofs[0].notice === "ACTIVATION"
           && !lustFramePresentationBlocked
           ? verifiedLustCostFrameForEvent(room.timeline, projectedDiaoChanNotices,
@@ -2757,15 +2771,24 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         const copy = diaoChanNoticeCopy(proofs[0], room.players);
         if (copy) {
           seenDiaoChanNoticeEventIds.current.add(event.id);
-          return [{ roomCode: room.code, viewerId: room.meId, eventId: event.id, ...copy, exiting: false }];
+          return [{
+            roomCode: room.code,
+            viewerId: room.meId,
+            eventId: proof.effectId === "diao_chan_beauty_outshining_moon" ? proof.rootEventId : event.id,
+            ...copy,
+            exiting: false,
+            ...(proof.effectId === "diao_chan_beauty_outshining_moon" ? {
+              beautyRootEventId: proof.rootEventId,
+              beautySourceId: proof.sourceId,
+              beautyProofEventId: proof.eventId,
+              beautyPhase: proof.notice,
+            } : {}),
+          }];
         }
       }
       return effect?.id === event.id ? [{ roomCode: room.code, viewerId: room.meId, eventId: event.id, heading: "EFFECT TRIGGERED", message: event.message, exiting: false }] : [];
     });
-    if (queuedNotices.length) setEffectNotices((current) => {
-      const known = new Set(current.map((notice) => notice.eventId));
-      return [...current, ...queuedNotices.filter((notice) => !known.has(notice.eventId))];
-    });
+    if (queuedNotices.length) setEffectNotices((current) => mergeEffectNoticeQueue(current, queuedNotices));
     const immediatelyPresented = new Set<string>();
     const visible = fresh.filter((event) => {
       if (event.presentation === false) return false;
@@ -2797,21 +2820,25 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     setProcessedTimelineKey(timelineKey);
   }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, lustFramePresentationBlocked, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements]);
   const effectNoticeEventId = effectNotice?.eventId ?? "";
+  const effectNoticeProofEventId = effectNotice?.beautyProofEventId ?? effectNoticeEventId;
   const effectNoticeRoomCode = effectNotice?.roomCode ?? "";
   const effectNoticeViewerId = effectNotice?.viewerId ?? "";
   useEffect(() => {
-    if (!effectNoticeEventId) return;
+    if (!effectNoticeEventId || !effectNoticeProofEventId) return;
     if (effectNoticeRoomCode !== room.code || effectNoticeViewerId !== room.meId) return;
     const eventId = effectNoticeEventId;
+    const proofEventId = effectNoticeProofEventId;
     const roomCode = effectNoticeRoomCode;
     const viewerId = effectNoticeViewerId;
     const exitTimer = window.setTimeout(() => setEffectNotices((current) => current.map((notice) => notice.eventId === eventId
+      && (notice.beautyProofEventId ?? notice.eventId) === proofEventId
       && notice.roomCode === roomCode && notice.viewerId === viewerId ? { ...notice, exiting: true } : notice)),
     Math.max(0, UI_TIMING.effectNotice - UI_TIMING.effectNoticeExit));
     const removeTimer = window.setTimeout(() => setEffectNotices((current) => current[0]?.eventId === eventId
+      && (current[0]?.beautyProofEventId ?? current[0]?.eventId) === proofEventId
       && current[0]?.roomCode === roomCode && current[0]?.viewerId === viewerId ? current.slice(1) : current), UI_TIMING.effectNotice);
     return () => { window.clearTimeout(exitTimer); window.clearTimeout(removeTimer); };
-  }, [effectNoticeEventId, effectNoticeRoomCode, effectNoticeViewerId, room.code, room.meId]);
+  }, [effectNoticeEventId, effectNoticeProofEventId, effectNoticeRoomCode, effectNoticeViewerId, room.code, room.meId]);
   useEffect(() => { if (!optimisticPlay) return; const timer = setTimeout(() => setOptimisticPlay(null), UI_TIMING.playedCard); return () => clearTimeout(timer); }, [optimisticPlay]);
   useEffect(() => { if (!livePendingStartId || livePendingStartId === sequenceScopeStartId) return; const timer = setTimeout(() => setSequenceScopeStartId(livePendingStartId), 0); return () => clearTimeout(timer); }, [livePendingStartId, sequenceScopeStartId]);
   useEffect(() => { if (!harvestSubmitting || room.pendingHarvest?.actorId === harvestSubmitting.playerId && !room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId)) return; const timer = setTimeout(() => setHarvestSubmitting(null), 0); return () => clearTimeout(timer); }, [harvestSubmitting, room.pendingHarvest]);
@@ -5646,7 +5673,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         && !(publicCardDisplayReady && (publicCardDisplayAction?.motion?.type === "lust-cost" || publicCardDisplayAction?.motion?.type === "lust-duel")
           && (publicCardDisplayAction.lustCostFrame?.activationEventId === effectNotice.eventId
             || publicCardDisplayAction.settlement?.eventId === effectNotice.eventId))
-        && <div key={effectNotice.eventId} className={`effect-notice${effectNotice.exiting ? " is-exiting" : ""}`} role="status" aria-live="polite" aria-atomic="true" data-effect-notice-event-id={effectNotice.eventId}><span>{effectNotice.heading}</span><b>{effectNotice.message}</b></div>}
+          && <div key={effectNotice.eventId} className={`effect-notice${effectNotice.exiting ? " is-exiting" : ""}`} role="status" aria-live="polite" aria-atomic="true" data-effect-notice-event-id={effectNotice.eventId} data-diao-chan-beauty-root-event-id={effectNotice.beautyRootEventId} data-diao-chan-beauty-source-id={effectNotice.beautySourceId} data-diao-chan-beauty-proof-event-id={effectNotice.beautyProofEventId} data-diao-chan-beauty-phase={effectNotice.beautyPhase}><span>{effectNotice.heading}</span><b>{effectNotice.message}</b></div>}
       </div>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
       {canChooseBorrowedSword && <div className="turn-notice borrowed-sword-notice" role="status"><span>BORROWED SWORD</span><b>{borrowedSwordTargetId ? "Target selected · confirm below" : "Choose a legal Attack target"}</b></div>}
