@@ -9,7 +9,7 @@ Branch: `ux-v2`
 
 ## Latest design reviewed by Planner (new; Agent must re-read)
 
-- `docs/UX2-refine.md` **§10.15.1–10.15.5**, including the independent uploaded MP4/trace review and hard single-owner/event-versus-checkpoint/viewer-epoch contracts added in design-only commit [51e393fd](https://github.com/dmoneyUK/three-kingdoms/commit/51e393fd3296dbb106d62e74a8e64adc69f3040a) (blob `300c6992d21e724c06b103ca2a6178f10bbce8e9`). The 116.57s old-build video/trace is **NOT evidence of today's H4 failure** or independent 4-client synchrony. No implementation was changed by this design commit.
+- `docs/UX2-refine.md` **§10.15.1–10.15.6**, including mandatory **three-surface MUST/MUST NOT table, real-card state-transition matrix, viewer first-paint rebase, H4 narration freshness and Q1–Q4 acceptance gates** in design-only commit [8c14fa7a](https://github.com/dmoneyUK/three-kingdoms/commit/8c14fa7a09903ad7532ab5b6005e5d3b49ec2692). Agent MUST re-read §10.15.6 before finalizing Q1 diagnostics. The old-build video/trace is NOT evidence of a current H4 regression or four-independent-client consistency; diagnose newest deployed SHA. This design change does NOT claim gameplay code is fixed.
 - Preserve user-accepted **U13-B public bottom activity chip**, H3 text/copy and other accepted UX. §10.15 Q1–Q4 are P0 and precede cosmetic additions.
 
 ## Exactly one active task
