@@ -4274,6 +4274,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? {
       key: ["group", groupSettlementCandidate.settlement.interactionId, groupSettlementCandidate.settlement.groupFrameId, groupSettlementCandidate.rootEvent.id].join(":"),
       rootEventId: groupSettlementCandidate.rootEvent.id,
+      interactionId: groupSettlementCandidate.settlement.interactionId,
+      rootFrameId: groupSettlementCandidate.settlement.groupFrameId,
       sourceId: groupSettlementCandidate.settlement.sourceId,
       targetId: null,
       cardFace: groupSettlementCandidate.rootEvent.card,
@@ -4351,6 +4353,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? {
       key: ["group", groupTargetBranchCandidate.group.interactionId, groupTargetBranchCandidate.group.groupFrameId, groupTargetBranchCandidate.rootEvent.id].join(":"),
       rootEventId: groupTargetBranchCandidate.rootEvent.id,
+      interactionId: groupTargetBranchCandidate.group.interactionId,
+      rootFrameId: groupTargetBranchCandidate.group.groupFrameId,
+      checkpointId: groupTargetBranchCandidate.group.checkpointId,
+      presentationRevision: groupTargetBranchCandidate.group.presentationRevision,
       sourceId: clientPresentation.sourceId!,
       targetId: null,
       cardFace: groupTargetBranchCandidate.rootEvent.card,
@@ -5302,7 +5308,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const attackDodgeTraceRelevant = attackDodgeUxTraceActive && Boolean(room.pendingAttack
     || room.currentAction?.requirement === "attack" || room.currentAction?.requirement === "dodge"
     || clientPresentation.rootAction?.action === "ATTACK" || attackDodgeProofIsRecent
-    || activeAttackDodgeSettlement || recentAttackDodgeTimeline.length);
+    || activeAttackDodgeSettlement || recentAttackDodgeTimeline.length
+    || groupTargetBranchCandidate || groupSettlementCandidate);
+  const tracePublicResponse = publicCardDisplayAction?.response ?? publicCardDisplayAction?.responses?.at(-1) ?? null;
   const attackDodgeTraceSnapshot = attackDodgeTraceRelevant ? {
     room: { status: room.status, phase: room.phase, turnSeat: room.turnSeat, viewerSeat: attackDodgeTraceSeat(room.meId) },
     currentAction: {
@@ -5388,14 +5396,33 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       proofCandidateSelected: Boolean(attackDodgeDisplayCandidate),
     },
     publicCardDisplay: {
+      eventId: tracePublicResponse?.eventId ?? publicCardDisplayAction?.rootEventId ?? null,
+      publicCardId: tracePublicResponse?.cardFace?.id ?? publicCardDisplayAction?.cardFace?.id ?? null,
+      publicActorId: tracePublicResponse?.actorId ?? publicCardDisplayAction?.sourceId ?? null,
       rootEventId: publicCardDisplayAction?.rootEventId ?? null,
       interactionId: publicCardDisplayAction?.interactionId ?? null,
       rootFrameId: publicCardDisplayAction?.rootFrameId ?? null,
+      checkpointId: publicCardDisplayAction?.checkpointId ?? null,
+      presentationRevision: publicCardDisplayAction?.presentationRevision ?? null,
+      candidateRendererKind: publicCardDisplayAction?.motion?.type === "attack-dodge" ? "attack-dodge-journey"
+        : publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation" || publicCardDisplayAction?.motion?.type === "lust-cost" ? "single-target-journey"
+          : publicCardDisplayAction?.motion?.type === "duel" || publicCardDisplayAction?.motion?.type === "lust-duel" ? "duel-journey"
+            : "static-fallback",
+      candidateMotionType: publicCardDisplayAction?.motion?.type ?? null,
+      revealDurationMs: publicCardDisplayAction?.motion ? 4_000 : null,
+      moveDurationMs: publicCardDisplayAction?.motion ? 380 : null,
+      publicViewerId: room.meId,
+      currentParticipantId: room.presentationSnapshot?.interaction?.currentParticipantId ?? null,
       sourceSeat: attackDodgeTraceSeat(publicCardDisplayAction?.sourceId),
       targetSeat: attackDodgeTraceSeat(publicCardDisplayAction?.targetId),
-      cardKind: publicCardDisplayAction?.cardKind ?? null,
-      cardId: publicCardDisplayAction?.cardFace?.id ?? null,
-      cardFaceKind: publicCardDisplayAction?.cardFace?.kind ?? null,
+      rootCardKind: publicCardDisplayAction?.cardKind ?? null,
+      cardKindForDisplayedEvent: tracePublicResponse?.cardFace?.kind ?? publicCardDisplayAction?.cardFace?.kind ?? null,
+      responseEvents: publicCardDisplayAction?.responses?.map((response) => ({
+        eventId: response.eventId,
+        publicActorId: response.actorId,
+        publicCardId: response.cardFace?.id ?? null,
+        cardKind: response.cardFace?.kind ?? null,
+      })) ?? [],
       responseEventId: publicCardDisplayAction?.response?.eventId ?? null,
       responseActorSeat: attackDodgeTraceSeat(publicCardDisplayAction?.response?.actorId),
       responseCardFaceKind: publicCardDisplayAction?.response?.cardFace?.kind ?? null,
@@ -5442,8 +5469,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     recordAttackDodgeUxTrace("pipeline-state", JSON.parse(attackDodgeTraceSnapshotJson) as Record<string, unknown>);
     const shell = document.querySelector<HTMLElement>(".game-shell");
     if (!shell) return;
-    const shellRect = shell.getBoundingClientRect();
+    let lastDomSignature = "";
     const trackedSelector = [
+      ".interaction-stage",
       ".interaction-stage-inspect-only",
       ".opponent-inspection-floating-shell",
       ".table-resolution-layer",
@@ -5452,41 +5480,178 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ".table-played-card",
       ".public-card-display",
       ".public-card-display .played-card",
+      ".public-card-display-static-card",
+      "[data-public-card-journey-event-id]",
+      "[data-public-card-announcement='true']",
+      ".effect-notice",
+      ".public-activity-chip",
+      ".opponent-player-card",
+      ".local-player-dock",
+      ".console-guidance",
+      ".local-hand-rail",
+      ".visible-countdown",
     ].join(",");
-    const domNodes = Array.from(shell.querySelectorAll<HTMLElement | SVGElement>(trackedSelector)).slice(0, 64).map((element, index) => {
+    const rectFor = (element: Element | null) => {
+      if (!(element instanceof HTMLElement)) return null;
       const rect = element.getBoundingClientRect();
-      const style = getComputedStyle(element);
-      const safeAttributes = ["data-local-ui-mode", "data-local-inspect-player-id", "data-public-card-display", "data-public-card-ready", "data-public-card-event-id", "data-public-card-root-event-id", "data-public-card-id", "data-public-card-actor-id", "data-public-card-source-id", "data-public-card-target-id", "data-public-card-settlement-event-id", "data-public-card-settlement-outcome"];
-      const attributes = Object.fromEntries(safeAttributes.flatMap((name) => {
-        const value = element.getAttribute(name);
-        return value === null ? [] : [[name, value]];
-      }));
       return {
-        index,
-        classes: (element.getAttribute("class") ?? "").split(/\s+/u).filter(Boolean),
-        attributes,
-        rect: {
-          left: Math.round((rect.left - shellRect.left) * 10) / 10,
-          top: Math.round((rect.top - shellRect.top) * 10) / 10,
-          width: Math.round(rect.width * 10) / 10,
-          height: Math.round(rect.height * 10) / 10,
-        },
-        connected: element.isConnected,
-        clientRectCount: element.getClientRects().length,
-        display: style.display,
-        visibility: style.visibility,
-        opacity: style.opacity,
-        zIndex: style.zIndex,
+        left: Math.round(rect.left * 10) / 10,
+        top: Math.round(rect.top * 10) / 10,
+        width: Math.round(rect.width * 10) / 10,
+        height: Math.round(rect.height * 10) / 10,
+        right: Math.round(rect.right * 10) / 10,
+        bottom: Math.round(rect.bottom * 10) / 10,
       };
-    });
-    const table = shell.querySelector<HTMLElement>(".play-table");
-    recordAttackDodgeUxTrace("presentation-dom", {
-      topology: table?.dataset.seatTopology ?? null,
-      stageMounted: Boolean(shell.querySelector(".interaction-stage")),
-      legacySequenceMounted: Boolean(shell.querySelector(".table-resolution-layer")),
-      publicCardDisplayMounted: Boolean(shell.querySelector(".public-card-display")),
-      nodes: domNodes,
-    });
+    };
+    const safeAttributes = [
+      "data-public-card-display", "data-public-card-renderer-kind", "data-public-card-visual-phase", "data-public-card-motion",
+      "data-public-card-viewer-id", "data-public-card-interaction-id", "data-public-card-root-frame-id", "data-public-card-checkpoint-id",
+      "data-public-card-presentation-revision", "data-public-card-event-id", "data-public-card-root-event-id", "data-public-card-id",
+      "data-public-card-actor-id", "data-public-card-source-id", "data-public-card-target-id", "data-public-card-settlement-event-id",
+      "data-public-card-settlement-outcome", "data-public-card-static-event-id", "data-public-card-static-card-id",
+      "data-public-card-journey-event-id", "data-public-card-journey-actor-id", "data-public-card-journey-card-id",
+      "data-public-card-journey-role", "data-public-card-journey-phase", "data-public-card-journey-size",
+      "data-public-card-journey-layout-reason", "data-public-card-journey-reveal-started-at", "data-public-card-journey-target-left",
+      "data-public-card-journey-target-top", "data-public-card-journey-target-width", "data-public-card-journey-target-height",
+      "data-settlement-event-id", "data-settlement-card-id", "data-player-settlement-id", "data-player-anchor",
+      "data-public-card-announcement-key", "data-public-card-announcement-event-id", "data-public-card-copy-anchor-event-id",
+      "data-effect-notice-event-id", "data-seat-topology", "data-countdown-urgency",
+    ];
+    const attributesFor = (element: Element) => Object.fromEntries(safeAttributes.flatMap((name) => {
+      const value = element.getAttribute(name);
+      return value === null ? [] : [[name, value]];
+    }));
+    const measureDom = () => {
+      const table = shell.querySelector<HTMLElement>(".play-table");
+      const domNodes = Array.from(shell.querySelectorAll<HTMLElement>(trackedSelector)).slice(0, 96).map((element, index) => {
+        const style = getComputedStyle(element);
+        const owner = element.closest<HTMLElement>("[data-public-card-display]");
+        return {
+          index,
+          classes: (element.getAttribute("class") ?? "").split(/\s+/u).filter(Boolean),
+          attributes: attributesFor(element),
+          ownerRendererKind: owner?.dataset.publicCardRendererKind ?? null,
+          ownerEventId: owner?.dataset.publicCardEventId ?? null,
+          rect: rectFor(element),
+          connected: element.isConnected,
+          clientRectCount: element.getClientRects().length,
+          display: style.display,
+          visibility: style.visibility,
+          opacity: style.opacity,
+          zIndex: style.zIndex,
+        };
+      });
+      const cardElements = Array.from(shell.querySelectorAll<HTMLElement>([
+        "[data-public-card-static-event-id]",
+        "[data-public-card-journey-event-id]",
+        ".active-table-reveal [data-settlement-card-id]",
+        ".table-played-card[data-settlement-card-id]",
+      ].join(",")));
+      const cardInstances = cardElements.map((element) => {
+        const journey = element.matches("[data-public-card-journey-event-id]");
+        const activeReveal = element.closest(".active-table-reveal");
+        const settledCard = element.closest(".table-played-card");
+        const owner = element.closest<HTMLElement>("[data-public-card-display]");
+        const face = element.matches(".played-card") ? element : element.querySelector<HTMLElement>(".played-card") ?? element;
+        const actualRect = rectFor(face);
+        const width = actualRect?.width ?? 0;
+        const eventId = element.dataset.publicCardJourneyEventId
+          ?? element.dataset.publicCardStaticEventId
+          ?? element.dataset.settlementEventId
+          ?? activeReveal?.getAttribute("data-settlement-event-id")
+          ?? null;
+        const cardId = element.dataset.publicCardJourneyCardId
+          ?? element.dataset.publicCardStaticCardId
+          ?? element.dataset.settlementCardId
+          ?? null;
+        const visualPhase = element.dataset.publicCardJourneyPhase
+          ?? owner?.dataset.publicCardVisualPhase
+          ?? (settledCard ? "SETTLED" : activeReveal ? "TABLE_REVEAL" : "STATIC");
+        const rendererKind = owner?.dataset.publicCardRendererKind
+          ?? (settledCard ? "table-resolution-settled" : activeReveal ? "table-resolution-active" : "unknown");
+        const sizeClass = width >= 70 ? "FULL" : width <= 60 ? "PARKED" : "INTERMEDIATE";
+        const targetRect = journey ? {
+          left: Number(element.dataset.publicCardJourneyTargetLeft),
+          top: Number(element.dataset.publicCardJourneyTargetTop),
+          width: Number(element.dataset.publicCardJourneyTargetWidth),
+          height: Number(element.dataset.publicCardJourneyTargetHeight),
+        } : null;
+        return {
+          eventId,
+          publicCardId: cardId,
+          publicActorId: element.dataset.publicCardJourneyActorId ?? owner?.dataset.publicCardActorId ?? owner?.dataset.publicCardSourceId ?? null,
+          rendererKind,
+          motionType: owner?.dataset.publicCardMotion ?? null,
+          visualPhase,
+          sizeClass,
+          actualCardRect: actualRect,
+          targetParkingRect: targetRect,
+          ownerEventId: owner?.dataset.publicCardEventId ?? null,
+          elementAttributes: attributesFor(element),
+        };
+      });
+      const countsByCard = new Map<string, { fullSizeCount: number; parkedThumbnailCount: number; intermediateCount: number }>();
+      for (const instance of cardInstances) {
+        if (!instance.publicCardId) continue;
+        const counts = countsByCard.get(instance.publicCardId) ?? { fullSizeCount: 0, parkedThumbnailCount: 0, intermediateCount: 0 };
+        if (instance.sizeClass === "FULL") counts.fullSizeCount += 1;
+        else if (instance.sizeClass === "PARKED") counts.parkedThumbnailCount += 1;
+        else counts.intermediateCount += 1;
+        countsByCard.set(instance.publicCardId, counts);
+      }
+      const announcementNodes = Array.from(shell.querySelectorAll<HTMLElement>("[data-public-card-announcement='true'], .effect-notice")).map((element) => ({
+        kind: element.matches(".effect-notice") ? "effect-notice" : "public-card-announcement",
+        key: element.getAttribute("data-public-card-announcement-key") ?? element.getAttribute("data-effect-notice-event-id"),
+        eventId: element.getAttribute("data-public-card-announcement-event-id") ?? element.getAttribute("data-effect-notice-event-id"),
+        rect: rectFor(element),
+        visibility: getComputedStyle(element).visibility,
+        display: getComputedStyle(element).display,
+      }));
+      const geometry = [
+        { kind: "stage", selector: ".play-table" },
+        { kind: "interaction-stage", selector: ".interaction-stage" },
+        { kind: "opponent-seat", selector: ".opponent-player-card" },
+        { kind: "local-dock", selector: ".local-player-dock" },
+        { kind: "guidance", selector: ".console-guidance" },
+        { kind: "hand-rail-bounds-only", selector: ".local-hand-rail" },
+        { kind: "timer", selector: ".visible-countdown" },
+        { kind: "activity-chip", selector: ".public-activity-chip" },
+      ].flatMap(({ kind, selector }) => Array.from(shell.querySelectorAll<HTMLElement>(selector)).slice(0, 12).map((element) => ({
+        kind,
+        playerId: element.dataset.playerAnchor ?? null,
+        rect: rectFor(element),
+      })));
+      const viewport = {
+        width: Math.round(window.innerWidth * 10) / 10,
+        height: Math.round(window.innerHeight * 10) / 10,
+        devicePixelRatio: window.devicePixelRatio || 1,
+        visualViewport: window.visualViewport ? {
+          width: Math.round(window.visualViewport.width * 10) / 10,
+          height: Math.round(window.visualViewport.height * 10) / 10,
+          scale: Math.round(window.visualViewport.scale * 100) / 100,
+        } : null,
+      };
+      const domSnapshot = {
+        viewport,
+        topology: table?.dataset.seatTopology ?? null,
+        stageBounds: rectFor(table),
+        stageMounted: Boolean(shell.querySelector(".interaction-stage")),
+        legacySequenceMounted: Boolean(shell.querySelector(".table-resolution-layer")),
+        publicCardDisplayMounted: Boolean(shell.querySelector(".public-card-display")),
+        geometry,
+        cardInstances,
+        sameCardSizeCounts: Object.fromEntries(countsByCard),
+        announcements: announcementNodes,
+        nodes: domNodes,
+      };
+      const signature = JSON.stringify(domSnapshot);
+      if (signature === lastDomSignature) return;
+      lastDomSignature = signature;
+      recordAttackDodgeUxTrace("presentation-dom", domSnapshot);
+    };
+    measureDom();
+    const interval = window.setInterval(measureDom, 500);
+    return () => window.clearInterval(interval);
   }, [attackDodgeTraceSnapshotJson]);
   const localEquipmentSelection = activeSkillSelection
     ? { eligibleIds: activeSkillSelection.eligibleCardIds, selectedIds: activeSkillSelectedCardIds, max: activeSkillSelection.max, disabled: busy || presentationBusy && !responseCardSelectionReady, onToggle: toggleActiveSkillCardSelection }
@@ -6536,11 +6701,11 @@ function TableResolutionSequence({ events, activeEvent, players, myTableIndex, c
     return () => observer.disconnect();
   }, [cardPlayerIds, myTableIndex, players]);
   return <div className={`table-resolution-layer ${concluding ? "concluding" : ""}`} role="status">
-    {activeCards.length > 0 && !concluding && <div ref={revealRef} className={`active-table-reveal ${equipmentFlightId ? "equipment-flight" : ""} ${judgementFlightId ? "judgement-flight" : ""} ${isJudgementReveal(activeEvent) ? "judgement-reveal" : ""} ${directDiscard ? "direct-discard" : ""}`} data-settlement-event-id={activeEvent?.id} key={activeEvent?.id}><div>{activeCards.map((shown) => <CardFace card={shown} key={shown.id} />)}</div></div>}
+    {activeCards.length > 0 && !concluding && <div ref={revealRef} className={`active-table-reveal ${equipmentFlightId ? "equipment-flight" : ""} ${judgementFlightId ? "judgement-flight" : ""} ${isJudgementReveal(activeEvent) ? "judgement-reveal" : ""} ${directDiscard ? "direct-discard" : ""}`} data-settlement-event-id={activeEvent?.id} key={activeEvent?.id}><div>{activeCards.map((shown) => <CardFace card={shown} settlementCardId={shown.id} key={shown.id} />)}</div></div>}
     {cardPlayers.map((player) => {
       const playerCards = cards.filter(({ event }) => !settlesInJudgement(event) && publicPlayerName(event.player) === publicPlayerName(player.name));
       const equipmentOnly = playerCards.every(({ event }) => event.type === "card" && event.action === "equip");
-      return <div className={`player-played-cards ${equipmentOnly ? "equipment-only" : ""}`} data-player-settlement-id={player.id} key={player.id}><span>{publicPlayerName(player.name)}</span><div>{playerCards.map(({ event, card, key }, index) => activeCardIds.has(card.id) ? null : <div className="table-played-card settled" data-settlement-event-id={event.id} key={key}><em>{index + 1}</em><CardFace card={card} /></div>)}</div></div>;
+      return <div className={`player-played-cards ${equipmentOnly ? "equipment-only" : ""}`} data-player-settlement-id={player.id} key={player.id}><span>{publicPlayerName(player.name)}</span><div>{playerCards.map(({ event, card, key }, index) => activeCardIds.has(card.id) ? null : <div className="table-played-card settled" data-settlement-event-id={event.id} data-settlement-card-id={card.id} key={key}><em>{index + 1}</em><CardFace card={card} /></div>)}</div></div>;
     })}
   </div>;
 }

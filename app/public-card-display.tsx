@@ -58,6 +58,8 @@ export type PublicCardDisplayAction = {
   cardFace?: Card;
   interactionId?: string;
   rootFrameId?: string;
+  checkpointId?: string;
+  presentationRevision?: number;
   sourceId: string;
   targetId: string | null;
   cardKind?: CardKind;
@@ -1143,6 +1145,7 @@ function PublicCardAnnouncement({
     aria-live="polite"
     aria-atomic="true"
     data-public-card-announcement="true"
+    data-public-card-announcement-key={eventId}
     data-public-card-announcement-event-id={eventId}
     data-public-card-copy-anchor-event-id={anchorEventId === null ? undefined : anchorEventId ?? eventId}
     data-public-card-phase-notice={phaseNotice}
@@ -1672,6 +1675,15 @@ function AttackDodgeCardJourney({
         if (traceSignaturesRef.current.get(card.eventId) === signature) continue;
         traceSignaturesRef.current.set(card.eventId, signature);
         recordAttackDodgeUxTrace("public-card-journey", {
+          rendererKind: "attack-dodge-journey",
+          motionType: action.motion?.type ?? null,
+          interactionId: action.interactionId ?? null,
+          rootEventId: action.rootEventId,
+          rootFrameId: action.rootFrameId ?? null,
+          checkpointId: action.checkpointId ?? null,
+          presentationRevision: action.presentationRevision ?? null,
+          revealDurationMs: STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+          moveDurationMs: MOVE_DURATION_MS,
           eventId: card.eventId,
           publicActorId: card.actorId,
           publicViewerId: viewerId,
@@ -1796,10 +1808,15 @@ function AttackDodgeCardJourney({
   return <section
     className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}`}
     data-public-card-display="true"
+    data-public-card-renderer-kind="attack-dodge-journey"
     data-public-card-ready="true"
+    data-public-card-visual-phase={activePhase?.toUpperCase() ?? undefined}
     data-public-card-motion="attack-dodge"
     data-public-card-viewer-id={viewerId}
     data-public-card-interaction-id={action.interactionId ?? undefined}
+    data-public-card-root-frame-id={action.rootFrameId ?? undefined}
+    data-public-card-checkpoint-id={action.checkpointId ?? undefined}
+    data-public-card-presentation-revision={action.presentationRevision ?? undefined}
     data-public-card-event-id={activeEventId}
     data-public-card-root-event-id={action.rootEventId}
     data-public-card-id={activeCard?.id}
@@ -2271,6 +2288,15 @@ function SingleTargetCardJourney({
         if (traceSignaturesRef.current.get(card.eventId) === signature) continue;
         traceSignaturesRef.current.set(card.eventId, signature);
         recordAttackDodgeUxTrace("public-card-journey", {
+          rendererKind: "single-target-journey",
+          motionType: motion?.type ?? null,
+          interactionId: action.interactionId ?? null,
+          rootEventId: action.rootEventId,
+          rootFrameId: action.rootFrameId ?? null,
+          checkpointId: action.checkpointId ?? null,
+          presentationRevision: action.presentationRevision ?? null,
+          revealDurationMs: STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
+          moveDurationMs: MOVE_DURATION_MS,
           eventId: card.eventId,
           publicActorId: card.actorId,
           publicViewerId: viewerId,
@@ -2311,10 +2337,14 @@ function SingleTargetCardJourney({
   return <section
     className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}`}
     data-public-card-display="true"
+    data-public-card-renderer-kind="single-target-journey"
     data-public-card-ready="true"
     data-public-card-motion={motion?.type ?? "single-target"}
     data-public-card-viewer-id={viewerId}
     data-public-card-interaction-id={action.interactionId ?? undefined}
+    data-public-card-root-frame-id={action.rootFrameId ?? undefined}
+    data-public-card-checkpoint-id={action.checkpointId ?? undefined}
+    data-public-card-presentation-revision={action.presentationRevision ?? undefined}
     data-public-card-event-id={activeEventId}
     data-public-card-root-event-id={action.rootEventId}
     data-public-card-id={currentPublicCard?.id}
@@ -2883,6 +2913,15 @@ function DuelCardJourney({
         if (traceSignaturesRef.current.get(card.eventId) === signature) continue;
         traceSignaturesRef.current.set(card.eventId, signature);
         recordAttackDodgeUxTrace("public-card-journey", {
+          rendererKind: "duel-journey",
+          motionType: action.motion?.type ?? null,
+          interactionId: action.interactionId ?? null,
+          rootEventId: action.rootEventId,
+          rootFrameId: action.rootFrameId ?? null,
+          checkpointId: action.checkpointId ?? null,
+          presentationRevision: action.presentationRevision ?? null,
+          revealDurationMs: DUEL_REVEAL_HOLD_MS,
+          moveDurationMs: MOVE_DURATION_MS,
           eventId: card.eventId,
           publicActorId: card.actorId,
           publicViewerId: viewerId,
@@ -2912,10 +2951,14 @@ function DuelCardJourney({
   return <section
     className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}`}
     data-public-card-display="true"
+    data-public-card-renderer-kind="duel-journey"
     data-public-card-ready="true"
     data-public-card-motion={action.motion?.type === "lust-duel" ? "lust-duel" : "duel"}
     data-public-card-viewer-id={viewerId}
     data-public-card-interaction-id={action.interactionId ?? undefined}
+    data-public-card-root-frame-id={action.rootFrameId ?? undefined}
+    data-public-card-checkpoint-id={action.checkpointId ?? undefined}
+    data-public-card-presentation-revision={action.presentationRevision ?? undefined}
     data-public-card-event-id={activeEventId}
     data-public-card-root-event-id={action.rootEventId}
     data-public-card-id={currentPublicCard?.id}
@@ -3017,10 +3060,17 @@ export function PublicCardDisplay({
   return <section
     className={`public-card-display${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}`}
     data-public-card-display="true"
+    data-public-card-renderer-kind="static-fallback"
     data-public-card-ready="true"
+    data-public-card-visual-phase="STATIC"
+    data-public-card-motion={action.motion?.type ?? undefined}
+    data-public-card-viewer-id={viewerId}
     data-public-card-event-id={eventId}
     data-public-card-root-event-id={action.rootEventId}
     data-public-card-interaction-id={action.interactionId ?? undefined}
+    data-public-card-root-frame-id={action.rootFrameId ?? undefined}
+    data-public-card-checkpoint-id={action.checkpointId ?? undefined}
+    data-public-card-presentation-revision={action.presentationRevision ?? undefined}
     data-public-card-id={card?.id}
     data-public-card-actor-id={actorId}
     data-public-card-source-id={action.sourceId}
@@ -3029,7 +3079,7 @@ export function PublicCardDisplay({
     data-public-card-settlement-outcome={action.settlement?.outcome}
     data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
-    {card && <div className="public-card-display-static-card" data-public-card-copy-anchor-event-id={eventId}><CardFace card={card} /></div>}
+    {card && <div className="public-card-display-static-card" data-public-card-copy-anchor-event-id={eventId} data-public-card-static-event-id={eventId} data-public-card-static-card-id={card.id}><CardFace card={card} /></div>}
     <PublicCardAnnouncement
       eventId={eventId}
       placementKey={publicCardAnnouncementPlacementKey(action, roomCode)}

@@ -10,6 +10,10 @@ const FLUSH_INTERVAL_MS = 1_500;
 
 export type AttackDodgeUxTraceEntry = {
   elapsedMs: number;
+  /** Monotonic timestamp for ordering UI samples within this page lifetime. */
+  monotonicMs?: number;
+  /** Wall-clock timestamp paired with monotonicMs for trace/video alignment. */
+  wallClockMs?: number;
   sessionId?: string;
   stage: string;
   data: Record<string, unknown>;
@@ -18,6 +22,7 @@ export type AttackDodgeUxTraceEntry = {
 type TraceSession = { id: string; traceId: string; startedAt: string };
 type TraceEnvironment = {
   buildSha: string;
+  performanceTimeOriginMs?: number;
   userAgent: string;
   viewport: { width: number; height: number; devicePixelRatio: number };
   visualViewport: { width: number; height: number; scale: number } | null;
@@ -92,6 +97,7 @@ function newTraceDocument(): AttackDodgeUxTraceDocument {
     traceId: makeId(),
     environment: {
       buildSha: BUILD_SHA,
+      performanceTimeOriginMs: typeof performance === "undefined" ? undefined : Math.round(performance.timeOrigin),
       userAgent: typeof navigator === "undefined" ? "unknown" : navigator.userAgent,
       viewport: {
         width: typeof window === "undefined" ? 0 : Math.round(window.innerWidth),
@@ -237,8 +243,11 @@ export function recordAttackDodgeUxTrace(stage: string, data: Record<string, unk
   const previous = trace.entries.at(-1);
   if (previous?.stage === stage && JSON.stringify(previous.data) === JSON.stringify(safeData)) return;
 
+  const wallClockMs = Date.now();
   const entry: AttackDodgeUxTraceEntry = {
-    elapsedMs: Math.max(0, Date.now() - Date.parse(trace.startedAt)),
+    elapsedMs: Math.max(0, wallClockMs - Date.parse(trace.startedAt)),
+    ...(typeof performance !== "undefined" ? { monotonicMs: Math.round(performance.now()) } : {}),
+    wallClockMs,
     ...(trace.activeSession ? { sessionId: trace.activeSession.id } : {}),
     stage,
     data: safeData,
