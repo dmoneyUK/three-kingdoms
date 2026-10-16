@@ -289,7 +289,7 @@ function withFirstQueuedAttackDodgeReveal(cards: JourneyCard[], center: CardRect
 const REVEAL_CARD = { width: 90, height: 135 };
 const DUEL_REVEAL_CARD = { width: 90, height: 135 };
 const PARKED_CARD = { width: 48, height: 72 };
-const LUST_COST_FRAME = { width: 340, height: 176, cardOffsetLeft: 12, cardOffsetTop: 30 };
+const LUST_COST_FRAME = { width: 196, height: 200, cardOffsetLeft: 53, cardOffsetTop: 48 };
 const PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH = 520;
 // Two 15px mobile lines at 1.2 line-height plus 4px vertical padding and
 // borders. Used only before the mounted announcement can be measured.
@@ -430,17 +430,6 @@ function battlefieldLustCostFrame(card: CardRect): CardRect {
     top: card.top - LUST_COST_FRAME.cardOffsetTop,
     width: Math.max(1, Math.min(LUST_COST_FRAME.width, safeRight - safeLeft)),
     height: LUST_COST_FRAME.height,
-  };
-}
-
-function battlefieldLustDuelAnnouncementAnchor(card: CardRect): CardRect {
-  const frame = battlefieldLustCostFrame(card);
-  return {
-    ...frame,
-    // Keep the narration below the stable central LUST Frame. Top-seat cost
-    // cards park directly beneath their owner and would cross an above-frame
-    // narration band after the reveal completes.
-    top: frame.top + frame.height + 50 + PUBLIC_CARD_ANNOUNCEMENT_GAP + 8,
   };
 }
 
@@ -759,6 +748,7 @@ function PublicCardAnnouncement({
   outcome,
   negationWaiting = false,
   stableCenterAnchor = false,
+  preferredVerticalMode,
   privateDrawAware = false,
 }: {
   eventId: string;
@@ -774,6 +764,7 @@ function PublicCardAnnouncement({
   outcome?: NonNullable<PublicCardDisplayAction["settlement"]>["outcome"];
   negationWaiting?: boolean;
   stableCenterAnchor?: boolean;
+  preferredVerticalMode?: "above" | "below";
   privateDrawAware?: boolean;
 }) {
   const copyRef = useRef<HTMLDivElement>(null);
@@ -930,14 +921,16 @@ function PublicCardAnnouncement({
         return range.getClientRects().length;
       };
       let selected: { left: number; top: number; width: number; height: number; lines: number; message: string; compact: boolean } | null = null;
-      let verticalMode: "above" | "below" = reusableBand?.verticalMode ?? "above";
+      let verticalMode: "above" | "below" = reusableBand?.verticalMode ?? preferredVerticalMode ?? "above";
       const topOffsets = [0, -4, 4, -8, 8, -12, 12, -16, 16];
       for (const option of announcementOptions) {
         if (textElement) textElement.textContent = option.message;
         for (const width of widths) {
           copy.style.width = `${width}px`;
           const height = copy.getBoundingClientRect().height;
-          const baseTop = reusableBand?.top ?? centerCardRect.top - height - gap;
+          const baseTop = reusableBand?.top ?? (verticalMode === "below"
+            ? centerCardRect.top + centerCardRect.height + gap
+            : centerCardRect.top - height - gap);
           const centeredLeft = canonicalCenterX - width / 2;
           if (centeredLeft < safeLeft || centeredLeft + width > safeRight) continue;
           for (const offset of topOffsets) {
@@ -2363,6 +2356,7 @@ function SingleTargetCardJourney({
       outcome={allParked ? action.settlement?.outcome : undefined}
       negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
       stableCenterAnchor={motion?.type === "lust-cost"}
+      preferredVerticalMode={motion?.type === "lust-cost" ? "below" : undefined}
     />
   </section>;
 }
@@ -2958,11 +2952,12 @@ function DuelCardJourney({
       message={announcement}
       compactMessage={compactAnnouncement}
       fallbackCardRect={action.motion?.type === "lust-duel" && action.lustCostFrame
-        ? battlefieldLustDuelAnnouncementAnchor(journey.center) : journey.center}
+        ? battlefieldLustCostFrame(journey.center) : journey.center}
       phaseNotice={action.phaseNotice}
       outcome={action.settlement?.outcome}
       negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
       stableCenterAnchor={action.motion?.type === "lust-duel"}
+      preferredVerticalMode={action.motion?.type === "lust-duel" ? "below" : undefined}
     />
   </section>;
 }

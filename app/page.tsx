@@ -836,7 +836,7 @@ function lustDuelOrderMessage(
   const name = (player: { name: string; hero?: string | null }) => player.hero
     ? heroName(player.hero)
     : player.name;
-  return `LUST Duel: ${name(first)} and ${name(second)}; ${name(firstActor)} plays Attack first.`;
+  return `${name(first)} vs. ${name(second)} · ${name(firstActor)} attacks first.`;
 }
 function heroSkillNames(hero: Pick<Hero, "id" | "skills">) { return hero.skills?.map((skill) => skill.name) ?? [heroSkillName(hero.id) ?? "Hero"]; }
 function heroSkillName(id?: string | null) { return id ? HEROES.find((hero) => hero.id === id)?.skills[0]?.name ?? null : null; }
@@ -4647,6 +4647,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && (publicCardDisplayAction.targetId === null || rootActionTarget?.name)
     && !rootActionTemporarilyBlocked);
   const publicCardDisplayReady = publicCardDisplayEnabled;
+  const activeLustDisplayAction = publicCardDisplayReady && publicCardDisplayAction?.lustCostFrame
+    && (publicCardDisplayAction.motion?.type === "lust-cost" || publicCardDisplayAction.motion?.type === "lust-duel")
+    ? publicCardDisplayAction : null;
+  const activeLustPresentationEventIds = new Set([
+    activeLustDisplayAction?.rootEventId,
+    activeLustDisplayAction?.lustCostFrame?.activationEventId,
+    activeLustDisplayAction?.settlement?.eventId,
+  ].filter((eventId): eventId is string => Boolean(eventId)));
+  const effectNoticeOwnedByLustPresentation = Boolean(effectNotice
+    && activeLustPresentationEventIds.has(effectNotice.eventId));
   const publicCardDisplayOwnsPresentation = Boolean(publicCardDisplayReady
     || publicCardDisplayAction?.motion?.type === "attack-dodge"
       && rootActionSource?.name
@@ -5696,9 +5706,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       />
       {effectNotice && effectNotice.roomCode === room.code && effectNotice.viewerId === room.meId
         && !effectNotice.beautyRootEventId
-        && !(publicCardDisplayReady && (publicCardDisplayAction?.motion?.type === "lust-cost" || publicCardDisplayAction?.motion?.type === "lust-duel")
-          && (publicCardDisplayAction.lustCostFrame?.activationEventId === effectNotice.eventId
-            || publicCardDisplayAction.settlement?.eventId === effectNotice.eventId))
+        && !effectNoticeOwnedByLustPresentation
           && <div key={effectNotice.eventId} className={`effect-notice${effectNotice.exiting ? " is-exiting" : ""}`} role="status" aria-live="polite" aria-atomic="true" data-effect-notice-event-id={effectNotice.eventId} data-diao-chan-beauty-root-event-id={effectNotice.beautyRootEventId} data-diao-chan-beauty-source-id={effectNotice.beautySourceId} data-diao-chan-beauty-proof-event-id={effectNotice.beautyProofEventId} data-diao-chan-beauty-phase={effectNotice.beautyPhase}><span>{effectNotice.heading}</span><b>{effectNotice.message}</b></div>}
       </div>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}

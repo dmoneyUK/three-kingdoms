@@ -1277,8 +1277,9 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-journey-card[data-public-card-journey-size="thumbnail"] .public-card-duel-physical-face>.played-card>i small{font-size:5px}
 .public-card-journey-card[data-public-card-journey-size="thumbnail"] .public-card-duel-physical-face>.played-card .card-name-mark{font-size:clamp(8px,2.4vw,10px)}
 .public-card-journey-card[data-public-card-journey-size="thumbnail"] .public-card-duel-physical-face>.played-card>strong{font-size:4px}
-.public-card-lust-cost-frame-panel{position:absolute;z-index:0;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:9px;padding:13px 13px 13px 112px;overflow:hidden;border:1px solid #d4b46f;background:#11140ff5;box-shadow:0 8px 24px #000b;color:#ead7a5;text-align:left;pointer-events:none}
-.public-card-lust-cost-frame-title{display:block;color:#e7c974;font:700 11px/1.2 Arial,sans-serif;letter-spacing:.09em;text-transform:uppercase}
+.public-card-lust-cost-frame-panel{position:absolute;z-index:0;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:11px 10px;overflow:hidden;border:1px solid #d4b46f;background:#11140ff5;box-shadow:0 8px 24px #000b;color:#ead7a5;text-align:center;pointer-events:none;transition:transform .38s cubic-bezier(.2,.7,.2,1)}
+.public-card-lust-cost-frame-panel::after{content:"";position:absolute;inset:4px;border:1px solid #d4b46f66;pointer-events:none}
+.public-card-lust-cost-frame-title{position:relative;z-index:1;display:block;width:100%;color:#e7c974;font:700 22px/1.1 Arial,sans-serif;letter-spacing:.14em;text-align:center;text-transform:uppercase}
 .public-card-journey-card.is-lust-cost>.played-card{position:relative;z-index:1;box-shadow:0 0 0 1px #d4b46f,0 8px 20px #000c}
 .public-card-journey-card>.played-card{width:100%;height:100%;min-width:0;min-height:0;padding:7px 4px;animation:none;border-radius:7px;box-shadow:0 0 0 1px #d4b46f99,0 8px 20px #000c}
 .public-card-journey-card>.played-card{transition:padding .38s ease,border-radius .38s ease}
