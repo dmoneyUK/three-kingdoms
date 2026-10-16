@@ -1310,6 +1310,11 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-journey-card.is-deflection>.played-card{position:relative;z-index:1}
 .public-card-journey-card.is-deflection .public-card-journey-semantic{left:50%;right:auto;top:-14px;bottom:auto;transform:translateX(-50%);padding:2px 4px;background:#181913;color:#f5dda1;font-size:7px;letter-spacing:.06em}
 .public-card-display-journey-copy{position:fixed;left:0;top:0;z-index:2;box-sizing:border-box;width:min(calc(100vw - 16px),520px);max-width:520px;min-height:28px;margin:0;padding:4px 10px;translate:none;border:1px solid #8e784866;background:#11140fe8;box-shadow:0 4px 12px #0008;text-align:center;pointer-events:none}
+.public-card-display.public-skill-event-announcement{display:contents}
+.public-skill-event-announcement>.public-card-display-journey-copy{z-index:18}
+.public-skill-event-announcement.is-exiting>.public-card-display-journey-copy{opacity:0;transition:opacity .16s ease}
+.public-card-display-journey-copy>.public-event-announcement-heading{display:block;color:#b9a36f;font:700 8px/1.2 Arial,sans-serif;letter-spacing:.18em}
+.public-card-display-journey-copy.public-event-announcement-copy>b{font:600 12.5px/1.35 Arial,sans-serif;letter-spacing:normal}
 .public-card-display-journey[data-public-card-motion="lust-duel"]>.public-card-display-journey-copy{display:flex;min-height:50px;align-items:center;justify-content:center}
 .public-card-display-journey-copy>b{display:block;max-width:100%;color:#f3ead8;font:600 15px/1.2 Arial,sans-serif;letter-spacing:.01em;white-space:normal;overflow-wrap:anywhere}
 .public-card-display-journey-copy.is-negation-waiting{width:min(calc(100vw - 24px),420px);padding:4px 8px;background:#11140fe8}
@@ -1327,6 +1332,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 @media(max-width:420px){.public-card-display-journey-copy{padding:4px 8px}.public-card-display-journey-copy.is-negation-waiting{padding:4px 8px}}
 .local-player-dock.local-dock-attack-response{position:relative;outline:2px solid #c94e43;outline-offset:-3px;box-shadow:inset 0 0 0 2px #c94e4355,0 0 18px #d15a4e33}
 @media(prefers-reduced-motion:reduce){.public-card-journey-card,.public-card-journey-card>.played-card>i,.public-card-journey-card>.played-card>i small{transition:none}.public-card-display-journey-copy{transition:none}}
+@media(prefers-reduced-motion:reduce){.public-skill-event-announcement.is-exiting>.public-card-display-journey-copy{opacity:1;transition:none}}
 
 /* Keep the authoritative Dying handoff readable without restoring a combat panel. */
 .interaction-stage-dying{width:min(100%,560px);padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important}

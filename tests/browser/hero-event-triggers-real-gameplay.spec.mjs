@@ -111,20 +111,24 @@ test("real Beauty Outshining the Moon appears only after Diao Chan ends her turn
   expect((await view(request, seedData, 0)).currentAction.triggerOptions.map((option) => option.effectId)).toContain("diao_chan_beauty_outshining_moon");
   const activated = await activateDirectSkill({ page, request, seedData, playerIndex: 0, label: "Beauty Outshining the Moon", providerId: "diao_chan_beauty_outshining_moon" });
   expect(activated.result.room.myHand.map((held) => held.id)).toContain("real-beauty-draw");
-  const notice = page.locator(".effect-notice");
+  const notice = page.locator("[data-public-skill-event-announcement='true']");
   await expect(notice).toHaveCount(1);
+  await expect(notice.locator(".played-card")).toHaveCount(0);
   await expect(notice).toContainText("BEAUTY");
   await expect(notice).toContainText("DIAO CHAN used Beauty and drew 1 card.");
   await expect(notice).not.toContainText("DIAO CHAN activated Beauty Outshining the Moon.");
-  await expect(notice).toHaveAttribute("data-diao-chan-beauty-phase", "DRAWN");
-  const rootEventId = await notice.getAttribute("data-diao-chan-beauty-root-event-id");
-  const drawEventId = await notice.getAttribute("data-diao-chan-beauty-proof-event-id");
+  await expect(page.locator(".effect-notice")).toHaveCount(0);
+  await expect(notice).toHaveAttribute("data-public-event-semantics", "PROVEN");
+  await expect(notice).toHaveAttribute("data-public-event-phase", "DRAWN");
+  const rootEventId = await notice.getAttribute("data-public-event-root-id");
+  const drawEventId = await notice.getAttribute("data-public-event-proof-id");
   expect(rootEventId).toBeTruthy();
   expect(drawEventId).toBeTruthy();
   expect(drawEventId).not.toBe(rootEventId);
-  await expect(notice).toHaveAttribute("data-effect-notice-event-id", rootEventId);
+  await expect(notice).toHaveAttribute("data-public-event-source-id", seedData.players[0].id);
+  await expect(notice).toHaveAttribute("data-public-event-id", rootEventId);
   await page.reload();
-  await expect(page.locator(".effect-notice")).toHaveCount(0);
+  await expect(page.locator("[data-public-skill-event-announcement='true']")).toHaveCount(0);
 });
 
 test("real Second Wind is reached after Lu Xun spends his last Attack and draws from Skills", async ({ page, request }) => {

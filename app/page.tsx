@@ -25,7 +25,7 @@ import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus } from "../game/public-activity";
 import { CardFace } from "./card-face";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
-import { PublicCardDisplay, publicCardActionKey, type PublicCardDisplayAction } from "./public-card-display";
+import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, publicCardActionKey, type PublicCardDisplayAction, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
@@ -4653,6 +4653,28 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     || (publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation")
       && rootActionSource?.name
       && (publicCardDisplayAction.targetId === null || rootActionTarget?.name));
+  const beautyNotice: PublicSkillEventAnnouncement | null = effectNotice?.beautyRootEventId
+    && effectNotice.beautySourceId && effectNotice.beautyProofEventId && effectNotice.beautyPhase
+    ? {
+      semantics: "PROVEN",
+      kind: "SKILL_OUTCOME",
+      eventId: effectNotice.eventId,
+      rootEventId: effectNotice.beautyRootEventId,
+      sourceId: effectNotice.beautySourceId,
+      proofEventId: effectNotice.beautyProofEventId,
+      phase: effectNotice.beautyPhase,
+      heading: effectNotice.heading,
+      message: effectNotice.message,
+      exiting: effectNotice.exiting,
+    }
+    : null;
+  const visibleBeautyAnnouncement = beautyNotice
+    && effectNotice?.roomCode === room.code
+    && effectNotice.viewerId === room.meId
+    && Boolean(beautyNotice.sourceId && beautyNotice.proofEventId)
+    && !publicCardDisplayOwnsPresentation
+    ? beautyNotice
+    : null;
   const publicCardJourneyEventIds = publicCardDisplayAction?.motion?.type === "attack-dodge"
     ? [publicCardDisplayAction.rootEventId, publicCardDisplayAction.response?.eventId, publicCardDisplayAction.deflection?.eventId].filter((eventId): eventId is string => Boolean(eventId))
     : publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation"
@@ -5670,6 +5692,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         eventTimer={<>{privateDrawTimer}{harvestEventTimer}</>}
       />
       {effectNotice && effectNotice.roomCode === room.code && effectNotice.viewerId === room.meId
+        && !effectNotice.beautyRootEventId
         && !(publicCardDisplayReady && (publicCardDisplayAction?.motion?.type === "lust-cost" || publicCardDisplayAction?.motion?.type === "lust-duel")
           && (publicCardDisplayAction.lustCostFrame?.activationEventId === effectNotice.eventId
             || publicCardDisplayAction.settlement?.eventId === effectNotice.eventId))
@@ -5738,6 +5761,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           ? { ...current, journeySettled: true }
           : current);
       }} />
+      {visibleBeautyAnnouncement && <PublicSkillEventAnnouncementLayer
+        announcement={visibleBeautyAnnouncement}
+        roomCode={room.code}
+        viewerId={room.meId}
+      />}
       <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey} />
       {infoCard && <CardDetailsPreview card={infoCard} context={infoCardContext} onClose={closeCardDetails} />}
       {infoHero && me && <HeroDetailsPreview hero={infoHero} onClose={closeHeroDetails} />}

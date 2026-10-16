@@ -101,6 +101,20 @@ export type PublicCardDisplayAction = {
   responses?: readonly PublicCardDisplayResponseNode[];
 };
 
+/** A public, proof-backed event with no physical card face or card anchor. */
+export type PublicSkillEventAnnouncement = {
+  semantics: "PROVEN";
+  kind: "SKILL_OUTCOME";
+  eventId: string;
+  rootEventId: string;
+  sourceId: string;
+  proofEventId: string;
+  phase: "ACTIVATION" | "DRAWN";
+  heading: string;
+  message: string;
+  exiting: boolean;
+};
+
 type CardRect = { left: number; top: number; width: number; height: number };
 type JourneyCard = {
   eventId: string;
@@ -737,6 +751,7 @@ function PublicCardAnnouncement({
   placementKey,
   viewerLayoutKey,
   phase,
+  heading,
   message,
   compactMessage,
   fallbackCardRect,
@@ -744,12 +759,14 @@ function PublicCardAnnouncement({
   outcome,
   negationWaiting = false,
   stableCenterAnchor = false,
+  privateDrawAware = false,
 }: {
   eventId: string;
-  anchorEventId?: string;
+  anchorEventId?: string | null;
   placementKey: string;
   viewerLayoutKey: string;
   phase: JourneyCard["phase"] | "static";
+  heading?: string;
   message: string;
   compactMessage?: string;
   fallbackCardRect: CardRect | null;
@@ -757,6 +774,7 @@ function PublicCardAnnouncement({
   outcome?: NonNullable<PublicCardDisplayAction["settlement"]>["outcome"];
   negationWaiting?: boolean;
   stableCenterAnchor?: boolean;
+  privateDrawAware?: boolean;
 }) {
   const copyRef = useRef<HTMLDivElement>(null);
   const measuredCenterRef = useRef<{ bandKey: string; rect: CardRect } | null>(null);
@@ -776,14 +794,17 @@ function PublicCardAnnouncement({
     const display = copy?.closest<HTMLElement>(".public-card-display");
     if (!copy || !display) return;
 
-    const copyAnchorEventId = anchorEventId ?? eventId;
-    const getAnchor = () => Array.from(display.querySelectorAll<HTMLElement>("[data-public-card-copy-anchor-event-id]"))
-      .find((element) => element.dataset.publicCardCopyAnchorEventId === copyAnchorEventId) ?? null;
+    const copyAnchorEventId = anchorEventId === null ? "" : anchorEventId ?? eventId;
+    const getAnchor = () => copyAnchorEventId
+      ? Array.from(display.querySelectorAll<HTMLElement>("[data-public-card-copy-anchor-event-id]"))
+        .find((element) => element !== copy && element.dataset.publicCardCopyAnchorEventId === copyAnchorEventId) ?? null
+      : null;
     const toCardRect = (rect: DOMRect): CardRect => ({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
     let resizeObserver: ResizeObserver | null = null;
+    let mutationObserver: MutationObserver | null = null;
     let frame = 0;
     const bandKey = `${viewerLayoutKey}:${placementKey}`;
-    const protectedSelectors = ".opponent-player-card, .player-square, .player-board-status, .visible-countdown, .stage-system-cluster, .public-activity-chip, .local-player-dock, .local-hand-rail, .console-guidance";
+    const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-content"] : [])].join(", ");
 
     const place = () => {
       const anchor = getAnchor();
@@ -847,7 +868,7 @@ function PublicCardAnnouncement({
 
       const gap = PUBLIC_CARD_ANNOUNCEMENT_GAP;
       const obstacles: Array<{ element: HTMLElement | null; rect: DOMRect }> = [...document.querySelectorAll<HTMLElement>(
-        ".opponent-player-card, .player-square, .player-board-status, .visible-countdown, .stage-system-cluster, .public-activity-chip, .local-player-dock, .local-hand-rail, .console-guidance, [data-public-card-copy-anchor-event-id]",
+        [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".local-player-dock", ".local-hand-rail", ".console-guidance", "[data-public-card-copy-anchor-event-id]", ...(privateDrawAware ? [".private-draw-content"] : [])].join(", "),
       )].flatMap((element) => {
         if (element === anchor || element === copy
           || element.dataset.publicCardCopyAnchorEventId === copyAnchorEventId
@@ -873,6 +894,14 @@ function PublicCardAnnouncement({
       }
       const existingBand = publicCardAnnouncementBands.get(bandKey);
       const reusableBand = existingBand?.viewportKey === viewportKey ? existingBand : null;
+      const obstacleClearance = (element: HTMLElement | null) => privateDrawAware && element?.matches(".private-draw-content") ? 10 : 2;
+      const overlapsObstacle = (rect: DOMRect, element: HTMLElement | null, obstacleRect: DOMRect) =>
+        rectsOverlap(toCardRect(rect), obstacleRect, obstacleClearance(element));
+      const privateDrawObstacle = privateDrawAware
+        ? obstacles.find(({ element }) => element?.matches(".private-draw-content")) ?? null
+        : null;
+      const staysAbovePrivateDraw = (top: number, height: number) => !privateDrawObstacle
+        || top + height + 10 <= privateDrawObstacle.rect.top;
       const revealedCenterX = centerCardRect.width > 0
         ? centerCardRect.left + centerCardRect.width / 2
         : tableRect.left + tableRect.width / 2;
@@ -915,6 +944,7 @@ function PublicCardAnnouncement({
             const top = baseTop + offset;
             if (reusableBand && Math.abs(top - reusableBand.top) > 16) continue;
             if (top < safeTop || top + height > safeBottom) continue;
+            if (!staysAbovePrivateDraw(top, height)) continue;
             const clearsCenterCard = verticalMode === "below"
               ? top >= centerCardRect.top + centerCardRect.height + gap - 0.5
               : top + height + gap <= centerCardRect.top + 0.5;
@@ -924,10 +954,8 @@ function PublicCardAnnouncement({
             const rect = copy.getBoundingClientRect();
             const lines = textLines();
             if (lines > 2) continue;
-            const overlapsObstacle = obstacles.some(({ element, rect: obstacleRect }) => element !== anchor
-              && rect.left < obstacleRect.right && rect.right > obstacleRect.left
-              && rect.top < obstacleRect.bottom && rect.bottom > obstacleRect.top);
-            if (overlapsObstacle) continue;
+            if (obstacles.some(({ element, rect: obstacleRect }) => element !== anchor
+              && overlapsObstacle(rect, element, obstacleRect))) continue;
             selected = { left: centeredLeft, top, width, height: rect.height, lines, message: option.message, compact: option.compact };
             break;
           }
@@ -950,7 +978,7 @@ function PublicCardAnnouncement({
             const belowCandidates = [
               centerCardRect.top + centerCardRect.height + gap,
               ...obstacles.map(({ rect }) => rect.bottom + gap),
-            ].filter((top) => Number.isFinite(top) && top >= safeTop)
+            ].filter((top) => Number.isFinite(top) && top >= safeTop && staysAbovePrivateDraw(top, height))
               .sort((first, second) => first - second);
             for (const belowTop of belowCandidates) {
               if (belowTop + height > safeBottom) continue;
@@ -961,10 +989,9 @@ function PublicCardAnnouncement({
               copy.style.top = `${belowTop}px`;
               const rect = copy.getBoundingClientRect();
               const lines = textLines();
-              const overlapsObstacle = obstacles.some(({ element, rect: obstacleRect }) => element !== anchor
-                && rect.left < obstacleRect.right && rect.right > obstacleRect.left
-                && rect.top < obstacleRect.bottom && rect.bottom > obstacleRect.top);
-              if (lines <= 2 && !overlapsObstacle) {
+              const hasObstacleCollision = obstacles.some(({ element, rect: obstacleRect }) => element !== anchor
+                && overlapsObstacle(rect, element, obstacleRect));
+              if (lines <= 2 && !hasObstacleCollision) {
                 selected = { left, top: belowTop, width, height: rect.height, lines, message: compactOption.message, compact: compactOption.compact };
                 verticalMode = "below";
                 break;
@@ -972,6 +999,45 @@ function PublicCardAnnouncement({
             }
             if (selected) break;
           }
+        }
+      }
+
+      if (!selected && privateDrawAware) {
+        const currentTop = reusableBand?.top ?? centerCardRect.top - copy.getBoundingClientRect().height - gap;
+        for (const option of announcementOptions) {
+          if (textElement) textElement.textContent = option.message;
+          for (const width of widths) {
+            copy.style.width = `${width}px`;
+            const height = copy.getBoundingClientRect().height;
+            const left = canonicalCenterX - width / 2;
+            if (left < safeLeft || left + width > safeRight) continue;
+            const candidateTops = new Set<number>([safeTop, currentTop, safeBottom - height]);
+            for (const { element, rect } of obstacles) {
+              const clearance = obstacleClearance(element);
+              candidateTops.add(rect.top - height - clearance);
+              candidateTops.add(rect.bottom + clearance);
+            }
+            const orderedTops = [...candidateTops]
+              .filter((top) => Number.isFinite(top) && top >= safeTop && top + height <= safeBottom && staysAbovePrivateDraw(top, height))
+              .sort((first, second) => Math.abs(first - currentTop) - Math.abs(second - currentTop));
+            for (const top of orderedTops) {
+              if (reusableBand && Math.abs(top - reusableBand.top) > 16
+                && !obstacles.some(({ element, rect }) => privateDrawAware && element?.matches(".private-draw-content")
+                  && Math.abs(top + height + 10 - rect.top) < 0.5)) continue;
+              copy.style.left = `${left}px`;
+              copy.style.top = `${top}px`;
+              const rect = copy.getBoundingClientRect();
+              const lines = textLines();
+              const hasObstacleCollision = obstacles.some(({ element, rect: obstacleRect }) =>
+                overlapsObstacle(rect, element, obstacleRect));
+              if (lines <= 2 && !hasObstacleCollision) {
+                selected = { left, top, width, height: rect.height, lines, message: option.message, compact: option.compact };
+                break;
+              }
+            }
+            if (selected) break;
+          }
+          if (selected) break;
         }
       }
 
@@ -985,7 +1051,19 @@ function PublicCardAnnouncement({
         const preferredTop = reusableBand?.top ?? (verticalMode === "below"
           ? centerCardRect.top + centerCardRect.height + gap
           : centerCardRect.top - height - gap);
-        const top = Math.max(safeTop, Math.min(safeBottom - height, preferredTop));
+        const fallbackTops = privateDrawAware
+          ? [safeTop, preferredTop, ...obstacles.flatMap(({ element, rect }) => [rect.top - height - obstacleClearance(element), rect.bottom + obstacleClearance(element)])]
+            .filter((candidate) => Number.isFinite(candidate) && candidate >= safeTop && candidate + height <= safeBottom && staysAbovePrivateDraw(candidate, height))
+            .sort((first, second) => Math.abs(first - preferredTop) - Math.abs(second - preferredTop))
+          : [Math.max(safeTop, Math.min(safeBottom - height, preferredTop))];
+        const safeFallbackTop = fallbackTops.find((candidate) => obstacles.every(({ element, rect }) =>
+          !overlapsObstacle(new DOMRect(left, candidate, width, height), element, rect)));
+        if (privateDrawAware && safeFallbackTop === undefined) {
+          copy.style.visibility = "hidden";
+          copy.dataset.publicCardAnnouncementFallback = "true";
+          return;
+        }
+        const top = safeFallbackTop ?? fallbackTops[0] ?? Math.max(safeTop, Math.min(safeBottom - height, preferredTop));
         copy.style.left = `${left}px`;
         copy.style.top = `${top}px`;
         const range = document.createRange();
@@ -1037,31 +1115,85 @@ function PublicCardAnnouncement({
     if (table) resizeObserver?.observe(table);
     if (playerBoard) resizeObserver?.observe(playerBoard);
     for (const element of document.querySelectorAll<HTMLElement>(protectedSelectors)) resizeObserver?.observe(element);
+    if (privateDrawAware && typeof MutationObserver !== "undefined") {
+      mutationObserver = new MutationObserver((records) => {
+        const affectsPrivateDraw = records.some((record) => {
+          const target = record.target instanceof Element ? record.target : record.target.parentElement;
+          if (target?.closest(".public-skill-event-announcement")) return false;
+          if (target?.closest(".private-draw-content")) return true;
+          return [...record.addedNodes, ...record.removedNodes].some((node) => node instanceof Element
+            && (node.matches(".private-draw-content") || Boolean(node.querySelector(".private-draw-content"))));
+        });
+        if (!affectsPrivateDraw) return;
+        for (const element of document.querySelectorAll<HTMLElement>(".private-draw-content")) resizeObserver?.observe(element);
+        schedule();
+      });
+      // Observe only actual private-draw changes; rewriting this live region's
+      // own text must not schedule another placement pass.
+      mutationObserver.observe(display.closest<HTMLElement>(".game-shell") ?? document.body, { childList: true, subtree: true });
+    }
 
     return () => {
       window.removeEventListener("resize", onResize);
       viewport?.removeEventListener("resize", onResize);
       viewport?.removeEventListener("scroll", onResize);
       resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [anchorEventId, compactMessage, displayedMessage, eventId, message, negationWaiting, phase, placementKey, stableCenterAnchor, stableFallbackCardRect, viewerLayoutKey]);
+  }, [anchorEventId, compactMessage, displayedMessage, eventId, heading, message, negationWaiting, phase, placementKey, privateDrawAware, stableCenterAnchor, stableFallbackCardRect, viewerLayoutKey]);
 
   return <div
     ref={copyRef}
-    className={`public-card-display-copy public-card-display-journey-copy${negationWaiting ? " is-negation-waiting" : ""}`}
+    className={`public-card-display-copy public-card-display-journey-copy${negationWaiting ? " is-negation-waiting" : ""}${heading ? " public-event-announcement-copy" : ""}`}
     role="status"
     aria-live="polite"
     aria-atomic="true"
     data-public-card-announcement="true"
     data-public-card-announcement-event-id={eventId}
-    data-public-card-copy-anchor-event-id={anchorEventId ?? eventId}
+    data-public-card-copy-anchor-event-id={anchorEventId === null ? undefined : anchorEventId ?? eventId}
     data-public-card-phase-notice={phaseNotice}
     data-public-card-result={outcome}
     style={{ top: 0, left: 0, visibility: "hidden" }}
   >
+    {heading && <span className="public-event-announcement-heading">{heading}</span>}
     <b aria-label={message}>{displayedMessage}</b>
   </div>;
+}
+
+export function PublicSkillEventAnnouncementLayer({
+  announcement,
+  roomCode,
+  viewerId,
+}: {
+  announcement: PublicSkillEventAnnouncement;
+  roomCode: string;
+  viewerId: string;
+}) {
+  return <section
+    className={`public-card-display public-card-display-journey public-skill-event-announcement${announcement.exiting ? " is-exiting" : ""}`}
+    data-public-skill-event-announcement="true"
+    data-public-event-semantics={announcement.semantics}
+    data-public-event-kind={announcement.kind}
+    data-public-event-id={announcement.eventId}
+    data-public-event-root-id={announcement.rootEventId}
+    data-public-event-source-id={announcement.sourceId}
+    data-public-event-proof-id={announcement.proofEventId}
+    data-public-event-phase={announcement.phase}
+  >
+    <PublicCardAnnouncement
+      eventId={announcement.eventId}
+      anchorEventId={null}
+      placementKey={`${roomCode}:public-skill-event-band`}
+      viewerLayoutKey={viewerId}
+      phase="static"
+      heading={announcement.heading}
+      message={announcement.message}
+      fallbackCardRect={null}
+      stableCenterAnchor
+      privateDrawAware
+    />
+  </section>;
 }
 
 function AttackDodgeCardJourney({
