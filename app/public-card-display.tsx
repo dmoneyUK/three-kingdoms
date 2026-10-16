@@ -299,7 +299,10 @@ function boundCardRect(left: number, top: number, width: number, height: number)
   };
 }
 
-function battlefieldCenterCard(size: { width: number; height: number } = REVEAL_CARD): CardRect {
+function battlefieldCenterCard(
+  size: { width: number; height: number } = REVEAL_CARD,
+  safety: { reserveSeatHistoryDepth?: number; reservePlayerIds?: readonly string[] } = {},
+): CardRect {
   const table = document.querySelector<HTMLElement>(".play-table");
   if (!table) return boundCardRect((window.innerWidth - size.width) / 2, (window.innerHeight - size.height) / 2, size.width, size.height);
   const bounds = table.getBoundingClientRect();
@@ -308,6 +311,19 @@ function battlefieldCenterCard(size: { width: number; height: number } = REVEAL_
   const obstacles = [...document.querySelectorAll<HTMLElement>(
     ".opponent-player-card[data-player-anchor], .player-square, .player-board-status, .visible-countdown, .stage-system-cluster",
   )].map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
+  const playerIds = new Set(safety.reservePlayerIds ?? []);
+  if (safety.reserveSeatHistoryDepth && safety.reserveSeatHistoryDepth > 0) {
+    document.querySelectorAll<HTMLElement>("[data-player-anchor]").forEach((anchor) => {
+      if (anchor.dataset.playerAnchor) playerIds.add(anchor.dataset.playerAnchor);
+    });
+  }
+  const historyDepth = Math.max(0, Math.floor(safety.reserveSeatHistoryDepth ?? (playerIds.size ? 1 : 0)));
+  for (const playerId of playerIds) {
+    for (let cardIndex = 0; cardIndex < historyDepth; cardIndex += 1) {
+      const reserved = seatHistoryCardParking(playerId, cardIndex, [])?.rect;
+      if (reserved) obstacles.push(new DOMRect(reserved.left, reserved.top, reserved.width, reserved.height));
+    }
+  }
   const announcementWidth = Math.min(PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH, window.innerWidth - 16, bounds.width - 16);
   const offsets: Array<[number, number]> = [[0, 0]];
   for (let distance = 8; distance <= 200; distance += 8) {
@@ -671,19 +687,55 @@ function publicCardAnnouncementCopy(
   return { message, compactMessage: compactMessage === message ? undefined : compactMessage };
 }
 
-function withPublicCardPhaseNotice(message: string, phaseNotice: string | undefined) {
+function withPublicCardPhaseNotice(message: string, phaseNotice: string | undefined, compact = false) {
   const concise = message.trim()
     .replace(/\.\s+Play Dodge or Skip\.$/i, ".")
     .replace(/\.\s+(Resolved:)/i, "; $1")
     .replace(/\.\s+(\d+\s+(?:targets|choices) resolved\.)/i, "; $1");
   const clause = publicCardPhaseClause(phaseNotice);
   if (!clause) return concise;
+  if (compact && phaseNotice?.includes("NEGATION")) {
+    const phase = phaseNotice.includes("NEGATION MAY BE PLAYED") ? "Negation available" : "Negation open";
+    const targetAction = concise.match(/^(.*?) played (.*?) (?:on|targeting) (.*?)[.!?]*$/i);
+    if (targetAction) return `${targetAction[1]}: ${targetAction[2]} on ${targetAction[3]} · ${phase}`;
+    const counterAction = concise.match(/^(.*?) played Negation against (.*?)[.!?]*$/i);
+    if (counterAction) return `${counterAction[1]}: Negation vs ${counterAction[2]} · ${phase}`;
+  }
   return `${concise.replace(/[.!?]+$/, "")}; ${clause}.`;
+}
+
+type PublicCardAnnouncementBand = {
+  viewportKey: string;
+  left: number;
+  top: number;
+  width: number;
+  centerX: number;
+  centerCardRect: CardRect;
+  verticalMode: "above" | "below";
+};
+
+const publicCardAnnouncementBands = new Map<string, PublicCardAnnouncementBand>();
+
+function rememberPublicCardAnnouncementBand(key: string, band: PublicCardAnnouncementBand) {
+  publicCardAnnouncementBands.delete(key);
+  publicCardAnnouncementBands.set(key, band);
+  while (publicCardAnnouncementBands.size > 128) {
+    const oldest = publicCardAnnouncementBands.keys().next().value;
+    if (oldest === undefined) break;
+    publicCardAnnouncementBands.delete(oldest);
+  }
+}
+
+function publicCardAnnouncementPlacementKey(action: PublicCardDisplayAction, roomCode?: string) {
+  const scope = action.motion?.scopeKey ?? action.interactionId ?? action.rootEventId;
+  return `${roomCode ?? "room"}:${scope}`;
 }
 
 function PublicCardAnnouncement({
   eventId,
   anchorEventId,
+  placementKey,
+  viewerLayoutKey,
   phase,
   message,
   compactMessage,
@@ -695,6 +747,8 @@ function PublicCardAnnouncement({
 }: {
   eventId: string;
   anchorEventId?: string;
+  placementKey: string;
+  viewerLayoutKey: string;
   phase: JourneyCard["phase"] | "static";
   message: string;
   compactMessage?: string;
@@ -705,7 +759,7 @@ function PublicCardAnnouncement({
   stableCenterAnchor?: boolean;
 }) {
   const copyRef = useRef<HTMLDivElement>(null);
-  const measuredCenterRef = useRef<{ eventId: string; rect: CardRect } | null>(null);
+  const measuredCenterRef = useRef<{ bandKey: string; rect: CardRect } | null>(null);
   const [displayedMessage, setDisplayedMessage] = useState(message);
   const fallbackLeft = fallbackCardRect?.left;
   const fallbackTop = fallbackCardRect?.top;
@@ -727,30 +781,63 @@ function PublicCardAnnouncement({
       .find((element) => element.dataset.publicCardCopyAnchorEventId === copyAnchorEventId) ?? null;
     const toCardRect = (rect: DOMRect): CardRect => ({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
     let resizeObserver: ResizeObserver | null = null;
-    let anchorObserver: MutationObserver | null = null;
     let frame = 0;
-    const observedAnchor = getAnchor();
+    const bandKey = `${viewerLayoutKey}:${placementKey}`;
+    const protectedSelectors = ".opponent-player-card, .player-square, .player-board-status, .visible-countdown, .stage-system-cluster, .public-activity-chip, .local-player-dock, .local-hand-rail, .console-guidance";
 
     const place = () => {
       const anchor = getAnchor();
       const actualRect = anchor?.getBoundingClientRect();
-      const hasActualCardRect = !stableCenterAnchor && Boolean(actualRect && actualRect.width > 0 && actualRect.height > 0);
-      let cardRect: CardRect | null = null;
+      const tableRect = display.closest<HTMLElement>(".play-table")?.getBoundingClientRect() ?? null;
+      if (!tableRect) return;
 
-      if (stableCenterAnchor && stableFallbackCardRect) {
-        cardRect = stableFallbackCardRect;
-      } else if (hasActualCardRect) {
-        cardRect = toCardRect(actualRect!);
-        if (phase === "reveal") measuredCenterRef.current = { eventId, rect: cardRect };
-      } else if (measuredCenterRef.current?.eventId === eventId) {
-        cardRect = measuredCenterRef.current.rect;
-      } else if (stableFallbackCardRect) {
-        cardRect = stableFallbackCardRect;
-      }
-      if (!cardRect) {
-        const tableRect = document.querySelector<HTMLElement>(".play-table")?.getBoundingClientRect();
-        if (!tableRect) return;
-        cardRect = {
+      const visualViewport = window.visualViewport;
+      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+      const viewportLeft = visualViewport?.offsetLeft ?? 0;
+      const viewportTop = visualViewport?.offsetTop ?? 0;
+      const viewportRight = viewportLeft + (visualViewport?.width ?? viewportWidth);
+      const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight);
+      const protectedElements = [...document.querySelectorAll<HTMLElement>(protectedSelectors)];
+      const layoutElements = [...document.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor], .player-square")];
+      const boxKey = (rect: DOMRect) => [rect.left, rect.top, rect.width, rect.height].map((value) => value.toFixed(1)).join(",");
+      const viewportKey = [
+        viewportWidth,
+        window.innerHeight,
+        viewportLeft,
+        viewportTop,
+        viewportRight,
+        viewportBottom,
+        boxKey(tableRect),
+        ...layoutElements.map((element) => boxKey(element.getBoundingClientRect())),
+      ].join("|");
+      const safeLeft = Math.max(viewportLeft + 8, tableRect.left + 8);
+      const safeRight = Math.min(viewportRight - 8, tableRect.right - 8);
+      const visibleProtectedRects = protectedElements.flatMap((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return style.display === "none" || style.visibility === "hidden" || rect.width <= 0 || rect.height <= 0
+          ? []
+          : [{ element, rect }];
+      });
+      const topSeatBottom = visibleProtectedRects
+        .filter(({ element }) => element.matches(".opponent-player-card, .player-square"))
+        .reduce((bottom, { rect }) => Math.max(bottom, rect.bottom), tableRect.top);
+      const safeTop = Math.max(8, viewportTop + 4, tableRect.top + 8, topSeatBottom + 3);
+      const safeBottom = Math.min(viewportBottom - 8, tableRect.bottom - 2);
+      const maxWidth = Math.max(1, Math.min(
+        PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH,
+        negationWaiting ? 420 : PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH,
+        viewportWidth - 16,
+        safeRight - safeLeft,
+      ));
+      const isLargeRevealAnchor = phase === "reveal" && !stableCenterAnchor
+        && actualRect && actualRect.width > 0 && actualRect.height > 0;
+      let centerCardRect = isLargeRevealAnchor ? toCardRect(actualRect) : null;
+      if (centerCardRect) measuredCenterRef.current = { bandKey, rect: centerCardRect };
+      if (!centerCardRect && measuredCenterRef.current?.bandKey === bandKey) centerCardRect = measuredCenterRef.current.rect;
+      if (!centerCardRect && stableFallbackCardRect) centerCardRect = stableFallbackCardRect;
+      if (!centerCardRect) {
+        centerCardRect = {
           left: tableRect.left + tableRect.width / 2,
           top: tableRect.top + tableRect.height * 0.45,
           width: 0,
@@ -758,23 +845,12 @@ function PublicCardAnnouncement({
         };
       }
 
-      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
       const gap = PUBLIC_CARD_ANNOUNCEMENT_GAP;
-      const tableRect = display.closest<HTMLElement>(".play-table")?.getBoundingClientRect() ?? null;
-      const safeLeft = Math.max(8, tableRect?.left != null ? tableRect.left + 8 : 8);
-      const safeRight = Math.min(viewportWidth - 8, tableRect?.right != null ? tableRect.right - 8 : viewportWidth - 8);
-      const maxWidth = Math.max(1, Math.min(
-        PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH,
-        negationWaiting ? 420 : PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH,
-        viewportWidth - 16,
-        safeRight - safeLeft,
-      ));
-      const centerX = cardRect.left + cardRect.width / 2;
-      const obstacles = [...document.querySelectorAll<HTMLElement>(
-        ".opponent-player-card, .player-square, .player-board-status, .visible-countdown, .stage-system-cluster, .local-player-dock, [data-public-card-copy-anchor-event-id]",
+      const obstacles: Array<{ element: HTMLElement | null; rect: DOMRect }> = [...document.querySelectorAll<HTMLElement>(
+        ".opponent-player-card, .player-square, .player-board-status, .visible-countdown, .stage-system-cluster, .public-activity-chip, .local-player-dock, .local-hand-rail, .console-guidance, [data-public-card-copy-anchor-event-id]",
       )].flatMap((element) => {
         if (element === anchor || element === copy
-          || element.dataset.publicCardCopyAnchorEventId === eventId
+          || element.dataset.publicCardCopyAnchorEventId === copyAnchorEventId
           || element.contains(copy)) return [];
         const rect = element.getBoundingClientRect();
         const style = window.getComputedStyle(element);
@@ -782,8 +858,27 @@ function PublicCardAnnouncement({
           ? []
           : [{ element, rect }];
       });
-      const preferredTop = tableRect ? tableRect.top + 8 : 8;
-      const widths = [...new Set([maxWidth, 500, 480, 456, 440, 420, 400, 380, 360, 340, 320, 300, 280, 260, 240, 224, 208, 200, 192, 184, 176, 168, 160]
+      const anchorTarget = anchor ? {
+        left: Number(anchor.dataset.publicCardJourneyTargetLeft),
+        top: Number(anchor.dataset.publicCardJourneyTargetTop),
+        width: Number(anchor.dataset.publicCardJourneyTargetWidth),
+        height: Number(anchor.dataset.publicCardJourneyTargetHeight),
+      } : null;
+      if (anchorTarget && Object.values(anchorTarget).every(Number.isFinite)
+        && anchorTarget.width > 0 && anchorTarget.height > 0) {
+        obstacles.push({
+          element: null,
+          rect: new DOMRect(anchorTarget.left, anchorTarget.top, anchorTarget.width, anchorTarget.height),
+        });
+      }
+      const existingBand = publicCardAnnouncementBands.get(bandKey);
+      const reusableBand = existingBand?.viewportKey === viewportKey ? existingBand : null;
+      const revealedCenterX = centerCardRect.width > 0
+        ? centerCardRect.left + centerCardRect.width / 2
+        : tableRect.left + tableRect.width / 2;
+      const canonicalCenterX = reusableBand?.centerX ?? revealedCenterX;
+      const widths = [...new Set([reusableBand?.width, maxWidth, 500, 480, 456, 440, 420, 400, 380, 360, 340, 320, 300, 280, 260, 240, 224, 208, 200, 192, 184, 176, 168, 160]
+        .filter((width): width is number => typeof width === "number")
         .map((width) => Math.min(width, maxWidth)))]
         .filter((width) => width > 0)
         .sort((left, right) => right - left);
@@ -799,36 +894,41 @@ function PublicCardAnnouncement({
         fullMessageRange.selectNodeContents(textElement);
         if (fullMessageRange.getClientRects().length > 2) announcementOptions.reverse();
       }
+      const textLines = () => {
+        if (!textElement) return 0;
+        const range = document.createRange();
+        range.selectNodeContents(textElement);
+        return range.getClientRects().length;
+      };
       let selected: { left: number; top: number; width: number; height: number; lines: number; message: string; compact: boolean } | null = null;
+      let verticalMode: "above" | "below" = reusableBand?.verticalMode ?? "above";
+      const topOffsets = [0, -4, 4, -8, 8, -12, 12, -16, 16];
       for (const option of announcementOptions) {
         if (textElement) textElement.textContent = option.message;
         for (const width of widths) {
           copy.style.width = `${width}px`;
           const height = copy.getBoundingClientRect().height;
-          const top = cardRect.top - height - gap;
-          if (top < preferredTop || top < 8 || top + height > window.innerHeight - 4) continue;
-          const minCandidateLeft = safeLeft;
-          const maxCandidateLeft = safeRight - width;
-          if (maxCandidateLeft < minCandidateLeft) continue;
-          const centeredLeft = Math.max(minCandidateLeft, Math.min(maxCandidateLeft, centerX - width / 2));
-          const maxShift = Math.min(96, maxCandidateLeft - minCandidateLeft);
-          const offsets = [0, ...Array.from({ length: Math.floor(maxShift / 8) }, (_, index) => (index + 1) * 8)
-            .flatMap((offset) => [-offset, offset])];
-          for (const offset of offsets) {
-            const left = centeredLeft + offset;
-            if (left < minCandidateLeft || left > maxCandidateLeft) continue;
-            copy.style.left = `${left}px`;
+          const baseTop = reusableBand?.top ?? centerCardRect.top - height - gap;
+          const centeredLeft = canonicalCenterX - width / 2;
+          if (centeredLeft < safeLeft || centeredLeft + width > safeRight) continue;
+          for (const offset of topOffsets) {
+            const top = baseTop + offset;
+            if (reusableBand && Math.abs(top - reusableBand.top) > 16) continue;
+            if (top < safeTop || top + height > safeBottom) continue;
+            const clearsCenterCard = verticalMode === "below"
+              ? top >= centerCardRect.top + centerCardRect.height + gap - 0.5
+              : top + height + gap <= centerCardRect.top + 0.5;
+            if (!clearsCenterCard) continue;
+            copy.style.left = `${centeredLeft}px`;
             copy.style.top = `${top}px`;
             const rect = copy.getBoundingClientRect();
-            const range = document.createRange();
-            if (textElement) range.selectNodeContents(textElement);
-            const lines = textElement ? range.getClientRects().length : 0;
+            const lines = textLines();
             if (lines > 2) continue;
             const overlapsObstacle = obstacles.some(({ element, rect: obstacleRect }) => element !== anchor
               && rect.left < obstacleRect.right && rect.right > obstacleRect.left
               && rect.top < obstacleRect.bottom && rect.bottom > obstacleRect.top);
             if (overlapsObstacle) continue;
-            selected = { left, top, width, height: rect.height, lines, message: option.message, compact: option.compact };
+            selected = { left: centeredLeft, top, width, height: rect.height, lines, message: option.message, compact: option.compact };
             break;
           }
           if (selected) break;
@@ -836,16 +936,56 @@ function PublicCardAnnouncement({
         if (selected) break;
       }
 
+      if (!selected && !reusableBand && centerCardRect.height > 0) {
+        // A constrained short battlefield can place its one stable band just
+        // below the reveal card. Skip every real or projected owner-card slot.
+        const compactOption = announcementOptions.find((option) => option.compact) ?? announcementOptions[0];
+        if (compactOption) {
+          if (textElement) textElement.textContent = compactOption.message;
+          for (const width of widths) {
+            copy.style.width = `${width}px`;
+            const height = copy.getBoundingClientRect().height;
+            const left = canonicalCenterX - width / 2;
+            if (left < safeLeft || left + width > safeRight) continue;
+            const belowCandidates = [
+              centerCardRect.top + centerCardRect.height + gap,
+              ...obstacles.map(({ rect }) => rect.bottom + gap),
+            ].filter((top) => Number.isFinite(top) && top >= safeTop)
+              .sort((first, second) => first - second);
+            for (const belowTop of belowCandidates) {
+              if (belowTop + height > safeBottom) continue;
+              const cardObstacle = new DOMRect(centerCardRect.left, centerCardRect.top, centerCardRect.width, centerCardRect.height);
+              const candidateRect = new DOMRect(left, belowTop, width, height);
+              if (rectsOverlap(candidateRect, cardObstacle, gap)) continue;
+              copy.style.left = `${left}px`;
+              copy.style.top = `${belowTop}px`;
+              const rect = copy.getBoundingClientRect();
+              const lines = textLines();
+              const overlapsObstacle = obstacles.some(({ element, rect: obstacleRect }) => element !== anchor
+                && rect.left < obstacleRect.right && rect.right > obstacleRect.left
+                && rect.top < obstacleRect.bottom && rect.bottom > obstacleRect.top);
+              if (lines <= 2 && !overlapsObstacle) {
+                selected = { left, top: belowTop, width, height: rect.height, lines, message: compactOption.message, compact: compactOption.compact };
+                verticalMode = "below";
+                break;
+              }
+            }
+            if (selected) break;
+          }
+        }
+      }
+
       if (!selected) {
-        const fallbackOption = announcementOptions.find((option) => option.compact)
-          ?? announcementOptions[0]
-          ?? { message, compact: false };
+        const fallbackOption = announcementOptions.find((option) => option.compact) ?? announcementOptions[0] ?? { message, compact: false };
         if (textElement) textElement.textContent = fallbackOption.message;
         const width = widths[0] ?? maxWidth;
         copy.style.width = `${width}px`;
         const height = copy.getBoundingClientRect().height;
-        const left = Math.max(safeLeft, Math.min(safeRight - width, centerX - width / 2));
-        const top = Math.max(preferredTop, cardRect.top - height - gap);
+        const left = Math.max(safeLeft, Math.min(safeRight - width, canonicalCenterX - width / 2));
+        const preferredTop = reusableBand?.top ?? (verticalMode === "below"
+          ? centerCardRect.top + centerCardRect.height + gap
+          : centerCardRect.top - height - gap);
+        const top = Math.max(safeTop, Math.min(safeBottom - height, preferredTop));
         copy.style.left = `${left}px`;
         copy.style.top = `${top}px`;
         const range = document.createRange();
@@ -863,12 +1003,22 @@ function PublicCardAnnouncement({
       } else {
         delete copy.dataset.publicCardAnnouncementFallback;
       }
+      rememberPublicCardAnnouncementBand(bandKey, {
+        viewportKey,
+        left: selected.left,
+        top: selected.top,
+        width: selected.width,
+        centerX: selected.left + selected.width / 2,
+        centerCardRect,
+        verticalMode,
+      });
       if (displayedMessage !== selected.message) setDisplayedMessage(selected.message);
       if (selected.compact) copy.dataset.publicCardAnnouncementCompact = "true";
       else delete copy.dataset.publicCardAnnouncementCompact;
       copy.dataset.publicCardAnnouncementWidth = `${Math.round(selected.width)}`;
       copy.dataset.publicCardAnnouncementLines = `${selected.lines}`;
       copy.dataset.publicCardAnnouncementPositioned = "true";
+      copy.dataset.publicCardAnnouncementPlacement = verticalMode === "above" ? "center-band-above" : "center-band-below";
       copy.style.visibility = "visible";
     };
     const schedule = () => {
@@ -876,36 +1026,26 @@ function PublicCardAnnouncement({
       frame = window.requestAnimationFrame(place);
     };
     const onResize = schedule;
-    const onAnchorTransitionEnd = (event: TransitionEvent) => {
-      if (event.target !== observedAnchor || !["left", "top", "width", "height"].includes(event.propertyName)) return;
-      schedule();
-    };
-
     place();
     window.addEventListener("resize", onResize);
     const viewport = window.visualViewport;
     viewport?.addEventListener("resize", onResize);
+    viewport?.addEventListener("scroll", onResize);
     resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onResize);
-    const table = document.querySelector<HTMLElement>(".play-table");
+    const table = display.closest<HTMLElement>(".play-table");
     const playerBoard = document.querySelector<HTMLElement>(".player-board");
     if (table) resizeObserver?.observe(table);
     if (playerBoard) resizeObserver?.observe(playerBoard);
-    if (observedAnchor) {
-      resizeObserver?.observe(observedAnchor);
-      observedAnchor.addEventListener("transitionend", onAnchorTransitionEnd);
-      anchorObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
-      anchorObserver?.observe(observedAnchor, { attributes: true, attributeFilter: ["style", "data-public-card-journey-phase"] });
-    }
+    for (const element of document.querySelectorAll<HTMLElement>(protectedSelectors)) resizeObserver?.observe(element);
 
     return () => {
       window.removeEventListener("resize", onResize);
       viewport?.removeEventListener("resize", onResize);
+      viewport?.removeEventListener("scroll", onResize);
       resizeObserver?.disconnect();
-      anchorObserver?.disconnect();
-      observedAnchor?.removeEventListener("transitionend", onAnchorTransitionEnd);
       window.cancelAnimationFrame(frame);
     };
-  }, [anchorEventId, compactMessage, displayedMessage, eventId, message, negationWaiting, phase, stableCenterAnchor, stableFallbackCardRect]);
+  }, [anchorEventId, compactMessage, displayedMessage, eventId, message, negationWaiting, phase, placementKey, stableCenterAnchor, stableFallbackCardRect, viewerLayoutKey]);
 
   return <div
     ref={copyRef}
@@ -977,8 +1117,8 @@ function AttackDodgeCardJourney({
   const activeRevealRemainingMs = activeJourneyCard?.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS;
   const announcementCopy = publicCardAnnouncementCopy(action, activeNotice, activeActorName, activeActorId, sourceName, targetName, compactPlayerNamesById);
   const announcement = withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
-  const compactAnnouncement = announcementCopy.compactMessage
-    ? withPublicCardPhaseNotice(announcementCopy.compactMessage, action.settlement ? undefined : action.phaseNotice)
+  const compactAnnouncement = announcementCopy.compactMessage || (!action.settlement && action.phaseNotice?.includes("NEGATION"))
+    ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, action.settlement ? undefined : action.phaseNotice, true)
     : undefined;
 
   useLayoutEffect(() => {
@@ -1012,7 +1152,7 @@ function AttackDodgeCardJourney({
     const currentSourceName = sourceNameRef.current;
     const motion = currentAction.motion?.type === "attack-dodge" ? currentAction.motion : null;
     if (!enabled || !motion) return;
-    const center = battlefieldCenterCard();
+    const center = battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
     const previous = journeyRef.current.scopeKey === scopeKey ? journeyRef.current.cards : [];
     const root = currentAction.cardFace && currentSourceName ? [{
       eventId: currentAction.rootEventId,
@@ -1446,7 +1586,8 @@ function AttackDodgeCardJourney({
       });
     };
     const reposition = () => {
-      const center = battlefieldCenterCard();
+      const currentAction = actionRef.current;
+      const center = battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
       const next = {
         ...journeyRef.current,
         center,
@@ -1532,6 +1673,8 @@ function AttackDodgeCardJourney({
     data-public-card-display="true"
     data-public-card-ready="true"
     data-public-card-motion="attack-dodge"
+    data-public-card-viewer-id={viewerId}
+    data-public-card-interaction-id={action.interactionId ?? undefined}
     data-public-card-event-id={activeEventId}
     data-public-card-root-event-id={action.rootEventId}
     data-public-card-id={activeCard?.id}
@@ -1558,6 +1701,8 @@ function AttackDodgeCardJourney({
     })}
     <PublicCardAnnouncement
       eventId={activeEventId}
+      placementKey={publicCardAnnouncementPlacementKey(action, roomCode)}
+      viewerLayoutKey={viewerId}
       phase={activeJourneyCard?.phase ?? "static"}
       message={announcement}
       compactMessage={compactAnnouncement}
@@ -1683,7 +1828,9 @@ function SingleTargetCardJourney({
     if (!enabled || !currentMotion || !currentSourceName) return;
     const center = currentMotion.type === "lust-cost" && currentAction.lustCostFrame
       ? battlefieldLustCostCard()
-      : battlefieldCenterCard();
+      : battlefieldCenterCard(REVEAL_CARD, currentMotion.type === "negation"
+        ? { reserveSeatHistoryDepth: 2 }
+        : { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
     const previous = journeyRef.current;
     const sameInteraction = previous.scopeKey === scopeKey;
     const viewerChanged = sameInteraction && previous.viewerId !== viewerId;
@@ -1915,7 +2062,9 @@ function SingleTargetCardJourney({
         const currentAction = actionRef.current;
         const center = currentAction.motion?.type === "lust-cost" && currentAction.lustCostFrame
           ? battlefieldLustCostCard()
-          : battlefieldCenterCard();
+          : battlefieldCenterCard(REVEAL_CARD, currentAction.motion?.type === "negation"
+            ? { reserveSeatHistoryDepth: 2 }
+            : { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
         const occupied: CardRect[] = [];
         const actorIndexes = new Map<string, number>();
         const cards = current.cards.map((card) => {
@@ -2023,8 +2172,8 @@ function SingleTargetCardJourney({
   const currentNotice = currentCard?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
   const announcementCopy = publicCardAnnouncementCopy(action, currentNotice, currentCard?.actorName ?? sourceName, currentCard?.actorId ?? action.sourceId, sourceName, targetName, compactPlayerNamesById);
   const announcement = withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
-  const compactAnnouncement = announcementCopy.compactMessage
-    ? withPublicCardPhaseNotice(announcementCopy.compactMessage, action.settlement ? undefined : action.phaseNotice)
+  const compactAnnouncement = announcementCopy.compactMessage || (!action.settlement && action.phaseNotice?.includes("NEGATION"))
+    ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, action.settlement ? undefined : action.phaseNotice, true)
     : undefined;
   useEffect(() => {
     const settlementEventId = action.settlement?.eventId;
@@ -2040,6 +2189,7 @@ function SingleTargetCardJourney({
     data-public-card-ready="true"
     data-public-card-motion={motion?.type ?? "single-target"}
     data-public-card-viewer-id={viewerId}
+    data-public-card-interaction-id={action.interactionId ?? undefined}
     data-public-card-event-id={activeEventId}
     data-public-card-root-event-id={action.rootEventId}
     data-public-card-id={currentPublicCard?.id}
@@ -2070,6 +2220,8 @@ function SingleTargetCardJourney({
     </ol>
     <PublicCardAnnouncement
       eventId={motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : activeEventId}
+      placementKey={publicCardAnnouncementPlacementKey(action)}
+      viewerLayoutKey={viewerId}
       anchorEventId={activeEventId}
       phase={currentCard?.phase ?? "static"}
       message={announcement}
@@ -2267,7 +2419,7 @@ function DuelCardJourney({
     const latestFreshEvent = [...events].reverse().find((event) => fresh.has(event.eventId) && event.cardFace) ?? null;
     const center = currentMotion.type === "lust-duel" && currentAction.lustCostFrame && latestFreshEvent?.role === "root"
       ? battlefieldLustCostCard()
-      : battlefieldCenterCard(DUEL_REVEAL_CARD);
+      : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
     const previous = journeyRef.current;
     const sameInteraction = previous.scopeKey === scopeKey;
     const viewerChanged = sameInteraction && previous.viewerId !== viewerId;
@@ -2508,7 +2660,7 @@ function DuelCardJourney({
           const latestFreshEvent = [...events].reverse().find((event) => fresh.has(event.eventId) && event.cardFace) ?? null;
           const center = currentMotion?.type === "lust-duel" && currentAction.lustCostFrame && latestFreshEvent?.role === "root"
             ? battlefieldLustCostCard()
-            : battlefieldCenterCard(DUEL_REVEAL_CARD);
+            : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
           setJourney((current) => {
             if (current.scopeKey !== scopeKey) return current;
             const targets = duelParkingTargets(events);
@@ -2574,8 +2726,8 @@ function DuelCardJourney({
   const activeMessage = activeEvent?.ariaLabel ?? latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
   const announcementCopy = publicCardAnnouncementCopy(action, activeMessage, activeEvent?.actorName ?? latestResponse?.actorName ?? sourceName, activeActorId, sourceName, targetName, compactPlayerNamesById);
   const announcement = withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
-  const compactAnnouncement = announcementCopy.compactMessage
-    ? withPublicCardPhaseNotice(announcementCopy.compactMessage, action.settlement ? undefined : action.phaseNotice)
+  const compactAnnouncement = announcementCopy.compactMessage || (!action.settlement && action.phaseNotice?.includes("NEGATION"))
+    ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, action.settlement ? undefined : action.phaseNotice, true)
     : undefined;
 
   useEffect(() => {
@@ -2637,6 +2789,7 @@ function DuelCardJourney({
     data-public-card-ready="true"
     data-public-card-motion={action.motion?.type === "lust-duel" ? "lust-duel" : "duel"}
     data-public-card-viewer-id={viewerId}
+    data-public-card-interaction-id={action.interactionId ?? undefined}
     data-public-card-event-id={activeEventId}
     data-public-card-root-event-id={action.rootEventId}
     data-public-card-id={currentPublicCard?.id}
@@ -2666,6 +2819,8 @@ function DuelCardJourney({
     <PublicCardAnnouncement
       eventId={action.motion?.type === "lust-duel" && activeCard?.role === "root" && action.lustCostFrame
         ? action.lustCostFrame.activationEventId : activeEventId}
+      placementKey={publicCardAnnouncementPlacementKey(action)}
+      viewerLayoutKey={viewerId}
       anchorEventId={activeEventId}
       phase={activeEvent?.phase ?? "static"}
       message={announcement}
@@ -2729,8 +2884,8 @@ export function PublicCardDisplay({
   const notice = latestResponse?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
   const announcementCopy = publicCardAnnouncementCopy(action, notice, latestResponse?.actorName ?? sourceName, actorId, sourceName, targetName, compactPlayerNamesById);
   const announcement = withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
-  const compactAnnouncement = announcementCopy.compactMessage
-    ? withPublicCardPhaseNotice(announcementCopy.compactMessage, action.settlement ? undefined : action.phaseNotice)
+  const compactAnnouncement = announcementCopy.compactMessage || (!action.settlement && action.phaseNotice?.includes("NEGATION"))
+    ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, action.settlement ? undefined : action.phaseNotice, true)
     : undefined;
   return <section
     className={`public-card-display${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}`}
@@ -2738,6 +2893,7 @@ export function PublicCardDisplay({
     data-public-card-ready="true"
     data-public-card-event-id={eventId}
     data-public-card-root-event-id={action.rootEventId}
+    data-public-card-interaction-id={action.interactionId ?? undefined}
     data-public-card-id={card?.id}
     data-public-card-actor-id={actorId}
     data-public-card-source-id={action.sourceId}
@@ -2749,6 +2905,8 @@ export function PublicCardDisplay({
     {card && <div className="public-card-display-static-card" data-public-card-copy-anchor-event-id={eventId}><CardFace card={card} /></div>}
     <PublicCardAnnouncement
       eventId={eventId}
+      placementKey={publicCardAnnouncementPlacementKey(action, roomCode)}
+      viewerLayoutKey={viewerId}
       phase="static"
       message={announcement}
       compactMessage={compactAnnouncement}

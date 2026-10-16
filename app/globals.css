@@ -1309,10 +1309,10 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-journey-card.is-deflection::before{content:"";position:absolute;z-index:0;left:50%;top:-17px;width:calc(100% + 12px);min-width:66px;height:calc(100% + 21px);transform:translateX(-50%);box-sizing:border-box;border:1px solid #d9c17f88;border-radius:3px;background:#18191333;pointer-events:none}
 .public-card-journey-card.is-deflection>.played-card{position:relative;z-index:1}
 .public-card-journey-card.is-deflection .public-card-journey-semantic{left:50%;right:auto;top:-14px;bottom:auto;transform:translateX(-50%);padding:2px 4px;background:#181913;color:#f5dda1;font-size:7px;letter-spacing:.06em}
-.public-card-display-journey-copy{position:fixed;left:0;top:0;z-index:2;box-sizing:border-box;width:min(calc(100vw - 16px),520px);max-width:520px;min-height:0;margin:0;padding:6px 10px;translate:none;border:1px solid #8e784866;background:#11140fe8;box-shadow:0 4px 12px #0008;text-align:center;pointer-events:none}
+.public-card-display-journey-copy{position:fixed;left:0;top:0;z-index:2;box-sizing:border-box;width:min(calc(100vw - 16px),520px);max-width:520px;min-height:28px;margin:0;padding:4px 10px;translate:none;border:1px solid #8e784866;background:#11140fe8;box-shadow:0 4px 12px #0008;text-align:center;pointer-events:none}
 .public-card-display-journey[data-public-card-motion="lust-duel"]>.public-card-display-journey-copy{display:flex;min-height:50px;align-items:center;justify-content:center}
 .public-card-display-journey-copy>b{display:block;max-width:100%;color:#f3ead8;font:600 15px/1.2 Arial,sans-serif;letter-spacing:.01em;white-space:normal;overflow-wrap:anywhere}
-.public-card-display-journey-copy.is-negation-waiting{width:min(calc(100vw - 24px),420px);padding:5px 8px;background:#11140fe8}
+.public-card-display-journey-copy.is-negation-waiting{width:min(calc(100vw - 24px),420px);padding:4px 8px;background:#11140fe8}
 .public-card-duel-parked-card{direction:ltr}
 .public-card-duel-parked-card.is-prior{opacity:1;filter:none}
 .public-card-duel-parked-card .public-card-journey-semantic{left:2px;right:auto;bottom:2px}
