@@ -694,11 +694,12 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.doesNotMatch(sequenceStyleSource, /margin-left: -38px|margin-left: -34px/);
   assert.match(html, /class="hand-card-visual"[\s\S]*class="game-card/);
   assert.doesNotMatch(html, /class="card-info-button"/);
-  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot\.single-selected \.hand-card-visual\s*\{[\s\S]*transform: translateY\(calc\(-1 \* var\(--selected-rise\)\)\)/);
+  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot\.single-selected \.hand-card-visual,\s*\.local-hand-rail \.card-slot\.multi-selected \.hand-card-visual,\s*\.local-hand-rail \.card-slot\.details-selected \.hand-card-visual\s*\{[^}]*transform: translateY\(calc\(-1 \* var\(--selected-rise\)\)\)/, "single, multi, and Details selections share the full wrapper lift");
   const heroSkillEligibleRule = globalStyleSource.match(/\.game-card\.hero-skill-eligible\{([^}]*)\}/)?.[1] ?? "";
   assert.match(heroSkillEligibleRule, /border-color:/, "hero-skill-eligible keeps its eligibility styling");
   assert.doesNotMatch(heroSkillEligibleRule, /transform\s*:/, "eligibility must not move every hand card");
-  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot:not\(\.single-selected\) \.game-card\.selected\s*\{\s*transform: translateY\(-5px\)/, "multi-select cards rise from the normal baseline");
+  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot\.multi-selected \.game-card\.selected\s*\{[^}]*transform: translateY\(calc\(0px - var\(--selected-face-rise\)\)\)/, "every selected multi-card face receives the shared face lift");
+  assert.doesNotMatch(sequenceStyleSource, /\.local-hand-rail \.card-slot\.multi-selected \.hand-card-visual\s*\{[^}]*transform:\s*none/, "multi-select must not cancel the shared wrapper lift");
   assert.match(sequenceStyleSource, /\.local-hand-rail \.hand-card-details-action\s*\{[^}]*width: 44px; min-width: 44px; height: 44px; min-height: 44px;/, "the attached Details hit area remains at least 44 by 44 CSS pixels");
   assert.match(sequenceStyleSource, /\.local-hand-rail \.hand-card-details-action\s*\{[^}]*top: calc\(var\(--hand-card-height\) - 44px\)/, "the DETAILS hit target starts at the CardFace's lower interior edge");
   assert.match(sequenceStyleSource, /\.card-slot\.details-selected \.hand-card-details-action\s*\{\s*transform: translateY\(calc\(0px - var\(--selected-face-rise\)\)\)/, "DETAILS follows the selected card's face movement");
