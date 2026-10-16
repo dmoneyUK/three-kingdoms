@@ -1151,18 +1151,12 @@
   overflow: visible;
   fill: currentColor;
 }
-.opponent-equipment-indicator[data-slot="armor"] svg path + path,
-.opponent-equipment-indicator[data-slot$="Horse"] svg path:nth-last-child(-n + 2) {
+.opponent-equipment-indicator[data-slot="armor"] svg path + path {
   fill: none;
   stroke: #10130d;
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.4;
-}
-.opponent-equipment-indicator[data-slot="defensiveHorse"] svg path:last-child,
-.opponent-equipment-indicator[data-slot="offensiveHorse"] svg path:last-child {
-  stroke: #f2d68f;
-  stroke-width: 1.8;
 }
 .opponent-judgement-zone {
   position: absolute;
@@ -4456,4 +4450,18 @@
 .game-shell .player-board[data-seat-topology="side-column"] .opponent-equipment-indicator svg {
   width: 10px;
   height: 10px;
+}
+
+/* U13-D: keep horse direction unambiguous in the final compact public rack. */
+.game-shell .player-board .opponent-equipment-indicator[data-slot$="Horse"] {
+  width: 18px;
+  min-width: 18px;
+  padding-inline: 1px;
+}
+
+.game-shell .player-board .opponent-equipment-horse-mark {
+  color: #f5d98f;
+  font: 800 8px/1 Arial, sans-serif;
+  letter-spacing: -0.08em;
+  white-space: nowrap;
 }
