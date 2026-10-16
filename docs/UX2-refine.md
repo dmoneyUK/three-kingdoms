@@ -1217,6 +1217,8 @@ The owner-only order message is already in app/page.tsx lustTargetOrderText and 
 - First actor order is from the existing locally selected target order *before Confirm*, then from proven public Duel order *after Confirm*. Do not expose uncommitted target order to other viewers. Local active skill second tap cancellation from §10.12 stays intact.
 - Test with selection partially complete, ready-to-Confirm, own seat after Quick Test switch and real non-actor views; no false / stale names.
 
+**Coding Agent progress (2026-10-16) — U13-C: IMPLEMENTED; PENDING REVIEW.** Commit `f1ef527a806842309010dbad5d837f67132a27a0` makes the local pre-confirm order 12px on phones and 14px otherwise, wraps long names, and emphasizes the first Attack actor inside the existing prompt. Exact-SHA Actions run [`38961307985`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/38961307985) passed API, Lint/fast, browser startup/room smoke, deployment and production smoke; Worker version `132798e8-92c9-4d1a-9882-cbc73df55841`. No local automated tests or long-name phone geometry evidence were collected. U13-C remains pending human review.
+
 #### 10.13.4 P1-D — Opponent compact Equipment symbols instead of miniature printed card text
 
 On the **small opponent-seat Equipment rack** (not the full card-reveal public frame), improve the **ALREADY EXISTING** semantic slot SVG badges—especially Horse differentiation—instead of replacing a supposedly printed card-front UI that is not actually rendered by the current `OpponentPlayerCard`. The current `OpponentEquipmentGlyph` already emits sword/shield/matching horse-path shapes; change the Horse renderer to unmistakable `+1` / `−1` text and adjust final-effective badge sizing. Use:
