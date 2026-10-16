@@ -9,11 +9,13 @@ const players = [
   { id: "p4", name: "Test Player 4", seat: 3, alive: true },
 ];
 
-function snapshot({ stage, actorId = null, stableKind = actorId ? "CHOICE" : "SPECIAL", effect = null, duelExchange = null, semantics = "PROVEN" } = {}) {
+function snapshot({ stage, actorId = null, stableKind = actorId ? "CHOICE" : "SPECIAL", effect = null, duelExchange = null, lustDuelExchange = null, semantics = "PROVEN" } = {}) {
   return {
+    identity: { interactionId: "interaction-1", checkpointId: "checkpoint-1", presentationRevision: 1 },
     stable: { kind: stableKind, interactionId: "interaction-1", checkpointId: "checkpoint-1", presentationRevision: 1, decisionActorId: actorId },
     interaction: { semantics, interactionId: "interaction-1", rootFrameId: "root-1", activeFrameId: "root-1", parentFrameId: null, checkpointId: "checkpoint-1", presentationRevision: 1, stage, sourceId: "p1", effect, targetIds: ["p2"], currentParticipantId: actorId, decisionActorId: actorId, activeResolverId: null, activeSourceId: "p1", activeTargetIds: ["p2"], participantIds: ["p1", "p2"], participantRoles: { sourceId: "p1", originalTargetIds: ["p2"], activeTargetIds: ["p2"], currentParticipantId: actorId, decisionActorId: actorId, activeResolverId: null, parentParticipantId: null, participantIds: ["p1", "p2"] }, continuity: { relation: "ROOT_FRAME", parentFrameId: null } },
     duelExchange,
+    lustDuelExchange,
   };
 }
 
@@ -49,6 +51,8 @@ test("Duel responder is named only from matching proven public actor fields", ()
   assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: publicSnapshot })), {
     kind: "duel",
     text: "Waiting for Test Player 2 · Duel",
+    heading: "Waiting for Test Player 2",
+    stage: "Duel Exchange",
   });
 
   const mismatchedProof = snapshot({
@@ -58,6 +62,47 @@ test("Duel responder is named only from matching proven public actor fields", ()
     duelExchange: { semantics: "PROVEN", decisionActorId: "p3", currentParticipantId: "p3" },
   });
   assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: mismatchedProof })), { kind: "resolving", text: "Resolving…" });
+});
+
+test("Lust-generated Duel uses only the matching current public exchange checkpoint", () => {
+  const generatedExchange = {
+    semantics: "PROVEN",
+    interactionId: "interaction-1",
+    rootFrameId: "root-1",
+    checkpointId: "checkpoint-1",
+    presentationRevision: 1,
+    currentParticipantId: "p2",
+    decisionActorId: "p2",
+  };
+  const publicSnapshot = snapshot({ stage: "DUEL_EXCHANGE", actorId: "p2", effect: "Duel", lustDuelExchange: generatedExchange });
+  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: publicSnapshot })), {
+    kind: "duel",
+    text: "Waiting for Test Player 2 · Duel",
+    heading: "Waiting for Test Player 2",
+    stage: "Duel Exchange",
+  });
+
+  const staleCheckpoint = snapshot({
+    stage: "DUEL_EXCHANGE",
+    actorId: "p2",
+    effect: "Duel",
+    lustDuelExchange: { ...generatedExchange, checkpointId: "old-checkpoint" },
+  });
+  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: staleCheckpoint })), {
+    kind: "resolving",
+    text: "Resolving…",
+  });
+
+  const mismatchedActor = snapshot({
+    stage: "DUEL_EXCHANGE",
+    actorId: "p2",
+    effect: "Duel",
+    lustDuelExchange: { ...generatedExchange, currentParticipantId: "p3", decisionActorId: "p3" },
+  });
+  assert.deepEqual(derivePublicActivityStatus(room({ phase: "response", presentationSnapshot: mismatchedActor })), {
+    kind: "resolving",
+    text: "Resolving…",
+  });
 });
 
 test("unproven response and shared Negation actor details are never published", () => {

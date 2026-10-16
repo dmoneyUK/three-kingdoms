@@ -5578,8 +5578,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && responseRequirement === "negate"
     && responseDamageAction === "decline_response"
   );
+  const localWaitAlreadyPublic = decisionPresentation.isWaiting
+    && publicActivityStatus.kind !== "turn"
+    && publicActivityStatus.kind !== "finished";
   const consoleAuthoritativeDecision = Boolean(room.currentAction && room.currentAction.kind !== "none" && (consoleIsDecisionActor || room.isMyTurn && room.currentAction.kind === "turn" && currentActionOwnedByViewer));
-  const consoleInstruction = lustLocalSelectionActive && activeSkillSelection
+  const consoleInstruction = localWaitAlreadyPublic
+    ? "No action needed."
+    : lustLocalSelectionActive && activeSkillSelection
     ? `Select ${activeSkillSelection.min} card${activeSkillSelection.min === 1 ? "" : "s"} and ${activeSkillTargetMin} Duel participant${activeSkillTargetMin === 1 ? "" : "s"}.`
     : sharedNegationWindow
     ? room.currentAction?.reason || "Negation response window"
@@ -5741,7 +5746,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               aria-live="polite"
               aria-atomic="true"
             >
-              {!lustLocalSelectionActive && <small>{negationWindowSubmitted ? "RESPONSE SUBMITTED" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
+              {!lustLocalSelectionActive && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "RESPONSE SUBMITTED" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
               <strong>{consoleDecision.instruction}</strong>
               {lustTargetOrderText && <em data-testid="lust-order-guidance">{lustTargetOrderText}</em>}
               {daqiaoDeflectionSelectionActive

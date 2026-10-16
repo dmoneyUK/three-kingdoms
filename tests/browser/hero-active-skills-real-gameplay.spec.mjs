@@ -753,8 +753,11 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
     expect(costEvent.cards).toEqual([cost]);
     expect(initialExchange).toMatchObject({
       semantics: "PROVEN", root: { activationEventId: activation.eventId, costEventId: costEvent.id, costCardId: cost.id, ownerId: owner.id },
-      responseCount: 0,
+      responseCount: 0, currentParticipantId: first.id, decisionActorId: first.id,
     });
+    await expect.poll(async () => Promise.all(viewers.map(({ page: viewerPage }) =>
+      viewerPage.locator("[data-public-activity-chip]").getAttribute("aria-label"))))
+      .toEqual(Array(4).fill(`Waiting for ${first.name} · Duel`));
     const rootMotion = captureForAllViewers(costEvent.id, owner, cost.id, "cost");
     await assertPublicEvent(costEvent.id, owner.id, cost.id, 1);
 
@@ -810,6 +813,9 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
       decisionActorId: first.id, responseActorId: first.id, responseCardIds: [firstAttack.id],
     });
     expect(firstAccepted.room.presentationSnapshot.lustDuelExchange.responses).toHaveLength(1);
+    await expect.poll(async () => Promise.all(viewers.map(({ page: viewerPage }) =>
+      viewerPage.locator("[data-public-activity-chip]").getAttribute("aria-label"))))
+      .toEqual(Array(4).fill(`Waiting for ${second.name} · Duel`));
     const firstResponseCard = firstDisplay.locator(`[data-public-card-journey-event-id="${firstEvent.id}"]`);
     await expect(firstResponseCard).toHaveAttribute("data-public-card-journey-ordinal", "2");
     await expect(rootOnFirst).toHaveAttribute("data-public-card-journey-phase", "parked");
@@ -825,6 +831,9 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
       decisionActorId: second.id, responseActorId: second.id, responseCardIds: [secondAttack.id],
     });
     expect(secondResponse.room.presentationSnapshot.lustDuelExchange.responses.map((response) => response.ordinal)).toEqual([1, 2]);
+    await expect.poll(async () => Promise.all(viewers.map(({ page: viewerPage }) =>
+      viewerPage.locator("[data-public-activity-chip]").getAttribute("aria-label"))))
+      .toEqual(Array(4).fill(`Waiting for ${first.name} · Duel`));
     const secondDisplay = secondPage.locator('.public-card-display[data-public-card-motion="lust-duel"]');
     const secondResponseCard = secondDisplay.locator(`[data-public-card-journey-event-id="${secondEvent.id}"]`);
     const firstResponseInSecondView = secondDisplay.locator(`[data-public-card-journey-event-id="${firstEvent.id}"]`);

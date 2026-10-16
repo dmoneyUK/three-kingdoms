@@ -185,5 +185,8 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey }: {
     aria-atomic="true"
     aria-label={status.text}
     style={{ visibility: "hidden" }}
-  >{status.text}</div>;
+  >
+    <strong data-public-activity-heading="true">{status.heading ?? status.text}</strong>
+    {status.stage && <small data-public-activity-stage="true">{status.stage}</small>}
+  </div>;
 }

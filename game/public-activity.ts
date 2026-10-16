@@ -18,6 +18,8 @@ export type PublicActivityInput = {
 export type PublicActivityStatus = {
   kind: "turn" | "duel" | "response" | "negation" | "resolving" | "finished";
   text: string;
+  heading?: string;
+  stage?: string;
 };
 
 const RESOLVING: PublicActivityStatus = { kind: "resolving", text: "Resolving…" };
@@ -73,12 +75,29 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
     const action = responseLabel(interaction.stage, interaction.effect);
     if (actor && action) {
       const duel = snapshot?.duelExchange;
-      if (action === "Duel" && duel?.semantics === "PROVEN"
+      const printedDuelIsCurrent = duel?.semantics === "PROVEN"
         && duel.decisionActorId === interaction.decisionActorId
-        && duel.currentParticipantId === interaction.decisionActorId) {
-        return { kind: "duel", text: `Waiting for ${actor} · Duel` };
+        && duel.currentParticipantId === interaction.decisionActorId;
+      const generatedDuel = snapshot?.lustDuelExchange;
+      const generatedDuelIsCurrent = Boolean(generatedDuel?.semantics === "PROVEN"
+        && interaction.effect?.toLowerCase() === "duel"
+        && snapshot?.identity?.interactionId === interaction.interactionId
+        && snapshot?.identity?.checkpointId === interaction.checkpointId
+        && snapshot?.identity?.presentationRevision === interaction.presentationRevision
+        && stable.interactionId === generatedDuel.interactionId
+        && stable.checkpointId === generatedDuel.checkpointId
+        && stable.presentationRevision === generatedDuel.presentationRevision
+        && generatedDuel.interactionId === interaction.interactionId
+        && generatedDuel.rootFrameId === interaction.rootFrameId
+        && generatedDuel.checkpointId === interaction.checkpointId
+        && generatedDuel.presentationRevision === interaction.presentationRevision
+        && generatedDuel.currentParticipantId === interaction.currentParticipantId
+        && generatedDuel.currentParticipantId === interaction.decisionActorId
+        && generatedDuel.decisionActorId === interaction.decisionActorId);
+      if (action === "Duel" && (printedDuelIsCurrent || generatedDuelIsCurrent)) {
+        return { kind: "duel", text: `Waiting for ${actor} · Duel`, heading: `Waiting for ${actor}`, stage: "Duel Exchange" };
       }
-      if (action !== "Duel") return { kind: "response", text: `Waiting for ${actor} · ${action}` };
+      if (action !== "Duel") return { kind: "response", text: `Waiting for ${actor} · ${action}`, heading: `Waiting for ${actor}`, stage: action };
     }
   }
 

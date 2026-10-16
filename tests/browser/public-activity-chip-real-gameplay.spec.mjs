@@ -64,7 +64,7 @@ async function action(request, room, index, name, extra = {}) {
 }
 
 async function readChip(page) {
-  return page.locator("[data-public-activity-chip]").innerText();
+  return page.locator("[data-public-activity-chip]").getAttribute("aria-label");
 }
 
 async function geometry(page) {
@@ -129,8 +129,8 @@ function assertGeometry(result) {
   expect(result.chip.right).toBeLessThanOrEqual(result.table.right);
   expect(result.chip.top).toBeGreaterThanOrEqual(result.table.top + result.table.height * 0.55);
   expect(result.chip.bottom).toBeLessThanOrEqual(result.table.bottom);
-  expect(result.chipHeight).toBeGreaterThanOrEqual(22);
-  expect(result.chipHeight).toBeLessThanOrEqual(30);
+  expect(result.chipHeight).toBeGreaterThanOrEqual(44);
+  expect(result.chipHeight).toBeLessThanOrEqual(64);
   expect(result.overlaps).toEqual([]);
   expect(result.scrollWidth).toBeLessThanOrEqual(result.viewportWidth);
 }
@@ -174,6 +174,8 @@ test("four authenticated viewers share the same public turn, Negation, and Duel 
     const duelViews = await Promise.all(room.players.map((_, index) => state(request, room, index)));
     expect(duelViews.every((view) => view.presentationSnapshot.duelExchange?.semantics === "PROVEN")).toBe(true);
     expect(duelViews.map((view) => view.presentationSnapshot.duelExchange.decisionActorId)).toEqual(Array(4).fill(room.players[1].id));
+    await expect(pages[0].locator("[data-public-activity-heading]")).toHaveText("Waiting for Test Player 2");
+    await expect(pages[0].locator("[data-public-activity-stage]")).toHaveText("Duel Exchange");
 
     const negationScreenshot = await pages[3].screenshot({ fullPage: true });
     await testInfo.attach("public-activity-shared-negation-440x894", { body: negationScreenshot, contentType: "image/png" });
