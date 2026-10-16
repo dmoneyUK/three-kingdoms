@@ -777,6 +777,13 @@
 .local-hand-rail .hand-card-details-action:focus-visible { outline: 2px solid #ffe28a; outline-offset: 2px; }
 .local-hand-rail .card-slot:not(.single-selected) .game-card.selected { transform: translateY(-5px); }
 .local-hand-rail .card-slot.details-selected:not(.single-selected) .game-card.selected { transform: translateY(calc(0px - var(--selected-face-rise))); }
+/* Multi-select feedback belongs to every selected physical slot, not only the
+   last card carrying the separate Details affordance. Keep the full 17px face
+   lift inside the rail's reserved clearance and let prior selections paint on top. */
+.local-hand-rail .card-slot.multi-selected { overflow: visible; }
+.local-hand-rail .card-slot.multi-selected .hand-card-visual { transform: none; }
+.local-hand-rail .card-slot.multi-selected .game-card.selected { transform: translateY(calc(0px - var(--selected-face-rise))); border-color: #f0d27f; box-shadow: 0 0 0 2px #ffe28a, 0 0 12px #ffd15f99, 0 12px 20px #000b; }
+.local-hand-rail .card-slot.multi-selected .hand-card-details-action { transform: translateY(calc(0px - var(--selected-face-rise))); }
 .local-hand-rail .game-card .card-name-mark { max-width: 92%; font-size: clamp(10px, 3vw, 13px) !important; line-height: .95; }
 .local-hand-rail .game-card > strong { font-size: 5px; letter-spacing: .06em; }
 .local-hand-rail .game-card .corner { width: 17px; min-height: 23px; padding: 1px 1px 4px; border-width: 1px; border-radius: 0 0 5px 0; font-size: 8px; }

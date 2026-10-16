@@ -5776,16 +5776,19 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             const renderHandCard = (item: Card, index: number) => {
               const definition = cardDefinition(item.kind);
               const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1;
-              const isSelected = room.phase === "discard" ? discardSelected.includes(item.id) : activeSkillSelection ? activeSkillSelectedCardIds.includes(item.id) : costSelection ? serpentSelected.includes(item.id) : selected === item.id;
+              const selectedCardIds = room.phase === "discard" ? discardSelected : activeSkillSelection ? activeSkillSelectedCardIds : costSelection ? serpentSelected : selected ? [selected] : [];
+              const isSelected = selectedCardIds.includes(item.id);
               const singleSelected = !multiSelectMode && isSelected;
-              const detailsSelected = selectedHandDetailsCard?.id === item.id;
+              const multiSelected = multiSelectMode && isSelected;
+              const multiSelectionOrder = multiSelected ? selectedCardIds.indexOf(item.id) : -1;
+              const detailsSelected = !multiSelectMode && selectedHandDetailsCard?.id === item.id;
               const maySelect = (room.isMyTurn && (canPlay || room.phase === "discard")) || responseCardSelectionReady || rescueDecisionReady;
               const skillModeCardDisabled = Boolean(activeSkillTargetSelection || wushengMode && !wushengEligibleCardIds.has(item.id) || longdanMode && !longdanEligibleCardIds.has(item.id) || activeSkillSelection && !activeSkillSelection.eligibleCardIds.includes(item.id));
               const skillModeEligible = wushengMode && wushengEligibleCardIds.has(item.id) || longdanMode && longdanEligibleCardIds.has(item.id) || activeSkillSelection?.eligibleCardIds.includes(item.id) === true;
-              return <div className={`card-slot ${singleSelected ? "single-selected" : ""} ${detailsSelected ? "details-selected" : ""}`} data-hand-card-id={item.id} key={`rail-${item.id}`} style={{ marginLeft: index === 0 ? 0 : `${handCardLayout.step - 68}px` }}>
+              return <div className={`card-slot ${singleSelected ? "single-selected" : ""} ${multiSelected ? "multi-selected" : ""} ${detailsSelected ? "details-selected" : ""}`} data-hand-card-id={item.id} data-card-selected={isSelected ? "true" : "false"} key={`rail-${item.id}`} style={{ marginLeft: index === 0 ? 0 : `${handCardLayout.step - 68}px`, ...(multiSelected ? { zIndex: 100 + Math.max(0, selectedCardIds.length - multiSelectionOrder) } : {}) }}>
                 {detailsSelected && <span className="hand-card-details-frame" aria-hidden="true" />}
                 <div className="hand-card-visual">
-                  <button disabled={!maySelect || skillModeCardDisabled || responseCardDisabled(item)} onClick={() => toggleHandCard(item)} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}>
+                  <button aria-pressed={isSelected} disabled={!maySelect || skillModeCardDisabled || responseCardDisabled(item)} onClick={() => toggleHandCard(item)} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}>
                     <span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-name-mark">{definition.name}</span><strong>{definition.category} card</strong>
                   </button>
                   {selectedHandDetailsCard?.id === item.id && selectedHandDetailsCard && <button type="button" className="hand-card-details-action" data-testid="hand-card-details-action" aria-label={`Details for ${definition.name}`} onClick={(event) => openCardDetails(selectedHandDetailsCard, "private-hand", event.currentTarget)}>DETAILS</button>}
