@@ -2004,15 +2004,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && activeSkillSelection
     && activeSkillStateIsCurrent,
   );
-  const lustTargetOrderText = lustLocalSelectionActive
+  const lustTargetOrder = lustLocalSelectionActive
     && activeSkillSelectedTargetIds.length === activeSkillTargetMin
     && activeSkillTargetMin === activeSkillTargetMax
     ? (() => {
       const firstName = room.players.find((player) => player.id === activeSkillSelectedTargetIds[0])?.name;
       const secondName = room.players.find((player) => player.id === activeSkillSelectedTargetIds[1])?.name;
-      return firstName && secondName ? `Lust order: ${firstName} plays Attack first, then ${secondName}.` : "";
+      return firstName && secondName ? { firstName, secondName } : null;
     })()
-    : "";
+    : null;
   const daqiaoDeflectionSelectionActive = Boolean(
     activeSkillOption?.effectId === "daqiao_deflection"
     && activeSkillSelection
@@ -5803,7 +5803,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             >
               {!lustLocalSelectionActive && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "RESPONSE SUBMITTED" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
               <strong>{consoleDecision.instruction}</strong>
-              {lustTargetOrderText && <em data-testid="lust-order-guidance">{lustTargetOrderText}</em>}
+              {lustTargetOrder && <em className="lust-order-guidance" data-testid="lust-order-guidance">
+                Attack order: <strong>{lustTargetOrder.firstName}</strong> plays first, then <span className="lust-second-actor">{lustTargetOrder.secondName}</span> plays second.
+              </em>}
               {daqiaoDeflectionSelectionActive
                 ? <div className="deflection-selection-guidance" data-testid="deflection-selection-guidance" role="group" aria-label="Deflection selections">
                   <span data-daqiao-selection="card">Discard card: {daqiaoDeflectionCardCount}/1 {daqiaoDeflectionCardCount === 1 ? "✓" : "— Select an eligible hand or equipment card"}</span>

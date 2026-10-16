@@ -1142,7 +1142,7 @@ test("real Lust guidance keeps its ordered selection local and the active skill 
   await expect(confirm).toBeDisabled();
   await secondTarget.click();
   const order = guidance.getByTestId("lust-order-guidance");
-  await expect(order).toHaveText("Lust order: FIRST MAN plays Attack first, then SECOND MAN.");
+  await expect(order).toHaveText("Attack order: FIRST MAN plays first, then SECOND MAN plays second.");
   await expect(page.locator(".console-guidance > small[role='status']")).toHaveCount(0);
   await expect(confirm).toBeEnabled();
 
