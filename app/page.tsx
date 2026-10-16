@@ -923,18 +923,15 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
           {playerHero && <span className="player-square-portrait opponent-hero-portrait" data-hero-id={playerHero.id}><HeroPortrait hero={playerHero} /></span>}
         </button>
         <div className="opponent-hero-overlay">
-          {targetSelectionActive
-            ? <button type="button" className="opponent-hero-name opponent-hero-inspect-name" aria-label={`Inspect ${player.name}`} title={playerHero?.name ?? heroName(player.hero)} onClick={(event) => { event.stopPropagation(); onInspect(); }}>{playerHero?.name ?? heroName(player.hero)}</button>
-            : <span className="opponent-hero-name" title={playerHero?.name ?? heroName(player.hero)}>{playerHero?.name ?? heroName(player.hero)}</span>}
-          <span className="player-hp opponent-hp-badge">HP {player.hp ?? 0}/{player.maxHp ?? 0}</span>
-          <span className="player-hearts">{hpDisplay(player.hp)}</span>
+          <span className="opponent-player-name" aria-label={player.name} title={player.name}>{player.name}</span>
+          {targetSelectionActive && <button type="button" className="opponent-hero-inspect-name opponent-seat-inspect-button" aria-label={`Inspect ${player.name}`} title={`Inspect ${player.name}`} onClick={(event) => { event.stopPropagation(); onInspect(); }}><span aria-hidden="true">i</span></button>}
         </div>
         {playerHero && (player.isTestPlayer || player.isHost) && testViewerController && <button type="button" className="test-view-switch-button" data-testid={`test-view-switch-${player.id}`} data-test-viewer-id={player.id} aria-label={`Switch to ${player.name}`} title={`Switch to ${player.name}`} onClick={(event) => { event.stopPropagation(); onSwitchTestViewer(player.id); }}>SWITCH</button>}
       </div>
-      <div className="opponent-player-name-strip">
-        <span className="opponent-player-name" aria-label={player.name} title={player.name}>{player.name}</span>
+      <div className="opponent-status-equipment-strip">
+        <span className="opponent-hp-chip" aria-label={`HP ${player.hp ?? 0} of ${player.maxHp ?? 0}`}>HP {player.hp ?? 0}/{player.maxHp ?? 0}</span>
+        <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count={equipmentSummary.length}>{equipmentSummary}</div>
       </div>
-      <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count={equipmentSummary.length}>{equipmentSummary}</div>
       {player.judgementCards.length > 0 && <section className="opponent-judgement-zone" aria-label="Judgement Zone">
         <span className="opponent-zone-label">Judgement</span>
         <div className="opponent-judgement-cards">{miniJudgement}</div>

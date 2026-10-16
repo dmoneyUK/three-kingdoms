@@ -4466,3 +4466,291 @@
   letter-spacing: -0.08em;
   white-space: nowrap;
 }
+
+/* UX2 §10.8.2.2 H2-G1: opponent seats use one portrait/name band and one
+   HP-first public-equipment band. Seat anchors remain the measured outer
+   article, so public-card parking and the H4 safe top follow the new height. */
+.game-shell .player-board .opponent-player-card {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.game-shell .player-board .opponent-public-zones {
+  display: flex;
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.game-shell .player-board .opponent-hero-card {
+  position: relative;
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+  aspect-ratio: auto;
+  overflow: hidden;
+}
+
+.game-shell .player-board .opponent-hero-overlay {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  display: block;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.game-shell .player-board .opponent-hero-overlay .opponent-player-name {
+  position: absolute;
+  z-index: 4;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 2px 4px;
+  border-top: 1px solid rgb(199 165 97 / 52%);
+  background: rgb(8 11 8 / 42%);
+  color: #fff0c9;
+  font: 700 clamp(10px, 2.8vw, 12px)/1.15 Arial, sans-serif;
+  letter-spacing: .01em;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 3px #000d;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.game-shell .player-board .opponent-hero-overlay .opponent-hero-name,
+.game-shell .player-board .opponent-hero-overlay .opponent-hp-badge,
+.game-shell .player-board .opponent-hero-overlay .player-hearts,
+.game-shell .player-board .opponent-player-name-strip {
+  display: none !important;
+}
+
+.game-shell .player-board .opponent-seat-inspect-button {
+  appearance: none;
+  position: absolute;
+  z-index: 6;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #d8bd78;
+  border-radius: 50%;
+  background: rgb(12 14 11 / 82%);
+  box-shadow: 0 1px 4px #000c;
+  color: #fff0c8;
+  font: 700 17px/1 Georgia, serif;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.game-shell .player-board .opponent-seat-inspect-button:hover,
+.game-shell .player-board .opponent-seat-inspect-button:focus-visible {
+  border-color: #fff0b4;
+  outline: 2px solid #fff0b4;
+  outline-offset: -3px;
+}
+
+.game-shell .player-board .opponent-status-equipment-strip {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  flex: 0 0 20px;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  height: 20px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  overflow: hidden;
+  border-top: 1px solid #75613f;
+  border-radius: 0 0 8px 8px;
+  background: #191a14;
+}
+
+.game-shell .player-board .opponent-hp-chip {
+  flex: 0 0 auto;
+  color: #fff0c8;
+  font: 700 9px/1 Arial, sans-serif;
+  white-space: nowrap;
+}
+
+.game-shell .player-board .opponent-equipment-summary {
+  position: static;
+  inset: auto;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  width: auto;
+  min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.game-shell .player-board .opponent-equipment-indicator {
+  display: grid;
+  flex: 0 1 14px;
+  width: 14px;
+  min-width: 0;
+  height: 14px;
+  place-items: center;
+  border-radius: 2px;
+}
+
+.game-shell .player-board .opponent-equipment-indicator svg {
+  width: 11px;
+  height: 11px;
+}
+
+.game-shell .player-board .opponent-equipment-indicator[data-slot$="Horse"] {
+  flex-basis: 16px;
+  width: 16px;
+  min-width: 0;
+  padding-inline: 0;
+}
+
+.game-shell .player-board .opponent-equipment-horse-mark {
+  font-size: 7px;
+  letter-spacing: -0.07em;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"] > .opponent-player-card {
+  height: 106px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"] .opponent-status-equipment-strip {
+  flex-basis: 20px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-equipment-summary {
+  position: static;
+  inset: auto;
+  display: flex;
+  flex: 1 1 auto;
+  flex-basis: auto;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  width: auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-equipment-indicator {
+  flex: 0 1 14px;
+  width: 14px;
+  min-width: 0;
+  height: 14px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-equipment-indicator[data-slot$="Horse"] {
+  flex-basis: 16px;
+  width: 16px;
+  min-width: 0;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-status-equipment-strip {
+  flex-basis: 18px;
+  height: 18px;
+  gap: 1px;
+  padding-inline: 2px;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-hero-overlay {
+  position: absolute;
+  inset: 0;
+  display: block;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-hero-overlay .opponent-player-name {
+  padding: 2px;
+  font-size: 10px;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-hp-chip {
+  font-size: 7px;
+  letter-spacing: -0.04em;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-equipment-summary {
+  justify-content: space-evenly;
+  gap: 0;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-equipment-indicator {
+  flex-basis: 8px;
+  width: 8px;
+  height: 11px;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-equipment-indicator svg {
+  width: 8px;
+  height: 8px;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-equipment-indicator[data-slot$="Horse"] {
+  flex-basis: 9px;
+  width: 9px;
+  min-width: 0;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-equipment-horse-mark {
+  font-size: 6px;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-seat-inspect-button {
+  top: auto;
+  bottom: 4px;
+}
+
+@media (max-width: 650px) {
+  .game-shell .player-board[data-seat-topology="top-row"] > .opponent-player-card {
+    height: 94px;
+  }
+}
+
+@media (max-width: 650px) {
+  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] > .opponent-player-card {
+    height: 94px;
+  }
+}
+
+@media (min-width: 651px) {
+  .game-shell .player-board[data-seat-topology="side-column"][data-player-count="10"] .opponent-seat-inspect-button {
+    top: 4px;
+    bottom: auto;
+  }
+}
