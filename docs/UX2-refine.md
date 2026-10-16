@@ -1221,6 +1221,8 @@ The owner-only order message is already in app/page.tsx lustTargetOrderText and 
 
 #### 10.13.4 P1-D — Opponent compact Equipment symbols instead of miniature printed card text
 
+**Coding Agent progress (2026-10-16) — U13-D: IMPLEMENTED; PENDING REVIEW.** Exact-SHA Actions and deployment passed on code commit `68607723a8dc67cc3044f653838048abf97dafc3`; human 390px visual review remains open.
+
 On the **small opponent-seat Equipment rack** (not the full card-reveal public frame), improve the **ALREADY EXISTING** semantic slot SVG badges—especially Horse differentiation—instead of replacing a supposedly printed card-front UI that is not actually rendered by the current `OpponentPlayerCard`. The current `OpponentEquipmentGlyph` already emits sword/shield/matching horse-path shapes; change the Horse renderer to unmistakable `+1` / `−1` text and adjust final-effective badge sizing. Use:
 
 | Physical equipment slot (derive via cardDefinition equipmentSlot) | Primary visual | Accessible meaning |
