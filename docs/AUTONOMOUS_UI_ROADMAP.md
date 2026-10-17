@@ -2828,3 +2828,18 @@ Profile command measurements:
   passed; local Node ESLint hit heap OOM, while CI lint passed after deleting
   one unused test capture. Q3 and Q4 remain pending human phone review; no
   reviewer acceptance is claimed.
+
+### UX2-10.13.6-U13-F — public announcement ornament — 2026-10-17
+
+- Styled the existing shared PublicCardAnnouncement frame with a thin warm-gold
+  keyline, subdued black-green tint and 6px effective inner spacing. H3/H4 copy,
+  accepted typography, placement and animation/collision logic remain intact.
+- Focused real Worker/D1 browser checks passed: Attack→Dodge across 390×700,
+  390×844, 440×894 and 480×900 (1/1), and Group/Negation through four
+  authenticated viewers at those sizes (1/1). Assertions cover measured
+  spacing, H4 drift/movement, readability, protected-area collisions and
+  reduced motion. `npm run build` and `git diff --check` passed. Targeted local
+  ESLint hit the Node heap limit.
+- Exact-SHA Actions/deploy has not yet run for this change. Pending CI/deploy
+  and user phone review; the earlier U13-F no-change measurement remains a
+  pre-implementation baseline, not the final outcome.

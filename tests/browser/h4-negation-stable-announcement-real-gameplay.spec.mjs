@@ -308,6 +308,7 @@ async function installSampler(page, rootEventId) {
       const text = announcement.querySelector("b");
       const range = document.createRange();
       if (text) range.selectNodeContents(text);
+      const frame = getComputedStyle(announcement);
       const physicalEventId = activeCard.dataset.publicCardJourneyEventId;
       const protectedRects = [...document.querySelectorAll(
         ".opponent-player-card, .player-square, .player-board-status, .visible-countdown, .stage-system-cluster, .public-activity-chip, .local-player-dock, .local-hand-rail, .console-guidance, [data-public-card-copy-anchor-event-id]",
@@ -355,6 +356,16 @@ async function installSampler(page, rootEventId) {
         visibleAnnouncementTexts: visibleAnnouncements.map((element) => element.textContent?.trim() ?? ""),
         lines: range.getClientRects().length,
         fontSize: Number.parseFloat(text ? getComputedStyle(text).fontSize : "0"),
+        frame: {
+          paddingTop: Number.parseFloat(frame.paddingTop),
+          paddingRight: Number.parseFloat(frame.paddingRight),
+          paddingBottom: Number.parseFloat(frame.paddingBottom),
+          paddingLeft: Number.parseFloat(frame.paddingLeft),
+          borderColor: frame.borderTopColor,
+          borderWidth: Number.parseFloat(frame.borderTopWidth),
+          backgroundColor: frame.backgroundColor,
+          boxShadow: frame.boxShadow,
+        },
         text: announcement.textContent?.trim() ?? "",
       };
       const last = window.__h4NegationFrames.at(-1);
@@ -378,6 +389,99 @@ async function saveEvidence(page, testInfo, viewerName, label) {
     await writeFile(join(evidenceRoot, `${label}-${viewerName}.png`), image);
   }
 }
+
+test("U13-F styles shared Group announcements through Negation across four mobile viewers", async ({ browser, request }, testInfo) => {
+  test.setTimeout(180_000);
+  const room = await seedGroupRoom(request, "RainingArrows", "Dodge");
+  const viewports = [
+    { width: 390, height: 844 },
+    { width: 440, height: 894 },
+    { width: 480, height: 900 },
+    { width: 390, height: 700 },
+  ];
+  const pages = await Promise.all(viewports.map((viewport) => browser.newPage({ viewport })));
+  try {
+    const viewers = [];
+    for (const [index, page] of pages.entries()) {
+      const player = await openPlayer(page, room, index, viewports[index]);
+      viewers.push({ index, page, player, viewport: viewports[index] });
+    }
+    const rootEvent = await playGroupRoot(request, room);
+    for (const viewer of viewers) await installSampler(viewer.page, rootEvent.id);
+    const displaySelector = `.public-card-display[data-public-card-root-event-id="${rootEvent.id}"]`;
+    const journeySelector = `${displaySelector} [data-public-card-journey-event-id="${rootEvent.id}"]`;
+    await Promise.all(viewers.map(({ page }) => expect(page.locator(displaySelector)).toHaveCount(1)));
+    await expectSharedPublicActivity(viewers, { kind: "negation", text: "Waiting for Negation responses" });
+    const announcements = await waitForSharedAnnouncement(viewers, rootEvent.id);
+    expect(new Set(announcements.map((items) => items[0].text)).size).toBe(1);
+    expect(announcements.every((items) => items[0].text.includes("Raining Arrows"))).toBe(true);
+    expect(announcements.every((items) => items[0].cardId === room.cards.root && items[0].actorId === room.players[0].id)).toBe(true);
+    await Promise.all(viewers.map(({ page }, index) => saveEvidence(page, testInfo, `viewer-${index + 1}`, "u13-f-group-root")));
+    await Promise.all(viewers.map(({ page }) => expect(page.locator(journeySelector))
+      .toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 15_000 })));
+
+    const negationEvents = [];
+    for (const [winnerIndex, cardId] of [[0, room.cards.negationSource], [1, room.cards.negationTarget]]) {
+      const event = await submitNegation(request, room, winnerIndex, cardId);
+      negationEvents.push(event);
+      const negationJourneySelector = `${displaySelector} [data-public-card-journey-event-id="${event.id}"]`;
+      await Promise.all(viewers.map(({ page }) => expect(page.locator(negationJourneySelector))
+        .toHaveAttribute("data-public-card-journey-phase", "reveal", { timeout: 12_000 })));
+      await waitForSharedAnnouncement(viewers, event.id);
+      await Promise.all(viewers.map(({ page }) => expect(page.locator(negationJourneySelector))
+        .toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 15_000 })));
+    }
+    await passOpenNegationWindows(request, room);
+    await expectSharedPublicActivity(viewers, { kind: "response", text: `Waiting for ${room.players[1].name} · Raining Arrows` });
+    const resumedRootAnnouncements = await waitForSharedAnnouncement(viewers, rootEvent.id);
+    expect(resumedRootAnnouncements.every((items) => items[0].text === "H4 GROUP SOURCE played Raining Arrows.")).toBe(true);
+
+    const geometry = await Promise.all(viewers.map(async ({ page, player, viewport }) => ({
+      playerId: player.id,
+      viewport,
+      frames: await page.evaluate(() => window.__h4NegationFrames),
+    })));
+    for (const viewer of geometry) {
+      const frames = viewer.frames;
+      expect(frames.length).toBeGreaterThan(1);
+      const allowedCaptionEventIds = new Set([rootEvent.id, ...negationEvents.map(({ id }) => id)]);
+      const invalidFrames = frames.filter(({ eventId, phase, centerOffset, fallback, lines, fontSize, protectedRects, activeCardOverlap, frame }) =>
+        !allowedCaptionEventIds.has(eventId)
+        || Math.abs(centerOffset ?? Infinity) > 12
+        || fallback
+        || lines < 1 || lines > 2 || fontSize < 14
+        || protectedRects.length > 0
+        || phase !== "move" && activeCardOverlap
+        || frame.paddingTop + frame.borderWidth < 6 || frame.paddingTop + frame.borderWidth > 10
+        || frame.paddingBottom + frame.borderWidth < 6 || frame.paddingBottom + frame.borderWidth > 10
+        || frame.paddingLeft + frame.borderWidth < 6 || frame.paddingLeft + frame.borderWidth > 10
+        || frame.borderWidth !== 1
+        || !/217, 193, 127/.test(frame.borderColor)
+        || !/17, 20, 15/.test(frame.backgroundColor)
+        || !frame.boxShadow.includes("inset"));
+      expect(invalidFrames, `${JSON.stringify({ viewport: viewer.viewport, invalidFrames: invalidFrames.slice(0, 3) })}`)
+        .toEqual([]);
+      const centerSummary = [...new Map(frames.map((frame) => [`${frame.eventId}|${frame.phase}|${frame.centerY}|${frame.text}`,
+        { eventId: frame.eventId, phase: frame.phase, centerY: frame.centerY, height: frame.announcement.height, lines: frame.lines, text: frame.text }])).values()];
+      expect(Math.max(...frames.map(({ centerY }) => centerY))
+        - Math.min(...frames.map(({ centerY }) => centerY)),
+      JSON.stringify({ viewport: viewer.viewport, centerSummary })
+      ).toBeLessThanOrEqual(16);
+    }
+    await testInfo.attach("u13-f-group-root-geometry.json", {
+      body: JSON.stringify(geometry.map(({ playerId, viewport, frames }) => ({
+        playerId,
+        viewport,
+        frames: frames.map(({ eventId, phase, announcement, centerY, centerOffset, lines, text, frame }) => ({
+          eventId, phase, announcement, centerY, centerOffset, lines, text, frame,
+        })),
+      })), null, 2),
+      contentType: "application/json",
+    });
+  } finally {
+    await Promise.all(pages.map((page) => page.close()));
+  }
+});
 
 test("H4 keeps the announcement in one safe center band through a four-Negation Worker/D1 chain", async ({ browser, request }, testInfo) => {
   test.setTimeout(240_000);

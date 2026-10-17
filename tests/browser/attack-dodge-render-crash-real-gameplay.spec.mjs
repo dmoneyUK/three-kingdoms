@@ -138,6 +138,7 @@ async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth
     };
     const messageBox = box(message);
     const cardBox = box(card);
+    const messageStyle = getComputedStyle(message);
     const tableElement = document.querySelector(".play-table");
     const tableBox = tableElement ? box(tableElement) : null;
     const obstacles = [...document.querySelectorAll(".opponent-player-card,.player-square,.player-board-status,.visible-countdown,.stage-system-cluster,.local-player-dock,.decision-status,.public-card-journey-card")]
@@ -192,6 +193,16 @@ async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth
         fontFamily: getComputedStyle(message.querySelector("b")).fontFamily,
         letterSpacing: Number.parseFloat(getComputedStyle(message.querySelector("b")).letterSpacing),
       },
+      frame: {
+        paddingTop: Number.parseFloat(messageStyle.paddingTop),
+        paddingRight: Number.parseFloat(messageStyle.paddingRight),
+        paddingBottom: Number.parseFloat(messageStyle.paddingBottom),
+        paddingLeft: Number.parseFloat(messageStyle.paddingLeft),
+        borderColor: messageStyle.borderTopColor,
+        borderWidth: Number.parseFloat(messageStyle.borderTopWidth),
+        backgroundColor: messageStyle.backgroundColor,
+        boxShadow: messageStyle.boxShadow,
+      },
       computedVisibility: getComputedStyle(message).visibility,
     };
   }, eventId);
@@ -224,6 +235,20 @@ async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth
   expect(geometry.typography.fontSize).toBeLessThanOrEqual(16);
   expect(geometry.typography.fontFamily).not.toMatch(/condensed|narrow/i);
   expect(geometry.typography.letterSpacing).toBeLessThanOrEqual(0.3);
+  expect(geometry.frame.borderWidth).toBe(1);
+  for (const [edge, padding] of Object.entries({
+    top: geometry.frame.paddingTop,
+    right: geometry.frame.paddingRight,
+    bottom: geometry.frame.paddingBottom,
+    left: geometry.frame.paddingLeft,
+  })) {
+    const innerSpacing = padding + geometry.frame.borderWidth;
+    expect(innerSpacing, `${edge} inner spacing: ${JSON.stringify(geometry.frame)}`).toBeGreaterThanOrEqual(6);
+    expect(innerSpacing).toBeLessThanOrEqual(10);
+  }
+  expect(geometry.frame.borderColor).toMatch(/217, 193, 127/);
+  expect(geometry.frame.backgroundColor).toMatch(/17, 20, 15/);
+  expect(geometry.frame.boxShadow).toContain("inset");
   expect(geometry.overlaps).toEqual([]);
   if (geometry.cardPhase === "reveal") expect(geometry.cardOverlaps).toEqual([]);
   expect(geometry.liveStatusCount).toBe(1);
