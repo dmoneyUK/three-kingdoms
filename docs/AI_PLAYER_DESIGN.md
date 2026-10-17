@@ -1,9 +1,9 @@
 # WTK Smart Bot Player — Product Roadmap and Implementation Design
 
 > Feature branch: `feature/smart-bot-player`
-> Design revision: **AIP-D3 / 2026-10-17**
+> Design revision: **AIP-D4 / 2026-10-17**
 > Owner: **Human Reviewer + Planner**. Planner edits **this file for normal design/review**; governance docs only under explicit user instruction.
-> Status: **DESIGN-DRIVEN AUTONOMOUS QUEUE**. AIP-00A is **PENDING_REVIEW** (no human acceptance recorded yet). AIP-00B / AIP-00C / AIP-01 are **pre-approved as a bounded queue**, but may execute only after their respective prior dependency is **ACCEPTED**, and all cloud/API risk gates are satisfied. Other roadmap stages are DRAFT.
+> Status: **DESIGN-DRIVEN AUTONOMOUS QUEUE**. AIP-00A is **ACCEPTED by the human Product Owner (2026-10-17)**. AIP-00B is the next eligible approved task (subject to safe Cloudflare account/permission checks). AIP-00C / AIP-01 are **pre-approved as a bounded queue**, but may execute only after their respective prior dependency is **ACCEPTED**, and all cloud/API risk gates are satisfied. Other roadmap stages are DRAFT.
 > Coding Agent: **one agent, one bounded task per cycle; re-read design and automatically select the next eligible independent APPROVED task after each PENDING_REVIEW delivery**. Never self-accept or bypass dependencies.
 > This document is **NOT** a second WTK core-game specification, an OS architecture spec, a UX2 specification, or an agent handover.
 
@@ -161,8 +161,8 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 
 | Stage | ID | Deliverable | Principal evidence | Status |
 | --- | --- | --- | --- | --- |
-| Bootstrap | **AIP-00A** | Feature-branch CI gate, no production deploy, Markdown-only ignores | validated exact SHA, no deploy job | **PENDING_REVIEW** |
-| Staging | **AIP-00B** | Separate Worker, separate D1, safe manual deployment and iPhone URL | actual URL, unique DB UUID, migrations, mobile smoke | **APPROVED — WAITING AIP-00A ACCEPTANCE** |
+| Bootstrap | **AIP-00A** | Feature-branch CI gate, no production deploy, Markdown-only ignores | validated exact SHA, no deploy job | **ACCEPTED — HUMAN REVIEW 2026-10-17** |
+| Staging | **AIP-00B** | Separate Worker, separate D1, safe manual deployment and iPhone URL | actual URL, unique DB UUID, migrations, mobile smoke | **APPROVED — ELIGIBLE; VERIFY CLOUDFLARE PERMISSIONS FIRST** |
 | Automation | **AIP-00C** | Code pushes deploy to Staging only after full CI | exact SHA deploy, production unaffected, docs-only ignores | **APPROVED — WAITING AIP-00B ACCEPTANCE** |
 | AI lab | AIP-01 | Offline/read-only OpenAI Decision Prototype (mock first, tiny opt-in live eval) | 10–20 anonymous fixtures, valid candidate IDs, latency, usage report | **APPROVED — MOCK/OFFLINE ONLY UNTIL LIVE BUDGET GATE; WAITING AIP-00C ACCEPTANCE** |
 | Legal contracts | AIP-02 | Canonical BotObservation and narrowly scoped legal candidates | privacy, valid cards/targets, stale decisions | DRAFT |
@@ -175,7 +175,7 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 | Memory AI | AIP-09 | Public-action identity inference and tactical memory | provenance and hidden-role privacy tests | DRAFT |
 | Release | AIP-10 | Full reliability, privacy and production-readiness review | staging evidence, separate user production approval | DRAFT |
 
-**Dependency / automation rule:** AIP-00A remains **PENDING_REVIEW** and must be ACCEPTED by the human or authorized delegate first. Then the already detailed, bounded APPROVED tasks AIP-00B → AIP-00C → AIP-01 become eligible **automatically when each prior task is ACCEPTED**, not when merely PENDING_REVIEW. Coding Agent does not need another pasted task. AIP-00B needs verified Cloudflare permissions; AIP-01 live paid calls require a separate explicit maximum-spend/data gate; mock-only work is approved. AIP-02+ are **DRAFT**, not automatically executable. Agent may undertake independent APPROVED work while other tasks await review only if dependencies and code ownership are genuinely independent. No bot production release without a new user decision.
+**Dependency / automation rule:** AIP-00A is now **ACCEPTED (human decision 2026-10-17)**. AIP-00B is eligible for autonomous selection by Coding Agent at its next run, subject to verified safe Cloudflare credentials/resources. AIP-00C → AIP-01 become eligible **automatically when each prior task is ACCEPTED**, not when merely PENDING_REVIEW. Coding Agent does not need another pasted task. AIP-00B needs verified Cloudflare permissions; AIP-01 live paid calls require a separate explicit maximum-spend/data gate; mock-only work is approved. AIP-02+ are **DRAFT**, not automatically executable. Agent may undertake independent APPROVED work while other tasks await review only if dependencies and code ownership are genuinely independent. No bot production release without a new user decision.
 
 
 
@@ -183,7 +183,7 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 
 ### AIP-00A — Enable safe feature-branch CI (FIRST TASK)
 
-**Status: PENDING_REVIEW.** It is a short CI/bootstrap step, intentionally before Staging code/config so every later commit has an automatic validation gate.
+**Status: ACCEPTED — Human Product Owner approval on 2026-10-17.** It is a short CI/bootstrap step, intentionally before Staging code/config so every later commit has an automatic validation gate.
 
 **Scope:** change `.github/workflows/deploy.yml` so pushes and PRs to `feature/smart-bot-player` run existing lint/build/fast/API/browser-smoke jobs. Keep current `main` and `ux-v2` triggers and production deploy condition unchanged; retain `paths-ignore: ["**/*.md"]`. Absolutely NO game code, `wrangler.jsonc`, DB provisioning, Cloudflare deployment, OpenAI setup, UX or OS changes.
 
@@ -192,6 +192,8 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 **Implementation evidence:** Started at feature-branch SHA `b11c8a7a855aafc7370b78f3190f7e7e77e0ce59`; no feature-branch Actions run existed. Inherited `main` baseline run `39037960303` passed on `6743a357ef19ca930a02f7e3faa8cee843bd6a38`, not feature-branch validation. Workflow implementation commit `75073b6bbfffe9281223ef1eaac85349496224af` passed exact-SHA [Actions run 39058906244](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39058906244): lint/build/fast tests, API tests and browser startup/room smoke passed; production `deploy` was skipped, so no production D1 migration or Worker deployment ran. Focused YAML/branch-gate/Markdown-exclusion assertions and `git diff --check` passed; `actionlint` was unavailable. The stale AIP-D0/AIP-01 handover preview was replaced by the AIP-00A assignment.
 
 **Acceptance:** feature branch validates on every code push; required CI green for exact SHA; production deployment never executes on feature branch; Markdown-only docs/handover updates remain ignored; original production branch behavior unchanged. If ambiguous/failing, report `BLOCKED`, not accepted.
+
+**Final reviewer outcome (2026-10-17): ACCEPTED by explicit human Product Owner decision.** Independent review confirmed the only behavior change in `.github/workflows/deploy.yml` was inclusion of `feature/smart-bot-player` in push/PR validation branch filters. Exact implementation SHA `75073b6bbfffe9281223ef1eaac85349496224af`, [run 39058906244](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39058906244): lint/build/fast, API, browser smoke all `success`; production `deploy` job `skipped`. The ensuing docs-only HEAD does not need a new CI run. This reviewer acceptance unlocks AIP-00B by dependency; it is **not** approval to reuse production D1, configure API secrets, or deploy production.
 
 ### AIP-00B — Provision isolated, mobile-accessible Staging
 
@@ -272,8 +274,8 @@ For AIP-02–AIP-10, Planner must prepare detailed bounded English specification
 
 ## 10. Review gates and unresolved product decisions
 
-**Design-driven execution approved:** independent AI branch, OpenAI backend, isolated mobile-accessible Staging, CI safety, and an initial *detailed* task batch AIP-00B, AIP-00C and AIP-01 (mock-only until cost gate). Agent picks tasks automatically from approved detailed specs when dependencies are **ACCEPTED**. AIP-00A remains PENDING_REVIEW and is NOT automatically accepted. No production deployment, hidden data transmission or paid API use granted by this batch.
+**Design-driven execution approved:** independent AI branch, OpenAI backend, isolated mobile-accessible Staging, CI safety, and an initial *detailed* task batch AIP-00B, AIP-00C and AIP-01 (mock-only until cost gate). Agent picks tasks automatically from approved detailed specs when dependencies are **ACCEPTED**. AIP-00A was explicitly ACCEPTED by the human on 2026-10-17; this acceptance is recorded above and does not imply acceptance of any subsequent task. No production deployment, hidden data transmission or paid API use granted by this batch.
 
 **Still requires explicit human review before corresponding phase:** real player bot/human room composition (default one human host), whether bots can replace absent humans (defer), bot difficulty setting (defer), selection of durable scheduler technology (defer), human-facing bot pacing/reason display, live player-data external transmission/retention, live API financial budget, first usable match acceptance rubric.
 
-**Current reviewer gate:** AIP-00A has exact-SHA CI success and production deploy skipped, with prior Planner technical recommendation to accept; **human acceptance is still needed** unless explicitly delegated. After `AIP-00A ACCEPTED`, AIP-00B becomes automatically eligible for AA without any new copied prompt, provided Cloudflare permissions/targets are verified. After human iPhone acceptance of AIP-00B, AIP-00C automatically becomes eligible; then mock-only AIP-01. The Planner writes statuses/feedback **only here**; Coding Agent alone maintains AI handover. Do not start dependent work while its prerequisite remains pending review.
+**Current reviewer gate:** AIP-00A was ACCEPTED by explicit human decision on 2026-10-17, following verified exact-SHA CI success and skipped production deploy. **AIP-00B is now the next eligible approved task** for Coding Agent autonomous selection without a new pasted prompt, provided Cloudflare permissions/targets are verified. After human iPhone acceptance of AIP-00B, AIP-00C automatically becomes eligible; then mock-only AIP-01. The Planner writes statuses/feedback **only here**; Coding Agent alone maintains AI handover. Do not start dependent work while its prerequisite remains pending review.
