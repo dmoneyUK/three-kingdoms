@@ -93,7 +93,8 @@ async function playAttack({ page, room, attacker, defender, attack }) {
   const attackCard = dock.locator(`[data-hand-card-id="${attack.id}"] .game-card`);
   await expect(attackCard).toBeEnabled();
   await attackCard.click();
-  await page.getByRole("button", { name: `Select ${defender.name}`, exact: true }).click();
+  const target = page.getByRole("button", { name: `Select ${defender.name}`, exact: true });
+  await target.click({ position: { x: 8, y: 8 } });
   const confirm = dock.locator('[data-console-surface="local-operation"] button.primary');
   await expect(confirm).toBeEnabled();
   const submitted = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
@@ -159,6 +160,7 @@ async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth
         top: Number(card.getAttribute("data-public-card-journey-target-top")),
       },
       viewport: { width: document.documentElement.clientWidth, height: document.documentElement.clientHeight },
+      layoutPending: root.getAttribute("data-public-card-layout-pending"),
       overlaps: obstacles.filter((obstacle) => messageBox.left < obstacle.right && messageBox.right > obstacle.left
         && messageBox.top < obstacle.bottom && messageBox.bottom > obstacle.top),
       cardOverlaps: obstacles.filter((obstacle) => cardBox.left < obstacle.right && cardBox.right > obstacle.left
@@ -190,6 +192,7 @@ async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth
         fontFamily: getComputedStyle(message.querySelector("b")).fontFamily,
         letterSpacing: Number.parseFloat(getComputedStyle(message.querySelector("b")).letterSpacing),
       },
+      computedVisibility: getComputedStyle(message).visibility,
     };
   }, eventId);
   let latestGeometry = null;
@@ -198,6 +201,8 @@ async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth
       latestGeometry = await measure();
       return Boolean(latestGeometry?.positioned === "true"
         && latestGeometry.fallback == null
+        && latestGeometry.layoutPending === "false"
+        && latestGeometry.declaredLines <= 2
         && latestGeometry.overlaps.length === 0
         && (latestGeometry.cardPhase !== "reveal" || latestGeometry.cardOverlaps.length === 0)
         && (latestGeometry.cardPhase !== "reveal" || latestGeometry.message.bottom <= latestGeometry.card.top - 5));
@@ -212,7 +217,7 @@ async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth
   expect(geometry.message.left).toBeGreaterThanOrEqual(8);
   expect(geometry.message.right).toBeLessThanOrEqual(geometry.viewport.width - 8);
   if (geometry.cardPhase === "reveal") expect(geometry.message.bottom).toBeLessThanOrEqual(geometry.card.top - 5);
-  expect(geometry.message.width).toBeGreaterThanOrEqual(minimumWidth);
+  expect(geometry.message.width, JSON.stringify(geometry)).toBeGreaterThanOrEqual(minimumWidth);
   expect(geometry.declaredWidth).toBe(Math.round(geometry.message.width));
   expect(geometry.declaredLines).toBeLessThanOrEqual(2);
   expect(geometry.typography.fontSize).toBeGreaterThanOrEqual(14);
@@ -357,10 +362,8 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   const confirm = defenderDock.locator('[data-action-slot="primary"] button.primary');
   await expect(confirm).toHaveText("Confirm");
   await expect(confirm).toBeEnabled();
-  await expect(details).toBeVisible();
-  await page.keyboard.press("Escape");
+  // Selecting the response closes its nonmodal card preview.
   await expect(details).toHaveCount(0);
-  await expect(attackCardJourney).toBeFocused();
   const dodgeSubmission = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
     && response.request().method() === "POST"
     && response.request().postDataJSON()?.action === "respond");

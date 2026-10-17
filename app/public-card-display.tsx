@@ -145,7 +145,14 @@ type JourneyCard = {
   moveStartedAtMs?: number | null;
   layoutChangeReason?: string;
 };
-type JourneyState = { scopeKey: string; cards: JourneyCard[]; center: CardRect | null };
+type JourneyState = {
+  scopeKey: string;
+  viewerId: string;
+  cards: JourneyCard[];
+  center: CardRect | null;
+  suppressTransitions: boolean;
+  layoutPending: boolean;
+};
 type AttackDodgeJourneyLifecycle = {
   phase: "reveal" | "move" | "parked";
   revealStartedAtMs: number | null;
@@ -239,8 +246,8 @@ function PublicJourneyCard({
   </button>;
 }
 
-function attackDodgeJourneyLifecycleKey(roomCode: string, viewerId: string, rootEventId: string, scopeKey: string, eventId: string) {
-  return `${roomCode}|${viewerId}|${rootEventId}|${scopeKey}|${eventId}`;
+function attackDodgeJourneyLifecycleKey(roomCode: string, rootEventId: string, scopeKey: string, eventId: string) {
+  return `${roomCode}|${rootEventId}|${scopeKey}|${eventId}`;
 }
 
 function rememberAttackDodgeJourneyLifecycle(key: string, lifecycle: AttackDodgeJourneyLifecycle) {
@@ -855,11 +862,16 @@ function PublicCardAnnouncement({
     let resizeObserver: ResizeObserver | null = null;
     let mutationObserver: MutationObserver | null = null;
     let frame = 0;
+    let anchorObserver: MutationObserver | null = null;
     const bandKey = `${viewerLayoutKey}:${placementKey}`;
     const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-content"] : [])].join(", ");
 
     const place = () => {
       const anchor = getAnchor();
+      if (display.dataset.publicCardLayoutPending === "true") {
+        copy.style.visibility = "hidden";
+        return;
+      }
       const actualRect = anchor?.getBoundingClientRect();
       const tableRect = display.closest<HTMLElement>(".play-table")?.getBoundingClientRect() ?? null;
       if (!tableRect) return;
@@ -1137,6 +1149,10 @@ function PublicCardAnnouncement({
           height,
           lines: textElement ? range.getClientRects().length : 0,
           message: fallbackOption.message,
+    const anchor = getAnchor();
+    anchorObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
+    if (anchor) anchorObserver?.observe(anchor, { attributes: true, attributeFilter: ["style"] });
+    anchorObserver?.observe(display, { attributes: true, attributeFilter: ["data-public-card-layout-pending"] });
           compact: fallbackOption.compact,
         };
         copy.dataset.publicCardAnnouncementFallback = "true";
@@ -1173,6 +1189,7 @@ function PublicCardAnnouncement({
     viewport?.addEventListener("scroll", onResize);
     resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onResize);
     const table = display.closest<HTMLElement>(".play-table");
+      anchorObserver?.disconnect();
     const playerBoard = document.querySelector<HTMLElement>(".player-board");
     if (table) resizeObserver?.observe(table);
     if (playerBoard) resizeObserver?.observe(playerBoard);
@@ -1283,7 +1300,7 @@ function AttackDodgeCardJourney({
   onJourneyEventParked?: (eventId: string) => void;
 }) {
   const scopeKey = action.motion?.scopeKey ?? action.rootEventId;
-  const [journey, setJourney] = useState<JourneyState>({ scopeKey: "", cards: [], center: null });
+  const [journey, setJourney] = useState<JourneyState>({ scopeKey: "", viewerId: "", cards: [], center: null, suppressTransitions: false, layoutPending: false });
   const journeyRef = useRef(journey);
   const actionRef = useRef(action);
   const sourceNameRef = useRef(sourceName);
@@ -1348,7 +1365,10 @@ function AttackDodgeCardJourney({
     const motion = currentAction.motion?.type === "attack-dodge" ? currentAction.motion : null;
     if (!enabled || !motion) return;
     const center = battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
-    const previous = journeyRef.current.scopeKey === scopeKey ? journeyRef.current.cards : [];
+    const previousState = journeyRef.current;
+    const sameInteraction = previousState.scopeKey === scopeKey;
+    const viewerChanged = sameInteraction && previousState.viewerId !== viewerId;
+    const previous = sameInteraction ? previousState.cards : [];
     const root = currentAction.cardFace && currentSourceName ? [{
       eventId: currentAction.rootEventId,
       actorId: currentAction.sourceId,
@@ -1362,6 +1382,22 @@ function AttackDodgeCardJourney({
     const response = currentAction.response?.cardFace ? [{
       eventId: currentAction.response.eventId,
       actorId: currentAction.response.actorId,
+        if (viewerChanged) {
+          const phase = prior.phase === "move" ? "parked" as const : prior.phase;
+          return {
+            ...prior,
+            actorId: candidate.actorId,
+            actorName: candidate.actorName,
+            cardFace: candidate.cardFace,
+            ariaLabel: candidate.ariaLabel,
+            semanticLabel: candidate.semanticLabel,
+            phase,
+            target: parkedTarget,
+            rect: phase === "parked" ? parkedTarget : phase === "reveal" ? center : prior.rect,
+            moveStartedAtMs: null,
+            layoutChangeReason: "viewer-switch",
+          };
+        }
       actorName: currentAction.response.actorName,
       cardFace: currentAction.response.cardFace,
       ariaLabel: currentAction.response.ariaLabel,
@@ -1394,7 +1430,7 @@ function AttackDodgeCardJourney({
           const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
           const elapsed = prior.revealStartedAtMs == null ? 0 : Math.max(0, performance.now() - prior.revealStartedAtMs);
           rememberAttackDodgeJourneyLifecycle(
-            attackDodgeJourneyLifecycleKey(roomCode, viewerId, currentAction.rootEventId, scopeKey, prior.eventId),
+            attackDodgeJourneyLifecycleKey(roomCode, currentAction.rootEventId, scopeKey, prior.eventId),
             {
               phase: reducedMotion ? "parked" : "move",
               revealStartedAtMs: null,
@@ -1432,7 +1468,7 @@ function AttackDodgeCardJourney({
         };
       }
       const showCenterReveal = candidate.reveal && Boolean(target);
-      const lifecycleKey = attackDodgeJourneyLifecycleKey(roomCode, viewerId, currentAction.rootEventId, scopeKey, candidate.eventId);
+      const lifecycleKey = attackDodgeJourneyLifecycleKey(roomCode, currentAction.rootEventId, scopeKey, candidate.eventId);
       const retained = showCenterReveal ? attackDodgeJourneyLifecycles.get(lifecycleKey) : undefined;
       const retainedReveal = retained?.phase === "reveal";
       const selectedForCenter = newestFreshEventId === candidate.eventId;
@@ -1476,7 +1512,7 @@ function AttackDodgeCardJourney({
         const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         const elapsed = previouslyProvenCard.revealStartedAtMs == null ? 0 : Math.max(0, performance.now() - previouslyProvenCard.revealStartedAtMs);
         rememberAttackDodgeJourneyLifecycle(
-          attackDodgeJourneyLifecycleKey(roomCode, viewerId, currentAction.rootEventId, scopeKey, previouslyProvenCard.eventId),
+          attackDodgeJourneyLifecycleKey(roomCode, currentAction.rootEventId, scopeKey, previouslyProvenCard.eventId),
           {
             phase: reducedMotion ? "parked" : "move",
             revealStartedAtMs: null,
@@ -1506,10 +1542,18 @@ function AttackDodgeCardJourney({
     }
     const roleOrder: Record<JourneyCard["role"], number> = { root: 0, response: 1, deflection: 2 };
     nextCards.sort((left, right) => roleOrder[left.role] - roleOrder[right.role]);
-    const nextState = { scopeKey, cards: nextCards, center };
+    const layoutPending = nextCards.some((card) => !actorParkedCard(card.actorId));
+    const nextState: JourneyState = {
+      scopeKey,
+      viewerId,
+      cards: nextCards,
+      center,
+      suppressTransitions: viewerChanged || previousState.suppressTransitions || previousState.layoutPending || layoutPending,
+      layoutPending,
+    };
     journeyRef.current = nextState;
     setJourney(nextState);
-  }, [enabled, scopeKey, eventSignature]);
+  }, [enabled, scopeKey, eventSignature, viewerId]);
 
   useEffect(() => {
     if (!enabled || !documentVisible || journey.scopeKey !== scopeKey
@@ -1525,7 +1569,7 @@ function AttackDodgeCardJourney({
       const startedAtMs = performance.now();
       const startedAtIso = new Date().toISOString();
       rememberAttackDodgeJourneyLifecycle(
-        attackDodgeJourneyLifecycleKey(roomCode, viewerId, action.rootEventId, scopeKey, activeJourneyCard.eventId),
+        attackDodgeJourneyLifecycleKey(roomCode, action.rootEventId, scopeKey, activeJourneyCard.eventId),
         {
           phase: "reveal",
           revealStartedAtMs: startedAtMs,
@@ -1545,6 +1589,7 @@ function AttackDodgeCardJourney({
         };
         journeyRef.current = next;
         return next;
+          const shouldMove = !reducedMotion && !current.layoutPending;
       });
     };
     firstFrame = window.requestAnimationFrame(() => {
@@ -1575,15 +1620,16 @@ function AttackDodgeCardJourney({
           const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
           const transitioned: JourneyCard = {
             ...candidate,
-            phase: reducedMotion ? "parked" as const : "move" as const,
+            phase: shouldMove ? "move" as const : "parked" as const,
             rect: candidate.target,
             revealStartedAtMs: null,
             revealElapsedMs: Math.max(STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS, (candidate.revealElapsedMs ?? 0) + visibleSegmentMs),
             revealRemainingMs: 0,
-            moveStartedAtMs: reducedMotion ? null : performance.now(),
-            layoutChangeReason: reducedMotion ? "four-second-reveal-complete-reduced-motion" : "four-second-reveal-complete",
+            moveStartedAtMs: shouldMove ? performance.now() : null,
+            layoutChangeReason: shouldMove ? "four-second-reveal-complete" : current.layoutPending
+              ? "reveal-complete-awaiting-seat-anchor" : "four-second-reveal-complete-reduced-motion",
           };
-          rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, viewerId, actionRef.current.rootEventId, scopeKey, eventId), {
+          rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, actionRef.current.rootEventId, scopeKey, eventId), {
             phase: transitioned.phase,
             revealStartedAtMs: null,
             revealStartedAtIso: transitioned.revealStartedAtIso ?? null,
@@ -1593,7 +1639,7 @@ function AttackDodgeCardJourney({
           return transitioned;
         }
         const parked: JourneyCard = { ...candidate, phase: "parked", rect: candidate.target, moveStartedAtMs: null, layoutChangeReason: "380ms-seat-parking-complete" };
-        rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, viewerId, actionRef.current.rootEventId, scopeKey, eventId), {
+        rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, actionRef.current.rootEventId, scopeKey, eventId), {
           phase: "parked",
           revealStartedAtMs: null,
           revealStartedAtIso: parked.revealStartedAtIso ?? null,
@@ -1618,7 +1664,7 @@ function AttackDodgeCardJourney({
       if (current.scopeKey !== scopeKey || !currentCard) return;
       if (activePhase === "move" && currentCard.phase === "move") {
         const parked = { ...currentCard, phase: "parked" as const, rect: currentCard.target };
-        rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, viewerId, actionRef.current.rootEventId, scopeKey, eventId), {
+        rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, actionRef.current.rootEventId, scopeKey, eventId), {
           phase: "parked",
           revealStartedAtMs: null,
           revealStartedAtIso: parked.revealStartedAtIso ?? null,
@@ -1640,7 +1686,7 @@ function AttackDodgeCardJourney({
         revealRemainingMs: Math.max(0, (currentCard.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS) - visibleSegmentMs),
         revealElapsedMs: (currentCard.revealElapsedMs ?? 0) + visibleSegmentMs,
       };
-      rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, viewerId, actionRef.current.rootEventId, scopeKey, eventId), {
+      rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, actionRef.current.rootEventId, scopeKey, eventId), {
         phase: "reveal",
         revealStartedAtMs: null,
         revealStartedAtIso: nextCard.revealStartedAtIso ?? null,
@@ -1668,7 +1714,7 @@ function AttackDodgeCardJourney({
         const currentCard = current.cards.find((candidate) => candidate.eventId === card.eventId);
         if (current.scopeKey !== scopeKey || !currentCard || currentCard.phase !== "move") return;
         const parked: JourneyCard = { ...currentCard, phase: "parked", rect: currentCard.target, moveStartedAtMs: null, layoutChangeReason: "380ms-seat-parking-complete" };
-        rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, viewerId, actionRef.current.rootEventId, scopeKey, card.eventId), {
+        rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, actionRef.current.rootEventId, scopeKey, card.eventId), {
           phase: "parked",
           revealStartedAtMs: null,
           revealStartedAtIso: parked.revealStartedAtIso ?? null,
@@ -1690,7 +1736,7 @@ function AttackDodgeCardJourney({
       if (moving.length === 0) return;
       const movedIds = new Set(moving.map((card) => card.eventId));
       for (const card of moving) {
-        rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, viewerId, actionRef.current.rootEventId, scopeKey, card.eventId), {
+        rememberAttackDodgeJourneyLifecycle(attackDodgeJourneyLifecycleKey(roomCode, actionRef.current.rootEventId, scopeKey, card.eventId), {
           phase: "parked",
           revealStartedAtMs: null,
           revealStartedAtIso: card.revealStartedAtIso ?? null,
@@ -1711,13 +1757,13 @@ function AttackDodgeCardJourney({
   }, [enabled, documentVisible, journey.scopeKey, movingCardSignature, roomCode, scopeKey, viewerId]);
 
   useEffect(() => {
-    if (!enabled || journey.scopeKey !== scopeKey) return;
+    if (!enabled || journey.layoutPending || journey.scopeKey !== scopeKey) return;
     for (const card of journey.cards) {
       if (card.phase !== "parked" || parkedNotifiedEventIdsRef.current.has(card.eventId)) continue;
       parkedNotifiedEventIdsRef.current.add(card.eventId);
       onJourneyEventParked?.(card.eventId);
     }
-  }, [enabled, journey.scopeKey, journey.cards, scopeKey, onJourneyEventParked]);
+  }, [enabled, journey.layoutPending, journey.scopeKey, journey.cards, scopeKey, onJourneyEventParked]);
 
   useEffect(() => {
     if (!enabled || journey.scopeKey !== scopeKey) return;
@@ -1763,6 +1809,7 @@ function AttackDodgeCardJourney({
           revealStartedAt: card.revealStartedAtIso ?? null,
           revealElapsedMs: roundedElapsedMs,
           layoutChangeReason: card.phase === "reveal"
+      const current = journeyRef.current;
             ? card.layoutChangeReason ?? "full-size-centre-reveal"
             : card.layoutChangeReason ?? (card.phase === "move" ? "four-second-reveal-complete" : "seat-parking-complete"),
         });
@@ -1773,6 +1820,7 @@ function AttackDodgeCardJourney({
     const interval = window.setInterval(record, 500);
     return () => window.clearInterval(interval);
   }, [action.targetId, enabled, journey.scopeKey, journey.cards, scopeKey, viewerId]);
+            phase: card.phase === "move" ? "parked" as const : card.phase,
 
   useLayoutEffect(() => {
     if (!enabled || !hasAttackDodgeMotion || journey.scopeKey !== scopeKey) return;
@@ -1792,20 +1840,42 @@ function AttackDodgeCardJourney({
     const reposition = () => {
       const currentAction = actionRef.current;
       const center = battlefieldCenterCard(REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
+      const current = journeyRef.current;
+      if (current.scopeKey === scopeKey && !current.layoutPending) {
+        const pending: JourneyState = {
+          ...current,
+          suppressTransitions: true,
+          layoutPending: true,
+          cards: current.cards.map((card) => card.phase === "move"
+            ? { ...card, phase: "parked", rect: card.target, moveStartedAtMs: null, layoutChangeReason: "layout-epoch-pending" }
+            : card),
+        };
+        journeyRef.current = pending;
+        setJourney(pending);
+      }
       const next = {
-        ...journeyRef.current,
+        ...current,
         center,
-        cards: journeyRef.current.cards.map((card) => {
-          const target = actorParkedCard(card.actorId) ?? center;
-          return {
+        suppressTransitions: true,
+        layoutPending: false,
+        cards: current.cards.map((card) => {
+          const target = actorParkedCard(card.actorId);
+          if (target) return {
             ...card,
             target,
-            rect: card.phase === "reveal" ? center : card.phase === "parked" ? target : card.rect,
+            rect: card.phase === "reveal" ? center : target,
+            moveStartedAtMs: null,
+            layoutChangeReason: "viewport-or-seat-anchor-reflow",
+          };
+          return {
+            ...card,
+            phase: card.phase === "move" ? "parked" as const : card.phase,
             layoutChangeReason: "viewport-or-seat-anchor-reflow",
           };
         }),
       };
-      if (journeyGeometryMatches(journeyRef.current, next)) return;
+      next.layoutPending = next.cards.some((card) => !actorParkedCard(card.actorId));
+      if (journeyGeometryMatches(current, next) && !current.layoutPending && !next.layoutPending) return;
       journeyRef.current = next;
       setJourney(next);
     };
@@ -1842,6 +1912,17 @@ function AttackDodgeCardJourney({
     observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleReposition);
     const shell = document.querySelector<HTMLElement>(".game-shell");
     if (shell) observer?.observe(shell);
+  useEffect(() => {
+    if (!journey.suppressTransitions || journey.layoutPending || journey.scopeKey !== scopeKey) return;
+    const frame = window.requestAnimationFrame(() => setJourney((current) => {
+      if (current.scopeKey !== scopeKey || current.layoutPending || !current.suppressTransitions) return current;
+      const next = { ...current, suppressTransitions: false };
+      journeyRef.current = next;
+      return next;
+    }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [journey.layoutPending, journey.scopeKey, journey.suppressTransitions, scopeKey]);
+
     observePlayerAnchors();
     const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
       const containsPlayerAnchor = (node: Node) => node instanceof Element
@@ -1852,6 +1933,7 @@ function AttackDodgeCardJourney({
         observePlayerAnchors();
         scheduleReposition();
       }
+    data-public-card-layout-pending={journey.layoutPending ? "true" : "false"}
     });
     if (shell) mutationObserver?.observe(shell, {
       childList: true,
@@ -1873,7 +1955,7 @@ function AttackDodgeCardJourney({
   if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
   const cards = journey.cards;
   return <section
-    className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}`}
+    className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}`}
     data-public-card-display="true"
     data-public-card-renderer-kind="attack-dodge-journey"
     data-public-card-ready="true"
@@ -2014,7 +2096,7 @@ function SingleTargetCardJourney({
 }) {
   const motion = singleTargetJourneyMotion(action.motion);
   const scopeKey = motion?.scopeKey ?? action.rootEventId;
-  const [journey, setJourney] = useState<SingleTargetJourneyState>({ scopeKey: "", viewerId: "", cards: [], center: null });
+  const [journey, setJourney] = useState<SingleTargetJourneyState>({ scopeKey: "", viewerId: "", cards: [], center: null, suppressTransitions: false, layoutPending: false });
   const journeyRef = useRef(journey);
   const actionRef = useRef(action);
   const sourceNameRef = useRef(sourceName);
@@ -2048,6 +2130,7 @@ function SingleTargetCardJourney({
     documentVisibleRef.current = documentVisible;
   }, [enabled, documentVisible]);
   useEffect(() => {
+    const measuredTargetEventIds = new Set<string>();
     const updateVisibility = () => setDocumentVisible(document.visibilityState === "visible");
     document.addEventListener("visibilitychange", updateVisibility);
     updateVisibility();
@@ -2079,11 +2162,12 @@ function SingleTargetCardJourney({
       const old = priorById.get(event.eventId);
       const actorIndex = actorIndexes.get(event.actorId) ?? 0;
       actorIndexes.set(event.actorId, actorIndex + 1);
-      const target = old && !viewerChanged
+      const measuredTarget = old && !viewerChanged && !previous.layoutPending
         ? old.target
         : seatHistoryCardParking(event.actorId, actorIndex, occupied)?.rect
-          ?? actorParkedCard(event.actorId, actorIndex)
-          ?? center;
+          ?? actorParkedCard(event.actorId, actorIndex);
+      if (measuredTarget) measuredTargetEventIds.add(event.eventId);
+      const target = measuredTarget ?? old?.target ?? center;
       occupied.push(target);
       if (old && !viewerChanged) {
         if (latestFreshResponseEventId && event.eventId !== latestFreshResponseEventId && old.phase === "reveal") {
@@ -2104,9 +2188,48 @@ function SingleTargetCardJourney({
             layoutChangeReason: "interrupted-by-new-committed-response",
           };
         }
-        return { ...event, ...old, actorName: event.actorName, cardFace: event.cardFace, ariaLabel: event.ariaLabel, semanticLabel: event.semanticLabel, target };
+        return {
+          ...event,
+          ...old,
+          actorName: event.actorName,
+          cardFace: event.cardFace,
+          ariaLabel: event.ariaLabel,
+          semanticLabel: event.semanticLabel,
+          rect: old.phase === "parked" ? target : old.phase === "reveal" ? center : old.rect,
+          target,
+        };
       }
-      const phase: SingleTargetJourneyPhase = !viewerChanged && fresh.has(event.eventId) && event.eventId === latestFreshEventId ? "reveal" : "parked";
+      if (old && viewerChanged) {
+        const phase: SingleTargetJourneyPhase = old.phase === "move" ? "parked" : old.phase;
+        return {
+          ...event,
+          ...old,
+          actorName: event.actorName,
+          cardFace: event.cardFace,
+    const layoutPending = cards.some((card) => !measuredTargetEventIds.has(card.eventId));
+          ariaLabel: event.ariaLabel,
+          semanticLabel: event.semanticLabel,
+          phase,
+          rect: phase === "parked" ? target : phase === "reveal" ? center : old.rect,
+          target,
+      suppressTransitions: viewerChanged || previous.suppressTransitions || previous.layoutPending || layoutPending,
+      layoutPending,
+          moveStartedAtMs: null,
+          layoutChangeReason: "viewer-switch",
+        };
+      }
+      const phase: SingleTargetJourneyPhase = !old && fresh.has(event.eventId) && event.eventId === latestFreshEventId ? "reveal" : "parked";
+  useEffect(() => {
+    if (!journey.suppressTransitions || journey.layoutPending || journey.scopeKey !== scopeKey) return;
+    const frame = window.requestAnimationFrame(() => setJourney((current) => {
+      if (current.scopeKey !== scopeKey || current.layoutPending || !current.suppressTransitions) return current;
+      const next = { ...current, suppressTransitions: false };
+      journeyRef.current = next;
+      return next;
+    }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [journey.layoutPending, journey.scopeKey, journey.suppressTransitions, scopeKey]);
+
       return {
         ...event,
         phase,
@@ -2127,7 +2250,8 @@ function SingleTargetCardJourney({
     const next: SingleTargetJourneyState = {
       scopeKey,
       viewerId,
-      cards: withFirstQueuedSingleTargetReveal(cards, center),
+            const shouldMove = !reducedMotion && !current.layoutPending;
+      cards: viewerChanged ? cards : withFirstQueuedSingleTargetReveal(cards, center),
       center,
     };
     journeyRef.current = next;
@@ -2157,13 +2281,14 @@ function SingleTargetCardJourney({
             const cards = current.cards.map((candidate) => candidate.eventId === card.eventId
               ? {
                 ...candidate,
-                phase: reducedMotion ? "parked" as const : "move" as const,
+                phase: shouldMove ? "move" as const : "parked" as const,
                 rect: candidate.target,
                 revealStartedAtMs: null,
                 revealElapsedMs: (candidate.revealElapsedMs ?? 0) + Math.max(0, now - (candidate.revealStartedAtMs ?? now)),
                 revealRemainingMs: 0,
-                moveStartedAtMs: reducedMotion ? null : now,
-                layoutChangeReason: reducedMotion ? "four-second-reveal-complete-reduced-motion" : "four-second-reveal-complete",
+                moveStartedAtMs: shouldMove ? now : null,
+                layoutChangeReason: current.layoutPending ? "reveal-complete-awaiting-seat-anchor"
+                  : reducedMotion ? "four-second-reveal-complete-reduced-motion" : "four-second-reveal-complete",
               }
               : candidate);
             const next = { ...current, cards };
@@ -2231,6 +2356,7 @@ function SingleTargetCardJourney({
       if (!documentVisibleRef.current || document.visibilityState !== "visible" || !hasPaintedLargePublicCard(activeCard.eventId, REVEAL_CARD)) {
         firstFrame = window.requestAnimationFrame(markFirstPaint);
         return;
+    let mutationObserver: MutationObserver | null = null;
       }
       const startedAt = performance.now();
       const startedAtIso = new Date().toISOString();
@@ -2241,6 +2367,19 @@ function SingleTargetCardJourney({
           ? { ...candidate, revealStartedAtMs: startedAt, revealStartedAtIso: candidate.revealStartedAtIso ?? startedAtIso, layoutChangeReason: "centre-card-presented" }
           : candidate);
         const next = { ...current, cards };
+      setJourney((current) => {
+        if (current.scopeKey !== scopeKey || current.layoutPending) return current;
+        const next: SingleTargetJourneyState = {
+          ...current,
+          suppressTransitions: true,
+          layoutPending: true,
+          cards: current.cards.map((card) => card.phase === "move"
+            ? { ...card, phase: "parked", rect: card.target, moveStartedAtMs: null, layoutChangeReason: "layout-epoch-pending" }
+            : card),
+        };
+        journeyRef.current = next;
+        return next;
+      });
         journeyRef.current = next;
         return next;
       });
@@ -2274,6 +2413,7 @@ function SingleTargetCardJourney({
       const measureWhenSettled = () => {
         const layoutElements = [
           document.querySelector<HTMLElement>(".play-table"),
+        const measuredTargets = new Map<string, CardRect>();
           document.querySelector<HTMLElement>(".player-board"),
           ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
         ].filter((element): element is HTMLElement => Boolean(element));
@@ -2291,8 +2431,14 @@ function SingleTargetCardJourney({
         }
         resizeFrame = 0;
         const current = journeyRef.current;
+        const layoutPending = cards.some((card) => !measuredTargets.has(card.eventId));
+        if (layoutPending && sampledFrames < 120) {
+          resizeFrame = window.requestAnimationFrame(measureWhenSettled);
+          return;
+        }
         if (current.scopeKey !== scopeKey) return;
         const currentAction = actionRef.current;
+          && current.layoutPending === layoutPending
         const currentMotion = singleTargetJourneyMotion(currentAction.motion);
         const center = currentMotion?.type === "lust-cost" && currentAction.lustCostFrame
           ? battlefieldLustCostCard()
@@ -2304,16 +2450,29 @@ function SingleTargetCardJourney({
         const cards = current.cards.map((card) => {
           const actorIndex = actorIndexes.get(card.actorId) ?? 0;
           actorIndexes.set(card.actorId, actorIndex + 1);
-          const target = seatHistoryCardParking(card.actorId, actorIndex, occupied)?.rect
-            ?? actorParkedCard(card.actorId, actorIndex)
-            ?? card.target;
+          const measuredTarget = seatHistoryCardParking(card.actorId, actorIndex, occupied)?.rect
+            ?? actorParkedCard(card.actorId, actorIndex);
+    const shell = document.querySelector<HTMLElement>(".game-shell");
+    mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
+      const containsPlayerAnchor = (node: Node) => node instanceof Element
+        && (node.matches("[data-player-anchor]") || Boolean(node.querySelector("[data-player-anchor]")));
+      if (records.some((record) => record.type === "attributes"
+        || [...record.addedNodes, ...record.removedNodes].some(containsPlayerAnchor))) {
+        observeLayout();
+        reflow();
+      }
+    });
+    if (shell) mutationObserver?.observe(shell, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-player-anchor"] });
+          const target = measuredTarget ?? card.target;
+          if (measuredTarget) measuredTargets.set(card.eventId, measuredTarget);
           occupied.push(target);
           const phase = card.phase === "move" ? "parked" as const : card.phase;
           return {
             ...card,
+      mutationObserver?.disconnect();
             phase,
             target,
-            rect: phase === "reveal" ? center : phase === "parked" ? target : card.rect,
+            rect: phase === "reveal" ? center : phase === "parked" && measuredTarget ? target : card.rect,
             layoutChangeReason: "viewport-resize",
           };
         });
@@ -2324,7 +2483,7 @@ function SingleTargetCardJourney({
             && cardRectsMatch(card.rect, current.cards[index].rect)
             && cardRectsMatch(card.target, current.cards[index].target));
         if (unchanged) return;
-        const next = { ...current, center, cards: withFirstQueuedSingleTargetReveal(cards, center) };
+        const next = { ...current, center, cards, suppressTransitions: true, layoutPending };
         journeyRef.current = next;
         setJourney(next);
       };
@@ -2343,15 +2502,15 @@ function SingleTargetCardJourney({
   }, [enabled, journey.scopeKey, scopeKey]);
 
   const currentCard = activeCard ?? journey.cards.find((card) => card.eventId === activeEventId) ?? null;
-  const allParked = journey.cards.length > 0 && journey.cards.every((card) => card.phase === "parked");
+  const allParked = !journey.layoutPending && journey.cards.length > 0 && journey.cards.every((card) => card.phase === "parked");
   useEffect(() => {
-    if (!enabled || journey.scopeKey !== scopeKey) return;
+    if (!enabled || journey.layoutPending || journey.scopeKey !== scopeKey) return;
     for (const card of journey.cards) {
       if (card.phase !== "parked" || parkedNotifiedEventIdsRef.current.has(card.eventId)) continue;
       parkedNotifiedEventIdsRef.current.add(card.eventId);
       onJourneyEventParked?.(card.eventId);
     }
-  }, [enabled, journey.cards, journey.scopeKey, onJourneyEventParked, scopeKey]);
+  }, [enabled, journey.cards, journey.layoutPending, journey.scopeKey, onJourneyEventParked, scopeKey]);
   useEffect(() => {
     if (!enabled || journey.scopeKey !== scopeKey) return;
     const record = () => {
@@ -2406,6 +2565,7 @@ function SingleTargetCardJourney({
         });
       }
     };
+    data-public-card-layout-pending={journey.layoutPending ? "true" : "false"}
     record();
     if (!journey.cards.some((card) => card.phase === "reveal" || card.phase === "move")) return;
     const interval = window.setInterval(record, 500);
@@ -2427,7 +2587,7 @@ function SingleTargetCardJourney({
   }, [action.settlement?.eventId, allParked, enabled, journey.scopeKey, onJourneySettled, scopeKey]);
   if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
   return <section
-    className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}`}
+    className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}`}
     data-public-card-display="true"
     data-public-card-renderer-kind="single-target-journey"
     data-public-card-ready="true"
@@ -2479,6 +2639,7 @@ function SingleTargetCardJourney({
       negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
       stableCenterAnchor={motion?.type === "lust-cost"}
       preferredVerticalMode={motion?.type === "lust-cost" ? "below" : undefined}
+  layoutPending: boolean;
     />
   </section>;
 }
@@ -2489,6 +2650,8 @@ type DuelJourneyEvent = Pick<JourneyCard,
 type DuelJourneyPhase = "queued" | "reveal" | "move" | "parked";
 type DuelJourneyCard = DuelJourneyEvent & {
   phase: DuelJourneyPhase;
+  suppressTransitions: boolean;
+  layoutPending: boolean;
   rect: CardRect;
   target: CardRect;
   parkingSide: SeatHistoryCardParking["side"];
@@ -2609,7 +2772,7 @@ function DuelCardJourney({
   onJourneyEventParked?: (eventId: string) => void;
 }) {
   const scopeKey = action.motion?.type === "duel" || action.motion?.type === "lust-duel" ? action.motion.scopeKey : action.rootEventId;
-  const [journey, setJourney] = useState<DuelJourneyState>({ scopeKey: "", viewerId: "", viewerSeat: null, cards: [], center: null, suppressTransitions: false });
+  const [journey, setJourney] = useState<DuelJourneyState>({ scopeKey: "", viewerId: "", viewerSeat: null, cards: [], center: null, suppressTransitions: false, layoutPending: false });
   const [settledLustFrameViewerKey, setSettledLustFrameViewerKey] = useState("");
   const [expiredLustSettlementEventId, setExpiredLustSettlementEventId] = useState<string | null>(null);
   const journeyRef = useRef(journey);
@@ -2651,6 +2814,7 @@ function DuelCardJourney({
     const remainingMs = Math.max(0, settlement.readRemainingMs ?? 0);
     if (remainingMs === 0) return;
     const timer = window.setTimeout(() => setExpiredLustSettlementEventId(settlement.eventId), remainingMs);
+    const measuredTargetEventIds = new Set(targets.keys());
     return () => window.clearTimeout(timer);
   }, [action.motion?.type, action.settlement?.eventId, action.settlement?.readRemainingMs, expiredLustSettlementEventId]);
 
@@ -2680,9 +2844,12 @@ function DuelCardJourney({
     const targets = duelParkingTargets(events, preserveTargets ? previous.cards : []);
     const cards = events.flatMap((event) => {
       const old = priorById.get(event.eventId);
-      const target = targets.get(event.eventId);
-      if (!target) return [];
+      const target = targets.get(event.eventId) ?? {
+        rect: old?.target ?? center,
+        side: old?.parkingSide ?? "top" as const,
+      };
       if (old && preserveTargets) {
+        const phase: DuelJourneyPhase = old.phase === "move" ? "parked" : old.phase;
         const updated: DuelJourneyCard = {
           ...old,
           actorName: event.actorName,
@@ -2712,14 +2879,14 @@ function DuelCardJourney({
       if (old && viewerChanged) {
         return [{
           ...event,
-          phase: "parked" as const,
-          rect: target.rect,
+          phase,
+          rect: phase === "parked" ? target.rect : phase === "reveal" ? center : old.rect,
           target: target.rect,
           parkingSide: target.side,
           revealStartedAtMs: old.revealStartedAtMs,
           revealStartedAtIso: old.revealStartedAtIso,
           revealElapsedMs: old.revealElapsedMs ?? 0,
-          revealRemainingMs: 0,
+          revealRemainingMs: old.revealRemainingMs,
           moveStartedAtMs: null,
           layoutChangeReason: "viewer-switch",
         }];
@@ -2739,14 +2906,16 @@ function DuelCardJourney({
         layoutChangeReason: phase === "reveal" ? "public-event-committed" : viewerChanged ? "viewer-switch" : "public-event-restored",
       }];
     }).sort((a, b) => (a.globalOrdinal ?? 0) - (b.globalOrdinal ?? 0));
-    const cardsWithReveal = withFirstQueuedDuelReveal(cards, center, viewerChanged ? "viewer-switch-new-public-event" : "public-event-committed");
+    const cardsWithReveal = viewerChanged ? cards : withFirstQueuedDuelReveal(cards, center, "public-event-committed");
+    const layoutPending = cardsWithReveal.some((card) => !measuredTargetEventIds.has(card.eventId));
     const next: DuelJourneyState = {
       scopeKey,
       viewerId,
       viewerSeat,
       cards: cardsWithReveal,
       center,
-      suppressTransitions: viewerChanged,
+      suppressTransitions: viewerChanged || previous.suppressTransitions || previous.layoutPending || layoutPending,
+      layoutPending,
     };
     journeyRef.current = next;
     setJourney(next);
@@ -2809,13 +2978,14 @@ function DuelCardJourney({
         const cards = current.cards.map((candidate) => candidate.eventId === timerEventId
           ? {
             ...candidate,
-            phase: reducedMotion ? "parked" as const : "move" as const,
+            phase: !reducedMotion && !current.layoutPending ? "move" as const : "parked" as const,
             rect: candidate.target,
             revealElapsedMs: (candidate.revealElapsedMs ?? 0) + Math.max(0, now - (candidate.revealStartedAtMs ?? now)),
             revealStartedAtMs: null,
             revealRemainingMs: 0,
-            moveStartedAtMs: reducedMotion ? null : now,
-            layoutChangeReason: reducedMotion ? "four-second-reveal-complete-reduced-motion" : "four-second-reveal-complete",
+            moveStartedAtMs: !reducedMotion && !current.layoutPending ? now : null,
+            layoutChangeReason: current.layoutPending ? "reveal-complete-awaiting-seat-anchor"
+              : reducedMotion ? "four-second-reveal-complete-reduced-motion" : "four-second-reveal-complete",
           }
           : candidate);
         const next = { ...current, cards };
@@ -2883,13 +3053,13 @@ function DuelCardJourney({
   }, [enabled, documentVisible, duelMovingSignature, journey.scopeKey, journey.cards, scopeKey]);
 
   useEffect(() => {
-    if (!enabled || journey.scopeKey !== scopeKey) return;
+    if (!enabled || journey.layoutPending || journey.scopeKey !== scopeKey) return;
     for (const card of journey.cards) {
       if (card.phase !== "parked" || parkedNotifiedEventIdsRef.current.has(card.eventId)) continue;
       parkedNotifiedEventIdsRef.current.add(card.eventId);
       onJourneyEventParked?.(card.eventId);
     }
-  }, [enabled, journey.cards, journey.scopeKey, onJourneyEventParked, scopeKey]);
+  }, [enabled, journey.cards, journey.layoutPending, journey.scopeKey, onJourneyEventParked, scopeKey]);
 
   useLayoutEffect(() => {
     if (!enabled || journey.scopeKey !== scopeKey) return;
@@ -2947,80 +3117,139 @@ function DuelCardJourney({
   useLayoutEffect(() => {
     if (!enabled || journey.scopeKey !== scopeKey) return;
     let resizeFrame = 0;
-    let settleFrame = 0;
-    let releaseFrame = 0;
-    let lastViewport = `${window.innerWidth}:${window.innerHeight}:${window.visualViewport?.width ?? 0}:${window.visualViewport?.height ?? 0}:${window.visualViewport?.scale ?? 1}`;
-    const repositionAfterViewportSettles = () => {
-      window.cancelAnimationFrame(resizeFrame);
-      window.cancelAnimationFrame(settleFrame);
-      resizeFrame = window.requestAnimationFrame(() => {
-        settleFrame = window.requestAnimationFrame(() => {
-          const viewportSignature = `${window.innerWidth}:${window.innerHeight}:${window.visualViewport?.width ?? 0}:${window.visualViewport?.height ?? 0}:${window.visualViewport?.scale ?? 1}`;
-          if (viewportSignature === lastViewport) return;
-          lastViewport = viewportSignature;
-          const currentAction = actionRef.current;
-          const currentMotion = currentAction.motion;
-          const events = duelJourneyEvents(currentAction, sourceNameRef.current);
-          const fresh = new Set(currentMotion?.type === "duel" || currentMotion?.type === "lust-duel" ? currentMotion.freshEventIds : []);
-          const latestFreshEvent = [...events].reverse().find((event) => fresh.has(event.eventId) && event.cardFace) ?? null;
-          const lustRootIsCurrent = latestFreshEvent?.role === "root"
-            || (!latestFreshEvent && events.at(-1)?.role === "root");
-          const center = currentMotion?.type === "lust-duel" && currentAction.lustCostFrame && lustRootIsCurrent
-            ? battlefieldLustCostCard()
-            : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
-          setJourney((current) => {
-            if (current.scopeKey !== scopeKey) return current;
-            const targets = duelParkingTargets(events);
-            let cards = current.cards.map((card) => {
-              const target = targets.get(card.eventId);
-              if (!target) return card;
-              if (card.phase === "move") return { ...card, phase: "parked" as const, target: target.rect, rect: target.rect, parkingSide: target.side, layoutChangeReason: "viewport-resize" };
-              return {
-                ...card,
-                target: target.rect,
-                parkingSide: target.side,
-                rect: card.phase === "reveal" ? center : card.phase === "parked" ? target.rect : card.rect,
-                layoutChangeReason: "viewport-resize",
-              };
-            });
-            cards = withFirstQueuedDuelReveal(cards, center, "viewport-resize-new-public-event");
-            const next = { ...current, cards, center, suppressTransitions: true };
-            journeyRef.current = next;
-            return next;
-          });
-          releaseFrame = window.requestAnimationFrame(() => setJourney((current) => {
-            if (current.scopeKey !== scopeKey || !current.suppressTransitions) return current;
-            const next = { ...current, suppressTransitions: false };
-            journeyRef.current = next;
-            return next;
-          }));
-        });
-      });
+    let sampledFrames = 0;
+    let stableFrames = 0;
+    let previousLayout = "";
+    let resizeObserver: ResizeObserver | null = null;
+    let mutationObserver: MutationObserver | null = null;
+    const observedElements = new WeakSet<Element>();
+    const readLayoutSignature = () => {
+      const elements = [
+        document.querySelector<HTMLElement>(".play-table"),
+        document.querySelector<HTMLElement>(".player-board"),
+        ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
+      ].filter((element): element is HTMLElement => Boolean(element));
+      return [window.innerWidth, window.innerHeight, window.visualViewport?.width ?? 0,
+        window.visualViewport?.height ?? 0, window.visualViewport?.scale ?? 1,
+        ...elements.flatMap((element) => {
+          const rect = element.getBoundingClientRect();
+          return [rect.left, rect.top, rect.width, rect.height].map((value) => Math.round(value * 2) / 2);
+        })].join(":");
     };
-    // Window/visualViewport resize is the only reflow authority. DOM observers
-    // made banners and history growth move already parked cards.
-    window.addEventListener("resize", repositionAfterViewportSettles);
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", repositionAfterViewportSettles);
-    return () => {
-      window.removeEventListener("resize", repositionAfterViewportSettles);
-      viewport?.removeEventListener("resize", repositionAfterViewportSettles);
+    const observeLayout = () => {
+      const elements = [
+        document.querySelector<HTMLElement>(".play-table"),
+        document.querySelector<HTMLElement>(".player-board"),
+        ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
+      ];
+      for (const element of elements) {
+        if (!element || observedElements.has(element)) continue;
+        observedElements.add(element);
+        resizeObserver?.observe(element);
+      }
+    };
+    const markLayoutPending = () => setJourney((current) => {
+      if (current.scopeKey !== scopeKey || current.layoutPending) return current;
+      const next: DuelJourneyState = {
+        ...current,
+        suppressTransitions: true,
+        layoutPending: true,
+        cards: current.cards.map((card) => card.phase === "move"
+          ? { ...card, phase: "parked", rect: card.target, moveStartedAtMs: null, layoutChangeReason: "layout-epoch-pending" }
+          : card),
+      };
+      journeyRef.current = next;
+      return next;
+    });
+    const repositionAfterLayoutSettles = () => {
       window.cancelAnimationFrame(resizeFrame);
-      window.cancelAnimationFrame(settleFrame);
-      window.cancelAnimationFrame(releaseFrame);
+      sampledFrames = 0;
+      stableFrames = 0;
+      previousLayout = "";
+      markLayoutPending();
+      const measure = () => {
+        sampledFrames += 1;
+        const signature = readLayoutSignature();
+        stableFrames = signature === previousLayout ? stableFrames + 1 : 0;
+        previousLayout = signature;
+        if (stableFrames < 2 && sampledFrames < 120) {
+          resizeFrame = window.requestAnimationFrame(measure);
+          return;
+        }
+        resizeFrame = 0;
+        const currentAction = actionRef.current;
+        const currentMotion = currentAction.motion;
+        const events = duelJourneyEvents(currentAction, sourceNameRef.current);
+        const fresh = new Set(currentMotion?.type === "duel" || currentMotion?.type === "lust-duel" ? currentMotion.freshEventIds : []);
+        const latestFreshEvent = [...events].reverse().find((event) => fresh.has(event.eventId) && event.cardFace) ?? null;
+        const lustRootIsCurrent = latestFreshEvent?.role === "root"
+          || (!latestFreshEvent && events.at(-1)?.role === "root");
+        const center = currentMotion?.type === "lust-duel" && currentAction.lustCostFrame && lustRootIsCurrent
+          ? battlefieldLustCostCard()
+          : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
+        const targets = duelParkingTargets(events);
+        setJourney((current) => {
+          if (current.scopeKey !== scopeKey) return current;
+          const cards = current.cards.map((card) => {
+            const target = targets.get(card.eventId);
+            const phase = card.phase === "move" ? "parked" as const : card.phase;
+            return {
+              ...card,
+              phase,
+              target: target?.rect ?? card.target,
+              parkingSide: target?.side ?? card.parkingSide,
+              rect: phase === "reveal" ? center : phase === "parked" && target ? target.rect : card.rect,
+              moveStartedAtMs: phase === "parked" ? null : card.moveStartedAtMs,
+              layoutChangeReason: "viewport-or-seat-anchor-reflow",
+            };
+          });
+          const layoutPending = cards.some((card) => !targets.has(card.eventId));
+          const next: DuelJourneyState = { ...current, cards, center, suppressTransitions: true, layoutPending };
+          journeyRef.current = next;
+          return next;
+        });
+        if (sampledFrames < 120 && events.some((event) => !targets.has(event.eventId))) {
+          resizeFrame = window.requestAnimationFrame(measure);
+        }
+      };
+      resizeFrame = window.requestAnimationFrame(measure);
+    };
+    resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(repositionAfterLayoutSettles);
+    observeLayout();
+    const shell = document.querySelector<HTMLElement>(".game-shell");
+    mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
+      const hasAnchorChange = records.some((record) => record.type === "attributes"
+        || [...record.addedNodes, ...record.removedNodes].some((node) => node instanceof Element
+          && (node.matches("[data-player-anchor]") || Boolean(node.querySelector("[data-player-anchor]")))));
+      if (!hasAnchorChange) return;
+      observeLayout();
+      repositionAfterLayoutSettles();
+    });
+    if (shell) mutationObserver?.observe(shell, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-player-anchor"] });
+    window.addEventListener("resize", repositionAfterLayoutSettles);
+    window.addEventListener("scroll", repositionAfterLayoutSettles, true);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", repositionAfterLayoutSettles);
+    return () => {
+      window.removeEventListener("resize", repositionAfterLayoutSettles);
+      window.removeEventListener("scroll", repositionAfterLayoutSettles, true);
+      viewport?.removeEventListener("resize", repositionAfterLayoutSettles);
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+      window.cancelAnimationFrame(resizeFrame);
     };
   }, [enabled, journey.scopeKey, scopeKey]);
 
   useEffect(() => {
-    if (!journey.suppressTransitions || journey.scopeKey !== scopeKey) return;
+    if (!journey.suppressTransitions || journey.layoutPending || journey.scopeKey !== scopeKey) return;
     const frame = window.requestAnimationFrame(() => setJourney((current) => {
-      if (current.scopeKey !== scopeKey || !current.suppressTransitions) return current;
+      if (current.scopeKey !== scopeKey || current.layoutPending || !current.suppressTransitions) return current;
       const next = { ...current, suppressTransitions: false };
       journeyRef.current = next;
       return next;
     }));
     return () => window.cancelAnimationFrame(frame);
-  }, [journey.suppressTransitions, journey.scopeKey, scopeKey]);
+  }, [journey.layoutPending, journey.suppressTransitions, journey.scopeKey, scopeKey]);
 
   const latestResponse = action.responses?.at(-1) ?? null;
   const activeEvent = activeCard
@@ -3081,6 +3310,7 @@ function DuelCardJourney({
           viewerSeat,
           cardKind: card.cardFace.kind,
           visualPhase: card.phase.toUpperCase(),
+    data-public-card-layout-pending={journey.layoutPending ? "true" : "false"}
           actualCardRect: actualRect,
           targetParkingRect: targetRect,
           revealStartedAt: card.revealStartedAtIso,
@@ -3102,7 +3332,7 @@ function DuelCardJourney({
   if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center || lustSettlementExpired || awaitingLustFrameLayout) return null;
 
   return <section
-    className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}`}
+    className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}`}
     data-public-card-display="true"
     data-public-card-renderer-kind="duel-journey"
     data-public-card-ready="true"

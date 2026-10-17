@@ -10,6 +10,39 @@ async function postAction(request, action, code, token, values = {}) {
   return body;
 }
 
+async function readRootH4Announcement(page, rootEventId) {
+  return page.evaluate((eventId) => {
+    const display = document.querySelector(`.public-card-display[data-public-card-root-event-id="${eventId}"]`);
+    const announcement = display?.querySelector('[data-public-card-announcement="true"]');
+    if (!display || !announcement || announcement.dataset.publicCardAnnouncementPositioned !== "true"
+      || getComputedStyle(announcement).visibility !== "visible") return null;
+    const bounds = announcement.getBoundingClientRect();
+    const table = document.querySelector(".play-table")?.getBoundingClientRect();
+    const announcementEventId = announcement.dataset.publicCardAnnouncementEventId ?? "";
+    const intersects = (first, second) => first.left < second.right && first.right > second.left
+      && first.top < second.bottom && first.bottom > second.top;
+    const protectedRects = [...document.querySelectorAll(
+      ".opponent-player-card, .player-square, .player-board-status, .visible-countdown, .stage-system-cluster, .public-activity-chip, .local-player-dock, .local-hand-rail, .console-guidance, [data-public-card-copy-anchor-event-id]",
+    )].filter((element) => element !== announcement
+      && element.dataset.publicCardCopyAnchorEventId !== announcementEventId)
+      .map((element) => ({
+        label: typeof element.className === "string" ? element.className : element.tagName,
+        rect: element.getBoundingClientRect(),
+      }))
+      .filter(({ rect }) => rect.width > 0 && rect.height > 0 && intersects(bounds, rect))
+      .map(({ label }) => label);
+    return {
+      eventId: announcementEventId,
+      interactionId: display.dataset.publicCardInteractionId ?? null,
+      rootEventId: display.dataset.publicCardRootEventId ?? null,
+      text: announcement.textContent?.trim() ?? "",
+      centerOffset: table ? (bounds.left + bounds.right - table.left - table.right) / 2 : null,
+      top: bounds.top,
+      protectedRects,
+    };
+  }, rootEventId);
+}
+
 test("test-game perspective switches manually and stays selected when the server advances the turn", async ({ page, request }) => {
   const created = await request.post(`${API}/api/rooms`, { data: { action: "create", name: "DUEL VIEW HOST" } });
   const createdBody = await created.json();
@@ -129,4 +162,216 @@ test("test-game perspective switches manually and stays selected when the server
     const actingSeat = await page.locator(".turn-square").getAttribute("data-player-anchor");
     return { localViewer, actingSeat };
   }).toEqual({ localViewer: actingPlayerId, actingSeat: nextActingPlayerId });
+});
+
+test("Quick Test switching rebases a parked Barbarian Invasion card before the first new-view frame", async ({ page, request }) => {
+  test.setTimeout(90_000);
+  const hostName = "GROUP ROOT VIEW REBASE";
+  const created = await request.post(`${API}/api/rooms`, { data: { action: "create", name: hostName } });
+  expect(created.status()).toBe(201);
+  const createdBody = await created.json();
+  const code = createdBody.room.code;
+  const token = createdBody.token;
+  const post = async (action, values = {}) => {
+    const response = await request.post(`${API}/api/rooms`, { data: { action, code, token, ...values } });
+    const body = await response.json();
+    expect(response.status(), JSON.stringify(body)).toBeLessThan(300);
+    return body.room;
+  };
+
+  let room = await post("add_test_players");
+  room = await post("enable_test_room");
+  const host = room.players.find((player) => player.isHost);
+  expect(host).toBeTruthy();
+  room = await post("configure_test_hands", {
+    presetId: "custom",
+    handsBySeat: Object.fromEntries(room.players.map((player) => [player.seat, player.id === host.id ? ["BarbarianInvasion"] : ["Attack"]])),
+    expectedRevision: 0,
+  });
+  room = await post("start");
+  const noAutomaticTurnPrompts = new Set([
+    "cao-cao", "xiahou-dun", "liu-bei", "guan-yu", "zhang-fei", "zhao-yun",
+    "sun-quan", "gan-ning", "huang-gai", "lu-xun", "huaxiong", "gongsun-zan",
+    "pan-feng", "ma-chao", "lü-bu", "simayi", "guo-jia",
+  ]);
+  while (room.status === "heroes") {
+    const candidate = room.myHeroOptions.find((hero) => hero.hp >= 4 && noAutomaticTurnPrompts.has(hero.id));
+    expect(candidate, "the selected test seat has a Standard hero candidate").toBeTruthy();
+    room = await post("choose_hero", { heroId: candidate.id });
+  }
+  const actAsCurrentPlayer = async (action, values = {}) => {
+    const response = await request.post(`${API}/api/rooms`, {
+      data: {
+        action,
+        code,
+        token,
+        ...values,
+        context: {
+          actionRevision: room.actionRevision,
+          meId: room.meId,
+          phase: room.phase,
+          pendingKind: room.pending?.kind ?? null,
+          actorId: room.currentAction?.actorId ?? room.actionPlayerId,
+        },
+      },
+    });
+    const body = await response.json();
+    expect(response.status(), JSON.stringify(body)).toBeLessThan(300);
+    room = body.room;
+  };
+  for (let endedTurns = 0; room.currentAction?.actorId !== host.id && endedTurns < room.players.length; ) {
+    if (room.phase?.startsWith("draw")) {
+      await actAsCurrentPlayer("draw");
+    } else if (room.phase?.startsWith("play")) {
+      await actAsCurrentPlayer("end_turn");
+      endedTurns += 1;
+    } else if (room.phase === "discard") {
+      const activePlayer = room.players.find((player) => player.id === room.currentAction?.actorId);
+      const required = Math.max(0, room.myHand.length - (activePlayer?.hp ?? 0));
+      await actAsCurrentPlayer("discard_cards", { cardIds: room.myHand.slice(0, required).map((card) => card.id) });
+    } else {
+      throw new Error(`Unexpected phase while advancing to the host turn: ${room.phase}`);
+    }
+  }
+  expect(room.currentAction?.actorId).toBe(host.id);
+  if (room.phase?.startsWith("draw")) await actAsCurrentPlayer("draw");
+  expect(room.phase?.startsWith("play")).toBe(true);
+  const barbarian = room.myHand.find((card) => card.kind === "BarbarianInvasion");
+  expect(barbarian).toBeTruthy();
+
+  await page.setViewportSize({ width: 440, height: 894 });
+  await page.addInitScript(({ roomCode, sessionToken, name }) => {
+    localStorage.setItem("three-realms-session", JSON.stringify({ code: roomCode, token: sessionToken, name }));
+  }, { roomCode: code, sessionToken: token, name: hostName });
+  await page.goto(`${API}/`);
+  await expect(page.locator(".game-shell")).toBeVisible();
+
+  const actionResponse = await request.post(`${API}/api/rooms`, {
+    data: {
+      action: "play_card",
+      code,
+      token,
+      cardId: barbarian.id,
+      context: {
+        actionRevision: room.actionRevision,
+        meId: room.meId,
+        phase: room.phase,
+        pendingKind: room.pending?.kind ?? null,
+        actorId: room.actionPlayerId,
+      },
+    },
+  });
+  expect(actionResponse.ok(), await actionResponse.text()).toBeTruthy();
+
+  const display = page.locator('[data-public-card-motion="group-root"][data-public-card-renderer-kind="single-target-journey"]');
+  await expect(display).toBeVisible({ timeout: 20_000 });
+  const rootCard = display.locator(`[data-public-card-journey-actor-id="${host.id}"]`);
+  await expect(rootCard).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });
+  await expect(display).toHaveAttribute("data-public-card-layout-pending", "false");
+  const rootEventId = await display.getAttribute("data-public-card-root-event-id");
+  const h4BeforeSwitch = await readRootH4Announcement(page, rootEventId);
+  expect(h4BeforeSwitch).toMatchObject({
+    eventId: rootEventId,
+    rootEventId,
+  });
+  expect(h4BeforeSwitch.text).toContain("Barbarian Invasion");
+  expect(Math.abs(h4BeforeSwitch.centerOffset ?? Infinity)).toBeLessThanOrEqual(12);
+  expect(h4BeforeSwitch.protectedRects).toEqual([]);
+  const revealStartedAt = await rootCard.getAttribute("data-public-card-journey-reveal-started-at");
+  const before = await rootCard.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { left: rect.left, top: rect.top };
+  });
+
+  const nextViewer = room.players.find((player) => player.isTestPlayer && player.id !== host.id);
+  expect(nextViewer).toBeTruthy();
+  await page.evaluate(({ viewerId, actorId, eventId }) => {
+    const capture = { viewerId, actorId, eventId, samples: [] };
+    window.__q3RebaseCapture = capture;
+    const sample = (label) => {
+      const root = document.querySelector('[data-public-card-motion="group-root"][data-public-card-renderer-kind="single-target-journey"]');
+      if (!root || root.getAttribute("data-public-card-viewer-id") !== viewerId) return;
+      const card = [...root.querySelectorAll("[data-public-card-journey-event-id]")]
+        .find((element) => element.getAttribute("data-public-card-journey-actor-id") === actorId
+          && element.getAttribute("data-public-card-journey-event-id") === eventId);
+      const anchor = [...document.querySelectorAll("[data-player-anchor]")]
+        .find((element) => element.getAttribute("data-player-anchor") === actorId);
+      if (!card || !anchor) return;
+      const rect = card.getBoundingClientRect();
+      capture.samples.push({
+        label,
+        phase: card.getAttribute("data-public-card-journey-phase"),
+        layoutPending: root.getAttribute("data-public-card-layout-pending"),
+        visibility: getComputedStyle(card).visibility,
+        actual: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+        target: {
+          left: Number(card.getAttribute("data-public-card-journey-target-left")),
+          top: Number(card.getAttribute("data-public-card-journey-target-top")),
+        },
+        anchor: (() => { const bounds = anchor.getBoundingClientRect(); return { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height }; })(),
+        transitionProperty: getComputedStyle(card).transitionProperty,
+        revealStartedAt: card.getAttribute("data-public-card-journey-reveal-started-at"),
+      });
+    };
+    const observer = new MutationObserver(() => {
+      const root = document.querySelector('[data-public-card-motion="group-root"][data-public-card-renderer-kind="single-target-journey"]');
+      if (root?.getAttribute("data-public-card-viewer-id") !== viewerId) return;
+      sample("commit");
+      requestAnimationFrame(() => sample("frame-1"));
+      requestAnimationFrame(() => requestAnimationFrame(() => sample("frame-2")));
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+      attributeFilter: ["data-public-card-viewer-id", "data-public-card-layout-pending", "data-public-card-journey-phase", "data-public-card-journey-target-left", "data-public-card-journey-target-top"],
+    });
+    capture.observer = observer;
+  }, { viewerId: nextViewer.id, actorId: host.id, eventId: rootEventId });
+
+  const switchButton = page.getByTestId(`test-view-switch-${nextViewer.id}`);
+  await expect(switchButton).toBeVisible();
+  const switchedResponse = page.waitForResponse((response) => response.request().method() === "GET"
+    && response.url().startsWith(`${API}/api/rooms?`)
+    && new URL(response.url()).searchParams.get("testViewerId") === nextViewer.id);
+  await switchButton.click();
+  expect((await switchedResponse).ok()).toBeTruthy();
+  await expect(page.locator(`.local-player-dock[data-player-anchor="${nextViewer.id}"]`)).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__q3RebaseCapture.samples.length)).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => window.__q3RebaseCapture.samples.some((sample) => sample.layoutPending === "false"))).toBe(true);
+  await expect.poll(async () => {
+    const announcement = await readRootH4Announcement(page, rootEventId);
+    return Boolean(announcement && announcement.eventId === rootEventId
+      && Math.abs(announcement.centerOffset ?? Infinity) <= 12 && announcement.protectedRects.length === 0);
+  }).toBe(true);
+  const h4AfterSwitch = await readRootH4Announcement(page, rootEventId);
+  expect(h4AfterSwitch).toMatchObject({
+    eventId: h4BeforeSwitch.eventId,
+    interactionId: h4BeforeSwitch.interactionId,
+    rootEventId: h4BeforeSwitch.rootEventId,
+    text: h4BeforeSwitch.text,
+  });
+  expect(Math.abs(h4AfterSwitch.centerOffset ?? Infinity)).toBeLessThanOrEqual(12);
+  expect(h4AfterSwitch.protectedRects).toEqual([]);
+
+  const samples = await page.evaluate(() => window.__q3RebaseCapture.samples);
+  expect(samples, "viewer commit and first animation-frame measurements are captured").toEqual(expect.arrayContaining([
+    expect.objectContaining({ label: "commit" }),
+    expect.objectContaining({ label: "frame-1" }),
+  ]));
+  for (const sample of samples) {
+    expect(sample.phase).toBe("parked");
+    if (sample.layoutPending === "true") {
+      expect(sample.visibility).toBe("hidden");
+    } else {
+      expect(sample.visibility).toBe("visible");
+      expect(Math.abs(sample.actual.left - sample.target.left), JSON.stringify(sample)).toBeLessThanOrEqual(2);
+      expect(Math.abs(sample.actual.top - sample.target.top), JSON.stringify(sample)).toBeLessThanOrEqual(2);
+    }
+    expect(sample.revealStartedAt).toBe(revealStartedAt);
+  }
+  const firstCommit = samples.find((sample) => sample.label === "commit");
+  expect(firstCommit.transitionProperty).toBe("none");
+  expect(Math.hypot(firstCommit.actual.left - before.left, firstCommit.actual.top - before.top)).toBeGreaterThan(2);
+  await page.evaluate(() => window.__q3RebaseCapture.observer.disconnect());
 });
