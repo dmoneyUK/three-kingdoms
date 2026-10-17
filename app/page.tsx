@@ -1775,6 +1775,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     isAttackDodgeUxTraceActive,
     getAttackDodgeUxTraceServerSnapshot,
   );
+  const publicRootTraceLastSampleRef = useRef<{
+    identityKey: string;
+    viewerId: string | null;
+    layoutEpoch: string;
+    visualPhase: string | null;
+    actualCardRect: { left: number; top: number; width: number; height: number } | null;
+    targetParkingRect: { left: number; top: number; width: number; height: number } | null;
+    authorAnchorRect: { left: number; top: number; width: number; height: number } | null;
+    monotonicMs: number;
+  } | null>(null);
   const [effectNotices, setEffectNotices] = useState<EffectNoticeState[]>([]);
   const effectNotice = effectNotices[0] ?? null;
   const [infoCard, setInfoCard] = useState<Card | null>(null);
@@ -5339,6 +5349,38 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         decisionActorSeat: attackDodgeTraceSeat(room.presentationSnapshot.interaction.decisionActorId),
         targetSeats: room.presentationSnapshot.interaction.targetIds.map(attackDodgeTraceSeat),
       } : null,
+      groupRootCardProof: {
+        server: room.presentationSnapshot?.groupParticipantProgress?.rootCardProof ? {
+          semantics: room.presentationSnapshot.groupParticipantProgress.rootCardProof.semantics,
+          interactionId: room.presentationSnapshot.groupParticipantProgress.rootCardProof.interactionId,
+          groupFrameId: room.presentationSnapshot.groupParticipantProgress.rootCardProof.groupFrameId,
+          rootFrameId: room.presentationSnapshot.groupParticipantProgress.rootCardProof.groupFrameId,
+          rootEventId: room.presentationSnapshot.groupParticipantProgress.rootCardProof.rootEventId,
+          rootCardId: room.presentationSnapshot.groupParticipantProgress.rootCardProof.rootCardId,
+          sourceId: room.presentationSnapshot.groupParticipantProgress.rootCardProof.sourceId,
+          cardKind: room.presentationSnapshot.groupParticipantProgress.rootCardProof.cardKind,
+        } : null,
+        client: clientPresentation.groupResolution?.rootCardProof ? {
+          semantics: clientPresentation.groupResolution.rootCardProof.semantics,
+          interactionId: clientPresentation.groupResolution.rootCardProof.interactionId,
+          groupFrameId: clientPresentation.groupResolution.rootCardProof.groupFrameId,
+          rootFrameId: clientPresentation.groupResolution.rootCardProof.groupFrameId,
+          rootEventId: clientPresentation.groupResolution.rootCardProof.rootEventId,
+          rootCardId: clientPresentation.groupResolution.rootCardProof.rootCardId,
+          sourceId: clientPresentation.groupResolution.rootCardProof.sourceId,
+          cardKind: clientPresentation.groupResolution.rootCardProof.cardKind,
+        } : null,
+        settlement: groupSettlementCandidate ? {
+          semantics: groupSettlementCandidate.settlement.semantics,
+          interactionId: groupSettlementCandidate.settlement.interactionId,
+          groupFrameId: groupSettlementCandidate.settlement.groupFrameId,
+          rootFrameId: groupSettlementCandidate.settlement.groupFrameId,
+          rootEventId: groupSettlementCandidate.settlement.rootEventId,
+          rootCardId: groupSettlementCandidate.rootEvent.card.id,
+          sourceId: groupSettlementCandidate.settlement.sourceId,
+          cardKind: groupSettlementCandidate.settlement.cardKind,
+        } : null,
+      },
       serverRootAction: summarizeAttackRoot(room.presentationSnapshot?.rootAction ?? null),
       clientRootAction: summarizeAttackRoot(clientPresentation.rootAction),
       serverDodgeProofCount: room.presentationSnapshot?.attackDodgeResponses?.length ?? 0,
@@ -5400,6 +5442,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       publicCardId: tracePublicResponse?.cardFace?.id ?? publicCardDisplayAction?.cardFace?.id ?? null,
       publicActorId: tracePublicResponse?.actorId ?? publicCardDisplayAction?.sourceId ?? null,
       rootEventId: publicCardDisplayAction?.rootEventId ?? null,
+      rootCardId: publicCardDisplayAction?.cardFace?.id ?? null,
+      actualAuthorId: publicCardDisplayAction?.sourceId ?? null,
       interactionId: publicCardDisplayAction?.interactionId ?? null,
       rootFrameId: publicCardDisplayAction?.rootFrameId ?? null,
       checkpointId: publicCardDisplayAction?.checkpointId ?? null,
@@ -5413,6 +5457,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       moveDurationMs: publicCardDisplayAction?.motion ? 380 : null,
       publicViewerId: room.meId,
       currentParticipantId: room.presentationSnapshot?.interaction?.currentParticipantId ?? null,
+      semanticStage: room.presentationSnapshot?.interaction?.stage ?? null,
+      phaseNotice: publicCardDisplayAction?.phaseNotice ?? null,
       sourceSeat: attackDodgeTraceSeat(publicCardDisplayAction?.sourceId),
       targetSeat: attackDodgeTraceSeat(publicCardDisplayAction?.targetId),
       rootCardKind: publicCardDisplayAction?.cardKind ?? null,
@@ -5467,9 +5513,109 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => {
     if (!attackDodgeTraceSnapshotJson) return;
     recordAttackDodgeUxTrace("pipeline-state", JSON.parse(attackDodgeTraceSnapshotJson) as Record<string, unknown>);
+    const traceSnapshot = JSON.parse(attackDodgeTraceSnapshotJson) as {
+      presentation?: {
+        interaction?: {
+          interactionId?: string | null;
+          rootFrameId?: string | null;
+          activeFrameId?: string | null;
+          checkpointId?: string | null;
+          presentationRevision?: number | null;
+          stage?: string | null;
+          currentParticipantId?: string | null;
+        } | null;
+        groupRootCardProof?: {
+          server?: { semantics?: string; interactionId?: string; rootFrameId?: string; rootEventId?: string; rootCardId?: string; sourceId?: string } | null;
+          client?: { semantics?: string; interactionId?: string; rootFrameId?: string; rootEventId?: string; rootCardId?: string; sourceId?: string } | null;
+          settlement?: { semantics?: string; interactionId?: string; rootFrameId?: string; rootEventId?: string; rootCardId?: string; sourceId?: string } | null;
+        } | null;
+      };
+      publicCardDisplay?: {
+        eventId?: string | null;
+        publicCardId?: string | null;
+        publicActorId?: string | null;
+        rootEventId?: string | null;
+        rootCardId?: string | null;
+        actualAuthorId?: string | null;
+        interactionId?: string | null;
+        rootFrameId?: string | null;
+        publicViewerId?: string | null;
+        currentParticipantId?: string | null;
+        semanticStage?: string | null;
+        phaseNotice?: string | null;
+        rootCardKind?: string | null;
+        candidateRendererKind?: string | null;
+        candidateMotionType?: string | null;
+        settlementOutcome?: string | null;
+        responseEventId?: string | null;
+      };
+    };
     const shell = document.querySelector<HTMLElement>(".game-shell");
     if (!shell) return;
     let lastDomSignature = "";
+    const displayTrace = traceSnapshot.publicCardDisplay ?? {};
+    const serverInteraction = traceSnapshot.presentation?.interaction ?? null;
+    const serverRootProof = traceSnapshot.presentation?.groupRootCardProof?.server
+      ?? traceSnapshot.presentation?.groupRootCardProof?.settlement
+      ?? null;
+    const clientRootProof = traceSnapshot.presentation?.groupRootCardProof?.client ?? null;
+    const traceRootEventId = serverRootProof?.rootEventId ?? clientRootProof?.rootEventId ?? displayTrace.rootEventId ?? null;
+    const traceRootCardId = serverRootProof?.rootCardId ?? clientRootProof?.rootCardId ?? displayTrace.rootCardId ?? null;
+    const traceRootAuthorId = serverRootProof?.sourceId ?? clientRootProof?.sourceId ?? displayTrace.actualAuthorId ?? null;
+    const serverRootIdentity = serverRootProof ? {
+      interactionId: serverRootProof.interactionId ?? null,
+      rootFrameId: serverRootProof.rootFrameId ?? null,
+      rootEventId: serverRootProof.rootEventId ?? null,
+      physicalCardId: serverRootProof.rootCardId ?? null,
+      actualAuthorId: serverRootProof.sourceId ?? null,
+      semantics: serverRootProof.semantics ?? null,
+      checkpointId: serverInteraction?.checkpointId ?? null,
+      presentationRevision: serverInteraction?.presentationRevision ?? null,
+    } : null;
+    const clientRootIdentity = clientRootProof ? {
+      interactionId: clientRootProof.interactionId ?? null,
+      rootFrameId: clientRootProof.rootFrameId ?? null,
+      rootEventId: clientRootProof.rootEventId ?? null,
+      physicalCardId: clientRootProof.rootCardId ?? null,
+      actualAuthorId: clientRootProof.sourceId ?? null,
+      semantics: clientRootProof.semantics ?? null,
+    } : null;
+    const selectedPresenterIdentity = {
+      interactionId: displayTrace.interactionId ?? null,
+      rootFrameId: displayTrace.rootFrameId ?? null,
+      checkpointId: displayTrace.checkpointId ?? null,
+      presentationRevision: displayTrace.presentationRevision ?? null,
+      rootEventId: displayTrace.rootEventId ?? null,
+      physicalCardId: displayTrace.rootCardId ?? null,
+      actualAuthorId: displayTrace.actualAuthorId ?? null,
+      rendererKind: displayTrace.candidateRendererKind ?? null,
+      motionType: displayTrace.candidateMotionType ?? null,
+      semanticStage: displayTrace.semanticStage ?? null,
+      currentParticipantId: displayTrace.currentParticipantId ?? null,
+      viewerId: displayTrace.publicViewerId ?? null,
+    };
+    const rootIdentityComparison = {
+      serverProofMatchesInteraction: serverRootProof && serverInteraction ? {
+        interactionId: serverRootProof.interactionId === serverInteraction.interactionId,
+        rootFrameId: serverRootProof.rootFrameId === serverInteraction.rootFrameId,
+      } : null,
+      clientProofMatchesServer: serverRootIdentity && clientRootIdentity ? {
+        interactionId: clientRootIdentity.interactionId === serverRootIdentity.interactionId,
+        rootFrameId: clientRootIdentity.rootFrameId === serverRootIdentity.rootFrameId,
+        rootEventId: clientRootIdentity.rootEventId === serverRootIdentity.rootEventId,
+        physicalCardId: clientRootIdentity.physicalCardId === serverRootIdentity.physicalCardId,
+        actualAuthorId: clientRootIdentity.actualAuthorId === serverRootIdentity.actualAuthorId,
+      } : null,
+      presenterMatchesServer: serverRootIdentity ? {
+        interactionId: selectedPresenterIdentity.interactionId === serverRootIdentity.interactionId,
+        rootFrameId: selectedPresenterIdentity.rootFrameId === serverRootIdentity.rootFrameId,
+        checkpointId: selectedPresenterIdentity.checkpointId === serverRootIdentity.checkpointId,
+        presentationRevision: selectedPresenterIdentity.presentationRevision === serverRootIdentity.presentationRevision,
+        rootEventId: selectedPresenterIdentity.rootEventId === serverRootIdentity.rootEventId,
+        physicalCardId: selectedPresenterIdentity.physicalCardId === serverRootIdentity.physicalCardId,
+        actualAuthorId: selectedPresenterIdentity.actualAuthorId === serverRootIdentity.actualAuthorId,
+      } : null,
+    };
     const trackedSelector = [
       ".interaction-stage",
       ".interaction-stage-inspect-only",
@@ -5521,6 +5667,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       const value = element.getAttribute(name);
       return value === null ? [] : [[name, value]];
     }));
+    const parentPathFor = (element: HTMLElement) => {
+      const path: Array<Record<string, unknown>> = [];
+      let current: HTMLElement | null = element;
+      while (current && shell.contains(current) && path.length < 12) {
+        path.push({
+          tag: current.tagName.toLowerCase(),
+          classes: (current.getAttribute("class") ?? "").split(/\s+/u).filter(Boolean),
+          attributes: attributesFor(current),
+          rect: rectFor(current),
+        });
+        if (current.matches("[data-public-card-display], .active-table-reveal, .table-played-card")) break;
+        current = current.parentElement;
+      }
+      return path;
+    };
     const measureDom = () => {
       const table = shell.querySelector<HTMLElement>(".play-table");
       const domNodes = Array.from(shell.querySelectorAll<HTMLElement>(trackedSelector)).slice(0, 96).map((element, index) => {
@@ -5552,6 +5713,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         const activeReveal = element.closest(".active-table-reveal");
         const settledCard = element.closest(".table-played-card");
         const owner = element.closest<HTMLElement>("[data-public-card-display]");
+        const playerSettlement = element.closest<HTMLElement>("[data-player-settlement-id]");
         const face = element.matches(".played-card") ? element : element.querySelector<HTMLElement>(".played-card") ?? element;
         const actualRect = rectFor(face);
         const width = actualRect?.width ?? 0;
@@ -5576,10 +5738,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           width: Number(element.dataset.publicCardJourneyTargetWidth),
           height: Number(element.dataset.publicCardJourneyTargetHeight),
         } : null;
-        return {
+        const instance = {
           eventId,
           publicCardId: cardId,
-          publicActorId: element.dataset.publicCardJourneyActorId ?? owner?.dataset.publicCardActorId ?? owner?.dataset.publicCardSourceId ?? null,
+          publicActorId: element.dataset.publicCardJourneyActorId ?? owner?.dataset.publicCardActorId
+            ?? owner?.dataset.publicCardSourceId ?? playerSettlement?.dataset.playerSettlementId ?? null,
           rendererKind,
           motionType: owner?.dataset.publicCardMotion ?? null,
           visualPhase,
@@ -5587,9 +5750,33 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           actualCardRect: actualRect,
           targetParkingRect: targetRect,
           ownerEventId: owner?.dataset.publicCardEventId ?? null,
+          ownerIdentity: owner ? {
+            interactionId: owner.dataset.publicCardInteractionId ?? null,
+            rootFrameId: owner.dataset.publicCardRootFrameId ?? null,
+            checkpointId: owner.dataset.publicCardCheckpointId ?? null,
+            presentationRevision: owner.dataset.publicCardPresentationRevision
+              ? Number(owner.dataset.publicCardPresentationRevision)
+              : null,
+            rootEventId: owner.dataset.publicCardRootEventId ?? null,
+            physicalCardId: owner.dataset.publicCardId ?? null,
+            actualAuthorId: owner.dataset.publicCardActorId ?? owner.dataset.publicCardSourceId ?? null,
+          } : null,
           elementAttributes: attributesFor(element),
         };
+        return eventId === traceRootEventId || Boolean(traceRootCardId && cardId === traceRootCardId)
+          ? { ...instance, domPath: parentPathFor(element) }
+          : instance;
       });
+      const samePhysicalCardInstances = cardInstances.filter((instance) => Boolean(traceRootCardId && instance.publicCardId === traceRootCardId));
+      const sameRootInstances = samePhysicalCardInstances.filter((instance) => instance.eventId === traceRootEventId
+        && instance.publicActorId === traceRootAuthorId);
+      const sameRootCounts = sameRootInstances.reduce((counts, instance) => {
+        if (instance.sizeClass === "FULL") counts.fullSizeCount += 1;
+        else if (instance.sizeClass === "PARKED") counts.parkedThumbnailCount += 1;
+        else counts.intermediateCount += 1;
+        return counts;
+      }, { total: 0, fullSizeCount: 0, parkedThumbnailCount: 0, intermediateCount: 0 });
+      sameRootCounts.total = sameRootInstances.length;
       const countsByCard = new Map<string, { fullSizeCount: number; parkedThumbnailCount: number; intermediateCount: number }>();
       for (const instance of cardInstances) {
         if (!instance.publicCardId) continue;
@@ -5603,6 +5790,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         kind: element.matches(".effect-notice") ? "effect-notice" : "public-card-announcement",
         key: element.getAttribute("data-public-card-announcement-key") ?? element.getAttribute("data-effect-notice-event-id"),
         eventId: element.getAttribute("data-public-card-announcement-event-id") ?? element.getAttribute("data-effect-notice-event-id"),
+        semanticStage: traceSnapshot.presentation?.interaction?.stage ?? displayTrace.semanticStage ?? null,
+        textKey: [
+          displayTrace.rootCardKind ?? "unknown-card",
+          traceSnapshot.presentation?.interaction?.stage ?? displayTrace.semanticStage ?? "unknown-stage",
+          traceSnapshot.presentation?.interaction?.currentParticipantId ?? displayTrace.currentParticipantId ?? "no-participant",
+          displayTrace.phaseNotice ?? "no-phase-notice",
+          displayTrace.settlementOutcome ?? "no-settlement",
+          displayTrace.responseEventId ?? "no-response",
+        ].join("|"),
         rect: rectFor(element),
         visibility: getComputedStyle(element).visibility,
         display: getComputedStyle(element).display,
@@ -5631,15 +5827,66 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           scale: Math.round(window.visualViewport.scale * 100) / 100,
         } : null,
       };
+      const rootAuthorAnchor = geometry.find(({ kind, playerId }) => playerId === traceRootAuthorId
+        && (kind === "opponent-seat" || kind === "local-dock")) ?? null;
+      const currentRootInstance = sameRootInstances[0] ?? samePhysicalCardInstances[0] ?? null;
+      const layoutEpoch = JSON.stringify({
+        viewerId: displayTrace.publicViewerId ?? null,
+        viewport,
+        topology: table?.dataset.seatTopology ?? null,
+        anchors: geometry.filter(({ kind }) => kind === "stage" || kind === "opponent-seat" || kind === "local-dock"),
+      });
+      const rootIdentityKey = [room.code, traceRootEventId ?? "no-root-event", traceRootCardId ?? "no-root-card", traceRootAuthorId ?? "no-root-author"].join(":");
+      const currentRootSample = traceRootEventId && traceRootCardId && traceRootAuthorId ? {
+        identityKey: rootIdentityKey,
+        viewerId: displayTrace.publicViewerId ?? null,
+        layoutEpoch,
+        visualPhase: currentRootInstance?.visualPhase ?? null,
+        actualCardRect: currentRootInstance?.actualCardRect ?? null,
+        targetParkingRect: currentRootInstance?.targetParkingRect ?? null,
+        authorAnchorRect: rootAuthorAnchor?.rect ?? null,
+        monotonicMs: Math.round(performance.now()),
+      } : null;
+      const priorRootSample = currentRootSample && publicRootTraceLastSampleRef.current?.identityKey === rootIdentityKey
+        ? publicRootTraceLastSampleRef.current
+        : null;
+      const traceableRootSample = (sample: NonNullable<typeof currentRootSample>) => ({
+        viewerId: sample.viewerId,
+        layoutEpoch: sample.layoutEpoch,
+        visualPhase: sample.visualPhase,
+        actualCardRect: sample.actualCardRect,
+        targetParkingRect: sample.targetParkingRect,
+        authorAnchorRect: sample.authorAnchorRect,
+        monotonicMs: sample.monotonicMs,
+      });
+      const layoutTransitionSample = currentRootSample ? {
+        previous: priorRootSample ? traceableRootSample(priorRootSample) : null,
+        current: traceableRootSample(currentRootSample),
+        viewerChanged: priorRootSample ? priorRootSample.viewerId !== currentRootSample.viewerId : false,
+        layoutEpochChanged: priorRootSample ? priorRootSample.layoutEpoch !== currentRootSample.layoutEpoch : false,
+      } : null;
+      if (currentRootSample) publicRootTraceLastSampleRef.current = currentRootSample;
       const domSnapshot = {
         viewport,
         topology: table?.dataset.seatTopology ?? null,
         stageBounds: rectFor(table),
+        layoutEpoch,
+        publicRootIdentity: {
+          serverInteraction,
+          serverProof: serverRootProof,
+          clientProjection: clientRootProof,
+          selectedPresenter: selectedPresenterIdentity,
+          comparison: rootIdentityComparison,
+        },
+        layoutTransitionSample,
         stageMounted: Boolean(shell.querySelector(".interaction-stage")),
         legacySequenceMounted: Boolean(shell.querySelector(".table-resolution-layer")),
         publicCardDisplayMounted: Boolean(shell.querySelector(".public-card-display")),
         geometry,
         cardInstances,
+        sameRootInstances,
+        sameRootCounts,
+        samePhysicalCardInstances,
         sameCardSizeCounts: Object.fromEntries(countsByCard),
         announcements: announcementNodes,
         nodes: domNodes,
