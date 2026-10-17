@@ -1,7 +1,7 @@
 # WTK Smart Bot Player — Product Roadmap and Implementation Design
 
 > Feature branch: `feature/smart-bot-player`
-> Design revision: **AIP-D4 / 2026-10-17**
+> Design revision: **AIP-D5 / 2026-10-17**
 > Owner: **Human Reviewer + Planner**. Planner edits **this file for normal design/review**; governance docs only under explicit user instruction.
 > Status: **DESIGN-DRIVEN AUTONOMOUS QUEUE**. AIP-00A is **ACCEPTED by the human Product Owner (2026-10-17)**. AIP-00B is **PENDING_REVIEW** after Agent completion and awaits human iPhone acceptance. AIP-00C / AIP-01 remain **pre-approved as a dependency-gated queue**, but may execute only after their respective prior dependency is **ACCEPTED**, and all cloud/API risk gates are satisfied. Other roadmap stages are DRAFT.
 > Coding Agent: **one agent, one bounded task per cycle; re-read design and automatically select the next eligible independent APPROVED task after each PENDING_REVIEW delivery**. Never self-accept or bypass dependencies.
