@@ -617,9 +617,9 @@ function seatHistoryCardParking(actorId: string, actorIndex: number, occupied: r
   return { rect: boundCardRect(preferred.left, preferred.top, PARKED_CARD.width, PARKED_CARD.height), side };
 }
 
-function rectsOverlap(a: CardRect, b: DOMRect, gap = 0) {
-  return a.left < b.right + gap && a.left + a.width > b.left - gap
-    && a.top < b.bottom + gap && a.top + a.height > b.top - gap;
+function rectsOverlap(a: CardRect, b: CardRect | DOMRect, gap = 0) {
+  return a.left < b.left + b.width + gap && a.left + a.width > b.left - gap
+    && a.top < b.top + b.height + gap && a.top + a.height > b.top - gap;
 }
 
 function settlementLabel(action: PublicCardDisplayAction, targetName: string | null) {
@@ -776,7 +776,6 @@ function withPublicCardPhaseNotice(message: string, phaseNotice: string | undefi
 }
 
 type PublicCardAnnouncementBand = {
-  viewportKey: string;
   left: number;
   top: number;
   width: number;
@@ -861,17 +860,17 @@ function PublicCardAnnouncement({
     const toCardRect = (rect: DOMRect): CardRect => ({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
     let resizeObserver: ResizeObserver | null = null;
     let mutationObserver: MutationObserver | null = null;
-    let frame = 0;
     let anchorObserver: MutationObserver | null = null;
+    let frame = 0;
     const bandKey = `${viewerLayoutKey}:${placementKey}`;
     const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-content"] : [])].join(", ");
 
     const place = () => {
-      const anchor = getAnchor();
       if (display.dataset.publicCardLayoutPending === "true") {
         copy.style.visibility = "hidden";
         return;
       }
+      const anchor = getAnchor();
       const actualRect = anchor?.getBoundingClientRect();
       const tableRect = display.closest<HTMLElement>(".play-table")?.getBoundingClientRect() ?? null;
       if (!tableRect) return;
@@ -882,32 +881,9 @@ function PublicCardAnnouncement({
       const viewportTop = visualViewport?.offsetTop ?? 0;
       const viewportRight = viewportLeft + (visualViewport?.width ?? viewportWidth);
       const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight);
-      const protectedElements = [...document.querySelectorAll<HTMLElement>(protectedSelectors)];
-      const layoutElements = [...document.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor], .player-square")];
-      const boxKey = (rect: DOMRect) => [rect.left, rect.top, rect.width, rect.height].map((value) => value.toFixed(1)).join(",");
-      const viewportKey = [
-        viewportWidth,
-        window.innerHeight,
-        viewportLeft,
-        viewportTop,
-        viewportRight,
-        viewportBottom,
-        boxKey(tableRect),
-        ...layoutElements.map((element) => boxKey(element.getBoundingClientRect())),
-      ].join("|");
       const safeLeft = Math.max(viewportLeft + 8, tableRect.left + 8);
       const safeRight = Math.min(viewportRight - 8, tableRect.right - 8);
-      const visibleProtectedRects = protectedElements.flatMap((element) => {
-        const rect = element.getBoundingClientRect();
-        const style = window.getComputedStyle(element);
-        return style.display === "none" || style.visibility === "hidden" || rect.width <= 0 || rect.height <= 0
-          ? []
-          : [{ element, rect }];
-      });
-      const topSeatBottom = visibleProtectedRects
-        .filter(({ element }) => element.matches(".opponent-player-card, .player-square"))
-        .reduce((bottom, { rect }) => Math.max(bottom, rect.bottom), tableRect.top);
-      const safeTop = Math.max(8, viewportTop + 4, tableRect.top + 8, topSeatBottom + 3);
+      const safeTop = Math.max(8, viewportTop + 4, tableRect.top + 8);
       const safeBottom = Math.min(viewportBottom - 8, tableRect.bottom - 2);
       const shortLustFrame = stableCenterAnchor && stableFallbackCardRect
         && stableFallbackCardRect.width >= LUST_COST_FRAME.width - 1
@@ -953,16 +929,16 @@ function PublicCardAnnouncement({
         width: Number(anchor.dataset.publicCardJourneyTargetWidth),
         height: Number(anchor.dataset.publicCardJourneyTargetHeight),
       } : null;
-      if (anchorTarget && Object.values(anchorTarget).every(Number.isFinite)
+      if (!isLargeRevealAnchor && anchorTarget && Object.values(anchorTarget).every(Number.isFinite)
         && anchorTarget.width > 0 && anchorTarget.height > 0) {
         obstacles.push({
           element: null,
           rect: new DOMRect(anchorTarget.left, anchorTarget.top, anchorTarget.width, anchorTarget.height),
         });
       }
-      const existingBand = publicCardAnnouncementBands.get(bandKey);
-      const reusableBand = existingBand?.viewportKey === viewportKey ? existingBand : null;
-      const obstacleClearance = (element: HTMLElement | null) => privateDrawAware && element?.matches(".private-draw-content") ? 10 : 2;
+      const obstacleClearance = (element: HTMLElement | null) => privateDrawAware && element?.matches(".private-draw-content")
+        ? 10
+        : element?.matches(".opponent-player-card, .player-square") ? 0 : 2;
       const overlapsObstacle = (rect: DOMRect, element: HTMLElement | null, obstacleRect: DOMRect) =>
         rectsOverlap(toCardRect(rect), obstacleRect, obstacleClearance(element));
       const privateDrawObstacle = privateDrawAware
@@ -973,6 +949,22 @@ function PublicCardAnnouncement({
       const revealedCenterX = centerCardRect.width > 0
         ? centerCardRect.left + centerCardRect.width / 2
         : tableRect.left + tableRect.width / 2;
+      const existingBand = publicCardAnnouncementBands.get(bandKey);
+      const existingBandRect = existingBand
+        ? new DOMRect(existingBand.left, existingBand.top, existingBand.width, copy.getBoundingClientRect().height)
+        : null;
+      const existingBandOverlapsReveal = phase === "reveal" && existingBandRect && centerCardRect.height > 0
+        && rectsOverlap(toCardRect(existingBandRect), centerCardRect, gap);
+      const existingBandOverlapsObstacle = existingBandRect && obstacles.some(({ element, rect }) =>
+        element !== anchor && overlapsObstacle(existingBandRect, element, rect));
+      const existingBandFitsCurrentStage = existingBand
+        && !existingBandOverlapsReveal
+        && !existingBandOverlapsObstacle
+        && Math.abs(existingBand.centerX - revealedCenterX) <= 12
+        && existingBand.top >= safeTop
+        && existingBand.top + copy.getBoundingClientRect().height <= safeBottom;
+      const reusableBand = existingBandFitsCurrentStage ? existingBand : null;
+      if (existingBandOverlapsReveal) publicCardAnnouncementBands.delete(bandKey);
       const canonicalCenterX = reusableBand?.centerX ?? revealedCenterX;
       const widths = [...new Set([reusableBand?.width, maxWidth, 500, 480, 456, 440, 420, 400, 380, 360, 340, 320, 300, 280, 260, 240, 224, 208, 200, 192, 184, 176, 168, 160]
         .filter((width): width is number => typeof width === "number")
@@ -993,7 +985,10 @@ function PublicCardAnnouncement({
         textElement.textContent = message;
         const fullMessageRange = document.createRange();
         fullMessageRange.selectNodeContents(textElement);
-        if (fullMessageRange.getClientRects().length > 2) announcementOptions.reverse();
+        if (fullMessageRange.getClientRects().length > 2) {
+          const compactIndex = announcementOptions.findIndex((option) => option.compact);
+          if (compactIndex > 0) announcementOptions.unshift(announcementOptions.splice(compactIndex, 1)[0]);
+        }
       }
       const textLines = () => {
         if (!textElement) return 0;
@@ -1019,9 +1014,9 @@ function PublicCardAnnouncement({
             if (reusableBand && Math.abs(top - reusableBand.top) > 16) continue;
             if (top < safeTop || top + height > safeBottom) continue;
             if (!staysAbovePrivateDraw(top, height)) continue;
-            const clearsCenterCard = verticalMode === "below"
+            const clearsCenterCard = !isLargeRevealAnchor || (verticalMode === "below"
               ? top >= centerCardRect.top + centerCardRect.height + gap - 0.5
-              : top + height + gap <= centerCardRect.top + 0.5;
+              : top + height + gap <= centerCardRect.top + 0.5);
             if (!clearsCenterCard) continue;
             copy.style.left = `${centeredLeft}px`;
             copy.style.top = `${top}px`;
@@ -1076,8 +1071,10 @@ function PublicCardAnnouncement({
         }
       }
 
-      if (!selected && privateDrawAware) {
-        const currentTop = reusableBand?.top ?? centerCardRect.top - copy.getBoundingClientRect().height - gap;
+      if (!selected) {
+        const preferredTop = reusableBand?.top ?? (verticalMode === "below"
+          ? centerCardRect.top + centerCardRect.height + gap
+          : centerCardRect.top - copy.getBoundingClientRect().height - gap);
         for (const option of announcementOptions) {
           if (textElement) textElement.textContent = option.message;
           for (const width of widths) {
@@ -1085,7 +1082,14 @@ function PublicCardAnnouncement({
             const height = copy.getBoundingClientRect().height;
             const left = canonicalCenterX - width / 2;
             if (left < safeLeft || left + width > safeRight) continue;
-            const candidateTops = new Set<number>([safeTop, currentTop, safeBottom - height]);
+            const candidateTops = new Set<number>([
+              safeTop,
+              preferredTop,
+              safeBottom - height,
+              centerCardRect.top - height - gap,
+              centerCardRect.top + centerCardRect.height + gap,
+            ]);
+            for (let top = safeTop; top + height <= safeBottom; top += 2) candidateTops.add(top);
             for (const { element, rect } of obstacles) {
               const clearance = obstacleClearance(element);
               candidateTops.add(rect.top - height - clearance);
@@ -1093,19 +1097,20 @@ function PublicCardAnnouncement({
             }
             const orderedTops = [...candidateTops]
               .filter((top) => Number.isFinite(top) && top >= safeTop && top + height <= safeBottom && staysAbovePrivateDraw(top, height))
-              .sort((first, second) => Math.abs(first - currentTop) - Math.abs(second - currentTop));
+              .sort((first, second) => Math.abs(first - preferredTop) - Math.abs(second - preferredTop));
             for (const top of orderedTops) {
-              if (reusableBand && Math.abs(top - reusableBand.top) > 16
-                && !obstacles.some(({ element, rect }) => privateDrawAware && element?.matches(".private-draw-content")
-                  && Math.abs(top + height + 10 - rect.top) < 0.5)) continue;
+              if (reusableBand && Math.abs(top - reusableBand.top) > 16) continue;
               copy.style.left = `${left}px`;
               copy.style.top = `${top}px`;
               const rect = copy.getBoundingClientRect();
               const lines = textLines();
+              const centerCardOverlap = centerCardRect.height > 0
+                && rectsOverlap(toCardRect(rect), centerCardRect, gap);
               const hasObstacleCollision = obstacles.some(({ element, rect: obstacleRect }) =>
                 overlapsObstacle(rect, element, obstacleRect));
-              if (lines <= 2 && !hasObstacleCollision) {
+              if (lines <= 2 && !centerCardOverlap && !hasObstacleCollision) {
                 selected = { left, top, width, height: rect.height, lines, message: option.message, compact: option.compact };
+                verticalMode = top + height + gap <= centerCardRect.top ? "above" : "below";
                 break;
               }
             }
@@ -1116,47 +1121,12 @@ function PublicCardAnnouncement({
       }
 
       if (!selected) {
-        const fallbackOption = announcementOptions.find((option) => option.compact) ?? announcementOptions[0] ?? { message, compact: false };
-        if (textElement) textElement.textContent = fallbackOption.message;
-        const width = widths[0] ?? maxWidth;
-        copy.style.width = `${width}px`;
-        const height = copy.getBoundingClientRect().height;
-        const left = Math.max(safeLeft, Math.min(safeRight - width, canonicalCenterX - width / 2));
-        const preferredTop = reusableBand?.top ?? (verticalMode === "below"
-          ? centerCardRect.top + centerCardRect.height + gap
-          : centerCardRect.top - height - gap);
-        const fallbackTops = privateDrawAware
-          ? [safeTop, preferredTop, ...obstacles.flatMap(({ element, rect }) => [rect.top - height - obstacleClearance(element), rect.bottom + obstacleClearance(element)])]
-            .filter((candidate) => Number.isFinite(candidate) && candidate >= safeTop && candidate + height <= safeBottom && staysAbovePrivateDraw(candidate, height))
-            .sort((first, second) => Math.abs(first - preferredTop) - Math.abs(second - preferredTop))
-          : [Math.max(safeTop, Math.min(safeBottom - height, preferredTop))];
-        const safeFallbackTop = fallbackTops.find((candidate) => obstacles.every(({ element, rect }) =>
-          !overlapsObstacle(new DOMRect(left, candidate, width, height), element, rect)));
-        if (privateDrawAware && safeFallbackTop === undefined) {
-          copy.style.visibility = "hidden";
-          copy.dataset.publicCardAnnouncementFallback = "true";
-          return;
-        }
-        const top = safeFallbackTop ?? fallbackTops[0] ?? Math.max(safeTop, Math.min(safeBottom - height, preferredTop));
-        copy.style.left = `${left}px`;
-        copy.style.top = `${top}px`;
-        const range = document.createRange();
-        if (textElement) range.selectNodeContents(textElement);
-        selected = {
-          left,
-          top,
-          width,
-          height,
-          lines: textElement ? range.getClientRects().length : 0,
-          message: fallbackOption.message,
-          compact: fallbackOption.compact,
-        };
+        copy.style.visibility = "hidden";
         copy.dataset.publicCardAnnouncementFallback = "true";
-      } else {
-        delete copy.dataset.publicCardAnnouncementFallback;
+        return;
       }
+      delete copy.dataset.publicCardAnnouncementFallback;
       rememberPublicCardAnnouncementBand(bandKey, {
-        viewportKey,
         left: selected.left,
         top: selected.top,
         width: selected.width,
@@ -1220,7 +1190,7 @@ function PublicCardAnnouncement({
       anchorObserver?.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [anchorEventId, compactMessage, displayedMessage, eventId, heading, message, negationWaiting, phase, placementKey, privateDrawAware, stableCenterAnchor, stableFallbackCardRect, viewerLayoutKey]);
+  }, [anchorEventId, compactMessage, displayedMessage, eventId, heading, message, negationWaiting, phase, placementKey, preferredVerticalMode, privateDrawAware, stableCenterAnchor, stableFallbackCardRect, viewerLayoutKey]);
 
   return <div
     ref={copyRef}
@@ -2571,8 +2541,25 @@ function SingleTargetCardJourney({
     return () => window.clearInterval(interval);
   }, [action.targetId, enabled, journey.cards, journey.scopeKey, scopeKey, viewerId]);
   const currentPublicCard = currentCard?.cardFace ?? action.cardFace ?? null;
-  const currentNotice = currentCard?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
-  const announcementCopy = publicCardAnnouncementCopy(action, currentNotice, currentCard?.actorName ?? sourceName, currentCard?.actorId ?? action.sourceId, sourceName, targetName, compactPlayerNamesById);
+  const groupRootStageOwnsCopy = motion?.type === "group-root" && !action.phaseNotice?.includes("NEGATION");
+  const announcementAnchorCard = groupRootStageOwnsCopy
+    ? journey.cards.find((card) => card.eventId === action.rootEventId) ?? currentCard
+    : currentCard;
+  const announcementEventId = groupRootStageOwnsCopy
+    ? action.settlement?.eventId ?? action.rootEventId
+    : activeEventId;
+  const currentNotice = groupRootStageOwnsCopy
+    ? action.ariaLabel
+    : currentCard?.ariaLabel ?? action.publicNotice ?? action.ariaLabel;
+  const announcementCopy = publicCardAnnouncementCopy(
+    action,
+    currentNotice,
+    groupRootStageOwnsCopy ? sourceName : currentCard?.actorName ?? sourceName,
+    groupRootStageOwnsCopy ? action.sourceId : currentCard?.actorId ?? action.sourceId,
+    sourceName,
+    targetName,
+    compactPlayerNamesById,
+  );
   const announcement = withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
   const compactAnnouncement = announcementCopy.compactMessage || (!action.settlement && action.phaseNotice?.includes("NEGATION"))
     ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, action.settlement ? undefined : action.phaseNotice, true)
@@ -2626,11 +2613,11 @@ function SingleTargetCardJourney({
       </li>)}
     </ol>
     <PublicCardAnnouncement
-      eventId={motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : activeEventId}
+      eventId={motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId}
       placementKey={publicCardAnnouncementPlacementKey(action)}
       viewerLayoutKey={viewerId}
-      anchorEventId={activeEventId}
-      phase={currentCard?.phase ?? "static"}
+      anchorEventId={groupRootStageOwnsCopy ? null : activeEventId}
+      phase={announcementAnchorCard?.phase ?? "static"}
       message={announcement}
       compactMessage={compactAnnouncement}
       fallbackCardRect={motion?.type === "lust-cost" && journey.center ? battlefieldLustDuelAnnouncementAnchor(journey.center) : journey.center}

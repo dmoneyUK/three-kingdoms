@@ -314,6 +314,9 @@ const UI_TIMING = {
   sequenceDiscard: 700,
   interactionSettlement: 600,
   interactionSettlementReduced: 120,
+  // Group outcomes are public to every seat; keep the shared result visible
+  // across the active-game polling interval so remote viewers can read it.
+  groupSettlementRead: 2400,
   interactionSettlementFade: 150,
   attackHitSettlementRead: 2_000,
   attackHitSettlementFade: 180,
@@ -5264,7 +5267,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       setActiveGroupSettlement((current) => current?.eventId === activeGroupSettlementEventId
         ? reducedMotion ? null : { ...current, exiting: true }
         : current);
-    }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
+    }, UI_TIMING.groupSettlementRead - (reducedMotion ? 0 : UI_TIMING.interactionSettlementFade));
     return () => window.clearTimeout(timer);
   }, [activeGroupSettlement?.eventId, activeGroupSettlement?.exiting, activeGroupSettlementEventId, publicCardDisplayReady]);
   useEffect(() => {

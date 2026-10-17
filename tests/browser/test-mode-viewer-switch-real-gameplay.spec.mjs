@@ -283,14 +283,19 @@ test("Quick Test switching rebases a parked Barbarian Invasion card before the f
     return { left: rect.left, top: rect.top };
   });
 
-  const nextViewer = room.players.find((player) => player.isTestPlayer && player.id !== host.id);
-  expect(nextViewer).toBeTruthy();
-  await page.evaluate(({ viewerId, actorId, eventId }) => {
-    const capture = { viewerId, actorId, eventId, samples: [] };
+  const viewersToVisit = [
+    ...room.players.filter((player) => player.isTestPlayer),
+    host,
+  ];
+  expect(viewersToVisit).toHaveLength(4);
+
+  const captureFirstPaint = async (viewerId) => page.evaluate(({ viewerId: targetViewerId, actorId, eventId }) => {
+    window.__q3RebaseCapture?.observer?.disconnect();
+    const capture = { viewerId: targetViewerId, actorId, eventId, samples: [] };
     window.__q3RebaseCapture = capture;
     const sample = (label) => {
       const root = document.querySelector('[data-public-card-motion="group-root"][data-public-card-renderer-kind="single-target-journey"]');
-      if (!root || root.getAttribute("data-public-card-viewer-id") !== viewerId) return;
+      if (!root || root.getAttribute("data-public-card-viewer-id") !== targetViewerId) return;
       const card = [...root.querySelectorAll("[data-public-card-journey-event-id]")]
         .find((element) => element.getAttribute("data-public-card-journey-actor-id") === actorId
           && element.getAttribute("data-public-card-journey-event-id") === eventId);
@@ -308,14 +313,13 @@ test("Quick Test switching rebases a parked Barbarian Invasion card before the f
           left: Number(card.getAttribute("data-public-card-journey-target-left")),
           top: Number(card.getAttribute("data-public-card-journey-target-top")),
         },
-        anchor: (() => { const bounds = anchor.getBoundingClientRect(); return { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height }; })(),
         transitionProperty: getComputedStyle(card).transitionProperty,
         revealStartedAt: card.getAttribute("data-public-card-journey-reveal-started-at"),
       });
     };
     const observer = new MutationObserver(() => {
       const root = document.querySelector('[data-public-card-motion="group-root"][data-public-card-renderer-kind="single-target-journey"]');
-      if (root?.getAttribute("data-public-card-viewer-id") !== viewerId) return;
+      if (root?.getAttribute("data-public-card-viewer-id") !== targetViewerId) return;
       sample("commit");
       requestAnimationFrame(() => sample("frame-1"));
       requestAnimationFrame(() => requestAnimationFrame(() => sample("frame-2")));
@@ -327,51 +331,75 @@ test("Quick Test switching rebases a parked Barbarian Invasion card before the f
       attributeFilter: ["data-public-card-viewer-id", "data-public-card-layout-pending", "data-public-card-journey-phase", "data-public-card-journey-target-left", "data-public-card-journey-target-top"],
     });
     capture.observer = observer;
-  }, { viewerId: nextViewer.id, actorId: host.id, eventId: rootEventId });
+  }, { viewerId, actorId: host.id, eventId: rootEventId });
 
-  const switchButton = page.getByTestId(`test-view-switch-${nextViewer.id}`);
-  await expect(switchButton).toBeVisible();
-  const switchedResponse = page.waitForResponse((response) => response.request().method() === "GET"
-    && response.url().startsWith(`${API}/api/rooms?`)
-    && new URL(response.url()).searchParams.get("testViewerId") === nextViewer.id);
-  await switchButton.click();
-  expect((await switchedResponse).ok()).toBeTruthy();
-  await expect(page.locator(`.local-player-dock[data-player-anchor="${nextViewer.id}"]`)).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.__q3RebaseCapture.samples.length)).toBeGreaterThan(0);
-  await expect.poll(() => page.evaluate(() => window.__q3RebaseCapture.samples.some((sample) => sample.layoutPending === "false"))).toBe(true);
-  await expect.poll(async () => {
-    const announcement = await readRootH4Announcement(page, rootEventId);
-    return Boolean(announcement && announcement.eventId === rootEventId
-      && Math.abs(announcement.centerOffset ?? Infinity) <= 12 && announcement.protectedRects.length === 0);
-  }).toBe(true);
-  const h4AfterSwitch = await readRootH4Announcement(page, rootEventId);
-  expect(h4AfterSwitch).toMatchObject({
-    eventId: h4BeforeSwitch.eventId,
-    interactionId: h4BeforeSwitch.interactionId,
-    rootEventId: h4BeforeSwitch.rootEventId,
-    text: h4BeforeSwitch.text,
-  });
-  expect(Math.abs(h4AfterSwitch.centerOffset ?? Infinity)).toBeLessThanOrEqual(12);
-  expect(h4AfterSwitch.protectedRects).toEqual([]);
+  const switchResults = [];
+  for (const viewer of viewersToVisit) {
+    const beforeSwitchCard = await rootCard.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, top: rect.top };
+    });
+    await captureFirstPaint(viewer.id);
+    const switchButton = page.getByTestId(`test-view-switch-${viewer.id}`);
+    await expect(switchButton).toBeVisible();
+    const switchedResponse = page.waitForResponse((response) => response.request().method() === "GET"
+      && response.url().startsWith(`${API}/api/rooms?`)
+      && new URL(response.url()).searchParams.get("testViewerId") === viewer.id);
+    await switchButton.click();
+    const response = await switchedResponse;
+    expect(response.ok()).toBeTruthy();
+    await expect(page.locator(`.local-player-dock[data-player-anchor="${viewer.id}"]`)).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.__q3RebaseCapture.samples.length)).toBeGreaterThan(0);
+    await expect.poll(() => page.evaluate(() => window.__q3RebaseCapture.samples.some((sample) => sample.layoutPending === "false"))).toBe(true);
+    await expect.poll(async () => {
+      const announcement = await readRootH4Announcement(page, rootEventId);
+      return Boolean(announcement && announcement.eventId === rootEventId
+        && Math.abs(announcement.centerOffset ?? Infinity) <= 12 && announcement.protectedRects.length === 0);
+    }).toBe(true);
+    const h4AfterSwitch = await readRootH4Announcement(page, rootEventId);
+    expect(h4AfterSwitch).toMatchObject({
+      eventId: h4BeforeSwitch.eventId,
+      interactionId: h4BeforeSwitch.interactionId,
+      rootEventId: h4BeforeSwitch.rootEventId,
+      text: h4BeforeSwitch.text,
+    });
+    expect(Math.abs(h4AfterSwitch.centerOffset ?? Infinity)).toBeLessThanOrEqual(12);
+    expect(h4AfterSwitch.protectedRects).toEqual([]);
+    const visibleAnnouncements = await page.locator('[data-public-card-announcement="true"]').evaluateAll((elements) => elements
+      .filter((element) => element.dataset.publicCardAnnouncementPositioned === "true"
+        && getComputedStyle(element).visibility === "visible"
+        && element.getBoundingClientRect().width > 0
+        && element.getBoundingClientRect().height > 0).length);
+    expect(visibleAnnouncements).toBe(1);
 
-  const samples = await page.evaluate(() => window.__q3RebaseCapture.samples);
-  expect(samples, "viewer commit and first animation-frame measurements are captured").toEqual(expect.arrayContaining([
-    expect.objectContaining({ label: "commit" }),
-    expect.objectContaining({ label: "frame-1" }),
-  ]));
-  for (const sample of samples) {
-    expect(sample.phase).toBe("parked");
-    if (sample.layoutPending === "true") {
-      expect(sample.visibility).toBe("hidden");
-    } else {
-      expect(sample.visibility).toBe("visible");
-      expect(Math.abs(sample.actual.left - sample.target.left), JSON.stringify(sample)).toBeLessThanOrEqual(2);
-      expect(Math.abs(sample.actual.top - sample.target.top), JSON.stringify(sample)).toBeLessThanOrEqual(2);
+    const samples = await page.evaluate(() => window.__q3RebaseCapture.samples);
+    expect(samples, `first-paint samples are captured after switching to ${viewer.name}`).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "commit" }),
+      expect.objectContaining({ label: "frame-1" }),
+    ]));
+    for (const sample of samples) {
+      expect(sample.phase).toBe("parked");
+      if (sample.layoutPending === "true") {
+        expect(sample.visibility).toBe("hidden");
+      } else {
+        expect(sample.visibility).toBe("visible");
+        expect(Math.abs(sample.actual.left - sample.target.left), JSON.stringify(sample)).toBeLessThanOrEqual(2);
+        expect(Math.abs(sample.actual.top - sample.target.top), JSON.stringify(sample)).toBeLessThanOrEqual(2);
+      }
+      expect(sample.revealStartedAt).toBe(revealStartedAt);
     }
-    expect(sample.revealStartedAt).toBe(revealStartedAt);
+    const firstCommit = samples.find((sample) => sample.label === "commit");
+    expect(firstCommit.transitionProperty).toBe("none");
+    expect(Math.hypot(firstCommit.actual.left - beforeSwitchCard.left, firstCommit.actual.top - beforeSwitchCard.top)).toBeGreaterThan(2);
+    switchResults.push({ viewerId: viewer.id, viewport: page.viewportSize(), h4: h4AfterSwitch, firstCommit });
+    await page.evaluate(() => window.__q3RebaseCapture.observer.disconnect());
   }
-  const firstCommit = samples.find((sample) => sample.label === "commit");
-  expect(firstCommit.transitionProperty).toBe("none");
-  expect(Math.hypot(firstCommit.actual.left - before.left, firstCommit.actual.top - before.top)).toBeGreaterThan(2);
-  await page.evaluate(() => window.__q3RebaseCapture.observer.disconnect());
+  console.log(`[Q4 TEST SWITCH viewer cycle] ${JSON.stringify(switchResults.map(({ viewerId, h4, firstCommit }) => ({
+    viewerId,
+    eventId: h4.eventId,
+    interactionId: h4.interactionId,
+    copy: h4.text,
+    centerOffset: h4.centerOffset,
+    firstPaint: { phase: firstCommit.phase, layoutPending: firstCommit.layoutPending, transition: firstCommit.transitionProperty },
+  })))} `);
 });
