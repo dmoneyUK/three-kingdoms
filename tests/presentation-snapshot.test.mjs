@@ -1,0 +1,1050 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { composePresentationSnapshot } from "../game/presentation-snapshot.ts";
+import { projectPresentationV2 } from "../game/presentation-v2.ts";
+
+function scene(overrides = {}) {
+  return {
+    semantics: "PROVEN",
+    interactionId: "interaction-1",
+    rootFrameId: "root-frame",
+    activeFrameId: "active-frame",
+    parentFrameId: null,
+    checkpointId: "checkpoint-1",
+    presentationRevision: 3,
+    stage: "ATTACK_RESPONSE",
+    sourceId: "A",
+    effect: "Attack",
+    targetIds: ["B"],
+    currentParticipantId: "B",
+    decisionActorId: "B",
+    activeResolverId: "B",
+    activeSourceId: "A",
+    activeTargetIds: ["B"],
+    participantIds: [],
+    participantRoles: {
+      sourceId: "A",
+      originalTargetIds: ["B"],
+      activeTargetIds: ["B"],
+      currentParticipantId: "B",
+      decisionActorId: "B",
+      activeResolverId: "B",
+      parentParticipantId: null,
+      participantIds: [],
+    },
+    continuity: { relation: "ROOT_FRAME", parentFrameId: null },
+    ...overrides,
+  };
+}
+
+function groupScene({ child = false, currentParticipantId = "B", effect = "Raining Arrows" } = {}) {
+  const targetIds = ["B", "C", "D"];
+  const decisionActorId = child ? "C" : currentParticipantId;
+  return scene({
+    rootFrameId: "group-frame",
+    activeFrameId: child ? "damage-frame" : "group-frame",
+    parentFrameId: child ? "group-frame" : null,
+    stage: child ? "DAMAGE" : "GROUP_RESOLUTION",
+    effect,
+    decisionActorId,
+    activeResolverId: decisionActorId,
+    targetIds,
+    currentParticipantId,
+    activeTargetIds: [currentParticipantId],
+    participantRoles: {
+      sourceId: "A", originalTargetIds: targetIds, activeTargetIds: [currentParticipantId], currentParticipantId,
+      decisionActorId: "C", activeResolverId: "C", parentParticipantId: currentParticipantId, participantIds: targetIds,
+    },
+    continuity: child ? { relation: "CHILD_FRAME", parentFrameId: "group-frame" } : { relation: "ROOT_FRAME", parentFrameId: null },
+  });
+}
+
+function groupResolution(groupSceneValue, overrides = {}) {
+  return {
+    semantics: "PROVEN",
+    interactionId: groupSceneValue.interactionId,
+    groupFrameId: groupSceneValue.rootFrameId,
+    activeFrameId: groupSceneValue.activeFrameId,
+    parentFrameId: groupSceneValue.parentFrameId,
+    checkpointId: groupSceneValue.checkpointId,
+    presentationRevision: groupSceneValue.presentationRevision,
+    stage: groupSceneValue.stage,
+    cardKind: "RainingArrows",
+    resolutionSemantics: "GROUP",
+    effect: "Raining Arrows",
+    sourceId: "A",
+    targetIds: groupSceneValue.targetIds,
+    currentParticipantId: "B",
+    participantProgress: [
+      { playerId: "B", order: 1, status: groupSceneValue.activeFrameId === groupSceneValue.rootFrameId ? "CURRENT" : "PAUSED" },
+      { playerId: "C", order: 2, status: "PENDING" },
+      { playerId: "D", order: 3, status: "RESOLVED" },
+    ],
+    ...overrides,
+  };
+}
+
+function presentation(interactionScene, stableBoundary = coherentBoundary({ decisionActorId: interactionScene.decisionActorId })) {
+  return {
+    interactionScene,
+    stableBoundary,
+    settlement: { eventId: "legacy-final", resolutionId: "legacy-resolution" },
+    transitionEvents: [{ eventId: "legacy-transition", type: "card", resolutionId: "legacy-resolution" }],
+  };
+}
+
+function coherentBoundary(overrides = {}) {
+  return {
+    kind: "CHOICE",
+    interactionId: "interaction-1",
+    checkpointId: "checkpoint-1",
+    presentationRevision: 3,
+    decisionActorId: "B",
+    ...overrides,
+  };
+}
+
+test("snapshot composes proven identity and public scene while keeping CurrentAction local", () => {
+  const publicPresentation = presentation(scene());
+  const acting = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "response", actorId: "B" }, actionRevision: "action-a", viewerId: "B" });
+  const waiting = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "none", actorId: null }, actionRevision: "action-b", viewerId: "C" });
+
+  assert.deepEqual(acting.identity, { interactionId: "interaction-1", checkpointId: "checkpoint-1", presentationRevision: 3 });
+  assert.deepEqual(acting.interaction, publicPresentation.interactionScene);
+  assert.deepEqual(acting.stable, publicPresentation.stableBoundary);
+  assert.deepEqual(acting.decision, { actorId: "B", stage: "ATTACK_RESPONSE" });
+  assert.equal(acting.groupParticipantProgress, null);
+  assert.deepEqual(acting.interaction, waiting.interaction, "public interaction is viewer-stable");
+  assert.deepEqual(acting.identity, waiting.identity, "public identity is viewer-stable");
+  assert.deepEqual(acting.stable, waiting.stable, "public boundary is viewer-stable");
+  assert.notDeepEqual(acting.localControl, waiting.localControl, "only local control reflects entitlement/current action");
+  assert.equal(acting.localControl.entitled, true);
+  assert.equal(waiting.localControl.entitled, false);
+  assert.equal(acting.settlement, null);
+  assert.deepEqual(acting.transitionEvents, []);
+});
+
+test("snapshot copies explicit self-target actions independently of an interaction scene", () => {
+  const selfTargetAction = {
+    semantics: "PROVEN", rootEventId: "peach-event", resolutionId: "peach-resolution",
+    sourceId: "A", targetId: "A", cardKind: "Peach",
+  };
+  const publicPresentation = {
+    interactionScene: null,
+    stableBoundary: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null },
+    selfTargetActions: [selfTargetAction],
+  };
+  const acting = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "turn", actorId: "A" }, actionRevision: "action-a", viewerId: "A" });
+  const waiting = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "none", actorId: null }, actionRevision: "action-b", viewerId: "B" });
+  assert.deepEqual(acting.selfTargetActions, [selfTargetAction]);
+  assert.deepEqual(waiting.selfTargetActions, [selfTargetAction], "public self-target proof is viewer-equal");
+  assert.deepEqual(composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, selfTargetActions: [selfTargetAction, { ...selfTargetAction, sourceId: "B" }] },
+    currentAction: null, actionRevision: "action-c", viewerId: "B",
+  }).selfTargetActions, [selfTargetAction], "malformed records are removed without discarding the valid public proof");
+});
+
+test("snapshot carries typed Attack/Dodge counter proof identically for acting and observing viewers", () => {
+  const response = {
+    semantics: "PROVEN", counterRelation: "BLOCKS_TARGET_EFFECT",
+    interactionId: "attack-interaction", rootFrameId: "attack-frame",
+    rootEventId: "attack-event", rootResolutionId: "attack-resolution",
+    rootSourceId: "A", targetId: "B", responseActorId: "B",
+    rootCardKind: "Attack", responseCardKind: "Dodge",
+    responseEventId: "dodge-event", responseResolutionId: "attack-resolution",
+  };
+  const publicPresentation = {
+    interactionScene: null,
+    stableBoundary: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null },
+    attackDodgeResponses: [response],
+  };
+  const acting = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "turn", actorId: "A" }, actionRevision: "action-a", viewerId: "A" });
+  const observing = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "none", actorId: null }, actionRevision: "action-b", viewerId: "C" });
+  assert.deepEqual(acting.attackDodgeResponses, [response]);
+  assert.deepEqual(observing.attackDodgeResponses, [response], "public counter proof is viewer-equal");
+  assert.equal(JSON.stringify(acting.attackDodgeResponses).includes("physical-card"), false);
+  const convertedResponse = {
+    ...response, responseEventId: "converted-attack-event", responsePhysicalCardKind: "Attack",
+    responsePlayedAs: "dodge", physicalCardId: "must-not-enter-semantic-proof",
+  };
+  const convertedSnapshot = composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, attackDodgeResponses: [convertedResponse] },
+    currentAction: { kind: "none", actorId: null }, actionRevision: "action-converted", viewerId: "C",
+  });
+  assert.deepEqual(convertedSnapshot.attackDodgeResponses, [{
+    ...response, responseEventId: "converted-attack-event", responsePhysicalCardKind: "Attack", responsePlayedAs: "dodge",
+  }], "snapshot preserves the typed physical Attack/effective Dodge pairing but strips card IDs");
+  for (const malformedConversion of [
+    { ...convertedResponse, responsePlayedAs: undefined },
+    { ...convertedResponse, responsePhysicalCardKind: "Dodge" },
+    { ...convertedResponse, responsePlayedAs: "attack" },
+  ]) {
+    assert.deepEqual(composePresentationSnapshot({
+      presentationV2: { ...publicPresentation, attackDodgeResponses: [malformedConversion] },
+      currentAction: null, actionRevision: "action-malformed", viewerId: "C",
+    }).attackDodgeResponses, [], "malformed physical/effective pairing fails closed");
+  }
+  assert.deepEqual(composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, attackDodgeResponses: [response, { ...response, responseActorId: "A" }, { ...response, responseEventId: "dodge-event" }] },
+    currentAction: null, actionRevision: "action-c", viewerId: "C",
+  }).attackDodgeResponses, [], "malformed and duplicate response identity is dropped");
+});
+
+test("snapshot admits only a root- and scene-bound Duel exchange and strips extra card identity fields", () => {
+  const interaction = scene({
+    interactionId: "duel-interaction", rootFrameId: "duel-frame", activeFrameId: "duel-frame",
+    checkpointId: "duel-checkpoint", presentationRevision: 4, stage: "DUEL_EXCHANGE",
+    sourceId: "A", effect: "Duel", targetIds: ["B", "A"], currentParticipantId: "A",
+    decisionActorId: "A", activeResolverId: "A", activeSourceId: "A", activeTargetIds: ["A", "B"],
+    participantRoles: {
+      sourceId: "A", originalTargetIds: ["B", "A"], activeTargetIds: ["A", "B"], currentParticipantId: "A",
+      decisionActorId: "A", activeResolverId: "A", parentParticipantId: null, participantIds: [],
+    },
+  });
+  const response = {
+    semantics: "PROVEN", relation: "DUEL_EXCHANGE", interactionId: "duel-interaction", rootFrameId: "duel-frame",
+    rootEventId: "duel-root-event", rootResolutionId: "duel-root-resolution", rootSourceId: "A", rootTargetId: "B",
+    ordinal: 1, sourceId: "B", targetId: "A", decisionActorId: "B", responseActorId: "C", responseCardKind: "Attack",
+    responseEventId: "duel-response-event", responseResolutionId: "duel-root-resolution",
+    physicalCardId: "private-duel-response-card",
+  };
+  const exchange = {
+    semantics: "PROVEN", interactionId: "duel-interaction", rootFrameId: "duel-frame",
+    checkpointId: "duel-checkpoint", presentationRevision: 4,
+    root: { eventId: "duel-root-event", resolutionId: "duel-root-resolution", sourceId: "A", targetId: "B", cardKind: "Duel", physicalCardId: "private-duel-root-card" },
+    responseCount: 1, responses: [response], currentParticipantId: "A", decisionActorId: "A",
+  };
+  const boundary = coherentBoundary({ interactionId: "duel-interaction", checkpointId: "duel-checkpoint", presentationRevision: 4, decisionActorId: "A" });
+  const publicPresentation = { ...presentation(interaction, boundary), duelExchange: exchange };
+  const acting = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "response", actorId: "A" }, actionRevision: "duel-a", viewerId: "A" });
+  const observing = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "none", actorId: null }, actionRevision: "duel-b", viewerId: "C" });
+  assert.deepEqual(acting.duelExchange, observing.duelExchange, "public Duel proof remains viewer-equal");
+  assert.equal(acting.duelExchange?.responses[0].responseActorId, "C", "the public submitter is distinct from the semantic Duel decision actor");
+  assert.equal(JSON.stringify(acting.duelExchange).includes("private-duel-"), false, "unknown physical-card identity fields are not copied into the public snapshot");
+
+  for (const malformed of [
+    { ...exchange, root: { ...exchange.root, eventId: "other-root-event" } },
+    { ...exchange, currentParticipantId: "B" },
+    { ...exchange, responses: [{ ...response, sourceId: "A", decisionActorId: "B" }] },
+    { ...exchange, responses: [response, { ...response }] },
+  ]) {
+    const result = composePresentationSnapshot({
+      presentationV2: { ...publicPresentation, duelExchange: malformed },
+      currentAction: { kind: "response", actorId: "A" }, actionRevision: "duel-invalid", viewerId: "A",
+    });
+    assert.equal(result.identity?.interactionId, "duel-interaction", "unrelated public scene authority remains usable");
+    assert.equal(result.duelExchange, null, "an inconsistent Duel exchange is withheld as a whole");
+  }
+});
+
+test("snapshot keeps Negation public event links only when they align with the proven chain", () => {
+  const frameId = "root-negation-frame";
+  const interaction = scene({ stage: "NEGATION", rootFrameId: frameId, activeFrameId: frameId, effect: "Steal", decisionActorId: "C", activeResolverId: "C" });
+  const reactionChain = {
+    semantics: "PROVEN", interactionId: interaction.interactionId, frameId,
+    rootCard: { interactionId: interaction.interactionId, frameId, sourceId: "A", targetId: "B", cardKind: "Steal" },
+    nodes: [{ nodeId: "negation-1", interactionId: interaction.interactionId, frameId, causedByNodeId: null, actorId: "C", kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } }],
+    rootEffectState: "BLOCKED",
+    publicEventLinks: {
+      root: { eventId: "steal-event", resolutionId: "steal-resolution" },
+      nodes: [{ nodeId: "negation-1", eventId: "negation-event", resolutionId: "negation-resolution" }],
+    },
+  };
+  const publicPresentation = { ...presentation(interaction, coherentBoundary({ decisionActorId: "C" })), reactionChain };
+  const snapshotValue = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "response", actorId: "C" }, actionRevision: "negation", viewerId: "C" });
+  assert.deepEqual(snapshotValue.reactionChain?.publicEventLinks, reactionChain.publicEventLinks);
+  assert.equal(snapshotValue.reactionChain?.rootEffectState, "BLOCKED");
+  assert.deepEqual(composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, reactionChain: { ...reactionChain, publicEventLinks: { ...reactionChain.publicEventLinks, nodes: [{ ...reactionChain.publicEventLinks.nodes[0], nodeId: "unlinked-node" }] } } },
+    currentAction: { kind: "response", actorId: "C" }, actionRevision: "negation", viewerId: "C",
+  }).reactionChain?.publicEventLinks, undefined, "a response event link for another semantic node is withheld");
+  assert.deepEqual(composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, reactionChain: { ...reactionChain, publicEventLinks: { ...reactionChain.publicEventLinks, nodes: [{ ...reactionChain.publicEventLinks.nodes[0], eventId: "steal-event" }] } } },
+    currentAction: { kind: "response", actorId: "C" }, actionRevision: "negation", viewerId: "C",
+  }).reactionChain?.publicEventLinks, undefined, "one public event cannot identify both the root and a response");
+  const malformedDisposition = composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, reactionChain: { ...reactionChain, rootEffectState: "CANCELLED" } },
+    currentAction: { kind: "response", actorId: "C" }, actionRevision: "negation", viewerId: "C",
+  }).reactionChain;
+  assert.equal(malformedDisposition?.rootEffectState, undefined, "unknown root disposition labels are not accepted");
+  assert.equal(composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, reactionChain: { ...reactionChain, publicEventLinks: undefined } },
+    currentAction: { kind: "response", actorId: "C" }, actionRevision: "negation", viewerId: "C",
+  }).reactionChain?.rootEffectState, undefined, "root disposition is withheld when exact public card links are absent");
+});
+
+test("snapshot carries the proven Duel root into its initial Negation window without opening exchange", () => {
+  const frameId = "duel-negation-frame";
+  const targetId = "B";
+  const sourceId = "A";
+  const interaction = scene({
+    stage: "NEGATION",
+    rootFrameId: frameId,
+    activeFrameId: frameId,
+    effect: "Duel",
+    sourceId,
+    targetIds: [targetId, sourceId],
+    currentParticipantId: targetId,
+    decisionActorId: targetId,
+    activeResolverId: targetId,
+    activeSourceId: sourceId,
+    activeTargetIds: [targetId],
+    participantRoles: {
+      sourceId,
+      originalTargetIds: [targetId, sourceId],
+      activeTargetIds: [targetId],
+      currentParticipantId: targetId,
+      decisionActorId: targetId,
+      activeResolverId: targetId,
+      parentParticipantId: null,
+      participantIds: [sourceId, targetId],
+    },
+    continuity: { relation: "ROOT_FRAME", parentFrameId: null },
+  });
+  const rootCardId = "duel-root-private-physical-id";
+  const reactionChain = {
+    semantics: "PROVEN",
+    interactionId: interaction.interactionId,
+    frameId,
+    rootCard: { interactionId: interaction.interactionId, frameId, sourceId, targetId, cardKind: "Duel" },
+    nodes: [],
+    rootEffectState: "ACTIVE",
+    publicEventLinks: { root: { eventId: "duel-root-event", resolutionId: "duel-root-resolution" }, nodes: [] },
+  };
+  const publicPresentation = { ...presentation(interaction, coherentBoundary({ decisionActorId: targetId })), reactionChain };
+  const compose = (presentationValue) => composePresentationSnapshot({
+    presentationV2: presentationValue,
+    currentAction: { kind: "response", actorId: targetId },
+    actionRevision: "duel-negation",
+    viewerId: targetId,
+  });
+
+  const opened = compose(publicPresentation);
+  assert.deepEqual(opened.reactionChain?.rootCard, reactionChain.rootCard);
+  assert.deepEqual(opened.reactionChain?.publicEventLinks, reactionChain.publicEventLinks);
+  assert.equal(opened.reactionChain?.rootEffectState, "ACTIVE");
+  assert.equal(opened.duelExchange, null, "the Negation window does not fabricate a Duel exchange");
+  assert.equal(JSON.stringify(opened.reactionChain).includes(rootCardId), false, "the public root never carries physical-card identity");
+
+  for (const malformed of [
+    { ...reactionChain, rootCard: { ...reactionChain.rootCard, sourceId: "C" } },
+    { ...reactionChain, rootCard: { ...reactionChain.rootCard, targetId: "C" } },
+  ]) {
+    const result = compose({ ...publicPresentation, reactionChain: malformed });
+    assert.equal(result.reactionChain?.rootCard, null, "source and target mismatches fail closed");
+    assert.equal(result.reactionChain?.publicEventLinks, undefined, "root links are withheld when root identity fails");
+  }
+  const ambiguousOrder = { ...interaction, targetIds: [sourceId, targetId], participantRoles: { ...interaction.participantRoles, originalTargetIds: [sourceId, targetId] } };
+  assert.equal(compose({ ...publicPresentation, interactionScene: ambiguousOrder }).reactionChain?.rootCard, null,
+    "Duel source/target order must match the authenticated public root");
+  const wrongResponder = { ...interaction, currentParticipantId: sourceId, participantRoles: { ...interaction.participantRoles, currentParticipantId: sourceId } };
+  assert.equal(compose({ ...publicPresentation, interactionScene: wrongResponder }).reactionChain?.rootCard, null,
+    "the initial Negation responder must be the proven Duel target");
+});
+
+test("snapshot carries only Group Negation scope bound to the active target effect", () => {
+  const baseScene = groupScene();
+  const interaction = {
+    ...baseScene,
+    stage: "NEGATION",
+    continuity: { relation: "SAME_FRAME", parentFrameId: null },
+  };
+  const targetEffectScope = {
+    semantics: "PROVEN",
+    relation: "GROUP_TARGET_EFFECT",
+    interactionId: interaction.interactionId,
+    groupFrameId: interaction.rootFrameId,
+    activeFrameId: interaction.activeFrameId,
+    checkpointId: interaction.checkpointId,
+    presentationRevision: interaction.presentationRevision,
+    sourceId: "A",
+    cardKind: "RainingArrows",
+    targetId: "B",
+    effectState: "ACTIVE",
+  };
+  const reactionChain = {
+    semantics: "PROVEN", interactionId: interaction.interactionId, frameId: interaction.activeFrameId,
+    rootCard: null, nodes: [], groupTargetEffectScope: targetEffectScope,
+  };
+  const publicPresentation = {
+    ...presentation(interaction, coherentBoundary({ decisionActorId: "B" })),
+    groupResolution: groupResolution(interaction),
+    reactionChain,
+  };
+  const compose = (chain) => composePresentationSnapshot({
+    presentationV2: { ...publicPresentation, reactionChain: chain },
+    currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "group-negation",
+    viewerId: "C",
+  });
+  const valid = compose(reactionChain);
+  assert.deepEqual(valid.reactionChain?.groupTargetEffectScope, targetEffectScope);
+
+  for (const malformed of [
+    { ...targetEffectScope, targetId: "C" },
+    { ...targetEffectScope, groupFrameId: "other-frame" },
+    { ...targetEffectScope, activeFrameId: "child-frame" },
+    { ...targetEffectScope, checkpointId: "other-checkpoint" },
+    { ...targetEffectScope, presentationRevision: targetEffectScope.presentationRevision + 1 },
+    { ...targetEffectScope, sourceId: "other-source" },
+    { ...targetEffectScope, cardKind: "BarbarianInvasion" },
+    { ...targetEffectScope, effectState: "BLOCKED" },
+  ]) {
+    assert.equal(compose({ ...reactionChain, groupTargetEffectScope: malformed }).reactionChain, null,
+      "a target/frame/checkpoint/revision/source/card mismatch withholds the reaction chain");
+  }
+  assert.equal(compose({ ...reactionChain, groupTargetEffectScope: undefined }).reactionChain, null,
+    "a Group Negation chain without target-effect scope fails closed");
+});
+
+test("single-target Negation settlement requires a typed, root-bound public occurrence", () => {
+  const envelope = {
+    version: 1,
+    interactionId: "interaction-negation",
+    frames: [{
+      frameId: "root-negation-frame", parentFrameId: null, stage: "NEGATION",
+      origin: { originSourceId: "A", originEffect: "Dismantle", originalTargetIds: ["B"] },
+      current: { currentSourceId: "A", currentEffect: "Dismantle", currentTargetIds: ["B"], resolvingPlayerId: "B" },
+    }],
+    activeFrameId: "root-negation-frame",
+    checkpoint: { checkpointId: "settlement-checkpoint", frameId: "root-negation-frame", stage: "NEGATION" },
+    presentationRevision: 5,
+  };
+  const proof = {
+    semantics: "PROVEN", outcome: "ROOT_CANCELLED", interactionId: "interaction-negation",
+    rootFrameId: "root-negation-frame", checkpointId: "settlement-checkpoint", presentationRevision: 5,
+    resolutionId: "resolution-negation", rootCardKind: "Dismantle", sourceId: "A", targetId: "B",
+  };
+  const event = {
+    id: "negation-settlement-event", type: "message", message: "root disposition",
+    resolutionId: "resolution-negation", importance: "essential", negationSettlement: proof,
+  };
+  const projected = projectPresentationV2({ pending: null, currentAction: null, actionRevision: "settled", timeline: [event], causalEnvelope: envelope });
+  assert.deepEqual(projected.negationSettlement, { ...proof, eventId: event.id });
+  const local = composePresentationSnapshot({ presentationV2: projected, currentAction: null, actionRevision: "settled", viewerId: "A" });
+  const observer = composePresentationSnapshot({ presentationV2: projected, currentAction: null, actionRevision: "other", viewerId: "C" });
+  assert.deepEqual(local.settlement, { ...proof, eventId: event.id });
+  assert.deepEqual(observer.settlement, local.settlement, "public settlement is viewer-equal");
+  assert.equal(JSON.stringify(local.settlement).includes("physical"), false, "settlement exposes no physical card identity");
+
+  for (const mismatch of [
+    { event: { ...event, resolutionId: "different-resolution" } },
+    { envelope: { ...envelope, interactionId: "different-interaction" } },
+    { proof: { ...proof, rootFrameId: "different-root" } },
+    { proof: { ...proof, sourceId: "different-source" } },
+    { proof: { ...proof, targetId: "different-target" } },
+  ]) {
+    const invalidEvent = { ...event, ...(mismatch.event ?? {}), negationSettlement: mismatch.proof ?? proof };
+    const invalidEnvelope = mismatch.envelope ?? envelope;
+    assert.equal(projectPresentationV2({ pending: null, currentAction: null, actionRevision: "settled", timeline: [invalidEvent], causalEnvelope: invalidEnvelope }).negationSettlement, null);
+  }
+
+  const legacyFinalResult = projectPresentationV2({
+    pending: null, currentAction: null, actionRevision: "settled",
+    timeline: [{ ...event, negationSettlement: undefined, finalResult: true }], causalEnvelope: envelope,
+  });
+  assert.equal(legacyFinalResult.negationSettlement, null, "legacy result flags and text cannot manufacture Negation outcome");
+  const openNegation = projectPresentationV2({
+    pending: { kind: "response", continuation: { kind: "negation" } }, currentAction: null, actionRevision: "open",
+    timeline: [event], causalEnvelope: envelope,
+  });
+  assert.equal(openNegation.negationSettlement, null, "an open Negation decision cannot expose a stale settlement");
+});
+
+test("snapshot forwards only identity- and ordered-scope-coherent Standard AOE progress", () => {
+  for (const child of [false, true]) {
+    const interaction = groupScene({ child });
+    const projected = composePresentationSnapshot({
+      presentationV2: { ...presentation(interaction), groupResolution: groupResolution(interaction, { participantProgress: [
+        { playerId: "B", order: 1, status: child ? "PAUSED" : "CURRENT" },
+        { playerId: "C", order: 2, status: "PENDING" },
+        { playerId: "D", order: 3, status: "RESOLVED", outcome: "AVOIDED" },
+      ] }) },
+      currentAction: { kind: "response", actorId: "C" },
+      actionRevision: `aoe-${child}`,
+      viewerId: "C",
+    });
+    assert.deepEqual(projected.groupParticipantProgress, {
+      cardKind: "RainingArrows",
+      resolutionSemantics: "GROUP",
+      interactionId: interaction.interactionId,
+      groupFrameId: interaction.rootFrameId,
+      activeFrameId: interaction.activeFrameId,
+      checkpointId: interaction.checkpointId,
+      presentationRevision: interaction.presentationRevision,
+      targetIds: ["B", "C", "D"],
+      currentParticipantId: "B",
+      participants: [
+        { playerId: "B", order: 1, status: child ? "PAUSED" : "CURRENT" },
+        { playerId: "C", order: 2, status: "PENDING" },
+        { playerId: "D", order: 3, status: "RESOLVED", outcome: "AVOIDED" },
+      ],
+    });
+  }
+});
+
+test("snapshot admits only identity-coherent simultaneous Oath recipient scope", () => {
+  const interaction = scene({
+    rootFrameId: "oath-frame",
+    activeFrameId: "oath-frame",
+    stage: "NEGATION",
+    effect: "Oath of the Peach Garden",
+  });
+  const oathRecipientScope = {
+    semantics: "PROVEN",
+    cardKind: "Oath",
+    interactionId: interaction.interactionId,
+    rootFrameId: interaction.rootFrameId,
+    activeFrameId: interaction.activeFrameId,
+    checkpointId: interaction.checkpointId,
+    presentationRevision: interaction.presentationRevision,
+    rootEventId: "oath-root-event",
+    rootResolutionId: "oath-root-resolution",
+    effectState: "ACTIVE",
+    sourceId: interaction.sourceId,
+    recipientIds: ["A", "C"],
+  };
+  const reactionChain = {
+    semantics: "PROVEN",
+    interactionId: interaction.interactionId,
+    frameId: interaction.activeFrameId,
+    rootCard: null,
+    nodes: [],
+    publicNodeEventLinks: [],
+  };
+  const accepted = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), oathRecipientScope, reactionChain },
+    currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "oath-1",
+    viewerId: "B",
+  });
+  assert.deepEqual(accepted.oathRecipientScope, oathRecipientScope);
+
+  const mismatched = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), oathRecipientScope: { ...oathRecipientScope, activeFrameId: "other-frame" } },
+    currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "oath-2",
+    viewerId: "B",
+  });
+  assert.equal(mismatched.oathRecipientScope, null, "a scope from another frame fails closed without discarding unrelated proven authority");
+  assert.equal(mismatched.interaction?.semantics, "PROVEN");
+});
+
+test("snapshot preserves explicit ORDERED Halberd semantics and target order", () => {
+  const interaction = groupScene();
+  const orderedGroup = groupResolution(interaction, {
+    cardKind: "SkyPiercingHalberdAttack",
+    effect: "Attack",
+    resolutionSemantics: "ORDERED",
+  });
+  const snapshot = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: orderedGroup },
+    currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "halberd-ordered",
+    viewerId: "B",
+  });
+  assert.equal(snapshot.groupParticipantProgress?.resolutionSemantics, "ORDERED");
+  assert.deepEqual(snapshot.groupParticipantProgress?.targetIds, ["B", "C", "D"]);
+  assert.deepEqual(snapshot.groupParticipantProgress?.participants.map(({ playerId, order }) => ({ playerId, order })), [
+    { playerId: "B", order: 1 }, { playerId: "C", order: 2 }, { playerId: "D", order: 3 },
+  ]);
+});
+
+test("snapshot keeps Halberd target order when a child frame foregrounds its paused target", () => {
+  const root = groupScene({ child: true, currentParticipantId: "C", effect: "Sky Piercing Halberd Attack" });
+  const interaction = {
+    ...root,
+    stage: "DYING",
+    participantRoles: {
+      ...root.participantRoles,
+      originalTargetIds: ["C", "B", "D"],
+    },
+  };
+  const targetIds = ["B", "C", "D"];
+  const orderedAttackRoot = {
+    semantics: "PROVEN",
+    relation: "ORDERED_ATTACK_ROOT",
+    resolutionSemantics: "ORDERED",
+    interactionId: interaction.interactionId,
+    groupFrameId: interaction.rootFrameId,
+    rootEventId: "halberd-child-root-event",
+    rootEventResolutionId: "halberd-child-root-resolution",
+    rootCardId: "halberd-child-physical-attack",
+    sourceId: "A",
+    cardKind: "Attack",
+    physicalCardKind: "Attack",
+    targetIds,
+  };
+  const orderedGroup = groupResolution(interaction, {
+    cardKind: "SkyPiercingHalberdAttack",
+    effect: "Sky Piercing Halberd Attack",
+    resolutionSemantics: "ORDERED",
+    currentParticipantId: "C",
+    participantProgress: [
+      { playerId: "B", order: 1, status: "RESOLVED" },
+      { playerId: "C", order: 2, status: "PAUSED" },
+      { playerId: "D", order: 3, status: "PENDING" },
+    ],
+    orderedAttackRoot,
+  });
+  const basePresentation = {
+    ...presentation(interaction),
+    groupResolution: orderedGroup,
+  };
+  const snapshot = composePresentationSnapshot({
+    presentationV2: basePresentation,
+    currentAction: { kind: "dying", actorId: "B" },
+    actionRevision: "halberd-child-dying",
+    viewerId: "B",
+  });
+  assert.deepEqual(snapshot.groupParticipantProgress?.targetIds, targetIds);
+  assert.deepEqual(snapshot.groupParticipantProgress?.participants.map(({ playerId, status }) => ({ playerId, status })), [
+    { playerId: "B", status: "RESOLVED" },
+    { playerId: "C", status: "PAUSED" },
+    { playerId: "D", status: "PENDING" },
+  ]);
+  assert.deepEqual(snapshot.groupParticipantProgress?.orderedAttackRoot, orderedAttackRoot);
+
+  for (const originalTargetIds of [["C", "B"], ["C", "B", "E"], ["C", "B", "B"]]) {
+    const malformed = composePresentationSnapshot({
+      presentationV2: {
+        ...basePresentation,
+        interactionScene: {
+          ...interaction,
+          participantRoles: { ...interaction.participantRoles, originalTargetIds },
+        },
+      },
+      currentAction: { kind: "dying", actorId: "B" },
+      actionRevision: "halberd-child-dying-malformed-roles",
+      viewerId: "B",
+    });
+    assert.equal(malformed.groupParticipantProgress, null, "missing, extra, or duplicate role identities fail closed");
+  }
+});
+
+test("snapshot drops AOE progress on root identity, order, participant, or status mismatch", () => {
+  const interaction = groupScene();
+  const base = groupResolution(interaction);
+  const malformed = [
+    { ...base, interactionId: "other-interaction" },
+    { ...base, groupFrameId: "other-frame" },
+    { ...base, targetIds: ["C", "B", "D"] },
+    { ...base, resolutionSemantics: "INVALID" },
+    { ...base, participantProgress: [...base.participantProgress].reverse() },
+    { ...base, participantProgress: [{ ...base.participantProgress[0], status: "INVALID" }, ...base.participantProgress.slice(1)] },
+    { ...base, participantProgress: [{ ...base.participantProgress[0], outcome: "AVOIDED" }, ...base.participantProgress.slice(1)] },
+    { ...base, participantProgress: [{ ...base.participantProgress[0], outcome: "DAMAGED" }, ...base.participantProgress.slice(1)] },
+    { ...base, participantProgress: [...base.participantProgress.slice(0, 1), { ...base.participantProgress[1], outcome: "AVOIDED" }, ...base.participantProgress.slice(2)] },
+    { ...base, participantProgress: [...base.participantProgress.slice(0, 1), { ...base.participantProgress[1], outcome: "DAMAGED" }, ...base.participantProgress.slice(2)] },
+    { ...base, currentParticipantId: "C" },
+  ];
+  for (const group of malformed) {
+    const snapshot = composePresentationSnapshot({
+      presentationV2: { ...presentation(interaction), groupResolution: group },
+      currentAction: { kind: "response", actorId: "B" },
+      actionRevision: "malformed-aoe",
+      viewerId: "B",
+    });
+    assert.equal(snapshot.identity?.interactionId, interaction.interactionId, "unrelated public scene remains usable");
+    assert.equal(snapshot.groupParticipantProgress, null);
+  }
+});
+
+test("snapshot forwards only a Group root-card proof bound to its public interaction scope", () => {
+  const interaction = groupScene();
+  const targetIds = [...interaction.targetIds];
+  const rootCardProof = {
+    semantics: "PROVEN",
+    relation: "GROUP_ROOT_CARD",
+    interactionId: interaction.interactionId,
+    groupFrameId: interaction.rootFrameId,
+    rootEventId: "raining-arrows-event",
+    rootEventResolutionId: "raining-arrows-resolution",
+    rootCardId: "raining-arrows-card",
+    sourceId: "A",
+    cardKind: "RainingArrows",
+    targetIds,
+  };
+  const base = groupResolution(interaction, { rootCardProof });
+  const projected = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: base },
+    currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "group-root-proof",
+    viewerId: "B",
+  });
+  assert.deepEqual(projected.groupParticipantProgress?.rootCardProof, rootCardProof);
+
+  for (const invalidProof of [
+    { ...rootCardProof, interactionId: "other-interaction" },
+    { ...rootCardProof, groupFrameId: "other-frame" },
+    { ...rootCardProof, rootEventId: "" },
+    { ...rootCardProof, rootEventResolutionId: "" },
+    { ...rootCardProof, rootCardId: "" },
+    { ...rootCardProof, sourceId: "other-source" },
+    { ...rootCardProof, cardKind: "BarbarianInvasion" },
+    { ...rootCardProof, targetIds: [...targetIds].reverse() },
+  ]) {
+    const result = composePresentationSnapshot({
+      presentationV2: { ...presentation(interaction), groupResolution: { ...base, rootCardProof: invalidProof } },
+      currentAction: { kind: "response", actorId: "B" },
+      actionRevision: "group-root-proof-invalid",
+      viewerId: "B",
+    });
+    assert.ok(result.groupParticipantProgress, "independent participant progress remains usable");
+    assert.equal(result.groupParticipantProgress.rootCardProof, undefined, "mismatched public root identity is withheld");
+  }
+});
+
+test("snapshot preserves only a resolved Raining Arrows Damaged outcome", () => {
+  const interaction = groupScene({ currentParticipantId: "C" });
+  const base = groupResolution(interaction, { currentParticipantId: "C", participantProgress: [
+    { playerId: "B", order: 1, status: "RESOLVED", outcome: "DAMAGED" },
+    { playerId: "C", order: 2, status: "CURRENT" },
+    { playerId: "D", order: 3, status: "PENDING" },
+  ] });
+  const projected = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: base },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "resolved-damage-outcome",
+    viewerId: "C",
+  });
+  assert.equal(projected.groupParticipantProgress?.participants[0].outcome, "DAMAGED");
+
+  const malformed = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: { ...base, participantProgress: [{ ...base.participantProgress[0], status: "PAUSED" }, ...base.participantProgress.slice(1)] } },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "unresolved-damage-outcome",
+    viewerId: "C",
+  });
+  assert.equal(malformed.groupParticipantProgress, null, "unresolved damage is not a public outcome");
+
+  const negated = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: { ...base, participantProgress: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "NEGATED" },
+      ...base.participantProgress.slice(1),
+    ] } },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "resolved-negated-outcome",
+    viewerId: "C",
+  });
+  assert.equal(negated.groupParticipantProgress?.participants[0].outcome, "NEGATED");
+
+  const defeated = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: { ...base, participantProgress: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "DEFEATED" },
+      ...base.participantProgress.slice(1),
+    ] } },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "resolved-defeated-outcome",
+    viewerId: "C",
+  });
+  assert.equal(defeated.groupParticipantProgress?.participants[0].outcome, "DEFEATED");
+
+  const unresolvedNegated = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: { ...base, participantProgress: [
+      { playerId: "B", order: 1, status: "PAUSED", outcome: "NEGATED" },
+      ...base.participantProgress.slice(1),
+    ] } },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "unresolved-negated-outcome",
+    viewerId: "C",
+  });
+  assert.equal(unresolvedNegated.groupParticipantProgress, null, "an unresolved Negation cannot publish an outcome");
+});
+
+test("snapshot preserves resolved Barbarian Invasion damage but rejects avoidance", () => {
+  const interaction = groupScene({ currentParticipantId: "C", effect: "Barbarian Invasion" });
+  const base = groupResolution(interaction, {
+    cardKind: "BarbarianInvasion",
+    effect: "Barbarian Invasion",
+    currentParticipantId: "C",
+    participantProgress: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "DAMAGED" },
+      { playerId: "C", order: 2, status: "CURRENT" },
+      { playerId: "D", order: 3, status: "PENDING" },
+    ],
+  });
+  const projected = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: base },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "barbarian-damage-outcome",
+    viewerId: "C",
+  });
+  assert.equal(projected.groupParticipantProgress?.cardKind, "BarbarianInvasion");
+  assert.equal(projected.groupParticipantProgress?.participants[0].outcome, "DAMAGED");
+
+  const malformed = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: { ...base, participantProgress: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "AVOIDED" },
+      ...base.participantProgress.slice(1),
+    ] } },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "barbarian-avoidance-outcome",
+    viewerId: "C",
+  });
+  assert.equal(malformed.groupParticipantProgress, null, "Barbarian Invasion cannot claim an Avoided outcome");
+
+  const negated = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: { ...base, participantProgress: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "NEGATED" },
+      ...base.participantProgress.slice(1),
+    ] } },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "barbarian-negated-outcome",
+    viewerId: "C",
+  });
+  assert.equal(negated.groupParticipantProgress?.participants[0].outcome, "NEGATED");
+
+  const defeated = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: { ...base, participantProgress: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "DEFEATED" },
+      ...base.participantProgress.slice(1),
+    ] } },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "barbarian-defeated-outcome",
+    viewerId: "C",
+  });
+  assert.equal(defeated.groupParticipantProgress?.participants[0].outcome, "DEFEATED");
+});
+
+test("snapshot carries only a Halberd root proof bound to ORDERED target progress", () => {
+  const interaction = groupScene({ effect: "Sky Piercing Halberd Attack" });
+  const targetIds = [...interaction.targetIds];
+  const rootProof = {
+    semantics: "PROVEN",
+    relation: "ORDERED_ATTACK_ROOT",
+    resolutionSemantics: "ORDERED",
+    interactionId: interaction.interactionId,
+    groupFrameId: interaction.rootFrameId,
+    rootEventId: "halberd-root-event",
+    rootEventResolutionId: "halberd-root-resolution",
+    rootCardId: "physical-attack-card",
+    sourceId: "A",
+    cardKind: "Attack",
+    physicalCardKind: "Attack",
+    targetIds,
+  };
+  const progress = groupResolution(interaction, {
+    cardKind: "SkyPiercingHalberdAttack",
+    resolutionSemantics: "ORDERED",
+    effect: "Sky Piercing Halberd Attack",
+    participantProgress: [
+      { playerId: "B", order: 1, status: "CURRENT" },
+      { playerId: "C", order: 2, status: "PENDING" },
+      { playerId: "D", order: 3, status: "PENDING" },
+    ],
+    orderedAttackRoot: rootProof,
+  });
+  const presentationV2 = { ...presentation(interaction, coherentBoundary()), groupResolution: progress };
+  const accepted = composePresentationSnapshot({
+    presentationV2,
+    currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "halberd-root",
+    viewerId: "B",
+  });
+  assert.deepEqual(accepted.groupParticipantProgress?.orderedAttackRoot, rootProof);
+
+  const invalidProofs = [
+    { ...rootProof, groupFrameId: "stale-group-frame" },
+    { ...rootProof, targetIds: [...targetIds].reverse() },
+    { ...rootProof, physicalCardKind: "Dodge" },
+    { ...rootProof, physicalCardKind: "Peach", playedAs: undefined },
+    { ...rootProof, rootEventResolutionId: "" },
+  ];
+  for (const orderedAttackRoot of invalidProofs) {
+    const result = composePresentationSnapshot({
+      presentationV2: { ...presentationV2, groupResolution: { ...progress, orderedAttackRoot } },
+      currentAction: { kind: "response", actorId: "B" },
+      actionRevision: "halberd-root-invalid",
+      viewerId: "B",
+    });
+    assert.ok(result.groupParticipantProgress, "independent ordered progress remains available");
+    assert.equal(result.groupParticipantProgress.orderedAttackRoot, undefined, "mismatched root proof is withheld");
+  }
+});
+
+test("snapshot fails closed for malformed or absent public causal proof", () => {
+  const malformed = composePresentationSnapshot({
+    presentationV2: presentation(scene({ checkpointId: null }), { kind: "SETTLEMENT", interactionId: "interaction-1", checkpointId: "checkpoint-1", presentationRevision: 3, decisionActorId: null }),
+    currentAction: { kind: "none", actorId: null },
+    actionRevision: "legacy-action",
+    viewerId: "B",
+  });
+  const absent = composePresentationSnapshot({
+    presentationV2: presentation(null, { kind: "SETTLEMENT", interactionId: "legacy", checkpointId: "legacy", presentationRevision: 99, decisionActorId: null }),
+    currentAction: { kind: "none", actorId: null },
+    actionRevision: "legacy-action",
+    viewerId: "B",
+  });
+
+  for (const snapshot of [malformed, absent]) {
+    assert.equal(snapshot.identity, null);
+    assert.equal(snapshot.interaction, null);
+    assert.equal(snapshot.decision, null);
+    assert.deepEqual(snapshot.stable, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
+    assert.equal(snapshot.settlement, null, "legacy settlement cannot become authoritative");
+    assert.deepEqual(snapshot.transitionEvents, [], "legacy transition events remain reserved");
+  }
+});
+
+test("snapshot exposes identical ordered Group settlement proofs to actor and observer", () => {
+  const settlement = {
+    semantics: "PROVEN",
+    eventId: "raining-final-event",
+    rootEventId: "raining-root-event",
+    rootResolutionId: "raining-resolution",
+    interactionId: "raining-interaction",
+    groupFrameId: "raining-frame",
+    sourceId: "A",
+    cardKind: "RainingArrows",
+    participants: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "AVOIDED" },
+      { playerId: "C", order: 2, status: "RESOLVED", outcome: "DAMAGED" },
+      { playerId: "D", order: 3, status: "NO_LONGER_APPLICABLE" },
+    ],
+  };
+  const publicPresentation = { ...presentation(scene()), groupSettlements: [settlement] };
+  const actor = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "none", actorId: null }, actionRevision: "actor", viewerId: "A" });
+  const observer = composePresentationSnapshot({ presentationV2: publicPresentation, currentAction: { kind: "none", actorId: null }, actionRevision: "observer", viewerId: "D" });
+  assert.deepEqual(actor.groupSettlements, [settlement]);
+  assert.deepEqual(actor.groupSettlements, observer.groupSettlements, "settlement is public and viewer-equal");
+
+  for (const malformed of [
+    { ...settlement, participants: [...settlement.participants, { playerId: "D", order: 4, status: "RESOLVED", outcome: "DAMAGED" }] },
+    { ...settlement, participants: [settlement.participants[0], { ...settlement.participants[1], status: "PENDING" }, settlement.participants[2]] },
+    { ...settlement, participants: [settlement.participants[0], settlement.participants[1], { ...settlement.participants[2], outcome: "DEFEATED" }] },
+  ]) {
+    assert.deepEqual(composePresentationSnapshot({
+      presentationV2: { ...publicPresentation, groupSettlements: [malformed] },
+      currentAction: null,
+      actionRevision: "malformed",
+    }).groupSettlements, [], "malformed terminal proof is withheld as a whole");
+  }
+
+  const barbarianSettlement = {
+    ...settlement,
+    eventId: "barbarian-final-event",
+    rootEventId: "barbarian-root-event",
+    rootResolutionId: "barbarian-resolution",
+    interactionId: "barbarian-interaction",
+    groupFrameId: "barbarian-frame",
+    cardKind: "BarbarianInvasion",
+    participants: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "DAMAGED" },
+      { playerId: "C", order: 2, status: "RESOLVED", outcome: "DEFEATED" },
+    ],
+  };
+  const barbarianPresentation = { ...presentation(scene()), groupSettlements: [barbarianSettlement] };
+  const barbarianActor = composePresentationSnapshot({ presentationV2: barbarianPresentation, currentAction: null, actionRevision: "barbarian-actor", viewerId: "A" });
+  const barbarianObserver = composePresentationSnapshot({ presentationV2: barbarianPresentation, currentAction: null, actionRevision: "barbarian-observer", viewerId: "D" });
+  assert.deepEqual(barbarianActor.groupSettlements, [barbarianSettlement]);
+  assert.deepEqual(barbarianActor.groupSettlements, barbarianObserver.groupSettlements, "Barbarian settlement is public and viewer-equal");
+  assert.deepEqual(composePresentationSnapshot({
+    presentationV2: { ...barbarianPresentation, groupSettlements: [{ ...barbarianSettlement, participants: [{ ...barbarianSettlement.participants[0], outcome: "AVOIDED" }, barbarianSettlement.participants[1]] }] },
+    currentAction: null,
+    actionRevision: "barbarian-malformed",
+  }).groupSettlements, [], "Barbarian settlement rejects a Raining Arrows-only outcome");
+
+  const bumperSettlement = {
+    semantics: "PROVEN",
+    eventId: "bumper-final-event",
+    rootEventId: "bumper-root-event",
+    rootResolutionId: "bumper-resolution",
+    interactionId: "bumper-interaction",
+    rootFrameId: "bumper-frame",
+    sourceId: "A",
+    participants: [
+      { playerId: "A", order: 1, status: "RESOLVED", outcome: "NEGATED", selectedCardId: "private-choice" },
+      { playerId: "B", order: 2, status: "RESOLVED", outcome: "CHOSE_CARD" },
+      { playerId: "C", order: 3, status: "NO_LONGER_APPLICABLE" },
+    ],
+  };
+  const bumperPresentation = { ...presentation(scene()), bumperHarvestSettlements: [bumperSettlement] };
+  const bumperActor = composePresentationSnapshot({ presentationV2: bumperPresentation, currentAction: null, actionRevision: "bumper-actor", viewerId: "A" });
+  const bumperObserver = composePresentationSnapshot({ presentationV2: bumperPresentation, currentAction: null, actionRevision: "bumper-observer", viewerId: "C" });
+  assert.deepEqual(bumperActor.bumperHarvestSettlements, [{
+    semantics: "PROVEN", eventId: "bumper-final-event", rootEventId: "bumper-root-event", rootResolutionId: "bumper-resolution",
+    interactionId: "bumper-interaction", rootFrameId: "bumper-frame", sourceId: "A",
+    participants: [
+      { playerId: "A", order: 1, status: "RESOLVED", outcome: "NEGATED" },
+      { playerId: "B", order: 2, status: "RESOLVED", outcome: "CHOSE_CARD" },
+      { playerId: "C", order: 3, status: "NO_LONGER_APPLICABLE" },
+    ],
+  }]);
+  assert.deepEqual(bumperActor.bumperHarvestSettlements, bumperObserver.bumperHarvestSettlements, "Bumper settlement is public and viewer-equal");
+  assert.equal(JSON.stringify(bumperActor.bumperHarvestSettlements).includes("private-choice"), false);
+  for (const malformed of [
+    { ...bumperSettlement, participants: [{ ...bumperSettlement.participants[0], status: "CURRENT" }, ...bumperSettlement.participants.slice(1)] },
+    { ...bumperSettlement, participants: [{ ...bumperSettlement.participants[0], outcome: "DAMAGED" }, ...bumperSettlement.participants.slice(1)] },
+    { ...bumperSettlement, participants: [bumperSettlement.participants[0], { ...bumperSettlement.participants[1], playerId: "A" }, bumperSettlement.participants[2]] },
+  ]) {
+    assert.deepEqual(composePresentationSnapshot({
+      presentationV2: { ...bumperPresentation, bumperHarvestSettlements: [malformed] },
+      currentAction: null,
+      actionRevision: "bumper-malformed",
+    }).bumperHarvestSettlements, [], "malformed Bumper terminal proof is withheld as a whole");
+  }
+});
+
+test("snapshot fails closed atomically for every scene-boundary coherence mismatch", () => {
+  const cases = [
+    ["interaction", { interactionId: "other-interaction" }],
+    ["checkpoint", { checkpointId: "other-checkpoint" }],
+    ["revision", { presentationRevision: 4 }],
+    ["choice actor", { decisionActorId: "C" }],
+    ["REST", { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null }],
+    ["SETTLEMENT", { kind: "SETTLEMENT", interactionId: "interaction-1", checkpointId: "checkpoint-1", presentationRevision: 3, decisionActorId: "B" }],
+  ];
+  for (const [label, boundary] of cases) {
+    const snapshot = composePresentationSnapshot({
+      presentationV2: presentation(scene(), boundary),
+      currentAction: { kind: "response", actorId: "B" },
+      actionRevision: `local-${label}`,
+      viewerId: "B",
+    });
+    assert.equal(snapshot.identity, null, `${label}: identity`);
+    assert.equal(snapshot.interaction, null, `${label}: interaction`);
+    assert.equal(snapshot.decision, null, `${label}: decision`);
+    assert.deepEqual(snapshot.stable, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null }, `${label}: stable`);
+    assert.equal(snapshot.settlement, null, `${label}: settlement`);
+    assert.deepEqual(snapshot.transitionEvents, [], `${label}: transition events`);
+    assert.equal(snapshot.localControl.entitled, true, `${label}: local control remains local only`);
+    assert.equal(snapshot.localControl.actionRevision, `local-${label}`, `${label}: local control cannot recreate public identity`);
+  }
+});
+
+test("snapshot repeated reads are pure and do not change identity or revision", () => {
+  const input = {
+    presentationV2: presentation(scene()),
+    currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "same-action",
+    viewerId: "B",
+  };
+  const before = structuredClone(input);
+  const first = composePresentationSnapshot(input);
+  const second = composePresentationSnapshot(input);
+  assert.deepEqual(second, first);
+  assert.deepEqual(input, before, "composition does not mutate authoritative inputs");
+});
+
+test("localControl remains a thin viewer-private reference and never carries legal controls", () => {
+  const snapshot = composePresentationSnapshot({
+    presentationV2: presentation(scene()),
+    currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "action-reference",
+    viewerId: "B",
+  });
+
+  assert.deepEqual(Object.keys(snapshot.localControl).sort(), ["actionRevision", "actorId", "entitled", "kind", "source"]);
+  assert.deepEqual(snapshot.localControl, {
+    source: "CurrentAction",
+    actionRevision: "action-reference",
+    kind: "response",
+    actorId: "B",
+    entitled: true,
+  });
+  assert.equal("options" in snapshot.localControl, false);
+  assert.equal("legalActions" in snapshot.localControl, false);
+  assert.equal("cards" in snapshot.localControl, false);
+  assert.equal("providers" in snapshot.localControl, false);
+});

@@ -31,6 +31,7 @@ function normalizeHeroes(value) {
 
 function normalizePresentationMeta(entry) {
   const metadata = {};
+  const publicGroupSettlement = Object.prototype.hasOwnProperty.call(entry, "publicGroupSettlement") ? entry.publicGroupSettlement : entry.publicRainingArrowsSettlement;
   if (typeof entry.resolutionId === "string" && entry.resolutionId.length > 0) metadata.resolutionId = entry.resolutionId;
   if (entry.importance === "essential" || entry.importance === "informational") metadata.importance = entry.importance;
   if (entry.finalResult === true) metadata.finalResult = true;
@@ -38,7 +39,141 @@ function normalizePresentationMeta(entry) {
   if (entry.effectNotice === true) metadata.effectNotice = true;
   if (entry.judgement === true) metadata.judgement = true;
   if (entry.initialDeal === true) metadata.initialDeal = true;
+  if (isRecord(entry.publicDismantleSettlement)
+    && entry.publicDismantleSettlement.semantics === "PROVEN"
+    && typeof entry.publicDismantleSettlement.rootEventId === "string"
+    && typeof entry.publicDismantleSettlement.rootResolutionId === "string"
+    && typeof entry.publicDismantleSettlement.sourceId === "string"
+    && typeof entry.publicDismantleSettlement.targetId === "string"
+    && entry.publicDismantleSettlement.outcome === "DISMANTLE_RESOLVED") {
+    metadata.publicDismantleSettlement = {
+      semantics: "PROVEN",
+      rootEventId: entry.publicDismantleSettlement.rootEventId,
+      rootResolutionId: entry.publicDismantleSettlement.rootResolutionId,
+      sourceId: entry.publicDismantleSettlement.sourceId,
+      targetId: entry.publicDismantleSettlement.targetId,
+      outcome: "DISMANTLE_RESOLVED",
+    };
+  }
+  if (isRecord(entry.publicStealSettlement)
+    && entry.publicStealSettlement.semantics === "PROVEN"
+    && typeof entry.publicStealSettlement.rootEventId === "string"
+    && typeof entry.publicStealSettlement.rootResolutionId === "string"
+    && typeof entry.publicStealSettlement.sourceId === "string"
+    && typeof entry.publicStealSettlement.targetId === "string"
+    && entry.publicStealSettlement.outcome === "STEAL_RESOLVED") {
+    metadata.publicStealSettlement = {
+      semantics: "PROVEN",
+      rootEventId: entry.publicStealSettlement.rootEventId,
+      rootResolutionId: entry.publicStealSettlement.rootResolutionId,
+      sourceId: entry.publicStealSettlement.sourceId,
+      targetId: entry.publicStealSettlement.targetId,
+      outcome: "STEAL_RESOLVED",
+    };
+  }
+  if (isRecord(entry.publicAttackHitSettlement)
+    && entry.publicAttackHitSettlement.semantics === "PROVEN"
+    && typeof entry.publicAttackHitSettlement.rootEventId === "string"
+    && typeof entry.publicAttackHitSettlement.rootResolutionId === "string"
+    && typeof entry.publicAttackHitSettlement.sourceId === "string"
+    && typeof entry.publicAttackHitSettlement.targetId === "string"
+    && entry.publicAttackHitSettlement.outcome === "ATTACK_DAMAGE_APPLIED") {
+    metadata.publicAttackHitSettlement = {
+      semantics: "PROVEN",
+      rootEventId: entry.publicAttackHitSettlement.rootEventId,
+      rootResolutionId: entry.publicAttackHitSettlement.rootResolutionId,
+      sourceId: entry.publicAttackHitSettlement.sourceId,
+      targetId: entry.publicAttackHitSettlement.targetId,
+      outcome: "ATTACK_DAMAGE_APPLIED",
+    };
+  }
+  if (isRecord(publicGroupSettlement)
+    && publicGroupSettlement.semantics === "PROVEN"
+    && typeof publicGroupSettlement.rootEventId === "string"
+    && typeof publicGroupSettlement.rootResolutionId === "string"
+    && typeof publicGroupSettlement.interactionId === "string"
+    && typeof publicGroupSettlement.groupFrameId === "string"
+    && typeof publicGroupSettlement.sourceId === "string"
+    && (publicGroupSettlement.cardKind === "RainingArrows" || publicGroupSettlement.cardKind === "BarbarianInvasion")
+    && Array.isArray(publicGroupSettlement.participants)
+    && publicGroupSettlement.participants.length > 0
+    && publicGroupSettlement.participants.every((participant, index) => isRecord(participant)
+      && typeof participant.playerId === "string"
+      && participant.order === index + 1
+      && (participant.status === "RESOLVED" && (publicGroupSettlement.cardKind === "RainingArrows"
+        ? ["AVOIDED", "DAMAGED", "NEGATED", "DEFEATED"].includes(participant.outcome)
+        : ["DAMAGED", "NEGATED", "DEFEATED"].includes(participant.outcome))
+        || participant.status === "NO_LONGER_APPLICABLE" && participant.outcome === undefined))) {
+    metadata.publicGroupSettlement = {
+      semantics: "PROVEN",
+      rootEventId: publicGroupSettlement.rootEventId,
+      rootResolutionId: publicGroupSettlement.rootResolutionId,
+      interactionId: publicGroupSettlement.interactionId,
+      groupFrameId: publicGroupSettlement.groupFrameId,
+      sourceId: publicGroupSettlement.sourceId,
+      cardKind: publicGroupSettlement.cardKind,
+      participants: publicGroupSettlement.participants.map((participant) => ({
+        playerId: participant.playerId,
+        order: participant.order,
+        status: participant.status,
+        ...(participant.outcome ? { outcome: participant.outcome } : {}),
+      })),
+    };
+  }
+  if (isRecord(entry.publicBumperHarvestSettlement)
+    && entry.publicBumperHarvestSettlement.semantics === "PROVEN"
+    && typeof entry.publicBumperHarvestSettlement.rootEventId === "string"
+    && typeof entry.publicBumperHarvestSettlement.rootResolutionId === "string"
+    && typeof entry.publicBumperHarvestSettlement.interactionId === "string"
+    && typeof entry.publicBumperHarvestSettlement.rootFrameId === "string"
+    && typeof entry.publicBumperHarvestSettlement.sourceId === "string"
+    && Array.isArray(entry.publicBumperHarvestSettlement.participants)
+    && entry.publicBumperHarvestSettlement.participants.length > 0
+    && entry.publicBumperHarvestSettlement.participants.every((participant, index) => isRecord(participant)
+      && typeof participant.playerId === "string"
+      && participant.order === index + 1
+      && (participant.status === "RESOLVED" && (participant.outcome === "CHOSE_CARD" || participant.outcome === "NEGATED")
+        || participant.status === "NO_LONGER_APPLICABLE" && participant.outcome === undefined))) {
+    metadata.publicBumperHarvestSettlement = {
+      semantics: "PROVEN",
+      rootEventId: entry.publicBumperHarvestSettlement.rootEventId,
+      rootResolutionId: entry.publicBumperHarvestSettlement.rootResolutionId,
+      interactionId: entry.publicBumperHarvestSettlement.interactionId,
+      rootFrameId: entry.publicBumperHarvestSettlement.rootFrameId,
+      sourceId: entry.publicBumperHarvestSettlement.sourceId,
+      participants: entry.publicBumperHarvestSettlement.participants.map((participant) => ({
+        playerId: participant.playerId,
+        order: participant.order,
+        status: participant.status,
+        ...(participant.outcome ? { outcome: participant.outcome } : {}),
+      })),
+    };
+  }
+  if (isRecord(entry.bumperHarvestRoot)
+    && entry.bumperHarvestRoot.semantics === "PROVEN"
+    && typeof entry.bumperHarvestRoot.sourceId === "string"
+    && typeof entry.bumperHarvestRoot.cardId === "string") {
+    metadata.bumperHarvestRoot = {
+      semantics: "PROVEN",
+      sourceId: entry.bumperHarvestRoot.sourceId,
+      cardId: entry.bumperHarvestRoot.cardId,
+      ...(typeof entry.bumperHarvestRoot.interactionId === "string" ? { interactionId: entry.bumperHarvestRoot.interactionId } : {}),
+      ...(typeof entry.bumperHarvestRoot.rootFrameId === "string" ? { rootFrameId: entry.bumperHarvestRoot.rootFrameId } : {}),
+    };
+  }
   return metadata;
+}
+
+function normalizeTimelineEvent(entry) {
+  const event = { ...entry };
+  delete event.publicDismantleSettlement;
+  delete event.publicStealSettlement;
+  delete event.publicAttackHitSettlement;
+  delete event.publicGroupSettlement;
+  delete event.publicBumperHarvestSettlement;
+  delete event.publicRainingArrowsSettlement;
+  delete event.bumperHarvestRoot;
+  return { ...event, ...normalizePresentationMeta(entry) };
 }
 
 function normalizePlayers(value) {
@@ -91,15 +226,31 @@ function normalizeCurrentAction(value) {
     return [{ effectId: option.effectId, label: option.label, ...(typeof option.description === "string" ? { description: option.description } : {}), ...(option.allowDecline === false ? { allowDecline: false } : {}), ...(typeof option.timeoutChoiceId === "string" ? { timeoutChoiceId: option.timeoutChoiceId } : {}), selection }];
   }) : [];
   const playPhaseActions = Array.isArray(value.playPhaseActions) ? value.playPhaseActions.filter(isRecord).flatMap((action) => typeof action.cardId === "string" && action.canPlayAs === "attack" ? [{ cardId: action.cardId, canPlayAs: "attack" }] : []).filter((action, index, all) => all.findIndex((candidate) => candidate.cardId === action.cardId) === index) : [];
+  const borrowedSwordTargets = Array.isArray(value.borrowedSwordTargets) ? value.borrowedSwordTargets.filter(isRecord).flatMap((target) => typeof target.cardId === "string" && Array.isArray(target.targetIds) ? [{ cardId: target.cardId, targetIds: target.targetIds.filter((id) => typeof id === "string") }] : []).filter((target, index, all) => all.findIndex((candidate) => candidate.cardId === target.cardId) === index) : [];
+  const targetCardSelection = value.kind === "target_card"
+    && typeof value.actorId === "string"
+    && Array.isArray(value.legalActions)
+    && value.legalActions.includes("choose_target_card")
+    && isRecord(value.targetCardSelection)
+    && typeof value.targetCardSelection.targetId === "string"
+    && value.targetCardSelection.targetId.length > 0
+    && Array.isArray(value.targetCardSelection.eligibleKeys)
+    && value.targetCardSelection.eligibleKeys.length > 0
+    && value.targetCardSelection.eligibleKeys.every((key) => typeof key === "string" && key.length > 0)
+    ? { targetId: value.targetCardSelection.targetId, eligibleKeys: [...value.targetCardSelection.eligibleKeys] }
+    : null;
   return {
     version: value.version,
     kind: value.kind,
     actorId: typeof value.actorId === "string" ? value.actorId : null,
     deadline: typeof value.deadline === "number" ? value.deadline : 0,
     reason: typeof value.reason === "string" ? value.reason : "Waiting for the next legal action",
+    ...(typeof value.negationWindowId === "string" ? { negationWindowId: value.negationWindowId } : {}),
     legalActions: Array.isArray(value.legalActions) ? value.legalActions.filter((action) => typeof action === "string" && GAMEPLAY_ACTION_SET.has(action)) : [],
     ...(typeof value.canDeclareAttack === "boolean" ? { canDeclareAttack: value.canDeclareAttack } : {}),
     ...(playPhaseActions.length ? { playPhaseActions } : {}),
+    ...(borrowedSwordTargets.length ? { borrowedSwordTargets } : {}),
+    ...(targetCardSelection ? { targetCardSelection } : {}),
     ...(requirement ? { requirement, options, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),
     ...(value.triggerEvent === "turn_start" || value.triggerEvent === "turn_end" || value.triggerEvent === "draw_phase" || value.triggerEvent === "discard_phase" || value.triggerEvent === "judgement_revealed" || value.triggerEvent === "judgement_effective" || value.triggerEvent === "attack_targeted" || value.triggerEvent === "attack_dodged" || value.triggerEvent === "damage_about_to_apply" || value.triggerEvent === "damage_suffered" || value.triggerEvent === "hero_choice" || value.triggerEvent === "hand_lost" ? { triggerEvent: value.triggerEvent, triggerOptions, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : triggerOptions.length ? { triggerOptions } : {}),
     ...(value.kind === "card_distribution" && isRecord(value.distribution) && Array.isArray(value.distribution.cards) ? { distribution: { cards: normalizeCards(value.distribution.cards), eligibleRecipientIds: Array.isArray(value.distribution.eligibleRecipientIds) ? value.distribution.eligibleRecipientIds.filter((id) => typeof id === "string") : [] } } : {}),
@@ -112,14 +263,14 @@ export function normalizeTimeline(value) {
   if (!Array.isArray(value)) return [];
   return value.map((entry) => {
     if (!isRecord(entry) || typeof entry.type !== "string") return null;
-    if (entry.type === "message") return typeof entry.message === "string" ? { ...entry, ...normalizePresentationMeta(entry) } : null;
+    if (entry.type === "message") return typeof entry.message === "string" ? normalizeTimelineEvent(entry) : null;
     if (entry.type === "card") {
       const card = normalizeCard(entry.card);
-      return card ? { ...entry, ...normalizePresentationMeta(entry), card } : null;
+      return card ? { ...normalizeTimelineEvent(entry), card } : null;
     }
     if (entry.type === "cards") {
       const cards = normalizeCards(entry.cards);
-      return cards.length ? { ...entry, ...normalizePresentationMeta(entry), cards } : null;
+      return cards.length ? { ...normalizeTimelineEvent(entry), cards } : null;
     }
     return null;
   }).filter(Boolean);

@@ -44,6 +44,13 @@ test("Dauntless uses the shared turn_end event, private Basic cost, and target-o
   const activated = await requestAndSettle("trigger", { code: game.code, token: game.members[1].token, providerId: "yue_jin_dauntless", cardId: "peach-dauntless-peach", preserveResponse: true });
   assert.equal(activated.status, 200, JSON.stringify(activated.data));
   assert.equal(activated.data.room.currentAction.actorId, target.id);
+  const paidCost = activated.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "peach-dauntless-peach"));
+  assert.deepEqual(paidCost.publicCardEffects?.[0], {
+    semantics: "PROVEN", eventId: paidCost.id, effectId: "yue_jin_dauntless", effectClass: "COST",
+    activationOwnerId: yue.id,
+    materials: [{ cardId: "peach-dauntless-peach", ownerId: yue.id, fromZone: "HAND", toZone: "DISCARD" }],
+    targetId: target.id, outcome: "ACTIVATION_COST",
+  });
   const targetView = await state(game.code, game.members[0].token);
   assert.ok(targetView.data.currentAction.triggerOptions?.[0], JSON.stringify(targetView.data));
   assert.deepEqual(targetView.data.currentAction.triggerOptions[0].selection.eligibleKeys, ["greendragonblade-dauntless-weapon", "nioshield-dauntless-armor"]);
@@ -56,6 +63,13 @@ test("Dauntless uses the shared turn_end event, private Basic cost, and target-o
   assert.equal(selected.status, 200, JSON.stringify(selected.data));
   assert.equal(selected.data.room.players.find((player) => player.id === target.id).equipmentCards.length, 1);
   assert.equal(selected.data.room.players.find((player) => player.id === target.id).hp, 4, "Equipment settlement deals no damage");
+  const targetEquipment = selected.data.room.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === "nioshield-dauntless-armor"));
+  assert.deepEqual(targetEquipment.publicCardEffects?.[0], {
+    semantics: "PROVEN", eventId: targetEquipment.id, effectId: "yue_jin_dauntless", effectClass: "EFFECT",
+    activationOwnerId: yue.id,
+    materials: [{ cardId: "nioshield-dauntless-armor", ownerId: target.id, fromZone: "EQUIPMENT", toZone: "DISCARD" }],
+    targetId: target.id, outcome: "DAMAGE_PREVENTED",
+  }, "the activation owner and the target-owned Equipment material remain distinct");
   assert.equal(discardIds(game.code).filter((id) => ["peach-dauntless-peach", "nioshield-dauntless-armor"].includes(id)).length, 2);
   assert.equal((await state(game.code, game.members[1].token)).data.phase, "draw", "turn-end continues to the next living seat exactly once");
 });
@@ -98,11 +112,31 @@ test("Dauntless falls back to sourced damage and preserves Sima Yi, Xiahou Dun, 
   const simaDamage = await requestAndSettle("trigger", { code: simaGame.code, token: simaGame.members[1].token, providerId: "yue_jin_dauntless", cardId: "peach-dauntless-sima-cost", preserveResponse: true });
   assert.equal(simaDamage.data.room.currentAction.actorId, sima.target.id);
   const simaView = await state(simaGame.code, simaGame.members[0].token);
+  const independentDamageRoot = simaView.data.causalEnvelope;
+  assert.ok(independentDamageRoot, "Dauntless creates an independent Damage causal root");
+  assert.equal(independentDamageRoot.frames.length, 1);
+  assert.equal(independentDamageRoot.frames[0].parentFrameId, null);
+  assert.equal(independentDamageRoot.frames[0].stage, "DAMAGE");
+  assert.equal(independentDamageRoot.frames[0].origin.originSourceId, sima.yue.id);
+  assert.deepEqual(independentDamageRoot.frames[0].origin.originalTargetIds, [sima.target.id]);
+  assert.equal(simaView.data.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(simaView.data.presentationV2.interactionScene?.interactionId, independentDamageRoot.interactionId);
+  assert.equal(simaView.data.presentationV2.interactionScene?.rootFrameId, independentDamageRoot.activeFrameId);
+  assert.equal(simaView.data.presentationV2.interactionScene?.stage, "DAMAGE");
+  assert.equal(simaView.data.presentationV2.interactionScene?.sourceId, sima.yue.id);
+  assert.deepEqual(simaView.data.presentationV2.interactionScene?.targetIds, [sima.target.id]);
+  assert.equal(simaView.data.presentationV2.interactionScene?.currentParticipantId, sima.target.id);
+  assert.equal(simaView.data.presentationV2.interactionScene?.activeResolverId, sima.target.id);
+  assert.equal(simaView.data.presentationV2.interactionScene?.decisionActorId, sima.target.id);
+  const simaOtherViewer = await state(simaGame.code, simaGame.members[1].token);
+  assert.deepEqual(simaOtherViewer.data.presentationV2.interactionScene, simaView.data.presentationV2.interactionScene);
   assert.ok(simaView.data.currentAction.triggerOptions?.[0], JSON.stringify(simaView.data));
   assert.equal(simaView.data.currentAction.triggerOptions[0].effectId, "sima_yi_fankui");
-  const retaliation = await requestAndSettle("trigger", { code: simaGame.code, token: simaGame.members[0].token, providerId: "sima_yi_fankui", cardKeys: ["hand"] });
+  const retaliation = await requestAndSettle("trigger", { code: simaGame.code, token: simaGame.members[0].token, providerId: "sima_yi_fankui", cardKeys: ["hand:0"] });
   assert.equal(retaliation.status, 200, JSON.stringify(retaliation.data));
   assert.equal(retaliation.data.room.players.find((player) => player.id === sima.target.id).hp, 3);
+  const retaliationNotice = retaliation.data.room.timeline.find((event) => event.type === "message" && event.message.includes("with Retaliation."));
+  assert.ok(retaliationNotice?.effectNotice, "the public Retaliation result is a separately identified Effect Triggered notice");
   assert.equal(roomCardCount(simaGame.code, "drawtwo-dauntless-sima-gain"), 1);
   assert.equal((await state(simaGame.code, simaGame.members[1].token)).data.phase, "draw");
 
@@ -113,6 +147,7 @@ test("Dauntless falls back to sourced damage and preserves Sima Yi, Xiahou Dun, 
   assert.equal(caoDamage.status, 200, JSON.stringify(caoDamage.data));
   assert.equal(caoDamage.data.room.players.find((player) => player.id === cao.target.id).hp, 3);
   assert.equal(caoDamage.data.room.players.find((player) => player.id === cao.target.id).handCount, 0, "no physical damage card means no Treachery option");
+  assert.equal(caoDamage.data.room.presentationV2.interactionScene, null, "independent Dauntless Damage clears when no post-damage reaction exists");
   assert.ok(discardIds(caoGame.code).includes("peach-dauntless-cao-cost"));
 
   const guoGame = await createHumanGame();

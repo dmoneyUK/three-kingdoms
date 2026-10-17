@@ -80,7 +80,7 @@ test("Cultivation decline, Negation, Duel, group, and delayed Stratagems preserv
   clearHands(negated, negatedHost.id, [negatedCard]); setHand(negator.id, [negation], negator.hp ?? 4, negator.maxHp ?? 4); setDeck(negated.code, [privateDraw, card("Attack", "negated-unused")]); setTurn(negated.code, negatedHost.seat, "play");
   const negatedOpened = await requestAndSettle("play_card", { code: negated.code, token: negated.members[0].token, cardId: negatedCard.id });
   assert.equal(negatedOpened.data.room.currentAction.triggerEvent, "stratagem_used");
-  await requestAndSettle("trigger", { code: negated.code, token: negated.members[0].token, providerId: "huang_yueying_cultivation" });
+  await requestAndSettle("trigger", { code: negated.code, token: negated.members[0].token, providerId: "huang_yueying_cultivation", preserveResponse: true });
   const negationView = await state(negated.code, negated.members[1].token);
   assert.equal(negationView.data.currentAction.requirement, "negate");
   const cancelled = await requestAndSettle("respond", { code: negated.code, token: negated.members[1].token, cardId: negation.id });
@@ -98,6 +98,7 @@ test("Cultivation decline, Negation, Duel, group, and delayed Stratagems preserv
   const duelOpened = await requestAndSettle("play_card", { code: duel.code, token: duel.members[0].token, cardId: duelCard.id, targetId: duelTarget.id });
   assert.equal(duelOpened.data.room.currentAction.triggerEvent, "stratagem_used");
   await requestAndSettle("decline_trigger", { code: duel.code, token: duel.members[0].token, preserveResponse: true });
+  await passNegationWindows(duel.code, duel.members);
   const duelTargetView = await state(duel.code, duel.members[1].token);
   assert.equal(duelTargetView.data.currentAction.kind, "response");
   assert.equal(duelTargetView.data.currentAction.requirement, "attack");

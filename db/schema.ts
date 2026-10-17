@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const rooms = sqliteTable("rooms", {
   id: text("id").primaryKey(),
@@ -14,6 +14,10 @@ export const rooms = sqliteTable("rooms", {
   logJson: text("log_json"),
   pendingJson: text("pending_json"),
   skillStateJson: text("skill_state_json"),
+  causalEnvelopeJson: text("causal_envelope_json"),
+  testRoom: integer("test_room", { mode: "boolean" }).notNull().default(false),
+  testHandPresetJson: text("test_hand_preset_json"),
+  testHandConfigRevision: integer("test_hand_config_revision").notNull().default(0),
 }, (table) => [uniqueIndex("rooms_code_unique").on(table.code)]);
 
 export const players = sqliteTable("players", {
@@ -32,6 +36,7 @@ export const players = sqliteTable("players", {
   judgementJson: text("judgement_json"),
   equipmentJson: text("equipment_json"),
   alive: integer("alive", { mode: "boolean" }).notNull().default(true),
+  isTestPlayer: integer("is_test_player", { mode: "boolean" }).notNull().default(false),
   connectedAt: integer("connected_at").notNull(),
 }, (table) => [uniqueIndex("players_room_seat_unique").on(table.roomId, table.seat)]);
 
@@ -60,3 +65,15 @@ export const auditScope = sqliteTable("audit_scope", {
   id: integer("id").primaryKey(),
   roomId: text("room_id").notNull(),
 });
+
+/** Private shared-window intents; never join these rows into public room projections. */
+export const negationWindowSubmissions = sqliteTable("negation_window_submissions", {
+  roomId: text("room_id").notNull(),
+  windowId: text("window_id").notNull(),
+  playerId: text("player_id").notNull(),
+  submissionJson: text("submission_json").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.windowId, table.playerId] }),
+  index("idx_negation_window_submissions_room").on(table.roomId),
+]);

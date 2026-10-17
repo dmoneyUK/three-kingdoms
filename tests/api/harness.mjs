@@ -12,10 +12,24 @@ export const membersByCode = new Map();
 export async function drainEmptyPrivateDecisions(code, fallbackToken) {
   const members = membersByCode.get(code) ?? [{ token: fallbackToken }];
   for (let guard = 0; guard < 40; guard++) {
-    let advanced = false;
-    for (const member of members) {
-      const preview = await state(code, member.token);
-      const current = preview.data.currentAction;
+      let advanced = false;
+      for (const member of members) {
+        const preview = await state(code, member.token);
+        const current = preview.data.currentAction;
+        if (current?.negationWindowId) {
+          const viewerStates = preview.data.isTestController
+            ? await Promise.all(preview.data.players.filter((player) => player.isHost || player.isTestPlayer)
+              .map((player) => state(code, member.token, false, player.id)))
+            : await Promise.all(members.map((viewer) => state(code, viewer.token)));
+          const hasLegalNegation = viewerStates.some(({ data }) => data.currentAction?.negationWindowId === current.negationWindowId
+            && (data.currentAction.options?.length ?? 0) > 0);
+          const hasSubmittedResponse = viewerStates.some(({ data }) => data.currentAction?.negationWindowId === current.negationWindowId
+            && data.pendingNegation?.submitted);
+          if (hasLegalNegation || hasSubmittedResponse) break;
+          await advanceNegationWindow(code, member.token, current.negationWindowId);
+          advanced = true;
+          break;
+      }
       if (!preview.data.isMyAction) continue;
       if (current?.kind === "response" && current.legalActions?.includes("decline_response") && !(current.options?.length ?? 0)) {
         await request("decline_response", { code, token: member.token });
@@ -33,7 +47,18 @@ export async function drainEmptyPrivateDecisions(code, fallbackToken) {
 }
 
 export async function request(action, values = {}) {
-  if (values.preserveResponse) { values = { ...values }; delete values.preserveResponse; }
+  if (values.preserveResponse || values.preserveNegationWindow) {
+    values = { ...values };
+    delete values.preserveResponse;
+    delete values.preserveNegationWindow;
+  }
+  if (["respond", "decline_response"].includes(action) && values.code && values.token) {
+    const current = await state(values.code, values.token);
+    const windowId = current.data.currentAction?.negationWindowId;
+    if (windowId && !values.context) {
+      values = { ...values, context: { actionRevision: current.data.actionRevision, meId: current.data.meId, phase: current.data.phase, pendingKind: "response", actorId: current.data.actionPlayerId, windowId } };
+    }
+  }
   for (let attempt = 0; attempt < 3; attempt++) {
     const response = await fetch(`${baseUrl}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...values }) });
     const text = await response.text();
@@ -51,13 +76,47 @@ export async function request(action, values = {}) {
   throw new Error(`${action} did not return a response`);
 }
 
+async function fastForwardNegationWindow(code, token) {
+  const current = await state(code, token);
+  const windowId = current.data.currentAction?.negationWindowId;
+  if (windowId) await advanceNegationWindow(code, token, windowId);
+}
+
+function isNegationIntentForViewer(view, values) {
+  const options = (view.currentAction?.options ?? []).filter((option) => option.satisfies === "negate");
+  if (!view.currentAction?.negationWindowId || !options.length) return false;
+  const ids = Array.isArray(values.cardIds) ? values.cardIds : values.cardId ? [values.cardId] : [];
+  return options.some((option) => {
+    if (values.providerId && values.providerId !== "card" && option.providerId !== values.providerId) return false;
+    const eligible = option.selection?.eligibleCardIds ?? [];
+    if (ids.length) return ids.length === 1 && eligible.includes(ids[0]);
+    return !option.selection;
+  });
+}
+
 export async function requestAndSettle(action, values = {}) {
   const preserveResponse = Boolean(values.preserveResponse);
+  const preserveNegationWindow = Boolean(values.preserveNegationWindow);
   if (values.code && !preserveResponse && !["respond", "decline_response", "trigger", "decline_trigger", "skip_rescue", "start_response_timer", "start_rescue_timer", "advance_timers"].includes(action)) await drainEmptyPrivateDecisions(values.code, values.token);
   const handBeforeAction = values.code && values.token && ["play_card", "draw"].includes(action)
     ? ((await state(values.code, values.token)).data.myHand ?? [])
     : null;
   let actionValues = values;
+  let responseWindowId = null;
+  let submittedNegation = false;
+  if (values.code && ["respond", "decline_response"].includes(action)) {
+    const preview = await state(values.code, values.token);
+    responseWindowId = preview.data.currentAction?.negationWindowId ?? null;
+    if (!preserveNegationWindow && !values.context) {
+      submittedNegation = action === "respond" && isNegationIntentForViewer(preview.data, actionValues);
+      if (responseWindowId && action === "respond" && !submittedNegation) {
+        await fastForwardNegationWindow(values.code, values.token);
+        responseWindowId = null;
+      } else if (responseWindowId && submittedNegation && actionValues.providerId === "card") {
+        actionValues = { ...actionValues, providerId: preview.data.currentAction.options.find((option) => option.satisfies === "negate" && (option.selection?.eligibleCardIds ?? []).includes(actionValues.cardId))?.providerId ?? actionValues.providerId };
+      }
+    }
+  }
   if ((action === "respond" || action === "trigger") && actionValues.providerId === undefined) {
     const preview = await state(actionValues.code, actionValues.token);
     const options = action === "respond" ? preview.data.currentAction?.options ?? [] : preview.data.currentAction?.triggerOptions ?? [];
@@ -71,7 +130,9 @@ export async function requestAndSettle(action, values = {}) {
     if (selected) actionValues = { ...actionValues, providerId: action === "respond" ? selected.providerId : selected.effectId };
   }
   const result = await request(action, actionValues);
-  if (actionValues.code && !preserveResponse && !["start_response_timer", "start_rescue_timer", "advance_timers"].includes(action)) {
+  if (actionValues.code && result.status === 200 && !preserveResponse && !["start_response_timer", "start_rescue_timer", "advance_timers"].includes(action)) {
+    if (responseWindowId && !preserveNegationWindow) await advanceNegationWindow(actionValues.code, actionValues.token, responseWindowId);
+    else if (!responseWindowId && !submittedNegation && !["respond", "decline_response"].includes(action)) await fastForwardNegationWindow(actionValues.code, actionValues.token);
     await drainEmptyPrivateDecisions(actionValues.code, actionValues.token);
     const refreshed = await state(actionValues.code, actionValues.token);
     result.data = { ...result.data, room: refreshed.data };
@@ -84,9 +145,12 @@ export async function requestAndSettle(action, values = {}) {
   return result;
 }
 
-export async function state(code, token, audit = false) {
+export async function state(code, token, audit = false, testViewerId = null) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const response = await fetch(`${baseUrl}/api/rooms?code=${code}&token=${token}${audit ? "&audit=1" : ""}`);
+    const query = new URLSearchParams({ code, token });
+    if (audit) query.set("audit", "1");
+    if (testViewerId) query.set("testViewerId", testViewerId);
+    const response = await fetch(`${baseUrl}/api/rooms?${query.toString()}`);
     const text = await response.text();
     if (text) {
       try { return { status: response.status, data: JSON.parse(text) }; }
@@ -97,6 +161,30 @@ export async function state(code, token, audit = false) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error("room state did not return a response");
+}
+
+export async function requestForViewer(action, values, viewerId) {
+  const view = await state(values.code, values.token, false, viewerId);
+  let actionValues = values;
+  if (action === "respond" && values.providerId === undefined) {
+    const ids = Array.isArray(values.cardIds) ? values.cardIds : values.cardId ? [values.cardId] : [];
+    const provider = (view.data.currentAction?.options ?? []).find((option) => {
+      const selection = option.selection;
+      if (!selection) return ids.length === 0;
+      const eligible = selection.eligibleCardIds ?? [];
+      return ids.length >= selection.min && ids.length <= selection.max && ids.every((id) => eligible.includes(id));
+    });
+    if (provider) actionValues = { ...values, providerId: provider.providerId };
+  }
+  const context = {
+    actionRevision: view.data.actionRevision,
+    meId: viewerId,
+    phase: view.data.phase,
+    pendingKind: view.data.pending?.kind ?? null,
+    actorId: view.data.actionPlayerId,
+    ...(view.data.currentAction?.negationWindowId ? { windowId: view.data.currentAction.negationWindowId } : {}),
+  };
+  return request(action, { ...actionValues, context });
 }
 
 export async function seedPlayingGame(input = {}) {
@@ -186,19 +274,23 @@ export async function markReady(code, members) {
 
 export async function passNegationWindows(code, members) {
   for (let guard = 0; guard < 40; guard++) {
-    let passed = false;
-    for (const member of members) {
-      const view = (await state(code, member.token)).data;
-      if (view.isMyAction && view.currentAction?.kind === "response" && view.currentAction.requirement === "negate" && view.currentAction.legalActions?.includes("decline_response")) {
-        const declined = await requestAndSettle("decline_response", { code, token: member.token, preserveResponse: true });
-        assert.equal(declined.status, 200, JSON.stringify(declined.data));
-        passed = true;
-        break;
-      }
-    }
-    if (!passed) return;
+    const view = (await state(code, members[0]?.token)).data;
+    const windowId = view.currentAction?.negationWindowId;
+    if (!windowId) return;
+    await advanceNegationWindow(code, members[0]?.token, windowId);
   }
   assert.fail("Negation windows did not settle");
+}
+
+export async function advanceNegationWindow(code, token, windowId) {
+  const pendingJson = query(`SELECT pending_json FROM rooms WHERE code=${quote(code)}`);
+  const pending = pendingJson ? JSON.parse(pendingJson) : null;
+  if (pending?.kind !== "negation_window" || pending.windowId !== windowId) return;
+  const deadline = Date.now() - 1;
+  const openedAt = deadline - 8000;
+  sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.openedAt',${openedAt},'$.deadline',${deadline}) WHERE code=${quote(code)} AND json_extract(pending_json,'$.windowId')=${quote(windowId)}`);
+  const advanced = await request("advance_timers", { code, token });
+  assert.equal(advanced.status, 200, JSON.stringify(advanced.data));
 }
 
 export async function createTestLobby() {
@@ -404,7 +496,7 @@ export async function openFankuiAttack({ sourceCards = [card("Attack", "fankui-a
   return { ...game, sourceMember, targetMember, source, target, actionPresentation: attack.data.room.currentAction.presentation };
 }
 
-export async function openGanglieGroup({ kind, judge, suffix }) {
+export async function openGanglieGroup({ kind, judge, suffix, sourceExtraCards = [], skipNegationWindows = false }) {
   const game = await createHumanGame();
   const [sourceMember, targetMember, bobMember, carolMember] = game.members;
   const [source, target, bob, carol] = game.room.players;
@@ -412,22 +504,23 @@ export async function openGanglieGroup({ kind, judge, suffix }) {
   sql(`UPDATE players SET hero='xiahou-dun' WHERE id=${quote(target.id)}`);
   sql(`UPDATE players SET hero=NULL WHERE id IN (${quote(bob.id)},${quote(carol.id)})`);
   const required = kind === "RainingArrows" ? "Dodge" : "Attack";
-  setHand(source.id, [card(kind, `${suffix}-source`)], 4, 4);
+  setHand(source.id, [card(kind, `${suffix}-source`), ...sourceExtraCards], 4, 4);
   setHand(target.id, [], 3, 3);
   setHand(bob.id, [card(required, `${suffix}-bob`)], 4, 4);
   setHand(carol.id, [card(required, `${suffix}-carol`)], 4, 4);
   setTurn(game.code, source.seat);
   setDeck(game.code, [judge]);
-  const started = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: `${kind.toLowerCase()}-${suffix}-source` });
+  const started = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: `${kind.toLowerCase()}-${suffix}-source`, preserveResponse: skipNegationWindows });
   assert.equal(started.status, 200, JSON.stringify(started.data));
-  await passNegationWindows(game.code, game.members);
+  if (!skipNegationWindows) await passNegationWindows(game.code, game.members);
   const settled = await state(game.code, sourceMember.token);
+  if (skipNegationWindows) return { ...game, started, sourceMember, targetMember, bobMember, carolMember, source, target, bob, carol, required };
   assert.equal(settled.data.currentAction.kind, "trigger", JSON.stringify(settled.data));
   assert.equal(settled.data.currentAction.triggerEvent, "damage_suffered");
   assert.equal(settled.data.currentAction.actorId, target.id);
   const targetView = (await state(game.code, targetMember.token)).data;
   assert.ok(targetView.currentAction.triggerOptions.some((option) => option.effectId === "xiahou_dun_ganglie"));
-  return { ...game, sourceMember, targetMember, bobMember, carolMember, source, target, bob, carol, required };
+  return { ...game, started, sourceMember, targetMember, bobMember, carolMember, source, target, bob, carol, required };
 }
 
 export let borrowedScenarioCounter = 0;

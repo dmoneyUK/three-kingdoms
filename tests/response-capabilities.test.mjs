@@ -262,8 +262,10 @@ test("passive and triggered equipment capabilities are discovered outside the ro
   const targetHand = [card("Peach", "frost-hand")];
   const targetEquipment = [card("NioShield", "frost-armor")];
   const frostContext = { event: "damage_about_to_apply", targetId: "target", sourceEquipment: [card("FrostSword", "frost")], targetHand, targetEquipment };
-  assert.deepEqual(getTriggeredEffects(frostContext), [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", targetId: "target", min: 1, max: 2, eligibleKeys: ["hand:0", "frost-armor"] } }]);
+  assert.deepEqual(getTriggeredEffects(frostContext), [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", targetId: "target", min: 2, max: 2, eligibleKeys: ["hand:0", "frost-armor"] } }]);
   assert.deepEqual(resolveTriggeredEffect("frost_sword_damage_about_to_apply", frostContext, { cardKeys: ["hand:0", "frost-armor"] }), { status: "resolved", effectId: "frost_sword_damage_about_to_apply", outcome: { kind: "prevent_damage", targetCardIds: ["frost-hand", "frost-armor"] } });
+  assert.equal(getTriggeredEffects({ ...frostContext, targetEquipment: [] }).length, 0, "Frost Sword is unavailable when the target cannot discard two cards");
+  assert.equal(resolveTriggeredEffect("frost_sword_damage_about_to_apply", frostContext, { cardKeys: ["hand:0"] }), null, "a single-card selection cannot prevent damage");
 
   const kirinContext = { event: "damage_about_to_apply", targetId: "target", sourceEquipment: [card("KirinBow", "kirin")], targetEquipment: [card("OffensiveHorse", "offensive"), card("NioShield", "armor"), card("DefensiveHorse", "defensive")] };
   assert.deepEqual(getTriggeredEffects(kirinContext), [{ effectId: "kirin_bow_damage_about_to_apply", label: "Use Kirin Bow", selection: { type: "target_cards", targetId: "target", min: 1, max: 1, eligibleKeys: ["offensive", "defensive"] } }]);
@@ -273,20 +275,25 @@ test("passive and triggered equipment capabilities are discovered outside the ro
 
 test("Sima Yi Retaliation projects only source Playing Area cards and consumes its event identity", () => {
   const hidden = card("Peach", "source-hidden");
+  const secondHidden = card("Dodge", "source-hidden-two");
   const equipment = card("NioShield", "source-equipment");
   const judgement = card("Lightning", "source-judgement");
   const context = {
     event: "damage_suffered",
     sourceId: "source",
-    sourceHand: [hidden],
+    sourceHand: [hidden, secondHidden],
     sourceEquipment: [equipment],
     sourceJudgement: [judgement],
     targetId: "sima",
     targetHero: "simayi",
     damageAmount: 2,
   };
-  assert.deepEqual(getTriggeredEffects(context), [{ effectId: "sima_yi_fankui", label: "Retaliation", selection: { type: "target_cards", targetId: "source", min: 1, max: 1, eligibleKeys: ["hand", equipment.id, judgement.id] } }]);
-  assert.deepEqual(resolveTriggeredEffect("sima_yi_fankui", context, { cardKeys: ["hand"] })?.outcome, { kind: "gain_target_card", sourceId: "source", targetId: "sima", targetCardKey: "hand" });
+  const [option] = getTriggeredEffects(context);
+  assert.deepEqual(option, { effectId: "sima_yi_fankui", label: "Retaliation", selection: { type: "target_cards", targetId: "source", min: 1, max: 1, eligibleKeys: ["hand:0", "hand:1", equipment.id, judgement.id] } });
+  assert.equal(JSON.stringify(option).includes(hidden.id), false, "the public selection contract contains no hidden card identity");
+  assert.deepEqual(resolveTriggeredEffect("sima_yi_fankui", context, { cardKeys: ["hand:1"] })?.outcome, { kind: "gain_target_card", sourceId: "source", targetId: "sima", targetCardKey: "hand:1" });
+  assert.equal(resolveTriggeredEffect("sima_yi_fankui", context, { cardKeys: ["hand:2"] }), null, "an out-of-range opaque position is rejected");
+  assert.deepEqual(resolveTriggeredEffect("sima_yi_fankui", context, { cardKeys: ["hand"] })?.outcome, { kind: "gain_target_card", sourceId: "source", targetId: "sima", targetCardKey: "hand" }, "legacy grouped Hand selections remain compatible");
   assert.equal(getTriggeredEffects(context, ["sima_yi_fankui"]).length, 0);
   assert.equal(getTriggeredEffects({ ...context, sourceHand: [], sourceEquipment: [], sourceJudgement: [] }).length, 0);
   assert.equal(getTriggeredEffects({ ...context, targetHero: "cao-cao" }).length, 0);

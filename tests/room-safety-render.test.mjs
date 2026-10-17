@@ -3,18 +3,55 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { buildActiveSkillSubmission, buildDecisionPresentation, calculateHandCardStep, GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroInfoDialog, HeroPortrait, HeroSelection, MandatoryChoiceDialog, normalizeActiveCardSkillSelection, WaitingRoom } from "../app/page.tsx";
+import { buildActiveSkillSubmission, buildDecisionPresentation, calculateHandCardStep, GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroDetailsPreview, HeroInfoDialog, HeroPortrait, HeroSelection, InteractionStage, MandatoryChoiceDialog, normalizeActiveCardSkillSelection, WaitingRoom } from "../app/page.tsx";
+import { buildConsoleDecisionDisplay } from "../game/console-decision.ts";
 import { IMPLEMENTED_STANDARD_HERO_IDS, STANDARD_HEROES } from "../game/heroes.ts";
+import { buildPresentationClientView } from "../game/presentation-client.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
+import { BUILD_SHA } from "../app/build-info.ts";
 
 const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
 const gameRoomSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
 const globalStyleSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const sequenceStyleSource = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
 
+function localDecisionStatusMarkup(html) {
+  const start = html.indexOf('<div class="decision-status');
+  const end = html.indexOf('<div class="stage-system-menu"', start);
+  assert.ok(start >= 0 && end > start, "rendered Local Dock includes its decision guidance before the System Menu");
+  return html.slice(start, end);
+}
+
+function assertNoTransientBusyGuidance(html) {
+  assert.doesNotMatch(localDecisionStatusMarkup(html), /Resolving…|Skipping…/);
+}
+
 test("game messages start minimized while retaining the fold control", () => {
   assert.match(gameRoomSource, /const \[messagesCollapsed, setMessagesCollapsed\] = useState\(true\)/);
   assert.match(gameRoomSource, /aria-label=\{messagesCollapsed \? "Expand game messages" : "Collapse game messages"\}/);
+});
+
+test("pre-game Hero information remains separate from the compact active-game preview", () => {
+  const hero = STANDARD_HEROES.find((candidate) => candidate.id === "huang-yueying");
+  assert.ok(hero);
+  const preview = renderToStaticMarkup(React.createElement(HeroDetailsPreview, { hero, onClose: () => {} }));
+
+  assert.match(preview, /role="dialog" aria-modal="false" aria-labelledby="hero-details-title"/);
+  assert.match(preview, /id="hero-details-title">Huang Yueying<\/h2>/);
+  assert.match(preview, /aria-label="Huang Yueying portrait"/);
+  assert.match(preview, /aria-label="Close Huang Yueying details"/);
+  assert.equal((preview.match(/class="hero-details-skill"/g) ?? []).length, hero.skills.length);
+  for (const skill of hero.skills) {
+    assert.ok(preview.includes(skill.name), `the real ${skill.name} label remains present`);
+    assert.ok(preview.includes(skill.description.slice(0, 36)), `the real ${skill.name} rules remain present`);
+  }
+  assert.doesNotMatch(preview, /HERO DETAILS|HP\s*4\/4|<span>Shu<\/span>/);
+
+  const pregame = renderToStaticMarkup(React.createElement(HeroInfoDialog, { hero: { ...hero, hp: 4 }, onClose: () => {} }));
+  assert.match(pregame, /class="card-info-dialog hero-info-dialog" role="dialog" aria-modal="true"/);
+  assert.match(pregame, /HERO INFORMATION/);
+  assert.match(pregame, /Cultivation/);
+  assert.match(pregame, /Wizardry/);
 });
 
 const presentationPlayers = [
@@ -26,6 +63,46 @@ const presentationRoom = (overrides = {}) => ({
   actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
   currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"] },
   ...overrides,
+});
+
+const responsiveTopologyRoom = ({ playerCount = 4, handSize = 4 } = {}) => normalizeRoomData({
+  code: `UI11-${playerCount}-${handSize}`,
+  status: "playing",
+  maxPlayers: playerCount,
+  isHost: true,
+  isTestController: true,
+  meId: "p1",
+  myRole: "Lord",
+  myHeroOptions: [],
+  players: ["cao-cao", "liu-bei", "zhang-fei", "sun-quan", "zhao-yun", "gan-ning", "huang-yueying", "xiahou-dun", "guo-jia", "zhuge-liang"].slice(0, playerCount).map((hero, index) => ({
+    id: `p${index + 1}`,
+    name: `Player ${index + 1} with a long name`,
+    seat: index,
+    hero,
+    hp: 4,
+    maxHp: 4,
+    alive: true,
+    connected: true,
+    handCount: index === 0 ? handSize : 2,
+    equipmentCards: [],
+    judgementCards: [],
+    attackRange: 1,
+    distance: index === 0 ? null : 1,
+    isHost: index === 0,
+    role: index === 0 ? "Lord" : "Rebel",
+  })),
+  myHand: Array.from({ length: handSize }, (_, index) => card(`ui11-hand-${index + 1}`, "Attack")),
+  turnSeat: 0,
+  phase: "play",
+  deckCount: 40,
+  discardTop: null,
+  log: [],
+  timeline: [],
+  isMyTurn: true,
+  actionPlayerId: "p1",
+  actionReason: "Play cards",
+  isMyAction: true,
+  currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"] },
 });
 
 test("shared decision presentation keeps turn ownership, action ownership, privacy, and revisions distinct", () => {
@@ -64,11 +141,130 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
     players: presentationPlayers.map((player, index) => ({ ...player, hero: index ? "zhao-yun" : "lü-bu", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: index ? 1 : null, isHost: index === 0, role: index ? "Rebel" : "Lord" })),
     myHand: [], turnSeat: 0, phase: "play", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
     currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"] },
+    presentationSnapshot: {
+      identity: { interactionId: "interaction-ui", checkpointId: "checkpoint-ui", presentationRevision: 1 },
+      stable: { kind: "CHOICE", interactionId: "interaction-ui", checkpointId: "checkpoint-ui", presentationRevision: 1, decisionActorId: "p1" },
+      interaction: { semantics: "PROVEN", interactionId: "interaction-ui", rootFrameId: "root-ui", activeFrameId: "frame-ui", parentFrameId: null, checkpointId: "checkpoint-ui", presentationRevision: 1, stage: "ATTACK_RESPONSE", sourceId: "p2", effect: "Attack", targetIds: ["p1"], currentParticipantId: "p1", decisionActorId: "p1", activeResolverId: "p1", activeSourceId: "p2", activeTargetIds: ["p1"], participantIds: ["p1", "p2"], participantRoles: { sourceId: "p2", originalTargetIds: ["p1"], activeTargetIds: ["p1"], currentParticipantId: "p1", decisionActorId: "p1", activeResolverId: "p1", parentParticipantId: null, participantIds: ["p1", "p2"] }, continuity: { relation: "ROOT_FRAME", parentFrameId: null } },
+      decision: { actorId: "p1", stage: "ATTACK_RESPONSE" },
+      localControl: { source: "CurrentAction", actionRevision: "ui-action", kind: "turn", actorId: "p1", entitled: true },
+      settlement: null,
+      transitionEvents: [],
+    },
   });
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room: uxRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.ok(html.includes(`data-build-sha="${BUILD_SHA}"`), "the game screen exposes the exact build SHA used for its client bundle");
+  assert.match(html, /GitHub Actions SHA/);
+  assert.match(html, /Download UX trace/);
+  assert.doesNotMatch(html, /Start Attack\/Dodge trace|Stop Attack\/Dodge trace|Copy UX trace/);
   assert.equal((html.match(/class="decision-status/g) ?? []).length, 1, "one primary status area is rendered");
-  assert.match(html, /GAME STATUS/);
+  assert.equal((html.match(/class="interaction-stage"/g) ?? []).length, 0, "ordinary combat does not render the retired Interaction Stage");
+  assert.equal((html.match(/data-public-card-display="true"/g) ?? []).length, 0, "an interaction without a committed physical root event does not invent a public CardFace");
+  assert.equal((html.match(/data-player-anchor="/g) ?? []).length, 2, "retiring the Stage preserves both physical player anchors");
+  assert.equal((html.match(/class="local-player-dock/g) ?? []).length, 1, "retiring the Stage keeps one local dock");
+  assert.equal((html.match(/data-console-surface="local-operation"/g) ?? []).length, 1, "retiring the Stage keeps one footer console");
+  assert.doesNotMatch(html, /aria-label="Interaction Stage"/, "legacy combat panel semantics are absent");
+  assert.doesNotMatch(html, /data-reaction-node=|data-group-composition=|data-hero-focus-player-id=/, "legacy reaction and participant compositions are absent");
+  assert.match(html, /data-presentation-kind="CHOICE"/);
+  assert.match(html, /data-presentation-has-interaction="true"/);
+  assert.match(html, /data-presentation-local-control="true"/);
+  assert.match(html, /<section class="local-player-dock[^"]*interaction-seat-original-target[^"]*interaction-seat-active-target[^"]*interaction-seat-current-participant[^"]*interaction-seat-decision-actor[^"]*interaction-seat-active-resolver[^"]*interaction-seat-viewer-decision[^"]*"[^>]*data-player-anchor="p1"/, "local target-owned decision roles project onto the existing local dock");
+  assert.match(html, /data-interaction-original-target="true"[^>]*data-interaction-active-target="true"[^>]*data-interaction-current-participant="true"[^>]*data-interaction-decision-actor="true"[^>]*data-interaction-active-resolver="true"[^>]*data-interaction-viewer-decision="true"/, "local dock exposes the same semantic role data");
+  assert.doesNotMatch(html, /<section class="local-player-dock[^"]*selected-target/, "public active-target semantics do not mutate local gameplay selection");
+  assert.match(html, /class="local-hand"[^>]*data-card-origin-anchor="p1"/);
+  assert.match(html, /class="local-status-panel"[\s\S]*class="hero-skill-button/);
+  assert.match(html, /class="local-equipment-panel"[\s\S]*class="local-equipment-slot/);
+  const semanticSeatSnapshot = {
+    ...uxRoom.presentationSnapshot,
+    stable: { ...uxRoom.presentationSnapshot.stable, decisionActorId: "p2" },
+    interaction: { ...uxRoom.presentationSnapshot.interaction, sourceId: "p2", targetIds: ["p2"], currentParticipantId: "p2", decisionActorId: "p2", activeResolverId: "p2", activeTargetIds: ["p2"], participantRoles: { ...uxRoom.presentationSnapshot.interaction.participantRoles, sourceId: "p2", originalTargetIds: ["p2"], activeTargetIds: ["p2"], currentParticipantId: "p2", decisionActorId: "p2", activeResolverId: "p2" } },
+    decision: { actorId: "p2", stage: "ATTACK_RESPONSE" },
+    localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: "p2", entitled: false },
+  };
+  const semanticSeatHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: semanticSeatSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-source[^"]*"[^>]*data-player-anchor="p2"/);
+  assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-original-target[^"]*"[^>]*data-player-anchor="p2"/);
+  assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-active-target[^"]*"[^>]*data-player-anchor="p2"/);
+  assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-current-participant[^"]*"[^>]*data-player-anchor="p2"/);
+  assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-decision-actor[^"]*"[^>]*data-player-anchor="p2"/);
+  assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-active-resolver[^"]*"[^>]*data-player-anchor="p2"/);
+  assert.doesNotMatch(semanticSeatHtml, /class="[^"]*player-square[^"]*selected-target[^"]*"[^>]*data-player-anchor="p2"/, "semantic active-target highlighting does not select a gameplay target");
+  assert.match(gameRoomSource, /isSelectedTarget \? "selected-target" : ""/);
+  assert.match(gameRoomSource, /interactionRoles\.isActiveTarget \? "interaction-seat-active-target" : ""/);
+  const localSourceOwnedSnapshot = {
+    ...uxRoom.presentationSnapshot,
+    stable: { ...uxRoom.presentationSnapshot.stable, decisionActorId: "p1" },
+    interaction: { ...uxRoom.presentationSnapshot.interaction, sourceId: "p1", targetIds: ["p2"], currentParticipantId: "p2", decisionActorId: "p1", activeResolverId: "p2", activeTargetIds: ["p2"], participantRoles: { ...uxRoom.presentationSnapshot.interaction.participantRoles, sourceId: "p1", originalTargetIds: ["p2"], activeTargetIds: ["p2"], currentParticipantId: "p2", decisionActorId: "p1", activeResolverId: "p2" } },
+    decision: { actorId: "p1", stage: "ATTACK_RESPONSE" },
+    localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: "p1", entitled: true },
+  };
+  const localSourceOwnedHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: localSourceOwnedSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(localSourceOwnedHtml, /<section class="local-player-dock[^"]*interaction-seat-source[^"]*interaction-seat-decision-actor[^"]*interaction-seat-viewer-decision[^"]*"[^>]*data-player-anchor="p1"/, "local source-owned decision preserves source, decision, and viewer roles");
+  assert.match(localSourceOwnedHtml, /class="[^"]*player-square[^"]*interaction-seat-original-target[^"]*interaction-seat-active-target[^"]*interaction-seat-current-participant[^"]*interaction-seat-active-resolver[^"]*"[^>]*data-player-anchor="p2"/, "remote target keeps active target, participant, and resolver roles");
+  const localSpecialSnapshot = {
+    ...uxRoom.presentationSnapshot,
+    stable: { ...uxRoom.presentationSnapshot.stable, kind: "SPECIAL", decisionActorId: null },
+    interaction: { ...uxRoom.presentationSnapshot.interaction, currentParticipantId: "p1", decisionActorId: null, activeResolverId: "p2", activeTargetIds: ["p1"], participantRoles: { ...uxRoom.presentationSnapshot.interaction.participantRoles, currentParticipantId: "p1", decisionActorId: null, activeResolverId: "p2", activeTargetIds: ["p1"] } },
+    decision: null,
+    localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: null, entitled: false },
+  };
+  const localSpecialHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: localSpecialSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(localSpecialHtml, /<section class="local-player-dock[^"]*interaction-seat-active-target[^"]*interaction-seat-current-participant[^"]*"[^>]*data-player-anchor="p1"/, "local active target/current roles remain public without a decision actor");
+  assert.doesNotMatch(localSpecialHtml, /<section class="local-player-dock[^"]*interaction-seat-decision-actor/, "SPECIAL does not invent a local decision role");
+  const localOverlapSnapshot = {
+    ...uxRoom.presentationSnapshot,
+    stable: { ...uxRoom.presentationSnapshot.stable, decisionActorId: "p1" },
+    interaction: { ...uxRoom.presentationSnapshot.interaction, sourceId: "p1", targetIds: ["p1"], currentParticipantId: "p1", decisionActorId: "p1", activeResolverId: "p1", activeTargetIds: ["p1"], participantRoles: { ...uxRoom.presentationSnapshot.interaction.participantRoles, sourceId: "p1", originalTargetIds: ["p1"], activeTargetIds: ["p1"], currentParticipantId: "p1", decisionActorId: "p1", activeResolverId: "p1" } },
+    decision: { actorId: "p1", stage: "ATTACK_RESPONSE" },
+    localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: "p1", entitled: true },
+  };
+  const localOverlapHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: localOverlapSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(localOverlapHtml, /<section class="local-player-dock[^"]*interaction-seat-source[^"]*interaction-seat-original-target[^"]*interaction-seat-active-target[^"]*interaction-seat-current-participant[^"]*interaction-seat-decision-actor[^"]*interaction-seat-active-resolver[^"]*interaction-seat-viewer-decision[^"]*"[^>]*data-player-anchor="p1"/, "local overlapping roles remain simultaneous");
+  const legacyMismatchHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, actionPlayerId: "p2", actionReason: "legacy owner", isMyAction: false, currentAction: { ...uxRoom.currentAction, actorId: "p2", reason: "legacy action" } }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(legacyMismatchHtml, /<small>DECISION OWNER<\/small><b>Lü Bu · YOU<\/b>/, "active status ownership comes from PresentationClientView");
+  assert.doesNotMatch(legacyMismatchHtml, /<small>DECISION OWNER<\/small><b>Zhao Yun/, "legacy action owner cannot replace the public decision actor");
+  assert.match(html, /YOUR DECISION/);
   assert.match(html, /Lü Bu/);
+  const restHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: null }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.equal((restHtml.match(/class="interaction-stage"/g) ?? []).length, 0, "REST renders no Interaction Stage");
+  assert.equal((restHtml.match(/data-player-anchor="/g) ?? []).length, 2, "REST hides semantic focus without collapsing topology");
+  assert.equal((restHtml.match(/class="local-player-dock/g) ?? []).length, 1, "REST retains one local dock");
+  assert.match(restHtml, /<section class="local-player-dock\s*"[^>]*data-player-anchor="p1"/, "REST retains the local player surface");
+  assert.doesNotMatch(restHtml, /<section class="local-player-dock[^"]*interaction-seat-/, "REST local surface has no semantic role classes");
+  assert.doesNotMatch(restHtml, /data-interaction-(?:roles|source|original-target|active-target|current-participant|decision-actor|active-resolver|viewer-decision)=/, "REST local surface has no semantic role data");
+  const localDock = (markup) => markup.match(/<section class="local-player-dock[^>]*data-player-anchor="p1"[^>]*>/)?.[0] ?? "";
+  assert.equal(localDock(legacyMismatchHtml), localDock(html), "legacy room fields cannot change local semantic roles");
+});
+
+test("local operation console composes one authority-first decision display", () => {
+  const display = (facts) => buildConsoleDecisionDisplay({ instruction: "Make the current choice", viewerIsDecisionActor: true, authoritativeDecision: true, busy: false, ...facts });
+  assert.equal(display({ kind: "turn", primaryCandidates: [{ id: "play", label: "Play", enabled: true, priority: 40 }] }).primary.label, "Play");
+  assert.equal(display({ kind: "response", primaryCandidates: [{ id: "confirm", label: "Confirm", enabled: true, priority: 60 }], authoritativeDecline: { label: "Skip", enabled: true } }).authoritativeDecline.label, "Skip");
+  assert.equal(display({ kind: "rescue", primaryCandidates: [{ id: "peach", label: "Peach", enabled: false, priority: 60 }], authoritativeDecline: { label: "Skip", enabled: true } }).primary.enabled, false);
+  assert.equal(display({ kind: "trigger", primaryCandidates: [{ id: "provider-confirm", label: "Confirm", enabled: true, priority: 70 }], localCancel: { visible: true, enabled: true }, authoritativeDecline: { label: "Skip", enabled: true } }).localCancel.visible, true);
+  assert.equal(display({ kind: "active-skill", primaryCandidates: [{ id: "skill-confirm", label: "Confirm", enabled: true, priority: 70 }] }).primary.id, "skill-confirm");
+  assert.equal(display({ kind: "target", selection: { active: true, hasInput: true, count: 1, min: 1, max: 1, summary: "1 target selected" }, primaryCandidates: [{ id: "target-confirm", label: "Confirm", enabled: true, priority: 70 }] }).selectionCount, 1);
+  assert.equal(display({ kind: "borrowed-sword", primaryCandidates: [{ id: "borrowed-confirm", label: "Confirm", enabled: true, priority: 80 }] }).primary.label, "Confirm");
+  assert.equal(display({ kind: "target-card", primaryCandidates: [{ id: "card-confirm", label: "Discard selected", enabled: true, priority: 80 }] }).primary.label, "Discard selected");
+  assert.equal(display({ kind: "discard", primaryCandidates: [{ id: "discard", label: "Discard 2 selected", enabled: true, priority: 60 }] }).primary.label, "Discard 2 selected");
+  assert.equal(display({ kind: "duel", primaryCandidates: [{ id: "duel-response", label: "Confirm", enabled: true, priority: 60 }] }).primary.label, "Confirm");
+  assert.equal(display({ kind: "judgement", primaryCandidates: [{ id: "negate", label: "Confirm", enabled: true, priority: 60 }] }).primary.label, "Confirm");
+
+  const waiting = buildConsoleDecisionDisplay({ kind: "response", instruction: "Waiting for the other seat", viewerIsDecisionActor: false, authoritativeDecision: true, busy: false, primaryCandidates: [{ id: "stale", label: "Confirm", enabled: true, priority: 100 }], authoritativeDecline: { label: "Skip", enabled: true } });
+  assert.equal(waiting.primary, null, "a public or stale role cannot grant a local primary");
+  assert.equal(waiting.authoritativeDecline, null, "a public or stale role cannot grant Skip");
+
+  const contradiction = display({ kind: "special", primaryCandidates: [{ id: "play", label: "Play", enabled: true, priority: 50 }, { id: "confirm", label: "Confirm", enabled: true, priority: 50 }] });
+  assert.equal(contradiction.coherent, false, "unresolved equal-priority legacy primaries fail closed");
+  assert.equal(contradiction.primary, null);
+  assert.equal(display({ kind: "trigger", busy: true, primaryCandidates: [{ id: "confirm", label: "Confirm", enabled: true, priority: 70 }] }).primary.enabled, false);
+  const sourceOwned = display({ kind: "special", primaryCandidates: [{ id: "source-trigger", label: "Confirm", enabled: true, priority: 70 }], secondaryControls: ["Provider"] });
+  assert.deepEqual(sourceOwned.secondaryControls, ["Provider"], "decision actor and active resolver remain composition facts, not legality inputs");
+  const localSelection = display({ kind: "target", selection: { active: true, hasInput: false, count: 0, min: 1, max: 1, summary: "Select 1 target" }, primaryCandidates: [{ id: "confirm", label: "Confirm", enabled: false, priority: 70 }] });
+  assert.equal(localSelection.selectionSummary, "Select 1 target");
+  assert.equal(localSelection.localCancel.visible, false, "unsubmitted local selection has no Cancel");
+  const rest = buildConsoleDecisionDisplay({ kind: "rest", instruction: "No interaction", viewerIsDecisionActor: false, authoritativeDecision: false, busy: false });
+  assert.equal(rest.controlsVisible, false);
+  assert.equal(rest.primary, null);
 });
 
 test("Legacy distribution keeps private cards static and labels recipients by hero", () => {
@@ -76,6 +272,72 @@ test("Legacy distribution keeps private cards static and labels recipients by he
   assert.match(gameRoomSource, /<div className="legacy-distribution-card"[\s\S]*<CardFace card=\{card\} \/>/, "Legacy uses the real CardFace artwork");
   assert.match(globalStyleSource, /\.legacy-distribution-card \.played-card\{animation:none;opacity:1;transform:none\}/, "Legacy cards do not use the temporary fade/flight animation");
   assert.doesNotMatch(gameRoomSource, /<option value=\{player\.id\} key=\{player\.id\}>\{player\.name\}<\/option>/, "Legacy does not expose player names in recipient choices");
+});
+
+test("retired public combat stage is absent while the proven Dying handoff remains", () => {
+  const createSnapshot = (stage = "ATTACK_RESPONSE", decisionActorId = "B") => ({
+    identity: { interactionId: "stage-interaction", checkpointId: "stage-checkpoint", presentationRevision: 2 },
+    stable: { kind: "CHOICE", interactionId: "stage-interaction", checkpointId: "stage-checkpoint", presentationRevision: 2, decisionActorId },
+    interaction: {
+      semantics: "PROVEN", interactionId: "stage-interaction", rootFrameId: "stage-root", activeFrameId: "stage-frame", parentFrameId: null,
+      checkpointId: "stage-checkpoint", presentationRevision: 2, stage, effect: "Attack", sourceId: "A", targetIds: ["B"],
+      currentParticipantId: "B", decisionActorId, activeResolverId: "A", activeSourceId: "A", activeTargetIds: ["B"], participantIds: ["A", "B"],
+      participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId, activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "B"] },
+      continuity: { relation: "ROOT_FRAME", parentFrameId: null },
+    },
+    decision: decisionActorId ? { actorId: decisionActorId, stage } : null,
+    localControl: { source: "CurrentAction", actionRevision: "stage-action", kind: "response", actorId: decisionActorId, entitled: true },
+    settlement: null,
+    transitionEvents: [],
+  });
+  const names = { A: "Ma Chao", B: "Zhao Yun", C: "Cao Cao" };
+  const renderStage = (snapshot, viewerId = "B", transitionKind = "NONE") => renderToStaticMarkup(React.createElement(InteractionStage, {
+    view: buildPresentationClientView(snapshot, viewerId),
+    transitionKind,
+    resolvePlayerName: (playerId) => names[playerId] ?? null,
+  }));
+
+  assert.equal(renderStage(createSnapshot()), "", "Attack response semantics do not render the retired large panel");
+  assert.equal(renderStage(createSnapshot("NEGATION")), "", "Negation semantics do not render a reaction-chain panel");
+  assert.equal(renderStage(createSnapshot("GROUP_RESOLUTION", "C"), "C"), "", "group semantics do not render the retired participant composition");
+
+  const dyingHtml = renderStage(createSnapshot("DYING"));
+  assert.match(dyingHtml, /aria-label="Dying rescue handoff"/);
+  assert.match(dyingHtml, /data-dying-handoff="proven"[^>]*data-dying-player-id="B"[^>]*data-dying-decision-actor-id="B"/);
+  assert.match(dyingHtml, /Zhao Yun/);
+  assert.doesNotMatch(dyingHtml, /hero-focus-player-id|data-reaction-node|<button|data-hand|data-card|legalActions|providers/i);
+  assert.match(globalStyleSource, /\.dying-handoff-compact\{/);
+});
+
+test("retired Interaction Stage transition visuals stay absent", () => {
+  const snapshot = {
+    identity: { interactionId: "visual-interaction", checkpointId: "visual-checkpoint", presentationRevision: 4 },
+    stable: { kind: "CHOICE", interactionId: "visual-interaction", checkpointId: "visual-checkpoint", presentationRevision: 4, decisionActorId: "p1" },
+    interaction: {
+      semantics: "PROVEN", interactionId: "visual-interaction", rootFrameId: "visual-root", activeFrameId: "visual-frame", parentFrameId: null,
+      checkpointId: "visual-checkpoint", presentationRevision: 4, stage: "ATTACK_RESPONSE", effect: "Attack", sourceId: "p2", targetIds: ["p1"],
+      currentParticipantId: "p1", decisionActorId: "p1", activeResolverId: "p1", activeSourceId: "p2", activeTargetIds: ["p1"], participantIds: ["p1", "p2"],
+      participantRoles: { sourceId: "p2", originalTargetIds: ["p1"], activeTargetIds: ["p1"], currentParticipantId: "p1", decisionActorId: "p1", activeResolverId: "p1", parentParticipantId: null, participantIds: ["p1", "p2"] },
+      continuity: { relation: "ROOT_FRAME", parentFrameId: null },
+    },
+    decision: { actorId: "p1", stage: "ATTACK_RESPONSE" },
+    localControl: { source: "CurrentAction", actionRevision: "visual-action", kind: "response", actorId: "p1", entitled: true },
+    settlement: null,
+    transitionEvents: [],
+  };
+  const renderStage = (transitionKind, viewerId = "p1") => renderToStaticMarkup(React.createElement(InteractionStage, {
+    view: buildPresentationClientView(snapshot, viewerId),
+    transitionKind,
+    resolvePlayerName: (playerId) => playerId === "p1" ? "Lü Bu" : "Zhao Yun",
+  }));
+
+  for (const transitionKind of ["NONE", "CONTENT_UPDATE", "FOCUS_UPDATE", "FRAME_TRANSITION", "INTERACTION_TRANSITION"]) {
+    assert.equal(renderStage(transitionKind), "", `${transitionKind} does not revive the retired combat stage`);
+    assert.equal(renderStage(transitionKind, "p2"), "", `${transitionKind} remains absent for every viewer`);
+  }
+  assert.doesNotMatch(globalStyleSource, /\.interaction-stage\[data-presentation-transition=/, "the retired stage has no transition animation selectors");
+  assert.doesNotMatch(globalStyleSource, /@keyframes presentation(?:ContentRefresh|FocusEmphasis|FocusPanelEmphasis|FrameEmphasis|InteractionEmphasis)/, "the retired stage has no orphaned transition keyframes");
+  assert.match(globalStyleSource, /\.public-card-display/ , "the static public card presenter owns the replacement display styles");
 });
 
 test("waiting room starts without lobby readiness controls", () => {
@@ -116,7 +378,7 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.match(gameRoomSource, /const \[infoHero, setInfoHero\] = useState<Hero \| null>\(null\)/);
   assert.match(gameRoomSource, /className=\{`hero-choice-wrap \$\{effectiveSelected === hero\.id \? "selected" : ""\}`\}/);
   assert.match(gameRoomSource, /onClick=\{\(\) => setInfoHero\(hero\)\}/);
-  assert.match(gameRoomSource, /\{infoHero && <HeroInfoDialog hero=\{infoHero\}/);
+  assert.match(gameRoomSource, /\{infoHero && me && <HeroDetailsPreview hero=\{infoHero\}/);
   const artHeroes = ["cao-cao", "liu-bei", "sun-quan", "simayi", "xiahou-dun"].map((id) => STANDARD_HEROES.find((hero) => hero.id === id));
   assert.ok(artHeroes.every(Boolean));
   const zhangLiao = STANDARD_HEROES.find((hero) => hero.id === "zhang-liao");
@@ -228,6 +490,52 @@ test("hand cards stay naturally packed and compress only when the rail is tight"
   assert.match(gameRoomSource, /calculateHandCardStep\(handRailWidth, handCardKey \? handCardKey\.split\("\\|"\) : \[\]\)/);
 });
 
+test("UI-11 keeps one local dock and stable opponent anchors across supported player counts", () => {
+  for (const playerCount of [2, 3, 4, 5, 6, 8, 10]) {
+    const room = responsiveTopologyRoom({ playerCount });
+    assert.ok(room, `${playerCount}-player fixture normalizes`);
+    const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+    const boardStart = html.indexOf('<div class="player-board"');
+    const dockStart = html.indexOf('<section class="local-player-dock');
+    assert.ok(boardStart >= 0 && dockStart > boardStart, `${playerCount}-player markup has a board before the dock`);
+    const boardHtml = html.slice(boardStart, dockStart);
+    assert.equal((boardHtml.match(/data-player-anchor="p\d+"/g) ?? []).length, playerCount - 1, `${playerCount}-player board has exactly N-1 opponent anchors`);
+    assert.doesNotMatch(boardHtml, /data-player-anchor="p1"/, `${playerCount}-player board never duplicates the local anchor`);
+    assert.equal((html.match(/data-player-anchor="/g) ?? []).length, playerCount, `${playerCount}-player room has exactly N visible player anchors`);
+    assert.equal((html.match(/data-player-anchor="p1"/g) ?? []).length, 1, `${playerCount}-player room has one local anchor`);
+    assert.equal((html.match(/class="local-player-dock/g) ?? []).length, 1, `${playerCount}-player room has one local dock`);
+    assert.equal((html.match(/data-console-surface="local-operation"/g) ?? []).length, 1, `${playerCount}-player room has one local console`);
+    assert.equal((html.match(/class="player-square opponent-player-card/g) ?? []).length, playerCount - 1, `${playerCount}-player room renders all opponents once`);
+    assert.match(html, new RegExp(`data-player-count="${playerCount}"`));
+    assert.match(html, new RegExp(`data-seat-topology="${playerCount >= 5 ? "side-column" : "top-row"}"`));
+    assert.doesNotMatch(html, /class="player-square player-square-0/);
+  }
+
+  assert.match(sequenceStyleSource, /player-board\[data-seat-topology="side-column"\]/, "5-10-player topology is an explicit presentation contract");
+  for (const [playerCount, rows] of [[5, 2], [6, 3], [8, 4], [10, 5]]) {
+    assert.match(sequenceStyleSource, new RegExp(`data-player-count="${playerCount}"[\\s\\S]*--seat-row-count: ${rows}`), `${playerCount}-player topology declares its side-column row budget`);
+  }
+  assert.match(sequenceStyleSource, /\.game-shell \.play-table\[data-seat-topology="side-column"\]\s*\{[^}]*--side-safe-thumb-width: clamp\(74px, 13vw, 86px\);[^}]*--side-safe-edge: calc\([^\n]*var\(--side-safe-thumb-width\)/, "desktop seat sizing reserves the same width in the Interaction Safe Zone");
+  assert.match(sequenceStyleSource, /@media \(max-width: 650px\)\s*\{\s*\.game-shell \.play-table\[data-seat-topology="side-column"\]\s*\{[^}]*--side-safe-thumb-width: clamp\(56px, 15\.5vw, 74px\);/, "mobile Side Column keeps a bounded responsive seat width");
+  assert.match(sequenceStyleSource, /\.game-shell \.player-board\[data-seat-topology="side-column"\] > \.opponent-player-card\s*\{[^}]*width: var\(--side-safe-thumb-width\);[^}]*height: min\(128px, 100%\);[^}]*min-height: 0;/, "side seats use the width included in safe-zone geometry");
+});
+
+test("UI-11 preserves hand rail and one footer console for one, five, and ten cards", () => {
+  for (const handSize of [1, 5, 10]) {
+    const room = responsiveTopologyRoom({ playerCount: 4, handSize });
+    const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+    assert.equal((html.match(/data-hand-card-id="/g) ?? []).length, handSize, `${handSize}-card hand preserves each physical card`);
+    assert.equal((html.match(/class="local-hand-section"/g) ?? []).length, 1);
+    assert.equal((html.match(/class="local-hand-rail"/g) ?? []).length, 1);
+    assert.equal((html.match(/data-console-surface="local-operation"/g) ?? []).length, 1, `${handSize}-card hand keeps one footer console`);
+    assert.ok(html.indexOf('class="local-hand-section"') < html.indexOf('data-console-surface="local-operation"'), `${handSize}-card hand remains before the console in the dock`);
+  }
+  assert.match(sequenceStyleSource, /local-hand-section[\s\S]*height: var\(--hand-panel-height\)[\s\S]*overflow: visible/);
+  assert.match(sequenceStyleSource, /\.local-player-dock \.console-guidance\s*\{[^}]*grid-area: guidance;/);
+  assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls > \[data-action-extras="true"\]\s*\{[^}]*display: flex;[^}]*flex-wrap: wrap;/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*turn-controls[\s\S]*min-height: 48px/);
+});
+
 test("the local player dock replaces the self battlefield square and follows Quick Test perspective", () => {
   const players = [
     { id: "p1", name: "HOST", seat: 0, hero: "cao-cao", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 2, equipmentCards: [card("weapon", "BlueSteelSword"), card("armor", "NioShield"), card("offensive-horse", "RedHare"), card("defensive-horse", "Shadowrunner")], judgementCards: [card("lightning", "Lightning"), card("overindulgence", "Overindulgence")], attackRange: 2, distance: null, isHost: true, role: "Lord" },
@@ -245,23 +553,25 @@ test("the local player dock replaces the self battlefield square and follows Qui
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((html.match(/class="player-square opponent-player-card/g) ?? []).length, 3, "a four-player board renders only the three opponents");
   assert.equal((html.match(/data-player-anchor="/g) ?? []).length, 4, "every visible player has one authoritative DOM anchor");
-  assert.match(html, /class="local-player-dock"[^>]*data-player-anchor="p1"/);
+  assert.match(html, /class="local-player-dock\s*"[^>]*data-player-anchor="p1"/);
   assert.match(html, /class="player-square[^>]*data-player-anchor="p2"/);
   assert.match(html, /class="player-square[^>]*data-player-anchor="p3"/);
-  assert.match(html, /class="mini-zone-card mini-equipment-card"[^>]*data-equipment-id="opponent-weapon"/);
-  assert.match(html, /class="opponent-hero-overlay"[\s\S]*class="opponent-hero-name">Liu Bei<\/strong>[\s\S]*class="player-hp">HP 3\/4<\/span>[\s\S]*class="player-hearts">♥♥♥<\/span>/);
-  assert.match(html, /class="opponent-hand-footer"[\s\S]*class="player-hand-label">Hand cards<\/span>[\s\S]*class="player-hand-count">4<\/strong>/);
-  assert.match(html, /class="mini-zone-card mini-equipment-card"[^>]*data-equipment-id="opponent-weapon"[\s\S]*class="played-card bluesteelsword black-suit/);
+  assert.match(html, /class="opponent-equipment-indicator" data-slot="weapon" data-equipment-id="opponent-weapon" data-card-kind="BlueSteelSword" role="img" aria-label="Weapon equipped: Blue Steel Sword"/);
+  assert.match(html, /class="opponent-hero-overlay"[\s\S]*class="opponent-player-name" aria-label="ALICE" title="ALICE">ALICE<\/span>/, "the only miniature identity is the real player name over the portrait");
+  assert.doesNotMatch(html, /class="opponent-hero-name"|class="player-hp opponent-hp-badge"|class="player-hearts"|class="opponent-player-name-strip"/, "miniature Hero names, duplicate HP and the old exterior name row are absent");
+  assert.match(html, /class="opponent-status-equipment-strip"[\s\S]*class="opponent-hp-chip" aria-label="HP 3 of 4">HP 3\/4<\/span>[\s\S]*class="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count="1"[\s\S]*data-slot="weapon"[^>]*>/, "authoritative HP precedes real public Equipment in one lower band");
+  assert.doesNotMatch(html, /class="opponent-hand-footer"|class="player-hand-count"/);
+  assert.match(html, /class="opponent-equipment-indicator"[^>]*title="Weapon: Blue Steel Sword"/);
   assert.match(html, /class="mini-zone-card judgement-mini"[^>]*data-judgement-id="opponent-judgement"/);
   assert.match(html, /class="local-hand"[^>]*data-card-origin-anchor="p1"/);
-  assert.match(html, /class="draw-stack"[^>]*data-draw-anchor="true"/);
-  assert.match(html, /class="discard-stack"[^>]*data-discard-anchor="true"/);
+  assert.match(html, /class="play-center" aria-hidden="true"><div class="draw-stack" data-draw-anchor="true"><\/div><div class="discard-stack" data-discard-anchor="true"><\/div><\/div>/, "card-flight anchors contain no visible pile content");
   assert.doesNotMatch(html, /class="player-square player-square-0/);
-  assert.match(html, /class="local-player-dock"/);
+  assert.match(html, /class="local-player-dock\s*"/);
   assert.match(html, /data-hero-id="cao-cao"/);
   assert.match(html, /class="player-square-portrait opponent-hero-portrait" data-hero-id="liu-bei"[\s\S]*data-hero-art-id="liu-bei"/);
   assert.match(html, /data-hero-art-id="xiahou-dun"/);
-  assert.match(html, /aria-label="Inspect ALICE"/, "opponent heroes are inspectable when no target is active");
+  assert.match(html, /aria-label="Inspect ALICE"/, "opponent Hero cards are inspectable when no target is active");
+  assert.doesNotMatch(html, /class="hero-card-info-button" aria-label="Inspect ALICE"/);
   assert.match(sequenceStyleSource, /\.opponent-hero-card \{[\s\S]*aspect-ratio: 2 \/ 3;/, "opponent hero portraits remain 2:3");
   assert.match(sequenceStyleSource, /\.opponent-hero-portrait \{[\s\S]*height: 100% !important;/, "opponent artwork fills the hero region");
   assert.match(sequenceStyleSource, /\.opponent-hero-portrait \.hero-art-image \{[^}]*object-fit: cover; object-position: center top;/, "opponent artwork uses cover framing");
@@ -289,28 +599,36 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /data-slot="offensiveHorse"[^>]*aria-label="-1 Horse slot"/);
   assert.equal((html.match(/class="local-dock-zones"/g) ?? []).length, 1);
   assert.equal((html.match(/class="local-equipment-panel"/g) ?? []).length, 1);
-  assert.equal((html.match(/class="local-judgement-panel"/g) ?? []).length, 1);
+  assert.equal((html.match(/class="local-judgement-panel"/g) ?? []).length, 0, "persistent Judgement has no independent Dock panel");
+  assert.equal((html.match(/class="local-judgement-cards local-judgement-overlay"/g) ?? []).length, 1, "local Judgement is overlaid on the Hero");
+  assert.match(html, /class="local-hero-anchor"[\s\S]*?class="local-hero-card"[\s\S]*?<\/button><div[^>]*class="local-judgement-cards local-judgement-overlay"/, "overlay controls are siblings of the Hero button");
+  assert.equal((html.match(/data-judgement-id="lightning"/g) ?? []).length, 1, "the local physical Judgement card renders once");
+  assert.equal((html.match(/data-judgement-id="overindulgence"/g) ?? []).length, 1, "the second local physical Judgement card renders once");
+  assert.equal((html.match(/class="local-judgement-cards local-judgement-overlay[\s\S]*?class="local-judgement-card-slot"/g) ?? []).length, 1, "the overlay contains its existing physical-card slots");
   assert.doesNotMatch(html, /class="local-zone-panel"/);
   const emptyRoom = normalizeRoomData({ ...payload, code: "DOCK-EMPTY", players: players.map((player) => player.id === "p1" ? { ...player, equipmentCards: [], judgementCards: [] } : player) });
   assert.ok(emptyRoom);
   const emptyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: emptyRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((emptyHtml.match(/class="local-zone-empty-label"/g) ?? []).length, 4, "empty equipment slots retain all four labels");
   assert.doesNotMatch(emptyHtml, />\+<\/span>/, "empty equipment slots do not render a plus placeholder");
+  assert.equal((emptyHtml.match(/class="local-judgement-cards local-judgement-overlay"/g) ?? []).length, 0, "an empty local Judgement zone consumes no overlay");
   const equipmentOrder = ["weapon", "armor", "defensiveHorse", "offensiveHorse"].map((slot) => html.indexOf(`data-slot="${slot}"`));
   assert.deepEqual(equipmentOrder, [...equipmentOrder].sort((a, b) => a - b), "equipment uses Weapon, Armour, +1 Horse, -1 Horse order");
   assert.match(sequenceStyleSource, /\.local-dock-zones\s*\{[\s\S]*align-items: stretch/);
   assert.equal((html.match(/class="local-status-panel"/g) ?? []).length, 1);
   assert.match(html, /data-slot="weapon"[^>]*aria-label="Weapon slot"/);
   assert.match(html, /data-slot="armor"[^>]*aria-label="Armour slot"/);
-  assert.match(html, /class="local-judgement-cards"[^>]*data-judgement-layout="pending"/);
+  assert.match(html, /class="local-judgement-cards local-judgement-overlay"[^>]*data-judgement-layout="pending"/);
   assert.equal((html.match(/class="local-judgement-card-slot"/g) ?? []).length, 2, "Judgement renders only its two actual cards");
   assert.match(gameRoomSource, /const judgementCardLayout = useMemo[\s\S]*Math\.max\(12, naturalStep\)/, "Judgement spacing overlaps dynamically");
   assert.doesNotMatch(sequenceStyleSource, /local-judgement-stack \.local-zone-card:nth-child/);
   assert.match(html, /aria-label="Explain Blue Steel Sword"/); assert.match(html, /aria-label="Explain Lightning"/);
   assert.match(html, /data-equipment-id="weapon"[\s\S]*class="played-card bluesteelsword black-suit/);
   assert.match(html, /data-judgement-id="lightning"[\s\S]*class="played-card lightning black-suit/);
-  assert.match(html, /class="opponent-public-zones"[\s\S]*class="player-hero-card opponent-hero-card"[\s\S]*class="opponent-equipment-zone"/, "opponent Equipment is a sibling below the hero card");
-  assert.equal((html.match(/class="opponent-equipment-slot"/g) ?? []).length, 12, "each visible opponent keeps four identifiable equipment slots");
+  assert.match(html, /class="opponent-public-zones"[\s\S]*class="player-hero-card opponent-hero-card"[\s\S]*class="opponent-player-name" aria-label="ALICE" title="ALICE">ALICE<\/span>[\s\S]*class="opponent-status-equipment-strip"[\s\S]*class="opponent-hp-chip" aria-label="HP 3 of 4">HP 3\/4<\/span>[\s\S]*class="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count="1"[\s\S]*class="opponent-equipment-indicator" data-slot="weapon" data-equipment-id="opponent-weapon"/, "player name overlays the portrait and HP leads the single equipment band");
+  assert.equal((html.match(/class="opponent-equipment-indicator"/g) ?? []).length, 1, "only the occupied public opponent equipment slot renders an indicator");
+  assert.equal((html.match(/class="opponent-equipment-summary"/g) ?? []).length, 3, "each opponent reserves the same row height even when no public slot is occupied");
+  assert.equal((html.match(/data-slot-count="0"/g) ?? []).length, 2, "empty rows expose no fake equipment glyphs");
   assert.match(html, /class="opponent-judgement-zone"[\s\S]*data-judgement-id="opponent-judgement"/, "Judgement is a separate side zone with its card anchor");
   assert.doesNotMatch(html, /class="opponent-card-zones"/, "the old portrait-overlay zone wrapper is removed");
   assert.match(gameRoomSource, /const renderZoneCard[\s\S]*<CardFace card=\{card\}/, "local zones reuse the shared card artwork renderer");
@@ -323,44 +641,69 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.equal((html.match(/class="card-slot/g) ?? []).length, 4, "the rail has one slot per physical hand card");
   assert.equal((html.match(/data-hand-card-id="/g) ?? []).length, 4, "the compact rail keeps exactly four physical hand cards");
   assert.equal((html.match(/class="hand-card-visual"/g) ?? []).length, 4, "each physical hand card owns one shared visual wrapper");
-  assert.equal((html.match(/class="card-info-button"/g) ?? []).length, 4, "each physical hand card owns one information control");
+  assert.equal((html.match(/class="card-info-button"/g) ?? []).length, 0, "physical hand cards do not carry tiny overlapping information controls");
+  assert.doesNotMatch(gameRoomSource, /data-hand-card-id=\{item\.id\}[\s\S]*className="card-info-button"/);
+  assert.match(gameRoomSource, /selectedHandDetailsCard\?\.id === item\.id && selectedHandDetailsCard && <button type="button" className="hand-card-details-action" data-testid="hand-card-details-action"[\s\S]*openCardDetails\(selectedHandDetailsCard, "private-hand"/, "the selected physical card owns its attached Details action");
+  assert.match(gameRoomSource, /<div className="hand-card-visual">[\s\S]*?className="hand-card-details-action"[\s\S]*?<\/button>\}\s*<\/div>/, "Details is layered inside the selected CardFace visual wrapper");
+  assert.match(gameRoomSource, /detailsSelected \? "details-selected"/, "the selected card is framed and lifted with its Details action");
   assert.doesNotMatch(html, /class="play-hand"/, "the legacy private play-hand renderer is removed");
   assert.match(html, /class="local-hand"[\s\S]*class="local-hand-rail"/);
   assert.ok(html.indexOf('class="local-hand"') < html.indexOf('class="turn-controls"'), "the hand precedes contextual controls in the DOM");
   assert.match(gameRoomSource, /const multiSelectMode = room\.phase === "discard"/);
   assert.match(gameRoomSource, /const singleSelected = !multiSelectMode && isSelected/);
   assert.match(gameRoomSource, /singleSelected \? "single-selected"/);
-  assert.match(gameRoomSource, /data-hand-card-id=\{item\.id\}[\s\S]*className="card-info-button"/);
   assert.doesNotMatch(gameRoomSource, /local-selected-card-preview|selectedPreviewCard/);
   assert.match(gameRoomSource, /key={`rail-\$\{item\.id\}`}/);
-  assert.match(html, /class="discard-stack"[^>]*data-discard-kind="Dismantle"/);
+  assert.doesNotMatch(html, /data-discard-kind=/, "permanent Discard identity is no longer rendered into the battlefield");
   assert.match(html, /title="After you take damage, you may obtain the card that caused damage on you\."/);
   assert.doesNotMatch(html, /private-opponent-card/);
   const sequenceSource = gameRoomSource.slice(gameRoomSource.indexOf("function TableResolutionSequence"), gameRoomSource.indexOf("function CardFace"));
   assert.doesNotMatch(sequenceSource, /Math\.(sin|cos)|activeAngle|activeRadians|--seat-[xy]/, "resolution placement is not circular seat geometry");
   assert.match(sequenceSource, /centerRelativeToTable/);
-  assert.match(sequenceStyleSource, /\.local-dock-identity,\s*\.local-dock-zones,\s*\.local-status-panel,\s*\.local-equipment-panel,\s*\.local-judgement-panel,\s*\.local-hand-section,\s*\.local-player-dock \.turn-controls\s*\{[\s\S]*border: 1px solid #765f3c99[\s\S]*background: #0e120dcc/);
+  const sharedPanelChrome = sequenceStyleSource.match(/\.local-dock-identity,\s*\.local-dock-zones,\s*\.local-status-panel,\s*\.local-equipment-panel,\s*\.local-hand-section,\s*\.local-player-dock \.console-guidance,\s*\.local-player-dock \.turn-controls\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.match(sharedPanelChrome, /border: 1px solid #765f3c99;/);
+  assert.match(sharedPanelChrome, /background: #0e120dcc;/);
   assert.match(sequenceStyleSource, /--hand-panel-height: 108px[\s\S]*--hand-peek-height: 102px[\s\S]*--hand-card-height: 102px[\s\S]*--hand-top-inset: 4px[\s\S]*--selected-rise: 48px[\s\S]*--hand-bottom-gutter: 10px/);
   assert.match(sequenceStyleSource, /hand-top-inset - selected-rise \+ hand-card-height[\s\S]*hand-panel-height - hand-bottom-gutter/);
-  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*--top-panel-height: 58px[\s\S]*grid-template-columns: 70px minmax\(0, 1fr\)[\s\S]*grid-template-rows: var\(--top-panel-height\) var\(--hand-panel-height\) 48px/);
+  const compactDockRule = [...sequenceStyleSource.matchAll(/@media \(max-width: 480px\) \{([\s\S]*?)\n\}/g)]
+    .map(([, mediaRules]) => mediaRules.match(/\.local-player-dock\s*\{([^}]*)\}/)?.[1])
+    .find(Boolean) ?? "";
+  assert.match(compactDockRule, /--top-panel-height: 58px;[^}]*grid-template-columns: 96px minmax\(0, 1fr\);[^}]*grid-template-rows: auto var\(--top-panel-height\) var\(--hand-panel-height\) minmax\(48px, auto\);/);
+  const compactHeroAnchorRule = [...sequenceStyleSource.matchAll(/@media \(max-width: 480px\) \{([\s\S]*?)\n\}/g)]
+    .map(([, mediaRules]) => mediaRules.match(/\.local-hero-anchor\s*\{([^}]*)\}/)?.[1])
+    .find(Boolean) ?? "";
+  assert.match(compactHeroAnchorRule, /width: min\(100%, 88px\);[^}]*max-width: 88px;/);
   assert.match(sequenceStyleSource, /--top-panel-height: 124px[\s\S]*--zone-card-width: clamp\(28px, 7\.6vw, 34px\)/);
-  assert.match(sequenceStyleSource, /\.local-dock-zones\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\) max-content var\(--judgement-panel-width\)[\s\S]*height: var\(--top-panel-height\)/);
-  assert.match(sequenceStyleSource, /--judgement-panel-width: calc\(var\(--zone-card-width\) \+ var\(--zone-card-width\) \+ var\(--zone-card-gap\) \+ 8px\)/);
+  const dockZonesRule = sequenceStyleSource.match(/\.local-dock-zones\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.match(dockZonesRule, /grid-template-columns: minmax\(0, 1fr\) max-content;/, "Skills and Equipment keep the two-track top row");
+  assert.match(dockZonesRule, /height: var\(--top-panel-height\)/);
+  assert.doesNotMatch(sequenceStyleSource, /--judgement-panel-width|\.local-judgement-panel/, "the independent Judgement track is removed");
+  assert.match(sequenceStyleSource, /\.local-hero-anchor\s*\{[^}]*position: relative;[^}]*overflow: visible;/);
+  assert.match(sequenceStyleSource, /\.local-judgement-overlay\s*\{[^}]*position: absolute;[^}]*pointer-events: none;/);
+  assert.match(sequenceStyleSource, /\.local-judgement-card-slot \.local-zone-card\s*\{\s*pointer-events: auto;/, "only the card controls receive pointer input over the portrait");
   assert.match(gameRoomSource, /judgementCardLayout\.step - judgementCardWidth/);
+  assert.match(gameRoomSource, /hiddenCardIds\.has\(card\.id\)/, "in-flight Judgement cards retain their existing hidden-card behavior");
   assert.doesNotMatch(gameRoomSource, /judgementCardLayout\.step - 34/);
   assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*height: var\(--hand-panel-height\)[\s\S]*padding: var\(--hand-top-inset\) 4px var\(--hand-bottom-gutter\)/);
-  assert.match(sequenceStyleSource, /\.local-dock-identity,\s*\.local-dock-zones,\s*\.local-status-panel,\s*\.local-equipment-panel,\s*\.local-judgement-panel,\s*\.local-hand-section,\s*\.local-player-dock \.turn-controls\s*\{[\s\S]*border: 1px solid #765f3c99[\s\S]*background: #0e120dcc/);
-  assert.match(sequenceStyleSource, /\.local-hand-rail\s*\{[\s\S]*top: 0[\s\S]*height: var\(--hand-peek-height\)[\s\S]*overflow: visible/);
+  const handViewportRule = sequenceStyleSource.match(/\.local-hand-rail\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.match(handViewportRule, /top: calc\(-1 \* var\(--hand-lift-clearance\)\)/);
+  assert.match(handViewportRule, /height: calc\(var\(--hand-peek-height\) \+ var\(--hand-lift-clearance\)\)/);
+  assert.match(handViewportRule, /padding: var\(--hand-lift-clearance\) 0 0/);
+  assert.match(handViewportRule, /overflow-x: auto; overflow-y: hidden/);
+  assert.match(handViewportRule, /pointer-events: none/, "empty lift space preserves underlying Skills/Equipment hits");
   assert.match(gameRoomSource, /ResizeObserver[\s\S]*handRailWidth[\s\S]*calculateHandCardStep/);
   assert.doesNotMatch(sequenceStyleSource, /margin-left: -38px|margin-left: -34px/);
-  assert.match(html, /class="hand-card-visual"[\s\S]*class="game-card[\s\S]*class="card-info-button"/);
-  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot\.single-selected \.hand-card-visual\s*\{[\s\S]*transform: translateY\(calc\(-1 \* var\(--selected-rise\)\)\)/);
+  assert.match(html, /class="hand-card-visual"[\s\S]*class="game-card/);
+  assert.doesNotMatch(html, /class="card-info-button"/);
+  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot\.single-selected \.hand-card-visual,\s*\.local-hand-rail \.card-slot\.multi-selected \.hand-card-visual,\s*\.local-hand-rail \.card-slot\.details-selected \.hand-card-visual\s*\{[^}]*transform: translateY\(calc\(-1 \* var\(--selected-rise\)\)\)/, "single, multi, and Details selections share the full wrapper lift");
   const heroSkillEligibleRule = globalStyleSource.match(/\.game-card\.hero-skill-eligible\{([^}]*)\}/)?.[1] ?? "";
   assert.match(heroSkillEligibleRule, /border-color:/, "hero-skill-eligible keeps its eligibility styling");
   assert.doesNotMatch(heroSkillEligibleRule, /transform\s*:/, "eligibility must not move every hand card");
-  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot:not\(\.single-selected\) \.game-card\.selected\s*\{\s*transform: translateY\(-5px\)/, "multi-select cards rise from the normal baseline");
-  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-info-button\s*\{[\s\S]*left: 50%[\s\S]*top: calc\(var\(--hand-card-height\) \* \.67\)/);
-  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot\.single-selected \.card-info-button\s*\{[\s\S]*opacity: 1[\s\S]*pointer-events: auto[\s\S]*translate: -50% -50%/);
+  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot\.multi-selected \.game-card\.selected\s*\{[^}]*transform: translateY\(calc\(0px - var\(--selected-face-rise\)\)\)/, "every selected multi-card face receives the shared face lift");
+  assert.doesNotMatch(sequenceStyleSource, /\.local-hand-rail \.card-slot\.multi-selected \.hand-card-visual\s*\{[^}]*transform:\s*none/, "multi-select must not cancel the shared wrapper lift");
+  assert.match(sequenceStyleSource, /\.local-hand-rail \.hand-card-details-action\s*\{[^}]*width: 44px; min-width: 44px; height: 44px; min-height: 44px;/, "the attached Details hit area remains at least 44 by 44 CSS pixels");
+  assert.match(sequenceStyleSource, /\.local-hand-rail \.hand-card-details-action\s*\{[^}]*top: calc\(var\(--hand-card-height\) - 44px\)/, "the DETAILS hit target starts at the CardFace's lower interior edge");
+  assert.match(sequenceStyleSource, /\.card-slot\.details-selected \.hand-card-details-action\s*\{\s*transform: translateY\(calc\(0px - var\(--selected-face-rise\)\)\)/, "DETAILS follows the selected card's face movement");
   assert.match(sequenceStyleSource, /\.local-hand-rail \.game-card \.corner\s*\{[\s\S]*width: 17px[\s\S]*min-height: 23px/);
   assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*z-index: 50/);
   assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls\s*\{[\s\S]*z-index: 100/);
@@ -369,10 +712,11 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.doesNotMatch(sequenceStyleSource, /margin-left: -38px|margin-left: -34px/);
   assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls\s*\{[\s\S]*min-height: 65px[\s\S]*padding: 7px 8px/);
   assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls button\s*\{[\s\S]*min-width: 78px/);
-  assert.match(globalStyleSource, /\.player-hp[\s\S]*\.player-hearts[\s\S]*\.player-hand-count/);
+  assert.match(sequenceStyleSource, /\.opponent-hero-overlay[\s\S]*\.player-hp[\s\S]*\.player-hearts/);
   assert.match(globalStyleSource, /\.mini-equipment-card \.mini-equipment-button > \.played-card[\s\S]*width: 100%[\s\S]*height: 100%/);
   assert.match(sequenceStyleSource, /@media \(max-width: 360px\)[\s\S]*grid-template-columns: 64px minmax\(0, 1fr\)/);
-  assert.match(sequenceStyleSource, /\.local-hero-card\s*\{[\s\S]*width: min\(100%, 72px\)[\s\S]*height: auto[\s\S]*aspect-ratio: 2 \/ 3/);
+  assert.match(sequenceStyleSource, /\.local-hero-anchor\s*\{[^}]*width: min\(100%, 72px\)[^}]*max-width: 72px/);
+  assert.match(sequenceStyleSource, /\.local-hero-card\s*\{[\s\S]*width: 100%[\s\S]*height: auto[\s\S]*aspect-ratio: 2 \/ 3/);
   assert.match(sequenceStyleSource, /\.local-hero-overlay\s*\{[\s\S]*background: linear-gradient/);
   assert.match(sequenceStyleSource, /\.local-hero-vitals\s*\{[\s\S]*flex-direction: column/);
   assert.match(sequenceStyleSource, /\.local-status-panel\s*\{[\s\S]*align-items: stretch[\s\S]*overflow: visible/);
@@ -384,14 +728,19 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /player-square-1 \{[\s\S]*left: var\(--opponent-seat-x\);[\s\S]*top: var\(--side-seat-y\)/, "left opponent uses the shared side seat");
   assert.match(sequenceStyleSource, /player-square-2 \{[\s\S]*left: 50%;[\s\S]*top: var\(--top-seat-y\)/, "top opponent remains centred");
   assert.match(sequenceStyleSource, /player-square-3 \{[\s\S]*right: var\(--opponent-seat-x\);[\s\S]*top: var\(--side-seat-y\)/, "right opponent mirrors the left seat");
-  assert.match(sequenceStyleSource, /\.game-shell \.play-center \{[\s\S]*top: clamp\(290px, 66%, 520px\)/, "piles use the lower-middle board anchor");
-  assert.match(sequenceStyleSource, /\.opponent-equipment-zone[\s\S]*\.opponent-equipment-slots[\s\S]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)/, "Equipment keeps four logical slots below the portrait");
+  assert.match(sequenceStyleSource, /\.game-shell \.play-center \{[\s\S]*top: clamp\(290px, 66%, 520px\)/, "nonvisual discard flights keep their lower-middle anchor");
+  assert.match(sequenceStyleSource, /\.game-shell \.play-center > \.draw-stack,[\s\S]*?\.game-shell \.play-center > \.discard-stack \{[^}]*width: 1px;[^}]*height: 1px;[^}]*opacity: 0;[^}]*pointer-events: none;/, "Deck/Discard geometry targets are tiny, invisible and noninteractive");
+  assert.match(gameRoomSource, /className="opponent-equipment-summary"[\s\S]*\{equipmentSummary\}/, "opponent equipment is summarized by its public slots");
+  assert.match(gameRoomSource, /className="opponent-equipment-indicator" data-slot=\{key\} data-equipment-id=\{equipment\.id\} data-card-kind=\{equipment\.kind\} role="img"/, "equipment indicators retain the projected physical card identity and slot");
+  assert.match(gameRoomSource, /function OpponentEquipmentGlyph/, "each equipment slot has its own compact visual glyph");
+  assert.match(sequenceStyleSource, /UX2 §10\.8\.2\.2 H2-G1[\s\S]*?\.game-shell \.player-board \.opponent-status-equipment-strip\s*\{[\s\S]*?flex: 0 0 20px[\s\S]*?data-seat-topology="side-column"[\s\S]*?\.opponent-status-equipment-strip\s*\{[\s\S]*?flex-basis: 18px/, "the final seat rules use a compact shared HP/equipment band at both top and side seats");
+  assert.match(sequenceStyleSource, /\.opponent-seat-inspect-button\s*\{[\s\S]*?width: 44px[\s\S]*?height: 44px[\s\S]*?pointer-events: auto/, "target selection keeps a separate accessible Inspect hit target");
   assert.match(sequenceStyleSource, /\.opponent-judgement-zone \{[\s\S]*left: calc\(100% \+ 4px\)/, "Judgement is visually distinct and offset to the side");
   assert.match(sequenceStyleSource, /\.opponent-judgement-cards \.mini-zone-card \+ \.mini-zone-card \{[\s\S]*margin-left: -45%/i, "multiple Judgement cards use controlled overlap");
   assert.match(gameRoomSource, /const \[expandedOpponentId, setExpandedOpponentId\] = useState<string \| null>\(null\)/, "inspection is presentation-local state");
   assert.match(gameRoomSource, /targetSelectionActive \? onTarget : onInspect/, "target selection takes priority over inspection");
-  assert.match(gameRoomSource, /expandedOpponentId && \(\(\) => \{[\s\S]*OpponentInspectionOverlay/, "expanded inspection reuses projected opponent data");
-  assert.match(gameRoomSource, /onClick=\{\(event\) => \{ event\.stopPropagation\(\); onHeroInfo\(playerHero\); \}\}/, "inspection info buttons do not toggle inspection");
+  // Inspect placement, projected public details, and concealed-hand redaction are behavior-tested in tests/browser/opponent-inspect-hero-focus.spec.mjs.
+  // The seat Hero-info click behavior is also tested in tests/browser/opponent-inspect-hero-focus.spec.mjs.
   assert.match(sequenceStyleSource, /\.opponent-inspection-card \{[\s\S]*aspect-ratio: 2 \/ 3;/, "expanded public cards preserve aspect ratio");
   assert.match(sequenceStyleSource, /\.opponent-inspection-card-row \{[\s\S]*flex-wrap: wrap;/, "expanded public cards wrap instead of overlapping");
 
@@ -439,7 +788,7 @@ test("Zhou Yu renders Sowing Distrust from its projected semantic capability", (
   assert.match(gameRoomSource, /activeSkillTargetMode && activeSkillTargetIds\.includes\(player\.id\)/, "activated semantic target skills make projected opponents selectable across phases");
   assert.match(gameRoomSource, /setActiveSkillSelectionState\(\(state\) => \{[\s\S]*targetIds: next/, "target selection stores the chosen opponent in the active skill state");
   assert.match(gameRoomSource, /onAction\("trigger", activeSkillSubmission\)/, "active skills use the generic trigger action");
-  assert.match(gameRoomSource, /activeSkillSubmission = .*providerId: activeSkillOption\.effectId[\s\S]*targetId: activeSkillTargetId/, "the generic trigger payload carries providerId and targetId");
+  assert.match(gameRoomSource, /activeSkillSubmission =[\s\S]*?providerId: activeSkillOption\.effectId[\s\S]*(?:targetIds: activeSkillSelectedTargetIds|targetId: activeSkillTargetId)/, "the generic trigger payload carries providerId and the selected target field");
 
   const unavailableRoom = normalizeRoomData({ ...payload, code: "FANJIAN-UI-OFF", currentAction: { ...payload.currentAction, triggerOptions: [] } });
   assert.ok(unavailableRoom);
@@ -460,8 +809,9 @@ test("normalized malformed and unknown response states render safely", () => {
   });
   assert.ok(room);
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.match(html, /game-exit/);
-  assert.match(html, /class="local-player-dock"/);
+  assert.match(html, /aria-label="System menu"/);
+  assert.doesNotMatch(html, /class="game-exit"/);
+  assert.match(html, /class="local-player-dock\s*"/);
   assert.match(html, /aria-label="Explain Sima Yi"/);
   assert.doesNotMatch(html, />Necromancy<\/em>/);
   const heroInfoHtml = renderToStaticMarkup(React.createElement(HeroInfoDialog, { hero: { id: "simayi", name: "Sima Yi", faction: "Wei", hp: 3, skills: [{ name: "Retaliation", description: "After you take damage, you may obtain 1 card from the character that inflicted the damage." }, { name: "Necromancy", description: "After a Judgement card is flipped, you may discard 1 card from your hand. The discarded card then becomes the new Judgement card." }], ability: "After you take damage, you may obtain 1 card from the character that inflicted the damage." }, onClose: () => {} }));
@@ -506,7 +856,7 @@ test("normalized malformed and unknown response states render safely", () => {
   });
   assert.ok(waitingRoom);
   const waitingHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: waitingRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.match(waitingHtml, /class="discard-empty"/, "an empty discard pile renders safely");
+  assert.match(waitingHtml, /class="play-center" aria-hidden="true"><div class="draw-stack" data-draw-anchor="true"><\/div><div class="discard-stack" data-discard-anchor="true"><\/div><\/div>/, "an empty discard pile retains only its nonvisual flight anchor");
   assert.doesNotMatch(waitingHtml, /Skip · take 1 damage/);
   assert.match(waitingHtml, /Waiting for the latest response state/);
 
@@ -570,7 +920,7 @@ test("normalized malformed and unknown response states render safely", () => {
   const luoshenBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: luoshenRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Godess of Luo River<\/button>/);
   assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Skip<\/button>/);
-  assert.doesNotMatch(luoshenBusyHtml, /Resolving…|Skipping…/);
+  assertNoTransientBusyGuidance(luoshenBusyHtml);
 
   const pickerRoom = normalizeRoomData({
     code: "SAFE-PICKER", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
@@ -579,19 +929,19 @@ test("normalized malformed and unknown response states render safely", () => {
       { id: "p2", name: "TARGET", seat: 1, hero: "guan-yu", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 0, equipmentCards: [card("armor", "NioShield")], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
     ],
     myHand: [], turnSeat: null, phase: "response", deckCount: 0, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Use Frost Sword", isMyAction: true,
-    pending: { kind: "trigger" }, currentAction: { version: 3, kind: "trigger", actorId: "p1", deadline: 0, reason: "Use Frost Sword", legalActions: ["trigger", "decline_trigger"], triggerEvent: "damage_about_to_apply", triggerOptions: [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", targetId: "p2", min: 1, max: 2, eligibleKeys: ["hand:3", "hand:0", "hand:1", "hand:2", "not-eligible", "armor"] } }], declineAction: "decline_trigger" },
+    pending: { kind: "trigger" }, currentAction: { version: 3, kind: "trigger", actorId: "p1", deadline: 0, reason: "Use Frost Sword", legalActions: ["trigger", "decline_trigger"], triggerEvent: "damage_about_to_apply", triggerOptions: [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", targetId: "p2", min: 2, max: 2, eligibleKeys: ["hand:3", "hand:0", "hand:1", "hand:2", "not-eligible", "armor"] } }], declineAction: "decline_trigger" },
     pendingAttack: null, pendingGreenDragon: null, pendingRockCleaving: null, pendingFrostSword: null, pendingDuel: null, pendingGroup: null, pendingNegation: null, pendingHarvest: null, pendingTargetCard: null, pendingBorrowedSword: null, pendingDying: null,
   });
   const pickerHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: pickerRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((pickerHtml.match(/aria-label="Hidden hand card \d+"/g) ?? []).length, 4, "target_cards renders every eligible hidden hand key without using handCount");
   assert.equal((pickerHtml.match(/class="target-card-picker-card concealed-card/g) ?? []).length, 4, "hidden hand buttons use the picker-specific concealed-card class");
   assert.doesNotMatch(pickerHtml, /class="target-card-picker-card hidden(?:\s|[^"]*")/, "hidden hand buttons do not use Tailwind's standalone hidden class");
-  assert.match(pickerHtml, /aria-label="Nio Shield/);
+  assert.match(pickerHtml, /aria-label="Equipment: Nio Shield/);
   assert.doesNotMatch(pickerHtml, /aria-label="not-eligible"/);
   const pickerBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: pickerRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(pickerBusyHtml, /<button[^>]*disabled=""[^>]*>Skip<\/button>/);
   assert.match(pickerBusyHtml, /<button[^>]*disabled=""[^>]*>Use Frost Sword<\/button>/);
-  assert.doesNotMatch(pickerBusyHtml, /Resolving…|Skipping…/);
+  assertNoTransientBusyGuidance(pickerBusyHtml);
 
   const choicePayload = {
     code: "SAFE-CHOICE", status: "playing", maxPlayers: 4, isHost: false, isTestController: true, meId: "p2", myRole: "Rebel", myHeroOptions: [],
@@ -614,7 +964,7 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.doesNotMatch(choiceHtml, /Skip/, "mandatory Yin-Yang choice has no Skip action");
   const choiceBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: choiceRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(choiceBusyHtml, /<button[^>]*disabled=""[^>]*>Confirm choice<\/button>/);
-  assert.doesNotMatch(choiceBusyHtml, /Resolving…|Skipping…/);
+  assertNoTransientBusyGuidance(choiceBusyHtml);
 
   const triumphantPayload = normalizeRoomData({ ...choicePayload, meId: "p1", myRole: "Lord", actionPlayerId: "p1", actionReason: "Triumphant", isMyAction: true, currentAction: { ...choicePayload.currentAction, actorId: "p1", reason: "Triumphant", legalActions: ["trigger", "decline_trigger"], triggerOptions: [{ effectId: "hua_xiong_triumphant", label: "Triumphant", allowDecline: true, selection: { type: "choice", choices: [{ id: "recover", label: "Recover 1 HP" }, { id: "draw", label: "Draw 1 card" }], eligibleHandKeys: [] } }], declineAction: "decline_trigger" } });
   const triumphantHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: triumphantPayload, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));

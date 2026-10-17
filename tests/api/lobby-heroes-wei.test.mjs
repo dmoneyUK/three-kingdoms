@@ -55,6 +55,126 @@ test("test controller accepts displayed Lord and non-first candidates through th
   assert.ok(room.players.every((player) => player.hero));
 });
 
+test("Duel test preset keeps physical Standard inventory and test-view selection independent of the acting player", async () => {
+  const created = await requestAndSettle("create", { name: "Duel Test Host" });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const { code } = created.data.room;
+  const token = created.data.token;
+  const added = await requestAndSettle("add_test_players", { code, token });
+  assert.equal(added.status, 200, JSON.stringify(added.data));
+  const enabled = await requestAndSettle("enable_test_room", { code, token });
+  assert.equal(enabled.status, 200, JSON.stringify(enabled.data));
+
+  const configured = await requestAndSettle("configure_test_hands", { code, token, presetId: "duel_chain", expectedRevision: 0 });
+  assert.equal(configured.status, 200, JSON.stringify(configured.data));
+  assert.deepEqual(configured.data.room.testHandPreset.handsBySeat, {
+    0: ["Attack", "Attack", "Attack", "Dodge"],
+    1: ["Duel", "Attack", "Attack", "Dodge"],
+    2: ["Duel", "Attack", "Attack", "Dodge"],
+    3: ["Duel", "Attack", "Attack", "Dodge"],
+  });
+
+  let room = (await requestAndSettle("start", { code, token })).data.room;
+  while (room.status === "heroes") {
+    const candidate = room.myHeroOptions[0];
+    assert.ok(candidate, "the test controller can choose the current seat's hero");
+    room = (await requestAndSettle("choose_hero", { code, token, heroId: candidate.id })).data.room;
+  }
+  assert.equal(room.status, "playing");
+
+  const views = await Promise.all(room.players.map((player) => state(code, token, false, player.id)));
+  assert.ok(views.every((view) => view.status === 200));
+  assert.ok(views.every((view, index) => view.data.meId === room.players[index].id));
+  const allHandCards = views.flatMap((view) => view.data.myHand);
+  assert.equal(allHandCards.length, 16);
+  assert.equal(new Set(allHandCards.map((held) => held.id)).size, 16, "every dealt physical card identity is unique");
+  assert.equal(room.deckCount + allHandCards.length, 108, "opening hand allocation conserves all 108 Standard cards");
+  for (const held of allHandCards) assert.equal(roomCardCount(code, held.id), 1, `${held.id} appears in exactly one live room zone`);
+  const presetBySeat = {
+    0: ["Attack", "Attack", "Attack", "Dodge"],
+    1: ["Duel", "Attack", "Attack", "Dodge"],
+    2: ["Duel", "Attack", "Attack", "Dodge"],
+    3: ["Duel", "Attack", "Attack", "Dodge"],
+  };
+  for (const [seatText, kinds] of Object.entries(presetBySeat)) {
+    const seat = Number(seatText);
+    const hand = views[seat].data.myHand;
+    for (const kind of kinds) assert.ok(hand.some((held) => held.kind === kind), `seat ${seat + 1} receives its configured ${kind}`);
+  }
+
+  const actingPlayerId = room.currentAction?.actorId ?? room.actionPlayerId;
+  const selectedViewer = room.players.find((player) => player.id !== actingPlayerId);
+  const nextActor = room.players.find((player) => player.id !== actingPlayerId && player.id !== selectedViewer?.id);
+  assert.ok(actingPlayerId && selectedViewer && nextActor, "the test fixture has distinct viewer and acting seats");
+  let selectedView = await state(code, token, false, selectedViewer.id);
+  assert.equal(selectedView.status, 200);
+  assert.equal(selectedView.data.meId, selectedViewer.id);
+  assert.equal(selectedView.data.currentAction.actorId, actingPlayerId);
+  assert.equal(selectedView.data.isMyAction, false);
+  assert.deepEqual(selectedView.data.currentAction.legalActions, [], "a manual observer view receives no other seat's legal actions");
+
+  setTurn(code, nextActor.seat, "play");
+  selectedView = await state(code, token, false, selectedViewer.id);
+  assert.equal(selectedView.data.meId, selectedViewer.id, "the selected perspective remains fixed after the acting seat changes");
+  assert.equal(selectedView.data.currentAction.actorId, nextActor.id);
+  assert.deepEqual(selectedView.data.currentAction.legalActions, []);
+  const invalidViewer = await state(code, token, false, "not-a-controlled-player");
+  assert.equal(invalidViewer.status, 403, "the server rejects a viewer outside the authenticated test roster");
+
+  const humanGame = await createHumanGame();
+  const humanTarget = humanGame.room.players.find((player) => player.id !== humanGame.room.meId);
+  const unauthorizedViewer = await state(humanGame.code, humanGame.members[0].token, false, humanTarget.id);
+  assert.equal(unauthorizedViewer.status, 403, "an ordinary member cannot request another player's private view");
+});
+
+test("explicit TEST GAME lets the host assign specific unused Standard heroes to each controlled seat", async () => {
+  const created = await requestAndSettle("create", { name: "Hero Test Host" });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const code = created.data.room.code;
+  const token = created.data.token;
+  const added = await requestAndSettle("add_test_players", { code, token });
+  assert.equal(added.status, 200, JSON.stringify(added.data));
+  const enabled = await requestAndSettle("enable_test_room", { code, token });
+  assert.equal(enabled.status, 200, JSON.stringify(enabled.data));
+  assert.equal(enabled.data.room.isTestRoom, true);
+
+  const started = await requestAndSettle("start", { code, token });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  let room = started.data.room;
+  assert.equal(room.isTestRoom, true);
+  assert.equal(room.isTestController, true);
+  assert.ok(room.myHeroOptions.some((hero) => hero.id === "daqiao"), "the TEST GAME hero picker includes implemented non-Lord heroes");
+  assert.ok(room.myHeroOptions.some((hero) => hero.id === "zhao-yun"));
+  assert.equal(room.myHeroOptions.some((hero) => hero.id === "yu-jin"), false, "the picker excludes legacy, non-Standard heroes");
+
+  const heroBySeat = new Map([[0, "daqiao"], [1, "zhao-yun"], [2, "simayi"], [3, "huang-gai"]]);
+  let confirmedCount = 0;
+  while (room.status === "heroes") {
+    const actor = room.players.find((player) => player.id === room.meId);
+    assert.ok(actor, "the host controller receives the current controlled seat");
+    const selectedHeroId = heroBySeat.get(actor.seat);
+    assert.ok(selectedHeroId, `seat ${actor.seat + 1} has an explicit test assignment`);
+    assert.ok(room.myHeroOptions.some((hero) => hero.id === selectedHeroId), `${selectedHeroId} is available for seat ${actor.seat + 1}`);
+    const chosen = await requestAndSettle("choose_hero", { code, token, heroId: selectedHeroId });
+    assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+    room = chosen.data.room;
+    confirmedCount += 1;
+
+    if (room.status === "heroes") {
+      assert.equal(room.players.find((player) => player.id === actor.id)?.hero, selectedHeroId, "the test controller can verify the confirmed seat-to-hero assignment");
+      const nextActor = room.players.find((player) => player.id === room.meId);
+      assert.ok(nextActor);
+      assert.equal(room.myHeroOptions.some((hero) => hero.id === selectedHeroId), false, "a confirmed hero is removed from the next seat's options");
+      const duplicate = await requestAndSettle("choose_hero", { code, token, heroId: selectedHeroId });
+      assert.equal(duplicate.status, 409, "the server rejects reusing a hero even if a client crafts the request");
+    }
+  }
+
+  assert.equal(confirmedCount, 4);
+  assert.equal(room.status, "playing");
+  for (const player of room.players) assert.equal(player.hero, heroBySeat.get(player.seat), `seat ${player.seat + 1} receives its selected hero`);
+});
+
 test("hero selection enforces unique heroes for Quick Test and normal multiplayer, including stale concurrent choices", async () => {
   const quick = await createTestLobby();
   const quickFirst = quick.data.room;
@@ -277,12 +397,24 @@ test("Eight Trigrams uses the final card colour before and after Jealousy", { ti
     assert.equal(judged.status, 200, JSON.stringify(judged.data));
     assert.equal(judged.data.room.currentAction.triggerEvent, "judgement_effective");
     assert.deepEqual(judged.data.room.currentAction.triggerOptions.map((option) => option.label), ["Jealousy of God"]);
-    const obtained = await requestAndSettle("trigger", { code: game.code, token: guoMember.token, providerId: "guo_jia_jealousy_of_god" });
+    const obtained = await request("trigger", { code: game.code, token: guoMember.token, providerId: "guo_jia_jealousy_of_god" });
     assert.equal(obtained.status, 200, JSON.stringify(obtained.data));
     assert.ok(obtained.data.room.myHand.some((held) => held.id === judgement.id));
     assert.equal(roomCardCount(game.code, judgement.id), 1);
     assert.equal(discardIds(game.code).includes(judgement.id), false);
-    assert.equal(obtained.data.room.players.find((player) => player.id === guo.id).hp, succeeds ? 4 : 3);
+    assert.equal(obtained.data.room.players.find((player) => player.id === guo.id).hp, 4);
+    if (succeeds) {
+      assert.notEqual(obtained.data.room.currentAction.kind, "response");
+    } else {
+      assert.equal(obtained.data.room.currentAction.kind, "response");
+      assert.equal(obtained.data.room.currentAction.actorId, guo.id);
+      assert.equal(obtained.data.room.currentAction.requirement, "dodge");
+      assert.deepEqual(obtained.data.room.currentAction.options, []);
+      assert.deepEqual(obtained.data.room.currentAction.legalActions, ["decline_response"]);
+      const declined = await request("decline_response", { code: game.code, token: guoMember.token });
+      assert.equal(declined.status, 200, JSON.stringify(declined.data));
+      assert.equal((await state(game.code, guoMember.token)).data.players.find((player) => player.id === guo.id).hp, 3);
+    }
   }
 });
 
@@ -338,10 +470,17 @@ test("Guo Jia Eight Trigrams resumes the next Raining Arrows target after Jealou
   const guoResponse = await state(game.code, guoMember.token); assert.equal(guoResponse.data.currentAction.kind, "response", JSON.stringify(guoResponse.data.currentAction)); assert.equal(guoResponse.data.currentAction.requirement, "dodge");
   const judged = await requestAndSettle("respond", { code: game.code, token: guoMember.token, providerId: "eight_trigrams_dodge" });
   assert.equal(judged.data.room.currentAction.triggerEvent, "judgement_effective", JSON.stringify(judged.data.room.currentAction));
+  const pausedGuo = judged.data.room.presentationV2.groupResolution?.participantProgress?.find(({ playerId }) => playerId === guo.id);
+  assert.equal(pausedGuo?.outcome, undefined, "a successful judgement does not publish an outcome before its continuation settles");
   const obtained = await requestAndSettle("trigger", { code: game.code, token: guoMember.token, providerId: "guo_jia_jealousy_of_god" });
   assert.equal(obtained.status, 200, JSON.stringify(obtained.data));
   const nextTarget = await waitForState(game.code, bobMember.token, (room) => room.currentAction?.kind === "response" && room.currentAction.actorId === bob.id && room.currentAction.options?.length > 0);
   assert.equal(nextTarget.currentAction.requirement, "dodge", JSON.stringify(nextTarget.currentAction));
+  const guoOutcome = nextTarget.presentationV2.groupResolution.participantProgress.find(({ playerId }) => playerId === guo.id);
+  assert.deepEqual(guoOutcome, { playerId: guo.id, order: 1, status: "RESOLVED", outcome: "AVOIDED" });
+  const observer = (await state(game.code, host.token)).data;
+  assert.deepEqual(observer.presentationV2.groupResolution.participantProgress, nextTarget.presentationV2.groupResolution.participantProgress, "the proven outcome is public and viewer-equal");
+  assert.equal(observer.currentAction.options, undefined, "Dodge capabilities remain private to the active participant");
   const bobAnswered = await requestAndSettle("respond", { code: game.code, token: bobMember.token, cardId: "dodge-raining-bob-dodge" });
   assert.equal(bobAnswered.status, 200, JSON.stringify(bobAnswered.data)); assert.equal(bobAnswered.data.room.phase, "play"); assert.equal(roomCardCount(game.code, judgement.id), 1);
 });
@@ -352,6 +491,24 @@ test("Legacy privately distributes top two cards and repeats once per damage poi
   const privateView = (await state(one.game.code, one.guoMember.token)).data;
   const otherView = (await state(one.game.code, one.game.members[2].token)).data;
   assert.equal(privateView.currentAction.kind, "trigger");
+  assert.equal(privateView.causalEnvelope.frames.length, 1);
+  assert.equal(privateView.causalEnvelope.activeFrameId, privateView.causalEnvelope.frames[0].frameId);
+  assert.equal(privateView.causalEnvelope.frames[0].stage, "DAMAGE");
+  assert.equal(privateView.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(privateView.presentationV2.interactionScene?.continuity.relation, "ROOT_FRAME");
+  assert.equal(privateView.presentationV2.interactionScene?.sourceId, one.source.id);
+  assert.deepEqual(privateView.presentationV2.interactionScene?.targetIds, [one.guo.id]);
+  assert.equal(privateView.presentationV2.interactionScene?.decisionActorId, one.guo.id, "ordinary target-owned trigger decision actor remains the target");
+  assert.equal(privateView.presentationV2.interactionScene?.activeResolverId, one.guo.id, "ordinary target-owned trigger resolver remains the target");
+  assert.deepEqual(privateView.presentationV2.interactionScene?.participantRoles, { sourceId: one.source.id, originalTargetIds: [one.guo.id], activeTargetIds: [one.guo.id], currentParticipantId: one.guo.id, decisionActorId: one.guo.id, activeResolverId: one.guo.id, parentParticipantId: null, participantIds: [] });
+  assert.equal(privateView.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(privateView.presentationV2.stableBoundary.decisionActorId, one.guo.id);
+  const privateRepeat = (await state(one.game.code, one.guoMember.token)).data;
+  assert.deepEqual(privateRepeat.presentationV2.interactionScene, privateView.presentationV2.interactionScene);
+  assert.deepEqual(privateRepeat.presentationV2.stableBoundary, privateView.presentationV2.stableBoundary);
+  assert.deepEqual(otherView.presentationV2.interactionScene, privateView.presentationV2.interactionScene, "root Damage public scene is viewer-stable");
+  assert.deepEqual(otherView.presentationV2.stableBoundary, privateView.presentationV2.stableBoundary);
+  assert.equal(otherView.currentAction.options, undefined, "root Damage controls remain private to the acting viewer");
   const accepted = await requestAndSettle("trigger", { code: one.game.code, token: one.guoMember.token, providerId: "guo_jia_legacy" });
   assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
   const held = (await state(one.game.code, one.guoMember.token)).data;
@@ -363,6 +520,8 @@ test("Legacy privately distributes top two cards and repeats once per damage poi
   const settled = await distributeLegacy(one, one.guo.id);
   assert.deepEqual(settled.room.players.find((player) => player.id === one.guo.id).handCount, 2);
   assert.equal(settled.room.players.find((player) => player.id === one.guo.id).hp, 3);
+  assert.equal(settled.room.causalEnvelope, null);
+  assert.deepEqual(settled.room.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
   assert.equal((await requestAndSettle("trigger", { code: one.game.code, token: one.guoMember.token, providerId: "private_card_distribution", assignments: [] })).status, 409, "stale distribution cannot replay cards");
   assert.ok(privateView.currentAction.triggerOptions.every((option) => option.effectId === "guo_jia_legacy"));
   void otherView;
@@ -374,7 +533,7 @@ test("Legacy privately distributes top two cards and repeats once per damage poi
   const firstDistribution = await distributeLegacy(two, two.guo.id);
   assert.equal(firstDistribution.room.players.find((player) => player.id === two.guo.id).handCount, 2);
   const secondTriggerView = (await state(two.game.code, two.guoMember.token)).data;
-  assert.equal(secondTriggerView.currentAction.kind, "trigger", "a 2-damage event opens a second independent Legacy opportunity");
+  assert.equal(secondTriggerView.currentAction.kind, "trigger", "a 2-damage event opens a second Legacy opportunity");
   assert.ok(secondTriggerView.currentAction.triggerOptions.some((option) => option.effectId === "guo_jia_legacy"));
   await requestAndSettle("trigger", { code: two.game.code, token: two.guoMember.token, providerId: "guo_jia_legacy" });
   const secondDistribution = await distributeLegacy(two, two.guo.id);
@@ -384,7 +543,7 @@ test("Legacy privately distributes top two cards and repeats once per damage poi
   assert.deepEqual(totalHeld.map((held) => held.id), ["peach-legacy-two-a", "dodge-legacy-two-b", "attack-legacy-two-c", "peach-legacy-two-d"]);
 });
 
-test("source-less Lightning damage can open three independent Legacy opportunities", { timeout: 30_000 }, async () => {
+test("delayed Lightning damage keeps one Judgement Interaction across three Legacy opportunities", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [source, guo] = game.room.players;
   const guoMember = game.members[1];
@@ -404,13 +563,66 @@ test("source-less Lightning damage can open three independent Legacy opportuniti
     assert.equal(declinedJudgement.status, 200, JSON.stringify(declinedJudgement.data));
     view = (await state(game.code, guoMember.token)).data;
   }
+  const damageRoot = view.causalEnvelope;
+  assert.ok(damageRoot, "delayed Lightning post-damage reactions retain the Judgement causal root");
+  assert.equal(damageRoot.frames.length, 1);
+  assert.equal(damageRoot.activeFrameId, damageRoot.frames[0].frameId);
+  assert.equal(damageRoot.frames[0].stage, "DAMAGE");
+  assert.equal(damageRoot.frames[0].origin.originSourceId, guo.id, "Lightning keeps the delayed activation owner as historical origin");
+  assert.deepEqual(damageRoot.frames[0].origin.originalTargetIds, [guo.id]);
+  assert.equal(damageRoot.frames[0].current.currentSourceId, null);
+  assert.equal(damageRoot.frames[0].current.resolvingPlayerId, guo.id);
+  assert.equal(view.currentAction.actorId, guo.id);
+  assert.equal(view.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(view.presentationV2.interactionScene?.stage, "DAMAGE");
+  assert.equal(view.presentationV2.interactionScene?.interactionId, damageRoot.interactionId);
+  assert.equal(view.presentationV2.interactionScene?.rootFrameId, damageRoot.activeFrameId);
+  assert.equal(view.presentationV2.interactionScene?.sourceId, guo.id);
+  assert.deepEqual(view.presentationV2.interactionScene?.targetIds, [guo.id]);
+  assert.equal(view.presentationV2.interactionScene?.currentParticipantId, guo.id);
+  assert.equal(view.presentationV2.interactionScene?.activeResolverId, guo.id);
+  assert.equal(view.presentationV2.interactionScene?.decisionActorId, guo.id);
+  assert.deepEqual(view.presentationV2.interactionScene?.participantRoles, { sourceId: guo.id, originalTargetIds: [guo.id], activeTargetIds: [guo.id], currentParticipantId: guo.id, decisionActorId: guo.id, activeResolverId: guo.id, parentParticipantId: null, participantIds: [] });
+  assert.equal(view.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(view.presentationV2.stableBoundary.decisionActorId, guo.id);
+  assert.ok(view.currentAction.triggerOptions?.some((option) => option.effectId === "guo_jia_legacy"), "the delayed Lightning actor receives private Legacy controls");
+  const otherViewer = (await state(game.code, game.members[0].token)).data;
+  assert.equal(otherViewer.causalEnvelope.interactionId, damageRoot.interactionId, "the inherited Judgement/Damage root is public and viewer-stable");
+  assert.equal(otherViewer.causalEnvelope.checkpoint.checkpointId, damageRoot.checkpoint.checkpointId);
+  assert.equal(otherViewer.causalEnvelope.presentationRevision, damageRoot.presentationRevision);
+  assert.deepEqual(otherViewer.presentationV2.interactionScene, view.presentationV2.interactionScene);
+  assert.deepEqual(otherViewer.presentationV2.stableBoundary, view.presentationV2.stableBoundary);
+  const publicSnapshot = { ...view.presentationSnapshot };
+  const otherPublicSnapshot = { ...otherViewer.presentationSnapshot };
+  delete publicSnapshot.localControl;
+  delete otherPublicSnapshot.localControl;
+  assert.deepEqual(otherPublicSnapshot, publicSnapshot, "delayed Lightning public snapshot is viewer-stable");
+  assert.equal(view.presentationSnapshot.localControl.entitled, true);
+  assert.equal(otherViewer.presentationSnapshot.localControl.entitled, false);
+  assert.equal(otherViewer.currentAction.triggerOptions?.length, 0, "delayed Lightning controls remain private to the acting viewer");
+  const repeated = (await state(game.code, guoMember.token)).data;
+  assert.deepEqual(repeated.presentationV2.interactionScene, view.presentationV2.interactionScene);
+  assert.deepEqual(repeated.presentationV2.stableBoundary, view.presentationV2.stableBoundary);
+  assert.deepEqual(repeated.presentationSnapshot, view.presentationSnapshot, "delayed Lightning repeated read preserves the snapshot");
+  const persistedDamage = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(persistedDamage.actorId, guo.id);
+  assert.equal(persistedDamage.causal.interactionId, damageRoot.interactionId);
+  assert.equal(persistedDamage.continuation.causal.frameId, damageRoot.activeFrameId);
   for (let index = 0; index < 3; index++) {
     assert.equal(view.currentAction.kind, "trigger", JSON.stringify(view));
     assert.equal(view.currentAction.triggerEvent, "damage_suffered");
     await requestAndSettle("trigger", { code: game.code, token: guoMember.token, providerId: "guo_jia_legacy" });
     await distributeLegacy({ game: { code: game.code }, guoMember }, guo.id);
     view = (await state(game.code, guoMember.token)).data;
+    if (index < 2) {
+      assert.equal(view.causalEnvelope.interactionId, damageRoot.interactionId, "reopened damage reactions retain the same Interaction");
+      assert.equal(view.causalEnvelope.activeFrameId, damageRoot.activeFrameId);
+      assert.equal(view.causalEnvelope.presentationRevision, damageRoot.presentationRevision, "same Damage frame does not invent a checkpoint for Legacy re-entry");
+      assert.deepEqual(view.presentationV2.interactionScene, otherViewer.presentationV2.interactionScene, "same Damage frame keeps the public scene stable");
+    }
   }
+  assert.equal(view.causalEnvelope, null, "the inherited Judgement/Damage root clears at final settlement");
+  assert.deepEqual(view.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
   assert.equal(view.players.find((player) => player.id === guo.id).hp, 1);
   const lightningHand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(guo.id)}`));
   assert.ok(legacyCards.every((card) => lightningHand.some((held) => held.id === card.id)), "all three Legacy resolutions transfer their own next two cards");
@@ -560,6 +772,10 @@ test("Wu hero skills complete through the normal semantic API", async () => {
   sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(qixiSource.id)}`); setHand(qixiSource.id, [blackCard], 4, 4); setHand(qixiTarget.id, [targetCard], 4, 4); setTurn(qixiGame.code, qixiSource.seat);
   const qixi = await requestAndSettle("trigger", { code: qixiGame.code, token: qixiGame.members[0].token, providerId: "gan_ning_qixi", cardIds: [blackCard.id], targetId: qixiTarget.id });
   assert.equal(qixi.status, 200, JSON.stringify(qixi.data)); assert.equal(qixi.data.room.pendingTargetCard.cardKind, "Dismantle");
+  const qixiEvent = qixi.data.room.timeline.find((event) => event.type === "card" && event.card?.id === blackCard.id);
+  assert.deepEqual(qixiEvent.publicCardEffects?.[0]?.materials, [{ cardId: blackCard.id, ownerId: qixiSource.id, fromZone: "HAND", toZone: "DISCARD" }]);
+  assert.equal(qixiEvent.publicCardEffects?.[0]?.resultingCardKind, "Dismantle");
+  assert.equal(qixiEvent.publicCardEffects?.[0]?.outcome, "AS_DISMANTLE");
   const qixiChosen = await requestAndSettle("choose_target_card", { code: qixiGame.code, token: qixiGame.members[0].token, targetCardZone: "hand", targetCardIndex: 0 });
   assert.equal(qixiChosen.status, 200, JSON.stringify(qixiChosen.data)); assert.ok(discardIds(qixiGame.code).includes(blackCard.id)); assert.ok(!JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(qixiTarget.id)}`)).some((item) => item.id === targetCard.id));
 
@@ -659,7 +875,7 @@ test("Qixi projects only living targets with affectable cards and keeps material
 test("Qixi uses the ordinary Burning Bridges Negation and target-card continuations", async () => {
   const game = await createHumanGame(); const source = game.room.players[0]; const target = game.room.players[1]; const material = card("BorrowedSword", "qixi-negation-material", "♣"); const negation = card("Negation", "qixi-negation"); const targetCard = card("Peach", "qixi-negation-target");
   sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(source.id)}`); setHand(source.id, [material], 4, 4); setHand(target.id, [negation, targetCard], 4, 4); setTurn(game.code, source.seat);
-  const opened = await requestAndSettle("trigger", { code: game.code, token: game.members[0].token, providerId: "gan_ning_qixi", cardIds: [material.id], targetId: target.id });
+  const opened = await request("trigger", { code: game.code, token: game.members[0].token, providerId: "gan_ning_qixi", cardIds: [material.id], targetId: target.id });
   assert.equal(opened.status, 200); assert.equal(opened.data.room.actionPlayerId, null); assert.equal(opened.data.room.pendingNegation.actorId, null); assert.equal((await state(game.code, game.members[1].token)).data.currentAction.requirement, "negate");
   const declined = await requestAndSettle("decline_response", { code: game.code, token: game.members[1].token });
   assert.equal(declined.status, 200); assert.equal(declined.data.room.pendingTargetCard.cardKind, "Dismantle");
@@ -668,7 +884,7 @@ test("Qixi uses the ordinary Burning Bridges Negation and target-card continuati
 
   const negatedGame = await createHumanGame(); const negatedSource = negatedGame.room.players[0]; const negatedTarget = negatedGame.room.players[1]; const negatedMaterial = card("BorrowedSword", "qixi-negated-material", "♠"); const negatingCard = card("Negation", "qixi-negating-card"); const preservedTargetCard = card("Peach", "qixi-negated-target");
   sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(negatedSource.id)}`); setHand(negatedSource.id, [negatedMaterial], 4, 4); setHand(negatedTarget.id, [negatingCard, preservedTargetCard], 4, 4); setTurn(negatedGame.code, negatedSource.seat);
-  const negated = await requestAndSettle("trigger", { code: negatedGame.code, token: negatedGame.members[0].token, providerId: "gan_ning_qixi", cardIds: [negatedMaterial.id], targetId: negatedTarget.id });
+  const negated = await request("trigger", { code: negatedGame.code, token: negatedGame.members[0].token, providerId: "gan_ning_qixi", cardIds: [negatedMaterial.id], targetId: negatedTarget.id });
   assert.equal(negated.status, 200); const answered = await requestAndSettle("respond", { code: negatedGame.code, token: negatedGame.members[1].token, cardId: negatingCard.id });
   assert.equal(answered.status, 200); assert.equal(answered.data.room.phase, "play"); assert.ok(discardIds(negatedGame.code).includes(negatedMaterial.id)); assert.ok(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(negatedTarget.id)}`)).some((held) => held.id === preservedTargetCard.id));
 });

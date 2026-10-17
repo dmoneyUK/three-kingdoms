@@ -34,6 +34,11 @@ test("Lady Gan Divine Wisdom discards the authoritative whole hand, uses strict 
   const accepted = await request("trigger", { code: game.code, token: setup.ladyToken, providerId: "lady_gan_divine_wisdom" });
   assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
   const afterDiscard = (await state(game.code, setup.ladyToken)).data;
+  const divineWisdomEvent = afterDiscard.timeline.find((event) => event.type === "cards" && event.cards.some((item) => item.id === hand[0].id));
+  assert.deepEqual(divineWisdomEvent.publicCardEffects?.[0]?.materials, hand.map((item) => ({ cardId: item.id, ownerId: setup.lady.id, fromZone: "HAND", toZone: "DISCARD" })),
+    "the public all-Hand proof enumerates exactly the cards actually discarded");
+  assert.equal(divineWisdomEvent.publicCardEffects?.[0]?.activationOwnerId, setup.lady.id);
+  assert.equal(divineWisdomEvent.publicCardEffects?.[0]?.outcome, "RECOVERY_APPLIED");
   assert.equal(afterDiscard.myHand.length, 0);
   assert.equal(afterDiscard.players.find((player) => player.id === setup.lady.id).hp, 3);
   assert.equal(afterDiscard.players.find((player) => player.id === setup.lady.id).equipmentCards[0].id, equipment.id);
@@ -117,7 +122,7 @@ test("Prudence follows Peach and Oath recovery, and Quick Test projects the acti
   const peachGame = await createHumanSetupGame();
   const peachSetup = setupLadyGan(peachGame, { hp: 2, hand: [card("Peach", "prudence-normal-peach")] , turnIndex: 0 });
   setTurn(peachGame.code, peachSetup.lady.seat, "play");
-  const peach = await request("play_card", { code: peachGame.code, token: peachSetup.ladyToken, cardId: "peach-prudence-normal-peach" });
+  const peach = await requestAndSettle("play_card", { code: peachGame.code, token: peachSetup.ladyToken, cardId: "peach-prudence-normal-peach" });
   assert.equal(peach.status, 200, JSON.stringify(peach.data));
   assert.equal(peach.data.room.currentAction.triggerEvent, "hp_recovered");
   const peachTarget = peach.data.room.players.find((player) => player.id !== peachSetup.lady.id && player.alive);
@@ -130,7 +135,7 @@ test("Prudence follows Peach and Oath recovery, and Quick Test projects the acti
   const other = oathGame.views[0].players[1];
   setHand(other.id, [], 2, 3);
   setTurn(oathGame.code, oathSetup.lady.seat, "play");
-  const oath = await request("play_card", { code: oathGame.code, token: oathSetup.ladyToken, cardId: "oath-prudence-oath" });
+  const oath = await requestAndSettle("play_card", { code: oathGame.code, token: oathSetup.ladyToken, cardId: "oath-prudence-oath" });
   assert.equal(oath.status, 200, JSON.stringify(oath.data));
   assert.equal(oath.data.room.currentAction.triggerEvent, "hp_recovered");
   const oathTarget = oath.data.room.players.find((player) => player.id !== oathSetup.lady.id && player.alive);

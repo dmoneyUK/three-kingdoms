@@ -1,0 +1,366 @@
+import { buildNestedEffectContext, type InteractionStageView, type PresentationClientView, type PresentationDisplayIdentity } from "./presentation-client";
+import type { HarvestParticipantProgressOutcome, HarvestParticipantProgressStatus } from "./pending";
+import type { PresentationSnapshotGroupParticipantProgress } from "./presentation-snapshot";
+
+export type HeroFocusPlayerDisplay = {
+  name?: string | null;
+  heroId?: string | null;
+  heroName?: string | null;
+  hp?: number | null;
+  maxHp?: number | null;
+};
+
+export type HeroFocusPlayerDisplayResolver = (playerId: string) => HeroFocusPlayerDisplay | null | undefined;
+
+export type HeroFocusPlayerView = {
+  id: string;
+  name: string;
+  known: boolean;
+  heroId: string | null;
+  heroName: string | null;
+  hp: number | null;
+  maxHp: number | null;
+};
+
+export type HeroFocusRoleLabel = "CURRENT PARTICIPANT" | "CURRENT TARGET" | "DYING PLAYER" | "SOURCE";
+
+export type HeroFocusView = {
+  visible: boolean;
+  primary: HeroFocusPlayerView | null;
+  roleLabel: HeroFocusRoleLabel | null;
+  source: PresentationDisplayIdentity;
+  nestedContext: string | null;
+};
+
+export type MediumParticipantView = {
+  player: HeroFocusPlayerView;
+  roleLabel: "SOURCE";
+};
+
+export type GroupSourceView = Pick<HeroFocusPlayerView, "id" | "name" | "heroId">;
+
+export type GroupTargetScopeView = {
+  density: "medium" | "compact";
+  hasProgress: boolean;
+  resolutionSemantics: "GROUP" | "ORDERED" | null;
+  players: readonly (HeroFocusPlayerView & {
+    order: number | null;
+    status: PresentationSnapshotGroupParticipantProgress["status"] | null;
+    outcome?: PresentationSnapshotGroupParticipantProgress["outcome"];
+    isViewer: boolean;
+  })[];
+};
+
+export type OathRecipientScopeView = {
+  density: "medium" | "compact";
+  recipients: readonly (Pick<HeroFocusPlayerView, "id" | "name" | "heroId"> & { isViewer: boolean })[];
+};
+
+export type BumperHarvestParticipantView = Pick<HeroFocusPlayerView, "id" | "name" | "heroId"> & {
+  order: number;
+  status: HarvestParticipantProgressStatus;
+  outcome?: HarvestParticipantProgressOutcome;
+  isViewer: boolean;
+};
+
+export type BumperHarvestStageCompositionView = {
+  source: GroupSourceView | null;
+  density: "medium" | "compact";
+  currentParticipantId: string | null;
+  participants: readonly BumperHarvestParticipantView[];
+};
+
+/** Consume only the identity-bound Bumper Harvest root sequence and its public participant order. */
+export function projectBumperHarvestStageCompositionForViewer(
+  stage: InteractionStageView,
+  viewerId: string | null,
+  resolvePlayerDisplay: HeroFocusPlayerDisplayResolver = () => null,
+): BumperHarvestStageCompositionView | null {
+  const progress = stage.bumperHarvestProgress;
+  if (!stage.visible || !progress || progress.semantics !== "PROVEN"
+    || (stage.stage !== "SEQUENTIAL_CHOICE" && stage.stage !== "NEGATION")
+    || stage.effect !== "BumperHarvest" || !stage.source.id || !stage.source.known
+    || progress.interactionId !== stage.interactionId
+    || progress.rootFrameId !== stage.rootFrameId || progress.activeFrameId !== stage.activeFrameId
+    || progress.checkpointId !== stage.checkpointId || progress.presentationRevision !== stage.presentationRevision
+    || progress.sourceId !== stage.source.id || !progress.targetIds.length
+    || new Set(progress.targetIds).size !== progress.targetIds.length
+    || progress.participants.length !== progress.targetIds.length) return null;
+
+  const rootFrame = stage.continuity.relation === "ROOT_FRAME"
+    && progress.activeFrameId === progress.rootFrameId
+    && stage.stage === "SEQUENTIAL_CHOICE";
+  const childFrame = stage.continuity.relation === "CHILD_FRAME"
+    && progress.activeFrameId !== progress.rootFrameId
+    && stage.stage === "NEGATION"
+    && stage.parentFrameId === progress.rootFrameId
+    && stage.rootOrigin?.frameId === progress.rootFrameId
+    && stage.rootOrigin.effect === "BumperHarvest"
+    && stage.rootOrigin.source.id === progress.sourceId
+    && stage.decisionActor.id === null
+    && stage.activeResolver.id === null;
+  if (!rootFrame && !childFrame) return null;
+
+  const semanticTargetIds = rootFrame
+    ? stage.originalTargets.map(({ id }) => id)
+    : stage.rootOrigin?.targets.map(({ id }) => id);
+  if (!semanticTargetIds || semanticTargetIds.length !== progress.targetIds.length
+    || semanticTargetIds.some((id, index) => id !== progress.targetIds[index])) return null;
+
+  const participants: BumperHarvestParticipantView[] = [];
+  const validStatuses = new Set<HarvestParticipantProgressStatus>(["PENDING", "CURRENT", "RESOLVED", "NO_LONGER_APPLICABLE"]);
+  for (let index = 0; index < progress.participants.length; index++) {
+    const participant = progress.participants[index];
+    if (!participant || participant.playerId !== progress.targetIds[index] || participant.order !== index + 1
+      || !validStatuses.has(participant.status)) return null;
+    if (participant.status === "RESOLVED") {
+      if (participant.outcome !== "CHOSE_CARD" && participant.outcome !== "NEGATED") return null;
+    } else if (participant.outcome !== undefined) return null;
+
+    const selected = stage.originalTargets.find(({ id }) => id === participant.playerId);
+    const display = resolvePlayerDisplay(participant.playerId) ?? {};
+    const name = publicText(display.name) ?? selected?.name ?? "Unknown participant";
+    participants.push({
+      id: participant.playerId,
+      name,
+      heroId: publicText(display.heroId),
+      order: index + 1,
+      status: participant.status,
+      ...(participant.outcome ? { outcome: participant.outcome } : {}),
+      isViewer: participant.playerId === viewerId,
+    });
+  }
+
+  const current = participants.filter(({ status }) => status === "CURRENT");
+  if (progress.currentParticipantId === null) {
+    if (rootFrame && (current.length || stage.currentParticipant.id || stage.activeTargets.length || stage.stableKind !== "SPECIAL" || stage.decisionActor.id !== null)) return null;
+    if (childFrame || current.length || stage.currentParticipant.id) return null;
+  } else if (current.length !== 1 || current[0].id !== progress.currentParticipantId
+    || stage.currentParticipant.id !== progress.currentParticipantId
+    || stage.activeTargets.length !== 1 || stage.activeTargets[0]?.id !== progress.currentParticipantId) return null;
+
+  if (rootFrame && progress.currentParticipantId
+    && (stage.stableKind !== "CHOICE" || stage.decisionActor.id !== progress.currentParticipantId)) return null;
+  if (childFrame && (stage.stableKind !== "SPECIAL" || !progress.currentParticipantId)) return null;
+
+  const decoratedSource = decoratePlayer(stage.source, resolvePlayerDisplay);
+  if (!decoratedSource?.known) return null;
+  return {
+    source: decoratedSource.id === viewerId ? null : { id: decoratedSource.id, name: decoratedSource.name, heroId: decoratedSource.heroId },
+    density: participants.length >= 4 ? "compact" : "medium",
+    currentParticipantId: progress.currentParticipantId,
+    participants,
+  };
+}
+
+/** Consume only the server-projected simultaneous Oath scope; never invent order or progress. */
+export function projectOathRecipientScopeForStage(
+  stage: InteractionStageView,
+  scope: PresentationClientView["oathRecipientScope"],
+  viewerId: string | null,
+  resolvePlayerDisplay: HeroFocusPlayerDisplayResolver = () => null,
+): OathRecipientScopeView | null {
+  if (!stage.visible || stage.stage !== "NEGATION" || !scope || scope.semantics !== "PROVEN" || scope.cardKind !== "Oath"
+    || scope.interactionId !== stage.interactionId || !stage.source.id || scope.sourceId !== stage.source.id) return null;
+
+  const seen = new Set<string>();
+  const recipients: OathRecipientScopeView["recipients"][number][] = [];
+  for (const recipientId of scope.recipientIds) {
+    if (typeof recipientId !== "string" || recipientId.length === 0 || seen.has(recipientId)) return null;
+    seen.add(recipientId);
+    const display = resolvePlayerDisplay(recipientId) ?? {};
+    recipients.push({
+      id: recipientId,
+      name: publicText(display.name) ?? "Unknown participant",
+      heroId: publicText(display.heroId),
+      isViewer: recipientId === viewerId,
+    });
+  }
+  return { density: recipients.length >= 4 ? "compact" : "medium", recipients };
+}
+
+/** Consume only accepted public Stage IDs and explicitly projected Group progress.
+ * Without progress this remains a neutral historical scope; it never infers
+ * status, eligibility, or order from Room/Pending/private selection. */
+export function projectGroupTargetScopeForViewer(
+  stage: InteractionStageView,
+  projectedFocus: HeroFocusView,
+  mediumSource: MediumParticipantView | null,
+  viewerId: string | null,
+  resolvePlayerDisplay: HeroFocusPlayerDisplayResolver = () => null,
+): GroupTargetScopeView | null {
+  const groupProgress = stage.groupParticipantProgress ?? [];
+  const orderedProgress = stage.orderedTargetProgress ?? [];
+  if (groupProgress.length > 0 && orderedProgress.length > 0) return null;
+  const progress = groupProgress.length > 0 ? groupProgress : orderedProgress;
+  const resolutionSemantics = groupProgress.length > 0 ? "GROUP" : orderedProgress.length > 0 ? "ORDERED" : null;
+  const hasProgress = progress.length > 0;
+  if (!stage.visible || (stage.stage !== "GROUP_RESOLUTION" && !hasProgress)) return null;
+
+  if (hasProgress) {
+    const byId = new Map(stage.originalTargets.filter((target) => target.id).map((target) => [target.id as string, target]));
+    const players = progress.map((participantProgress) => {
+      const target = byId.get(participantProgress.playerId);
+      const player = target ? decoratePlayer(target, resolvePlayerDisplay) : null;
+      return player ? { ...player, order: participantProgress.order, status: participantProgress.status, ...(participantProgress.outcome ? { outcome: participantProgress.outcome } : {}), isViewer: participantProgress.playerId === viewerId } : null;
+    });
+    if (players.some((player) => player === null)) return null;
+    const participants = players as NonNullable<(typeof players)[number]>[];
+    return {
+      density: participants.length >= 4 ? "compact" : "medium",
+      hasProgress: true,
+      resolutionSemantics,
+      players: participants,
+    };
+  }
+
+  const targets = new Map<string, PresentationDisplayIdentity>();
+  for (const target of stage.originalTargets) {
+    if (target.id && target.id !== viewerId) targets.set(target.id, target);
+  }
+  const players = [...targets.values()]
+    .filter((target) => target.id !== projectedFocus.primary?.id && target.id !== mediumSource?.player.id)
+    .map((target) => decoratePlayer(target, resolvePlayerDisplay))
+    .filter((player): player is HeroFocusPlayerView => player !== null);
+  const density = players.length >= 4 ? "compact" : "medium";
+  return players.length ? { density, hasProgress: false, resolutionSemantics: null, players: players.map((player) => ({ ...player, order: null, status: null, isViewer: false })) } : null;
+}
+
+const HIDDEN_FOCUS: HeroFocusView = {
+  visible: false,
+  primary: null,
+  roleLabel: null,
+  source: { id: null, name: "No source", known: false },
+  nestedContext: null,
+};
+
+function publicNumber(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function publicText(value: string | null | undefined) {
+  const text = value?.trim();
+  return text || null;
+}
+
+function decoratePlayer(
+  selected: PresentationDisplayIdentity,
+  resolvePlayerDisplay: HeroFocusPlayerDisplayResolver,
+): HeroFocusPlayerView | null {
+  if (!selected.id) return null;
+  const display = resolvePlayerDisplay(selected.id) ?? {};
+  const name = publicText(display.name) ?? selected.name;
+  return {
+    id: selected.id,
+    name,
+    known: Boolean(publicText(display.name)) || selected.known,
+    heroId: publicText(display.heroId),
+    heroName: publicText(display.heroName),
+    hp: publicNumber(display.hp),
+    maxHp: publicNumber(display.maxHp),
+  };
+}
+
+/**
+ * Select the primary Hero Focus from accepted semantic IDs before resolving
+ * any public player or hero decoration. This helper never consumes legacy
+ * room fields, decision ownership, or private controls.
+ */
+export function buildHeroFocusView(
+  stage: InteractionStageView,
+  resolvePlayerDisplay: HeroFocusPlayerDisplayResolver = () => null,
+): HeroFocusView {
+  if (!stage.visible) return HIDDEN_FOCUS;
+  const nestedContext = buildNestedEffectContext(stage);
+
+  const currentParticipant = stage.currentParticipant.id ? stage.currentParticipant : null;
+  const soleActiveTarget = stage.stage !== "DYING"
+    && !currentParticipant && stage.activeTargets.length === 1 && stage.activeTargets[0]?.id
+    ? stage.activeTargets[0]
+    : null;
+  const selected = currentParticipant ?? soleActiveTarget;
+  if (!selected?.id) {
+    return {
+      visible: true,
+      primary: null,
+      roleLabel: null,
+      source: stage.source,
+      nestedContext,
+    };
+  }
+
+  return {
+    visible: true,
+    primary: decoratePlayer(selected, resolvePlayerDisplay),
+    roleLabel: stage.stage === "DYING" ? "DYING PLAYER" : currentParticipant ? "CURRENT PARTICIPANT" : "CURRENT TARGET",
+    source: stage.source,
+    nestedContext,
+  };
+}
+
+/**
+ * Apply viewer-specific spatial presentation without changing the public,
+ * viewer-equal Hero Focus selection above. Only proven source/active-target
+ * identities can replace a local primary, and ambiguity fails closed.
+ */
+export function projectHeroFocusForViewer(
+  stage: InteractionStageView,
+  publicFocus: HeroFocusView,
+  viewerId: string | null,
+  resolvePlayerDisplay: HeroFocusPlayerDisplayResolver = () => null,
+): HeroFocusView {
+  if (!publicFocus.primary || publicFocus.primary.id !== viewerId) return publicFocus;
+
+  const candidates = new Map<string, PresentationDisplayIdentity>();
+  if (stage.source.id && stage.source.id !== viewerId) candidates.set(stage.source.id, stage.source);
+  for (const target of stage.activeTargets) {
+    if (target.id && target.id !== viewerId && !candidates.has(target.id)) candidates.set(target.id, target);
+  }
+  if (candidates.size !== 1) return { ...publicFocus, primary: null, roleLabel: null };
+
+  const candidate = candidates.values().next().value;
+  if (!candidate) return { ...publicFocus, primary: null, roleLabel: null };
+  const isActiveTarget = stage.activeTargets.some((target) => target.id === candidate.id);
+  return {
+    ...publicFocus,
+    primary: decoratePlayer(candidate, resolvePlayerDisplay),
+    roleLabel: isActiveTarget ? "CURRENT TARGET" : "SOURCE",
+  };
+}
+
+/**
+ * Project one read-only Medium Source beside a viewer's active-target focus.
+ * The source and active target must come from the proven public Interaction
+ * Stage; viewer-owned sources and self-effects never render a central copy.
+ */
+export function projectMediumSourceForViewer(
+  stage: InteractionStageView,
+  projectedFocus: HeroFocusView,
+  viewerId: string | null,
+  resolvePlayerDisplay: HeroFocusPlayerDisplayResolver = () => null,
+): MediumParticipantView | null {
+  const primary = projectedFocus.primary;
+  const source = stage.source;
+  if (!stage.visible
+    || !primary
+    || !stage.activeTargets.some((target) => target.id === primary.id)
+    || !source.id
+    || source.id === primary.id
+    || source.id === viewerId) return null;
+
+  const player = decoratePlayer(source, resolvePlayerDisplay);
+  return player ? { player, roleLabel: "SOURCE" } : null;
+}
+
+/** Project the typed Group root source independently of a single-target focus. */
+export function projectGroupSourceForViewer(
+  stage: InteractionStageView,
+  viewerId: string | null,
+  resolvePlayerDisplay: HeroFocusPlayerDisplayResolver = () => null,
+): GroupSourceView | null {
+  const source = stage.source;
+  if (!stage.visible || !stage.groupCardKind || !source.id || source.id === viewerId) return null;
+  const player = decoratePlayer(source, resolvePlayerDisplay);
+  if (!player?.known) return null;
+  return { id: player.id, name: player.name, heroId: player.heroId };
+}

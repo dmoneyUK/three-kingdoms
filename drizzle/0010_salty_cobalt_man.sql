@@ -1,0 +1,1 @@
+ALTER TABLE `rooms` ADD `causal_envelope_json` text;

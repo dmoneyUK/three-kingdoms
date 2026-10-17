@@ -19,6 +19,151 @@ test("drops null and incomplete timeline entries without throwing", () => {
   assert.deepEqual(timeline.map((event) => event.type), ["message"]);
 });
 
+test("preserves only the privacy-safe Dismantle settlement proof fields", () => {
+  const proof = {
+    semantics: "PROVEN", rootEventId: "dismantle-root-event", rootResolutionId: "dismantle-resolution",
+    sourceId: "source", targetId: "target", outcome: "DISMANTLE_RESOLVED", selectedCardId: "hidden-card-id",
+  };
+  const event = normalizeTimeline([{
+    type: "card", id: "dismantle-settlement-event", player: "TARGET", target: "TARGET", action: "discard",
+    importance: "essential", finalResult: true, resolutionId: "dismantle-resolution",
+    publicDismantleSettlement: proof,
+    card: { id: "discarded-card-id", kind: "Peach", suit: "♥", rank: "3" },
+  }])[0];
+  assert.deepEqual(event.publicDismantleSettlement, {
+    semantics: "PROVEN", rootEventId: "dismantle-root-event", rootResolutionId: "dismantle-resolution",
+    sourceId: "source", targetId: "target", outcome: "DISMANTLE_RESOLVED",
+  });
+  assert.equal(JSON.stringify(event.publicDismantleSettlement).includes("hidden-card-id"), false);
+  assert.equal(normalizeTimeline([{ ...event, publicDismantleSettlement: { ...proof, outcome: "STEAL_RESOLVED" } }])[0].publicDismantleSettlement, undefined);
+});
+
+test("preserves only the privacy-safe Steal settlement proof fields", () => {
+  const proof = {
+    semantics: "PROVEN", rootEventId: "steal-root-event", rootResolutionId: "steal-resolution",
+    sourceId: "source", targetId: "target", outcome: "STEAL_RESOLVED", acquiredCardId: "hidden-card-id",
+  };
+  const event = normalizeTimeline([{
+    type: "message", id: "steal-settlement-event", message: "Steal resolved.", presentation: true,
+    importance: "essential", finalResult: true, resolutionId: "steal-resolution",
+    publicStealSettlement: proof,
+  }])[0];
+  assert.deepEqual(event.publicStealSettlement, {
+    semantics: "PROVEN", rootEventId: "steal-root-event", rootResolutionId: "steal-resolution",
+    sourceId: "source", targetId: "target", outcome: "STEAL_RESOLVED",
+  });
+  assert.equal(JSON.stringify(event.publicStealSettlement).includes("hidden-card-id"), false);
+  assert.equal(normalizeTimeline([{ ...event, publicStealSettlement: { ...proof, outcome: "DISMANTLE_RESOLVED" } }])[0].publicStealSettlement, undefined);
+});
+
+test("preserves only the privacy-safe direct Attack hit settlement fields", () => {
+  const proof = {
+    semantics: "PROVEN", rootEventId: "attack-root-event", rootResolutionId: "attack-resolution",
+    sourceId: "source", targetId: "target", outcome: "ATTACK_DAMAGE_APPLIED", physicalCardId: "private-card-id",
+  };
+  const event = normalizeTimeline([{
+    type: "message", id: "attack-hit-event", message: "TARGET takes 1 damage.", presentation: true,
+    importance: "essential", finalResult: true, resolutionId: "attack-resolution",
+    publicAttackHitSettlement: proof,
+  }])[0];
+  assert.deepEqual(event.publicAttackHitSettlement, {
+    semantics: "PROVEN", rootEventId: "attack-root-event", rootResolutionId: "attack-resolution",
+    sourceId: "source", targetId: "target", outcome: "ATTACK_DAMAGE_APPLIED",
+  });
+  assert.equal(JSON.stringify(event.publicAttackHitSettlement).includes("private-card-id"), false);
+  assert.equal(normalizeTimeline([{ ...event, publicAttackHitSettlement: { ...proof, outcome: "ATTACK_BLOCKED_BY_DODGE" } }])[0].publicAttackHitSettlement, undefined);
+});
+
+test("preserves only ordered public Group settlement fields", () => {
+  const proof = {
+    semantics: "PROVEN",
+    rootEventId: "raining-root-event",
+    rootResolutionId: "raining-resolution",
+    interactionId: "raining-interaction",
+    groupFrameId: "raining-frame",
+    sourceId: "source",
+    cardKind: "RainingArrows",
+    participants: [
+      { playerId: "first", order: 1, status: "RESOLVED", outcome: "AVOIDED", privateCardId: "hidden" },
+      { playerId: "second", order: 2, status: "NO_LONGER_APPLICABLE" },
+    ],
+    privateResolverOrder: ["secret"],
+  };
+  const event = normalizeTimeline([{
+    type: "message", id: "raining-settlement-event", message: "Raining Arrows finishes resolving.",
+    importance: "essential", finalResult: true, resolutionId: "raining-resolution",
+    publicGroupSettlement: proof,
+  }])[0];
+  assert.deepEqual(event.publicGroupSettlement, {
+    semantics: "PROVEN",
+    rootEventId: "raining-root-event",
+    rootResolutionId: "raining-resolution",
+    interactionId: "raining-interaction",
+    groupFrameId: "raining-frame",
+    sourceId: "source",
+    cardKind: "RainingArrows",
+    participants: [
+      { playerId: "first", order: 1, status: "RESOLVED", outcome: "AVOIDED" },
+      { playerId: "second", order: 2, status: "NO_LONGER_APPLICABLE" },
+    ],
+  });
+  assert.equal(JSON.stringify(event.publicGroupSettlement).includes("hidden"), false);
+  assert.equal(JSON.stringify(event.publicGroupSettlement).includes("privateResolverOrder"), false);
+  const { publicGroupSettlement, ...legacyEvent } = event;
+  const normalizedLegacyEvent = normalizeTimeline([{ ...legacyEvent, publicRainingArrowsSettlement: proof }])[0];
+  assert.deepEqual(normalizedLegacyEvent.publicGroupSettlement, publicGroupSettlement, "persisted Raining Arrows proofs normalize to the shared Group contract");
+  assert.equal("publicRainingArrowsSettlement" in normalizedLegacyEvent, false, "legacy metadata does not pass through unsanitized");
+  const barbarianProof = { ...proof, cardKind: "BarbarianInvasion", participants: [{ ...proof.participants[0], outcome: "DAMAGED" }, proof.participants[1]] };
+  assert.equal(normalizeTimeline([{ ...event, publicGroupSettlement: barbarianProof }])[0].publicGroupSettlement.cardKind, "BarbarianInvasion");
+  assert.equal(normalizeTimeline([{ ...event, publicGroupSettlement: { ...barbarianProof, participants: [{ ...barbarianProof.participants[0], outcome: "AVOIDED" }, barbarianProof.participants[1]] } }])[0].publicGroupSettlement, undefined);
+  assert.equal(normalizeTimeline([{ ...event, publicGroupSettlement: { ...proof, cardKind: "Attack" } }])[0].publicGroupSettlement, undefined);
+});
+
+test("preserves only privacy-safe Bumper Harvest settlement and exact root-frame proof fields", () => {
+  const proof = {
+    semantics: "PROVEN",
+    rootEventId: "bumper-root-event",
+    rootResolutionId: "bumper-resolution",
+    interactionId: "bumper-interaction",
+    rootFrameId: "bumper-frame",
+    sourceId: "source",
+    participants: [
+      { playerId: "first", order: 1, status: "RESOLVED", outcome: "CHOSE_CARD", selectedCardId: "private-card-id" },
+      { playerId: "second", order: 2, status: "RESOLVED", outcome: "NEGATED" },
+    ],
+    selectedCardIds: ["private-card-id"],
+  };
+  const event = normalizeTimeline([{
+    type: "message", id: "bumper-settlement-event", message: "Bumper Harvest finishes resolving.",
+    importance: "essential", finalResult: true, resolutionId: "bumper-resolution",
+    publicBumperHarvestSettlement: proof,
+  }])[0];
+  assert.deepEqual(event.publicBumperHarvestSettlement, {
+    semantics: "PROVEN",
+    rootEventId: "bumper-root-event",
+    rootResolutionId: "bumper-resolution",
+    interactionId: "bumper-interaction",
+    rootFrameId: "bumper-frame",
+    sourceId: "source",
+    participants: [
+      { playerId: "first", order: 1, status: "RESOLVED", outcome: "CHOSE_CARD" },
+      { playerId: "second", order: 2, status: "RESOLVED", outcome: "NEGATED" },
+    ],
+  });
+  assert.equal(JSON.stringify(event.publicBumperHarvestSettlement).includes("private-card-id"), false);
+  assert.equal(normalizeTimeline([{ ...event, publicBumperHarvestSettlement: { ...proof, participants: [{ ...proof.participants[0], outcome: "DAMAGED" }, proof.participants[1]] } }])[0].publicBumperHarvestSettlement, undefined);
+
+  const root = normalizeTimeline([{
+    type: "card", id: "bumper-root-event", player: "SOURCE", target: "All living players", action: "play",
+    resolutionId: "bumper-resolution", card: { id: "bumper-card-id", kind: "BumperHarvest", suit: "♣", rank: "7" },
+    bumperHarvestRoot: { semantics: "PROVEN", sourceId: "source", cardId: "bumper-card-id", interactionId: "bumper-interaction", rootFrameId: "bumper-frame", hiddenChoiceId: "private-card-id" },
+  }])[0];
+  assert.deepEqual(root.bumperHarvestRoot, {
+    semantics: "PROVEN", sourceId: "source", cardId: "bumper-card-id", interactionId: "bumper-interaction", rootFrameId: "bumper-frame",
+  });
+  assert.equal(JSON.stringify(root.bumperHarvestRoot).includes("private-card-id"), false);
+});
+
 test("handles missing collections and rejects malformed items while preserving valid data", () => {
   const empty = normalizeRoomData({ code: "SAFE1", status: "lobby", players: [], myHand: [], timeline: [] });
   assert.deepEqual(empty.players, []); assert.deepEqual(empty.myHand, []); assert.deepEqual(empty.timeline, []);
@@ -33,12 +178,31 @@ test("normalizes the canonical current action without trusting unknown legal act
   const room = normalizeRoomData({
     code: "ACT01", status: "playing", players: [], myHand: [], timeline: [], log: [], myHeroOptions: [],
     pending: { kind: "attack" },
-    currentAction: { version: 1, kind: "attack", actorId: "p1", deadline: 123, reason: "Dodge or take damage", legalActions: ["respond", "respond", "decline_response", "invent_action"], playPhaseActions: [{ cardId: "red-peach", canPlayAs: "attack" }, { cardId: "red-peach", canPlayAs: "attack" }, { cardId: "bad", canPlayAs: "dodge" }], triggerEvent: "attack_targeted", triggerOptions: [{ effectId: "yin_yang_swords_attack_targeted", label: "Yin-Yang Swords", allowDecline: false, timeoutChoiceId: "draw", selection: { type: "choice", choices: [{ id: "discard", label: "Discard 1 hand card" }, { id: "draw", label: "Allow attacker to draw 1 card" }, { id: 4, label: "bad" }], eligibleHandKeys: ["hand:0", 4] } }, { effectId: "gan_ning_qixi", label: "Ambushment", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["borrowed-sword"], targetIds: ["target"] } }], requirement: "dodge", options: [{ providerId: "card", satisfies: "dodge", label: "Play Dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["dodge-1", 9] } }, { providerId: 9, satisfies: "dodge", label: "Invalid", selection: null }] },
+    currentAction: { version: 1, kind: "attack", actorId: "p1", deadline: 123, reason: "Dodge or take damage", legalActions: ["respond", "respond", "decline_response", "invent_action"], playPhaseActions: [{ cardId: "red-peach", canPlayAs: "attack" }, { cardId: "red-peach", canPlayAs: "attack" }, { cardId: "bad", canPlayAs: "dodge" }], borrowedSwordTargets: [{ cardId: "borrowed-card", targetIds: ["legal-holder", 8, "legal-holder"] }, { cardId: 3, targetIds: ["ignored"] }], triggerEvent: "attack_targeted", triggerOptions: [{ effectId: "yin_yang_swords_attack_targeted", label: "Yin-Yang Swords", allowDecline: false, timeoutChoiceId: "draw", selection: { type: "choice", choices: [{ id: "discard", label: "Discard 1 hand card" }, { id: "draw", label: "Allow attacker to draw 1 card" }, { id: 4, label: "bad" }], eligibleHandKeys: ["hand:0", 4] } }, { effectId: "gan_ning_qixi", label: "Ambushment", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["borrowed-sword"], targetIds: ["target"] } }], requirement: "dodge", options: [{ providerId: "card", satisfies: "dodge", label: "Play Dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["dodge-1", 9] } }, { providerId: 9, satisfies: "dodge", label: "Invalid", selection: null }] },
   });
   assert.deepEqual(room?.pending, { kind: "attack" });
   assert.deepEqual(room?.currentAction?.legalActions, ["respond", "respond", "decline_response"]);
   assert.deepEqual(room?.currentAction?.options, [{ providerId: "card", satisfies: "dodge", activation: "implicit", label: "Play Dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["dodge-1"] } }]);
   assert.deepEqual(room?.currentAction?.playPhaseActions, [{ cardId: "red-peach", canPlayAs: "attack" }]);
+  assert.deepEqual(room?.currentAction?.borrowedSwordTargets, [{ cardId: "borrowed-card", targetIds: ["legal-holder", "legal-holder"] }]);
   assert.equal(room?.currentAction?.triggerEvent, "attack_targeted");
   assert.deepEqual(room?.currentAction?.triggerOptions, [{ effectId: "yin_yang_swords_attack_targeted", label: "Yin-Yang Swords", allowDecline: false, timeoutChoiceId: "draw", selection: { type: "choice", choices: [{ id: "discard", label: "Discard 1 hand card" }, { id: "draw", label: "Allow attacker to draw 1 card" }], eligibleHandKeys: ["hand:0"] } }, { effectId: "gan_ning_qixi", label: "Ambushment", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["borrowed-sword"], targetIds: ["target"] } }]);
+});
+
+test("preserves only a well-formed actor-owned target-card eligibility projection", () => {
+  const normalizeAction = (currentAction) => normalizeRoomData({
+    code: "TARGET-CARD-AUTHORITY", status: "playing", players: [], myHand: [], timeline: [], currentAction,
+  })?.currentAction;
+  const valid = {
+    version: 3, kind: "target_card", actorId: "p1", deadline: 0, reason: "Choose a card",
+    legalActions: ["choose_target_card"],
+    targetCardSelection: { targetId: "p2", eligibleKeys: ["hand:0", "public-card"] },
+  };
+
+  assert.deepEqual(normalizeAction(valid)?.targetCardSelection, valid.targetCardSelection);
+  assert.equal(normalizeAction({ ...valid, actorId: null })?.targetCardSelection, undefined);
+  assert.equal(normalizeAction({ ...valid, kind: "response" })?.targetCardSelection, undefined);
+  assert.equal(normalizeAction({ ...valid, legalActions: [] })?.targetCardSelection, undefined);
+  assert.equal(normalizeAction({ ...valid, targetCardSelection: { targetId: "p2", eligibleKeys: ["hand:0", null] } })?.targetCardSelection, undefined);
+  assert.equal(normalizeAction({ ...valid, targetCardSelection: { targetId: "", eligibleKeys: ["hand:0"] } })?.targetCardSelection, undefined);
 });

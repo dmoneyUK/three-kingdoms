@@ -36,6 +36,7 @@ test("1 HP Self Sacrifice opens Dying before either draw card is available", asy
   const game = await createHumanGame();
   const setup = configure(game, 1);
   const drawn = [card("Dodge", "huang-dying-a"), card("Peach", "huang-dying-b")];
+  setHand(setup.rescuer.id, [card("Peach", "huang-dying-rescue")], 5, 4);
   setDeck(game.code, drawn);
 
   const result = await activate(game, setup);

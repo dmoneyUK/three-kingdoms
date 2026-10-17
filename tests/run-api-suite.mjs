@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { performance } from "node:perf_hooks";
+import { parseTestTimings } from "./test-timing.mjs";
 
 const root = new URL("../", import.meta.url);
 const files = readdirSync(new URL("./api/", import.meta.url))
@@ -8,13 +9,12 @@ const files = readdirSync(new URL("./api/", import.meta.url))
   .sort()
   .map((file) => `tests/api/${file}`);
 
-// Keep the groups explicit so measured file costs can be rebalanced without
-// changing test membership. Every child gets its own Wrangler/D1 lifecycle.
+// Keep two isolated groups explicit to lower concurrent Wrangler/D1 memory.
+// Same-membership process-tree samples measured ~1.65 GiB vs ~2.22 GiB with
+// four groups; API duration rose from ~50s to 54.92s.
 const shardGroups = [
-  ["tests/api/da-qiao.test.mjs", "tests/api/equipment.test.mjs", "tests/api/gongsun-zan.test.mjs", "tests/api/judgement.test.mjs", "tests/api/ma-chao.test.mjs"],
-  ["tests/api/privacy-response.test.mjs", "tests/api/heroes-wu-shu.test.mjs"],
-  ["tests/api/stratagems.test.mjs", "tests/api/borrowed-sword.test.mjs", "tests/api/zhuge-liang.test.mjs"],
-  ["tests/api/lobby-heroes-wei.test.mjs", "tests/api/concurrency.test.mjs", "tests/api/yue-jin-dauntless.test.mjs", "tests/api/huang-yueying.test.mjs", "tests/api/lady-gan.test.mjs", "tests/api/sun-shangxiang.test.mjs", "tests/api/hua-tuo.test.mjs", "tests/api/diao-chan.test.mjs", "tests/api/hua-xiong.test.mjs", "tests/api/pan-feng.test.mjs", "tests/api/huang-gai.test.mjs"],
+  ["tests/api/da-qiao.test.mjs", "tests/api/equipment.test.mjs", "tests/api/gongsun-zan.test.mjs", "tests/api/judgement.test.mjs", "tests/api/ma-chao.test.mjs", "tests/api/eight-trigrams-failed-response.test.mjs", "tests/api/lobby-heroes-wei.test.mjs", "tests/api/concurrency.test.mjs", "tests/api/yue-jin-dauntless.test.mjs", "tests/api/huang-yueying.test.mjs", "tests/api/lady-gan.test.mjs", "tests/api/sun-shangxiang.test.mjs", "tests/api/hua-tuo.test.mjs", "tests/api/diao-chan.test.mjs", "tests/api/hua-xiong.test.mjs", "tests/api/pan-feng.test.mjs", "tests/api/huang-gai.test.mjs", "tests/api/public-activity.test.mjs"],
+  ["tests/api/privacy-response.test.mjs", "tests/api/heroes-wu-shu.test.mjs", "tests/api/stratagems.test.mjs", "tests/api/borrowed-sword.test.mjs", "tests/api/presentation-v2-engine.test.mjs", "tests/api/presentation-causality.test.mjs", "tests/api/zhuge-liang.test.mjs"],
 ];
 const assigned = shardGroups.flat();
 if (assigned.length !== files.length || new Set(assigned).size !== files.length || files.some((file) => !assigned.includes(file))) {
@@ -40,9 +40,9 @@ const results = await Promise.all(shardGroups.map((shardFiles, index) => new Pro
 })));
 
 const durationMs = performance.now() - startedAt;
-const testCount = results.reduce((count, result) => count + Number(result.output.match(/ℹ tests (\d+)/)?.[1] ?? 0), 0);
+const testCount = results.reduce((count, result) => count + Number(result.output.match(/^\s*(?:#|ℹ)\s+tests\s+(\d+)\s*$/m)?.[1] ?? 0), 0);
 console.log(`\nTiming: API tests=${testCount}, duration=${(durationMs / 1000).toFixed(2)}s, files=${files.length}, shards=${shardGroups.length}`);
-const timings = results.flatMap((result) => [...result.output.matchAll(/✔ (.+?) \(([\d.]+)ms\)/g)].map(([, name, duration]) => ({ name, duration: Number(duration) }))).sort((a, b) => b.duration - a.duration);
+const timings = results.flatMap((result) => parseTestTimings(result.output)).sort((a, b) => b.duration - a.duration);
 console.log("Top 10 slowest API tests across shards:");
 for (const entry of timings.slice(0, 10)) console.log(`  ${(entry.duration / 1000).toFixed(2)}s  ${entry.name}`);
 for (const result of results) {

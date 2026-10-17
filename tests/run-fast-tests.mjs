@@ -14,6 +14,14 @@ const fastTests = [
   "tests/room-safety.test.mjs",
   "tests/room-safety-render.test.mjs",
   "tests/active-skill-interactions.test.mjs",
+  "tests/presentation-v2.test.mjs",
+  "tests/presentation-snapshot.test.mjs",
+  "tests/presentation-client.test.mjs",
+  "tests/presentation-causality.test.mjs",
+  "tests/causal-context.test.mjs",
+  "tests/attack-dodge-ux-trace.test.mjs",
+  "tests/public-card-announcement.test.mjs",
+  "tests/wrangler-worker-supervisor.test.mjs",
 ];
 
 // rendered-html exercises the built SSR bundle, so test:fast includes it when
@@ -30,6 +38,6 @@ for (const stream of [child.stdout, child.stderr]) stream.on("data", (chunk) => 
 
 const exitCode = await new Promise((resolve) => child.on("exit", (code) => resolve(code ?? 1)));
 const durationMs = performance.now() - startedAt;
-const testCount = Number(output.match(/ℹ tests (\d+)/)?.[1] ?? 0);
+const testCount = Number(output.match(/^\s*(?:#|ℹ)\s+tests\s+(\d+)\s*$/m)?.[1] ?? 0);
 console.log(`\nTiming: fast tests=${testCount}, duration=${(durationMs / 1000).toFixed(2)}s, files=${fastTests.length}`);
 process.exit(exitCode);

@@ -1,6 +1,6 @@
 # War of Three Kingdoms — roadmap
 
-## Current baseline — 2026-10-01
+## Current baseline — 2026-10-03
 
 WTK Standard content and the confirmed gameplay-correction phase are complete.
 
@@ -12,6 +12,22 @@ WTK Standard content and the confirmed gameplay-correction phase are complete.
 - Canonical damage, Dying/recovery, Judgement, delayed Stratagem and equipment flows
 - Private projection, stale/replay rejection and Quick Test infrastructure
 - Completed Lord-role, Unrivaled multi-response, Retaliation random-Hand and Self Sacrifice timing corrections
+
+## UX V2 final integration status — 2026-10-03
+
+UI-20 has audited the accepted C1–C7 and UI-01–UI-19 contracts in
+[`docs/UX_V2_RELEASE_GATE.md`](docs/UX_V2_RELEASE_GATE.md): 14 bounded
+contracts PASS, durable per-counter Reaction Chain history is intentionally
+N/A, and no functional GAP is hidden. The prior UI-19 browser result remains
+17/17, with the retained focused/fast/API/build/lint evidence recorded in its
+handover.
+
+The release gate is a **UX V2 Feature Complete candidate**, not whole-game
+completion. The current workflow sends the complete final gate to GitHub
+Actions; no local full-suite rerun is claimed here. Final confirmation still
+depends on CI and reviewer acceptance. Subjective pixel/art direction,
+touch-device certification, full WCAG auditing, live multiplayer timing, and
+production health remain bounded non-blocking/manual release gaps.
 
 ## Active phase — functional UX improvement
 
@@ -42,11 +58,141 @@ Improve functional feedback for card selection, target selection, confirm,
 decline/skip, disabled controls and in-flight submissions. Keep the server
 projection as the source of legal IDs.
 
+UI-10-FIX1 is accepted and closed: the existing local operation console
+now uses `buildConsoleDecisionDisplay` to govern the actual footer primary,
+local Cancel, and authoritative Skip/Decline exposure. One explicit primary is
+selected by CurrentAction-authorized precedence; stale legacy booleans cannot
+bypass it, and equal-priority or incoherent states fail closed. Dialog-owned
+target-card, Harvest, private distribution, deck reorder, and mandatory-choice
+submissions remain singular outside the footer. Existing action names,
+payloads, server legality, private selection, public PresentationSnapshot
+semantics, Hero Focus, seat topology and board layout remain unchanged. Turn,
+response, rescue, trigger, active-skill, target, Borrowed Sword, discard,
+Duel/Judgement and Serpent Spear controls are mapped to the model while
+target-card dialog controls remain dialog-owned. The console wraps at touch
+widths; Hero Focus and Interaction Stage intentionally remain control-free.
+
+UI-11 is the accepted responsive hardening slice. It keeps the existing
+2–4 top-row and 5–10 side-column seat topology, adds deterministic
+`data-player-count`/`data-seat-topology` contracts, and proves N−1 opponent
+anchors plus one local dock anchor for 2, 3, 4, 5, 6, 8, and 10 players.
+The <=650px and <=480px rules contain stage/focus copy, side-column seats,
+long names, dialogs, the existing hand rail, and the wrapping footer console.
+Semantic roles remain decoration on stable anchors; the console is still the
+only footer control surface. SSR contracts prove structure and declared CSS,
+but pixel-level responsive appearance remains a later browser/manual GAP.
+
+UI-12 adds only a pre-submit local decoration for the four implemented
+automatic-scope Standard stratagems: Oath, Bumper Harvest, Barbarian Invasion,
+and Raining Arrows. `CurrentAction` authorizes Play; the shared
+`playersInTurnOrder` living-player rule supplies the public preview scope.
+Preview never creates target IDs, Confirm, public Interaction Stage/Hero Focus
+roles, or an event. Existing Play remains `{ cardId }`, and the server remains
+the authority for group participant progression after submission. Sky Piercing
+Halberd remains an explicit local multi-target flow. The remaining UI-11
+desktop/650px/480px visual check is still a browser/manual GAP.
+
+UI-13 closes the Duel response focus and handoff regression. The existing
+semantic Duel continuation persists one causal interaction while alternating
+responses update the proven current participant, decision actor, resolver, and
+stable checkpoint; `CurrentAction` remains the private local control authority,
+and PresentationSnapshot supplies only viewer-equal public roles. Mounted
+coverage proves stable seat anchors, semantic Hero Focus, stale local-selection
+cleanup, legacy-field resistance, and no client-side next-responder derivation.
+Duel failure uses the existing DAMAGE child frame and Dying/Peach continuation,
+with the parent Duel context retained until the child resolves. No new
+protocol, gameplay rule, projector authority, or client sequencing is added.
+The remaining UI-11 desktop/650px/480px visual check is still a browser/manual
+GAP.
+
+UI-14 hardens the existing Judgement/replacement semantic flow without changing
+rules, action names, payloads, or visibility. Engine-backed coverage now spans
+Lightning, Overindulgence, and the fixture-only Rations Depleted delayed
+checkpoints, plus Sima Yi replacement privacy, public revealed-card identity,
+viewer-equal subject/focus roles, exact `cardIds` submission, stale actor/
+revision cleanup, causal checkpoint/frame continuity, root clear, and malformed
+authority fail-closed behavior. Mounted coverage keeps replacement selection
+local until Confirm and rejects legacy owner/turn fields as presentation
+authority. The active new-game deck remains WTK Standard; the UI-11
+desktop/650px/480px visual check remains a browser/manual GAP.
+
+UI-15 adds a bounded read-only Reaction Chain to the existing Interaction
+Stage for proven Negation scenes. The model consumes only the typed public
+snapshot scene: root effect/source/original targets, current response window,
+and proven frame relation. It is viewer-equal and deliberately excludes
+CurrentAction, response providers/cards, timeline chronology, compatibility
+Negation fields, action owner, resolution IDs, and revisions. The local console
+remains the only response-control surface: selection remains local until the
+existing Confirm, while Skip/Decline remains authoritative. Counter-Negation
+continues the same causal frame and preserves the root; Group and Duel resumes
+retain their established continuations; declines produce no pass node. The
+snapshot currently lacks durable independently proven counter-contributor
+history, so the UI truthfully renders root plus active response only rather
+than a fabricated nested history. This is the remaining Reaction Chain GAP.
+
+UI-16 hardens the player-facing Dying/Peach rescue handoff without changing
+gameplay. The proven Interaction Stage current participant is explicitly
+labelled DYING PLAYER; the current rescue decision actor and active resolver
+come only from the public `PresentationSnapshot`, with root/child frame context
+preserved. Only the CurrentAction actor receives the existing local Peach,
+provider, and Skip/Decline controls. Card/provider selection remains local
+until the existing submission boundary, and an action-revision/actor handoff
+clears stale local controls. Mounted coverage proves viewer-equal public
+handoff, root and Duel-child context, stable anchors, exact existing
+`give_peach` payload, privacy, and resistance to legacy timeline/turn/HP
+mutations; engine/API Dying coverage remains the authority for rescue order,
+recovery/resume, and terminal death. The remaining responsive pixel check is a
+browser/manual GAP.
+
+UI-17 adds the first bounded semantic scene-transition layer. A pure classifier
+compares only consecutive accepted `PresentationClientView` identities and
+returns `INTERACTION_TRANSITION`, `FRAME_TRANSITION`, `FOCUS_UPDATE`,
+`CONTENT_UPDATE`, or `NONE`, in that strength order. `GameRoom` and the
+existing Interaction Stage expose the result through a non-visual
+`data-presentation-transition` hook. Private controls, timeline/turn fields,
+HP, compatibility Pending data, and malformed or unproven pairs cannot promote
+a public class. UI-17 does not add animation, timers, gameplay effects, server
+history, or a new projector/API path.
+
+UI-18 adds the first visual consumer of that hook. The existing Interaction
+Stage maps `CONTENT_UPDATE` to a 180ms content refresh, `FOCUS_UPDATE` to a
+240ms focus emphasis, `FRAME_TRANSITION` to a 280ms frame emphasis, and
+`INTERACTION_TRANSITION` to a 320ms interaction emphasis; `NONE` has no visual
+effect. The mapping is data-selector-only, preserves stage/seat/dock/hand
+geometry and controls, and settles on the existing stage styles. Reduced motion
+disables the keyframes without hiding semantic state. Focused DOM/CSS tests
+prove the mapping, viewer equality, repeated-`NONE` stability, authority
+isolation, fixed topology, control presence, and reduced-motion contract;
+pixel-level browser appearance remains a manual GAP.
+
+UI-19 adds the first committed Chromium browser harness for that remaining
+validation boundary. `npm run test:browser` runs 17 real-browser tests against
+the existing `GameRoom`: 1440x900 covers 2/4/6/10 players, while 650x900 and
+480x900 cover 4/6/10. The semantic cases exercise Interaction Stage/Hero Focus,
+multi-target preview, Duel, Negation, Dying/Peach, the retained target-card
+picker, UI-18 transition feedback, reduced motion, native controls, and
+keyboard focus. The harness checks DOM
+geometry and semantics rather than screenshots: no horizontal overflow or
+severe seat overlap, all required anchors and local controls remain visible,
+stage/console bounds remain distinct, and reduced motion removes only
+nonessential animation. CI installs Chromium and runs this suite before the
+existing build/API gates. UI-19 does not claim full WCAG conformance,
+pixel-perfect art/layout, touch certification, or gameplay/server validation;
+those remain separate boundaries.
+
+UI-09 remains a retained regression boundary: private target-card pickers keep
+opaque hand/equipment/Judgement selections local until Confirm, with Cancel
+clearing only local state. Existing `choose_target_card` and semantic
+`trigger` payloads, server legality, `eligibleKeys`, hidden-card rules and
+separate Skip/Decline actions remain unchanged.
+
 ### UX 3 — mobile/touch and information readability
 
-Review the live responsive layout for crowded hands, opponent public zones,
-hero/skill information, Equipment/Judgement readability and touch targets.
-Prioritise usability over visual redesign.
+UI-11 is the first bounded pass for this phase. Review the live responsive
+layout for crowded hands, opponent public zones, hero/skill information,
+Equipment/Judgement readability and touch targets. Prioritise usability over
+visual redesign and close the remaining browser/manual visual GAP before
+claiming pixel-level responsive acceptance.
 
 ### UX 4 — lifecycle feedback
 

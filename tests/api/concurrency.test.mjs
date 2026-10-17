@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
 import {
-  assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
+  advanceNegationWindow, assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
 
 test("unknown semantic Dodge and Negate providers cross the real API and D1 boundary", { timeout: 30_000 }, async () => {
@@ -15,7 +15,7 @@ test("unknown semantic Dodge and Negate providers cross the real API and D1 boun
 
   sql(`UPDATE players SET hero='test-hero' WHERE id=${quote(alicePlayer.id)}`);
   setHand(hostPlayer.id, [card("Dismantle", "semantic-negate")], 4, 4); setHand(alicePlayer.id, [card("Attack", "semantic-kept")], 4, 4); setTurn(game.code, hostPlayer.seat);
-  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "dismantle-semantic-negate", targetId: alicePlayer.id, targetCardIndex: 0 });
+  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "dismantle-semantic-negate", targetId: alicePlayer.id, targetCardIndex: 0, preserveResponse: true });
   assert.equal(opened.status, 200); assert.equal(opened.data.room.actionPlayerId, null); const negateView = await state(game.code, alice.token); assert.ok(negateView.data.currentAction.options.some((option) => option.providerId === "test_semantic_negate"));
   const negated = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "test_semantic_negate" });
   assert.equal(negated.status, 200); assert.equal(negated.data.room.phase, "response"); assert.equal(negated.data.room.pendingNegation.chainDepth, 1); assert.equal(negated.data.room.pendingNegation.negated, true);
@@ -127,6 +127,9 @@ test("lethal damage trigger exhaustion enters shared Dying and Peach rescue exac
 
   const attack = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-lethal-damage-trigger-chain", targetId: alicePlayer.id });
   assert.equal(attack.status, 200);
+  const attackEnvelope = attack.data.room.causalEnvelope;
+  assert.ok(attackEnvelope, "Attack root envelope is persisted at the real response boundary");
+  assert.equal(attackEnvelope.frames.length, 1);
   assert.deepEqual(attack.data.room.currentAction.triggerOptions.map((option) => option.effectId), ["test_damage_about_to_apply_a", "test_damage_about_to_apply_b"]);
 
   await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a" });
@@ -136,6 +139,12 @@ test("lethal damage trigger exhaustion enters shared Dying and Peach rescue exac
   assert.equal(afterB.data.room.pending?.kind, "dying");
   assert.equal(afterB.data.room.currentAction.kind, "dying");
   assert.equal(afterB.data.room.pendingDying.targetId, alicePlayer.id);
+  const dyingEnvelope = afterB.data.room.causalEnvelope;
+  assert.ok(dyingEnvelope, "lethal Damage/Dying keeps the persisted envelope");
+  assert.equal(dyingEnvelope.interactionId, attackEnvelope.interactionId);
+  assert.equal(dyingEnvelope.activeFrameId, attackEnvelope.activeFrameId);
+  assert.equal(dyingEnvelope.frames.find((frame) => frame.frameId === dyingEnvelope.activeFrameId).stage, "DYING");
+  assert.equal(dyingEnvelope.frames.find((frame) => frame.frameId === dyingEnvelope.activeFrameId).origin.originalTargetIds[0], alicePlayer.id);
   assert.equal(afterB.data.room.players.find((player) => player.id === alicePlayer.id).hp, 0);
   assert.equal(afterB.data.room.players.find((player) => player.id === alicePlayer.id).alive, true, "shared Dying keeps the target rescuable");
   assert.equal(afterB.data.room.log.filter((entry) => /Alice takes 1 damage/.test(entry)).length, 1);
@@ -148,11 +157,23 @@ test("lethal damage trigger exhaustion enters shared Dying and Peach rescue exac
   assert.equal(rescued.data.room.players.find((player) => player.id === alicePlayer.id).hp, 1);
   assert.equal(rescued.data.room.players.find((player) => player.id === alicePlayer.id).alive, true);
   assert.equal(rescued.data.room.pendingDying, null);
+  assert.equal(rescued.data.room.causalEnvelope, null, "settled lethal Interaction clears its envelope after rescue");
   assert.equal(rescued.data.room.currentAction.kind, "turn");
   assert.equal(rescued.data.room.log.filter((entry) => /Alice takes 1 damage/.test(entry)).length, 1, "rescue does not replay damage");
   assert.equal(rescued.data.room.log.filter((entry) => /enters Dying/.test(entry)).length, 1, "Dying begins once");
   const persisted = query(`SELECT phase || ':' || COALESCE(pending_json, '') FROM rooms WHERE code=${quote(game.code)}`);
   assert.match(persisted, /^play-struck:$/, "the shared rescue pipeline returns to the turn sequence");
+
+  setEquipment(hostPlayer.id, {});
+  const freshAttack = card("Attack", "fresh-root-after-rescue");
+  const freshDodge = card("Dodge", "fresh-root-after-rescue-dodge");
+  setHand(hostPlayer.id, [freshAttack], 4, 4);
+  setHand(alicePlayer.id, [freshDodge], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+  const reopened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: freshAttack.id, targetId: alicePlayer.id });
+  assert.equal(reopened.status, 200, JSON.stringify(reopened.data));
+  assert.notEqual(reopened.data.room.causalEnvelope.interactionId, attackEnvelope.interactionId, "a settled root is not reused");
+  assert.notEqual(reopened.data.room.causalEnvelope.activeFrameId, attackEnvelope.activeFrameId, "a fresh root gets a fresh frame");
 });
 
 test("Dying uses one ordered rescue pass and does not revisit a passed actor", { timeout: 30_000 }, async () => {
@@ -240,6 +261,14 @@ test("stale and concurrent response submissions claim each transition once", { t
 
   const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-stale-response", targetId: alicePlayer.id });
   assert.equal(opened.status, 200);
+  const root = opened.data.room.causalEnvelope;
+  assert.ok(root, "the stale-response test starts from a real causal root");
+  const rootIdentity = {
+    interactionId: root.interactionId,
+    frameId: root.activeFrameId,
+    checkpointId: root.checkpoint.checkpointId,
+    presentationRevision: root.presentationRevision,
+  };
   const staleContext = {
     actionRevision: opened.data.room.actionRevision,
     meId: hostPlayer.id,
@@ -254,6 +283,16 @@ test("stale and concurrent response submissions claim each transition once", { t
   assert.equal(stale.status, 409);
   assert.equal(stale.data.stale, true);
   assert.equal(stale.data.room.pendingAttack.actorId, alicePlayer.id);
+  assert.deepEqual({
+    interactionId: stale.data.room.causalEnvelope.interactionId,
+    frameId: stale.data.room.causalEnvelope.activeFrameId,
+    checkpointId: stale.data.room.causalEnvelope.checkpoint.checkpointId,
+    presentationRevision: stale.data.room.causalEnvelope.presentationRevision,
+  }, rootIdentity, "a stale request leaves the real causal identity unchanged");
+  const stalePending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(stalePending.continuation.causal.interactionId, rootIdentity.interactionId);
+  assert.equal(stalePending.continuation.causal.frameId, rootIdentity.frameId);
+  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(alicePlayer.id)} AND json_extract(value,'$.id')='dodge-stale-response'`), "1", "the stale request does not consume the Dodge");
 
   const context = {
     actionRevision: prompt.data.actionRevision,
@@ -273,6 +312,8 @@ test("stale and concurrent response submissions claim each transition once", { t
   assert.ok(losers[0].data.room, "the stale response includes a fresh room projection");
   assert.deepEqual(losers[0].data.room.myHand, [], "the losing response does not leak another private hand");
   assert.ok(losers[0].data.room.players.every((player) => player.handCards.length === 0), "the stale response keeps all other hands private");
+  const settledEnvelopeJson = query(`SELECT causal_envelope_json FROM rooms WHERE code=${quote(game.code)}`);
+  if (settledEnvelopeJson) assert.equal(JSON.parse(settledEnvelopeJson).interactionId, rootIdentity.interactionId, "a duplicate cannot create a second causal root");
 
   const finished = await state(game.code, host.token);
   assert.equal(finished.data.players.find((player) => player.id === alicePlayer.id).hp, 4);
@@ -280,6 +321,91 @@ test("stale and concurrent response submissions claim each transition once", { t
   assert.equal(discardIds(game.code).filter((id) => id === "dodge-stale-response").length, 1, "the Dodge enters discard once");
   assert.notEqual(finished.data.phase, "resolving");
   assert.equal(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`), "", "the response does not strand the room");
+});
+
+test("FIX9 Group stale response preserves causal identity and card state", { timeout: 30_000 }, async () => {
+  const opened = await openGanglieGroup({ kind: "RainingArrows", suffix: "fix8-group-stale", judge: { ...card("Dodge", "fix8-group-stale-judge"), suit: "♥", rank: "2" } });
+  const advanced = await requestAndSettle("decline_trigger", { code: opened.code, token: opened.targetMember.token });
+  assert.equal(advanced.status, 200, JSON.stringify(advanced.data));
+  const prompt = await state(opened.code, opened.bobMember.token);
+  assert.equal(prompt.data.currentAction.kind, "response");
+  const root = prompt.data.causalEnvelope;
+  const identity = { interactionId: root.interactionId, frameId: root.activeFrameId, checkpointId: root.checkpoint.checkpointId, presentationRevision: root.presentationRevision };
+  const stale = await requestAndSettle("respond", { code: opened.code, token: opened.bobMember.token, providerId: "card", cardId: `${opened.required.toLowerCase()}-fix8-group-stale-bob`, context: { actionRevision: "stale-fix8-group", meId: opened.bob.id, phase: "response", pendingKind: "response", actorId: opened.bob.id } });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.data.stale, true);
+  assert.deepEqual({ interactionId: stale.data.room.causalEnvelope.interactionId, frameId: stale.data.room.causalEnvelope.activeFrameId, checkpointId: stale.data.room.causalEnvelope.checkpoint.checkpointId, presentationRevision: stale.data.room.causalEnvelope.presentationRevision }, identity);
+  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(opened.bob.id)} AND json_extract(value,'$.id')='${opened.required.toLowerCase()}-fix8-group-stale-bob'`), "1");
+});
+
+test("FIX9 ordinary Duel stale response preserves causal identity before valid progression", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host, alice] = game.members;
+  const [source, target] = game.room.players;
+  const duel = card("Duel", "fix8-duel-stale");
+  const attack = card("Attack", "fix8-duel-stale-response");
+  setHand(source.id, [duel], 4, 4); setHand(target.id, [attack], 4, 4); setTurn(game.code, source.seat);
+  const opened = await request("play_card", { code: game.code, token: host.token, cardId: duel.id, targetId: target.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const root = opened.data.room.causalEnvelope;
+  const identity = { interactionId: root.interactionId, frameId: root.activeFrameId, checkpointId: root.checkpoint.checkpointId, presentationRevision: root.presentationRevision };
+  const stale = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "card", cardId: attack.id, context: { actionRevision: "stale-fix8-duel", meId: target.id, phase: "response", pendingKind: "response", actorId: target.id } });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.data.stale, true);
+  assert.deepEqual({ interactionId: stale.data.room.causalEnvelope.interactionId, frameId: stale.data.room.causalEnvelope.activeFrameId, checkpointId: stale.data.room.causalEnvelope.checkpoint.checkpointId, presentationRevision: stale.data.room.causalEnvelope.presentationRevision }, identity);
+  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(target.id)} AND json_extract(value,'$.id')='${attack.id}'`), "1");
+  await advanceNegationWindow(game.code, host.token, opened.data.room.currentAction.negationWindowId);
+  const prompt = await state(game.code, alice.token);
+  const valid = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "card", cardId: attack.id, context: { actionRevision: prompt.data.actionRevision, meId: target.id, phase: prompt.data.phase, pendingKind: "response", actorId: target.id }, preserveResponse: true });
+  assert.equal(valid.status, 200, JSON.stringify(valid.data));
+  assert.equal(valid.data.room.causalEnvelope.interactionId, identity.interactionId);
+  assert.equal(valid.data.room.causalEnvelope.frames.length, 1);
+});
+
+test("FIX9 Group duplicate response race advances one participant once", { timeout: 30_000 }, async () => {
+  const opened = await openGanglieGroup({ kind: "RainingArrows", suffix: "fix9-group-race", judge: { ...card("Dodge", "fix9-group-race-judge"), suit: "♥", rank: "2" } });
+  const advanced = await requestAndSettle("decline_trigger", { code: opened.code, token: opened.targetMember.token });
+  assert.equal(advanced.status, 200, JSON.stringify(advanced.data));
+  const prompt = await state(opened.code, opened.bobMember.token);
+  const context = { actionRevision: prompt.data.actionRevision, meId: opened.bob.id, phase: prompt.data.phase, pendingKind: "response", actorId: opened.bob.id };
+  const results = await Promise.all([
+    requestAndSettle("respond", { code: opened.code, token: opened.bobMember.token, providerId: "card", cardId: `${opened.required.toLowerCase()}-fix9-group-race-bob`, context, preserveResponse: true }),
+    requestAndSettle("respond", { code: opened.code, token: opened.bobMember.token, providerId: "card", cardId: `${opened.required.toLowerCase()}-fix9-group-race-bob`, context, preserveResponse: true }),
+  ]);
+  assert.equal(results.filter((result) => result.status === 200).length, 1, JSON.stringify(results));
+  assert.equal(results.filter((result) => result.status === 409 && result.data.stale).length, 1, JSON.stringify(results));
+  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(opened.bob.id)} AND json_extract(value,'$.id')='${opened.required.toLowerCase()}-fix9-group-race-bob'`), "0");
+  const after = await state(opened.code, opened.bobMember.token);
+  assert.equal(after.data.causalEnvelope.frames.length, 2, "FIX14 retains the settled Damage child in the public causal history");
+  assert.equal(after.data.causalEnvelope.interactionId, prompt.data.causalEnvelope.interactionId);
+  assert.equal(after.data.causalEnvelope.activeFrameId, prompt.data.causalEnvelope.activeFrameId);
+});
+
+test("FIX9 ordinary Duel duplicate response race advances one exchange once", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host, alice] = game.members;
+  const [source, target] = game.room.players;
+  const duel = card("Duel", "fix9-duel-race");
+  const attack = card("Attack", "fix9-duel-race-response");
+  const sourceAttack = card("Attack", "fix9-duel-race-source-response");
+  setHand(source.id, [duel, sourceAttack], 4, 4); setHand(target.id, [attack], 4, 4); setTurn(game.code, source.seat);
+  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: duel.id, targetId: target.id, preserveResponse: true });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  await advanceNegationWindow(game.code, host.token, opened.data.room.currentAction.negationWindowId);
+  const prompt = await state(game.code, alice.token);
+  const context = { actionRevision: prompt.data.actionRevision, meId: target.id, phase: prompt.data.phase, pendingKind: "response", actorId: target.id };
+  const results = await Promise.all([
+    requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "card", cardId: attack.id, context, preserveResponse: true }),
+    requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "card", cardId: attack.id, context, preserveResponse: true }),
+  ]);
+  assert.equal(results.filter((result) => result.status === 200).length, 1, JSON.stringify(results));
+  assert.equal(results.filter((result) => result.status === 409 && result.data.stale).length, 1, JSON.stringify(results));
+  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(target.id)} AND json_extract(value,'$.id')='${attack.id}'`), "0");
+  const after = await state(game.code, host.token);
+  assert.equal(after.data.pendingDuel.actorId, source.id);
+  assert.equal(after.data.causalEnvelope.frames.length, 1);
+  assert.equal(after.data.causalEnvelope.interactionId, prompt.data.causalEnvelope.interactionId);
+  assert.equal(after.data.causalEnvelope.activeFrameId, prompt.data.causalEnvelope.activeFrameId);
 });
 
 test("stale and concurrent trigger submissions execute optional reactions once", { timeout: 30_000 }, async () => {
@@ -482,5 +608,3 @@ test("classic role deaths apply cleanup, rewards, penalties, and victory rules",
   const rebelVictory = await takeDamageIfPending(rebelVictoryGame.code, fallenLordMember.token);
   assert.equal(rebelVictory.data.room.status, "finished"); assert.ok(rebelVictory.data.room.timeline.some((event) => /Rebel victory/.test(event.message ?? "")));
 });
-
-

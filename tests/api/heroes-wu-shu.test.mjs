@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
 import {
-  assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
+  assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, seedPlayingGame, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
 
 test("Fanjian validates target ownership, empty hands, matching suits, once-per-phase state, and Dying", async () => {
@@ -97,6 +97,52 @@ test("Zhang Liao Assault replaces normal Draw Phase cards with private hand tran
   const delayed = await createHumanGame(); const delayedSource = delayed.room.players[0]; const delayedTarget = delayed.room.players[1]; const delayedCard = card("Peach", "assault-delayed-target", "♥"); const overindulgence = card("Overindulgence", "assault-delayed"); const judgement = card("Dodge", "assault-delayed-judgement", "♥");
   sql(`UPDATE players SET hero='zhang-liao' WHERE id=${quote(delayedSource.id)}`); setHand(delayedSource.id, [], 4, 4); setHand(delayedTarget.id, [delayedCard], 4, 4); for (const player of delayed.room.players.slice(2)) setHand(player.id, [], 4, 4); setJudgement(delayedSource.id, [overindulgence]); setDeck(delayed.code, [judgement, card("Attack", "assault-delayed-deck-a"), card("Dodge", "assault-delayed-deck-b")]); setTurn(delayed.code, delayedSource.seat, "draw");
   const delayedOpened = await requestAndSettle("draw", { code: delayed.code, token: delayed.members[0].token }); assert.equal(delayedOpened.status, 200); assert.equal(delayedOpened.data.room.currentAction.triggerOptions[0].effectId, "zhang_liao_assault"); assert.ok(delayedOpened.data.room.log.findIndex((entry) => entry.includes("judges A♥ for Overindulgence")) < delayedOpened.data.room.log.findIndex((entry) => entry.includes("may use Assault")), "Assault opens after delayed Judgement resolution");
+});
+
+test("real Draw Phase Assault fixture exposes one authoritative trigger before any replacement action", async () => {
+  const one = await seedPlayingGame({
+    phase: "draw",
+    turnSeat: 0,
+    players: [
+      { name: "ZHANG LIAO", role: "Lord", hero: "zhang-liao", hp: 4, maxHp: 4, hand: [] },
+      { name: "TARGET ONE", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [card("Peach", "real-assault-one", "♥")] },
+      { name: "TARGET TWO", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [card("Dodge", "real-assault-two", "♣")] },
+      { name: "EMPTY", role: "Renegade", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
+    ],
+    deck: [card("Attack", "real-assault-deck-one"), card("Dodge", "real-assault-deck-two")],
+  });
+  const source = one.room.players[0]; const targetOne = one.room.players[1]; const targetTwo = one.room.players[2]; const token = one.members[0].token;
+  assert.equal(one.room.currentAction.kind, "turn"); assert.deepEqual(one.room.currentAction.legalActions, ["draw"]);
+  const beforeHand = one.room.myHand.map((held) => held.id); const beforeDeck = one.room.deckCount;
+  const opened = await requestAndSettle("draw", { code: one.code, token });
+  const openedRoom = opened.data.room;
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  assert.equal(openedRoom.phase, "response"); assert.equal(openedRoom.currentAction.kind, "trigger"); assert.equal(openedRoom.currentAction.actorId, source.id);
+  assert.equal(typeof openedRoom.actionRevision, "string", "action revision stays on the projected room authority");
+  assert.deepEqual(openedRoom.currentAction.triggerOptions.map((option) => option.effectId), ["zhang_liao_assault"]);
+  assert.deepEqual(openedRoom.currentAction.triggerOptions[0].selection, { type: "target", targetIds: [targetOne.id, targetTwo.id], min: 1, max: 2 });
+  assert.equal(openedRoom.deckCount, beforeDeck, "opening Assault does not draw or replace cards");
+  assert.deepEqual(openedRoom.myHand.map((held) => held.id), beforeHand, "opening Assault does not change the local hand");
+  assert.ok(openedRoom.currentAction.legalActions.includes("trigger"));
+
+  const oneTarget = await requestAndSettle("trigger", { code: one.code, token, providerId: "zhang_liao_assault", targetIds: [targetOne.id] });
+  assert.equal(oneTarget.status, 200, JSON.stringify(oneTarget.data)); assert.equal(oneTarget.data.room.phase, "play");
+
+  const two = await seedPlayingGame({
+    phase: "draw",
+    turnSeat: 0,
+    players: [
+      { name: "ZHANG LIAO", role: "Lord", hero: "zhang-liao", hp: 4, maxHp: 4, hand: [] },
+      { name: "TARGET ONE", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [card("Peach", "real-assault-two-one", "♥")] },
+      { name: "TARGET TWO", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [card("Dodge", "real-assault-two-two", "♣")] },
+      { name: "EMPTY", role: "Renegade", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
+    ],
+    deck: [card("Attack", "real-assault-two-deck-one"), card("Dodge", "real-assault-two-deck-two")],
+  });
+  const twoOpened = await requestAndSettle("draw", { code: two.code, token: two.members[0].token });
+  const twoTargets = twoOpened.data.room.currentAction.triggerOptions[0].selection.targetIds;
+  const twoResolved = await requestAndSettle("trigger", { code: two.code, token: two.members[0].token, providerId: "zhang_liao_assault", targetIds: twoTargets });
+  assert.equal(twoResolved.status, 200, JSON.stringify(twoResolved.data)); assert.equal(twoResolved.data.room.phase, "play");
 });
 
 test("Xu Zhu Bared Bodied replaces one Draw Phase card and scopes Attack/Duel damage to the active turn", { timeout: 120_000 }, async () => {
@@ -287,4 +333,3 @@ test("Attack response windows are public while Dodge options remain private", { 
   assert.equal(declinedHeld.status, 200); assert.equal(declinedHeld.data.room.players.find((player) => player.id === held.target.id).hp, 3);
   assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(held.target.id)}`)).map((item) => item.id), ["dodge-privacy-held"]);
 });
-

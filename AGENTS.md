@@ -1,27 +1,85 @@
-# Three Kingdoms project instructions
+# WTK Project Execution Rules
 
-- After every functional change or bug fix, update both `README.md` (current stage, roadmap, and next milestone) and `HANDOVER.md` (implemented state, recent work, known boundaries, and recommended next work) before committing.
-- Keep the Quick Test opening hand, human multiplayer flows, and deterministic tests current for every implemented card. Quick Test is one human controller switching between human-style seats; bot gameplay is legacy/inactive and is not a product requirement.
-- The active ruleset is WTK Standard only. Do not add Endless Legends or Kingdom Wars cards to new games unless the owner explicitly changes this priority.
-- Use `docs/OFFICIAL_CARD_REFERENCE.md`, the official WTK Standard rulebook and YOKA Games' official English catalogue filtered to Standard as the terminology and rule source. Do not ship official card artwork without permission.
-- Before release, run the build, full tests, lint, and `git diff --check`.
-- Unless the user requests local-only work, push the validated commit to GitHub `main`. The GitHub Actions workflow is the only production release path: it validates the commit, applies Cloudflare D1 migrations and deploys the Cloudflare Worker. Do not push or deploy to ChatGPT Sites.
+## Document roles
 
-## Completed architecture invariants
+Use each repository document for one job only:
 
-The semantic response/trigger architecture milestone is complete. Preserve these boundaries as invariants while implementing new cards or hero abilities. Normal product play is human multiplayer plus Quick Test with one human controller switching between human-style seats. Any remaining bot implementation is legacy/inactive code and is not part of the active product contract.
+- `docs/UX2-refine.md` — current UX2 product/UI design authority during the refinement phase. It defines the current reviewer-approved UX behavior, interaction presentation, responsive requirements, and measurable acceptance criteria. It is **not** a task queue.
+- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` — prior UX2 baseline/reference. Preserve its established architecture and closed foundations, but when a refinement requirement conflicts with older presentation wording, `docs/UX2-refine.md` is the current authority for refinement work.
+- `HANDOVER.md` — current execution handoff. It contains the latest relevant result and exactly one current or next bounded task. The Coding Agent maintains it.
+- `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` — execution method for autonomous UI/Layout work: startup, task boundaries, CI cadence, planning gate, and stop conditions.
+- `docs/AUTONOMOUS_UI_ROADMAP.md` — durable history only: completed milestones, important implementation evidence, and known deferred gaps. It is not task authority.
+- `docs/UX_V2_RELEASE_GATE.md` — release-gate evidence only. It is not task or design authority.
 
-The completed architecture guarantees, covered by deterministic tests and the isolated synthetic-provider Worker/D1 proofs, are:
+Direct user instructions override repository process instructions.
 
-- canonical Negation scheduling discovers every legal `negate` provider, preserves deterministic order, toggles parity correctly, and opens counter-windows correctly;
-- secondary Judgement returns one semantic satisfied/unsatisfied result and uses the same response-continuation boundary for Attack, Group, Duel, and Negation;
-- all secondary-response prerequisites are validated before claiming the room, or every post-claim path performs a deterministic recovery transition;
-- human seats use one semantic trigger continuation executor for `attack_dodged_event` and `damage_about_to_apply_event`;
-- exhausted damage reactions apply the original damage exactly once and enter Dying/rescue when required;
-- required end-to-end regressions cover Negation ordering/parity, Judgement success/failure, trigger exhaustion, and human-seat guarantees across ordinary responses and trigger chains: authoritative actor ownership, correct perspective switching, private hand/provider projection, wrong-seat rejection, stable resolution identity, and stale/double-submission safety;
-- synthetic test providers are explicitly registered only in the test Worker and are absent from production registries;
-- the semantic protocol is the only supported gameplay protocol; currentAction is the authoritative client decision contract and future cards/heroes must not add concrete provider-specific HTTP actions.
+A design-document change does **not** automatically replace the active HANDOVER task. If the active bounded task can continue without contradicting the new design, finish it. If it would contradict the new design, stop and request review. Before planning the next task, always review the latest `docs/UX2-refine.md` revision.
 
-For `attack_targeted`, preserve the established invariant: discover providers semantically from authoritative live state; allow the established source- or target-owned actor; project private choices only to that actor; exhaust resolved effects deterministically; resume the original Attack exactly once; and do not add provider-specific route or UI actions.
+Current refinement sequencing: `docs/UX2-refine.md` §5 defers the UX2 Interaction Stage Hero/player visualization refactor and physical-seat causal-graph work **until all active refinement sections before §5 are complete, including §4A and §4B**. Do not interleave Section 6 graph work with unfinished pre-§5 refinement tasks. At the clean planning boundary after those refinements are closed, UX2 §6 is authorized and should begin from §6.25 Phase A unless a newer direct user instruction changes the order. Section 6 is part of completing UX2, not a new UX version. Until that boundary, if HANDOVER contains a Hero/player graph task, defer it and replan from the active pre-§5 refinement sections. Do not delete the deferred implementation as cleanup. UX2 must not be declared complete until the final AOE/multi-target presentation is revalidated and Reviewer-accepted.
 
-For each implementation round, keep these invariants visible in the task notes, run the full local validation suite, and update `README.md` and `HANDOVER.md` to match the actual state. If a future change regresses an invariant, explicitly say the milestone is incomplete rather than claiming completion.
+## Working mode and branch
+
+The normal mode is one reviewer-authorized task from `HANDOVER.md`.
+
+Autonomous UI/Layout mode is active only when the user explicitly activates it or asks the Agent to follow `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`. In that mode the Agent may plan and execute successive bounded UI/Layout tasks using that workflow.
+
+Autonomous UI/Layout work is performed on `ux-v2`. Do not modify or merge `main` as part of that run.
+
+Before changing files:
+
+1. inspect branch and working-tree state;
+2. preserve all existing uncommitted work;
+3. safely synchronize `ux-v2` with `origin/ux-v2` only when doing so cannot overwrite local changes;
+4. read the complete current `HANDOVER.md`;
+5. follow the active mode's workflow.
+
+Never reset, clean, silently stash, force-push, or overwrite unrelated user/agent work.
+
+## Gameplay and architecture boundaries
+
+- `CurrentAction` owns viewer legal actions. React must not reconstruct legality.
+- `PresentationSnapshot` / `PresentationClientView` own proven public interaction facts. Do not infer source, target, participant, responder, resolver, causality, or order from timeline order, turn ownership, `actionPlayerId`, names, DOM position, HP changes, or animation state.
+- Missing or ambiguous semantic authority fails closed.
+- Keep public presentation separate from private viewer data. Never expose private hand identities, providers, hidden roles, or viewer-private legality through the public Interaction Stage.
+- Keep gameplay controls in the Local Player Dock; do not move legal-action authority into the public Stage.
+- The viewer's Hero stays in the Local Player Dock and is not duplicated centrally.
+- Physical opponent seat DOM stays fixed; central interaction uses projected presentation copies.
+- Preserve server authority, stale/replay safety, semantic continuations, exact physical-card conservation, privacy boundaries, and existing protocol behavior unless a task explicitly authorizes a protocol change.
+- Do not add card/hero-specific HTTP routes or client legality rules when an existing shared capability/continuation path applies.
+
+## Rules and reference sources
+
+WTK Standard is the active ruleset unless the reviewer explicitly changes it.
+
+For card, deck, hero, or skill semantics, consult repository references first:
+
+- `docs/OFFICIAL_CARD_REFERENCE.md`
+- `docs/STANDARD_108_DECK_MANIFEST.md`
+- `docs/STANDARD_HERO_REFERENCE.md`
+
+Use official WTK/YOKA material only when repository references do not resolve the question. Do not ship official card artwork without permission.
+
+## Validation and delivery
+
+GitHub Actions is the full validation gate.
+
+Local validation should be focused on the current change. Focused tests, targeted lint, browser geometry checks, and `git diff --check` are allowed when they directly prove the task. Do not routinely run the entire test/build/lint suite locally unless reproducing or diagnosing a relevant failure.
+
+Never claim a test, CI run, deployment, device check, or production state was verified unless it was actually observed.
+
+Commit and push only files belonging to the authorized task. Keep implementation, focused regressions, and required handoff updates together where practical.
+
+For autonomous UI/Layout CI cadence, follow `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`.
+
+## HANDOVER discipline
+
+`HANDOVER.md` must stay short and current. It records:
+
+- the latest relevant implementation/result and truthful CI state;
+- the latest design revision reviewed by the Coding Agent;
+- exactly one current or next bounded task;
+- acceptance/validation scope and any precise resume point.
+
+Do not use HANDOVER as an append-only history. Move durable completed history to the roadmap/archive and replace stale handoff text.
+
+Only the human Reviewer may declare reviewer acceptance. Agent completion or green CI does not imply reviewer acceptance.

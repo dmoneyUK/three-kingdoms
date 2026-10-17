@@ -1,6 +1,6 @@
 # UX V2 — Player Dock, Seat Topology, and Interaction Stage
 
-**Status:** discussion draft — saved for design review, **do not implement yet**  
+**Status:** discussion draft — visual redesign remains design-review gated; the UI-01 read-only adapter scaffold is implemented
 **Date:** 2026-10-02
 
 ## Goal
@@ -173,6 +173,461 @@ PresentationSnapshot
 
 Do not duplicate existing protocol fields unnecessarily. Reuse the current authoritative action protocol wherever possible.
 
+### 0.6.1 UI-01 client adapter boundary
+
+The first React migration slice is intentionally non-visual. `game/presentation-client.ts`
+maps the typed server `PresentationSnapshot` and viewer ID to a pure
+`PresentationClientView`. It exposes only public interaction identity, scene
+roles, continuity, stable boundary kind, and thin local-control references.
+Legal cards, options, providers, Pending records, timeline events,
+`presentationV2` compatibility contexts, phase, and hero/card names are not
+inputs to the adapter and cannot be reconstructed by it.
+
+The adapter fails closed to identity-free `REST` when snapshot authority is
+absent, partial, or incoherent. Home computes it from the room snapshot and
+viewer ID, and the existing game shell receives it only through stable semantic
+`data-*` attributes. The current presentation remains visually and
+behaviorally unchanged; the legacy Pending/timeline animation path remains
+temporarily intact. Future Interaction Stage consumers must use this adapter
+and snapshot semantics rather than rediscovering authority from compatibility
+fields. Settlement and transition animation remain legacy compatibility until
+separately designed and accepted.
+
+### 0.6.2 UI-02 semantic decision status consumer
+
+The existing action/status strip is the first React consumer of
+`PresentationClientView`. For an active proven interaction, its public
+ownership fields are read from the adapter: `decisionActorId` remains distinct
+from `activeResolverId`, while source, current participant, stage, and stable
+boundary remain available for status decoration. Player names are resolved
+only after those authoritative IDs are selected.
+
+The local `YOU` marker is viewer-private and comes only from adapter local
+entitlement. If the snapshot is identity-free `REST`, the strip retains its
+existing turn/phase compatibility behavior because ordinary turn status is not
+yet owned by the snapshot. Pending, timeline, `presentationV2`,
+`actionReason`, and CurrentAction remain outside active-interaction ownership;
+they continue to support legacy controls and animation paths. The strip's
+existing DOM/classes and CSS are unchanged, and no Interaction Stage visual
+redesign has begun.
+
+### 0.6.3 UI-03 read-only Interaction Stage consumer
+
+The first dedicated Interaction Stage consumer is a small, read-only table
+context panel. `buildInteractionStageView` accepts only `PresentationClientView`
+and a player-name resolver: it selects interaction, target, participant,
+decision-owner, resolver, stable-boundary, and continuity IDs from the adapter
+before resolving names. Missing names use neutral labels without substituting a
+different identity.
+
+The panel renders only when the adapter proves an interaction. It exposes
+source, original and active targets, current participant, decision owner,
+active resolver, stage, stable boundary, viewer-local decision responsibility,
+and child-frame/parent-frame continuity. It does not render cards, legal
+options, buttons, timers, Pending data, CurrentAction data, or animation
+events. Identity-free REST renders no panel. The existing action strip,
+controls, table/seat layout, local dock, animation, settlement/transition
+paths, and final visual redesign remain separate future slices.
+
+### 0.6.4 UI-04 Interaction Stage focus summary
+
+UI-04 keeps the complete `InteractionStageView` as the semantic source while
+adding a pure `InteractionStageDisplayModel` for player-facing hierarchy. The
+normal focus is stage/effect, source, and the current participant or active
+target context. Current participant and active target scope are direct facts;
+the client does not infer ordinal progress, completed/remaining counts, or
+sequence position from target array order/length because no accepted
+authoritative progress field exists. A proven CHOICE shows its decision owner; a resolver is shown
+only when it explains a source-owned or nested-child relationship. Original
+targets are shown only when their ordered IDs differ from the active target
+set, so equal target lists do not create redundant copy.
+
+The panel keeps interaction/checkpoint/revision identifiers as data attributes
+and test diagnostics, not prominent visible labels. Child-frame context is
+compact and names its parent frame when proven. The display model compares
+only adapter-derived IDs and continuity; it does not infer hierarchy from
+legacy room fields. Responsive containment is limited to the panel, with no
+seat, dock, control, animation, settlement/transition, or final visual
+redesign migration.
+
+### 0.6.5 UI-05 semantic seat highlight projection
+
+UI-05 projects the accepted public interaction roles onto every existing visible
+player surface through a pure `PresentationClientView` plus player-ID helper:
+the opponent seats and the local hero/player dock. Source, original target,
+active target, current participant, decision actor, and active resolver remain
+separate booleans so overlapping roles are not collapsed; the viewer-decision
+marker is the only local entitlement-dependent role. REST projects no
+interaction roles.
+
+The resulting classes and data attributes are presentation-only. They do not
+create target-selection controls, change legality, alter click handlers, or
+replace the existing turn, defeated, action, local amber selection, hand,
+skills, equipment, or dock controls. Inset shadows and outlines preserve seat
+and dock dimensions and topology at desktop, 650px, and 480px widths. No local
+dock composition or player-board topology changes. Final seat topology, Hero
+Focus, and control migration remain separate future slices.
+
+### 0.6.6 UI-06 semantic Hero Focus projection
+
+UI-06 adds a compact, read-only Hero Focus consumer inside the existing
+Interaction Stage. `HeroFocusView` selects semantic identity before display
+decoration: a proven `currentParticipantId` is primary; when it is absent, a
+single proven `activeTargetId` is the fallback; multiple active targets without
+a current participant produce no single Hero Focus. The helper never infers
+focus from decision actor, resolver, source, turn, actionPlayerId, Pending,
+timeline, card names, hero names, or array order.
+
+Public hero/name/HP decoration is resolved only for the already-selected player
+ID. Source context remains separate from focus, so a Ma Chao/source-owned
+decision still focuses the current target participant while Interaction Stage
+continues to show decision ownership and resolver identity. Proven CHILD_FRAME
+context remains compact, Group/AOE does not cycle targets, and Dying follows
+the current participant. Missing display data degrades to a neutral identity
+without changing the selected ID.
+
+The Hero Focus surface has no buttons, legal-action hints, timers, private cards,
+hand contents, target selection, or gameplay controls. Its responsive styling
+is scoped to the compact panel at desktop, 650px, and 480px widths; it does not
+change player-board coordinates, seat dimensions, local dock composition, or
+Interaction Stage authority. REST hides the surface, and viewer projections
+remain equal apart from existing local decision markers. The larger INSPECT /
+PREVIEW / ACTIVE / SELECTABLE DETAIL Hero Focus redesign remains future work.
+
+### 0.6.7 UI-07 local target selection confirmation boundary
+
+UI-07 treats target IDs chosen in the local seat controls as private,
+unsubmitted state. The pure `buildLocalTargetSelectionView` helper consumes
+only already-computed local selection facts: whether the mode is active, the
+selected IDs in click order, proven minimum/maximum counts, the caller's
+existing `canConfirm` constraint, and whether local target input exists. It
+does not read or reinterpret `PresentationSnapshot`, `InteractionStageView`,
+or public target roles.
+
+For deferred normal card targeting (including Sky-Piercing Halberd's ordered
+multi-target Attack), active hero-skill targets, trigger/response targets,
+Serpent Spear targets, and Borrowed Sword's forced-Attack target, eligible seat
+clicks update only the local amber selection. The existing action and payload
+remain the Confirm boundary. A local Cancel clears the complete unsubmitted
+local selection for the active flow, including its card/provider/mode input
+where applicable; it does not call
+`decline_trigger`, `decline_response`, `skip_rescue`, or any other gameplay
+action. Existing provider-owned Cancel controls remain the sole Cancel surface
+when they already own complete flow cancellation. Skip/Decline remains the separate
+authoritative decision. The existing
+payload order is preserved where the path already carries ordered target IDs;
+no effect order is inferred from public arrays.
+
+Public red/cyan/source/defeated presentation roles and Hero Focus remain
+projection-owned and are unchanged by local selection. The command area shows
+one concise local instruction/count plus the applicable Confirm/Cancel surface,
+with bounded styling at desktop, 650px, and 480px widths. Borrowed Sword's
+forced-Attack target now submits the existing `choose_borrowed_sword_target`
+server action only at Confirm, with no payload or resolution change. Its
+server-projected `eligibleTargetIds` remain authoritative; action-revision or
+eligibility changes clear stale local choice. Opaque private target-card
+pickers remain a separate card-zone flow rather than being generalized into
+player target selection.
+
+### 0.6.8 UI-09 private target-card picker confirmation boundary
+
+UI-09 keeps private target-card choices in the local operation console until
+the existing server action is confirmed. The `pendingTargetCard` Dismantle and
+Steal continuation exposes hidden Hand positions only as opaque `?` controls;
+Equipment and Judgement cards remain the already-authorized public faces. A
+selection changes only local state, Confirm sends the unchanged
+`choose_target_card` action and payload once, and Cancel clears the local zone,
+index, and card ID without sending a gameplay or decline action.
+
+Semantic `target_cards` providers use the existing `eligibleKeys`, min/max
+constraint, and `trigger` payload. Their hidden hand entries remain opaque
+(`hand` or `hand:<index>` keys are never rendered as card identity), while
+public Equipment/Judgement faces are shown only when the server already
+projects those cards. Unmapped providers receive a picker-local Cancel;
+Sima Yi Retaliation keeps its existing profile-owned cancellation surface so
+there is not a second provider cancellation path. Skip/Decline remains the
+authoritative server action and is never substituted by Cancel.
+
+The picker invalidates local input when `actionRevision` or the live target
+card availability changes. Local selected keys are not copied into
+PresentationSnapshot, Interaction Stage, Hero Focus, public seat roles,
+timeline/log text, or another viewer's projection. Confirm remains disabled
+until the existing min/max constraint is satisfied; ineligible keys are not
+rendered/selectable. The overlay and table picker remain contained at the
+existing desktop, 650px, and 480px responsive bounds. This is a picker-boundary
+consumer change only: no server rule, payload, visibility rule, projector,
+topology, animation, or settlement behavior changes.
+
+### 0.6.9 UI-10 local operation console decision-state unification
+
+UI-10-FIX1 composes the existing local operation console through the pure
+`buildConsoleDecisionDisplay` model in `game/console-decision.ts` and uses its
+result to govern the actual footer controls. Its input is limited to
+already-proven CurrentAction/capability facts, existing local selection
+status, busy state, and concise labels. It does not accept Room, Pending,
+PresentationSnapshot, callbacks, public semantic roles, or raw card legality.
+The model exposes a decision kind/instruction, local selection summary/count,
+one primary action candidate, local Cancel, authoritative Skip/Decline, busy
+state, and secondary provider labels; the JSX renders a primary only when its
+selected model ID matches the existing control, and hides all authoritative
+footer controls when the model is not coherent or not viewer-authoritative.
+
+The composition boundary is explicit: CurrentAction/capabilities decide
+whether a control exists, local selection describes only unsubmitted viewer
+input, and PresentationSnapshot/Interaction Stage/Hero Focus remain
+descriptive. Primary candidates use explicit authority-first priority; an
+unresolved equal-priority conflict fails closed instead of exposing two
+unrelated submit surfaces. Cancel remains local-only and never replaces
+Skip/Decline. Target-card pickers, Harvest, private distribution, deck reorder,
+and mandatory-choice dialogs retain their sole submit controls and do not
+advertise a duplicate footer primary. Existing turn/end-turn, response,
+rescue, trigger, active-skill, normal/converted/Serpent target, Borrowed
+Sword, discard, Duel/Judgement, and special-continuation actions keep their
+existing names and payloads. Provider selection, private hand/equipment
+composition, board topology, Hero Focus and Interaction Stage controls remain
+intentionally separate. Only the existing console wrapper gains bounded flex
+wrapping at touch widths; no control is moved into a public presentation
+surface.
+
+### 0.6.10 UI-11 responsive topology and console regression hardening
+
+UI-11 keeps the existing board composition and makes its responsive contract
+testable. `GameRoom` renders `data-player-count` and
+`data-seat-topology="top-row"` for 2–4 total players and
+`data-seat-topology="side-column"` for 5–10. Relative opponent seat classes
+remain in DOM order; the local player is filtered out of `player-board` and
+rendered once by `LocalPlayerDock`. The side-column mode uses the existing
+relative order in a two-column grid with a row budget of 2/3/4/5 for 5/6–7/
+8–9/10 players. It is a containment fix for the previously unpositioned
+relative seat classes 4–9, not a new gameplay or board-authority model.
+
+The responsive inventory is explicit:
+
+- baseline/global table and seat rules define the desktop geometry;
+- the existing sequence overrides use <=700px for the compact table/dock and
+  <=520px for the compact board position variables;
+- Interaction Stage/Hero Focus already use <=650px and <=480px text/grid
+  adjustments, and UI-11 adds side-column card sizing plus dialog scroll at
+  those same <=650px and <=480px boundaries;
+- the existing local dock keeps its <=700px, <=480px, and <=360px row/column
+  rules, with hand rail and footer console as separate regions.
+
+The concrete source defect was that the mobile absolute-position rules only
+placed `player-square-1`, `-2`, and `-3`; 5–10 player renders therefore had no
+declared placement for relative seats 4–9. UI-11 adds the explicit side-column
+grid and bounded card sizing, safe stage/focus wrapping, viewport-bounded
+dialog scrolling, and an explicit wrapping rule for the existing
+`data-console-surface="local-operation"` children. No information is hidden,
+no mobile-only gameplay control is added, and no authority or payload changes.
+
+Deterministic SSR contracts cover player counts 2, 3, 4, 5, 6, 8, and 10;
+semantic stage/focus, source-owned, Group/AOE, child Damage, Dying, local
+selection, and REST cases retain their stable anchor ownership in the existing
+render tests. One, five, and ten physical hand cards retain one hand rail and
+one footer console. The focused UI render suite is 18/18, the full fast suite
+is 172/172, and the API suite is 239/239 after a successful build.
+
+These are rendered DOM and declared CSS proofs, not pixel measurements. This
+checkout has no browser or screenshot harness, so desktop, <=650px, and
+<=480px pixel-level appearance, touch ergonomics, and device-specific line
+wrapping remain a visual-only GAP for later manual/browser validation.
+
+### 0.6.11 UI-12 local automatic Group/AOE scope preview
+
+UI-12 is a local, pre-submit aid, not an Interaction Stage state. When the
+viewer selects a currently playable Oath, Bumper Harvest, Barbarian Invasion,
+or Raining Arrows card, `buildGroupScopePreview` mirrors only the existing
+public participant construction: `playersInTurnOrder` filters living players;
+Oath then filters wounded players, Bumper Harvest keeps every living player,
+and the two group attacks exclude the source. It takes the selected card,
+source ID, turn seat, public player facts, and CurrentAction-authorized Play
+as inputs. It does not read PresentationSnapshot, Pending, timeline, causal
+identity, or a response participant list.
+
+**Preview != Event.** The teal dashed local decoration and neutral label create
+no `interactionId`, `checkpointId`, Hero Focus, public seat role, target
+selection, or Confirm control; choosing the card sends no action. Existing
+Play keeps its `{ cardId }` payload with no invented target IDs, and server
+progression remains authoritative after acceptance. The preview suppresses on
+busy presentation or a changed/unauthorized CurrentAction. Current paths have
+no conditional or immunity recipient exclusion to expose before submission;
+Sky Piercing Halberd remains the separate explicit multi-target flow. The
+UI-11 pixel-level desktop/650px/480px browser/manual check remains a GAP.
+
+### 0.6.12 UI-13 server-owned Duel response focus and handoff
+
+UI-13 treats alternating Duel responses as one existing semantic interaction,
+not a client participant sequence. The initial Duel opens a root
+`DUEL_EXCHANGE` frame; an accepted Attack or secondary Judgement handoff keeps
+the interaction and causal frame while advancing the server-owned checkpoint.
+The public projector exposes only proven source, original/active targets,
+current participant, decision actor, and active resolver; timeline,
+`actionPlayerId`, turn owner, and card selection do not become responder
+authority. The client reads local legality and private cards from `CurrentAction`
+and clears local selection when its action revision changes.
+
+Duel failure enters the existing `DAMAGE` child frame. A lethal result advances
+through the existing Dying continuation with the parent Duel context available;
+Peach rescue clears the child and terminal authority. Mounted coverage proves
+initial and alternating response focus, viewer-equal public roles, stable seat
+anchors, local stale cleanup, legacy-field resistance, and the absence of any
+client-derived next responder. No protocol, rule, projector-topology, or
+animation change is part of UI-13; the UI-11 pixel-level desktop/650px/480px
+browser/manual check remains a GAP.
+
+### 0.6.13 UI-14 Judgement and replacement semantic-flow regression
+
+UI-14 keeps the existing Judgement engine and protocol unchanged while proving
+that the UI consumes its authoritative boundaries. Delayed Lightning,
+Overindulgence, and fixture-only Rations Depleted all open a proven `JUDGEMENT`
+scene whose source, subject/current participant, decision actor, and active
+resolver come from the persisted causal envelope and Pending/CurrentAction
+linkage. Sima Yi replacement candidates are projected only to the entitled
+viewer; the public revealed card comes only from the existing reveal event.
+Viewer-equal public scenes, stable checkpoint/frame continuity, exact existing
+`cardIds` submission, root clear, stale actor/revision cleanup, and malformed
+envelope fail-closed behavior are covered by engine/API tests. Mounted GameRoom
+coverage proves selection remains local until Confirm, while legacy
+`actionPlayerId`/turn fields cannot grant controls or move Hero Focus. No new
+Judgement rule, action, payload, visibility path, or animation authority is
+introduced; the active new-game deck remains WTK Standard.
+
+### 0.6.14 UI-15 Reaction Chain public causality and private response boundary
+
+UI-15 adds a compact read-only Reaction Chain inside the existing Interaction
+Stage only when the typed snapshot exposes a coherent proven `NEGATION` scene.
+Its model reads the root effect, root source, original targets, active response
+window, and proven continuity relation from `InteractionStageView`; it never
+reads `CurrentAction`, timeline order, compatibility `pendingNegation`,
+`actionPlayerId`, `resolutionId`, or `actionRevision` to construct public
+nodes. Therefore every viewer receives the same root and active-node content,
+while only the CurrentAction actor receives private eligible providers/cards
+and local console controls.
+
+An accepted Negation/counter-Negation advances one existing `NEGATION` causal
+frame and checkpoint sequence rather than creating a separately typed public
+counter-contributor record. The chain consequently preserves the original
+root and marks the active response relation, while Group/AOE and Duel retain
+their existing same-frame/resume evidence. A decline/pass changes server-owned
+response progression only; it produces no fabricated public node. The model
+fails closed if the root effect/source or typed scene is absent.
+
+The snapshot does not retain durable independently proven historical
+counter-provider identities, ordering, or terminal outcome. UI-15 therefore
+truthfully renders a bounded root plus active response instead of inventing
+nested history from timeline/revision correlations. That durable historical
+chain is a documented GAP for any later, separately authorized server-model
+work; this UI slice does not expand projector authority, rules, actions,
+payloads, card visibility, topology, or animation.
+
+### 0.6.15 UI-16 Dying / Peach rescue player-facing handoff
+
+UI-16 consumes the accepted C4 Dying barrier and the existing typed
+`InteractionStageView`; it does not redesign or re-prove the engine. When the
+public scene is a coherent `DYING` checkpoint with a proven
+`currentParticipantId`, that participant is the sole Hero Focus and is labelled
+`DYING PLAYER`. The focus never falls back to an active-target array, lowest HP,
+timeline, turn owner, `actionPlayerId`, or local controls. The existing
+`currentParticipantId`, `decisionActorId`, and `activeResolverId` remain
+distinct public facts: the dying player is the subject, while the latter two
+identify the current server-owned rescue handoff when the stable boundary is a
+`CHOICE`.
+
+The read-only Dying handoff stays inside the existing Interaction Stage. It may
+show the dying player, current decision actor, active resolver, neutral rescue
+guidance, and proven `ROOT_FRAME`/`CHILD_FRAME` context. It must not expose
+private hand/provider IDs, rescue order or future rescuer count, deadlines,
+`CurrentAction`, terminal predictions, or a duplicate Peach/Skip control. The
+local operation console is the only control surface. It uses the existing
+`give_peach`, `trigger`, and `skip_rescue` capabilities and payloads; selecting
+Peach/provider input is local preview until submit, Cancel remains local, and
+Skip/Decline remains authoritative.
+
+For a non-actor viewer, the public Dying scene and seat anchors are
+viewer-equal while private rescue options are absent. A server checkpoint or
+action-revision handoff changes the public decision actor and clears stale local
+selection. Successful Peach recovery, continued rescue, parent-frame resume,
+and terminal death remain server-owned Pending/continuation outcomes; the UI
+does not calculate next rescuers or predict settlement. Root Damage and Duel
+child-Damage evidence are covered by the engine/API characterization tests,
+with mounted coverage limited to focus, privacy, exact existing submissions,
+handoff cleanup, and topology. Browser-level responsive appearance remains a
+later manual GAP.
+
+### 0.6.16 UI-17 Semantic Scene Transition Contract
+
+UI-17 introduces a pure client-side comparison layer for two consecutive
+accepted `PresentationClientView` snapshots. It is a bounded presentation
+signal, not a second history model and not an animation engine. The classifier
+is `buildPresentationTransition(previous, next)` in
+`game/presentation-transition.ts`; it returns the transition kind, a narrow
+semantic reason, and only the previous/next public interaction, frame,
+continuity, stage, checkpoint, and presentation-revision identities needed to
+explain that result.
+
+The strongest applicable class wins in this order:
+
+1. `INTERACTION_TRANSITION` — REST to an interaction, an interaction to REST,
+   or a changed `interactionId`.
+2. `FRAME_TRANSITION` — changed active/root/parent frame identity, changed
+   parent/child continuity, or changed semantic stage.
+3. `FOCUS_UPDATE` — changed proven current participant, active target scope,
+   decision actor, active resolver, public source/scope, or stable boundary
+   kind within the same frame.
+4. `CONTENT_UPDATE` — changed checkpoint, presentation revision, or public
+   effect while interaction/frame/stage/focus identity remains stable.
+5. `NONE` — repeated semantic identity or a change with no meaningful public
+   transition.
+
+The classifier treats `interactionId` as interaction continuity, the exposed
+`rootFrameId`/`activeFrameId`/`parentFrameId` and continuity relation as frame
+authority, proven public role IDs as focus authority, and checkpoint/revision
+as content progress only. `actionRevision`, timeline, `actionPlayerId`, turn
+ownership, compatibility Pending fields, card selection, HP-only changes,
+local controls, and private options are never transition authority. A
+malformed, incomplete, REST-incoherent, or `UNPROVEN` pair fails closed to
+`NONE` with no exposed identity. A first proven interaction after REST is an
+`INTERACTION_TRANSITION`; repeated snapshots and reconnect/private-only changes
+remain non-promoting.
+
+`GameRoom` and the existing Interaction Stage expose the current bounded kind
+through `data-presentation-transition` only. No CSS animation, timer, layout
+mutation, gameplay side effect, server history, settlement animation, or new
+API/projector path is part of UI-17. Later animation work may consume this hook
+only after a separately authorized task defines its visual contract.
+
+### 0.6.17 UI-18 Semantic Transition Visual Consumer — 2026-10-03
+
+UI-18 is the separately authorized visual consumer of the UI-17 marker. It
+does not classify transitions, maintain a second history model, or infer
+authority from React/game state. Existing `data-presentation-transition`
+values are the only visual input:
+
+| Accepted kind | Existing surface | Feedback | Duration |
+| --- | --- | --- | --- |
+| `NONE` | none | no animation or replay marker | none |
+| `CONTENT_UPDATE` | Interaction Stage shell | subtle border/shadow refresh | 180ms |
+| `FOCUS_UPDATE` | Interaction Stage shell and existing Hero Focus panel | focused border/shadow emphasis | 240ms |
+| `FRAME_TRANSITION` | Interaction Stage shell | nested-frame border/shadow emphasis | 280ms |
+| `INTERACTION_TRANSITION` | Interaction Stage shell | strongest short border/shadow emphasis | 320ms |
+
+The stage remains in place: no seat, local dock, hand, table, control, modal,
+opacity, or pointer-event behavior is changed. Keyframe endpoints settle on
+the pre-existing stage/panel styles, so completion cannot mutate gameplay,
+presentation authority, controls, network, or snapshot handoff. Public
+feedback is viewer-equal because the selector consumes the same projected
+semantic kind; local amber/control feedback remains a separate surface.
+Repeated `NONE`, reconnect, private-only changes, and legacy fields do not
+replay because they do not produce a non-`NONE` accepted semantic marker.
+
+`@media (prefers-reduced-motion: reduce)` removes the nonessential keyframes.
+The stage's semantic labels, roles, and controls remain present and usable, so
+decision ownership is never communicated by motion alone. Focused DOM/CSS
+coverage asserts all five kind mappings, no added controls, fixed topology,
+viewer-equal markers, authority isolation, repeated-`NONE` stability, and the
+reduced-motion rule. Browser pixel polish and assistive-technology smoke
+testing remain manual GAPs.
+
 ### 0.7 Four identities have different jobs
 
 **interactionId** — answers: *is this still the same causal interaction?*
@@ -247,6 +702,16 @@ decision.actorId = B
 
 Never flash Waiting for C -> Waiting for D -> Waiting for B.
 
+The engine may still know an internal/private decision actor that must not be
+named in the shared public presentation. In an **open/non-directed response
+window** (for example a Negation opportunity where multiple players may be
+eligible), public UI must not reveal which specific player currently has a
+private response option or which private scan/decision slot is active. Public
+presentation uses a neutral waiting state such as `Waiting for response...`.
+A named decision actor is shown publicly only when the rules/state already make
+that actor public (for example a directed Dodge requirement, Duel responder, or
+explicit rescue actor).
+
 ### 0.9 CHOICE is viewer-projected
 
 One authoritative CHOICE checkpoint can look different by viewer.
@@ -260,12 +725,23 @@ Respond with Dodge
 [Dodge] [Skip]
 ~~~
 
-A/C/D see:
+A/C/D see, when B is already a **publicly designated** responder:
 
 ~~~text
 A -- Attack --> B
 Waiting for B...
 ~~~
+
+For an open/non-directed response window, every non-owning viewer instead sees
+the same neutral public state:
+
+~~~text
+Negation response window open
+Waiting for response...
+~~~
+
+The viewer who privately owns a legal response sees their own options only in
+the Local Player Dock. Public presentation must not reveal that eligibility.
 
 Do not create separate authoritative LOCAL_CHOICE and WAITING_FOR_OTHER_PLAYER states merely for viewer presentation.
 
@@ -2001,26 +2477,38 @@ This vertical ownership rule does **not** redefine the internal Dock composition
 
 The Local Dock has a deliberately fixed composition. Do not reinterpret the size-priority list as a top-to-bottom ordering.
 
+Reviewer update: the viewer's **current guidance / requirement strip belongs at
+the top edge of the Local Player Dock**, directly adjacent to the Interaction
+Stage. This intentionally places the viewer's next-step instruction near the
+area where their visual attention already sits during combat. Action buttons
+remain in the protected bottom action row.
+
 ~~~text
-┌────────────────┬──────────────────────────────────────┐
-│ Judgement      │ SKILLS                 EQUIPMENT     │
-│ overlays       │ [Skill 1] [Skill 2]    ⚔  🛡  🐎    │
-│      ↓         │                                      │
-│ ┌────────────┐ │                                      │
-│ │            │ │          LARGE HAND AREA             │
-│ │ LARGE HERO │ │                                      │
-│ │    ART     │ │ [CARD][CARD][CARD][CARD][CARD]... →  │
-│ │            │ │                                      │
-│ │    HP      │ │                                      │
-│ └────────────┘ │                                      │
-├────────────────┴──────────────────────────────────────┤
-│ Guidance / current requirement          Action buttons│
-└───────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│ CURRENT GUIDANCE / REQUIREMENT                                │
+│ Your response · Play Negation or Skip.                        │
+├────────────────┬──────────────────────────────────────────────┤
+│ Judgement      │ SKILLS                       EQUIPMENT        │
+│ overlays       │ [Skill 1] [Skill 2]          ⚔  🛡  🐎      │
+│      ↓         │                                              │
+│ ┌────────────┐ │                                              │
+│ │            │ │             LARGE HAND AREA                  │
+│ │ LARGE HERO │ │                                              │
+│ │    ART     │ │ [CARD][CARD][CARD][CARD][CARD]... →         │
+│ │            │ │                                              │
+│ │    HP      │ │                                              │
+│ └────────────┘ │                                              │
+├────────────────┴──────────────────────────────────────────────┤
+│                                      Action buttons            │
+└───────────────────────────────────────────────────────────────┘
 ~~~
 
 The structural rule is:
 
 ~~~text
+TOP EDGE
+Current Guidance / current requirement
+
 LEFT
 Hero portrait + HP
 Judgement overlays on the Hero portrait
@@ -2032,12 +2520,14 @@ RIGHT MAIN
 Large single-layer Hand area
 
 BOTTOM
-Guidance / current requirement | Action controls
+Action controls only
 ~~~
 
 This composition remains stable as hand size and interaction complexity change.
 
-Do not move the Hero above the Hand, move the Hand above the Hero, create a separate Judgement row, or move Equipment beneath the Hero merely to handle responsive pressure.
+Do not move the Hero above the Hand, move the Hand above the Hero, create a
+separate Judgement row, move Equipment beneath the Hero, or push the current
+guidance back below the Hand merely to handle responsive pressure.
 
 ### 0.78 Size priority is not position priority
 
@@ -2048,7 +2538,7 @@ Use the section 2 priority:
 1. **Hand — highest priority and largest variable area.**
 2. **Hero art — second primary visual area; keep large for identity and immersion.**
 3. **Skills and frequent action controls — large, reliable interaction targets.**
-4. **Bottom guidance/action bar — compact but persistent and always readable/reachable.**
+4. **Current Guidance strip + bottom Action row — compact but persistent and always readable/reachable.**
 5. **Equipment — compact but individually inspectable/selectable.**
 6. **Judgement — compact overlay on the Hero rather than a permanent independent zone.**
 
@@ -2262,21 +2752,35 @@ When the server projects eligible card IDs:
 
 Inspection of an ineligible card may remain possible through a non-conflicting inspect affordance, but it must not appear gameplay-selected/actionable.
 
-### 0.89 Bottom Guidance / Action Bar
+### 0.89 Current Guidance Strip and bottom Action Row
 
-The bottom Guidance / Action Bar spans beneath both the left Hero area and the right Skills/Equipment/Hand area.
+The Local Player Dock uses two separate persistent control surfaces:
 
-It remains the smallest major visual region but is structurally protected:
+- **Current Guidance Strip:** spans the Dock's top edge, immediately below the
+  Interaction Stage;
+- **Action Row:** remains at the bottom of the Dock and owns commit/decline
+  controls.
+
+The Guidance Strip is intentionally close to the central battle area because
+that is where the player's attention is concentrated during an active
+interaction. It explains only the viewer's current requirement / next local
+step, for example `Your response · Play Negation or Skip.`.
+
+The Action Row remains thumb-reachable and contains the actual controls such as
+Confirm / Play / Respond / Skip / End / contextual Cancel.
+
+Both regions are structurally protected:
 
 - never covered by selected cards;
 - never covered by Hero art;
-- never covered by the Interaction Stage;
-- always respects the bottom safe area;
-- remains readable and reachable.
+- never covered by Interaction Stage content;
+- Guidance must remain visually adjacent to the Stage/Dock boundary;
+- Action Row must respect the bottom safe area;
+- both remain readable/reachable under responsive pressure.
 
-Its compact size must not be confused with low gameplay importance.
+Their compact size must not be confused with low gameplay importance.
 
-The established Cancel / Confirm / Skip semantics remain unchanged.
+The semantic distinction remains strict: Confirm commits, Skip/Decline is authoritative gameplay, and Cancel is only a contextual reset for unsubmitted local input. Cancel is not a permanent third slot.
 
 ### 0.90 Responsive pressure must preserve the composition
 
@@ -2307,9 +2811,10 @@ COMPOSITION
 2. Left = Hero + HP, with Judgement overlaid on Hero.
 3. Right Top = Skills, with Equipment to the right of Skills.
 4. Right Main = Large Hand Area.
-5. Bottom = Guidance / current requirement + Action controls.
-6. Size priority does not redefine these positions.
-7. Side Seat Columns stop above the Local Dock.
+5. Dock Top Edge = Guidance / current requirement, directly adjacent to the Interaction Stage.
+6. Dock Bottom = Action controls only.
+7. Size priority does not redefine these positions.
+8. Side Seat Columns stop above the Local Dock.
 
 HAND
 8. Hand is always a single horizontal layer.
@@ -2351,6 +2856,226 @@ Hand = right main
 Guidance + Actions = bottom
 Judgement = on Hero
 ~~~
+
+### 0.91.1 Mobile portrait visual proportion guide
+
+Use a real narrow/tall phone viewport as the primary composition reference. A
+480 CSS-pixel portrait width is the main visual benchmark; the same structure
+must remain coherent from roughly 390–650 CSS pixels without scaling the whole
+desktop surface.
+
+The following are **proportion guides, not fixed-height allocations**. Content,
+safe-area insets and authoritative interaction complexity may move the exact
+boundaries:
+
+~~~text
+Opponent seat region        about 15–18% of usable game height
+Interaction Stage           about 40–45%
+Guidance / requirement      about 6–7%
+Local Hero/Skills/Hand      about 25–28%
+Action controls             about 7–8%
+~~~
+
+The critical invariant is the hierarchy, not the arithmetic. Do not force each
+region to consume its nominal share when it has little content. In particular,
+the Interaction Stage is allowed to contain substantial empty battlefield
+space.
+
+Never achieve these proportions with `transform: scale(...)`, viewport-wide
+zooming, or a continuously shrinking desktop layout.
+
+### 0.91.2 Interaction Stage must breathe
+
+The Interaction Stage is an **event-focus area**, not a dashboard that must be
+filled.
+
+When the current event only needs a source, an active card/effect and a target,
+render only those elements and leave the remaining battlefield visible. Empty
+space is intentional because it separates opponent seats, the active event and
+the Local Player Dock.
+
+For a representative 480px portrait layout, a normal single-target composition
+may use a centred content width around 360–410px (or approximately 88% of the
+safe Stage width) rather than stretching every child to 100%.
+
+Useful visual-size starting ranges, subject to real-art validation:
+
+- ordinary Source Hero: about 72–88px wide;
+- active card/effect: about 86–104px wide;
+- ordinary Target Hero: about 72–88px wide;
+- truly dominant Hero Focus, such as a Dying subject: about 110–130px wide.
+
+These are composition targets, not gameplay constants or mandatory hard-coded
+breakpoints.
+
+Participant metadata must not compete with the art. Prefer:
+
+- HP as a compact overlay/badge on the Hero image;
+- Hero name as one narrow line above/below the image;
+- secondary player identity as smaller text only when useful;
+- omission of redundant prose such as `Current participant: X` when the same
+  proven fact is already unambiguously communicated by the Hero Focus label and
+  visual treatment.
+
+Do not remove distinct semantic facts merely to create space. Deduplicate only
+when the same authoritative identity/fact is already visible elsewhere.
+
+### 0.91.3 Battlefield layering and active-card visibility
+
+The current public event card/effect and Hero Focus must remain fully readable.
+Decorative darkness may reduce background contrast, but it must never cover the
+active content.
+
+Use the conceptual layer order:
+
+~~~text
+1. table / battlefield background
+2. optional vignette or background dimming
+3. source / target participant art
+4. active event card / dominant Hero Focus
+5. compact labels, badges and state markers
+6. an explicitly opened tooltip / Inspect surface
+~~~
+
+A permanent or incidental dark rectangle, pseudo-element, backdrop, gradient or
+modal layer must not sit above layer 4 and obscure the face of the active card
+or Hero.
+
+Do not "solve" contrast by putting an opaque or strongly translucent black panel
+over the current card. If background separation is needed, dim the background
+behind the focus or use a local outline/glow/surface around the focus.
+
+### 0.91.4 Deck / Discard and secondary-board hierarchy
+
+Deck and Discard are persistent game state but are normally secondary to the
+current interaction.
+
+Default state:
+
+- keep them compact and toward the edge/background of the battlefield;
+- use lower visual contrast than the active Source/Card/Target composition;
+- do not let them overlap or sit in front of Hero Focus or the active event
+  card;
+- do not enlarge them merely to consume unused Stage space.
+
+They may temporarily gain prominence only when the current authoritative event
+actually concerns drawing, revealing, Judgement, discard settlement or another
+deck/discard interaction.
+
+### 0.91.5 Responsive compression priority
+
+When portrait space becomes tight, compress in this order:
+
+1. decorative padding/chrome;
+2. empty gaps that are larger than the minimum breathing room;
+3. secondary labels and explanatory copy;
+4. secondary player-name text;
+5. Equipment spacing;
+6. duplicated/redundant metadata wording;
+7. only after those, reduce Hero/Hand presentation within the already validated
+   minimums.
+
+Do **not** begin by shrinking:
+
+- recognizable Hero artwork;
+- Hand-card readability/exposed width;
+- the semantic Primary action touch target;
+- HP readability;
+- public Equipment recognition required for target decisions.
+
+This priority applies to both Top Row and Side Column layouts.
+
+
+## 0.92 UX2.0B review gate — projector foundation is not yet identity evidence
+
+UX2.0B introduced an additive pure projector in `game/presentation-v2.ts`, route exposure as `presentationV2`, and focused tests. This is a useful foundation, but review found that it must **not** yet be treated as proof of the final Interaction / Frame / Stage / Checkpoint contract.
+
+The current tests are primarily synthetic projector fixtures. They exercise hand-built Pending/Continuation-shaped objects and verify deterministic projection, but they do not yet drive the real engine/orchestrator through all nine flows. Therefore statements such as “proven lifecycle” must be interpreted narrowly as **projector-fixture characterization**, not end-to-end proof of actual runtime creation, propagation, replacement, resume, reconnect, or deadline behavior.
+
+Before UX2.0C finalises semantic identities, add engine-backed characterization tests for the high-risk flows, especially Duel, Borrowed Sword forced Attack, Judgement modifier/resume, Group/AOE nested damage/resume, Dying/rescue, and damage-trigger nested effects.
+
+### 0.92.1 Root context must be immutable
+
+The current foundation derives `rootContext.originalTargetIds` from the active context. That is acceptable only as a temporary placeholder. It does not satisfy the UX V2 invariant that Root Context preserves the original public event when the active/current target later changes.
+
+Redirect/retarget tests must prove:
+
+~~~text
+root original target = unchanged
+active current target = may change
+~~~
+
+The projector must derive the root from authoritative origin/event data, not simply copy the current active target.
+
+### 0.92.2 Group detection must be semantic, not “has cardKind”
+
+The current foundation's generic record inspection can treat a context as Group-like merely because a `cardKind` exists. A normal single-target card may also have a card kind.
+
+Group projection must require an authoritative Group continuation/type or equivalent explicit engine semantic. Never infer Group/AOE solely from card identity or the existence of `cardKind`.
+
+### 0.92.3 Transition events must be causally scoped
+
+`transitionEvents` must not become “all presentable timeline events”. The timeline is history; Transition Events are bounded deltas relevant to the current presentation checkpoint.
+
+The foundation may temporarily reference existing `event.id`, but before client migration it must guarantee that unrelated historical events cannot enter the current Interaction Stage merely because no reliable resolution marker was available.
+
+Similarly, `activeContext.eventIds` must describe the relevant active causal context, not every event sharing a broad/legacy grouping marker when that would cross frame boundaries.
+
+### 0.92.4 Parent direction and continuation semantics require engine-backed tests
+
+Resume data is valuable evidence for parent context, but generic recursive object inspection is not the final semantic contract. The engine/orchestrator owns whether a continuation is:
+
+- the active effect;
+- the parent to resume;
+- a child effect;
+- a Group resume;
+- a trigger resume;
+- or a delayed future interaction.
+
+The projector should eventually consume explicit typed continuation semantics rather than discover causality by probing arbitrary field names.
+
+### 0.92.5 Timer/barrier result remains a guard, not a completed fairness proof
+
+The foundation correctly demonstrates at the data level that a persisted non-zero deadline can exist while a presentation barrier is closed. The synthetic helper test does **not** prove the complete runtime timing behavior.
+
+Before changing timer semantics, test the actual server/client lifecycle for:
+
+- response timer arming;
+- rescue timer arming;
+- delayed essential presentation;
+- reconnect;
+- poll delay;
+- timeout submission;
+- reduced-motion / fast-forward.
+
+The invariant remains:
+
+> **Cosmetic presentation must never silently consume the player's intended usable authoritative decision window.**
+
+### 0.92.6 UX2.0B status after review
+
+Accepted as a **foundation**, not accepted as the final semantic projector contract.
+
+Keep:
+
+- additive `presentationV2`;
+- pure/server-side projection direction;
+- CurrentAction as the only legality authority;
+- no final Interaction/Frame/Checkpoint IDs yet;
+- `resolutionId` as legacy/reference metadata;
+- `event.id` as persisted public-event reference;
+- React migration deferred.
+
+Required before UX2.0C identity finalisation:
+
+1. engine-backed characterization for high-risk causal flows;
+2. immutable-root/redirect coverage;
+3. authoritative Group detection;
+4. causally bounded active/transition event projection;
+5. typed parent/child/resume semantics where generic probing is ambiguous;
+6. end-to-end barrier/deadline fairness characterization.
+
+Do not migrate the Interaction Stage UI onto `presentationV2` until these review gates pass.
 
 
 ## 1. Seat thumbnails
@@ -2457,7 +3182,7 @@ Examples:
 └─────────────────────────────┘
 ```
 
-Side columns must remain entirely above the Local Player Dock. They must never intrude into the local hero, hand, skills, or bottom guidance/action bar.
+Side columns must remain entirely above the Local Player Dock. They must never intrude into the local Hero, top Guidance Strip, Hand, Skills, or bottom Action Row.
 
 ### 1.4 Central Interaction Safe Zone
 
@@ -2487,18 +3212,140 @@ Seat thumbnails may use different presentation shapes while preserving the same 
 
 **Side Column Mode** should use a narrow portrait thumbnail to minimise loss of central width.
 
-Suggested information, subject to real-device validation:
+Required at-a-glance information:
 
-- hero portrait / face,
-- hero or player identity,
-- HP,
-- concealed hand count,
-- projected effective distance,
+- a genuinely recognizable Hero portrait / face;
+- hero or player identity;
+- HP;
+- concealed hand count;
+- projected effective distance when the UI already exposes it;
+- compact public Equipment state;
 - lightweight important status markers.
 
-Do not attempt to place full skills, full equipment names, full Judgement cards, role details, or long status text in seat thumbnails. Those belong in public inspect / Interaction Stage presentation.
+The opponent seat must remain a **Hero thumbnail**, not degrade into a mostly-text status strip. Under responsive pressure, compact secondary text, padding and decorative chrome before reducing the useful Hero-art region below a recognizable presentation. Keep a dedicated portrait region whose central artwork is not covered by large name / HP / hand-count overlays. Top Row and Side Column may use different portrait crops and densities, but both must preserve immediate Hero recognition at the validated mobile portrait sizes.
 
-Equipment and Judgement presence may use small status icons where useful.
+#### Hero-art crop contract
+
+Use the repository's actual Hero artwork for every seat and local-Hero presentation. Do not substitute newly generated, approximate, or stylistically similar character art.
+
+The compact presentation should intentionally show the **Hero's recognizable upper body**, not the entire source illustration:
+
+- crop away most empty headroom above the Hero;
+- crop away most of the lower body / legs;
+- keep the complete face, head/hair/headwear, shoulders, chest/upper torso, and a useful amount of distinctive weapon/clothing detail;
+- do not crop through the face, forehead, chin, or other identity-critical features;
+- do not letterbox the full source image just to preserve every pixel;
+- do not stretch or distort the original aspect ratio.
+
+The normal implementation is a fixed portrait viewport with the real Hero asset rendered using `object-fit: cover`. Position the crop around the face/upper torso with `object-position`, rather than shrinking the full-body art into a tiny image. A useful starting point is approximately `50% 15–25%`, but this is **not** a universal hard-coded value: the Hero asset may need a per-Hero focal-point override because the face is not at the same coordinate in every illustration.
+
+If per-Hero tuning is required, store only presentation metadata such as a focal point / object-position, for example:
+
+```ts
+heroThumbnailCrop: { x: 50, y: 20 }
+```
+
+Do not create alternate gameplay Hero identities or duplicate artwork files merely for cropping.
+
+This same upper-body crop principle applies to:
+
+- opponent Top Row thumbnails;
+- opponent Side Column thumbnails;
+- the persistent local-player Hero panel;
+- enlarged Interaction Stage Hero Focus / Source cards, with a looser crop when extra space is available.
+
+Larger views may reveal more torso/background, but they should preserve the same recognizable focal point so the Hero looks like the same character when moving between seat thumbnail, local Dock, Inspect, and Interaction Stage.
+
+Visual validation must reject a crop where the source image technically renders but the Hero face/upper body is too small to identify quickly.
+
+#### Opponent-card internal composition
+
+For a compact opponent seat, the Hero image is the dominant visual area. Use
+the following as a starting proportion:
+
+~~~text
+Hero artwork              about 62–68%
+Hero-name strip           about 14–17%
+Equipment + hand summary  about 18–21%
+~~~
+
+HP belongs on top of the Hero image as a compact badge/overlay rather than
+reserving a separate text row.
+
+At the 480px Top Row benchmark for a 4-player game (three opponent seats), start
+with approximately 12–16px outer board margins, 8–10px gaps and opponent cards
+around 136–146px wide. At wider phone/tablet widths, cap growth rather than
+turning the seat into a large status panel; a rule such as
+`clamp(132px, 29vw, 168px)` is a reasonable implementation starting point,
+subject to measured containment.
+
+For Side Column mode, prefer a narrow portrait seat around 74–96px wide and
+108–128px high at mobile sizes, while keeping the same information hierarchy.
+
+The exact dimensions may vary with the real viewport, but these structural
+rules are mandatory:
+
+- do not allocate a large lower panel merely to write `HAND CARDS 4`;
+- keep Hero name to one compact line; long labels may truncate;
+- player/test identity is secondary to Hero identity and must not consume more
+  vertical space than the Hero name;
+- show concealed Hand count as a small icon + number in the lower strip;
+- show only occupied public Equipment slots; empty slots consume little or no
+  permanent space;
+- opponent seat height must not grow because more Equipment becomes occupied;
+- target/turn/decision states use borders, badges or compact markers rather than
+  stealing the Hero-art area.
+
+The result must read first as **which Hero is this?**, then as **HP / public
+Equipment / Hand count**, not the reverse.
+
+### 1.5.1 Public Equipment at a glance
+
+Public equipped cards materially affect target choice and combat reasoning. A player should not need to open Inspect merely to discover whether an opponent visibly has a Weapon, Armour, +1 Horse, or -1 Horse.
+
+Each opponent seat therefore shows a compact, always-visible summary for currently equipped public slots:
+
+- **Weapon**
+- **Armour**
+- **+1 Horse**
+- **-1 Horse**
+
+Prefer a small thumbnail using the existing public physical equipment-card identity / existing mini-card or `CardFace` visual language when it remains legible. If a full mini-card is too dense for a seat, use a compact slot-specific visual icon or cropped thumbnail that still makes the slot category immediately distinguishable.
+
+Rules:
+
+- show only authoritative already-public equipment; never expose private Hand identities or hidden state;
+- equipment indicators are informational presentation, not a new legality system;
+- do not infer Attack legality, distance, range, Borrowed Sword legality, or other gameplay effects from the icons in React;
+- empty equipment slots should consume little or no permanent space;
+- multiple equipped slots must remain individually distinguishable rather than collapse into one generic “equipped” dot;
+- preserve the existing public Inspect surface for exact card names/details and Judgement information;
+- equipment thumbnails/icons must not steal the opponent-seat target hit area or introduce a competing gameplay action; if interactive, they may only use the existing inspect/info behavior;
+- do not hide public equipment merely to satisfy containment. If Top Row and Side Column require different visual densities, preserve the same public equipment facts with topology-specific sizing;
+- do not materially enlarge opponent seats into the Interaction Safe Zone just to make equipment fit.
+
+Judgement presence may continue to use a compact status treatment; full Judgement-card detail belongs in Inspect / Interaction Stage unless an approved interaction specifically requires otherwise.
+
+### 1.5.2 Opponent-thumbnail visual validation
+
+This requirement is complete only after representative mobile validation, not merely because the DOM contains an image and equipment IDs.
+
+Validate at minimum:
+
+- **Top Row:** 4 players at 480px and 650px widths;
+- **Side Column:** representative 6-player and high-density 10-player layouts at 480px and 650px widths;
+- equipment states: none, Weapon only, Armour only, each Horse slot, Weapon + Armour, and multiple occupied slots;
+- Hero portrait remains a visually meaningful dedicated region and is not substantially obscured by identity/status text;
+- player/Hero identity, HP and concealed Hand count remain readable;
+- equipped Weapon / Armour / Horse categories are visible without opening Inspect;
+- empty equipment state does not create a large dead row;
+- target-selection hit areas and layered target/decision/turn visual states still work;
+- opponent seats stay outside the Interaction Safe Zone and above the Local Player Dock;
+- no document-level horizontal overflow is introduced.
+
+Browser geometry/DOM assertions should prove containment, slot presence and hit safety. Screenshot/visual inspection should additionally verify that the Hero artwork is actually recognizable; a tiny technically-visible image does not satisfy this requirement.
+
+Do not attempt to place full skills, long equipment names, full Judgement cards, role details, or long status text in seat thumbnails. Those belong in public Inspect / Interaction Stage presentation.
 
 ### 1.6 Seat position versus gameplay distance
 
@@ -2621,7 +3468,7 @@ Design rules:
 - Keep card faces as large as practical.
 - Prefer increasing overlap / fan density as hand size grows rather than continuously shrinking every card.
 - A selected card should rise upward from the hand.
-- Card selection must expand **upward only** and must never cover the bottom guidance/action bar.
+- Card selection may rise within the Hand interaction clearance but must never cover the top Guidance Strip or bottom Action Row.
 - Preserve enough visible card identity for scanning when cards overlap.
 - Large hands such as 10, 15, or 20 cards require an explicit overflow strategy; prefer large cards with overlap/fan and horizontal navigation over tiny cards.
 - The exact large-hand overflow interaction remains to be validated visually before implementation.
@@ -2643,7 +3490,9 @@ The local hero should remain visually large. It is both gameplay identity and a 
 
 Do not reduce the local hero to a small avatar merely to fit more metadata.
 
-The hero area should include the hero's essential stable status, such as name and HP, without covering important artwork unnecessarily.
+The persistent local-Hero panel follows the **Hero-art crop contract in §1.5**: use the real repository Hero asset and frame the recognizable head/upper body with `object-fit: cover`, removing unnecessary headroom and most lower-body art instead of shrinking the full illustration. The local panel may use a slightly looser crop than an opponent thumbnail, but the face and upper torso remain the focal point.
+
+The hero area should include the hero's essential stable status, such as name and HP, without covering important artwork unnecessarily. Prefer compact overlays/badges for HP and persistent Judgement rather than shrinking the portrait viewport.
 
 Core viewer-centric rule: **the local hero is never duplicated in the Interaction Stage.** If the viewer is a source, target, decision actor, or resolving participant, that semantic role is projected onto the Local Player Dock.
 
@@ -2651,11 +3500,42 @@ Core viewer-centric rule: **the local hero is never duplicated in the Interactio
 
 Skills are high-frequency gameplay controls and should use large, easy-to-hit interaction targets.
 
+The **Skills band is the primary entry surface for Hero skills**. A skill that
+is legally available to the viewer must become actionable from its Hero-adjacent
+skill control. The bottom Action Row must not become a substitute skill palette.
+
+Required behavior:
+
 - Active skills should look actionable when legal.
 - Disabled / unavailable skills should remain identifiable but clearly inactive.
+- Selecting/activating a skill should give that skill control a clear selected /
+  active treatment that stays synchronized with the current local flow.
+- The Guidance Strip may then explain the skill's current step and the Action
+  Row may expose Confirm / Skip / other authoritative continuation controls.
+- Do not require the player to ignore a disabled-looking skill button and
+  discover the real skill entry only in the bottom Action Row.
 - Skill names should remain readable without requiring hover.
 - Detailed skill rules may open through inspect/detail behaviour rather than permanently consuming dock space.
 - Do not reduce skills to tiny text links merely to save room.
+
+#### Skill-control consistency
+
+Within one Hero's Skills band, peer skill controls use one consistent component
+family and interaction footprint.
+
+- keep a common minimum height, padding, border/state treatment, and touch area;
+- short names must not collapse into visibly tiny label-like buttons while long
+  names become large controls;
+- width may flex within the available band, but peer skills should retain
+  comparable visual weight;
+- allow restrained wrapping (normally up to two lines) or truncation/detail
+  affordance before shrinking one skill into a materially smaller target;
+- availability, selected state, and disabled state must be visible on the skill
+  control itself.
+
+This rule is generic across all Heroes. Ma Chao's **Cavalry** and Zhou Yu's
+**Heroic / Sowing Distrust** are reference cases only; do not hard-code those
+Hero/skill names in layout logic.
 
 ### 2.5 Equipment
 
@@ -2694,33 +3574,105 @@ Therefore:
 
 Judgement overlays remain inspectable and, when authoritative legality requires it, selectable.
 
-### 2.7 Persistent bottom guidance/action bar
+### 2.7 Persistent top Guidance Strip + bottom Action Row
 
-The lowest part of the Local Player Dock is a fixed guidance/action bar.
+The viewer's current guidance lives in a dedicated strip at the **top edge of
+the Local Player Dock**, directly below the Interaction Stage. The actual
+commit/decline controls remain in a separate bottom Action Row.
 
-This bar is a stable UX anchor and must never be covered by the hand, selected cards, hero artwork, or Interaction Stage.
+This is a deliberate attention hierarchy: during combat, the player's eyes are
+already near the central Interaction Stage, so the next-step instruction must
+not be buried underneath the Hand and controls.
 
-It may show states such as:
+Representative states:
 
 ```text
-Your turn · Play Phase                              End Turn
-Attack selected · Select 1 target          Cancel   Confirm
-Select 1–3 targets · Selected 2/3          Cancel   Confirm
-Respond with Dodge                          Confirm   Skip
-Select 2 cards to discard · 1/2            Cancel   Confirm
+TOP GUIDANCE STRIP
+Your turn · Play Phase
+Attack selected · Select 1 target
+Respond with Dodge
+Use Cavalry · Enter Judgement
 Waiting for Zhao Yun...
+
+BOTTOM ACTION ROW
+                         Confirm          End
+                         Respond          Skip
+                  Cancel      Confirm
 ```
+
+The Guidance Strip is private/local when it describes the viewer's available
+action. It must not duplicate private guidance into the public Interaction
+Stage. The Action Row remains a stable thumb-reachable anchor.
+
+#### Mobile primary-action placement
+
+WTK is mobile-portrait first, so the primary commit action must be reachable by a
+right-handed thumb without being placed directly on the extreme screen edge.
+
+For phone layouts:
+
+- place the semantic Primary action (Confirm / Play / Respond / equivalent) in
+  the **bottom centre-right thumb zone**, approximately the 55–70% horizontal
+  region of the action bar rather than hard against either edge;
+- keep a deliberate safety margin between Primary and the right edge;
+- keep authoritative Decline / Skip / End at the far-right secondary zone;
+- preserve a clearly measurable gutter between Primary and Decline / End so a
+  normal tap on Confirm cannot easily become an irreversible End / Skip;
+- Primary should be visually more prominent than End Turn;
+- End Turn may remain reachable, but must not occupy the easiest or largest
+  right-thumb target while an active confirmation is present;
+- do not change gameplay semantics, ordering, enabled state or payload merely
+  to obtain the visual placement.
+
+This supersedes any earlier rule that permanently anchored Primary at the far
+left. Desktop/tablet may use a more conventional left/centre alignment because
+mouse/pointer reachability is different, but the semantic relationship remains
+stable: Primary is the main commit action; Decline / Skip / End is a separate
+authoritative secondary action.
+
+When a true local Cancel is required, it is contextual rather than a permanent
+third slot. In a modal or complex pre-commit picker, a conventional
+`Cancel ... Confirm` pair is acceptable, with Cancel visually separated from
+the commit action. Do not place Cancel merely to fill an empty slot.
+
+Provider Extras must stay outside the Primary-versus-secondary safety gutter and
+must not displace the main horizontal anchors.
 
 Rules:
 
-- guidance stays at the bottom rather than above the hand,
-- selected hand cards rise away from it,
-- controls stay in predictable positions where practical,
-- Confirm remains disabled until the current local selection is valid,
-- Cancel and Skip retain their distinct semantics defined later in this document,
-- the bar must remain readable during complex Reaction Chains.
+- guidance stays at the Dock's top edge, adjacent to the Interaction Stage;
+- selected hand cards must not cover either the top Guidance Strip or bottom Action Row;
+- controls stay in predictable positions where practical;
+- Confirm remains disabled until the current local selection is valid;
+- Cancel, Skip / Decline and End Turn retain their distinct semantics defined later in this document;
+- the Guidance Strip and Action Row must remain readable during complex Reaction Chains;
+- phone validation must include right-thumb reachability and accidental-tap risk,
+  not geometry alone.
 
-A player who is uncertain what the game currently expects should be able to look at the bottom of the screen and immediately understand the next local action.
+A player who is uncertain what the game currently expects should be able to glance immediately below the Interaction Stage and understand the next local action, then move to the bottom Action Row to commit or decline it.
+
+#### Action-placement validation
+
+At minimum, validate the phone layout at 480px portrait width with representative
+states for:
+
+- card + target + Confirm;
+- response + authoritative Skip / Decline;
+- normal Play Phase + End Turn;
+- a genuine complex local picker where Cancel is required.
+
+The proof should check:
+
+- Primary is in the centre-right thumb zone and not flush to the viewport edge;
+- Decline / Skip / End stays distinctly to the right of Primary;
+- the gap is large enough to avoid adjacent-target ambiguity;
+- touch targets remain at least the established minimum size;
+- controls do not overlap Guidance, Hand or each other;
+- keyboard/DOM order remains coherent with the visual order;
+- no document-level horizontal overflow is introduced.
+
+Final visual review should additionally check one-handed reach and whether
+Confirm can be tapped repeatedly without a high risk of hitting End / Skip.
 
 ### 2.8 Local Dock semantic states
 
@@ -2739,7 +3691,8 @@ The exact dimensions remain subject to visual validation, but the intended hiera
 
 ```text
 ┌───────────────────────────────────────────────────────────────┐
-│                                                               │
+│ Guidance / current requirement                                │
+├───────────────────────────────────────────────────────────────┤
 │ ┌────────────────┐   ┌─────────────────────────────────────┐  │
 │ │ Judgement      │   │ LARGE SKILLS             EQUIPMENT │  │
 │ │ overlays       │   │ [Skill] [Skill] [Skill]   ⚔ 🛡 🐎 │  │
@@ -2750,11 +3703,15 @@ The exact dimensions remain subject to visual validation, but the intended hiera
 │ │      HP        │   │ overlap, then horizontal navigation │  │
 │ └────────────────┘   └─────────────────────────────────────┘  │
 ├───────────────────────────────────────────────────────────────┤
-│ Guidance / current requirement                 action buttons │
+│                                          action buttons       │
 └───────────────────────────────────────────────────────────────┘
 ```
 
-This composition is intentional: Hero remains on the left; Skills and Equipment share the right-top band with Equipment to the right of Skills; the large Hand occupies the right-main area; Judgement overlays the Hero; guidance/actions span the bottom. The size priority does not redefine these positions.
+This composition is intentional: Guidance spans the top edge of the Dock next
+to the Interaction Stage; Hero remains on the left; Skills and Equipment share
+the right-top band with Equipment to the right of Skills; the large Hand
+occupies the right-main area; Judgement overlays the Hero; Actions remain at
+the bottom. The size priority does not redefine these positions.
 
 This is a hierarchy, not a requirement to hard-code percentages.
 
@@ -2770,7 +3727,7 @@ When upper-screen content becomes complex:
 - use compact third-party reaction identities instead of adding unnecessary full hero panels,
 - preserve the large local hero where practical,
 - preserve large hand cards and skill touch targets,
-- never allow upper-stage expansion to cover the fixed bottom guidance/action bar.
+- never allow upper-stage expansion to cover the top Guidance Strip or bottom Action Row.
 
 
 ## 3. Interaction Stage
@@ -2866,15 +3823,28 @@ What differs by viewer is only private/local presentation such as:
 - local Confirm / Cancel / Skip controls,
 - local guidance.
 
-A viewer who does not own the current decision must see only a public status such as:
+A viewer who does not own the current decision sees only information that is
+already public.
+
+For a **publicly directed** decision, a named status is allowed:
 
 ```text
 Waiting for C...
 ```
 
-They must not see C's private response options.
+For an **open/non-directed** response window, do not name the current private
+responder/scan actor:
 
-Only after C submits a public action does that action become a visible Reaction Chain node.
+```text
+Negation response window open
+Waiting for response...
+```
+
+They must not see another player's private response options or learn that a
+specific player has an eligible provider/card merely because the server is
+currently offering that private action.
+
+Only after a player submits a public action does that action become a visible Reaction Chain node.
 
 ### Root event must remain visible
 
@@ -2913,19 +3883,17 @@ and do not normally show aggregate noise such as:
 3 players passed
 ```
 
-Instead, while a response window is open, show only the current decision actor:
+Instead, while an open/non-directed response window is active, keep one neutral
+public pending node:
 
 ```text
-Waiting for D...
+Negation response window open
+Waiting for response...
 ```
 
-If D declines, advance directly to:
-
-```text
-Waiting for E...
-```
-
-without leaving a visible Pass node.
+Private scan/decision ownership may advance internally from D to E without
+changing that public text. Do not expose that movement unless the rules already
+make the responder identity public. No visible Pass node is left behind.
 
 Pass / decline state may still be retained internally by the engine because it is required to advance response windows correctly.
 
@@ -2959,7 +3927,7 @@ A · Attack → B
 ①–④ Earlier interaction ▸
 ⑤ B · Skill                   ✓
 ⑥ C · Negation                ✓
-⑦ D · deciding               ▶
+⑦ Waiting for response...     ▶
 ```
 
 ### Target redirection
@@ -3404,8 +4372,17 @@ When the local player selects a card or skill requiring one target:
 - Clicking a different legal opponent replaces the old target immediately.
 - The previous thumbnail loses selection and the Interaction Stage switches to the new target.
 - Confirm remains explicit; selecting the target must not auto-submit.
-- Cancel must always be available before submission.
-- Re-clicking the selected card / skill may cancel as a shortcut, but must not be the only cancellation method.
+- **Direct reversal is the default cancellation UX before commit:** re-clicking
+  the selected origin card or Hero Skill cancels the whole unsubmitted local
+  selection session and clears dependent targets.
+- Re-clicking a selected target only deselects/replaces that target; it does not
+  imply that an already committed card/effect was undone.
+- A separate Cancel button is contextual, not mandatory. Show it only when the
+  unsubmitted flow is complex and the origin control is not practically
+  reachable/visible enough to provide a reliable direct reversal.
+- Once the authoritative action has been accepted, remove local Cancel for that
+  action. Any remaining server-required choice must be completed or handled by
+  an explicit authoritative Decline/Skip action if the rules expose one.
 
 The enlarged opponent view should show public information:
 
@@ -3440,6 +4417,8 @@ When a card or skill requires more than one but not all players:
 - Clicking another target while below max adds it.
 - Clicking another target after max is reached must leave the current selection unchanged and show a clear max-target message.
 - Confirm remains visible but disabled until the minimum is satisfied.
+- Re-clicking the origin card/skill cancels the whole **unsubmitted** multi-target session; re-clicking an individual selected target only removes that target.
+- Do not show a permanent Cancel merely because multi-target mode is active; use the contextual Cancel rule from §8.
 - After removal or replacement, re-layout the visible target heroes cleanly.
 
 ### Target ordering
@@ -3505,46 +4484,90 @@ If the local player is not a target:
 
 ## 8. Control semantics
 
-Keep these meanings strictly separate:
+Keep these meanings strictly separate.
+
+### Commit boundary
+
+Use one simple rule:
+
+> **Before authoritative commit, local preview may be reversible. After
+> authoritative commit, the browser must not pretend the action was undone.**
+
+Selecting/highlighting a card, skill, provider, cost or target is local preview
+only until the existing gameplay action is actually submitted and accepted.
+After acceptance, subsequent required choices belong to the authoritative
+interaction and are not a reason to expose a fake local Cancel.
 
 ### Cancel
 
-Cancels an **unsubmitted local selection** only.
+Cancel means **abandon the entire unsubmitted local operation** and return to the
+state before that optional local selection session started.
 
-Examples:
+Prefer **Direct Reversal First**:
 
-- deselect current card,
-- deselect skill activation,
-- clear chosen targets,
-- return to the prior local selection state.
+- re-click the selected Hand card to cancel that unsubmitted card session;
+- re-click the active Hero Skill/provider to cancel that unsubmitted skill
+  session;
+- re-click a child target/card choice to toggle only that child choice where the
+  selection model permits it.
 
-Cancel does not send a gameplay decline.
+Show an explicit Cancel button only when all of these are true:
+
+1. the operation is still unsubmitted/local;
+2. the user voluntarily opened an optional local selection session;
+3. the origin card/skill/provider is no longer practically reachable/visible,
+   or the local flow is sufficiently complex that a clear whole-session escape
+   is necessary.
+
+Therefore Cancel is **contextual**, not a permanent action slot.
+
+Cancel never sends a gameplay decline and never rolls back server state,
+revealed information, random results, consumed cards/costs or a publicly
+committed event.
+
+A card/effect that has already been accepted by the server is past the Cancel
+boundary. For example, if Borrowed Sword has already been committed and the
+server is asking for its forced-Attack target, clearing/replacing the currently
+highlighted target may be offered as local target editing, but it must not be
+labelled or presented as cancelling the already-played Borrowed Sword.
 
 ### Confirm
 
-Submits the currently selected legal action to the server.
+Confirm submits the currently selected legal action to the server.
 
-After Confirm:
+After Confirm/acceptance:
 
-- remove or disable Cancel for that submitted action,
-- enter resolving / busy presentation,
-- do not allow the browser to pretend the submitted action was locally undone.
+- disable/freeze the submitted local controls while in flight;
+- remove any Cancel that referred to that submitted action;
+- enter the appropriate resolving/decision presentation;
+- do not allow the browser to reconstruct the previous unsubmitted state as if
+  the public action never happened.
 
-### Skip
+### Skip / Decline
 
-Skip is an authoritative gameplay decision, not a local-selection reset.
+Skip/Decline is an authoritative gameplay decision, not a local-selection
+reset.
 
-Only show Skip when the authoritative action exposes the corresponding semantic decline, such as:
+Only show it when the authoritative action exposes the corresponding semantic
+decline, such as:
 
-- decline_response,
-- decline_trigger,
-- skip_rescue.
+- `decline_response`;
+- `decline_trigger`;
+- `skip_rescue`.
 
-Never merge Cancel and Skip.
+Never merge Cancel with Skip/Decline.
 
 ### End Turn
 
-End Turn should not visually compete with an active target-selection confirmation.
+End Turn is an authoritative Play-Phase action, not Cancel. It should not
+visually compete with an active target-selection confirmation and remains in the
+separate right-side secondary zone defined in §2.7.
+
+### Close / Escape
+
+Closing an Inspect/info surface or dismissing non-gameplay chrome is neither
+Cancel nor Decline. A close affordance may hide that presentation surface
+without changing the underlying authoritative decision.
 
 ## 9. Selection reset / reconciliation
 
@@ -3632,40 +4655,2250 @@ For future Play-phase targeting, prefer server-projected information such as:
 
 React should primarily render projected legality and public interaction state rather than learn more card-specific rules or infer chain history from animations.
 
-## 12. Proposed implementation slices — not approved for implementation yet
+## 12. UX V2 completion direction — current reviewer-approved plan
 
-When implementation is approved, split it into reviewable steps:
+The former UX2.0–UX2.10 list was an early implementation roadmap. It is no
+longer an approval gate or a task queue: implementation has progressed beyond
+those planning labels. Keep the established design contracts in this document,
+and use the current code/tests plus the repository workflow to determine the
+smallest bounded implementation task.
 
-1. **UX2.0 — Stable Presentation Contract:** implement the server-side Presentation Projector contract and validate semantic boundaries, interaction/checkpoint identity, blocking decisions, Transition Events, and Reaction Chain projection before relying on it for visual UX.
-2. **UX2.1 — Mobile-first seat topology:** implement Top Row Mode for 2–4 total players and Side Column Mode for 5–10, including responsive thumbnail variants, protected central safe zone, projected distance, layered seat states, and Quick Test perspective remapping.
-3. **UX2.2 — Local Dock + responsive Hero Focus:** establish the large-hand / large-hero dock hierarchy and fixed bottom guidance bar; add INSPECT / PREVIEW / ACTIVE / SELECTABLE DETAIL Hero Focus states; use wide horizontal event presentation for Top Row Mode and narrow vertical presentation for Side Column Mode; preserve self-projection and Preview → authoritative-event continuity.
-4. **UX2.3 — Selection controls:** unified Cancel / Confirm state and reset semantics.
-5. **UX2.4 — Multi-target:** projected min/max, deselection, max feedback, ordered-target markers.
-6. **UX2.5 — AOE:** automatic participants plus resolved/current/pending state.
-7. **UX2.6 — Other-player actions:** source/target/current-actor presentation.
-8. **UX2.7 — Local incoming effects:** persistent local red-target state and response controls.
-9. **UX2.8 — Special flows:** Negation, Duel, Dying, Judgement, Steal/Dismantle, Borrowed Sword, target shifting.
-10. **UX2.9 — Mobile and 7–10 player compaction.**
-11. **UX2.10 — Quick Test perspective switching and regression coverage.**
+The remaining UX2 completion work is now organized around one product goal:
 
-Do not implement all slices in one change. Review the real screen after UX2.1–UX2.3 before committing to later layout details.
+> **Make the Interaction Stage the single coherent place for local Preview,
+> public Inspect, authoritative Active interaction, and server-driven
+> Selectable Detail, while preserving the Local Player Dock as the viewer's
+> operational surface.**
 
-## Current open design discussion
+The Coding Agent owns task decomposition and HANDOVER maintenance. This section
+defines approved product direction only. A design update here does not silently
+replace an already-running bounded task; apply it at the next planning boundary
+unless the current task directly conflicts with it.
 
-The next design discussion should settle **UX2.1 + UX2.2** before coding:
+### 12.0 Implemented baseline — do not rebuild
 
-- validate Top Row Mode (2–4) and Side Column Mode (5–10) on real portrait-phone widths,
-- validate deterministic odd-seat assignment / exact-opposite placement in Side Column Mode,
-- validate top-row versus side-column thumbnail dimensions, labels, HP, hand count, distance, and status density,
-- validate the minimum protected Interaction Safe Zone width / height without hard-coding desktop assumptions,
-- validate battlefield height above the persistent Local Player Dock,
-- validate Large / Medium / Compact participant dimensions in both wide-centre and narrow-centre geometry,
-- validate how much hero art can remain visible while public skills/equipment/hand count remain readable,
-- validate PREVIEW → ACTIVE transition without unnecessary hero repositioning,
-- validate SELECTABLE DETAIL for Steal / Dismantle without a separate modal or hidden-information leak,
-- how Current Effect, Reaction Chain, and Current Decision are arranged inside the Interaction Stage,
-- where the Reaction Chain sits relative to enlarged hero panels,
-- how the Interaction Stage coexists with draw / discard / resolution animation,
-- how long Reaction Chains collapse / expand on constrained layouts,
-- mobile layout for the same state,
-- whether defeated players remain as a separate compact history strip.
+The following foundation is already implemented and is **not** a future task
+queue. Do not select work whose purpose is simply to recreate these contracts:
+
+- stable/fail-closed PresentationSnapshot / PresentationClientView architecture;
+- CurrentAction-owned local legality and actionRevision reconciliation;
+- 2–4 player Top Row and 5–10 player Side Column topology;
+- protected Interaction Safe Zone and fixed opponent-seat DOM;
+- persistent Local Player Dock structure;
+- single-layer Hand with overlap/pan and viewport anchoring;
+- persistent local Judgement on the Hero and active Judgement in the Stage;
+- semantic Confirm / contextual Cancel / authoritative Skip-Decline / End
+  separation and mobile Primary-action placement;
+- opponent Hero-first thumbnails, public Equipment summary, upper-body crop,
+  and established mobile containment work;
+- four-player interaction screenshot/geometry coverage and the subsequent pile
+  separation / duplicate-metadata corrections;
+- authoritative self-target selection from the Local Player Dock;
+- failed response-provider continuation (Eight Trigrams reference behavior);
+- Borrowed Sword complete-path legality, including the legal two-player case.
+
+The durable implementation ledger is
+`docs/AUTONOMOUS_UI_ROADMAP.md`. A completed baseline item may be revisited
+only when the Reviewer changes the design contract or a concrete regression
+shows that the existing implementation no longer satisfies it. CI/test repair
+for an existing implementation does not by itself authorize reimplementing the
+feature.
+
+The directions below are **deltas on top of this baseline**, not permission to
+rebuild earlier UX2 slices.
+
+### 12.0A Current implementation status snapshot — 2026-10-06
+
+This status summary exists to prevent duplicate work. Exact implementation
+SHAs, CI evidence, and historical details belong in
+`docs/AUTONOMOUS_UI_ROADMAP.md`.
+
+| Design direction | Current status | Planning meaning |
+| --- | --- | --- |
+| Local target PREVIEW | **IMPLEMENTED / CLOSED BASELINE** | Preserve and regress only; do not rebuild. |
+| Public INSPECT in shared Hero Focus | **IMPLEMENTED / CLOSED BASELINE** | Preserve and regress only; do not restore the old blocking modal. |
+| ACTIVE Current Effect composition | **PARTIAL** | Attack Response, open Negation, and Duel are proven. Extend only to additional authoritative interaction families. |
+| Local Dock hierarchy / fast-response layout | **ADVANCED / PARTIAL** | Top Guidance, mobile Hero hierarchy, peer skill sizing, timer placement/privacy, and Side Column recognition are implemented. Remaining deltas must be bounded. |
+| SELECTABLE DETAIL | **OPEN** | Major remaining UX gap; migrate only when current authoritative selectable-object data supports it. |
+| Reaction Chain history / AOE participant progress | **ADVANCED / PARTIAL** | Authoritative Group participant order/current/pending/resolved state and several public outcomes now exist. The approved mobile AOE composition in §12.6 may be implemented from that authority; richer history/outcomes remain fail-closed until explicitly projected. |
+| Final UX2 visual gate | **OPEN** | Run only after remaining approved deltas are closed. |
+
+A closed item may be reopened only for a concrete regression or an explicit
+Reviewer design change. A nearby test repair, visual polish request, or new
+interaction family does not authorize rebuilding the closed foundation.
+
+### 12.1 First approved direction — local target PREVIEW in Hero Focus — IMPLEMENTED
+
+**Implementation status: CLOSED BASELINE.** The shared local PREVIEW path is
+implemented. Keep the contract below as regression/extension authority; do not
+plan a task whose purpose is to recreate PREVIEW.
+
+When the viewer enters an unsubmitted local target-selection session, a legal
+external target selected from an opponent Seat Thumbnail should also appear in
+the Interaction Stage using the same Hero Focus structure that will later
+become ACTIVE.
+
+Conceptually:
+
+~~~text
+select card / skill
+-> choose legal target
+-> Seat Thumbnail = locally selected
+-> Interaction Stage = PREVIEW Hero Focus
+-> Confirm
+-> submitting
+-> authoritative acknowledgement
+-> same visual focus becomes ACTIVE
+~~~
+
+PREVIEW remains local UI state. It must not create a public interaction,
+PresentationSnapshot checkpoint, Reaction Chain node, or server event.
+
+Required behavior:
+
+- use authoritative target legality already projected to the viewer; React must
+  not invent target rules;
+- selected Seat Thumbnail and PREVIEW Hero Focus stay synchronized;
+- selecting a different legal target replaces the prior preview cleanly;
+- deselecting/cancelling the unsubmitted local operation clears PREVIEW;
+- local target selection, Inspect, and Hero-info affordances remain independent;
+- Confirm removes the pre-commit Cancel boundary but should preserve visual
+  continuity while the command is in flight;
+- when the authoritative event arrives, reuse the same participant focus and
+  move from PREVIEW styling to ACTIVE styling without an unnecessary blank
+  centre or unrelated remount/reposition;
+- a rejected/stale submission or relevant actionRevision/currentAction change
+  reconciles the local selection and clears/rebuilds PREVIEW from current
+  authoritative state;
+- a self-target never duplicates the viewer's Hero in the Interaction Stage;
+  the viewer's selected/target role remains projected onto the Local Player
+  Dock under the self-projection rule;
+- PREVIEW must work through the generic local target-selection contract rather
+  than card/hero-name checks.
+
+Representative validation should include Top Row and Side Column geometry and
+at least the existing generic paths for ordinary card targeting, active-skill
+targeting, trigger targeting, and Borrowed Sword target selection. Include the
+authoritative self-target case to prove that self remains Dock-only. Validate
+at representative phone widths (including 390px and 480px) and at one wider
+layout without changing gameplay semantics.
+
+### 12.2 Second direction — unify public INSPECT with Hero Focus — IMPLEMENTED
+
+**Implementation status: CLOSED BASELINE.** Public opponent Inspect already
+uses the shared Interaction Stage / Hero Focus rather than the old blocking
+inspection overlay. Preserve the behavior below; future work may extend detail
+quality but must not rebuild the old modal flow.
+
+Ordinary opponent public inspection uses the
+same Hero Focus presentation instead of treating a separate full-screen modal
+as the primary UX.
+
+INSPECT must:
+
+- show public Hero identity, HP, public skills, Equipment, Judgement state, and
+  concealed Hand count/backs;
+- never expose private Hand identities or viewer-private legality;
+- remain independent from targeting;
+- preserve a selected target when the user opens/closes Inspect;
+- reuse the same Hero Focus spatial language as PREVIEW and ACTIVE.
+
+Do not combine this work into the PREVIEW implementation if doing so makes the
+change materially larger or harder to prove.
+
+### 12.3 Third direction — make Current Effect the centre of ACTIVE composition — PARTIAL
+
+**Implementation status: PARTIAL.** Proven Current Effect composition now
+covers Attack Response, open Negation, and Duel. Those paths are closed
+baseline and should not be rebuilt. Remaining work is to extend the same
+semantic composition to additional interaction families only when the public
+projection proves source/effect/participant relationships.
+
+The ACTIVE Interaction Stage should visually explain the current semantic
+relationship rather than read primarily as a metadata panel.
+
+Top Row / wide centre should prefer:
+
+~~~text
+[SOURCE] -> [CARD / SKILL / EFFECT] -> [TARGET]
+~~~
+
+Side Column / narrow centre should prefer:
+
+~~~text
+      [SOURCE]
+          |
+   [CARD / EFFECT]
+          |
+          v
+      [TARGET]
+~~~
+
+The viewer is never duplicated centrally. If the viewer is source, target,
+decision actor, or resolver, project that role into the Local Player Dock and
+show only external participants centrally.
+
+The existing transition/resolution animation system may remain, but its job is
+to animate between stable semantic states. It must not become a competing
+second source of Current Effect truth.
+
+### 12.4 Fourth direction — SELECTABLE DETAIL inside the same Hero Focus — OPEN
+
+**Implementation status: OPEN / major remaining UX gap.** The existing
+Steal/Dismantle target-card picker remains an acceptable temporary fallback.
+Before migrating a flow, audit its existing authoritative selectable-object
+projection, concealed-hand treatment, stale/replay behavior, and focused
+coverage. If authority is insufficient, keep the picker and identify the
+missing projection rather than inventing client legality.
+
+For multi-stage interactions such as Steal / Dismantle, Sima Yi Retaliation,
+and other server-owned Playing Area / zone-card choices, evolve the focused
+participant from ACTIVE/PREVIEW into SELECTABLE DETAIL instead of jumping to
+an unrelated generic selection surface when the authoritative projection can
+support an inline choice.
+
+The server remains the sole authority for selectable objects. Concealed Hand
+positions stay concealed. Equipment and Judgement cards keep physical/public
+identity where already public.
+
+#### 12.4.1 Zone semantics must remain visually distinct
+
+SELECTABLE DETAIL must not render every selectable object as if it were the
+same kind of known physical card.
+
+Use three distinct semantic presentations:
+
+~~~text
+HAND
+= concealed zone
+= authoritative hand count is visible
+= card identities remain hidden
+= random-hand selection selects the zone, not a known individual card
+
+EQUIPMENT
+= public physical cards
+= each eligible card may be individually identified and selected
+
+JUDGEMENT
+= public physical cards
+= each eligible card may be individually identified and selected
+~~~
+
+A hidden Hand zone with four cards must not visually collapse into one lone
+`?` card in a way that implies the opponent has only one card.
+
+If the authoritative rule means "obtain a random card from that Hand", the UI
+should show the full concealed-zone count and make the **Hand zone** the
+selectable object. A recommended representation is:
+
+~~~text
+HAND ×4
+[?][?][?][?]
+Random card
+~~~
+
+The four backs/markers communicate count only. They are not four independently
+identifiable choices unless the server explicitly projects opaque per-position
+selection keys for a rule that truly allows choosing a concealed position.
+
+#### 12.4.2 Random Hand choice versus individual public-card choice
+
+For a flow such as Sima Yi **Retaliation**, where the authoritative selection
+may include one random card from the damage source's Hand or one specific
+public Equipment/Judgement card, the UI should read approximately:
+
+~~~text
+RETALIATION
+Choose where to obtain 1 card
+
+HAND ×4
+[?][?][?][?]
+Random card
+
+EQUIPMENT
+[Eight Trigrams]
+
+JUDGEMENT
+[Lightning]   // only if present and eligible
+~~~
+
+Interaction semantics:
+
+- tapping the Hand zone means "obtain one random card from this Hand";
+- the client must not reveal or infer concealed card identities;
+- Equipment/Judgement cards remain individually selectable because their
+  identities are already public;
+- the selected state must clearly distinguish "Hand zone selected" from
+  "specific public card selected";
+- confirmation submits the existing authoritative key/payload exactly once;
+- stale/replay/actionRevision changes must clear or reconcile the local
+  selection against current authoritative availability;
+- if the Hand becomes empty before settlement, stale handling must fail closed
+  rather than invent a replacement selection.
+
+Do not special-case the UI by Hero name. Retaliation is the current reference
+case for a generic **concealed-zone + public-card** selector contract.
+
+#### 12.4.3 Player-facing copy
+
+Avoid copy that incorrectly suggests the player is choosing a known card when
+the actual action is choosing a concealed zone for random resolution.
+
+Prefer wording such as:
+
+- `Choose where to obtain 1 card`;
+- `Hand ×4 · Random card`;
+- `Choose 1 card or the opponent's Hand`.
+
+Avoid relying only on:
+
+- `Choose 1 eligible card`
+
+when one selectable item actually represents an entire hidden Hand zone.
+
+#### 12.4.4 Acceptance for concealed-zone SELECTABLE DETAIL
+
+Focused regression/visual proof for a representative flow should show:
+
+- an opponent with N hidden Hand cards renders a concealed Hand zone that
+  communicates count N rather than one misleading lone unknown card;
+- hidden identities are never exposed to the selecting viewer;
+- a random-Hand zone is one semantic selection even when several card backs are
+  drawn for count;
+- public Equipment/Judgement cards remain individually identifiable/selectable;
+- Hand-zone selection and public-card selection use distinct selected styling;
+- the authoritative payload remains unchanged and server-owned;
+- stale availability/revision changes clear or reproject the selection safely;
+- mobile portrait layouts remain readable without turning the selector into a
+  full-screen wall of large card backs.
+
+This is a later bounded migration. Existing pickers may remain until each
+flow has authoritative data and focused regression coverage for the unified
+Hero Focus path.
+
+### 12.5 Fifth direction — finish Local Player Dock visual hierarchy — PARTIAL
+
+**Implementation status: ADVANCED / PARTIAL.** The structural Dock redesign is
+closed: Current Guidance is already at the Dock top edge, the mobile local Hero
+has stronger visual weight, peer Hero-skill controls have comparable sizing,
+the Hand remains one layer, and Actions remain in the bottom row. Future work
+must be bounded refinements, not another Dock rebuild.
+
+One known implementation gap remains under the already-approved skill-entry
+contract:
+
+- passive skills such as Ma Chao's **Horse Riding** may remain informational /
+  non-activatable because they do not represent a voluntary action;
+- an **optional authoritative triggered skill** such as Ma Chao's **Cavalry**
+  must become actionable from the Hero-adjacent Skills band whenever the
+  server projects that option;
+- the bottom Action Row may describe/continue that skill flow, but it must not
+  be the skill's only usable entry point;
+- this is a generic capability-to-Skills-band rule, not a Ma Chao-specific UI
+  special case.
+
+The Local Player Dock structure is already approved and must not be redesigned.
+Perform only bounded visual/interaction polish so the implemented hierarchy
+matches the established design:
+
+- Hand remains the largest flexible operational area;
+- local Hero remains the second major visual area and should not read as a tiny
+  avatar inside a much wider reserved column;
+- Skills stay readable and easy to hit, use consistent peer-button sizing, and
+  remain the primary activation surface for legal Hero skills;
+- Equipment stays compact and independently identifiable/selectable;
+- Judgement remains on the Hero;
+- Current Guidance remains protected at the Dock's top edge adjacent to the Stage;
+- Actions remain protected in the bottom thumb-reachable row.
+
+Do not obtain a larger Hero by shrinking Hand usability or moving the approved
+Dock regions.
+
+### 12.6 Group / AOE mobile composition — Reviewer-approved final direction — 2026-10-06
+
+**Implementation status: ADVANCED / PARTIAL.** Authoritative Group participant
+order, current/pending/resolved state, and several public outcomes are now
+available. That authority is sufficient to implement the mobile composition
+below. Missing richer outcomes/history still fail closed and must not be
+invented by React.
+
+This section is the product authority for Group/AOE ACTIVE presentation on
+mobile. It supersedes older AOE layouts that duplicate the current participant
+as a separate large Target Hero, render large participant cards for every
+affected player, or use a large standalone Reaction Chain panel for a simple
+Negation window.
+
+The core model is:
+
+> **one Source, one active/root Action Card, one Group Target Strip, one active
+> highlight.**
+
+The whole Group interaction should feel like one stable scene progressing
+through states, not a sequence of independently reconstructed layouts.
+
+#### 12.6.1 Mobile causal spine — top to bottom
+
+For mobile portrait, card/skill interactions should prefer a vertical causal
+spine:
+
+~~~text
+            [SOURCE HERO]
+                 ↓
+          [ROOT ACTION CARD]
+                 ↓
+         [GROUP TARGET STRIP]
+~~~
+
+For Group/AOE specifically, the root card sits physically between the source
+and the complete affected-player set:
+
+~~~text
+              Gan Ning
+             [portrait]
+                 ↓
+       [BARBARIAN INVASION]
+                 ↓
+   Cao Cao     Guo Jia     Sima Yi
+~~~
+
+This vertical mobile rule overrides the earlier generic Top-Row horizontal
+Source/Effect/Target preference when that horizontal composition would compress
+or destabilise a portrait-phone layout. Wider tablet/desktop layouts may use
+horizontal composition when it preserves the same semantic order.
+
+Do not rearrange Source, root card, or Group Target Strip merely because the
+current participant or private decision actor changes.
+
+#### 12.6.2 Source presentation
+
+The Group source occupies one stable compact position above the root action.
+
+Show only what is needed to identify the actor in this event:
+
+- Hero artwork / portrait;
+- player name.
+
+Do not repeat HP, Hero name, Hand count, Equipment, `SOURCE`, or other
+metadata already available in the fixed Seat Thumbnail.
+
+During an already-active Group interaction, the central Source should read as
+lightweight event identity rather than a second expanded player card.
+
+#### 12.6.3 Root action card is the event spine
+
+Use the real public card/skill/effect identity between Source and targets.
+
+For Barbarian Invasion:
+
+~~~text
+Gan Ning
+   ↓
+[Barbarian Invasion]
+   ↓
+Group Targets
+~~~
+
+The currently unresolved public action/head is visually highlighted. Prefer
+the card/effect art itself over a separate `EFFECT` metadata panel.
+
+Do not duplicate the root card as:
+
+- a separate title box;
+- an `Original Effect` block;
+- a second full Reaction Chain root;
+- repeated prose naming the same action.
+
+#### 12.6.4 Group targets appear once only
+
+All affected participants appear in one stable Group Target Strip.
+
+**Do not render the same current participant twice** as both:
+
+1. a member of the AOE target collection; and
+2. a separate large `Current Target` / Hero Focus.
+
+The Group Target Strip itself owns current-participant emphasis.
+
+Example:
+
+~~~text
+             ▼
+Cao Cao     Guo Jia     Sima Yi
+ -1♥           ◎            ·
+~~~
+
+A participant marker should normally contain only:
+
+- compact Hero portrait or recognisable Hero image;
+- player name;
+- compact authoritative semantic state.
+
+Do not expand each participant into a mini information card with HP, Hero name,
+Hand count, Equipment, `Focus`, `Decision`, `Active Scope`, or similar
+metadata. Those facts already exist in the Seat or Dock.
+
+The viewer may appear as a **compact Group-member marker** in this strip so the
+complete affected set remains visible. This is not permission to duplicate the
+viewer as a second large Hero Focus: the Local Player Dock remains the viewer's
+only full operational Hero surface.
+
+#### 12.6.5 Group participant state and responsive density
+
+Current/pending/resolved/outcome state must come from authoritative public
+projection.
+
+Never derive it from:
+
+- remaining IDs;
+- target-array order alone;
+- timeline order;
+- HP changes;
+- turn owner;
+- seat position;
+- animation state.
+
+Use compact visual state rather than large text-heavy cards.
+
+Representative visual language:
+
+~~~text
+CURRENT   = gold highlight / glow + small arrow or current marker
+PENDING   = subdued / neutral
+DAMAGED   = -1♥ or compact authoritative damage marker
+AVOIDED   = ✓ or compact avoided marker
+NEGATED   = ⊘ or compact negated marker
+DEFEATED  = compact defeated marker when authoritative proof exists
+~~~
+
+Accessible names may remain descriptive even when visible copy is minimal.
+
+Apply the existing density modes:
+
+~~~text
+COMFORTABLE
+Cao Cao -1♥     Guo Jia ▶     Sima Yi ·
+
+COMPACT
+Cao Cao ✓       Guo Jia ▶     Sima Yi ·
+
+CRITICAL
+1 resolved      Guo Jia ▶      1 left
+~~~
+
+At 390px / 480px portrait widths, prefer COMPACT/CRITICAL projection before
+allowing names to wrap vertically or target cards to invade the Local Dock.
+
+The current participant and the viewer-relevant state must never disappear
+during density reduction.
+
+#### 12.6.6 Open Negation window — no branch until a public card exists
+
+An open/non-directed Negation opportunity does **not** create a visible
+Negation card or large Reaction Chain panel by itself.
+
+Before anybody actually submits Negation:
+
+~~~text
+              Gan Ning
+                 ↓
+      [BARBARIAN INVASION]   ← ACTIVE / highlighted
+                 ↓
+   Cao Cao       Guo Jia       Sima Yi
+      ◎             ·             ·
+~~~
+
+Public Stage may use a very small neutral state if needed, e.g.
+`Negation window · Waiting…`, but must not name a private responder/scan actor.
+
+The eligible viewer sees private guidance only in their Local Guidance Strip:
+
+~~~text
+Play Negation or Skip.
+~~~
+
+Do not show:
+
+- `Waiting for Cao Cao`;
+- `Decision: Cao Cao`;
+- evidence that a specific player owns Negation;
+- a Negation branch before Negation becomes a public submitted action.
+
+#### 12.6.7 Public Negation becomes a side branch and active chain head
+
+When a Negation is actually submitted and becomes public, preserve the root AOE
+card and grow a compact branch from it.
+
+~~~text
+              Gan Ning
+                 ↓
+      [Barbarian Invasion] ─── [NEGATION]
+             subdued              ACTIVE
+                 ↓
+   Cao Cao       Guo Jia       Sima Yi
+      ◎             ·             ·
+~~~
+
+Rules:
+
+- the root card remains visible as causal context;
+- the previous active card loses active highlight;
+- the newly submitted Negation becomes the highlighted current response head;
+- the Group Target Strip remains in exactly the same location;
+- the current participant remains highlighted in the same strip;
+- do not create a separate large Reaction Chain panel containing the same
+  Source/root/target facts.
+
+This makes the currently responseable public card visually obvious without
+requiring explanatory prose.
+
+#### 12.6.8 Counter-Negation continues the branch
+
+If another public Negation counters the first:
+
+~~~text
+[Barbarian Invasion] ─ [Negation] ─ [NEGATION]
+      subdued            subdued        ACTIVE
+~~~
+
+The newest unresolved public response card is always the active highlight.
+
+On narrow screens:
+
+- the branch may compact, overlap, fan, or collapse older counter cards;
+- root identity and current active head must remain visible;
+- the branch must not widen the Stage beyond the viewport;
+- Group Target Strip and Local Guidance take priority over showing every old
+  card at full size.
+
+Only public submitted chain actions appear. Private Pass/Skip/Decline and
+private scan progression leave no visual node.
+
+#### 12.6.9 Returning from the Negation branch
+
+If Negation successfully cancels the root effect for the current Group
+participant:
+
+1. settle/collapse the Negation branch;
+2. project the authoritative participant outcome, e.g. `Negated`;
+3. advance the current highlight to the next authoritative participant;
+4. return active highlight to the root AOE card for that next participant.
+
+Conceptually:
+
+~~~text
+BEFORE
+[Barbarian Invasion] ─ [Negation ACTIVE]
+Cao Cao ▶ | Guo Jia · | Sima Yi ·
+
+AFTER
+[BARBARIAN INVASION ACTIVE]
+Cao Cao ⊘ | Guo Jia ▶ | Sima Yi ·
+~~~
+
+If a counter-Negation defeats the Negation:
+
+1. settle/collapse the branch;
+2. keep the same participant current;
+3. return active highlight to the root AOE card;
+4. continue to the participant's authoritative required response.
+
+Do not change target order or infer settlement from animation.
+
+#### 12.6.10 Minimal Local Guidance
+
+The Local Guidance Strip immediately below the Stage owns the viewer's private
+next-step instruction.
+
+For an eligible Negation opportunity:
+
+~~~text
+Play Negation or Skip.
+~~~
+
+For Barbarian Invasion's current participant:
+
+~~~text
+Play Attack or take 1 damage.
+~~~
+
+For Raining Arrows, use the authoritative equivalent, e.g. the required Dodge
+instruction.
+
+Do not use implementation-state phrases such as `Group Resolution`,
+`Current Participant`, `Active Scope`, or `0 cards selected` as the primary
+instruction when a direct gameplay instruction is available.
+
+The Stage explains the public event visually; the Guidance Strip tells this
+viewer what to do.
+
+#### 12.6.11 Stable six-state Barbarian Invasion reference
+
+The following sequence is a layout/continuity reference. Names are sample data,
+not hard-coded UI logic.
+
+**State 1 — Cao Cao current; open Negation opportunity**
+
+~~~text
+Gan Ning
+   ↓
+[BARBARIAN INVASION ACTIVE]
+   ↓
+Cao Cao ◎ | Guo Jia · | Sima Yi ·
+
+Local Cao Cao guidance:
+Play Negation or Skip.
+~~~
+
+**State 2 — Negation skipped; Cao Cao must play Attack or take damage**
+
+Same Stage geometry:
+
+~~~text
+Gan Ning
+   ↓
+[BARBARIAN INVASION ACTIVE]
+   ↓
+Cao Cao ◎ | Guo Jia · | Sima Yi ·
+
+Local Cao Cao guidance:
+Play Attack or take 1 damage.
+~~~
+
+**State 3 — Cao Cao resolved Damaged; Guo Jia current; open Negation**
+
+~~~text
+Gan Ning
+   ↓
+[BARBARIAN INVASION ACTIVE]
+   ↓
+Cao Cao -1♥ | Guo Jia ◎ | Sima Yi ·
+
+Eligible viewer guidance:
+Play Negation or Skip.
+~~~
+
+**State 4 — Negation skipped; Guo Jia must play Attack or take damage**
+
+Same public Stage:
+
+~~~text
+Gan Ning
+   ↓
+[BARBARIAN INVASION ACTIVE]
+   ↓
+Cao Cao -1♥ | Guo Jia ◎ | Sima Yi ·
+
+Local Guo Jia guidance:
+Play Attack or take 1 damage.
+~~~
+
+**State 5 — Cao Cao and Guo Jia resolved Damaged; Sima Yi current; open Negation**
+
+~~~text
+Gan Ning
+   ↓
+[BARBARIAN INVASION ACTIVE]
+   ↓
+Cao Cao -1♥ | Guo Jia -1♥ | Sima Yi ◎
+
+Eligible viewer guidance:
+Play Negation or Skip.
+~~~
+
+**State 6 — Negation skipped; Sima Yi must play Attack or take damage**
+
+Same public Stage:
+
+~~~text
+Gan Ning
+   ↓
+[BARBARIAN INVASION ACTIVE]
+   ↓
+Cao Cao -1♥ | Guo Jia -1♥ | Sima Yi ◎
+
+Local Sima Yi guidance:
+Play Attack or take 1 damage.
+~~~
+
+States 1→6 must look like one stable scene changing semantic state, not six
+independently reconstructed layouts.
+
+#### 12.6.12 Mobile acceptance
+
+Validate at minimum:
+
+- 390px portrait;
+- 480×900 portrait;
+- one wider tablet/desktop layout.
+
+For representative Group/AOE states prove:
+
+- Source coordinates remain stable;
+- root action card coordinates remain stable;
+- Group Target Strip position/height remains stable;
+- current participant is not duplicated as a separate Hero Focus;
+- Group participants do not collapse into vertical one-character-per-line text;
+- Stage never intrudes into Local Guidance or Local Player Dock;
+- Guidance stays fully readable;
+- Hand remains usable;
+- Confirm/Skip remain reachable;
+- simple open Negation does not create a large Reaction Chain overlay;
+- a public Negation creates a compact card branch and becomes the active
+  highlight;
+- counter-Negation advances the active highlight to the newest public card;
+- branch settlement restores root highlight and authoritative participant
+  progression correctly;
+- private responder identity is not leaked;
+- no Source/Target/Decision metadata is duplicated when position/highlight
+  already communicates the fact;
+- implementation consumes authoritative CurrentAction/Presentation/Group
+  progress and does not introduce card-name/hero-name legality rules.
+
+#### 12.6.13 Authority-dependent remainder
+
+Do not fabricate missing semantic history or participant outcomes merely to
+complete the visuals.
+
+Reaction history may expand only from authoritative public chain nodes.
+
+Group outcomes may appear only when explicitly projected by the server. If an
+outcome such as `Defeated`, `Avoided`, `Negated`, or another settlement
+state is not yet authoritatively proven for a given path, omit it or use the
+current fail-closed state rather than deriving it from HP/timeline behavior.
+
+Any missing semantic projection remains a separate server/presentation task
+from this visual composition.
+
+### 12.7 Fast Response Interaction Stage — mobile decision clarity — ADVANCED / PARTIAL
+
+**Implementation status: ADVANCED / PARTIAL.** The response timer, observer-safe
+timer privacy, neutral open-Negation waiting state, player-facing Negation
+title, proven event summary, vertical portrait chain geometry, top Guidance
+Strip, local semantic response heading, peer skill sizing, local-Hero mobile
+hierarchy, and timer/Exit/10-player clearance are implemented baseline. Do not
+redo those pieces. Extend this pattern only where remaining interaction
+families or concrete regressions require it.
+
+This is a Reviewer-approved visual/information contract for short timed
+response windows such as Negation, Dodge, Duel responses, rescue, and similar
+blocking choices.
+
+**Group/AOE specialisation:** for Group/AOE ACTIVE presentation, §12.6 is the
+more specific authority. Its single Group Target Strip replaces the generic
+large Primary Target Hero, and its compact public Negation-card branch replaces
+a large standalone Reaction Chain panel for the ordinary AOE Negation path.
+Do not apply generic single-target composition in a way that reintroduces AOE
+target duplication.
+
+For mobile portrait card/skill ACTIVE scenes, prefer top-to-bottom causal flow
+when horizontal Source/Effect/Target composition would compress or destabilise
+the interaction. Rich INSPECT/SELECTABLE DETAIL surfaces may still use their
+dedicated layouts.
+
+The visual reference is a design target, **not** a pixel-copy task. Preserve
+the repository's existing semantic architecture, artwork, topology and Local
+Dock contracts. The goal is to reduce cognitive load so that, during a roughly
+20–25 second response window, the viewer can answer within the first 1–2
+seconds:
+
+1. **What just happened?**
+2. **What is the game waiting for now?**
+3. **What can I do?**
+
+#### 12.7.1 Information ownership — one primary expression per fact
+
+Avoid repeating the same semantic fact in multiple boxes.
+
+~~~text
+Seat Thumbnail
+= who/where + lightweight public status
+
+Interaction Stage
+= what public event is happening now
+
+Reaction Chain
+= why the unresolved event reached the current public state
+
+Local Player Dock
+= what this viewer can privately do now
+
+Response Timer
+= how long the current timed window remains
+~~~
+
+The same Hero may appear both in a fixed Seat Thumbnail and as an event-focus
+Hero because those surfaces answer different questions. But do not additionally
+repeat that same identity as `FOCUS`, `CURRENT PARTICIPANT`, `SOURCE`,
+`DECISION`, and similar metadata when the visual relationship already makes
+the fact clear.
+
+#### 12.7.2 Player-facing vocabulary
+
+Internal component/type names may remain technical. Player-facing copy should
+use gameplay language.
+
+Do not normally expose these labels as UI chrome:
+
+- `INTERACTION STAGE`;
+- `HERO FOCUS`;
+- `CURRENT PARTICIPANT`;
+- `PUBLIC CAUSAL CONTEXT`;
+- `DECISION PlayerX` when the actor is not already public.
+
+Prefer short gameplay terms only when useful:
+
+- `Target`;
+- `Source`;
+- `Negation Response`;
+- `Waiting for response...`;
+- `Your response`;
+- `Play Negation or Skip.`
+
+Do not add a label merely because an internal field exists.
+
+#### 12.7.3 Element-by-element screen contract
+
+| Element | Screen position | Required design / modification | Intended effect |
+| --- | --- | --- | --- |
+| **Global top bar** | very top of game UI | Keep thin and quiet. Global/menu identity may remain at left; reserve the right side for the timed-window module. Do not repeat source/target/decision facts here. | Separates global chrome from the current event. |
+| **Response Timer Module** | fixed top-right, above opponent/event content | Use a compact **hourglass icon + short label + large numeric badge**, e.g. `⌛ Response Time 25s`. Show only for an authoritative timed decision/response window. | Time remaining is immediately discoverable without scanning the Stage. |
+| **Timer urgency** | inside the same top-right module | Strengthen urgency as time decreases using restrained contrast/glow/pulse. Keep normal time calm; near expiry becomes visibly urgent. Exact thresholds are implementation-tuned, not gameplay constants. | Player can sense urgency without repeatedly reading the number. |
+| **Timer privacy** | semantic rule for the timer | Timer represents the **window**, not a private responder. Never label an open response timer `Player3 time` or otherwise reveal hidden eligibility. | Prevents timer chrome from leaking private response information. |
+| **Opponent Seat Row / Columns** | above/around the Stage according to existing Top Row / Side Column topology | Keep established fixed seats. Show recognizable Hero art, identity, HP, Hand count, public Equipment/status. Do not add long source/target/decision text. | Seats stay a fast table/topology reference. |
+| **Seat event styling** | border/badge/glow on the existing seat | Preserve layered turn/target/decision/local-selection states through compact visual channels. Avoid new text panels. | Event state remains visible without crowding the centre. |
+| **Interaction Safe Zone** | large centre between Seats and Local Dock | Keep substantial breathing room. Prefer an open battlefield/event composition over a dashboard of nested metadata boxes. | The eye is drawn to the current event, not implementation data. |
+| **Event title** | top of the Stage | Use one large player-readable title such as **NEGATION RESPONSE**. Do not use architectural headings. | First glance answers “what phase/event is this?” |
+| **Event summary sentence** | directly under the title | One short natural-language line, e.g. `Player1 used Something Out of Nothing on Cao Cao.` Mildly emphasize source/effect/target if useful. | Second glance explains what happened without decoding labels. |
+| **Primary Target Hero** | central/upper Stage, dominant participant | Show the currently important external target/resolving Hero as the largest participant card. A small `Target` tag is enough when needed. Hero art, name and HP are primary. | Instantly communicates who the current effect concerns. |
+| **Target de-duplication** | around the primary Hero | If the large Hero already communicates Cao Cao as target/current participant, do not repeat `FOCUS Cao Cao` or `CURRENT PARTICIPANT Cao Cao` below it. | Removes the current screen's strongest duplication. |
+| **Source** | upstream/left in wide mode; above in narrow mode | Use a smaller Source chip/Medium Participant Card. It may include compact Hero art, but it is visually subordinate to the current target/resolving focus. | Preserves cause without creating two competing large Heroes. |
+| **Directional cue** | between Source / Effect / Target | Use one restrained arrow/energy line. Horizontal in wide Top Row geometry; vertical in narrow Side Column geometry. | Relationship is understood visually instead of through repeated prose. |
+| **Current Effect** | between Source and Target or as first Reaction step | Preserve the real card/skill/effect identity with its existing art/icon where practical. | Player sees “who used what on whom”. |
+| **Vertical Reaction Chain** | Stage middle/lower area | Mobile portrait defaults to a vertical flow. Avoid two dense side-by-side columns for Root/Active. | Matches temporal/causal reading order and narrow screens. |
+| **Reaction Step 1 — Root** | top of vertical chain | Show the meaningful root effect, e.g. `Original Effect · Something Out of Nothing`. Do not repeat all Source/Target metadata already shown above. | Root context remains visible with less noise. |
+| **Reaction Step 2 — Open Window** | below Root | Show the public state, e.g. `Negation Window · A Negation may be played now.` | Explains why resolution is paused. |
+| **Reaction Step 3 — Pending** | current/bottom node | Show a visibly current state such as `Waiting for response...`, optionally with a small hourglass/current marker. | A pending screen looks intentionally active, not frozen. |
+| **Open-window privacy** | all public Stage/Reaction surfaces | For an open/non-directed response window, do **not** show the specific private responder/scan actor. Use neutral waiting copy. Only directed/public responder identities may be named. | Does not leak who has Negation or another eligible private response. |
+| **Pass/decline visibility** | Reaction Chain | Ordinary private Pass/Skip/Decline that creates no independent public effect leaves no Reaction node. Internal scan progression must not create `Waiting for D -> Waiting for E` public churn. | Keeps the chain concise and privacy-safe. |
+| **Battlefield breathing space** | unused Stage area | Leave intentional empty/low-contrast battlefield space. Do not fill it with metadata simply because space is available. | Improves scan speed and visual hierarchy. |
+| **Local Player Dock boundary** | persistent bottom region | Keep a clear structural boundary: public event above, viewer-private operation below. | Public state and private control are immediately distinguishable. |
+| **Local Hero** | Dock left | Keep the existing viewer Hero, HP and Judgement ownership. Do not duplicate the local Hero in the Stage. | Stable “this is me” anchor. |
+| **Skills band** | Dock right-top, before Equipment | This is the primary Hero-skill entry surface. Legal skills become actionable here; selected/disabled state is visible here. Peer skill buttons use consistent minimum height/padding/touch area and comparable visual weight regardless of name length. | Hero abilities are predictable, discoverable, and equally tappable. |
+| **Equipment band** | right of Skills | Preserve stable Weapon / Armour / +1 Horse / -1 Horse objects/slots with compact public/owned identity. | Equipment is quickly understood without consuming Hand space. |
+| **Hand** | Dock right-main | Preserve the completed one-row large-card Hand with overlap/pan. Eligibility comes from CurrentAction. Ineligible cards remain visible but subdued. | The viewer immediately finds usable cards without losing hand context. |
+| **Selected response card** | within Hand | Selected legal response lifts/highlights; the Primary action becomes enabled only when the authoritative selection contract is satisfied. | Clear select -> confirm feedback. |
+| **Private Guidance Strip** | full-width top edge of the Local Dock, directly below the Interaction Stage and above Hero/Skills/Equipment/Hand | Use concise private copy such as **Your response** / **Play Negation or Skip.** Add at most one short helper sentence when genuinely useful. Keep it visually distinct from the public Stage while spatially adjacent to it. | The viewer sees the next local step in the same attention zone as the battle instead of missing it below the Hand. |
+| **No central private-decision duplication** | Stage vs top Guidance Strip boundary | When the Guidance Strip already says `Your response`, remove redundant central `YOUR DECISION`, private actor name, and duplicate response instructions. | Reduces timed-response cognitive load. |
+| **Primary action** | bottom centre-right thumb zone | Confirm/Play/Respond remains the main commit action, visually dominant when enabled. | Fast, repeatable right-thumb operation. |
+| **Authoritative Skip/Decline** | bottom far-right secondary zone | Keep clearly separated from Primary with a measurable gutter. | Reduces accidental irreversible Skip/Decline taps. |
+| **Contextual Cancel** | only where the existing pre-commit rules require it | Do not add a permanent third button to fill space. | Preserves the already-approved control semantics. |
+
+#### 12.7.4 Reference response composition
+
+A representative open Negation response should read approximately as:
+
+~~~text
+[global chrome]                         [⌛ Response Time | 25s]
+
+[Opponent]          [Opponent]          [Opponent]
+
+                 NEGATION RESPONSE
+     Player1 used Something Out of Nothing on Cao Cao.
+
+          [Source]
+         Player1  ----->   [TARGET: Cao Cao]
+                            HP 5/5
+
+                 1  Original Effect
+                    Something Out of Nothing
+                           |
+                           v
+                 2  Negation Window
+                    A Negation may be played now.
+                           |
+                           v
+                 3  Waiting for response...
+
+------------------------------------------------------------
+Your response · Play Negation or Skip.
+------------------------------------------------------------
+
+[LOCAL HERO]   [Skills] [Equipment]
+               [large single-row Hand]
+
+                         [CONFIRM]     [SKIP]
+~~~
+
+This is a hierarchy/layout reference, not a requirement to hard-code names,
+Heroes, card kinds, text widths, or exact pixels.
+
+#### 12.7.5 Public versus private decision identity
+
+A response window must distinguish:
+
+~~~text
+PUBLICLY DIRECTED DECISION
+-> responder identity may be shown if the rules already make it public
+
+OPEN / NON-DIRECTED RESPONSE WINDOW
+-> public Stage shows only neutral waiting state
+-> each eligible viewer sees their own private options in their Local Dock
+-> no other viewer learns who currently has an eligible response/provider
+~~~
+
+Server internals may still use actor/scan ownership to advance the rules. That
+private implementation fact must not automatically become public presentation.
+
+For Negation specifically, the public screen may say:
+
+~~~text
+Negation response window open
+Waiting for response...
+~~~
+
+A viewer who can respond privately sees this in the top Guidance Strip of the
+Local Player Dock:
+
+~~~text
+Your response · Play Negation or Skip.
+~~~
+
+Only when a Negation is actually submitted as a public action does that player's
+identity/action enter the public Reaction Chain.
+
+#### 12.7.6 Fast-response acceptance
+
+Representative browser/visual proof should demonstrate:
+
+- no duplicate Source/Target/Decision identity blocks when the same fact is
+  already expressed by the participant composition;
+- no player-facing `Hero Focus`, `Current Participant`, or
+  `Public Causal Context` chrome in the timed response state;
+- mobile Reaction Chain is vertically scannable and does not collide with the
+  primary Hero/effect;
+- an open Negation window displays a neutral pending state without naming the
+  private responder/scan actor;
+- another viewer cannot infer who has a legal Negation/provider from Stage,
+  timer, seat labels, pending copy, or Reaction Chain;
+- the eligible local viewer still receives their private response guidance and
+  controls in the Local Dock;
+- private Guidance is directly adjacent to the Interaction Stage at the top of
+  the Dock, not buried below the Hand;
+- legal Hero skills are entered from the Skills band rather than appearing only
+  as bottom action buttons;
+- peer Hero-skill controls keep consistent touch size and comparable visual
+  weight even when skill-name lengths differ;
+- Response Timer remains clearly visible at the top-right while the Stage and
+  Dock remain usable;
+- timer urgency can strengthen near expiry without obscuring content or
+  interfering with controls;
+- selected response card, Confirm and Skip remain unambiguous in the existing
+  mobile thumb-zone layout;
+- 390px and 480px portrait widths remain the primary visual validation targets,
+  with at least one wider validation;
+- implementation reuses authoritative CurrentAction/Presentation data and does
+  not introduce client-side response legality or card-name special cases.
+
+### 12.8 Remaining approved work — planning priorities
+
+This section is **not a task queue**. At each planning boundary the Coding Agent
+must inspect current code/tests and choose one bounded task that is both
+authoritative and provable. The Agent owns HANDOVER and task decomposition.
+
+The remaining product gaps are:
+
+1. **Close bounded Dock interaction nonconformance.** Where an optional
+   server-authorized Hero skill is available, the Skills band must own the
+   activation entry. Ma Chao Cavalry is the current reference case; passive
+   skills are not forced into fake buttons.
+2. **Converge Group/AOE mobile presentation on §12.6.** The authoritative
+   participant progress already available is sufficient for the fixed vertical
+   Source → root card → single Group Target Strip composition. Remove duplicated
+   current-target panels/metadata and use compact public Negation-card branching
+   without changing Group/Negation gameplay semantics. Any still-missing
+   outcomes/history remain separate authority work.
+3. **Extend other ACTIVE composition families.** Reuse the proven semantic
+   relationship language for additional authoritative flows such as
+   Dying/Peach, Judgement, Borrowed Sword, Steal/Dismantle, or target-shifting.
+   Do one family at a time and do not infer missing roles.
+4. **Migrate SELECTABLE DETAIL when authority supports it.** Prefer the shared
+   Hero Focus for server-owned zone/card choices; keep the existing picker when
+   current projection cannot safely support the migration.
+5. **Add missing public semantic projection before richer Reaction/AOE UI.**
+   Multi-node Reaction history and per-participant Group/AOE progress must be
+   server/projector-owned first, then consumed by React.
+6. **Run the final UX2 gate** only after the remaining bounded deltas are
+   complete.
+
+Small, proven design nonconformances may be fixed before a larger migration at
+a task boundary, but an already-running compatible bounded task does not need
+to be silently replaced.
+
+### 12.9 Final UX2 visual gate — OPEN
+
+**Implementation status: OPEN.** This is the final integration/reviewer gate,
+not permission to recreate earlier closed UX2 slices.
+
+After the bounded stages above, run one final representative UX2 review across:
+
+- 2, 4, 6, and 10-player topology;
+- REST / ordinary turn;
+- INSPECT;
+- local PREVIEW and PREVIEW -> ACTIVE;
+- single-target and multi-target;
+- AOE / Group;
+- Attack / Dodge;
+- Duel;
+- Negation;
+- Dying / Peach;
+- Judgement;
+- Steal / Dismantle;
+- Borrowed Sword;
+- Hero-skill targeting;
+- self-target;
+- long guidance;
+- large Hand;
+- Quick Test viewer switching.
+
+Use representative mobile portrait widths/heights first, then a wider
+desktop/tablet check. Final completion means the player can understand
+**who is involved, what is happening, whose decision it is, and what they can
+do next** without the client inventing gameplay facts.
+
+## Historical UX2 verification record — reference only
+
+Everything below this heading preserves earlier verification/design-gate
+history. Its dated `PARTIAL`, `OPEN`, `NOT READY`, old task, and approval
+statements are **historical**, not current execution authority. They must not
+override the current §§0–12 contracts, the current implementation ledger, or
+the repository workflow, and must not cause completed UX2 work to be repeated.
+
+### 0.92 UX2.0B Verification / Fix Gate
+
+This gate preserves the prior review history and does not finalise
+`interactionId`, `frameId`, `checkpointId`, or `presentationRevision`.
+
+- Engine-backed A-I characterization: **PARTIAL**. Real Attack/Dodge,
+  Borrowed Sword forced Attack, viewer reprojection, response timer arming,
+  reconnect, and the single-target Group negative case are covered. The
+  remaining nested stable points retain explicit projector-only fixtures.
+- Root/Active separation: **PARTIAL**. Root targets are explicit-only and
+  cannot be copied from an active target; a universal engine root marker is
+  still open.
+- Group/AOE semantics: **PASS** for detection; **OPEN** for ordering. Only a
+  typed Group continuation creates group presentation, while ordering remains
+  `UNPROVEN`.
+- Causal event scoping: **PASS**. Direct sequence, barrier, parent, and
+  settlement references are bounded; unrelated same-resolution history is
+  excluded.
+- Typed continuation direction: **PARTIAL**. Known discriminators govern
+  parent extraction; missing resume data is not inferred.
+- Timer/barrier proof: **PARTIAL**. Ordinary response arming and reconnect are
+  engine-backed; rescue's separate five-second arm path needs a dedicated
+  real Dying/reconnect/timeout test.
+- Viewer safety and CurrentAction authority: **PASS** for this foundation.
+
+UX2.0C identity design and React migration remain gated on the open engine
+semantics above.
+
+### 0.92.7 UX2.0B-FINAL gate status — 2026-10-02
+
+This final verification pass preserves all preceding review history. It adds
+real engine-backed evidence without introducing final presentation IDs.
+
+- Dying/rescue timer: **PARTIAL**. Real Dying, explicit rescue arm,
+  reconnect-preserved deadline, and timeout are proven. The route does not
+  currently expose `readyAfterEventId` for Dying, so barrier-to-deadline
+  linkage is not proven as a universal contract.
+- Group parent/resume: **PASS** for the exercised real Group damage-trigger
+  path. Active nested damage returns to the authoritative Group continuation
+  and advances to the next participant. Ordering remains **OPEN** and is kept
+  `UNPROVEN` rather than inferred.
+- Duel actor alternation: **PASS**. Real alternating responses change the
+  actor and action revision while preserving the causal source/kind/target
+  context. `resolutionId` changes and is not promoted.
+- Negation root preservation: **PARTIAL**. Real counter-Negation preserves
+  stable root source/kind/target projection and the legacy resolution
+  reference, but the public event reference changes and the engine does not
+  expose a typed parent at that boundary.
+- Judgement parent/resume: **PASS** for the exercised reveal/replacement path;
+  revealed-event, target, delayed parent, effective result, and resume are
+  authoritative.
+- Nested damage parent/resume: **PASS** for the exercised Group damage trigger
+  path; broader secondary-effect families remain **OPEN**.
+- Viewer privacy and CurrentAction authority: **PASS**. No private-data leak
+  was found in the real multi-viewer checks.
+
+Overall UX2.0C status is **NOT READY**. Identity design still needs a
+universal root/parent lifetime and a bounded barrier/reference contract. No
+React, CSS, visual UX, gameplay-rule, or final identity change is authorized
+by this gate.
+
+### 0.93 UX2.0C3-01 Group public semantic contract — 2026-10-02
+
+C3-01 makes the existing server-side `presentationV2` projector consume the
+parsed C2 causal envelope for typed Group continuations. The projector exposes
+one public `groupResolution` summary without copying `CurrentAction` options or
+private card data:
+
+- `interactionId` identifies the whole Group interaction;
+- `groupFrameId` identifies the stable parent Group frame;
+- `activeFrameId`, `parentFrameId`, `stage`, `checkpointId`, and
+  `presentationRevision` describe the currently authoritative frame boundary;
+- `sourceId`, `effect`/`cardKind`, and ordered `targetIds` preserve the Group
+  source/effect/affected-set relationship;
+- `currentParticipantId` identifies the participant currently being resolved;
+- `decisionActorId` remains separate from the public source/target roles;
+- `activeSourceId` and `activeTargetIds` describe a nested active Damage child
+  while the Group target context remains available.
+
+For Group -> Damage, the active frame is the authoritative Damage child and
+the parent Group frame remains identified by `groupFrameId`. On resume, the
+active frame returns to that same Group frame. Group Negation remains
+`SAME_FRAME`; it changes the authoritative stage/checkpoint without creating a
+synthetic presentation child. Real lethal Damage -> Dying -> Peach -> Group
+resume preserves the interaction and parent context, but the Dying
+presentation barrier remains a later milestone.
+
+When the parsed causal envelope is absent or malformed, the projector keeps
+Group detection `UNPROVEN` and does not fabricate interaction/frame/checkpoint
+identity from Pending, logs, event IDs, card names, phase, or `actionRevision`.
+The public Group summary is viewer-equivalent; viewer-private `CurrentAction`
+controls remain outside it. This contract is projector/model/test scope and
+does not authorize React/CSS migration.
+
+### 0.94 UX2.0C3-02 typed public Interaction Scene — 2026-10-02
+
+`presentationV2.interactionScene` is the reusable public semantic snapshot for
+the future Interaction Stage client. It is a typed projection, not a copy of
+Pending, CurrentAction, the timeline, or the causal envelope:
+
+~~~text
+interactionScene
+  semantics: PROVEN | UNPROVEN
+  interactionId?
+  rootFrameId?
+  activeFrameId?
+  parentFrameId?
+  checkpointId?
+  presentationRevision?
+  stage?
+  sourceId?
+  effect?
+  targetIds[]
+  currentParticipantId?
+  decisionActorId?
+  activeResolverId?
+  activeSourceId?
+  activeTargetIds[]
+  participantIds[]
+  continuity
+    relation: UNPROVEN | ROOT_FRAME | SAME_FRAME | CHILD_FRAME
+    parentFrameId?
+~~~
+
+The causal identity fields (`interactionId`, frame IDs, checkpoint ID, and
+presentation revision) are copied only from a proven parsed causal envelope.
+That proof additionally requires `checkpoint.frameId === activeFrameId` and
+`checkpoint.stage === activeFrame.stage`; a checkpoint for another existing
+frame is not a valid snapshot and must remain `UNPROVEN`.
+The Group source/effect/ordered target/current-participant semantics are shared
+with the accepted `groupResolution` compatibility projection; the compatibility
+object is derived from the same semantic values and must not diverge. Public
+decision/resolver roles remain separate, while private CurrentAction options,
+cards, and legality are excluded from the scene.
+
+`CHILD_FRAME` identifies an active frame with an authoritative parent. A Group
+`NEGATION` snapshot on the existing Group frame is `SAME_FRAME`; a Group
+response/resume snapshot on the parent is `ROOT_FRAME` from the current
+snapshot's structural perspective. A single snapshot cannot prove whether a
+root-frame observation is an update or a return from a child, so the projector
+does not invent transition direction, animation timing, or a visual continuity
+event. A later client may compare stable frame/checkpoint/revision values.
+
+NULL or malformed causal authority produces an explicit `UNPROVEN` scene for
+an otherwise typed Group projection, with causal IDs null. It never reconstructs
+identity from Pending, events, logs, card names, `resolutionId`, or
+`actionRevision`. This remains projector/model/test scope; React/CSS migration
+and the Dying presentation barrier remain later work.
+
+### 0.95 UX2.0C3-03 non-Group semantic matrix — 2026-10-02
+
+The typed scene now uses the same envelope-owned identity boundary for real
+non-Group causal roots. `sourceId`, `effect`, ordered `targetIds`, and the
+current frame roles come from the causal frame origin/current state; only the
+public decision actor is taken from `CurrentAction`. No generic Pending
+reconstruction is used.
+
+| Family | Causal ownership and roles | Settlement / evidence | Known boundary |
+| --- | --- | --- | --- |
+| Attack / Attack Response | Root `ATTACK_RESPONSE`; source and original target come from frame origin; current participant, resolver, and decision actor remain distinct. | `PROVEN`; real Attack/Dodge and viewer/repeated-read fixtures. | Attack-response -> Judgement child continuity is `PARTIAL`. |
+| Duel | Root `DUEL_EXCHANGE`; origin targets retain both Duel participants; active current target/resolver/decision actor alternate by response window. | `PROVEN`; real physical Duel exchange plus repeated-read fixture. | A second viewer's private `CurrentAction` actor is not treated as public causal identity. |
+| Independent/root Damage | Root `DAMAGE` created by a direct sourced-damage call such as Yue Jin Dauntless; source/effect/targets belong to that new interaction. | `PROVEN`; real Dauntless/Sima Yi and Dauntless/Cao Cao fixtures cover identity, two viewers, reaction continuation, and clearing. | Nested Damage-to-Dying presentation remains a later barrier. |
+| Inherited delayed-Lightning Damage | Root frame is re-staged to `DAMAGE` after delayed Judgement; Lightning has no physical source, so the Judgement owner remains historical origin while current source is null. | `PROVEN` as inherited Damage-stage presentation; real Lightning/Guo Jia fixture covers repeated Legacy opportunities, viewer equality, and final clearing. | This is not independent/root Damage evidence. |
+| Judgement | Root `JUDGEMENT` when the judgement frame is active; source/effect and resolver remain envelope-owned, with decision actor from the live public action. | `PROVEN`; Guo Jia replacement/reveal/resume fixture. Delayed activation gets a fresh causal identity. | Historical delayed `originRef` is `PARTIAL`; an activation may first expose its real `NEGATION` window before Judgement. |
+| Root Negation | Independent `NEGATION`; original source/effect/targets remain available while the counter window changes the live resolver/decision actor. | `PROVEN`; real Dismantle Negation/counter-Negation fixture. | Group and Duel nested Negation remain their established same-frame behavior. |
+| Group compatibility | Existing Group values remain shared with `groupResolution`; Group Negation remains `SAME_FRAME`, and Group -> Damage remains `CHILD_FRAME`. | `PROVEN`; prior C3 Group regressions remain green. | No compatibility-field semantic divergence found. |
+
+Across these families, malformed or incoherent stored authority fails closed and
+does not invent IDs from `resolutionId`, event IDs, Pending, or timers. Repeated
+reads of the same viewer preserve the scene; viewer differences in
+`decisionActorId` reflect the existing private/public `CurrentAction` boundary,
+not a causal identity change. This remains projector/model/test scope only;
+React/CSS, Dying presentation, C3-04, C4, and C5 are out of scope.
+
+### 0.96 UX2.0C3-04 final semantic closure audit — 2026-10-02
+
+The real Attack -> Judgement path is Ma Chao's source-owned Cavalry
+`attack_targeted` trigger. The Attack root is created before the trigger and
+the Cavalry Judgement carries the same `declaration.causal` context into
+`beginJudgementResolution`. `causalEnvelopeAtStage` re-stages that same active
+frame from `ATTACK_RESPONSE` to `JUDGEMENT`; it does not create a child frame.
+After the result, `resolveJudgementContinuation` re-stages the same frame to
+`ATTACK_RESPONSE` and resumes the original `attack_targeted_event`. The
+production relationship is therefore `ROOT_FRAME -> ROOT_FRAME (JUDGEMENT) ->
+ROOT_FRAME`, with changing checkpoint/stage/revision and stable
+interaction/root/active-frame identity. No legacy resolution ID or timeline
+ordering is used as causal proof.
+
+The real engine test verifies the Attack scene, Judgement scene, identity
+continuity, current roles, replacement continuation, exact resume to Dodge,
+two-viewer public-scene equality after resume, and settlement clearing after a
+red result. No projector change was required: the existing envelope-owned
+`interactionScene` already projects the correct frame and stage semantics.
+
+Final C3 evidence matrix:
+
+| Evidence | Result | Closure impact |
+| --- | --- | --- |
+| Group source, ordered targets, participant progression | PROVEN | Does not block. |
+| Group SAME_FRAME Negation | PROVEN | Does not block. |
+| Group -> Damage child/resume | PROVEN | Does not block; Dying barrier remains separate. |
+| Dying/Peach current-state characterization | PROVEN | Does not block; presentation barrier is C4. |
+| Attack | PROVEN | Does not block. |
+| Attack -> Judgement continuity | PROVEN | Does not block; real Cavalry is same-frame re-staging. |
+| Duel exchange | PROVEN | Does not block. |
+| Duel viewer equality | PROVEN | Does not block. |
+| Independent/root Damage | PROVEN | Does not block. |
+| Inherited Lightning Damage | PROVEN | Does not block; explicitly not independent/root Damage. |
+| Judgement | PROVEN | Does not block. |
+| Delayed fresh activation identity | PROVEN | Does not block. |
+| Historical delayed `originRef` | PARTIAL | Does not block; unsupported history remains unfabricated. |
+| Root Negation | PROVEN | Does not block. |
+| Viewer equality and repeated-read/reconnect stability | PROVEN | Does not block. |
+| Checkpoint coherence and malformed fail-closed behavior | PROVEN | Does not block. |
+| Settlement/scene clearing | PROVEN | Does not block for exercised terminal paths. |
+| Legacy compatibility divergence | NONE FOUND | Does not block; no contradiction was found. |
+| Snapshot-only transition direction | PARTIAL | Does not block; direction requires future snapshot comparison. |
+
+The remaining explicit boundaries are historical delayed `originRef`,
+animation/transition direction from a single snapshot, and the Dying
+presentation barrier. These are intentionally bounded to later work: C3 does
+not redesign causal identity, add private data, change gameplay, or implement
+React/CSS consumption. C3 is **READY TO CLOSE** pending reviewer acceptance;
+the next authorized boundary is C4's Dying presentation barrier.
+
+### 0.97 UX2.0C4-01 Dying / Peach stable presentation barrier — 2026-10-02
+
+C4-01 adds the first stable public Dying semantic object without moving rescue
+legality into presentation code. `PresentationV2.dyingBarrier` contains the
+proven causal Interaction/Frame/checkpoint/revision, the dying player, and the
+current real rescuer. Its proof requires a parsed envelope whose active frame
+and checkpoint are the same `DYING` frame, plus a `DyingPending` whose causal
+handle points to that active frame. A missing, mismatched, or malformed
+envelope produces `UNPROVEN` with causal IDs and decision actor cleared.
+
+The engine scans the persisted rescue order using the existing semantic Peach
+decision resolver. Dead, empty-handed, or otherwise ineligible seats are
+advanced automatically and do not publish a fake rescue checkpoint. A legal
+rescuer is the only stable barrier. When that rescuer declines and another
+legal rescuer becomes active, the same Interaction/root/active Frame is kept
+while the checkpoint and presentation revision advance and the decision actor
+changes. `CurrentAction` continues to carry private Peach/provider options only
+to the acting viewer; the public barrier never contains card IDs, provider
+choices, or hidden eligibility.
+
+Production flow inventory: `startDyingRescue` creates the ordered
+`DyingPending` and carries the inherited causal handle; `advanceDyingRescue`
+scans to the next legal Peach decision or calls the existing defeat settlement;
+`give_peach` and `skip_rescue` claim the pending state and continue through the
+same scanner; `expireDyingRescue` uses the same ordered continuation; and
+`continueDyingResolution`, `continueAfterDefeat`, and the Group/Damage resume
+helpers return to the parent continuation. `causalEnvelopeAtStage` remains the
+server-only checkpoint writer. No new gameplay rule or client-side legality was
+introduced.
+
+Evidence matrix:
+
+| Evidence | Result | Boundary |
+| --- | --- | --- |
+| Stable Dying focus / first legal rescuer | PROVEN | Real Attack -> Damage -> Dying fixtures. |
+| Empty/dead/ineligible rescue scan | PROVEN | No fake public checkpoint. |
+| Rescuer decline -> next legal rescuer | PROVEN | Same Interaction/Frame; new checkpoint/revision. |
+| Viewer equality / reconnect / repeated read | PROVEN | Public barrier equal; private options remain actor-only. |
+| Successful Peach rescue | PROVEN | Barrier clears after recovery and parent continuation resumes. |
+| Multi-Peach and partial rescue | PROVEN | Existing Dying/concurrency fixtures remain green. |
+| No-rescue/death settlement | PROVEN | Existing ordered-rescue and defeat fixtures. |
+| Parent Damage/Group continuity | PROVEN | Existing Group Damage -> Dying fixtures. |
+| Malformed causal authority | PROVEN | Projector fails closed as `UNPROVEN`. |
+| Dying-triggered child effect | NOT IMPLEMENTED IN GAME | No production path was added for evidence. |
+
+This is still a server model/projector/test boundary. React/CSS consumers,
+animation timing, transition direction, historical `originRef`, and C4-02
+remain outside this slice; C5 is not started.
+
+### 0.97.1 UX2.0C4-01-FIX1 atomic Dying rescue barrier — 2026-10-02
+
+The first C4 implementation exposed a persistence race: a raw rescue candidate
+could be committed in `DyingPending` and the causal envelope before the engine
+had established that the candidate had a legal Peach provider. FIX1 moves the
+semantic scan before the first stable `phase='dying'` write and before every
+rescuer handoff. If no real blocker exists, the room proceeds directly to the
+existing defeat/continuation boundary without publishing `RESCUE_CHOICE`.
+
+The authoritative invariant is:
+
+**Only a semantically eligible rescue blocker is committed as a stable DYING
+rescue checkpoint; Pending actor, active resolver, causal frame, and checkpoint
+are coherent before the state is publicly projectable.**
+
+The engine reuses `responseDecisionFor` and the live `responseContext`,
+including the authoritative turn seat, to find the next real blocker. It does
+not duplicate Peach legality in the projector. `PresentationV2` uses one shared
+Dying proof for both `dyingBarrier` and the Dying-specific
+`interactionScene.decisionActorId`: parsed envelope, active/checkpoint DYING
+frame coherence, Pending kind and causal handle, non-empty actor, and matching
+active-frame resolver are all required. Any mismatch is `UNPROVEN` and clears
+causal IDs and the public decision actor.
+
+Real API fixtures cover initial and post-decline skipped candidates, successful
+Peach/First Aid, multi-Peach and partial rescue, defeat, timeout, Group and
+non-Group parent continuation, viewer equality/privacy, reconnect/repeated
+reads, stale/concurrent submissions, and malformed Pending/frame/resolver
+authority. Dying-triggered child effects remain unsupported because no such
+production path exists. React/CSS, animation timing, historical `originRef`,
+and C4-02 remain outside this slice.
+
+### 0.97.2 UX2.0C4-01-FIX2 atomic rescue handoffs — 2026-10-02
+
+C4-01-FIX2 closes the remaining rescue-handoff persistence race. Initial
+entry, `skip_rescue`, timeout expiry, continued rescue after Peach, and the
+automatic Dying resume path all use one reusable semantic transition helper
+before committing a stable `phase='dying'` checkpoint. The helper scans the
+authoritative live response context and returns either a real eligible blocker
+with its causal envelope or the no-blocker outcome for defeat/continuation.
+There is no raw candidate write followed by a second scan in these paths.
+
+The persistence proof now checks the stored `pending_json` and
+`causal_envelope_json` together: Pending is `dying`, the active and checkpoint
+frames are the same DYING frame, the Pending causal handle matches that frame,
+and the active resolver is the Pending actor. The public Dying projector keeps
+the existing fail-closed behavior, and Peach/provider choices remain private
+to the acting viewer. Full gameplay, privacy, stale-submission, reconnect,
+and parent-continuation regressions remain green. C4-02, C5, React/CSS,
+animation timing, and unsupported Dying-triggered child effects remain out of
+scope.
+
+### 0.98 UX2.0C5 PresentationV2 projector migration — 2026-10-02
+
+C5 makes the typed `interactionScene` consume persisted causal frame metadata
+wherever the metadata is available. Its public facts use the authoritative
+envelope for frame identity, source/current targets, stage, checkpoint,
+revision, and typed parent linkage; legacy `rootContext`, `activeContext`, and
+`parentContext` shapes retain their Pending-first compatibility members for
+existing clients and are not causal authority.
+
+Group discovery no longer recursively searches arbitrary Pending objects or
+selects a Group frame merely because an envelope contains a Group stage. It
+follows only typed continuation edges (`resumeGroup`, Dying resume, and the
+Group Negation effect) and requires the continuation's causal frame reference.
+Missing linkage remains `UNPROVEN` and does not fabricate public Group
+semantics. `CurrentAction` remains the private legality/control projection and
+was not changed.
+
+Focused coverage proves legacy compatibility, viewer-independent causal scene
+facts, explicit Group linkage, fail-closed malformed/cross-frame behavior, and
+real Attack, Group Damage/Dying, Duel, Negation, Borrowed Sword, and Judgement
+paths. React/CSS migration, animation timing, Transition Events as a new
+protocol, and gameplay changes remain outside C5.
+
+### 0.99 UX2.0C5-01-FIX1 authority map and compatibility contract — 2026-10-02
+
+The authoritative public causal semantics for future React consumption are the
+proven typed core: `interactionScene`, `dyingBarrier` when applicable, and
+their envelope-owned interaction/frame/checkpoint/revision plus proven
+decision actor. `CurrentAction` remains legality/control authority. Legacy
+objects below must not reconstruct causal identity when the typed core is
+`UNPROVEN`.
+
+| Field | Current source/authority | Public/viewer boundary | Core replacement | Status | Removal prerequisite |
+| --- | --- | --- | --- | --- | --- |
+| `rootContext` | Mixed: timeline event; Pending kind/resolution; causal envelope source/original targets when present | Public, viewer-stable; descriptive compatibility object | `interactionScene` root frame and identity | DEPRECATE-LATER | All consumers read proven typed root identity and no longer need legacy event/kind fields |
+| `activeContext` | Mixed: Pending-first kind/source/current targets; causal frame supplies stage; timeline supplies event IDs | Public, viewer-stable; explicitly non-authoritative | `interactionScene` active frame/current boundary | DEPRECATE-LATER | Consumers migrate to typed active frame and causal stage |
+| `parentContext` | Typed continuation direction plus Pending-first parent kind/source/targets; causal parent frame is fallback | Public, viewer-stable; explicitly non-authoritative | `interactionScene.continuity` and `parentFrameId` | DEPRECATE-LATER | Consumers use typed parent linkage and continuation semantics |
+| `participants` | Derived from `interactionScene.participantRoles` when proven; Pending fallback for legacy/unproven rooms | Public, viewer-stable; no private cards/options | `interactionScene.participantRoles` | DERIVE | Consumers use typed roles; fallback remains only for legacy/unproven compatibility |
+| `interactionScene` | Parsed causal envelope, shared coherence proof, typed continuation direction, and a causally matched semantic Pending actor | Public semantic core; viewer-independent; `UNPROVEN` fails closed | N/A; current typed core | KEEP | None for C5; future C7 may wrap it in a stable snapshot |
+| `dyingBarrier` | Parsed causal envelope plus shared `dyingDecisionProof` and public Dying Pending actor | Public semantic core; viewer-independent; no Peach/provider data | N/A; Dying typed core | KEEP | None; retain fail-closed proof and private CurrentAction options |
+| `groupResolution` | Typed Group continuation plus explicit causal Group frame; presentation values from envelope and public continuation | Public compatibility view; no private options; `UNPROVEN` without linkage | `interactionScene` Group frame and `participantRoles` | DEPRECATE-LATER | Retain until consumers switch to typed scene fields and no longer require its duplicate compatibility shape |
+| `decision` | CurrentAction and public action revision/presentation barrier | Viewer-dependent control metadata; private options are excluded here and remain in CurrentAction | CurrentAction for control; `interactionScene.decisionActorId` for semantic identity | KEEP | None; legality must remain CurrentAction-owned |
+| `settlement` | Timeline events selected by bounded legacy event references and `finalResult` | Public descriptive compatibility data; viewer-stable when history is equal | Future typed settlement checkpoint/snapshot | DEPRECATE-LATER | Durable settlement occurrence vocabulary and C7 snapshot exist |
+| `transitionEvents` | Bounded timeline event references selected from current typed/legacy context | Public descriptive compatibility data; not a transition protocol | Future semantic Transition Events/C7 snapshot | DEPRECATE-LATER | Durable occurrence identity and C7 protocol are implemented |
+| `stableBoundary` | Shared causal scene plus semantic decision proof; `SETTLEMENT` is reserved until a durable public settlement link exists | Public, viewer-stable classification; no private controls | Future C7 stable boundary inside PresentationSnapshot | KEEP | C7 may wrap this field without duplicating its authority |
+
+The active/parent precedence is intentional: real engine fixtures and current
+API consumers rely on Pending-first legacy kind/current-target shapes. The
+causal semantic core does not rely on those fields; it remains envelope-owned
+and proves source, targets, stage, frame linkage, checkpoint, revision, and
+decision actor independently. This preserves compatibility without claiming
+that legacy context objects are authoritative causal state.
+
+### 0.100 UX2.0C5-02 typed participant roles — 2026-10-02
+
+`interactionScene.participantRoles` is the smallest public, viewer-independent
+role surface needed by future presentation consumers. It contains
+`sourceId`, `originalTargetIds`, `activeTargetIds`, `currentParticipantId`,
+`decisionActorId`, `activeResolverId`, `parentParticipantId`, and
+`participantIds` for proven Group participants. IDs come from the proven
+causal envelope frame/current state, the accepted Dying proof, or typed
+continuation data; no private CurrentAction options, viewer state, synthetic
+IDs, or delayed historical `originRef` values are introduced.
+
+The supported inventory is: Attack and Attack-response scenes use source,
+effect/active target, and decision actor; Attack -> Judgement resumes retain
+the same roles with the typed parent participant; Duel uses both original
+duel participants and the active responder; Group/AOE uses ordered original
+targets, current participant, decision actor, resolver, parent participant,
+and remaining Group participant IDs; Group -> Negation, Group -> Damage, and
+Group -> Damage -> Dying retain those roles through typed child frames;
+independent/inherited Damage, Judgement, root/nested Negation, and Dying expose
+only roles proven by their active frame and continuation; Borrowed Sword uses
+the existing typed source/target frame data without inventing an extra role.
+
+If the frame/checkpoint proof or typed continuation linkage is absent or
+contradictory, every participant role is cleared and the scene is
+`UNPROVEN`. Legacy `participants` is derived from the typed role surface for
+proven scenes, preserving source/target/current-target/group-participant
+labels; legacy contexts and `groupResolution` remain compatibility fields and
+are not causal authority. The migration table therefore marks participant
+roles as the replacement for `participants`, while `groupResolution` remains
+retained until consumers no longer need its compatibility shape.
+
+### 0.101 UX2.0C5-02-FIX1 semantic decision and parent proofs — 2026-10-02
+
+`decisionActorId` is shared by `interactionScene` and `participantRoles`. It
+is populated only when a known persisted Response or Trigger continuation has
+an actor whose causal interaction/frame matches the coherent active frame and
+whose `resolvingPlayerId` is that same actor; Dying continues to require the
+stricter `dyingDecisionProof`. Thus Attack, Duel, Group, Negation, Judgement,
+Damage, and forced Borrowed Sword response checkpoints may expose a public
+decision actor only when their semantic Pending and causal resolver agree.
+`CurrentAction.actorId` remains viewer-specific control state and is never a
+proof source. A coherent scene may therefore have a null decision actor.
+
+For a child scene, `parentParticipantId` comes only from a parent frame with
+exactly one current target or the typed Group parent-participant linkage. It
+does not fall back to the child current participant. Real-path assertions now
+cover Attack, forced Borrowed Sword, Duel handoff, Group damage/Dying/resume,
+root and counter Negation, Judgement reveal/effective checkpoints, and Dying
+viewer privacy; unsupported roles are explicitly asserted null. The migration
+table uses only KEEP, DERIVE, and DEPRECATE-LATER.
+
+### 0.102 UX2.0C5-03 typed stable boundary and compatibility audit — 2026-10-02
+
+`presentationV2.stableBoundary` is a small server-owned classification, not a
+PresentationSnapshot:
+
+~~~text
+stableBoundary
+  kind: REST | CHOICE | SETTLEMENT | SPECIAL
+  interactionId?
+  checkpointId?
+  presentationRevision?
+  decisionActorId?
+~~~
+
+`CHOICE` is emitted only when the current proven scene has the accepted
+semantic decision proof: Dying uses `dyingDecisionProof`; Response/Trigger
+families use the persisted Pending actor whose causal interaction/frame matches
+the active frame and whose active resolver is that actor. `CurrentAction` and
+its private options never upgrade a scene to `CHOICE`. A PROVEN scene with no
+such actor is therefore not automatically a choice.
+
+`SPECIAL` is limited to an attached proven Judgement scene, a causally linked
+typed Borrowed Sword forced-Attack continuation, or a proven nested Damage
+child when no blocking actor is proven. Dying is `CHOICE` when its rescue proof
+is valid; malformed Dying authority is not `SPECIAL`. `SETTLEMENT` is reserved
+in this slice: the current production model has no durable public link from a
+proven scene/checkpoint to a final-result occurrence that is independent of
+viewer control metadata. The projector therefore does not emit semantic
+`SETTLEMENT`; legacy `settlement` may still be populated as descriptive
+compatibility data. A cleared envelope or a timeline event alone cannot
+resurrect an interaction, frame, checkpoint, or revision. All other states are
+identity-free `REST`, including normal play/rest and unsupported
+blocking-looking state.
+
+The compatibility audit preserves `settlement` as a bounded descriptive
+timeline/finalResult projection. It is viewer-stable when the supplied public
+history is equal, but it is not durable settlement authority and cannot
+reconstruct causal identity. `transitionEvents` remain bounded, ordered
+references to the current typed/legacy context's public timeline events; they
+are reconnect-stable for equal history but are not a C7 transition or animation
+protocol. Event IDs, resolution IDs, and action revisions do not become causal
+identity, and the projector generates no IDs or revisions. Pending-derived
+special evidence first requires `pending.causal.interactionId` and
+`pending.causal.frameId` to match the proven scene interaction and active frame;
+Borrowed Sword continuation kind alone is not authority.
+
+Real checks cover Attack, Duel, Group/AOE and nested Group child/resume,
+Group/Root Negation, Judgement, Dying rescue handoff, Borrowed Sword, delayed
+Lightning Damage, malformed authority, repeated reads, and acting versus
+uninvolved viewers. The C5 gap is the future C7 PresentationSnapshot wrapper;
+no C7 work is authorized by this classification field.
+
+### 0.103 UX2.0C6-03 non-transition classification and closure — 2026-10-03
+
+C6 verification is complete before C7. Building on the accepted C6-02
+evidence baseline, this section does not implement a
+`PresentationSnapshot`, move authority into React/CSS, or add gameplay. The
+audit covers 13 families × 10 columns = 130 cells. `P` means the exact real
+Worker/D1/API fixture named in the row contains an explicit assertion for that
+cell. `GAP` means the invariant applies but the mapped real fixture does not
+explicitly prove it. `N/A` means the invariant does not apply to the specific
+real scenario because that scenario contains no meaningful transition of the
+kind named by the column. A missing assertion remains GAP, not N/A; the two
+N/A cells below are reviewer-classified single-checkpoint cases, not missing
+evidence.
+
+Column legend: `I` interaction identity continuity; `F` root/active/parent
+frame relation; `C` checkpoint/revision progression; `R` source/original
+target/current participant roles; `A` decision actor/active resolver; `B`
+`stableBoundary`; `V` public viewer equality; `P` private control separation;
+`Q` repeated-read/reconnect stability; `T` terminal clear/resume.
+
+| Real interaction family | Exact real fixture(s) | I | F | C | R | A | B | V | P | Q | T |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Attack / Dodge | `presentation-v2-engine.test.mjs` — `engine-backed Attack/Dodge exposes authoritative decision and legacy resolution reference` | P | P | N/A | P | P | P | P | P | P | P |
+| Attack -> Judgement -> Attack resume | `ma-chao.test.mjs` — `Cavalry uses the shared Judgement replacement continuation`; `Cavalry keeps Dodge available when Sima Yi replaces the original red Judgement with Black` | P | P | P | P | P | P | P | P | P | P |
+| Duel responder handoff | `presentation-v2-engine.test.mjs` — `engine-backed Duel alternates response actors without changing the root context`; `FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage` | P | P | P | P | P | P | P | P | P | P |
+| Group/AOE normal participant progression | `presentation-v2-engine.test.mjs` — `engine-backed Group damage trigger resumes the Group parent and next participant`; `FIX14 Group failure Damage uses one child frame and resumes the next participant` | P | P | P | P | P | P | P | P | P | P |
+| Group -> Negation -> resume | `presentation-v2-engine.test.mjs` — `FIX9 persists the Group root and keeps nested Negation in the same Frame`; `FIX9 Group counter-Negation stays in one frame and restores Group resolution` | P | P | P | P | P | P | P | P | P | P |
+| Group -> Damage child -> resume | `presentation-v2-engine.test.mjs` — `engine-backed Group damage trigger resumes the Group parent and next participant`; `FIX14 Group failure Damage uses one child frame and resumes the next participant` | P | P | P | P | P | P | P | P | P | P |
+| Group -> Damage -> Dying -> rescue -> resume | `presentation-v2-engine.test.mjs` — `FIX15 lethal Group Damage survives Peach rescue with the parent frame available` | P | P | P | P | P | P | P | P | P | P |
+| independent/root Damage | `lobby-heroes-wei.test.mjs` — `Legacy privately distributes top two cards and repeats once per damage point` | P | P | N/A | P | P | P | P | P | P | P |
+| delayed Lightning Judgement -> Damage | `lobby-heroes-wei.test.mjs` — `delayed Lightning damage keeps one Judgement Interaction across three Legacy opportunities` | P | P | P | P | P | P | P | P | P | P |
+| root Negation / counter-Negation | `presentation-v2-engine.test.mjs` — `engine-backed Negation/counter-Negation keeps the original effect recoverable`; `stratagems.test.mjs` — `delayed Judgement Negation and counter-Negation reuse one activation frame` | P | P | P | P | P | P | P | P | P | P |
+| standalone Judgement replacement | `presentation-v2-engine.test.mjs` — `engine-backed Judgement replacement exposes reveal and resume evidence` | P | P | P | P | P | P | P | P | P | P |
+| Dying rescue handoff | `presentation-v2-engine.test.mjs` — `engine-backed Dying/rescue proves the separate timer arm and reconnect behavior`; `C4-01 Dying skips non-rescuers and advances one causal checkpoint between real rescuers`; `concurrency.test.mjs` — `lethal damage trigger exhaustion enters shared Dying and Peach rescue exactly once` | P | P | P | P | P | P | P | P | P | P |
+| Borrowed Sword | `presentation-v2-engine.test.mjs` — `engine-backed Borrowed Sword preserves forced Attack continuation and timer barrier`; `borrowed-sword.test.mjs` — `Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal` | P | P | P | P | P | P | P | P | P | P |
+
+Audit count: **128 P, 2 N/A, 0 GAP, 0 unclassified = 130 cells**. The
+accepted C6-01-FIX1 matrix had 23 GAP cells; C6-02 added direct real
+assertions for 21 of them, and C6-03 classifies the final two non-transition
+cases honestly as N/A. The `C` invariant remains strict: it concerns
+checkpoint/revision progression between semantic checkpoints. In both final
+scenarios the real fixture exposes exactly one semantic checkpoint, repeated
+reads preserve its `checkpointId` and `presentationRevision`, and terminal
+settlement clears causal identity. No second meaningful semantic checkpoint
+exists inside either interaction, so progression is not applicable. This does
+not make checkpoint behavior untested: stability is covered by `Q`, and
+terminal clearing is covered by `T`.
+
+#### Cell-level evidence ledger
+
+The following ledger is the traceability for every P cell. A grouped column
+list is still cell-level: each listed column has the exact assertion described
+after it. `S1`–`S5` name the authoritative production sources observed by the
+fixture, not test-owned replacements:
+
+- `S1`: persisted `rooms.pending_json` and `rooms.causal_envelope_json`, read
+  by `app/api/rooms/route.ts` and passed to `projectPresentationV2` in the
+  room projection path.
+- `S2`: `app/api/causal-envelope.ts` constructors and transitions
+  (`advanceCausalSemanticCheckpoint`, `advanceCausalCheckpoint`,
+  `createChildCausalFrame`, `switchActiveCausalFrame`,
+  `resumeCausalParentFrame`).
+- `S3`: `app/api/rooms/route.ts` causal room writes for response, Judgement,
+  Damage, Dying, Group, and terminal/resume paths.
+- `S4`: `game/presentation-v2.ts` `interactionSceneFor`,
+  `semanticDecisionActorId`, `dyingDecisionProof`, `stableBoundaryFor`, and
+  `projectPresentationV2`.
+- `S5`: viewer-specific `CurrentAction` projection in
+  `app/api/rooms/route.ts`; public `interactionScene`, `participantRoles`, and
+  `stableBoundary` must remain viewer-independent.
+
+**Attack / Dodge.** `I,F,R,A,B,V,P,Q,T` are P from the named engine-backed
+test: it asserts the scene's Interaction/root/active Frame linkage, ROOT_FRAME
+relation, typed roles, CHOICE then REST, deep-equal public root/active/scene/
+boundary for another viewer, absent private options for that viewer, and an
+unchanged repeated read. `C` is N/A because this real one-response path has
+exactly one semantic checkpoint, preserves its checkpoint/revision on repeat,
+and settles without a second meaningful semantic checkpoint to compare;
+terminal clearing remains directly covered by `T`. Sources: S1, S3, S4, S5.
+
+**Attack -> Judgement -> Attack.** All ten cells are P from the two Ma Chao
+fixtures: they assert one Interaction/root Frame through Judgement, a changed
+checkpointId plus one presentationRevision advance, typed roles/resolver
+changes, CHOICE stableBoundary, acting Sima Yi Guicai controls versus an
+uninvolved viewer's empty controls, viewer-equal public scene/roles/boundary,
+reloaded checkpoint/revision stability, and terminal clear in the red
+replacement path. Sources: S1–S5.
+
+**Duel.** All ten cells are P. The engine-backed handoff asserts stable
+Interaction/root Frame, typed alternating roles and resolver, CHOICE then REST,
+viewer-equal scenes with options omitted, and an unchanged repeated read. The
+ordinary Duel Negation fixture supplies the semantic checkpointId and
+presentationRevision advance from Negation to Duel plus terminal clearing.
+Sources: S1–S5.
+
+**Group/AOE normal progression.** All ten cells are P. The Group Damage and
+FIX14 fixtures assert root versus child frame, parent resume and next
+participant, checkpoint/revision identity, all typed roles, CHOICE/REST,
+acting/uninvolved public equality, private options, repeated reads/reconnect,
+and final clearing. Sources: S1–S5.
+
+**Group -> Negation.** All ten cells are P from the same-frame Group
+Negation and counter-Negation fixtures: they assert one Interaction/Frame,
+typed roles/resolver handoff, CHOICE, viewer equality/privacy, repeated public
+identity, checkpointId/presentationRevision advance, and a real decline-through-
+all-targets terminal clear. Sources: S1–S5.
+
+**Group -> Damage child.** All ten cells are P from the Group child/resume and
+FIX14 fixtures: explicit CHILD_FRAME parentFrameId, same Interaction, Damage
+checkpoint/revision, typed child/parent roles, CHOICE/REST, viewer equality and
+private controls, repeated reads, and final parent/terminal resume. Sources:
+S1–S5.
+
+**Group -> Damage -> Dying.** All ten cells are P from FIX15: the test
+asserts a distinct Dying child, parent Group availability, revision advance,
+roles/rescuer, CHOICE, Peach resume to the parent, final clear, acting versus
+uninvolved public equality, private Peach separation, and unchanged repeated
+checkpoint/revision/public identity. Sources: S1–S5.
+
+**Independent/root Damage.** `I,F,R,A,B,V,P,Q,T` are P from the Guo Jia
+Worker/D1 fixture: root Damage identity/frame, roles/resolver, CHOICE,
+viewer-equal scene/boundary, private controls, repeated read, and final clear
+are directly asserted. `C` is N/A because this one-root fixture exposes one
+semantic Damage checkpoint, preserves its checkpoint/revision on repeated
+reads, and settles without a second meaningful semantic checkpoint; it is not
+a missing assertion and does not weaken the checkpoint invariant. Sources:
+S1–S5.
+
+**Delayed Lightning.** All ten cells are P: the real fixture asserts
+Judgement-owned Interaction continuity through Damage, SAME_FRAME root
+behavior, stable revision across three Legacy re-entries, roles/resolver,
+viewer-equal public scene, acting Legacy controls versus an uninvolved viewer's
+empty controls, repeated read, and final clear. Sources: S1–S5.
+
+**Root Negation/counter-Negation.** All ten cells are P: the presentation
+fixture asserts one root Interaction/Frame, checkpoint revision advance for the
+handoff, source/target/resolver roles, CHOICE boundaries, viewer-equal typed
+scene/roles/boundary, private Negation controls, and repeated-read identity;
+the real stratagem counter-Negation fixture drives the activation to causal
+clear and REST. Sources: S1–S5.
+
+**Standalone Judgement replacement.** All ten cells are P: the engine
+fixture asserts one Judgement Interaction/Frame, typed roles and actors,
+CHOICE, a semantic checkpointId/presentationRevision advance after effective
+replacement, viewer-equal scene/boundary, options omitted for the other viewer,
+repeated-read equality, and final delayed-effect clear. Sources: S1–S5.
+
+**Dying rescue.** All ten cells are P across the engine-backed, multi-rescuer,
+and lethal-rescue fixtures: DYING frame proof, checkpoint/revision handoff,
+roles/rescuer, CHOICE, public barrier/scene equality, private Peach controls,
+timer/reconnect stability, and causal clear after rescue are explicit. Sources:
+S1–S5.
+
+**Borrowed Sword.** All ten cells are P after the C6-02 assertions: the
+forced Attack child frame and parent relation, typed roles, CHOICE, public
+reconnect equality, actor-only controls, repeated identity, response-decline
+checkpointId/presentationRevision advance, and a real completed forced Attack
+that clears the causal identity are explicit. Sources: S1–S5.
+
+Malformed checkpoint/active-frame mismatch, missing authority, Group typed-link
+mismatch, Dying resolver mismatch, malformed Duel/Judgement envelopes, and
+unlinked Borrowed Sword Pending remain covered by negative synthetic/API
+tests. They prove fail-closed behavior only; they are not positive P evidence.
+The reserved `SETTLEMENT` guard also remains negative evidence only.
+
+C6-03 therefore completes the matrix with **128 P, 2 N/A, 0 GAP** and leaves
+C6 verification **ready for reviewer closure**. No gameplay or authority
+shortcut was used. C7, `PresentationSnapshot`, React/CSS migration, animation
+semantics, and durable transition occurrence IDs remain out of scope.
+
+### 0.104 UX2.0C7-01-FIX1 minimal authoritative PresentationSnapshot — 2026-10-03
+
+C7-01 implements the first additive server-side snapshot contract. FIX1 makes
+its public authority atomic: identity, interaction, decision, and non-REST
+stable boundary are admitted only by one pure coherence gate. If the proven
+scene and accepted stable boundary disagree in identity, revision, CHOICE
+actor, or reserved/rest classification, the entire public authority fails
+closed to identity-free REST. `localControl` remains separate viewer-private
+metadata. This is a pure composition boundary for the already accepted C1-C6
+authority; it is not a second rules engine, a timeline scanner, an ID
+generator, or a React/CSS migration.
+
+The production shape is the named TypeScript `PresentationSnapshot` in
+`game/presentation-snapshot.ts`:
+
+~~~text
+PresentationSnapshot
+  identity: { interactionId, checkpointId, presentationRevision } | null
+  stable: REST | CHOICE | SPECIAL | reserved SETTLEMENT
+  interaction: proven PresentationInteractionScene | null
+  decision: { actorId, stage } | null
+  localControl: { source, actionRevision, kind, actorId, entitled }
+  settlement: null (reserved)
+  transitionEvents: [] (reserved)
+~~~
+
+The room projection path in `app/api/rooms/route.ts` composes the snapshot
+after `projectPresentationV2` and returns it as `presentationSnapshot`, without
+removing or renaming `presentationV2`.
+
+#### C7 evidence ledger
+
+| Snapshot field/group | Authoritative source | Exact composer | Real fixture/assertion | Visibility | Result |
+| --- | --- | --- | --- | --- | --- |
+| `identity` | proven `presentationV2.interactionScene` typed causal identity admitted by the single scene/boundary gate | `coherentPublicAuthority` + `composePresentationSnapshot` | `presentation-v2-engine.test.mjs` projection helper across Attack, Borrowed Sword, Dying, Group/Damage, Duel, Negation, Judgement | PUBLIC | PASS |
+| `stable` | accepted `presentationV2.stableBoundary`, admitted only with strict identity and CHOICE-actor coherence | `coherentPublicAuthority` + `stableFor` | same engine-backed helper plus terminal REST assertions | PUBLIC | PASS |
+| `interaction` | proven `interactionScene` only; UNPROVEN/null fails closed | direct composition after `isProvenScene` | Attack, Group child/resume, Dying, Duel, Negation, Judgement and malformed envelope tests | PUBLIC | PASS |
+| `decision` | typed scene stage and semantic decision actor | direct composition from `interactionScene` | acting/uninvolved viewer assertions and real response/trigger checkpoints | PUBLIC | PASS |
+| `localControl` | viewer-specific `CurrentAction` kind/actor plus `actionRevision` and room viewer ID | direct thin reference composition | Attack/Dodge, Dying, delayed Lightning, Borrowed Sword privacy assertions | PRIVATE | PASS |
+| `settlement` | no accepted durable public occurrence authority yet | constant `null` | legacy finalResult/barrier negative tests and terminal clear checks | RESERVED | PASS |
+| `transitionEvents` | no accepted durable public occurrence identity yet | constant empty array | legacy timeline/transition negative tests | RESERVED | PASS |
+
+`identity`, `stable`, `interaction`, and semantic `decision` are viewer-equal
+because they are composed only from the public typed scene/boundary and pass
+the same atomic coherence gate. A proven scene with a REST, SETTLEMENT,
+identity-mismatched, revision-mismatched, or CHOICE-actor-mismatched boundary
+produces no public identity, interaction, or decision. The
+`localControl` object is the only viewer-specific area: it identifies the
+CurrentAction source, action revision, local kind/actor reference, and whether
+the supplied viewer is entitled. It does not copy legal options, private
+cards, providers, or legality logic.
+
+The production composer never promotes `presentationV2.settlement`,
+`transitionEvents`, timeline IDs, `resolutionId`, `actionRevision`,
+`finalResult`, or `readyAfterEventId` into authoritative snapshot identity or
+settlement. A malformed scene, incoherent identity, absent envelope, or legacy
+settlement input produces identity-free `REST`; `SETTLEMENT` remains reserved.
+The composer performs no DB access, mutation, timeline search, revision advance,
+or ID generation. Repeated reads therefore preserve the same identity,
+interaction, and stable classification.
+
+Real API evidence is extended through the existing engine-backed projection
+path for Attack/Dodge; Attack/Judgement and resume; Duel; Group/AOE; Group
+Damage child/resume; Group Damage/Dying/rescue; root Negation/counter-Negation;
+standalone Judgement replacement; delayed Lightning Judgement/Damage; and
+Borrowed Sword. Acting and uninvolved views compare equal after removing only
+`localControl`, while private CurrentAction options remain absent from the
+uninvolved view. Repeated Attack, Group child/resume, Judgement, and Dying
+reads preserve the snapshot identity and public scene; terminal settlement
+clears identity back to REST. The real Attack/Dodge active CHOICE route
+continues to expose the exact snapshot identity, scene, stable boundary, and
+semantic decision. No real SPECIAL fixture is exercised in this fix because
+the current accepted API fixtures do not expose one as a stable snapshot; no
+synthetic SPECIAL positive claim was added.
+
+No production gameplay, causal semantics, `presentationV2` compatibility
+fields, React, CSS, animation, or client consumer changed. The remaining C7
+boundary is reviewer confirmation of this server-side contract and a later
+decision about any additional bounded snapshot evidence before UI-01. React
+migration and visual UX remain explicitly out of scope.
+
+### 0.105 UX2.0C7-02 PresentationSnapshot closure audit — 2026-10-03
+
+C7-02 audits the additive snapshot boundary before any React migration. It does
+not reopen C1-C6 semantics and does not repair a missing public checkpoint by
+copying `CurrentAction`, timeline, `finalResult`, `resolutionId`, or
+`readyAfterEventId` data into the snapshot.
+
+#### Future client-needs inventory
+
+| Future Interaction Stage input | Public snapshot source | Private/local source | Compatibility source retained temporarily | Classification |
+| --- | --- | --- | --- | --- |
+| interaction identity and revision | `identity.interactionId`, `identity.checkpointId`, `identity.presentationRevision` | none | `presentationV2.interactionScene` / causal envelope | PUBLIC PASS |
+| root, active, and parent frame relation | `interaction.rootFrameId`, `interaction.activeFrameId`, `interaction.parentFrameId` | none | `presentationV2.causalEnvelope` | PUBLIC PASS |
+| stage | `interaction.stage` | none | `presentationV2` typed scene/context | PUBLIC PASS |
+| source and original targets | `interaction.sourceId`, `interaction.targetIds`, `interaction.participantRoles.originalTargetIds` | none | typed `presentationV2` roles | PUBLIC PASS |
+| active targets and current participant | `interaction.activeTargetIds`, `interaction.currentParticipantId`, typed roles | none | `presentationV2` group/damage projections | PUBLIC PASS |
+| decision actor and active resolver | `interaction.decisionActorId`, `interaction.activeResolverId`, `stable` CHOICE actor | `localControl.actorId` only for viewer entitlement, never semantic authority | `CurrentAction` remains the actual control owner | PUBLIC PASS with source-owned-trigger GAP below |
+| participant set and continuity relation | `interaction.participantIds`, `interaction.participantRoles`, `interaction.continuity` | none | `presentationV2` typed scene | PUBLIC PASS |
+| stable boundary | `stable` | none | `presentationV2.stableBoundary` | PUBLIC PASS only when coherent with the scene |
+| local legal control ownership | `localControl.source`, `kind`, `actorId`, `entitled`, `actionRevision` | full `CurrentAction` remains authoritative | existing `CurrentAction` options/cards/providers | PRIVATE REFERENCE PASS; legal controls remain outside snapshot |
+| settlement | none | none | `presentationV2.settlement` remains descriptive only | RESERVED |
+| transition/animation occurrences | none | none | legacy timeline/transition references remain compatibility data | RESERVED |
+
+The inventory is intentionally not a client API for legal options. A future UI
+must read authoritative `CurrentAction` for an actual legal action until a
+separately reviewed private-control projection exists.
+
+#### C7 closure matrix
+
+`P` means the named real fixture contains an explicit assertion at or through
+the route `presentationSnapshot` projection; `N/A` means the invariant does
+not apply to that fixture; `GAP` means the real state contradicts or cannot
+prove the snapshot contract. `I` is public identity/scene, `B` is stable
+boundary coherence, `V` is viewer public equality, `L` is localControl
+separation, `Q` is repeated-read/reconnect stability, `C` is semantic
+checkpoint continuity, `T` is terminal clear, and `R` is reserved-field
+discipline.
+
+| Accepted family | Exact real fixture/assertion mapping | I | B | V | L | Q | C | T | R |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Attack / Dodge | `presentation-v2-engine.test.mjs` — `engine-backed Attack/Dodge exposes authoritative decision and legacy resolution reference` | P | P | P | P | P | N/A | P | P |
+| Attack -> Judgement -> Attack resume | `ma-chao.test.mjs` — `Cavalry uses the shared Judgement replacement continuation`; source-owned pre-Judgement trigger is a real PROVEN + REST GAP | GAP | GAP | P | P | P | P | P | P |
+| Duel responder handoff | `presentation-v2-engine.test.mjs` — `engine-backed Duel alternates response actors without changing the root context`; `FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage` | P | P | P | P | P | P | P | P |
+| Group/AOE normal participant progression | `presentation-v2-engine.test.mjs` — `engine-backed Group damage trigger resumes the Group parent and next participant` | P | P | P | P | P | P | P | P |
+| Group -> Negation -> resume | `presentation-v2-engine.test.mjs` — `FIX9 persists the Group root and keeps nested Negation in the same Frame`; `FIX9 Group counter-Negation stays in one frame and restores Group resolution` | P | P | P | P | P | P | P | P |
+| Group -> Damage child -> resume | `presentation-v2-engine.test.mjs` — `engine-backed Group damage trigger resumes the Group parent and next participant`; `FIX14 Group failure Damage uses one child frame and resumes the next participant` | P | P | P | P | P | P | P | P |
+| Group -> Damage -> Dying -> rescue -> resume | `presentation-v2-engine.test.mjs` — `FIX15 lethal Group Damage survives Peach rescue with the parent frame available` | P | P | P | P | P | P | P | P |
+| independent/root Damage | `lobby-heroes-wei.test.mjs` — `Legacy privately distributes top two cards and repeats once per damage point` | P | P | P | P | P | N/A | P | P |
+| delayed Lightning Judgement -> Damage | `lobby-heroes-wei.test.mjs` — `delayed Lightning damage keeps one Judgement Interaction across three Legacy opportunities` | P | P | P | P | P | P | P | P |
+| root Negation / counter-Negation | `presentation-v2-engine.test.mjs` — `engine-backed Negation/counter-Negation keeps the original effect recoverable`; `stratagems.test.mjs` — `delayed Judgement Negation and counter-Negation reuse one activation frame` | P | P | P | P | P | P | P | P |
+| standalone Judgement replacement | `presentation-v2-engine.test.mjs` — `engine-backed Judgement replacement exposes reveal and resume evidence` | P | P | P | P | P | P | P | P |
+| Dying rescue handoff | `presentation-v2-engine.test.mjs` — `engine-backed Dying/rescue proves the separate timer arm and reconnect behavior`; `C4-01 Dying skips non-rescuers...`; `concurrency.test.mjs` — lethal trigger exhaustion | P | P | P | P | P | P | P | P |
+| Borrowed Sword | `presentation-v2-engine.test.mjs` — `engine-backed Borrowed Sword preserves forced Attack continuation and timer barrier`; `borrowed-sword.test.mjs` — forced ranged Attack/refusal | P | P | P | P | P | P | P | P |
+
+Current totals are **100 P, 2 N/A, 2 GAP, 0 unclassified = 104 cells**. The
+two GAP cells are not a missing test: the real Ma Chao source-owned trigger
+asserts `presentationV2.interactionScene.semantics === "PROVEN"` while
+`presentationV2.stableBoundary.kind === "REST"`; C7-01 consequently returns
+an identity-free snapshot. This is the exact REST contradiction required by
+the C7-02 audit rule. The snapshot must not be changed in this task to make
+that state appear coherent.
+
+#### SPECIAL audit
+
+Production `stableBoundaryFor` can classify SPECIAL only for: a proven
+JUDGEMENT scene without a decision actor; a causally linked
+`borrowed_sword_attack` continuation without a decision actor; or a proven
+CHILD_FRAME DAMAGE scene without a decision actor. The accepted real API
+fixtures do not expose a stable SPECIAL boundary. `tests/presentation-v2.test.mjs`
+`C5-03 keeps a proven non-blocking Judgement context as SPECIAL` is synthetic
+projector evidence only. SPECIAL is therefore RESERVED/unexercised for this
+closure pass; no gameplay change or synthetic positive API claim was added.
+
+#### REST, localControl, reserved fields, and compatibility
+
+The REST audit found the real Ma Chao contradiction above and stopped closure
+work before any snapshot-semantics change. The fail-closed result is preserved:
+it prevents a proven scene from being exposed beside an unaccepted REST
+boundary, but it also means the source-owned trigger has no public snapshot
+identity until a separately bounded causal-boundary decision is reviewed.
+
+`localControl` remains sufficient only as a viewer-private reference and
+entitlement signal. Its stable shape contains `source`, `actionRevision`,
+`kind`, `actorId`, and `entitled`; it contains no options, card IDs, provider
+payloads, or legal-action data. `actionRevision` is command freshness, not
+presentation identity, and public equality comparisons remove only
+`localControl`.
+
+`settlement` remains `null` and `transitionEvents` remains `[]`. Before either
+can become authoritative, the protocol still needs durable public occurrence
+linkage, reconnect-safe occurrence identity, no dependence on viewer-local
+`finalResult`/`readyAfterEventId`, and stable-state reconstruction that does not
+replay transitions. Those features remain out of scope.
+
+`presentationSnapshot` remains additive; `presentationV2` is unchanged; no
+React consumer has switched; the room/API projection leaks no additional
+private data; and null/empty reserved fields remain serialized consistently.
+
+Because the matrix contains the real REST GAP, C7 is **not closed** and the
+server snapshot contract is **not ready for React migration**. Another bounded
+C7 fix is required to decide the source-owned trigger boundary without
+changing gameplay or weakening the atomic fail-closed invariant.
+
+### 0.108 UX2.0UI-19 browser responsive and accessibility validation harness — 2026-10-03
+
+UI-19 closes the absence of a repeatable browser-level check for the existing
+responsive and semantic presentation contracts. `tests/browser/ui19.spec.mjs`
+uses Playwright Chromium and a test-only Vite fixture that mounts the existing
+`GameRoom`; the fixture supplies normalized deterministic rooms through the
+same `PresentationSnapshot` and `CurrentAction` shapes already consumed by
+React. No production route, gameplay/API action, projector, causal identity,
+private-control ownership, or server authority changed.
+
+The executed suite contains **17 tests**. Ten layout tests cover 1440x900 at
+2/4/6/10 players, 650x900 at 4/6/10, and 480x900 at 4/6/10. The remaining seven
+tests cover REST/normal presentation, Interaction Stage plus Hero Focus,
+multi-target/AOE preview, Duel response, Negation Reaction Chain, Dying/Peach
+handoff, UI-18's non-NONE marker, reduced motion, pointer access, native
+keyboard focus, and the retained target-card picker. Layout assertions count the local dock plus opponent anchors,
+verify top-row versus side-column topology, require visible hand/console/table
+surfaces, reject horizontal overflow, reject severe anchor overlap, and keep
+the Interaction Stage separate from local controls, and keep the picker dialog
+inside the 480px viewport with a scroll-safe card row. Semantic assertions
+verify viewer-visible labels and existing data contracts, not private
+card/provider authority.
+
+The first run found only harness defects: the web-server command resolved its
+config path relative to `tests/browser`; the marker selector matched both the
+main shell and stage; the Duel Hero Focus assertion used a nonexistent role
+label; and the reduced-motion fixture had a turn action in a response phase
+and initially focused a disabled button. These were corrected in the harness;
+no production layout defect required a CSS change. The final browser run and a
+focused reduced-motion rerun passed. CI installs Chromium with
+`npx playwright install --with-deps chromium` before `npm run test:browser`.
+This evidence is bounded to DOM/geometry/semantic accessibility behavior: it
+does not claim full WCAG conformance, screenshot/pixel approval, touch/device
+certification, or complete gameplay correctness.
+
+### 0.106 UX2.0C7-03 source-owned trigger stable boundary — 2026-10-03
+
+C7-03 resolves the C7-02 REST contradiction without changing
+`PresentationSnapshot`. The accepted source-owned trigger rule is narrow: a
+persisted `trigger` Pending with event `attack_targeted`, a typed
+`attack_targeted_event` continuation, and a declaration whose source/target
+and causal interaction/frame links match the persisted envelope may establish
+the Pending actor as the public decision actor. The active frame resolver is
+not replaced; the source decision actor and target resolver are intentionally
+distinct.
+
+#### Real persisted proof
+
+The real Ma Chao fixture (`ma-chao.test.mjs` — `Cavalry is an optional
+source-owned attack_targeted trigger and Skip preserves Dodge`) now asserts the
+full proof before accepting CHOICE:
+
+- `pending.kind === "trigger"`, `pending.event === "attack_targeted"`, and
+  `pending.actorId` is the Ma Chao source;
+- Pending causal interaction/frame, continuation causal interaction/frame, and
+  declaration causal interaction/frame all equal the persisted envelope
+  interaction and active frame;
+- the typed continuation is `attack_targeted_event`, and its declaration
+  source/target equal the active frame origin/current target;
+- the active frame is `ATTACK_RESPONSE`, its source/current source is the Ma
+  Chao source, its original/current target is the Attack target, and its
+  `resolvingPlayerId` remains the target;
+- the envelope checkpoint frame and stage equal the active frame.
+
+Only this proof path admits the source actor. The existing resolver-coherence
+rule remains for ordinary target-owned triggers and all response continuations.
+No hero name, card name, CurrentAction, timeline, finalResult, resolutionId,
+or actionRevision is used as semantic proof.
+
+#### Guardrails and closure update
+
+`sourceOwnedTriggerDecisionActorId` is a pure typed helper in
+`game/presentation-v2.ts`. Its negative coverage fails closed for missing
+causal link, wrong interaction ID, wrong frame ID, unsupported event or
+continuation discriminator, arbitrary substituted actor, and malformed
+checkpoint/frame coherence. The real fixture proves a coherent CHOICE
+`PresentationSnapshot` before Judgement, then target-owned CHOICE after skip;
+the shared Judgement continuation and Dodge resume remain unchanged. Ordinary
+Attack/Dodge, target-owned triggers, Dying, Negation, Group child, and Borrowed
+Sword paths remain covered by their existing real fixtures.
+
+The C7 closure matrix from section 0.105 is therefore updated by real
+evidence: Attack -> Judgement -> Attack resume changes from `I=GAP, B=GAP` to
+`I=P, B=P`; all other cells remain unchanged. Final totals are **102 P, 2 N/A,
+0 GAP, 0 unclassified = 104 cells**. The two `C=N/A` cells remain the honest
+single-checkpoint cases for Attack/Dodge and independent/root Damage.
+
+SPECIAL remains RESERVED/unexercised because no accepted real API fixture
+exposes a stable SPECIAL boundary. `settlement` remains `null` and
+`transitionEvents` remains `[]`. The atomic `PresentationSnapshot` gate is
+unchanged, `presentationV2` remains compatible and additive, and no gameplay,
+React, CSS, animation, settlement, or transition protocol was added.
+
+C7-03 is **ready for reviewer closure**. React migration remains a separate
+authorized milestone and has not started.
+
+### 0.107 UX2.0C7-03-FIX1 source-owned trigger frame proof — 2026-10-03
+
+C7-03-FIX1 tightens the accepted source-owned `attack_targeted` boundary to
+the exact persisted frame-role relationship demonstrated by the real Ma Chao
+fixture. `sourceOwnedTriggerDecisionActorId` now requires all prior Pending,
+continuation, declaration, envelope, checkpoint, source, and target links,
+plus:
+
+- the active frame stage is exactly `ATTACK_RESPONSE`;
+- the checkpoint frame and stage equal that active frame; and
+- `activeFrame.current.resolvingPlayerId` equals the persisted declaration
+  `targetId`.
+
+The source remains the semantic decision actor for the optional trigger while
+the Attack target remains the active resolver. The helper is not generalized
+to other trigger families, and ordinary target-owned triggers retain the
+existing resolver-coherence rule. No CurrentAction, timeline, finalResult,
+resolutionId, actionRevision, hero name, or card name is authority.
+
+Focused negative evidence now independently covers a correct causal record
+with the wrong active-frame stage, a correct stage with the wrong resolver,
+source and actor substituted together while the frame source remains
+original, and a substituted declaration target while the frame target and
+resolver remain original. Existing malformed-link, discriminator, and
+checkpoint cases remain fail-closed. The real Ma Chao CHOICE/snapshot and
+Skip-to-target-owned-Dodge regressions remain intact, and the real Guo Jia
+Legacy fixture explicitly asserts ordinary target-owned trigger
+`decisionActorId`, `activeResolverId`, and `CHOICE` boundary equality.
+
+The C7 matrix remains **102 P, 2 N/A, 0 GAP, 0 unclassified = 104 cells**.
+SPECIAL remains RESERVED/unexercised; `settlement` remains `null` and
+`transitionEvents` remains `[]`. The atomic `PresentationSnapshot` gate is
+unchanged, with no gameplay, React, CSS, animation, settlement, or transition
+protocol changes. C7-03-FIX1 is ready for reviewer closure.
+
+### 0.109 UX2.0UI-20 final UX V2 integration and release gate — 2026-10-03
+
+UI-20 adds the final contract ledger in
+`docs/UX_V2_RELEASE_GATE.md`. The accepted C1–C7 and UI-01–UI-19 boundaries
+have 14 PASS rows and one intentional N/A row: durable independently proven
+per-counter Reaction Chain history is not part of the accepted snapshot
+contract. No functional GAP is hidden, and no gameplay, projector, causal,
+private-control, transition, or production deployment behavior changed.
+
+The prior UI-19 browser evidence remains 17/17 across 1440x900, 650x900, and
+480x900, including 10-player topology, semantic transitions, reduced motion,
+and the retained target-card picker. The final UI-20 gate is deliberately
+delegated to GitHub Actions under the standing project workflow; this turn does
+not claim a local rerun of the full browser/fast/API/build/lint/diff/npm-test
+commands or any CI result.
+
+The evidence supports **UX V2 Feature Complete candidate pending CI and
+reviewer confirmation**. This is not whole-game/content/release completion.
+Subjective pixel/art direction, touch-device certification, full WCAG auditing,
+live multiplayer timing, and production health remain bounded manual or
+non-blocking gaps.
+
+## Reviewer-approved interaction correctness additions — 2026-10-04
+
+These are long-term UX / gameplay-interaction requirements. They are design authority only and do **not** change the current HANDOVER task, autonomous task ordering, or implementation schedule.
+
+### A. Authoritative self-target symmetry
+
+If the authoritative selection contract includes the viewer's own player ID in `targetIds`, the Local Player Dock must expose a target-selection affordance with the same semantic weight as an opponent target.
+
+This is a general interaction rule, not a Hua Tuo-specific exception.
+
+Required behaviour:
+
+- a legal self target must be selectable from the persistent Local Player Dock;
+- selection state for self must stay synchronised with the same authoritative target set used for opponent Seat Thumbnails / Hero Focus;
+- React must not re-decide whether self-targeting is legal from hero identity, card name, HP, range, or other gameplay rules;
+- target selection and Inspect remain independent operations, so selecting the local Hero must not remove the dedicated Hero-info affordance;
+- the local Hero is never duplicated into the Interaction Stage merely to make self-targeting possible.
+
+Reference case — Hua Tuo Prodigal Healer / First Aid:
+
+~~~text
+authoritative targetIds = [Hua Tuo, another injured character]
+
+Local Player Dock:
+  Hua Tuo is targetable
+  tap/click local Hero -> select Hua Tuo
+
+Opponent Seat Thumbnail:
+  other injured character is targetable
+~~~
+
+The client must not support only the opponent branch while silently dropping the legal self branch.
+
+Regression coverage for a generic self-target selection path must prove that a server-projected self target can actually be selected and submitted, not merely that the server listed the viewer in `targetIds`.
+
+### B. Failed response provider is not a Pass
+
+A response provider attempting to satisfy a semantic requirement has three distinct outcomes:
+
+~~~text
+provider satisfies requirement
+provider attempt fails
+player declines / passes the requirement
+~~~
+
+Do not collapse provider failure into `decline_response`.
+
+Eight Trigrams is the reference case. When it is chosen to satisfy a Dodge requirement:
+
+~~~text
+Attack requires Dodge
+-> player chooses Eight Trigrams
+-> Judgement
+~~~
+
+If the final Judgement succeeds, the provider satisfies Dodge and normal semantic-success handling continues.
+
+If the final Judgement fails:
+
+~~~text
+Eight Trigrams failed
+-> Dodge requirement still exists
+-> required Dodge count is unchanged
+-> Eight Trigrams is unavailable for this same response attempt
+-> remaining legal Dodge providers are projected again
+-> player may use a physical Dodge / another legal provider / Skip
+~~~
+
+Failure must not jump directly to Attack damage or group-effect damage.
+
+The provider that initiated a Judgement-based response must remain identifiable across Judgement-modifier windows so the engine can disable only that failed provider after the final Judgement result. For example, Sima Yi's Judgement modification must not lose the fact that Eight Trigrams initiated the attempt.
+
+For multi-count requirements, provider failure consumes none of the semantic count:
+
+~~~text
+requires 2 Dodges
+Eight Trigrams succeeds -> 1 Dodge remains
+Eight Trigrams fails    -> 2 Dodges remain
+~~~
+
+This applies to ordinary Attack Dodge responses and Group/AOE Dodge responses. The domain transition must preserve the same actor, requirement, continuation, and causal interaction while reopening only the still-legal response options.
+
+### C. Borrowed Sword complete-path legality and two-player case
+
+Borrowed Sword must not be implemented with a blanket "three living players required" rule.
+
+Under the current project rule, the source of Borrowed Sword may also be the forced Attack target, provided the Weapon holder can legally Attack that source.
+
+Therefore, with exactly two living players:
+
+~~~text
+A = Borrowed Sword source
+B = Weapon holder
+
+if B can legally Attack A:
+  A may choose B as Borrowed Sword's primary target
+  A is the legal forced Attack target
+  B must Attack A or surrender the Weapon
+~~~
+
+If B cannot legally Attack A because of distance, range, target restrictions, or another authoritative rule, then B is not a legal Borrowed Sword primary target.
+
+Borrowed Sword legality is multi-stage and must be validated as a complete path:
+
+~~~text
+A chooses Weapon holder B
+AND
+there exists at least one legal forced Attack target C for B
+~~~
+
+Only then may B be presented as a legal primary target.
+
+The authoritative rules layer should provide one shared legality result that can be reused for:
+
+- Play Phase target projection;
+- `play_card` validation;
+- post-Negation / deferred-resolution revalidation;
+- forced-Attack target projection;
+- forced-Attack target submission validation.
+
+React must not independently reconstruct Weapon ownership, Attack range, or downstream forced-target legality.
+
+Immediately before the engine creates a blocking "choose forced Attack target" decision, it must recompute the legal forced targets. A blocking player decision may never be projected with zero executable legal actions unless an explicit authoritative Cancel / Decline action exists.
+
+Liveness invariant:
+
+~~~text
+BLOCKING CHOICE
+-> at least 1 executable legal action
+
+or
+
+-> explicit authoritative Cancel / Decline
+
+never
+
+-> zero legal actions + waiting forever
+~~~
+
+If a previously legal Borrowed Sword path becomes impossible before the second stage opens, the effect must settle or cancel deterministically according to the game rules and return to the correct continuation. It must not leave a zero-option Pending state.
