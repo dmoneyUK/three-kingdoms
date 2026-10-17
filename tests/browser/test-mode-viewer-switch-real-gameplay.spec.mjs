@@ -278,10 +278,6 @@ test("Quick Test switching rebases a parked Barbarian Invasion card before the f
   expect(Math.abs(h4BeforeSwitch.centerOffset ?? Infinity)).toBeLessThanOrEqual(12);
   expect(h4BeforeSwitch.protectedRects).toEqual([]);
   const revealStartedAt = await rootCard.getAttribute("data-public-card-journey-reveal-started-at");
-  const before = await rootCard.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    return { left: rect.left, top: rect.top };
-  });
 
   const viewersToVisit = [
     ...room.players.filter((player) => player.isTestPlayer),
