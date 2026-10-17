@@ -2761,3 +2761,46 @@ Profile command measurements:
   gameplay evidence remains recorded in `docs/UX2-refine.md` §10.13.8.
 - No U13-H reimplementation or separate production interaction proof was
   performed. It remains pending user phone review.
+
+### UX2-10.13.7-U13-G-COMPACT-OPPONENT-INSPECTOR-ZONES-01 — 2026-10-17
+
+- Commit `325cf7f67a1cc8960bba96bb825ec9007052fec8` renders the public
+  Judgement and Equipment zones as one responsive 2+4 row. Four Equipment
+  cells map to real equipment slots, empty cells remain outlined, and extra
+  public Judgement cards open through an accessible overflow disclosure.
+  Floating Inspector placement measures top-seat, Local Dock/Hand, table and
+  `visualViewport` geometry; no gameplay or server projection changed.
+- Focused browser coverage passed 42/42, including 390×700, 390×844, 440×894
+  and 480×900, 4/6/8/10 seats, public-zone counts, Inspector details and
+  non-overlap/no-horizontal-overflow checks. `git diff --check` passed.
+- Exact-SHA Actions run
+  [`39062564475`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39062564475)
+  passed lint/fast, API, browser startup smoke, D1 migrations, Worker deploy and
+  production smoke. Worker version `58f7e094-af7d-4b27-a19f-57ab0518f921`.
+  Production smoke verified `/` and `/api/health`; no separate live-room
+  interaction replay was claimed. Local ESLint on the changed TSX exceeded
+  available Node heap limits; exact-SHA Actions lint passed. The delivery is
+  pending user phone review.
+
+### UX2-10.13.2.1-U13-B-F public-wait privacy audit — 2026-10-17 (BLOCKED)
+
+- `game/capabilities/heroes/yue-jin-dauntless.ts` offers Dauntless only when
+  the private source Hand contains at least one Basic card. The turn-end event
+  opens `TriggerPending` only when `getTriggeredEffects` returns an option.
+  During that opportunity, the public log/timeline also contains “may use
+  Dauntless”. `derivePublicActivityStatus` otherwise falls back to `Resolving…`
+  because the public `PresentationSnapshot` has no matching decision actor or
+  stage for this trigger.
+- A focused isolated Worker/D1 reproduction compared four authenticated tokens
+  in the no-Basic and one-Basic states. No Basic advanced to the next turn and
+  returned public activity `Alice's turn`; one Basic entered `response` and
+  returned `Resolving…`. All four views had the same public log/timeline and
+  snapshot in each state; only Yue Jin's local `CurrentAction` contained the
+  Dauntless option. The turn-end opportunity and “may use” notice therefore
+  track hidden Basic-card availability, making a named public waiter or public
+  skill label unsafe under the approved privacy contract.
+- The one-off audit ran through the local Worker/D1 harness (1/1 focused
+  scenario); no production four-client replay or code change was made. The
+  design's §10.13.2.1 stop boundary requires a user decision on the
+  server-authoritative privacy contract before proceeding. Current handoff is
+  blocked on that decision; Q3/Q4 remain paused and accepted H4 is unchanged.
