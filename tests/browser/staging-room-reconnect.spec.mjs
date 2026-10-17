@@ -14,7 +14,7 @@ test("mobile browser creates a Staging room and rejoins it after refresh", async
   expect(await healthResponse.json()).toMatchObject({ ok: true, worker: "available" });
 
   const playerName = `STAGING REJOIN ${Date.now().toString(36).toUpperCase().slice(-4)}`;
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "networkidle" });
   await expect(page.getByPlaceholder("Enter your name")).toBeVisible();
   await page.getByPlaceholder("Enter your name").fill(playerName);
   await expect(page.getByRole("button", { name: "Host Game", exact: true })).toBeEnabled();
