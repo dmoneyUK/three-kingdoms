@@ -2,11 +2,11 @@ name: Deploy to Cloudflare
 
 on:
   push:
-    branches: [main, ux-v2]
+    branches: [main, ux-v2, feature/smart-bot-player]
     paths-ignore:
       - "**/*.md"
   pull_request:
-    branches: [main, ux-v2]
+    branches: [main, ux-v2, feature/smart-bot-player]
     paths-ignore:
       - "**/*.md"
 

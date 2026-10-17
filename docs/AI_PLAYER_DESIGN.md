@@ -160,7 +160,7 @@ Each row is a **bounded phase goal**, not permission to implement every task. Br
 
 | Stage | ID | Deliverable | Principal evidence | Status |
 | --- | --- | --- | --- | --- |
-| Bootstrap | **AIP-00A** | Feature-branch CI gate, no production deploy, Markdown-only ignores | validated exact SHA, no deploy job | **APPROVED — FIRST AGENT TASK** |
+| Bootstrap | **AIP-00A** | Feature-branch CI gate, no production deploy, Markdown-only ignores | validated exact SHA, no deploy job | **IN_PROGRESS — AIP-D2 task execution** |
 | Staging | **AIP-00B** | Separate Worker, separate D1, safe manual deployment and iPhone URL | actual URL, unique DB UUID, migrations, mobile smoke | DRAFT |
 | Automation | **AIP-00C** | Code pushes deploy to Staging only after full CI | exact SHA deploy, production unaffected, docs-only ignores | DRAFT |
 | AI lab | AIP-01 | Offline/read-only OpenAI Decision Prototype (mock first, tiny opt-in live eval) | 10–20 anonymous fixtures, valid candidate IDs, latency, usage report | DRAFT |
@@ -182,11 +182,13 @@ Each row is a **bounded phase goal**, not permission to implement every task. Br
 
 ### AIP-00A — Enable safe feature-branch CI (FIRST TASK)
 
-**Status: APPROVED — only currently authorized implementation task.** It is a short CI/bootstrap step, intentionally before Staging code/config so every later commit has an automatic validation gate.
+**Status: IN_PROGRESS — approved AIP-00A is underway.** It is a short CI/bootstrap step, intentionally before Staging code/config so every later commit has an automatic validation gate.
 
 **Scope:** change `.github/workflows/deploy.yml` so pushes and PRs to `feature/smart-bot-player` run existing lint/build/fast/API/browser-smoke jobs. Keep current `main` and `ux-v2` triggers and production deploy condition unchanged; retain `paths-ignore: ["**/*.md"]`. Absolutely NO game code, `wrangler.jsonc`, DB provisioning, Cloudflare deployment, OpenAI setup, UX or OS changes.
 
 **Agent instructions:** (1) Read `AGENTS.md`, complete latest `docs/AI_PLAYER_DESIGN.md`, `docs/AI_PLAYER_AGENT_WORKFLOW.md` and `AI_PLAYER_HANDOVER.md`. Current handover's obsolete `AIP-D0/AIP-01 bot seat` preview has never started; Coding Agent alone replaces it with the newly approved AIP-00A. (2) Inspect branch/worktree/remote HEAD and CI exact-SHA: inherited `main` baseline run `39037960303` passed but docs-only bot branch has **no own CI yet**; record this truthfully. (3) Make minimal workflow edit; verify YAML triggers and branch-specific deploy gates. (4) Before committing inspect relevant remote CI; address known failures rather than ignoring; push focused change and confirm exact new SHA, all test jobs and **no production deploy/migrations**. (5) Update `AI_PLAYER_HANDOVER.md` with accurate SHA/tests/CI, and change only this task's status/evidence in design to `PENDING_REVIEW`, preserving Planner edits. STOP.
+
+**Implementation evidence:** Started at feature-branch SHA `b11c8a7a855aafc7370b78f3190f7e7e77e0ce59`. No feature-branch Actions run existed. Inherited `main` baseline run `39037960303` passed on `6743a357ef19ca930a02f7e3faa8cee843bd6a38`; this is not feature-branch validation. Workflow commit, exact-SHA checks and deploy-skip evidence are pending.
 
 **Acceptance:** feature branch validates on every code push; required CI green for exact SHA; production deployment never executes on feature branch; Markdown-only docs/handover updates remain ignored; original production branch behavior unchanged. If ambiguous/failing, report `BLOCKED`, not accepted.
 
