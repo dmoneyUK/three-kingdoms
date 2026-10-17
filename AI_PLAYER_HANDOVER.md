@@ -13,7 +13,8 @@ Workflow: `docs/AI_PLAYER_AGENT_WORKFLOW.md` — AIP-AUTO-1
 - Scope: provision and deploy the unmodified application to an isolated `ai-staging` Worker and new D1 database, with `BOT_AI_ENABLED=false`. Preserve the production Worker, D1 binding, migrations and deploy policy. No OpenAI key or AI gameplay.
 - `wrangler.jsonc` has only the production DB binding (`3151997a-f69e-4a45-ab51-9e4fd062aeb3`) and no Staging environment. Wrangler 4.128.0 authentication is now restored; `whoami` confirms the account whose D1 list contains the production UUID and whose token grants D1/Workers write permissions.
 - Created `three-kingdoms-ai-staging-db` in the verified account; UUID `62616495-59ea-4a9c-b669-2d3267a83cab`, distinct from production. A fresh D1 list confirms both IDs. `--no-update-config` left `wrangler.jsonc` untouched. No migrations or Worker deployment have occurred; `three-kingdoms-ai-staging` is still absent.
-- Next checkpoint: add the explicit `ai-staging` Worker and D1 binding plus `BOT_AI_ENABLED=false`; run focused config validation and exact-SHA CI before migration/deploy.
+- Added the explicit named D1 binding, `workers_dev: true`, and `BOT_AI_ENABLED=false` locally. JSON assertions passed. Default Vinext build plus `wrangler deploy --dry-run --env ai-staging` selected the production DB, so I stopped before deployment. Cloudflare's Vite integration requires selecting `CLOUDFLARE_ENV` at build time: `CLOUDFLARE_ENV=ai-staging npm run build` generated Worker `three-kingdoms-ai-staging` with only the Staging DB and workers.dev enabled, and `wrangler deploy --dry-run --env ai-staging` then showed the Staging DB and disabled flag. No deploy/migration ran.
+- Next checkpoint: commit the isolated config with this evidence, push, and inspect the exact-SHA full CI before any migration/deploy.
 
 ## Exactly one current task — AIP-00B
 

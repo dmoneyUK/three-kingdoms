@@ -10,5 +10,21 @@
       "database_id": "3151997a-f69e-4a45-ab51-9e4fd062aeb3",
       "migrations_dir": "drizzle"
     }
-  ]
+  ],
+  "env": {
+    "ai-staging": {
+      "workers_dev": true,
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "three-kingdoms-ai-staging-db",
+          "database_id": "62616495-59ea-4a9c-b669-2d3267a83cab",
+          "migrations_dir": "drizzle"
+        }
+      ],
+      "vars": {
+        "BOT_AI_ENABLED": "false"
+      }
+    }
+  }
 }
