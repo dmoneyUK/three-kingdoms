@@ -702,7 +702,7 @@ for (const skill of activeSkills) {
     if (skill.effectId === "diao_chan_lust") {
       const decisionStatus = nodeWith(renderer, "data-lust-local-selection", "true");
       assert.match(renderedNodeText(decisionStatus), /Select 1 card and 2 Duel participants\./, "Diao Chan Lust gives the local selection instruction");
-      assert.match(renderedNodeText(decisionStatus), /Attack order: TARGET ONE plays first, then TARGET TWO plays second\./, "Diao Chan Lust keeps the ordered actors inside the main guidance");
+      assert.match(renderedNodeText(decisionStatus), /Attack order: TARGET ONE first → TARGET TWO second\./, "Diao Chan Lust keeps the ordered actors inside the main guidance");
       assert.equal(nodeWith(renderer, "data-testid", "lust-order-guidance").parent, decisionStatus, "Lust order is inside the main decision status");
       assert.doesNotMatch(renderedNodeText(decisionStatus), /YOUR DECISION|LOCAL CANCEL|Change your selection/, "Lust guidance omits redundant headings and cancel text");
       assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "Lust selection has no redundant Cancel button");

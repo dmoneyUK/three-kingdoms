@@ -1092,25 +1092,26 @@ test("L5: a Diao Chan payer outside seat one parks the cost at her real Seat and
   }
 });
 
-test("real Lust guidance keeps its ordered selection local and the active skill tap cancels without committing", async ({ page, request }) => {
+test("real Lust guidance fits long names at 390px and stays local before Confirm", async ({ page, request, browser }, testInfo) => {
   const cost = card("Dodge", "real-lust-toggle-cost");
   const seed = await seedSkillRoom(request, {
     hero: "diao-chan", hand: [cost],
     targets: [
-      { name: "FIRST MAN", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [] },
-      { name: "SECOND MAN", role: "Rebel", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
+      { name: "TEST PLAYER THREE WITH LONG NAME", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [] },
+      { name: "TEST PLAYER FOUR WITH LONG NAME", role: "Rebel", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
     ],
   });
   const user = await openSkillUser(page, seed);
-  await page.setViewportSize({ width: 440, height: 894 });
 
   const dock = page.locator(`.local-player-dock[data-player-anchor="${user.id}"]`);
   const skill = dock.locator(".local-hero-skills").getByRole("button", { name: "Lust", exact: true });
   const guidance = dock.locator(".decision-status");
   const confirm = dock.locator('[data-action-slot="primary"] button.primary');
   const costButton = dock.locator(`[data-hand-card-id="${cost.id}"] .game-card`);
-  const firstTarget = page.getByRole("button", { name: "Select FIRST MAN", exact: true });
-  const secondTarget = page.getByRole("button", { name: "Select SECOND MAN", exact: true });
+  const firstName = "TEST PLAYER THREE WITH LONG NAME";
+  const secondName = "TEST PLAYER FOUR WITH LONG NAME";
+  const firstTarget = page.getByRole("button", { name: `Select ${firstName}`, exact: true });
+  const secondTarget = page.getByRole("button", { name: `Select ${secondName}`, exact: true });
   const actionPosts = [];
   page.on("request", (browserRequest) => {
     if (browserRequest.url() === `${API}/api/rooms` && browserRequest.method() === "POST") actionPosts.push(browserRequest.postDataJSON());
@@ -1142,9 +1143,51 @@ test("real Lust guidance keeps its ordered selection local and the active skill 
   await expect(confirm).toBeDisabled();
   await secondTarget.click();
   const order = guidance.getByTestId("lust-order-guidance");
-  await expect(order).toHaveText("Attack order: FIRST MAN plays first, then SECOND MAN plays second.");
+  await expect(order).toHaveText(`Attack order: ${firstName} first → ${secondName} second.`);
   await expect(page.locator(".console-guidance > small[role='status']")).toHaveCount(0);
   await expect(confirm).toBeEnabled();
+  const geometry = await order.evaluate((element) => {
+    const rect = (node) => {
+      const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
+      return { left, right, top, bottom, width, height };
+    };
+    const statusRect = rect(element.closest(".decision-status"));
+    const handRect = rect(document.querySelector(".local-hand-section"));
+    const bounds = rect(element);
+    const style = getComputedStyle(element);
+    const visualLineCount = Math.round(bounds.height / Number.parseFloat(style.lineHeight));
+    return {
+      bounds,
+      statusRect,
+      handRect,
+      fontSize: Number.parseFloat(style.fontSize),
+      lineHeight: Number.parseFloat(style.lineHeight),
+      lineCount: visualLineCount,
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      text: element.textContent,
+    };
+  });
+  await testInfo.attach("u13-c-long-names-390x844.png", { body: await page.screenshot(), contentType: "image/png" });
+  expect(geometry.fontSize).toBeGreaterThanOrEqual(12);
+  expect(geometry.lineHeight).toBeGreaterThanOrEqual(15.6);
+  expect(geometry.lineCount).toBeGreaterThanOrEqual(2);
+  expect(geometry.lineCount, JSON.stringify(geometry)).toBeLessThanOrEqual(3);
+  expect(geometry.bounds.left).toBeGreaterThanOrEqual(geometry.statusRect.left - 1);
+  expect(geometry.bounds.right).toBeLessThanOrEqual(geometry.statusRect.right + 1);
+  expect(geometry.bounds.bottom).toBeLessThanOrEqual(geometry.handRect.top);
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
+  const observerContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  try {
+    const observerPage = await observerContext.newPage();
+    await openSkillViewer(observerPage, seed, seed.players[3]);
+    await expect(observerPage.locator("[data-testid='lust-order-guidance']")).toHaveCount(0);
+    await expect(observerPage.locator(".decision-status")).not.toContainText("Attack order:");
+    await expect(observerPage.locator(".decision-status")).not.toContainText(firstName);
+    await expect(observerPage.locator(".decision-status")).not.toContainText(secondName);
+  } finally {
+    await observerContext.close();
+  }
 
   await skill.click();
   await expect(skill).toHaveAttribute("aria-pressed", "false");

@@ -6338,7 +6338,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               {!lustLocalSelectionActive && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "RESPONSE SUBMITTED" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
               <strong>{consoleDecision.instruction}</strong>
               {lustTargetOrder && <em className="lust-order-guidance" data-testid="lust-order-guidance">
-                Attack order: <strong>{lustTargetOrder.firstName}</strong> plays first, then <span className="lust-second-actor">{lustTargetOrder.secondName}</span> plays second.
+                Attack order: <strong>{lustTargetOrder.firstName}</strong> first → <span className="lust-second-actor">{lustTargetOrder.secondName}</span> second.
               </em>}
               {daqiaoDeflectionSelectionActive
                 ? <div className="deflection-selection-guidance" data-testid="deflection-selection-guidance" role="group" aria-label="Deflection selections">
