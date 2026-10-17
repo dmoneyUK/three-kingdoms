@@ -4825,3 +4825,14 @@
     bottom: auto;
   }
 }
+
+@media (max-width: 650px) {
+  /* The legacy mobile rule leaves top: 60%; clear it so the bottom name scrim
+     shrink-wraps its single text line instead of stretching across the art. */
+  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-hero-overlay .opponent-player-name {
+    top: auto;
+    height: auto;
+    min-height: 0;
+    padding-block: 1px;
+  }
+}

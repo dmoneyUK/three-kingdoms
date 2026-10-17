@@ -2684,3 +2684,39 @@ Profile command measurements:
   evidence but has no exact-SHA CI/deployment yet. Its technical delivery and
   user review remain open. Q3 and Q4 are deferred by the user's reprioritization;
   accepted H4-A/B/C stays unchanged, and Q4 remains verification-first.
+
+### UX2-10.13.5.1-U13-E-F-NAMES-TIGHT-FRAME-01 — 2026-10-17
+
+- Source commits `206981568a1569d540624cee11f3488b581ca521` and
+  `346b5f0df50f8cbbd44b13dd787e4c3c50ea6188` deliver authentic player names in
+  the LUST Duel presentation and a compact 168×190 frame around the full
+  90×135 paid card. The frame hides during the 380ms card move so the accepted
+  H4 region stays clear.
+- Exact-SHA Actions run [`39057243087`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39057243087)
+  passed lint/fast, API, browser startup smoke, build, D1 migration, Worker
+  deployment and production smoke. Worker version:
+  `e643dff4-d028-416a-8177-e6ee6c673f8e`.
+- Production Worker/D1 replay used four Test Switch viewer perspectives at
+  390×700, 390×844, 440×894 and 480×900. It exercised the real LUST root,
+  ordered Attack responses 1 and 2, Skip and damage settlement. Public
+  accessible participant names and proof order matched across views; the
+  projected exchange was equal after excluding the viewer-local countdown.
+  The technical delivery remains pending user phone review. H4 was not changed.
+
+### UX2-10.8.2.2-H2-G1-NAME-F — 2026-10-17 (local implementation)
+
+- Current production baseline showed a 28.8125px name scrim at 390×700 and
+  440×894, although its font line-height was 10px. A more-specific final CSS
+  override clears the legacy mobile `top: 60%` constraint and lets the lower
+  scrim shrink-wrap one line. No JSX, server, selection or Inspector code
+  changed.
+- Focused browser regression failed against the old rendered geometry, then
+  passed 5/5 after the fix: 4-seat Worker/D1 rooms at 390×700 and 440×894 plus
+  6/8/10-seat side-column fixtures at 440×894. Final name heights were 13px
+  for four seats and 16.5px for side seats. Long Latin/Chinese names remained
+  available through matching `aria-label`/`title`, while visible text ellipsized.
+  HP, status, SWITCH and stage/H4 safe-zone clearance assertions passed.
+- Local build and targeted ESLint passed. Exact-SHA CI/deployment and the
+  post-deployment production screenshot/measurement remain open. H2-G1 overall
+  remains not accepted due to separate Inspect feedback; this slice is pending
+  user phone review. Q1–Q4 are deferred and accepted H4 remains unchanged.
