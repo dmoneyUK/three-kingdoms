@@ -864,8 +864,8 @@ type OpponentPlayerCardProps = {
   targetablePlayer: boolean;
   daqiaoDeflectionTargetMode: boolean;
   testViewerController: boolean;
-  onTarget: (trigger: HTMLButtonElement) => void;
-  onInspect: (trigger: HTMLButtonElement) => void;
+  onTarget: (trigger?: HTMLButtonElement | null) => void;
+  onInspect: (trigger?: HTMLButtonElement | null) => void;
   onSwitchTestViewer: (playerId: string) => void;
   judgementInFlight: ReadonlySet<string>;
   serpentSelected: string[];
@@ -908,7 +908,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
   });
   const miniJudgement = player.judgementCards.map((judgement) => <span className="mini-zone-card judgement-mini" data-judgement-id={judgement.id} key={judgement.id} style={{ visibility: judgementInFlight.has(judgement.id) ? "hidden" : "visible" }}>
     <span><small>{judgement.rank}{judgement.suit}</small><b>{cardDefinition(judgement.kind).name}</b></span>
-    <button type="button" className="zone-info-button" aria-label={`Inspect ${player.name} to explain ${cardDefinition(judgement.kind).name}`} onClick={(event) => { event.stopPropagation(); onInspect(event.currentTarget); }}>i</button>
+    <button type="button" className="zone-info-button" aria-label={`Inspect ${player.name} to explain ${cardDefinition(judgement.kind).name}`} onClick={(event) => { event?.stopPropagation(); onInspect(event?.currentTarget ?? null); }}>i</button>
   </span>);
   const targetButtonDisabled = targetSelectionActive && (!targetablePlayer || !player.alive);
   const deflectionTargetSelectable = daqiaoDeflectionTargetMode && targetSelectionActive && targetablePlayer && player.alive;
@@ -921,7 +921,10 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
   return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${targetSelectionActive && targetablePlayer && player.alive ? "targetable-target" : ""} ${isGroupPreview ? "local-group-preview" : ""} ${interactionRoles.isInteractionSource ? "interaction-seat-source" : ""} ${interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : ""} ${interactionRoles.isActiveTarget ? "interaction-seat-active-target" : ""} ${interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : ""} ${interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : ""} ${interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : ""} ${interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : ""} ${!player.alive ? "defeated-square" : ""}`} data-side-column={sideColumnSeat?.side} data-side-row={sideColumnSeat?.row} style={sideColumnSeat ? { gridRow: sideColumnSeat.row } : undefined} data-player-anchor={player.id} data-target-selectable={targetSelectionActive && targetablePlayer && player.alive ? "true" : undefined} data-deflection-targetable={deflectionTargetSelectable ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined}>
     <div className="opponent-public-zones">
       <div className="player-hero-card opponent-hero-card">
-        <button type="button" className="player-square-target opponent-hero-target" disabled={targetButtonDisabled} aria-label={targetButtonLabel} onClick={(event) => targetSelectionActive ? onTarget(event.currentTarget) : onInspect(event.currentTarget)}>
+        <button type="button" className="player-square-target opponent-hero-target" disabled={targetButtonDisabled} aria-label={targetButtonLabel} onClick={(event) => {
+          const trigger = event?.currentTarget ?? null;
+          return targetSelectionActive ? onTarget(trigger) : onInspect(trigger);
+        }}>
           {playerHero && <span className="player-square-portrait opponent-hero-portrait" data-hero-id={playerHero.id}><HeroPortrait hero={playerHero} /></span>}
         </button>
         <div className="opponent-hero-overlay">
@@ -1853,7 +1856,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
   const opponentInspectionReturnFocusRef = useRef<HTMLElement | null>(null);
   const openOpponentInspection = useCallback((playerId: string, trigger?: HTMLElement | null) => {
-    opponentInspectionReturnFocusRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    const activeElement = typeof document !== "undefined" && typeof HTMLElement !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    opponentInspectionReturnFocusRef.current = trigger ?? activeElement;
     setExpandedOpponentId(playerId);
   }, []);
   const closeOpponentInspection = useCallback((restoreFocus = true) => {

@@ -622,7 +622,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.equal((html.match(/class="local-judgement-card-slot"/g) ?? []).length, 2, "Judgement renders only its two actual cards");
   assert.match(gameRoomSource, /const judgementCardLayout = useMemo[\s\S]*Math\.max\(12, naturalStep\)/, "Judgement spacing overlaps dynamically");
   assert.doesNotMatch(sequenceStyleSource, /local-judgement-stack \.local-zone-card:nth-child/);
-  assert.match(html, /aria-label="Explain Blue Steel Sword"/); assert.match(html, /aria-label="Explain Lightning"/);
+  assert.match(html, /aria-label="View Blue Steel Sword details"/); assert.match(html, /aria-label="Explain Lightning"/);
   assert.match(html, /data-equipment-id="weapon"[\s\S]*class="played-card bluesteelsword black-suit/);
   assert.match(html, /data-judgement-id="lightning"[\s\S]*class="played-card lightning black-suit/);
   assert.match(html, /class="opponent-public-zones"[\s\S]*class="player-hero-card opponent-hero-card"[\s\S]*class="opponent-player-name" aria-label="ALICE" title="ALICE">ALICE<\/span>[\s\S]*class="opponent-status-equipment-strip"[\s\S]*class="opponent-hp-chip" aria-label="HP 3 of 4">HP 3\/4<\/span>[\s\S]*class="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count="1"[\s\S]*class="opponent-equipment-indicator" data-slot="weapon" data-equipment-id="opponent-weapon"/, "player name overlays the portrait and HP leads the single equipment band");
@@ -738,7 +738,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /\.opponent-judgement-zone \{[\s\S]*left: calc\(100% \+ 4px\)/, "Judgement is visually distinct and offset to the side");
   assert.match(sequenceStyleSource, /\.opponent-judgement-cards \.mini-zone-card \+ \.mini-zone-card \{[\s\S]*margin-left: -45%/i, "multiple Judgement cards use controlled overlap");
   assert.match(gameRoomSource, /const \[expandedOpponentId, setExpandedOpponentId\] = useState<string \| null>\(null\)/, "inspection is presentation-local state");
-  assert.match(gameRoomSource, /targetSelectionActive \? onTarget : onInspect/, "target selection takes priority over inspection");
+  assert.match(gameRoomSource, /targetSelectionActive \? onTarget\(trigger\) : onInspect\(trigger\)/, "target selection takes priority over inspection while inspection retains its opener for focus return");
   // Inspect placement, projected public details, and concealed-hand redaction are behavior-tested in tests/browser/opponent-inspect-hero-focus.spec.mjs.
   // The seat Hero-info click behavior is also tested in tests/browser/opponent-inspect-hero-focus.spec.mjs.
   assert.match(sequenceStyleSource, /\.opponent-inspection-card \{[\s\S]*aspect-ratio: 2 \/ 3;/, "expanded public cards preserve aspect ratio");
