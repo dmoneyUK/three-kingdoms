@@ -162,7 +162,7 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 | Stage | ID | Deliverable | Principal evidence | Status |
 | --- | --- | --- | --- | --- |
 | Bootstrap | **AIP-00A** | Feature-branch CI gate, no production deploy, Markdown-only ignores | validated exact SHA, no deploy job | **ACCEPTED — HUMAN REVIEW 2026-10-17** |
-| Staging | **AIP-00B** | Separate Worker, separate D1, safe manual deployment and iPhone URL | actual URL, unique DB UUID, migrations, mobile smoke | **BLOCKED — CLOUDFLARE AUTH** |
+| Staging | **AIP-00B** | Separate Worker, separate D1, safe manual deployment and iPhone URL | actual URL, unique DB UUID, migrations, mobile smoke | **IN_PROGRESS** |
 | Automation | **AIP-00C** | Code pushes deploy to Staging only after full CI | exact SHA deploy, production unaffected, docs-only ignores | **APPROVED — WAITING AIP-00B ACCEPTANCE** |
 | AI lab | AIP-01 | Offline/read-only OpenAI Decision Prototype (mock first, tiny opt-in live eval) | 10–20 anonymous fixtures, valid candidate IDs, latency, usage report | **APPROVED — MOCK/OFFLINE ONLY UNTIL LIVE BUDGET GATE; WAITING AIP-00C ACCEPTANCE** |
 | Legal contracts | AIP-02 | Canonical BotObservation and narrowly scoped legal candidates | privacy, valid cards/targets, stale decisions | DRAFT |
@@ -197,7 +197,7 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 
 ### AIP-00B — Provision isolated, mobile-accessible Staging
 
-**Status: BLOCKED — USER ACTION REQUIRED. Priority: P0. Dependencies: AIP-00A ACCEPTED.** This task was pre-approved as part of the initial Staging batch; **do not execute while AIP-00A is pending**. Cloudflare account permissions must be verified before any remote operation.
+**Status: IN_PROGRESS. Priority: P0. Dependencies: AIP-00A ACCEPTED.** This task was pre-approved as part of the initial Staging batch; **do not execute while AIP-00A is pending**. Cloudflare account permissions must be verified before any remote operation.
 
 **Goal:** deploy the unmodified WTK application to a **separate** Cloudflare Worker and NEW D1 database; create a real HTTPS URL usable in iPhone Safari. No AI model calls in this step.
 
@@ -205,7 +205,7 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 
 **Safety checks:** verify actual account and UUID against production; confirm explicit `--env ai-staging` for deploy and D1 commands; never treat the root `DB` binding as Staging. If any uncertainty or permission issue, STOP and request a small specific human action instead of risking production.
 
-**Implementation evidence:** Started at feature branch HEAD `4ad98b9151fc2c1e373897b8ca7adf5335c657ee`; AIP-00A is human-accepted. Its validated code-bearing commit `75073b6bbfffe9281223ef1eaac85349496224af` passed [Actions run 39058906244](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39058906244). Initial inspection confirmed `wrangler.jsonc` has only the production DB binding (`3151997a-f69e-4a45-ab51-9e4fd062aeb3`) and no Staging environment. After `npm ci`, Wrangler 4.128.0 `whoami` failed: the saved Cloudflare auth token is expired and could not be refreshed in the non-interactive session. Account, permissions and remote resource inventory remain unverified; no Cloudflare D1 or Worker write has occurred. Resume after a valid Cloudflare credential is configured securely in this execution environment or interactive `wrangler login` is completed on this host; do not send the token through chat or commit it.
+**Implementation evidence:** Started at feature branch HEAD `4ad98b9151fc2c1e373897b8ca7adf5335c657ee`; AIP-00A is human-accepted. Its validated code-bearing commit `75073b6bbfffe9281223ef1eaac85349496224af` passed [Actions run 39058906244](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39058906244). `wrangler.jsonc` still has only the production DB binding (`3151997a-f69e-4a45-ab51-9e4fd062aeb3`) and no Staging environment. Wrangler 4.128.0 `whoami` confirms an authenticated account with D1 and Workers write scopes; read-only `d1 list` shows only the production database with that UUID. The Staging Worker is absent. No Cloudflare D1 or Worker write has occurred. The Cloudflare account/production match and permission gate are verified; proceed with the newly generated D1 UUID and explicit environment only.
 
 **Agent deliverable:** config diff, exact CI SHA/run, new Worker name and real HTTPS URL, Staging DB name/UUID, migration evidence, health and room creation smoke, no-production-change proof, mobile test instructions. Update own handover and task state only; finish `PENDING_REVIEW` and STOP. Human uses iPhone to verify real URL, lobby and room flow before ACCEPTED.
 
