@@ -13,6 +13,7 @@ type PublicCardDisplayResponseNode = {
   ordinal?: number;
   actorId: string;
   actorName: string;
+  targetName?: string;
   cardFace?: Card;
   cardFaces?: readonly Card[];
   semanticLabel?: string;
@@ -71,6 +72,7 @@ export type PublicCardDisplayAction = {
   cardLabel: string;
   ariaLabel: string;
   publicNotice?: string;
+  publicNoticeCompact?: string;
   motion?: PublicCardDisplayMotion;
   settlement?: {
     eventId: string;
@@ -217,6 +219,7 @@ function PublicJourneyCard({
         height: LUST_COST_FRAME.height,
         transform: `scale(${card.rect.width / REVEAL_CARD.width})`,
         transformOrigin: `${LUST_COST_FRAME.cardOffsetLeft}px ${LUST_COST_FRAME.cardOffsetTop}px`,
+        opacity: card.phase === "move" ? 0 : 1,
       }}
     >
       <strong className="public-card-lust-cost-frame-title">{lustCostFrame.title}</strong>
@@ -296,7 +299,7 @@ function withFirstQueuedAttackDodgeReveal(cards: JourneyCard[], center: CardRect
 const REVEAL_CARD = { width: 90, height: 135 };
 const DUEL_REVEAL_CARD = { width: 90, height: 135 };
 const PARKED_CARD = { width: 48, height: 72 };
-const LUST_COST_FRAME = { width: 196, height: 200, cardOffsetLeft: 53, cardOffsetTop: 48 };
+const LUST_COST_FRAME = { width: 168, height: 190, cardOffsetLeft: 39, cardOffsetTop: 43 };
 const PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH = 520;
 // Two 15px mobile lines at 1.2 line-height plus 4px vertical padding and
 // borders. Used only before the mounted announcement can be measured.
@@ -414,11 +417,46 @@ function battlefieldLustCostCard(): CardRect {
   const safeRight = Math.min(window.innerWidth - 8, bounds.right - 8);
   const frameWidth = Math.max(1, Math.min(LUST_COST_FRAME.width, safeRight - safeLeft));
   const safeTop = Math.max(8, bounds.top + 8);
-  const safeBottom = Math.min(window.innerHeight - 8, bounds.bottom - 8);
+  const safeBottom = Math.min(window.innerHeight - 8, bounds.bottom - 2);
   const maxFrameLeft = Math.max(safeLeft, safeRight - frameWidth);
-  const maxFrameTop = Math.max(safeTop, safeBottom - LUST_COST_FRAME.height);
   const frameLeft = Math.max(safeLeft, Math.min(maxFrameLeft, bounds.left + (bounds.width - frameWidth) / 2));
-  const frameTop = Math.max(safeTop, Math.min(maxFrameTop, bounds.top + (bounds.height - LUST_COST_FRAME.height) / 2));
+  const announcementGap = PUBLIC_CARD_ANNOUNCEMENT_GAP;
+  const announcementHeight = 50;
+  const maxFrameTop = safeBottom - LUST_COST_FRAME.height - announcementGap - announcementHeight;
+  const preferredTop = bounds.top + (bounds.height - LUST_COST_FRAME.height) / 2;
+  const obstacleElements = [...document.querySelectorAll<HTMLElement>(
+    ".opponent-player-card[data-player-anchor], .player-square, .player-square-target, .play-seat, .player-board-status, .visible-countdown, .stage-system-cluster, .local-player-dock, .console-guidance, .public-activity-chip",
+  )];
+  const topSeatBottom = table?.dataset.seatTopology === "top-row"
+    ? [...document.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor]")].reduce((bottom, element) => {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0
+        ? bottom : Math.max(bottom, rect.bottom);
+    }, bounds.top)
+    : bounds.top;
+  const minimumFrameTop = Math.max(safeTop, topSeatBottom + 8);
+  const obstacles = obstacleElements.flatMap((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    return style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0
+      || rect.width <= 0 || rect.height <= 0 ? [] : [rect];
+  });
+  const candidateTops = [preferredTop, ...obstacles.flatMap((obstacle) => [
+    obstacle.bottom + 8,
+    obstacle.top - LUST_COST_FRAME.height - 8,
+  ])];
+  for (let distance = 8; distance <= 200; distance += 8) {
+    candidateTops.push(preferredTop - distance, preferredTop + distance);
+  }
+  const legalFrameTops = [...new Set(candidateTops)]
+    .filter((top) => top >= minimumFrameTop && top <= maxFrameTop)
+    .sort((left, right) => Math.abs(left - preferredTop) - Math.abs(right - preferredTop));
+  const selectedFrameTop = legalFrameTops.find((top) => {
+      const frameRect = { left: frameLeft, top, width: frameWidth, height: LUST_COST_FRAME.height };
+      return obstacles.every((obstacle) => !rectsOverlap(frameRect, obstacle, 1));
+    });
+  const frameTop = selectedFrameTop ?? Math.max(minimumFrameTop, Math.min(maxFrameTop, preferredTop));
   return {
     left: frameLeft + LUST_COST_FRAME.cardOffsetLeft,
     top: frameTop + LUST_COST_FRAME.cardOffsetTop,
@@ -438,6 +476,10 @@ function battlefieldLustCostFrame(card: CardRect): CardRect {
     width: Math.max(1, Math.min(LUST_COST_FRAME.width, safeRight - safeLeft)),
     height: LUST_COST_FRAME.height,
   };
+}
+
+function battlefieldLustDuelAnnouncementAnchor(card: CardRect): CardRect {
+  return battlefieldLustCostFrame(card);
 }
 
 function hasPaintedLargePublicCard(eventId: string, size: Pick<CardRect, "width" | "height">) {
@@ -607,6 +649,13 @@ function compactPublicNotice(notice: string, actorName: string | null) {
   return notice.trim();
 }
 
+function compactLustDuelPlayerName(name: string | null) {
+  if (!name) return null;
+  const normalized = name.trim();
+  const characters = Array.from(normalized);
+  return characters.length > 10 ? `${characters.slice(0, 9).join("").trimEnd()}…` : normalized;
+}
+
 export function publicCardAnnouncement(
   action: PublicCardDisplayAction,
   notice: string,
@@ -672,13 +721,18 @@ function publicCardAnnouncementCopy(
   if ((action.motion?.type === "lust-cost" || action.motion?.type === "lust-duel") && action.lustCostFrame) {
     if (action.motion.type === "lust-duel" && action.settlement) {
       const message = action.publicNotice ?? action.ariaLabel;
-      return { message };
+      return { message, compactMessage: action.publicNoticeCompact };
     }
     const response = action.motion.type === "lust-duel"
       ? action.responses?.find((entry) => entry.ariaLabel === notice && entry.actorId === actorId)
       : undefined;
     if (response) {
-      const compact = compactPublicNotice(notice, compactPlayerNamesById[actorId] ?? actorName);
+      const responseActorName = actorName ?? compactPlayerNamesById[actorId] ?? null;
+      if (response.targetName) {
+        const compact = `${compactLustDuelPlayerName(responseActorName) ?? "A player"} played Attack on ${compactLustDuelPlayerName(response.targetName)}.`;
+        return { message: notice, compactMessage: compact };
+      }
+      const compact = compactPublicNotice(notice, compactLustDuelPlayerName(responseActorName));
       return { message: notice, compactMessage: compact === notice ? undefined : compact };
     }
     return {
@@ -843,8 +897,12 @@ function PublicCardAnnouncement({
         .reduce((bottom, { rect }) => Math.max(bottom, rect.bottom), tableRect.top);
       const safeTop = Math.max(8, viewportTop + 4, tableRect.top + 8, topSeatBottom + 3);
       const safeBottom = Math.min(viewportBottom - 8, tableRect.bottom - 2);
+      const shortLustFrame = stableCenterAnchor && stableFallbackCardRect
+        && stableFallbackCardRect.width >= LUST_COST_FRAME.width - 1
+        && viewportBottom - viewportTop <= 740;
+      const availableAnnouncementWidth = shortLustFrame ? Math.min(224, viewportWidth - 16) : PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH;
       const maxWidth = Math.max(1, Math.min(
-        PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH,
+        availableAnnouncementWidth,
         negationWaiting ? 420 : PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH,
         viewportWidth - 16,
         safeRight - safeLeft,
@@ -909,6 +967,10 @@ function PublicCardAnnouncement({
         .map((width) => Math.min(width, maxWidth)))]
         .filter((width) => width > 0)
         .sort((left, right) => right - left);
+      if (reusableBand) {
+        const reusableWidth = widths.indexOf(Math.min(reusableBand.width, maxWidth));
+        if (reusableWidth > 0) widths.unshift(widths.splice(reusableWidth, 1)[0]);
+      }
       const textElement = copy.querySelector<HTMLElement>("b");
       const announcementOptions = [
         { message, compact: false },
@@ -2411,7 +2473,7 @@ function SingleTargetCardJourney({
       phase={currentCard?.phase ?? "static"}
       message={announcement}
       compactMessage={compactAnnouncement}
-      fallbackCardRect={motion?.type === "lust-cost" && journey.center ? battlefieldLustCostFrame(journey.center) : journey.center}
+      fallbackCardRect={motion?.type === "lust-cost" && journey.center ? battlefieldLustDuelAnnouncementAnchor(journey.center) : journey.center}
       phaseNotice={action.phaseNotice}
       outcome={allParked ? action.settlement?.outcome : undefined}
       negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
@@ -2548,6 +2610,7 @@ function DuelCardJourney({
 }) {
   const scopeKey = action.motion?.type === "duel" || action.motion?.type === "lust-duel" ? action.motion.scopeKey : action.rootEventId;
   const [journey, setJourney] = useState<DuelJourneyState>({ scopeKey: "", viewerId: "", viewerSeat: null, cards: [], center: null, suppressTransitions: false });
+  const [settledLustFrameViewerKey, setSettledLustFrameViewerKey] = useState("");
   const [expiredLustSettlementEventId, setExpiredLustSettlementEventId] = useState<string | null>(null);
   const journeyRef = useRef(journey);
   const actionRef = useRef(action);
@@ -2603,7 +2666,9 @@ function DuelCardJourney({
     const events = duelJourneyEvents(currentAction, currentSourceName);
     const fresh = new Set(currentMotion.freshEventIds);
     const latestFreshEvent = [...events].reverse().find((event) => fresh.has(event.eventId) && event.cardFace) ?? null;
-    const center = currentMotion.type === "lust-duel" && currentAction.lustCostFrame && latestFreshEvent?.role === "root"
+    const lustRootIsCurrent = latestFreshEvent?.role === "root"
+      || (!latestFreshEvent && events.at(-1)?.role === "root");
+    const center = currentMotion.type === "lust-duel" && currentAction.lustCostFrame && lustRootIsCurrent
       ? battlefieldLustCostCard()
       : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
     const previous = journeyRef.current;
@@ -2787,6 +2852,7 @@ function DuelCardJourney({
     if (!enabled || !documentVisible || journey.scopeKey !== scopeKey || !duelMovingSignature) return;
     const timers = journey.cards.filter((card) => card.phase === "move").map((card) => {
       const startedAt = card.moveStartedAtMs ?? performance.now();
+      const delay = Math.max(0, MOVE_DURATION_MS - Math.max(0, performance.now() - startedAt));
       return window.setTimeout(() => {
         if (!mountedRef.current) return;
         setJourney((current) => {
@@ -2799,7 +2865,7 @@ function DuelCardJourney({
           journeyRef.current = next;
           return next;
         });
-      }, Math.max(0, MOVE_DURATION_MS - Math.max(0, performance.now() - startedAt)));
+      }, delay);
     });
     return () => {
       timers.forEach((timer) => window.clearTimeout(timer));
@@ -2827,6 +2893,59 @@ function DuelCardJourney({
 
   useLayoutEffect(() => {
     if (!enabled || journey.scopeKey !== scopeKey) return;
+    let frame = 0;
+    let attempts = 0;
+    let stableFrames = 0;
+    let previousLayout = "";
+    const measureSettledLustFrame = () => {
+      attempts += 1;
+      const layoutElements = [
+        document.querySelector<HTMLElement>(".play-table"),
+        ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
+      ].filter((element): element is HTMLElement => Boolean(element));
+      const layout = [window.innerWidth, window.innerHeight, ...layoutElements.flatMap((element) => {
+        const rect = element.getBoundingClientRect();
+        return [rect.left, rect.top, rect.width, rect.height].map((value) => Math.round(value * 2) / 2);
+      })].join(":");
+      stableFrames = layout === previousLayout ? stableFrames + 1 : 0;
+      previousLayout = layout;
+      if ((layoutElements.length < 2 || stableFrames < 2) && attempts < 30) {
+        frame = window.requestAnimationFrame(measureSettledLustFrame);
+        return;
+      }
+
+      const currentAction = actionRef.current;
+      const currentMotion = currentAction.motion;
+      if (currentMotion?.type !== "lust-duel" || !currentAction.lustCostFrame) return;
+      const events = duelJourneyEvents(currentAction, sourceNameRef.current);
+      const fresh = new Set(currentMotion.freshEventIds);
+      const latestFreshEvent = [...events].reverse().find((event) => fresh.has(event.eventId) && event.cardFace);
+      const lastEvent = events.at(-1);
+      const currentRootEvent = latestFreshEvent?.role === "root"
+        ? latestFreshEvent
+        : !latestFreshEvent && lastEvent?.role === "root" ? lastEvent : null;
+      if (!currentRootEvent) return;
+      const center = battlefieldLustCostCard();
+      setSettledLustFrameViewerKey(`${scopeKey}:${viewerId}`);
+      setJourney((current) => {
+        if (current.scopeKey !== scopeKey || !current.cards.some((card) => card.eventId === currentRootEvent.eventId && card.phase === "reveal")) return current;
+        if (current.center && cardRectsMatch(current.center, center)) return current;
+        const cards = current.cards.map((card) => card.eventId === currentRootEvent.eventId && card.phase === "reveal"
+          ? { ...card, rect: center, layoutChangeReason: "settled-lust-cost-frame-layout" }
+          : card);
+        const next = { ...current, center, cards, suppressTransitions: true };
+        journeyRef.current = next;
+        return next;
+      });
+    };
+    frame = window.requestAnimationFrame(measureSettledLustFrame);
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [action.lustCostFrame?.activationEventId, action.motion?.type, enabled, freshSignature, journey.scopeKey, scopeKey, viewerId]);
+
+  useLayoutEffect(() => {
+    if (!enabled || journey.scopeKey !== scopeKey) return;
     let resizeFrame = 0;
     let settleFrame = 0;
     let releaseFrame = 0;
@@ -2844,7 +2963,9 @@ function DuelCardJourney({
           const events = duelJourneyEvents(currentAction, sourceNameRef.current);
           const fresh = new Set(currentMotion?.type === "duel" || currentMotion?.type === "lust-duel" ? currentMotion.freshEventIds : []);
           const latestFreshEvent = [...events].reverse().find((event) => fresh.has(event.eventId) && event.cardFace) ?? null;
-          const center = currentMotion?.type === "lust-duel" && currentAction.lustCostFrame && latestFreshEvent?.role === "root"
+          const lustRootIsCurrent = latestFreshEvent?.role === "root"
+            || (!latestFreshEvent && events.at(-1)?.role === "root");
+          const center = currentMotion?.type === "lust-duel" && currentAction.lustCostFrame && lustRootIsCurrent
             ? battlefieldLustCostCard()
             : battlefieldCenterCard(DUEL_REVEAL_CARD, { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
           setJourney((current) => {
@@ -2976,7 +3097,9 @@ function DuelCardJourney({
 
   const lustSettlementExpired = action.motion?.type === "lust-duel" && action.settlement
     && ((action.settlement.readRemainingMs ?? 0) === 0 || action.settlement.eventId === expiredLustSettlementEventId);
-  if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center || lustSettlementExpired) return null;
+  const awaitingLustFrameLayout = action.motion?.type === "lust-duel" && Boolean(action.lustCostFrame)
+    && incoming.at(-1)?.role === "root" && settledLustFrameViewerKey !== `${scopeKey}:${viewerId}`;
+  if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center || lustSettlementExpired || awaitingLustFrameLayout) return null;
 
   return <section
     className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}`}
@@ -3025,7 +3148,7 @@ function DuelCardJourney({
       message={announcement}
       compactMessage={compactAnnouncement}
       fallbackCardRect={action.motion?.type === "lust-duel" && action.lustCostFrame
-        ? battlefieldLustCostFrame(journey.center) : journey.center}
+        ? battlefieldLustDuelAnnouncementAnchor(journey.center) : journey.center}
       phaseNotice={action.phaseNotice}
       outcome={action.settlement?.outcome}
       negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}

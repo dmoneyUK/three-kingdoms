@@ -126,7 +126,7 @@ test("test-game perspective switches manually and stays selected when the server
   expect(nextActingPlayerId).not.toBe(actingPlayerId);
   await expect.poll(async () => {
     const localViewer = await page.locator(".local-player-dock").getAttribute("data-player-anchor");
-    const actingSeat = await page.locator(".action-square").getAttribute("data-player-anchor");
+    const actingSeat = await page.locator(".turn-square").getAttribute("data-player-anchor");
     return { localViewer, actingSeat };
   }).toEqual({ localViewer: actingPlayerId, actingSeat: nextActingPlayerId });
 });

@@ -835,10 +835,29 @@ function lustDuelOrderMessage(
   second: { name: string; hero?: string | null },
   firstActor: { name: string; hero?: string | null },
 ) {
-  const name = (player: { name: string; hero?: string | null }) => player.hero
-    ? heroName(player.hero)
-    : player.name;
-  return `${name(first)} vs. ${name(second)} · ${name(firstActor)} attacks first.`;
+  return `${first.name} vs. ${second.name} · ${firstActor.name} attacks first.`;
+}
+function compactLustPlayerName(name: string) {
+  const normalized = name.trim();
+  const characters = Array.from(normalized);
+  return characters.length <= 10 ? normalized : `${characters.slice(0, 9).join("").trimEnd()}…`;
+}
+function lustDuelCompactOrderMessage(
+  first: Pick<Player, "id" | "name">,
+  second: Pick<Player, "id" | "name">,
+  firstActor: Pick<Player, "id" | "name">,
+) {
+  const firstActorIsFirst = firstActor.id === first.id;
+  return firstActorIsFirst
+    ? `${compactLustPlayerName(first.name)} first · ${compactLustPlayerName(second.name)} second.`
+    : `${compactLustPlayerName(first.name)} second · ${compactLustPlayerName(second.name)} first.`;
+}
+function lustDuelCompactResultMessage(failedName: string | undefined, damageSourceName: string | undefined, damageAmount: number) {
+  if (!failedName) return undefined;
+  const failed = compactLustPlayerName(failedName);
+  if (damageAmount === 0) return `${failed} failed to play Attack; Duel damage was prevented.`;
+  if (!damageSourceName) return undefined;
+  return `${failed} failed to play Attack; ${damageAmount} Duel damage from ${compactLustPlayerName(damageSourceName)} applies.`;
 }
 function heroSkillNames(hero: Pick<Hero, "id" | "skills">) { return hero.skills?.map((skill) => skill.name) ?? [heroSkillName(hero.id) ?? "Hero"]; }
 function heroSkillName(id?: string | null) { return id ? HEROES.find((hero) => hero.id === id)?.skills[0]?.name ?? null : null; }
@@ -4324,7 +4343,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       activationEventId: lustCostFrameCandidate.activation.eventId,
       title: "LUST",
       message: lustDuelOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor),
-      compactMessage: lustDuelOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor),
+      compactMessage: lustDuelCompactOrderMessage(lustCostFrameCandidate.firstParticipant, lustCostFrameCandidate.secondParticipant, lustCostFrameCandidate.firstActor),
     },
   } : null;
   const lustDuelPublicAction: PublicCardDisplayAction | null = lustDuelExchangeDisplayCandidate ? {
@@ -4358,8 +4377,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       activationEventId: lustDuelExchangeDisplayCandidate.exchange.root.activationEventId,
       title: "LUST",
       message: lustDuelOrderMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor),
-      compactMessage: lustDuelOrderMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor),
+      compactMessage: lustDuelCompactOrderMessage(lustDuelExchangeDisplayCandidate.costFrame.firstParticipant, lustDuelExchangeDisplayCandidate.costFrame.secondParticipant, lustDuelExchangeDisplayCandidate.costFrame.firstActor),
     },
+    ...(lustDuelExchangeDisplayCandidate.exchange.settlement ? {
+      publicNoticeCompact: lustDuelCompactResultMessage(
+        room.players.find((player) => player.id === lustDuelExchangeDisplayCandidate.exchange.settlement?.failedPlayerId)?.name,
+        room.players.find((player) => player.id === lustDuelExchangeDisplayCandidate.exchange.settlement?.damageSourceId)?.name,
+        lustDuelExchangeDisplayCandidate.exchange.settlement.damageAmount,
+      ),
+    } : {}),
     ...(lustDuelExchangeDisplayCandidate.exchange.settlement ? {
       settlement: {
         eventId: lustDuelExchangeDisplayCandidate.exchange.settlement.eventId,
@@ -4375,6 +4401,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ordinal: response.ordinal,
         actorId: response.responseActorId,
         actorName: responseActor.name,
+        targetName: responseTarget.name,
         ...(cardFaces.length ? { cardFace: cardFaces[0], cardFaces } : {}),
         ...(responseEvent.playedAs?.toLowerCase() === "attack" && cardFaces.some((card) => card.kind !== "Attack")
           ? { semanticLabel: "AS ATTACK" }

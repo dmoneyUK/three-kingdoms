@@ -2639,3 +2639,48 @@ Profile command measurements:
   recorded base SHA. React lint checks were not disabled; targeted diagnostics
   did not establish a safe rule-level fix. No root cause for the reported
   general 3–4 GB symptom is claimed.
+
+### UX2-10.7.4.2-R4-G-OFFTURN-OWN-HAND-INSPECTION-01
+
+- Added a private inspect-only focus for cards in the viewer's own Hand while
+  no matching card-choice authority exists. The native game-card button stays
+  disabled and unselected; a separate full-face hit target opens the accepted
+  Card Details path without action submissions. Viewer/room changes, Hand card
+  loss and newly authorized actions clear inspection; unchanged polling keeps
+  it open. Genuine off-turn Dodge remains selectable through its normal
+  server-projected action.
+- Authenticated Worker/D1 two-player browser proof passed with private Hand
+  isolation, no game-choice request from inspection, then a real Attack→Dodge
+  response. Browser coverage passed 15/15 across 390×844, 390×700, 440×894,
+  480×900 and 3/5/8-card Hands, including CDP touch-pan on an overlapping Hand;
+  R4-F passed 17/17 and focused room render tests 20/20. Build and
+  `git diff --check` passed. Local Node 26 ESLint on `app/page.tsx` exhausted a
+  4 GiB heap without diagnostics; exact-SHA Actions run `39052060979` passed
+  full React Compiler lint, browser smoke, API tests, migrations, deploy and
+  production smoke for `9ba6c798d896b8a1fbf0721254eec87e3de11bb1`. Worker
+  version `d4ad1709-f20c-43c8-ae80-9f29c6aca47d`. R4-G remains pending user
+  phone review; Q3/Q4 remain deferred and accepted H4 is unchanged.
+
+### 2026-10-17 refinement delivery context
+
+- Q1 production diagnostics found public-root/settlement join gaps and a Group
+  child-view crash caused by reading display-shaped fields from ID-shaped
+  `rootOrigin` proof. Q2 repair `d2bd2d692153e9f054ef56a867e080124bf286fc`
+  preserved the proven root, valid resolved participants, and public root
+  through matching settlement proof; exact-SHA Actions run `39043497415`
+  passed and deployed Worker version `5ef4a4fe-cd33-4a0c-93a3-cf9ef19d0a64`.
+  Production Barbarian Invasion and Raining Arrows replays covered Negation,
+  responses, damage/trigger, settlement, and four switched viewer seats. They
+  used one browser controller, not four independent clients.
+- R4-H `14cc15ba472ddef4de3c7d83e526860752666c42` passed exact-SHA Actions
+  run `39045299780`, deployed Worker `ddd137c3-8317-4c66-aa79-0d8ec6d3c3bb`,
+  and remains pending user review. U13-B-G passed focused local geometry and
+  browser checks with the Worker/D1 fixture; it remains pending phone review.
+- R4-I `85faaf793bdf1e494abbe2a7d9120f74968a6361` passed Actions run
+  `39048830786` and deployed Worker `ebafe8d4-0644-4cbc-a1ef-c9c3a8e1b98c`;
+  it remains pending phone review. U13-C has focused 390×844 long-name evidence
+  with no horizontal/Hand overlap and remains pending phone review.
+- U13-H §10.13.8 is implemented locally with focused geometry and gameplay
+  evidence but has no exact-SHA CI/deployment yet. Its technical delivery and
+  user review remain open. Q3 and Q4 are deferred by the user's reprioritization;
+  accepted H4-A/B/C stays unchanged, and Q4 remains verification-first.
