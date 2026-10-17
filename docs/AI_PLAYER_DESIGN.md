@@ -1,10 +1,10 @@
 # WTK Smart Bot Player — Product Roadmap and Implementation Design
 
 > Feature branch: `feature/smart-bot-player`
-> Design revision: **AIP-D2 / 2026-10-17**
-> Owner: **Human Reviewer + Planner**. Planner edits **this file only**.
-> Status: **PHASED ROADMAP FOR REVIEW; only AIP-00A (AI branch CI) is currently APPROVED for the first Coding Agent trial. AIP-00B (isolated Staging) and AIP-00C (automatic Staging deployment) require separate human acceptance and approval**.
-> Coding Agent: **one agent, one task, then PENDING_REVIEW**. No automatic next-task advancement.
+> Design revision: **AIP-D3 / 2026-10-17**
+> Owner: **Human Reviewer + Planner**. Planner edits **this file for normal design/review**; governance docs only under explicit user instruction.
+> Status: **DESIGN-DRIVEN AUTONOMOUS QUEUE**. AIP-00A is **PENDING_REVIEW** (no human acceptance recorded yet). AIP-00B / AIP-00C / AIP-01 are **pre-approved as a bounded queue**, but may execute only after their respective prior dependency is **ACCEPTED**, and all cloud/API risk gates are satisfied. Other roadmap stages are DRAFT.
+> Coding Agent: **one agent, one bounded task per cycle; re-read design and automatically select the next eligible independent APPROVED task after each PENDING_REVIEW delivery**. Never self-accept or bypass dependencies.
 > This document is **NOT** a second WTK core-game specification, an OS architecture spec, a UX2 specification, or an agent handover.
 
 ## 0. Document boundary / non-duplication rule (mandatory)
@@ -17,13 +17,14 @@ This file owns **only AI-player behavior, AI integration, bot-specific privacy/c
 | `docs/OFFICIAL_CARD_REFERENCE.md`, `docs/STANDARD_108_DECK_MANIFEST.md`, `docs/STANDARD_HERO_REFERENCE.md` | WTK Standard deck, card effects, Hero semantics | Card/Hero rule tables in prompts/code |
 | `docs/UX2-refine.md` and UX2 Interaction Stage docs | Public board, presentation and control UX | Game-board redesign, Local Dock / Stage ownership |
 | Existing game/OS and deployment code | Room lifecycle, phase/pending engine, D1 state, game transitions, current human session | Parallel bot-specific rules engine, duplicated match server |
-| `docs/AI_PLAYER_AGENT_WORKFLOW.md` | Agent operating method, CI/stop/handback | Product/strategy requirements |
+| `docs/AI_PLAYER_AGENT_WORKFLOW.md` | Autonomous Agent task selection, CI, stop and safe Staging execution method | Product/strategy requirements |
+| `docs/AI_PLAYER_PLANNER_REVIEWER_GUIDE.md` | Onboarding for any future Planner / Reviewer conversation, review procedure, file ownership | Current executable tasks or Agent handover |
 | `AI_PLAYER_HANDOVER.md` | Exactly one current Coding Agent assignment/progress + actual CI evidence | Long-term product roadmap |
 | **This document** | AI-specific design, staged roadmap, approved task acceptance criteria, reviewer findings | Append-only execution diary or UX2 task queue |
 
 The existing UX2 §5/§6 design and §4A/§4B refinement sequencing stay untouched. UX2 §6 must not be pulled into bot tasks as "necessary UI cleanup". If a bot feature discovers a missing canonical game capability, record the contract and plan a bounded adapter/fix through existing engine ownership instead of copying rules into AI modules.
 
-**Ownership firewall:** Planner may modify ONLY `docs/AI_PLAYER_DESIGN.md` on this branch. Planner must NEVER edit either `AI_PLAYER_HANDOVER.md` or `HANDOVER.md` (nor sources/workflows/tests). Coding Agent alone owns `AI_PLAYER_HANDOVER.md`, may change *status/evidence for its one task* in this design while preserving concurrent Planner edits, and may change code/tests/workflow only for its approved task. Human Reviewer alone marks `ACCEPTED`.
+**Ownership firewall:** During normal AI planning/review, Planner edits **only `docs/AI_PLAYER_DESIGN.md`**. The permanent Planner/Reviewer guide (`docs/AI_PLAYER_PLANNER_REVIEWER_GUIDE.md`) and Agent workflow may be updated **only on an explicit user governance request**, as in AIP-D3. Planner must **NEVER** edit either `AI_PLAYER_HANDOVER.md` or `HANDOVER.md` (nor game source, CI, deployment/test files). Coding Agent alone owns `AI_PLAYER_HANDOVER.md`; it may change *execution status/evidence for its selected task* here while preserving concurrent Planner edits, and may change code/tests/config only when authorized. **`ACCEPTED` requires human Product Owner decision or explicitly delegated technical acceptance authority**. Neither Agent completion nor green CI grants acceptance.
 
 ## 1. Product goal and progressive definition of "smart"
 
@@ -156,14 +157,14 @@ Official references to recheck before live implementation:
 
 ## 6. Delivery roadmap (broad; NOT a standing execution queue)
 
-Each row is a **bounded phase goal**, not permission to implement every task. Break further into one-testable-concern slices at the planning boundary. Next item only after human accepts the previous item.
+Each row is a **long-term phase goal**. A task is executable only if the **detailed specification below** is complete and its status is **APPROVED** with all dependencies **ACCEPTED**. The user authorized a bounded initial AIP-00B → AIP-00C → AIP-01 batch in the 2026-10-17 design-driven automation discussion; this does **not** accept any completed task, bypass cloud rights/cost consent, or authorize DRAFT stages.
 
 | Stage | ID | Deliverable | Principal evidence | Status |
 | --- | --- | --- | --- | --- |
 | Bootstrap | **AIP-00A** | Feature-branch CI gate, no production deploy, Markdown-only ignores | validated exact SHA, no deploy job | **PENDING_REVIEW** |
-| Staging | **AIP-00B** | Separate Worker, separate D1, safe manual deployment and iPhone URL | actual URL, unique DB UUID, migrations, mobile smoke | DRAFT |
-| Automation | **AIP-00C** | Code pushes deploy to Staging only after full CI | exact SHA deploy, production unaffected, docs-only ignores | DRAFT |
-| AI lab | AIP-01 | Offline/read-only OpenAI Decision Prototype (mock first, tiny opt-in live eval) | 10–20 anonymous fixtures, valid candidate IDs, latency, usage report | DRAFT |
+| Staging | **AIP-00B** | Separate Worker, separate D1, safe manual deployment and iPhone URL | actual URL, unique DB UUID, migrations, mobile smoke | **APPROVED — WAITING AIP-00A ACCEPTANCE** |
+| Automation | **AIP-00C** | Code pushes deploy to Staging only after full CI | exact SHA deploy, production unaffected, docs-only ignores | **APPROVED — WAITING AIP-00B ACCEPTANCE** |
+| AI lab | AIP-01 | Offline/read-only OpenAI Decision Prototype (mock first, tiny opt-in live eval) | 10–20 anonymous fixtures, valid candidate IDs, latency, usage report | **APPROVED — MOCK/OFFLINE ONLY UNTIL LIVE BUDGET GATE; WAITING AIP-00C ACCEPTANCE** |
 | Legal contracts | AIP-02 | Canonical BotObservation and narrowly scoped legal candidates | privacy, valid cards/targets, stale decisions | DRAFT |
 | Player identity | AIP-03 | Dedicated bot seats and host-only lobby lifecycle | auth/race tests; no Test Player token reuse | DRAFT |
 | Shared action | AIP-04 | Bot Executor through existing canonical server validation | no forged actor, replay, stale revision, card loss | DRAFT |
@@ -174,7 +175,7 @@ Each row is a **bounded phase goal**, not permission to implement every task. Br
 | Memory AI | AIP-09 | Public-action identity inference and tactical memory | provenance and hidden-role privacy tests | DRAFT |
 | Release | AIP-10 | Full reliability, privacy and production-readiness review | staging evidence, separate user production approval | DRAFT |
 
-**Dependency:** AIP-00A ACCEPTED + human approval of AIP-00B → Staging mobile acceptance + approval of AIP-00C → automatic Staging accepted + approval of AIP-01. Nothing is auto-authorized beyond the current task. Later tasks depend on accepted predecessors; no bot release to production without a separate explicit user decision.
+**Dependency / automation rule:** AIP-00A remains **PENDING_REVIEW** and must be ACCEPTED by the human or authorized delegate first. Then the already detailed, bounded APPROVED tasks AIP-00B → AIP-00C → AIP-01 become eligible **automatically when each prior task is ACCEPTED**, not when merely PENDING_REVIEW. Coding Agent does not need another pasted task. AIP-00B needs verified Cloudflare permissions; AIP-01 live paid calls require a separate explicit maximum-spend/data gate; mock-only work is approved. AIP-02+ are **DRAFT**, not automatically executable. Agent may undertake independent APPROVED work while other tasks await review only if dependencies and code ownership are genuinely independent. No bot production release without a new user decision.
 
 
 
@@ -194,7 +195,7 @@ Each row is a **bounded phase goal**, not permission to implement every task. Br
 
 ### AIP-00B — Provision isolated, mobile-accessible Staging
 
-**Status: DRAFT — only approve after human acceptance of AIP-00A.**
+**Status: APPROVED (dependency-gated). Priority: P0. Dependencies: AIP-00A ACCEPTED.** This task was pre-approved as part of the initial Staging batch; **do not execute while AIP-00A is pending**. Cloudflare account permissions must be verified before any remote operation.
 
 **Goal:** deploy the unmodified WTK application to a **separate** Cloudflare Worker and NEW D1 database; create a real HTTPS URL usable in iPhone Safari. No AI model calls in this step.
 
@@ -206,7 +207,7 @@ Each row is a **bounded phase goal**, not permission to implement every task. Br
 
 ### AIP-00C — CI-gated automatic Staging deployment
 
-**Status: DRAFT — only approve after AIP-00B is accepted.**
+**Status: APPROVED (dependency-gated). Priority: P0. Dependencies: AIP-00B ACCEPTED.** No auto-deploy setup or production workflow changes until the user has accepted real mobile Staging.
 
 **Goal:** after all feature-branch CI jobs pass on a source change, automatically apply migrations against **only Staging D1** and deploy **only the Staging Worker**, followed by health/room smoke. No deploy on PRs or pure Markdown updates. Use existing workflow or isolated staging job, with exact `refs/heads/feature/smart-bot-player` push condition and protected Cloudflare credentials. Production `deploy` job and its root database target remain unchanged; no production access from Staging job.
 
@@ -214,7 +215,7 @@ Each row is a **bounded phase goal**, not permission to implement every task. Br
 
 ### AIP-01 — Offline OpenAI decision lab, no live bots
 
-**Status: DRAFT — NOT authorized until AIP-00A/B/C are all human ACCEPTED and AIP-01 is separately approved.**
+**Status: APPROVED for fully offline/mock implementation (dependency-gated). Priority: P1. Dependencies: AIP-00C ACCEPTED.** Live OpenAI API calls, additional paid services or transmitting real-player data remain **BLOCKED without a separate explicit cost/data-sharing approval**. The agent may implement an opt-in script that is OFF by default, but must not invoke real API calls until explicitly authorized.
 
 **Goal:** demonstrate that a single OpenAI call can choose a valid candidate from a small, privacy-safe, trustworthy WTK tactical snapshot, without affecting rooms, D1 or UI.
 
@@ -227,7 +228,7 @@ Each row is a **bounded phase goal**, not permission to implement every task. Br
 6. Use `gpt-6-luna` with OpenAI Responses API and strict JSON schema, `store:false` where supported, optional low reasoning effort as benchmark; record per-call elapsed time, token usage, calculated/actual costs if available, chosen action and validity. Compare mocked vs live.
 7. Produce concise reviewer artifact/report with fixture-level decisions, expected/actual and failures; don't touch live rooms, game engine, production secrets, database schema, UX, or existing handovers except the AI agent's own handover.
 
-**Acceptance:** mocked tests deterministic/offline; no secrets in git/logs; all successful responses select supplied IDs; malformed and unauthorized outputs fail closed; at least 10 valid privacy-reviewed scenarios; optional live run is **reported honestly** as not run if API key/permission unavailable. If live evaluation is blocked by key or rate limit, request the smallest user action instead of treating it as a code defect. CI green for any code commit. Stop at PENDING_REVIEW.
+**Acceptance:** mocked tests deterministic/offline; no secrets in git/logs; all successful responses select supplied IDs; malformed and unauthorized outputs fail closed; at least 10 valid privacy-reviewed scenarios; optional live run is **reported honestly** as not run if API key/permission/budget unavailable. AIP-01 may be submitted PENDING_REVIEW with robust mock coverage and the real-call capability disabled. If live evaluation is desired, obtain explicit user approval of hard cost/request budget and secure API key; never infer free tokens guarantee free usage. CI green for any code commit. After PENDING_REVIEW, re-evaluate the design queue for *independent* approved work; do not self-accept.
 
 ### AIP-02 — Bot Observation + Canonical Legal Candidates
 
@@ -237,7 +238,7 @@ Inspect `app/api/rooms/route.ts`, `game/protocol.d.ts`, `game/responses.ts`, cap
 
 ### Later-task decomposition policy
 
-For AIP-03–AIP-10, Planner must prepare one bounded English task only when previous review identifies the next genuine gap. Each must specify: authority, code entry points, data contract, exact permitted files, explicit exclusions, focused tests including privacy/replay/concurrency when relevant, CI evidence, stop boundary, and human UX/release gate where applicable. Do not dump multi-phase work into the handover.
+For AIP-02–AIP-10, Planner must prepare detailed bounded English specifications **in THIS design file** before changing any DRAFT task to APPROVED. Each must specify verified code anchors, exact permitted files and data contracts, step-by-step changes, dependencies and priority, explicit exclusions, focused privacy/replay/concurrency tests, CI/real Staging verification and human UX/release gates. The human may approve a clearly enumerated batch once; Agent will then automatically find the eligible tasks. Do not rely on a verbal summary or handover as the spec. Do not assume a broad roadmap row is implementation authorization.
 
 ## 8. Runtime reliability and AI cost contracts (future implementation gates)
 
@@ -249,25 +250,30 @@ For AIP-03–AIP-10, Planner must prepare one bounded English task only when pre
 - Durable scheduling requires at-least-once processing and compare-and-swap/lease semantics, with test evidence after simulated restart/duplicate wakeups.
 - Keep private roles and hands away from telemetry; sanitize diagnostics; policy explanations shown to users should be public-safe, not reveal bot-private cards or unproven enemy identity.
 
-## 9. Agent execution and reviewer feedback loop
+## 9. Design-driven autonomous implementation and independent review
 
-**Task state machine:** `DRAFT` → `APPROVED` → `IN_PROGRESS` → `PENDING_REVIEW` → `ACCEPTED`, or `CHANGES_REQUESTED` / `BLOCKED` / `PAUSED_BY_USER`. Only Human Reviewer marks accepted. Agent may adjust the selected task's execution-state/evidence fields, NEVER its acceptance criteria or another task's approval.
+**Governance source for new conversations:** `docs/AI_PLAYER_PLANNER_REVIEWER_GUIDE.md`. **Single Agent execution method:** `docs/AI_PLAYER_AGENT_WORKFLOW.md`. AI task queue **lives HERE**, not in any handover.
 
-**Coding Agent each invocation:**
-1. Inspect active branch, clean/dirty tree and remote commits safely; read complete latest design + `docs/AI_PLAYER_AGENT_WORKFLOW.md` + `AGENTS.md` + its own `AI_PLAYER_HANDOVER.md`.
-2. Compare current design revision and any intervening Planner edits with previous handover, preserve uncommitted work.
-3. If handover is PENDING_REVIEW, BLOCKED or PAUSED, stop. If no in-progress task, choose exactly ONE `APPROVED` task with ACCEPTED prerequisites; update **its own** handover, deleting stale handover preview only when safe. The initial handover currently mentions an old AIP-01 bot-seat preview; it was never started and is superseded by approved AIP-00A (CI).
-4. Before source commits inspect latest exact-SHA relevant branch CI (or validated code-bearing ancestor if HEAD docs-only). If failure, reproduce/repair first, and include scoped CI correction before/with commit. If ambiguous, wait/investigate. Never claim docs SHA green.
-5. Build one bounded slice, focused negative/positive tests, confirm build where required; commit/push only scoped files. Validate exact pushed SHA and run status; if CI fails, repair. Separate documentation-only updates must not trigger CI.
-6. When task meets tests and required CI, mark the single design task `PENDING_REVIEW`, summarize evidence + exact SHA in agent handover and STOP. Do not automatically pick the next task. Human + Planner review and return feedback in **this design file**; only user can accept and approve next.
-7. Never rewrite `HANDOVER.md`, `docs/UX2-refine.md`, OS/overall-game specs or ongoing UX tasks. Do not merge to main or deploy production without explicit user permission.
+**States:** `DRAFT` (not actionable) -> `APPROVED` (fully specified and authorized, may still be dependency-blocked) -> `IN_PROGRESS` (Agent owns one bounded task) -> `PENDING_REVIEW` (evidence submitted) -> `ACCEPTED` (human / explicitly delegated technical reviewer signoff); alternative `CHANGES_REQUESTED` or `BLOCKED`. A future task is not authorized solely because it appears on the Roadmap.
 
-**Planner / Reviewer every review round:** inspect actual diff, tests, exact-SHA CI, Staging URL/deployed SHA when relevant, API usage (if relevant), iPhone screenshots and user feedback. Classify VERIFIED / CODE RISK / UNKNOWN, and write bounded design clarification or follow-up to this file only. Do not treat passed CI as human UX/gameplay acceptance. Don't modify `AI_PLAYER_HANDOVER.md`.
+**Required detail for every APPROVED task:**
+1. Unique ID, title, **Priority**, exact dependencies, clear status and human authorization/risk gate.
+2. Observable objective; verified current code entry points; exact file/contracts touched; explicit non-goals.
+3. Step-by-step implementable instructions precise enough for an Agent to act **without guessing design or requesting a pasted task**.
+4. Named positive/negative tests, privacy/actor/stale/concurrency cases as applicable; exact-SHA GitHub CI expectations and real Staging/iPhone criteria when relevant.
+5. Output evidence: commit SHA, CI run/job outcomes, actual Staging Worker/DB/URL, smoke/AI fixture results, risks; precise STOP condition.
+6. Reviewer feedback appended **to the task** with reproducible expected versus observed behavior and action. Do not silently rewrite completed requirements as a workaround.
+
+**Coding Agent autonomous loop:** after each bounded task, re-fetch the full latest design + workflow + its own handover; reconcile status; prioritize authorized `CHANGES_REQUESTED` corrections; otherwise select highest-priority `APPROVED` task with **all** dependencies `ACCEPTED` and any Cloudflare/API/security gates satisfied. Record only one current task in **its own** `AI_PLAYER_HANDOVER.md`. Implement / focused tests / precommit CI check / push / exact-SHA required checks / Staging if expressly authorized / task evidence -> `PENDING_REVIEW`. Then automatically re-evaluate eligibility. It MAY implement another independent task while the first awaits review if no dependency/conflicting code risk; it MUST NOT self-accept or run dependent tasks. If no eligible task, stop `WAITING_FOR_REVIEW` or `BLOCKED` and report the smallest missing decision/permission. Automatic selection only works while an Agent execution session or external runner is active; a Markdown spec does not self-schedule background execution.
+
+**Planner / Reviewer review loop:** every new design/review session first reads `docs/AI_PLAYER_PLANNER_REVIEWER_GUIDE.md`, this current document, the read-only `AI_PLAYER_HANDOVER.md`, relevant source and GitHub CI. Search `PENDING_REVIEW`/**`CHANGES_REQUESTED`** in **this design file**, not just handover. Inspect actual diff, exact-SHA code-bearing CI jobs, Staging deployed SHA/URL where relevant, privacy and iPhone evidence, record `VERIFIED` / `RISK` / `UNKNOWN`. If issues, set `CHANGES_REQUESTED` with numbered actionable fixes. If passed, recommend acceptance, then mark `ACCEPTED` **only when human has accepted or explicitly delegated the particular category of technical acceptance**. Never touch any handover; only Agent can reconcile stale handover after the design changes. Human still approves production, model-data sharing, budget and phone UX.
+
+**Scope/ownership:** Planner may update **this** design. Under direct user governance request only, Planner may update its own guide or Agent workflow. Agent may alter only status/evidence for the **selected task**, not requirements or approvals. Both preserve remote concurrent changes; stop on conflicts. UX2 `HANDOVER.md`, OS/core-game and UX2 documents never change as a side effect.
 
 ## 10. Review gates and unresolved product decisions
 
-**Approved now:** independent AI feature branch and design authority; OpenAI API as planned backend; mandatory separate mobile-accessible Staging Worker/D1; CI first (AIP-00A), then safe Staging bootstrap (AIP-00B), then staging-only automatic deploy (AIP-00C), then decision lab (AIP-01); no production merge/deploy; one-agent PENDING_REVIEW workflow. **Only AIP-00A is authorized to start now.**
+**Design-driven execution approved:** independent AI branch, OpenAI backend, isolated mobile-accessible Staging, CI safety, and an initial *detailed* task batch AIP-00B, AIP-00C and AIP-01 (mock-only until cost gate). Agent picks tasks automatically from approved detailed specs when dependencies are **ACCEPTED**. AIP-00A remains PENDING_REVIEW and is NOT automatically accepted. No production deployment, hidden data transmission or paid API use granted by this batch.
 
 **Still requires explicit human review before corresponding phase:** real player bot/human room composition (default one human host), whether bots can replace absent humans (defer), bot difficulty setting (defer), selection of durable scheduler technology (defer), human-facing bot pacing/reason display, live player-data external transmission/retention, live API financial budget, first usable match acceptance rubric.
 
-**After AIP-00A returns PENDING_REVIEW:** human checks CI + no-deploy evidence; if satisfied, marks AIP-00A ACCEPTED and explicitly authorizes AIP-00B. After iPhone Staging acceptance, approve AIP-00C. Only then authorize AIP-01. The Planner updates only this design; the Coding Agent updates only its handover and selected task status. Do not start AIP-00B or AIP-01 as part of AIP-00A delivery.
+**Current reviewer gate:** AIP-00A has exact-SHA CI success and production deploy skipped, with prior Planner technical recommendation to accept; **human acceptance is still needed** unless explicitly delegated. After `AIP-00A ACCEPTED`, AIP-00B becomes automatically eligible for AA without any new copied prompt, provided Cloudflare permissions/targets are verified. After human iPhone acceptance of AIP-00B, AIP-00C automatically becomes eligible; then mock-only AIP-01. The Planner writes statuses/feedback **only here**; Coding Agent alone maintains AI handover. Do not start dependent work while its prerequisite remains pending review.
