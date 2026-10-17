@@ -2,7 +2,9 @@
 
 Branch: `feature/smart-bot-player`
 
-Design authority: `docs/AI_PLAYER_DESIGN.md` — AIP-D4
+Design authority: `docs/AI_PLAYER_DESIGN.md` — AIP-D5
+
+Latest Planner review: design commit `7124f9d` records iPhone create/refresh acceptance as the remaining gate and identifies the Staging-target build check required for AIP-00C. Revision commit: `429b651`.
 
 Workflow: `docs/AI_PLAYER_AGENT_WORKFLOW.md` — AIP-AUTO-1
 
@@ -14,7 +16,7 @@ Workflow: `docs/AI_PLAYER_AGENT_WORKFLOW.md` — AIP-AUTO-1
 - `wrangler.jsonc` defines `env.ai-staging` as Worker `three-kingdoms-ai-staging`, with `workers_dev: true`, only the new Staging D1 binding, and `BOT_AI_ENABLED=false`. A `CLOUDFLARE_ENV=ai-staging npm run build` build plus config assertions and Wrangler dry-run confirmed this exact target. The root production DB binding is unchanged.
 - Deployed from branch SHA `9b36442` to `https://three-kingdoms-ai-staging.dai-jinge.workers.dev`; Cloudflare version `b722630a-5794-4f04-ba2c-ae2def827828`. Wrangler confirmed the deployed Worker binds to the Staging D1 and `BOT_AI_ENABLED=false`.
 - Live smoke: `/` returned HTTP 200, `/api/health` returned HTTP 200, room creation returned HTTP 201, and authenticated lobby read returned HTTP 200 for room `ZNPR5` with one host. The production Worker deployment listing was unchanged by this task; all D1 migration commands explicitly targeted the Staging database. No production Worker deployment or D1 migration was run by this task.
-- **Human review required:** Open the URL in iPhone Safari, create a room using a display name, and confirm the lobby and room code are usable. Record acceptance or any feedback in `docs/AI_PLAYER_DESIGN.md`. The API key is not needed for AIP-00B; `BOT_AI_ENABLED` remains false.
+- **Human review required:** Open the URL in iPhone Safari, create a room using a display name, confirm the lobby and room code, then refresh/rejoin and confirm the session persists. The user reports that the Staging game is accessible (2026-10-18); this confirms reachability only, not the complete iPhone acceptance. Record acceptance or feedback in `docs/AI_PLAYER_DESIGN.md`. No API key is needed for AIP-00B; `BOT_AI_ENABLED` remains false.
 
 ## Exactly one current task — AIP-00B
 
