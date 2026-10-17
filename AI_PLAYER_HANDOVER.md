@@ -4,20 +4,16 @@ Branch: `feature/smart-bot-player`
 
 Design authority: `docs/AI_PLAYER_DESIGN.md` — AIP-D5
 
-Latest Planner review: design commit `7124f9d` records iPhone create/refresh acceptance as the remaining gate and identifies the Staging-target build check required for AIP-00C. Revision commit: `429b651`.
-
 Workflow: `docs/AI_PLAYER_AGENT_WORKFLOW.md` — AIP-AUTO-1
 
-## Current state: PENDING_REVIEW — AIP-00B
+## Current state: IN_PROGRESS — AIP-00C
 
-- AIP-00A was explicitly accepted by the human Product Owner in design commit `4ad98b9151fc2c1e373897b8ca7adf5335c657ee`. Its workflow commit `75073b6bbfffe9281223ef1eaac85349496224af` passed [Actions run 39058906244](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39058906244); production deploy was skipped.
-- AIP-00B config/code commit `fd78a100edd7c629db12b989613be3d3d416852b` passed exact-SHA [Actions run 39075595817](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39075595817): lint/build/fast tests, API tests, and browser startup/room smoke passed; production deploy was skipped. Later branch commits only update this handover and AIP-00B design evidence.
-- Wrangler 4.128.0 account was verified for D1/Workers write access. Created isolated D1 `three-kingdoms-ai-staging-db`, UUID `62616495-59ea-4a9c-b669-2d3267a83cab`, separate from production UUID `3151997a-f69e-4a45-ab51-9e4fd062aeb3`. Applied all checked-in migrations `0000`–`0012` only with `--remote --env ai-staging`; follow-up migration listing reports none pending, and a read-only query confirms the application tables.
-- `wrangler.jsonc` defines `env.ai-staging` as Worker `three-kingdoms-ai-staging`, with `workers_dev: true`, only the new Staging D1 binding, and `BOT_AI_ENABLED=false`. A `CLOUDFLARE_ENV=ai-staging npm run build` build plus config assertions and Wrangler dry-run confirmed this exact target. The root production DB binding is unchanged.
-- Deployed from branch SHA `9b36442` to `https://three-kingdoms-ai-staging.dai-jinge.workers.dev`; Cloudflare version `b722630a-5794-4f04-ba2c-ae2def827828`. Wrangler confirmed the deployed Worker binds to the Staging D1 and `BOT_AI_ENABLED=false`.
-- Live smoke: `/` returned HTTP 200, `/api/health` returned HTTP 200, room creation returned HTTP 201, and authenticated lobby read returned HTTP 200 for room `ZNPR5` with one host. The production Worker deployment listing was unchanged by this task; all D1 migration commands explicitly targeted the Staging database. No production Worker deployment or D1 migration was run by this task.
-- **Human review required:** Open the URL in iPhone Safari, create a room using a display name, confirm the lobby and room code, then refresh/rejoin and confirm the session persists. The user reports that the Staging game is accessible (2026-10-18); this confirms reachability only, not the complete iPhone acceptance. Record acceptance or feedback in `docs/AI_PLAYER_DESIGN.md`. No API key is needed for AIP-00B; `BOT_AI_ENABLED` remains false.
+- AIP-00A is ACCEPTED; AIP-00B is accepted by the Product Owner's direct instruction on 2026-10-18 to proceed after the review gate was summarized. This records human authorization; the specific iPhone refresh/rejoin checks were not separately reported as observed.
+- AIP-00B evidence: Worker `three-kingdoms-ai-staging` at https://three-kingdoms-ai-staging.dai-jinge.workers.dev, version `b722630a-5794-4f04-ba2c-ae2def827828`; isolated D1 UUID `62616495-59ea-4a9c-b669-2d3267a83cab`, migrations `0000`–`0012` applied. Health and room create/read smoke passed. Production Worker/DB were not targeted. Exact config CI SHA `fd78a100edd7c629db12b989613be3d3d416852b`, [run 39075595817](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39075595817), passed all validation; deploy skipped.
+- AIP-00C: implement CI-gated, Staging-only automatic migration/deploy after all validation jobs succeed on source pushes to `feature/smart-bot-player`; preserve PR, Markdown-only, `main`, `ux-v2`, and production deployment behavior. Never stage a default Vinext build artifact.
+- Mandatory safety gate: build with `CLOUDFLARE_ENV=ai-staging`, verify generated Worker name, exact Staging D1 UUID, production UUID exclusion, `workers_dev`, and `BOT_AI_ENABLED=false`; dry-run the generated artifact before any migration/deploy. GitHub environment `ai-staging` is restricted to `feature/smart-bot-player` and admin bypass is disabled. Its environment-secret list is empty; existing repository Cloudflare secrets are passed only to migration/deploy steps.
+- Starting branch HEAD: `3e52a567a004094c471f86dc7adb1e2cbd774158` (docs-only); latest validated code SHA is `fd78a100edd7c629db12b989613be3d3d416852b`.
 
-## Exactly one current task — AIP-00B
+## Exactly one current task — AIP-00C
 
-Review the real HTTPS lobby on iPhone Safari, then mark AIP-00B ACCEPTED or record specific feedback. Do not start AIP-00C or AIP-01 before AIP-00B is accepted. No OpenAI calls, secrets, production changes, or gameplay changes are part of this task.
+Inspect `.github/workflows/deploy.yml`, repository secrets by name only, current package/build scripts and relevant exact-SHA CI; implement focused staging target assertions and a fail-closed staging job. Validate source workflow changes before committing, push, verify exact-SHA checks, and inspect the job graph/target. Do not invoke production deploy, production migrations, OpenAI, or any live AI gameplay. Submit AIP-00C as `PENDING_REVIEW` and stop.
