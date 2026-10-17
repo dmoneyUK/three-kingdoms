@@ -2703,7 +2703,7 @@ Profile command measurements:
   projected exchange was equal after excluding the viewer-local countdown.
   The technical delivery remains pending user phone review. H4 was not changed.
 
-### UX2-10.8.2.2-H2-G1-NAME-F — 2026-10-17 (local implementation)
+### UX2-10.8.2.2-H2-G1-NAME-F — 2026-10-17 (technical delivery)
 
 - Current production baseline showed a 28.8125px name scrim at 390×700 and
   440×894, although its font line-height was 10px. A more-specific final CSS
@@ -2716,7 +2716,12 @@ Profile command measurements:
   for four seats and 16.5px for side seats. Long Latin/Chinese names remained
   available through matching `aria-label`/`title`, while visible text ellipsized.
   HP, status, SWITCH and stage/H4 safe-zone clearance assertions passed.
-- Local build and targeted ESLint passed. Exact-SHA CI/deployment and the
-  post-deployment production screenshot/measurement remain open. H2-G1 overall
-  remains not accepted due to separate Inspect feedback; this slice is pending
-  user phone review. Q1–Q4 are deferred and accepted H4 remains unchanged.
+- Local build and targeted ESLint passed. Exact-SHA run `39059323732` passed
+  all CI/deploy jobs for `8d63b56efac5255c4f2bb7108639dc8ee696275e` and
+  production smoke; deployed Worker `1d83b4ad-8002-4494-9b4c-1144c3547189`.
+  Active-room production Test Switch screenshots/measurements at 390×700 and
+  440×894 confirmed 13px after-fix height versus the 28.8125px baseline, with
+  full accessible names intact. Evidence: `/tmp/wtk-h2g1-name-f-production/`.
+  H2-G1 overall remains not accepted due to separate Inspect feedback; this
+  slice is pending user phone review. Q1–Q4 are deferred and accepted H4 remains
+  unchanged.

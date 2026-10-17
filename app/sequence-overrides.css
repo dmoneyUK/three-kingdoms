@@ -4836,3 +4836,35 @@
     padding-block: 1px;
   }
 }
+
+/* UX2 §10.13.4.1 U13-D-F: keep HP at the left and cluster only real Equipment
+   at the right, leaving the strip's flexible middle as the visible gap. */
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-hp-chip {
+  font-size: 11px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-equipment-summary {
+  justify-content: flex-end;
+  gap: 1.5px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-equipment-indicator {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 14px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-equipment-indicator[data-slot$="Horse"] {
+  flex-basis: 13px;
+  width: 13px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-equipment-indicator svg {
+  width: 11px;
+  height: 11px;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-status-equipment-strip .opponent-equipment-summary {
+  justify-content: flex-end;
+  gap: 0;
+}
