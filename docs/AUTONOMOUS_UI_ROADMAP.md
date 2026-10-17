@@ -2840,6 +2840,10 @@ Profile command measurements:
   spacing, H4 drift/movement, readability, protected-area collisions and
   reduced motion. `npm run build` and `git diff --check` passed. Targeted local
   ESLint hit the Node heap limit.
-- Exact-SHA Actions/deploy has not yet run for this change. Pending CI/deploy
-  and user phone review; the earlier U13-F no-change measurement remains a
-  pre-implementation baseline, not the final outcome.
+- Commit `2d6c2bbb8a0770d13c3c9f0cadfbfcefecfcc44` passed exact-SHA Actions run
+  [`39076355080`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39076355080):
+  lint/fast, API, browser startup/room smoke, D1 migrations, build, Worker
+  deploy and production `/` + `/api/health` smoke. Worker version
+  `8bc9f9d4-699c-471b-bbf4-b02fd2fbedd5`. The CI browser job was startup/room
+  smoke, not the focused gameplay specs. Pending user phone review; the earlier
+  U13-F no-change measurement remains a pre-implementation baseline.
