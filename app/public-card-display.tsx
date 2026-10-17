@@ -32,6 +32,11 @@ type PublicCardDisplayMotion = {
   scopeKey: string;
   freshEventIds: readonly string[];
 } | {
+  type: "group-root";
+  /** Stable across every checkpoint of one proven physical Group root. */
+  scopeKey: string;
+  freshEventIds: readonly string[];
+} | {
   type: "duel";
   /** Room and proven Duel identity keep retained card state isolated. */
   scopeKey: string;
@@ -1901,6 +1906,27 @@ function singleTargetJourneyEvents(action: PublicCardDisplayAction, sourceName: 
   return events.sort((left, right) => (left.globalOrdinal ?? 0) - (right.globalOrdinal ?? 0));
 }
 
+type SingleTargetJourneyMotion = Extract<PublicCardDisplayMotion, { type: "negation" | "single-target" | "group-root" | "lust-cost" }>;
+
+function singleTargetJourneyMotion(motion: PublicCardDisplayMotion | undefined): SingleTargetJourneyMotion | null {
+  return motion?.type === "negation" || motion?.type === "single-target"
+    || motion?.type === "group-root" || motion?.type === "lust-cost"
+    ? motion
+    : null;
+}
+
+function preserveGroupRootJourneyEvents(
+  incoming: readonly JourneyCard[],
+  previous: readonly SingleTargetJourneyCard[],
+): JourneyCard[] {
+  const incomingIds = new Set(incoming.map((event) => event.eventId));
+  const root = incoming.filter((event) => event.role === "root");
+  const newResponses = incoming.filter((event) => event.role !== "root");
+  const retained = previous.filter((event) => !incomingIds.has(event.eventId));
+  return [...root, ...retained, ...newResponses].sort((left, right) =>
+    (left.globalOrdinal ?? 0) - (right.globalOrdinal ?? 0));
+}
+
 function SingleTargetCardJourney({
   action,
   enabled,
@@ -1924,7 +1950,7 @@ function SingleTargetCardJourney({
   onJourneySettled?: (settlementEventId: string) => void;
   onJourneyEventParked?: (eventId: string) => void;
 }) {
-  const motion = action.motion?.type === "negation" || action.motion?.type === "single-target" || action.motion?.type === "lust-cost" ? action.motion : null;
+  const motion = singleTargetJourneyMotion(action.motion);
   const scopeKey = motion?.scopeKey ?? action.rootEventId;
   const [journey, setJourney] = useState<SingleTargetJourneyState>({ scopeKey: "", viewerId: "", cards: [], center: null });
   const journeyRef = useRef(journey);
@@ -1938,7 +1964,10 @@ function SingleTargetCardJourney({
   const parkedNotifiedEventIdsRef = useRef(new Set<string>());
   const traceSignaturesRef = useRef(new Map<string, string>());
   const incoming = singleTargetJourneyEvents(action, sourceName);
-  const eventSignature = incoming.map((event) => `${event.eventId}:${event.actorId}:${event.cardFace.id}`).join(",");
+  const journeyEvents = motion?.type === "group-root" && journeyRef.current.scopeKey === scopeKey
+    ? preserveGroupRootJourneyEvents(incoming, journeyRef.current.cards)
+    : incoming;
+  const eventSignature = journeyEvents.map((event) => `${event.eventId}:${event.actorId}:${event.cardFace.id}`).join(",");
   const freshSignature = motion?.freshEventIds.join(",") ?? "";
 
   useLayoutEffect(() => {
@@ -1965,12 +1994,12 @@ function SingleTargetCardJourney({
 
   useLayoutEffect(() => {
     const currentAction = actionRef.current;
-    const currentMotion = currentAction.motion?.type === "negation" || currentAction.motion?.type === "single-target" || currentAction.motion?.type === "lust-cost" ? currentAction.motion : null;
+    const currentMotion = singleTargetJourneyMotion(currentAction.motion);
     const currentSourceName = sourceNameRef.current;
     if (!enabled || !currentMotion || !currentSourceName) return;
     const center = currentMotion.type === "lust-cost" && currentAction.lustCostFrame
       ? battlefieldLustCostCard()
-      : battlefieldCenterCard(REVEAL_CARD, currentMotion.type === "negation"
+      : battlefieldCenterCard(REVEAL_CARD, currentMotion.type === "negation" || currentMotion.type === "group-root"
         ? { reserveSeatHistoryDepth: 2 }
         : { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
     const previous = journeyRef.current;
@@ -1978,13 +2007,13 @@ function SingleTargetCardJourney({
     const viewerChanged = sameInteraction && previous.viewerId !== viewerId;
     const priorById = new Map(previous.cards.map((card) => [card.eventId, card]));
     const fresh = new Set(currentMotion.freshEventIds);
-    const latestFreshEventId = [...singleTargetJourneyEvents(currentAction, currentSourceName)].reverse()
+    const latestFreshEventId = [...journeyEvents].reverse()
       .find((event) => fresh.has(event.eventId))?.eventId ?? null;
-    const latestFreshResponseEventId = [...singleTargetJourneyEvents(currentAction, currentSourceName)].reverse()
+    const latestFreshResponseEventId = [...journeyEvents].reverse()
       .find((event) => event.role === "response" && fresh.has(event.eventId) && !priorById.has(event.eventId))?.eventId ?? null;
     const occupied: CardRect[] = [];
     const actorIndexes = new Map<string, number>();
-    const cards = singleTargetJourneyEvents(currentAction, currentSourceName).map((event) => {
+    const cards = journeyEvents.map((event) => {
       const old = priorById.get(event.eventId);
       const actorIndex = actorIndexes.get(event.actorId) ?? 0;
       actorIndexes.set(event.actorId, actorIndex + 1);
@@ -2202,9 +2231,10 @@ function SingleTargetCardJourney({
         const current = journeyRef.current;
         if (current.scopeKey !== scopeKey) return;
         const currentAction = actionRef.current;
-        const center = currentAction.motion?.type === "lust-cost" && currentAction.lustCostFrame
+        const currentMotion = singleTargetJourneyMotion(currentAction.motion);
+        const center = currentMotion?.type === "lust-cost" && currentAction.lustCostFrame
           ? battlefieldLustCostCard()
-          : battlefieldCenterCard(REVEAL_CARD, currentAction.motion?.type === "negation"
+          : battlefieldCenterCard(REVEAL_CARD, currentMotion?.type === "negation" || currentMotion?.type === "group-root"
             ? { reserveSeatHistoryDepth: 2 }
             : { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
         const occupied: CardRect[] = [];
@@ -3040,7 +3070,8 @@ export function PublicCardDisplay({
   if (action.motion?.type === "attack-dodge") {
     return <AttackDodgeCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} roomCode={roomCode} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
   }
-  if (action.motion?.type === "single-target" || action.motion?.type === "negation" || action.motion?.type === "lust-cost") {
+  if (action.motion?.type === "single-target" || action.motion?.type === "negation"
+    || action.motion?.type === "group-root" || action.motion?.type === "lust-cost") {
     return <SingleTargetCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {

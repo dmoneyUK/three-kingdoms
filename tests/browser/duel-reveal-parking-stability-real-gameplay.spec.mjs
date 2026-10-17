@@ -61,8 +61,8 @@ async function seedDuelNegationHistory(request, playerCount) {
   };
 }
 
-async function seedGroupTargetNegationHistory(request) {
-  const prefix = "group-negation-seat-history";
+async function seedGroupTargetNegationHistory(request, cardKind = "RainingArrows", responseKind = "Dodge") {
+  const prefix = `group-negation-seat-history-${cardKind.toLowerCase()}`;
   const rootCardId = `${prefix}-root`;
   const sourceNegationId = `${prefix}-source-negation`;
   const targetNegationId = `${prefix}-target-negation`;
@@ -72,8 +72,8 @@ async function seedGroupTargetNegationHistory(request) {
       phase: "play",
       turnSeat: 0,
       players: [
-        { name: "GROUP SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [card("RainingArrows", rootCardId), card("Negation", sourceNegationId, "♥")] },
-        { name: "GROUP TARGET", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [card("Negation", targetNegationId, "♦"), card("Dodge", `${prefix}-dodge`)] },
+        { name: "GROUP SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [card(cardKind, rootCardId), card("Negation", sourceNegationId, "♥")] },
+        { name: "GROUP TARGET", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [card("Negation", targetNegationId, "♦"), card(responseKind, `${prefix}-${responseKind.toLowerCase()}`)] },
         { name: "GROUP PRIVATE LOSER", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [card("Negation", losingNegationId, "♣")] },
         { name: "GROUP FOURTH SEAT", role: "Renegade", hero: "simayi", hp: 4, maxHp: 4, hand: [card("Dodge", `${prefix}-fourth-dodge`)] },
       ],
@@ -708,96 +708,127 @@ test("server-proven Duel Negation counters retain their ordered author-seat hist
   }
 });
 
-test("server-proven Group-target Negation counters retain physical cards at their authors' seats", async ({ page, request }, testInfo) => {
-  test.setTimeout(120_000);
-  const pageErrors = [];
-  page.on("pageerror", (error) => pageErrors.push(`${error.name}: ${error.message}`));
-  page.on("console", (message) => {
-    if (message.type() === "error" && message.text().includes("[GameRoom render failure]")) pageErrors.push(message.text());
+for (const { cardKind, responseKind } of [
+  { cardKind: "BarbarianInvasion", responseKind: "Attack" },
+  { cardKind: "RainingArrows", responseKind: "Dodge" },
+]) {
+  test(`server-proven ${cardKind} Negation counters retain physical cards at their authors' seats`, async ({ page, request }, testInfo) => {
+    test.setTimeout(120_000);
+    const pageErrors = [];
+    page.on("pageerror", (error) => pageErrors.push(`${error.name}: ${error.message}`));
+    page.on("console", (message) => {
+      if (message.type() === "error" && message.text().includes("[GameRoom render failure]")) pageErrors.push(message.text());
+    });
+
+    const room = await seedGroupTargetNegationHistory(request, cardKind, responseKind);
+    await openPlayer(page, room, 0);
+    const started = await request.post(`${API}/api/rooms`, {
+      data: { action: "play_card", code: room.code, token: room.players[0].token, cardId: room.rootCardId },
+    });
+    expect(started.ok()).toBeTruthy();
+    const firstState = (await view(request, room, 0));
+    const firstWindowId = firstState.currentAction?.negationWindowId;
+    expect(firstWindowId).toBeTruthy();
+    expect(firstState.presentationSnapshot?.reactionChain?.groupTargetEffectScope?.targetId).toBeTruthy();
+
+    await submitEarlyNegationWinner(request, room, 0, room.sourceNegationId);
+    await submitEarlyNegationWinner(request, room, 1, room.targetNegationId);
+
+    const publicState = await view(request, room, 0);
+    expect(publicState.currentAction?.negationWindowId).toBeTruthy();
+    await adjustNegationClock(request, room, publicState.currentAction.negationWindowId, "hold");
+    const rootEvent = publicState.timeline.find((event) => event.type === "card" && event.card?.id === room.rootCardId);
+    const sourceCounter = publicState.timeline.find((event) => event.type === "card" && event.card?.id === room.sourceNegationId);
+    const targetCounter = publicState.timeline.find((event) => event.type === "card" && event.card?.id === room.targetNegationId);
+    expect(rootEvent).toBeTruthy();
+    expect(sourceCounter).toBeTruthy();
+    expect(targetCounter).toBeTruthy();
+    expect(publicState.presentationSnapshot?.groupParticipantProgress?.rootCardProof).toMatchObject({
+      semantics: "PROVEN",
+      relation: "GROUP_ROOT_CARD",
+      rootEventId: rootEvent.id,
+      rootEventResolutionId: rootEvent.resolutionId,
+      rootCardId: room.rootCardId,
+      sourceId: room.players[0].id,
+      cardKind,
+      targetIds: room.players.slice(1).map(({ id }) => id),
+    });
+    expect(publicState.presentationSnapshot?.reactionChain?.nodes.map((node) => node.actorId)).toEqual([room.players[0].id, room.players[1].id]);
+    expect(publicState.presentationSnapshot?.reactionChain?.publicNodeEventLinks?.map((link) => link.eventId)).toEqual([sourceCounter.id, targetCounter.id]);
+    expect(publicState.timeline.some((event) => event.card?.id === room.losingNegationId)).toBe(false);
+
+    await page.reload();
+    await expect(page.locator(`.local-player-dock[data-player-anchor="${room.players[0].id}"]`)).toBeVisible();
+    const display = page.locator('[data-public-card-motion="group-root"]');
+    await expect(display).toBeVisible({ timeout: 20_000 });
+    await expect(display).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
+    const announcement = display.locator('[data-public-card-announcement="true"]');
+    await expect(announcement).toHaveCount(1);
+    await expect(announcement.locator("small,span,strong")).toHaveCount(0);
+    await expect(display.locator('[data-public-card-journey-event-id]')).toHaveCount(3);
+    for (const [event, player, cardId, ordinal] of [
+      [rootEvent, room.players[0], room.rootCardId, "1"],
+      [sourceCounter, room.players[0], room.sourceNegationId, "2"],
+      [targetCounter, room.players[1], room.targetNegationId, "3"],
+    ]) {
+      const cardElement = display.locator(`[data-public-card-journey-event-id="${event.id}"]`);
+      await expect(cardElement).toHaveAttribute("data-public-card-journey-actor-id", player.id);
+      await expect(cardElement).toHaveAttribute("data-public-card-journey-card-id", cardId);
+      await expect(cardElement).toHaveAttribute("data-public-card-journey-ordinal", ordinal);
+      await expect(cardElement).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 15_000 });
+    }
+    await expect(display.locator('[data-public-card-journey-card-id="' + room.losingNegationId + '"]')).toHaveCount(0);
+    await expect(display.locator('[aria-label="Chronological public card history"] li')).toHaveCount(3);
+    const seatGeometry = await page.evaluate(({ actorIds, eventIds }) => eventIds.map((eventId, index) => {
+      const card = document.querySelector(`[data-public-card-journey-event-id="${eventId}"]`);
+      const seat = [...document.querySelectorAll("[data-player-anchor]")].find((element) => element.dataset.playerAnchor === actorIds[index]);
+      const cardRect = card?.getBoundingClientRect();
+      const seatRect = seat?.getBoundingClientRect();
+      return { actorId: actorIds[index], card: cardRect && { x: cardRect.x, y: cardRect.y, width: cardRect.width, height: cardRect.height }, seat: seatRect && { x: seatRect.x, y: seatRect.y, width: seatRect.width, height: seatRect.height } };
+    }), { actorIds: [room.players[0].id, room.players[0].id, room.players[1].id], eventIds: [rootEvent.id, sourceCounter.id, targetCounter.id] });
+    expect(seatGeometry.every(({ card, seat }) => card && seat)).toBe(true);
+    expect(seatGeometry[0].card.x).toBeGreaterThanOrEqual(seatGeometry[0].seat.x);
+    expect(seatGeometry[1].card.x).toBeGreaterThanOrEqual(seatGeometry[1].seat.x);
+    expect(seatGeometry[2].card.y).toBeGreaterThanOrEqual(seatGeometry[2].seat.y + seatGeometry[2].seat.height);
+    expect(seatGeometry[2].card.y).toBeLessThanOrEqual(seatGeometry[2].seat.y + seatGeometry[2].seat.height + 8);
+    expect(seatGeometry[2].card.x).toBeGreaterThanOrEqual(seatGeometry[2].seat.x);
+    expect(seatGeometry[2].card.x + seatGeometry[2].card.width).toBeLessThanOrEqual(seatGeometry[2].seat.x + seatGeometry[2].seat.width);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(440);
+    await screenshot(page, testInfo, "group-target-negation-history-at-current-counter-window");
+
+    const restoredDisplay = page.locator('[data-public-card-motion="group-root"]');
+    await expect(restoredDisplay.locator('[data-public-card-journey-event-id]')).toHaveCount(3);
+    await expect(restoredDisplay.locator(`[data-public-card-journey-event-id="${targetCounter.id}"]`)).toHaveAttribute("data-public-card-journey-phase", "parked");
+    await expect(restoredDisplay).not.toContainText(room.losingNegationId);
+    await expect(page.getByText("GAME SCREEN ERROR")).toHaveCount(0);
+
+    // These physical Negations are admitted by the proof assertions above. The
+    // root Journey must keep them when the current target leaves NEGATION and
+    // the Group interaction advances to its ordinary response.
+    for (const player of room.players) {
+      const passed = await request.post(`${API}/api/rooms`, {
+        data: { action: "decline_response", code: room.code, token: player.token, context: { windowId: publicState.currentAction.negationWindowId } },
+      });
+      expect(passed.ok()).toBeTruthy();
+    }
+    await expect.poll(async () => (await view(request, room, 1)).currentAction?.requirement ?? null, { timeout: 15_000 }).toBe(responseKind.toLowerCase());
+    const groupResponse = await view(request, room, 1);
+    expect(groupResponse.presentationSnapshot?.groupParticipantProgress?.currentParticipantId).toBe(room.players[1].id);
+    const groupResponseResult = await request.post(`${API}/api/rooms`, {
+      data: { action: "respond", code: room.code, token: room.players[1].token, providerId: "card", cardId: `${room.prefix}-${responseKind.toLowerCase()}` },
+    });
+    expect(groupResponseResult.ok()).toBeTruthy();
+    await expect.poll(async () => (await view(request, room, 0)).presentationSnapshot?.groupParticipantProgress?.currentParticipantId ?? null,
+      { timeout: 15_000 }).toBe(room.players[2].id);
+    await expect(restoredDisplay).toBeVisible();
+    await expect(restoredDisplay).toHaveAttribute("data-public-card-motion", "group-root");
+    for (const event of [rootEvent, sourceCounter, targetCounter]) {
+      await expect(restoredDisplay.locator(`[data-public-card-journey-event-id="${event.id}"]`)).toHaveAttribute("data-public-card-journey-phase", "parked");
+    }
+    await expect(page.locator(`[data-public-card-renderer-kind="static-fallback"][data-public-card-root-event-id="${rootEvent.id}"]`)).toHaveCount(0);
+    expect(pageErrors).toEqual([]);
   });
-
-  const room = await seedGroupTargetNegationHistory(request);
-  await openPlayer(page, room, 0);
-  const started = await request.post(`${API}/api/rooms`, {
-    data: { action: "play_card", code: room.code, token: room.players[0].token, cardId: room.rootCardId },
-  });
-  expect(started.ok()).toBeTruthy();
-  const firstState = (await view(request, room, 0));
-  const firstWindowId = firstState.currentAction?.negationWindowId;
-  expect(firstWindowId).toBeTruthy();
-  expect(firstState.presentationSnapshot?.reactionChain?.groupTargetEffectScope?.targetId).toBeTruthy();
-
-  await submitEarlyNegationWinner(request, room, 0, room.sourceNegationId);
-  await submitEarlyNegationWinner(request, room, 1, room.targetNegationId);
-
-  const publicState = await view(request, room, 0);
-  expect(publicState.currentAction?.negationWindowId).toBeTruthy();
-  await adjustNegationClock(request, room, publicState.currentAction.negationWindowId, "hold");
-  const rootEvent = publicState.timeline.find((event) => event.type === "card" && event.card?.id === room.rootCardId);
-  const sourceCounter = publicState.timeline.find((event) => event.type === "card" && event.card?.id === room.sourceNegationId);
-  const targetCounter = publicState.timeline.find((event) => event.type === "card" && event.card?.id === room.targetNegationId);
-  expect(rootEvent).toBeTruthy();
-  expect(sourceCounter).toBeTruthy();
-  expect(targetCounter).toBeTruthy();
-  expect(publicState.presentationSnapshot?.groupParticipantProgress?.rootCardProof).toMatchObject({
-    semantics: "PROVEN",
-    relation: "GROUP_ROOT_CARD",
-    rootEventId: rootEvent.id,
-    rootEventResolutionId: rootEvent.resolutionId,
-    rootCardId: room.rootCardId,
-    sourceId: room.players[0].id,
-    cardKind: "RainingArrows",
-    targetIds: room.players.slice(1).map(({ id }) => id),
-  });
-  expect(publicState.presentationSnapshot?.reactionChain?.nodes.map((node) => node.actorId)).toEqual([room.players[0].id, room.players[1].id]);
-  expect(publicState.presentationSnapshot?.reactionChain?.publicNodeEventLinks?.map((link) => link.eventId)).toEqual([sourceCounter.id, targetCounter.id]);
-  expect(publicState.timeline.some((event) => event.card?.id === room.losingNegationId)).toBe(false);
-
-  await page.reload();
-  await expect(page.locator(`.local-player-dock[data-player-anchor="${room.players[0].id}"]`)).toBeVisible();
-  const display = page.locator('[data-public-card-motion="negation"]');
-  await expect(display).toBeVisible({ timeout: 20_000 });
-  const announcement = display.locator('[data-public-card-announcement="true"]');
-  await expect(announcement).toHaveCount(1);
-  await expect(announcement.locator("small,span,strong")).toHaveCount(0);
-  await expect(display.locator('[data-public-card-journey-event-id]')).toHaveCount(3);
-  for (const [event, player, cardId, ordinal] of [
-    [rootEvent, room.players[0], room.rootCardId, "1"],
-    [sourceCounter, room.players[0], room.sourceNegationId, "2"],
-    [targetCounter, room.players[1], room.targetNegationId, "3"],
-  ]) {
-    const cardElement = display.locator(`[data-public-card-journey-event-id="${event.id}"]`);
-    await expect(cardElement).toHaveAttribute("data-public-card-journey-actor-id", player.id);
-    await expect(cardElement).toHaveAttribute("data-public-card-journey-card-id", cardId);
-    await expect(cardElement).toHaveAttribute("data-public-card-journey-ordinal", ordinal);
-    await expect(cardElement).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 15_000 });
-  }
-  await expect(display.locator('[data-public-card-journey-card-id="' + room.losingNegationId + '"]')).toHaveCount(0);
-  await expect(display.locator('[aria-label="Chronological public card history"] li')).toHaveCount(3);
-  const seatGeometry = await page.evaluate(({ actorIds, eventIds }) => eventIds.map((eventId, index) => {
-    const card = document.querySelector(`[data-public-card-journey-event-id="${eventId}"]`);
-    const seat = [...document.querySelectorAll("[data-player-anchor]")].find((element) => element.dataset.playerAnchor === actorIds[index]);
-    const cardRect = card?.getBoundingClientRect();
-    const seatRect = seat?.getBoundingClientRect();
-    return { actorId: actorIds[index], card: cardRect && { x: cardRect.x, y: cardRect.y, width: cardRect.width, height: cardRect.height }, seat: seatRect && { x: seatRect.x, y: seatRect.y, width: seatRect.width, height: seatRect.height } };
-  }), { actorIds: [room.players[0].id, room.players[0].id, room.players[1].id], eventIds: [rootEvent.id, sourceCounter.id, targetCounter.id] });
-  expect(seatGeometry.every(({ card, seat }) => card && seat)).toBe(true);
-  expect(seatGeometry[0].card.x).toBeGreaterThanOrEqual(seatGeometry[0].seat.x);
-  expect(seatGeometry[1].card.x).toBeGreaterThanOrEqual(seatGeometry[1].seat.x);
-  expect(seatGeometry[2].card.y).toBeGreaterThanOrEqual(seatGeometry[2].seat.y + seatGeometry[2].seat.height);
-  expect(seatGeometry[2].card.y).toBeLessThanOrEqual(seatGeometry[2].seat.y + seatGeometry[2].seat.height + 8);
-  expect(seatGeometry[2].card.x).toBeGreaterThanOrEqual(seatGeometry[2].seat.x);
-  expect(seatGeometry[2].card.x + seatGeometry[2].card.width).toBeLessThanOrEqual(seatGeometry[2].seat.x + seatGeometry[2].seat.width);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(440);
-  await screenshot(page, testInfo, "group-target-negation-history-at-current-counter-window");
-
-  const restoredDisplay = page.locator('[data-public-card-motion="negation"]');
-  await expect(restoredDisplay.locator('[data-public-card-journey-event-id]')).toHaveCount(3);
-  await expect(restoredDisplay.locator(`[data-public-card-journey-event-id="${targetCounter.id}"]`)).toHaveAttribute("data-public-card-journey-phase", "parked");
-  await expect(restoredDisplay).not.toContainText(room.losingNegationId);
-  await expect(page.getByText("GAME SCREEN ERROR")).toHaveCount(0);
-  expect(pageErrors).toEqual([]);
-});
+}
 
 test("server-proven single-target Negation and counter history survives refresh without exposing losing cards", async ({ page, request }, testInfo) => {
   test.setTimeout(120_000);

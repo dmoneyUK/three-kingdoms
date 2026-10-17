@@ -3673,27 +3673,33 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const isGroupNegationScene = clientPresentation.stage === "NEGATION"
       && clientPresentation.continuity.relation === "SAME_FRAME"
       && groupTargetEffectScope !== null;
-    if (!clientPresentation.hasInteraction || (!isRootGroupScene && !isGroupNegationScene)
+    const isGroupChildScene = Boolean(clientPresentation.continuity.relation === "CHILD_FRAME"
+      && group && rootOrigin
+      && rootOrigin.frameId === group.groupFrameId
+      && rootOrigin.stage === "GROUP_RESOLUTION"
+      && rootOrigin.effect === group.cardKind
+      && rootOrigin.source.id);
+    const groupSourceId = isGroupChildScene ? rootOrigin!.source.id! : clientPresentation.sourceId;
+    if (!clientPresentation.hasInteraction || (!isRootGroupScene && !isGroupNegationScene && !isGroupChildScene)
       || !group || group.resolutionSemantics !== "GROUP"
       || (group.cardKind !== "RainingArrows" && group.cardKind !== "BarbarianInvasion")
       || group.interactionId !== clientPresentation.interactionId
       || group.groupFrameId !== clientPresentation.rootFrameId
       || group.activeFrameId !== clientPresentation.activeFrameId
-      || group.activeFrameId !== group.groupFrameId
       || group.checkpointId !== clientPresentation.checkpointId
       || group.presentationRevision !== clientPresentation.presentationRevision
       || group.currentParticipantId !== clientPresentation.currentParticipantId
-      || !clientPresentation.sourceId) return null;
+      || !groupSourceId) return null;
 
     if (rootOrigin && (rootOrigin.frameId !== group.groupFrameId || rootOrigin.stage !== "GROUP_RESOLUTION"
-      || rootOrigin.effect !== group.cardKind || rootOrigin.source.id !== clientPresentation.sourceId
+      || rootOrigin.effect !== group.cardKind || rootOrigin.source.id !== groupSourceId
       || !rootOrigin.source.known || rootOrigin.targets.length !== group.targetIds.length
       || rootOrigin.targets.some((target, index) => target.id !== group.targetIds[index]))) return null;
 
     if (isGroupNegationScene && (!negationChain?.visible
       || negationChain.interactionId !== group.interactionId
       || !negationChain.root || negationChain.root.cardKind !== null
-      || negationChain.root?.source.id !== clientPresentation.sourceId
+      || negationChain.root?.source.id !== groupSourceId
       || !negationChain.root.source.known
       || negationChain.root.targets.length !== group.targetIds.length
       || negationChain.root.targets.some((target, index) => target.id !== group.targetIds[index])
@@ -3703,14 +3709,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || groupTargetEffectScope.activeFrameId !== group.activeFrameId
       || groupTargetEffectScope.checkpointId !== group.checkpointId
       || groupTargetEffectScope.presentationRevision !== group.presentationRevision
-      || groupTargetEffectScope.sourceId !== clientPresentation.sourceId
+      || groupTargetEffectScope.sourceId !== groupSourceId
       || groupTargetEffectScope.cardKind !== group.cardKind
       || !group.targetIds.includes(groupTargetEffectScope.targetId))) return null;
 
     const participants = group.participants;
+    const activeParticipants = participants.filter(({ status }) => status === "CURRENT" || status === "PAUSED");
     if (!group.targetIds.length || group.targetIds.length !== participants.length
       || clientPresentation.groupParticipantProgress.length !== participants.length
-      || participants.filter(({ status }) => status === "CURRENT").length !== 1
+      || activeParticipants.length !== 1
+      || activeParticipants[0]?.playerId !== group.currentParticipantId
+      || activeParticipants[0]?.status !== (isGroupChildScene ? "PAUSED" : "CURRENT")
       || participants.some((participant, index) => participant.playerId !== group.targetIds[index]
         || participant.order !== index + 1
         || participant.playerId !== clientPresentation.groupParticipantProgress[index]?.playerId
@@ -3722,7 +3731,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     // remain fail-closed instead of guessing from a timeline position.
     const rootProof = group.rootCardProof;
     if (!rootProof || rootProof.semantics !== "PROVEN" || rootProof.interactionId !== group.interactionId
-      || rootProof.groupFrameId !== group.groupFrameId || rootProof.sourceId !== clientPresentation.sourceId
+      || rootProof.groupFrameId !== group.groupFrameId || rootProof.sourceId !== groupSourceId
       || rootProof.cardKind !== group.cardKind || rootProof.targetIds.length !== group.targetIds.length
       || rootProof.targetIds.some((targetId, index) => targetId !== group.targetIds[index])) return null;
     const rootEventId = rootProof.rootEventId;
@@ -3768,7 +3777,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       };
     }) : [];
     if (isGroupNegationScene && (responses.length !== negationChain!.negationNodes.length || responses.some((response) => response === null))) return null;
-    const source = room.players.find((player) => player.id === clientPresentation.sourceId);
+    const source = room.players.find((player) => player.id === groupSourceId);
     if (!source?.name || rootEvent.player !== source.name) return null;
     const targets = participants.map((participant) => {
       const player = room.players.find(({ id }) => id === participant.playerId);
@@ -4054,10 +4063,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || activePublicNegationRead.action.cardKind === "Duel" && activePublicNegationRead.action.rootEventId === duelNegationProofCandidate?.rootEvent.id)
     ? {
       ...activePublicNegationRead.action,
-      ...((activePublicNegationRead.action.motion?.type === "single-target" || activePublicNegationRead.action.motion?.type === "negation") && activeNegationReadSettled
+      ...((activePublicNegationRead.action.motion?.type === "single-target" || activePublicNegationRead.action.motion?.type === "negation" || activePublicNegationRead.action.motion?.type === "group-root") && activeNegationReadSettled
         ? { phaseNotice: undefined }
         : {}),
-      ...((activePublicNegationRead.action.motion?.type === "single-target" || activePublicNegationRead.action.motion?.type === "negation")
+      ...((activePublicNegationRead.action.motion?.type === "single-target" || activePublicNegationRead.action.motion?.type === "negation" || activePublicNegationRead.action.motion?.type === "group-root")
         && activeNegationReadSettled && clientPresentation.negationSettlement ? {
         settlement: {
           eventId: clientPresentation.negationSettlement.eventId,
@@ -4292,6 +4301,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardKind: groupSettlementCandidate.settlement.cardKind,
       cardLabel: cardDefinition(groupSettlementCandidate.settlement.cardKind).name.toUpperCase(),
       ariaLabel: `${groupSettlementCandidate.source.name} played ${cardDefinition(groupSettlementCandidate.settlement.cardKind).name}. ${groupSettlementCandidate.targets.length} targets resolved.`,
+      motion: {
+        type: "group-root",
+        scopeKey: [room.code, groupSettlementCandidate.settlement.interactionId,
+          groupSettlementCandidate.settlement.groupFrameId, groupSettlementCandidate.rootEvent.id].join(":"),
+        // A settlement may be the first state seen by a late joiner. Reconstruct
+        // it parked; settlement is never a new root-card commitment.
+        freshEventIds: [],
+      },
       settlement: { eventId: groupSettlementCandidate.settlement.eventId, outcome: "GROUP_RESOLVED", exiting: groupSettlementCandidate.exiting },
     }
     : bumperHarvestSettlementCandidate
@@ -4367,18 +4384,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       rootFrameId: groupTargetBranchCandidate.group.groupFrameId,
       checkpointId: groupTargetBranchCandidate.group.checkpointId,
       presentationRevision: groupTargetBranchCandidate.group.presentationRevision,
-      sourceId: clientPresentation.sourceId!,
+      sourceId: groupTargetBranchCandidate.source.id,
       targetId: null,
       cardFace: groupTargetBranchCandidate.rootEvent.card,
+      motion: {
+        type: "group-root",
+        scopeKey: [room.code, groupTargetBranchCandidate.group.interactionId,
+          groupTargetBranchCandidate.group.groupFrameId, groupTargetBranchCandidate.rootEvent.id].join(":"),
+        freshEventIds: [groupTargetBranchCandidate.rootEvent.id, ...groupTargetBranchCandidate.responses.map((response) => response.eventId)]
+          .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
+      },
       ...(groupTargetBranchCandidate.groupTargetEffectScope ? {
         phaseNotice: groupTargetBranchCandidate.responses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED",
-        motion: {
-          type: "negation" as const,
-          scopeKey: [room.code, groupTargetBranchCandidate.group.interactionId, groupTargetBranchCandidate.group.groupFrameId,
-            groupTargetBranchCandidate.rootEvent.id, groupTargetBranchCandidate.groupTargetEffectScope.targetId].join(":"),
-          freshEventIds: [groupTargetBranchCandidate.rootEvent.id, ...groupTargetBranchCandidate.responses.map((response) => response.eventId)]
-            .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
-        },
         ...(groupTargetBranchCandidate.responses.length ? { responses: groupTargetBranchCandidate.responses } : {}),
       } : {}),
       cardKind: groupTargetBranchCandidate.group.cardKind,
@@ -4676,7 +4693,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       && (publicCardDisplayAction.targetId === null || rootActionTarget?.name)
     || publicCardDisplayAction?.motion?.type === "duel" && rootActionSource?.name && rootActionTarget?.name
     || publicCardDisplayAction?.motion?.type === "lust-duel" && rootActionSource?.name
-    || (publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation")
+    || (publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation" || publicCardDisplayAction?.motion?.type === "group-root")
       && rootActionSource?.name
       && (publicCardDisplayAction.targetId === null || rootActionTarget?.name));
   const beautyNotice: PublicSkillEventAnnouncement | null = effectNotice?.beautyRootEventId
@@ -4703,7 +4720,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : null;
   const publicCardJourneyEventIds = publicCardDisplayAction?.motion?.type === "attack-dodge"
     ? [publicCardDisplayAction.rootEventId, publicCardDisplayAction.response?.eventId, publicCardDisplayAction.deflection?.eventId].filter((eventId): eventId is string => Boolean(eventId))
-    : publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation"
+    : publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation" || publicCardDisplayAction?.motion?.type === "group-root"
       ? [publicCardDisplayAction.rootEventId, ...(publicCardDisplayAction.responses ?? []).map((response) => response.eventId)]
     : publicCardDisplayAction?.motion?.type === "lust-cost"
       ? [publicCardDisplayAction.rootEventId]
@@ -4785,7 +4802,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       const next: ActivePublicNegationRead = {
         key: visibleNegationReadActionKey,
         action,
-        expiresAt: Date.now() + (action.motion?.type === "single-target" || action.motion?.type === "negation"
+        expiresAt: Date.now() + (action.motion?.type === "single-target" || action.motion?.type === "negation" || action.motion?.type === "group-root"
           ? Math.max(UI_TIMING.publicCounterRead,
             ((action.responses?.length ?? 0) + 1) * UI_TIMING.publicCardJourneyRead
               + UI_TIMING.publicCounterSettlementConfirm + UI_TIMING.publicCounterFade)
@@ -5449,7 +5466,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       checkpointId: publicCardDisplayAction?.checkpointId ?? null,
       presentationRevision: publicCardDisplayAction?.presentationRevision ?? null,
       candidateRendererKind: publicCardDisplayAction?.motion?.type === "attack-dodge" ? "attack-dodge-journey"
-        : publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation" || publicCardDisplayAction?.motion?.type === "lust-cost" ? "single-target-journey"
+        : publicCardDisplayAction?.motion?.type === "single-target" || publicCardDisplayAction?.motion?.type === "negation" || publicCardDisplayAction?.motion?.type === "group-root" || publicCardDisplayAction?.motion?.type === "lust-cost" ? "single-target-journey"
           : publicCardDisplayAction?.motion?.type === "duel" || publicCardDisplayAction?.motion?.type === "lust-duel" ? "duel-journey"
             : "static-fallback",
       candidateMotionType: publicCardDisplayAction?.motion?.type ?? null,

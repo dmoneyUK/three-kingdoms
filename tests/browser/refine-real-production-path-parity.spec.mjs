@@ -75,6 +75,31 @@ async function waitForActor(request, seed, playerIndex, requirement) {
   return roomView(request, seed, playerIndex);
 }
 
+async function reachGroupResponse(request, seed, playerIndex, requirement) {
+  for (let attempt = 0; attempt < 48; attempt += 1) {
+    const views = await Promise.all(seed.players.map((_, index) => roomView(request, seed, index)));
+    const targetView = views[playerIndex];
+    if (targetView?.isMyAction && targetView.currentAction?.kind === "response"
+      && targetView.currentAction.actorId === seed.players[playerIndex].id
+      && targetView.currentAction.requirement === requirement) return targetView;
+
+    const pendingNegation = views.findIndex((view) => view.isMyAction
+      && view.currentAction?.kind === "response" && view.currentAction.requirement === "negate");
+    if (pendingNegation >= 0) {
+      await apiAction(request, seed, pendingNegation, "decline_response");
+      continue;
+    }
+    const otherGroupResponse = views.findIndex((view) => view.isMyAction
+      && view.currentAction?.kind === "response" && view.currentAction.requirement === requirement);
+    if (otherGroupResponse >= 0) {
+      await apiAction(request, seed, otherGroupResponse, "decline_response");
+      continue;
+    }
+    throw new Error(`Group flow left no Negation or ${requirement} response to advance.`);
+  }
+  throw new Error(`Group flow did not reach ${seed.players[playerIndex].name}'s ${requirement} response.`);
+}
+
 function actionResponse(page, action) {
   return page.waitForResponse((response) => {
     if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
@@ -98,7 +123,7 @@ async function playDismantle(page, root, target) {
   });
 }
 
-async function playRainingArrows(page, root) {
+async function playGroupRootCard(page, root) {
   await page.locator(`[data-hand-card-id="${root.id}"] .game-card`).click();
   const play = page.locator('[data-console-surface="local-operation"] button.primary');
   await expect(play).toHaveText("Play");
@@ -592,12 +617,28 @@ function rainingPlayers({ root, hero = "sun-quan", hand = [] }) {
   ];
 }
 
+function groupResolutionPlayers({ root, responseKind }) {
+  return [
+    { name: "SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [root] },
+    ...[
+      { name: "TARGET", role: "Loyalist", hero: "liu-bei" },
+      { name: "THIRD", role: "Rebel", hero: "simayi" },
+      { name: "FOURTH", role: "Renegade", hero: "zhen-ji" },
+    ].map((player, index) => ({
+      ...player,
+      hp: 4,
+      maxHp: 4,
+      hand: [card(responseKind, `${root.id}-response-${index + 1}`)],
+    })),
+  ];
+}
+
 test("real Raining Arrows without Dodge offers only TAKE DAMAGE and advances server progress", async ({ page, request }, testInfo) => {
   const root = card("RainingArrows", "real-raining-no-dodge-root");
   const seed = await seedGame(request, rainingPlayers({ root }));
   const target = seed.players[1];
   await openGame(page, seed, 0);
-  await playRainingArrows(page, root);
+  await playGroupRootCard(page, root);
   const targetPage = await page.context().newPage();
   await openGame(targetPage, seed, 1, { width: 480, height: 900 });
 
@@ -611,7 +652,14 @@ test("real Raining Arrows without Dodge offers only TAKE DAMAGE and advances ser
 
   const publicCard = targetPage.locator(`.public-card-display[data-public-card-display="true"][data-public-card-id="${root.id}"]`);
   await expect(publicCard).toBeVisible();
+  await expect(publicCard).toHaveAttribute("data-public-card-motion", "group-root");
+  await expect(publicCard).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
   await expect(publicCard).toHaveAttribute("data-public-card-actor-id", seed.players[0].id);
+  const rootEvent = view.timeline.find((event) => event.type === "card" && event.card?.id === root.id);
+  expect(rootEvent).toBeTruthy();
+  const rootJourneyCard = publicCard.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`);
+  await expect(rootJourneyCard).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 15_000 });
+  await expect(targetPage.locator(`[data-public-card-renderer-kind="static-fallback"][data-public-card-root-event-id="${rootEvent.id}"]`)).toHaveCount(0);
   const announcement = publicCard.locator('[data-public-card-announcement="true"]');
   await expect(announcement).toHaveCount(1);
   await expect(announcement).toContainText("SOURCE played Raining Arrows");
@@ -640,7 +688,66 @@ test("real Raining Arrows without Dodge offers only TAKE DAMAGE and advances ser
   expect(progressAfter.status).not.toBe("CURRENT");
   expect(after.currentAction).not.toMatchObject({ actorId: target.id, requirement: "dodge" });
   await expect(targetPage.getByRole("button", { name: "TAKE DAMAGE", exact: true })).toHaveCount(0);
+  await expect(publicCard).toBeVisible();
+  await expect(rootJourneyCard).toHaveAttribute("data-public-card-journey-phase", "parked");
+  await expect(targetPage.locator(`[data-public-card-renderer-kind="static-fallback"][data-public-card-root-event-id="${rootEvent.id}"]`)).toHaveCount(0);
 });
+
+for (const { cardKind, requirement } of [
+  { cardKind: "BarbarianInvasion", requirement: "attack" },
+  { cardKind: "RainingArrows", requirement: "dodge" },
+]) {
+  test(`real ${cardKind} keeps one parked root Journey through all Group targets and settlement`, async ({ page, request }) => {
+    const root = card(cardKind, `group-root-journey-${cardKind.toLowerCase()}`);
+    const seed = await seedGame(request, groupResolutionPlayers({ root, responseKind: requirement === "attack" ? "Attack" : "Dodge" }));
+    await openGame(page, seed, 0, { width: 480, height: 900 });
+    await playGroupRootCard(page, root);
+
+    const firstTargetView = await reachGroupResponse(request, seed, 1, requirement);
+    const rootEvent = firstTargetView.timeline.find((event) => event.type === "card" && event.card?.id === root.id);
+    expect(rootEvent).toBeTruthy();
+    const display = page.locator(`[data-public-card-display="true"][data-public-card-root-event-id="${rootEvent.id}"]`);
+    const rootCard = display.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`);
+    await expect(display).toHaveAttribute("data-public-card-motion", "group-root");
+    await expect(display).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
+    await expect(rootCard).toHaveAttribute("data-public-card-journey-actor-id", seed.players[0].id);
+    await expect(rootCard).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 15_000 });
+    await expect(rootCard).toHaveAttribute("data-public-card-journey-size", "thumbnail");
+
+    for (let index = 1; index < seed.players.length; index += 1) {
+      const targetView = index === 1 ? firstTargetView : await reachGroupResponse(request, seed, index, requirement);
+      expect(targetView.currentAction).toMatchObject({ kind: "response", actorId: seed.players[index].id, requirement });
+      const activeParticipant = targetView.presentationV2.groupResolution.participantProgress
+        .find((participant) => participant.playerId === seed.players[index].id);
+      expect(activeParticipant.status).toBe("CURRENT");
+
+      await expect(display).toBeVisible();
+      await expect(rootCard).toHaveAttribute("data-public-card-journey-phase", "parked");
+      await expect(rootCard).toHaveAttribute("data-public-card-journey-size", "thumbnail");
+      await expect(page.locator(`[data-public-card-renderer-kind="static-fallback"][data-public-card-root-event-id="${rootEvent.id}"]`)).toHaveCount(0);
+      await expect(display.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`)).toHaveCount(1);
+
+      await apiAction(request, seed, index, "respond", {
+        providerId: "card",
+        cardId: `${root.id}-response-${index}`,
+      });
+      if (index < seed.players.length - 1) {
+        const nextPlayerId = seed.players[index + 1].id;
+        await expect.poll(async () => {
+          const nextView = await roomView(request, seed, index + 1);
+          return nextView.presentationV2.groupResolution?.currentParticipantId ?? null;
+        }, { timeout: 15_000 }).toBe(nextPlayerId);
+        await expect(rootCard).toHaveAttribute("data-public-card-journey-phase", "parked");
+      }
+    }
+
+    await expect(display).toHaveAttribute("data-public-card-settlement-outcome", "GROUP_RESOLVED", { timeout: 20_000 });
+    await expect(rootCard).toHaveAttribute("data-public-card-journey-phase", "parked");
+    await expect(rootCard).toHaveAttribute("data-public-card-journey-size", "thumbnail");
+    await expect(page.locator(`[data-public-card-renderer-kind="static-fallback"][data-public-card-root-event-id="${rootEvent.id}"]`)).toHaveCount(0);
+    await expect(display.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`)).toHaveCount(1);
+  });
+}
 
 test("real Raining Arrows exposes Zhen Ji's authoritative Dodge provider in Skills and submits it once", async ({ page, request }, testInfo) => {
   const root = card("RainingArrows", "real-raining-empress-root");
@@ -649,7 +756,7 @@ test("real Raining Arrows exposes Zhen Ji's authoritative Dodge provider in Skil
   const seed = await seedGame(request, rainingPlayers({ root, hero: "zhen-ji", hand: [blackCard, unrelated] }));
   const target = seed.players[1];
   await openGame(page, seed, 0);
-  await playRainingArrows(page, root);
+  await playGroupRootCard(page, root);
   const targetPage = await page.context().newPage();
   await openGame(targetPage, seed, 1, { width: 480, height: 900 });
 
