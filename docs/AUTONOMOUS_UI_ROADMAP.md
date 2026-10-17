@@ -2804,3 +2804,27 @@ Profile command measurements:
   design's §10.13.2.1 stop boundary requires a user decision on the
   server-authoritative privacy contract before proceeding. Current handoff is
   blocked on that decision; Q3/Q4 remain paused and accepted H4 is unchanged.
+
+### UX2-10.15-Q4-CROSS-CLIENT-H4-01 — cross-client public narration consistency — 2026-10-17
+
+- Reproduced the three recorded Q3 Attack/Dodge geometry failures against a
+  local Worker/D1 build of exact Q3 source `74f63fde` (4-seat 390×700 and 6/8
+  seat side-column); current Q4 source passed the same three cases 3/3. This
+  baseline reproduction used the Q3 source locally, not the deployed Q3 Worker.
+- Barbarian Invasion and Raining Arrows each passed four independently
+  authenticated local Worker/D1 clients through Negation, three target
+  responses, damage/trigger and settlement (2/2). A separate TEST SWITCH
+  browser completed 1→2→3→4→1 with stable root/event/copy and no reveal replay
+  (1/1). Across clients, current proven H4 event/copy remained single,
+  stage-current and safely placed; the accepted wording/type and U13-B chip
+  were preserved. CI did not run these focused gameplay cases, and no live-room
+  replay was performed after deployment.
+- Exact-SHA Actions run
+  [`39074505216`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39074505216)
+  passed lint/fast, API, browser startup/room smoke, D1 migrations, build,
+  Worker deployment and production `/` + `/api/health` smoke for
+  `1c8ec9c1f3a0a23b40c9417fb34c68ce33f9dc43`. Deployed Worker version:
+  `a941302b-bd58-4abe-bdcc-7e2c60067596`. Local build and `git diff --check`
+  passed; local Node ESLint hit heap OOM, while CI lint passed after deleting
+  one unused test capture. Q3 and Q4 remain pending human phone review; no
+  reviewer acceptance is claimed.
