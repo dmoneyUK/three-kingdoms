@@ -1801,6 +1801,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [infoCard, setInfoCard] = useState<Card | null>(null);
   const [infoCardContext, setInfoCardContext] = useState<CardDetailsContext>("private-hand");
   const [infoCardEquipmentSourceId, setInfoCardEquipmentSourceId] = useState<string | null>(null);
+  const infoCardSourceAvailable = !infoCard || (
+    (infoCardContext !== "private-hand" || room.myHand.some((card) => card.id === infoCard.id))
+    && (!infoCardEquipmentSourceId || Boolean(room.players.find((player) => player.id === room.meId)?.equipmentCards.some((card) => card.id === infoCardEquipmentSourceId)))
+  );
+  const visibleInfoCard = infoCardSourceAvailable ? infoCard : null;
   const [infoHero, setInfoHero] = useState<Hero | null>(null);
   const cardInfoReturnFocusRef = useRef<HTMLElement | null>(null);
   const heroInfoReturnFocusRef = useRef<HTMLElement | null>(null);
@@ -1814,7 +1819,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
   }, []);
   const openCardDetails = useCallback((card: Card, context: CardDetailsContext, trigger?: HTMLElement | null) => {
-    if (infoCard?.id === card.id) {
+    if (infoCard?.id === card.id && infoCardSourceAvailable) {
       closeCardDetails();
       return;
     }
@@ -1825,7 +1830,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     setInfoCardContext(context);
     setInfoHero(null);
     setInfoCard(card);
-  }, [closeCardDetails, infoCard?.id]);
+  }, [closeCardDetails, infoCard?.id, infoCardSourceAvailable]);
   const closeHeroDetails = useCallback((restoreFocus = true) => {
     const trigger = heroInfoReturnFocusRef.current;
     heroInfoReturnFocusRef.current = null;
@@ -2922,14 +2927,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => { if (!resolutionClosing) return; const closingRevision = resolutionRevision.current; const timer = setTimeout(() => { if (resolutionRevision.current !== closingRevision) { setResolutionClosing(false); return; } setResolutionEvents([]); setSequenceScopeStartId(""); setResolutionClosing(false); }, UI_TIMING.sequenceDiscard); return () => clearTimeout(timer); }, [resolutionClosing]);
   useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawPresentation({ playerId: room.meId, cards: [] }), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, room.meId, activeEvent, eventQueue.length]);
   useEffect(() => {
-    if (!infoCardEquipmentSourceId) return;
-    const stillEquipped = room.players.find((player) => player.id === room.meId)?.equipmentCards.some((card) => card.id === infoCardEquipmentSourceId);
-    if (!stillEquipped) closeCardDetails(false);
-  }, [closeCardDetails, infoCardEquipmentSourceId, room.meId, room.players]);
-  useEffect(() => {
-    if (!infoCard || infoCardContext !== "private-hand") return;
-    if (!room.myHand.some((card) => card.id === infoCard.id)) closeCardDetails(false);
-  }, [closeCardDetails, infoCard, infoCardContext, room.myHand]);
+    if (infoCardSourceAvailable) return;
+    const timer = window.setTimeout(() => closeCardDetails(false), 0);
+    return () => window.clearTimeout(timer);
+  }, [closeCardDetails, infoCardSourceAvailable]);
   const gamePreviewScopeRef = useRef({ roomCode: room.code, viewerId: room.meId });
   useEffect(() => {
     const scopeChanged = gamePreviewScopeRef.current.roomCode !== room.code || gamePreviewScopeRef.current.viewerId !== room.meId;
@@ -2940,7 +2941,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     opponentInspectionReturnFocusRef.current = null;
     setExpandedOpponentId(null);
   }, [closeCardDetails, closeHeroDetails, room.code, room.meId]);
-  useEffect(() => { if (!infoCard && !infoHero && !expandedOpponentId) return; const close = (event: KeyboardEvent) => { if (event.key !== "Escape") return; if (infoCard) { closeCardDetails(); return; } if (infoHero) { closeHeroDetails(); return; } if (nestedInspectorCardDetailDismissRef.current?.()) return; closeOpponentInspection(); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [infoCard, infoHero, expandedOpponentId, closeCardDetails, closeHeroDetails, closeOpponentInspection]);
+  useEffect(() => { if (!visibleInfoCard && !infoHero && !expandedOpponentId) return; const close = (event: KeyboardEvent) => { if (event.key !== "Escape") return; if (visibleInfoCard) { closeCardDetails(); return; } if (infoHero) { closeHeroDetails(); return; } if (nestedInspectorCardDetailDismissRef.current?.()) return; closeOpponentInspection(); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [visibleInfoCard, infoHero, expandedOpponentId, closeCardDetails, closeHeroDetails, closeOpponentInspection]);
   useEffect(() => { heroInfoReturnFocusRef.current = null; const timer = setTimeout(() => setInfoHero(null), 0); return () => clearTimeout(timer); }, [room.code, room.meId]);
   useEffect(() => { const timer = setTimeout(() => { setSelected(""); setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setTargetIds([]); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setDiscardSelected([]); setSerpentMode(false); setSerpentSelected([]); setResponseProviderId(""); }, 0); return () => clearTimeout(timer); }, [room.turnSeat, room.phase, room.meId]);
   // A response may advance to another decision without changing the turn,
@@ -6296,7 +6297,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         viewerId={room.meId}
       />}
       <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey} />
-      {infoCard && <CardDetailsPreview card={infoCard} context={infoCardContext} onClose={closeCardDetails} returnFocusTo={cardInfoReturnFocusRef.current} />}
+      {visibleInfoCard && <CardDetailsPreview card={visibleInfoCard} context={infoCardContext} onClose={closeCardDetails} returnFocusTo={cardInfoReturnFocusRef.current} />}
       {infoHero && me && <HeroDetailsPreview hero={infoHero} onClose={closeHeroDetails} returnFocusTo={heroInfoReturnFocusRef.current} />}
     </section>
     <footer className="play-command">

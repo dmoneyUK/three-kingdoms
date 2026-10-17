@@ -114,6 +114,10 @@ test("R4-I Hand Details toggles the same preview without changing the selected c
   await expect(details).toHaveCount(0);
   await expect(detailsAction).toBeFocused();
   await expect(face).toHaveClass(/selected/);
+  await detailsAction.tap();
+  await expect(details).toBeVisible();
+  await page.evaluate(() => window.__setBrowserHandIds([]));
+  await expect(details).toHaveCount(0);
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 });
 
