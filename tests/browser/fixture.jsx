@@ -55,6 +55,7 @@ const SEAT_EQUIPMENT_CASES = {
   minusHorse: [["FerganaSteed", "♠", "K"]],
   weaponArmor: [["ZhugeCrossbow", "♦", "A"], ["NioShield", "♣", "2"]],
   multiple: [["ZhugeCrossbow", "♦", "A"], ["NioShield", "♣", "2"], ["Shadowrunner", "♠", "5"], ["FerganaSteed", "♠", "K"]],
+  localInspectPair: [["KirinBow", "♥", "Q"], ["NioShield", "♣", "2"]],
   miniaturePair: [["NioShield", "♣", "2"], ["Shadowrunner", "♥", "10"]],
   miniatureSet: [["ZhugeCrossbow", "♦", "A"], ["NioShield", "♣", "2"], ["Shadowrunner", "♥", "Q"], ["FerganaSteed", "♠", "K"]],
   inspectorNamedDetails: [["FrostSword", "♠", "J"], ["NioShield", "♣", "2"]],
@@ -63,7 +64,7 @@ const SEAT_EQUIPMENT_MATRIX = ["weapon", "armor", "plusHorse", "minusHorse", "we
 
 function fixtureSeatEquipment(playerId, equipmentCase) {
   const playerIndex = Number(playerId.slice(1)) - 2;
-  const scenario = equipmentCase === "matrix" ? SEAT_EQUIPMENT_MATRIX[playerIndex] : playerId === "p2" ? equipmentCase : null;
+  const scenario = equipmentCase === "matrix" ? SEAT_EQUIPMENT_MATRIX[playerIndex] : equipmentCase === "localInspectPair" ? playerId === "p1" ? equipmentCase : null : playerId === "p2" ? equipmentCase : null;
   return (SEAT_EQUIPMENT_CASES[scenario] ?? []).map(([kind, suit, rank], index) => card(`browser-${playerId}-seat-equipment-${index}`, kind, suit, rank));
 }
 
@@ -1033,6 +1034,14 @@ window.__setBrowserHandIds = (ids) => {
     ...fixtureRoom,
     myHand,
     players: fixtureRoom.players.map((player) => player.id === fixtureRoom.meId ? { ...player, handCount: myHand.length } : player),
+  };
+  window.__browserRoom = fixtureRoom;
+  renderFixture();
+};
+window.__setBrowserPlayerEquipment = (playerId, equipmentCards) => {
+  fixtureRoom = {
+    ...fixtureRoom,
+    players: fixtureRoom.players.map((player) => player.id === playerId ? { ...player, equipmentCards } : player),
   };
   window.__browserRoom = fixtureRoom;
   renderFixture();

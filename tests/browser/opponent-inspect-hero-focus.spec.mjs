@@ -27,24 +27,22 @@ function expectStableBox(before, after) {
   }
 }
 
-test("clicking an opponent Hero opens the unified inspector without changing Stage identity", async ({ page }) => {
+test("clicking an opponent Hero opens the unified Inspector without changing CurrentAction", async ({ page }) => {
   await loadFixture(page, { state: "interaction", width: 480, height: 900 });
-  const stage = page.locator('.play-table[data-seat-topology="top-row"] .interaction-stage');
-  await expect(stage).toHaveAttribute("data-stage", "ATTACK_RESPONSE");
-  const stageIdentity = await stage.evaluate((element) => Object.fromEntries(
-    ["data-interaction-id", "data-checkpoint-id", "data-presentation-revision", "data-stage"].map((name) => [name, element.getAttribute(name)]),
-  ));
+  const currentAction = await page.evaluate(() => window.__browserRoom.currentAction);
+  const actionsBefore = await page.evaluate(() => window.__browserActions.length);
+  await expect(page.locator(".interaction-stage")).toHaveCount(0);
 
   await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
   await expect(page.getByRole("dialog", { name: "Player 2 opponent inspection" })).toBeVisible();
-  await expect(stage).toHaveAttribute("data-local-ui-mode", "INSPECT");
-  expect(await stage.evaluate((element) => Object.fromEntries(
-    ["data-interaction-id", "data-checkpoint-id", "data-presentation-revision", "data-stage"].map((name) => [name, element.getAttribute(name)]),
-  ))).toEqual(stageIdentity);
+  await expect(page.locator('.interaction-stage[data-local-ui-mode="INSPECT"]')).toHaveCount(1);
+  expect(await page.evaluate(() => window.__browserRoom.currentAction)).toEqual(currentAction);
+  expect(await page.evaluate(() => window.__browserActions.length)).toBe(actionsBefore);
 
   await page.getByRole("button", { name: "Close Player 2 inspection" }).click();
-  await expect(stage).toBeVisible();
-  await expect(stage).not.toHaveAttribute("data-local-ui-mode");
+  await expect(page.locator(".interaction-stage")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__browserRoom.currentAction)).toEqual(currentAction);
+  expect(await page.evaluate(() => window.__browserActions.length)).toBe(actionsBefore);
 });
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
@@ -461,7 +459,12 @@ test("unified Inspector changes its subject without changing the legal target", 
   await expect(panel).toHaveAttribute("data-inspect-player-id", "p2");
   await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
 
-  await page.getByRole("button", { name: "Inspect Player 2", exact: true }).click();
+  const inspectPlayerTwo = page.getByRole("button", { name: "Inspect Player 2", exact: true });
+  await inspectPlayerTwo.click();
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+  await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
+  await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
+  await inspectPlayerTwo.click();
   await expect(panel).toBeVisible();
   await expect(panel).not.toContainText("HERO FOCUS");
   await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
@@ -475,6 +478,10 @@ test("unified Inspector changes its subject without changing the legal target", 
   await expect(cardDetail).toBeVisible();
   await expect(crossbow).toHaveAttribute("aria-pressed", "true");
   await expect(panel.getByRole("button", { name: /^Back/ })).toHaveCount(0);
+  await crossbow.click();
+  await expect(cardDetail).toBeVisible();
+  await expect(cardDetail).toContainText("Zhuge Crossbow");
+  await expect(crossbow).toHaveAttribute("aria-pressed", "true");
   const publicSkill = panel.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill').first();
   const publicSkillName = await publicSkill.innerText();
   await publicSkill.click();
@@ -497,25 +504,23 @@ test("unified Inspector changes its subject without changing the legal target", 
   expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
 });
 
-test("Inspect restores authoritative Hero Focus without changing Stage identity or sending actions", async ({ page }) => {
-  await loadFixture(page, { state: "interaction", width: 480, height: 900 });
-  const stage = page.locator('[aria-label="Interaction Stage"]');
-  await expect(stage).toHaveAttribute("data-stage", "ATTACK_RESPONSE");
-  const identity = await stage.evaluate((element) => Object.fromEntries(
-    ["data-interaction-id", "data-checkpoint-id", "data-presentation-revision", "data-stage", "data-continuity"].map((name) => [name, element.getAttribute(name)]),
-  ));
+test("Inspect during Negation leaves the authoritative response state unchanged", async ({ page }) => {
+  await loadFixture(page, { state: "negation", width: 480, height: 900 });
+  const currentAction = await page.evaluate(() => window.__browserRoom.currentAction);
+  const pendingNegation = await page.evaluate(() => window.__browserRoom.pendingNegation);
   const actionsBefore = await page.evaluate(() => window.__browserActions.length);
+  expect(currentAction).toMatchObject({ kind: "response", requirement: "negate" });
 
-  await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
-  await expect(stage).toHaveAttribute("data-local-ui-mode", "INSPECT");
-  await expect(stage.locator('.hero-focus-inspect[data-inspect-player-id="p2"]')).toBeVisible();
-  await expect(stage).toHaveAttribute("data-stage", "ATTACK_RESPONSE");
-  await page.getByRole("button", { name: "Close Player 2 inspection", exact: true }).click();
+  await page.locator('[data-player-anchor="p3"] .opponent-hero-target').click();
+  const stage = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"]');
+  await expect(stage.locator('.hero-focus-inspect[data-inspect-player-id="p3"]')).toBeVisible();
+  expect(await page.evaluate(() => window.__browserRoom.currentAction)).toEqual(currentAction);
+  expect(await page.evaluate(() => window.__browserRoom.pendingNegation)).toEqual(pendingNegation);
+  await page.getByRole("button", { name: "Close Player 3 inspection", exact: true }).click();
 
-  await expect(stage.locator('[data-hero-focus="true"]')).toBeVisible();
-  expect(await stage.evaluate((element) => Object.fromEntries(
-    ["data-interaction-id", "data-checkpoint-id", "data-presentation-revision", "data-stage", "data-continuity"].map((name) => [name, element.getAttribute(name)]),
-  ))).toEqual(identity);
+  await expect(page.locator(".interaction-stage")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__browserRoom.currentAction)).toEqual(currentAction);
+  expect(await page.evaluate(() => window.__browserRoom.pendingNegation)).toEqual(pendingNegation);
   expect(await page.evaluate(() => window.__browserActions.length)).toBe(actionsBefore);
 });
 

@@ -275,14 +275,22 @@ test("UX2.0VIS-09B tapping a clipped edge reveals that same physical card", asyn
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 });
 
-test("UX2-10.6 UI-1 own equipped-card details do not change a skill selection", async ({ page }) => {
+test("R4-I selectable Equipment keeps cost selection separate from accessible details", async ({ page }) => {
   await loadFixture(page, { state: "local-equipment-target-card", width: 390, height: 844 });
   const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
   const equipment = dock.locator('[data-equipment-id="browser-local-equipment-eligible"]');
-  const detailsTrigger = equipment.locator(".zone-info-button");
+  const detailsTrigger = equipment.locator(".local-equipment-inspect-button");
+  const selectTrigger = equipment.locator(".local-zone-card-button");
   await expect(equipment).toBeVisible();
   await expect(detailsTrigger).toBeVisible();
-  await detailsTrigger.click();
+  await expect(detailsTrigger).toHaveAccessibleName("View Nio Shield details without selecting");
+  await expect(equipment.locator(".zone-info-button")).toHaveCount(0);
+  await expect.poll(() => detailsTrigger.evaluate((button) => getComputedStyle(button, "::after").content)).toBe("none");
+  await expect(selectTrigger).toBeEnabled();
+  await detailsTrigger.focus();
+  await expect.poll(() => detailsTrigger.evaluate((button) => getComputedStyle(button).opacity)).toBe("1");
+  await expect(detailsTrigger).toHaveAttribute("aria-label", "View Nio Shield details without selecting");
+  await page.keyboard.press("Enter");
 
   const details = page.getByRole("dialog");
   await expect(details).toHaveAttribute("data-card-details-context", "public-zone");
@@ -297,9 +305,59 @@ test("UX2-10.6 UI-1 own equipped-card details do not change a skill selection", 
   await expect(equipment).not.toHaveClass(/selected-cost/);
   expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action !== "start_response_timer"))).toEqual([]);
 
-  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
   await expect(details).toHaveCount(0);
   await expect(detailsTrigger).toBeFocused();
+  await selectTrigger.click();
+  await expect(equipment).toHaveClass(/selected-cost/);
+  await selectTrigger.focus();
+  await page.keyboard.press("Tab");
+  await expect(detailsTrigger).toBeFocused();
+  await expect.poll(() => detailsTrigger.evaluate((button) => getComputedStyle(button).opacity)).toBe("1");
+  await page.keyboard.press("Enter");
+  await expect(details).toHaveAttribute("data-card-details-card-id", "browser-local-equipment-eligible");
+  await expect(equipment).toHaveClass(/selected-cost/);
+  await page.keyboard.press("Enter");
+  await expect(details).toHaveCount(0);
+  await expect(equipment).toHaveClass(/selected-cost/);
+  expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action !== "start_response_timer"))).toEqual([]);
+});
+
+test("R4-I local Equipment miniatures open, toggle, switch, and invalidate one preview", async ({ page }) => {
+  await loadFixture(page, { state: "rest", count: 4, width: 390, height: 844, equipmentCase: "localInspectPair" });
+  const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
+  const kirinBow = dock.locator('[data-equipment-id="browser-p1-seat-equipment-0"]');
+  const nioShield = dock.locator('[data-equipment-id="browser-p1-seat-equipment-1"]');
+  const kirinBowOpener = kirinBow.locator(".local-zone-card-button");
+  const nioShieldOpener = nioShield.locator(".local-zone-card-button");
+  const details = page.getByRole("dialog");
+
+  for (const equipment of [kirinBow, nioShield]) {
+    await expect(equipment.locator(".zone-info-button, .local-equipment-inspect-button")).toHaveCount(0);
+    await expect(equipment.locator(".local-zone-card-button")).toHaveAccessibleName(/View .* details/);
+  }
+  await expect(kirinBowOpener).toHaveAccessibleName("View Kirin Bow details");
+  await kirinBowOpener.click();
+  await expect(details).toHaveAttribute("data-card-details-card-id", "browser-p1-seat-equipment-0");
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  await kirinBowOpener.click();
+  await expect(details).toHaveCount(0);
+  await expect(kirinBowOpener).toBeFocused();
+
+  await kirinBowOpener.click();
+  await expect(details).toHaveAttribute("data-card-details-card-id", "browser-p1-seat-equipment-0");
+  await nioShieldOpener.click();
+  await expect(details).toHaveAttribute("data-card-details-card-id", "browser-p1-seat-equipment-1");
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  await nioShieldOpener.click();
+  await expect(details).toHaveCount(0);
+  await expect(nioShieldOpener).toBeFocused();
+
+  await kirinBowOpener.click();
+  await expect(details).toBeVisible();
+  await page.evaluate(() => window.__setBrowserPlayerEquipment("p1", []));
+  await expect(details).toHaveCount(0);
+  expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action !== "start_response_timer"))).toEqual([]);
 });
 
 test.describe("UX2.0VIS-09B native touch navigation", () => {
@@ -798,17 +856,36 @@ for (const { width, height } of [{ width: 1440, height: 900 }, { width: 480, hei
       return { id: element.getAttribute("data-player-anchor"), x, y, width: seatWidth, height: seatHeight };
     }));
 
-    await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
-    await expect(page.getByRole("dialog", { name: "Player 2 opponent inspection" })).toBeVisible();
+    const playerTwoOpener = page.locator('[data-player-anchor="p2"] .opponent-hero-target');
+    const playerThreeOpener = page.locator('[data-player-anchor="p3"] .opponent-hero-target');
+    const playerTwoInspection = page.getByRole("dialog", { name: "Player 2 opponent inspection" });
+    const playerThreeInspection = page.getByRole("dialog", { name: "Player 3 opponent inspection" });
+    await playerTwoOpener.click();
+    await expect(playerTwoInspection).toBeVisible();
     await expect(page.locator('.opponent-inspection-zone[aria-label="Equipment"] .opponent-inspection-card')).toHaveCount(1);
-    await page.getByRole("button", { name: "Close Player 2 inspection" }).click();
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
+    await playerTwoOpener.click();
     await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+    await expect(playerTwoOpener).toBeFocused();
 
-    await page.locator('[data-player-anchor="p3"] .opponent-hero-target').click();
-    await expect(page.getByRole("dialog", { name: "Player 3 opponent inspection" })).toBeVisible();
+    await playerTwoOpener.click();
+    await expect(playerTwoInspection).toBeVisible();
+    await playerThreeOpener.click();
+    await expect(playerThreeInspection).toBeVisible();
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
     await expect(page.locator('.opponent-inspection-zone[aria-label="Judgement Zone"] .opponent-inspection-card[aria-label="Explain Lightning"]')).toHaveCount(1);
+    await playerThreeOpener.click();
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+    await playerThreeOpener.click();
+    await expect(playerThreeInspection).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+    await expect(playerThreeOpener).toBeFocused();
+    await playerThreeOpener.click();
+    await expect(playerThreeInspection).toBeVisible();
     await page.getByRole("button", { name: "Close Player 3 inspection" }).click();
     await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+    await expect(playerThreeOpener).toBeFocused();
 
     const after = await page.locator(".player-board [data-player-anchor]").evaluateAll((elements) => elements.map((element) => {
       const { x, y, width: seatWidth, height: seatHeight } = element.getBoundingClientRect();
@@ -1528,8 +1605,17 @@ for (const width of [480, 650]) {
     await page.getByRole("button", { name: "Close Player 2 inspection" }).click();
 
     await loadFixture(page, { state: "confirm-cancel", count: 4, width, height: 900, equipmentCase: "matrix" });
-    await page.locator('[data-player-anchor="p3"] .opponent-hero-target').click();
-    await expect(page.locator('[data-player-anchor="p3"]')).toHaveClass(/selected-target/);
+    const targetSeat = page.locator('[data-player-anchor="p3"]');
+    const inspectOpener = page.getByRole("button", { name: "Inspect Player 3", exact: true });
+    await inspectOpener.click();
+    await expect(page.getByRole("dialog", { name: "Player 3 opponent inspection" })).toBeVisible();
+    await expect(targetSeat).not.toHaveClass(/selected-target/);
+    await expect.poll(() => page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
+    await inspectOpener.click();
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+    await expect(targetSeat).not.toHaveClass(/selected-target/);
+    await page.getByRole("button", { name: "Select Player 3", exact: true }).click();
+    await expect(targetSeat).toHaveClass(/selected-target/);
     await expect(page.locator(".borrowed-sword-notice")).toContainText("Target selected");
   });
 }

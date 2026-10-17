@@ -55,14 +55,27 @@ test("information affordance changes only the inspector subject and closing pres
   const panel = inspector(page);
   await expect(panel).toHaveAttribute("data-inspect-player-id", "p2");
 
-  await page.getByRole("button", { name: "Inspect Player 3", exact: true }).click();
+  const inspectPlayerTwo = page.getByRole("button", { name: "Inspect Player 2", exact: true });
+  const inspectPlayerThree = page.getByRole("button", { name: "Inspect Player 3", exact: true });
+  await inspectPlayerTwo.click();
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+  await expect(page.locator('.opponent-player-card.selected-target')).toHaveAttribute("data-player-anchor", "p2");
+  await inspectPlayerTwo.click();
+  await expect(panel).toHaveAttribute("data-inspect-player-id", "p2");
+  await inspectPlayerThree.click();
   await expect(panel).toHaveAttribute("data-inspect-player-id", "p3");
   await expect(page.locator('.opponent-player-card.selected-target')).toHaveAttribute("data-player-anchor", "p2");
   await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
   await expect.poll(() => page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
 
+  await inspectPlayerThree.click();
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+  await expect(page.locator('.opponent-player-card.selected-target')).toHaveAttribute("data-player-anchor", "p2");
+  await inspectPlayerThree.click();
+  await expect(panel).toHaveAttribute("data-inspect-player-id", "p3");
   await page.getByRole("button", { name: "Close Player 3 inspection", exact: true }).click();
   await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+  await expect(inspectPlayerThree).toBeFocused();
   await expect(page.locator('.opponent-player-card.selected-target')).toHaveAttribute("data-player-anchor", "p2");
   await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
 });

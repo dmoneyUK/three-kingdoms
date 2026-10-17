@@ -104,6 +104,19 @@ test("R4-F reference: DETAILS stays inside the selected four-card Attack at 390Ã
   await saveEvidence("r4-f-after-compact-geometry.json", afterGeometry);
 });
 
+test("R4-I Hand Details toggles the same preview without changing the selected card", async ({ page }) => {
+  const { face, detailsAction } = await openSelectedCard(page, { width: 390, height: 844, handSize: 4 });
+  await detailsAction.tap();
+  const details = page.getByRole("dialog");
+  await expect(details).toHaveAttribute("data-card-details-card-id", "browser-hand-1");
+  await expect(face).toHaveClass(/selected/);
+  await detailsAction.tap();
+  await expect(details).toHaveCount(0);
+  await expect(detailsAction).toBeFocused();
+  await expect(face).toHaveClass(/selected/);
+  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+});
+
 test("R4-F details grow for long canonical rules and scroll only the rules area", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/tests/browser/fixture.html?state=normal&count=4&handSize=3&handKind=Attack");
