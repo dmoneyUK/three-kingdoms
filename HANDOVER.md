@@ -4,7 +4,7 @@ Branch: `ux-v2`
 
 ## Latest relevant result
 
-- Latest design reviewed: `origin/ux-v2` commit `bb7cb00`, `docs/UX2-refine.md` §§10.15.3–10.15.6. Q1 is the sole active task; H4-A/B/C are user-accepted, and Q4 is cross-player consistency verification only.
+- Latest design reviewed: `origin/ux-v2` commit `cc991b3`, `docs/UX2-refine.md` §§10.15.3–10.15.6 and U13-E follow-up. Q1 remains the sole active task; H4-A/B/C are user-accepted, and Q4 is cross-player consistency verification only.
 - Exact-SHA Actions run `39036995766` for `60da3d5e8262164971da1e29f291f5abf64f3968` passed Lint/fast tests, API tests, browser startup smoke, D1 migration, Worker deploy and production smoke. Deployed Worker version: `8297fe5e-8459-4293-bdd5-2ae11876e086`. The prior `413f86f` lint failure was two render-time `react-hooks/refs` errors; `journeyEvents` now reads synchronized React state and the focused file lint plus exact-SHA CI pass.
 - Local focused path checks: both Negation-counter tests and Raining Arrows through settlement passed; Barbarian Invasion still failed to expose `GROUP_RESOLVED`. Its trace preserves the same proven root/card/author identity from NEGATION into the first GROUP checkpoint and shows one root DOM instance, but the final sampled server projection contains no active interaction or settlement. This was not a current-Worker reproduction. Q1 remains inconclusive; retain local diagnostics for both card kinds.
 - Preserve the unrelated untracked `HANDOVER 3.md`. H4 is unchanged.
