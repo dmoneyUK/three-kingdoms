@@ -871,7 +871,7 @@ test("Diao Chan Beauty uses exactly one routed profile control and remains disab
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
-  const beautyButtons = buttonsContaining(renderer, "Beauty Outshining the Moon");
+  const beautyButtons = renderer.root.findAllByType("button").filter((node) => node.props["aria-label"] === "Beauty Outshining the Moon");
   assert.equal(beautyButtons.length, 1, "Beauty has only one rendered control");
   assert.equal(beautyButtons[0].props["aria-label"], "Beauty Outshining the Moon");
   assert.equal(beautyButtons[0].props.disabled, false, "Beauty is enabled during its turn-end trigger");

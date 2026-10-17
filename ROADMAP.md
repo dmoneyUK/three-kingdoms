@@ -199,6 +199,16 @@ claiming pixel-level responsive acceptance.
 Improve stale/rejected-action messages, reconnect/reload states, setup and hero
 selection guidance, match-end flow and Quick Test perspective switching.
 
+## UX2 refinement delivery — 2026-10-17
+
+U13-H equalizes Diao Chan's two local skill controls and presents Beauty on two
+balanced lines at 390px while preserving accessible names and gameplay
+semantics. Focused browser geometry covers 390×844, 480×900, 320×640 and
+1440×900; the all-Hero skill-band regression, Beauty interaction checks, and
+real Worker gameplay checks for Beauty and long-name Lust passed. Build passed.
+This is technical delivery pending human phone review; CI was not checked and
+reviewer acceptance is not claimed.
+
 Graphic/art redesign is outside this functional UX roadmap unless explicitly
 requested.
 

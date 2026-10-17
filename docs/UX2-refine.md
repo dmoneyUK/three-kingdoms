@@ -1540,6 +1540,8 @@ Current OpponentPublicInspector in app/page.tsx shows Equipment then Judgement; 
 - Display “Lust” centred; balance “Beauty Outshining the Moon” into natural **two visually balanced lines** on typical iPhone widths using text-wrap:balance or intentional semantic break if required. Avoid awkward 3–4 tiny-line words; allow narrow widths to adapt safely, without truncating the actual skill name from accessible label. Raise effective font from currently forced 6–6.5px where space permits, ensuring legibility at ~390px.
 - Keep button active, disabled and passive semantics (a passive skill must not falsely appear tappable), local selection cancellation, styles and keyboard/focus unchanged. Do not steal Hand width or push/overlap lower Dock actions.
 
+**Coding Agent technical delivery (2026-10-17): IMPLEMENTED; PENDING USER PHONE REVIEW.** The two local Diao Chan controls now use equal measured grid cells, retain their full accessible names and existing enabled/disabled/pressed behavior, and keep the Beauty label to two lines at 390×844. Focused browser geometry passed at 390×844, 480×900, 320×640 and 1440×900; the all-Hero skill-band geometry regression passed, and the Beauty interaction/render regressions plus real Worker gameplay checks for Beauty and long-name Lust passed. The local build passed. Browser evidence measured both controls at 134.5×47px with 12px type at 390×844 and found no Hand/action overlap or document overflow. GitHub Actions was not checked for this delivery; no human phone acceptance is claimed.
+
 #### 10.13.9 Implementation order, tests, and reviewer acceptance
 
 **Bounded Code Agent slices (one verified change at a time):**

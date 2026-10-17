@@ -2779,6 +2779,66 @@
   .local-hero-skills .hero-skill-button { font-size: 6px; letter-spacing: 0; }
 }
 
+/* UX2 §10.13.8: Diao Chan's two local skills share real equal cells. Give the
+   long Beauty label a deliberate second line on phone layouts with room for
+   readable type; narrow/short screens retain the compact natural wrap. */
+.local-hero-skills[data-hero-id="diao-chan"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(44px, 1fr));
+  align-items: center;
+  align-content: center;
+}
+
+.local-hero-skills[data-hero-id="diao-chan"] .hero-skill-button {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-width: 44px;
+  min-height: 44px;
+  text-align: center;
+}
+
+.local-hero-skills[data-hero-id="diao-chan"] .diao-chan-beauty-label-wide {
+  display: inline-block;
+  white-space: normal;
+}
+
+.local-hero-skills[data-hero-id="diao-chan"] .diao-chan-beauty-label-compact {
+  display: none;
+}
+
+@media (min-width: 380px) and (min-height: 700px) {
+  .local-hero-skills[data-hero-id="diao-chan"] .hero-skill-button {
+    font-size: clamp(10px, 3.1vw, 12px);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: 0;
+  }
+
+  .local-hero-skills[data-hero-id="diao-chan"] .diao-chan-beauty-label-wide {
+    white-space: pre-line;
+    text-wrap: balance;
+  }
+}
+
+@media (min-width: 401px) and (max-width: 520px) and (min-height: 700px) {
+  .local-hero-skills[data-hero-id="diao-chan"] .hero-skill-button {
+    font-size: 9px;
+    font-family: "Arial Narrow", "Liberation Sans Narrow", "DejaVu Sans Condensed", Arial, sans-serif;
+    line-height: 1.2;
+  }
+
+  .local-hero-skills[data-hero-id="diao-chan"] .diao-chan-beauty-label-wide {
+    display: none;
+  }
+
+  .local-hero-skills[data-hero-id="diao-chan"] .diao-chan-beauty-label-compact {
+    display: inline-block;
+    white-space: pre-line;
+    text-wrap: balance;
+  }
+}
+
 /* UX2 refinement §3.5–3.7: keep system navigation and the public response
    clock at the lower-right Stage/Guidance boundary, independent of Stage
    content and opponent-seat topology. */
