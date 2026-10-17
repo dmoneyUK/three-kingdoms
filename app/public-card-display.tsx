@@ -1964,8 +1964,8 @@ function SingleTargetCardJourney({
   const parkedNotifiedEventIdsRef = useRef(new Set<string>());
   const traceSignaturesRef = useRef(new Map<string, string>());
   const incoming = singleTargetJourneyEvents(action, sourceName);
-  const journeyEvents = motion?.type === "group-root" && journeyRef.current.scopeKey === scopeKey
-    ? preserveGroupRootJourneyEvents(incoming, journeyRef.current.cards)
+  const journeyEvents = motion?.type === "group-root" && journey.scopeKey === scopeKey
+    ? preserveGroupRootJourneyEvents(incoming, journey.cards)
     : incoming;
   const eventSignature = journeyEvents.map((event) => `${event.eventId}:${event.actorId}:${event.cardFace.id}`).join(",");
   const freshSignature = motion?.freshEventIds.join(",") ?? "";
