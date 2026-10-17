@@ -27,13 +27,47 @@ async function seed(request, count = 4, includeDuel = false) {
   return response.json();
 }
 
-async function openPlayer(page, room, index, viewport = { width: 440, height: 894 }) {
+async function seedDuelAttackChain(request) {
+  const players = [
+    {
+      name: "Test Player 1",
+      role: "Lord",
+      hero: "cao-cao",
+      hp: 4,
+      maxHp: 4,
+      hand: [
+        card("Duel", "u13bg-duel-root", "♠", "A"),
+        card("Attack", "u13bg-source-attack-2", "♥", "5"),
+        card("Attack", "u13bg-source-attack-4", "♦", "6"),
+      ],
+    },
+    {
+      name: "Test Player 2",
+      role: "Loyalist",
+      hero: "liu-bei",
+      hp: 4,
+      maxHp: 4,
+      hand: [
+        card("Attack", "u13bg-target-attack-1", "♣", "8"),
+        card("Attack", "u13bg-target-attack-3", "♠", "9"),
+        card("Attack", "u13bg-target-attack-5", "♥", "10"),
+      ],
+    },
+    { name: "Test Player 3", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
+    { name: "Test Player 4", role: "Renegade", hero: "simayi", hp: 4, maxHp: 4, hand: [] },
+  ];
+  const response = await request.post(`${API}/__test/seed-playing-game`, { data: { phase: "play", turnSeat: 0, players } });
+  if (!response.ok()) throw new Error(`U13-B-G Duel room seed failed: ${await response.text()}`);
+  return response.json();
+}
+
+async function openPlayer(page, room, index, viewport = { width: 440, height: 894 }, diagnostics = false) {
   const member = room.players[index];
   await page.setViewportSize(viewport);
   await page.addInitScript(({ code, token, name }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
   }, { code: room.code, token: member.token, name: member.name });
-  await page.goto(`${API}/`);
+  await page.goto(`${API}/${diagnostics ? "?publicActivityChipDiagnostics=1" : ""}`);
   await expect(page.locator(".game-shell")).toBeVisible();
   await expect(page.locator("[data-public-activity-chip]")).toBeVisible();
   return member;
@@ -84,7 +118,8 @@ async function geometry(page) {
     const intersects = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
     const protectedSelector = [
       ".opponent-player-card[data-player-anchor]", ".player-square", ".player-board-status", ".visible-countdown",
-      ".stage-system-cluster", ".hero-focus", ".interaction-stage-dying", ".dying-handoff-compact",
+      ".stage-system-cluster", ".hero-focus", ".opponent-inspection-floating-shell", ".card-details-panel", ".hero-details-panel",
+      ".interaction-stage-dying", ".dying-handoff-compact",
       ".public-card-display-journey-copy", ".public-card-journey-card", ".public-card-duel-parked-card",
       ".public-card-display-static-card > .played-card", ".effect-notice", ".turn-notice", ".played-card-stage .played-card",
       ".game-event-stage > div", ".harvest-choice-stage > div", ".victory-banner", ".table-resolution-layer .played-card",
@@ -200,6 +235,133 @@ test("four authenticated viewers share the same public turn, Negation, and Duel 
     assertGeometry(await geometry(pages[1]));
   } finally {
     await Promise.all(contexts.map((context) => context.close()));
+  }
+});
+
+test("U13-B-G keeps the activity plaque near center through parked Duel Attack history at 440x766", async ({ browser, page, request }, testInfo) => {
+  test.setTimeout(90_000);
+  const room = await seedDuelAttackChain(request);
+  const localViewer = room.players[1];
+  const placementTraces = [];
+  page.on("console", async (message) => {
+    if (!message.text().includes("[U13-B-G activity-chip placement]")) return;
+    try {
+      placementTraces.push(await message.args()[1].jsonValue());
+    } catch {
+      // A navigation can dispose a diagnostic object between console dispatch and capture.
+    }
+  });
+
+  const observerContext = await browser.newContext({ viewport: { width: 440, height: 766 }, reducedMotion: "reduce" });
+  const observerPage = await observerContext.newPage();
+  try {
+    await openPlayer(page, room, 1, { width: 440, height: 766 }, true);
+    await openPlayer(observerPage, room, 3, { width: 440, height: 766 });
+
+    const declared = await action(request, room, 0, "play_card", {
+      cardId: "u13bg-duel-root",
+      targetId: localViewer.id,
+    });
+    const windowId = declared.room.currentAction.negationWindowId;
+    expect(windowId).toBeTruthy();
+    const held = await request.post(`${API}/__test/negation-window-clock`, {
+      data: { code: room.code, windowId, mode: "hold" },
+    });
+    expect(held.ok()).toBeTruthy();
+    for (let index = 0; index < room.players.length; index += 1) {
+      await action(request, room, index, "decline_response", { windowId });
+    }
+
+    const sequence = [
+      { playerIndex: 1, cardId: "u13bg-target-attack-1", park: true },
+      { playerIndex: 0, cardId: "u13bg-source-attack-2", park: true },
+      { playerIndex: 1, cardId: "u13bg-target-attack-3", park: true },
+      { playerIndex: 0, cardId: "u13bg-source-attack-4", park: false },
+    ];
+    let finalAttackEventId = "";
+    for (const [index, responseCard] of sequence.entries()) {
+      const result = await action(request, room, responseCard.playerIndex, "respond", {
+        providerId: "card",
+        cardId: responseCard.cardId,
+      });
+      const event = result.room.timeline.find((timelineEvent) => timelineEvent.type === "card"
+        && timelineEvent.card?.id === responseCard.cardId);
+      expect(event?.id, `missing public card event ${responseCard.cardId}`).toBeTruthy();
+      const journeyCard = page.locator(`[data-public-card-journey-event-id="${event.id}"]`);
+      await expect(journeyCard).toHaveAttribute("data-public-card-journey-phase", responseCard.park ? "parked" : "reveal", {
+        timeout: responseCard.park ? 12_000 : 10_000,
+      });
+      if (index === sequence.length - 1) finalAttackEventId = event.id;
+    }
+
+    const finalAttack = page.locator(`[data-public-card-journey-event-id="${finalAttackEventId}"]`);
+    await expect(finalAttack).toHaveAttribute("data-public-card-journey-phase", "reveal");
+    const localParkedTargets = await page.locator(
+      `[data-public-card-journey-actor-id="${localViewer.id}"][data-public-card-journey-phase="parked"]`,
+    ).evaluateAll((elements) => elements.map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        cardId: element.getAttribute("data-public-card-journey-card-id"),
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+      };
+    }));
+    const parkedHistory = localParkedTargets
+      .filter(({ cardId }) => cardId === "u13bg-target-attack-1" || cardId === "u13bg-target-attack-3")
+      .sort((left, right) => left.left - right.left);
+    expect(parkedHistory).toHaveLength(2);
+    expect(parkedHistory[0].left).toBeCloseTo(14, 0);
+    expect(parkedHistory[1].right).toBeCloseTo(116, 0);
+
+    const localGeometry = await geometry(page);
+    assertGeometry(localGeometry);
+    const observerGeometry = await geometry(observerPage);
+    assertGeometry(observerGeometry);
+    await expect.poll(async () => readChip(observerPage)).toBe(await readChip(page));
+
+    const matchingTrace = [...placementTraces].reverse().find((trace) => trace.outcome === "placed"
+      && trace.obstacles.some(({ sources }) => sources.some((source) => source.startsWith("projected-final:") && source.includes("public-card-journey-card"))));
+    expect(matchingTrace, `expected an opt-in candidate trace for the real Duel journey; captured ${JSON.stringify(placementTraces)}`).toBeTruthy();
+    const rejectedCenter = matchingTrace.candidates.find((candidate) => Math.abs(candidate.horizontalOffset) < 0.1);
+    expect(rejectedCenter?.accepted).toBe(false);
+    expect(rejectedCenter?.rejectedBy.some(({ sources }) => sources.some((source) => source.includes("public-card-journey-card")))).toBe(true);
+    expect(Math.abs(matchingTrace.chosen.horizontalOffset)).toBeLessThanOrEqual(20);
+    expect(matchingTrace.candidates.filter(({ accepted }) => !accepted).length).toBeGreaterThan(0);
+    expect(matchingTrace.obstacles.every(({ left, top, right, bottom, width, height }) =>
+      [left, top, right, bottom, width, height].every(Number.isFinite))).toBe(true);
+    console.log("U13-B-G 440x766 placement", JSON.stringify({
+      chip: matchingTrace.chip,
+      safeBounds: matchingTrace.safeBounds,
+      parkedHistory,
+      chosenHorizontalOffset: matchingTrace.chosen.horizontalOffset,
+      testedCandidates: matchingTrace.candidates.length,
+      rejectedCandidates: matchingTrace.candidates.filter(({ accepted }) => !accepted).length,
+    }));
+
+    await testInfo.attach("u13-b-g-real-journey-diagnostics", {
+      body: JSON.stringify({
+        localParkedTargets,
+        localGeometry,
+        observerGeometry,
+        chosenTrace: matchingTrace,
+      }, null, 2),
+      contentType: "application/json",
+    });
+    await testInfo.attach("u13-b-g-440x766-local-viewer", {
+      body: await page.screenshot({ fullPage: true }),
+      contentType: "image/png",
+    });
+
+    await page.locator(".public-card-journey-card").first().click();
+    await expect(page.locator(".card-details-panel")).toBeVisible();
+    const inspectedGeometry = await geometry(page);
+    assertGeometry(inspectedGeometry);
+    await page.getByRole("button", { name: "Close card details" }).click();
+    await expect(page.locator(".card-details-panel")).toHaveCount(0);
+  } finally {
+    await observerContext.close();
   }
 });
 
