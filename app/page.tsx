@@ -1119,11 +1119,72 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCar
       observer.disconnect();
     };
   }, [expandedSkill?.name, expandedSkill?.description, selectedCardDetail, updateSkillDescriptionScrollable]);
-  const renderInspectionCard = (card: Card, { hidden = false, equipmentMiniature = false }: { hidden?: boolean; equipmentMiniature?: boolean } = {}) => {
+  const inspectorRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const inspector = inspectorRef.current;
+    const shell = inspector?.closest<HTMLElement>(".opponent-inspection-floating-shell");
+    const layer = shell?.parentElement;
+    const stage = layer?.closest<HTMLElement>(".interaction-stage-inspect-only");
+    const table = stage?.closest<HTMLElement>(".play-table");
+    if (!inspector || !shell || !layer || !stage || !table) return;
+
+    const dock = document.querySelector<HTMLElement>(".local-player-dock");
+    const hand = document.querySelector<HTMLElement>(".local-hand-rail");
+    const seats = Array.from(table.querySelectorAll<HTMLElement>(".player-board [data-player-anchor]"));
+    const visualViewport = window.visualViewport;
+    const measure = () => {
+      const layerRect = layer.getBoundingClientRect();
+      const viewportTop = visualViewport?.offsetTop ?? 0;
+      const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight);
+      let panelTop = Math.max(layerRect.top + 12, viewportTop + 12);
+      if (table.dataset.seatTopology === "top-row") {
+        for (const seat of seats) panelTop = Math.max(panelTop, seat.getBoundingClientRect().bottom + 12);
+      }
+      const safeBottom = Math.min(
+        layerRect.bottom,
+        dock?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
+        hand?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
+        viewportBottom,
+      ) - 12;
+      shell.style.marginTop = `${Math.max(0, panelTop - (layerRect.top + 12))}px`;
+      shell.style.maxHeight = `${Math.max(0, safeBottom - panelTop)}px`;
+    };
+
+    measure();
+    const frame = requestAnimationFrame(measure);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    for (const element of [table, layer, dock, hand, ...seats]) if (element) observer?.observe(element);
+    window.addEventListener("resize", measure);
+    visualViewport?.addEventListener("resize", measure);
+    visualViewport?.addEventListener("scroll", measure);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+      visualViewport?.removeEventListener("resize", measure);
+      visualViewport?.removeEventListener("scroll", measure);
+    };
+  }, [player.id]);
+  const inspectionEquipmentSlots = [
+    { slot: "weapon", label: "Weapon" },
+    { slot: "armor", label: "Armour" },
+    { slot: "defensiveHorse", label: "+1 Horse" },
+    { slot: "offensiveHorse", label: "−1 Horse" },
+  ] as const;
+  const inspectionEquipmentBySlot = new Map<string, Card>();
+  const extraEquipmentCards: Card[] = [];
+  for (const card of player.equipmentCards) {
+    const slot = cardDefinition(card.kind).equipmentSlot;
+    if (slot && !inspectionEquipmentBySlot.has(slot)) inspectionEquipmentBySlot.set(slot, card);
+    else extraEquipmentCards.push(card);
+  }
+  const visibleJudgementCards = player.judgementCards.slice(0, 2);
+  const overflowJudgementCards = player.judgementCards.slice(2);
+  const renderInspectionCard = (card: Card, { hidden = false, equipmentMiniature = false, inspectionSlot }: { hidden?: boolean; equipmentMiniature?: boolean; inspectionSlot?: string } = {}) => {
     const selected = selectedCardDetail?.id === card.id;
-    return <button key={card.id} type="button" className={`opponent-inspection-card${equipmentMiniature ? " opponent-inspection-equipment-card" : ""}`} style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} aria-controls={detailsId} aria-pressed={selected} onClick={(event) => { event.stopPropagation(); openCardDetail(card, event.currentTarget); }}><CardFace card={card} /></button>;
+    return <button key={card.id} type="button" className={`opponent-inspection-card${equipmentMiniature ? " opponent-inspection-equipment-card" : ""}`} data-inspector-slot={inspectionSlot} style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} aria-controls={detailsId} aria-pressed={selected} onClick={(event) => { event.stopPropagation(); openCardDetail(card, event.currentTarget); }}><CardFace card={card} /></button>;
   };
-  return <section key={player.id} className="hero-focus hero-focus-inspect opponent-inspection-panel" role="dialog" aria-label={`${player.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={player.id}>
+  return <section ref={inspectorRef} key={player.id} className="hero-focus hero-focus-inspect opponent-inspection-panel" role="dialog" aria-label={`${player.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={player.id}>
     <div className="hero-focus-heading"><strong>{`INSPECT · ${player.name}`}</strong><button type="button" className="hero-focus-inspect-close" aria-label={`Close ${player.name} inspection`} onClick={onClose}>×</button></div>
     <div className="hero-focus-body">
       <span className={hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={hero?.id}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
@@ -1152,11 +1213,43 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCar
             }) : <span className="opponent-inspection-empty">None</span>}</div>
           </section>
         </div>
-        <div className="hero-focus-inspect-public-zones">
-          <section className="opponent-inspection-zone" aria-label="Equipment"><h3>Equipment</h3><div className="opponent-inspection-card-row">{player.equipmentCards.length ? player.equipmentCards.map((card) => renderInspectionCard(card, { equipmentMiniature: true })) : <span className="opponent-inspection-empty">None</span>}</div></section>
-          <section className="opponent-inspection-zone" aria-label="Judgement Zone"><h3>Judgement Zone</h3><div className="opponent-inspection-card-row">{player.judgementCards.length ? player.judgementCards.map((card) => renderInspectionCard(card, { hidden: judgementInFlight?.has(card.id) })) : <span className="opponent-inspection-empty">None</span>}</div></section>
-        </div>
       </div>
+    </div>
+    <div className="hero-focus-inspect-public-zones">
+      <section className="opponent-inspection-zone" aria-label="Judgement Zone">
+        <h3>Judgement Zone</h3>
+        <div className="opponent-inspection-card-row opponent-inspection-slot-row opponent-inspection-judgement-slots">
+          {Array.from({ length: 2 }, (_, index) => {
+            const card = visibleJudgementCards[index];
+            return card
+              ? renderInspectionCard(card, { hidden: judgementInFlight?.has(card.id), inspectionSlot: `judgement-${index + 1}` })
+              : <span key={`judgement-empty-${index + 1}`} className="opponent-inspection-empty-slot" data-inspector-slot={`judgement-${index + 1}`} role="img" aria-label={`Empty Judgement slot ${index + 1}`} />;
+          })}
+        </div>
+        {overflowJudgementCards.length > 0 && <details className="opponent-inspection-overflow">
+          <summary aria-label={`Show ${overflowJudgementCards.length} more Judgement cards`}>+{overflowJudgementCards.length}</summary>
+          <div className="opponent-inspection-overflow-row">
+            {overflowJudgementCards.map((card) => renderInspectionCard(card, { hidden: judgementInFlight?.has(card.id) }))}
+          </div>
+        </details>}
+      </section>
+      <section className="opponent-inspection-zone" aria-label="Equipment">
+        <h3>Equipment</h3>
+        <div className="opponent-inspection-card-row opponent-inspection-slot-row opponent-inspection-equipment-slots">
+          {inspectionEquipmentSlots.map(({ slot, label }) => {
+            const card = inspectionEquipmentBySlot.get(slot);
+            return card
+              ? renderInspectionCard(card, { equipmentMiniature: true, inspectionSlot: slot })
+              : <span key={`equipment-empty-${slot}`} className="opponent-inspection-empty-slot" data-inspector-slot={slot} role="img" aria-label={`Empty ${label} slot`} />;
+          })}
+        </div>
+        {extraEquipmentCards.length > 0 && <details className="opponent-inspection-overflow">
+          <summary aria-label={`Show ${extraEquipmentCards.length} more Equipment cards`}>+{extraEquipmentCards.length}</summary>
+          <div className="opponent-inspection-overflow-row">
+            {extraEquipmentCards.map((card) => renderInspectionCard(card, { equipmentMiniature: true }))}
+          </div>
+        </details>}
+      </section>
     </div>
     <div ref={inspectDetailsRef} id={detailsId} className="hero-focus-inspect-details hero-focus-context">
       {selectedCardDetail ? (() => {

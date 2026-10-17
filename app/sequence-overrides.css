@@ -1796,9 +1796,9 @@
 
 .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell > .hero-focus.hero-focus-inspect {
   display: grid;
-  grid-template-areas: "heading" "body" "context";
+  grid-template-areas: "heading" "body" "zones" "context";
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   flex: 0 1 auto;
   gap: 3px;
   width: 100%;
@@ -1844,7 +1844,7 @@
 .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity {
   grid-area: auto;
   display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(130px, 1.15fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 6px;
   min-width: 0;
@@ -2082,30 +2082,64 @@
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-public-zones {
+  grid-area: zones;
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
-  gap: 3px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: stretch;
+  gap: 4px;
 }
 
 .opponent-inspection-floating-shell .opponent-inspection-zone {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  gap: 3px;
   min-width: 0;
-  padding: 2px 3px;
+  padding: 3px 4px;
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-public-zones .opponent-inspection-zone h3 {
-  margin: 0 0 3px;
+  min-width: 0;
+  margin: 0;
   font-size: 8px;
 }
 
-.opponent-inspection-floating-shell .opponent-inspection-card-row {
-  gap: 3px;
+.opponent-inspection-floating-shell .opponent-inspection-slot-row {
+  display: grid;
+  align-items: stretch;
+  justify-content: center;
+  min-width: 0;
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-judgement-slots {
+  grid-template-columns: repeat(2, minmax(0, 60px));
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-equipment-slots {
+  grid-template-columns: repeat(4, minmax(0, 60px));
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect .opponent-inspection-card {
-  width: 38px;
-  flex-basis: 38px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  aspect-ratio: 2 / 3;
+  flex: none;
+  overflow: hidden;
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-empty-slot {
+  display: block;
+  box-sizing: border-box;
+  min-width: 0;
+  aspect-ratio: 2 / 3;
+  border: 1px dashed #8d7956a6;
+  border-radius: 5px;
+  background: #090b0870;
 }
 
 .opponent-inspection-floating-shell .opponent-inspection-card .played-card > i {
@@ -2113,16 +2147,51 @@
   transform-origin: top left;
 }
 
-.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-inspect-public-zones .opponent-inspection-zone[aria-label="Equipment"] .opponent-inspection-card-row:has(> .opponent-inspection-card:only-child) > .opponent-inspection-card {
-  width: 38px;
-  flex-basis: 38px;
+.opponent-inspection-floating-shell .opponent-inspection-overflow {
+  position: relative;
+  justify-self: center;
+  min-width: 0;
+  font: 700 9px/1 Arial, sans-serif;
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-overflow summary {
+  min-width: 24px;
+  min-height: 14px;
+  padding: 2px 5px;
+  border: 1px solid #8d7956a6;
+  border-radius: 8px;
+  color: #e5c77f;
+  text-align: center;
+  list-style: none;
+  cursor: pointer;
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-overflow summary::-webkit-details-marker {
+  display: none;
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-overflow-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 3px;
+  max-width: min(70vw, 340px);
+  max-height: 96px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid #9c8249;
+  background: #11140ff5;
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-overflow .opponent-inspection-card {
+  flex: 0 0 42px;
+  width: 42px;
 }
 
 @media (max-width: 520px) {
   .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell > .hero-focus.hero-focus-inspect {
-    grid-template-areas: "heading" "body" "context";
+    grid-template-areas: "heading" "body" "zones" "context";
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
     max-height: max(0px, min(388px, calc(100cqh - 12px)));
   }
 
@@ -2132,29 +2201,24 @@
   }
 
   .opponent-inspection-floating-shell .hero-focus-inspect-public-zones {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    gap: 3px;
   }
 
   .opponent-inspection-floating-shell .hero-focus-inspect-public-zones .opponent-inspection-zone {
-    padding: 2px;
+    padding: 2px 3px;
   }
 
   .opponent-inspection-floating-shell .hero-focus-inspect-public-zones .opponent-inspection-zone h3 {
     overflow: hidden;
-    font-size: 6px;
+    font-size: 7px;
     letter-spacing: .03em;
-    text-overflow: clip;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .opponent-inspection-floating-shell .hero-focus-inspect-public-zones .opponent-inspection-card-row {
-    gap: 2px;
-  }
-
-  .opponent-inspection-floating-shell .hero-focus-inspect-public-zones .opponent-inspection-card {
-    width: clamp(29px, 8vw, 36px);
-    flex-basis: clamp(29px, 8vw, 36px);
+  .opponent-inspection-floating-shell .opponent-inspection-overflow-row {
+    max-width: min(76vw, 300px);
   }
 
   .opponent-inspection-floating-shell .opponent-inspection-card .played-card > i {

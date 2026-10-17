@@ -2725,3 +2725,39 @@ Profile command measurements:
   H2-G1 overall remains not accepted due to separate Inspect feedback; this
   slice is pending user phone review. Q1–Q4 are deferred and accepted H4 remains
   unchanged.
+
+### UX2-10.13.4.1-U13-D-F-OPPONENT-HP-GEAR-01 — 2026-10-17
+
+- Commit `711756035ef83041ec26dec201b39501c0f5c59b` moved genuine occupied
+  Equipment indicators to the right, retained HP at the left, enlarged the
+  four-seat HP label and replaced the arrow-like Weapon mark with a sword.
+  It changed no game rules, server data or local Equipment display.
+- Exact-SHA Actions run
+  [`39060346664`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39060346664)
+  passed lint/fast, API, browser smoke, build, D1 migrations, Worker deploy and
+  production smoke. Deployed Worker version:
+  `11e4951b-1f14-42ed-b0ea-b7b73d718261`.
+- Production Worker/D1 replay equipped one, two and four real cards. Four
+  occupied slots stayed non-overlapping and right-aligned at 390×700, 390×844,
+  440×894 and 480×900; evidence is in `/tmp/wtk-u13-d-f-production/`. Pending
+  user phone review.
+
+### UX2-10.13.6-U13-F safe-style gate — 2026-10-17 (NO CHANGE)
+
+- A local pre-change Attack→Dodge browser run sampled the H4 band at 390×844
+  and 440×894. At 390×844 the existing announcement falls back and intersects
+  the revealed Dodge by 11px; at 440×894 it clears the card. The proposed
+  6px vertical padding would enlarge the narrow band. Because U13-F is styling
+  only and forbids H4 positioning changes, no U13-F CSS was applied. This
+  local Chromium measurement does not revise the user's H4 phone acceptance.
+  Screenshots and frame geometry are in `/tmp/wtk-u13-f-before/`.
+
+### UX2-10.13.8-U13-H CI/deployment closure — 2026-10-17
+
+- Existing equal-size Diao Chan skill controls were implemented in
+  `4ceadd7a6aa883d6953107c60f88479a7b83bf87`; the commit is an ancestor of
+  `711756035ef83041ec26dec201b39501c0f5c59b`. The latter's exact-SHA Actions
+  run `39060346664` passed and deployed the bundled source. Focused geometry and
+  gameplay evidence remains recorded in `docs/UX2-refine.md` §10.13.8.
+- No U13-H reimplementation or separate production interaction proof was
+  performed. It remains pending user phone review.

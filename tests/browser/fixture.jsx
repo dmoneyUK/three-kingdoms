@@ -833,6 +833,12 @@ function browserRoom({ state, count, handSize, handKind, targetHandCount, target
         ? [card("browser-target-judgement", "Lightning", "♥", "Q")]
       : hasLocalJudgementFixture && id === meId
       ? [card("browser-local-lightning", "Lightning", "♥", "Q"), card("browser-local-overindulgence", "Overindulgence", "♠", "7")].slice(0, localJudgementCount)
+      : judgementCase === "three" && id === "p2"
+        ? [card("browser-inspector-lightning-one", "Lightning", "♥", "Q"), card("browser-inspector-lightning-two", "Lightning", "♦", "8"), card("browser-inspector-overindulgence", "Overindulgence", "♠", "7")]
+      : judgementCase === "two" && id === "p2"
+        ? [card("browser-inspector-lightning-one", "Lightning", "♥", "Q"), card("browser-inspector-overindulgence", "Overindulgence", "♠", "7")]
+      : judgementCase === "single-lightning" && id === "p2"
+        ? [card("browser-inspector-lightning", "Lightning", "♥", "Q")]
       : judgementCase === "public-lightning" && id === "p3" ? [card("browser-inspector-lightning", "Lightning", "♥", "Q")]
       : state === "rest" && id === "p3" ? [card("browser-lightning", "Lightning", "♥", "Q")] : [],
     equipmentCards: retaliationModalFixture && id === "p2"
