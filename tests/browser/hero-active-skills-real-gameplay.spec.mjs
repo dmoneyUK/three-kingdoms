@@ -1154,7 +1154,7 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
         await access(videoPath);
         await testInfo.attach("l5-lust-duel-fourth-viewer.webm", { path: videoPath, contentType: "video/webm" });
       } catch (error) {
-        if (error?.code !== "ENOENT") throw error;
+        if (error?.code !== "ENOENT") console.warn("[L5] Unable to attach the fourth-viewer recording", error);
       }
     }
   }

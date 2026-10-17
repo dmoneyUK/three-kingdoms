@@ -4,7 +4,7 @@ Branch: `ux-v2`
 
 ## Latest relevant result
 
-- U13-E/F §10.13.5.1 is implemented locally. Focused build and browser checks pass for four authenticated viewers across 390×700, 390×844, 440×894, and 480×900, including root reveal/move/park, two Attack responses, Skip/settlement, alternate-seat Diao Chan, and long Latin/Chinese names. The measured Frame is 168×190 around the complete 90×135 physical card; it is hidden during the 380ms card move after a measured H4 overlap, and no longer obstructs the accepted H4 band. Exact-SHA CI/deploy and deployed Worker/D1 Test Switch replay are pending. H4 remains unchanged; Q3/Q4 remain deferred.
+- U13-E/F §10.13.5.1 is implemented locally. Focused build and browser checks pass for four authenticated viewers across 390×700, 390×844, 440×894, and 480×900, including root reveal/move/park, two Attack responses, Skip/settlement, alternate-seat Diao Chan, and long Latin/Chinese names. The measured Frame is 168×190 around the complete 90×135 physical card; it is hidden during the 380ms card move after a measured H4 overlap, and no longer obstructs the accepted H4 band. Test Switch and L5 four-viewer local checks pass. Exact SHA `2069815` passed API and browser startup smoke but failed lint on `no-unsafe-finally` in optional recording attachment; deployment was skipped. That test cleanup is fixed locally; exact-SHA CI/deploy and deployed Worker/D1 Test Switch replay are pending. H4 remains unchanged; Q3/Q4 remain deferred.
 - Prior Q1/Q2, R4-H/I, U13-B-G/C/H results are summarized in `docs/AUTONOMOUS_UI_ROADMAP.md`. H4-A/B/C remains user-accepted. Preserve current L4/L5 review status and do not infer phone acceptance from local evidence.
 
 ## Exactly one current bounded task
