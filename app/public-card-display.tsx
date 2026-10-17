@@ -1149,10 +1149,6 @@ function PublicCardAnnouncement({
           height,
           lines: textElement ? range.getClientRects().length : 0,
           message: fallbackOption.message,
-    const anchor = getAnchor();
-    anchorObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
-    if (anchor) anchorObserver?.observe(anchor, { attributes: true, attributeFilter: ["style"] });
-    anchorObserver?.observe(display, { attributes: true, attributeFilter: ["data-public-card-layout-pending"] });
           compact: fallbackOption.compact,
         };
         copy.dataset.publicCardAnnouncementFallback = "true";
@@ -1181,6 +1177,10 @@ function PublicCardAnnouncement({
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(place);
     };
+    const anchor = getAnchor();
+    anchorObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
+    if (anchor) anchorObserver?.observe(anchor, { attributes: true, attributeFilter: ["style"] });
+    anchorObserver?.observe(display, { attributes: true, attributeFilter: ["data-public-card-layout-pending"] });
     const onResize = schedule;
     place();
     window.addEventListener("resize", onResize);
@@ -1189,7 +1189,6 @@ function PublicCardAnnouncement({
     viewport?.addEventListener("scroll", onResize);
     resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onResize);
     const table = display.closest<HTMLElement>(".play-table");
-      anchorObserver?.disconnect();
     const playerBoard = document.querySelector<HTMLElement>(".player-board");
     if (table) resizeObserver?.observe(table);
     if (playerBoard) resizeObserver?.observe(playerBoard);
@@ -1218,6 +1217,7 @@ function PublicCardAnnouncement({
       viewport?.removeEventListener("scroll", onResize);
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
+      anchorObserver?.disconnect();
       window.cancelAnimationFrame(frame);
     };
   }, [anchorEventId, compactMessage, displayedMessage, eventId, heading, message, negationWaiting, phase, placementKey, privateDrawAware, stableCenterAnchor, stableFallbackCardRect, viewerLayoutKey]);
