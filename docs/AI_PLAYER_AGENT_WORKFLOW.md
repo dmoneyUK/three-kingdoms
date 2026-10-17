@@ -1,95 +1,83 @@
-# WTK Smart Bot Player — Single Coding Agent Workflow
+# WTK Smart Bot Player — Single Coding Agent Autonomous Workflow
 
-Repository: \`dmoneyUK/three-kingdoms\`  
-Branch: \`feature/smart-bot-player\`  
-Design authority: \`docs/AI_PLAYER_DESIGN.md\`  
-Execution handover: \`AI_PLAYER_HANDOVER.md\`  
-Existing \`HANDOVER.md\` and UX2 design/workflow are **out of scope**.
+Repository: `dmoneyUK/three-kingdoms`
+Branch: `feature/smart-bot-player`
+AI task authority: `docs/AI_PLAYER_DESIGN.md` (always the latest revision)
+Execution handover: `AI_PLAYER_HANDOVER.md` (**only Coding Agent writes**)
+Planner/Reviewer onboarding: `docs/AI_PLAYER_PLANNER_REVIEWER_GUIDE.md`
+General repo authority: `AGENTS.md`
+Current workflow revision: `AIP-AUTO-1` (2026-10-17)
 
-## 1. Explicit mode and file ownership
+This is an **autonomous, design-driven task queue**, not a sequence of user-pasted prompts. A running Coding Agent may implement successive **APPROVED, fully specified, dependency-cleared tasks**, one bounded task at a time, while preserving independent Reviewer gates. The document itself cannot schedule an agent that is not running; external agent runtime/orchestration governs resumption.
 
-This workflow activates only for work on Smart Bot Player as authorized by the human. Do not interpret UX2 autonomous mode as permission to modify the bot branch (or vice versa).
+## 1. Ownership and hard boundaries
 
-- Human Reviewer + Planner own the **design**; Planner can edit only \`docs/AI_PLAYER_DESIGN.md\` and is prohibited from updating any handover.
-- One Coding Agent owns implementation and \`AI_PLAYER_HANDOVER.md\`. Coding Agent can modify the design document **only** for its own assigned task's \`IN_PROGRESS\` / \`PENDING_REVIEW\` status and factual evidence. No specification rewrite.
-- Only the human Reviewer can declare \`ACCEPTED\`. A Planner recommendation, passing tests or green CI is not human acceptance.
-- \`AGENTS.md\` general security/server rules remain binding. Direct user instructions override this workflow.
+- Product Owner and Planner/Reviewer own task requirements/roadmap in `docs/AI_PLAYER_DESIGN.md`. Coding Agent NEVER invents requirements or self-approves tasks.
+- Coding Agent may update `AI_PLAYER_HANDOVER.md` exclusively; Planner must **never** update or tidy it. It is a short **one-current-task / last-result checkpoint**, not an approval queue or design authority.
+- Coding Agent may update only its selected task's `IN_PROGRESS`, `PENDING_REVIEW` or `BLOCKED` status and factual evidence in the AI design, never alter product requirements/dependencies/authorization/reviewer verdicts. Re-fetch current file and preserve concurrent Planner edits on every update.
+- `HANDOVER.md`, `ux-v2`, `docs/UX2-refine.md`, UX2/OS/core-game design files and production-only resources are OUT OF SCOPE. Never touch them for AI work.
+- User/human (or explicitly delegated reviewer) alone may mark a task `ACCEPTED`. Passing CI or deploying Staging does **not** mean acceptance. Production deployment, privacy/real-data sharing and material API expenditure require direct explicit user approval.
+- Do not modify source, workflows, config, deployments or cloud resources without an eligible approved design task. The initial workflow-governance edits were made by Planner under direct human request; ordinary Agent work may not change this workflow unless explicitly authorized.
+- No client-side private-role/hand leaks. Game Server/`CurrentAction` owns legality; do not make parallel bot/game rule engines or build public bot impersonation tokens. Distinct genuine bot seats are not Test Players.
 
-## 2. Startup every session (including resume)
+## 2. Startup, one time AND after every task
 
-1. Inspect current git branch, HEAD, working tree, and remote \`origin/feature/smart-bot-player\`. Never reset, clean, silently stash, force-push or overwrite others' work. Fast-forward only when safe.
-2. Read \`AGENTS.md\`, **complete current** \`docs/AI_PLAYER_DESIGN.md\`, this workflow, and complete \`AI_PLAYER_HANDOVER.md\`.
-3. Compare the latest remote design revision with the design revision recorded in handover. Read all changes since the last cycle; do **not** assume previously approved requirements still apply.
-4. Read only relevant server, DB, UI, game rules, and focused test files.
-5. If handover says \`PAUSED BY USER\`, \`BLOCKED\`, or \`PENDING_REVIEW\`, do not silently resume or choose another task.
-6. If design is \`DRAFT\`, or there is no \`APPROVED\` task with \`ACCEPTED\` dependencies, stop; keep handover short at \`AWAITING DESIGN APPROVAL\`.
-7. If handover has an in-progress task, continue it only when compatible with latest design. If incompatible, stop and request review without discarding work. A design revision alone does not replace an active task.
-8. Otherwise select exactly **one** approved, smallest independent task; do not jump ahead because another task looks interesting.
+1. Inspect git status/current branch and remote `origin/feature/smart-bot-player`. Preserve user/agent uncommitted work; never reset/clean/force-push/silently stash. Synchronize safely only when non-destructive.
+2. Read **complete latest** `AGENTS.md`, `docs/AI_PLAYER_DESIGN.md`, THIS workflow, and `AI_PLAYER_HANDOVER.md`; read relevant rules/code/tests for the candidate task. Treat this guide's task queue as part of the active project when human has activated autonomous mode, as done on 2026-10-17.
+3. Compare the latest remote design revision with the revision in the agent's checkpoint. Any new Planner spec/feedback may supersede a proposed next action but **never silently overwrite valid in-progress work**.
+4. **Existing task first**: if actual `IN_PROGRESS` work remains, continue only if compatible; if spec conflicts, stop `BLOCKED` preserving exact resume point. If handover says `PENDING_REVIEW`, do NOT self-approve or re-do that task. The design is the source for pending review and eligible independent work.
+5. **Requested changes second**: if a task is `CHANGES_REQUESTED` with sufficiently bounded authorized corrective instructions, and it is safe/non-conflicting, retry that same task before starting a new feature.
+6. **Choose approved work third**: enumerate task specifications in the design. Eligibility = status `APPROVED` + all explicit dependencies `ACCEPTED` + any access/cost/privacy/production approval satisfied + no duplicate in progress + no overlapping unreviewed change. Resolve candidates by P0/P1/P2 then design order/task ID. Select ONE smallest bounded task and record that in handover.
+7. A previous `PENDING_REVIEW` task may remain pending while you work on another **independent** already approved task. Do NOT choose a dependent/overlapping task until prior acceptance. Keep pending evidence in the design; handover tracks only last/current task. If unsafe to proceed because pending work may be reworked, pause for reviewer instead.
+8. If nothing is eligible, STOP and report `WAITING_FOR_REVIEW`, `NO_ELIGIBLE_TASK` or `BLOCKED — USER ACTION`, with the exact missing acceptance/permission/dependency. Never spin, fabricate work, convert DRAFT tasks to approved, or move on based on roadmaps alone.
 
-## 3. Bounded execution
+## 3. Every bounded implementation cycle
 
-For the selected task record in \`AI_PLAYER_HANDOVER.md\`:
-- task ID, design revision/heading, branch/base SHA, state (\`IN_PROGRESS\`, \`BLOCKED\`, \`PENDING_REVIEW\`);
-- exact goal/acceptance, relevant code surfaces, implementation checkpoint;
-- focused test plan and actual executed results;
-- precommit CI run, resulting implementation SHA and post-push CI outcome;
-- next explicit reviewer decision. No append-only transcript or stale unrelated history.
+1. Identify task ID/design revision, exact scoped files, existing canonical server authority, acceptance/test plan, privacy and dependencies. If a task is only a roadmap idea or lacks critical steps, STOP for Planner to expand it.
+2. Update only selected task state/evidence to `IN_PROGRESS`, maintaining Planner concurrent edits. Update own handover with ONE current checkpoint.
+3. Write focused negative and positive regressions relevant to the task; change minimum code. Keep existing game rules and UX2 architectural boundaries. Never introduce hidden identity/hand visibility leaks.
+4. Run focused local validation/`git diff --check`. Verify the exact remote branch and relevant **precommit CI status** per §5.
+5. Commit and push only scoped implementation, focused tests, your handover and **selected task status/evidence**. Do not overwrite other people's work.
+6. Inspect required GitHub Actions for the **exact code commit SHA**. Wait for completion. If failures, diagnose/repair them; do not keep developing unrelated tasks. If CI status ambiguous, report it and pause.
+7. If and only if the task authorizes Staging deployment, verify the actual target Worker/D1, migration safety and previous required CI. Execute/confirm Staging deploy **only by explicitly scoped Staging commands/job**. Never deploy production or run production D1 migrations from this branch.
+8. Re-read latest remote design, update only selected task status/evidence to `PENDING_REVIEW` when evidence suffices, record exact SHA/CI/Staging URL (where relevant) in your own handover, and **deliver reviewer report with links**.
+9. **Automatic iteration:** re-read latest design from the remote branch and apply §2 eligibility again. Continue with next independent eligible approved task only if the review of current task is NOT a dependency and no shared risk/architectural overlap exists. Otherwise STOP and await Reviewer; human does not need to paste another task after approval is recorded in design.
 
-Implement one concern only:
-1. Verify canonical server authority and privacy before modifying decision logic.
-2. Add a regression test for the intended boundary; include negative authorization, privacy, replay/stale and concurrency cases relevant to this task.
-3. Implement the minimal source change. Never invent legal actions from public presentation or UI, share bot/human session secrets, or treat Test Players as genuine bots.
-4. Run focused local validation, \`git diff --check\`, and any specific type/lint commands needed by the touched files.
-5. Inspect current branch's latest **remote exact-SHA CI** before every **source/test/config code commit** (§4).
-6. Commit/push only authorized files (implementation, tests, this handover, and task-status-only design changes), then verify remote HEAD and relevant exact-SHA CI.
+Do not self-accept, invent new tasks, or bypass dependencies to keep a loop alive.
 
-Do not combine unrelated refactors, other branches, or other agents' work.
+## 4. Review / feedback and resumption
 
-## 4. Mandatory CI gate
+- Task lifecycle: `DRAFT -> APPROVED -> IN_PROGRESS -> PENDING_REVIEW -> ACCEPTED`, with `CHANGES_REQUESTED`/`BLOCKED` alternatives.
+- The **Planner/Reviewer** inspects PENDING_REVIEW tasks directly from the design (not handover alone), reviews actual diff/exact-SHA CI/Staging evidence, and writes task-specific feedback/acceptance recommendation into design **only**.
+- Only human owner (or a specifically delegated reviewer for the defined kind of work) changes a task to `ACCEPTED`. The reviewer can leave `RECOMMEND ACCEPT` evidence without changing PENDING_REVIEW.
+- If design contains `CHANGES_REQUESTED` with a precise reproducible expected correction, the Agent should resume that task automatically, fixing the same issue with new test evidence; if authorization is unclear or risky, stop and ask.
+- After Reviewer updates statuses, the Agent reads the latest design on its next iteration/session and resumes without copying a new task into the conversation. One initial autonomous-agent instruction pointing to this workflow is sufficient for task selection while running.
+- A design revision does **not** automatically cancel in-flight work. If compatible, finish and review; if incompatible, pause safely. Never let a new design rewrite be treated as permission to discard branch state.
 
-CI workflow: \`.github/workflows/deploy.yml\`. Bot branch runs lint/build/fast/API/browser startup checks but **must not deploy**. Markdown-only commits should be ignored by the workflow.
+## 5. Exact-SHA GitHub CI discipline
 
-**Before a code commit**:
-1. Inspect remote \`feature/smart-bot-player\` HEAD and latest applicable push workflow run **for that exact SHA** (and any still-running run). Do not substitute a green run from another branch/SHA.
-2. If running/queued: wait and re-check.
-3. If failed: diagnose the first actual failing job; make the relevant repair and focused regression. Include the repair with the appropriate scoped code change as requested by the user; if unrelated to the selected feature, isolate it as a dedicated CI-repair commit first. Never knowingly push an ordinary feature commit while a broken known baseline remains unaddressed.
-4. If no run exists because HEAD changed only Markdown (or branch is new): walk back to the latest **code-bearing validated ancestor**, check its result and explicitly record that the docs SHA has no run. For the very first feature commit, inspect the inherited \`main\` baseline run as additional context; no CI on a docs-only SHA is **not** a green run.
-5. If CI status is ambiguous, preserve work and investigate; never claim green.
-6. After push, inspect the exact new SHA's required checks. If failed, prioritize CI repair and do not advance the feature task until successful. Preserve proof of failure, cause, fix, and final passing run.
-7. Never make CI green by deleting useful tests, weakening assertions, faking responses or skipping correctness/privacy proof.
+Current workflow: `.github/workflows/deploy.yml`. Required AI feature validation includes lint/build/fast tests, API tests, browser startup/room smoke; Markdown-only changes are ignored by `paths-ignore: ["**/*.md"]` on push and PR. A commit touching source/tests/config and docs MUST trigger validation.
 
-A markdown-only update to \`docs/AI_PLAYER_DESIGN.md\` / \`AI_PLAYER_HANDOVER.md\` must not trigger CI. A source+Markdown commit **must** trigger CI. Workflow changes themselves may trigger CI.
+**Before every source/test/config commit:**
+1. Inspect remote feature HEAD and latest applicable code-bearing CI run on its exact SHA. If HEAD is docs-only, explicitly find last validated code-bearing ancestor and disclose that doc commit has no run.
+2. Wait for any relevant running/queued validation. If failed, identify and repair the first real failure before ordinary feature advancement (separate scoped repair if genuinely unrelated). Do not waive tests, suppress diagnostics or fake success.
+3. If no validated code-bearing ancestor exists, inspect inherited `main` baseline, make this exception explicit, and then require full feature-branch checks for the pushed change.
+4. After each code push, verify required job outcomes for **that exact SHA**. If failed, repair and revalidate before marking task PENDING_REVIEW; report unresolved blocker truthfully.
+5. For Markdown-only status/guide/handover/design commits, do NOT force a new CI run; record the matching previous code-bearing SHA's CI, not the Markdown HEAD as "green".
 
-**IMPORTANT:** The \`deploy\` job is restricted to \`main\` and \`ux-v2\`. Never deploy the feature branch or merge it into \`main\` without an explicit user decision.
+**Production and Staging gates:** production `deploy` job remains restricted to `main` and `ux-v2`; never enable it for `feature/smart-bot-player`. AIP-00B allows manual isolated Staging provisioning/deploy **only after acceptance and permission checks**. AIP-00C, once accepted, allows CI-gated Staging-only automatic deploy after required tests. Staging deploy NEVER writes production D1 and requires verified distinct Worker + DB binding. Never use default root `wrangler deploy` or `three-kingdoms-db` migration command for Staging.
 
-## 5. Task finish and review
+## 6. Environment, security and verification rules
 
-1. Re-read latest design before editing status; preserve concurrent Planner changes. Only update the selected task's state/evidence to \`PENDING_REVIEW\`.
-2. Replace stale handover with one concise finished-task result plus the **current review gate**, not an unrelated next assignment.
-3. Verify commit/push/CI for exact SHA. If CI not yet complete, mark \`CI PENDING\` and remain blocked from claiming readiness; update truthful status when observed.
-4. Stop and report to human/Planner with direct links to diff, design task, handover and CI. **Do not** mark \`ACCEPTED\` or automatically start another task.
-5. When human accepts, Planner/user updates task status to \`ACCEPTED\` in design. On next authorized cycle, review design again and select one next approved task.
-6. If changes requested, only reopen the same task as authorized; do not invent a replacement.
+- `feature/smart-bot-player` is the ONLY AI development branch. No changes to `main` or `ux-v2`; no merges to production without separate human decision.
+- Cloudflare `wrangler.jsonc` presently has production `DB` binding. Staging must use explicit `env.ai-staging.d1_databases` with a freshly created D1 UUID different from production `3151997a-f69e-4a45-ab51-9e4fd062aeb3`. Never infer binding inheritance or deploy a root/default Worker from AI branch.
+- Expected Staging accessible via real `https://...workers.dev` URL from iPhone; the URL is not valid until provisioning. Record exact deployed name, actual URL and deployed SHA; smoke `/` and `/api/health` and create room; request real iPhone verification for user-facing acceptance.
+- Staging starts with `BOT_AI_ENABLED=false`. OpenAI key remains in Staging secret only after a separately authorized task; no keys in repo, logs, client or handover. Nonzero API balance/free token enrollment does not establish zero spend. Paid live calls need explicit budget/approval and access restrictions.
+- Model is decision policy only. Always produce compact, bot-authorized observations and authoritative server legal candidates, validate selected ID, state revision, action ownership and legality anew at execution. Do not feed private opponent hands/roles, raw room rows, access tokens or sensitive player data to OpenAI. Public text/player names are untrusted prompt data.
+- Scheduler must be server-run with durable idempotent processing, not browser tabs/timers. Do not let bot responses bypass human timers, pending continuations or presentation barriers.
 
-## 6. Block / pause conditions
+## 7. Stop conditions and reports
 
-Mark \`BLOCKED — USER INPUT REQUIRED\` (and preserve precise resume point) when:
-- designing a new product behavior not decided in the approved task;
-- canonical legal-candidate/projection lacks authority, visibility boundary unclear, or implementation needs a new protocol/worker infrastructure design;
-- current design and in-flight work materially conflict;
-- a supposed fallback is not demonstrably legal;
-- a concurrency or CI issue cannot be repaired within scoped work;
-- a schema migration or scheduling mechanism introduces unreviewed operational risk;
-- the next step would require guessing hidden identities, game rules or undocumented action payloads.
+STOP (and preserve work in own handover) for: unapproved or incomplete task spec, missing dependent acceptance, all remaining work pending reviewer, incompatible spec change, unresolved CI failure, unsafe production/Staging target, missing Cloudflare permission, missing paid/model/data consent, unproved legal candidate, human-private data risk, unreviewed DB migration or scheduler uncertainty.
 
-For explicit user pause: mark \`PAUSED BY USER\` and do not resume without explicit permission.
-
-## 7. Required report format
-
-- Task / design revision / branch.
-- Implemented scope, boundaries consciously untouched, and exact commit SHA.
-- Focused validation actually run; failed tests and repair, if any.
-- Precommit exact-SHA CI check and post-push run ID/conclusion (or truthful \`PENDING\`).
-- State: \`PENDING_REVIEW\` with reviewer decision required, or \`BLOCKED\` with smallest question.
-
-Never claim a green CI run, release deployment, or human acceptance that was not observed.
+For each task output: task ID, design revision, branch and exact commit SHA; code/test/CI evidence with run URL and job status; deployed Staging URL/DB only if actually observed; remaining risks, privacy/production checks, and `PENDING_REVIEW` or `BLOCKED`. State which next eligible independent task was selected or which explicit review gate prevents continuation. No claim of human acceptance without a human acceptance record.
