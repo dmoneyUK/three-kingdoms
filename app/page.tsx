@@ -5899,7 +5899,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     measureDom();
     const interval = window.setInterval(measureDom, 500);
     return () => window.clearInterval(interval);
-  }, [attackDodgeTraceSnapshotJson]);
+  }, [attackDodgeTraceSnapshotJson, room.code]);
   const localEquipmentSelection = activeSkillSelection
     ? { eligibleIds: activeSkillSelection.eligibleCardIds, selectedIds: activeSkillSelectedCardIds, max: activeSkillSelection.max, disabled: busy || presentationBusy && !responseCardSelectionReady, onToggle: toggleActiveSkillCardSelection }
     : targetCardPickerInLocalDock && targetCardPickerSelection && targetCardPickerTarget
