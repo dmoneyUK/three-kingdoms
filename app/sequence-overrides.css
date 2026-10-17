@@ -767,17 +767,24 @@
 .local-hand-rail .card-slot { position: relative; z-index: 1; flex: 0 0 68px; width: 68px; height: var(--hand-peek-height); overflow: hidden; pointer-events: auto; }
 .local-hand-rail .card-slot.single-selected { z-index: 80; height: var(--hand-peek-height); overflow: visible; }
 .local-hand-rail .card-slot.details-selected { z-index: 90; overflow: visible; }
+.local-hand-rail .card-slot.inspect-focused { z-index: 90; overflow: visible; }
 .local-hand-rail .hand-card-visual { position: relative; width: 100%; height: var(--hand-card-height); }
 .local-hand-rail .card-slot .game-card { width: 100%; height: var(--hand-card-height); margin-left: 0; padding: 8px 5px; }
 .local-hand-rail .card-slot.single-selected .hand-card-visual,
 .local-hand-rail .card-slot.multi-selected .hand-card-visual,
-.local-hand-rail .card-slot.details-selected .hand-card-visual { transform: translateY(calc(-1 * var(--selected-rise))); }
+.local-hand-rail .card-slot.details-selected .hand-card-visual,
+.local-hand-rail .card-slot.inspect-focused .hand-card-visual { transform: translateY(calc(-1 * var(--selected-rise))); }
 .local-hand-rail .card-slot.single-selected .game-card { transform: translateY(calc(-1 * var(--selected-face-rise))); }
-.local-hand-rail .card-slot.details-selected .game-card { transform: translateY(calc(0px - var(--selected-face-rise))); }
+.local-hand-rail .card-slot.details-selected .game-card,
+.local-hand-rail .card-slot.inspect-focused .game-card { transform: translateY(calc(0px - var(--selected-face-rise))); }
 .local-hand-rail .hand-card-details-frame { position: absolute; z-index: 2; top: calc(0px - var(--hand-lift-clearance)); left: 0; width: 100%; height: var(--hand-card-height); box-sizing: border-box; border: 1px solid #e5c976; border-radius: 5px; box-shadow: 0 0 0 2px #e5c97633; pointer-events: none; }
+.local-hand-rail .hand-card-inspection-action { position: absolute; z-index: 7; top: 0; left: 0; display: block; width: 100%; height: var(--hand-card-height); box-sizing: border-box; padding: 0; border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; touch-action: pan-x; }
+.local-hand-rail .card-slot.inspect-focused .hand-card-inspection-action { transform: translateY(calc(0px - var(--selected-face-rise))); }
+.local-hand-rail .hand-card-inspection-action:focus-visible { outline: 2px solid #ffe28a; outline-offset: -3px; }
 .local-hand-rail .hand-card-details-action { position: absolute; z-index: 8; top: calc(var(--hand-card-height) - 44px); left: 50%; translate: -50% 0; display: grid; place-items: center; width: 44px; min-width: 44px; height: 44px; min-height: 44px; box-sizing: border-box; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; transition: transform .18s; }
 .local-hand-rail .hand-card-details-icon { display: grid; place-items: center; width: 34px; height: 34px; box-sizing: border-box; border: 1px solid #c5a45f; border-radius: 50%; background: #191a14f2; color: #f2d98e; font: 700 18px/1 Arial,sans-serif; }
 .local-hand-rail .card-slot.details-selected .hand-card-details-action { transform: translateY(calc(0px - var(--selected-face-rise))); }
+.local-hand-rail .card-slot.inspect-focused .hand-card-details-action { transform: translateY(calc(0px - var(--selected-face-rise))); }
 .local-hand-rail .hand-card-details-action:hover .hand-card-details-icon { background: #2a271b; color: #ffe8a7; }
 .local-hand-rail .hand-card-details-action:focus-visible { outline: 2px solid #ffe28a; outline-offset: -2px; }
 .local-hand-rail .card-slot:not(.single-selected) .game-card.selected { transform: translateY(-5px); }

@@ -179,7 +179,8 @@ for (const viewport of VIEWPORTS) {
       expect(Math.abs(geometry.action.y + geometry.action.height - (geometry.face.y + geometry.face.height))).toBeLessThanOrEqual(1);
       expect(await detailsAction.evaluate((button) => {
         const rect = button.getBoundingClientRect();
-        return document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) === button;
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return hit === button || button.contains(hit);
       })).toBe(true);
       await detailsAction.tap();
 

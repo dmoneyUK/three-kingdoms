@@ -1756,7 +1756,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => {
     presentationTransitionStore.accept(clientPresentation);
   }, [clientPresentation, presentationTransitionStore]);
-  const [selected, setSelected] = useState(""); const [wushengMode, setWushengMode] = useState<"play" | "response" | null>(null); const [longdanMode, setLongdanMode] = useState<"play" | "response" | null>(null); const [targetIds, setTargetIds] = useState<string[]>([]); const [borrowedSwordTargetId, setBorrowedSwordTargetId] = useState(""); const target = targetIds[0] ?? "";
+  const [selected, setSelected] = useState(""); const [inspectOnlyHandCardId, setInspectOnlyHandCardId] = useState(""); const [wushengMode, setWushengMode] = useState<"play" | "response" | null>(null); const [longdanMode, setLongdanMode] = useState<"play" | "response" | null>(null); const [targetIds, setTargetIds] = useState<string[]>([]); const [borrowedSwordTargetId, setBorrowedSwordTargetId] = useState(""); const target = targetIds[0] ?? "";
   const handRailRef = useRef<HTMLDivElement | null>(null);
   const handViewportSnapshotRef = useRef<HandViewportSnapshot | null>(null);
   const [handRailWidth, setHandRailWidth] = useState(0);
@@ -2189,6 +2189,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const selectedHandDetailsCard = selectedHandDetailsCardId
     ? room.myHand.find((item) => item.id === selectedHandDetailsCardId) ?? null
     : null;
+  const handActionIdentity = [room.code, room.meId, room.phase ?? "", room.actionRevision ?? "", room.currentAction?.actorId ?? "", room.currentAction?.kind ?? ""].join("\u001f");
+  const handActionIdentityRef = useRef(handActionIdentity);
   const responseReadyAfterEventId = room.currentAction?.presentation?.readyAfterEventId ?? null;
   const responseBarrierEvent = responseReadyAfterEventId ? room.timeline.find((event) => event.id === responseReadyAfterEventId) : null;
   // Keep the reveal barrier as presentation telemetry. CurrentAction, rather
@@ -2940,11 +2942,23 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const scopeChanged = gamePreviewScopeRef.current.roomCode !== room.code || gamePreviewScopeRef.current.viewerId !== room.meId;
     if (!scopeChanged) return;
     gamePreviewScopeRef.current = { roomCode: room.code, viewerId: room.meId };
+    setInspectOnlyHandCardId("");
     closeCardDetails(false);
     closeHeroDetails(false);
     opponentInspectionReturnFocusRef.current = null;
     setExpandedOpponentId(null);
   }, [closeCardDetails, closeHeroDetails, room.code, room.meId]);
+  useEffect(() => {
+    if (handActionIdentityRef.current === handActionIdentity) return;
+    handActionIdentityRef.current = handActionIdentity;
+    if (room.currentAction?.actorId !== room.meId || !room.isMyAction || room.currentAction.kind === "none") return;
+    setInspectOnlyHandCardId("");
+    if (infoCardContext === "private-hand") closeCardDetails(false);
+  }, [closeCardDetails, handActionIdentity, infoCardContext, room.currentAction?.actorId, room.currentAction?.kind, room.isMyAction, room.meId]);
+  useEffect(() => {
+    if (!inspectOnlyHandCardId || room.myHand.some((item) => item.id === inspectOnlyHandCardId)) return;
+    setInspectOnlyHandCardId("");
+  }, [inspectOnlyHandCardId, room.myHand]);
   useEffect(() => { if (!visibleInfoCard && !infoHero && !expandedOpponentId) return; const close = (event: KeyboardEvent) => { if (event.key !== "Escape") return; if (visibleInfoCard) { closeCardDetails(); return; } if (infoHero) { closeHeroDetails(); return; } if (nestedInspectorCardDetailDismissRef.current?.()) return; closeOpponentInspection(); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [visibleInfoCard, infoHero, expandedOpponentId, closeCardDetails, closeHeroDetails, closeOpponentInspection]);
   useEffect(() => { heroInfoReturnFocusRef.current = null; const timer = setTimeout(() => setInfoHero(null), 0); return () => clearTimeout(timer); }, [room.code, room.meId]);
   useEffect(() => { const timer = setTimeout(() => { setSelected(""); setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setTargetIds([]); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setDiscardSelected([]); setSerpentMode(false); setSerpentSelected([]); setResponseProviderId(""); }, 0); return () => clearTimeout(timer); }, [room.turnSeat, room.phase, room.meId]);
@@ -6371,6 +6385,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             const multiSelectMode = room.phase === "discard" || Boolean(activeSkillSelection || serpentMode || responseSelectionMax > 1 || triggerSelectionMax > 1);
             const responseSelectionLimit = triggerResponse && triggerSelectionUsesCards ? triggerSelection.max : responseSelectionUsesCards ? responseSelection.max : 2;
             const toggleHandCard = (item: Card) => {
+              setInspectOnlyHandCardId("");
+              if (infoCard && infoCardContext === "private-hand") closeCardDetails(false);
               const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1;
               if (room.phase === "discard") setDiscardSelected((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids.length < excessCards ? [...ids, item.id] : ids);
               else if (activeSkillSelection) toggleActiveSkillCardSelection(item.id);
@@ -6386,17 +6402,29 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               const singleSelected = !multiSelectMode && isSelected;
               const multiSelected = multiSelectMode && isSelected;
               const multiSelectionOrder = multiSelected ? selectedCardIds.indexOf(item.id) : -1;
-              const detailsSelected = !multiSelectMode && selectedHandDetailsCard?.id === item.id;
               const maySelect = (room.isMyTurn && (canPlay || room.phase === "discard")) || responseCardSelectionReady || rescueDecisionReady;
               const skillModeCardDisabled = Boolean(activeSkillTargetSelection || wushengMode && !wushengEligibleCardIds.has(item.id) || longdanMode && !longdanEligibleCardIds.has(item.id) || activeSkillSelection && !activeSkillSelection.eligibleCardIds.includes(item.id));
+              const cardActionDisabled = !maySelect || skillModeCardDisabled || responseCardDisabled(item);
+              const inspectionAvailable = (room.status === "playing" || room.status === "finished") && cardActionDisabled && !isSelected;
+              const inspectFocused = inspectionAvailable && inspectOnlyHandCardId === item.id;
+              const actionDetailsSelected = selectedHandDetailsCard?.id === item.id;
+              const detailsSelected = !multiSelectMode && actionDetailsSelected;
+              const inspectionDetailsSelected = inspectFocused && !actionDetailsSelected;
+              const detailsCard = actionDetailsSelected ? selectedHandDetailsCard : inspectionDetailsSelected ? item : null;
               const skillModeEligible = wushengMode && wushengEligibleCardIds.has(item.id) || longdanMode && longdanEligibleCardIds.has(item.id) || activeSkillSelection?.eligibleCardIds.includes(item.id) === true;
-              return <div className={`card-slot ${singleSelected ? "single-selected" : ""} ${multiSelected ? "multi-selected" : ""} ${detailsSelected ? "details-selected" : ""}`} data-hand-card-id={item.id} data-card-selected={isSelected ? "true" : "false"} key={`rail-${item.id}`} style={{ marginLeft: index === 0 ? 0 : `${handCardLayout.step - 68}px`, ...(multiSelected ? { zIndex: 100 + Math.max(0, selectedCardIds.length - multiSelectionOrder) } : {}) }}>
-                {detailsSelected && <span className="hand-card-details-frame" aria-hidden="true" />}
+              return <div className={`card-slot ${singleSelected ? "single-selected" : ""} ${multiSelected ? "multi-selected" : ""} ${detailsSelected ? "details-selected" : ""} ${inspectFocused ? "inspect-focused" : ""}`} data-hand-card-id={item.id} data-card-selected={isSelected ? "true" : "false"} data-card-inspect-focused={inspectFocused ? "true" : "false"} key={`rail-${item.id}`} style={{ marginLeft: index === 0 ? 0 : `${handCardLayout.step - 68}px`, ...(multiSelected ? { zIndex: 100 + Math.max(0, selectedCardIds.length - multiSelectionOrder) } : {}) }}>
+                {(detailsSelected || inspectionDetailsSelected) && <span className="hand-card-details-frame" aria-hidden="true" />}
                 <div className="hand-card-visual">
-                  <button aria-pressed={isSelected} disabled={!maySelect || skillModeCardDisabled || responseCardDisabled(item)} onClick={() => toggleHandCard(item)} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}>
+                  <button aria-pressed={isSelected} disabled={cardActionDisabled} onClick={() => { if (!cardActionDisabled) toggleHandCard(item); }} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}>
                     <span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-name-mark">{definition.name}</span><strong>{definition.category} card</strong>
                   </button>
-                  {selectedHandDetailsCard?.id === item.id && selectedHandDetailsCard && <button type="button" className="hand-card-details-action" data-testid="hand-card-details-action" aria-label={`Details for ${definition.name}`} onClick={(event) => openCardDetails(selectedHandDetailsCard, "private-hand", event.currentTarget)}><span className="hand-card-details-icon" aria-hidden="true">i</span></button>}
+                  {inspectionAvailable && <button type="button" className="hand-card-inspection-action" data-testid="hand-card-inspection-action" aria-label={`Inspect ${definition.name}`} aria-pressed={inspectFocused} onClick={() => {
+                    if (inspectFocused) {
+                      setInspectOnlyHandCardId("");
+                      if (infoCardContext === "private-hand") closeCardDetails(false);
+                    } else setInspectOnlyHandCardId(item.id);
+                  }} />}
+                  {detailsCard && <button type="button" className="hand-card-details-action" data-testid="hand-card-details-action" aria-label={`Details for ${definition.name}`} onClick={(event) => openCardDetails(detailsCard, "private-hand", event.currentTarget)}><span className="hand-card-details-icon" aria-hidden="true">i</span></button>}
                 </div>
               </div>;
             };

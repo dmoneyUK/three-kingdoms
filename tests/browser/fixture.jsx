@@ -638,6 +638,8 @@ function browserRoom({ state, count, handSize, handKind, targetHandCount, target
     ? []
     : ordinaryTurn
     ? ["Shadowrunner", "Overindulgence", "Negation", "Dodge", "Attack", "Attack"].map((kind, index) => card(`browser-ordinary-${index + 1}`, kind))
+    : state === "active-attack-observer" && handSize !== null
+    ? Array.from({ length: handSize }, (_, index) => card(`browser-offturn-${index + 1}`, handKind))
     : borrowedSwordFixture
       ? [card("browser-borrowed-sword", "BorrowedSword", "♣", "Q")]
     : state === "normal" && handSize !== null
