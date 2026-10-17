@@ -1837,6 +1837,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const knownHandCards = useRef(baselineHand(room.meId, hasInitialDeal ? [] : room.myHand, hasInitialDeal ? [] : room.timeline));
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
   const effectNoticeScope = useRef(JSON.stringify([room.code, room.meId]));
+  const pendingGroupSettlementEventIds = useRef(new Set<string>());
   const seenDiaoChanNoticeEventIds = useRef(new Set((room.presentationSnapshot?.diaoChanSkillNotices ?? []).map((notice) => notice.eventId)));
   const [activeSkillEffectSettlement, setActiveSkillEffectSettlement] = useState<{ eventId: string; exiting: boolean } | null>(null);
   const [activeDismantleSettlement, setActiveDismantleSettlement] = useState<{ eventId: string; exiting: boolean; journeySettled: boolean } | null>(null);
@@ -2639,12 +2640,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (effectNoticeScope.current !== noticeScopeKey) {
       effectNoticeScope.current = noticeScopeKey;
       seenEvents.current = new Set((room.timeline ?? []).map((event) => event.id));
+      pendingGroupSettlementEventIds.current.clear();
       seenDiaoChanNoticeEventIds.current = new Set((room.presentationSnapshot?.diaoChanSkillNotices ?? []).map((notice) => notice.eventId));
       setProcessedTimelineKey(timelineKey);
       setEffectNotices([]);
     }
     const fresh = (room.timeline ?? []).filter((event) => !seenEvents.current.has(event.id));
     fresh.forEach((event) => seenEvents.current.add(event.id));
+    fresh.forEach((event) => {
+      if (event.type === "message" && event.finalResult === true && event.publicGroupSettlement?.semantics === "PROVEN") {
+        pendingGroupSettlementEventIds.current.add(event.id);
+      }
+    });
     const freshSkillSettlements = fresh.flatMap((event) => {
       if (event.type !== "message") return [];
       const proofs = skillEffectSettlements.filter((proof) => proof.eventId === event.id);
@@ -2718,8 +2725,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       firstRenderedAt: null,
       lifecycle: freshAttackHitSettlements[0].lifecycle,
     });
-    const freshGroupSettlements = fresh.flatMap((event) => {
-      if (event.type !== "message") return [];
+    const freshGroupSettlements = [...pendingGroupSettlementEventIds.current].flatMap((eventId) => {
+      const matchingEvents = room.timeline.filter((event) => event.id === eventId);
+      if (matchingEvents.length !== 1 || matchingEvents[0].type !== "message") return [];
+      const event = matchingEvents[0];
       const proofs = clientPresentation.groupSettlements.filter((proof) => proof.eventId === event.id);
       if (proofs.length !== 1) return [];
       const proof = proofs[0];
@@ -2732,7 +2741,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         ? [proof]
         : [];
     });
-    if (freshGroupSettlements.length === 1) setActiveGroupSettlement({ eventId: freshGroupSettlements[0].eventId, exiting: false });
+    if (pendingGroupSettlementEventIds.current.size > 0) {
+      recordAttackDodgeUxTrace("group-settlement-handoff", {
+        timelineFinalEventIds: room.timeline.flatMap((event) => event.type === "message" && event.finalResult === true
+          && event.publicGroupSettlement?.semantics === "PROVEN" ? [event.id] : []),
+        pendingEventIds: [...pendingGroupSettlementEventIds.current],
+        projectedEventIds: clientPresentation.groupSettlements.map((proof) => proof.eventId),
+        activeEventId: activeGroupSettlement?.eventId ?? null,
+        activationEventId: freshGroupSettlements.length === 1 ? freshGroupSettlements[0].eventId : null,
+        proofMatchCount: freshGroupSettlements.length,
+      });
+    }
+    if (freshGroupSettlements.length === 1) {
+      pendingGroupSettlementEventIds.current.delete(freshGroupSettlements[0].eventId);
+      setActiveGroupSettlement({ eventId: freshGroupSettlements[0].eventId, exiting: false });
+    }
     const freshBumperHarvestSettlements = fresh.flatMap((event) => {
       if (event.type !== "message") return [];
       const proofs = clientPresentation.bumperHarvestSettlements.filter((proof) => proof.eventId === event.id);
@@ -2828,7 +2851,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       } else setEventQueue((queue) => coalescePresentationQueue(queue, visible));
     }
     setProcessedTimelineKey(timelineKey);
-  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, lustFramePresentationBlocked, optimisticPlay, activeEvent, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements]);
+  }, [room.timeline, timelineKey, room.code, room.meId, room.phase, room.turnSeat, room.status, room.players, room.presentationSnapshot?.diaoChanSkillNotices, room.presentationSnapshot?.publicCardEffects, lustFramePresentationBlocked, optimisticPlay, activeEvent, activeGroupSettlement?.eventId, eventQueue.length, skillEffectSettlements, dismantleSettlements, stealSettlements, attackHitSettlements, persistedRetiredAttackDodgeEvents, clientPresentation.groupSettlements, clientPresentation.bumperHarvestSettlements]);
   const effectNoticeEventId = effectNotice?.eventId ?? "";
   const effectNoticeProofEventId = effectNotice?.beautyProofEventId ?? effectNoticeEventId;
   const effectNoticeRoomCode = effectNotice?.roomCode ?? "";
@@ -3688,7 +3711,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || group.activeFrameId !== clientPresentation.activeFrameId
       || group.checkpointId !== clientPresentation.checkpointId
       || group.presentationRevision !== clientPresentation.presentationRevision
-      || group.currentParticipantId !== clientPresentation.currentParticipantId
+      || (isRootGroupScene && group.currentParticipantId !== clientPresentation.currentParticipantId)
       || !groupSourceId) return null;
 
     if (rootOrigin && (rootOrigin.frameId !== group.groupFrameId || rootOrigin.stage !== "GROUP_RESOLUTION"
@@ -3711,6 +3734,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || groupTargetEffectScope.presentationRevision !== group.presentationRevision
       || groupTargetEffectScope.sourceId !== groupSourceId
       || groupTargetEffectScope.cardKind !== group.cardKind
+      || groupTargetEffectScope.targetId !== group.currentParticipantId
       || !group.targetIds.includes(groupTargetEffectScope.targetId))) return null;
 
     const participants = group.participants;
@@ -5490,6 +5514,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       responseActorSeat: attackDodgeTraceSeat(publicCardDisplayAction?.response?.actorId),
       responseCardFaceKind: publicCardDisplayAction?.response?.cardFace?.kind ?? null,
       settlementOutcome: publicCardDisplayAction?.settlement?.outcome ?? null,
+      groupSettlementHandoff: {
+        activeEventId: activeGroupSettlement?.eventId ?? null,
+        pendingEventIds: [...pendingGroupSettlementEventIds.current],
+        projectedEventIds: clientPresentation.groupSettlements.map((proof) => proof.eventId),
+        candidateEventId: groupSettlementCandidate?.settlement.eventId ?? null,
+        timelineFinalEventIds: room.timeline.flatMap((event) => event.type === "message" && event.finalResult === true
+          && event.publicGroupSettlement?.semantics === "PROVEN" ? [event.id] : []),
+      },
       enabled: publicCardDisplayEnabled,
       ready: publicCardDisplayReady,
       ownsPresentation: publicCardDisplayOwnsPresentation,

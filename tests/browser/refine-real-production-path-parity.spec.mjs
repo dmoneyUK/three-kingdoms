@@ -14,14 +14,155 @@ async function seedGame(request, players) {
   return response.json();
 }
 
-async function openGame(page, seed, playerIndex, viewport = { width: 390, height: 844 }) {
+async function openGame(page, seed, playerIndex, viewport = { width: 390, height: 844 }, { trace = false } = {}) {
   const member = seed.players[playerIndex];
   await page.setViewportSize(viewport);
-  await page.addInitScript(({ code, token, name }) => {
+  await page.addInitScript(({ code, token, name, traceActive }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
-  }, { code: seed.code, token: member.token, name: member.name });
+    if (traceActive) sessionStorage.setItem("wtk.game-ux-trace.active.v2", "true");
+  }, { code: seed.code, token: member.token, name: member.name, traceActive: trace });
   await page.goto(`${API}/`);
   await expect(page.locator(".game-shell")).toBeVisible();
+}
+
+async function groupRootDiagnosticTrace(page, rootEventId, rootCardId, sourceId, finalServerState) {
+  return page.evaluate(({ expectedRootEventId, expectedRootCardId, expectedSourceId, serverState }) => {
+    const raw = sessionStorage.getItem("wtk.game-ux-trace.document.v2");
+    if (!raw) return null;
+    const trace = JSON.parse(raw);
+    const traceStageCounts = trace.entries.reduce((counts, entry) => {
+      counts[entry.stage] = (counts[entry.stage] ?? 0) + 1;
+      return counts;
+    }, {});
+    const samples = trace.entries.filter((entry) => {
+      if (entry.stage !== "presentation-dom") return false;
+      const data = entry.data ?? {};
+      const identity = data.publicRootIdentity ?? {};
+      return identity.serverProof?.rootEventId === expectedRootEventId
+        || identity.clientProjection?.rootEventId === expectedRootEventId
+        || (data.samePhysicalCardInstances ?? []).some((instance) => instance.publicCardId === expectedRootCardId)
+        || (data.cardInstances ?? []).some((instance) => instance.publicCardId === expectedRootCardId
+          && instance.publicActorId === expectedSourceId);
+    }).map((entry) => {
+      const data = entry.data ?? {};
+      const identity = data.publicRootIdentity ?? {};
+      return {
+        sessionId: entry.sessionId ?? null,
+        elapsedMs: entry.elapsedMs,
+        semanticStage: identity.serverInteraction?.stage ?? identity.selectedPresenter?.semanticStage ?? null,
+        currentParticipantId: identity.serverInteraction?.currentParticipantId
+          ?? identity.selectedPresenter?.currentParticipantId ?? null,
+        serverInteraction: identity.serverInteraction ?? null,
+        serverProof: identity.serverProof ?? null,
+        clientProjection: identity.clientProjection ?? null,
+        selectedPresenter: identity.selectedPresenter ?? null,
+        comparison: identity.comparison ?? null,
+        sameRootCounts: data.sameRootCounts ?? null,
+        sameRootInstances: data.sameRootInstances ?? [],
+        samePhysicalCardInstances: (data.samePhysicalCardInstances ?? []).filter((instance) =>
+          instance.publicCardId === expectedRootCardId).map((instance) => ({
+          eventId: instance.eventId,
+          publicCardId: instance.publicCardId,
+          publicActorId: instance.publicActorId,
+          rendererKind: instance.rendererKind,
+          motionType: instance.motionType,
+          visualPhase: instance.visualPhase,
+          sizeClass: instance.sizeClass,
+          layoutReason: instance.domPath?.[0]?.attributes?.["data-public-card-journey-layout-reason"] ?? null,
+          revealStartedAt: instance.domPath?.[0]?.attributes?.["data-public-card-journey-reveal-started-at"] ?? null,
+          ownerEventId: instance.ownerEventId,
+          ownerIdentity: instance.ownerIdentity,
+          domPath: instance.domPath,
+          actualCardRect: instance.actualCardRect,
+          targetParkingRect: instance.targetParkingRect,
+        })),
+        announcements: (data.announcements ?? []).map((announcement) => ({
+          kind: announcement.kind,
+          key: announcement.key,
+          eventId: announcement.eventId,
+          semanticStage: announcement.semanticStage,
+          textKey: announcement.textKey,
+          rect: announcement.rect,
+        })),
+      };
+    });
+    return {
+      buildSha: trace.environment?.buildSha ?? null,
+      traceStartedAt: trace.startedAt ?? null,
+      viewport: trace.environment?.viewport ?? null,
+      reducedMotion: trace.environment?.reducedMotion ?? null,
+      root: { rootEventId: expectedRootEventId, physicalCardId: expectedRootCardId, actualAuthorId: expectedSourceId },
+      traceStageCounts,
+      pipelineStates: trace.entries.filter((entry) => entry.stage === "pipeline-state").map((entry) => {
+        const data = entry.data ?? {};
+        const interaction = data.presentation?.interaction ?? null;
+        const proof = data.presentation?.groupRootCardProof ?? {};
+        const display = data.publicCardDisplay ?? {};
+        return {
+          elapsedMs: entry.elapsedMs,
+          interaction: interaction ? {
+            stage: interaction.stage,
+            interactionId: interaction.interactionId,
+            rootFrameId: interaction.rootFrameId,
+            checkpointId: interaction.checkpointId,
+            presentationRevision: interaction.presentationRevision,
+            currentParticipantSeat: interaction.currentParticipantSeat,
+          } : null,
+          serverRootProof: proof.server ?? proof.settlement ?? null,
+          clientRootProof: proof.client ?? null,
+          display: {
+            rootEventId: display.rootEventId ?? null,
+            rootCardId: display.rootCardId ?? null,
+            actualAuthorId: display.actualAuthorId ?? null,
+            interactionId: display.interactionId ?? null,
+            rootFrameId: display.rootFrameId ?? null,
+            checkpointId: display.checkpointId ?? null,
+            presentationRevision: display.presentationRevision ?? null,
+            candidateRendererKind: display.candidateRendererKind ?? null,
+            candidateMotionType: display.candidateMotionType ?? null,
+            revealDurationMs: display.revealDurationMs ?? null,
+            moveDurationMs: display.moveDurationMs ?? null,
+            semanticStage: display.semanticStage ?? null,
+            currentParticipantId: display.currentParticipantId ?? null,
+            settlementOutcome: display.settlementOutcome ?? null,
+            groupSettlementHandoff: display.groupSettlementHandoff ?? null,
+          },
+        };
+      }),
+      groupSettlementHandoffs: trace.entries.filter((entry) => entry.stage === "group-settlement-handoff").map((entry) => ({
+        elapsedMs: entry.elapsedMs,
+        timelineFinalEventIds: entry.data?.timelineFinalEventIds ?? [],
+        pendingEventIds: entry.data?.pendingEventIds ?? [],
+        projectedEventIds: entry.data?.projectedEventIds ?? [],
+        activeEventId: entry.data?.activeEventId ?? null,
+        activationEventId: entry.data?.activationEventId ?? null,
+        proofMatchCount: entry.data?.proofMatchCount ?? 0,
+      })),
+      publicRoomStates: trace.entries.filter((entry) => entry.stage === "game-room-state").map((entry) => ({
+        elapsedMs: entry.elapsedMs,
+        source: entry.data?.source ?? null,
+        status: entry.data?.status ?? null,
+        phase: entry.data?.phase ?? null,
+        viewerSeat: entry.data?.viewerSeat ?? null,
+        interaction: entry.data?.interaction ?? null,
+        rootAction: entry.data?.rootAction ?? null,
+      })),
+      publicTimelineEvents: trace.entries.filter((entry) => entry.stage === "public-timeline-events").flatMap((entry) =>
+        Array.isArray(entry.data?.events) ? entry.data.events.map((event) => ({
+          elapsedMs: entry.elapsedMs,
+          eventId: event.eventId ?? null,
+          type: event.type ?? null,
+          action: event.action ?? null,
+          cardKind: event.cardKind ?? null,
+          resolutionId: event.resolutionId ?? null,
+          finalResult: event.finalResult ?? null,
+          publicMessage: event.publicMessage ?? null,
+        })) : []),
+      finalServerState: serverState,
+      sampleCount: samples.length,
+      samples,
+    };
+  }, { expectedRootEventId: rootEventId, expectedRootCardId: rootCardId, expectedSourceId: sourceId, serverState: finalServerState });
 }
 
 async function attachScreenshot(testInfo, name, page) {
@@ -697,10 +838,10 @@ for (const { cardKind, requirement } of [
   { cardKind: "BarbarianInvasion", requirement: "attack" },
   { cardKind: "RainingArrows", requirement: "dodge" },
 ]) {
-  test(`real ${cardKind} keeps one parked root Journey through all Group targets and settlement`, async ({ page, request }) => {
+  test(`real ${cardKind} keeps one parked root Journey through all Group targets and settlement`, async ({ page, request }, testInfo) => {
     const root = card(cardKind, `group-root-journey-${cardKind.toLowerCase()}`);
     const seed = await seedGame(request, groupResolutionPlayers({ root, responseKind: requirement === "attack" ? "Attack" : "Dodge" }));
-    await openGame(page, seed, 0, { width: 480, height: 900 });
+    await openGame(page, seed, 0, { width: 480, height: 900 }, { trace: true });
     await playGroupRootCard(page, root);
 
     const firstTargetView = await reachGroupResponse(request, seed, 1, requirement);
@@ -708,6 +849,7 @@ for (const { cardKind, requirement } of [
     expect(rootEvent).toBeTruthy();
     const display = page.locator(`[data-public-card-display="true"][data-public-card-root-event-id="${rootEvent.id}"]`);
     const rootCard = display.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`);
+    let withheldGroupSettlementSnapshot = false;
     await expect(display).toHaveAttribute("data-public-card-motion", "group-root");
     await expect(display).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
     await expect(rootCard).toHaveAttribute("data-public-card-journey-actor-id", seed.players[0].id);
@@ -727,6 +869,27 @@ for (const { cardKind, requirement } of [
       await expect(page.locator(`[data-public-card-renderer-kind="static-fallback"][data-public-card-root-event-id="${rootEvent.id}"]`)).toHaveCount(0);
       await expect(display.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`)).toHaveCount(1);
 
+      if (index === seed.players.length - 1) {
+        await page.route(`${API}/api/rooms?*`, async (route) => {
+          const response = await route.fetch();
+          const payload = await response.json();
+          const roomPayload = payload.room && typeof payload.room === "object" ? payload.room : payload;
+          const hasRootSettlementEvent = roomPayload.timeline?.some((event) => event.type === "message"
+            && event.finalResult === true && event.publicGroupSettlement?.rootEventId === rootEvent.id);
+          const snapshot = roomPayload.presentationSnapshot;
+          if (!withheldGroupSettlementSnapshot && hasRootSettlementEvent
+            && snapshot && Array.isArray(snapshot.groupSettlements)
+            && snapshot.groupSettlements.some((proof) => proof.eventId === roomPayload.timeline.find((event) => event.type === "message"
+              && event.finalResult === true && event.publicGroupSettlement?.rootEventId === rootEvent.id)?.id)) {
+            roomPayload.presentationSnapshot = { ...snapshot, groupSettlements: [] };
+            withheldGroupSettlementSnapshot = true;
+            await route.fulfill({ response, body: JSON.stringify(payload) });
+            return;
+          }
+          await route.fulfill({ response });
+        });
+      }
+
       await apiAction(request, seed, index, "respond", {
         providerId: "card",
         cardId: `${root.id}-response-${index}`,
@@ -741,7 +904,111 @@ for (const { cardKind, requirement } of [
       }
     }
 
-    await expect(display).toHaveAttribute("data-public-card-settlement-outcome", "GROUP_RESOLVED", { timeout: 20_000 });
+    const finalView = await roomView(request, seed, 0);
+    await expect.poll(() => withheldGroupSettlementSnapshot, { timeout: 10_000 }).toBe(true);
+    const finalSettlementEventId = finalView.presentationSnapshot?.groupSettlements?.find((proof) => proof.rootEventId === rootEvent.id)?.eventId;
+    expect(finalSettlementEventId).toBeTruthy();
+    const finalServerState = {
+      stage: finalView.presentationSnapshot?.interaction?.stage ?? null,
+      interaction: finalView.presentationSnapshot?.interaction ? {
+        interactionId: finalView.presentationSnapshot.interaction.interactionId,
+        rootFrameId: finalView.presentationSnapshot.interaction.rootFrameId,
+        checkpointId: finalView.presentationSnapshot.interaction.checkpointId,
+        presentationRevision: finalView.presentationSnapshot.interaction.presentationRevision,
+        currentParticipantId: finalView.presentationSnapshot.interaction.currentParticipantId,
+      } : null,
+      groupResolution: finalView.presentationSnapshot?.groupParticipantProgress ? {
+        interactionId: finalView.presentationSnapshot.groupParticipantProgress.interactionId,
+        currentParticipantId: finalView.presentationSnapshot.groupParticipantProgress.currentParticipantId,
+        participants: finalView.presentationSnapshot.groupParticipantProgress.participants?.map((participant) => ({
+          playerId: participant.playerId,
+          status: participant.status,
+          outcome: participant.outcome,
+        })) ?? [],
+      } : null,
+      groupSettlements: (finalView.presentationSnapshot?.groupSettlements ?? []).map((settlement) => ({
+        eventId: settlement.eventId,
+        rootEventId: settlement.rootEventId,
+        interactionId: settlement.interactionId,
+        groupFrameId: settlement.groupFrameId,
+        sourceId: settlement.sourceId,
+        cardKind: settlement.cardKind,
+        outcome: settlement.outcome,
+        semantics: settlement.semantics,
+      })),
+      relevantTimelineEvents: finalView.timeline.filter((event) => event.id === rootEvent.id
+        || event.type === "message" && event.finalResult === true
+          && (event.message?.includes("Barbarian Invasion finishes resolving") || event.message?.includes("Raining Arrows finishes resolving")))
+        .map((event) => ({
+          eventId: event.id,
+          type: event.type,
+          action: event.action ?? null,
+          presentation: event.presentation ?? null,
+          resolutionId: event.resolutionId ?? null,
+          finalResult: event.finalResult ?? false,
+          importance: event.importance ?? null,
+          message: event.type === "message" ? event.message : null,
+          settlementProof: event.publicGroupSettlement ?? null,
+        })),
+      rootEventPresent: finalView.timeline.some((event) => event.id === rootEvent.id),
+    };
+    const diagnosticTrace = await groupRootDiagnosticTrace(page, rootEvent.id, root.id, seed.players[0].id, finalServerState);
+    expect(diagnosticTrace).toBeTruthy();
+    expect(diagnosticTrace.sampleCount).toBeGreaterThan(0);
+    let settlementDisplayed = false;
+    try {
+      await expect(display).toHaveAttribute("data-public-card-settlement-outcome", "GROUP_RESOLVED", { timeout: 20_000 });
+      settlementDisplayed = true;
+    } catch { /* attach the observed handoff state before failing the browser regression */ }
+    await page.unroute(`${API}/api/rooms?*`);
+    const completedTrace = await groupRootDiagnosticTrace(page, rootEvent.id, root.id, seed.players[0].id, finalServerState);
+    const diagnosticName = `${cardKind.toLowerCase()}-group-root-presentation-diagnostic.json`;
+    const diagnosticPath = testInfo.outputPath(diagnosticName);
+    writeFileSync(diagnosticPath, JSON.stringify(completedTrace, null, 2));
+    await testInfo.attach(diagnosticName, {
+      path: diagnosticPath,
+      contentType: "application/json",
+    });
+
+    const settlementHandoffs = completedTrace.groupSettlementHandoffs.filter((handoff) => handoff.timelineFinalEventIds.includes(finalSettlementEventId));
+    expect(settlementHandoffs.some((handoff) => handoff.pendingEventIds.includes(finalSettlementEventId)
+      && !handoff.projectedEventIds.includes(finalSettlementEventId))).toBe(true);
+    expect(settlementDisplayed).toBe(true);
+    const firstParkedSampleIndex = completedTrace.samples.findIndex((sample) => sample.samePhysicalCardInstances.some((instance) =>
+      instance.eventId === rootEvent.id && instance.visualPhase === "parked"));
+    expect(firstParkedSampleIndex).toBeGreaterThanOrEqual(0);
+    const firstRevealSample = completedTrace.samples.find((sample) => sample.samePhysicalCardInstances.some((instance) =>
+      instance.eventId === rootEvent.id && instance.visualPhase === "reveal"));
+    const firstMoveSample = completedTrace.samples.find((sample) => sample.samePhysicalCardInstances.some((instance) =>
+      instance.eventId === rootEvent.id && instance.visualPhase === "move"));
+    expect(firstRevealSample).toBeTruthy();
+    expect(firstMoveSample).toBeTruthy();
+    const revealStartedAt = firstRevealSample.samePhysicalCardInstances.find((instance) => instance.eventId === rootEvent.id)?.revealStartedAt;
+    expect(revealStartedAt).toBeTruthy();
+    const revealStartElapsedMs = Date.parse(revealStartedAt) - Date.parse(completedTrace.traceStartedAt);
+    const observedRevealDurationMs = firstMoveSample.elapsedMs - revealStartElapsedMs;
+    expect(observedRevealDurationMs).toBeGreaterThanOrEqual(4_000);
+    expect(observedRevealDurationMs).toBeLessThanOrEqual(5_000);
+    const groupRootPipelineStates = completedTrace.pipelineStates.filter((state) => state.display.rootEventId === rootEvent.id
+      && state.display.candidateMotionType === "group-root");
+    expect(groupRootPipelineStates.length).toBeGreaterThan(0);
+    expect(groupRootPipelineStates.every((state) => state.display.revealDurationMs === 4_000
+      && state.display.moveDurationMs === 380)).toBe(true);
+    const firstParkedInstance = completedTrace.samples[firstParkedSampleIndex].samePhysicalCardInstances
+      .find((instance) => instance.eventId === rootEvent.id);
+    expect(firstParkedInstance?.layoutReason).toContain("380ms-seat-parking-complete");
+    const postParkedSamples = completedTrace.samples.slice(firstParkedSampleIndex);
+    expect(postParkedSamples.length).toBeGreaterThan(0);
+    const retainedRootSamples = postParkedSamples.filter((sample) => sample.sameRootCounts.total > 0);
+    expect(retainedRootSamples.length).toBeGreaterThan(0);
+    for (const sample of postParkedSamples) {
+      expect(sample.sameRootCounts.fullSizeCount).toBe(0);
+      expect(sample.samePhysicalCardInstances.every((instance) => instance.rendererKind !== "static-fallback")).toBe(true);
+    }
+    for (const sample of retainedRootSamples) {
+      expect(sample.sameRootCounts.total).toBe(1);
+      expect(sample.sameRootCounts.intermediateCount).toBe(0);
+    }
     await expect(rootCard).toHaveAttribute("data-public-card-journey-phase", "parked");
     await expect(rootCard).toHaveAttribute("data-public-card-journey-size", "thumbnail");
     await expect(page.locator(`[data-public-card-renderer-kind="static-fallback"][data-public-card-root-event-id="${rootEvent.id}"]`)).toHaveCount(0);

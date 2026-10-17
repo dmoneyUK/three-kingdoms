@@ -553,7 +553,8 @@ export function provenGroupSettlements(value: unknown): PresentationSnapshotGrou
     const participants = candidate.participants.flatMap((participant, index) => {
       if (!nonEmptyString(participant.playerId) || ids.has(participant.playerId) || participant.order !== index + 1
         || (participant.status !== "RESOLVED" && participant.status !== "NO_LONGER_APPLICABLE")
-        || participant.status === "RESOLVED" && (participant.outcome !== "AVOIDED" && participant.outcome !== "DAMAGED" && participant.outcome !== "NEGATED" && participant.outcome !== "DEFEATED")
+        || participant.status === "RESOLVED" && participant.outcome !== undefined
+          && participant.outcome !== "AVOIDED" && participant.outcome !== "DAMAGED" && participant.outcome !== "NEGATED" && participant.outcome !== "DEFEATED"
         || participant.status === "NO_LONGER_APPLICABLE" && participant.outcome !== undefined
         || participant.outcome !== undefined && !isGroupParticipantProgressOutcomeAllowed(candidate.cardKind, "GROUP", participant.status, participant.outcome)) return [];
       ids.add(participant.playerId);

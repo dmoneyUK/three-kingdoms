@@ -4678,13 +4678,14 @@ function groupSettlementProofFor(room: RoomRow, response: ResponsePending, conti
     || progress.participants.length !== targetIds.length
     || progress.participants.some((participant, index) => participant.playerId !== targetIds[index]
       || participant.status !== "RESOLVED" && participant.status !== "NO_LONGER_APPLICABLE"
-      || participant.status === "RESOLVED" && (!participant.outcome
-        || !isGroupParticipantProgressOutcomeAllowed(cardKind, "GROUP", participant.status, participant.outcome))
+      || participant.status === "RESOLVED" && participant.outcome !== undefined
+        && !isGroupParticipantProgressOutcomeAllowed(cardKind, "GROUP", participant.status, participant.outcome)
       || participant.status === "NO_LONGER_APPLICABLE" && participant.outcome !== undefined)) return undefined;
 
   const roots = gameTimeline(log).filter((event) => {
     const card = event.card && typeof event.card === "object" ? event.card as { id?: unknown } : null;
-    return card?.id === completed.sequenceStartCardId;
+    return event.type === "card" && event.action === "play" && event.presentation !== false
+      && event.playedAs === undefined && card?.id === completed.sequenceStartCardId;
   });
   const root = roots.length === 1 ? roots[0] : null;
   const rootCard = root?.card && typeof root.card === "object" ? root.card as { id?: unknown; kind?: unknown } : null;

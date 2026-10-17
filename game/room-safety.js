@@ -100,9 +100,9 @@ function normalizePresentationMeta(entry) {
     && publicGroupSettlement.participants.every((participant, index) => isRecord(participant)
       && typeof participant.playerId === "string"
       && participant.order === index + 1
-      && (participant.status === "RESOLVED" && (publicGroupSettlement.cardKind === "RainingArrows"
+      && (participant.status === "RESOLVED" && (participant.outcome === undefined || (publicGroupSettlement.cardKind === "RainingArrows"
         ? ["AVOIDED", "DAMAGED", "NEGATED", "DEFEATED"].includes(participant.outcome)
-        : ["DAMAGED", "NEGATED", "DEFEATED"].includes(participant.outcome))
+        : ["DAMAGED", "NEGATED", "DEFEATED"].includes(participant.outcome)))
         || participant.status === "NO_LONGER_APPLICABLE" && participant.outcome === undefined))) {
     metadata.publicGroupSettlement = {
       semantics: "PROVEN",

@@ -115,6 +115,17 @@ test("preserves only ordered public Group settlement fields", () => {
   assert.equal("publicRainingArrowsSettlement" in normalizedLegacyEvent, false, "legacy metadata does not pass through unsanitized");
   const barbarianProof = { ...proof, cardKind: "BarbarianInvasion", participants: [{ ...proof.participants[0], outcome: "DAMAGED" }, proof.participants[1]] };
   assert.equal(normalizeTimeline([{ ...event, publicGroupSettlement: barbarianProof }])[0].publicGroupSettlement.cardKind, "BarbarianInvasion");
+  const barbarianProofWithoutOutcomes = {
+    ...barbarianProof,
+    participants: [
+      { playerId: "first", order: 1, status: "RESOLVED" },
+      { playerId: "second", order: 2, status: "RESOLVED" },
+    ],
+  };
+  const normalizedBarbarianWithoutOutcomes = normalizeTimeline([{ ...event, publicGroupSettlement: barbarianProofWithoutOutcomes }])[0].publicGroupSettlement;
+  assert.equal(normalizedBarbarianWithoutOutcomes.cardKind, "BarbarianInvasion");
+  assert.deepEqual(normalizedBarbarianWithoutOutcomes.participants, barbarianProofWithoutOutcomes.participants);
+  assert.equal(JSON.stringify(normalizedBarbarianWithoutOutcomes).includes("privateResolverOrder"), false);
   assert.equal(normalizeTimeline([{ ...event, publicGroupSettlement: { ...barbarianProof, participants: [{ ...barbarianProof.participants[0], outcome: "AVOIDED" }, barbarianProof.participants[1]] } }])[0].publicGroupSettlement, undefined);
   assert.equal(normalizeTimeline([{ ...event, publicGroupSettlement: { ...proof, cardKind: "Attack" } }])[0].publicGroupSettlement, undefined);
 });
