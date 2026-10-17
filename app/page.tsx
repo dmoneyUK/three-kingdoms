@@ -6323,7 +6323,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                   <button aria-pressed={isSelected} disabled={!maySelect || skillModeCardDisabled || responseCardDisabled(item)} onClick={() => toggleHandCard(item)} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}>
                     <span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-name-mark">{definition.name}</span><strong>{definition.category} card</strong>
                   </button>
-                  {selectedHandDetailsCard?.id === item.id && selectedHandDetailsCard && <button type="button" className="hand-card-details-action" data-testid="hand-card-details-action" aria-label={`Details for ${definition.name}`} onClick={(event) => openCardDetails(selectedHandDetailsCard, "private-hand", event.currentTarget)}>DETAILS</button>}
+                  {selectedHandDetailsCard?.id === item.id && selectedHandDetailsCard && <button type="button" className="hand-card-details-action" data-testid="hand-card-details-action" aria-label={`Details for ${definition.name}`} onClick={(event) => openCardDetails(selectedHandDetailsCard, "private-hand", event.currentTarget)}><span className="hand-card-details-icon" aria-hidden="true">i</span></button>}
                 </div>
               </div>;
             };

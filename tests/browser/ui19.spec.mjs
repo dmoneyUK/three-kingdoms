@@ -165,7 +165,8 @@ for (const { width, handSizes } of HAND_SIZE_MATRIX) {
       const detailsActionBounds = await detailsAction.boundingBox();
       expect(detailsActionBounds.width).toBeGreaterThanOrEqual(44);
       expect(detailsActionBounds.height).toBeGreaterThanOrEqual(44);
-      expect(await detailsAction.innerText()).toBe("DETAILS");
+      await expect(detailsAction).toHaveAccessibleName("Details for Attack");
+      await expect(detailsAction.locator(".hand-card-details-icon")).toHaveText("i");
       const selectedFaceBounds = await last.locator(".game-card").boundingBox();
       expect(detailsActionBounds.x).toBeGreaterThanOrEqual(selectedFaceBounds.x - 1);
       expect(detailsActionBounds.y).toBeGreaterThanOrEqual(selectedFaceBounds.y - 1);
@@ -357,7 +358,8 @@ test.describe("UX2.0VIS-09B native touch navigation", () => {
       const detailsActionBounds = await detailsAction.boundingBox();
       expect(detailsActionBounds.width).toBeGreaterThanOrEqual(44);
       expect(detailsActionBounds.height).toBeGreaterThanOrEqual(44);
-      expect(await detailsAction.innerText()).toBe("DETAILS");
+      await expect(detailsAction).toHaveAccessibleName("Details for Attack");
+      await expect(detailsAction.locator(".hand-card-details-icon")).toHaveText("i");
       await expect(page.locator(".turn-controls .hand-card-details-action")).toHaveCount(0);
       await detailsAction.tap();
       const details = page.getByRole("dialog");
