@@ -3696,13 +3696,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const isGroupNegationScene = clientPresentation.stage === "NEGATION"
       && clientPresentation.continuity.relation === "SAME_FRAME"
       && groupTargetEffectScope !== null;
+    // PresentationClientView keeps immutable root identities as IDs; display names are added by the Stage adapter.
     const isGroupChildScene = Boolean(clientPresentation.continuity.relation === "CHILD_FRAME"
       && group && rootOrigin
       && rootOrigin.frameId === group.groupFrameId
       && rootOrigin.stage === "GROUP_RESOLUTION"
       && rootOrigin.effect === group.cardKind
-      && rootOrigin.source.id);
-    const groupSourceId = isGroupChildScene ? rootOrigin!.source.id! : clientPresentation.sourceId;
+      && rootOrigin.sourceId);
+    const groupSourceId = isGroupChildScene ? rootOrigin!.sourceId! : clientPresentation.sourceId;
     if (!clientPresentation.hasInteraction || (!isRootGroupScene && !isGroupNegationScene && !isGroupChildScene)
       || !group || group.resolutionSemantics !== "GROUP"
       || (group.cardKind !== "RainingArrows" && group.cardKind !== "BarbarianInvasion")
@@ -3715,9 +3716,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || !groupSourceId) return null;
 
     if (rootOrigin && (rootOrigin.frameId !== group.groupFrameId || rootOrigin.stage !== "GROUP_RESOLUTION"
-      || rootOrigin.effect !== group.cardKind || rootOrigin.source.id !== groupSourceId
-      || !rootOrigin.source.known || rootOrigin.targets.length !== group.targetIds.length
-      || rootOrigin.targets.some((target, index) => target.id !== group.targetIds[index]))) return null;
+      || rootOrigin.effect !== group.cardKind || rootOrigin.sourceId !== groupSourceId
+      || !rootOrigin.sourceId || rootOrigin.targetIds.length !== group.targetIds.length
+      || rootOrigin.targetIds.some((targetId, index) => targetId !== group.targetIds[index]))) return null;
 
     if (isGroupNegationScene && (!negationChain?.visible
       || negationChain.interactionId !== group.interactionId
