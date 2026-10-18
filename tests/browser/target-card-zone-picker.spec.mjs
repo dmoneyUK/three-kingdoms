@@ -172,9 +172,10 @@ for (const viewport of [
   { width: 390, height: 844, count: 4 },
   { width: 440, height: 766, count: 6 },
   { width: 480, height: 900, count: 6 },
+  { width: 480, height: 900, count: 8 },
   { width: 1440, height: 900, count: 4 },
 ]) {
-  test(`proven Dismantle uses the shared target-card modal at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+  test(`proven Dismantle uses the shared target-card modal at ${viewport.width}×${viewport.height} (${viewport.count} players)`, async ({ page }) => {
     const stage = await loadPendingTargetCard(page, viewport);
     const dialog = page.getByRole("dialog", { name: "Burning Bridge target card selection" });
     const overlay = page.locator(".target-card-picker-overlay");
