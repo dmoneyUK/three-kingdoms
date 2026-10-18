@@ -738,14 +738,14 @@ test("Zhang Liao Assault uses generic target controls during the Draw Phase", as
 
   assert.equal(opponentHeroButton(renderer, "p2").props.disabled, false, "inactive Assault preserves inspection controls");
   await act(async () => { opponentHeroButton(renderer, "p2").props.onClick(); });
-  assert.equal(renderer.root.findAllByProps({ role: "dialog" }).length, 1, "inactive opponent hero click opens inspection");
+  assert.equal(nodeWith(renderer, "data-inspect-player-id", "p2").props["aria-label"], "TARGET ONE opponent inspection", "inactive opponent hero click opens the named inspection region");
   await act(async () => { renderer.root.findByProps({ "aria-label": "Close TARGET ONE inspection" }).props.onClick(); });
 
   await act(async () => { skillButton().props.onClick(); });
   assert.equal(button(renderer, { "aria-label": "Select TARGET ONE" }).props.disabled, false);
   assert.equal(button(renderer, { "aria-label": "Select TARGET TWO" }).props.disabled, false);
   assert.equal(button(renderer, { "aria-label": "Select INVALID TARGET" }).props.disabled, true, "non-eligible targets remain disabled");
-  assert.equal(renderer.root.findAllByProps({ role: "dialog" }).length, 0, "target mode does not open inspection");
+  assert.equal(renderer.root.findAllByProps({ "data-inspect-player-id": "p2" }).length, 0, "target mode does not open inspection");
 
   await act(async () => { button(renderer, { "aria-label": "Select TARGET ONE" }).props.onClick(); });
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), true);
