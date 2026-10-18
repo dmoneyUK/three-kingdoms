@@ -115,6 +115,8 @@ test("test-game perspective switches manually and stays selected when the server
   const stableOpponent = room.players.find((player) => player.id !== initialViewerId
     && player.id !== selectedViewer.id && player.id !== actingPlayerId);
   expect(stableOpponent, "a public opponent remains present across both perspective switches").toBeTruthy();
+  await page.locator(`.opponent-player-card[data-player-anchor="${stableOpponent.id}"] .opponent-hero-target`).click();
+  await expect(page.getByRole("dialog", { name: `${stableOpponent.name} opponent inspection` })).toBeVisible();
   const initialSlotPositions = await opponentEquipmentSlotPositions(page, stableOpponent.id);
   expect(initialSlotPositions.map(({ slot }) => slot)).toEqual(["weapon", "armor", "defensiveHorse", "offensiveHorse"]);
   const selectedViewResponsePromise = page.waitForResponse((response) => {

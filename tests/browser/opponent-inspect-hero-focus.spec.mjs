@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-async function loadFixture(page, { count = 4, width, height = 900, state = "rest", equipmentCase = "matrix", targetHero = null, judgementCase = null }) {
+async function loadFixture(page, { count = 4, width, height = 900, state = "rest", equipmentCase = "matrix", targetHero = null, judgementCase = null, playerNamePrefix = null }) {
   await page.setViewportSize({ width, height });
   const params = new URLSearchParams({ state, count: String(count), equipmentCase });
   if (targetHero) params.set("targetHero", targetHero);
   if (judgementCase) params.set("judgementCase", judgementCase);
+  if (playerNamePrefix) params.set("playerNamePrefix", playerNamePrefix);
   await page.goto(`/tests/browser/fixture.html?${params}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
@@ -83,7 +84,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     await expect(layer.locator(".opponent-inspection-backdrop")).toBeVisible();
     expect(await inspect.evaluate((element) => /\b(Lord|Loyalist|Rebel|Renegade|Spy)\b/.test(element.textContent ?? ""))).toBe(false);
 
-    const [stageBox, safeBox, shellBox, inspectBox, backdropBox, titleBox, closeBox, portraitBox, identityBox, identityType, menuBox, guidanceBox, dockOpen] = await Promise.all([
+    const [stageBox, safeBox, shellBox, inspectBox, backdropBox, titleBox, closeBox, bodyBox, portraitBox, identityBox, identityType, menuBox, guidanceBox, dockOpen] = await Promise.all([
       stage.boundingBox(),
       page.locator(".interaction-safe-zone").boundingBox(),
       shell.boundingBox(),
@@ -91,6 +92,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       layer.locator(".opponent-inspection-backdrop").boundingBox(),
       inspect.locator(".hero-focus-heading strong").boundingBox(),
       inspect.getByRole("button", { name: "Close Player 2 inspection" }).boundingBox(),
+      inspect.locator(".hero-focus-body").boundingBox(),
       inspect.locator(".hero-focus-portrait").boundingBox(),
       inspect.locator(".hero-focus-identity").boundingBox(),
       inspect.locator(".hero-focus-identity").evaluate((element) => ({
@@ -102,7 +104,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       page.locator(".local-player-dock .console-guidance").boundingBox(),
       page.locator(".local-player-dock").boundingBox(),
     ]);
-    for (const box of [stageBox, safeBox, shellBox, inspectBox, backdropBox, titleBox, closeBox, portraitBox, identityBox, menuBox, guidanceBox, dockBefore, dockOpen]) expect(box).not.toBeNull();
+    for (const box of [stageBox, safeBox, shellBox, inspectBox, backdropBox, titleBox, closeBox, bodyBox, portraitBox, identityBox, menuBox, guidanceBox, dockBefore, dockOpen]) expect(box).not.toBeNull();
     expect(Math.abs(stageBox.x - safeBox.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(stageBox.y - safeBox.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(stageBox.width - safeBox.width)).toBeLessThanOrEqual(1);
@@ -119,7 +121,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     expect(identityType.hero).toBeGreaterThanOrEqual(12);
     expect(identityType.hp).toBeGreaterThanOrEqual(10);
     expect(identityType.hand).toBeGreaterThanOrEqual(10);
-    expect(portraitBox.width).toBeLessThanOrEqual(82);
+    expect(portraitBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.25);
+    expect(portraitBox.width / bodyBox.width).toBeLessThanOrEqual(0.33);
+    expect(portraitBox.height / portraitBox.width).toBeGreaterThanOrEqual(1.2);
+    expect(portraitBox.height / portraitBox.width).toBeLessThanOrEqual(1.3);
     if (viewport.width <= 520) {
       expect(portraitBox.width).toBeGreaterThanOrEqual(58);
       expect(identityBox.width).toBeGreaterThan(portraitBox.width);
@@ -130,8 +135,6 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       const leftInset = shellBox.x - stageBox.x;
       const rightInset = stageBox.x + stageBox.width - shellBox.x - shellBox.width;
       expect(Math.abs(leftInset - rightInset)).toBeLessThanOrEqual(1);
-    } else {
-      expect(portraitBox.height).toBeLessThanOrEqual(125);
     }
     expect(Math.abs((titleBox.y + titleBox.height / 2) - (closeBox.y + closeBox.height / 2))).toBeLessThanOrEqual(2);
     expect(overlaps(shellBox, menuBox)).toBe(false);
@@ -381,27 +384,36 @@ for (const viewport of inspectorMiniatureViewports) {
   }
 }
 
-const u13GViewports = [
+const ins5Viewports = [
   { width: 390, height: 700, count: 4, equipmentCase: "empty", judgementCase: null, equipmentSlots: [], judgementCards: 0 },
   { width: 390, height: 844, count: 6, equipmentCase: "weapon", judgementCase: "single-lightning", equipmentSlots: ["weapon"], judgementCards: 1 },
   { width: 440, height: 894, count: 8, equipmentCase: "weaponArmor", judgementCase: "two", equipmentSlots: ["weapon", "armor"], judgementCards: 2 },
   { width: 480, height: 900, count: 10, equipmentCase: "multiple", judgementCase: "three", equipmentSlots: ["weapon", "armor", "defensiveHorse", "offensiveHorse"], judgementCards: 3 },
+  { width: 440, height: 766, count: 6, equipmentCase: "three", judgementCase: "three", equipmentSlots: ["weapon", "armor", "defensiveHorse"], judgementCards: 3, targetHero: "huang-yueying", playerNamePrefix: "A Distinguished Inspector Player Name" },
 ];
 
-for (const viewport of u13GViewports) {
-  test(`U13-G keeps public Inspector zones in a 2+4 row at ${viewport.width}×${viewport.height} (${viewport.count} seats)`, async ({ page }, testInfo) => {
+for (const viewport of ins5Viewports) {
+  test(`INS-5 keeps a large left Hero and stacked public zones at ${viewport.width}×${viewport.height} (${viewport.count} seats)`, async ({ page }, testInfo) => {
     await loadFixture(page, viewport);
     await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
     const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
     const body = inspect.locator(":scope > .hero-focus-body");
-    const publicZones = inspect.locator(":scope > .hero-focus-inspect-public-zones");
-    const judgement = publicZones.locator('[aria-label="Judgement Zone"]');
-    const equipment = publicZones.locator('[aria-label="Equipment"]');
+    const portrait = body.locator(":scope > .hero-focus-portrait");
+    const main = body.locator(":scope > .hero-focus-inspect-main");
+    const upper = main.locator(":scope > .hero-focus-inspect-upper");
+    const identity = upper.locator(":scope > .hero-focus-identity");
+    const skills = identity.locator('[aria-label="Public Skills"]');
+    const judgement = upper.locator('[aria-label="Judgement Zone"]');
+    const equipment = main.locator('[aria-label="Equipment"]');
     const judgementRow = judgement.locator(".opponent-inspection-slot-row");
     const equipmentRow = equipment.locator(".opponent-inspection-slot-row");
-    await expect(publicZones.locator(".opponent-inspection-zone")).toHaveCount(2);
-    expect(await publicZones.locator(".opponent-inspection-zone").evaluateAll((zones) => zones.map((zone) => zone.getAttribute("aria-label"))))
-      .toEqual(["Judgement Zone", "Equipment"]);
+    await expect(inspect).toHaveAttribute("data-inspector-layout", "two-level");
+    if (viewport.playerNamePrefix) {
+      await expect(inspect.locator(".hero-focus-heading strong")).toHaveText(`INSPECT · ${viewport.playerNamePrefix} 2`);
+      await expect(inspect.locator(".hero-focus-identity-hero")).toHaveText("Huang Yueying");
+    }
+    await expect(upper.locator(".opponent-inspection-zone")).toHaveCount(2);
+    await expect(main.locator(".opponent-inspection-zone[aria-label=\"Equipment\"]")).toHaveCount(1);
     await expect(judgementRow.locator("[data-inspector-slot]")).toHaveCount(2);
     await expect(equipmentRow.locator("[data-inspector-slot]")).toHaveCount(4);
     expect(await equipmentRow.locator("[data-inspector-slot]").evaluateAll((slots) => slots.map((slot) => slot.getAttribute("data-inspector-slot"))))
@@ -419,17 +431,37 @@ for (const viewport of u13GViewports) {
       await expect(overflow).toHaveCount(0);
     }
 
-    const [inspectBox, bodyBox, zonesBox, judgementBox, equipmentBox, panelBox, dockBox, handBox, seatBoxes] = await Promise.all([
-      inspect.boundingBox(), body.boundingBox(), publicZones.boundingBox(), judgement.boundingBox(), equipment.boundingBox(),
+    const [inspectBox, bodyBox, portraitBox, mainBox, upperBox, identityBox, skillsBox, judgementBox, equipmentBox, panelBox, dockBox, handBox, seatBoxes] = await Promise.all([
+      inspect.boundingBox(), body.boundingBox(), portrait.boundingBox(), main.boundingBox(), upper.boundingBox(), identity.boundingBox(),
+      skills.boundingBox(), judgement.boundingBox(), equipment.boundingBox(),
       page.locator(".opponent-inspection-floating-shell").boundingBox(), page.locator(".local-player-dock").boundingBox(),
       page.locator(".local-hand-rail").boundingBox(), seatGeometry(page),
     ]);
-    for (const box of [inspectBox, bodyBox, zonesBox, judgementBox, equipmentBox, panelBox, dockBox, handBox]) expect(box).not.toBeNull();
-    expect(zonesBox.y).toBeGreaterThanOrEqual(bodyBox.y + bodyBox.height);
-    expect(Math.abs(judgementBox.height - equipmentBox.height)).toBeLessThanOrEqual(1);
-    const publicZoneRatio = judgementBox.width / equipmentBox.width;
-    expect(publicZoneRatio).toBeGreaterThanOrEqual(0.42);
-    expect(publicZoneRatio).toBeLessThanOrEqual(0.58);
+    for (const box of [inspectBox, bodyBox, portraitBox, mainBox, upperBox, identityBox, skillsBox, judgementBox, equipmentBox, panelBox, dockBox, handBox]) expect(box).not.toBeNull();
+    const portraitRatio = portraitBox.width / bodyBox.width;
+    expect(portraitRatio).toBeGreaterThanOrEqual(0.25);
+    expect(portraitRatio).toBeLessThanOrEqual(0.33);
+    expect(portraitBox.height / portraitBox.width).toBeGreaterThanOrEqual(1.2);
+    expect(portraitBox.height / portraitBox.width).toBeLessThanOrEqual(1.3);
+    expect(mainBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.67);
+    expect(mainBox.width / bodyBox.width).toBeLessThanOrEqual(0.75);
+    expect(identityBox.x).toBeGreaterThanOrEqual(portraitBox.x + portraitBox.width);
+    expect(identityBox.y + identityBox.height).toBeLessThanOrEqual(upperBox.y + upperBox.height + 1);
+    expect(Math.abs(identityBox.y - judgementBox.y)).toBeLessThanOrEqual(2);
+    expect(judgementBox.width / upperBox.width).toBeGreaterThanOrEqual(0.38);
+    await expect(judgement.locator("h3")).toHaveText("Judgement");
+    expect(equipmentBox.y).toBeGreaterThanOrEqual(upperBox.y + upperBox.height - 1);
+    expect(equipmentBox.x).toBeGreaterThanOrEqual(portraitBox.x + portraitBox.width);
+    expect(equipmentBox.x + equipmentBox.width).toBeLessThanOrEqual(bodyBox.x + bodyBox.width + 1);
+    const skillButtons = await skills.locator(".hero-focus-inspect-skill").evaluateAll((buttons) => buttons.map((button) => {
+      const rect = button.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    }));
+    for (const [index, skillBox] of skillButtons.entries()) {
+      expect(skillBox.width).toBeLessThanOrEqual(identityBox.width);
+      expect(skillBox.y + skillBox.height).toBeLessThanOrEqual(upperBox.y + upperBox.height + 1);
+      if (index > 0) expect(skillBox.y).toBeGreaterThanOrEqual(skillButtons[index - 1].y + skillButtons[index - 1].height);
+    }
     expect(panelBox.x).toBeGreaterThanOrEqual(0);
     expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(viewport.width);
     expect(panelBox.y).toBeGreaterThanOrEqual(0);
@@ -440,15 +472,29 @@ for (const viewport of u13GViewports) {
     if (viewport.count === 4) expect(panelBox.y).toBeGreaterThanOrEqual(Math.max(...seatBoxes.map(({ y, height }) => y + height)) + 11);
     const slotBoxes = await Promise.all([...await judgementRow.locator("[data-inspector-slot]").all(), ...await equipmentRow.locator("[data-inspector-slot]").all()].map((slot) => slot.boundingBox()));
     expect(slotBoxes.every(Boolean)).toBe(true);
-    expect(Math.max(...slotBoxes.map((box) => box.width)) - Math.min(...slotBoxes.map((box) => box.width))).toBeLessThanOrEqual(4);
     for (const box of slotBoxes) expect(box.height / box.width).toBeGreaterThanOrEqual(1.45);
     for (const box of slotBoxes) expect(box.height / box.width).toBeLessThanOrEqual(1.55);
+    for (const slotBox of slotBoxes) {
+      expect(slotBox.x).toBeGreaterThanOrEqual(bodyBox.x - 1);
+      expect(slotBox.x + slotBox.width).toBeLessThanOrEqual(bodyBox.x + bodyBox.width + 1);
+    }
+    const switchButtons = await page.locator(".test-view-switch-button").evaluateAll((buttons) => buttons.map((button) => {
+      const rect = button.getBoundingClientRect();
+      const target = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, hitMatches: Boolean(target && (target === button || button.contains(target))) };
+    }));
+    for (const buttonBox of switchButtons) expect(overlaps(panelBox, buttonBox)).toBe(false);
+    if (viewport.playerNamePrefix) {
+      expect(switchButtons.length).toBeGreaterThan(0);
+      expect(switchButtons.every(({ hitMatches }) => hitMatches)).toBe(true);
+    }
+    if (viewport.count >= 6) expect(panelBox.width).toBeGreaterThanOrEqual(viewport.width * 0.47);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
-    await testInfo.attach("U13-G inspector geometry", {
-      body: Buffer.from(JSON.stringify({ viewport, panelBox, zonesBox, judgementBox, equipmentBox, slotBoxes }, null, 2)),
+    await testInfo.attach("INS-5 inspector geometry", {
+      body: Buffer.from(JSON.stringify({ viewport, panelBox, bodyBox, portraitBox, mainBox, upperBox, identityBox, skillsBox, judgementBox, equipmentBox, slotBoxes, switchButtons }, null, 2)),
       contentType: "application/json",
     });
-    await testInfo.attach("U13-G inspector screenshot", { body: await page.screenshot({ animations: "disabled" }), contentType: "image/png" });
+    await testInfo.attach("INS-5 inspector screenshot", { body: await page.screenshot({ animations: "disabled" }), contentType: "image/png" });
 
     if (viewport.judgementCards > 2) {
       await overflow.locator("summary").click();
@@ -472,19 +518,20 @@ for (const count of [6, 8, 10]) {
     const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
     const judgment = inspect.locator('[aria-label="Judgement Zone"]');
     const judgmentCard = judgment.locator('.opponent-inspection-card[aria-label="Explain Lightning"]');
-    const publicZones = inspect.locator(".hero-focus-inspect-public-zones");
+    const identity = inspect.locator(".hero-focus-identity");
+    const judgement = inspect.locator('[aria-label="Judgement Zone"]');
     await expect(judgmentCard).toHaveCount(1);
-    const [inspectBox, publicZonesBox, judgmentBox, profileBox] = await Promise.all([
+    const [inspectBox, identityBox, judgmentBox, profileBox] = await Promise.all([
       inspect.boundingBox(),
-      publicZones.boundingBox(),
+      identity.boundingBox(),
       judgment.boundingBox(),
       inspect.locator(".hero-focus-inspect-profile").boundingBox(),
     ]);
     expect(inspectBox).not.toBeNull();
-    expect(publicZonesBox).not.toBeNull();
+    expect(identityBox).not.toBeNull();
     expect(profileBox).not.toBeNull();
-    expect(publicZonesBox.y).toBeGreaterThanOrEqual(profileBox.y + profileBox.height);
-    expect(publicZonesBox.width).toBeGreaterThan(inspectBox.width * 0.88);
+    expect(Math.abs(judgmentBox.y - profileBox.y)).toBeLessThanOrEqual(2);
+    expect(judgmentBox.x).toBeGreaterThanOrEqual(identityBox.x + identityBox.width - 1);
     expect(judgmentBox).not.toBeNull();
     await expect(inspect.locator(".hero-focus-identity [data-public-hand-count]")).toBeVisible();
     await expect(inspect.locator('[aria-label="Concealed Hand"]')).toHaveCount(0);
@@ -506,15 +553,16 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     const judgment = inspect.locator('[aria-label="Judgement Zone"]');
     await expect(judgment.locator(".opponent-inspection-empty-slot")).toHaveCount(2);
     await expect(judgment.locator(".opponent-inspection-card")).toHaveCount(0);
-    const [zoneBox, detailsBox, publicZonesBox, bodyBox, equipmentBox] = await Promise.all([
+    const [zoneBox, detailsBox, upperBox, bodyBox, equipmentBox] = await Promise.all([
       judgment.boundingBox(), inspect.locator(".hero-focus-inspect-details").boundingBox(),
-      inspect.locator(".hero-focus-inspect-public-zones").boundingBox(), inspect.locator(".hero-focus-body").boundingBox(),
+      inspect.locator(".hero-focus-inspect-upper").boundingBox(), inspect.locator(".hero-focus-body").boundingBox(),
       inspect.locator('[aria-label="Equipment"]').boundingBox(),
     ]);
-    for (const box of [zoneBox, detailsBox, publicZonesBox, bodyBox, equipmentBox]) expect(box).not.toBeNull();
+    for (const box of [zoneBox, detailsBox, upperBox, bodyBox, equipmentBox]) expect(box).not.toBeNull();
     expect(detailsBox).not.toBeNull();
-    expect(publicZonesBox.y).toBeGreaterThanOrEqual(bodyBox.y + bodyBox.height);
-    expect(Math.abs(zoneBox.height - equipmentBox.height)).toBeLessThanOrEqual(1);
+    expect(Math.abs(zoneBox.y - upperBox.y)).toBeLessThanOrEqual(2);
+    expect(equipmentBox.y).toBeGreaterThanOrEqual(upperBox.y + upperBox.height - 1);
+    expect(equipmentBox.x).toBeGreaterThanOrEqual(bodyBox.x + bodyBox.width * 0.24);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
   });
 }

@@ -1079,7 +1079,7 @@ for (const viewport of [
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
-  test(`server-projected unified target inspector stays compact and private at ${viewport.width}px`, async ({ page, request }, testInfo) => {
+  test(`server-projected INS-5 target inspector stays readable and private at ${viewport.width}px`, async ({ page, request }, testInfo) => {
     const hidden = [card("Peach", `real-inspect-hidden-${viewport.width}`)];
     const attack = card("Attack", `real-inspect-attack-${viewport.width}`);
     const crossbow = card("ZhugeCrossbow", `real-inspect-crossbow-${viewport.width}`, "♦", "A");
@@ -1137,7 +1137,7 @@ for (const viewport of [
     await expect(panel.locator('[aria-label="Equipment"] .opponent-inspection-card')).toHaveCount(2);
     await expect(panel.getByRole("button", { name: "Explain Zhuge Crossbow" })).toBeVisible();
     await expect(panel.getByRole("button", { name: "Explain Nio Shield" })).toBeVisible();
-    await expect(panel.locator('[aria-label="Judgement Zone"] .opponent-inspection-empty')).toHaveText("None");
+    await expect(panel.locator('[aria-label="Judgement Zone"] .opponent-inspection-empty-slot')).toHaveCount(2);
     await expect(panel.locator('[aria-label="Concealed Hand"]')).toHaveCount(0);
     await expect(panel.locator(".hero-focus-inspect-hand-backs")).toHaveCount(0);
     await expect(panel).not.toContainText(/\b(Lord|Loyalist|Rebel|Renegade|Spy)\b/);
@@ -1159,18 +1159,31 @@ for (const viewport of [
     await inspectButton.click();
     await expect(panel).toBeVisible();
 
-    const [profileBox, identityStatsBox, skillsBox, publicZonesBox, equipmentBox, judgementBox] = await Promise.all([
+    const [bodyBox, portraitBox, mainBox, upperBox, identityBox, profileBox, identityStatsBox, skillsBox, equipmentBox, judgementBox] = await Promise.all([
+      panel.locator(".hero-focus-body").boundingBox(),
+      panel.locator(".hero-focus-portrait").boundingBox(),
+      panel.locator(".hero-focus-inspect-main").boundingBox(),
+      panel.locator(".hero-focus-inspect-upper").boundingBox(),
+      panel.locator(".hero-focus-identity").boundingBox(),
       panel.locator(".hero-focus-inspect-profile").boundingBox(),
       panel.locator(".hero-focus-identity-stats").boundingBox(),
       panel.locator('[aria-label="Public Skills"]').boundingBox(),
-      panel.locator(".hero-focus-inspect-public-zones").boundingBox(),
       panel.locator('[aria-label="Equipment"]').boundingBox(),
       panel.locator('[aria-label="Judgement Zone"]').boundingBox(),
     ]);
-    for (const box of [profileBox, identityStatsBox, skillsBox, publicZonesBox, equipmentBox, judgementBox]) expect(box).not.toBeNull();
-    expect(publicZonesBox.x).toBeGreaterThanOrEqual(profileBox.x + profileBox.width);
+    for (const box of [bodyBox, portraitBox, mainBox, upperBox, identityBox, profileBox, identityStatsBox, skillsBox, equipmentBox, judgementBox]) expect(box).not.toBeNull();
+    expect(portraitBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.25);
+    expect(portraitBox.width / bodyBox.width).toBeLessThanOrEqual(0.33);
+    expect(portraitBox.height / portraitBox.width).toBeGreaterThanOrEqual(1.2);
+    expect(portraitBox.height / portraitBox.width).toBeLessThanOrEqual(1.3);
+    if (viewport.width <= 520) {
+      expect(mainBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.67);
+      expect(mainBox.width / bodyBox.width).toBeLessThanOrEqual(0.75);
+    }
+    expect(judgementBox.x).toBeGreaterThanOrEqual(identityBox.x + identityBox.width - 1);
+    expect(Math.abs(judgementBox.y - identityBox.y)).toBeLessThanOrEqual(2);
+    expect(equipmentBox.y).toBeGreaterThanOrEqual(upperBox.y + upperBox.height - 1);
     expect(skillsBox.y).toBeGreaterThanOrEqual(identityStatsBox.y + identityStatsBox.height - 1);
-    expect(Math.abs(publicZonesBox.y - profileBox.y)).toBeLessThanOrEqual(2);
 
     const details = panel.locator(".hero-focus-inspect-details");
     const skill = panel.getByRole("button", { name: "Show Stauchness description" });
@@ -1196,14 +1209,15 @@ for (const viewport of [
         clientHeight: element.clientHeight,
       };
     });
+    await panel.evaluate((element) => { element.scrollTop = element.scrollHeight; });
     expect(descriptionGeometry.visibleLines).toBeGreaterThanOrEqual(Math.min(5, descriptionGeometry.naturalLines));
     expect(descriptionGeometry.maxHeight).toBeLessThanOrEqual(5 * descriptionGeometry.lineHeight + 1);
     await testInfo.attach(`inspect-expanded-details-geometry-${viewport.width}`, { body: JSON.stringify({ detailsGeometry, descriptionGeometry }), contentType: "application/json" });
     await attachScreenshot(testInfo, `server-unified-inspect-expanded-${viewport.width}`, page);
     await saveInspectionScreenshot(page, `server-unified-inspect-expanded-${viewport.width}.png`);
     await page.keyboard.press("Enter");
-    await expect(skillDescription).toHaveCount(0);
-    await expect(skill).toHaveAttribute("aria-expanded", "false");
+    await expect(skillDescription).toBeVisible();
+    await expect(skill).toHaveAttribute("aria-expanded", "true");
     const dockAtSelectedTarget = await page.locator(".local-player-dock").boundingBox();
     await attachScreenshot(testInfo, `server-unified-inspect-${viewport.width}`, page);
 
@@ -1224,7 +1238,7 @@ for (const viewport of [
     expect(dockBefore).not.toBeNull();
     expect(menuBox).not.toBeNull();
     expect(guidanceBox).not.toBeNull();
-    const layoutGeometry = { stageBox, surfaceBox, panelBox, profileBox, identityStatsBox, skillsBox, publicZonesBox, equipmentBox, judgementBox, detailsBox, equipmentCardBoxes, dockBefore, menuBox, guidanceBox, seatBoxes, detailsGeometry, descriptionGeometry };
+    const layoutGeometry = { stageBox, surfaceBox, panelBox, bodyBox, portraitBox, mainBox, upperBox, identityBox, profileBox, identityStatsBox, skillsBox, equipmentBox, judgementBox, detailsBox, equipmentCardBoxes, dockBefore, menuBox, guidanceBox, seatBoxes, detailsGeometry, descriptionGeometry };
     await testInfo.attach(`inspect-layout-geometry-${viewport.width}`, { body: JSON.stringify(layoutGeometry, null, 2), contentType: "application/json" });
     saveInspectionEvidence(`server-unified-inspect-layout-${viewport.width}.json`, JSON.stringify(layoutGeometry, null, 2));
     const overlaps = (a, b) => Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x)
@@ -1239,7 +1253,6 @@ for (const viewport of [
     expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(surfaceBox.y + surfaceBox.height);
     expect(detailsBox.y).toBeGreaterThanOrEqual(panelBox.y);
     expect(detailsBox.y + detailsBox.height).toBeLessThanOrEqual(panelBox.y + panelBox.height + 1);
-    expect(publicZonesBox.x).toBeGreaterThanOrEqual(profileBox.x + profileBox.width);
     expect(skillsBox.y).toBeGreaterThanOrEqual(identityStatsBox.y + identityStatsBox.height - 1);
     expect(overlaps(surfaceBox, menuBox)).toBe(false);
     expect(overlaps(surfaceBox, guidanceBox)).toBe(false);
@@ -1283,7 +1296,7 @@ for (const viewport of [
   });
 }
 
-test("server-backed compact inspector keeps public zones beside identity and shows five skill lines at 390px", async ({ page, request }, testInfo) => {
+test("server-backed INS-5 inspector keeps public identity and two-level zones with readable skill details", async ({ page, request }, testInfo) => {
   const hidden = card("Peach", "real-inspect-five-line-hidden");
   const crossbow = card("ZhugeCrossbow", "real-inspect-five-line-crossbow", "♦", "A");
   const shield = card("NioShield", "real-inspect-five-line-shield");
@@ -1306,7 +1319,10 @@ test("server-backed compact inspector keeps public zones beside identity and sho
   const profile = panel.locator(".hero-focus-inspect-profile");
   const stats = panel.locator(".hero-focus-identity-stats");
   const skills = panel.locator('[aria-label="Public Skills"]');
-  const zones = panel.locator(".hero-focus-inspect-public-zones");
+  const body = panel.locator(".hero-focus-body");
+  const portrait = panel.locator(".hero-focus-portrait");
+  const main = panel.locator(".hero-focus-inspect-main");
+  const upper = panel.locator(".hero-focus-inspect-upper");
   const equipment = panel.locator('[aria-label="Equipment"]');
   const judgement = panel.locator('[aria-label="Judgement Zone"]');
   await expect(skills).toContainText("Sowing Distrust");
@@ -1314,13 +1330,21 @@ test("server-backed compact inspector keeps public zones beside identity and sho
   await expect(judgement.locator(".opponent-inspection-card")).toHaveCount(1);
   await expect(panel.locator('[aria-label="Concealed Hand"]')).toHaveCount(0);
   expect(await page.locator("body").innerText()).not.toContain(hidden.id);
-  const [profileBox, statsBox, skillsBox, zonesBox, equipmentBox, judgementBox] = await Promise.all([
-    profile.boundingBox(), stats.boundingBox(), skills.boundingBox(), zones.boundingBox(), equipment.boundingBox(), judgement.boundingBox(),
+  const [bodyBox, portraitBox, mainBox, upperBox, identityBox, profileBox, statsBox, skillsBox, equipmentBox, judgementBox] = await Promise.all([
+    body.boundingBox(), portrait.boundingBox(), main.boundingBox(), upper.boundingBox(), panel.locator(".hero-focus-identity").boundingBox(),
+    profile.boundingBox(), stats.boundingBox(), skills.boundingBox(), equipment.boundingBox(), judgement.boundingBox(),
   ]);
-  for (const box of [profileBox, statsBox, skillsBox, zonesBox, equipmentBox, judgementBox]) expect(box).not.toBeNull();
-  expect(zonesBox.x).toBeGreaterThanOrEqual(profileBox.x + profileBox.width);
+  for (const box of [bodyBox, portraitBox, mainBox, upperBox, identityBox, profileBox, statsBox, skillsBox, equipmentBox, judgementBox]) expect(box).not.toBeNull();
+  expect(portraitBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.25);
+  expect(portraitBox.width / bodyBox.width).toBeLessThanOrEqual(0.33);
+  expect(portraitBox.height / portraitBox.width).toBeGreaterThanOrEqual(1.2);
+  expect(portraitBox.height / portraitBox.width).toBeLessThanOrEqual(1.3);
+  expect(mainBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.67);
+  expect(mainBox.width / bodyBox.width).toBeLessThanOrEqual(0.75);
+  expect(judgementBox.x).toBeGreaterThanOrEqual(identityBox.x + identityBox.width - 1);
+  expect(Math.abs(judgementBox.y - profileBox.y)).toBeLessThanOrEqual(2);
+  expect(equipmentBox.y).toBeGreaterThanOrEqual(upperBox.y + upperBox.height - 1);
   expect(skillsBox.y).toBeGreaterThanOrEqual(statsBox.y + statsBox.height - 1);
-  expect(Math.abs(zonesBox.y - profileBox.y)).toBeLessThanOrEqual(2);
   const equipmentCards = await equipment.locator(".opponent-inspection-card").evaluateAll((cards) => cards.map((cardElement) => {
     const box = cardElement.getBoundingClientRect();
     return { x: box.x, y: box.y, width: box.width, height: box.height };
@@ -1355,7 +1379,7 @@ test("server-backed compact inspector keeps public zones beside identity and sho
   expect(descriptionGeometry.visibleLines).toBeGreaterThanOrEqual(5);
   expect(descriptionGeometry.maxHeight).toBeLessThanOrEqual(5 * descriptionGeometry.lineHeight + 1);
   expect(submissions).toEqual([]);
-  const layout = { profileBox, statsBox, skillsBox, zonesBox, equipmentBox, judgementBox, equipmentCards, descriptionGeometry };
+  const layout = { bodyBox, portraitBox, mainBox, upperBox, identityBox, profileBox, statsBox, skillsBox, equipmentBox, judgementBox, equipmentCards, descriptionGeometry };
   await testInfo.attach("server-five-line-skill-layout-390", { body: JSON.stringify(layout, null, 2), contentType: "application/json" });
   await attachScreenshot(testInfo, "server-five-line-skill-390", page);
   saveInspectionEvidence("server-five-line-skill-layout-390.json", JSON.stringify(layout, null, 2));
@@ -1367,18 +1391,29 @@ test.describe("iPhone 17 Pro Max mobile browser emulation", () => {
   test.use(iphoneDevice);
 
   test("server-backed inspector supports touch and keyboard skill disclosure", async ({ page, request }, testInfo) => {
+    const gameplayPosts = [];
+    page.on("request", (requestEvent) => {
+      if (requestEvent.method() === "POST" && requestEvent.url() === `${API}/api/rooms`) {
+        try {
+          const body = JSON.parse(requestEvent.postData() ?? "{}");
+          if (body.action !== "expire_inactive_room") gameplayPosts.push(body);
+        } catch { gameplayPosts.push({ invalidBody: true }); }
+      }
+    });
     const hidden = [card("Peach", "real-inspect-mobile-hidden")];
     const crossbow = card("ZhugeCrossbow", "real-inspect-mobile-crossbow", "♦", "A");
     const shield = card("NioShield", "real-inspect-mobile-shield");
+    const lightning = card("Lightning", "real-inspect-mobile-lightning", "♠", "A");
     const seed = await seedGame(request, [
       { name: "VIEWER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
-      { name: "INSPECTED", role: "Loyalist", hero: "xiahou-dun", hp: 2, maxHp: 4, hand: hidden, equipment: { weapon: crossbow, armor: shield }, judgement: [] },
+      { name: "INSPECTED", role: "Loyalist", hero: "xiahou-dun", hp: 2, maxHp: 4, hand: hidden, equipment: { weapon: crossbow, armor: shield }, judgement: [lightning] },
       { name: "THIRD", role: "Rebel", hero: "guo-jia", hp: 4, maxHp: 4, hand: [] },
       { name: "FOURTH", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: [] },
     ]);
-    const viewport = devices["iPhone 17 Pro Max"].viewport;
+    const viewport = { width: 390, height: 700 };
     await openGame(page, seed, 0, viewport);
     const tap = async (locator) => {
+      await locator.scrollIntoViewIfNeeded();
       const box = await locator.boundingBox();
       expect(box).not.toBeNull();
       await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
@@ -1388,14 +1423,23 @@ test.describe("iPhone 17 Pro Max mobile browser emulation", () => {
     const panel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
     await expect(panel).toBeVisible();
     await expect(panel.locator(".hero-focus-identity [data-public-hand-count]")).toHaveText("Hand · 1");
+    expect(await page.locator("body").innerText()).not.toContain(hidden[0].id);
     const skill = panel.getByRole("button", { name: "Show Stauchness description" });
     await skill.focus();
     await page.keyboard.press("Enter");
     await expect(panel.getByRole("region", { name: "Stauchness description" })).toContainText("After you take damage, you may enter Judgement phase");
     await attachScreenshot(testInfo, "server-webkit-mobile-inspector-skill-expanded", page);
     await saveInspectionScreenshot(page, "server-touch-mobile-inspector-skill-expanded.png");
+    const equipmentCard = panel.getByRole("button", { name: "Explain Zhuge Crossbow" });
+    await tap(equipmentCard);
+    await expect(panel.locator('[data-inspector-card-detail="true"]')).toContainText("Zhuge Crossbow");
+    const lightningCard = panel.getByRole("button", { name: "Explain Lightning" });
+    await tap(lightningCard);
+    await expect(panel.locator('[data-inspector-card-detail="true"]')).toContainText("Lightning");
     await tap(skill);
-    await expect(panel.getByRole("region", { name: "Stauchness description" })).toHaveCount(0);
+    await expect(panel.locator('[data-inspector-card-detail="true"]')).toHaveCount(0);
+    await expect(panel.getByRole("region", { name: "Stauchness description" })).toContainText("After you take damage, you may enter Judgement phase");
+    expect(gameplayPosts).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
     await tap(panel.getByRole("button", { name: "Close INSPECTED inspection" }));
     await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);

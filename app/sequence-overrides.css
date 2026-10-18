@@ -1799,7 +1799,7 @@
   grid-template-areas: "heading" "body" "zones" "context";
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto auto minmax(0, 1fr);
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   gap: 3px;
   width: 100%;
   height: fit-content;
@@ -1814,11 +1814,13 @@
   min-height: 20px;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: nowrap;
   padding-bottom: 1px;
   border-bottom: 1px solid #51452f;
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-heading strong {
+  flex: 1 1 0;
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 12px;
@@ -1969,6 +1971,8 @@
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-close {
+  flex: 0 0 20px;
+  margin-left: auto;
   width: 20px;
   height: 20px;
   font-size: 14px;
@@ -1983,7 +1987,7 @@
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   margin: 2px 0 0;
-  padding: 6px 7px;
+  padding: 5px 7px;
   border-left: 2px solid #a58e5d;
   background: #090b08;
   color: #e4dcc9;
@@ -1997,7 +2001,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   min-height: 0;
 }
@@ -5554,4 +5558,217 @@
 
 .game-shell .player-board[data-seat-topology="side-column"] .opponent-status-equipment-strip .opponent-equipment-slot .opponent-equipment-horse-mark {
   font-size: 5.5px;
+}
+
+/* UX2 §10.17.5 INS-5: make the public Hero image the left anchor and stack
+   identity/skills + Judgement above a separate full-width Equipment row. */
+.game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell > .hero-focus.hero-focus-inspect {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: auto;
+}
+
+.game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
+  display: grid;
+  grid-template-columns: minmax(0, 28%) minmax(0, 1fr);
+  grid-template-areas: "portrait main";
+  align-items: stretch;
+  gap: 5px;
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-portrait {
+  grid-area: portrait;
+  align-self: center;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+}
+
+.game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-portrait > .hero-art-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-main {
+  grid-area: main;
+  display: grid;
+  grid-template-areas: "upper" "equipment";
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 4px;
+  min-width: 0;
+  min-height: min-content;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-upper {
+  grid-area: upper;
+  display: grid;
+  grid-template-areas: "identity judgement";
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+  min-height: min-content;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity {
+  grid-area: identity;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-profile {
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-line {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-hero {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-stats {
+  gap: 2px 6px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-public-skills {
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skills {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  gap: 2px;
+  min-width: 0;
+  max-height: 66px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skill {
+  width: 100%;
+  min-width: 0;
+  min-height: 19px;
+  padding: 2px 4px;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.1;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement,
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment {
+  grid-area: auto;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
+  min-height: 0;
+  padding: 3px 4px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement {
+  grid-area: judgement;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment {
+  grid-area: equipment;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement h3,
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment h3 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 8px;
+  line-height: 1.1;
+  letter-spacing: .04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-slot-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  justify-content: stretch;
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-slot-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  justify-content: stretch;
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-card,
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-empty-slot,
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-card,
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-empty-slot {
+  justify-self: center;
+  width: min(100%, clamp(28px, 11vw, 46px));
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-overflow {
+  justify-self: start;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-overflow {
+  justify-self: end;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context {
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+@media (max-height: 740px) {
+  .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
+    grid-template-columns: minmax(0, 28%) minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .opponent-inspection-floating-shell .hero-focus-inspect-upper {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  }
+
+  .opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-card,
+  .opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-empty-slot,
+  .opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-card,
+  .opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-empty-slot {
+    width: min(100%, clamp(27px, 10.5vw, 42px));
+  }
+}
+
+/* Give the Inspector the full seat-free corridor on phone side-column tables.
+   The generic interaction corridor reserves extra room for wide event cards;
+   Inspect is shorter and can safely use the space between the actual seat
+   tracks without covering their Hero or SWITCH controls. */
+@media (max-width: 520px) {
+  .game-shell .play-table[data-seat-topology="side-column"] > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+    inset-inline: 19vw;
+  }
 }

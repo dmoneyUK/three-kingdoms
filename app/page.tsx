@@ -1196,72 +1196,74 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCar
     const selected = selectedCardDetail?.id === card.id;
     return <button key={card.id} type="button" className={`opponent-inspection-card${equipmentMiniature ? " opponent-inspection-equipment-card" : ""}`} data-inspector-slot={inspectionSlot} style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} aria-controls={detailsId} aria-pressed={selected} onClick={(event) => { event.stopPropagation(); openCardDetail(card, event.currentTarget); }}><CardFace card={card} /></button>;
   };
-  return <section ref={inspectorRef} key={player.id} className="hero-focus hero-focus-inspect opponent-inspection-panel" role="dialog" aria-label={`${player.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={player.id}>
+  return <section ref={inspectorRef} key={player.id} className="hero-focus hero-focus-inspect opponent-inspection-panel" role="dialog" aria-label={`${player.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={player.id} data-inspector-layout="two-level">
     <div className="hero-focus-heading"><strong>{`INSPECT · ${player.name}`}</strong><button type="button" className="hero-focus-inspect-close" aria-label={`Close ${player.name} inspection`} onClick={onClose}>×</button></div>
     <div className="hero-focus-body">
       <span className={hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={hero?.id}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
-      <div className="hero-focus-identity">
-        <div className="hero-focus-inspect-profile">
-          <div className="hero-focus-identity-line">
-            <span className="hero-focus-identity-hero">{hero?.name ?? "Unknown Hero"}</span>
-            <div className="hero-focus-identity-stats"><small>HP {player.hp ?? "?"}/{player.maxHp ?? "?"}</small><small data-public-hand-count={player.handCount}>Hand · {player.handCount}</small></div>
+      <div className="hero-focus-inspect-main">
+        <div className="hero-focus-inspect-upper">
+          <div className="hero-focus-identity">
+            <div className="hero-focus-inspect-profile">
+              <div className="hero-focus-identity-line">
+                <span className="hero-focus-identity-hero">{hero?.name ?? "Unknown Hero"}</span>
+                <div className="hero-focus-identity-stats"><small>HP {player.hp ?? "?"}/{player.maxHp ?? "?"}</small><small data-public-hand-count={player.handCount}>Hand · {player.handCount}</small></div>
+              </div>
+              <section className="opponent-inspection-zone hero-focus-inspect-public-skills" aria-label="Public Skills">
+                <h3>Public Skills</h3>
+                <div className="hero-focus-inspect-skills">{skills.length ? skills.map((skill) => {
+                  const expanded = expandedSkillName === skill.name && !selectedCardDetail;
+                  return <button type="button" className="hero-focus-inspect-skill" key={skill.name} aria-label={`Show ${skill.name} description`} aria-expanded={expanded} aria-pressed={expanded} aria-controls={detailsId} onClick={() => {
+                    setSkillDescriptionScrollable(false);
+                    if (cardDetailRef.current) {
+                      cardDetailRef.current = null;
+                      setSelectedCardDetail(null);
+                      restoreSkillContextOnCloseRef.current = false;
+                      lastCardTriggerRef.current = null;
+                      setExpandedSkillName(skill.name);
+                      return;
+                    }
+                    setExpandedSkillName(skill.name);
+                  }}>{skill.name}</button>;
+                }) : <span className="opponent-inspection-empty">None</span>}</div>
+              </section>
+            </div>
           </div>
-          <section className="opponent-inspection-zone hero-focus-inspect-public-skills" aria-label="Public Skills">
-            <h3>Public Skills</h3>
-            <div className="hero-focus-inspect-skills">{skills.length ? skills.map((skill) => {
-              const expanded = expandedSkillName === skill.name && !selectedCardDetail;
-              return <button type="button" className="hero-focus-inspect-skill" key={skill.name} aria-label={`Show ${skill.name} description`} aria-expanded={expanded} aria-pressed={expanded} aria-controls={detailsId} onClick={() => {
-                setSkillDescriptionScrollable(false);
-                if (cardDetailRef.current) {
-                  cardDetailRef.current = null;
-                  setSelectedCardDetail(null);
-                  restoreSkillContextOnCloseRef.current = false;
-                  lastCardTriggerRef.current = null;
-                  setExpandedSkillName(skill.name);
-                  return;
-                }
-                setExpandedSkillName(skill.name);
-              }}>{skill.name}</button>;
-            }) : <span className="opponent-inspection-empty">None</span>}</div>
+          <section className="opponent-inspection-zone hero-focus-inspect-judgement" aria-label="Judgement Zone">
+            <h3>Judgement</h3>
+            <div className="opponent-inspection-card-row opponent-inspection-slot-row opponent-inspection-judgement-slots">
+              {Array.from({ length: 2 }, (_, index) => {
+                const card = visibleJudgementCards[index];
+                return card
+                  ? renderInspectionCard(card, { hidden: judgementInFlight?.has(card.id), inspectionSlot: `judgement-${index + 1}` })
+                  : <span key={`judgement-empty-${index + 1}`} className="opponent-inspection-empty-slot" data-inspector-slot={`judgement-${index + 1}`} role="img" aria-label={`Empty Judgement slot ${index + 1}`} />;
+              })}
+            </div>
+            {overflowJudgementCards.length > 0 && <details className="opponent-inspection-overflow">
+              <summary aria-label={`Show ${overflowJudgementCards.length} more Judgement cards`}>+{overflowJudgementCards.length}</summary>
+              <div className="opponent-inspection-overflow-row">
+                {overflowJudgementCards.map((card) => renderInspectionCard(card, { hidden: judgementInFlight?.has(card.id) }))}
+              </div>
+            </details>}
           </section>
         </div>
+        <section className="opponent-inspection-zone hero-focus-inspect-equipment" aria-label="Equipment">
+          <h3>Equipment</h3>
+          <div className="opponent-inspection-card-row opponent-inspection-slot-row opponent-inspection-equipment-slots">
+            {inspectionEquipmentSlots.map(({ slot, label }) => {
+              const card = inspectionEquipmentBySlot.get(slot);
+              return card
+                ? renderInspectionCard(card, { equipmentMiniature: true, inspectionSlot: slot })
+                : <span key={`equipment-empty-${slot}`} className="opponent-inspection-empty-slot" data-inspector-slot={slot} role="img" aria-label={`Empty ${label} slot`} />;
+            })}
+          </div>
+          {extraEquipmentCards.length > 0 && <details className="opponent-inspection-overflow">
+            <summary aria-label={`Show ${extraEquipmentCards.length} more Equipment cards`}>+{extraEquipmentCards.length}</summary>
+            <div className="opponent-inspection-overflow-row">
+              {extraEquipmentCards.map((card) => renderInspectionCard(card, { equipmentMiniature: true }))}
+            </div>
+          </details>}
+        </section>
       </div>
-    </div>
-    <div className="hero-focus-inspect-public-zones">
-      <section className="opponent-inspection-zone" aria-label="Judgement Zone">
-        <h3>Judgement Zone</h3>
-        <div className="opponent-inspection-card-row opponent-inspection-slot-row opponent-inspection-judgement-slots">
-          {Array.from({ length: 2 }, (_, index) => {
-            const card = visibleJudgementCards[index];
-            return card
-              ? renderInspectionCard(card, { hidden: judgementInFlight?.has(card.id), inspectionSlot: `judgement-${index + 1}` })
-              : <span key={`judgement-empty-${index + 1}`} className="opponent-inspection-empty-slot" data-inspector-slot={`judgement-${index + 1}`} role="img" aria-label={`Empty Judgement slot ${index + 1}`} />;
-          })}
-        </div>
-        {overflowJudgementCards.length > 0 && <details className="opponent-inspection-overflow">
-          <summary aria-label={`Show ${overflowJudgementCards.length} more Judgement cards`}>+{overflowJudgementCards.length}</summary>
-          <div className="opponent-inspection-overflow-row">
-            {overflowJudgementCards.map((card) => renderInspectionCard(card, { hidden: judgementInFlight?.has(card.id) }))}
-          </div>
-        </details>}
-      </section>
-      <section className="opponent-inspection-zone" aria-label="Equipment">
-        <h3>Equipment</h3>
-        <div className="opponent-inspection-card-row opponent-inspection-slot-row opponent-inspection-equipment-slots">
-          {inspectionEquipmentSlots.map(({ slot, label }) => {
-            const card = inspectionEquipmentBySlot.get(slot);
-            return card
-              ? renderInspectionCard(card, { equipmentMiniature: true, inspectionSlot: slot })
-              : <span key={`equipment-empty-${slot}`} className="opponent-inspection-empty-slot" data-inspector-slot={slot} role="img" aria-label={`Empty ${label} slot`} />;
-          })}
-        </div>
-        {extraEquipmentCards.length > 0 && <details className="opponent-inspection-overflow">
-          <summary aria-label={`Show ${extraEquipmentCards.length} more Equipment cards`}>+{extraEquipmentCards.length}</summary>
-          <div className="opponent-inspection-overflow-row">
-            {extraEquipmentCards.map((card) => renderInspectionCard(card, { equipmentMiniature: true }))}
-          </div>
-        </details>}
-      </section>
     </div>
     <div ref={inspectDetailsRef} id={detailsId} className="hero-focus-inspect-details hero-focus-context">
       {selectedCardDetail ? (() => {
