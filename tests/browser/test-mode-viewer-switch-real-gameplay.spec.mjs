@@ -10,6 +10,17 @@ async function postAction(request, action, code, token, values = {}) {
   return body;
 }
 
+async function opponentEquipmentSlotPositions(page, playerId) {
+  return page.locator(`.opponent-player-card[data-player-anchor="${playerId}"] .opponent-status-equipment-strip`).evaluate((strip) => {
+    const summary = strip.querySelector(".opponent-equipment-summary");
+    const summaryLeft = summary.getBoundingClientRect().left;
+    return [...summary.querySelectorAll(":scope > .opponent-equipment-slot")].map((slot) => {
+      const rect = slot.getBoundingClientRect();
+      return { slot: slot.dataset.slot, offset: rect.left - summaryLeft, width: rect.width };
+    });
+  });
+}
+
 async function readRootH4Announcement(page, rootEventId) {
   return page.evaluate((eventId) => {
     const display = document.querySelector(`.public-card-display[data-public-card-root-event-id="${eventId}"]`);
@@ -101,6 +112,11 @@ test("test-game perspective switches manually and stays selected when the server
 
   const selectedButton = page.getByTestId(`test-view-switch-${selectedViewer.id}`);
   await expect(selectedButton).toHaveText("SWITCH");
+  const stableOpponent = room.players.find((player) => player.id !== initialViewerId
+    && player.id !== selectedViewer.id && player.id !== actingPlayerId);
+  expect(stableOpponent, "a public opponent remains present across both perspective switches").toBeTruthy();
+  const initialSlotPositions = await opponentEquipmentSlotPositions(page, stableOpponent.id);
+  expect(initialSlotPositions.map(({ slot }) => slot)).toEqual(["weapon", "armor", "defensiveHorse", "offensiveHorse"]);
   const selectedViewResponsePromise = page.waitForResponse((response) => {
     if (response.request().method() !== "GET" || !response.url().startsWith(`${API}/api/rooms?`)) return false;
     return new URL(response.url()).searchParams.get("testViewerId") === selectedViewer.id;
@@ -111,6 +127,12 @@ test("test-game perspective switches manually and stays selected when the server
   const selectedViewBody = await selectedViewResponse.json();
   expect((selectedViewBody.room ?? selectedViewBody).meId).toBe(selectedViewer.id);
   await expect(page.locator(`.local-player-dock[data-player-anchor="${selectedViewer.id}"]`)).toBeVisible();
+  const selectedViewSlotPositions = await opponentEquipmentSlotPositions(page, stableOpponent.id);
+  expect(selectedViewSlotPositions.map(({ slot }) => slot)).toEqual(initialSlotPositions.map(({ slot }) => slot));
+  for (const [index, position] of selectedViewSlotPositions.entries()) {
+    expect(position.offset, `${position.slot} slot after switching to ${selectedViewer.id}`).toBeCloseTo(initialSlotPositions[index].offset, 1);
+    expect(position.width, `${position.slot} width after switching to ${selectedViewer.id}`).toBeCloseTo(initialSlotPositions[index].width, 1);
+  }
   const host = room.players.find((player) => player.isHost);
   await expect(page.getByTestId(`test-view-switch-${host.id}`)).toBeVisible();
   await expect(page.getByTestId(`test-view-switch-${host.id}`)).toHaveText("SWITCH");
@@ -126,6 +148,12 @@ test("test-game perspective switches manually and stays selected when the server
   const actingViewBody = await actingViewResponse.json();
   expect((actingViewBody.room ?? actingViewBody).meId).toBe(actingPlayerId);
   await expect(page.locator(`.local-player-dock[data-player-anchor="${actingPlayerId}"]`)).toBeVisible();
+  const actingViewSlotPositions = await opponentEquipmentSlotPositions(page, stableOpponent.id);
+  expect(actingViewSlotPositions.map(({ slot }) => slot)).toEqual(initialSlotPositions.map(({ slot }) => slot));
+  for (const [index, position] of actingViewSlotPositions.entries()) {
+    expect(position.offset, `${position.slot} slot after switching to actor ${actingPlayerId}`).toBeCloseTo(initialSlotPositions[index].offset, 1);
+    expect(position.width, `${position.slot} width after switching to actor ${actingPlayerId}`).toBeCloseTo(initialSlotPositions[index].width, 1);
+  }
 
   await expect.poll(async () => page.locator(".local-player-dock").getAttribute("data-player-anchor")).toBe(actingPlayerId);
   await expect(page.getByRole("button", { name: "End", exact: true })).toBeEnabled();

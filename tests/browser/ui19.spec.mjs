@@ -1434,6 +1434,7 @@ async function opponentSeatPresentation(page, playerId) {
     const overlay = seat.querySelector(".opponent-hero-overlay");
     const summary = seat.querySelector(".opponent-equipment-summary");
     const target = seat.querySelector(".opponent-hero-target");
+    const heroName = seat.querySelector(".opponent-hero-name");
     const art = bounds(portrait);
     const artImageBounds = artImage ? bounds(artImage) : null;
     const focus = { x: art.x + art.width * 0.45, y: art.y + art.height * 0.42 };
@@ -1452,7 +1453,7 @@ async function opponentSeatPresentation(page, playerId) {
       artCropBoundaryOverflow: getComputedStyle(target).overflow,
       overlay: bounds(overlay), summary: summary ? bounds(summary) : null,
       playerNameFits: seat.querySelector(".opponent-player-name").scrollWidth <= seat.querySelector(".opponent-player-name").clientWidth,
-      heroNameFits: seat.querySelector(".opponent-hero-name").scrollWidth <= seat.querySelector(".opponent-hero-name").clientWidth,
+      heroNameFits: !heroName || heroName.scrollWidth <= heroName.clientWidth,
       focusCoveredByText: identityText.some((element) => {
         const style = getComputedStyle(element);
         return style.display !== "none" && style.visibility !== "hidden" && containsPoint(bounds(element), focus.x, focus.y);
@@ -1590,7 +1591,12 @@ for (const width of [480, 650]) {
         }
       }
       const emptySeat = page.locator('[data-player-anchor="p8"]');
-      if (count === 10) await expect(emptySeat.locator(".opponent-equipment-summary")).toHaveCount(0);
+      if (count === 10) {
+        await expect(emptySeat.locator(".opponent-equipment-summary")).toHaveCount(1);
+        await expect(emptySeat.locator(".opponent-equipment-slot")).toHaveCount(4);
+        await expect(emptySeat.locator('.opponent-equipment-slot[data-occupied="false"]')).toHaveCount(4);
+        await expect(emptySeat.locator(".opponent-equipment-indicator")).toHaveCount(0);
+      }
       if (count === 10) await testInfo.attach("side-column-equipment-art", { body: await page.screenshot({ animations: "disabled" }), contentType: "image/png" });
     });
   }

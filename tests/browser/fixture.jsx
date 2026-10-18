@@ -54,6 +54,7 @@ const SEAT_EQUIPMENT_CASES = {
   plusHorse: [["Shadowrunner", "♠", "5"]],
   minusHorse: [["FerganaSteed", "♠", "K"]],
   weaponArmor: [["ZhugeCrossbow", "♦", "A"], ["NioShield", "♣", "2"]],
+  three: [["ZhugeCrossbow", "♦", "A"], ["NioShield", "♣", "2"], ["Shadowrunner", "♠", "5"]],
   multiple: [["ZhugeCrossbow", "♦", "A"], ["NioShield", "♣", "2"], ["Shadowrunner", "♠", "5"], ["FerganaSteed", "♠", "K"]],
   localInspectPair: [["KirinBow", "♥", "Q"], ["NioShield", "♣", "2"]],
   miniaturePair: [["NioShield", "♣", "2"], ["Shadowrunner", "♥", "10"]],

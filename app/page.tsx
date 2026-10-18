@@ -918,11 +918,11 @@ export function projectSideColumnSeat(totalPlayers: number, relativeIndex: numbe
 }
 
 function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
-  if (slot === "weapon") return <svg viewBox="0 0 14 14" aria-hidden="true" data-equipment-glyph="sword">
-    <path data-sword-part="blade" d="M7.5 5.1 13 7l-5.5 1.9.7-1.9-.7-1.9Z" />
-    <path data-sword-part="crossguard" d="M6.5 3.4h1.4v7.2H6.5z" />
-    <path data-sword-part="grip" d="M3 6.4h3.5v1.2H3z" />
-    <circle data-sword-part="pommel" cx="2.1" cy="7" r="1" />
+  if (slot === "weapon") return <svg viewBox="0 0 18 18" aria-hidden="true" data-equipment-glyph="sword">
+    <path data-sword-part="blade" d="M8.7 7.8 15.8 1.2 17 1l-.2 1.2-6.6 7.1-1.6-.2Z" />
+    <path data-sword-part="crossguard" d="m6.4 6.4 5.2 5.2-1.2 1.2-5.2-5.2Z" />
+    <path data-sword-part="grip" d="m6.5 9.1 1.5 1.5-4.2 4.2-1.5-1.5Z" />
+    <circle data-sword-part="pommel" cx="2.7" cy="15.3" r="1.4" />
   </svg>;
   if (slot === "armor") return <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1.2 12.2 3v3.8c0 2.8-2.4 4.9-5.2 6.4C4.2 11.7 1.8 9.6 1.8 6.8V3L7 1.2Z" /><path d="M4.5 4.2v3.2c0 1.2 1 2.2 2.5 3 1.5-.8 2.5-1.8 2.5-3V4.2" /></svg>;
   return <span className="opponent-equipment-horse-mark" aria-hidden="true">{slot === "defensiveHorse" ? "+1" : "−1"}</span>;
@@ -935,12 +935,12 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
     const slot = cardDefinition(equipment.kind).equipmentSlot;
     if (slot) equipmentBySlot.set(slot, equipment);
   }
-  const equipmentSummary = LOCAL_EQUIPMENT_SLOTS.flatMap(({ key, label }) => {
+  const equipmentSummary = LOCAL_EQUIPMENT_SLOTS.map(({ key, label }) => {
     const equipment = equipmentBySlot.get(key);
-    if (!equipment) return [];
+    if (!equipment) return <span className="opponent-equipment-slot is-empty" data-slot={key} data-occupied="false" aria-hidden="true" key={key} />;
     const equipmentName = cardDefinition(equipment.kind).name;
     const accessibleSlotLabel = key === "defensiveHorse" ? "Plus-one horse" : key === "offensiveHorse" ? "Minus-one horse" : label;
-    return [<span className="opponent-equipment-indicator" data-slot={key} data-equipment-id={equipment.id} data-card-kind={equipment.kind} role="img" aria-label={`${accessibleSlotLabel} equipped: ${equipmentName}`} title={`${label}: ${equipmentName}`} key={key}><OpponentEquipmentGlyph slot={key} /></span>];
+    return <span className="opponent-equipment-slot is-occupied" data-slot={key} data-occupied="true" key={key}><span className="opponent-equipment-indicator" data-slot={key} data-equipment-id={equipment.id} data-card-kind={equipment.kind} role="img" aria-label={`${accessibleSlotLabel} equipped: ${equipmentName}`} title={`${label}: ${equipmentName}`}><OpponentEquipmentGlyph slot={key} /></span></span>;
   });
   const miniJudgement = player.judgementCards.map((judgement) => <span className="mini-zone-card judgement-mini" data-judgement-id={judgement.id} key={judgement.id} style={{ visibility: judgementInFlight.has(judgement.id) ? "hidden" : "visible" }}>
     <span><small>{judgement.rank}{judgement.suit}</small><b>{cardDefinition(judgement.kind).name}</b></span>
@@ -971,7 +971,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
       </div>
       <div className="opponent-status-equipment-strip">
         <span className="opponent-hp-chip" aria-label={`HP ${player.hp ?? 0} of ${player.maxHp ?? 0}`}>HP {player.hp ?? 0}/{player.maxHp ?? 0}</span>
-        <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count={equipmentSummary.length}>{equipmentSummary}</div>
+        <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count={equipmentBySlot.size}>{equipmentSummary}</div>
       </div>
       {player.judgementCards.length > 0 && <section className="opponent-judgement-zone" aria-label="Judgement Zone">
         <span className="opponent-zone-label">Judgement</span>

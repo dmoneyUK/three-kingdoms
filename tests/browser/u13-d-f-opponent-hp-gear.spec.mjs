@@ -12,7 +12,10 @@ const FOUR_SEAT_VIEWPORTS = [
 const EQUIPMENT_CASES = [
   { name: "none", value: "empty", slots: [] },
   { name: "one", value: "weapon", slots: ["weapon"] },
+  { name: "horse-only", value: "plusHorse", slots: ["defensiveHorse"] },
+  { name: "minus-horse-only", value: "minusHorse", slots: ["offensiveHorse"] },
   { name: "two", value: "weaponArmor", slots: ["weapon", "armor"] },
+  { name: "three", value: "three", slots: ["weapon", "armor", "defensiveHorse"] },
   { name: "four", value: "multiple", slots: ["weapon", "armor", "defensiveHorse", "offensiveHorse"] },
 ];
 const EQUIPMENT_KIND_BY_SLOT = {
@@ -54,15 +57,26 @@ async function readEquipmentGeometry(seat) {
     const strip = element.querySelector(".opponent-status-equipment-strip");
     const hp = strip?.querySelector(".opponent-hp-chip");
     const summary = strip?.querySelector(".opponent-equipment-summary");
-    const indicators = [...(summary?.querySelectorAll(".opponent-equipment-indicator") ?? [])];
+    const slots = [...(summary?.querySelectorAll(":scope > .opponent-equipment-slot") ?? [])];
+    const indicators = slots.flatMap((slot) => {
+      const indicator = slot.querySelector(":scope > .opponent-equipment-indicator");
+      return indicator ? [{ slotElement: slot, indicator }] : [];
+    });
     const hpBox = box(hp);
     const stripBox = box(strip);
-    const indicatorBoxes = indicators.map((indicator) => ({
-      slot: indicator.dataset.slot,
+    const slotBoxes = slots.map((slot) => ({
+      slot: slot.dataset.slot,
+      occupied: slot.dataset.occupied === "true",
+      rect: box(slot),
+      hasIndicator: Boolean(slot.querySelector(":scope > .opponent-equipment-indicator")),
+    }));
+    const indicatorBoxes = indicators.map(({ slotElement, indicator }) => ({
+      slot: slotElement.dataset.slot,
       kind: indicator.dataset.cardKind,
       ariaLabel: indicator.getAttribute("aria-label"),
       title: indicator.title,
       rect: box(indicator),
+      slotRect: box(slotElement),
       glyph: box(indicator.querySelector("svg")),
       glyphKind: indicator.querySelector("svg")?.dataset.equipmentGlyph ?? null,
       glyphParts: [...(indicator.querySelectorAll("svg [data-sword-part]") ?? [])].map((part) => part.dataset.swordPart),
@@ -86,16 +100,17 @@ async function readEquipmentGeometry(seat) {
         justifyContent: getComputedStyle(summary).justifyContent,
         slotCount: Number(summary?.dataset.slotCount ?? 0),
       },
+      slots: slotBoxes,
       indicators: indicatorBoxes,
       hpLeftInset: hpBox && stripBox ? hpBox.left - stripBox.left : null,
-      equipmentRightInset: indicatorBoxes.length && stripBox
-        ? stripBox.right - indicatorBoxes.at(-1).rect.right
+      equipmentRightInset: slotBoxes.length && stripBox
+        ? stripBox.right - slotBoxes.at(-1).rect.right
         : null,
-      hpEquipmentGap: indicatorBoxes.length && hpBox
-        ? indicatorBoxes[0].rect.left - hpBox.right
+      hpEquipmentGap: slotBoxes.length && hpBox
+        ? slotBoxes[0].rect.left - hpBox.right
         : null,
-      overlapsHp: indicatorBoxes.some((indicator) => intersects(hpBox, indicator.rect)),
-      clipsIndicator: indicatorBoxes.some((indicator) => indicator.rect.left < stripBox.left || indicator.rect.right > stripBox.right),
+      overlapsHp: slotBoxes.some((slot) => intersects(hpBox, slot.rect)),
+      clipsIndicator: slotBoxes.some((slot) => slot.rect.left < stripBox.left || slot.rect.right > stripBox.right),
       viewportWidth: innerWidth,
       documentWidth: document.documentElement.scrollWidth,
     };
@@ -132,6 +147,9 @@ for (const viewport of FOUR_SEAT_VIEWPORTS) {
       expect(geometry.hpLeftInset).toBeGreaterThanOrEqual(3);
       expect(geometry.hpLeftInset).toBeLessThanOrEqual(7);
       expect(geometry.summary.slotCount).toBe(equipment.slots.length);
+      expect(geometry.slots.map((slot) => slot.slot)).toEqual(["weapon", "armor", "defensiveHorse", "offensiveHorse"]);
+      expect(geometry.slots.every((slot) => slot.rect.width === geometry.slots[0].rect.width)).toBe(true);
+      expect(geometry.slots.filter((slot) => slot.occupied).map((slot) => slot.slot)).toEqual(equipment.slots);
       expect(geometry.indicators.map((indicator) => indicator.slot)).toEqual(equipment.slots);
       for (const indicator of geometry.indicators) {
         expect(indicator.kind, indicator.slot).toBe(EQUIPMENT_KIND_BY_SLOT[indicator.slot]);
@@ -139,6 +157,8 @@ for (const viewport of FOUR_SEAT_VIEWPORTS) {
         expect(indicator.title, indicator.slot).toMatch(/: .+/);
         expect(indicator.rect.width, indicator.slot).toBeGreaterThanOrEqual(11);
         expect(indicator.rect.height, indicator.slot).toBeGreaterThanOrEqual(11);
+        expect(indicator.rect.left, `${indicator.slot} icon stays within its fixed slot`).toBeGreaterThanOrEqual(indicator.slotRect.left);
+        expect(indicator.rect.right, `${indicator.slot} icon stays within its fixed slot`).toBeLessThanOrEqual(indicator.slotRect.right);
       }
       expect(geometry.overlapsHp).toBe(false);
       expect(geometry.clipsIndicator).toBe(false);
@@ -151,8 +171,8 @@ for (const viewport of FOUR_SEAT_VIEWPORTS) {
         const measurements = values.map((text) => {
           hp.textContent = text;
           const rect = hp.getBoundingClientRect();
-          const firstIndicator = hp.parentElement.querySelector(".opponent-equipment-indicator");
-          const equipmentLeft = firstIndicator?.getBoundingClientRect().left ?? null;
+          const firstSlot = hp.parentElement.querySelector(".opponent-equipment-slot");
+          const equipmentLeft = firstSlot?.getBoundingClientRect().left ?? null;
           return {
             text,
             width: rect.width,
@@ -169,26 +189,21 @@ for (const viewport of FOUR_SEAT_VIEWPORTS) {
         expect(variant.height, variant.text).toBeGreaterThanOrEqual(10);
         expect(variant.height, variant.text).toBeLessThanOrEqual(14);
         expect(variant.width, variant.text).toBeGreaterThan(0);
-        if (geometry.indicators.length) {
-          expect(variant.right, variant.text).toBeLessThanOrEqual(geometry.indicators[0].rect.left);
-          expect(variant.equipmentGap, variant.text).toBeGreaterThanOrEqual(0);
-        }
+        expect(variant.right, variant.text).toBeLessThanOrEqual(geometry.slots[0].rect.left);
+        expect(variant.equipmentGap, variant.text).toBeGreaterThanOrEqual(4);
       }
 
-      if (geometry.indicators.length) {
-        expect(geometry.summary.justifyContent).toBe("flex-end");
-        expect(geometry.equipmentRightInset).toBeGreaterThanOrEqual(3);
-        expect(geometry.equipmentRightInset).toBeLessThanOrEqual(5.5);
-        expect(geometry.hpEquipmentGap).toBeGreaterThanOrEqual(4);
-        for (const indicator of geometry.indicators) {
-          if (indicator.slot === "weapon") {
-            expect(indicator.kind).toBe("ZhugeCrossbow");
-            expect(indicator.ariaLabel).toContain("Weapon equipped:");
-            expect(indicator.glyphKind).toBe("sword");
-            expect(indicator.glyphParts).toEqual(["blade", "crossguard", "grip", "pommel"]);
-            expect(indicator.glyph.width).toBeGreaterThanOrEqual(11);
-            expect(indicator.glyph.height).toBeGreaterThanOrEqual(11);
-          }
+      expect(geometry.equipmentRightInset).toBeGreaterThanOrEqual(3);
+      expect(geometry.equipmentRightInset).toBeLessThanOrEqual(5.5);
+      expect(geometry.hpEquipmentGap).toBeGreaterThanOrEqual(4);
+      for (const indicator of geometry.indicators) {
+        if (indicator.slot === "weapon") {
+          expect(indicator.kind).toBe("ZhugeCrossbow");
+          expect(indicator.ariaLabel).toContain("Weapon equipped:");
+          expect(indicator.glyphKind).toBe("sword");
+          expect(indicator.glyphParts).toEqual(["blade", "crossguard", "grip", "pommel"]);
+          expect(indicator.glyph.width).toBeGreaterThanOrEqual(9);
+          expect(indicator.glyph.height).toBeGreaterThanOrEqual(9);
         }
       }
 
@@ -212,6 +227,7 @@ test("U13-D-F zero-HP opponent keeps HP readable in the four-equipment strip", a
   expect(geometry.hp.fontSize).toBeGreaterThanOrEqual(11);
   expect(geometry.overlapsHp).toBe(false);
   expect(geometry.indicators).toHaveLength(4);
+  expect(geometry.slots).toHaveLength(4);
 });
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }]) {
@@ -233,10 +249,12 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
         expect(geometry.hp.rect.height).toBeGreaterThanOrEqual(7);
         expect(geometry.hp.fontSize).toBeGreaterThanOrEqual(7);
         expect(geometry.summary.slotCount).toBe(geometry.indicators.length);
+        expect(geometry.slots).toHaveLength(4);
         expect(geometry.indicators.map((indicator) => indicator.slot), geometry.id).toEqual(expectedSlots);
         expect(geometry.overlapsHp, geometry.id).toBe(false);
         expect(geometry.clipsIndicator, geometry.id).toBe(false);
-        expect(geometry.seat.left).toBeLessThanOrEqual(geometry.indicators[0]?.rect.left ?? geometry.seat.right);
+        expect(geometry.seat.left).toBeLessThanOrEqual(geometry.slots[0]?.rect.left ?? geometry.seat.right);
+        expect(geometry.slots.every((slot) => slot.rect.width === geometry.slots[0].rect.width), geometry.id).toBe(true);
         if (geometry.indicators.length) {
           expect(geometry.summary.justifyContent, geometry.id).toBe("flex-end");
           expect(geometry.equipmentRightInset, geometry.id).toBeGreaterThanOrEqual(1);
@@ -248,6 +266,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
             expect(indicator.title, `${geometry.id} ${indicator.slot}`).toMatch(/: .+/);
             expect(indicator.rect.width, `${geometry.id} ${indicator.slot}`).toBeGreaterThanOrEqual(7);
             expect(indicator.rect.height, `${geometry.id} ${indicator.slot}`).toBeGreaterThanOrEqual(7);
+          expect(indicator.rect.left, `${geometry.id} ${indicator.slot} stays within slot`).toBeGreaterThanOrEqual(indicator.slotRect.left);
+          expect(indicator.rect.right, `${geometry.id} ${indicator.slot} stays within slot`).toBeLessThanOrEqual(indicator.slotRect.right);
           }
         }
       }
@@ -256,4 +276,61 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       await captureEvidence(page, testInfo, `${count}side-${viewport.width}x${viewport.height}`, geometries);
     });
   }
+}
+
+for (const viewport of [{ width: 390, height: 700 }, { width: 440, height: 766 }]) {
+  test(`HUD-4 equipment slot positions stay fixed through equip, replace and discard at ${viewport.width}px`, async ({ page }, testInfo) => {
+    await loadFixture(page, { count: 4, viewport, equipmentCase: "empty" });
+    const seat = page.locator('.player-board[data-seat-topology="top-row"] > .opponent-player-card[data-player-anchor="p2"]');
+    const positions = async () => readEquipmentGeometry(seat);
+    const initial = await positions();
+    await captureEvidence(page, testInfo, `${viewport.width}x${viewport.height}-initial-empty`, initial);
+    const transitions = [
+      { name: "equip weapon", cards: [{ id: "hud4-weapon-a", kind: "ZhugeCrossbow", suit: "♦", rank: "A" }] },
+      { name: "equip horse only", cards: [{ id: "hud4-horse", kind: "Shadowrunner", suit: "♠", rank: "5" }] },
+      { name: "equip four slots", cards: [
+        { id: "hud4-weapon-b", kind: "KirinBow", suit: "♥", rank: "Q" },
+        { id: "hud4-armor", kind: "NioShield", suit: "♣", rank: "2" },
+        { id: "hud4-plus", kind: "Shadowrunner", suit: "♠", rank: "5" },
+        { id: "hud4-minus", kind: "FerganaSteed", suit: "♠", rank: "K" },
+      ] },
+      { name: "replace weapon", cards: [
+        { id: "hud4-weapon-c", kind: "BlueSteelSword", suit: "♣", rank: "6" },
+        { id: "hud4-armor", kind: "NioShield", suit: "♣", rank: "2" },
+        { id: "hud4-plus", kind: "Shadowrunner", suit: "♠", rank: "5" },
+        { id: "hud4-minus", kind: "FerganaSteed", suit: "♠", rank: "K" },
+      ] },
+      { name: "discard weapon and armour", cards: [
+        { id: "hud4-plus", kind: "Shadowrunner", suit: "♠", rank: "5" },
+        { id: "hud4-minus", kind: "FerganaSteed", suit: "♠", rank: "K" },
+      ] },
+      { name: "discard all", cards: [] },
+    ];
+
+    for (const transition of transitions) {
+      await page.evaluate(({ playerId, equipmentCards }) => window.__setBrowserPlayerEquipment(playerId, equipmentCards), {
+        playerId: "p2",
+        equipmentCards: transition.cards,
+      });
+      const geometry = await positions();
+      expect(geometry.slots.map(({ slot }) => slot), transition.name).toEqual(initial.slots.map(({ slot }) => slot));
+      for (const [index, slot] of geometry.slots.entries()) {
+        expect(slot.rect.left, `${transition.name} ${slot.slot} x position`)
+          .toBeCloseTo(initial.slots[index].rect.left, 1);
+        expect(slot.rect.width, `${transition.name} ${slot.slot} width`)
+          .toBeCloseTo(initial.slots[index].rect.width, 1);
+      }
+      expect(geometry.overlapsHp, transition.name).toBe(false);
+      expect(geometry.hpEquipmentGap, transition.name).toBeGreaterThanOrEqual(4);
+      expect(geometry.indicators.map(({ slot }) => slot), transition.name).toEqual(
+        ["weapon", "armor", "defensiveHorse", "offensiveHorse"].filter((slot) => transition.cards.some((card) => ({
+          weapon: ["ZhugeCrossbow", "KirinBow", "BlueSteelSword"],
+          armor: ["NioShield"],
+          defensiveHorse: ["Shadowrunner"],
+          offensiveHorse: ["FerganaSteed"],
+        })[slot].includes(card.kind))),
+      );
+      await captureEvidence(page, testInfo, `${viewport.width}x${viewport.height}-${transition.name.replaceAll(" ", "-")}`, geometry);
+    }
+  });
 }
