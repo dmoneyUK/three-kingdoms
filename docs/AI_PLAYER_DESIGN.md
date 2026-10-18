@@ -283,6 +283,8 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 
 **Status: APPROVED — NEXT ELIGIBLE AGENT TASK; fully offline/mock implementation only. Priority: P1. Dependencies: AIP-00C ACCEPTED (satisfied on 2026-10-18).** The Coding Agent may select this task automatically on its next run. **No real OpenAI API calls, external model invocation, paid services or transmission of real-player data are authorized.** An opt-in script and provider adapter may be written **OFF by default** but must not be run against a live endpoint, given real keys or enabled on Staging/production. Live experimentation requires a separate explicit human-reviewed API cost/request cap, privacy consent and key-management decision. Agent must submit `PENDING_REVIEW` with mock-only evidence and stop dependent work.
 
+**Implementation status (2026-10-18): IN_PROGRESS — Coding Agent selected AIP-01 after re-reading AIP-D10 and confirming AIP-00C acceptance. Work is limited to synthetic fixtures and injected mock transport; no live API adapter/call or key use is authorized.**
+
 **Goal:** demonstrate that a single OpenAI call can choose a valid candidate from a small, privacy-safe, trustworthy WTK tactical snapshot, without affecting rooms, D1 or UI.
 
 **Scope and detailed steps:**
