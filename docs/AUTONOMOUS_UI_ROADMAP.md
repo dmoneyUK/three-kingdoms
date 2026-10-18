@@ -2942,6 +2942,32 @@ Profile command measurements:
 - The next separately bounded design slice is INS-5 (§10.17.5); see the current
   task in `HANDOVER.md`.
 
+### UX2-10.17.4.1 HUD-4-F — compact diagonal sword silhouette — 2026-10-18
+
+- Commit `e2e645f06bb24045be38a238f3f335f3cec08c7d` changes only the Weapon
+  glyph SVG and its focused phone regression coverage. The icon now has a broad
+  northeast diagonal blade with a center groove, short grip, distinct guard and
+  pommel. Blade diagonal span is 1.94× the grip; every vector part stays inside
+  the existing 18×18 viewBox. No equipment CSS, slot order, badge size, HP
+  placement, projection or gameplay rule changed.
+- Focused phone browser validation passed 47/47 across 390×700, 440×766,
+  390×844, 440×894 and 480×900 four-seat layouts; 6/8/10-seat side columns;
+  0–4 occupied slots, Weapon-only, Horse-only, equip/replace/discard and
+  empty-to-occupied transitions. Four fixed slot DOMRects matched the
+  390×700 baseline exactly (Weapon x=69.75, Armour x=83.25, +1 Horse
+  x=96.75, −1 Horse x=110.25; 12×14 each). Targeted screenshot captures also
+  passed 5/5 for 390×700/440×766 and side-column views, plus 3/3 empty/occupied
+  6/8/10-seat checks. Native badges and zoomed vector diagnostics are in
+  `/tmp/hud4-candidate/` (local evidence, not committed). Build and focused
+  browser-spec ESLint passed; local app/page ESLint exceeded the Node heap
+  limit, while full ESLint passed in CI.
+- Exact-SHA Actions run
+  [`39143287983`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39143287983)
+  passed lint/fast, API, browser startup/room smoke, D1 migration, Worker deploy
+  and production smoke. Worker version `182ff32a-807f-4e34-b423-5a000e5fa34b`.
+  The result is **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**, not
+  accepted. Next bounded task: BCP-1-F2 live public-proof audit.
+
 ### UX2-10.13.2.1-U13-B-F privacy-first unconditional public activity — 2026-10-18
 
 - Commit `082091d752ff9e98a8eda23c8392b31396908022` opens the same private
