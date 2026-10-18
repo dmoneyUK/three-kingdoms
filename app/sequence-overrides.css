@@ -3840,6 +3840,64 @@
   .deck-reorder-card, .deck-reorder-group { transition: none; }
 }
 
+/* EM-01: selection backdrops cover only the play table and pass pointer input
+   through. The decision panel is the sole interactive child; the reserved
+   side-seat tracks, interaction inspection, and Local Player Dock stay usable. */
+.game-shell .play-table > .target-card-picker-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: var(--interaction-safe-top, 8px) 8px 8px;
+  pointer-events: none;
+  overflow: visible;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel {
+  box-sizing: border-box;
+  width: min(720px, 100%);
+  max-width: 100%;
+  max-height: calc(100% - 8px);
+  margin: 0 0 8px;
+  pointer-events: auto;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.target-card-picker-panel--zones {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.target-card-picker-panel--zones > .target-card-picker-zones {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel > .deck-reorder-sequences {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.choice-trigger-panel:not(.deck-reorder-panel) {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.game-shell .play-table[data-seat-topology="side-column"] > .target-card-picker-overlay {
+  padding-top: 8px;
+  padding-right: var(--side-safe-edge);
+  padding-left: var(--side-safe-edge);
+}
+.game-shell .play-table[data-seat-topology="side-column"] > .target-card-picker-overlay > .target-card-picker-panel {
+  width: 100%;
+  max-width: 100%;
+}
+.game-shell .play-table:has(> .target-card-picker-overlay) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+  z-index: 41;
+}
+
 /* UX2 P5: reclaim the unused phone-width status band without changing the
    board's size or horizontal seat tracks. Move the board and safe-zone top
    together so the freed space enlarges the interaction corridor, not the gap

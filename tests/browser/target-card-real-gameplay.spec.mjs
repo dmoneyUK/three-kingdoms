@@ -84,16 +84,28 @@ async function playCardThroughPage(page, cardId, targetName) {
 async function expectModal(page, title, instruction, cta) {
   const dialog = page.getByRole("dialog", { name: `${title} target card selection` });
   await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("aria-modal", "false");
   await expect(dialog.locator("header strong")).toHaveText(title.toUpperCase());
   await expect(dialog.locator("header span")).toHaveText(instruction);
   await expect(dialog.getByRole("button", { name: cta })).toBeVisible();
   await expect(page.locator(".table-hidden-card-picker")).toHaveCount(0);
   await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
   const geometry = await dialog.evaluate((element) => {
+    const overlay = element.parentElement;
+    const table = overlay?.parentElement;
     const box = element.getBoundingClientRect();
     return {
       x: box.x, y: box.y, right: box.right, bottom: box.bottom,
       viewportWidth: innerWidth, viewportHeight: innerHeight,
+      rootPosition: overlay && getComputedStyle(overlay).position,
+      rootInsets: overlay && ["top", "right", "bottom", "left"].map((property) => getComputedStyle(overlay)[property]),
+      rootPointerEvents: overlay && getComputedStyle(overlay).pointerEvents,
+      panelPointerEvents: getComputedStyle(element).pointerEvents,
+      panelReceivesInput: document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)?.closest(".target-card-picker-panel") === element,
+      panelWithinTable: Boolean(table && box.left >= table.getBoundingClientRect().left - 1
+        && box.right <= table.getBoundingClientRect().right + 1
+        && box.top >= table.getBoundingClientRect().top - 1
+        && box.bottom <= table.getBoundingClientRect().bottom + 1),
       cardTargets: [...element.querySelectorAll(".target-card-picker-card")].map((cardElement) => {
         const cardBox = cardElement.getBoundingClientRect();
         return { width: cardBox.width, height: cardBox.height };
@@ -104,6 +116,12 @@ async function expectModal(page, title, instruction, cta) {
   expect(geometry.y).toBeGreaterThanOrEqual(0);
   expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
   expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
+  expect(geometry.rootPosition).toBe("absolute");
+  expect(geometry.rootInsets).toEqual(["0px", "0px", "0px", "0px"]);
+  expect(geometry.rootPointerEvents).toBe("none");
+  expect(geometry.panelPointerEvents).toBe("auto");
+  expect(geometry.panelReceivesInput).toBe(true);
+  expect(geometry.panelWithinTable).toBe(true);
   expect(geometry.cardTargets.length).toBeGreaterThan(0);
   expect(geometry.cardTargets.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(geometry.viewportWidth);
@@ -160,7 +178,7 @@ async function attachScreenshot(testInfo, name, page) {
 }
 
 for (const kind of ["Steal", "Dismantle"]) {
-  test(`real ${kind} gameplay reaches the shared modal from the server target-card decision`, async ({ page, request }) => {
+  test(`real ${kind} gameplay reaches the shared modal from the server target-card decision`, async ({ page, request, browser }) => {
     const material = card(kind, `real-${kind.toLowerCase()}-material`);
     const hidden = [card("Peach", `real-${kind.toLowerCase()}-hidden-a`), card("Dodge", `real-${kind.toLowerCase()}-hidden-b`)];
     const shield = card("NioShield", `real-${kind.toLowerCase()}-shield`);
@@ -197,6 +215,31 @@ for (const kind of ["Steal", "Dismantle"]) {
     const dialog = await expectModal(page, action, instruction, `Use ${action}`);
     await expect(dialog.locator('[data-target-card-zone="hand-position"]')).toHaveCount(2);
     await expect(dialog.getByRole("button", { name: "Equipment: Nio Shield" })).toBeVisible();
+
+    const sourceBeforeObserver = await roomView(request, seed, 0);
+    const spectatorPage = await browser.newPage();
+    try {
+      await openGame(spectatorPage, seed, 2);
+      await expect(spectatorPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+      const spectatorView = await roomView(request, seed, 2);
+      expect(spectatorView.isMyAction).toBe(false);
+      expect(spectatorView.currentAction?.targetCardSelection).toBeUndefined();
+      const spectatorMarkup = await spectatorPage.locator("body").innerHTML();
+      for (const concealed of hidden) {
+        expect(JSON.stringify(spectatorView)).not.toContain(concealed.id);
+        expect(spectatorMarkup).not.toContain(concealed.id);
+      }
+      const sourceAfterObserver = await roomView(request, seed, 0);
+      expect(sourceAfterObserver.actionRevision).toBe(sourceBeforeObserver.actionRevision);
+      expect(sourceAfterObserver.currentAction).toMatchObject({
+        actorId: seed.players[0].id,
+        kind: "target_card",
+        targetCardSelection: sourceBeforeObserver.currentAction.targetCardSelection,
+      });
+    } finally {
+      await spectatorPage.close();
+    }
+
     const judgment = dialog.getByRole("button", { name: "Judgement: Lightning" });
     await judgment.click();
     await expect(judgment).toHaveAttribute("aria-pressed", "true");
@@ -247,6 +290,31 @@ test("real Sima Yi Retaliation reaches the modal with private Hand positions fro
   await expect(hiddenPosition).not.toContainText(/Peach|Dodge|real-retaliation/);
   await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+
+  const beforeInspection = await roomView(request, seed, 1);
+  const inspectedPlayerName = seed.players[0].name;
+  await page.locator(`[data-player-anchor="${seed.players[0].id}"] .opponent-hero-target`).click();
+  const inspection = page.locator(`.opponent-inspection-panel[data-inspect-player-id="${seed.players[0].id}"]`);
+  await expect(inspection).toBeVisible();
+  await page.getByRole("button", { name: `Close ${inspectedPlayerName} inspection` }).click();
+  await expect(inspection).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+  const afterInspection = await roomView(request, seed, 1);
+  expect(afterInspection.actionRevision).toBe(beforeInspection.actionRevision);
+
+  await page.getByTestId("hand-card-inspection-action").first().click();
+  const cardDetailsAction = page.getByTestId("hand-card-details-action").first();
+  await expect(cardDetailsAction).toBeVisible();
+  await cardDetailsAction.click();
+  const privateCardDetails = page.locator('.card-details-panel[data-card-details-context="private-hand"]');
+  await expect(privateCardDetails).toBeVisible();
+  await page.getByRole("button", { name: "Close card details" }).click();
+  await expect(privateCardDetails).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+  expect((await roomView(request, seed, 1)).actionRevision).toBe(beforeInspection.actionRevision);
+
   const submitPromise = page.waitForResponse((response) => {
     if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
     try {

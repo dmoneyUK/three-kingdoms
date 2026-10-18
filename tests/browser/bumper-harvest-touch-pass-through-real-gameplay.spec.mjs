@@ -160,7 +160,9 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
 
     const spectator = room.players.find((player) => player.isTestPlayer && player.id !== source.id);
     await tap(page, page.getByTestId(`test-view-switch-${spectator.id}`));
-    await expect(page.locator(`.local-player-dock[data-player-anchor="${spectator.id}"]`)).toBeVisible();
+    const spectatorDock = page.locator(`.local-player-dock[data-player-anchor="${spectator.id}"]`);
+    await expect(spectatorDock).toBeVisible();
+    await expect(spectatorDock).toBeFocused();
     let afterSwitch = await readRoom(request, code, token, spectator.id);
     expect(afterSwitch.pendingHarvest.actorId).toBe(initialActorId);
     expect(afterSwitch.pendingHarvest.choices.map((choice) => choice.cardId)).toEqual(initialChoices);
@@ -180,7 +182,9 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await tap(page, page.getByRole("button", { name: "Close card details" }));
 
     await tap(page, page.getByTestId(`test-view-switch-${source.id}`));
-    await expect(page.locator(`.local-player-dock[data-player-anchor="${source.id}"]`)).toBeVisible();
+    const sourceDock = page.locator(`.local-player-dock[data-player-anchor="${source.id}"]`);
+    await expect(sourceDock).toBeVisible();
+    await expect(sourceDock).toBeFocused();
     await expect(page.locator(".harvest-choice-panel--actor")).toHaveCSS("pointer-events", "auto");
     await expect(page.locator(".harvest-card-choice:not([disabled])").first()).toBeVisible();
     await tap(page, page.locator(".harvest-card-choice:not([disabled])").first());
@@ -204,12 +208,16 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
 
     const secondSpectator = room.players.find((player) => player.isTestPlayer && player.id !== source.id && player.id !== secondActorId);
     await tap(page, page.getByTestId(`test-view-switch-${secondSpectator.id}`));
-    await expect(page.locator(`.local-player-dock[data-player-anchor="${secondSpectator.id}"]`)).toBeVisible();
+    const secondSpectatorDock = page.locator(`.local-player-dock[data-player-anchor="${secondSpectator.id}"]`);
+    await expect(secondSpectatorDock).toBeVisible();
+    await expect(secondSpectatorDock).toBeFocused();
     afterSwitch = await readRoom(request, code, token, secondSpectator.id);
     expect(afterSwitch.pendingHarvest.actorId).toBe(secondActorId);
     expect(afterSwitch.pendingHarvest.choices).toHaveLength(1);
     await tap(page, page.getByTestId(`test-view-switch-${secondActorId}`));
-    await expect(page.locator(`.local-player-dock[data-player-anchor="${secondActorId}"]`)).toBeVisible();
+    const secondActorDock = page.locator(`.local-player-dock[data-player-anchor="${secondActorId}"]`);
+    await expect(secondActorDock).toBeVisible();
+    await expect(secondActorDock).toBeFocused();
     await tap(page, page.locator(".harvest-card-choice:not([disabled])").first());
     const secondConfirm = page.getByRole("button", { name: "Confirm choice" });
     await expect(secondConfirm).toBeEnabled();

@@ -22,7 +22,7 @@ async function seedStargazingRoom(request, playerCount = 4) {
       turnSeat: 0,
       players: [
         { name: "TURN PLAYER", role: "Lord", hero: "guan-yu", hp: 4, maxHp: 4, hand: [] },
-        { name: "ZHU GE LIANG", role: "Loyalist", hero: "zhuge-liang", hp: 3, maxHp: 3, hand: [] },
+        { name: "ZHU GE LIANG", role: "Loyalist", hero: "zhuge-liang", hp: 3, maxHp: 3, hand: [card("Peach", "real-stargazing-private-peach", "♥", "7")] },
         { name: "OBSERVER", role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
         { name: "FOURTH", role: playerCount === 4 ? "Renegade" : "Rebel", hero: "xiahou-dun", hp: 4, maxHp: 4, hand: [] },
         ...(playerCount > 4 ? [{ name: "FIFTH", role: "Renegade", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [] }] : []),
@@ -105,7 +105,11 @@ async function openRealStargazingDecision({ page, request, browser, viewport, pl
   expect(actorView.currentAction.deckReorder.cards.map((item) => item.id)).toEqual(cards.map((item) => item.id));
   const dialog = actorPage.getByRole("dialog", { name: "Stargazing deck reorder" });
   await expect(dialog).toBeVisible();
-  await expect.poll(() => dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  await expect(dialog).toHaveAttribute("aria-modal", "false");
+  const lastPanelControl = dialog.locator("button:not(:disabled)").last();
+  await lastPanelControl.focus();
+  await actorPage.keyboard.press("Tab");
+  await expect.poll(() => dialog.evaluate((element) => element.contains(document.activeElement))).toBe(false);
   return { seed, turnContext, turnPage, actorPage, actor, actorDock, actorView, dialog, cards };
 }
 
@@ -114,6 +118,19 @@ const cardNode = (dialog, id) => dialog.locator(`[data-deck-card-id="${id}"]`);
 
 async function orderIn(dialog, zoneName) {
   return zone(dialog, zoneName).locator("[data-deck-card-id]").evaluateAll((items) => items.map((item) => item.dataset.deckCardId));
+}
+
+async function moveCardViaMenu(dialog, cardId, cardName, destination) {
+  await cardNode(dialog, cardId).getByRole("button", { name: `Move ${cardName}`, exact: true }).click();
+  const label = destination === "unassigned"
+    ? `Return ${cardName} to revealed cards`
+    : `Move ${cardName} to ${destination === "top" ? "top" : "bottom"} of deck`;
+  await dialog.getByRole("button", { name: label, exact: true }).click();
+}
+
+async function moveCardEarlierViaMenu(dialog, cardId, cardName) {
+  await cardNode(dialog, cardId).getByRole("button", { name: `Move ${cardName}`, exact: true }).click();
+  await dialog.getByRole("button", { name: `Move ${cardName} earlier`, exact: true }).click();
 }
 
 async function assertCardConservation(dialog, cards) {
@@ -266,8 +283,20 @@ async function insertionPoint(dialog, zoneName, index, movingId) {
   }, { index, movingId });
 }
 
+async function keepDropPointVisible(page, point) {
+  await page.evaluate(({ y }) => {
+    const scroller = document.querySelector(".deck-reorder-sequences");
+    if (!scroller) throw new Error("Stargazing sequence scroller is missing");
+    const bounds = scroller.getBoundingClientRect();
+    const margin = 12;
+    if (y < bounds.top + margin) scroller.scrollTop -= bounds.top + margin - y;
+    else if (y > bounds.bottom - margin) scroller.scrollTop += y - (bounds.bottom - margin);
+  }, { y: point.y });
+}
+
 async function touchDrag({ page, cdp, dialog, cards, cardId, zoneName, index, screenshotName, testInfo }) {
   const grip = cardNode(dialog, cardId).locator("[data-deck-touch-handle]");
+  await zone(dialog, zoneName).scrollIntoViewIfNeeded();
   await grip.scrollIntoViewIfNeeded();
   const gripBounds = await grip.boundingBox();
   expect(gripBounds).toBeTruthy();
@@ -321,7 +350,10 @@ async function touchDrag({ page, cdp, dialog, cards, cardId, zoneName, index, sc
 }
 
 async function mouseDrag({ page, dialog, cardId, zoneName, index }) {
+  await zone(dialog, zoneName).scrollIntoViewIfNeeded();
   const face = cardNode(dialog, cardId).locator(".deck-reorder-card-face");
+  await face.scrollIntoViewIfNeeded();
+  await keepDropPointVisible(page, await insertionPoint(dialog, zoneName, index, cardId));
   const faceBounds = await face.boundingBox();
   expect(faceBounds).toBeTruthy();
   const start = { x: faceBounds.x + faceBounds.width / 2, y: faceBounds.y + faceBounds.height / 2 };
@@ -346,11 +378,13 @@ async function mouseDrag({ page, dialog, cardId, zoneName, index }) {
 async function assertDockStaysPut(page, dialog, actorId) {
   const geometry = await page.evaluate(async ({ actorId }) => {
     const overlay = document.querySelector(".deck-reorder-overlay");
+    const table = overlay?.parentElement;
+    const panel = overlay?.querySelector(".deck-reorder-panel");
     const dock = document.querySelector(`.local-player-dock[data-player-anchor="${actorId}"]`);
     const center = document.querySelector(".play-center");
     const board = document.querySelector(".player-board");
     const seats = [...document.querySelectorAll(".opponent-player-card")];
-    if (!overlay || !dock || !center || !board || !seats.length) return null;
+    if (!overlay || !table || !panel || !dock || !center || !board || !seats.length) return null;
     const originalDisplay = overlay.style.display;
     const readRect = (element) => {
       const { x, y, width, height } = element.getBoundingClientRect();
@@ -358,16 +392,44 @@ async function assertDockStaysPut(page, dialog, actorId) {
     };
     const measure = () => ({ center: readRect(center), board: readRect(board), dock: readRect(dock), seats: seats.map(readRect) });
     const visible = measure();
-    const position = getComputedStyle(overlay).position;
+    const overlayStyle = getComputedStyle(overlay);
+    const panelBox = panel.getBoundingClientRect();
+    const panelHit = document.elementFromPoint(panelBox.left + panelBox.width / 2, panelBox.top + panelBox.height / 2);
+    const tableBox = table.getBoundingClientRect();
+    const switchHitTargets = [...table.querySelectorAll("button.test-view-switch-button")].map((button) => {
+      const box = button.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return hit?.closest("button") === button;
+    });
+    const overlayContract = {
+      position: overlayStyle.position,
+      insets: ["top", "right", "bottom", "left"].map((property) => overlayStyle[property]),
+      pointerEvents: overlayStyle.pointerEvents,
+      panelPointerEvents: getComputedStyle(panel).pointerEvents,
+      ariaModal: panel.getAttribute("aria-modal"),
+      panelWithinTable: panelBox.left >= tableBox.left - 1 && panelBox.right <= tableBox.right + 1
+        && panelBox.top >= tableBox.top - 1 && panelBox.bottom <= tableBox.bottom + 1,
+      panelReceivesInput: panelHit?.closest(".deck-reorder-panel") === panel,
+      switchHitTargets,
+    };
     overlay.style.display = "none";
     await new Promise(requestAnimationFrame);
     const hidden = measure();
     overlay.style.display = originalDisplay;
     await new Promise(requestAnimationFrame);
-    return { visible, hidden, restored: measure(), position };
+    return { visible, hidden, restored: measure(), overlayContract };
   }, { actorId });
   expect(geometry).toBeTruthy();
-  expect(geometry.position).toBe("fixed");
+  expect(geometry.overlayContract).toEqual({
+    position: "absolute",
+    insets: ["0px", "0px", "0px", "0px"],
+    pointerEvents: "none",
+    panelPointerEvents: "auto",
+    ariaModal: "false",
+    panelWithinTable: true,
+    panelReceivesInput: true,
+    switchHitTargets: geometry.overlayContract.switchHitTargets.map(() => true),
+  });
   for (const part of ["center", "board", "dock", ...geometry.visible.seats.map((_, index) => `seat-${index}`)]) {
     const index = part.startsWith("seat-") ? Number(part.slice(5)) : null;
     const visible = index === null ? geometry.visible[part] : geometry.visible.seats[index];
@@ -486,6 +548,7 @@ for (const entry of [
       document.addEventListener("pointercancel", () => { window.__stargazingPointerCancelled = true; }, { once: true });
     });
     const attackGrip = cardNode(opened.dialog, attack.id).locator("[data-deck-touch-handle]");
+    await attackGrip.scrollIntoViewIfNeeded();
     const attackGripBox = await attackGrip.boundingBox();
     expect(attackGripBox).toBeTruthy();
     const cancelTouchStart = {
@@ -509,8 +572,8 @@ for (const entry of [
     expect(await orderIn(opened.dialog, "top")).toEqual([attack.id]);
     expect(await orderIn(opened.dialog, "bottom")).toEqual([dodge.id]);
 
-    await mouseDrag({ page: opened.actorPage, dialog: opened.dialog, cardId: peach.id, zoneName: "top", index: 1 });
-    await mouseDrag({ page: opened.actorPage, dialog: opened.dialog, cardId: duel.id, zoneName: "bottom", index: 1 });
+    await moveCardViaMenu(opened.dialog, peach.id, "Peach", "top");
+    await moveCardViaMenu(opened.dialog, duel.id, "Duel", "bottom");
     expect(await orderIn(opened.dialog, "top")).toEqual([attack.id, peach.id]);
     expect(await orderIn(opened.dialog, "bottom")).toEqual([dodge.id, duel.id]);
 
@@ -526,15 +589,16 @@ for (const entry of [
 
     // Assigned cards can be touch-dragged across zones and back to the center;
     // all moves remain local, conserve one card per ID, and keep exact order.
-    await touchDrag({ page: opened.actorPage, cdp, dialog: opened.dialog, cards: opened.cards, cardId: attack.id, zoneName: "bottom", index: 1 });
+    await moveCardViaMenu(opened.dialog, attack.id, "Attack", "bottom");
+    await moveCardEarlierViaMenu(opened.dialog, attack.id, "Attack");
     expect(await orderIn(opened.dialog, "top")).toEqual([peach.id]);
     expect(await orderIn(opened.dialog, "bottom")).toEqual([duel.id, attack.id, dodge.id]);
     await assertCardConservation(opened.dialog, opened.cards);
-    await touchDrag({ page: opened.actorPage, cdp, dialog: opened.dialog, cards: opened.cards, cardId: attack.id, zoneName: "unassigned", index: 0 });
+    await moveCardViaMenu(opened.dialog, attack.id, "Attack", "unassigned");
     expect(await orderIn(opened.dialog, "unassigned")).toEqual([attack.id]);
     expect(await orderIn(opened.dialog, "bottom")).toEqual([duel.id, dodge.id]);
     await assertCardConservation(opened.dialog, opened.cards);
-    await touchDrag({ page: opened.actorPage, cdp, dialog: opened.dialog, cards: opened.cards, cardId: attack.id, zoneName: "top", index: 1 });
+    await moveCardViaMenu(opened.dialog, attack.id, "Attack", "top");
     expect(await orderIn(opened.dialog, "top")).toEqual([peach.id, attack.id]);
     await assertCardConservation(opened.dialog, opened.cards);
 
@@ -677,6 +741,31 @@ for (const entry of [
     expect(emptyRevealedBounds).toBeTruthy();
     expect(emptyRevealedBounds.height).toBeLessThan(60);
 
+    const originalTopOrder = await orderIn(opened.dialog, "top");
+    const actionRevisionBeforeInspection = (await roomView(request, opened.seed, 1)).actionRevision;
+    const inspectedId = opened.seed.players[2].id;
+    const inspectedName = opened.seed.players[2].name;
+    await opened.actorPage.locator(`[data-player-anchor="${inspectedId}"] .opponent-hero-target`).click();
+    const inspection = opened.actorPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${inspectedId}"]`);
+    await expect(inspection).toBeVisible();
+    await opened.actorPage.getByRole("button", { name: `Close ${inspectedName} inspection` }).click();
+    await expect(inspection).toHaveCount(0);
+    await expect(opened.dialog).toBeVisible();
+    expect(await orderIn(opened.dialog, "top")).toEqual(originalTopOrder);
+
+    await opened.actorPage.getByTestId("hand-card-inspection-action").first().click();
+    const cardDetailsAction = opened.actorPage.getByTestId("hand-card-details-action").first();
+    await expect(cardDetailsAction).toBeVisible();
+    await cardDetailsAction.click();
+    const cardDetails = opened.actorPage.locator('.card-details-panel[data-card-details-context="private-hand"]');
+    await expect(cardDetails).toBeVisible();
+    await opened.actorPage.getByRole("button", { name: "Close card details" }).click();
+    await expect(cardDetails).toHaveCount(0);
+    await expect(opened.dialog).toBeVisible();
+    expect(await orderIn(opened.dialog, "top")).toEqual(originalTopOrder);
+    expect((await roomView(request, opened.seed, 1)).actionRevision).toBe(actionRevisionBeforeInspection);
+    expect(actorActions).toEqual([]);
+
     const arrangementScreenshot = testInfo.outputPath("stargazing-real-mixed-arrangement.png");
     await opened.actorPage.screenshot({ path: arrangementScreenshot, animations: "disabled" });
     await testInfo.attach("stargazing-real-mixed-arrangement", { path: arrangementScreenshot, contentType: "image/png" });
@@ -703,7 +792,7 @@ for (const entry of [
     expect(drawn.ok()).toBeTruthy();
     const drawnBody = await drawn.json();
     expect(drawnBody.drawnCards.map((item) => item.id)).toEqual([peach.id, attack.id]);
-    expect(drawnBody.room.myHand.map((item) => item.id)).toEqual([peach.id, attack.id]);
+    expect(drawnBody.room.myHand.map((item) => item.id)).toEqual(["real-stargazing-private-peach", peach.id, attack.id]);
     const completedPayload = JSON.parse(completed.request().postData() ?? "{}");
     expect(completedPayload.context?.actionRevision).toBe(revisionBeforeSubmit);
     const staleReplay = await request.post(`${API}/api/rooms`, { data: completedPayload });
@@ -715,8 +804,8 @@ for (const entry of [
     const resumed = await roomView(request, opened.seed, 1);
     expect(resumed.actionRevision).not.toBe(revisionBeforeSubmit);
     expect(resumed.currentAction.kind).not.toBe("deck_reorder");
-    expect(resumed.myHand.map((item) => item.id)).toEqual([peach.id, attack.id]);
-    expect((await roomView(request, opened.seed, 1)).myHand.map((item) => item.id)).toEqual([peach.id, attack.id]);
+    expect(resumed.myHand.map((item) => item.id)).toEqual(["real-stargazing-private-peach", peach.id, attack.id]);
+    expect((await roomView(request, opened.seed, 1)).myHand.map((item) => item.id)).toEqual(["real-stargazing-private-peach", peach.id, attack.id]);
     opened.actorPage.off("request", recordActorAction);
     await cdp.detach();
     await observerPage.close();

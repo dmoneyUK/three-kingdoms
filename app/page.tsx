@@ -362,6 +362,7 @@ export default function Home() {
   const testViewerIdRef = useRef<string | null>(null);
   const testViewerRoomCodeRef = useRef<string | null>(null);
   const testViewerRevisionRef = useRef(0);
+  const pendingTestViewerFocusIdRef = useRef<string | null>(null);
 
   const fetchRoom = useCallback(async function fetchRoomRequest(roomCode: string, playerToken: string, quiet = false, requestedViewerId?: string) {
     if (testViewerRoomCodeRef.current !== roomCode) {
@@ -574,8 +575,16 @@ export default function Home() {
     testViewerRoomCodeRef.current = room.code;
     testViewerIdRef.current = playerId;
     testViewerRevisionRef.current += 1;
-    await fetchRoom(room.code, token, true, playerId);
+    pendingTestViewerFocusIdRef.current = playerId;
+    if (!await fetchRoom(room.code, token, true, playerId)) pendingTestViewerFocusIdRef.current = null;
   }
+
+  useEffect(() => {
+    if (!room?.meId || pendingTestViewerFocusIdRef.current !== room.meId) return;
+    pendingTestViewerFocusIdRef.current = null;
+    const frame = window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".local-player-dock")?.focus({ preventScroll: true }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [room?.meId]);
 
   useEffect(() => {
     if (!roomCode || !token || !pageVisible || room?.isTestController) return;
@@ -1800,7 +1809,7 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
         : <button type="button" className="zone-info-button" aria-label={`Explain ${definition.name}`} onClick={(event) => { event.stopPropagation(); inspect(event.currentTarget); }}>i</button>}
     </div>;
   };
-  return <section ref={dockRef} className={`local-player-dock${isGroupPreview ? " local-group-preview" : ""}${interactionRoleClasses ? ` ${interactionRoleClasses}` : ""}${attackResponsePrompt ? " local-dock-attack-response" : ""}`} data-player-anchor={player?.id ?? undefined} data-attack-response-prompt={attackResponsePrompt ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-guidance-height-preserved={preserveGuidanceHeight ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined} aria-label="Your player area">
+  return <section ref={dockRef} className={`local-player-dock${isGroupPreview ? " local-group-preview" : ""}${interactionRoleClasses ? ` ${interactionRoleClasses}` : ""}${attackResponsePrompt ? " local-dock-attack-response" : ""}`} data-player-anchor={player?.id ?? undefined} data-attack-response-prompt={attackResponsePrompt ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-guidance-height-preserved={preserveGuidanceHeight ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isInteractionOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined} aria-label="Your player area" tabIndex={-1}>
     {guidance}
     <div className="local-dock-identity">
       <div className="local-hero-anchor">
@@ -6861,36 +6870,6 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     const insertionIndex = index ?? current[zone].length - (source === zone ? 1 : 0);
     commitMove(cardId, zone, insertionIndex);
   };
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const focusableSelector = 'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
-    const focusableElements = () => [...dialog.querySelectorAll<HTMLElement>(focusableSelector)].filter((element) => element.getClientRects().length > 0);
-    focusableElements()[0]?.focus();
-    const containTabFocus = (event: KeyboardEvent) => {
-      if (event.key !== "Tab") return;
-      const focusables = focusableElements();
-      if (!focusables.length) {
-        event.preventDefault();
-        dialog.focus();
-        return;
-      }
-      const active = document.activeElement;
-      const index = focusables.indexOf(active as HTMLElement);
-      if (index < 0) {
-        event.preventDefault();
-        (event.shiftKey ? focusables[focusables.length - 1] : focusables[0]).focus();
-      } else if (event.shiftKey && index === 0) {
-        event.preventDefault();
-        focusables[focusables.length - 1].focus();
-      } else if (!event.shiftKey && index === focusables.length - 1) {
-        event.preventDefault();
-        focusables[0].focus();
-      }
-    };
-    document.addEventListener("keydown", containTabFocus, true);
-    return () => document.removeEventListener("keydown", containTabFocus, true);
-  }, []);
   useLayoutEffect(() => {
     arrangementRef.current = arrangement;
     const elements = [...(dialogRef.current?.querySelectorAll<HTMLElement>("[data-deck-card-id]") ?? [])];
@@ -7010,7 +6989,7 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     onPointerMove={handlePointerMove} onPointerUp={(event) => finishPointer(event)} onPointerCancel={(event) => finishPointer(event, true)}
     onLostPointerCapture={(event) => finishPointer(event, true)}
     onKeyDown={(event) => { if (event.key === "Escape" && dragRef.current) { event.preventDefault(); cancelActiveDrag(); } else if (event.key === "Escape" && moveMenuCardId) { event.preventDefault(); setFocusCardId(moveMenuCardId); setMoveMenuCardId(null); } }}>
-    <section ref={dialogRef} className="target-card-picker-panel choice-trigger-panel deck-reorder-panel" role="dialog" aria-modal="true" aria-label="Stargazing deck reorder" aria-describedby="stargazing-deck-instructions">
+    <section ref={dialogRef} className="target-card-picker-panel choice-trigger-panel deck-reorder-panel" role="dialog" aria-modal="false" aria-label="Stargazing deck reorder" aria-describedby="stargazing-deck-instructions">
       <header><strong id="stargazing-deck-title">STARGAZING</strong><span id="stargazing-deck-instructions">Touch and hold the grip, then drag. Use each card’s Move menu for keyboard and screen-reader controls.</span></header>
       <div className="deck-reorder-sequences">
         {renderZone("top")}
@@ -7033,7 +7012,7 @@ function PrivateCardDistributionDialog({ cards, players, disabled, error, onSubm
   const [assignments, setAssignments] = useState<Record<string, string>>({});
   const complete = cards.length > 0 && cards.every((card) => Boolean(assignments[card.id]));
   const submit = () => onSubmit(cards.map((card) => ({ cardId: card.id, recipientId: assignments[card.id] })));
-  return <div className="target-card-picker-overlay" role="presentation"><section className="target-card-picker-panel choice-trigger-panel" role="dialog" aria-modal="true" aria-label="Legacy card distribution">
+  return <div className="target-card-picker-overlay" role="presentation"><section className="target-card-picker-panel choice-trigger-panel" role="dialog" aria-modal="false" aria-label="Legacy card distribution">
     <header><strong>LEGACY</strong><span>Look at the top 2 cards, then give each card to any living character.</span></header>
     <div className="legacy-distribution-row">{cards.map((card) => <div className="legacy-distribution-card" key={card.id}><CardFace card={card} /><label>Give this card to<select value={assignments[card.id] ?? ""} disabled={disabled} onChange={(event) => setAssignments((current) => ({ ...current, [card.id]: event.target.value }))}><option value="">Choose a hero</option>{players.map((player) => <option value={player.id} key={player.id}>{heroName(player.hero)}</option>)}</select></label></div>)}</div>
     <div className="target-card-picker-actions"><button type="button" className="primary" disabled={disabled || !complete} onClick={submit}>Distribute cards</button></div>
@@ -7050,7 +7029,7 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
   const needsHandCard = requiredHandCount > 0;
   const complete = Boolean(selectedChoice && validSelectedKeys.length === requiredHandCount);
   const labelForChoice = (choice: { id: string; label: string }) => choice.label;
-  return <div className="target-card-picker-overlay" role="presentation"><section className="target-card-picker-panel choice-trigger-panel" role="dialog" aria-modal="true" aria-label={`${option.label} decision`}>
+  return <div className="target-card-picker-overlay" role="presentation"><section className="target-card-picker-panel choice-trigger-panel" role="dialog" aria-modal="false" aria-label={`${option.label} decision`}>
     <header><strong>{option.label.toUpperCase()}</strong><span>{option.description ?? "Choose one:"}</span></header>
     <div className="choice-trigger-options">{selection.choices.map((choice) => <button type="button" key={choice.id} className={selectedChoice === choice.id ? "selected" : ""} disabled={disabled} aria-pressed={selectedChoice === choice.id} onClick={() => onChoice(choice.id)}>{labelForChoice(choice)}</button>)}</div>
     {needsHandCard && <><div className="target-card-picker-card-row choice-trigger-card-row" aria-label="Eligible hand cards">{handKeys.map((key) => { const index = Number(key.slice(5)); const card = hand[index]; if (!card) return null; const selected = validSelectedKeys.includes(key); return <button type="button" key={key} className={`target-card-picker-card ${selected ? "selected" : ""}`} disabled={disabled} aria-pressed={selected} aria-label={`${cardDefinition(card.kind).name} ${card.rank}${card.suit}`} onClick={() => onToggle(key)}><CardFace card={card} />{selected && <span className="target-card-picker-check" aria-hidden="true">✓</span>}</button>; })}</div><div className="target-card-picker-count" aria-live="polite">{validSelectedKeys.length} / {requiredHandCount} selected</div></>}
@@ -7098,7 +7077,7 @@ function TargetCardPicker({ option, presentationCopy, selection, target, selecte
     ? "Choose where to obtain 1 card"
     : `Choose ${amount} eligible card${selection.max === 1 ? "" : "s"}`);
   const complete = validSelectedKeys.length >= selection.min && validSelectedKeys.length <= selection.max;
-  return <div className="target-card-picker-overlay" role="presentation"><section className="target-card-picker-panel target-card-picker-panel--zones" role="dialog" aria-modal="true" aria-label={presentationCopy?.accessibleName ?? `${effectLabel} target card selection`}>
+  return <div className="target-card-picker-overlay" role="presentation"><section className="target-card-picker-panel target-card-picker-panel--zones" role="dialog" aria-modal="false" aria-label={presentationCopy?.accessibleName ?? `${effectLabel} target card selection`}>
     <header><strong>{effectLabel.toUpperCase()}</strong><span>{subtitle}</span></header>
     <div className="target-card-picker-zones" data-zone-count={zones.length} data-zone-composition={zoneComposition}>
       {zones.map((zone) => <section className={`target-card-picker-zone target-card-picker-zone-${zone.id}`} aria-label={zone.accessibleName} key={zone.id}>
