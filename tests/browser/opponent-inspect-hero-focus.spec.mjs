@@ -519,7 +519,6 @@ for (const count of [6, 8, 10]) {
     const judgment = inspect.locator('[aria-label="Judgement Zone"]');
     const judgmentCard = judgment.locator('.opponent-inspection-card[aria-label="Explain Lightning"]');
     const identity = inspect.locator(".hero-focus-identity");
-    const judgement = inspect.locator('[aria-label="Judgement Zone"]');
     await expect(judgmentCard).toHaveCount(1);
     const [inspectBox, identityBox, judgmentBox, profileBox] = await Promise.all([
       inspect.boundingBox(),
