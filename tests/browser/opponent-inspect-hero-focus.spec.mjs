@@ -440,7 +440,6 @@ for (const viewport of ins5Viewports) {
     const judgementRow = judgement.locator(".opponent-inspection-slot-row");
     const equipmentRow = equipment.locator(".opponent-inspection-slot-row");
     await expect(inspect).toHaveAttribute("data-inspector-layout", "content-wrapped");
-    await expect(inspect).toHaveAttribute("role", "region");
     await expect(inspect).not.toHaveAttribute("aria-modal", "true");
     await expect(inspect.locator(".hero-focus-heading, .hero-focus-inspect-close")).toHaveCount(0);
     await expect(page.getByRole("region", { name: `${viewport.playerNamePrefix ? `${viewport.playerNamePrefix} 2` : "Player 2"} opponent inspection` })).toBeVisible();
@@ -597,7 +596,7 @@ test("INS5-F1 keeps full accessible names and wraps long labels in the compact p
   const wrappedSkill = inspect.getByRole("button", { name: "Show Empty Fortress Strategem description" });
   await expect(inspect).toBeVisible();
   await expect(inspect.locator(".hero-focus-heading, .hero-focus-inspect-close")).toHaveCount(0);
-  await expect(inspect).toHaveAttribute("role", "region");
+  await expect(page.getByRole("region", { name: "长名字 Inspector Player With More Words 2 opponent inspection" })).toBeVisible();
   await expect(heroName).toHaveText("Zhuge Liang");
   await expect(playerName).toHaveText("长名字 Inspector Player With More Words 2");
   await expect(playerName).toHaveAttribute("aria-label", "长名字 Inspector Player With More Words 2");
