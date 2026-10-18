@@ -50,8 +50,21 @@ async function harvestGeometry(page) {
     const hit = (element) => {
       const bounds = element.getBoundingClientRect();
       const target = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
-      return { id: element.getAttribute("data-testid"), target: target?.getAttribute("data-testid") ?? target?.className ?? target?.tagName };
+      const style = getComputedStyle(element);
+      return {
+        id: element.getAttribute("data-testid") ?? element.getAttribute("aria-label") ?? element.className,
+        target: target?.getAttribute("data-testid") ?? target?.className ?? target?.tagName,
+        hitMatches: Boolean(target && (target === element || element.contains(target))),
+        pointerEvents: style.pointerEvents,
+        zIndex: style.zIndex,
+        inertAncestor: Boolean(element.closest("[inert]")),
+        bounds: rect(element),
+      };
     };
+    const visibleControls = (selector) => [...document.querySelectorAll(selector)].filter((element) => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.width > 0 && bounds.height > 0 && getComputedStyle(element).visibility !== "hidden";
+    });
     const stageRect = rect(stage);
     const panelRect = rect(panel);
     const rootRect = rect(root);
@@ -61,11 +74,25 @@ async function harvestGeometry(page) {
     const rowClip = row ? { left: row.getBoundingClientRect().left + row.clientLeft, right: row.getBoundingClientRect().left + row.clientLeft + row.clientWidth } : null;
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
+      document: {
+        scrollX: window.scrollX,
+        scrollY: window.scrollY,
+        documentWidth: document.documentElement.scrollWidth,
+        bodyOverflow: getComputedStyle(document.body).overflow,
+        documentOverflow: getComputedStyle(document.documentElement).overflow,
+        activeElement: document.activeElement ? {
+          tag: document.activeElement.tagName,
+          testId: document.activeElement.getAttribute("data-testid"),
+          className: document.activeElement.className,
+        } : null,
+      },
       table: rect(document.querySelector(".play-table")),
       stage: stageRect,
       panel: panelRect,
       panelPointerEvents: panel ? getComputedStyle(panel).pointerEvents : null,
       stagePointerEvents: stage ? getComputedStyle(stage).pointerEvents : null,
+      panelZIndex: panel ? getComputedStyle(panel).zIndex : null,
+      stageZIndex: stage ? getComputedStyle(stage).zIndex : null,
       root: rootRect,
       announcement: announcementRect,
       row: rowRect,
@@ -75,6 +102,15 @@ async function harvestGeometry(page) {
       timer: rect(timer),
       activity: rect(activity),
       seats: seats.map(rect),
+      controlHits: {
+        switches: switches.map(hit),
+        heroInspector: visibleControls(".opponent-hero-target").slice(0, 4).map(hit),
+        handInspection: visibleControls('[data-testid="hand-card-inspection-action"]').slice(0, 4).map(hit),
+        publicEquipmentDetails: visibleControls(".opponent-inspection-card").slice(0, 4).map(hit),
+        harvestChoices: visibleControls(".harvest-card-select:not([disabled])").slice(0, 4).map(hit),
+        harvestInfo: visibleControls(".harvest-card-info").slice(0, 4).map(hit),
+        harvestConfirm: visibleControls(".harvest-confirm-row .primary").map(hit),
+      },
       overlaps: {
         rootPanel: intersects(rootRect, panelRect),
         rootRow: intersects(rootRect, rowRect),
@@ -184,7 +220,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(page.locator(".harvest-choice-panel")).toBeVisible();
     await expect(page.locator(`.local-player-dock[data-player-anchor="${host.id}"]`)).toBeVisible();
 
-    const auditHarvestView = async (viewerLabel, actor) => {
+    const auditHarvestView = async (viewerLabel, actor, viewerId) => {
       for (const viewport of [
         { width: 390, height: 700 },
         { width: 390, height: 844 },
@@ -213,10 +249,38 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
         });
         expect(geometry.switches.map((item) => item.target), JSON.stringify({ viewerLabel, geometry }))
           .toEqual(geometry.switches.map((item) => item.id));
+        expect(geometry.controlHits.switches.length, JSON.stringify({ viewerLabel, geometry })).toBeGreaterThan(0);
+        expect(geometry.controlHits.switches.every((item) => item.hitMatches), JSON.stringify({ viewerLabel, geometry })).toBe(true);
+        expect(geometry.controlHits.heroInspector.length, JSON.stringify({ viewerLabel, geometry })).toBeGreaterThan(0);
+        expect(geometry.controlHits.heroInspector.every((item) => item.hitMatches), JSON.stringify({ viewerLabel, geometry })).toBe(true);
+        expect(geometry.controlHits.handInspection.length, JSON.stringify({ viewerLabel, geometry })).toBeGreaterThan(0);
+        expect(geometry.controlHits.handInspection.every((item) => item.hitMatches), JSON.stringify({ viewerLabel, geometry })).toBe(true);
+        if (viewport.width === 390 && viewport.height === 700) {
+          const currentView = await readRoom(request, code, token, viewerId);
+          console.log("[EM-01 live hit-test audit]", JSON.stringify({
+            viewerLabel,
+            viewerId: currentView.meId,
+            actorId: currentView.pendingHarvest?.actorId ?? currentView.currentAction?.actorId ?? null,
+            currentAction: currentView.currentAction?.kind ?? null,
+            isMyAction: currentView.isMyAction,
+            tableStage: {
+              stagePointerEvents: geometry.stagePointerEvents,
+              stageZIndex: geometry.stageZIndex,
+              panelPointerEvents: geometry.panelPointerEvents,
+              panelZIndex: geometry.panelZIndex,
+              document: geometry.document,
+            },
+            controls: geometry.controlHits,
+          }));
+        }
         if (actor) {
           expect(geometry.footer, JSON.stringify({ viewerLabel, geometry })).toBeTruthy();
           expect(geometry.panelPointerEvents).toBe("auto");
           expect(geometry.footer.bottom).toBeLessThanOrEqual(viewport.height + 1);
+          expect(geometry.controlHits.harvestChoices.length, JSON.stringify({ viewerLabel, geometry })).toBeGreaterThan(0);
+          expect(geometry.controlHits.harvestChoices.every((item) => item.hitMatches), JSON.stringify({ viewerLabel, geometry })).toBe(true);
+          expect(geometry.controlHits.harvestInfo.length, JSON.stringify({ viewerLabel, geometry })).toBeGreaterThan(0);
+          expect(geometry.controlHits.harvestInfo.every((item) => item.hitMatches), JSON.stringify({ viewerLabel, geometry })).toBe(true);
         } else {
           expect(geometry.footer).toBeNull();
           expect(geometry.panelPointerEvents).toBe("none");
@@ -237,7 +301,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     const initialActorId = initialHarvest.pendingHarvest.actorId;
     const initialChoices = initialHarvest.pendingHarvest.choices.map((choice) => choice.cardId);
     const initialDeadline = initialHarvest.pendingHarvest.countdownUntil;
-    await auditHarvestView("spectator", false);
+    await auditHarvestView("spectator", false, host.id);
     await page.setViewportSize({ width: 390, height: 700 });
     const hitMapHandle = await page.waitForFunction(() => {
       const stage = document.querySelector(".harvest-choice-stage");
@@ -297,7 +361,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(sourceDock).toBeVisible();
     await expect(sourceDock).toBeFocused();
     await expect(page.locator(".harvest-choice-panel--actor")).toHaveCSS("pointer-events", "auto");
-    await auditHarvestView("actor", true);
+    await auditHarvestView("actor", true, source.id);
     await page.setViewportSize({ width: 390, height: 700 });
     const firstCard = page.locator(".harvest-card-select:not([disabled])").first();
     await expect(firstCard).toBeVisible();

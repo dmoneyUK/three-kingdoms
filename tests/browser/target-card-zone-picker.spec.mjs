@@ -204,7 +204,7 @@ for (const viewport of [
     await expect(stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
     await expect(dock.getByRole("button", { name: "Confirm" })).toHaveCount(0);
     await expect(dock.getByRole("button", { name: "Cancel" })).toHaveCount(0);
-    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
     const targetProjection = await page.evaluate(() => window.__browserRoom.players.find((player) => player.id === "p2"));
     expect(targetProjection.handCount).toBe(4);
     expect(targetProjection.handCards ?? []).toEqual([]);
@@ -273,7 +273,7 @@ test("target-card selection stays selected while Hero Inspect and private Card D
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 });
 
-test("Dismantle modal Cancel clears local selection and submits the existing anonymous Hand index", async ({ page }) => {
+test("Dismantle re-tap clears local selection without Cancel and submits the existing anonymous Hand index", async ({ page }) => {
   await loadPendingTargetCard(page, { width: 390 });
   const dialog = page.getByRole("dialog", { name: "Burning Bridge target card selection" });
   const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 2" });
@@ -284,9 +284,10 @@ test("Dismantle modal Cancel clears local selection and submits the existing ano
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
   await expect(confirm).toBeEnabled();
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "false");
   await expect(confirm).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
   await expect(dock.getByRole("button", { name: "Cancel" })).toHaveCount(0);
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 
@@ -926,7 +927,7 @@ for (const viewport of [
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
-  test(`proven Sima Yi Retaliation opens a full-screen target-card modal at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+  test(`proven Sima Yi Retaliation opens a bounded nonmodal target-card panel at ${viewport.width}×${viewport.height}`, async ({ page }) => {
     const { dialog, before } = await openRetaliationModal(page, { ...viewport, targetCardCase: "positioned-hand" });
     const overlay = page.locator(".target-card-picker-overlay");
     const handPositions = dialog.locator('[data-target-card-zone="hand-position"]');
@@ -942,7 +943,7 @@ for (const viewport of [
     await expect(dialog.locator(".target-card-picker-zone-judgement")).toHaveCount(0);
     await expect(equipment).toHaveAccessibleName("Equipment: Nio Shield");
     await expect(dialog.getByRole("button", { name: "Use Retaliation" })).toBeDisabled();
-    await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "Skip", exact: true })).toBeVisible();
     await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
     await expect(page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
@@ -965,7 +966,7 @@ for (const viewport of [
     expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(viewport.height);
     expectSameBox(stageBox, before.stage);
     expectSameBox(dockBox, before.dock);
-    expect(controls.length).toBe(3);
+    expect(controls.length).toBe(2);
     for (const control of controls) expect(control.height).toBeGreaterThanOrEqual(44);
     for (const selectable of [...await handPositions.all(), equipment]) {
       const box = await selectable.boundingBox();
