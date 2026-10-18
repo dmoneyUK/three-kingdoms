@@ -6,9 +6,25 @@
 > AI product / executable task authority: `docs/AI_PLAYER_DESIGN.md`
 > Coding-agent execution protocol: `docs/AI_PLAYER_AGENT_WORKFLOW.md`
 > Coding-agent-only checkpoint: `AI_PLAYER_HANDOVER.md`
-> Version: `AIP-G1` (2026-10-17)
+> Version: `AIP-G2` (2026-10-18)
 >
-> **This guide teaches a NEW ChatGPT conversation how to design and review. It does not itself authorize a code task, rewrite game rules, or prove current implementation status. Always inspect live repo state.**
+> **Permanent, task-neutral PROCESS GUIDE, not a current task/status report.** Based on the independent Planner/Reviewer discipline in `docs/PLANNER_REVIEWER_GUIDE.md` (UX Planner), while preserving the AI project's different, autonomous design-driven task queue. **At the start of EVERY new AI Planner/Reviewer conversation, fetch and read the COMPLETE latest `docs/AI_PLAYER_DESIGN.md` on the AI branch BEFORE designing or reviewing.**
+
+## 0. MANDATORY new-conversation rule: read the COMPLETE current AI design first
+
+**THE FIRST ACTION IN EVERY NEW AI PLANNER/REVIEWER CONVERSATION IS TO FETCH AND READ THE ENTIRE LATEST `docs/AI_PLAYER_DESIGN.md` FROM GITHUB, BRANCH `feature/smart-bot-player`.**
+
+This rule is mandatory even if the user only says “check progress” or “review the Agent.” Never use old chat memory, previous assistant summaries, this guide, a roadmap table, the Agent's handover or an old revision as a substitute for reviewing **every part of the current design**.
+
+1. Confirm remote AI branch HEAD. Fetch the current AI design and **read it from beginning to end**. If long, read consecutive ranges until all sections are covered. Do not stop at an excerpt, initial heading, or task index.
+2. Understand the full architecture, established constraints, product and server authority, task details, ALL task statuses and dependencies, current authorizations, review conclusions, feedback, deferred work, unresolved human decisions, secrets/privacy/cost restrictions and Staging/production guardrails.
+3. Compare latest design with Agent's reported design revision and recent remote commits; identify changes or concurrent edits rather than assuming the handover has priority.
+4. Then read `AGENTS.md`, THIS guide, `docs/AI_PLAYER_AGENT_WORKFLOW.md` and `AI_PLAYER_HANDOVER.md` (read-only); inspect only the relevant current code, CI, Staging and external/user evidence for the actual request.
+5. **Only after completely reviewing the latest AI design** may Planner propose a task, review Agent work, record changes requested, recommend human acceptance or update any design status. If the full design cannot be accessed, stop and explain the blocker instead of guessing.
+6. Re-read the latest affected AI design sections **immediately before any commit or acceptance** because Agent and Planner may be editing the design concurrently.
+
+**Keep this distinction absolute:** this guide says HOW to work; `docs/AI_PLAYER_DESIGN.md` says WHAT the AI Player is, WHAT tasks are approved and HOW they must be implemented/tested; `AI_PLAYER_HANDOVER.md` is only the Coding Agent's factual execution checkpoint.
+
 
 ## 1. Mission and non-negotiable operating model
 
@@ -21,7 +37,7 @@ Build an autonomous, progressively smarter WTK Standard AI player using existing
 - The **single Coding Agent** repeatedly re-reads the latest design, autonomously selects the next eligible, explicitly APPROVED and dependency-satisfied task, implements that bounded slice, validates CI/Staging as appropriate, writes its OWN handover and design task evidence, then searches the design again. It need not await a new pasted task if another independent approved task is eligible.
 - The **review gate is real**: implementation goes `PENDING_REVIEW`. Coding Agent cannot mark `ACCEPTED` or use its own green CI as acceptance. It may take another independent approved task if safe; a successor that depends on the pending task must wait. If none is eligible, pause and request review. Never self-approve to maintain throughput.
 - Agent autonomous iteration happens **while its agent runtime is operating / when invoked again**; a Markdown file cannot cause a dormant agent to wake itself up indefinitely. An external runner/orchestrator is required for truly continuous unattended execution. This guide removes *per-task manual prompting*, not Cloudflare permissions, user-acceptance gates or platform runtime limits.
-- Product Owner's explicit newer instructions supersede old process decisions. Do not interpret a request to review or design as permission to change code or deploy production.
+- Product Owner's explicit newer instructions supersede old process decisions. A new **Planner** conversation carries out the user's current request; merely reading a task status does NOT authorize Planner to start code work or accept old tasks. The separately running **Coding Agent** can autonomously pick previously authorized work from the design. Never conflate these two authorization boundaries.
 
 ### Two cooperating loops
 
@@ -142,50 +158,57 @@ Planner must update only the task's requirements/reviewer-note/status in `docs/A
 | Environment | Branch / deployment | DB and secrets | Intended use |
 | --- | --- | --- | --- |
 | Local | Agent's working tree on `feature/smart-bot-player`, tests/mocks | Local test DB, no committed secrets | Focused unit/integration tests and offline policy simulation |
-| **AI Staging** | `feature/smart-bot-player` → independent Cloudflare named `ai-staging` Worker, once actually provisioned; **not yet observed deployed as of AIP-G1** | **Separate remote Staging D1 UUID**, independent secret `OPENAI_API_KEY` only when later approved; initially `BOT_AI_ENABLED=false` | Real HTTPS URL accessible from iPhone, room creation, later AI gameplay/reviewer screenshots |
+| **AI Staging** | `feature/smart-bot-player` → isolated named `ai-staging` Worker, if confirmed by actual remote evidence | **Separate Staging D1 UUID**, scoped secrets and `BOT_AI_ENABLED=false` unless explicitly authorized to change | Real HTTPS phone-accessible review surface; verify current Worker, deployment and URL rather than assuming availability |
 | Production | existing `main`/`ux-v2` deploy policy in existing workflow | Existing production `three-kingdoms-db`, D1 UUID `3151997a-f69e-4a45-ab51-9e4fd062aeb3`; production secrets | Current real WTK player experience; AI feature branch must not deploy here |
 
 **Source rules:** all AI code, tests, review documents, experiments and Staging config on `feature/smart-bot-player`. Avoid UX2 `ux-v2` / core `main` edits for AI work. No cross-branch merge, force push or production rollout without explicit human authorization. UX2 may continue independently; do not claim the branches automatically synchronize.
 
 **CI today (verify live each session):** `.github/workflows/deploy.yml` validates pushes/PRs for `main`, `ux-v2` and `feature/smart-bot-player`; `paths-ignore: ["**/*.md"]` for push/PR. Jobs: lint/build/fast, API suite, browser server-backed smoke. Deployment job is restricted to main/ux-v2 and MUST remain so.
 
-**Staging is planned, not yet provisioned.** Intended `wrangler.jsonc` `env.ai-staging` binds a NEW DB ID, not production. AIP-00B is provisioning + manual staging-only migration/deploy; AIP-00C adds **separate CI-gated Staging deploy** after tests. Never call root `wrangler deploy` or root production DB migration from AI branch. Verify Cloudflare permissions, targeted account, actual D1 UUID and real deployed URL; do not invent success or URL.
+**Staging must be verified against current reality, never a historical snapshot.** The `wrangler.jsonc` `env.ai-staging` must bind a different D1 UUID from production. Automated Staging deployment must be gated by required CI, an explicitly Staging-targeted framework build and generated Worker/D1 binding assertions, then migrations/deploy/smoke against Staging ONLY. Never call root/default `wrangler deploy` or production D1 migration from AI branch. Verify the actual Cloudflare account, Worker name, D1 target, deployed build SHA and HTTPS URL; do not infer a successful deployment from a design plan.
 
-**Security:** HTTPS Staging URL is reachable on iPhone, but a `workers.dev` address is not private by default. Before paid AI calls, use reviewed access restriction/allowlist plus call budgets. Keep key in environment-scoped Worker Secret; never check it into repo or return it to browser. OpenAI account has opted into complimentary shared-data tokens, but real-player logs/identifiers remain protected; synthetic/anonymized fixtures first and explicit data-sharing consent before real-data transmission. Complimentary allowance does not guarantee zero charges.
+**Security:** A `workers.dev` URL is not private by default. Before paid AI calls or sensitive user testing, review tester restrictions, permissions and hard spending caps. Keep keys only in environment-scoped secrets, never in code, browser, logs, handover or chat. Real-player information cannot leave trusted game infrastructure absent explicit approved privacy/data-sharing scope; synthetic/anonymized fixtures first. Never assume a model is available, a free-token allowance avoids charges, or a Cloudflare account-scoped credential is limited to one Worker/D1.
 
 ## 7. Validation, deployment and evidence hierarchy
 
 **Before source/config/test commits:** inspect latest exact remote branch HEAD and required CI. If HEAD is docs-only, trace back to last code-bearing validated ancestor and disclose the distinction. If CI failed/in progress, diagnose/fix/wait; do not push another feature commit over known broken CI. Do not weaken assertions to make green.
 
-**For every bounded code task:** focused local test reproducing defect or new capability, positive/negative tests, server auth/hidden-info/stale/duplicate tests when relevant; `git diff --check`; exact pushed SHA; GitHub Actions results for that SHA; production deploy gate inspection. Do not imply passed CI means product acceptance. Markdown-only doc changes should not produce CI; a mixed code+doc commit must produce CI.
+**For every bounded code task:** focused tests proving the new capability and negative behavior; server actor/auth/hidden-info/state revision/replay tests where relevant; `git diff --check`; exact pushed code SHA and required GitHub Actions results; production deploy gate inspection. Inspect individual CI job steps and ALL attempts: first-attempt failure followed by same-SHA rerun is not the same as first-pass success, and a rerun does not automatically fix flaky root causes. Do not imply green CI means product acceptance. Markdown-only doc commits should not trigger CI where configured; always distinguish docs-only HEAD from the last tested code SHA.
 
 **For Staging tasks:** record exact Worker + D1 UUID, migration list target, deployment URL and deployed SHA, URL `/` + `/api/health` checks, create room/startup smoke, no production changes. Human checks **iPhone** open/create/rejoin flows before declaring interactive Staging accepted. If mobile interaction cannot be remotely proven, label unverified.
 
-**For AI decisions:** compare 10–20 sanitized fixtures, request observation/candidate privacy, action-ID allowlist selection and authoritative post-decision execution check. Add malformed/timeout/refusal/429/5xx/stale cases, latency, request and token budget. Bot-only hidden hands/roles never appear in public UI/logs. Later end-to-end: 1 human + 3 bots from Hero selection to terminal result, including Negation and rescue/trigger windows, repeated wakeups, retries, phone UI and cost.
+**For AI decisions:** design relevant sanitized synthetic fixtures, candidate allowlists, observation privacy and correct state/actor binding. Distinguish an offline mock returning a valid ID from a live model with useful strategy, and distinguish request schema `observationVersion` from a real server state revision. Exercise malformed/unknown/duplicate/stale/refusal/429/5xx/timeout cases. The eventual executor must re-check current canonical legality, revision and actor rather than trust an LLM output. Any real model calls, token/cost budget, bot gameplay or production launch remain separately gated by the live AI design and human authorization.
 
 **Evidence priority:** observed code and exact-SHA CI/job steps > verified actual Staging / server behavior > focused local test and reproducible screenshots > agent's summary > unverified assumptions. Categorize each claimed behavior: VERIFIED, CODE-SUPPORTED RISK or UNKNOWN. Staging production isolation must be proven with actual bindings, not only names.
 
-## 8. Current review checkpoint: snapshot, NOT standing authority
-
-As of guide initialization 2026-10-17:
-- Design revision `AIP-D2`; `AIP-00A` is `PENDING_REVIEW` (NOT yet human ACCEPTED), and its CI feature workflow commit was `75073b6bbfffe9281223ef1eaac85349496224af`; GitHub Actions run `39058906244` passed lint/fast/API/browser and **skipped** production deploy.
-- Latest observed remote AI branch HEAD prior to guide creation: `8193d70ab9fafc102ca85cd4268b7f75c4a80809`, a doc-only review-evidence commit. No CI for this Markdown-only SHA; do not call it a failed or passing run.
-- `AIP-00B` Staging Worker/D1/URL and `AIP-00C` auto-deploy remain **not implemented** in that snapshot. Do not infer Cloudflare environment existence from planned config.
-- The prior independent review recommended accepting AIP-00A but the human Product Owner has not explicitly recorded acceptance in design. Only an authorized Reviewer may set that to ACCEPTED.
-- The current user has requested design-driven automatic task pickup rather than per-task copy/paste. This guide and the corresponding AI design/workflow revision document that policy; it does not silently accept previous tasks or authorize undocumented cloud actions.
-
-**Always re-fetch reality; this section is only historical orientation.**
-
-## 9. Fast reusable commands for a new conversation
+## 8. Fast reusable commands for a new conversation
 
 A user starting a **new Planner/Reviewer chat** can say once:
-> "Read `docs/AI_PLAYER_PLANNER_REVIEWER_GUIDE.md` on `feature/smart-bot-player` and follow it as the Planner/Reviewer. Inspect current design, handover (read-only), remote code/CI and all pending-review tasks. Propose detailed implementable tasks in `docs/AI_PLAYER_DESIGN.md`, independently review Agent results, and never edit any handover. Tell me what needs my acceptance."
+> "First fetch and READ THE COMPLETE LATEST `docs/AI_PLAYER_DESIGN.md` on `feature/smart-bot-player`, from beginning to end. Also read `docs/AI_PLAYER_PLANNER_REVIEWER_GUIDE.md`, `AGENTS.md` and `docs/AI_PLAYER_AGENT_WORKFLOW.md`. Review the full AI architecture, tasks, dependencies, status, feedback and safety gates BEFORE doing any design or review. Read `AI_PLAYER_HANDOVER.md` only as evidence; NEVER modify it or UX2 `HANDOVER.md`. Inspect current code, exact-SHA CI and Staging when relevant; write precise executable AI tasks/reviewer feedback into the AI design only. The Agent automatically picks eligible approved work, without per-task copy/paste. Reply in Chinese and ask me for acceptance when required."
 
 A user starting the **Coding Agent autonomous session** can say once:
 > "Follow `docs/AI_PLAYER_AGENT_WORKFLOW.md` and latest `docs/AI_PLAYER_DESIGN.md` on `feature/smart-bot-player` in autonomous queue mode. Re-read the design after every task; implement eligible APPROVED tasks with satisfied dependencies, validate CI/Staging, write only your own `AI_PLAYER_HANDOVER.md` and task status/evidence. Do not self-accept reviews, touch UX2 handover, deploy production, or bypass blocked risk gates. Stop when there is no eligible task."
 
 Those are **one-time bootstrap instructions**, not per-task handoffs. The detailed tasks live exclusively in the design document.
 
-## 10. What to report to the human each Planner/Reviewer round
+## 9. What to report to the human each Planner/Reviewer round
 
 Keep the review concise in Chinese: current branch HEAD/design revision, which task(s) are waiting for review and exact evidence; independent findings versus missing checks; whether a detail requires the user's iPhone feedback, Cloudflare permission or acceptance; what was updated in the AI design (file/commit); which already-approved task the agent may select next; what cannot yet be done. Link actual GitHub docs/commits/CI. Never claim background work, deployment, acceptance, or server availability that was not verified.
+
+## 10. Detailed review / feedback-writing rules for future Planner conversations
+
+**Review an Agent task at the accepted design boundary, not by the reported test count alone.** Find its exact task spec in the full AI design, then check the actual code diff, source functions, privacy/legality, negative tests, CI attempts and deployment evidence. Label each claim as `VERIFIED`, `CODE-SUPPORTED RISK` or `UNKNOWN`; state whether evidence is from code, Actions, an external Staging call, real iPhone testing, or merely the Agent report.
+
+**Write review results under the exact task in `docs/AI_PLAYER_DESIGN.md`**, preserving the Agent's implementation evidence and concurrent edits:
+- If the implementation fulfills its deliberately limited contract, record `RECOMMEND ACCEPT` with exact code SHA, CI/job/attempts, what passed and what remains outside scope. **Do not self-set `ACCEPTED`** unless the human expressly approved or delegated that exact category.
+- If it violates the agreed contract, set `CHANGES_REQUESTED` with **expected vs actual**, concrete repro, relevant file/function, **ordered bounded correction steps**, negative regression proof, required CI/deploy evidence and explicit stop at `PENDING_REVIEW`. The Agent can pick this corrective task automatically under the existing authorization; no new pasted prompt.
+- If a new feature, architecture improvement, credential segregation or rollback is desirable but **was not part of the agreed task**, add a **separate DRAFT task** instead of retroactively making the completed task fail.
+- If credentials, API expenditure, real-player data, game rules or production action require a new human decision, label `BLOCKED — USER INPUT` with the **smallest precise permission/decision needed**. Do not workaround missing approval.
+
+**Work handoff is via design, never handover:** Planner writes detailed code-agent-executable specs and reviewer comments into the AI design, not only in chat and never into `AI_PLAYER_HANDOVER.md`. An eligible approved task becomes visible automatically to the running Agent after it re-reads the design. Agent owns its handover cleanup, current checkpoint and factual result.
+
+**Never silently widen in-flight work:** if Planner changes a spec while Agent is executing, check compatibility and preserve Agent work; if incompatible, record a bounded stop/replan instruction in the AI design. Never force-push, reset another agent's changes or rewrite already-submitted evidence.
+
+**Specific evidence distinctions that must remain explicit:** a fixture returning a valid candidate ≠ a tactical AI; parser echoes ≠ server state revision validity; legal-looking label ≠ canonical executable action; mobile Chromium emulation ≠ real iPhone Safari; a successful CI rerun ≠ proof first attempt passed; successful deployment ≠ post-deploy smoke/rollback; green tests ≠ human product acceptance.
+
+**Do not add current progress to THIS GUIDE.** Detailed task IDs, implementation review evidence, SHAs, actual staging URLs, historical failures, statuses and pending work belong only in the latest design, handover (agent-owned) and GitHub.
