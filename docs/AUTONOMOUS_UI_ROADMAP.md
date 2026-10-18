@@ -2922,3 +2922,28 @@ Profile command measurements:
   **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**, not accepted.
 - The next separately bounded design slice is INS-5 (§10.17.5); see the current
   task in `HANDOVER.md`.
+
+### UX2-10.13.2.1-U13-B-F privacy-first unconditional public activity — 2026-10-18
+
+- Commit `082091d752ff9e98a8eda23c8392b31396908022` opens the same private
+  turn-end response window for living off-turn Yue Jin whether she has an
+  eligible Basic card or not. Non-owner projections stay neutral and omit the
+  actor, private action, skill eligibility, deadline/countdown and conditional
+  timeline announcement. Owner-only Dauntless/cost actions or Pass, the
+  existing 60-second timeout, and once-only turn-end continuation are retained.
+- Focused Worker/D1 API proof passed 5/5 across four authenticated viewers,
+  zero/one Basic-card cases, refresh, Quick Test view switching, owner-only
+  timer/action, timeout, Pass, activation and continuation. `npm run build`,
+  targeted ESLint and `git diff --check` passed.
+- Exact-SHA Actions run
+  [`39124315765`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39124315765)
+  passed lint/fast tests, API tests, browser startup/room smoke, D1 migration,
+  Worker deployment and production smoke. Deployed Worker version:
+  `b08efa60-615f-4932-ae60-997ce8c889c8`; a direct production
+  `/api/health` check returned `{"ok":true,"worker":"available"}`. The CI
+  browser test was startup/room smoke, not a gameplay replay of this feature.
+- Privacy-first latency tradeoff: if Yue Jin has no eligible Basic card and
+  does not Pass, the unconditional window can add up to 60 seconds to a
+  relevant turn. This was explicitly selected by the user. The delivery is
+  **IMPLEMENTED / DEPLOYED — PENDING USER REVIEW**, not accepted. Q1–Q4 remain
+  paused; accepted H4 positioning and wording are unchanged.
