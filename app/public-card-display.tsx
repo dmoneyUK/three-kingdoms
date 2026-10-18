@@ -2159,23 +2159,6 @@ function SingleTargetCardJourney({
       if (measuredTarget) measuredTargetEventIds.add(event.eventId);
       const target = measuredTarget ?? old?.target ?? center;
       occupied.push(target);
-      if (harvestRootPoolVisible && event.role === "root") {
-        return {
-          ...event,
-          ...(old ?? {}),
-          actorName: event.actorName,
-          cardFace: event.cardFace,
-          ariaLabel: event.ariaLabel,
-          semanticLabel: event.semanticLabel,
-          phase: "parked" as const,
-          rect: target,
-          target,
-          revealStartedAtMs: null,
-          revealRemainingMs: 0,
-          moveStartedAtMs: null,
-          layoutChangeReason: "bumper-harvest-pool-visible-root-parked",
-        };
-      }
       if (old && !viewerChanged) {
         if (latestFreshResponseEventId && event.eventId !== latestFreshResponseEventId && old.phase === "reveal") {
           const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -2458,17 +2441,14 @@ function SingleTargetCardJourney({
           const target = measuredTarget ?? card.target;
           if (measuredTarget) measuredTargets.set(card.eventId, measuredTarget);
           occupied.push(target);
-          const phase = harvestRootPoolVisible && card.role === "root" ? "parked" as const
-            : card.phase === "move" ? "parked" as const : card.phase;
+          const phase = card.phase === "move" ? "parked" as const : card.phase;
           return {
             ...card,
             phase,
             target,
-            rect: phase === "reveal" && !(harvestRootPoolVisible && card.role === "root") ? center : phase === "parked" && measuredTarget ? target : card.rect,
-            moveStartedAtMs: harvestRootPoolVisible && card.role === "root" ? null : card.moveStartedAtMs,
-            revealStartedAtMs: harvestRootPoolVisible && card.role === "root" ? null : card.revealStartedAtMs,
-            revealRemainingMs: harvestRootPoolVisible && card.role === "root" ? 0 : card.revealRemainingMs,
-            layoutChangeReason: harvestRootPoolVisible && card.role === "root" ? "bumper-harvest-pool-visible-root-parked" : "viewport-resize",
+            rect: phase === "reveal" ? center : phase === "parked" && measuredTarget ? target : card.rect,
+            moveStartedAtMs: card.phase === "move" ? null : card.moveStartedAtMs,
+            layoutChangeReason: "viewport-resize",
           };
         });
         const layoutPending = cards.some((card) => !measuredTargets.has(card.eventId));
@@ -2624,10 +2604,6 @@ function SingleTargetCardJourney({
     data-public-card-viewer-id={viewerId}
     data-public-card-layout-pending={journey.layoutPending ? "true" : "false"}
     data-public-card-harvest-active={harvestRootPoolVisible ? "true" : undefined}
-    data-public-card-interaction-id={action.interactionId ?? undefined}
-    data-public-card-root-frame-id={action.rootFrameId ?? undefined}
-    data-public-card-checkpoint-id={action.checkpointId ?? undefined}
-    data-public-card-presentation-revision={action.presentationRevision ?? undefined}
     data-public-card-event-id={activeEventId}
     data-public-card-root-event-id={action.rootEventId}
     data-public-card-id={currentPublicCard?.id}

@@ -5068,6 +5068,13 @@
   pointer-events: none;
 }
 .game-shell .public-card-display-journey.is-harvest-pool-active {
+  /* Fixed wrappers establish a stacking context even with z-index:auto. Let
+     the root mini (z 5), pool (z 25), and committed response (z 36) share the
+     table stacking context so Plan A can layer each phase independently. */
+  position: absolute !important;
+  inset: 0 auto auto 0 !important;
+  width: 0 !important;
+  height: 0 !important;
   z-index: auto !important;
 }
 .game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-harvest-root-parked="true"] {

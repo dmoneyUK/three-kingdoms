@@ -3886,7 +3886,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         const event = matches.length === 1 ? matches[0] : null;
         const actor = room.players.find((player) => player.id === node.actorId);
         const previousNodeId = index === 0 ? null : chain.nodes[index - 1]?.nodeId;
-        if (!link || link.nodeId !== node.nodeId || node.eventId !== link.eventId || node.resolutionId !== link.resolutionId
+        // Reaction-chain nodes carry semantic/cause identity. The separately
+        // typed publicNodeEventLinks projection is the authoritative binding to
+        // exact committed timeline events; eventId/resolutionId are not node fields.
+        if (!link || link.nodeId !== node.nodeId
           || node.frameId !== progress.activeFrameId
           || node.causedByNodeId !== previousNodeId || !event || !actor?.name
           || event.type !== "card" || event.action !== "play" || event.presentation === false
@@ -4692,8 +4695,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         phaseNotice: bumperHarvestRootCandidate.responses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED",
         motion: {
           type: "negation" as const,
-          scopeKey: [room.code, bumperHarvestRootCandidate.progress.interactionId, bumperHarvestRootCandidate.rootEvent.id,
-            bumperHarvestRootCandidate.progress.currentParticipantId ?? ""].join(":"),
+          // One Bumper Harvest root owns one visual lifecycle across every
+          // participant's Negation checkpoint. Participant progress is public
+          // state, but it must not restart or park the same physical root.
+          scopeKey: [room.code, bumperHarvestRootCandidate.progress.interactionId, bumperHarvestRootCandidate.rootEvent.id].join(":"),
           freshEventIds: [bumperHarvestRootCandidate.rootEvent.id, ...bumperHarvestRootCandidate.responses.map((response) => response.eventId)]
             .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
         },
