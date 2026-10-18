@@ -920,10 +920,11 @@ export function projectSideColumnSeat(totalPlayers: number, relativeIndex: numbe
 
 function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
   if (slot === "weapon") return <svg viewBox="0 0 18 18" aria-hidden="true" data-equipment-glyph="sword">
-    <path data-sword-part="blade" d="M8.7 7.8 15.8 1.2 17 1l-.2 1.2-6.6 7.1-1.6-.2Z" />
-    <path data-sword-part="crossguard" d="m6.4 6.4 5.2 5.2-1.2 1.2-5.2-5.2Z" />
-    <path data-sword-part="grip" d="m6.5 9.1 1.5 1.5-4.2 4.2-1.5-1.5Z" />
-    <circle data-sword-part="pommel" cx="2.7" cy="15.3" r="1.4" />
+    <path data-sword-part="blade" d="M7.2 7.7 16 1.4 17.6.6l-.4 1.9-7.1 7.9Z" />
+    <path data-sword-groove="true" d="m9 8.7 7-6.4" fill="none" stroke="#70552d" strokeWidth=".8" strokeLinecap="round" />
+    <path data-sword-part="crossguard" d="m6.3 6.3 6.2 6.2-1.2 1.2-6.2-6.2Z" />
+    <path data-sword-part="grip" d="m7.1 9.1 1.5 1.5-3.7 3.7-1.5-1.5Z" />
+    <circle data-sword-part="pommel" cx="3.2" cy="15" r="1.2" />
   </svg>;
   if (slot === "armor") return <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1.2 12.2 3v3.8c0 2.8-2.4 4.9-5.2 6.4C4.2 11.7 1.8 9.6 1.8 6.8V3L7 1.2Z" /><path d="M4.5 4.2v3.2c0 1.2 1 2.2 2.5 3 1.5-.8 2.5-1.8 2.5-3V4.2" /></svg>;
   return <span className="opponent-equipment-horse-mark" aria-hidden="true">{slot === "defensiveHorse" ? "+1" : "−1"}</span>;
