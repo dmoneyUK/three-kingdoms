@@ -1940,14 +1940,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   );
   const visibleInfoCard = infoCardSourceAvailable ? infoCard : null;
   const [infoHero, setInfoHero] = useState<Hero | null>(null);
-  useEffect(() => {
-    setHarvestDraft(null);
-  }, [room.meId, room.pendingHarvest?.actorId, room.actionRevision]);
+  const harvestPending = Boolean(room.pendingHarvest);
+  const harvestActorId = room.pendingHarvest?.actorId;
   useLayoutEffect(() => {
-    if (!room.pendingHarvest) {
-      setHarvestStageTop(null);
-      return;
-    }
+    if (!harvestPending) return;
     const stage = harvestStageRef.current;
     const table = stage?.closest<HTMLElement>(".play-table");
     if (!stage || !table) return;
@@ -1978,7 +1974,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       observer?.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [room.pendingHarvest?.actorId, room.players.length]);
+  }, [harvestPending, harvestActorId, room.players.length]);
   const cardInfoReturnFocusRef = useRef<HTMLElement | null>(null);
   const heroInfoReturnFocusRef = useRef<HTMLElement | null>(null);
   const closeCardDetails = useCallback((restoreFocus = true) => {
@@ -2133,7 +2129,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [sequenceScopeStartId, setSequenceScopeStartId] = useState(initialPendingSequence[0]?.id ?? "");
   const resolutionRevision = useRef(0);
   const [processedTimelineKey, setProcessedTimelineKey] = useState(() => room.timeline.map((event) => event.id).join("|"));
-  const card = room.myHand.find((item) => item.id === selected); const current = room.players.find((player) => player.seat === room.turnSeat); const actor = room.pendingNegation ? room.isMyAction ? room.players.find((player) => player.id === room.actionPlayerId) : undefined : room.players.find((player) => player.id === room.actionPlayerId); const me = room.players.find((player) => player.id === room.meId); const localHero = heroDefinition(me?.hero); const targetPlayer = room.players.find((player) => player.id === target); const pendingTargetPlayer = room.players.find((player) => player.id === room.pendingTargetCard?.targetId); const pickerTarget = pendingTargetPlayer ?? targetPlayer;
+  const card = room.myHand.find((item) => item.id === selected); const current = room.players.find((player) => player.seat === room.turnSeat); const me = room.players.find((player) => player.id === room.meId); const localHero = heroDefinition(me?.hero); const targetPlayer = room.players.find((player) => player.id === target); const pendingTargetPlayer = room.players.find((player) => player.id === room.pendingTargetCard?.targetId); const pickerTarget = pendingTargetPlayer ?? targetPlayer;
   const excessCards = Math.max(0, room.myHand.length - (me?.hp ?? 0));
   const myTableIndex = Math.max(0, room.players.findIndex((player) => player.id === room.meId));
   const canPlay = room.phase?.startsWith("play") && room.status === "playing";
@@ -6552,7 +6548,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             testViewerController={Boolean(room.isTestController)}
             onTarget={(trigger) => { if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id); else { setTarget(player.id); setTargetCardIndex(null); } if (!daqiaoDeflectionSelectionActive) openOpponentInspection(player.id, trigger); }}
             onInspect={(trigger) => toggleOpponentInspection(player.id, trigger)}
-            onSwitchTestViewer={(playerId) => { void onSwitchTestViewer(playerId); }}
+            onSwitchTestViewer={(playerId) => { setHarvestDraft(null); void onSwitchTestViewer(playerId); }}
             judgementInFlight={judgementInFlight}
             serpentSelected={serpentSelected}
             triggerResponse={triggerResponse}

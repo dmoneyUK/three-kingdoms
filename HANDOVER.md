@@ -5,10 +5,10 @@ Branch: `ux-v2`
 ## Latest result
 
 - **EM-01:** deployed on `32b22b8` / `7cc761c`; exact-SHA runs `39078356730` and `39081904968` passed. It remains **PENDING USER REVIEW**. Do not mark accepted.
-- **BCP-1:** fixed Harvest root/pool overlap with the authentic root CardFace parked at the table edge; added a compact public pool with independent Info, local viewer/action-scoped selection draft, same-card deselect and actor-only Confirm. Removed shared preview projection; legal `choose_harvest` remains server-authorized. Production reproduction baseline: `/tmp/bcp1-live-before.png`, `/tmp/bcp1-live-second.png`; overlap was 3,689 CSS px² before the fix.
-- **Focused validation:** Playwright Harvest touch, timer and public activity tests passed 6/6; build passed; changed browser specs lint passed. `public-card-display.tsx` lint had 0 errors and 12 existing hook warnings. Local lint of `app/page.tsx` hit Node heap OOM (4 GB); exact-SHA CI remains required. `git diff --check` passed.
+- **BCP-1 implementation:** commit `8b7fd9a` contains the Harvest root/pool separation, compact public pool, independent Info, actor-only Confirm, local viewer/action-scoped selection and same-card deselect. The authentic root stays visible; server `choose_harvest` authorization and public taken status are unchanged.
+- **Validation:** focused browser run passed 6/6; the follow-up real SWITCH/selection touch test passed; build passed. Browser test lint passed. Exact-SHA run `39114141116` passed browser startup smoke but `lint-fast` failed on the now-removed unused Harvest `actor` variable, so it did not deploy. Local 8 GB lint also exposed two pre-existing Inspector effect errors that CI did not report; leave those out of scope.
 - **Latest design reviewed:** `origin/ux-v2:docs/UX2-refine.md`, blob `aa979ce2b4e33aadaa5c5b61f5f2adb1619c997e`, §10.17.
 
 ## Exactly one current bounded task
 
-**UX2-10.17-BCP1-HARVEST-COMPACT-LAYERS-01 — IMPLEMENTED / PENDING EXACT-SHA CI AND DEPLOY.** Commit only BCP-1 source, focused tests and this handover; inspect the exact commit's Actions and deployed Worker, then record **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**. Do not mark accepted. Keep untracked user file `HANDOVER 3.md` untouched.
+**UX2-10.17-BCP1-HARVEST-COMPACT-LAYERS-01 — LINT FIX / EXACT-SHA DELIVERY IN PROGRESS.** Push the unused-variable fix, verify the new exact-SHA Actions run and deployed Worker, then record **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**. Do not mark accepted or begin BCP-2 before this slice is deployed. Keep untracked user file `HANDOVER 3.md` untouched.
