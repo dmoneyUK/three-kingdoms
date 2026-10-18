@@ -96,7 +96,7 @@ function protectedRects(table: HTMLElement): ProtectedRect[] {
   return [...rectsByGeometry.values()];
 }
 
-function placeChip(chip: HTMLElement, table: HTMLElement): void {
+function placeChip(chip: HTMLElement, table: HTMLElement, harvestPoolReadOnly: boolean): void {
   const tableRect = table.getBoundingClientRect();
   const width = chip.offsetWidth;
   const height = chip.offsetHeight;
@@ -122,6 +122,40 @@ function placeChip(chip: HTMLElement, table: HTMLElement): void {
   const finishTrace = (outcome: string, chosen?: Record<string, unknown>) => {
     if (trace) console.info("[U13-B-G activity-chip placement]", { ...trace, outcome, chosen });
   };
+
+  if (harvestPoolReadOnly) {
+    const root = table.querySelector<HTMLElement>("[data-harvest-root-parked='true']");
+    const timer = table.querySelector<HTMLElement>(".stage-system-cluster .visible-countdown-event");
+    const rootRect = root?.getBoundingClientRect();
+    const timerRect = timer ? visibleRect(timer) : null;
+    const laneLeft = rootRect?.right !== undefined ? rootRect.right + COLLISION_GAP : leftBound;
+    const laneRight = timerRect ? timerRect.left - COLLISION_GAP : rightBound;
+    const railTop = rootRect?.top ?? firstTop;
+    const candidate = {
+      left: laneLeft,
+      top: railTop,
+      right: laneLeft + width,
+      bottom: railTop + height,
+      width,
+      height,
+    };
+    const insideSafeArea = laneLeft >= leftBound && candidate.right <= rightBound
+      && laneRight - laneLeft >= width && railTop >= viewportTop + 4
+      && candidate.bottom <= bottom;
+    const collisions = obstacles.filter((obstacle) => intersects(candidate, obstacle));
+    if (rootRect && insideSafeArea && collisions.length === 0) {
+      chip.style.left = `${candidate.left - tableRect.left}px`;
+      chip.style.top = `${candidate.top - tableRect.top}px`;
+      chip.style.visibility = "visible";
+      chip.dataset.publicActivityLayout = "harvest-root-rail";
+      finishTrace("placed:harvest-root-rail", {
+        rect: candidate,
+        root: { left: rootRect.left, top: rootRect.top, right: rootRect.right, bottom: rootRect.bottom },
+        timer: timerRect ? { left: timerRect.left, top: timerRect.top, right: timerRect.right, bottom: timerRect.bottom } : null,
+      });
+      return;
+    }
+  }
 
   if (width <= 0 || height <= 0 || rightBound - leftBound < width || firstTop < lowerBandTop) {
     chip.style.visibility = "hidden";
@@ -208,10 +242,11 @@ function placeChip(chip: HTMLElement, table: HTMLElement): void {
   finishTrace("hidden:no-safe-candidate");
 }
 
-export function PublicActivityChip({ status, viewerId, seatLayoutKey }: {
+export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoolReadOnly = false }: {
   status: PublicActivityStatus;
   viewerId: string;
   seatLayoutKey: string;
+  harvestPoolReadOnly?: boolean;
 }) {
   const chipRef = useRef<HTMLDivElement>(null);
 
@@ -222,7 +257,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey }: {
     let frame = 0;
     const schedule = () => {
       window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => placeChip(chip, table));
+      frame = window.requestAnimationFrame(() => placeChip(chip, table, harvestPoolReadOnly));
     };
     const relevantMutation = (node: Node): boolean => {
       const element = node instanceof HTMLElement ? node : node.parentElement;
@@ -238,7 +273,13 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey }: {
       subtree: true,
       childList: true,
       attributes: true,
-      attributeFilter: ["data-player-count", "data-seat-topology"],
+      attributeFilter: [
+        "data-player-count",
+        "data-seat-topology",
+        "data-public-card-journey-target-left",
+        "data-public-card-journey-target-top",
+        "data-public-card-layout-pending",
+      ],
     });
     const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
     resizeObserver?.observe(table);
@@ -254,7 +295,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey }: {
       window.removeEventListener("resize", schedule);
       window.visualViewport?.removeEventListener("resize", schedule);
     };
-  }, [status.kind, status.text, viewerId, seatLayoutKey]);
+  }, [harvestPoolReadOnly, status.kind, status.text, viewerId, seatLayoutKey]);
 
   return <div
     ref={chipRef}

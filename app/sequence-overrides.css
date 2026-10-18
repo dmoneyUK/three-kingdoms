@@ -5057,6 +5057,15 @@
   background: transparent;
   pointer-events: none;
 }
+.game-shell .public-card-display-journey.is-harvest-pool-active {
+  z-index: auto !important;
+}
+.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-harvest-root-parked="true"] {
+  z-index: 5;
+}
+.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-display-journey-copy {
+  z-index: 36;
+}
 .game-shell .play-table[data-seat-topology="side-column"] > .harvest-choice-stage {
   right: clamp(88px, calc(25vw + 4px), 120px);
   left: clamp(88px, calc(25vw + 4px), 120px);
@@ -5109,6 +5118,15 @@
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.game-shell .harvest-current-chooser {
+  margin: 0;
+  padding: 0 1px 1px;
+  color: #f2d58f;
+  font: 700 8px/1.2 Arial, sans-serif;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .game-shell .harvest-card-row {
   box-sizing: border-box;

@@ -3925,6 +3925,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       responses,
     };
   })();
+  const harvestCurrentChooserName = harvestReadOnlyDuringNegation && clientPresentation.stage === "NEGATION"
+    ? bumperHarvestRootCandidate?.targets.find((target) => target.playerId === bumperHarvestRootCandidate.progress.currentParticipantId)?.playerName ?? null
+    : null;
   const halberdOrderedRootCandidate = (() => {
     const group = clientPresentation.groupResolution;
     const rootProof = group?.orderedAttackRoot;
@@ -6503,6 +6506,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             <b>Bumper Harvest</b>
             <span>{harvestReadOnlyDuringNegation ? "Read-only · Negation resolving" : canChooseHarvest && !presentationBusy ? "Choose one revealed card" : room.pendingHarvest?.complete ? "Choices complete" : "Public cards · read-only"}</span>
           </header>
+          {harvestReadOnlyDuringNegation && harvestCurrentChooserName && <p className="harvest-current-chooser" role="status" aria-label={`Current Bumper Harvest chooser: ${harvestCurrentChooserName}`}>
+            Current chooser · {harvestCurrentChooserName}
+          </p>}
           <div className="harvest-card-row" role="group" aria-label="Public revealed Harvest cards">
             {harvestDisplay.revealed.map((choice) => {
               const name = cardDefinition(choice.kind).name;
@@ -6602,7 +6608,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         })}
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
-      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} harvestChoiceActive={Boolean(room.pendingHarvest && !presentationBusy)} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardJourneyEventParked} onJourneySettled={(settlementEventId) => {
+      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardJourneyEventParked} onJourneySettled={(settlementEventId) => {
         setActiveDismantleSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
           ? { ...current, journeySettled: true }
           : current);
@@ -6612,7 +6618,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         roomCode={room.code}
         viewerId={room.meId}
       />}
-      <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey} />
+      <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey} harvestPoolReadOnly={harvestReadOnlyDuringNegation} />
       {visibleInfoCard && <CardDetailsPreview card={visibleInfoCard} context={infoCardContext} onClose={closeCardDetails} returnFocusTo={cardInfoReturnFocusRef.current} />}
       {infoHero && me && <HeroDetailsPreview hero={infoHero} onClose={closeHeroDetails} returnFocusTo={heroInfoReturnFocusRef.current} />}
     </section>

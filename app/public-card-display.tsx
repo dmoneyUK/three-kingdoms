@@ -171,6 +171,7 @@ function PublicJourneyCard({
   primary = false,
   parkingSide,
   showOrdinal = false,
+  harvestRootParked = false,
   lustCostFrame,
   onInspectCard,
 }: {
@@ -180,6 +181,7 @@ function PublicJourneyCard({
   primary?: boolean;
   parkingSide?: string;
   showOrdinal?: boolean;
+  harvestRootParked?: boolean;
   lustCostFrame?: PublicCardDisplayAction["lustCostFrame"];
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
@@ -198,6 +200,7 @@ function PublicJourneyCard({
     data-public-card-journey-card-id={card.cardFace.id}
     data-public-card-journey-card-ids={(card.cardFaces ?? [card.cardFace]).map((face) => face.id).join(",")}
     data-public-card-journey-role={card.role}
+    data-harvest-root-parked={harvestRootParked ? "true" : undefined}
     data-public-card-journey-phase={card.phase}
     data-public-card-journey-size={size}
     data-public-card-journey-layout-reason={card.layoutChangeReason}
@@ -538,6 +541,16 @@ function actorParkedCard(actorId: string, cardIndex = 0): CardRect | null {
   }
 
   return boundCardRect(anchorCenterX - PARKED_CARD.width / 2 + cardIndex * (PARKED_CARD.width + 6), bounds.top - PARKED_CARD.height - 6, PARKED_CARD.width, PARKED_CARD.height);
+}
+
+function bumperHarvestRootRailCard(): CardRect | null {
+  const table = document.querySelector<HTMLElement>(".play-table");
+  if (!table) return null;
+  const bounds = table.getBoundingClientRect();
+  if (bounds.width <= 0 || bounds.height <= 0) return null;
+  const dockTop = document.querySelector<HTMLElement>(".local-player-dock")?.getBoundingClientRect().top ?? window.innerHeight;
+  const railBottom = Math.min(bounds.bottom, dockTop, window.innerHeight) - 2;
+  return boundCardRect(bounds.left + 8, railBottom - 60, 40, 60);
 }
 
 type SeatHistoryCardParking = { rect: CardRect; side: "local" | "top" | "left" | "right" };
@@ -2046,6 +2059,7 @@ function preserveGroupRootJourneyEvents(
 function SingleTargetCardJourney({
   action,
   enabled,
+  harvestPoolReadOnly,
   sourceName,
   targetName,
   compactPlayerNamesById,
@@ -2057,6 +2071,7 @@ function SingleTargetCardJourney({
 }: {
   action: PublicCardDisplayAction;
   enabled: boolean;
+  harvestPoolReadOnly: boolean;
   sourceName: string | null;
   targetName: string | null;
   compactPlayerNamesById: CompactPublicPlayerNames;
@@ -2067,6 +2082,7 @@ function SingleTargetCardJourney({
   onJourneyEventParked?: (eventId: string) => void;
 }) {
   const motion = singleTargetJourneyMotion(action.motion);
+  const harvestRootPoolVisible = harvestPoolReadOnly && action.cardFace?.kind === "BumperHarvest";
   const scopeKey = motion?.scopeKey ?? action.rootEventId;
   const [journey, setJourney] = useState<SingleTargetJourneyState>({ scopeKey: "", viewerId: "", cards: [], center: null, suppressTransitions: false, layoutPending: false });
   const journeyRef = useRef(journey);
@@ -2134,13 +2150,32 @@ function SingleTargetCardJourney({
       const old = priorById.get(event.eventId);
       const actorIndex = actorIndexes.get(event.actorId) ?? 0;
       actorIndexes.set(event.actorId, actorIndex + 1);
-      const measuredTarget = old && !viewerChanged && !previous.layoutPending
+      const harvestRail = event.role === "root" && harvestRootPoolVisible ? bumperHarvestRootRailCard() : null;
+      const measuredTarget = harvestRail
+        ?? (old && !viewerChanged && !previous.layoutPending
         ? old.target
         : seatHistoryCardParking(event.actorId, actorIndex, occupied)?.rect
-          ?? actorParkedCard(event.actorId, actorIndex);
+          ?? actorParkedCard(event.actorId, actorIndex));
       if (measuredTarget) measuredTargetEventIds.add(event.eventId);
       const target = measuredTarget ?? old?.target ?? center;
       occupied.push(target);
+      if (harvestRootPoolVisible && event.role === "root") {
+        return {
+          ...event,
+          ...(old ?? {}),
+          actorName: event.actorName,
+          cardFace: event.cardFace,
+          ariaLabel: event.ariaLabel,
+          semanticLabel: event.semanticLabel,
+          phase: "parked" as const,
+          rect: target,
+          target,
+          revealStartedAtMs: null,
+          revealRemainingMs: 0,
+          moveStartedAtMs: null,
+          layoutChangeReason: "bumper-harvest-pool-visible-root-parked",
+        };
+      }
       if (old && !viewerChanged) {
         if (latestFreshResponseEventId && event.eventId !== latestFreshResponseEventId && old.phase === "reveal") {
           const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -2216,7 +2251,7 @@ function SingleTargetCardJourney({
     };
     journeyRef.current = next;
     setJourney(next);
-  }, [enabled, scopeKey, eventSignature, freshSignature, viewerId]);
+  }, [enabled, harvestRootPoolVisible, scopeKey, eventSignature, freshSignature, viewerId]);
 
   useEffect(() => {
     if (!journey.suppressTransitions || journey.layoutPending || journey.scopeKey !== scopeKey) return;
@@ -2416,18 +2451,24 @@ function SingleTargetCardJourney({
         const cards = current.cards.map((card) => {
           const actorIndex = actorIndexes.get(card.actorId) ?? 0;
           actorIndexes.set(card.actorId, actorIndex + 1);
-          const measuredTarget = seatHistoryCardParking(card.actorId, actorIndex, occupied)?.rect
+          const harvestRail = harvestRootPoolVisible && card.role === "root" ? bumperHarvestRootRailCard() : null;
+          const measuredTarget = harvestRail
+            ?? seatHistoryCardParking(card.actorId, actorIndex, occupied)?.rect
             ?? actorParkedCard(card.actorId, actorIndex);
           const target = measuredTarget ?? card.target;
           if (measuredTarget) measuredTargets.set(card.eventId, measuredTarget);
           occupied.push(target);
-          const phase = card.phase === "move" ? "parked" as const : card.phase;
+          const phase = harvestRootPoolVisible && card.role === "root" ? "parked" as const
+            : card.phase === "move" ? "parked" as const : card.phase;
           return {
             ...card,
             phase,
             target,
-            rect: phase === "reveal" ? center : phase === "parked" && measuredTarget ? target : card.rect,
-            layoutChangeReason: "viewport-resize",
+            rect: phase === "reveal" && !(harvestRootPoolVisible && card.role === "root") ? center : phase === "parked" && measuredTarget ? target : card.rect,
+            moveStartedAtMs: harvestRootPoolVisible && card.role === "root" ? null : card.moveStartedAtMs,
+            revealStartedAtMs: harvestRootPoolVisible && card.role === "root" ? null : card.revealStartedAtMs,
+            revealRemainingMs: harvestRootPoolVisible && card.role === "root" ? 0 : card.revealRemainingMs,
+            layoutChangeReason: harvestRootPoolVisible && card.role === "root" ? "bumper-harvest-pool-visible-root-parked" : "viewport-resize",
           };
         });
         const layoutPending = cards.some((card) => !measuredTargets.has(card.eventId));
@@ -2471,7 +2512,7 @@ function SingleTargetCardJourney({
       mutationObserver?.disconnect();
       window.cancelAnimationFrame(resizeFrame);
     };
-  }, [enabled, journey.scopeKey, scopeKey]);
+  }, [enabled, harvestRootPoolVisible, journey.scopeKey, scopeKey]);
 
   const currentCard = activeCard ?? journey.cards.find((card) => card.eventId === activeEventId) ?? null;
   const allParked = !journey.layoutPending && journey.cards.length > 0 && journey.cards.every((card) => card.phase === "parked");
@@ -2575,13 +2616,14 @@ function SingleTargetCardJourney({
   }, [action.settlement?.eventId, allParked, enabled, journey.scopeKey, onJourneySettled, scopeKey]);
   if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
   return <section
-    className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}`}
+    className={`public-card-display public-card-display-journey${harvestRootPoolVisible ? " is-harvest-pool-active" : ""}${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}`}
     data-public-card-display="true"
     data-public-card-renderer-kind="single-target-journey"
     data-public-card-ready="true"
     data-public-card-motion={motion?.type ?? "single-target"}
     data-public-card-viewer-id={viewerId}
     data-public-card-layout-pending={journey.layoutPending ? "true" : "false"}
+    data-public-card-harvest-active={harvestRootPoolVisible ? "true" : undefined}
     data-public-card-interaction-id={action.interactionId ?? undefined}
     data-public-card-root-frame-id={action.rootFrameId ?? undefined}
     data-public-card-checkpoint-id={action.checkpointId ?? undefined}
@@ -2606,6 +2648,7 @@ function SingleTargetCardJourney({
         size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
         className={isCurrent ? "is-current" : "is-prior"}
         primary={isCurrent}
+        harvestRootParked={harvestRootPoolVisible && card.role === "root" && card.phase === "parked"}
         lustCostFrame={action.motion?.type === "lust-cost" && card.role === "root" ? action.lustCostFrame : undefined}
       />;
     })}
@@ -2616,13 +2659,18 @@ function SingleTargetCardJourney({
     </ol>
     <PublicCardAnnouncement
       eventId={motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId}
-      placementKey={publicCardAnnouncementPlacementKey(action)}
+      placementKey={`${publicCardAnnouncementPlacementKey(action)}${harvestRootPoolVisible ? ":harvest-negation-pool" : ""}`}
       viewerLayoutKey={viewerId}
       anchorEventId={groupRootStageOwnsCopy ? null : activeEventId}
       phase={announcementAnchorCard?.phase ?? "static"}
       message={announcement}
       compactMessage={compactAnnouncement}
-      fallbackCardRect={motion?.type === "lust-cost" && journey.center ? battlefieldLustDuelAnnouncementAnchor(journey.center) : journey.center}
+      fallbackCardRect={harvestRootPoolVisible
+        ? (() => {
+          const root = journey.cards.find((card) => card.role === "root");
+          return root ? { left: 0, top: root.target.top, width: 0, height: 0 } : null;
+        })()
+        : motion?.type === "lust-cost" && journey.center ? battlefieldLustDuelAnnouncementAnchor(journey.center) : journey.center}
       phaseNotice={action.phaseNotice}
       outcome={allParked ? action.settlement?.outcome : undefined}
       negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
@@ -3385,6 +3433,7 @@ export function PublicCardDisplay({
   action,
   enabled,
   harvestChoiceActive = false,
+  harvestPoolReadOnly = false,
   sourceName,
   targetName,
   compactPlayerNamesById,
@@ -3399,6 +3448,7 @@ export function PublicCardDisplay({
   action: PublicCardDisplayAction | null;
   enabled: boolean;
   harvestChoiceActive?: boolean;
+  harvestPoolReadOnly?: boolean;
   sourceName: string | null;
   targetName: string | null;
   compactPlayerNamesById: CompactPublicPlayerNames;
@@ -3416,7 +3466,7 @@ export function PublicCardDisplay({
   }
   if (action.motion?.type === "single-target" || action.motion?.type === "negation"
     || action.motion?.type === "group-root" || action.motion?.type === "lust-cost") {
-    return <SingleTargetCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} />;
+    return <SingleTargetCardJourney action={action} enabled={enabled} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {
     return <DuelCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;

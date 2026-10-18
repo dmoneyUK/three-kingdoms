@@ -102,7 +102,7 @@ async function openHarvestChoice(request, seed, observeRootJourney) {
   throw new Error(`Bumper Harvest did not reach a choice after Negation: ${JSON.stringify({ phase: latestRoom?.phase, pending: latestRoom?.pending, currentAction: latestRoom?.currentAction, alive: seed.players.map(({ id, name }) => ({ id, name })), declines })}`);
 }
 
-test("Bumper Harvest real root keeps reveal dimensions and scales its parked thumbnail on phone", async ({ browser, request }, testInfo) => {
+test("Bumper Harvest immediately parks its proven Negation root below the pool on phone", async ({ browser, request }, testInfo) => {
   test.setTimeout(60_000);
   const seed = await seedHarvestPool(request, 4, 4);
   const source = seed.players[0];
@@ -145,16 +145,16 @@ test("Bumper Harvest real root keeps reveal dimensions and scales its parked thu
     }, phase);
 
     const root = await openHarvestChoice(request, seed, async () => {
-      await expect(journey).toHaveAttribute("data-public-card-journey-phase", "reveal", { timeout: 10_000 });
-      const reveal = await measureJourney("reveal");
-      journeyMeasurements.push(reveal);
-      await expect(journey).toHaveAttribute("data-public-card-journey-phase", "move", { timeout: 10_000 });
-      journeyMeasurements.push(await measureJourney("move"));
+      await expect(page.locator('.harvest-choice-stage[data-harvest-readonly="true"]')).toBeVisible({ timeout: 10_000 });
       await expect(journey).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 10_000 });
-      journeyMeasurements.push(await measureJourney("parked"));
-      expect(journeyMeasurements.map(({ phase }) => phase)).toEqual(["reveal", "move", "parked"]);
-      expect(journeyMeasurements.every(({ cardId }) => cardId === rootCardId)).toBe(true);
-      expect(journeyMeasurements.every(({ eventId }) => eventId === journeyMeasurements[0].eventId)).toBe(true);
+      await expect(journey).toHaveAttribute("data-public-card-journey-size", "thumbnail");
+      const parked = await measureJourney("negation-parked");
+      journeyMeasurements.push(parked);
+      expect(parked.phase).toBe("parked");
+      expect(parked.size).toBe("thumbnail");
+      expect(parked.face).toMatchObject({ width: 40, height: 60 });
+      expect(parked.cardId).toBe(rootCardId);
+      expect(parked.eventId).toBeTruthy();
     });
     expect(root.pendingHarvest?.actorId).toBe(source.id);
     await expect(page.locator(".harvest-choice-panel--actor")).toBeVisible();
@@ -188,9 +188,9 @@ test("Bumper Harvest real root keeps reveal dimensions and scales its parked thu
     expect(parkedMetrics.face).toMatchObject({ width: 40, height: 60 });
     expect(parkedMetrics.corner.width / parkedMetrics.face.width).toBeLessThanOrEqual(.18);
     expect(parkedMetrics.corner.height / parkedMetrics.face.height).toBeLessThanOrEqual(.19);
-    expect(Number.parseFloat(parkedMetrics.cornerFontSize)).toBeLessThan(Number.parseFloat(journeyMeasurements[0].cornerFontSize));
-    expect(Number.parseFloat(parkedMetrics.suitFontSize)).toBeLessThan(Number.parseFloat(journeyMeasurements[0].suitFontSize));
-    expect(Number.parseFloat(parkedMetrics.titleFontSize)).toBeLessThan(Number.parseFloat(journeyMeasurements[0].titleFontSize));
+    expect(Number.parseFloat(parkedMetrics.cornerFontSize)).toBeLessThanOrEqual(4.5);
+    expect(Number.parseFloat(parkedMetrics.suitFontSize)).toBeLessThanOrEqual(3.75);
+    expect(Number.parseFloat(parkedMetrics.titleFontSize)).toBeLessThanOrEqual(5);
     await testInfo.attach("bumper-harvest-root-lifecycle-390x700", {
       body: JSON.stringify({ rootCardId, journeyMeasurements, parkedMetrics }, null, 2),
       contentType: "application/json",
@@ -228,7 +228,7 @@ async function harvestGeometry(page) {
     const stage = document.querySelector(".harvest-choice-stage");
     const panel = stage?.querySelector(".harvest-choice-panel");
     const row = panel?.querySelector(".harvest-card-row");
-    const root = document.querySelector("[data-public-card-harvest-active='true'] .public-card-display-static-card");
+    const root = document.querySelector("[data-harvest-root-parked='true']");
     const announcement = document.querySelector("[data-public-card-announcement='true']");
     const footer = panel?.querySelector(".harvest-confirm-row");
     const timer = document.querySelector(".stage-system-cluster .visible-countdown-event");
@@ -263,6 +263,10 @@ async function harvestGeometry(page) {
     const announcementRect = announcement && getComputedStyle(announcement).visibility !== "hidden" ? rect(announcement) : null;
     const footerRect = rect(footer);
     const rowRect = rect(row);
+    const rootDisplay = root?.closest(".public-card-display");
+    const rootStyle = root ? getComputedStyle(root) : null;
+    const rootDisplayStyle = rootDisplay ? getComputedStyle(rootDisplay) : null;
+    const dock = document.querySelector(".local-player-dock");
     const rowClip = row ? { left: row.getBoundingClientRect().left + row.clientLeft, right: row.getBoundingClientRect().left + row.clientLeft + row.clientWidth } : null;
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
@@ -280,19 +284,60 @@ async function harvestGeometry(page) {
       },
       table: rect(document.querySelector(".play-table")),
       stage: stageRect,
+      dock: rect(dock),
       panel: panelRect,
       panelPointerEvents: panel ? getComputedStyle(panel).pointerEvents : null,
       stagePointerEvents: stage ? getComputedStyle(stage).pointerEvents : null,
+      stageBackground: stage ? getComputedStyle(stage).backgroundColor : null,
       panelZIndex: panel ? getComputedStyle(panel).zIndex : null,
       stageZIndex: stage ? getComputedStyle(stage).zIndex : null,
       root: rootRect,
       rootFace: rect(rootFace),
+      rootCardId: root?.getAttribute("data-public-card-journey-card-id") ?? root?.getAttribute("data-public-card-static-card-id"),
+      rootEventId: root?.getAttribute("data-public-card-journey-event-id") ?? root?.getAttribute("data-public-card-static-event-id"),
+      rootPhase: root?.getAttribute("data-public-card-journey-phase"),
+      rootSize: root?.getAttribute("data-public-card-journey-size"),
+      rootData: root ? { left: root.getAttribute("data-public-card-journey-target-left"), top: root.getAttribute("data-public-card-journey-target-top") } : null,
+      rootPaint: root && rootStyle ? {
+        visibility: rootStyle.visibility,
+        opacity: rootStyle.opacity,
+        display: rootStyle.display,
+        zIndex: rootStyle.zIndex,
+        parentVisibility: rootDisplayStyle?.visibility ?? null,
+        parentOpacity: rootDisplayStyle?.opacity ?? null,
+        parentZIndex: rootDisplayStyle?.zIndex ?? null,
+        layoutPending: rootDisplay?.getAttribute("data-public-card-layout-pending") ?? null,
+        hitTarget: document.elementFromPoint(rootRect.left + rootRect.width / 2, rootRect.top + rootRect.height / 2)?.className ?? null,
+        face: rootFace ? {
+          visibility: getComputedStyle(rootFace).visibility,
+          opacity: getComputedStyle(rootFace).opacity,
+          display: getComputedStyle(rootFace).display,
+          background: getComputedStyle(rootFace).backgroundImage,
+          rect: rect(rootFace),
+        } : null,
+      } : null,
+      layerOrder: {
+        root: root ? Number.parseInt(getComputedStyle(root).zIndex, 10)
+          || Number.parseInt(getComputedStyle(rootDisplay).zIndex, 10) : null,
+        pool: stage ? Number.parseInt(getComputedStyle(stage).zIndex, 10) : null,
+      },
       rootCorner: rect(rootCorner),
       rootCornerFontSize: rootCorner ? getComputedStyle(rootCorner).fontSize : null,
       rootSuitFontSize: rootCorner?.querySelector("small") ? getComputedStyle(rootCorner.querySelector("small")).fontSize : null,
       rootTitleFontSize: rootTitle ? getComputedStyle(rootTitle).fontSize : null,
       rootTypeFontSize: rootType ? getComputedStyle(rootType).fontSize : null,
       announcement: announcementRect,
+      announcementPaint: announcement ? {
+        visibility: getComputedStyle(announcement).visibility,
+        opacity: getComputedStyle(announcement).opacity,
+        zIndex: getComputedStyle(announcement).zIndex,
+        fallback: announcement.dataset.publicCardAnnouncementFallback ?? null,
+        positioned: announcement.dataset.publicCardAnnouncementPositioned ?? null,
+        placement: announcement.dataset.publicCardAnnouncementPlacement ?? null,
+        text: announcement.innerText,
+        ariaLabel: announcement.querySelector("b")?.getAttribute("aria-label") ?? null,
+        rect: rect(announcement),
+      } : null,
       row: rowRect,
       rowClip,
       cards: [...(row?.querySelectorAll(".harvest-card-choice") ?? [])].map(rect),
@@ -317,6 +362,7 @@ async function harvestGeometry(page) {
       footer: footerRect,
       timer: rect(timer),
       activity: rect(activity),
+      activityPaint: activity ? { visibility: getComputedStyle(activity).visibility, layout: activity.dataset.publicActivityLayout ?? null } : null,
       seats: seats.map(rect),
       controlHits: {
         switches: switches.map(hit),
@@ -331,7 +377,13 @@ async function harvestGeometry(page) {
         rootPanel: intersects(rootRect, panelRect),
         rootRow: intersects(rootRect, rowRect),
         rootAnnouncement: intersects(rootRect, announcementRect),
+        rootTimer: intersects(rootRect, rect(timer)),
+        rootActivity: intersects(rootRect, rect(activity)),
+        rootDock: intersects(rootRect, rect(dock)),
+        rootSeat: seats.some((seat) => intersects(rootRect, rect(seat))),
         panelAnnouncement: intersects(panelRect, announcementRect),
+        announcementActivity: intersects(announcementRect, rect(activity)),
+        activityTimer: intersects(rect(activity), rect(timer)),
         panelTimer: intersects(panelRect, rect(timer)),
         panelActivity: intersects(panelRect, rect(activity)),
         panelSeat: seats.some((seat) => intersects(panelRect, rect(seat))),
@@ -432,8 +484,15 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
   expect(publicPool?.semantics).toBe("PROVEN");
   expect(negationRoom.pendingHarvest).toBeNull();
   expect(negationRoom.currentAction?.legalActions).not.toContain("choose_harvest");
+  const currentProgress = negationRoom.presentationV2?.bumperHarvestProgress;
+  expect(currentProgress?.semantics).toBe("PROVEN");
+  const currentChooserId = currentProgress?.currentParticipantId;
+  const currentChooser = room.players.find((player) => player.id === currentChooserId);
+  expect(currentChooser?.name).toBeTruthy();
   const controlledViews = await Promise.all(room.players.map((player) => readRoom(request, code, token, player.id)));
   expect(controlledViews.map((view) => view.publicHarvestPool)).toEqual(Array(room.players.length).fill(publicPool));
+  expect(controlledViews.map((view) => view.presentationSnapshot?.bumperHarvestProgress?.currentParticipantId))
+    .toEqual(Array(room.players.length).fill(currentChooserId));
 
   const negationContext = await browser.newContext({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
   try {
@@ -451,6 +510,14 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await negationPage.goto(`${API}/`);
     await expect(negationPage.locator(".game-shell")).toBeVisible();
     await expect(negationPage.locator('.harvest-choice-stage[data-harvest-readonly="true"]')).toBeVisible();
+    const parkedRoot = negationPage.locator('[data-harvest-root-parked="true"]');
+    await expect(parkedRoot).toHaveAttribute("data-public-card-journey-role", "root");
+    await expect(parkedRoot).toHaveAttribute("data-public-card-journey-phase", "parked");
+    await expect(parkedRoot).toHaveAttribute("data-public-card-journey-size", "thumbnail");
+    await expect(parkedRoot).toHaveAttribute("data-public-card-journey-card-id", currentProgress.rootCardId);
+    await expect(parkedRoot).toHaveAttribute("data-public-card-journey-event-id", publicPool.rootEventId);
+    await expect(negationPage.locator("[data-harvest-root-parked='true']")).toHaveCount(1);
+    await expect(negationPage.locator(".harvest-current-chooser")).toHaveText(`Current chooser · ${currentChooser.name}`);
     await expect(negationPage.locator(".harvest-card-choice")).toHaveCount(publicPool.revealed.length);
     await expect(negationPage.locator(".harvest-card-select")).toHaveCount(0);
     await expect(negationPage.locator(".harvest-confirm-row")).toHaveCount(0);
@@ -465,21 +532,91 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await tap(negationPage, negationPage.locator(".harvest-card-info").first());
     await expect(negationPage.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
     await tap(negationPage, negationPage.getByRole("button", { name: "Close card details" }));
+    const assertRootPoolLayer = async (viewport, evidenceSuffix = "") => {
+      await negationPage.evaluate(async ({ width, height }) => {
+        const deadline = performance.now() + 5000;
+        let stableFrames = 0;
+        while (performance.now() < deadline) {
+          await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+          const root = document.querySelector("[data-harvest-root-parked='true']");
+          const display = root?.closest(".public-card-display");
+          const chip = document.querySelector("[data-public-activity-chip]");
+          const announcement = document.querySelector("[data-public-card-announcement='true']");
+          const rootRect = root?.getBoundingClientRect();
+          const chipRect = chip?.getBoundingClientRect();
+          const stable = window.innerWidth === width && window.innerHeight === height
+            && Boolean(root && display && chip && announcement && rootRect && chipRect)
+            && display?.dataset.publicCardLayoutPending === "false"
+            && rootRect?.width === 40 && rootRect.height === 60
+            && getComputedStyle(root).visibility === "visible"
+            && rootRect.left === Number(root?.dataset.publicCardJourneyTargetLeft)
+            && rootRect.top === Number(root?.dataset.publicCardJourneyTargetTop)
+            && chip?.dataset.publicActivityLayout === "harvest-root-rail"
+            && getComputedStyle(chip).visibility === "visible"
+            && chipRect?.top === rootRect.top
+            && getComputedStyle(announcement).visibility === "visible";
+          stableFrames = stable ? stableFrames + 1 : 0;
+          if (stableFrames >= 2) return;
+        }
+        throw new Error(`Harvest layer did not settle at ${width}x${height}`);
+      }, viewport);
+      const geometry = await harvestGeometry(negationPage);
+      await testInfo.attach(`bumper-harvest-layer-${viewport.width}x${viewport.height}`, {
+        body: JSON.stringify(geometry, null, 2), contentType: "application/json",
+      });
+      expect(geometry.viewport).toEqual(viewport);
+      expect(geometry.rootFace).toMatchObject({ width: 40, height: 60 });
+      expect(geometry.rootCardId).toBe(currentProgress.rootCardId);
+      expect(geometry.rootEventId).toBe(publicPool.rootEventId);
+      expect(geometry.rootPhase).toBe("parked");
+      expect(geometry.rootSize).toBe("thumbnail");
+      expect(geometry.stageBackground).toBe("rgba(0, 0, 0, 0)");
+      expect(geometry.announcement).toBeTruthy();
+      expect(geometry.announcementPaint.visibility).toBe("visible");
+      expect(geometry.announcementPaint.ariaLabel).toContain("played Bumper Harvest");
+      expect(geometry.activityPaint.visibility).toBe("visible");
+      expect(geometry.activityPaint.layout).toBe("harvest-root-rail");
+      const table = geometry.table;
+      expect(Math.abs(geometry.root.left - (table.left + 8))).toBeLessThanOrEqual(1);
+      expect(geometry.root.top).toBeGreaterThan(geometry.panel.bottom);
+      expect(geometry.layerOrder.root).not.toBeNull();
+      expect(geometry.layerOrder.pool).toBeGreaterThan(geometry.layerOrder.root);
+      expect(geometry.overlaps.rootPanel).toBe(false);
+      expect(geometry.overlaps.rootRow).toBe(false);
+      expect(geometry.overlaps.rootAnnouncement).toBe(false);
+      expect(geometry.overlaps.rootTimer).toBe(false);
+      expect(geometry.overlaps.rootActivity).toBe(false);
+      expect(geometry.overlaps.rootDock).toBe(false);
+      expect(geometry.dock ? geometry.root.bottom : 0).toBeLessThanOrEqual(geometry.dock?.top ?? 0);
+      expect(geometry.overlaps.rootSeat).toBe(false);
+      expect(geometry.overlaps.panelAnnouncement).toBe(false);
+      expect(geometry.overlaps.announcementActivity).toBe(false);
+      expect(geometry.overlaps.activityTimer).toBe(false);
+      expect(geometry.overlaps.panelTimer).toBe(false);
+      expect(geometry.overlaps.panelActivity).toBe(false);
+      expect(geometry.overlaps.panelSeat).toBe(false);
+      const evidenceName = `bumper-harvest-negation-readonly-${viewport.width}x${viewport.height}${evidenceSuffix ? `-${evidenceSuffix}` : ""}`;
+      const screenshot = testInfo.outputPath(`${evidenceName}.png`);
+      await negationPage.screenshot({ path: screenshot, animations: "disabled" });
+      await testInfo.attach(evidenceName, { path: screenshot, contentType: "image/png" });
+      return geometry;
+    };
+    await assertRootPoolLayer({ width: 390, height: 700 });
 
     const switchTarget = room.players.find((player) => player.id !== host.id);
     await tap(negationPage, negationPage.getByTestId(`test-view-switch-${switchTarget.id}`));
     await expect(negationPage.locator(`.local-player-dock[data-player-anchor="${switchTarget.id}"]`)).toBeVisible();
     await expect(negationPage.locator(".harvest-choice-stage[data-harvest-readonly='true'] .harvest-card-choice")).toHaveCount(publicPool.revealed.length);
+    await expect(negationPage.locator(".harvest-current-chooser")).toHaveText(`Current chooser · ${currentChooser.name}`);
     const inspectedHero = negationPage.locator(`.opponent-player-card[data-player-anchor="${host.id}"] .opponent-hero-target`);
     await tap(negationPage, inspectedHero);
     await expect(negationPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${host.id}"]`)).toBeVisible();
     await tap(negationPage, inspectedHero);
-    const negationShot390 = testInfo.outputPath("bumper-harvest-negation-readonly-390x700.png");
-    await negationPage.screenshot({ path: negationShot390, animations: "disabled" });
-    await testInfo.attach("bumper-harvest-negation-readonly-390x700", { path: negationShot390, contentType: "image/png" });
+    await assertRootPoolLayer({ width: 390, height: 700 }, "after-switch-and-inspector");
     await negationPage.setViewportSize({ width: 440, height: 766 });
     await expect(negationPage.locator('.harvest-choice-stage[data-harvest-readonly="true"]')).toBeVisible();
     await expect(negationPage.locator(".harvest-card-choice")).toHaveCount(publicPool.revealed.length);
+    await assertRootPoolLayer({ width: 440, height: 766 });
     await expect(negationPage.locator(".harvest-card-select, .harvest-confirm-row")).toHaveCount(0);
     expect(await negationPage.locator(".harvest-card-choice").evaluateAll((cards) => cards.map((card) => card.dataset.harvestCardId)))
       .toEqual(publicPool.revealed.map(({ id }) => id));
@@ -488,9 +625,33 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
       body: JSON.stringify({ viewport: negationPage.viewportSize(), viewerIds: controlledViews.map((view) => view.meId), publicPool }, null, 2),
       contentType: "application/json",
     });
-    const negationShot440 = testInfo.outputPath("bumper-harvest-negation-readonly-440x766.png");
-    await negationPage.screenshot({ path: negationShot440, animations: "disabled" });
-    await testInfo.attach("bumper-harvest-negation-readonly-440x766", { path: negationShot440, contentType: "image/png" });
+    const mismatchedProofPage = await negationContext.newPage();
+    await mismatchedProofPage.addInitScript(({ roomCode, sessionToken, playerName }) => {
+      localStorage.setItem("three-realms-session", JSON.stringify({ code: roomCode, token: sessionToken, name: playerName }));
+    }, { roomCode: code, sessionToken: token, playerName: name });
+    let mismatchedChooserProofResponses = 0;
+    await mismatchedProofPage.route(`${API}/api/rooms?**`, async (route) => {
+      const response = await route.fetch();
+      const payload = await response.json();
+      const roomView = payload.room ?? payload;
+      const progress = roomView.presentationSnapshot?.bumperHarvestProgress;
+      const mismatchedParticipantId = roomView.players?.find((player) => player.id !== progress?.currentParticipantId)?.id;
+      if (progress && mismatchedParticipantId) {
+        mismatchedChooserProofResponses += 1;
+        roomView.presentationSnapshot = {
+          ...roomView.presentationSnapshot,
+          bumperHarvestProgress: { ...progress, currentParticipantId: mismatchedParticipantId },
+        };
+      }
+      if (payload.room) payload.room = roomView;
+      await route.fulfill({ response, body: JSON.stringify(payload) });
+    });
+    await mismatchedProofPage.goto(`${API}/`);
+    await expect(mismatchedProofPage.locator(".game-shell")).toBeVisible();
+    await expect(mismatchedProofPage.locator('.harvest-choice-stage[data-harvest-readonly="true"]')).toBeVisible();
+    await expect.poll(() => mismatchedChooserProofResponses).toBeGreaterThan(0);
+    await expect(mismatchedProofPage.locator(".harvest-current-chooser")).toHaveCount(0);
+    await expect(mismatchedProofPage.locator(".harvest-choice-heading span")).toHaveText("Read-only · Negation resolving");
   } finally {
     await negationContext.close();
   }
@@ -512,7 +673,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(page.locator(".harvest-choice-panel")).toBeVisible();
     await expect(page.locator(`.local-player-dock[data-player-anchor="${host.id}"]`)).toBeVisible();
 
-    const auditHarvestView = async (viewerLabel, actor, viewerId) => {
+    const auditHarvestView = async (viewerLabel, actor) => {
       for (const viewport of [
         { width: 390, height: 700 },
         { width: 390, height: 844 },
@@ -535,7 +696,13 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
           rootPanel: false,
           rootRow: false,
           rootAnnouncement: false,
+          rootTimer: false,
+          rootActivity: false,
+          rootDock: false,
+          rootSeat: false,
           panelAnnouncement: false,
+          announcementActivity: false,
+          activityTimer: false,
           panelTimer: false,
           panelActivity: false,
           panelSeat: false,
@@ -548,24 +715,6 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
         expect(geometry.controlHits.heroInspector.every((item) => item.hitMatches), JSON.stringify({ viewerLabel, geometry })).toBe(true);
         expect(geometry.controlHits.handInspection.length, JSON.stringify({ viewerLabel, geometry })).toBeGreaterThan(0);
         expect(geometry.controlHits.handInspection.every((item) => item.hitMatches), JSON.stringify({ viewerLabel, geometry })).toBe(true);
-        if (viewport.width === 390 && viewport.height === 700) {
-          const currentView = await readRoom(request, code, token, viewerId);
-          console.log("[EM-01 live hit-test audit]", JSON.stringify({
-            viewerLabel,
-            viewerId: currentView.meId,
-            actorId: currentView.pendingHarvest?.actorId ?? currentView.currentAction?.actorId ?? null,
-            currentAction: currentView.currentAction?.kind ?? null,
-            isMyAction: currentView.isMyAction,
-            tableStage: {
-              stagePointerEvents: geometry.stagePointerEvents,
-              stageZIndex: geometry.stageZIndex,
-              panelPointerEvents: geometry.panelPointerEvents,
-              panelZIndex: geometry.panelZIndex,
-              document: geometry.document,
-            },
-            controls: geometry.controlHits,
-          }));
-        }
         if (actor) {
           expect(geometry.footer, JSON.stringify({ viewerLabel, geometry })).toBeTruthy();
           expect(geometry.panelPointerEvents).toBe("auto");
@@ -611,7 +760,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     const initialActorId = initialHarvest.pendingHarvest.actorId;
     const initialChoices = initialHarvest.pendingHarvest.choices.map((choice) => choice.cardId);
     const initialDeadline = initialHarvest.pendingHarvest.countdownUntil;
-    await auditHarvestView("spectator", false, host.id);
+    await auditHarvestView("spectator", false);
     await page.setViewportSize({ width: 390, height: 700 });
     await expect(page.locator(".harvest-card-select")).toHaveCount(0);
     await expect(page.locator(".harvest-availability-label")).toHaveCount(initialHarvest.pendingHarvest.revealed.length);
@@ -680,7 +829,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(sourceDock).toBeVisible();
     await expect(sourceDock).toBeFocused();
     await expect(page.locator(".harvest-choice-panel--actor")).toHaveCSS("pointer-events", "auto");
-    await auditHarvestView("actor", true, source.id);
+    await auditHarvestView("actor", true);
     await page.setViewportSize({ width: 390, height: 700 });
     const firstCard = page.locator(".harvest-card-select:not([disabled])").first();
     await expect(firstCard).toBeVisible();
