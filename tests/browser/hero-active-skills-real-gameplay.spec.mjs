@@ -1,8 +1,16 @@
 import { expect, test } from "@playwright/test";
-import { writeFile } from "node:fs/promises";
+import { access, writeFile } from "node:fs/promises";
 
 const API = "http://127.0.0.1:3137";
 const card = (kind, id, suit = "♠") => ({ id, kind, suit, rank: "7" });
+const compactPlayerName = (name) => {
+  const normalized = name.trim();
+  const characters = Array.from(normalized);
+  return characters.length <= 10 ? normalized : `${characters.slice(0, 9).join("").trimEnd()}…`;
+};
+const compactLustOrderMessage = (first, second, firstActor) => first.id === firstActor.id
+  ? `${compactPlayerName(first.name)} first · ${compactPlayerName(second.name)} second.`
+  : `${compactPlayerName(first.name)} second · ${compactPlayerName(second.name)} first.`;
 
 async function seedSkillRoom(request, { hero, hand, hp = 4, maxHp = 4, targets = [] }) {
   const rolePool = [
@@ -36,8 +44,8 @@ async function openSkillUser(page, seed, viewport = { width: 390, height: 844 })
   return user;
 }
 
-async function openSkillViewer(page, seed, player) {
-  await page.setViewportSize({ width: 440, height: 894 });
+async function openSkillViewer(page, seed, player, viewport = { width: 440, height: 894 }) {
+  await page.setViewportSize(viewport);
   await page.addInitScript(({ code, token, name }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
   }, { code: seed.code, token: player.token, name: player.name });
@@ -126,6 +134,12 @@ async function readJourneyCheckpoint(page, eventId, viewerId, checkpoint) {
     const rect = element.getBoundingClientRect();
     const intersects = (left, right) => left.left < right.right - 1 && left.right > right.left + 1
       && left.top < right.bottom - 1 && left.bottom > right.top + 1;
+    const countVisualLines = (range) => [...range.getClientRects()]
+      .filter((line) => line.width > 0 && line.height > 0)
+      .reduce((tops, line) => {
+        if (!tops.some((top) => Math.abs(top - line.top) <= 1)) tops.push(line.top);
+        return tops;
+      }, []).length;
     const protectedSelectors = [
       ["opponent-seat", ".opponent-player-card[data-player-anchor]"],
       ["player-status", ".player-board-status"],
@@ -137,6 +151,16 @@ async function readJourneyCheckpoint(page, eventId, viewerId, checkpoint) {
       ["public-announcement", ".public-card-display-journey-copy"],
     ];
     const protectedOverlaps = [];
+    const protectedRects = protectedSelectors.flatMap(([name, selector]) => [...document.querySelectorAll(selector)].flatMap((obstacle) => {
+      const obstacleRect = obstacle.getBoundingClientRect();
+      const style = getComputedStyle(obstacle);
+      return style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0
+        || obstacleRect.width <= 0 || obstacleRect.height <= 0 ? [] : [{
+          name,
+          text: (obstacle.textContent ?? "").trim().slice(0, 60),
+          rect: { left: obstacleRect.left, top: obstacleRect.top, width: obstacleRect.width, height: obstacleRect.height },
+        }];
+    }));
     for (const [name, selector] of protectedSelectors) {
       for (const obstacle of document.querySelectorAll(selector)) {
         if (obstacle === element || obstacle.contains(element) || element.contains(obstacle)) continue;
@@ -144,7 +168,12 @@ async function readJourneyCheckpoint(page, eventId, viewerId, checkpoint) {
         const obstacleRect = obstacle.getBoundingClientRect();
         if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0
           || obstacleRect.width <= 0 || obstacleRect.height <= 0) continue;
-        if (intersects(rect, obstacleRect)) protectedOverlaps.push({ name, text: (obstacle.textContent ?? "").trim().slice(0, 90) });
+        if (intersects(rect, obstacleRect)) protectedOverlaps.push({
+          name,
+          text: (obstacle.textContent ?? "").trim().slice(0, 90),
+          cardRect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+          obstacleRect: { left: obstacleRect.left, top: obstacleRect.top, width: obstacleRect.width, height: obstacleRect.height },
+        });
       }
     }
     const announcementRects = [...document.querySelectorAll(
@@ -174,8 +203,10 @@ async function readJourneyCheckpoint(page, eventId, viewerId, checkpoint) {
         compact: announcement.getAttribute("data-public-card-announcement-compact"),
         selectedWidth: announcement.getAttribute("data-public-card-announcement-width"),
         text: (copy.textContent ?? "").trim(),
+        placement: announcement.getAttribute("data-public-card-announcement-placement"),
+        width: announcement.getAttribute("data-public-card-announcement-width"),
         rect: { left: announcementRect.left, top: announcementRect.top, width: announcementRect.width, height: announcementRect.height },
-        lines: range.getClientRects().length,
+        lines: countVisualLines(range),
         visible: style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0,
         seatOverlaps,
       };
@@ -199,6 +230,13 @@ async function readJourneyCheckpoint(page, eventId, viewerId, checkpoint) {
       const range = document.createRange();
       range.selectNodeContents(copy);
       const style = getComputedStyle(announcement);
+      const originalWidth = announcement.style.width;
+      const diagnosticWidthLines = [260, 256, 248, 240, 224].map((width) => {
+        announcement.style.width = `${width}px`;
+        range.selectNodeContents(copy);
+        return { width, lines: countVisualLines(range) };
+      });
+      announcement.style.width = originalWidth;
       const seatOverlaps = [...document.querySelectorAll(".opponent-player-card[data-player-anchor]")].flatMap((seat) => {
         const seatRect = seat.getBoundingClientRect();
         return intersects(announcementRect, seatRect) ? [{ playerId: seat.getAttribute("data-player-anchor") }] : [];
@@ -207,14 +245,52 @@ async function readJourneyCheckpoint(page, eventId, viewerId, checkpoint) {
         eventId: announcement.getAttribute("data-public-card-announcement-event-id"),
         anchorEventId: announcement.getAttribute("data-public-card-copy-anchor-event-id"),
         text: (copy.textContent ?? "").trim(),
+        accessibleText: copy.getAttribute("aria-label") ?? "",
+        placement: announcement.getAttribute("data-public-card-announcement-placement"),
+        width: announcement.getAttribute("data-public-card-announcement-width"),
+        compact: announcement.getAttribute("data-public-card-announcement-compact"),
+        fallback: announcement.getAttribute("data-public-card-announcement-fallback"),
+        diagnosticWidthLines,
         rect: { left: announcementRect.left, top: announcementRect.top, width: announcementRect.width, height: announcementRect.height },
-        lines: range.getClientRects().length,
+        lines: countVisualLines(range),
         visible: style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0,
         seatOverlaps,
       };
     });
     const lustFrame = scopedDisplay?.querySelector("[data-public-card-frame-kind='DIAO_CHAN_LUST_COST']");
     const lustFrameBounds = lustFrame?.getBoundingClientRect();
+    const lustFrameOverlaps = [];
+    if (lustFrameBounds) {
+      const frameProtectedSelectors = [
+        ["opponent-seat", ".opponent-player-card[data-player-anchor]"],
+        ["player-status", ".player-board-status"],
+        ["player-target", ".player-square-target, .play-seat"],
+        ["local-dock", ".local-player-dock"],
+        ["guidance", ".console-guidance"],
+        ["timer", ".visible-countdown"],
+        ["system-menu", ".stage-system-cluster"],
+        ["activity-chip", "[data-public-activity-chip='true']"],
+        ["announcement", ".public-card-display-journey-copy, .effect-notice, .turn-notice"],
+      ];
+      for (const [name, selector] of frameProtectedSelectors) {
+        for (const obstacle of document.querySelectorAll(selector)) {
+          const style = getComputedStyle(obstacle);
+          const obstacleRect = obstacle.getBoundingClientRect();
+          if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0
+            || obstacleRect.width <= 0 || obstacleRect.height <= 0) continue;
+          if (intersects(lustFrameBounds, obstacleRect)) lustFrameOverlaps.push({
+            name,
+            text: (obstacle.textContent ?? "").trim().slice(0, 90),
+            rect: { left: obstacleRect.left, top: obstacleRect.top, width: obstacleRect.width, height: obstacleRect.height },
+          });
+        }
+      }
+    }
+    const lustFrameTitle = lustFrame?.querySelector(".public-card-lust-cost-frame-title");
+    const lustFrameTitleBounds = lustFrameTitle?.getBoundingClientRect();
+    const lustFrameStyle = lustFrame ? getComputedStyle(lustFrame) : null;
+    const lustFrameTitleStyle = lustFrameTitle ? getComputedStyle(lustFrameTitle) : null;
+    const lustFrameDecorationStyle = lustFrame ? getComputedStyle(lustFrame, "::after") : null;
     const startedAt = element.getAttribute("data-public-card-journey-reveal-started-at");
     return {
       viewerId: details.viewerId,
@@ -239,9 +315,17 @@ async function readJourneyCheckpoint(page, eventId, viewerId, checkpoint) {
       accessibleName: element.getAttribute("aria-label"),
       inspectable: element.getAttribute("data-public-card-inspectable"),
       protectedOverlaps,
+      protectedRects,
       announcementRects,
       journeyAnnouncements,
       lustFrameRect: lustFrameBounds ? { left: lustFrameBounds.left, top: lustFrameBounds.top, width: lustFrameBounds.width, height: lustFrameBounds.height } : null,
+      lustFrameOverlaps,
+      lustFrameTitleRect: lustFrameTitleBounds ? { left: lustFrameTitleBounds.left, top: lustFrameTitleBounds.top, width: lustFrameTitleBounds.width, height: lustFrameTitleBounds.height } : null,
+      lustFrameOpacity: lustFrameStyle?.opacity ?? null,
+      lustFrameTransformOrigin: lustFrameStyle?.transformOrigin ?? null,
+      lustFrameBorder: lustFrameStyle ? { width: lustFrameStyle.borderTopWidth, style: lustFrameStyle.borderTopStyle } : null,
+      lustFrameDecorationBorder: lustFrameDecorationStyle ? { width: lustFrameDecorationStyle.borderTopWidth, style: lustFrameDecorationStyle.borderTopStyle } : null,
+      lustFrameTitleFontSize: lustFrameTitleStyle?.fontSize ?? null,
       copyAnchorRect: copyAnchorRect ? { left: copyAnchorRect.left, top: copyAnchorRect.top, width: copyAnchorRect.width, height: copyAnchorRect.height } : null,
       announcementAnchorRect: announcementAnchorRect ? { left: announcementAnchorRect.left, top: announcementAnchorRect.top, width: announcementAnchorRect.width, height: announcementAnchorRect.height } : null,
       playTableRect: playTableRect ? { left: playTableRect.left, top: playTableRect.top, width: playTableRect.width, height: playTableRect.height } : null,
@@ -263,13 +347,36 @@ async function attachJourneyJson(testInfo, name, value) {
   await testInfo.attach(name, { path, contentType: "application/json" });
 }
 
-async function captureJourneyLifecycle(page, eventId, viewerId, checkpoints, { screenshotPrefix, testInfo, stableAnnouncementRect } = {}) {
+async function captureJourneyLifecycle(page, eventId, viewerId, checkpoints, { screenshotPrefix, testInfo } = {}) {
   const journeyCard = page.locator(`[data-public-card-journey-event-id="${eventId}"]`);
   await expect(journeyCard).toHaveCount(1);
   await expect(journeyCard).toHaveAttribute("data-public-card-journey-phase", "reveal");
 
+  const assertLustFrameMeasurement = (checkpoint) => {
+    if (!checkpoint.lustFrameRect) return;
+    const frame = checkpoint.lustFrameRect;
+    const title = checkpoint.lustFrameTitleRect;
+    expect(frame.width).toBeGreaterThan(0);
+    expect(frame.height).toBeGreaterThan(0);
+    expect(title).toBeTruthy();
+    expect(title.left).toBeGreaterThanOrEqual(frame.left - 1);
+    expect(title.left + title.width).toBeLessThanOrEqual(frame.left + frame.width + 1);
+    expect(title.top).toBeGreaterThanOrEqual(frame.top - 1);
+    expect(title.top + title.height).toBeLessThanOrEqual(frame.top + frame.height + 1);
+    expect(checkpoint.lustFrameTransformOrigin).toBe("39px 43px");
+    if (checkpoint.phase === "move") {
+      expect(checkpoint.lustFrameOpacity).toBe("0");
+      return;
+    }
+    expect(checkpoint.lustFrameOpacity).toBe("1");
+    expect(checkpoint.lustFrameOverlaps,
+      `LUST Frame overlaps protected UI at ${checkpoint.checkpoint}: ${JSON.stringify({ frame, overlaps: checkpoint.lustFrameOverlaps })}`)
+      .toEqual([]);
+  };
+
   await waitForRevealElapsed(page, eventId, 500);
   const at500 = await readJourneyCheckpoint(page, eventId, viewerId, "reveal-500ms");
+  assertLustFrameMeasurement(at500);
   expect(at500.phase).toBe("reveal");
   expect(at500.actual).toMatchObject({ width: 90, height: 135 });
   expect(at500.journeyAnnouncements).toHaveLength(1);
@@ -277,23 +384,48 @@ async function captureJourneyLifecycle(page, eventId, viewerId, checkpoints, { s
   expect(at500.journeyAnnouncements[0].lines).toBeLessThanOrEqual(2);
   expect(at500.journeyAnnouncements[0].seatOverlaps).toEqual([]);
   const at500Announcement = at500.journeyAnnouncements[0].rect;
+  const assertAnnouncementPlacement = (announcement, checkpoint) => {
+    const previousCenterX = at500Announcement.left + at500Announcement.width / 2;
+    const currentCenterX = announcement.left + announcement.width / 2;
+    expect(Math.abs(currentCenterX - previousCenterX),
+      `viewer ${viewerId} announcement center changed at ${checkpoint}: ${JSON.stringify({ reveal: at500Announcement, current: announcement })}`)
+      .toBeLessThanOrEqual(1);
+    expect(Math.abs(announcement.top - at500Announcement.top),
+      `viewer ${viewerId} announcement top changed at ${checkpoint}: ${JSON.stringify({ reveal: at500Announcement, current: announcement })}`)
+      .toBeLessThanOrEqual(16);
+    expect(Math.abs(announcement.height - at500Announcement.height)).toBeLessThanOrEqual(1);
+  };
   const centeredRevealAnchor = at500.lustFrameRect ?? at500.actual;
   expect(Math.abs((at500Announcement.left + at500Announcement.width / 2)
     - (centeredRevealAnchor.left + centeredRevealAnchor.width / 2))).toBeLessThanOrEqual(12);
   if (at500.lustFrameRect) {
-    expect(at500Announcement.top - (at500.lustFrameRect.top + at500.lustFrameRect.height)).toBeGreaterThanOrEqual(5);
-    expect(at500Announcement.top - (at500.lustFrameRect.top + at500.lustFrameRect.height)).toBeLessThanOrEqual(12);
-  }
-  if (stableAnnouncementRect) {
-    for (const dimension of ["left", "top", "width", "height"]) {
-      expect(Math.abs(at500Announcement[dimension] - stableAnnouncementRect[dimension])).toBeLessThanOrEqual(dimension === "top" ? 16 : 1);
-    }
+    const frameBottom = at500.lustFrameRect.top + at500.lustFrameRect.height;
+    const announcementRight = at500Announcement.left + at500Announcement.width;
+    const blockersBetweenFrameAndAnnouncement = at500.protectedRects.filter((obstacle) => {
+      if (obstacle.name === "public-announcement") return false;
+      const right = obstacle.rect.left + obstacle.rect.width;
+      const bottom = obstacle.rect.top + obstacle.rect.height;
+      return obstacle.rect.left < announcementRight - 1 && right > at500Announcement.left + 1
+        && obstacle.rect.top >= frameBottom - 1 && bottom <= at500Announcement.top + 1;
+    });
+    const nearestProtectedBottom = Math.max(frameBottom, ...blockersBetweenFrameAndAnnouncement.map((obstacle) =>
+      obstacle.rect.top + obstacle.rect.height));
+    const announcementGap = at500Announcement.top - nearestProtectedBottom;
+    expect(announcementGap, JSON.stringify({
+      frame: at500.lustFrameRect, announcement: at500Announcement,
+      blockersBetweenFrameAndAnnouncement,
+    })).toBeGreaterThanOrEqual(5);
+    expect(announcementGap, JSON.stringify({
+      frame: at500.lustFrameRect, announcement: at500Announcement,
+      blockersBetweenFrameAndAnnouncement,
+    })).toBeLessThanOrEqual(12);
   }
   checkpoints.push(at500);
   if (screenshotPrefix && testInfo) await attachJourneyScreenshot(page, testInfo, screenshotPrefix, "reveal-500ms");
 
   await waitForRevealElapsed(page, eventId, 3500);
   const at3500 = await readJourneyCheckpoint(page, eventId, viewerId, "reveal-3500ms");
+  assertLustFrameMeasurement(at3500);
   expect(at3500.phase).toBe("reveal");
   expect(at3500.actual).toMatchObject({ width: 90, height: 135 });
   expect(at3500.revealElapsedMs).toBeGreaterThanOrEqual(3500);
@@ -301,9 +433,7 @@ async function captureJourneyLifecycle(page, eventId, viewerId, checkpoints, { s
   expect(at3500.journeyAnnouncements[0].visible).toBe(true);
   expect(at3500.journeyAnnouncements[0].lines).toBeLessThanOrEqual(2);
   expect(at3500.journeyAnnouncements[0].seatOverlaps).toEqual([]);
-  for (const dimension of ["left", "top", "width", "height"]) {
-    expect(Math.abs(at3500.journeyAnnouncements[0].rect[dimension] - at500Announcement[dimension])).toBeLessThanOrEqual(1);
-  }
+  assertAnnouncementPlacement(at3500.journeyAnnouncements[0].rect, "reveal-3500ms");
   checkpoints.push(at3500);
   if (screenshotPrefix && testInfo) await attachJourneyScreenshot(page, testInfo, screenshotPrefix, "reveal-3500ms");
 
@@ -341,6 +471,7 @@ async function captureJourneyLifecycle(page, eventId, viewerId, checkpoints, { s
   const moving = await movingHandle.jsonValue();
   await movingHandle.dispose();
   const movingCheckpoint = await readJourneyCheckpoint(page, eventId, viewerId, "move-midpoint");
+  assertLustFrameMeasurement(movingCheckpoint);
   expect(moving.phase).toBe("move");
   expect(moving.actual.width).toBeGreaterThan(50);
   expect(moving.actual.width).toBeLessThan(88);
@@ -352,15 +483,13 @@ async function captureJourneyLifecycle(page, eventId, viewerId, checkpoints, { s
   expect(currentDistance).toBeLessThan(startDistance - 1);
   expect(currentDistance).toBeGreaterThan(1);
   expect(movingCheckpoint.journeyAnnouncements).toHaveLength(1);
-  for (const dimension of ["left", "top", "width", "height"]) {
-    expect(Math.abs(movingCheckpoint.journeyAnnouncements[0].rect[dimension] - at500Announcement[dimension]))
-      .toBeLessThanOrEqual(dimension === "top" ? 16 : 1);
-  }
-  checkpoints.push(moving);
+  assertAnnouncementPlacement(movingCheckpoint.journeyAnnouncements[0].rect, "move-midpoint");
+  checkpoints.push({ ...movingCheckpoint, sampledAt: moving.sampledAt });
   if (screenshotPrefix && testInfo) await attachJourneyScreenshot(page, testInfo, screenshotPrefix, "move-midpoint");
 
   await expect(journeyCard).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 1200 });
   const parked = await readJourneyCheckpoint(page, eventId, viewerId, "parked");
+  assertLustFrameMeasurement(parked);
   expect(parked.phase).toBe("parked");
   expect(Math.abs(parked.actual.left - parked.target.left)).toBeLessThan(1);
   expect(Math.abs(parked.actual.top - parked.target.top)).toBeLessThan(1);
@@ -368,17 +497,13 @@ async function captureJourneyLifecycle(page, eventId, viewerId, checkpoints, { s
   expect(Math.abs(parked.actual.height - parked.target.height)).toBeLessThan(1);
   expect(parked.inspectable).toBe("true");
   expect(parked.accessibleName).toMatch(/^View public .+ card details,/);
-  expect(parked.protectedOverlaps).toEqual([]);
+  expect(parked.protectedOverlaps, `parked card overlaps protected UI: ${JSON.stringify({ overlaps: parked.protectedOverlaps, announcement: parked.journeyAnnouncements, target: parked.target, viewport: parked.viewport, protectedRects: parked.protectedRects })}`).toEqual([]);
   expect(parked.viewport.scrollWidth).toBeLessThanOrEqual(parked.viewport.width);
   expect(parked.journeyAnnouncements).toHaveLength(1);
   expect(parked.journeyAnnouncements[0].visible).toBe(true);
   expect(parked.journeyAnnouncements[0].lines).toBeLessThanOrEqual(2);
   expect(parked.journeyAnnouncements[0].seatOverlaps).toEqual([]);
-  for (const dimension of ["left", "top", "width", "height"]) {
-    expect(Math.abs(parked.journeyAnnouncements[0].rect[dimension] - at500Announcement[dimension]),
-      `announcement ${dimension} changed: ${JSON.stringify({ reveal: at500Announcement, parked: parked.journeyAnnouncements[0].rect })}`)
-      .toBeLessThanOrEqual(dimension === "top" ? 16 : 1);
-  }
+  assertAnnouncementPlacement(parked.journeyAnnouncements[0].rect, "parked");
   checkpoints.push(parked);
   if (screenshotPrefix && testInfo) await attachJourneyScreenshot(page, testInfo, screenshotPrefix, "parked");
   return parked;
@@ -515,7 +640,7 @@ test("real Prodigal Healer submits the eligible card and injured character", asy
   await completeSkillSelection({ page, request, seed, skillName: "Prodigal Healer", providerId: "hua_tuo_prodigal_healer", cardIds: [cost.id], targetIndexes: [1] });
 });
 
-test("real Lust shows its linked public cost Frame for four seconds, parks once, and restores parked for another viewer", async ({ page, request }, testInfo) => {
+test("real Lust keeps player-name order through Skip and settlement after the cost reveal", async ({ page, request }, testInfo) => {
   const cost = card("Dodge", "real-lust-cost");
   const hiddenCard = card("Peach", "real-lust-private-unspent", "♥");
   const seed = await seedSkillRoom(request, {
@@ -540,53 +665,20 @@ test("real Lust shows its linked public cost Frame for four seconds, parks once,
     targetIds: [seed.players[1].id, seed.players[2].id], outcome: "DUEL_DECLARED",
   });
   expect(costEvent.cards).toEqual([cost]);
-  const display = page.locator('.public-card-display[data-public-card-motion="lust-cost"]');
+  const display = page.locator('.public-card-display[data-public-card-motion="lust-duel"]');
   const presentedCost = display.locator(`[data-public-card-journey-card-id="${cost.id}"]`);
-  const frame = display.locator(`[data-public-card-frame-event-id="${activation.eventId}"]`);
   const announcement = display.locator('[data-public-card-announcement="true"]');
   await expect(display).toBeVisible();
-  await expect(presentedCost).toHaveAttribute("data-public-card-journey-phase", "reveal");
+  await expect(presentedCost).toHaveAttribute("data-public-card-journey-phase", "parked");
   await expect(presentedCost).toHaveAttribute("data-public-card-journey-actor-id", seed.players[0].id);
-  await expect(frame).toContainText("LUST");
-  await expect(announcement).toHaveAttribute("data-public-card-announcement-event-id", activation.eventId);
-  await expect(announcement).toContainText("Diao Chan used Lust: FIRST MAN and SECOND MAN enter a Duel; FIRST MAN plays Attack first.");
+  await expect(announcement).toHaveAttribute("data-public-card-announcement-event-id", activation.costEventId);
+  await expect(announcement).toContainText("FIRST MAN vs. SECOND MAN · FIRST MAN attacks first.");
   await expect(page.locator(`[data-effect-notice-event-id="${activation.eventId}"]`)).toHaveCount(0);
-  await expect(display.locator("[data-public-card-frame-kind='DIAO_CHAN_LUST_COST']")).toHaveCount(1);
+  await expect(display.locator("[data-public-card-frame-kind='DIAO_CHAN_LUST_COST']")).toHaveCount(0);
   await expect(display.locator("[data-public-card-journey-card-id]")).toHaveCount(1);
 
-  await page.waitForFunction((eventId) => {
-    const cardElement = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
-      .find((element) => element.getAttribute("data-public-card-journey-event-id") === eventId);
-    const startedAt = cardElement?.getAttribute("data-public-card-journey-reveal-started-at");
-    return Boolean(startedAt && Date.parse(startedAt) > 0 && Date.now() - Date.parse(startedAt) >= 500);
-  }, activation.costEventId);
-  const revealAt500 = await presentedCost.boundingBox();
-  expect(revealAt500).toMatchObject({ width: 90, height: 135 });
-  const noticeAt500 = await announcement.boundingBox();
-  const frameAt500 = await frame.boundingBox();
-  expect(Math.abs(noticeAt500.x + noticeAt500.width / 2 - (frameAt500.x + frameAt500.width / 2))).toBeLessThanOrEqual(12);
-  expect(noticeAt500.y + noticeAt500.height + 6).toBeLessThanOrEqual(frameAt500.y + 1);
-  await page.screenshot({ path: testInfo.outputPath("lust-cost-frame-440-after-500ms.png") });
-  await page.waitForFunction((eventId) => {
-    const cardElement = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
-      .find((element) => element.getAttribute("data-public-card-journey-event-id") === eventId);
-    const startedAt = cardElement?.getAttribute("data-public-card-journey-reveal-started-at");
-    return Boolean(startedAt && Date.parse(startedAt) > 0 && Date.now() - Date.parse(startedAt) >= 3500);
-  }, activation.costEventId);
-  await expect(presentedCost).toHaveAttribute("data-public-card-journey-phase", "reveal");
-  const revealAt3500 = await presentedCost.boundingBox();
-  expect(revealAt3500).toMatchObject({ width: 90, height: 135 });
-  expect(Math.abs(revealAt3500.x - revealAt500.x)).toBeLessThan(1);
-  expect(Math.abs(revealAt3500.y - revealAt500.y)).toBeLessThan(1);
-  const noticeAt3500 = await announcement.boundingBox();
-  expect(Math.abs(noticeAt3500.x - noticeAt500.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(noticeAt3500.y - noticeAt500.y)).toBeLessThanOrEqual(1);
-  await page.screenshot({ path: testInfo.outputPath("lust-cost-frame-440-after-3500ms.png") });
-  await expect(presentedCost).toHaveAttribute("data-public-card-journey-phase", "move", { timeout: 1500 });
-  await expect(presentedCost).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 1500 });
-  await expect(display.locator("[data-public-card-frame-kind='DIAO_CHAN_LUST_COST']")).toHaveCount(0);
+  await expect(presentedCost).toHaveAttribute("data-public-card-journey-size", "thumbnail");
   const parked = await presentedCost.boundingBox();
-  const noticeParked = await announcement.boundingBox();
   const target = await presentedCost.evaluate((element) => ({
     left: Number(element.dataset.publicCardJourneyTargetLeft),
     top: Number(element.dataset.publicCardJourneyTargetTop),
@@ -596,9 +688,7 @@ test("real Lust shows its linked public cost Frame for four seconds, parks once,
   expect(Math.abs(parked.y - target.top)).toBeLessThan(1);
   expect(Math.abs(target.left - (dock.x + 8))).toBeLessThan(1);
   expect(Math.abs(target.top - (dock.y - 78))).toBeLessThan(1);
-  expect(Math.abs(noticeParked.x - noticeAt500.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(noticeParked.y - noticeAt500.y)).toBeLessThanOrEqual(1);
-  await page.screenshot({ path: testInfo.outputPath("lust-cost-frame-440-parked.png") });
+  await page.screenshot({ path: testInfo.outputPath("lust-cost-frame-440-restored-duel-history.png") });
 
   const firstViewer = seed.players[1];
   const firstProjection = await projectedRoom(request, seed, firstViewer);
@@ -624,7 +714,7 @@ test("real Lust shows its linked public cost Frame for four seconds, parks once,
   await expect(restored).toHaveAttribute("data-public-card-journey-actor-id", seed.players[0].id);
   await expect(page.locator(`[data-public-card-frame-event-id="${activation.eventId}"]`)).toHaveCount(0);
   await expect(page.locator(`[data-effect-notice-event-id="${activation.eventId}"]`)).toHaveCount(0);
-  await expect(page.locator(`[data-public-card-announcement-event-id="${activation.eventId}"]`)).toBeVisible();
+  await expect(page.locator(`[data-public-card-announcement-event-id="${activation.costEventId}"]`)).toBeVisible();
   await expect(page.locator(`[data-hand-card-id="${hiddenCard.id}"]`)).toHaveCount(0);
   expect(await restored.evaluate((element) => element.dataset.publicCardJourneySize)).toBe("thumbnail");
   const restoredTarget = await restored.evaluate((element) => ({
@@ -657,19 +747,19 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
   const seed = await seedSkillRoom(request, {
     hero: "diao-chan", hand: [cost, privateCard],
     targets: [
-      { name: "FIRST DUEL PARTICIPANT WITH A LONG NAME", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [firstAttack] },
-      { name: "SECOND DUEL PARTICIPANT WITH A LONG NAME", role: "Rebel", hero: "cao-cao", hp: 4, maxHp: 4, hand: [secondAttack] },
+      { name: "FIRST PLAYER WITH A LONG NAME 测试甲", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [firstAttack] },
+      { name: "玩家姓名特别特别特别长测试乙", role: "Rebel", hero: "cao-cao", hp: 4, maxHp: 4, hand: [secondAttack] },
     ],
   });
   const owner = seed.players[0];
   const first = seed.players[1];
   const second = seed.players[2];
   const third = seed.players[3];
-  const firstContext = await browser.newContext({ viewport: { width: 440, height: 894 } });
+  const firstContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const secondContext = await browser.newContext({ viewport: { width: 440, height: 894 } });
   const thirdContext = await browser.newContext({
-    viewport: { width: 440, height: 894 },
-    recordVideo: { dir: testInfo.outputDir, size: { width: 440, height: 894 } },
+    viewport: { width: 480, height: 900 },
+    recordVideo: { dir: testInfo.outputDir, size: { width: 480, height: 900 } },
   });
   const firstPage = await firstContext.newPage();
   const secondPage = await secondContext.newPage();
@@ -683,7 +773,6 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
   ];
   const checkpoints = [];
   const runtimeErrors = [];
-  const stableAnnouncementRectsByViewer = new Map();
   let lifecycleTraces = [];
   let lateContext = null;
 
@@ -725,23 +814,32 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
       checkpoints,
       {
         ...(id === third.id ? { screenshotPrefix: `l5-${label}-third-view`, testInfo } : {}),
-        stableAnnouncementRect: stableAnnouncementRectsByViewer.get(id),
       },
     )));
+    const firstAnnouncement = parkedCards[0].journeyAnnouncements[0];
     for (const [index, viewer] of viewers.entries()) {
       expect(parkedCards[index].actorId).toBe(actor.id);
       expect(parkedCards[index].cardIds).toBe(cardId);
+      expect(parkedCards[index].journeyAnnouncements[0].accessibleText).toBe(firstAnnouncement.accessibleText);
+      if (label.startsWith("attack-")) {
+        const announcement = parkedCards[index].journeyAnnouncements[0];
+        const target = actor.id === first.id ? second : first;
+        expect(announcement.accessibleText).toContain(actor.name);
+        expect(announcement.accessibleText).toContain(target.name);
+        expect(announcement.text).toMatch(/played Attack (?:on|targeting)/);
+        expect(announcement.text.includes(actor.name) || announcement.text.includes(compactPlayerName(actor.name))).toBe(true);
+        expect(announcement.text.includes(target.name) || announcement.text.includes(compactPlayerName(target.name))).toBe(true);
+      }
       await assertJourneyUsesActorAnchor(viewer.page, viewer.player, actor, parkedCards[index]);
-      stableAnnouncementRectsByViewer.set(viewer.id, parkedCards[index].journeyAnnouncements[0].rect);
     }
     return parkedCards;
   };
 
   try {
-    await openSkillUser(page, seed, { width: 440, height: 894 });
-    await openSkillViewer(firstPage, seed, first);
-    await openSkillViewer(secondPage, seed, second);
-    await openSkillViewer(thirdPage, seed, third);
+    await openSkillUser(page, seed, { width: 390, height: 700 });
+    await openSkillViewer(firstPage, seed, first, { width: 390, height: 844 });
+    await openSkillViewer(secondPage, seed, second, { width: 440, height: 894 });
+    await openSkillViewer(thirdPage, seed, third, { width: 480, height: 900 });
     for (const { id, page: viewerPage } of viewers) {
       viewerPage.on("pageerror", (error) => runtimeErrors.push({ viewerId: id, message: error.message }));
       await installPublicJourneyTrace(viewerPage, id);
@@ -750,6 +848,13 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
     const activation = started.room.presentationSnapshot.diaoChanSkillNotices.find((notice) => notice.notice === "ACTIVATION");
     const initialExchange = started.room.presentationSnapshot.lustDuelExchange;
     const costEvent = started.room.timeline.find((event) => event.id === activation.costEventId);
+    const firstActor = seed.players.find((player) => player.id === initialExchange.root.firstActorId);
+    const firstParticipant = seed.players.find((player) => player.id === initialExchange.root.firstParticipantId);
+    const secondParticipant = seed.players.find((player) => player.id === initialExchange.root.secondParticipantId);
+    expect(firstActor).toBeTruthy();
+    expect(firstParticipant).toBe(first);
+    expect(secondParticipant).toBe(second);
+    expect(activation.firstActorId).toBe(firstActor.id);
     expect(costEvent.cards).toEqual([cost]);
     expect(initialExchange).toMatchObject({
       semantics: "PROVEN", root: { activationEventId: activation.eventId, costEventId: costEvent.id, costCardId: cost.id, ownerId: owner.id },
@@ -774,20 +879,47 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
     await expect(ownerDisplay.locator("[data-public-card-journey-card-id]")).toHaveCount(1);
     const costFrameGeometry = await Promise.all(viewers.map(({ id, page: viewerPage }) =>
       readJourneyCheckpoint(viewerPage, costEvent.id, id, "centred-lust-cost-frame-reveal")));
+    await Promise.all(viewers.map(({ page: viewerPage }, index) => viewerPage.screenshot({
+      path: testInfo.outputPath(`l5-cost-frame-initial-${costFrameGeometry[index].viewport.width}x${costFrameGeometry[index].viewport.height}.png`),
+    })));
+    console.log("[LUST Frame geometry]", JSON.stringify(costFrameGeometry.map(({ viewerId, viewport, playTableRect, lustFrameRect, lustFrameOverlaps }) => ({ viewerId, viewport, playTableRect, lustFrameRect, lustFrameOverlaps }))));
     for (const geometry of costFrameGeometry) {
       const frame = geometry.lustFrameRect;
       const table = geometry.playTableRect;
       expect(frame).toBeTruthy();
       expect(table).toBeTruthy();
+      expect(frame.width).toBeCloseTo(168, 0);
+      expect(frame.height).toBeCloseTo(190, 0);
+      expect(geometry.lustFrameTitleRect).toBeTruthy();
+      expect(geometry.lustFrameTitleFontSize).toBe("22px");
+      expect(geometry.lustFrameTransformOrigin).toBe("39px 43px");
+      expect(geometry.lustFrameBorder).toEqual({ width: "1px", style: "solid" });
+      expect(geometry.lustFrameDecorationBorder).toEqual({ width: "1px", style: "solid" });
+      expect(geometry.lustFrameOverlaps).toEqual([]);
       expect(Math.abs(frame.left + frame.width / 2 - (table.left + table.width / 2))).toBeLessThanOrEqual(12);
       expect(frame.left).toBeGreaterThanOrEqual(table.left + 8);
       expect(frame.left + frame.width).toBeLessThanOrEqual(table.left + table.width - 8);
       expect(geometry.actual.left).toBeGreaterThanOrEqual(frame.left);
       expect(geometry.actual.left + geometry.actual.width).toBeLessThanOrEqual(frame.left + frame.width);
-      expect(Math.abs(geometry.actual.left - (frame.left + 12))).toBeLessThanOrEqual(1);
-      expect(Math.abs(geometry.actual.top - (frame.top + 30))).toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.actual.left - (frame.left + 39))).toBeLessThanOrEqual(1);
+      expect(Math.abs(geometry.actual.top - (frame.top + 43))).toBeLessThanOrEqual(1);
+      expect(geometry.lustFrameTitleRect.top - frame.top).toBeGreaterThanOrEqual(8);
+      expect(geometry.actual.top - (geometry.lustFrameTitleRect.top + geometry.lustFrameTitleRect.height)).toBeGreaterThanOrEqual(8);
+      expect(geometry.actual.top - (geometry.lustFrameTitleRect.top + geometry.lustFrameTitleRect.height)).toBeLessThanOrEqual(14);
+      expect(frame.top + frame.height - (geometry.actual.top + geometry.actual.height)).toBeGreaterThanOrEqual(11);
     }
     checkpoints.push(...costFrameGeometry);
+
+    // Finish the root reveal/parking sample before a responder changes the local action state.
+    const rootParkedCards = await rootMotion;
+    for (const parkedCard of rootParkedCards) {
+      const announcement = parkedCard.journeyAnnouncements[0];
+      expect(announcement.text).toBe(compactLustOrderMessage(firstParticipant, secondParticipant, firstActor));
+      expect(announcement.accessibleText).toBe(`${firstParticipant.name} vs. ${secondParticipant.name} · ${firstActor.name} attacks first.`);
+      expect(announcement.text).not.toMatch(/Liu Bei|Cao Cao/);
+      expect(announcement.accessibleText).not.toMatch(/Liu Bei|Cao Cao/);
+    }
+    await expect(rootOnOwner).toHaveAttribute("data-public-card-journey-phase", "parked");
 
     await expect(firstPage.locator(`[data-hand-card-id="${firstAttack.id}"] .game-card`)).toBeEnabled();
     const firstDock = firstPage.locator(`.local-player-dock[data-player-anchor="${first.id}"]`);
@@ -798,11 +930,6 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
     const firstConfirm = firstDock.locator('[data-action-slot="primary"] button.primary');
     await expect(firstConfirm).toHaveText("Confirm");
     await expect(firstConfirm).toBeEnabled();
-    const rootParkedCards = await rootMotion;
-    for (const parkedCard of rootParkedCards) {
-      expect(parkedCard.journeyAnnouncements[0].text).toBe("LUST Duel: Liu Bei and Cao Cao; Liu Bei plays Attack first.");
-    }
-    await expect(rootOnOwner).toHaveAttribute("data-public-card-journey-phase", "parked");
 
     const firstAccepted = await submitDuelAttack(firstPage, first, firstAttack.id, { alreadySelected: true });
     const firstEvent = firstAccepted.room.timeline.find((event) => event.type === "card" && event.card?.id === firstAttack.id);
@@ -958,7 +1085,9 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
     const settledDisplay = firstPage.locator('.public-card-display[data-public-card-motion="lust-duel"]');
     await expect(settledDisplay).toHaveAttribute("data-public-card-settlement-event-id", settlementNotice.eventId);
     await expect(settledDisplay.locator("[data-public-card-announcement='true']")).toContainText(
-      `${first.name} failed to play Attack; 1 Duel damage from ${second.name} applies.`);
+      `${compactPlayerName(first.name)} failed to play Attack; 1 Duel damage from ${compactPlayerName(second.name)} applies.`);
+    await expect(settledDisplay.locator("[data-public-card-announcement='true'] b")).toHaveAttribute(
+      "aria-label", `${first.name} failed to play Attack; 1 Duel damage from ${second.name} applies.`);
     await expect(firstPage.locator(`[data-effect-notice-event-id="${settlementNotice.eventId}"]`)).toHaveCount(0);
     expect(Number(await settledDisplay.getAttribute("data-public-card-result-remaining-ms"))).toBeGreaterThan(0);
     expect(Number(await settledDisplay.getAttribute("data-public-card-result-remaining-ms"))).toBeLessThanOrEqual(2000);
@@ -977,7 +1106,9 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
       const viewerSettlementDisplay = viewer.page.locator(`.public-card-display[data-public-card-motion="lust-duel"][data-public-card-settlement-event-id="${settlementNotice.eventId}"]`);
       await expect(viewerSettlementDisplay).toHaveCount(1);
       await expect(viewerSettlementDisplay.locator("[data-public-card-announcement='true']"))
-        .toContainText(`${first.name} failed to play Attack; 1 Duel damage from ${second.name} applies.`);
+        .toContainText(`${compactPlayerName(first.name)} failed to play Attack; 1 Duel damage from ${compactPlayerName(second.name)} applies.`);
+      await expect(viewerSettlementDisplay.locator("[data-public-card-announcement='true'] b"))
+        .toHaveAttribute("aria-label", `${first.name} failed to play Attack; 1 Duel damage from ${second.name} applies.`);
       await expect(viewer.page.locator(`[data-effect-notice-event-id="${settlementNotice.eventId}"]`)).toHaveCount(0);
     }
     await thirdPage.screenshot({ path: testInfo.outputPath("l5-lust-settlement-history-440.png") });
@@ -1017,7 +1148,15 @@ test("L5: four authenticated viewers see the complete LUST Duel reveal, history,
     console.log(`[L5 Duel] viewers=4 events=3 geometryCheckpoints=${checkpoints.length} measuredMoveMs=${JSON.stringify(measuredMoves)}`);
   } finally {
     await Promise.all([firstContext.close(), secondContext.close(), thirdContext.close(), lateContext?.close()]);
-    if (thirdVideo) await testInfo.attach("l5-lust-duel-fourth-viewer.webm", { path: await thirdVideo.path(), contentType: "video/webm" });
+    if (thirdVideo) {
+      const videoPath = await thirdVideo.path();
+      try {
+        await access(videoPath);
+        await testInfo.attach("l5-lust-duel-fourth-viewer.webm", { path: videoPath, contentType: "video/webm" });
+      } catch (error) {
+        if (error?.code !== "ENOENT") console.warn("[L5] Unable to attach the fourth-viewer recording", error);
+      }
+    }
   }
 });
 
@@ -1092,25 +1231,26 @@ test("L5: a Diao Chan payer outside seat one parks the cost at her real Seat and
   }
 });
 
-test("real Lust guidance keeps its ordered selection local and the active skill tap cancels without committing", async ({ page, request }) => {
+test("real Lust guidance fits long names at 390px and stays local before Confirm", async ({ page, request, browser }, testInfo) => {
   const cost = card("Dodge", "real-lust-toggle-cost");
   const seed = await seedSkillRoom(request, {
     hero: "diao-chan", hand: [cost],
     targets: [
-      { name: "FIRST MAN", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [] },
-      { name: "SECOND MAN", role: "Rebel", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
+      { name: "TEST PLAYER THREE WITH LONG NAME", role: "Loyalist", hero: "liu-bei", hp: 4, maxHp: 4, hand: [] },
+      { name: "TEST PLAYER FOUR WITH LONG NAME", role: "Rebel", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
     ],
   });
   const user = await openSkillUser(page, seed);
-  await page.setViewportSize({ width: 440, height: 894 });
 
   const dock = page.locator(`.local-player-dock[data-player-anchor="${user.id}"]`);
   const skill = dock.locator(".local-hero-skills").getByRole("button", { name: "Lust", exact: true });
   const guidance = dock.locator(".decision-status");
   const confirm = dock.locator('[data-action-slot="primary"] button.primary');
   const costButton = dock.locator(`[data-hand-card-id="${cost.id}"] .game-card`);
-  const firstTarget = page.getByRole("button", { name: "Select FIRST MAN", exact: true });
-  const secondTarget = page.getByRole("button", { name: "Select SECOND MAN", exact: true });
+  const firstName = "TEST PLAYER THREE WITH LONG NAME";
+  const secondName = "TEST PLAYER FOUR WITH LONG NAME";
+  const firstTarget = page.getByRole("button", { name: `Select ${firstName}`, exact: true });
+  const secondTarget = page.getByRole("button", { name: `Select ${secondName}`, exact: true });
   const actionPosts = [];
   page.on("request", (browserRequest) => {
     if (browserRequest.url() === `${API}/api/rooms` && browserRequest.method() === "POST") actionPosts.push(browserRequest.postDataJSON());
@@ -1142,9 +1282,51 @@ test("real Lust guidance keeps its ordered selection local and the active skill 
   await expect(confirm).toBeDisabled();
   await secondTarget.click();
   const order = guidance.getByTestId("lust-order-guidance");
-  await expect(order).toHaveText("Attack order: FIRST MAN plays first, then SECOND MAN plays second.");
+  await expect(order).toHaveText(`Attack order: ${firstName} first → ${secondName} second.`);
   await expect(page.locator(".console-guidance > small[role='status']")).toHaveCount(0);
   await expect(confirm).toBeEnabled();
+  const geometry = await order.evaluate((element) => {
+    const rect = (node) => {
+      const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
+      return { left, right, top, bottom, width, height };
+    };
+    const statusRect = rect(element.closest(".decision-status"));
+    const handRect = rect(document.querySelector(".local-hand-section"));
+    const bounds = rect(element);
+    const style = getComputedStyle(element);
+    const visualLineCount = Math.round(bounds.height / Number.parseFloat(style.lineHeight));
+    return {
+      bounds,
+      statusRect,
+      handRect,
+      fontSize: Number.parseFloat(style.fontSize),
+      lineHeight: Number.parseFloat(style.lineHeight),
+      lineCount: visualLineCount,
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      text: element.textContent,
+    };
+  });
+  await testInfo.attach("u13-c-long-names-390x844.png", { body: await page.screenshot(), contentType: "image/png" });
+  expect(geometry.fontSize).toBeGreaterThanOrEqual(12);
+  expect(geometry.lineHeight).toBeGreaterThanOrEqual(15.6);
+  expect(geometry.lineCount).toBeGreaterThanOrEqual(2);
+  expect(geometry.lineCount, JSON.stringify(geometry)).toBeLessThanOrEqual(3);
+  expect(geometry.bounds.left).toBeGreaterThanOrEqual(geometry.statusRect.left - 1);
+  expect(geometry.bounds.right).toBeLessThanOrEqual(geometry.statusRect.right + 1);
+  expect(geometry.bounds.bottom).toBeLessThanOrEqual(geometry.handRect.top);
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
+  const observerContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  try {
+    const observerPage = await observerContext.newPage();
+    await openSkillViewer(observerPage, seed, seed.players[3]);
+    await expect(observerPage.locator("[data-testid='lust-order-guidance']")).toHaveCount(0);
+    await expect(observerPage.locator(".decision-status")).not.toContainText("Attack order:");
+    await expect(observerPage.locator(".decision-status")).not.toContainText(firstName);
+    await expect(observerPage.locator(".decision-status")).not.toContainText(secondName);
+  } finally {
+    await observerContext.close();
+  }
 
   await skill.click();
   await expect(skill).toHaveAttribute("aria-pressed", "false");

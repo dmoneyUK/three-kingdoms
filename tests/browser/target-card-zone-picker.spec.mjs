@@ -78,19 +78,107 @@ function expectSameBox(actual, expected) {
   for (const key of ["x", "y", "width", "height"]) expect(actual[key], `${key}: ${actual[key]} vs ${expected[key]}`).toBeCloseTo(expected[key], 1);
 }
 
+function expectDockBottomStable(actual, expected) {
+  expect(actual.x).toBeCloseTo(expected.x, 1);
+  expect(actual.width).toBeCloseTo(expected.width, 1);
+  expect(actual.y + actual.height).toBeCloseTo(expected.y + expected.height, 1);
+}
+
+async function expectSelectionOverlayPassThrough(page) {
+  const layout = await page.evaluate(() => {
+    const rect = (element) => {
+      const { x, y, width, height, top, right, bottom, left } = element.getBoundingClientRect();
+      return { x, y, width, height, top, right, bottom, left };
+    };
+    const table = document.querySelector(".play-table");
+    const overlay = document.querySelector(".target-card-picker-overlay");
+    const panel = document.querySelector(".target-card-picker-panel");
+    const dock = document.querySelector(".local-player-dock");
+    if (!table || !overlay || !panel || !dock) return null;
+    const dockBox = dock.getBoundingClientRect();
+    const visibleLeft = Math.max(0, dockBox.left);
+    const visibleTop = Math.max(0, dockBox.top);
+    const visibleRight = Math.min(innerWidth, dockBox.right);
+    const visibleBottom = Math.min(innerHeight, dockBox.bottom);
+    const dockVisible = visibleRight > visibleLeft && visibleBottom > visibleTop;
+    const dockHit = dockVisible
+      ? document.elementFromPoint((visibleLeft + visibleRight) / 2, (visibleTop + visibleBottom) / 2)
+      : null;
+    const panelBox = panel.getBoundingClientRect();
+    const panelHit = document.elementFromPoint((panelBox.left + panelBox.right) / 2, (panelBox.top + panelBox.bottom) / 2);
+    const intersects = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    const coveredSeatIds = [...table.querySelectorAll(".player-board .opponent-player-card[data-player-anchor]")]
+      .filter((seat) => intersects(panelBox, seat.getBoundingClientRect()))
+      .map((seat) => seat.dataset.playerAnchor);
+    const switchHitTargets = [...table.querySelectorAll("button.test-view-switch-button")]
+      .filter((button) => {
+        const box = button.getBoundingClientRect();
+        return box.width > 0 && box.height > 0 && box.right > 0 && box.left < innerWidth && box.bottom > 0 && box.top < innerHeight;
+      })
+      .map((button) => {
+        const box = button.getBoundingClientRect();
+        const hit = document.elementFromPoint((box.left + box.right) / 2, (box.top + box.bottom) / 2);
+        return {
+          label: button.getAttribute("aria-label"),
+          hitIsSwitch: hit?.closest("button") === button,
+          hitIsPanel: Boolean(hit?.closest(".target-card-picker-panel")),
+        };
+      });
+    return {
+      table: rect(table), overlay: rect(overlay), panel: rect(panel),
+      rootPosition: getComputedStyle(overlay).position,
+      rootInsets: ["top", "right", "bottom", "left"].map((property) => getComputedStyle(overlay)[property]),
+      rootPointerEvents: getComputedStyle(overlay).pointerEvents,
+      panelPointerEvents: getComputedStyle(panel).pointerEvents,
+      ariaModal: panel.getAttribute("aria-modal"),
+      dockVisible,
+      dockHitIsDock: Boolean(dockHit?.closest(".local-player-dock")),
+      dockHitIsOverlay: Boolean(dockHit?.closest(".target-card-picker-overlay")),
+      panelHitIsPanel: Boolean(panelHit?.closest(".target-card-picker-panel")),
+      coveredSeatIds,
+      switchHitTargets,
+    };
+  });
+  expect(layout).toBeTruthy();
+  expect(layout.rootPosition).toBe("absolute");
+  expect(layout.rootInsets).toEqual(["0px", "0px", "0px", "0px"]);
+  expect(layout.rootPointerEvents).toBe("none");
+  expect(layout.panelPointerEvents).toBe("auto");
+  expect(layout.panelHitIsPanel).toBe(true);
+  expect(layout.ariaModal).toBe("false");
+  expect(layout.panel.left).toBeGreaterThanOrEqual(layout.table.left - 1);
+  expect(layout.panel.right).toBeLessThanOrEqual(layout.table.right + 1);
+  expect(layout.panel.top).toBeGreaterThanOrEqual(layout.table.top - 1);
+  expect(layout.panel.bottom).toBeLessThanOrEqual(layout.table.bottom + 1);
+  expect(layout.coveredSeatIds).toEqual([]);
+  for (const target of layout.switchHitTargets) {
+    expect(target.hitIsSwitch, `${target.label} remains reachable above the picker`).toBe(true);
+    expect(target.hitIsPanel).toBe(false);
+  }
+  if (layout.dockVisible) {
+    expect(layout.dockHitIsDock).toBe(true);
+    expect(layout.dockHitIsOverlay).toBe(false);
+  }
+  return layout;
+}
+
 async function submittedTriggerActions(page) {
   return page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger" || entry.action === "decline_trigger"));
 }
 
 for (const viewport of [
   { width: 320, height: 568, count: 4 },
+  { width: 390, height: 700, count: 4 },
   { width: 390, height: 844, count: 4 },
+  { width: 440, height: 766, count: 6 },
   { width: 480, height: 900, count: 6 },
+  { width: 480, height: 900, count: 8 },
   { width: 1440, height: 900, count: 4 },
 ]) {
-  test(`proven Dismantle uses the shared target-card modal at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+  test(`proven Dismantle uses the shared target-card modal at ${viewport.width}×${viewport.height} (${viewport.count} players)`, async ({ page }) => {
     const stage = await loadPendingTargetCard(page, viewport);
     const dialog = page.getByRole("dialog", { name: "Burning Bridge target card selection" });
+    const overlay = page.locator(".target-card-picker-overlay");
     const positions = dialog.locator('[data-target-card-zone="hand-position"]');
     const equipment = dialog.locator('[data-target-card-zone="equipment"]');
     const judgement = dialog.locator('[data-target-card-zone="judgement"]');
@@ -117,14 +205,14 @@ for (const viewport of [
     await expect(stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
     await expect(dock.getByRole("button", { name: "Confirm" })).toHaveCount(0);
     await expect(dock.getByRole("button", { name: "Cancel" })).toHaveCount(0);
-    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
     const targetProjection = await page.evaluate(() => window.__browserRoom.players.find((player) => player.id === "p2"));
     expect(targetProjection.handCount).toBe(4);
     expect(targetProjection.handCards ?? []).toEqual([]);
     expect(await dialog.locator("button").allTextContents()).not.toContain("browser-target-equipment");
 
-    const [stageBox, dockBox, dialogBox, handBox, cardBoxes, after] = await Promise.all([
-      stage.boundingBox(), page.locator(".local-player-dock").boundingBox(), dialog.boundingBox(), positions.first().boundingBox(),
+    const [stageBox, dockBox, overlayBox, dialogBox, handBox, cardBoxes, after] = await Promise.all([
+      stage.boundingBox(), page.locator(".local-player-dock").boundingBox(), overlay.boundingBox(), dialog.boundingBox(), positions.first().boundingBox(),
       dialog.locator(".target-card-picker-card").evaluateAll((elements) => elements.map((element) => {
         const { width, height } = element.getBoundingClientRect();
         return { width, height };
@@ -137,7 +225,8 @@ for (const viewport of [
         return { stage: box(".play-table"), dock: box(".local-player-dock"), overflow: document.documentElement.scrollWidth > window.innerWidth };
       }),
     ]);
-    expect(stageBox && dockBox && dialogBox && handBox).toBeTruthy();
+    expect(stageBox && dockBox && overlayBox && dialogBox && handBox).toBeTruthy();
+    expectSameBox(overlayBox, stageBox);
     expect(stageBox.y + stageBox.height).toBeLessThanOrEqual(dockBox.y + 1);
     expect(dialogBox.x).toBeGreaterThanOrEqual(0);
     expect(dialogBox.x + dialogBox.width).toBeLessThanOrEqual(viewport.width);
@@ -148,12 +237,44 @@ for (const viewport of [
     expect(cardBoxes.length).toBeGreaterThan(0);
     expect(cardBoxes.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
     expect(after.overflow).toBe(false);
+    const hitMap = await expectSelectionOverlayPassThrough(page);
+    if (viewport.count >= 6) expect(hitMap.panel.width).toBeLessThan(hitMap.table.width * 0.7);
     expectSameBox(after.stage, before.stage);
     expectSameBox(after.dock, before.dock);
   });
 }
 
-test("Dismantle modal Cancel clears local selection and submits the existing anonymous Hand index", async ({ page }) => {
+test("target-card selection stays selected while Hero Inspect and private Card Details are used", async ({ page }) => {
+  await loadPendingTargetCard(page, { width: 440, height: 766, count: 6 });
+  const dialog = page.getByRole("dialog", { name: "Burning Bridge target card selection" });
+  const selected = dialog.getByRole("button", { name: "Hidden hand card 2" });
+  await selected.click();
+  await expect(selected).toHaveAttribute("aria-pressed", "true");
+
+  const inspectionOpener = page.locator('[data-player-anchor="p2"] .opponent-hero-target');
+  await inspectionOpener.click();
+  const inspection = page.locator('.opponent-inspection-panel[data-inspect-player-id="p2"]');
+  await expect(inspection).toBeVisible();
+  await expect(selected).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => page.locator(".interaction-safe-zone").evaluate((element) => getComputedStyle(element).zIndex)).toBe("41");
+  await inspectionOpener.click();
+  await expect(inspection).toHaveCount(0);
+
+  await page.getByTestId("hand-card-inspection-action").first().click();
+  const cardDetailsAction = page.getByTestId("hand-card-details-action").first();
+  await expect(cardDetailsAction).toBeVisible();
+  await cardDetailsAction.click();
+  const cardDetails = page.locator('.card-details-panel[data-card-details-context="private-hand"]');
+  await expect(cardDetails).toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(selected).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Close card details" }).click();
+  await expect(cardDetails).toHaveCount(0);
+  await expect(selected).toHaveAttribute("aria-pressed", "true");
+  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+});
+
+test("Dismantle re-tap clears local selection without Cancel and submits the existing anonymous Hand index", async ({ page }) => {
   await loadPendingTargetCard(page, { width: 390 });
   const dialog = page.getByRole("dialog", { name: "Burning Bridge target card selection" });
   const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 2" });
@@ -164,9 +285,10 @@ test("Dismantle modal Cancel clears local selection and submits the existing ano
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
   await expect(confirm).toBeEnabled();
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await hiddenPosition.click();
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "false");
   await expect(confirm).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
   await expect(dock.getByRole("button", { name: "Cancel" })).toHaveCount(0);
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 
@@ -260,7 +382,6 @@ test(`Retaliation target-card modal and concealed Hand remain readable at ${view
     await expect(dialog.locator("header span")).toHaveText("Choose where to obtain 1 card");
     await expect(handZone).toHaveCount(1);
     await expect(handZone).toHaveAccessibleName("Hand ×4 · Random card");
-    await expect(handZone).toContainText("Hand ×4");
     await expect(handZone).toContainText("Random card");
     await expect(handZone.locator(".target-card-picker-hand-back")).toHaveCount(4);
     await expect(handZone).toHaveAttribute("aria-pressed", "false");
@@ -296,7 +417,7 @@ test("large concealed Hands keep the exact public count without expanding into m
   const handZone = dialog.locator('[data-target-card-zone="hand"]');
 
   await expect(handZone).toHaveAccessibleName("Hand ×10 · Random card");
-  await expect(handZone).toContainText("Hand ×10");
+  await expect(handZone).toContainText("Random card");
   await expect(handZone.locator(".target-card-picker-hand-back")).toHaveCount(6);
   await expect(handZone.locator(".target-card-picker-hand-overflow")).toHaveText("+4");
   await expect(dialog.locator('[data-target-card-zone="hand"]')).toHaveCount(1);
@@ -318,14 +439,14 @@ test("Retaliation modal submits the concealed Hand's existing semantic key exact
   ]);
 });
 
-test("Retaliation modal Cancel clears only local selection while Skip remains authoritative", async ({ page }) => {
+test("Retaliation selection clears locally while Skip remains authoritative", async ({ page }) => {
   const dialog = await loadPicker(page, { width: 390 });
   const handZone = dialog.locator('[data-target-card-zone="hand"]');
 
-  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Skip" })).toBeVisible();
   await handZone.click();
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(handZone).toHaveAttribute("aria-pressed", "true");
+  await handZone.click();
   await expect(handZone).toHaveAttribute("aria-pressed", "false");
   expect(await page.evaluate(() => window.__browserActions.filter((entry) => ["trigger", "decline_trigger"].includes(entry.action)))).toEqual([]);
 
@@ -469,14 +590,13 @@ for (const viewport of [
   { width: 1440, height: 900 },
 ]) {
   test(`proven Kirin Bow uses an Equipment-only shared modal at ${viewport.width}×${viewport.height}`, async ({ page }) => {
-    const { stage, dialog } = await loadKirinBowModal(page, viewport);
-    const overlay = page.locator(".target-card-picker-overlay");
+    const { dialog } = await loadKirinBowModal(page, viewport);
     const mounts = dialog.locator('[data-target-card-zone="equipment"]');
-    const stageBefore = await stage.boundingBox();
     const dock = page.locator(".local-player-dock");
     const dockBefore = await dock.boundingBox();
-    const [overlayBox, panelBox, mountBoxes, actionHeights] = await Promise.all([
-      overlay.boundingBox(), dialog.boundingBox(),
+    const overlayLayout = await expectSelectionOverlayPassThrough(page);
+    const [panelBox, mountBoxes, actionHeights] = await Promise.all([
+      dialog.boundingBox(),
       mounts.evaluateAll((elements) => elements.map((element) => {
         const { x, y, width, height } = element.getBoundingClientRect();
         return { x, y, width, height };
@@ -498,26 +618,13 @@ for (const viewport of [
     await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Use Kirin Bow" })).toBeDisabled();
     await expect(dialog.locator(".target-card-picker-count")).toHaveText("0 / 1 selected");
-    const dockHitIsBlocked = await page.evaluate(() => {
-      const dock = document.querySelector(".local-player-dock");
-      if (!dock) return false;
-      const box = dock.getBoundingClientRect();
-      const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-      return Boolean(hit?.closest(".target-card-picker-overlay"));
-    });
-    expect(dockHitIsBlocked).toBe(true);
-
     const targetProjection = await page.evaluate(() => window.__browserRoom.players.find((player) => player.id === "p1"));
     expect(targetProjection.equipmentCards.map((card) => card.id)).toEqual([
       "browser-kirin-bow-offensive-mount",
       "browser-kirin-bow-defensive-mount",
       "browser-kirin-bow-ineligible-armour",
     ]);
-    expect(stageBefore && dockBefore && overlayBox && panelBox).toBeTruthy();
-    expect(overlayBox.x).toBeCloseTo(0, 1);
-    expect(overlayBox.y).toBeCloseTo(0, 1);
-    expect(overlayBox.width).toBeCloseTo(viewport.width, 1);
-    expect(overlayBox.height).toBeCloseTo(viewport.height, 1);
+    expect(overlayLayout && dockBefore && panelBox).toBeTruthy();
     expect(panelBox.x).toBeGreaterThanOrEqual(0);
     expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(viewport.width);
     expect(panelBox.y).toBeGreaterThanOrEqual(0);
@@ -535,9 +642,9 @@ for (const viewport of [
     await expect(dialog.locator(".target-card-picker-count")).toHaveText("1 / 1 selected");
     await expect(dialog.getByRole("button", { name: "Use Kirin Bow" })).toBeEnabled();
     await expect(mounts.nth(0)).toBeDisabled();
-    const [stageAfter, dockAfter] = await Promise.all([stage.boundingBox(), dock.boundingBox()]);
-    expectSameBox(stageAfter, stageBefore);
-    expectSameBox(dockAfter, dockBefore);
+    await expectSelectionOverlayPassThrough(page);
+    const dockAfter = await dock.boundingBox();
+    expectDockBottomStable(dockAfter, dockBefore);
     const overflow = await page.evaluate(() => ({ viewport: window.innerWidth, document: document.documentElement.scrollWidth }));
     expect(overflow.document).toBeLessThanOrEqual(overflow.viewport);
   });
@@ -610,12 +717,11 @@ for (const viewport of [
   { width: 1440, height: 900 },
 ]) {
   test(`proven Frost Sword selection uses the unified modal at ${viewport.width}×${viewport.height}`, async ({ page }) => {
-    const { stage, dialog } = await loadFrostSwordModal(page, viewport);
-    const overlay = page.locator(".target-card-picker-overlay");
+    const { dialog } = await loadFrostSwordModal(page, viewport);
     const positions = dialog.locator('[data-target-card-zone="hand-position"]');
     const equipment = dialog.locator('[data-target-card-zone="equipment"]');
     const dock = page.locator(".local-player-dock");
-    const [stageBefore, dockBefore] = await Promise.all([stage.boundingBox(), dock.boundingBox()]);
+    const [overlayLayout, dockBefore] = await Promise.all([expectSelectionOverlayPassThrough(page), dock.boundingBox()]);
 
     await expect(dialog.locator("header strong")).toHaveText("FROST SWORD");
     await expect(dialog.locator("header span")).toHaveText("Choose 2 cards to discard");
@@ -634,15 +740,11 @@ for (const viewport of [
     expect(targetProjection.handCount).toBe(4);
     expect(targetProjection.handCards ?? []).toEqual([]);
 
-    const [overlayBox, panelBox, positionBox, equipmentBox, actionBoxes] = await Promise.all([
-      overlay.boundingBox(), dialog.boundingBox(), positions.first().boundingBox(), equipment.boundingBox(),
+    const [panelBox, positionBox, equipmentBox, actionBoxes] = await Promise.all([
+      dialog.boundingBox(), positions.first().boundingBox(), equipment.boundingBox(),
       dialog.locator(".target-card-picker-actions button").evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height)),
     ]);
-    expect(stageBefore && dockBefore && overlayBox && panelBox && positionBox && equipmentBox).toBeTruthy();
-    expect(overlayBox.x).toBeCloseTo(0, 1);
-    expect(overlayBox.y).toBeCloseTo(0, 1);
-    expect(overlayBox.width).toBeCloseTo(viewport.width, 1);
-    expect(overlayBox.height).toBeCloseTo(viewport.height, 1);
+    expect(overlayLayout && dockBefore && panelBox && positionBox && equipmentBox).toBeTruthy();
     expect(panelBox.x).toBeGreaterThanOrEqual(0);
     expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(viewport.width);
     expect(panelBox.y).toBeGreaterThanOrEqual(0);
@@ -655,9 +757,9 @@ for (const viewport of [
     expect(equipmentBox.height).toBeGreaterThanOrEqual(44);
 
     await positions.first().click();
-    const [stageAfter, dockAfter] = await Promise.all([stage.boundingBox(), dock.boundingBox()]);
-    expectSameBox(stageAfter, stageBefore);
-    expectSameBox(dockAfter, dockBefore);
+    await expectSelectionOverlayPassThrough(page);
+    const dockAfter = await dock.boundingBox();
+    expectDockBottomStable(dockAfter, dockBefore);
     const overflow = await page.evaluate(() => ({ viewport: window.innerWidth, document: document.documentElement.scrollWidth }));
     expect(overflow.document).toBeLessThanOrEqual(overflow.viewport);
   });
@@ -739,16 +841,17 @@ for (const viewport of [
     await expect(eligible).toBeEnabled();
     await expect(ineligible).toBeDisabled();
     await expect(confirm).toBeDisabled();
-    const cancel = actionRow.getByRole("button", { name: "Cancel" });
+    const clearSelection = actionRow.getByRole("button", { name: "Clear selection" });
     const skip = actionRow.getByRole("button", { name: "Skip" });
-    await expect(cancel).toBeVisible();
+    await expect(actionRow.getByRole("button", { name: "Cancel" })).toHaveCount(0);
     await expect(skip).toBeVisible();
     expect(await page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([]);
 
     await eligible.click();
     await expect(eligible).toHaveAttribute("aria-pressed", "true");
     await expect(confirm).toBeEnabled();
-    await cancel.click();
+    await expect(clearSelection).toBeVisible();
+    await clearSelection.click();
     await expect(eligible).toHaveAttribute("aria-pressed", "false");
     await expect(confirm).toBeDisabled();
     expect(await page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([]);
@@ -816,7 +919,7 @@ test("picker fixture changes preserve baseline public Equipment for Inspect", as
   await expect(seat.locator('.opponent-equipment-summary [data-slot="weapon"][data-card-kind="ZhugeCrossbow"]')).toHaveCount(1);
   await seat.locator(".opponent-hero-target").click();
 
-  const inspection = page.getByRole("dialog", { name: "Player 2 opponent inspection" });
+  const inspection = page.getByRole("region", { name: "Player 2 opponent inspection" });
   await expect(inspection.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]')).toHaveCount(1);
 });
 
@@ -825,7 +928,7 @@ for (const viewport of [
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
-  test(`proven Sima Yi Retaliation opens a full-screen target-card modal at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+  test(`proven Sima Yi Retaliation opens a bounded nonmodal target-card panel at ${viewport.width}×${viewport.height}`, async ({ page }) => {
     const { dialog, before } = await openRetaliationModal(page, { ...viewport, targetCardCase: "positioned-hand" });
     const overlay = page.locator(".target-card-picker-overlay");
     const handPositions = dialog.locator('[data-target-card-zone="hand-position"]');
@@ -841,7 +944,7 @@ for (const viewport of [
     await expect(dialog.locator(".target-card-picker-zone-judgement")).toHaveCount(0);
     await expect(equipment).toHaveAccessibleName("Equipment: Nio Shield");
     await expect(dialog.getByRole("button", { name: "Use Retaliation" })).toBeDisabled();
-    await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "Skip", exact: true })).toBeVisible();
     await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
     await expect(page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
@@ -857,17 +960,14 @@ for (const viewport of [
     expect(panelBox).toBeTruthy();
     expect(stageBox).toBeTruthy();
     expect(dockBox).toBeTruthy();
-    expect(overlayBox.x).toBeCloseTo(0, 1);
-    expect(overlayBox.y).toBeCloseTo(0, 1);
-    expect(overlayBox.width).toBeCloseTo(viewport.width, 1);
-    expect(overlayBox.height).toBeCloseTo(viewport.height, 1);
+    expectSameBox(overlayBox, stageBox);
     expect(panelBox.x).toBeGreaterThanOrEqual(0);
     expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(viewport.width);
     expect(panelBox.y).toBeGreaterThanOrEqual(0);
     expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(viewport.height);
     expectSameBox(stageBox, before.stage);
     expectSameBox(dockBox, before.dock);
-    expect(controls.length).toBe(3);
+    expect(controls.length).toBe(2);
     for (const control of controls) expect(control.height).toBeGreaterThanOrEqual(44);
     for (const selectable of [...await handPositions.all(), equipment]) {
       const box = await selectable.boundingBox();
@@ -878,11 +978,17 @@ for (const viewport of [
     const skill = page.getByRole("button", { name: "Retaliation", exact: true });
     const skillBox = await skill.boundingBox();
     expect(skillBox).toBeTruthy();
-    const hit = await page.evaluate(({ x, y }) => Boolean(document.elementFromPoint(x, y)?.closest(".target-card-picker-overlay")), {
+    const hit = await page.evaluate(({ x, y }) => {
+      const target = document.elementFromPoint(x, y);
+      return {
+        overlay: Boolean(target?.closest(".target-card-picker-overlay")),
+        dock: Boolean(target?.closest(".local-player-dock")),
+      };
+    }, {
       x: skillBox.x + skillBox.width / 2,
       y: skillBox.y + skillBox.height / 2,
     });
-    expect(hit).toBe(true);
+    expect(hit).toEqual({ overlay: false, dock: true });
     const overflow = await page.evaluate(() => ({ width: window.innerWidth, document: document.documentElement.scrollWidth }));
     expect(overflow.document).toBeLessThanOrEqual(overflow.width);
     const target = await page.evaluate(() => window.__browserRoom.players.find((player) => player.id === "p2"));
@@ -960,17 +1066,15 @@ test("shared modal keeps a public Judgment card face and its authoritative key w
   ]);
 });
 
-test("Retaliation modal Cancel is local while Skip remains an authoritative trigger decline", async ({ page }) => {
-  let { dialog } = await openRetaliationModal(page, { width: 390, targetCardCase: "positioned-hand" });
-  const skill = page.getByRole("button", { name: "Retaliation", exact: true });
-  await dialog.getByRole("button", { name: "Hidden hand card 1" }).click();
-  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
+test("Retaliation selection can be cleared without submitting and Skip declines the trigger", async ({ page }) => {
+  const { dialog } = await openRetaliationModal(page, { width: 390, targetCardCase: "positioned-hand" });
+  const position = dialog.getByRole("button", { name: "Hidden hand card 1" });
+  await position.click();
+  await expect(position).toHaveAttribute("aria-pressed", "true");
+  await position.click();
+  await expect(position).toHaveAttribute("aria-pressed", "false");
   expect(await submittedTriggerActions(page)).toEqual([]);
 
-  await skill.click();
-  dialog = page.getByRole("dialog", { name: "Retaliation target card selection" });
-  await expect(dialog).toBeVisible();
   await expect(page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Skip", exact: true })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Skip", exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "decline_trigger").map((entry) => entry.action))).toEqual(["decline_trigger"]);

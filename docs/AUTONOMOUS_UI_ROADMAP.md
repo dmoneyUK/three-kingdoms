@@ -2400,6 +2400,77 @@ Only a proven regression or new Reviewer-approved design requirement does.
   server projection plus production-page interaction, not deployed-game
   screenshot or Reviewer acceptance.
 
+### UX2 §10.17.1 BCP-1 — Bumper Harvest choice panel — 2026-10-18
+
+- Separated the public revealed-card pool from the played Harvest root,
+  compacted the pool, and added independent card details and actor-only
+  confirmation. Selection remains viewer/action scoped and retaps deselect;
+  server `choose_harvest` authorization and public taken status are unchanged.
+- Commits `8b7fd9a` and `50e9bb6`. Focused real-gameplay browser checks passed
+  6/6, including selection touch pass-through to TEST SWITCH; build passed.
+  Exact-SHA Actions run
+  [`39114579762`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39114579762)
+  passed API, lint/fast, browser smoke, D1 migration, Worker deployment and
+  production smoke for `50e9bb6f8c67574214436e3ca49a7547faca1b64`. Pending user
+  phone review; Reviewer acceptance is not claimed.
+
+### UX2 §10.17.1.2 BCP-1-F2 — Harvest pool during Negation — 2026-10-18
+
+- Negation now carries a separate public, read-only Harvest pool only when the
+  exact typed Bumper Harvest root and public reveal event match the server
+  continuation and `PresentationV2` proof. The branch must prove `ACTIVE` or
+  `BLOCKED` consistently; card identities and available/taken partitions must
+  match. The DTO has no chooser actor or legal-action data. The UI preserves
+  the same reveal/card keys when the authoritative chooser gains selection.
+- Build passed; focused Worker/D1 API tests 44/44, room-safety tests 11/11 and
+  mobile browser tests 2/2 passed. Browser checks cover four TEST SWITCH seats,
+  independent viewer equality, read-only touch with no `choose_harvest` POST,
+  Info/Inspector access, and promotion at 390×700 and 440×766. Exact-SHA
+  Actions run [`39131345860`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39131345860)
+  passed browser smoke, lint/fast, API, D1 migration, Worker deploy and
+  production smoke for `6836aa2905a3dc71f7d8dfde8619ae190f6f4e14`. Worker
+  version `705b26bf-2802-46d6-9869-e6aceaac282c`; production health returned
+  available and the served page bundle contained the exact build SHA. Pending
+  user phone review; Reviewer acceptance is not claimed.
+
+### UX2 §10.17.2 BCP-2 — Steal / Burning Bridge picker — 2026-10-18
+
+- Compact mandatory target-card choices inside the table corridor, with
+  independent public-card details, same-card retap deselection and pinned
+  Confirm. Actor legality remains `CurrentAction`-owned; no standalone Cancel
+  or hidden Hand identity was added.
+- Real-gameplay browser regression passed 21/21 at 390×700, 390×844, 440×766,
+  480×900 and 1440×900, including Hand-only, Equipment-only, mixed zones,
+  Inspector, SWITCH, privacy and legal submission. `test:fast` passed 280/280.
+  Exact-SHA Actions run
+  [`39116626824`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39116626824)
+  passed lint/fast, API, browser smoke, D1 migration, Worker deployment and
+  production smoke for `641bf4079c8a991c2c54a2a9f6d00fdf45875107` (API passed
+  on the same-SHA rerun). Worker version:
+  `ec194d74-7faf-4689-975a-20b092565cd6`. Pending user phone review; Reviewer
+  acceptance is not claimed.
+
+### UX2 §10.17.3 BCP-3 — Retaliation picker — 2026-10-18
+
+- Sima Yi Retaliation reuses the compact battlefield picker, removes its
+  redundant Cancel, and keeps authoritative Use/Skip actions side by side.
+  Re-tapping an opaque Hand position clears that local selection. Server
+  authorization, hidden-card projection and game semantics remain unchanged;
+  Frost Sword and Kirin Bow retain their existing authorization-driven
+  actions.
+- Focused real Worker/D1 browser regression passed 22/22, including 390×700 and
+  440×766 touch, actor/nonactor privacy, Inspector and Card Details without an
+  action, one submission, and distinct Skip. The two viewport screenshots were
+  captured and visually reviewed. Active-skill tests passed 45/45; build,
+  browser-test ESLint, CI lint/fast, API tests, and browser smoke passed.
+  Exact-SHA Actions run
+  [`39117542770`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39117542770)
+  passed D1 migration, Worker deploy and production smoke for
+  `f0df9b63fe417f6b2bcc3b743616f9527bdcc2d7`. Worker version:
+  `736e1301-bc09-4346-b4ac-962a098dfc09`; production `/api/health` returned
+  `{"ok":true,"worker":"available"}`. Pending user phone review; Reviewer
+  acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
@@ -2639,3 +2710,259 @@ Profile command measurements:
   recorded base SHA. React lint checks were not disabled; targeted diagnostics
   did not establish a safe rule-level fix. No root cause for the reported
   general 3–4 GB symptom is claimed.
+
+### UX2-10.7.4.2-R4-G-OFFTURN-OWN-HAND-INSPECTION-01
+
+- Added a private inspect-only focus for cards in the viewer's own Hand while
+  no matching card-choice authority exists. The native game-card button stays
+  disabled and unselected; a separate full-face hit target opens the accepted
+  Card Details path without action submissions. Viewer/room changes, Hand card
+  loss and newly authorized actions clear inspection; unchanged polling keeps
+  it open. Genuine off-turn Dodge remains selectable through its normal
+  server-projected action.
+- Authenticated Worker/D1 two-player browser proof passed with private Hand
+  isolation, no game-choice request from inspection, then a real Attack→Dodge
+  response. Browser coverage passed 15/15 across 390×844, 390×700, 440×894,
+  480×900 and 3/5/8-card Hands, including CDP touch-pan on an overlapping Hand;
+  R4-F passed 17/17 and focused room render tests 20/20. Build and
+  `git diff --check` passed. Local Node 26 ESLint on `app/page.tsx` exhausted a
+  4 GiB heap without diagnostics; exact-SHA Actions run `39052060979` passed
+  full React Compiler lint, browser smoke, API tests, migrations, deploy and
+  production smoke for `9ba6c798d896b8a1fbf0721254eec87e3de11bb1`. Worker
+  version `d4ad1709-f20c-43c8-ae80-9f29c6aca47d`. R4-G remains pending user
+  phone review; Q3/Q4 remain deferred and accepted H4 is unchanged.
+
+### 2026-10-17 refinement delivery context
+
+- Q1 production diagnostics found public-root/settlement join gaps and a Group
+  child-view crash caused by reading display-shaped fields from ID-shaped
+  `rootOrigin` proof. Q2 repair `d2bd2d692153e9f054ef56a867e080124bf286fc`
+  preserved the proven root, valid resolved participants, and public root
+  through matching settlement proof; exact-SHA Actions run `39043497415`
+  passed and deployed Worker version `5ef4a4fe-cd33-4a0c-93a3-cf9ef19d0a64`.
+  Production Barbarian Invasion and Raining Arrows replays covered Negation,
+  responses, damage/trigger, settlement, and four switched viewer seats. They
+  used one browser controller, not four independent clients.
+- R4-H `14cc15ba472ddef4de3c7d83e526860752666c42` passed exact-SHA Actions
+  run `39045299780`, deployed Worker `ddd137c3-8317-4c66-aa79-0d8ec6d3c3bb`,
+  and remains pending user review. U13-B-G passed focused local geometry and
+  browser checks with the Worker/D1 fixture; it remains pending phone review.
+- R4-I `85faaf793bdf1e494abbe2a7d9120f74968a6361` passed Actions run
+  `39048830786` and deployed Worker `ebafe8d4-0644-4cbc-a1ef-c9c3a8e1b98c`;
+  it remains pending phone review. U13-C has focused 390×844 long-name evidence
+  with no horizontal/Hand overlap and remains pending phone review.
+- U13-H §10.13.8 is implemented locally with focused geometry and gameplay
+  evidence but has no exact-SHA CI/deployment yet. Its technical delivery and
+  user review remain open. Q3 and Q4 are deferred by the user's reprioritization;
+  accepted H4-A/B/C stays unchanged, and Q4 remains verification-first.
+
+### UX2-10.13.5.1-U13-E-F-NAMES-TIGHT-FRAME-01 — 2026-10-17
+
+- Source commits `206981568a1569d540624cee11f3488b581ca521` and
+  `346b5f0df50f8cbbd44b13dd787e4c3c50ea6188` deliver authentic player names in
+  the LUST Duel presentation and a compact 168×190 frame around the full
+  90×135 paid card. The frame hides during the 380ms card move so the accepted
+  H4 region stays clear.
+- Exact-SHA Actions run [`39057243087`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39057243087)
+  passed lint/fast, API, browser startup smoke, build, D1 migration, Worker
+  deployment and production smoke. Worker version:
+  `e643dff4-d028-416a-8177-e6ee6c673f8e`.
+- Production Worker/D1 replay used four Test Switch viewer perspectives at
+  390×700, 390×844, 440×894 and 480×900. It exercised the real LUST root,
+  ordered Attack responses 1 and 2, Skip and damage settlement. Public
+  accessible participant names and proof order matched across views; the
+  projected exchange was equal after excluding the viewer-local countdown.
+  The technical delivery remains pending user phone review. H4 was not changed.
+
+### UX2-10.8.2.2-H2-G1-NAME-F — 2026-10-17 (technical delivery)
+
+- Current production baseline showed a 28.8125px name scrim at 390×700 and
+  440×894, although its font line-height was 10px. A more-specific final CSS
+  override clears the legacy mobile `top: 60%` constraint and lets the lower
+  scrim shrink-wrap one line. No JSX, server, selection or Inspector code
+  changed.
+- Focused browser regression failed against the old rendered geometry, then
+  passed 5/5 after the fix: 4-seat Worker/D1 rooms at 390×700 and 440×894 plus
+  6/8/10-seat side-column fixtures at 440×894. Final name heights were 13px
+  for four seats and 16.5px for side seats. Long Latin/Chinese names remained
+  available through matching `aria-label`/`title`, while visible text ellipsized.
+  HP, status, SWITCH and stage/H4 safe-zone clearance assertions passed.
+- Local build and targeted ESLint passed. Exact-SHA run `39059323732` passed
+  all CI/deploy jobs for `8d63b56efac5255c4f2bb7108639dc8ee696275e` and
+  production smoke; deployed Worker `1d83b4ad-8002-4494-9b4c-1144c3547189`.
+  Active-room production Test Switch screenshots/measurements at 390×700 and
+  440×894 confirmed 13px after-fix height versus the 28.8125px baseline, with
+  full accessible names intact. Evidence: `/tmp/wtk-h2g1-name-f-production/`.
+  H2-G1 overall remains not accepted due to separate Inspect feedback; this
+  slice is pending user phone review. Q1–Q4 are deferred and accepted H4 remains
+  unchanged.
+
+### UX2-10.13.4.1-U13-D-F-OPPONENT-HP-GEAR-01 — 2026-10-17
+
+- Commit `711756035ef83041ec26dec201b39501c0f5c59b` moved genuine occupied
+  Equipment indicators to the right, retained HP at the left, enlarged the
+  four-seat HP label and replaced the arrow-like Weapon mark with a sword.
+  It changed no game rules, server data or local Equipment display.
+- Exact-SHA Actions run
+  [`39060346664`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39060346664)
+  passed lint/fast, API, browser smoke, build, D1 migrations, Worker deploy and
+  production smoke. Deployed Worker version:
+  `11e4951b-1f14-42ed-b0ea-b7b73d718261`.
+- Production Worker/D1 replay equipped one, two and four real cards. Four
+  occupied slots stayed non-overlapping and right-aligned at 390×700, 390×844,
+  440×894 and 480×900; evidence is in `/tmp/wtk-u13-d-f-production/`. Pending
+  user phone review.
+
+### UX2-10.13.6-U13-F safe-style gate — 2026-10-17 (NO CHANGE)
+
+- A local pre-change Attack→Dodge browser run sampled the H4 band at 390×844
+  and 440×894. At 390×844 the existing announcement falls back and intersects
+  the revealed Dodge by 11px; at 440×894 it clears the card. The proposed
+  6px vertical padding would enlarge the narrow band. Because U13-F is styling
+  only and forbids H4 positioning changes, no U13-F CSS was applied. This
+  local Chromium measurement does not revise the user's H4 phone acceptance.
+  Screenshots and frame geometry are in `/tmp/wtk-u13-f-before/`.
+
+### UX2-10.13.8-U13-H CI/deployment closure — 2026-10-17
+
+- Existing equal-size Diao Chan skill controls were implemented in
+  `4ceadd7a6aa883d6953107c60f88479a7b83bf87`; the commit is an ancestor of
+  `711756035ef83041ec26dec201b39501c0f5c59b`. The latter's exact-SHA Actions
+  run `39060346664` passed and deployed the bundled source. Focused geometry and
+  gameplay evidence remains recorded in `docs/UX2-refine.md` §10.13.8.
+- No U13-H reimplementation or separate production interaction proof was
+  performed. It remains pending user phone review.
+
+### UX2-10.13.7-U13-G-COMPACT-OPPONENT-INSPECTOR-ZONES-01 — 2026-10-17
+
+- Commit `325cf7f67a1cc8960bba96bb825ec9007052fec8` renders the public
+  Judgement and Equipment zones as one responsive 2+4 row. Four Equipment
+  cells map to real equipment slots, empty cells remain outlined, and extra
+  public Judgement cards open through an accessible overflow disclosure.
+  Floating Inspector placement measures top-seat, Local Dock/Hand, table and
+  `visualViewport` geometry; no gameplay or server projection changed.
+- Focused browser coverage passed 42/42, including 390×700, 390×844, 440×894
+  and 480×900, 4/6/8/10 seats, public-zone counts, Inspector details and
+  non-overlap/no-horizontal-overflow checks. `git diff --check` passed.
+- Exact-SHA Actions run
+  [`39062564475`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39062564475)
+  passed lint/fast, API, browser startup smoke, D1 migrations, Worker deploy and
+  production smoke. Worker version `58f7e094-af7d-4b27-a19f-57ab0518f921`.
+  Production smoke verified `/` and `/api/health`; no separate live-room
+  interaction replay was claimed. Local ESLint on the changed TSX exceeded
+  available Node heap limits; exact-SHA Actions lint passed. The delivery is
+  pending user phone review.
+
+### UX2-10.13.2.1-U13-B-F public-wait privacy audit — 2026-10-17 (BLOCKED)
+
+- `game/capabilities/heroes/yue-jin-dauntless.ts` offers Dauntless only when
+  the private source Hand contains at least one Basic card. The turn-end event
+  opens `TriggerPending` only when `getTriggeredEffects` returns an option.
+  During that opportunity, the public log/timeline also contains “may use
+  Dauntless”. `derivePublicActivityStatus` otherwise falls back to `Resolving…`
+  because the public `PresentationSnapshot` has no matching decision actor or
+  stage for this trigger.
+- A focused isolated Worker/D1 reproduction compared four authenticated tokens
+  in the no-Basic and one-Basic states. No Basic advanced to the next turn and
+  returned public activity `Alice's turn`; one Basic entered `response` and
+  returned `Resolving…`. All four views had the same public log/timeline and
+  snapshot in each state; only Yue Jin's local `CurrentAction` contained the
+  Dauntless option. The turn-end opportunity and “may use” notice therefore
+  track hidden Basic-card availability, making a named public waiter or public
+  skill label unsafe under the approved privacy contract.
+- The one-off audit ran through the local Worker/D1 harness (1/1 focused
+  scenario); no production four-client replay or code change was made. The
+  design's §10.13.2.1 stop boundary requires a user decision on the
+  server-authoritative privacy contract before proceeding. Current handoff is
+  blocked on that decision; Q3/Q4 remain paused and accepted H4 is unchanged.
+
+### UX2-10.15-Q4-CROSS-CLIENT-H4-01 — cross-client public narration consistency — 2026-10-17
+
+- Reproduced the three recorded Q3 Attack/Dodge geometry failures against a
+  local Worker/D1 build of exact Q3 source `74f63fde` (4-seat 390×700 and 6/8
+  seat side-column); current Q4 source passed the same three cases 3/3. This
+  baseline reproduction used the Q3 source locally, not the deployed Q3 Worker.
+- Barbarian Invasion and Raining Arrows each passed four independently
+  authenticated local Worker/D1 clients through Negation, three target
+  responses, damage/trigger and settlement (2/2). A separate TEST SWITCH
+  browser completed 1→2→3→4→1 with stable root/event/copy and no reveal replay
+  (1/1). Across clients, current proven H4 event/copy remained single,
+  stage-current and safely placed; the accepted wording/type and U13-B chip
+  were preserved. CI did not run these focused gameplay cases, and no live-room
+  replay was performed after deployment.
+- Exact-SHA Actions run
+  [`39074505216`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39074505216)
+  passed lint/fast, API, browser startup/room smoke, D1 migrations, build,
+  Worker deployment and production `/` + `/api/health` smoke for
+  `1c8ec9c1f3a0a23b40c9417fb34c68ce33f9dc43`. Deployed Worker version:
+  `a941302b-bd58-4abe-bdcc-7e2c60067596`. Local build and `git diff --check`
+  passed; local Node ESLint hit heap OOM, while CI lint passed after deleting
+  one unused test capture. Q3 and Q4 remain pending human phone review; no
+  reviewer acceptance is claimed.
+
+### UX2-10.13.6-U13-F — public announcement ornament — 2026-10-17
+
+- Styled the existing shared PublicCardAnnouncement frame with a thin warm-gold
+  keyline, subdued black-green tint and 6px effective inner spacing. H3/H4 copy,
+  accepted typography, placement and animation/collision logic remain intact.
+- Focused real Worker/D1 browser checks passed: Attack→Dodge across 390×700,
+  390×844, 440×894 and 480×900 (1/1), and Group/Negation through four
+  authenticated viewers at those sizes (1/1). Assertions cover measured
+  spacing, H4 drift/movement, readability, protected-area collisions and
+  reduced motion. `npm run build` and `git diff --check` passed. Targeted local
+  ESLint hit the Node heap limit.
+- Commit `2d6c2bbb8a0770d13c3c9f0cadfbfcefecfcc44` passed exact-SHA Actions run
+  [`39076355080`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39076355080):
+  lint/fast, API, browser startup/room smoke, D1 migrations, build, Worker
+  deploy and production `/` + `/api/health` smoke. Worker version
+  `8bc9f9d4-699c-471b-bbf4-b02fd2fbedd5`. The CI browser job was startup/room
+  smoke, not the focused gameplay specs. Pending user phone review; the earlier
+  U13-F no-change measurement remains a pre-implementation baseline.
+
+### UX2 §10.17.4 HUD-4 — four fixed public Equipment slots — 2026-10-18
+
+- Commit `5a8505efa0d29e4eeea34e41baa5267956419efb` reserves fixed opponent
+  positions Weapon | Armour | +1 Horse | −1 Horse, including neutral empty
+  footprints, and redraws the sword as a diagonal blade with a shorter grip,
+  crossguard and pommel. HP remains at the left with a stable visible gap.
+  Public equipment projection and all game rules are unchanged.
+- Local validation: build passed; server-render regression passed 20/20;
+  occupied/empty slot geometry passed 37/37 across 0–4 items, Horse-only,
+  Weapon-only, 4/6/8/10 seats and mobile layouts; Side Column/H2 geometry
+  passed 8/8; actual viewer-switch and Inspector-touch regressions passed 2/2.
+  Measured DOMRects and screenshots for 390×700 and 440×766 are in
+  `/tmp/hud4-evidence/` (local evidence, not committed). `git diff --check`
+  passed.
+- Exact-SHA Actions run
+  [`39118588563`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39118588563)
+  passed lint/fast, API, browser startup smoke, build, D1 migrations, Worker
+  deployment and production smoke. Worker version:
+  `27ff6996-a6bc-4c39-ac5b-4c16461f1a61`. The technical delivery remains
+  **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**, not accepted.
+- The next separately bounded design slice is INS-5 (§10.17.5); see the current
+  task in `HANDOVER.md`.
+
+### UX2-10.13.2.1-U13-B-F privacy-first unconditional public activity — 2026-10-18
+
+- Commit `082091d752ff9e98a8eda23c8392b31396908022` opens the same private
+  turn-end response window for living off-turn Yue Jin whether she has an
+  eligible Basic card or not. Non-owner projections stay neutral and omit the
+  actor, private action, skill eligibility, deadline/countdown and conditional
+  timeline announcement. Owner-only Dauntless/cost actions or Pass, the
+  existing 60-second timeout, and once-only turn-end continuation are retained.
+- Focused Worker/D1 API proof passed 5/5 across four authenticated viewers,
+  zero/one Basic-card cases, refresh, Quick Test view switching, owner-only
+  timer/action, timeout, Pass, activation and continuation. `npm run build`,
+  targeted ESLint and `git diff --check` passed.
+- Exact-SHA Actions run
+  [`39124315765`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39124315765)
+  passed lint/fast tests, API tests, browser startup/room smoke, D1 migration,
+  Worker deployment and production smoke. Deployed Worker version:
+  `b08efa60-615f-4932-ae60-997ce8c889c8`; a direct production
+  `/api/health` check returned `{"ok":true,"worker":"available"}`. The CI
+  browser test was startup/room smoke, not a gameplay replay of this feature.
+- Privacy-first latency tradeoff: if Yue Jin has no eligible Basic card and
+  does not Pass, the unconditional window can add up to 60 seconds to a
+  relevant turn. This was explicitly selected by the user. The delivery is
+  **IMPLEMENTED / DEPLOYED — PENDING USER REVIEW**, not accepted. Q1–Q4 remain
+  paused; accepted H4 positioning and wording are unchanged.

@@ -10,6 +10,9 @@ const SAFE_OBSTACLES = [
   ".visible-countdown",
   ".stage-system-cluster",
   ".hero-focus",
+  ".opponent-inspection-floating-shell",
+  ".card-details-panel",
+  ".hero-details-panel",
   ".interaction-stage-dying",
   ".dying-handoff-compact",
   ".public-card-display-journey-copy",
@@ -27,6 +30,10 @@ const SAFE_OBSTACLES = [
 ].join(",");
 
 type Rect = { left: number; top: number; right: number; bottom: number; width: number; height: number };
+type ProtectedRect = Rect & { sources: string[] };
+
+const COLLISION_GAP = 6;
+const CANDIDATE_EPSILON = 0.5;
 
 function intersects(left: Rect, right: Rect, gap = 6): boolean {
   return left.left < right.right + gap && left.right + gap > right.left
@@ -41,16 +48,35 @@ function visibleRect(element: HTMLElement): DOMRect | null {
   return rect.width > 0 && rect.height > 0 ? rect : null;
 }
 
-function protectedRects(table: HTMLElement): Rect[] {
+function protectedRects(table: HTMLElement): ProtectedRect[] {
   const tableRect = table.getBoundingClientRect();
   const elements = [...document.querySelectorAll<HTMLElement>(SAFE_OBSTACLES)];
-  const rects: Rect[] = [];
+  const rectsByGeometry = new Map<string, ProtectedRect>();
+  const add = (rect: Rect, source: string) => {
+    const normalized: Rect = {
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+    };
+    const rounded = (value: number) => Math.round(value * 2) / 2;
+    const key = [normalized.left, normalized.top, normalized.right, normalized.bottom].map(rounded).join(":");
+    const existing = rectsByGeometry.get(key);
+    if (existing) {
+      if (!existing.sources.includes(source)) existing.sources.push(source);
+      return;
+    }
+    rectsByGeometry.set(key, { ...normalized, sources: [source] });
+  };
   for (const element of elements) {
     if (table.contains(element) === false && element.closest(".play-table") !== table) continue;
     const rect = visibleRect(element);
     if (rect && rect.right > tableRect.left && rect.left < tableRect.right
       && rect.bottom > tableRect.top && rect.top < tableRect.bottom) {
-      rects.push(rect);
+      const classNames = typeof element.className === "string" ? element.className.trim().replace(/\s+/g, ".") : "";
+      add(rect, `actual:${element.tagName.toLowerCase()}${classNames ? `.${classNames}` : ""}`);
     }
 
     // Public journey cards expose their server-derived final owner anchor.
@@ -63,10 +89,11 @@ function protectedRects(table: HTMLElement): Rect[] {
       height: Number(element.dataset.publicCardJourneyTargetHeight),
     };
     if (Object.values(target).every(Number.isFinite) && target.width > 0 && target.height > 0) {
-      rects.push({ ...target, right: target.left + target.width, bottom: target.top + target.height });
+      const classNames = typeof element.className === "string" ? element.className.trim().replace(/\s+/g, ".") : "";
+      add({ ...target, right: target.left + target.width, bottom: target.top + target.height }, `projected-final:${element.tagName.toLowerCase()}${classNames ? `.${classNames}` : ""}`);
     }
   }
-  return rects;
+  return [...rectsByGeometry.values()];
 }
 
 function placeChip(chip: HTMLElement, table: HTMLElement): void {
@@ -82,48 +109,103 @@ function placeChip(chip: HTMLElement, table: HTMLElement): void {
   const bottom = Math.min(tableRect.bottom - 8, viewportBottom - 8);
   const firstTop = bottom - height;
   const obstacles = protectedRects(table);
+  const trace = new URLSearchParams(window.location.search).get("publicActivityChipDiagnostics") === "1"
+    ? {
+      measuredAt: performance.now(),
+      table: { left: tableRect.left, top: tableRect.top, right: tableRect.right, bottom: tableRect.bottom, width: tableRect.width, height: tableRect.height },
+      chip: { width, height },
+      safeBounds: { left: leftBound, right: rightBound, lowerBandTop, bottom },
+      obstacles: obstacles.map(({ sources, ...rect }) => ({ ...rect, sources })),
+      candidates: [] as Array<Record<string, unknown>>,
+    }
+    : null;
+  const finishTrace = (outcome: string, chosen?: Record<string, unknown>) => {
+    if (trace) console.info("[U13-B-G activity-chip placement]", { ...trace, outcome, chosen });
+  };
 
   if (width <= 0 || height <= 0 || rightBound - leftBound < width || firstTop < lowerBandTop) {
     chip.style.visibility = "hidden";
     chip.dataset.publicActivityLayout = "hidden";
+    finishTrace("hidden:insufficient-safe-area");
     return;
   }
 
   const preferredCenter = tableRect.left + tableRect.width / 2;
-  const maxHorizontalOffset = Math.max(0, (rightBound - leftBound - width) / 2);
-  const horizontalStep = width / 2 + 10;
-  const offsets = [0];
-  for (let offset = horizontalStep; offset < maxHorizontalOffset; offset += horizontalStep) offsets.push(-offset, offset);
-  if (maxHorizontalOffset > 0 && !offsets.some((offset) => Math.abs(Math.abs(offset) - maxHorizontalOffset) < 1)) {
-    offsets.push(-maxHorizontalOffset, maxHorizontalOffset);
-  }
-
   const verticalSteps = [0, height + 8, (height + 8) * 2];
+  const minCenter = leftBound + width / 2;
+  const maxCenter = rightBound - width / 2;
+  const placements: Array<{ center: number; top: number; verticalStep: number }> = [];
   for (const verticalStep of verticalSteps) {
     const top = firstTop - verticalStep;
-    if (top < lowerBandTop) continue;
-    for (const offset of offsets) {
-      const center = Math.max(leftBound + width / 2, Math.min(rightBound - width / 2, preferredCenter + offset));
-      const candidate = {
-        left: center - width / 2,
-        top,
-        right: center + width / 2,
-        bottom: top + height,
-        width,
-        height,
-      };
-      if (obstacles.some((obstacle) => intersects(candidate, obstacle))) continue;
-      chip.style.left = `${candidate.left - tableRect.left}px`;
-      chip.style.top = `${candidate.top - tableRect.top}px`;
-      chip.style.visibility = "visible";
-      const horizontal = Math.round(center - preferredCenter);
-      chip.dataset.publicActivityLayout = `${verticalStep === 0 ? "bottom" : "lower-band"}-${horizontal === 0 ? "center" : horizontal < 0 ? "left" : "right"}`;
-      return;
+    if (top < lowerBandTop) {
+      trace?.candidates.push({
+        verticalStep,
+        horizontalOffset: 0,
+        rect: { left: preferredCenter - width / 2, top, right: preferredCenter + width / 2, bottom: top + height, width, height },
+        accepted: false,
+        rejectedBy: [{ reason: "outside-safe-lower-bound", lowerBandTop }],
+      });
+      continue;
     }
+    const relevantObstacles = obstacles.filter((obstacle) =>
+      top < obstacle.bottom + COLLISION_GAP && top + height + COLLISION_GAP > obstacle.top);
+    const rawCenters = [preferredCenter];
+    for (const obstacle of relevantObstacles) {
+      rawCenters.push(
+        obstacle.left - width / 2 - COLLISION_GAP - CANDIDATE_EPSILON,
+        obstacle.right + width / 2 + COLLISION_GAP + CANDIDATE_EPSILON,
+      );
+    }
+    const candidates = [...new Set(rawCenters.map((center) => {
+      const clamped = Math.max(minCenter, Math.min(maxCenter, center));
+      return Math.round(clamped * 100) / 100;
+    }))];
+    for (const center of candidates) placements.push({ center, top, verticalStep });
+  }
+
+  placements.sort((left, right) => {
+    const leftOffset = left.center - preferredCenter;
+    const rightOffset = right.center - preferredCenter;
+    const leftDistance = Math.hypot(leftOffset, left.verticalStep);
+    const rightDistance = Math.hypot(rightOffset, right.verticalStep);
+    return leftDistance - rightDistance
+      || left.verticalStep - right.verticalStep
+      || Math.abs(leftOffset) - Math.abs(rightOffset)
+      || left.center - right.center;
+  });
+
+  for (const placement of placements) {
+    const { center, top, verticalStep } = placement;
+    const candidate = {
+      left: center - width / 2,
+      top,
+      right: center + width / 2,
+      bottom: top + height,
+      width,
+      height,
+    };
+    const collisions = obstacles.filter((obstacle) => intersects(candidate, obstacle));
+    const horizontalOffset = Math.round((center - preferredCenter) * 10) / 10;
+    const candidateRecord = {
+      verticalStep,
+      horizontalOffset,
+      rect: candidate,
+      accepted: collisions.length === 0,
+      rejectedBy: collisions.map(({ sources, ...rect }) => ({ ...rect, sources })),
+    };
+    trace?.candidates.push(candidateRecord);
+    if (collisions.length > 0) continue;
+    chip.style.left = `${candidate.left - tableRect.left}px`;
+    chip.style.top = `${candidate.top - tableRect.top}px`;
+    chip.style.visibility = "visible";
+    chip.dataset.publicActivityLayout = `${verticalStep === 0 ? "bottom" : "lower-band"}-${horizontalOffset === 0 ? "center" : horizontalOffset < 0 ? "left" : "right"}`;
+    finishTrace("placed", candidateRecord);
+    return;
   }
 
   chip.style.visibility = "hidden";
   chip.dataset.publicActivityLayout = "hidden";
+  finishTrace("hidden:no-safe-candidate");
 }
 
 export function PublicActivityChip({ status, viewerId, seatLayoutKey }: {

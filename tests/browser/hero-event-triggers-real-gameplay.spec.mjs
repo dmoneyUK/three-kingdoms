@@ -242,6 +242,34 @@ test("real Stauchness reaches its mandatory source-choice continuation after the
     expect(choice.selection.choices.map((option) => option.id)).toEqual(["discard_two", "take_damage"]);
     const dialog = sourcePage.getByRole("dialog", { name: "Stauchness decision" });
     await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAttribute("aria-modal", "false");
+    const overlayBehavior = await dialog.evaluate((panel) => {
+      const overlay = panel.parentElement;
+      const table = overlay?.parentElement;
+      const panelBox = panel.getBoundingClientRect();
+      const panelHit = document.elementFromPoint(panelBox.left + panelBox.width / 2, panelBox.top + panelBox.height / 2);
+      return {
+        rootPosition: overlay && getComputedStyle(overlay).position,
+        rootInsets: overlay && ["top", "right", "bottom", "left"].map((property) => getComputedStyle(overlay)[property]),
+        rootPointerEvents: overlay && getComputedStyle(overlay).pointerEvents,
+        panelPointerEvents: getComputedStyle(panel).pointerEvents,
+        panelWithinTable: Boolean(table && panelBox.left >= table.getBoundingClientRect().left - 1
+          && panelBox.right <= table.getBoundingClientRect().right + 1
+          && panelBox.top >= table.getBoundingClientRect().top - 1
+          && panelBox.bottom <= table.getBoundingClientRect().bottom + 1),
+        panelReceivesInput: Boolean(panelHit?.closest(".target-card-picker-panel")),
+      };
+    });
+    expect(overlayBehavior).toEqual({ rootPosition: "absolute", rootInsets: ["0px", "0px", "0px", "0px"], rootPointerEvents: "none", panelPointerEvents: "auto", panelWithinTable: true, panelReceivesInput: true });
+    const inspectedPlayerId = seedData.players[2].id;
+    const inspectionOpener = sourcePage.locator(`[data-player-anchor="${inspectedPlayerId}"] .opponent-hero-target`);
+    await inspectionOpener.click();
+    const inspection = sourcePage.locator(`.opponent-inspection-panel[data-inspect-player-id="${inspectedPlayerId}"]`);
+    await expect(inspection).toBeVisible();
+    await expect(dialog).toBeVisible();
+    await inspectionOpener.click();
+    await expect(inspection).toHaveCount(0);
+    await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: "Take 1 damage from Xiahou Dun", exact: true }).click();
     const confirm = dialog.getByRole("button", { name: "Confirm choice", exact: true });
     await expect(confirm).toBeEnabled();
@@ -286,9 +314,39 @@ test("real Legacy activation reaches the private two-card distribution UI and su
 
   const dialog = page.getByRole("dialog", { name: "Legacy card distribution" });
   await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("aria-modal", "false");
+  const overlayGeometry = await dialog.evaluate((panel) => {
+    const overlay = panel.parentElement;
+    const table = overlay?.parentElement;
+    const tableBox = table?.getBoundingClientRect();
+    const panelBox = panel.getBoundingClientRect();
+    return {
+      rootPosition: overlay && getComputedStyle(overlay).position,
+      rootInsets: overlay && ["top", "right", "bottom", "left"].map((property) => getComputedStyle(overlay)[property]),
+      rootPointerEvents: overlay && getComputedStyle(overlay).pointerEvents,
+      panelPointerEvents: getComputedStyle(panel).pointerEvents,
+      panelWithinTable: Boolean(tableBox && panelBox.left >= tableBox.left - 1
+        && panelBox.right <= tableBox.right + 1
+        && panelBox.top >= tableBox.top - 1
+        && panelBox.bottom <= tableBox.bottom + 1),
+    };
+  });
+  expect(overlayGeometry.rootPosition).toBe("absolute");
+  expect(overlayGeometry.rootInsets).toEqual(["0px", "0px", "0px", "0px"]);
+  expect(overlayGeometry.rootPointerEvents).toBe("none");
+  expect(overlayGeometry.panelPointerEvents).toBe("auto");
+  expect(overlayGeometry.panelWithinTable).toBe(true);
   const recipients = dialog.locator("select");
   await expect(recipients).toHaveCount(2);
   await recipients.nth(0).selectOption(seedData.players[1].id);
+  const inspectionOpener = page.locator(`[data-player-anchor="${seedData.players[2].id}"] .opponent-hero-target`);
+  await inspectionOpener.click();
+  const inspection = page.locator(`.opponent-inspection-panel[data-inspect-player-id="${seedData.players[2].id}"]`);
+  await expect(inspection).toBeVisible();
+  await expect(recipients.nth(0)).toHaveValue(seedData.players[1].id);
+  await inspectionOpener.click();
+  await expect(inspection).toHaveCount(0);
+  await expect(recipients.nth(0)).toHaveValue(seedData.players[1].id);
   await recipients.nth(1).selectOption(seedData.players[2].id);
   const distribute = dialog.getByRole("button", { name: "Distribute cards", exact: true });
   await expect(distribute).toBeEnabled();

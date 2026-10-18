@@ -296,6 +296,7 @@ for (const count of [4, 6, 8, 10]) {
 for (const width of [390, 440, 480, 1280]) {
   test(`H2 top-row four-seat Equipment reserves a separate 0/1/4 glyph row at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
+    let stableSlotOffsets = null;
     for (const scenario of [
       { equipmentCase: "empty", slots: 0 },
       { equipmentCase: "weapon", slots: 1 },
@@ -312,14 +313,28 @@ for (const width of [390, 440, 480, 1280]) {
           return { left, right, top, bottom, width, height };
         };
         const art = read(element.querySelector(".opponent-hero-card"));
-        const name = read(element.querySelector(".opponent-player-name-strip"));
+        const name = read(element.querySelector(".opponent-player-name"));
         const equipment = read(element.querySelector(".opponent-equipment-summary"));
         const indicators = [...element.querySelectorAll(".opponent-equipment-indicator")].map(read);
-        return { art, name, equipment, indicators, anchor: read(element) };
+        const slots = [...element.querySelectorAll(".opponent-equipment-slot")].map((slot) => ({
+          name: slot.dataset.slot,
+          occupied: slot.dataset.occupied === "true",
+          ...read(slot),
+        }));
+        return { art, name, equipment, indicators, slots, anchor: read(element) };
       });
-      expect(measured.name.top).toBeGreaterThanOrEqual(measured.art.bottom - 0.5);
-      expect(measured.equipment.top).toBeGreaterThanOrEqual(measured.name.bottom - 0.5);
+      expect(measured.name.top).toBeGreaterThanOrEqual(measured.art.top - 0.5);
+      expect(measured.name.bottom).toBeLessThanOrEqual(measured.art.bottom + 0.5);
+      expect(measured.equipment.top).toBeGreaterThanOrEqual(measured.art.bottom - 0.5);
       expect(measured.equipment.bottom).toBeLessThanOrEqual(measured.anchor.bottom + 0.5);
+      expect(measured.slots.map(({ name: slotName }) => slotName)).toEqual(["weapon", "armor", "defensiveHorse", "offensiveHorse"]);
+      expect(measured.slots.filter(({ occupied }) => occupied)).toHaveLength(scenario.slots);
+      const offsets = measured.slots.map((slot) => slot.left - measured.equipment.left);
+      if (stableSlotOffsets) {
+        offsets.forEach((offset, index) => expect(offset, `${scenario.equipmentCase} ${measured.slots[index].name} position`).toBeCloseTo(stableSlotOffsets[index], 1));
+      } else {
+        stableSlotOffsets = offsets;
+      }
       expect(measured.indicators.every((icon) => icon.left >= measured.equipment.left - 0.5
         && icon.right <= measured.equipment.right + 0.5
         && icon.top >= measured.equipment.top - 0.5

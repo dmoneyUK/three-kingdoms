@@ -28,6 +28,19 @@ async function roomView(request, seed, playerIndex) {
   return response.json();
 }
 
+async function controlledRoomView(request, code, token, viewerId) {
+  const query = new URLSearchParams({ code, token, ...(viewerId ? { testViewerId: viewerId } : {}) });
+  const response = await request.get(`${API}/api/rooms?${query}`);
+  expect(response.ok()).toBeTruthy();
+  return response.json();
+}
+
+async function tapMobile(page, locator) {
+  const bounds = await locator.boundingBox();
+  expect(bounds, "the intended mobile control has a visible touch target").toBeTruthy();
+  await page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+}
+
 async function act(request, seed, playerIndex, action, extra = {}) {
   const before = await roomView(request, seed, playerIndex);
   expect(before.isMyAction, `${action} actor owns CurrentAction`).toBe(true);
@@ -84,16 +97,28 @@ async function playCardThroughPage(page, cardId, targetName) {
 async function expectModal(page, title, instruction, cta) {
   const dialog = page.getByRole("dialog", { name: `${title} target card selection` });
   await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("aria-modal", "false");
   await expect(dialog.locator("header strong")).toHaveText(title.toUpperCase());
   await expect(dialog.locator("header span")).toHaveText(instruction);
   await expect(dialog.getByRole("button", { name: cta })).toBeVisible();
   await expect(page.locator(".table-hidden-card-picker")).toHaveCount(0);
   await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
   const geometry = await dialog.evaluate((element) => {
+    const overlay = element.parentElement;
+    const table = overlay?.parentElement;
     const box = element.getBoundingClientRect();
     return {
       x: box.x, y: box.y, right: box.right, bottom: box.bottom,
       viewportWidth: innerWidth, viewportHeight: innerHeight,
+      rootPosition: overlay && getComputedStyle(overlay).position,
+      rootInsets: overlay && ["top", "right", "bottom", "left"].map((property) => getComputedStyle(overlay)[property]),
+      rootPointerEvents: overlay && getComputedStyle(overlay).pointerEvents,
+      panelPointerEvents: getComputedStyle(element).pointerEvents,
+      panelReceivesInput: document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)?.closest(".target-card-picker-panel") === element,
+      panelWithinTable: Boolean(table && box.left >= table.getBoundingClientRect().left - 1
+        && box.right <= table.getBoundingClientRect().right + 1
+        && box.top >= table.getBoundingClientRect().top - 1
+        && box.bottom <= table.getBoundingClientRect().bottom + 1),
       cardTargets: [...element.querySelectorAll(".target-card-picker-card")].map((cardElement) => {
         const cardBox = cardElement.getBoundingClientRect();
         return { width: cardBox.width, height: cardBox.height };
@@ -104,6 +129,12 @@ async function expectModal(page, title, instruction, cta) {
   expect(geometry.y).toBeGreaterThanOrEqual(0);
   expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
   expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
+  expect(geometry.rootPosition).toBe("absolute");
+  expect(geometry.rootInsets).toEqual(["0px", "0px", "0px", "0px"]);
+  expect(geometry.rootPointerEvents).toBe("none");
+  expect(geometry.panelPointerEvents).toBe("auto");
+  expect(geometry.panelReceivesInput).toBe(true);
+  expect(geometry.panelWithinTable).toBe(true);
   expect(geometry.cardTargets.length).toBeGreaterThan(0);
   expect(geometry.cardTargets.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(geometry.viewportWidth);
@@ -153,6 +184,135 @@ async function openRealTargetCardDecision({ page, request, kind, viewport, handC
   return { seed, actorView, dialog, hidden, weapon, armor, delayed, title };
 }
 
+test("mandatory target-card picker keeps actor inspection and TEST SWITCH touchable", async ({ browser, request }, testInfo) => {
+  test.setTimeout(90_000);
+  const name = `BCP2 SWITCH ${Date.now().toString(36).toUpperCase()}`;
+  const createResponse = await request.post(`${API}/api/rooms`, { data: { action: "create", name } });
+  const created = await createResponse.json();
+  expect(createResponse.status()).toBe(201);
+  const { code, token } = { code: created.room.code, token: created.token };
+  const post = async (action, values = {}) => {
+    const response = await request.post(`${API}/api/rooms`, { data: { action, name, code, token, ...values } });
+    const body = await response.json();
+    expect(response.status(), `${action}: ${body.error ?? "unexpected response"}`).toBeLessThan(300);
+    return body.room;
+  };
+
+  let room = await post("add_test_players");
+  room = await post("enable_test_room");
+  room = await post("configure_test_hands", {
+    presetId: "custom",
+    expectedRevision: 0,
+    handsBySeat: { 0: ["Steal"], 1: ["Peach", "Dodge"], 2: ["Attack"], 3: ["Attack"] },
+  });
+  room = await post("start");
+  for (let selections = 0; room.status === "heroes" && selections < 8; selections++) {
+    const hero = room.myHeroOptions.find((candidate) => candidate.hp >= 4);
+    expect(hero, "the active TEST seat has a four-HP Standard hero available").toBeTruthy();
+    room = await post("choose_hero", { heroId: hero.id });
+  }
+  expect(room.status).toBe("playing");
+  const source = room.players.find((player) => player.seat === 0);
+  const target = room.players.find((player) => player.seat === 1);
+  const controlledAction = async (action, values = {}) => {
+    const actorId = room.currentAction?.actorId ?? room.actionPlayerId;
+    const context = {
+      actionRevision: room.actionRevision,
+      meId: room.meId,
+      phase: room.phase,
+      pendingKind: room.pending?.kind ?? null,
+      actorId,
+    };
+    room = await post(action, { ...values, context });
+  };
+
+  let playedSteal = false;
+  for (let attempt = 0; attempt < 24 && !playedSteal; attempt++) {
+    const actorId = room.currentAction?.actorId ?? room.actionPlayerId;
+    if (actorId === source.id && room.phase?.startsWith("draw")) await controlledAction("draw");
+    else if (actorId === source.id && room.phase?.startsWith("play")) {
+      const steal = room.myHand.find((held) => held.kind === "Steal");
+      expect(steal, "the source holds the configured Steal card").toBeTruthy();
+      await controlledAction("play_card", { cardId: steal.id, targetId: target.id });
+      playedSteal = true;
+    } else if (room.phase?.startsWith("draw")) await controlledAction("draw");
+    else if (room.phase?.startsWith("play")) await controlledAction("end_turn");
+    else if (room.phase === "discard") {
+      const active = room.players.find((player) => player.id === room.meId);
+      const required = Math.max(0, room.myHand.length - (active?.hp ?? 0));
+      await controlledAction("discard_cards", { cardIds: room.myHand.slice(0, required).map((held) => held.id) });
+    } else if (room.currentAction?.kind === "trigger" && room.currentAction.legalActions.includes("decline_trigger")) {
+      await controlledAction("decline_trigger");
+    } else throw new Error(`Unexpected ${room.phase} (actor ${actorId ?? "none"}, pending ${room.pending?.kind ?? "none"}, action ${room.currentAction?.kind ?? "none"}) while preparing Steal.`);
+  }
+  expect(playedSteal).toBe(true);
+
+  let current = await controlledRoomView(request, code, token);
+  const windowId = current.currentAction?.negationWindowId;
+  if (windowId) {
+    for (const player of current.players.filter((candidate) => candidate.alive)) {
+      current = await controlledRoomView(request, code, token);
+      if (current.phase !== "response" || current.currentAction?.negationWindowId !== windowId) break;
+      const response = await request.post(`${API}/api/rooms`, {
+        data: { action: "decline_response", name, code, token, context: {
+          actionRevision: current.actionRevision, meId: player.id, phase: "response", pendingKind: "response", windowId,
+        } },
+      });
+      expect(response.status(), `Negation pass for ${player.name}`).toBeLessThan(300);
+    }
+  }
+  current = await controlledRoomView(request, code, token);
+  expect(current.pendingTargetCard?.actorId).toBe(source.id);
+
+  const context = await browser.newContext({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  try {
+    const page = await context.newPage();
+    await page.addInitScript(({ roomCode, sessionToken, playerName }) => {
+      localStorage.setItem("three-realms-session", JSON.stringify({ code: roomCode, token: sessionToken, name: playerName }));
+    }, { roomCode: code, sessionToken: token, playerName: name });
+    await page.goto(`${API}/`);
+    const dialog = page.getByRole("dialog", { name: "Steal target card selection" });
+    await expect(dialog).toBeVisible();
+    const hidden = dialog.getByRole("button", { name: "Hidden hand card 1" });
+    await expect(hidden).toBeEnabled({ timeout: 15_000 });
+    await tapMobile(page, hidden);
+    await expect(hidden).toHaveAttribute("aria-pressed", "true");
+
+    const actorAction = await controlledRoomView(request, code, token, source.id);
+    const inspectorTrigger = page.locator(`.opponent-player-card[data-player-anchor="${target.id}"] .opponent-hero-target`);
+    await tapMobile(page, inspectorTrigger);
+    const inspection = page.locator(`.opponent-inspection-panel[data-inspect-player-id="${target.id}"]`);
+    await expect(inspection).toBeVisible();
+    await tapMobile(page, inspectorTrigger);
+    await expect(hidden).toHaveAttribute("aria-pressed", "true");
+
+    const spectator = room.players.find((player) => player.seat === 2);
+    const targetView = await controlledRoomView(request, code, token, target.id);
+    const privateTargetCardIds = targetView.myHand.map((held) => held.id);
+    await tapMobile(page, page.getByTestId(`test-view-switch-${spectator.id}`));
+    await expect(page.locator(`.local-player-dock[data-player-anchor="${spectator.id}"]`)).toBeVisible();
+    await expect(dialog).toHaveCount(0);
+    const spectatorView = await controlledRoomView(request, code, token, spectator.id);
+    expect(spectatorView.isMyAction).toBe(false);
+    expect(spectatorView.currentAction?.targetCardSelection).toBeUndefined();
+    for (const cardId of privateTargetCardIds) {
+      expect(JSON.stringify(spectatorView)).not.toContain(cardId);
+    }
+
+    await tapMobile(page, page.getByTestId(`test-view-switch-${source.id}`));
+    await expect(page.locator(`.local-player-dock[data-player-anchor="${source.id}"]`)).toBeVisible();
+    await expect(dialog).toBeVisible();
+    await expect(hidden).toHaveAttribute("aria-pressed", "false");
+    await expect(dialog.getByRole("button", { name: "Use Steal" })).toBeDisabled();
+    const actorAfterReturn = await controlledRoomView(request, code, token, source.id);
+    expect(actorAfterReturn.actionRevision).toBe(actorAction.actionRevision);
+    await page.screenshot({ path: testInfo.outputPath("steal-picker-actor-return-390x700.png"), animations: "disabled" });
+    await testInfo.attach("steal-picker-actor-return-390x700", { path: testInfo.outputPath("steal-picker-actor-return-390x700.png"), contentType: "image/png" });
+  } finally {
+    await context.close();
+  }
+});
+
 async function attachScreenshot(testInfo, name, page) {
   const path = testInfo.outputPath(`${name}.png`);
   await page.screenshot({ path, animations: "disabled" });
@@ -160,7 +320,7 @@ async function attachScreenshot(testInfo, name, page) {
 }
 
 for (const kind of ["Steal", "Dismantle"]) {
-  test(`real ${kind} gameplay reaches the shared modal from the server target-card decision`, async ({ page, request }) => {
+  test(`real ${kind} gameplay reaches the shared modal from the server target-card decision`, async ({ page, request, browser }) => {
     const material = card(kind, `real-${kind.toLowerCase()}-material`);
     const hidden = [card("Peach", `real-${kind.toLowerCase()}-hidden-a`), card("Dodge", `real-${kind.toLowerCase()}-hidden-b`)];
     const shield = card("NioShield", `real-${kind.toLowerCase()}-shield`);
@@ -196,8 +356,33 @@ for (const kind of ["Steal", "Dismantle"]) {
     const instruction = kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
     const dialog = await expectModal(page, action, instruction, `Use ${action}`);
     await expect(dialog.locator('[data-target-card-zone="hand-position"]')).toHaveCount(2);
-    await expect(dialog.getByRole("button", { name: "Equipment: Nio Shield" })).toBeVisible();
-    const judgment = dialog.getByRole("button", { name: "Judgement: Lightning" });
+    await expect(dialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true })).toBeVisible();
+
+    const sourceBeforeObserver = await roomView(request, seed, 0);
+    const spectatorPage = await browser.newPage();
+    try {
+      await openGame(spectatorPage, seed, 2);
+      await expect(spectatorPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+      const spectatorView = await roomView(request, seed, 2);
+      expect(spectatorView.isMyAction).toBe(false);
+      expect(spectatorView.currentAction?.targetCardSelection).toBeUndefined();
+      const spectatorMarkup = await spectatorPage.locator("body").innerHTML();
+      for (const concealed of hidden) {
+        expect(JSON.stringify(spectatorView)).not.toContain(concealed.id);
+        expect(spectatorMarkup).not.toContain(concealed.id);
+      }
+      const sourceAfterObserver = await roomView(request, seed, 0);
+      expect(sourceAfterObserver.actionRevision).toBe(sourceBeforeObserver.actionRevision);
+      expect(sourceAfterObserver.currentAction).toMatchObject({
+        actorId: seed.players[0].id,
+        kind: "target_card",
+        targetCardSelection: sourceBeforeObserver.currentAction.targetCardSelection,
+      });
+    } finally {
+      await spectatorPage.close();
+    }
+
+    const judgment = dialog.getByRole("button", { name: "Judgement: Lightning", exact: true });
     await judgment.click();
     await expect(judgment).toHaveAttribute("aria-pressed", "true");
     await expect(dialog.locator(".target-card-picker-count")).toHaveText("1 / 1 selected");
@@ -217,51 +402,182 @@ for (const kind of ["Steal", "Dismantle"]) {
   });
 }
 
-test("real Sima Yi Retaliation reaches the modal with private Hand positions from the server", async ({ page, request }) => {
+test("real Sima Yi Retaliation is compact, deselectable, private, and actor-only at 390x700", async ({ browser, request }, testInfo) => {
+  test.setTimeout(90_000);
   const attack = card("Attack", "real-retaliation-attack");
   const hidden = [card("Peach", "real-retaliation-hidden-a"), card("Dodge", "real-retaliation-hidden-b")];
   const seed = await seedGame(request, fourPlayers(
     { hand: [attack, ...hidden] },
     { hero: "simayi", hand: [card("Peach", "real-retaliation-target-peach")] },
   ));
-  await openGame(page, seed, 1);
-  await act(request, seed, 0, "play_card", { cardId: attack.id, targetId: seed.players[1].id });
-  await act(request, seed, 1, "decline_response");
+  const actorContext = await browser.newContext({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const observerContext = await browser.newContext({ viewport: { width: 440, height: 766 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  try {
+    const actorPage = await actorContext.newPage();
+    await openGame(actorPage, seed, 1, { width: 390, height: 700 });
+    await act(request, seed, 0, "play_card", { cardId: attack.id, targetId: seed.players[1].id });
+    await act(request, seed, 1, "decline_response");
 
-  const reaction = await roomView(request, seed, 1);
-  const option = reaction.currentAction.triggerOptions.find((entry) => entry.effectId === "sima_yi_fankui");
-  expect(reaction.currentAction.kind).toBe("trigger");
-  expect(option?.selection).toMatchObject({ type: "target_cards", targetId: seed.players[0].id, min: 1, max: 1, eligibleKeys: ["hand:0", "hand:1"] });
-  expect(JSON.stringify(reaction.currentAction)).not.toContain(hidden[0].id);
-  expect(JSON.stringify(reaction.currentAction)).not.toContain(hidden[1].id);
+    const reaction = await roomView(request, seed, 1);
+    const option = reaction.currentAction.triggerOptions.find((entry) => entry.effectId === "sima_yi_fankui");
+    expect(reaction.currentAction.kind).toBe("trigger");
+    expect(reaction.currentAction.legalActions).toEqual(expect.arrayContaining(["trigger", "decline_trigger"]));
+    expect(option?.selection).toMatchObject({ type: "target_cards", targetId: seed.players[0].id, min: 1, max: 1, eligibleKeys: ["hand:0", "hand:1"] });
+    expect(JSON.stringify(reaction.currentAction)).not.toContain(hidden[0].id);
+    expect(JSON.stringify(reaction.currentAction)).not.toContain(hidden[1].id);
 
-  const skill = page.getByRole("button", { name: "Retaliation", exact: true });
-  const dock = page.locator(`.local-player-dock[data-player-anchor="${seed.players[1].id}"]`);
-  const duplicate = dock.locator('[data-action-extras="true"]').getByRole("button", { name: /Retaliation/ });
-  await expect(skill).toBeEnabled({ timeout: 15_000 });
-  await expect(duplicate).toHaveCount(0);
-  await skill.click();
-  await expect(skill).toHaveAttribute("aria-pressed", "true");
-  const dialog = await expectModal(page, "Retaliation", "Choose 1 card to obtain", "Use Retaliation");
-  const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 2" });
-  await expect(hiddenPosition).not.toContainText(/Peach|Dodge|real-retaliation/);
-  await hiddenPosition.click();
-  await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
-  const submitPromise = page.waitForResponse((response) => {
-    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
-    try {
-      const body = JSON.parse(response.request().postData() ?? "{}");
-      return body.action === "trigger" && body.providerId === "sima_yi_fankui";
-    } catch { return false; }
-  });
-  await dialog.getByRole("button", { name: "Use Retaliation" }).click();
-  const submitted = await submitPromise;
-  expect(submitted.ok()).toBe(true);
-  expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
-    action: "trigger", providerId: "sima_yi_fankui", cardKeys: ["hand:1"],
-  });
-  await expect(duplicate).toHaveCount(0);
-  await expect.poll(async () => (await roomView(request, seed, 1)).myHand.map((held) => held.id)).toContain(hidden[1].id);
+    const observerPage = await observerContext.newPage();
+    await openGame(observerPage, seed, 2, { width: 440, height: 766 });
+    const observerView = await roomView(request, seed, 2);
+    expect(observerView.isMyAction).toBe(false);
+    expect(observerView.currentAction?.actorId).toBe(seed.players[1].id);
+    expect(JSON.stringify(observerView)).not.toContain(hidden[0].id);
+    expect(JSON.stringify(observerView)).not.toContain(hidden[1].id);
+    await expect(observerPage.locator(".target-card-picker-panel")).toHaveCount(0);
+
+    const skill = actorPage.getByRole("button", { name: "Retaliation", exact: true });
+    const dock = actorPage.locator(`.local-player-dock[data-player-anchor="${seed.players[1].id}"]`);
+    const duplicate = dock.locator('[data-action-extras="true"]').getByRole("button", { name: /Retaliation/ });
+    await expect(skill).toBeEnabled({ timeout: 15_000 });
+    await expect(duplicate).toHaveCount(0);
+    await tapMobile(actorPage, skill);
+    await expect(skill).toHaveAttribute("aria-pressed", "true");
+    const dialog = await expectModal(actorPage, "Retaliation", "Choose 1 card to obtain", "Use Retaliation");
+    await expect(dialog).toHaveClass(/target-card-picker-panel--compact/);
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
+    const skip = dialog.getByRole("button", { name: "Skip", exact: true });
+    const use = dialog.getByRole("button", { name: "Use Retaliation", exact: true });
+    await expect(skip).toBeEnabled();
+    await expect(use).toBeDisabled();
+    const actionRects = await Promise.all([skip, use].map((button) => button.evaluate((element) => {
+      const { x, y, right, bottom } = element.getBoundingClientRect();
+      return { x, y, right, bottom };
+    })));
+    expect(Math.abs(actionRects[0].y - actionRects[1].y)).toBeLessThan(2);
+    expect(actionRects[0].right).toBeLessThan(actionRects[1].x + 2);
+    expect(actionRects.every(({ bottom }) => bottom <= 700)).toBe(true);
+
+    const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 2" });
+    await expect(hiddenPosition).not.toContainText(/Peach|Dodge|real-retaliation/);
+    await tapMobile(actorPage, hiddenPosition);
+    await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+    await expect(use).toBeEnabled();
+    await tapMobile(actorPage, hiddenPosition);
+    await expect(hiddenPosition).toHaveAttribute("aria-pressed", "false");
+    await expect(use).toBeDisabled();
+    await tapMobile(actorPage, hiddenPosition);
+    await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+    await actorPage.screenshot({ path: testInfo.outputPath("bcp3-retaliation-390x700.png") });
+
+    const actionPosts = [];
+    actorPage.on("request", (requestEvent) => {
+      if (requestEvent.url() !== `${API}/api/rooms` || requestEvent.method() !== "POST") return;
+      try { actionPosts.push(JSON.parse(requestEvent.postData() ?? "{}")); } catch { /* Non-JSON form request. */ }
+    });
+    const beforeInspection = await roomView(request, seed, 1);
+    const inspectionOpener = actorPage.locator(`[data-player-anchor="${seed.players[0].id}"] .opponent-hero-target`);
+    await tapMobile(actorPage, inspectionOpener);
+    const inspection = actorPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${seed.players[0].id}"]`);
+    await expect(inspection).toBeVisible();
+    await tapMobile(actorPage, inspectionOpener);
+    await expect(inspection).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+    expect((await roomView(request, seed, 1)).actionRevision).toBe(beforeInspection.actionRevision);
+
+    await tapMobile(actorPage, actorPage.getByTestId("hand-card-inspection-action").first());
+    const cardDetailsAction = actorPage.getByTestId("hand-card-details-action").first();
+    await expect(cardDetailsAction).toBeVisible();
+    await tapMobile(actorPage, cardDetailsAction);
+    const privateCardDetails = actorPage.locator('.card-details-panel[data-card-details-context="private-hand"]');
+    await expect(privateCardDetails).toBeVisible();
+    await tapMobile(actorPage, actorPage.getByRole("button", { name: "Close card details" }));
+    await expect(privateCardDetails).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+    expect((await roomView(request, seed, 1)).actionRevision).toBe(beforeInspection.actionRevision);
+    expect(actionPosts).toEqual([]);
+
+    const submitPromise = actorPage.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try {
+        const body = JSON.parse(response.request().postData() ?? "{}");
+        return body.action === "trigger" && body.providerId === "sima_yi_fankui";
+      } catch { return false; }
+    });
+    await tapMobile(actorPage, use);
+    const submitted = await submitPromise;
+    expect(submitted.ok()).toBe(true);
+    expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
+      action: "trigger", providerId: "sima_yi_fankui", cardKeys: ["hand:1"],
+    });
+    await expect(dialog).toHaveCount(0);
+    expect(actionPosts).toHaveLength(1);
+    expect(actionPosts[0]).toMatchObject({ action: "trigger", providerId: "sima_yi_fankui", cardKeys: ["hand:1"] });
+    await expect(duplicate).toHaveCount(0);
+    await expect.poll(async () => (await roomView(request, seed, 1)).myHand.map((held) => held.id)).toContain(hidden[1].id);
+  } finally {
+    await actorContext.close();
+    await observerContext.close();
+  }
+});
+
+test("Retaliation Skip is a distinct authorized server action at 440x766", async ({ browser, request }, testInfo) => {
+  test.setTimeout(90_000);
+  const attack = card("Attack", "retaliation-skip-attack");
+  const hidden = card("Dodge", "retaliation-skip-hidden");
+  const seed = await seedGame(request, fourPlayers(
+    { hand: [attack, hidden] },
+    { hero: "simayi", hand: [card("Peach", "retaliation-skip-target-peach")] },
+  ));
+  const context = await browser.newContext({ viewport: { width: 440, height: 766 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  try {
+    const page = await context.newPage();
+    await openGame(page, seed, 1, { width: 440, height: 766 });
+    await act(request, seed, 0, "play_card", { cardId: attack.id, targetId: seed.players[1].id });
+    await act(request, seed, 1, "decline_response");
+    const actorView = await roomView(request, seed, 1);
+    expect(actorView.currentAction.legalActions).toContain("decline_trigger");
+
+    const skill = page.getByRole("button", { name: "Retaliation", exact: true });
+    await expect(skill).toBeEnabled({ timeout: 15_000 });
+    await tapMobile(page, skill);
+    const dialog = await expectModal(page, "Retaliation", "Choose 1 card to obtain", "Use Retaliation");
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
+    const use = dialog.getByRole("button", { name: "Use Retaliation", exact: true });
+    await expect(use).toBeDisabled();
+    const skip = dialog.getByRole("button", { name: "Skip", exact: true });
+    await expect(skip).toBeEnabled();
+    const rects = await Promise.all([skip, use].map((button) => button.evaluate((element) => {
+      const { x, y, right, bottom } = element.getBoundingClientRect();
+      return { x, y, right, bottom };
+    })));
+    expect(Math.abs(rects[0].y - rects[1].y)).toBeLessThan(2);
+    expect(rects.every(({ bottom }) => bottom <= 766)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("bcp3-retaliation-440x766-skip.png") });
+
+    const actionPosts = [];
+    page.on("request", (requestEvent) => {
+      if (requestEvent.url() !== `${API}/api/rooms` || requestEvent.method() !== "POST") return;
+      try { actionPosts.push(JSON.parse(requestEvent.postData() ?? "{}")); } catch { /* Non-JSON form request. */ }
+    });
+    const skipPromise = page.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "decline_trigger"; }
+      catch { return false; }
+    });
+    await tapMobile(page, skip);
+    const skipped = await skipPromise;
+    expect(skipped.ok()).toBe(true);
+    expect(JSON.parse(skipped.request().postData() ?? "{}").action).toBe("decline_trigger");
+    await expect(dialog).toHaveCount(0);
+    expect(actionPosts).toHaveLength(1);
+    expect(actionPosts[0].action).toBe("decline_trigger");
+    expect(actionPosts.some((body) => body.action === "trigger")).toBe(false);
+    expect((await roomView(request, seed, 1)).myHand.map((held) => held.id)).not.toContain(hidden.id);
+  } finally {
+    await context.close();
+  }
 });
 
 for (const weapon of ["FrostSword", "KirinBow"]) {
@@ -292,6 +608,9 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
     const actionTitle = weapon === "FrostSword" ? "Frost Sword" : "Kirin Bow";
     const instruction = weapon === "FrostSword" ? "Choose 2 cards to discard" : "Choose 1 Mount to discard";
     const dialog = await expectModal(page, actionTitle, instruction, `Use ${actionTitle}`);
+    const skip = dialog.getByRole("button", { name: "Skip", exact: true });
+    if (current.currentAction.legalActions.includes("decline_trigger")) await expect(skip).toBeVisible();
+    else await expect(skip).toHaveCount(0);
     const selectableCards = dialog.locator(".target-card-picker-card");
     if (weapon === "FrostSword") {
       const positions = dialog.locator('[data-target-card-zone="hand-position"]');
@@ -332,12 +651,14 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
 
 for (const kind of ["Dismantle", "Steal"]) {
   for (const viewport of [
+    { width: 390, height: 700 },
     { width: 390, height: 844 },
+    { width: 440, height: 766 },
     { width: 480, height: 900 },
     { width: 1440, height: 900 },
   ]) {
     test(`real ${kind === "Dismantle" ? "Burning Bridge" : kind} mixed-zone modal is scannable at ${viewport.width}×${viewport.height}`, async ({ page, request }, testInfo) => {
-      const { dialog, hidden, title } = await openRealTargetCardDecision({ page, request, kind, viewport });
+      const { seed, dialog, hidden, title } = await openRealTargetCardDecision({ page, request, kind, viewport });
       const zones = dialog.locator(".target-card-picker-zones");
       const positions = dialog.locator('[data-target-card-zone="hand-position"]');
       const handRow = dialog.locator('.target-card-picker-zone-hand .target-card-picker-card-row');
@@ -345,6 +666,7 @@ for (const kind of ["Dismantle", "Steal"]) {
       const judgement = dialog.locator('[data-target-card-zone="judgement"]');
       const use = dialog.getByRole("button", { name: `Use ${title}` });
       const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+      await expect(cancel).toHaveCount(0);
 
       await expect(zones).toHaveAttribute("data-zone-composition", "hand-equipment-judgement");
       await expect(zones.locator(":scope > .target-card-picker-zone h3")).toHaveText([
@@ -357,11 +679,11 @@ for (const kind of ["Dismantle", "Steal"]) {
         await expect(positions.nth(index)).toHaveAccessibleName(`Hidden hand card ${index + 1}`);
         await expect(positions.nth(index)).not.toContainText(/Peach|real-/);
       }
-      await expect(dialog.getByRole("button", { name: "Equipment: Zhuge Crossbow" })).toBeVisible();
-      await expect(dialog.getByRole("button", { name: "Equipment: Nio Shield" })).toBeVisible();
-      await expect(dialog.getByRole("button", { name: "Judgement: Lightning" })).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "Equipment: Zhuge Crossbow", exact: true })).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true })).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "Judgement: Lightning", exact: true })).toBeVisible();
 
-      const [rowBox, positionBoxes, equipmentBox, judgementBox, panelBox, useBox, cancelBox, zoneMetrics, publicNameMetrics] = await Promise.all([
+      const [rowBox, positionBoxes, equipmentBox, judgementBox, panelBox, useBox, zoneMetrics, publicNameMetrics] = await Promise.all([
         handRow.boundingBox(),
         positions.evaluateAll((elements) => elements.map((element) => {
           const { x, y, width, height } = element.getBoundingClientRect();
@@ -371,30 +693,35 @@ for (const kind of ["Dismantle", "Steal"]) {
         judgement.boundingBox(),
         dialog.boundingBox(),
         use.boundingBox(),
-        cancel.boundingBox(),
         zones.evaluate((element) => ({ clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth })),
         dialog.locator('[data-target-card-zone="equipment"], [data-target-card-zone="judgement"]').evaluateAll((elements) => elements.map((element) => {
           const name = element.querySelector(".card-name-mark");
           return { clientWidth: name.clientWidth, scrollWidth: name.scrollWidth, clientHeight: name.clientHeight, scrollHeight: name.scrollHeight };
         })),
       ]);
-      expect(rowBox && positionBoxes.length === 4 && equipmentBox && judgementBox && panelBox && useBox && cancelBox).toBeTruthy();
+      await attachScreenshot(testInfo, `${title.toLowerCase().replaceAll(" ", "-")}-mixed-open-${viewport.width}`, page);
+      expect(rowBox && positionBoxes.length === 4 && equipmentBox && judgementBox && panelBox && useBox).toBeTruthy();
       expect(positionBoxes.every((box) => box.width >= 44 && box.height >= 44)).toBe(true);
       expect(positionBoxes.every((box) => box.x >= rowBox.x - 1 && box.x + box.width <= rowBox.x + rowBox.width + 1)).toBe(true);
-      expect(positionBoxes[0].width).toBeLessThan(equipmentBox.width * 0.8);
-      expect(equipmentBox.width).toBeGreaterThanOrEqual(70);
-      expect(judgementBox.width).toBeGreaterThanOrEqual(70);
-      expect(publicNameMetrics.every((metrics) => metrics.scrollWidth <= metrics.clientWidth + 1 && metrics.scrollHeight <= metrics.clientHeight + 1)).toBe(true);
-      for (const box of [useBox, cancelBox]) {
+      expect(positionBoxes[0].width).toBeLessThan(equipmentBox.width);
+      expect(equipmentBox.width).toBeGreaterThanOrEqual(viewport.width <= 600 ? 48 : 70);
+      expect(judgementBox.width).toBeGreaterThanOrEqual(viewport.width <= 600 ? 48 : 70);
+      expect(publicNameMetrics.every((metrics) => metrics.scrollWidth <= metrics.clientWidth + 1 && metrics.scrollHeight <= metrics.clientHeight + 1), JSON.stringify(publicNameMetrics)).toBe(true);
+      for (const box of [useBox]) {
         expect(box.x).toBeGreaterThanOrEqual(panelBox.x - 1);
         expect(box.x + box.width).toBeLessThanOrEqual(panelBox.x + panelBox.width + 1);
+        expect(box.y).toBeGreaterThanOrEqual(panelBox.y - 1);
+        expect(box.y + box.height, JSON.stringify({ box, panelBox, viewport, zoneMetrics })).toBeLessThanOrEqual(panelBox.y + panelBox.height + 1);
         expect(box.y).toBeGreaterThanOrEqual(0);
         expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
         expect(box.height).toBeGreaterThanOrEqual(44);
       }
+      expect(await use.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)?.closest("button") === element;
+      })).toBe(true);
       if (viewport.width === 390) expect(zoneMetrics.scrollHeight).toBeLessThanOrEqual(zoneMetrics.clientHeight + 1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
-      await attachScreenshot(testInfo, `${title.toLowerCase().replaceAll(" ", "-")}-mixed-open-${viewport.width}`, page);
 
       if (kind === "Dismantle" && viewport.width === 390) {
         const positionsBefore = await positions.evaluateAll((elements) => elements.map((element) => {
@@ -423,9 +750,25 @@ for (const kind of ["Dismantle", "Steal"]) {
           }
         }
         await attachScreenshot(testInfo, "burning-bridge-selected-hidden-position-390", page);
-        await cancel.click();
+        await selected.click();
         await expect(selected).toHaveAttribute("aria-pressed", "false");
         await expect(use).toBeDisabled();
+        await selected.click();
+        await expect(use).toBeEnabled();
+
+        const actionBeforeInfo = await roomView(request, seed, 0);
+        const info = dialog.getByRole("button", { name: "Card details: Equipment: Nio Shield" });
+        await expect(info).toBeVisible();
+        await info.click();
+        const details = page.locator('.card-details-panel[data-card-details-context="public-zone"]');
+        await expect(details).toBeVisible();
+        await expect(selected).toHaveAttribute("aria-pressed", "true");
+        await page.getByRole("button", { name: "Close card details" }).click();
+        await expect(details).toHaveCount(0);
+        await expect(selected).toHaveAttribute("aria-pressed", "true");
+        const actionAfterInfo = await roomView(request, seed, 0);
+        expect(actionAfterInfo.actionRevision).toBe(actionBeforeInfo.actionRevision);
+        expect(actionAfterInfo.currentAction).toMatchObject({ actorId: seed.players[0].id, kind: "target_card" });
       }
     });
   }
@@ -451,6 +794,67 @@ test("real Burning Bridge Hand + Equipment omits Judgment and balances the full 
   expect(boxes.every((box) => box.x >= rowBox.x - 1 && box.x + box.width <= rowBox.x + rowBox.width + 1)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
   await attachScreenshot(testInfo, "burning-bridge-hand-equipment-no-empty-judgment-390", page);
+});
+
+test("real Burning Bridge one-card Hand-only choice fits and submits an anonymous position", async ({ page, request }, testInfo) => {
+  const viewport = { width: 390, height: 700 };
+  const { dialog, actorView } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 1, equipment: false, judgement: false });
+  const zones = dialog.locator(".target-card-picker-zones");
+  const handCard = dialog.getByRole("button", { name: "Hidden hand card 1", exact: true });
+  const use = dialog.getByRole("button", { name: "Use Burning Bridge" });
+  await expect(zones).toHaveAttribute("data-zone-composition", "hand");
+  await expect(zones).toHaveAttribute("data-zone-count", "1");
+  await expect(dialog.locator(".target-card-picker-zone-equipment, .target-card-picker-zone-judgement")).toHaveCount(0);
+  expect(actorView.currentAction.targetCardSelection.eligibleKeys).toEqual(["hand:0"]);
+  await expect(handCard).toBeVisible();
+  await expect(handCard).toBeEnabled();
+  await expect(use).toBeDisabled();
+  await handCard.click();
+  await expect(handCard).toHaveAttribute("aria-pressed", "true");
+  await expect(use).toBeEnabled();
+
+  const submitPromise = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+    catch { return false; }
+  });
+  await use.click();
+  const submitted = await submitPromise;
+  expect(submitted.ok()).toBe(true);
+  expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
+    action: "choose_target_card", targetCardZone: "hand", targetCardIndex: 0,
+  });
+  await attachScreenshot(testInfo, "burning-bridge-one-card-hand-only-390x700", page);
+});
+
+test("real Burning Bridge equipment-only choice omits empty Hand and Judgment groups", async ({ page, request }, testInfo) => {
+  const viewport = { width: 390, height: 700 };
+  const { seed, dialog, armor } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 0, judgement: false });
+  const zones = dialog.locator(".target-card-picker-zones");
+  const equipmentCard = dialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true });
+  const use = dialog.getByRole("button", { name: "Use Burning Bridge" });
+  await expect(zones).toHaveAttribute("data-zone-composition", "equipment");
+  await expect(zones).toHaveAttribute("data-zone-count", "1");
+  await expect(dialog.locator(".target-card-picker-zone-hand, .target-card-picker-zone-judgement")).toHaveCount(0);
+  await expect(dialog.locator('[data-target-card-zone="equipment"]')).toHaveCount(2);
+  await expect(use).toBeDisabled();
+  await equipmentCard.click();
+  await expect(equipmentCard).toHaveAttribute("aria-pressed", "true");
+  await expect(use).toBeEnabled();
+
+  const submitPromise = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+    catch { return false; }
+  });
+  await use.click();
+  const submitted = await submitPromise;
+  expect(submitted.ok()).toBe(true);
+  expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
+    action: "choose_target_card", targetCardZone: "equipment", targetCardId: armor.id,
+  });
+  await attachScreenshot(testInfo, "burning-bridge-equipment-only-390x700", page);
+  expect((await roomView(request, seed, 0)).currentAction?.kind).not.toBe("target_card");
 });
 
 test("real Burning Bridge Hand-only target uses the full modal width for four anonymous positions", async ({ page, request }, testInfo) => {
@@ -491,7 +895,7 @@ test("real Burning Bridge larger Hand shows deliberate contained scrolling witho
   await expect(zones).toHaveAttribute("data-zone-composition", "hand");
   await expect(positions).toHaveCount(10);
   await expect(row).toHaveAttribute("data-hand-scrollable", "true");
-  await expect(dialog.getByText("Swipe to see all", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Swipe to see all", { exact: true })).toBeHidden();
   expect(geometry.scrollWidth).toBeGreaterThan(geometry.clientWidth);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
   const lastPosition = positions.last();
@@ -500,6 +904,6 @@ test("real Burning Bridge larger Hand shows deliberate contained scrolling witho
   expect(lastBox.x).toBeGreaterThanOrEqual(rowBox.x - 1);
   expect(lastBox.x + lastBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
   await expect(dialog.getByRole("button", { name: "Use Burning Bridge" })).toBeDisabled();
-  await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
   await attachScreenshot(testInfo, "burning-bridge-large-hand-contained-overflow-390", page);
 });

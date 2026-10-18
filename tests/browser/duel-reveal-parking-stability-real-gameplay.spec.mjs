@@ -721,7 +721,7 @@ for (const { cardKind, responseKind } of [
     });
 
     const room = await seedGroupTargetNegationHistory(request, cardKind, responseKind);
-    await openPlayer(page, room, 0);
+    await openPlayer(page, room, 0, { trace: true });
     const started = await request.post(`${API}/api/rooms`, {
       data: { action: "play_card", code: room.code, token: room.players[0].token, cardId: room.rootCardId },
     });
@@ -759,6 +759,91 @@ for (const { cardKind, responseKind } of [
 
     await page.reload();
     await expect(page.locator(`.local-player-dock[data-player-anchor="${room.players[0].id}"]`)).toBeVisible();
+    await page.waitForTimeout(1_700);
+    const diagnosticTrace = await page.evaluate(({ rootEventId, rootCardId, authorId }) => {
+      const raw = sessionStorage.getItem("wtk.game-ux-trace.document.v2");
+      if (!raw) return null;
+      const trace = JSON.parse(raw);
+      const sample = [...trace.entries].reverse().find((entry) => entry.stage === "presentation-dom"
+        && entry.data.publicRootIdentity?.serverProof?.rootEventId === rootEventId
+        && entry.data.publicRootIdentity?.serverProof?.rootCardId === rootCardId
+        && entry.data.publicRootIdentity?.serverProof?.sourceId === authorId);
+      if (!sample) return null;
+      const identity = sample.data.publicRootIdentity;
+      return {
+        buildSha: trace.environment.buildSha,
+        sessionId: sample.sessionId ?? null,
+        elapsedMs: sample.elapsedMs,
+        semanticStage: identity.serverInteraction?.stage ?? null,
+        serverProof: identity.serverProof,
+        clientProjection: identity.clientProjection,
+        selectedPresenter: identity.selectedPresenter,
+        comparison: identity.comparison,
+        sameRootCounts: sample.data.sameRootCounts,
+        sameRootInstances: (sample.data.sameRootInstances ?? []).map((instance) => ({
+          eventId: instance.eventId,
+          publicCardId: instance.publicCardId,
+          publicActorId: instance.publicActorId,
+          rendererKind: instance.rendererKind,
+          motionType: instance.motionType,
+          visualPhase: instance.visualPhase,
+          sizeClass: instance.sizeClass,
+          actualCardRect: instance.actualCardRect,
+          targetParkingRect: instance.targetParkingRect,
+        })),
+      };
+    }, { rootEventId: rootEvent.id, rootCardId: room.rootCardId, authorId: room.players[0].id });
+    expect(diagnosticTrace).toBeTruthy();
+    expect(diagnosticTrace.semanticStage).toBe("NEGATION");
+    expect(diagnosticTrace.serverProof).toMatchObject({
+      interactionId: publicState.presentationSnapshot.identity.interactionId,
+      rootFrameId: publicState.presentationSnapshot.interaction.rootFrameId,
+      rootEventId: rootEvent.id,
+      rootCardId: room.rootCardId,
+      sourceId: room.players[0].id,
+      semantics: "PROVEN",
+    });
+    expect(diagnosticTrace.clientProjection).toMatchObject({
+      interactionId: diagnosticTrace.serverProof.interactionId,
+      rootFrameId: diagnosticTrace.serverProof.rootFrameId,
+      rootEventId: rootEvent.id,
+      rootCardId: room.rootCardId,
+      sourceId: room.players[0].id,
+      semantics: "PROVEN",
+    });
+    expect(diagnosticTrace.selectedPresenter).toMatchObject({
+      interactionId: diagnosticTrace.serverProof.interactionId,
+      rootFrameId: diagnosticTrace.serverProof.rootFrameId,
+      rootEventId: rootEvent.id,
+      physicalCardId: room.rootCardId,
+      actualAuthorId: room.players[0].id,
+      rendererKind: "single-target-journey",
+      motionType: "group-root",
+    });
+    expect(diagnosticTrace.comparison.presenterMatchesServer).toMatchObject({
+      interactionId: true,
+      rootFrameId: true,
+      checkpointId: true,
+      presentationRevision: true,
+      rootEventId: true,
+      physicalCardId: true,
+      actualAuthorId: true,
+    });
+    expect(diagnosticTrace.sameRootCounts).toMatchObject({ total: 1, fullSizeCount: 0, parkedThumbnailCount: 1 });
+    expect(diagnosticTrace.sameRootInstances).toEqual([expect.objectContaining({
+      eventId: rootEvent.id,
+      publicCardId: room.rootCardId,
+      publicActorId: room.players[0].id,
+      rendererKind: "single-target-journey",
+      motionType: "group-root",
+      visualPhase: "parked",
+      sizeClass: "PARKED",
+    })]);
+    await testInfo.attach("group-root-presentation-diagnostic.json", {
+      body: JSON.stringify(diagnosticTrace, null, 2),
+      contentType: "application/json",
+    });
+
     const display = page.locator('[data-public-card-motion="group-root"]');
     await expect(display).toBeVisible({ timeout: 20_000 });
     await expect(display).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");

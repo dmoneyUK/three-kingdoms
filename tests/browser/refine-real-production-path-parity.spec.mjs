@@ -14,14 +14,155 @@ async function seedGame(request, players) {
   return response.json();
 }
 
-async function openGame(page, seed, playerIndex, viewport = { width: 390, height: 844 }) {
+async function openGame(page, seed, playerIndex, viewport = { width: 390, height: 844 }, { trace = false } = {}) {
   const member = seed.players[playerIndex];
   await page.setViewportSize(viewport);
-  await page.addInitScript(({ code, token, name }) => {
+  await page.addInitScript(({ code, token, name, traceActive }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
-  }, { code: seed.code, token: member.token, name: member.name });
+    if (traceActive) sessionStorage.setItem("wtk.game-ux-trace.active.v2", "true");
+  }, { code: seed.code, token: member.token, name: member.name, traceActive: trace });
   await page.goto(`${API}/`);
   await expect(page.locator(".game-shell")).toBeVisible();
+}
+
+async function groupRootDiagnosticTrace(page, rootEventId, rootCardId, sourceId, finalServerState) {
+  return page.evaluate(({ expectedRootEventId, expectedRootCardId, expectedSourceId, serverState }) => {
+    const raw = sessionStorage.getItem("wtk.game-ux-trace.document.v2");
+    if (!raw) return null;
+    const trace = JSON.parse(raw);
+    const traceStageCounts = trace.entries.reduce((counts, entry) => {
+      counts[entry.stage] = (counts[entry.stage] ?? 0) + 1;
+      return counts;
+    }, {});
+    const samples = trace.entries.filter((entry) => {
+      if (entry.stage !== "presentation-dom") return false;
+      const data = entry.data ?? {};
+      const identity = data.publicRootIdentity ?? {};
+      return identity.serverProof?.rootEventId === expectedRootEventId
+        || identity.clientProjection?.rootEventId === expectedRootEventId
+        || (data.samePhysicalCardInstances ?? []).some((instance) => instance.publicCardId === expectedRootCardId)
+        || (data.cardInstances ?? []).some((instance) => instance.publicCardId === expectedRootCardId
+          && instance.publicActorId === expectedSourceId);
+    }).map((entry) => {
+      const data = entry.data ?? {};
+      const identity = data.publicRootIdentity ?? {};
+      return {
+        sessionId: entry.sessionId ?? null,
+        elapsedMs: entry.elapsedMs,
+        semanticStage: identity.serverInteraction?.stage ?? identity.selectedPresenter?.semanticStage ?? null,
+        currentParticipantId: identity.serverInteraction?.currentParticipantId
+          ?? identity.selectedPresenter?.currentParticipantId ?? null,
+        serverInteraction: identity.serverInteraction ?? null,
+        serverProof: identity.serverProof ?? null,
+        clientProjection: identity.clientProjection ?? null,
+        selectedPresenter: identity.selectedPresenter ?? null,
+        comparison: identity.comparison ?? null,
+        sameRootCounts: data.sameRootCounts ?? null,
+        sameRootInstances: data.sameRootInstances ?? [],
+        samePhysicalCardInstances: (data.samePhysicalCardInstances ?? []).filter((instance) =>
+          instance.publicCardId === expectedRootCardId).map((instance) => ({
+          eventId: instance.eventId,
+          publicCardId: instance.publicCardId,
+          publicActorId: instance.publicActorId,
+          rendererKind: instance.rendererKind,
+          motionType: instance.motionType,
+          visualPhase: instance.visualPhase,
+          sizeClass: instance.sizeClass,
+          layoutReason: instance.domPath?.[0]?.attributes?.["data-public-card-journey-layout-reason"] ?? null,
+          revealStartedAt: instance.domPath?.[0]?.attributes?.["data-public-card-journey-reveal-started-at"] ?? null,
+          ownerEventId: instance.ownerEventId,
+          ownerIdentity: instance.ownerIdentity,
+          domPath: instance.domPath,
+          actualCardRect: instance.actualCardRect,
+          targetParkingRect: instance.targetParkingRect,
+        })),
+        announcements: (data.announcements ?? []).map((announcement) => ({
+          kind: announcement.kind,
+          key: announcement.key,
+          eventId: announcement.eventId,
+          semanticStage: announcement.semanticStage,
+          textKey: announcement.textKey,
+          rect: announcement.rect,
+        })),
+      };
+    });
+    return {
+      buildSha: trace.environment?.buildSha ?? null,
+      traceStartedAt: trace.startedAt ?? null,
+      viewport: trace.environment?.viewport ?? null,
+      reducedMotion: trace.environment?.reducedMotion ?? null,
+      root: { rootEventId: expectedRootEventId, physicalCardId: expectedRootCardId, actualAuthorId: expectedSourceId },
+      traceStageCounts,
+      pipelineStates: trace.entries.filter((entry) => entry.stage === "pipeline-state").map((entry) => {
+        const data = entry.data ?? {};
+        const interaction = data.presentation?.interaction ?? null;
+        const proof = data.presentation?.groupRootCardProof ?? {};
+        const display = data.publicCardDisplay ?? {};
+        return {
+          elapsedMs: entry.elapsedMs,
+          interaction: interaction ? {
+            stage: interaction.stage,
+            interactionId: interaction.interactionId,
+            rootFrameId: interaction.rootFrameId,
+            checkpointId: interaction.checkpointId,
+            presentationRevision: interaction.presentationRevision,
+            currentParticipantSeat: interaction.currentParticipantSeat,
+          } : null,
+          serverRootProof: proof.server ?? proof.settlement ?? null,
+          clientRootProof: proof.client ?? null,
+          display: {
+            rootEventId: display.rootEventId ?? null,
+            rootCardId: display.rootCardId ?? null,
+            actualAuthorId: display.actualAuthorId ?? null,
+            interactionId: display.interactionId ?? null,
+            rootFrameId: display.rootFrameId ?? null,
+            checkpointId: display.checkpointId ?? null,
+            presentationRevision: display.presentationRevision ?? null,
+            candidateRendererKind: display.candidateRendererKind ?? null,
+            candidateMotionType: display.candidateMotionType ?? null,
+            revealDurationMs: display.revealDurationMs ?? null,
+            moveDurationMs: display.moveDurationMs ?? null,
+            semanticStage: display.semanticStage ?? null,
+            currentParticipantId: display.currentParticipantId ?? null,
+            settlementOutcome: display.settlementOutcome ?? null,
+            groupSettlementHandoff: display.groupSettlementHandoff ?? null,
+          },
+        };
+      }),
+      groupSettlementHandoffs: trace.entries.filter((entry) => entry.stage === "group-settlement-handoff").map((entry) => ({
+        elapsedMs: entry.elapsedMs,
+        timelineFinalEventIds: entry.data?.timelineFinalEventIds ?? [],
+        pendingEventIds: entry.data?.pendingEventIds ?? [],
+        projectedEventIds: entry.data?.projectedEventIds ?? [],
+        activeEventId: entry.data?.activeEventId ?? null,
+        activationEventId: entry.data?.activationEventId ?? null,
+        proofMatchCount: entry.data?.proofMatchCount ?? 0,
+      })),
+      publicRoomStates: trace.entries.filter((entry) => entry.stage === "game-room-state").map((entry) => ({
+        elapsedMs: entry.elapsedMs,
+        source: entry.data?.source ?? null,
+        status: entry.data?.status ?? null,
+        phase: entry.data?.phase ?? null,
+        viewerSeat: entry.data?.viewerSeat ?? null,
+        interaction: entry.data?.interaction ?? null,
+        rootAction: entry.data?.rootAction ?? null,
+      })),
+      publicTimelineEvents: trace.entries.filter((entry) => entry.stage === "public-timeline-events").flatMap((entry) =>
+        Array.isArray(entry.data?.events) ? entry.data.events.map((event) => ({
+          elapsedMs: entry.elapsedMs,
+          eventId: event.eventId ?? null,
+          type: event.type ?? null,
+          action: event.action ?? null,
+          cardKind: event.cardKind ?? null,
+          resolutionId: event.resolutionId ?? null,
+          finalResult: event.finalResult ?? null,
+          publicMessage: event.publicMessage ?? null,
+        })) : []),
+      finalServerState: serverState,
+      sampleCount: samples.length,
+      samples,
+    };
+  }, { expectedRootEventId: rootEventId, expectedRootCardId: rootCardId, expectedSourceId: sourceId, serverState: finalServerState });
 }
 
 async function attachScreenshot(testInfo, name, page) {
@@ -697,10 +838,10 @@ for (const { cardKind, requirement } of [
   { cardKind: "BarbarianInvasion", requirement: "attack" },
   { cardKind: "RainingArrows", requirement: "dodge" },
 ]) {
-  test(`real ${cardKind} keeps one parked root Journey through all Group targets and settlement`, async ({ page, request }) => {
+  test(`real ${cardKind} keeps one parked root Journey through all Group targets and settlement`, async ({ page, request }, testInfo) => {
     const root = card(cardKind, `group-root-journey-${cardKind.toLowerCase()}`);
     const seed = await seedGame(request, groupResolutionPlayers({ root, responseKind: requirement === "attack" ? "Attack" : "Dodge" }));
-    await openGame(page, seed, 0, { width: 480, height: 900 });
+    await openGame(page, seed, 0, { width: 480, height: 900 }, { trace: true });
     await playGroupRootCard(page, root);
 
     const firstTargetView = await reachGroupResponse(request, seed, 1, requirement);
@@ -708,6 +849,7 @@ for (const { cardKind, requirement } of [
     expect(rootEvent).toBeTruthy();
     const display = page.locator(`[data-public-card-display="true"][data-public-card-root-event-id="${rootEvent.id}"]`);
     const rootCard = display.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`);
+    let withheldGroupSettlementSnapshot = false;
     await expect(display).toHaveAttribute("data-public-card-motion", "group-root");
     await expect(display).toHaveAttribute("data-public-card-renderer-kind", "single-target-journey");
     await expect(rootCard).toHaveAttribute("data-public-card-journey-actor-id", seed.players[0].id);
@@ -727,6 +869,27 @@ for (const { cardKind, requirement } of [
       await expect(page.locator(`[data-public-card-renderer-kind="static-fallback"][data-public-card-root-event-id="${rootEvent.id}"]`)).toHaveCount(0);
       await expect(display.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`)).toHaveCount(1);
 
+      if (index === seed.players.length - 1) {
+        await page.route(`${API}/api/rooms?*`, async (route) => {
+          const response = await route.fetch();
+          const payload = await response.json();
+          const roomPayload = payload.room && typeof payload.room === "object" ? payload.room : payload;
+          const hasRootSettlementEvent = roomPayload.timeline?.some((event) => event.type === "message"
+            && event.finalResult === true && event.publicGroupSettlement?.rootEventId === rootEvent.id);
+          const snapshot = roomPayload.presentationSnapshot;
+          if (!withheldGroupSettlementSnapshot && hasRootSettlementEvent
+            && snapshot && Array.isArray(snapshot.groupSettlements)
+            && snapshot.groupSettlements.some((proof) => proof.eventId === roomPayload.timeline.find((event) => event.type === "message"
+              && event.finalResult === true && event.publicGroupSettlement?.rootEventId === rootEvent.id)?.id)) {
+            roomPayload.presentationSnapshot = { ...snapshot, groupSettlements: [] };
+            withheldGroupSettlementSnapshot = true;
+            await route.fulfill({ response, body: JSON.stringify(payload) });
+            return;
+          }
+          await route.fulfill({ response });
+        });
+      }
+
       await apiAction(request, seed, index, "respond", {
         providerId: "card",
         cardId: `${root.id}-response-${index}`,
@@ -741,7 +904,111 @@ for (const { cardKind, requirement } of [
       }
     }
 
-    await expect(display).toHaveAttribute("data-public-card-settlement-outcome", "GROUP_RESOLVED", { timeout: 20_000 });
+    const finalView = await roomView(request, seed, 0);
+    await expect.poll(() => withheldGroupSettlementSnapshot, { timeout: 10_000 }).toBe(true);
+    const finalSettlementEventId = finalView.presentationSnapshot?.groupSettlements?.find((proof) => proof.rootEventId === rootEvent.id)?.eventId;
+    expect(finalSettlementEventId).toBeTruthy();
+    const finalServerState = {
+      stage: finalView.presentationSnapshot?.interaction?.stage ?? null,
+      interaction: finalView.presentationSnapshot?.interaction ? {
+        interactionId: finalView.presentationSnapshot.interaction.interactionId,
+        rootFrameId: finalView.presentationSnapshot.interaction.rootFrameId,
+        checkpointId: finalView.presentationSnapshot.interaction.checkpointId,
+        presentationRevision: finalView.presentationSnapshot.interaction.presentationRevision,
+        currentParticipantId: finalView.presentationSnapshot.interaction.currentParticipantId,
+      } : null,
+      groupResolution: finalView.presentationSnapshot?.groupParticipantProgress ? {
+        interactionId: finalView.presentationSnapshot.groupParticipantProgress.interactionId,
+        currentParticipantId: finalView.presentationSnapshot.groupParticipantProgress.currentParticipantId,
+        participants: finalView.presentationSnapshot.groupParticipantProgress.participants?.map((participant) => ({
+          playerId: participant.playerId,
+          status: participant.status,
+          outcome: participant.outcome,
+        })) ?? [],
+      } : null,
+      groupSettlements: (finalView.presentationSnapshot?.groupSettlements ?? []).map((settlement) => ({
+        eventId: settlement.eventId,
+        rootEventId: settlement.rootEventId,
+        interactionId: settlement.interactionId,
+        groupFrameId: settlement.groupFrameId,
+        sourceId: settlement.sourceId,
+        cardKind: settlement.cardKind,
+        outcome: settlement.outcome,
+        semantics: settlement.semantics,
+      })),
+      relevantTimelineEvents: finalView.timeline.filter((event) => event.id === rootEvent.id
+        || event.type === "message" && event.finalResult === true
+          && (event.message?.includes("Barbarian Invasion finishes resolving") || event.message?.includes("Raining Arrows finishes resolving")))
+        .map((event) => ({
+          eventId: event.id,
+          type: event.type,
+          action: event.action ?? null,
+          presentation: event.presentation ?? null,
+          resolutionId: event.resolutionId ?? null,
+          finalResult: event.finalResult ?? false,
+          importance: event.importance ?? null,
+          message: event.type === "message" ? event.message : null,
+          settlementProof: event.publicGroupSettlement ?? null,
+        })),
+      rootEventPresent: finalView.timeline.some((event) => event.id === rootEvent.id),
+    };
+    const diagnosticTrace = await groupRootDiagnosticTrace(page, rootEvent.id, root.id, seed.players[0].id, finalServerState);
+    expect(diagnosticTrace).toBeTruthy();
+    expect(diagnosticTrace.sampleCount).toBeGreaterThan(0);
+    let settlementDisplayed = false;
+    try {
+      await expect(display).toHaveAttribute("data-public-card-settlement-outcome", "GROUP_RESOLVED", { timeout: 20_000 });
+      settlementDisplayed = true;
+    } catch { /* attach the observed handoff state before failing the browser regression */ }
+    await page.unroute(`${API}/api/rooms?*`);
+    const completedTrace = await groupRootDiagnosticTrace(page, rootEvent.id, root.id, seed.players[0].id, finalServerState);
+    const diagnosticName = `${cardKind.toLowerCase()}-group-root-presentation-diagnostic.json`;
+    const diagnosticPath = testInfo.outputPath(diagnosticName);
+    writeFileSync(diagnosticPath, JSON.stringify(completedTrace, null, 2));
+    await testInfo.attach(diagnosticName, {
+      path: diagnosticPath,
+      contentType: "application/json",
+    });
+
+    const settlementHandoffs = completedTrace.groupSettlementHandoffs.filter((handoff) => handoff.timelineFinalEventIds.includes(finalSettlementEventId));
+    expect(settlementHandoffs.some((handoff) => handoff.pendingEventIds.includes(finalSettlementEventId)
+      && !handoff.projectedEventIds.includes(finalSettlementEventId))).toBe(true);
+    expect(settlementDisplayed).toBe(true);
+    const firstParkedSampleIndex = completedTrace.samples.findIndex((sample) => sample.samePhysicalCardInstances.some((instance) =>
+      instance.eventId === rootEvent.id && instance.visualPhase === "parked"));
+    expect(firstParkedSampleIndex).toBeGreaterThanOrEqual(0);
+    const firstRevealSample = completedTrace.samples.find((sample) => sample.samePhysicalCardInstances.some((instance) =>
+      instance.eventId === rootEvent.id && instance.visualPhase === "reveal"));
+    const firstMoveSample = completedTrace.samples.find((sample) => sample.samePhysicalCardInstances.some((instance) =>
+      instance.eventId === rootEvent.id && instance.visualPhase === "move"));
+    expect(firstRevealSample).toBeTruthy();
+    expect(firstMoveSample).toBeTruthy();
+    const revealStartedAt = firstRevealSample.samePhysicalCardInstances.find((instance) => instance.eventId === rootEvent.id)?.revealStartedAt;
+    expect(revealStartedAt).toBeTruthy();
+    const revealStartElapsedMs = Date.parse(revealStartedAt) - Date.parse(completedTrace.traceStartedAt);
+    const observedRevealDurationMs = firstMoveSample.elapsedMs - revealStartElapsedMs;
+    expect(observedRevealDurationMs).toBeGreaterThanOrEqual(4_000);
+    expect(observedRevealDurationMs).toBeLessThanOrEqual(5_000);
+    const groupRootPipelineStates = completedTrace.pipelineStates.filter((state) => state.display.rootEventId === rootEvent.id
+      && state.display.candidateMotionType === "group-root");
+    expect(groupRootPipelineStates.length).toBeGreaterThan(0);
+    expect(groupRootPipelineStates.every((state) => state.display.revealDurationMs === 4_000
+      && state.display.moveDurationMs === 380)).toBe(true);
+    const firstParkedInstance = completedTrace.samples[firstParkedSampleIndex].samePhysicalCardInstances
+      .find((instance) => instance.eventId === rootEvent.id);
+    expect(firstParkedInstance?.layoutReason).toContain("380ms-seat-parking-complete");
+    const postParkedSamples = completedTrace.samples.slice(firstParkedSampleIndex);
+    expect(postParkedSamples.length).toBeGreaterThan(0);
+    const retainedRootSamples = postParkedSamples.filter((sample) => sample.sameRootCounts.total > 0);
+    expect(retainedRootSamples.length).toBeGreaterThan(0);
+    for (const sample of postParkedSamples) {
+      expect(sample.sameRootCounts.fullSizeCount).toBe(0);
+      expect(sample.samePhysicalCardInstances.every((instance) => instance.rendererKind !== "static-fallback")).toBe(true);
+    }
+    for (const sample of retainedRootSamples) {
+      expect(sample.sameRootCounts.total).toBe(1);
+      expect(sample.sameRootCounts.intermediateCount).toBe(0);
+    }
     await expect(rootCard).toHaveAttribute("data-public-card-journey-phase", "parked");
     await expect(rootCard).toHaveAttribute("data-public-card-journey-size", "thumbnail");
     await expect(page.locator(`[data-public-card-renderer-kind="static-fallback"][data-public-card-root-event-id="${rootEvent.id}"]`)).toHaveCount(0);
@@ -812,7 +1079,7 @@ for (const viewport of [
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
-  test(`server-projected unified target inspector stays compact and private at ${viewport.width}px`, async ({ page, request }, testInfo) => {
+  test(`server-projected INS-5 target inspector stays readable and private at ${viewport.width}px`, async ({ page, request }, testInfo) => {
     const hidden = [card("Peach", `real-inspect-hidden-${viewport.width}`)];
     const attack = card("Attack", `real-inspect-attack-${viewport.width}`);
     const crossbow = card("ZhugeCrossbow", `real-inspect-crossbow-${viewport.width}`, "♦", "A");
@@ -845,40 +1112,41 @@ for (const viewport of [
     await expect(inspectButton).toHaveAttribute("aria-label", "Inspect INSPECTED");
     await expect(page.locator(`[data-player-anchor="${inspected.id}"] .hero-card-info-button, [data-player-anchor="${inspected.id}"] .opponent-hand-footer, [data-player-anchor="${inspected.id}"] .player-hand-count`)).toHaveCount(0);
     await inspectButton.click();
-    const readOnlyPanel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
+    const readOnlyPanel = page.getByRole("region", { name: "INSPECTED opponent inspection" });
     await expect(readOnlyPanel).toBeVisible();
     await expect(page.locator(`[data-player-anchor="${inspected.id}"].selected-target`)).toHaveCount(0);
     await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
     expect(submissions).toEqual([]);
-    await readOnlyPanel.getByRole("button", { name: "Close INSPECTED inspection" }).click();
+    await inspectButton.click();
 
     await page.locator(`[data-hand-card-id="${attack.id}"] .game-card`).click();
     await page.getByRole("button", { name: "Select INSPECTED", exact: true }).click();
     const stage = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"]');
-    const panel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
+    const panel = page.getByRole("region", { name: "INSPECTED opponent inspection" });
     await expect(panel).toBeVisible();
     await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
     await expect(page.locator(`[data-player-anchor="${inspected.id}"].selected-target`)).toHaveCount(1);
     await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
-    await expect(panel.locator(".hero-focus-heading strong")).toHaveText("INSPECT · INSPECTED");
-    await expect(panel.locator(".hero-focus-identity")).toContainText("Xiahou Dun");
+    await expect(panel.locator(".hero-focus-inspect-identity-caption .hero-focus-identity-player")).toHaveText("INSPECTED");
+    await expect(panel.locator(".hero-focus-inspect-identity-caption .hero-focus-identity-hero")).toContainText("Xiahou Dun");
     await expect(panel.locator(".hero-focus-identity")).not.toContainText("INSPECTED");
     await expect(panel.locator(".hero-focus-identity")).toContainText("HP 2/4");
-    await expect(panel.locator(".hero-focus-identity [data-public-hand-count]")).toHaveText("Hand · 1");
+    await expect(panel.locator(".hero-focus-identity-stats [data-public-hand-count]")).toHaveText("Hand · 1");
     await expect(panel.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill')).toHaveCount(1);
     await expect(panel.locator('[aria-label="Public Skills"]')).toContainText("Stauchness");
     await expect(panel.locator('[aria-label="Equipment"] .opponent-inspection-card')).toHaveCount(2);
     await expect(panel.getByRole("button", { name: "Explain Zhuge Crossbow" })).toBeVisible();
     await expect(panel.getByRole("button", { name: "Explain Nio Shield" })).toBeVisible();
-    await expect(panel.locator('[aria-label="Judgement Zone"] .opponent-inspection-empty')).toHaveText("None");
+    await expect(panel.locator('[aria-label="Judgement Zone"] .opponent-inspection-empty-slot')).toHaveCount(2);
     await expect(panel.locator('[aria-label="Concealed Hand"]')).toHaveCount(0);
     await expect(panel.locator(".hero-focus-inspect-hand-backs")).toHaveCount(0);
     await expect(panel).not.toContainText(/\b(Lord|Loyalist|Rebel|Renegade|Spy)\b/);
     const bodyText = await page.locator("body").innerText();
     for (const hiddenCard of hidden) expect(bodyText).not.toContain(hiddenCard.id);
     const third = seed.players[2];
-    await page.locator(`[data-player-anchor="${third.id}"] .opponent-hero-inspect-name`).click();
-    const thirdPanel = page.getByRole("dialog", { name: "THIRD opponent inspection" });
+    const thirdInspectButton = page.locator(`[data-player-anchor="${third.id}"] .opponent-hero-inspect-name`);
+    await thirdInspectButton.click();
+    const thirdPanel = page.getByRole("region", { name: "THIRD opponent inspection" });
     await expect(thirdPanel).toBeVisible();
     await expect(thirdPanel).toHaveAttribute("data-inspect-player-id", third.id);
     await expect(page.locator(`[data-player-anchor="${inspected.id}"].selected-target`)).toHaveCount(1);
@@ -886,24 +1154,37 @@ for (const viewport of [
     await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
     await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
     expect(submissions).toEqual([]);
-    await thirdPanel.getByRole("button", { name: "Close THIRD inspection" }).click();
+    await thirdInspectButton.click();
     await expect(page.locator(`[data-player-anchor="${inspected.id}"].selected-target`)).toHaveCount(1);
     await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
     await inspectButton.click();
     await expect(panel).toBeVisible();
 
-    const [profileBox, identityStatsBox, skillsBox, publicZonesBox, equipmentBox, judgementBox] = await Promise.all([
+    const [bodyBox, portraitBox, mainBox, upperBox, identityBox, profileBox, identityStatsBox, skillsBox, equipmentBox, judgementBox] = await Promise.all([
+      panel.locator(".hero-focus-body").boundingBox(),
+      panel.locator(".hero-focus-portrait").boundingBox(),
+      panel.locator(".hero-focus-inspect-main").boundingBox(),
+      panel.locator(".hero-focus-inspect-upper").boundingBox(),
+      panel.locator(".hero-focus-identity").boundingBox(),
       panel.locator(".hero-focus-inspect-profile").boundingBox(),
       panel.locator(".hero-focus-identity-stats").boundingBox(),
       panel.locator('[aria-label="Public Skills"]').boundingBox(),
-      panel.locator(".hero-focus-inspect-public-zones").boundingBox(),
       panel.locator('[aria-label="Equipment"]').boundingBox(),
       panel.locator('[aria-label="Judgement Zone"]').boundingBox(),
     ]);
-    for (const box of [profileBox, identityStatsBox, skillsBox, publicZonesBox, equipmentBox, judgementBox]) expect(box).not.toBeNull();
-    expect(publicZonesBox.x).toBeGreaterThanOrEqual(profileBox.x + profileBox.width);
+    for (const box of [bodyBox, portraitBox, mainBox, upperBox, identityBox, profileBox, identityStatsBox, skillsBox, equipmentBox, judgementBox]) expect(box).not.toBeNull();
+    expect(portraitBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.25);
+    expect(portraitBox.width / bodyBox.width).toBeLessThanOrEqual(0.42);
+    expect(portraitBox.height / portraitBox.width).toBeGreaterThanOrEqual(1.2);
+    expect(portraitBox.height / portraitBox.width).toBeLessThanOrEqual(1.3);
+    if (viewport.width <= 520) {
+      expect(mainBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.58);
+      expect(mainBox.width / bodyBox.width).toBeLessThanOrEqual(0.75);
+    }
+    expect(judgementBox.x).toBeGreaterThanOrEqual(identityBox.x + identityBox.width - 1);
+    expect(Math.abs(judgementBox.y - identityBox.y)).toBeLessThanOrEqual(2);
+    expect(equipmentBox.y).toBeGreaterThanOrEqual(upperBox.y + upperBox.height - 1);
     expect(skillsBox.y).toBeGreaterThanOrEqual(identityStatsBox.y + identityStatsBox.height - 1);
-    expect(Math.abs(publicZonesBox.y - profileBox.y)).toBeLessThanOrEqual(2);
 
     const details = panel.locator(".hero-focus-inspect-details");
     const skill = panel.getByRole("button", { name: "Show Stauchness description" });
@@ -929,14 +1210,15 @@ for (const viewport of [
         clientHeight: element.clientHeight,
       };
     });
+    await panel.evaluate((element) => { element.scrollTop = element.scrollHeight; });
     expect(descriptionGeometry.visibleLines).toBeGreaterThanOrEqual(Math.min(5, descriptionGeometry.naturalLines));
     expect(descriptionGeometry.maxHeight).toBeLessThanOrEqual(5 * descriptionGeometry.lineHeight + 1);
     await testInfo.attach(`inspect-expanded-details-geometry-${viewport.width}`, { body: JSON.stringify({ detailsGeometry, descriptionGeometry }), contentType: "application/json" });
     await attachScreenshot(testInfo, `server-unified-inspect-expanded-${viewport.width}`, page);
     await saveInspectionScreenshot(page, `server-unified-inspect-expanded-${viewport.width}.png`);
     await page.keyboard.press("Enter");
-    await expect(skillDescription).toHaveCount(0);
-    await expect(skill).toHaveAttribute("aria-expanded", "false");
+    await expect(skillDescription).toBeVisible();
+    await expect(skill).toHaveAttribute("aria-expanded", "true");
     const dockAtSelectedTarget = await page.locator(".local-player-dock").boundingBox();
     await attachScreenshot(testInfo, `server-unified-inspect-${viewport.width}`, page);
 
@@ -957,22 +1239,21 @@ for (const viewport of [
     expect(dockBefore).not.toBeNull();
     expect(menuBox).not.toBeNull();
     expect(guidanceBox).not.toBeNull();
-    const layoutGeometry = { stageBox, surfaceBox, panelBox, profileBox, identityStatsBox, skillsBox, publicZonesBox, equipmentBox, judgementBox, detailsBox, equipmentCardBoxes, dockBefore, menuBox, guidanceBox, seatBoxes, detailsGeometry, descriptionGeometry };
+    const layoutGeometry = { stageBox, surfaceBox, panelBox, bodyBox, portraitBox, mainBox, upperBox, identityBox, profileBox, identityStatsBox, skillsBox, equipmentBox, judgementBox, detailsBox, equipmentCardBoxes, dockBefore, menuBox, guidanceBox, seatBoxes, detailsGeometry, descriptionGeometry };
     await testInfo.attach(`inspect-layout-geometry-${viewport.width}`, { body: JSON.stringify(layoutGeometry, null, 2), contentType: "application/json" });
     saveInspectionEvidence(`server-unified-inspect-layout-${viewport.width}.json`, JSON.stringify(layoutGeometry, null, 2));
     const overlaps = (a, b) => Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x)
       && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
     expect(surfaceBox.width).toBeLessThan(stageBox.width);
     expect(surfaceBox.height).toBeLessThan(stageBox.height);
-    expect(surfaceBox.y).toBeGreaterThanOrEqual(stageBox.y + 10);
-    expect(surfaceBox.y + surfaceBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height - 10);
+    expect(surfaceBox.y).toBeGreaterThanOrEqual(stageBox.y - 1);
+    expect(surfaceBox.y + surfaceBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height + 1);
     expect(panelBox.x).toBeGreaterThanOrEqual(surfaceBox.x);
     expect(panelBox.y).toBeGreaterThanOrEqual(surfaceBox.y);
     expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(surfaceBox.x + surfaceBox.width);
     expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(surfaceBox.y + surfaceBox.height);
     expect(detailsBox.y).toBeGreaterThanOrEqual(panelBox.y);
     expect(detailsBox.y + detailsBox.height).toBeLessThanOrEqual(panelBox.y + panelBox.height + 1);
-    expect(publicZonesBox.x).toBeGreaterThanOrEqual(profileBox.x + profileBox.width);
     expect(skillsBox.y).toBeGreaterThanOrEqual(identityStatsBox.y + identityStatsBox.height - 1);
     expect(overlaps(surfaceBox, menuBox)).toBe(false);
     expect(overlaps(surfaceBox, guidanceBox)).toBe(false);
@@ -992,13 +1273,12 @@ for (const viewport of [
       expect(Math.abs(equipmentCardBoxes[0].y - equipmentCardBoxes[1].y)).toBeLessThanOrEqual(1);
       for (const cardBox of equipmentCardBoxes) expect(cardBox.width).toBeGreaterThanOrEqual(27);
     }
-    if (viewport.width <= 520) expect(surfaceBox.width / stageBox.width).toBeGreaterThanOrEqual(0.88);
-    expect(surfaceBox.width / stageBox.width).toBeLessThanOrEqual(0.94);
+    expect(surfaceBox.width / stageBox.width).toBeLessThanOrEqual(0.82);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
     await attachScreenshot(testInfo, `server-opponent-inspect-${viewport.width}`, page);
     await saveInspectionScreenshot(page, `server-opponent-inspect-${viewport.width}.png`);
 
-    await panel.getByRole("button", { name: "Close INSPECTED inspection" }).click();
+    await page.locator(`[data-player-anchor="${inspected.id}"] .opponent-hero-inspect-name`).click();
     await expect(page.locator('.interaction-stage[data-local-ui-mode="INSPECT"]')).toHaveCount(0);
     const dockAfter = await page.locator(".local-player-dock").boundingBox();
     expect(Math.abs(dockAfter.x - dockBefore.x)).toBeLessThanOrEqual(2);
@@ -1016,7 +1296,7 @@ for (const viewport of [
   });
 }
 
-test("server-backed compact inspector keeps public zones beside identity and shows five skill lines at 390px", async ({ page, request }, testInfo) => {
+test("server-backed INS-5 inspector keeps public identity and two-level zones with readable skill details", async ({ page, request }, testInfo) => {
   const hidden = card("Peach", "real-inspect-five-line-hidden");
   const crossbow = card("ZhugeCrossbow", "real-inspect-five-line-crossbow", "♦", "A");
   const shield = card("NioShield", "real-inspect-five-line-shield");
@@ -1034,12 +1314,15 @@ test("server-backed compact inspector keeps public zones beside identity and sho
     if (requestEvent.url() === `${API}/api/rooms` && requestEvent.method() === "POST") submissions.push(requestEvent.postData() ?? "");
   });
   await page.locator(`[data-player-anchor="${seed.players[1].id}"] .opponent-hero-target`).click();
-  const panel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
+  const panel = page.getByRole("region", { name: "INSPECTED opponent inspection" });
   await expect(panel).toBeVisible();
   const profile = panel.locator(".hero-focus-inspect-profile");
   const stats = panel.locator(".hero-focus-identity-stats");
   const skills = panel.locator('[aria-label="Public Skills"]');
-  const zones = panel.locator(".hero-focus-inspect-public-zones");
+  const body = panel.locator(".hero-focus-body");
+  const portrait = panel.locator(".hero-focus-portrait");
+  const main = panel.locator(".hero-focus-inspect-main");
+  const upper = panel.locator(".hero-focus-inspect-upper");
   const equipment = panel.locator('[aria-label="Equipment"]');
   const judgement = panel.locator('[aria-label="Judgement Zone"]');
   await expect(skills).toContainText("Sowing Distrust");
@@ -1047,13 +1330,21 @@ test("server-backed compact inspector keeps public zones beside identity and sho
   await expect(judgement.locator(".opponent-inspection-card")).toHaveCount(1);
   await expect(panel.locator('[aria-label="Concealed Hand"]')).toHaveCount(0);
   expect(await page.locator("body").innerText()).not.toContain(hidden.id);
-  const [profileBox, statsBox, skillsBox, zonesBox, equipmentBox, judgementBox] = await Promise.all([
-    profile.boundingBox(), stats.boundingBox(), skills.boundingBox(), zones.boundingBox(), equipment.boundingBox(), judgement.boundingBox(),
+  const [bodyBox, portraitBox, mainBox, upperBox, identityBox, profileBox, statsBox, skillsBox, equipmentBox, judgementBox] = await Promise.all([
+    body.boundingBox(), portrait.boundingBox(), main.boundingBox(), upper.boundingBox(), panel.locator(".hero-focus-identity").boundingBox(),
+    profile.boundingBox(), stats.boundingBox(), skills.boundingBox(), equipment.boundingBox(), judgement.boundingBox(),
   ]);
-  for (const box of [profileBox, statsBox, skillsBox, zonesBox, equipmentBox, judgementBox]) expect(box).not.toBeNull();
-  expect(zonesBox.x).toBeGreaterThanOrEqual(profileBox.x + profileBox.width);
+  for (const box of [bodyBox, portraitBox, mainBox, upperBox, identityBox, profileBox, statsBox, skillsBox, equipmentBox, judgementBox]) expect(box).not.toBeNull();
+  expect(portraitBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.25);
+  expect(portraitBox.width / bodyBox.width).toBeLessThanOrEqual(0.42);
+  expect(portraitBox.height / portraitBox.width).toBeGreaterThanOrEqual(1.2);
+  expect(portraitBox.height / portraitBox.width).toBeLessThanOrEqual(1.3);
+  expect(mainBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.58);
+  expect(mainBox.width / bodyBox.width).toBeLessThanOrEqual(0.75);
+  expect(judgementBox.x).toBeGreaterThanOrEqual(identityBox.x + identityBox.width - 1);
+  expect(Math.abs(judgementBox.y - profileBox.y)).toBeLessThanOrEqual(2);
+  expect(equipmentBox.y).toBeGreaterThanOrEqual(upperBox.y + upperBox.height - 1);
   expect(skillsBox.y).toBeGreaterThanOrEqual(statsBox.y + statsBox.height - 1);
-  expect(Math.abs(zonesBox.y - profileBox.y)).toBeLessThanOrEqual(2);
   const equipmentCards = await equipment.locator(".opponent-inspection-card").evaluateAll((cards) => cards.map((cardElement) => {
     const box = cardElement.getBoundingClientRect();
     return { x: box.x, y: box.y, width: box.width, height: box.height };
@@ -1088,7 +1379,7 @@ test("server-backed compact inspector keeps public zones beside identity and sho
   expect(descriptionGeometry.visibleLines).toBeGreaterThanOrEqual(5);
   expect(descriptionGeometry.maxHeight).toBeLessThanOrEqual(5 * descriptionGeometry.lineHeight + 1);
   expect(submissions).toEqual([]);
-  const layout = { profileBox, statsBox, skillsBox, zonesBox, equipmentBox, judgementBox, equipmentCards, descriptionGeometry };
+  const layout = { bodyBox, portraitBox, mainBox, upperBox, identityBox, profileBox, statsBox, skillsBox, equipmentBox, judgementBox, equipmentCards, descriptionGeometry };
   await testInfo.attach("server-five-line-skill-layout-390", { body: JSON.stringify(layout, null, 2), contentType: "application/json" });
   await attachScreenshot(testInfo, "server-five-line-skill-390", page);
   saveInspectionEvidence("server-five-line-skill-layout-390.json", JSON.stringify(layout, null, 2));
@@ -1100,37 +1391,57 @@ test.describe("iPhone 17 Pro Max mobile browser emulation", () => {
   test.use(iphoneDevice);
 
   test("server-backed inspector supports touch and keyboard skill disclosure", async ({ page, request }, testInfo) => {
+    const gameplayPosts = [];
+    page.on("request", (requestEvent) => {
+      if (requestEvent.method() === "POST" && requestEvent.url() === `${API}/api/rooms`) {
+        try {
+          const body = JSON.parse(requestEvent.postData() ?? "{}");
+          if (body.action !== "expire_inactive_room") gameplayPosts.push(body);
+        } catch { gameplayPosts.push({ invalidBody: true }); }
+      }
+    });
     const hidden = [card("Peach", "real-inspect-mobile-hidden")];
     const crossbow = card("ZhugeCrossbow", "real-inspect-mobile-crossbow", "♦", "A");
     const shield = card("NioShield", "real-inspect-mobile-shield");
+    const lightning = card("Lightning", "real-inspect-mobile-lightning", "♠", "A");
     const seed = await seedGame(request, [
       { name: "VIEWER", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [] },
-      { name: "INSPECTED", role: "Loyalist", hero: "xiahou-dun", hp: 2, maxHp: 4, hand: hidden, equipment: { weapon: crossbow, armor: shield }, judgement: [] },
+      { name: "INSPECTED", role: "Loyalist", hero: "xiahou-dun", hp: 2, maxHp: 4, hand: hidden, equipment: { weapon: crossbow, armor: shield }, judgement: [lightning] },
       { name: "THIRD", role: "Rebel", hero: "guo-jia", hp: 4, maxHp: 4, hand: [] },
       { name: "FOURTH", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: [] },
     ]);
-    const viewport = devices["iPhone 17 Pro Max"].viewport;
+    const viewport = { width: 390, height: 700 };
     await openGame(page, seed, 0, viewport);
     const tap = async (locator) => {
+      await locator.scrollIntoViewIfNeeded();
       const box = await locator.boundingBox();
       expect(box).not.toBeNull();
       await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
     };
     const inspectButton = page.locator(`[data-player-anchor="${seed.players[1].id}"] .opponent-hero-target`);
     await tap(inspectButton);
-    const panel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
+    const panel = page.getByRole("region", { name: "INSPECTED opponent inspection" });
     await expect(panel).toBeVisible();
-    await expect(panel.locator(".hero-focus-identity [data-public-hand-count]")).toHaveText("Hand · 1");
+    await expect(panel.locator(".hero-focus-identity-stats [data-public-hand-count]")).toHaveText("Hand · 1");
+    expect(await page.locator("body").innerText()).not.toContain(hidden[0].id);
     const skill = panel.getByRole("button", { name: "Show Stauchness description" });
     await skill.focus();
     await page.keyboard.press("Enter");
     await expect(panel.getByRole("region", { name: "Stauchness description" })).toContainText("After you take damage, you may enter Judgement phase");
     await attachScreenshot(testInfo, "server-webkit-mobile-inspector-skill-expanded", page);
     await saveInspectionScreenshot(page, "server-touch-mobile-inspector-skill-expanded.png");
+    const equipmentCard = panel.getByRole("button", { name: "Explain Zhuge Crossbow" });
+    await tap(equipmentCard);
+    await expect(panel.locator('[data-inspector-card-detail="true"]')).toContainText("Zhuge Crossbow");
+    const lightningCard = panel.getByRole("button", { name: "Explain Lightning" });
+    await tap(lightningCard);
+    await expect(panel.locator('[data-inspector-card-detail="true"]')).toContainText("Lightning");
     await tap(skill);
-    await expect(panel.getByRole("region", { name: "Stauchness description" })).toHaveCount(0);
+    await expect(panel.locator('[data-inspector-card-detail="true"]')).toHaveCount(0);
+    await expect(panel.getByRole("region", { name: "Stauchness description" })).toContainText("After you take damage, you may enter Judgement phase");
+    expect(gameplayPosts).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
-    await tap(panel.getByRole("button", { name: "Close INSPECTED inspection" }));
+    await tap(inspectButton);
     await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
   });
 });

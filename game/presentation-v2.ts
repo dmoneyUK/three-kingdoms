@@ -1652,7 +1652,11 @@ function groupRootCardProofFor(
   const heldRootCards = heldCards.filter((heldCard) => heldCard?.id === rootCardId);
   const heldRootCard = heldRootCards.length === 1 ? heldRootCards[0] : null;
   const rootEvent = uniqueTimelineEventById(rootEventId, timeline);
-  const cardEvents = rootCardId ? timeline.filter((event) => eventCardIds(event).includes(rootCardId)) : [];
+  // Internal/non-presented draws can retain the same physical card ID that is
+  // later used by the public play. The root's public identity is unique among
+  // committed, visible play events; private draw history must not shadow it.
+  const cardEvents = rootCardId ? timeline.filter((event) => event.type === "card"
+    && event.action === "play" && event.presentation !== false && event.card?.id === rootCardId) : [];
   const sourceId = values?.sourceId;
   const targetIds = values?.targetIds ?? [];
 
@@ -2997,7 +3001,8 @@ function groupSettlementsFor(timeline: readonly PresentationV2Event[]): Presenta
       const outcome = participant?.outcome;
       if (!playerId || participantIds.has(playerId) || participant?.order !== index + 1
         || (status !== "RESOLVED" && status !== "NO_LONGER_APPLICABLE")
-        || status === "RESOLVED" && (outcome !== "AVOIDED" && outcome !== "DAMAGED" && outcome !== "NEGATED" && outcome !== "DEFEATED")
+        || status === "RESOLVED" && outcome !== undefined
+          && outcome !== "AVOIDED" && outcome !== "DAMAGED" && outcome !== "NEGATED" && outcome !== "DEFEATED"
         || status === "NO_LONGER_APPLICABLE" && outcome !== undefined
         || outcome !== undefined && !isGroupParticipantProgressOutcomeAllowed(proof.cardKind as "RainingArrows" | "BarbarianInvasion", "GROUP", status as GroupParticipantProgressStatus, outcome as GroupParticipantProgressOutcome)) return [];
       participantIds.add(playerId);

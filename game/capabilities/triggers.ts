@@ -81,6 +81,10 @@ export type TriggeredEffect = {
   event: TriggerEvent;
   getOption: (context: TriggerContext) => TriggerOption | null;
   resolve: (context: TriggerContext, selection: TriggerSelection) => TriggerExecution | null;
+  /** Whether the existence of this option is safe to include in shared event text. */
+  publicAvailability?: (context: TriggerContext) => "public" | "private";
+  /** Opens a private Pass window even when no eligible option is available. */
+  privateOpportunityWindow?: (context: TriggerContext) => boolean;
   /** The player who owns this event option; omitted when the event actor is the owner. */
   getActorId?: (context: TriggerContext) => string | null | undefined;
   /** A provider with this flag may be offered once for each point of one damage event. */
@@ -147,6 +151,19 @@ export function resolveTriggeredEffect(effectId: unknown, context: TriggerContex
 export function triggerActorId(effectId: string, context: TriggerContext) {
   const trigger = triggers.find((candidate) => candidate.id === effectId && candidate.event === context.event);
   return trigger?.getActorId?.(context) ?? null;
+}
+
+/** Defaults to public for existing providers; private eligibility is never announced to the table. */
+export function triggerAvailability(effectId: string, context: TriggerContext): "public" | "private" {
+  const trigger = triggers.find((candidate) => candidate.id === effectId && candidate.event === context.event);
+  return trigger?.publicAvailability?.(context) ?? "public";
+}
+
+/** Potential private windows must not depend on hidden option eligibility. */
+export function privateOpportunityWindowEffectIds(context: TriggerContext, resolvedEffectIds: readonly string[] = []) {
+  const resolved = new Set(resolvedEffectIds);
+  return triggers.filter((trigger) => trigger.event === context.event && !resolved.has(trigger.id)
+    && trigger.privateOpportunityWindow?.(context) === true).map((trigger) => trigger.id);
 }
 
 /** Returns whether a damage trigger is intentionally repeated per damage point. */

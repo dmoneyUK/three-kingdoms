@@ -2693,12 +2693,13 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   setHand(first.id, [aliceNegation], 4, 4);
   setHand(second.id, [bobNegation], 4, 4);
   setHand(third.id, [], 4, 4);
-  setDeck(game.code, [
+  const harvestCards = [
     card("Attack", "progress-reveal-1"),
     card("Dodge", "progress-reveal-2"),
     card("Peach", "progress-reveal-3"),
     card("Strike", "progress-reveal-4"),
-  ]);
+  ];
+  setDeck(game.code, harvestCards);
   setTurn(game.code, source.seat);
 
   const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: harvest.id, preserveResponse: true });
@@ -2722,6 +2723,21 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.deepEqual(initialProgress?.participants.map(({ status }) => status), ["CURRENT", "PENDING", "PENDING", "PENDING"]);
   assert.equal(initialProgress?.currentParticipantId, source.id);
   assert.equal(firstWindow.presentationV2.interactionScene?.stage, "NEGATION");
+  const firstPublicPool = firstWindow.publicHarvestPool;
+  assert.equal(firstWindow.pendingHarvest, null, "the public Negation pool does not promote a chooser action");
+  assert.equal(firstPublicPool?.semantics, "PROVEN");
+  assert.equal(firstPublicPool?.rootEventId, initialProgress.rootEventId);
+  assert.ok(firstPublicPool?.revealEventId);
+  assert.deepEqual(firstPublicPool?.revealed.map(({ id }) => id), harvestCards.map(({ id }) => id));
+  assert.deepEqual(firstPublicPool?.availableIds, firstPublicPool?.revealed.map(({ id }) => id));
+  assert.deepEqual(firstPublicPool?.choices, []);
+  const exactReveal = firstWindow.timeline.filter((event) => event.id === firstPublicPool?.revealEventId);
+  assert.equal(exactReveal.length, 1, "the pool links to one exact public reveal event");
+  assert.equal(exactReveal[0]?.type, "cards");
+  assert.equal(exactReveal[0]?.action, "reveal");
+  assert.equal(exactReveal[0]?.presentation, false);
+  assert.equal(exactReveal[0]?.resolutionId, initialProgress.rootResolutionId);
+  assert.deepEqual(exactReveal[0]?.cards.map(({ id }) => id), firstPublicPool?.revealed.map(({ id }) => id));
   assert.equal(firstWindow.presentationV2.interactionScene?.currentParticipantId, source.id);
   assert.equal(firstWindow.presentationV2.interactionScene?.decisionActorId, null);
   assert.equal(firstWindow.presentationV2.interactionScene?.activeResolverId, null);
@@ -2731,6 +2747,8 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
 
   const observer = await assertProjectionMatchesEngine(game.code, host.token);
   assert.equal(observer.pendingNegation.actorId, null, "the observer DTO does not identify the current scan actor");
+  assert.deepEqual(observer.publicHarvestPool, firstPublicPool, "independent viewers receive the same read-only public pool");
+  assert.equal(JSON.stringify(observer.publicHarvestPool).includes(aliceNegation.id), false, "the public pool does not identify a private Negation card");
   assert.deepEqual(publicSnapshot(observer.presentationSnapshot), publicSnapshot(firstWindow.presentationSnapshot), "public Bumper Harvest authority is viewer-equal");
   assert.deepEqual(observer.currentAction.options, [], "non-eligible viewers receive only the shared Pass capability");
 
@@ -2738,6 +2756,8 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
   await advanceNegationWindow(game.code, host.token, firstWindowId);
   const counterWindow = await assertProjectionMatchesEngine(game.code, bob.token);
+  assert.deepEqual(counterWindow.publicHarvestPool, firstPublicPool, "the exact revealed pool stays stable through counter-Negation");
+  assert.equal(counterWindow.pendingHarvest, null);
   assert.equal(counterWindow.currentAction.actorId, second.id);
   assert.equal(counterWindow.presentationSnapshot.bumperHarvestProgress?.currentParticipantId, source.id, "the affected chooser remains the participant through counter-Negation");
   assert.equal(counterWindow.presentationSnapshot.bumperHarvestProgress?.currentEffectState, "BLOCKED", "a committed public Negation blocks only the current Bumper participant branch");
@@ -2749,6 +2769,7 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(counterWindow.presentationV2.interactionScene?.activeResolverId, null);
   const counterObserver = await assertProjectionMatchesEngine(game.code, host.token);
   assert.deepEqual(publicSnapshot(counterObserver.presentationSnapshot), publicSnapshot(counterWindow.presentationSnapshot));
+  assert.deepEqual(counterObserver.publicHarvestPool, firstPublicPool);
   assert.equal(counterObserver.pendingNegation.actorId, null);
 
   sql(`UPDATE players SET alive=0,hp=0 WHERE id=${quote(third.id)}`);
@@ -2758,6 +2779,7 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(counterPassed.status, 200, JSON.stringify(counterPassed.data));
   await advanceNegationWindow(game.code, host.token, counterWindowId);
   let nextWindow = await assertProjectionMatchesEngine(game.code, bob.token);
+  assert.deepEqual(nextWindow.publicHarvestPool, firstPublicPool, "the read-only pool remains mounted while the next chooser is in Negation");
   let progress = nextWindow.presentationSnapshot.bumperHarvestProgress;
   assert.equal(progress?.currentParticipantId, first.id, "the following participant becomes current after the preceding choice is negated");
   assert.deepEqual(progress?.participants.map(({ status, outcome }) => ({ status, outcome: outcome ?? null })), [
@@ -2792,7 +2814,10 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.equal(currentWindowPassed.status, 200, JSON.stringify(currentWindowPassed.data));
   await advanceNegationWindow(game.code, host.token, currentWindowId);
   const choice = await assertProjectionMatchesEngine(game.code, alice.token);
+  assert.equal(choice.publicHarvestPool, null, "the separate read-only projection closes when Negation ends");
   assert.equal(choice.currentAction.actorId, first.id);
+  assert.equal(choice.pendingHarvest.revealEventId, firstPublicPool.revealEventId, "the chooser receives the same reveal identity for in-place promotion");
+  assert.deepEqual(choice.pendingHarvest.revealed.map(({ id }) => id), firstPublicPool.revealed.map(({ id }) => id));
   assert.equal(choice.presentationV2.interactionScene?.stage, "SEQUENTIAL_CHOICE");
   assert.equal(choice.presentationV2.stableBoundary.kind, "CHOICE");
   assert.equal(choice.presentationSnapshot.bumperHarvestProgress?.participants[0].outcome, "NEGATED");
@@ -2801,6 +2826,8 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   assert.ok(activeChoicePending.choiceDeadlineAt - Date.now() <= 60_000 && activeChoicePending.choiceDeadlineAt - Date.now() > 59_000, "the server starts a fresh 60-second deadline when the chooser becomes active");
   assert.equal(choice.pendingHarvest.countdownUntil, activeChoicePending.choiceDeadlineAt, "the viewer projection exposes the same server-owned chooser deadline");
   const publicChoice = (await state(game.code, host.token)).data;
+  assert.equal(publicChoice.publicHarvestPool, null);
+  assert.equal(publicChoice.pendingHarvest.revealEventId, firstPublicPool.revealEventId);
   assert.equal(publicChoice.pendingHarvest.countdownUntil, activeChoicePending.choiceDeadlineAt, "the public countdown is consistent for a non-chooser viewer");
 
   const availableBeforeExpiry = [...activeChoicePending.availableIds];
@@ -2827,6 +2854,10 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   const picked = await request("choose_harvest", { code: game.code, token: alice.token, cardId: chosen, context: chooserContext });
   assert.equal(picked.status, 200, JSON.stringify(picked.data));
   nextWindow = await assertProjectionMatchesEngine(game.code, bob.token);
+  assert.equal(nextWindow.publicHarvestPool?.revealEventId, firstPublicPool.revealEventId);
+  assert.deepEqual(nextWindow.publicHarvestPool?.choices, [{ cardId: chosen, playerId: first.id, playerName: first.name }]);
+  assert.deepEqual(nextWindow.publicHarvestPool?.availableIds, availableBeforeExpiry.filter((id) => id !== chosen));
+  assert.equal(nextWindow.pendingHarvest, null, "the next Negation stays read-only until that branch settles");
   progress = nextWindow.presentationSnapshot.bumperHarvestProgress;
   assert.equal(progress?.participants[1].status, "RESOLVED");
   assert.equal(progress?.participants[1].outcome, "CHOSE_CARD");

@@ -85,7 +85,7 @@ async function measure(page) {
     const table = document.querySelector(".play-table");
     const dock = document.querySelector(".local-player-dock");
     const guidance = dock?.querySelector(".console-guidance");
-    const choice = document.querySelector(".harvest-choice-stage > div");
+    const choice = document.querySelector(".harvest-choice-panel");
     const harvestRow = choice?.querySelector(".harvest-card-row");
     const harvestChoices = [...(choice?.querySelectorAll(".harvest-card-choice") ?? [])];
     const piles = ["[data-draw-anchor='true']", "[data-discard-anchor='true']"]
@@ -120,7 +120,15 @@ test("real Bumper Harvest gives each active chooser a server-owned 60-second Sta
     const response = await route.fetch();
     if (!suppressTimerProjection) return route.fulfill({ response });
     const body = await response.json();
-    if (body.pendingHarvest) body.pendingHarvest.countdownUntil = 0;
+    const room = body.room ?? body;
+    if (room.pendingHarvest) room.pendingHarvest.countdownUntil = 0;
+    if (room.currentAction?.deadline) room.currentAction.deadline = 0;
+    if (room.pendingDying?.deadline) room.pendingDying.deadline = 0;
+    if (room.pendingNegation?.deadline) room.pendingNegation.deadline = 0;
+    if (room.pendingGreenDragon?.deadline) room.pendingGreenDragon.deadline = 0;
+    if (room.pendingRockCleaving?.deadline) room.pendingRockCleaving.deadline = 0;
+    if (room.pendingDuel?.deadline) room.pendingDuel.deadline = 0;
+    if (room.pendingAttack?.deadline) room.pendingAttack.deadline = 0;
     return route.fulfill({ response, json: body });
   });
   const source = await openPlayer(page, seed, 0, viewports[0]);
@@ -146,7 +154,7 @@ test("real Bumper Harvest gives each active chooser a server-owned 60-second Sta
 
   const narrowViewport = { width: 320, height: 740 };
   await page.setViewportSize(narrowViewport);
-  await expect(page.locator(".harvest-choice-stage > div")).toBeVisible();
+  await expect(page.locator(".harvest-choice-panel")).toBeVisible();
   const localChoiceGeometry = await measure(page);
   const localChoiceContext = JSON.stringify({ viewport: narrowViewport, geometry: localChoiceGeometry });
   expect(localChoiceGeometry.choice.left, localChoiceContext).toBeGreaterThanOrEqual(8);
@@ -166,7 +174,7 @@ test("real Bumper Harvest gives each active chooser a server-owned 60-second Sta
     contentType: "application/json",
   });
 
-  const firstCard = page.locator(".harvest-choice-stage .harvest-card-choice:not([disabled])").first();
+  const firstCard = page.locator(".harvest-choice-stage .harvest-card-select:not([disabled])").first();
   await expect(firstCard).toBeEnabled();
   await firstCard.click();
   const confirm = page.locator(".harvest-choice-stage .harvest-confirm-row button.primary");
@@ -195,7 +203,7 @@ test("real Bumper Harvest gives each active chooser a server-owned 60-second Sta
     suppressTimerProjection = true;
     await page.reload();
     await expect(page.locator(".game-shell")).toBeVisible();
-    await expect(page.locator(".harvest-choice-stage > div")).toBeVisible();
+    await expect(page.locator(".harvest-choice-panel")).toBeVisible();
     await expect(page.locator(".stage-system-cluster > .visible-countdown-event")).toHaveCount(0);
     const prior = await measure(page);
 
