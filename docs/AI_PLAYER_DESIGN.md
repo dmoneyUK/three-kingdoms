@@ -1,9 +1,9 @@
 # WTK Smart Bot Player — Product Roadmap and Implementation Design
 
 > Feature branch: `feature/smart-bot-player`
-> Design revision: **AIP-D9 / 2026-10-18**
+> Design revision: **AIP-D10 / 2026-10-18**
 > Owner: **Human Reviewer + Planner**. Planner edits **this file for normal design/review**; governance docs only under explicit user instruction.
-> Status: **DESIGN-DRIVEN AUTONOMOUS QUEUE**. AIP-00A is **ACCEPTED by the human Product Owner (2026-10-17)**. AIP-00B is **ACCEPTED following positive Staging device/browser feedback from the user on 2026-10-18**. AIP-00C is **PENDING_REVIEW**; AIP-01 remains **pre-approved as a dependency-gated task** and may execute only after AIP-00C is **ACCEPTED** and all cloud/API risk gates are satisfied. Other roadmap stages are DRAFT.
+> Status: **DESIGN-DRIVEN AUTONOMOUS QUEUE**. AIP-00A is **ACCEPTED by the human Product Owner (2026-10-17)**. AIP-00B is **ACCEPTED following positive Staging device/browser feedback from the user on 2026-10-18**. AIP-00C was **ACCEPTED by explicit human Product Owner decision on 2026-10-18**. AIP-01 is now **APPROVED and immediately eligible for offline/mock implementation only**. Actual OpenAI API requests, spend, and real-player data transfer remain UNAUTHORIZED pending separate human approval. Other roadmap stages are DRAFT.
 > Coding Agent: **one agent, one bounded task per cycle; re-read design and automatically select the next eligible independent APPROVED task after each PENDING_REVIEW delivery**. Never self-accept or bypass dependencies.
 > This document is **NOT** a second WTK core-game specification, an OS architecture spec, a UX2 specification, or an agent handover.
 
@@ -163,9 +163,9 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 | --- | --- | --- | --- | --- |
 | Bootstrap | **AIP-00A** | Feature-branch CI gate, no production deploy, Markdown-only ignores | validated exact SHA, no deploy job | **ACCEPTED — HUMAN REVIEW 2026-10-17** |
 | Staging | **AIP-00B** | Separate Worker, separate D1, safe manual deployment and iPhone URL | actual URL, unique DB UUID, migrations, mobile smoke | **ACCEPTED — USER DEVICE FEEDBACK 2026-10-18** |
-| Automation | **AIP-00C** | Code pushes deploy to Staging only after full CI | exact SHA deploy, production unaffected, docs-only ignores | **PENDING_REVIEW** |
+| Automation | **AIP-00C** | Code pushes deploy to Staging only after full CI | exact SHA deploy, production unaffected, docs-only ignores | **ACCEPTED — HUMAN REVIEW 2026-10-18** |
 | Security follow-up | AIP-SEC-01 | Isolate Staging deployment credential and restrict account scope | separate GitHub environment secret and safe cutover evidence | DRAFT — separate approval needed |
-| AI lab | AIP-01 | Offline/read-only OpenAI Decision Prototype (mock first, tiny opt-in live eval) | 10–20 anonymous fixtures, valid candidate IDs, latency, usage report | **APPROVED — MOCK/OFFLINE ONLY UNTIL LIVE BUDGET GATE; WAITING AIP-00C ACCEPTANCE** |
+| AI lab | **AIP-01** | Offline/read-only OpenAI Decision Prototype (mock first, tiny opt-in live eval) | 10–20 anonymous fixtures, valid candidate IDs, latency, usage report | **APPROVED — NEXT AGENT TASK; MOCK/OFFLINE ONLY** |
 | Legal contracts | AIP-02 | Canonical BotObservation and narrowly scoped legal candidates | privacy, valid cards/targets, stale decisions | DRAFT |
 | Player identity | AIP-03 | Dedicated bot seats and host-only lobby lifecycle | auth/race tests; no Test Player token reuse | DRAFT |
 | Shared action | AIP-04 | Bot Executor through existing canonical server validation | no forged actor, replay, stale revision, card loss | DRAFT |
@@ -176,7 +176,7 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 | Memory AI | AIP-09 | Public-action identity inference and tactical memory | provenance and hidden-role privacy tests | DRAFT |
 | Release | AIP-10 | Full reliability, privacy and production-readiness review | staging evidence, separate user production approval | DRAFT |
 
-**Dependency / automation rule:** AIP-00A is **ACCEPTED (human decision 2026-10-17)**. AIP-00B is **ACCEPTED** after positive user device/browser testing, so its dependency now unlocks AIP-00C; the Agent must still enforce Staging-specific build/D1 binding safeguards and all other risk gates. AIP-00C → AIP-01 become eligible **automatically when each prior task is ACCEPTED**, not when merely PENDING_REVIEW. Coding Agent does not need another pasted task. AIP-00B needs verified Cloudflare permissions; AIP-01 live paid calls require a separate explicit maximum-spend/data gate; mock-only work is approved. AIP-02+ are **DRAFT**, not automatically executable. Agent may undertake independent APPROVED work while other tasks await review only if dependencies and code ownership are genuinely independent. No bot production release without a new user decision.
+**Dependency / automation rule:** AIP-00A is **ACCEPTED (human decision 2026-10-17)**. AIP-00B is **ACCEPTED** after positive user device/browser testing, so its dependency now unlocks AIP-00C; the Agent must still enforce Staging-specific build/D1 binding safeguards and all other risk gates. AIP-00C was explicitly ACCEPTED by the human on 2026-10-18; **AIP-01 offline/mock is now eligible for automatic Agent selection** with no per-task pasted prompt. AIP-01 live network/model calls still require separate user-approved budget, privacy/data boundary and credential handling; AIP-SEC-01 remains DRAFT. Coding Agent does not need another pasted task. AIP-00B needs verified Cloudflare permissions; AIP-01 live paid calls require a separate explicit maximum-spend/data gate; mock-only work is approved. AIP-02+ are **DRAFT**, not automatically executable. Agent may undertake independent APPROVED work while other tasks await review only if dependencies and code ownership are genuinely independent. No bot production release without a new user decision.
 
 
 
@@ -222,7 +222,7 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 
 ### AIP-00C — CI-gated automatic Staging deployment
 
-**Status: PENDING_REVIEW. Priority: P0. Dependencies: AIP-00B ACCEPTED.** The user accepted Staging after positive functional feedback; the browser identity and refresh/rejoin scenario were not separately reported, so the automation must include the specified refresh/rejoin regression.
+**Status: ACCEPTED — Explicit human Product Owner approval on 2026-10-18. Priority: P0. Dependencies: AIP-00B ACCEPTED.** The user accepted Staging after positive functional feedback; the browser identity and refresh/rejoin scenario were not separately reported, so this automation includes the specified refresh/rejoin regression.
 
 **Goal:** after all feature-branch CI jobs pass on a source change, automatically apply migrations against **only Staging D1** and deploy **only the Staging Worker**, followed by health/room smoke. No deploy on PRs or pure Markdown updates. Use existing workflow or isolated staging job, with exact `refs/heads/feature/smart-bot-player` push condition and protected Cloudflare credentials. Production `deploy` job and its root database target remain unchanged; no production access from Staging job.
 
@@ -240,7 +240,7 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 
 **Final implementation evidence (2026-10-18):** Follow-up code commit `ce897a842b13529fd9d7b2087b4ebfbf6525b1d1` waits for client hydration before Staging browser interaction. Exact-SHA [Actions run 39079095884](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39079095884) passed lint/build/fast, API, browser startup, Staging target guard, environment build, generated-config assertions, Wrangler dry-run, Staging D1 migration and post-deploy mobile smoke; production `deploy` was skipped. Guard output confirmed Worker `three-kingdoms-ai-staging`, Staging D1 binding and UUID `62616495-59ea-4a9c-b669-2d3267a83cab`, production UUID excluded, `workers_dev=true`, and `BOT_AI_ENABLED=false`; Wrangler reported no Staging migrations pending. The intended HTTPS Worker https://three-kingdoms-ai-staging.dai-jinge.workers.dev was deployed as version `5b5ec68c-7e70-414e-9982-235029dceb3f`, also confirmed in the deployment listing. Its mobile smoke verified the page's full build SHA equals `ce897a842b13529fd9d7b2087b4ebfbf6525b1d1` before and after room creation, game start, Hero selection, refresh and rejoin (1/1 passed). Local target guard tests passed 5/5, focused ESLint, workflow YAML parsing and `git diff --check` passed. No OpenAI calls were made. Production Worker/D1 were not targeted by the Staging job; the production deployment job was skipped.
 
-**Independent Planner / Reviewer assessment (2026-10-18, no human ACCEPTED yet): RECOMMEND ACCEPT — AIP-00C**
+**Independent Planner / Reviewer assessment (2026-10-18): RECOMMEND ACCEPT — AIP-00C (subsequently human-accepted)**
 
 **VERIFIED from remote source and GitHub Actions:**
 - Reviewed implementation changes from accepted AIP-00B: `.github/workflows/deploy.yml` (new `deploy-staging` job only, original production deploy condition intact), `scripts/verify-ai-staging-config.mjs`, `tests/ai-staging-config.test.mjs` (five guard cases), `tests/browser/staging-playwright.config.mjs`, and `tests/browser/staging-room-reconnect.spec.mjs`. No new AI gameplay, UX2/core rules changes or production D1 schema alterations in the scoped implementation diff.
@@ -257,7 +257,7 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 3. Post-deploy smoke runs *after* deployment; on failure the last deployed Staging version can remain live until a fix/rollback. Treat automated rollback / canary as later reliability work, not as evidence of AIP-00C correctness failure. No automated rollback was required in this bounded task.
 4. AIP-00C proof is a CI-run Staging rollout, not an independent manual iPhone acceptance of the new code SHA. AIP-00B previously passed human device review; human can optionally refresh https://three-kingdoms-ai-staging.dai-jinge.workers.dev to confirm the same experience.
 
-**Reviewer outcome:** Technical acceptance is **recommended**, but the task remains `PENDING_REVIEW` until the user formally accepts (or explicitly delegates this technical category). After `ACCEPTED`, the Coding Agent can autonomously take AIP-01 offline/mock decision lab. Do not enable actual OpenAI API calls or transmit live player data without separate authorization.
+**Final acceptance (2026-10-18): ACCEPTED by explicit human Product Owner decision, following independent technical review and successful exact-SHA [CI run 39079095884](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39079095884) on `ce897a842b13529fd9d7b2087b4ebfbf6525b1d1`. This releases the AIP-01 dependency gate for offline/mock work. Cloudflare token scope and post-deploy rollback remain tracked risks (AIP-SEC-01 DRAFT and future reliability work), not hidden or silently resolved. No production changes, live model requests, secrets or paid usage are approved by this acceptance.
 
 ### AIP-SEC-01 — Restrict Staging deploy credential and separate it from production
 
@@ -281,7 +281,7 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 
 ### AIP-01 — Offline OpenAI decision lab, no live bots
 
-**Status: APPROVED for fully offline/mock implementation (dependency-gated). Priority: P1. Dependencies: AIP-00C ACCEPTED.** Live OpenAI API calls, additional paid services or transmitting real-player data remain **BLOCKED without a separate explicit cost/data-sharing approval**. The agent may implement an opt-in script that is OFF by default, but must not invoke real API calls until explicitly authorized.
+**Status: APPROVED — NEXT ELIGIBLE AGENT TASK; fully offline/mock implementation only. Priority: P1. Dependencies: AIP-00C ACCEPTED (satisfied on 2026-10-18).** The Coding Agent may select this task automatically on its next run. **No real OpenAI API calls, external model invocation, paid services or transmission of real-player data are authorized.** An opt-in script and provider adapter may be written **OFF by default** but must not be run against a live endpoint, given real keys or enabled on Staging/production. Live experimentation requires a separate explicit human-reviewed API cost/request cap, privacy consent and key-management decision. Agent must submit `PENDING_REVIEW` with mock-only evidence and stop dependent work.
 
 **Goal:** demonstrate that a single OpenAI call can choose a valid candidate from a small, privacy-safe, trustworthy WTK tactical snapshot, without affecting rooms, D1 or UI.
 
@@ -342,4 +342,4 @@ For AIP-02–AIP-10, Planner must prepare detailed bounded English specification
 
 **Still requires explicit human review before corresponding phase:** real player bot/human room composition (default one human host), whether bots can replace absent humans (defer), bot difficulty setting (defer), selection of durable scheduler technology (defer), human-facing bot pacing/reason display, live player-data external transmission/retention, live API financial budget, first usable match acceptance rubric.
 
-**Current reviewer gate:** AIP-00A was ACCEPTED on 2026-10-17; AIP-00B is ACCEPTED on 2026-10-18 after the user's positive Staging functional check (website access, room selection and Hero selection), alongside independently verified CI/config and public endpoint checks. **AIP-00C is PENDING_REVIEW.** It guards the Staging-specific Vinext build artifact and D1 binding before automated deployment, and includes refresh/rejoin checks that were not confirmed for AIP-00B. AIP-01 follows only after AIP-00C acceptance. The Planner writes statuses/feedback **only here**; Coding Agent alone maintains AI handover. Do not start dependent work while its prerequisite remains pending review.
+**Current reviewer gate:** AIP-00A was ACCEPTED on 2026-10-17; AIP-00B and AIP-00C are ACCEPTED on 2026-10-18. The last accepted implementation is code SHA `ce897a842b13529fd9d7b2087b4ebfbf6525b1d1` with successful [Actions run 39079095884](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39079095884); subsequent design Markdown commits do not require a new CI run. **AIP-01 is the next eligible approved task; the Agent selects it automatically from this document and executes offline/mock only.** Any real API calls, Staging AI enablement, paid usage, sharing of live player data or production deployment remain blocked without explicit human authorization. AIP-SEC-01 remains DRAFT. Planner writes statuses/feedback only here; Coding Agent alone maintains `AI_PLAYER_HANDOVER.md`.
