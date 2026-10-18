@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import test from "node:test";
+import { derivePublicActivityStatus } from "../../game/public-activity.ts";
 import {
-  assert, card, createHumanGame, discardIds, query, quote, request, requestAndSettle, roomCardCount,
+  assert, card, createHumanGame, createTestGame, discardIds, query, quote, request, requestAndSettle, roomCardCount,
   setDeck, setEquipment, setHand, setTurn, sql, state,
 } from "./test-support.mjs";
 
@@ -74,7 +75,7 @@ test("Dauntless uses the shared turn_end event, private Basic cost, and target-o
   assert.equal((await state(game.code, game.members[1].token)).data.phase, "draw", "turn-end continues to the next living seat exactly once");
 });
 
-test("Dauntless activation, own-turn exclusion, no-Basic exclusion, decline, and stale submissions are safe", async () => {
+test("Dauntless activation, own-turn exclusion, no-Basic private Pass, decline, and stale submissions are safe", async () => {
   const declined = await createHumanGame();
   const declineSetup = configure(declined, { yueCards: [card("Peach", "dauntless-decline")] });
   await openDauntless(declined, declined.members[0], declined.members[1]);
@@ -91,9 +92,72 @@ test("Dauntless activation, own-turn exclusion, no-Basic exclusion, decline, and
 
   const noBasic = await createHumanGame();
   const noBasicSetup = configure(noBasic, { yueCards: [card("DrawTwo", "dauntless-no-basic")] });
-  const noBasicEnded = await requestAndSettle("end_turn", { code: noBasic.code, token: noBasic.members[0].token });
+  const noBasicEnded = await requestAndSettle("end_turn", { code: noBasic.code, token: noBasic.members[0].token, preserveResponse: true });
   assert.equal(noBasicEnded.status, 200, JSON.stringify(noBasicEnded.data));
-  assert.equal((await state(noBasic.code, noBasic.members[1].token)).data.phase, "draw", "no Basic card means no Dauntless window");
+  const noBasicOwner = await state(noBasic.code, noBasic.members[1].token);
+  assert.equal(noBasicOwner.data.phase, "response", "no Basic card still opens the unconditional private Pass window");
+  assert.deepEqual(noBasicOwner.data.currentAction.triggerOptions, []);
+  assert.ok(noBasicOwner.data.currentAction.legalActions.includes("decline_trigger"));
+  const unauthorizedTimer = await request("start_response_timer", { code: noBasic.code, token: noBasic.members[0].token });
+  assert.equal(unauthorizedTimer.status, 409, "only Yue Jin can start the private response timer");
+  const armedNoBasic = await request("start_response_timer", { code: noBasic.code, token: noBasic.members[1].token });
+  assert.equal(armedNoBasic.status, 200, JSON.stringify(armedNoBasic.data));
+  assert.ok(armedNoBasic.data.room.currentAction.deadline > Date.now());
+  assert.ok(armedNoBasic.data.room.currentAction.deadline <= Date.now() + 60_000);
+  const concealedTimer = await state(noBasic.code, noBasic.members[0].token);
+  assert.equal(concealedTimer.data.currentAction.deadline, 0, "the private response timer is hidden from other viewers");
+  assert.equal(concealedTimer.data.responseCountdownVisibleAt, 0);
+  const refreshedViews = await Promise.all(noBasic.members.map((member) => state(noBasic.code, member.token)));
+  for (const { data } of refreshedViews) {
+    assert.deepEqual(derivePublicActivityStatus(data), { kind: "resolving", text: "Resolving…" }, "refresh/reconnect preserves the unconditional shared status");
+    if (data.meId !== noBasicSetup.yue.id) {
+      assert.equal(data.currentAction.deadline, 0);
+      assert.equal(data.currentAction.actorId, null);
+      assert.equal(data.actionPlayerId, null);
+    }
+  }
+  const refreshedPublicMessages = refreshedViews.map(({ data }) => data.timeline.filter((event) => event.type === "message").map((event) => event.message));
+  assert.ok(refreshedPublicMessages.every((messages) => JSON.stringify(messages) === JSON.stringify(refreshedPublicMessages[0])),
+    "refresh/reconnect keeps public timeline text identical for all authenticated viewers");
+  sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.deadline',${Date.now() - 1}) WHERE code=${quote(noBasic.code)}`);
+  const timedOut = await requestAndSettle("decline_trigger", { code: noBasic.code, token: noBasic.members[1].token });
+  assert.equal(timedOut.status, 200, JSON.stringify(timedOut.data));
+  assert.equal(timedOut.data.room.phase, "draw", "the existing response timeout Skip closes the private window once");
+
+  const switched = await createTestGame();
+  const { token, room } = switched.data;
+  const [switchedTarget, switchedYue, ...switchedOthers] = room.players;
+  sql(`UPDATE players SET hero='zhao-yun', hp=4, max_hp=4 WHERE id=${quote(switchedTarget.id)}`);
+  sql(`UPDATE players SET hero='yue-jin', hp=4, max_hp=4 WHERE id=${quote(switchedYue.id)}`);
+  for (const player of switchedOthers) sql(`UPDATE players SET hero=NULL, hp=4, max_hp=4 WHERE id=${quote(player.id)}`);
+  setHand(switchedTarget.id, [], 4, 4);
+  setHand(switchedYue.id, [card("DrawTwo", "dauntless-switch-no-basic")], 4, 4);
+  for (const player of switchedOthers) setHand(player.id, [], 4, 4);
+  setTurn(room.code, switchedTarget.seat, "play");
+  const switchedEnd = await requestAndSettle("end_turn", { code: room.code, token, preserveResponse: true });
+  assert.equal(switchedEnd.status, 200, JSON.stringify(switchedEnd.data));
+  const switchedViews = await Promise.all(room.players.map((player) => state(room.code, token, false, player.id)));
+  assert.deepEqual(switchedViews.map(({ data }) => data.meId).sort(), room.players.map((player) => player.id).sort(), "host Switch can read each authenticated test-player projection during the private window");
+  for (const { data } of switchedViews) {
+    assert.deepEqual(derivePublicActivityStatus(data), { kind: "resolving", text: "Resolving…" });
+    assert.equal(data.timeline.some((event) => event.type === "message" && /Dauntless|may use/i.test(event.message)), false);
+    if (data.meId === switchedYue.id) {
+      assert.deepEqual(data.currentAction.triggerOptions, []);
+      assert.ok(data.currentAction.legalActions.includes("decline_trigger"));
+    } else {
+      assert.equal(data.currentAction.actorId, null);
+      assert.equal(data.actionPlayerId, null);
+      assert.equal(data.currentAction.deadline, 0);
+    }
+  }
+  assert.deepEqual(
+    (await state(room.code, token, false, switchedYue.id)).data.currentAction,
+    switchedViews.find(({ data }) => data.meId === switchedYue.id).data.currentAction,
+    "switching away and back reloads the same owner-only Pass decision",
+  );
+  const switchedPass = await requestAndSettle("decline_trigger", { code: room.code, token });
+  assert.equal(switchedPass.status, 200, JSON.stringify(switchedPass.data));
+  assert.equal(switchedPass.data.room.phase, "draw");
 
   const stale = await createHumanGame();
   const staleSetup = configure(stale, { yueCards: [card("Peach", "dauntless-stale")] });
@@ -197,4 +261,86 @@ test("Dauntless damage survives Dying rescue or defeat and returns to turn-end c
   assert.equal(finished.data.players.find((player) => player.id === defeatSetup.target.id).alive, false);
   assert.notEqual(finished.data.phase, "resolving");
   assert.equal(roomCardCount(defeated.code, "peach-dauntless-defeat-cost"), 1);
+});
+
+test("Dauntless public projection privacy audit across independent viewers", async () => {
+  const withBasic = await createHumanGame();
+  const basicSetup = configure(withBasic, { yueCards: [card("Peach", "dauntless-privacy-basic")] });
+  await openDauntless(withBasic, withBasic.members[0], withBasic.members[1]);
+  const basicViews = await Promise.all(withBasic.members.map((member) => state(withBasic.code, member.token)));
+  const sharedBasicStatus = derivePublicActivityStatus(basicViews[0].data);
+  assert.deepEqual(sharedBasicStatus, { kind: "resolving", text: "Resolving…" });
+  for (const { data } of basicViews) {
+    assert.deepEqual(derivePublicActivityStatus(data), sharedBasicStatus, "all independent viewers receive the same public status");
+    assert.equal(data.timeline.some((event) => event.type === "message" && /may use Dauntless|Dauntless.*end of/i.test(event.message)), false, "private Basic-card eligibility is absent from shared timeline text");
+    if (data.meId === basicSetup.yue.id) {
+      assert.equal(data.actionPlayerId, basicSetup.yue.id);
+      assert.equal(data.currentAction.actorId, basicSetup.yue.id);
+      assert.match(data.currentAction.reason, /Dauntless/);
+      assert.deepEqual(data.currentAction.triggerOptions.map((option) => option.effectId), ["yue_jin_dauntless"]);
+      continue;
+    }
+    assert.equal(data.actionPlayerId, null, "other viewers do not receive the private decision owner");
+    assert.equal(data.currentAction.actorId, null);
+    assert.equal(data.currentAction.kind, "none");
+    assert.equal(data.currentAction.deadline, 0);
+    assert.equal(data.currentAction.reason, "Resolving…");
+    assert.deepEqual(data.currentAction.legalActions, []);
+    assert.equal(data.actionReason, "Resolving…");
+    assert.equal(data.myHand.some((held) => held.id === "peach-dauntless-privacy-basic"), false);
+    assert.equal(data.pending, null);
+    assert.equal(data.responseCountdownVisibleAt, 0);
+    assert.equal(data.actionRevision.includes(basicSetup.yue.id), false, "revision does not serialize the private decision owner");
+    const publicProjection = JSON.stringify({
+      currentAction: data.currentAction, actionPlayerId: data.actionPlayerId, actionReason: data.actionReason,
+      pending: data.pending, responseCountdownVisibleAt: data.responseCountdownVisibleAt, actionRevision: data.actionRevision,
+      presentationV2: data.presentationV2, presentationSnapshot: data.presentationSnapshot, timeline: data.timeline,
+    });
+    assert.equal(publicProjection.includes(basicSetup.yue.id), false, "no public projection field recovers the private actor ID");
+    assert.equal(publicProjection.includes("peach-dauntless-privacy-basic"), false, "no public projection field recovers the private Basic cost card");
+  }
+
+  const withoutBasic = await createHumanGame();
+  const noBasicSetup = configure(withoutBasic, { yueCards: [card("DrawTwo", "dauntless-privacy-no-basic")] });
+  const noBasicEnd = await requestAndSettle("end_turn", { code: withoutBasic.code, token: withoutBasic.members[0].token, preserveResponse: true });
+  assert.equal(noBasicEnd.status, 200, JSON.stringify(noBasicEnd.data));
+  const noBasicViews = await Promise.all(withoutBasic.members.map((member) => state(withoutBasic.code, member.token)));
+  const sharedNoBasicStatus = derivePublicActivityStatus(noBasicViews[0].data);
+  assert.deepEqual(sharedNoBasicStatus, sharedBasicStatus, "public status does not depend on whether Yue Jin has a Basic card");
+  for (const { data } of noBasicViews) {
+    assert.deepEqual(derivePublicActivityStatus(data), sharedNoBasicStatus, "all independent viewers receive the same public status");
+    assert.equal(data.timeline.some((event) => event.type === "message" && /Dauntless|may use/i.test(event.message)), false);
+    if (data.meId === noBasicSetup.yue.id) {
+      assert.equal(data.currentAction.kind, "trigger");
+      assert.equal(data.currentAction.actorId, noBasicSetup.yue.id);
+      assert.deepEqual(data.currentAction.triggerOptions, [], "no Basic card means the private window offers only Pass");
+      assert.ok(data.currentAction.legalActions.includes("decline_trigger"));
+      assert.match(data.currentAction.reason, /Pass to continue/);
+      continue;
+    }
+    assert.equal(data.phase, "response");
+    assert.equal(data.actionPlayerId, null);
+    assert.equal(data.currentAction.actorId, null);
+    assert.equal(data.currentAction.kind, "none");
+    assert.equal(data.currentAction.reason, "Resolving…");
+    assert.deepEqual(data.currentAction.legalActions, []);
+    assert.equal(data.pending, null);
+    assert.equal(data.responseCountdownVisibleAt, 0);
+    assert.equal(data.actionRevision.includes(noBasicSetup.yue.id), false);
+    assert.equal(data.myHand.some((held) => held.id === "drawtwo-dauntless-privacy-no-basic"), false);
+    const publicProjection = JSON.stringify({
+      currentAction: data.currentAction, actionPlayerId: data.actionPlayerId, actionReason: data.actionReason,
+      pending: data.pending, responseCountdownVisibleAt: data.responseCountdownVisibleAt, actionRevision: data.actionRevision,
+      presentationV2: data.presentationV2, presentationSnapshot: data.presentationSnapshot, timeline: data.timeline,
+    });
+    assert.equal(publicProjection.includes(noBasicSetup.yue.id), false);
+    assert.equal(publicProjection.includes("drawtwo-dauntless-privacy-no-basic"), false);
+  }
+  const publicMessages = (data) => data.timeline.filter((event) => event.type === "message").map((event) => event.message);
+  assert.ok(basicViews.every(({ data }) => JSON.stringify(publicMessages(data)) === JSON.stringify(publicMessages(basicViews[0].data))), "the public timeline text is identical across the one-Basic views");
+  assert.ok(noBasicViews.every(({ data }) => JSON.stringify(publicMessages(data)) === JSON.stringify(publicMessages(noBasicViews[0].data))), "the public timeline text is identical across the zero-Basic views");
+  assert.deepEqual(publicMessages(basicViews[0].data), publicMessages(noBasicViews[0].data), "zero and one Basic-card windows have the same shared timeline copy");
+  const passed = await requestAndSettle("decline_trigger", { code: withoutBasic.code, token: withoutBasic.members[1].token });
+  assert.equal(passed.status, 200, JSON.stringify(passed.data));
+  assert.equal(passed.data.room.phase, "draw", "private Pass advances the turn-end event once");
 });

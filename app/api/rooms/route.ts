@@ -8,7 +8,7 @@ import { responseDecisionFor, resolveResponseDecision } from "../../../game/resp
 import { responseCostActor, semanticResponseActor } from "../../../game/response-identity";
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
 import { borrowedSwordLegality as resolveBorrowedSwordLegality, type BorrowedSwordPlayer } from "../../../game/capabilities/borrowed-sword";
-import { getTriggeredEffects, resolveTriggeredEffect, triggerActorId, triggerAllowsDecline, triggerRepeatsPerDamagePoint } from "../../../game/capabilities/triggers";
+import { getTriggeredEffects, privateOpportunityWindowEffectIds, resolveTriggeredEffect, triggerActorId, triggerAvailability, triggerAllowsDecline, triggerRepeatsPerDamagePoint } from "../../../game/capabilities/triggers";
 import { IMPLEMENTED_STANDARD_HEROES, STANDARD_HEROES, heroGender, type HeroDefinition } from "../../../game/heroes";
 import { continueTriggerEvent, resumeTriggerContinuation } from "../../../game/decisions/triggers";
 import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement, responseAfterSemanticSuccess } from "../../../game/decisions/responses";
@@ -2432,21 +2432,30 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
   if (endingPlayer?.alive) {
     const resolved = continuation.resolvedEffectIds ?? [];
     for (const actor of playersInTurnOrder(players, continuation.endingSeat)) {
-      const options = getTriggeredEffects(turnEndTriggerContext(actor, endingPlayer, "activation"), resolved);
-      if (!options.length) continue;
+      const context = turnEndTriggerContext(actor, endingPlayer, "activation");
+      const options = getTriggeredEffects(context, resolved);
+      const privateWindowEffectIds = privateOpportunityWindowEffectIds(context, resolved);
+      if (!options.length && !privateWindowEffectIds.length) continue;
+      const publicOptions = options.filter((option) => triggerAvailability(option.effectId, context) === "public");
+      const publicLabels = publicOptions.map((option) => option.label).join(" or ");
+      const presentation = publicLabels
+        ? addLogWithId(log, `${actor.name} may use ${publicLabels} at the end of ${endingPlayer.name}'s turn.`)
+        : null;
       const labels = options.map((option) => option.label).join(" or ");
-      const presentation = addLogWithId(log, `${actor.name} may use ${labels} at the end of ${endingPlayer.name}'s turn.`);
-      const pending: TriggerPending = withPresentationBarrier({
+      const pendingWithoutBarrier = {
         kind: "trigger",
         event: "turn_end",
         actorId: actor.id,
-        reason: `${actor.name} may use ${labels} at the end of ${endingPlayer.name}'s turn, or decline`,
+        reason: labels ? `${actor.name} may use ${labels} at the end of ${endingPlayer.name}'s turn, or decline` : "Turn-end check; Pass to continue.",
         deadline: nextResponseDeadline(actor),
         resolvedEffectIds: resolved,
         continuation: { ...continuation, stage: "activation" },
-      }, presentation.log, presentation.eventId);
+      } satisfies TriggerPending;
+      const pending: TriggerPending = presentation
+        ? withPresentationBarrier(pendingWithoutBarrier, presentation.log, presentation.eventId)
+        : pendingWithoutBarrier;
       await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-        .bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(presentation.log), room.id).run();
+        .bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(presentation?.log ?? log), room.id).run();
       return;
     }
   }
@@ -5169,10 +5178,16 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   // Reading a room must not create D1 writes. Presence is refreshed by the
   // throttled heartbeat action below, never by normal room polling.
   const viewerPlayerIds = new Set(sessionPlayers.map((player) => player.id));
-  const actionRevision = await actionRevisionFor(room, players, projectedActionPlayerId);
   const responseDeadline = negationWindow?.deadline ?? (pending && "deadline" in pending ? pending.deadline ?? 0 : 0);
   const responseCountdownVisibleAt = negationWindow?.openedAt ?? (room.phase === "response" && responseDeadline ? responseDeadline - HUMAN_RESPONSE_TIMEOUT_MS : 0);
   const actionPlayerId = room.status === "heroes" ? projectedActionPlayerId : negationWindow ? null : negationWaitingForOther || room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
+  const currentTriggerContext = triggerPending ? triggerContextFor(triggerPending, players) : null;
+  const currentTriggerOptions = triggerPending ? triggerOptionsFor(triggerPending, players) : [];
+  const privateTriggerDecision = Boolean(triggerPending && currentTriggerContext
+    && (currentTriggerOptions.some((option) => triggerAvailability(option.effectId, currentTriggerContext) === "private")
+      || privateOpportunityWindowEffectIds(currentTriggerContext, triggerPending.resolvedEffectIds).length > 0));
+  const concealPrivateTriggerDecision = privateTriggerDecision && me?.id !== actualActionPlayerId;
+  const actionRevision = await actionRevisionFor(room, players, concealPrivateTriggerDecision ? null : projectedActionPlayerId);
   const isRoomHost = me?.id === room.host_player_id;
   const hostPresetResult = room.test_room && room.status === "lobby" && isRoomHost
     ? testPresetFromRoom(room, new Set(players.map((player) => player.seat)))
@@ -5193,6 +5208,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const actionReason = negationWaitingForOther
     ? "Waiting for Negation..."
     : negationWindow ? negationWindowSubmitted ? "Response submitted — waiting" : sharedWindowDecision?.options.length ? "Play Negation or Pass" : "No Negation available. Pass."
+    : concealPrivateTriggerDecision ? "Resolving…"
     : room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
   const responseDecision = negationWindow ? sharedWindowDecision
     : me?.id === actualActionPlayerId ? responseDecisionFor(responsePending ?? pending, me ? responseContext(me, players, room.turn_seat) : undefined) : null;
@@ -5205,7 +5221,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     }))
     : [];
   const triggerOptions = me?.id === actualActionPlayerId && triggerPending
-    ? triggerOptionsFor(triggerPending, players)
+    ? currentTriggerOptions
     : me?.id === actualActionPlayerId ? activeHeroSkillOptions(me, room, players) : [];
   const legacyFrostAvailable = triggerPending?.event === "damage_about_to_apply"
     && triggerOptionsFor(triggerPending, players).some((option) => option.effectId === "frost_sword_damage_about_to_apply");
@@ -5223,9 +5239,9 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     : undefined;
   const currentAction: CurrentAction = {
     version: 3,
-    kind: responsePending || negationWindow ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
-    actorId: room.status === "heroes" ? projectedActionPlayerId : negationWindow ? me?.id ?? null : actionPlayerId,
-    deadline: responseDeadline,
+    kind: concealPrivateTriggerDecision ? "none" : responsePending || negationWindow ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
+    actorId: concealPrivateTriggerDecision ? null : room.status === "heroes" ? projectedActionPlayerId : negationWindow ? me?.id ?? null : actionPlayerId,
+    deadline: concealPrivateTriggerDecision ? 0 : responseDeadline,
     reason: actionReason,
     ...(negationWindow ? { negationWindowId: negationWindow.windowId } : {}),
     // This list is calculated only for the current private view. It is never
@@ -5236,10 +5252,12 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     ...(borrowedSwordTargets.length ? { borrowedSwordTargets } : {}),
     ...(targetCardSelection ? { targetCardSelection } : {}),
     ...(responseDecision ? { requirement: responseDecision.requirement, options: responseDecision.options, declineAction: responseDecision.declineAction } : {}),
-    ...(triggerPending ? { triggerEvent: triggerPending.event, triggerOptions, ...(legalActions.includes("decline_trigger") ? { declineAction: "decline_trigger" as GameplayAction } : {}) } : triggerOptions.length ? { triggerOptions } : {}),
+    ...(!concealPrivateTriggerDecision && triggerPending ? { triggerEvent: triggerPending.event, triggerOptions, ...(legalActions.includes("decline_trigger") ? { declineAction: "decline_trigger" as GameplayAction } : {}) }
+      : concealPrivateTriggerDecision ? { triggerOptions: [] }
+      : triggerOptions.length ? { triggerOptions } : {}),
     ...(distributionPending && me?.id === distributionPending.actorId ? { distribution: { cards: distributionPending.cards, eligibleRecipientIds: distributionPending.eligibleRecipientIds } } : {}),
     ...(deckReorderPending && me?.id === deckReorderPending.actorId ? { deckReorder: { cards: deckReorderPending.cards, minTop: deckReorderPending.minTop, maxTop: deckReorderPending.maxTop } } : {}),
-    ...(presentation ? { presentation } : {}),
+    ...(!concealPrivateTriggerDecision && presentation ? { presentation } : {}),
   };
   const projectedTimeline = gameTimeline(rawLog, me?.id);
   const presentationInput = {
@@ -5268,13 +5286,13 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const presentationSnapshot = composePresentationSnapshot({ presentationV2, currentAction, actionRevision, viewerId: me?.id ?? null });
   return {
     ...(attackDodgeProjectionDiagnostics ? { attackDodgeProjectionDiagnostics } : {}),
-    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, isTestRoom: Boolean(room.test_room), testHandPreset: hostTestHandPreset, responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending ? { kind: responsePending || negationWindow ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction, presentationSnapshot,
+    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, isTestRoom: Boolean(room.test_room), testHandPreset: hostTestHandPreset, responseCountdownVisibleAt: concealPrivateTriggerDecision ? 0 : responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending && !concealPrivateTriggerDecision ? { kind: responsePending || negationWindow ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction, presentationSnapshot,
     isHost: isRoomHost, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
     myHeroOptions,
     turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null,
     log: rawLog.flatMap((entry, index) => { if (entry.startsWith("@card:") || entry.startsWith("@cards:")) return []; if (entry.startsWith("@history:")) { try { return [(JSON.parse(entry.slice(9)) as { message: string }).message]; } catch { return []; } } const event = messageEvent(entry, index); return event ? [event.message] : []; }),
-    timeline: projectedTimeline, presentationV2, myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && me?.seat === room.turn_seat, actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && (negationWindow ? Boolean(sharedWindowResponse) : me?.id === actualActionPlayerId),
+    timeline: projectedTimeline, presentationV2, myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && me?.seat === room.turn_seat, actionPlayerId: concealPrivateTriggerDecision ? null : actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && (negationWindow ? Boolean(sharedWindowResponse) : me?.id === actualActionPlayerId),
     pendingAttack,
     // Compatibility projection for old clients/tests; canonical damage
     // reactions are persisted as TriggerPending and submitted via trigger or
@@ -6193,7 +6211,8 @@ export async function POST(request: Request) {
       const discard = parse<Card[]>(liveRoom.discard_json, []);
       let log = parse<string[]>(liveRoom.log_json, []);
       if (action === "decline_trigger_effect") {
-        const resolved = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), ...available.map((option) => option.effectId)])] } satisfies TurnEndTriggerContinuation;
+        const privateWindows = context ? privateOpportunityWindowEffectIds(context, trigger.resolvedEffectIds) : [];
+        const resolved = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), ...available.map((option) => option.effectId), ...privateWindows])] } satisfies TurnEndTriggerContinuation;
         await continueTurnEndEvent({ ...liveRoom, phase: "resolving", pending_json: null }, resolved, players, parse<Card[]>(liveRoom.deck_json, []), discard, addLog(log, `${source.name} declines the turn-end option; the event continues.`));
         return json({ room: await roomState(code, token) });
       }
