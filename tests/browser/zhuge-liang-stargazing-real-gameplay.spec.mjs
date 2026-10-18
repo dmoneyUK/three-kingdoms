@@ -744,11 +744,11 @@ for (const entry of [
     const originalTopOrder = await orderIn(opened.dialog, "top");
     const actionRevisionBeforeInspection = (await roomView(request, opened.seed, 1)).actionRevision;
     const inspectedId = opened.seed.players[2].id;
-    const inspectedName = opened.seed.players[2].name;
-    await opened.actorPage.locator(`[data-player-anchor="${inspectedId}"] .opponent-hero-target`).click();
+    const inspectionOpener = opened.actorPage.locator(`[data-player-anchor="${inspectedId}"] .opponent-hero-target`);
+    await inspectionOpener.click();
     const inspection = opened.actorPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${inspectedId}"]`);
     await expect(inspection).toBeVisible();
-    await opened.actorPage.getByRole("button", { name: `Close ${inspectedName} inspection` }).click();
+    await inspectionOpener.click();
     await expect(inspection).toHaveCount(0);
     await expect(opened.dialog).toBeVisible();
     expect(await orderIn(opened.dialog, "top")).toEqual(originalTopOrder);

@@ -251,13 +251,13 @@ test("target-card selection stays selected while Hero Inspect and private Card D
   await selected.click();
   await expect(selected).toHaveAttribute("aria-pressed", "true");
 
-  const inspectedPlayerName = await page.evaluate(() => window.__browserRoom.players.find((player) => player.id === "p2").name);
-  await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
+  const inspectionOpener = page.locator('[data-player-anchor="p2"] .opponent-hero-target');
+  await inspectionOpener.click();
   const inspection = page.locator('.opponent-inspection-panel[data-inspect-player-id="p2"]');
   await expect(inspection).toBeVisible();
   await expect(selected).toHaveAttribute("aria-pressed", "true");
   await expect.poll(() => page.locator(".interaction-safe-zone").evaluate((element) => getComputedStyle(element).zIndex)).toBe("41");
-  await page.getByRole("button", { name: `Close ${inspectedPlayerName} inspection` }).click();
+  await inspectionOpener.click();
   await expect(inspection).toHaveCount(0);
 
   await page.getByTestId("hand-card-inspection-action").first().click();

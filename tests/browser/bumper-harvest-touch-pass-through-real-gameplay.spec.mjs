@@ -367,7 +367,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     const inspectedHero = negationPage.locator(`.opponent-player-card[data-player-anchor="${host.id}"] .opponent-hero-target`);
     await tap(negationPage, inspectedHero);
     await expect(negationPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${host.id}"]`)).toBeVisible();
-    await tap(negationPage, negationPage.getByRole("button", { name: `Close ${host.name} inspection` }));
+    await tap(negationPage, inspectedHero);
     const negationShot390 = testInfo.outputPath("bumper-harvest-negation-readonly-390x700.png");
     await negationPage.screenshot({ path: negationShot390, animations: "disabled" });
     await testInfo.attach("bumper-harvest-negation-readonly-390x700", { path: negationShot390, contentType: "image/png" });
@@ -555,7 +555,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     const inspectedHero = page.locator(`.opponent-player-card[data-player-anchor="${source.id}"] .opponent-hero-target`);
     await tap(page, inspectedHero);
     await expect(page.locator(`.opponent-inspection-panel[data-inspect-player-id="${source.id}"]`)).toBeVisible();
-    await tap(page, page.getByRole("button", { name: `Close ${source.name} inspection` }));
+    await tap(page, inspectedHero);
     const handInspection = page.getByTestId("hand-card-inspection-action").first();
     await tap(page, handInspection);
     const cardDetailsAction = page.getByTestId("hand-card-details-action");
@@ -611,7 +611,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     const inspectedActorHero = page.locator(`.opponent-player-card[data-player-anchor="${activeSwitchTarget.id}"] .opponent-hero-target`);
     await tap(page, inspectedActorHero);
     await expect(page.locator(`.opponent-inspection-panel[data-inspect-player-id="${activeSwitchTarget.id}"]`)).toBeVisible();
-    await tap(page, page.getByRole("button", { name: `Close ${activeSwitchTarget.name} inspection` }));
+    await tap(page, inspectedActorHero);
     const finalHarvestCard = page.locator(".harvest-card-select:not([disabled])").first();
     await tapHarvestCard(page, finalHarvestCard);
     await expect(finalHarvestCard).toHaveAttribute("aria-pressed", "true");

@@ -283,7 +283,7 @@ test("mandatory target-card picker keeps actor inspection and TEST SWITCH toucha
     await tapMobile(page, inspectorTrigger);
     const inspection = page.locator(`.opponent-inspection-panel[data-inspect-player-id="${target.id}"]`);
     await expect(inspection).toBeVisible();
-    await tapMobile(page, page.getByRole("button", { name: `Close ${target.name} inspection` }));
+    await tapMobile(page, inspectorTrigger);
     await expect(hidden).toHaveAttribute("aria-pressed", "true");
 
     const spectator = room.players.find((player) => player.seat === 2);
@@ -475,11 +475,11 @@ test("real Sima Yi Retaliation is compact, deselectable, private, and actor-only
       try { actionPosts.push(JSON.parse(requestEvent.postData() ?? "{}")); } catch { /* Non-JSON form request. */ }
     });
     const beforeInspection = await roomView(request, seed, 1);
-    const inspectedPlayerName = seed.players[0].name;
-    await tapMobile(actorPage, actorPage.locator(`[data-player-anchor="${seed.players[0].id}"] .opponent-hero-target`));
+    const inspectionOpener = actorPage.locator(`[data-player-anchor="${seed.players[0].id}"] .opponent-hero-target`);
+    await tapMobile(actorPage, inspectionOpener);
     const inspection = actorPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${seed.players[0].id}"]`);
     await expect(inspection).toBeVisible();
-    await tapMobile(actorPage, actorPage.getByRole("button", { name: `Close ${inspectedPlayerName} inspection` }));
+    await tapMobile(actorPage, inspectionOpener);
     await expect(inspection).toHaveCount(0);
     await expect(dialog).toBeVisible();
     await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
