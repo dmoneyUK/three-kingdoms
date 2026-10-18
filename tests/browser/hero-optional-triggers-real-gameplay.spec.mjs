@@ -132,7 +132,8 @@ test("real Godess of Luo River enters the authoritative Judgment continuation fr
   expect(result.room.currentAction.actorId).toBe(seedData.players[1].id);
 });
 
-test("real Cultivation follows a played Stratagem through Skills and preserves its draw continuation", async ({ page, request }) => {
+test("real Cultivation follows a played Stratagem through Skills and preserves its draw continuation", async ({ page, request, browser }) => {
+  test.setTimeout(60_000);
   const stratagem = card("DrawTwo", "real-cultivation-stratagem");
   const seedData = await seed(request, {
     phase: "play",
@@ -145,6 +146,14 @@ test("real Cultivation follows a played Stratagem through Skills and preserves i
     deck: [card("Attack", "real-cultivation-bonus"), card("Dodge", "real-cultivation-draw-one"), card("Peach", "real-cultivation-draw-two")],
   });
   const user = await openPlayer(page, seedData, 0);
+  const observerContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 3,
+    isMobile: true,
+    hasTouch: true,
+  });
+  const observerPage = await observerContext.newPage();
+  await openPlayer(observerPage, seedData, 1);
   const dock = page.locator(`.local-player-dock[data-player-anchor="${user.id}"]`);
   const playedCard = dock.locator(`[data-hand-card-id="${stratagem.id}"] .game-card`);
   await expect(playedCard).toBeEnabled();
@@ -161,9 +170,29 @@ test("real Cultivation follows a played Stratagem through Skills and preserves i
   expect(offered.currentAction).toMatchObject({ kind: "trigger", actorId: user.id, triggerEvent: "stratagem_used" });
   expect(offered.currentAction.triggerOptions.map((option) => option.effectId)).toContain("huang_yueying_cultivation");
   await activateOptionalSkill({ page, request, seedData, playerIndex: 0, skillName: "Cultivation", providerId: "huang_yueying_cultivation" });
+  await expect.poll(async () => (await view(request, seedData, 0)).myHand.length, { timeout: 18_000 })
+    .toBe(3); // Cultivation draws one; the stratagem's two cards follow the Negation window.
   const result = await view(request, seedData, 0);
   expect(result.myHand).toHaveLength(3);
   expect(result.myHand.map((item) => item.id)).toContain("real-cultivation-bonus");
+  expect(result.myHand.map((item) => item.id)).toEqual(expect.arrayContaining([
+    "real-cultivation-draw-one",
+    "real-cultivation-draw-two",
+  ]));
+  const privateDraw = page.locator(".private-draw-stage");
+  await expect(privateDraw).toBeVisible({ timeout: 5_000 });
+  await expect(privateDraw.locator(".private-draw-row .played-card")).toHaveCount(2);
+  await expect(privateDraw.locator(".private-draw-row")).toContainText("Dodge");
+  await expect(privateDraw.locator(".private-draw-row")).toContainText("Peach");
+  const observerState = await view(request, seedData, 1);
+  expect(observerState.players.find((player) => player.id === user.id).handCount).toBe(3);
+  for (const drawnId of ["real-cultivation-draw-one", "real-cultivation-draw-two"]) {
+    expect(observerState.myHand.some((item) => item.id === drawnId)).toBe(false);
+    expect(JSON.stringify(observerState)).not.toContain(drawnId);
+  }
+  await expect(observerPage.locator(".private-draw-stage")).toHaveCount(0);
+  await expect(observerPage.locator(`.opponent-player-card[data-player-anchor="${user.id}"]`)).toBeVisible();
+  await observerContext.close();
 });
 
 test("real Divine Wisdom opens Prudence as the next authoritative Skills-band choice", async ({ page, request }) => {

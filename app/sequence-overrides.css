@@ -1331,6 +1331,16 @@
   }
 }
 
+@media (max-width: 420px) and (max-height: 740px) {
+  .game-shell .private-draw-content {
+    right: auto;
+    bottom: 1px;
+    left: 50%;
+    width: min(224px, calc(100vw - 16px));
+    transform: translateX(-50%);
+  }
+}
+
 /* Keep the private opening reveal the same physical size and card rhythm as the hand. */
 .private-draw-row {
   gap: 0;
