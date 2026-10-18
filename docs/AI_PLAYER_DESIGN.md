@@ -1,7 +1,7 @@
 # WTK Smart Bot Player — Product Roadmap and Implementation Design
 
 > Feature branch: `feature/smart-bot-player`
-> Design revision: **AIP-D8 / 2026-10-18**
+> Design revision: **AIP-D9 / 2026-10-18**
 > Owner: **Human Reviewer + Planner**. Planner edits **this file for normal design/review**; governance docs only under explicit user instruction.
 > Status: **DESIGN-DRIVEN AUTONOMOUS QUEUE**. AIP-00A is **ACCEPTED by the human Product Owner (2026-10-17)**. AIP-00B is **ACCEPTED following positive Staging device/browser feedback from the user on 2026-10-18**. AIP-00C is **PENDING_REVIEW**; AIP-01 remains **pre-approved as a dependency-gated task** and may execute only after AIP-00C is **ACCEPTED** and all cloud/API risk gates are satisfied. Other roadmap stages are DRAFT.
 > Coding Agent: **one agent, one bounded task per cycle; re-read design and automatically select the next eligible independent APPROVED task after each PENDING_REVIEW delivery**. Never self-accept or bypass dependencies.
@@ -164,6 +164,7 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 | Bootstrap | **AIP-00A** | Feature-branch CI gate, no production deploy, Markdown-only ignores | validated exact SHA, no deploy job | **ACCEPTED — HUMAN REVIEW 2026-10-17** |
 | Staging | **AIP-00B** | Separate Worker, separate D1, safe manual deployment and iPhone URL | actual URL, unique DB UUID, migrations, mobile smoke | **ACCEPTED — USER DEVICE FEEDBACK 2026-10-18** |
 | Automation | **AIP-00C** | Code pushes deploy to Staging only after full CI | exact SHA deploy, production unaffected, docs-only ignores | **PENDING_REVIEW** |
+| Security follow-up | AIP-SEC-01 | Isolate Staging deployment credential and restrict account scope | separate GitHub environment secret and safe cutover evidence | DRAFT — separate approval needed |
 | AI lab | AIP-01 | Offline/read-only OpenAI Decision Prototype (mock first, tiny opt-in live eval) | 10–20 anonymous fixtures, valid candidate IDs, latency, usage report | **APPROVED — MOCK/OFFLINE ONLY UNTIL LIVE BUDGET GATE; WAITING AIP-00C ACCEPTANCE** |
 | Legal contracts | AIP-02 | Canonical BotObservation and narrowly scoped legal candidates | privacy, valid cards/targets, stale decisions | DRAFT |
 | Player identity | AIP-03 | Dedicated bot seats and host-only lobby lifecycle | auth/race tests; no Test Player token reuse | DRAFT |
@@ -252,11 +253,31 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 
 **Residual operational risks / nonblocking follow-up:**
 1. **Human Cloudflare Dashboard inspection received (2026-10-18):** The user reports seeing the intended AI Staging Worker and **no Worker with the accidental duplicated `-ai-staging` suffix**. This corroborates the Agent's report that the duplicate Worker was deleted, and closes the duplicate-Worker cleanup concern for AIP-00C review. Reviewer did not personally access Dashboard, and the user did not report checking D1 tables, production Worker deployments or IAM privileges; do not treat those as independently verified.
-2. The workflow refers to `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. Passing a fail-closed code guard reduces accidental mis-targeting, but source checks alone do not prove the API token is least-privileged. Review scoped credentials / GitHub environment restrictions before enlarging bot test exposure or production rollout.
+2. **Human token permission screenshots (2026-10-18):** `Cloudflare Agent Token - 2026-09-12` shows broad Read permissions across account/zone/user scope (including Workers and D1); it has no shown Edit rights. `ThreeKingdom` shows `All accounts` with `D1:Edit` and `Workers Scripts:Edit` — a powerful account-scoped deploy token, not a permission limited to one Staging Worker or D1. This is a **least-privilege concern, not evidence of credential leakage or unauthorized deployment**. The current Stage and production jobs both reference secret names `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. A Staging **environment secret** of the same name can override the repository secret; the reviewer cannot see actual secret values or confirm the exact token each job uses. Agent previously reported no `ai-staging` environment secrets at AIP-00C start, which suggests shared repo credentials then, but this has not been independently confirmed. Keep current working credentials unchanged pending a separately approved safe cutover (AIP-SEC-01). **Cloudflare account-scoped Workers/D1 permissions do not isolate production from Staging within a shared Cloudflare account**; config safety guards remain mandatory. Never record raw token values in docs/handover.
 3. Post-deploy smoke runs *after* deployment; on failure the last deployed Staging version can remain live until a fix/rollback. Treat automated rollback / canary as later reliability work, not as evidence of AIP-00C correctness failure. No automated rollback was required in this bounded task.
 4. AIP-00C proof is a CI-run Staging rollout, not an independent manual iPhone acceptance of the new code SHA. AIP-00B previously passed human device review; human can optionally refresh https://three-kingdoms-ai-staging.dai-jinge.workers.dev to confirm the same experience.
 
 **Reviewer outcome:** Technical acceptance is **recommended**, but the task remains `PENDING_REVIEW` until the user formally accepts (or explicitly delegates this technical category). After `ACCEPTED`, the Coding Agent can autonomously take AIP-01 offline/mock decision lab. Do not enable actual OpenAI API calls or transmit live player data without separate authorization.
+
+### AIP-SEC-01 — Restrict Staging deploy credential and separate it from production
+
+**Status: DRAFT — not executable without specific human approval. Priority: P1. Dependencies: AIP-00C ACCEPTED.** Does not automatically block offline AIP-01 fixtures; resolve before expanding unattended AI or live API exposure.
+
+**Goal:** GitHub `deploy-staging` should consume a dedicated Cloudflare credential from the `ai-staging` GitHub Environment rather than sharing production's repository secret, and the token should be account-scoped to the intended WTK account instead of `All accounts`. Do not claim this isolates individual Workers/D1 within the *same* account.
+
+**Verified code anchors:** `.github/workflows/deploy.yml` currently references `secrets.CLOUDFLARE_API_TOKEN` / `secrets.CLOUDFLARE_ACCOUNT_ID` in both deployment jobs. Stage has `environment: ai-staging` and a guarded generated-Wrangler config. Actual GitHub secret values and exact Cloudflare token identity are NOT observable to Reviewer. Human screenshots show `ThreeKingdom` with `D1:Edit` + `Workers Scripts:Edit` for `All accounts` and a separate broad read-only Agent token.
+
+**Implementation sequence once approved:**
+1. Inspect *metadata only* (secret names and scope, not values) of repo vs `ai-staging` environment, targeted account ID and token permission summaries. Confirm which level resolves `CLOUDFLARE_API_TOKEN` in the Staging job; GitHub environment secret of identical name overrides repository secret.
+2. Request human to create a NEW independent `WTK AI Staging Deploy` Cloudflare token, restrict Account Resources to the single intended Cloudflare account, with only required `D1:Edit` and `Workers Scripts:Edit` permissions if sufficient. Do not modify or delete working `ThreeKingdom` token. No token values in messages, logs or repository.
+3. Have human add the new token securely to GitHub repository **Settings → Environments → ai-staging → Environment secrets** using name `CLOUDFLARE_API_TOKEN`. Keep existing repository production secret and deployment conditions untouched; preserve feature-branch environment restriction. Verify the secret exists by name, not value.
+4. Trigger a reviewed code-bearing, Staging-only test through CI. Verify exact code SHA, all required jobs and Staging migration/deploy/smoke succeed, production deploy skipped, Worker and D1 bindings match expected UUID and public HTTPS health works. If authentication fails, stop and restore valid Stage secret via secure dashboard action; never turn off safety checks to pass.
+5. Record redacted permissions/scope, GitHub secret-level metadata, CI run, observed endpoint, and evidence that production settings/secrets remain unchanged; finish `PENDING_REVIEW`. Only after successful review should human decide whether to rotate any older credentials.
+6. For strict resource isolation against even an overly broad account-scoped token, separately design a Cloudflare **account split** for Staging/production, with explicit human authorization for migration; not included here.
+
+**Acceptance:** independently scoped Staging GitHub environment credential succeeds in exact-SHA CI; no secret value printed; original production secret/job unchanged; Stage targets only expected Worker/D1; no false claim of resource-specific API restriction.
+
+**Non-goals:** never update the UX2 `HANDOVER.md`, never modify `AI_PLAYER_HANDOVER.md` as Planner, do not rotate/revoke existing tokens, do not deploy production, do not edit game rules or enable OpenAI API calls.
 
 ### AIP-01 — Offline OpenAI decision lab, no live bots
 
