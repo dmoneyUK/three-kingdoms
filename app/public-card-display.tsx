@@ -545,40 +545,127 @@ function actorParkedCard(actorId: string, cardIndex = 0): CardRect | null {
   return boundCardRect(anchorCenterX - PARKED_CARD.width / 2 + cardIndex * (PARKED_CARD.width + 6), bounds.top - PARKED_CARD.height - 6, PARKED_CARD.width, PARKED_CARD.height);
 }
 
-function bumperHarvestRootRailCard(): CardRect | null {
-  const table = document.querySelector<HTMLElement>(".play-table");
-  if (!table) return null;
-  const bounds = table.getBoundingClientRect();
-  if (bounds.width <= 0 || bounds.height <= 0) return null;
-  const dockTop = document.querySelector<HTMLElement>(".local-player-dock")?.getBoundingClientRect().top ?? window.innerHeight;
-  const railBottom = Math.min(bounds.bottom, dockTop, window.innerHeight) - 2;
-  return boundCardRect(bounds.left + 8, railBottom - 60, 40, 60);
-}
-
 type SeatHistoryCardParking = { rect: CardRect; side: "local" | "top" | "left" | "right" };
 
-function seatHistoryCardParking(actorId: string, actorIndex: number, occupied: readonly CardRect[]): SeatHistoryCardParking | null {
-  const anchor = [...document.querySelectorAll<HTMLElement>("[data-player-anchor]")]
-    .find((candidate) => candidate.dataset.playerAnchor === actorId);
+type SeatHistoryCardParkingOptions = {
+  cardSize?: Pick<CardRect, "width" | "height">;
+  anchorLocalHero?: boolean;
+  protectInteractionControls?: boolean;
+  allowHarvestPoolOverlap?: boolean;
+};
+
+function seatHistoryParkingProtectedSelectors(options: SeatHistoryCardParkingOptions) {
+  if (!options.protectInteractionControls) return [];
+  return [
+    ".console-guidance", ".decision-status", ".public-card-display-journey-copy",
+    ".public-activity-chip", "[data-public-activity-chip]", ".visible-countdown", ".stage-system-cluster",
+    ".local-hand-rail [data-hand-card-id]", ".local-hand-rail button", ".turn-controls button",
+    ...(options.allowHarvestPoolOverlap ? [] : [
+      ".harvest-choice-heading",
+      ".harvest-card-choice", ".harvest-card-select", ".harvest-card-info", ".harvest-confirm-row button",
+    ]),
+  ];
+}
+
+function seatHistoryCardParking(
+  actorId: string,
+  actorIndex: number,
+  occupied: readonly CardRect[],
+  options: SeatHistoryCardParkingOptions = {},
+): SeatHistoryCardParking | null {
+  const actorAnchors = [...document.querySelectorAll<HTMLElement>("[data-player-anchor]")]
+    .filter((candidate) => candidate.dataset.playerAnchor === actorId);
+  // The switched viewer remains represented in the opponent-seat DOM while
+  // also appearing in the local dock. Public cards authored by that viewer
+  // belong beside the live local Hero, not the stale opponent-seat copy.
+  const visibleAnchor = actorAnchors.find((candidate) => {
+      const rect = candidate.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+  const anchor = options.anchorLocalHero
+    ? actorAnchors.find((candidate) => candidate.classList.contains("local-player-dock")) ?? visibleAnchor
+    : visibleAnchor;
   const table = document.querySelector<HTMLElement>(".play-table");
   if (!anchor || !table) return null;
   const seat = anchor.getBoundingClientRect();
   const tableRect = table.getBoundingClientRect();
   if (seat.width <= 0 || seat.height <= 0 || tableRect.width <= 0 || tableRect.height <= 0) return null;
+  const cardSize = options.cardSize ?? PARKED_CARD;
   const dock = document.querySelector<HTMLElement>(".local-player-dock")?.getBoundingClientRect() ?? null;
   const seatCenterX = seat.left + seat.width / 2;
   const seatCenterY = seat.top + seat.height / 2;
   const gap = 6;
   const safeTop = Math.max(4, tableRect.top + 4);
-  const safeBottom = Math.min(window.innerHeight - PARKED_CARD.height - 4, tableRect.bottom - PARKED_CARD.height - 4, dock?.top ? dock.top - PARKED_CARD.height - 4 : window.innerHeight - PARKED_CARD.height - 4);
+  const safeBottom = Math.min(window.innerHeight - cardSize.height - 4, tableRect.bottom - cardSize.height - 4, dock?.top ? dock.top - cardSize.height - 4 : window.innerHeight - cardSize.height - 4);
   let side: SeatHistoryCardParking["side"];
   let baseLeft: number;
   let baseTop: number;
   let direction = 1;
-  if (anchor.classList.contains("local-player-dock")) {
+  const isLocalAnchor = anchor.classList.contains("local-player-dock");
+  if (isLocalAnchor && options.anchorLocalHero) {
+    const hero = anchor.querySelector<HTMLElement>(".local-hero-card");
+    const identity = anchor.querySelector<HTMLElement>(".local-dock-identity");
+    if (!hero || !identity) return null;
+    const heroRect = hero.getBoundingClientRect();
+    const identityRect = identity.getBoundingClientRect();
+    const identityStyle = window.getComputedStyle(identity);
+    const dockRect = anchor.getBoundingClientRect();
+    const dockStyle = window.getComputedStyle(anchor);
+    const insetLeft = (Number.parseFloat(identityStyle.borderLeftWidth) || 0) + (Number.parseFloat(identityStyle.paddingLeft) || 0);
+    const insetRight = (Number.parseFloat(identityStyle.borderRightWidth) || 0) + (Number.parseFloat(identityStyle.paddingRight) || 0);
+    const dockBottomInset = (Number.parseFloat(dockStyle.borderBottomWidth) || 0) + (Number.parseFloat(dockStyle.paddingBottom) || 0);
+    const contentLeft = identityRect.left + insetLeft;
+    const contentRight = identityRect.right - insetRight;
+    // On taller phones the identity wrapper ends too close below the portrait
+    // to hold a card. Use the actual dock's remaining safe area; interactive
+    // Hand, decision and turn controls below are still excluded as obstacles.
+    const contentBottom = Math.min(dockRect.bottom - dockBottomInset, window.innerHeight - 4);
+    const contentWidth = contentRight - contentLeft;
+    const columns = Math.max(1, Math.floor((contentWidth + gap) / (cardSize.width + gap)));
+    const preferredRow = Math.floor(actorIndex / columns);
+    const preferredColumn = actorIndex % columns;
+    const maxRows = Math.max(0, Math.floor((contentBottom - heroRect.bottom - gap + gap) / (cardSize.height + gap)));
+    const localCandidates: CardRect[] = [];
+    for (let row = 0; row <= maxRows; row += 1) {
+      for (let column = 0; column < columns; column += 1) {
+        localCandidates.push({
+          left: contentLeft + column * (cardSize.width + gap),
+          top: heroRect.bottom + gap + row * (cardSize.height + gap),
+          ...cardSize,
+        });
+      }
+    }
+    localCandidates.sort((first, second) => {
+      const firstDistance = Math.abs((first.top - heroRect.bottom - gap) / (cardSize.height + gap) - preferredRow)
+        + Math.abs((first.left - contentLeft) / (cardSize.width + gap) - preferredColumn);
+      const secondDistance = Math.abs((second.top - heroRect.bottom - gap) / (cardSize.height + gap) - preferredRow)
+        + Math.abs((second.left - contentLeft) / (cardSize.width + gap) - preferredColumn);
+      return firstDistance - secondDistance;
+    });
+    const protectedSelectors = seatHistoryParkingProtectedSelectors(options);
+    const obstacles = protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]
+      .filter((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+      })
+      .map((element) => element.getBoundingClientRect()));
+    const otherAnchors = [...document.querySelectorAll<HTMLElement>("[data-player-anchor]")]
+      .filter((candidate) => candidate !== anchor && candidate.dataset.playerAnchor !== actorId)
+      .map((candidate) => candidate.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+    const safe = localCandidates.find((candidate) => candidate.left >= contentLeft - 0.5
+      && candidate.left + candidate.width <= contentRight + 0.5
+      && candidate.top + candidate.height <= contentBottom + 0.5
+      && !occupied.some((rect) => rectsOverlap(rect, candidate, 4))
+      && !rectsOverlap(heroRect, candidate, 2)
+      && obstacles.every((obstacle) => !rectsOverlap(candidate, obstacle, 2))
+      && otherAnchors.every((obstacle) => !rectsOverlap(candidate, obstacle, 2)));
+    return safe ? { rect: safe, side: "local" } : null;
+  } else if (isLocalAnchor) {
     side = "local";
     baseLeft = seat.left + 8;
-    baseTop = seat.top - PARKED_CARD.height - 6;
+    baseTop = seat.top - cardSize.height - gap;
   } else {
     const edgeDistances = [
       { side: "top" as const, value: Math.abs(seatCenterY - tableRect.top) },
@@ -587,14 +674,14 @@ function seatHistoryCardParking(actorId: string, actorIndex: number, occupied: r
     ].sort((a, b) => a.value - b.value);
     side = edgeDistances[0].side;
     if (side === "top") {
-      baseLeft = seatCenterX - PARKED_CARD.width / 2;
+      baseLeft = seatCenterX - cardSize.width / 2;
       baseTop = seat.bottom + gap;
     } else if (side === "left") {
       baseLeft = seat.right + gap;
-      baseTop = seatCenterY - PARKED_CARD.height / 2;
+      baseTop = seatCenterY - cardSize.height / 2;
     } else {
-      baseLeft = seat.left - PARKED_CARD.width - gap;
-      baseTop = seatCenterY - PARKED_CARD.height / 2;
+      baseLeft = seat.left - cardSize.width - gap;
+      baseTop = seatCenterY - cardSize.height / 2;
       direction = -1;
     }
   }
@@ -602,34 +689,79 @@ function seatHistoryCardParking(actorId: string, actorIndex: number, occupied: r
   // Top-row opponent histories descend below their Hero; side and local
   // histories progress horizontally toward the battlefield interior.
   const horizontalProgression = side !== "top";
-  const progressionStride = horizontalProgression ? PARKED_CARD.width + gap : PARKED_CARD.height + gap;
-  const perpendicularStride = horizontalProgression ? PARKED_CARD.height + gap : PARKED_CARD.width + gap;
+  const progressionStride = horizontalProgression ? cardSize.width + gap : cardSize.height + gap;
+  const perpendicularStride = horizontalProgression ? cardSize.height + gap : cardSize.width + gap;
   const preferred = {
     left: baseLeft + (horizontalProgression ? direction * actorIndex * progressionStride : 0),
     top: baseTop + (horizontalProgression ? 0 : actorIndex * progressionStride),
-    ...PARKED_CARD,
+    ...cardSize,
   };
   const offsets = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6];
   const candidates = offsets.map((offset) => ({
     left: preferred.left + (horizontalProgression ? 0 : offset * perpendicularStride),
     top: preferred.top + (horizontalProgression ? offset * perpendicularStride : 0),
-    ...PARKED_CARD,
+    ...cardSize,
   }));
   const anchors = [...document.querySelectorAll<HTMLElement>("[data-player-anchor]")]
-    .filter((candidate) => candidate !== anchor)
+    .filter((candidate) => candidate !== anchor && candidate.dataset.playerAnchor !== actorId)
     .map((candidate) => candidate.getBoundingClientRect())
     .filter((rect) => rect.width > 0 && rect.height > 0);
   const localAnchor = side === "local";
+  const protectedSelectors = seatHistoryParkingProtectedSelectors(options);
+  const protectedObstacles = protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]
+    .filter((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+    })
+    .map((element) => element.getBoundingClientRect()));
+  if (options.protectInteractionControls && side === "top") {
+    const horizontalSlots = new Set([
+      ...candidates.map((candidate) => candidate.left),
+      tableRect.left + 8,
+      tableRect.right - cardSize.width - 8,
+      ...protectedObstacles.flatMap((obstacle) => [
+        obstacle.left - cardSize.width - 2,
+        obstacle.right + 2,
+      ]),
+    ]);
+    const verticalSlots = new Set([
+      preferred.top,
+      ...protectedObstacles.flatMap((obstacle) => [
+        obstacle.bottom + 2,
+        obstacle.top - cardSize.height - 2,
+      ]),
+    ]);
+    for (let top = preferred.top + cardSize.height + gap; top <= safeBottom; top += cardSize.height + gap) {
+      verticalSlots.add(top);
+    }
+    const actorCenterX = seat.left + seat.width / 2;
+    const actorCenterY = seat.top + seat.height / 2;
+    const extended = [...horizontalSlots].flatMap((left) => [...verticalSlots].map((top) => ({
+      left,
+      top,
+      ...cardSize,
+    }))).filter((candidate) => candidate.top >= preferred.top - 0.5);
+    candidates.push(...extended);
+    candidates.sort((first, second) => {
+      const firstDistance = Math.hypot(first.left + first.width / 2 - actorCenterX, first.top + first.height / 2 - actorCenterY);
+      const secondDistance = Math.hypot(second.left + second.width / 2 - actorCenterX, second.top + second.height / 2 - actorCenterY);
+      return firstDistance - secondDistance;
+    });
+  }
   const safe = candidates.find((candidate) => candidate.left >= Math.max(4, localAnchor ? 0 : tableRect.left + 4)
     && candidate.left + candidate.width <= Math.min(window.innerWidth - 4, localAnchor ? window.innerWidth - 4 : tableRect.right - 4)
     && candidate.top >= (localAnchor ? 4 : safeTop)
-    && candidate.top <= (localAnchor ? window.innerHeight - PARKED_CARD.height - 4 : safeBottom)
+    && candidate.top <= (localAnchor ? window.innerHeight - cardSize.height - 4 : safeBottom)
+    && (!options.protectInteractionControls || !rectsOverlap(candidate, seat, 2))
     && !occupied.some((rect) => rectsOverlap(rect, new DOMRect(candidate.left, candidate.top, candidate.width, candidate.height), 4))
-    && anchors.every((obstacle) => !rectsOverlap(candidate, obstacle, 3)));
+    && anchors.every((obstacle) => !rectsOverlap(candidate, obstacle, 3))
+    && protectedObstacles.every((obstacle) => !rectsOverlap(candidate, obstacle, 2)));
   if (safe) return { rect: safe, side };
+  if (options.protectInteractionControls) return null;
   // Preserve the seat-front anchor as the deterministic final fallback. This
   // is used only when every bounded collision-safe slot is occupied.
-  return { rect: boundCardRect(preferred.left, preferred.top, PARKED_CARD.width, PARKED_CARD.height), side };
+  return { rect: boundCardRect(preferred.left, preferred.top, cardSize.width, cardSize.height), side };
 }
 
 function rectsOverlap(a: CardRect, b: CardRect | DOMRect, gap = 0) {
@@ -678,13 +810,33 @@ function compactLustDuelPlayerName(name: string | null) {
   return characters.length > 10 ? `${characters.slice(0, 9).join("").trimEnd()}…` : normalized;
 }
 
-function isInitialHarvestNegationNotice(action: PublicCardDisplayAction) {
-  const recipient = action.harvestEffectRecipient;
-  return action.motion?.type === "negation"
+function isHarvestNegationPresentation(action: PublicCardDisplayAction) {
+  return !action.settlement
+    && action.motion?.type === "negation"
     && action.cardFace?.kind === "BumperHarvest"
-    && action.phaseNotice?.includes("NEGATION") === true
-    && Boolean(recipient?.participantId && recipient.participantName.trim())
-    && (action.responses?.length ?? 0) === 0;
+}
+
+function bumperHarvestNegationCopy(
+  action: PublicCardDisplayAction,
+  compact = false,
+) {
+  const responses = action.responses ?? [];
+  const recipient = action.harvestEffectRecipient;
+  if (!recipient?.participantId || !recipient.participantName.trim()) {
+    return responses.length > 0 ? "Negation response open." : "Negation available.";
+  }
+  const playerName = (name: string) => compact ? compactLustDuelPlayerName(name) ?? name.trim() : name.trim();
+  const recipientName = playerName(recipient.participantName);
+  if (responses.length === 0) return `Negation: Block ${recipientName}'s Harvest pick?`;
+
+  const latest = responses.at(-1);
+  const previous = responses.at(-2);
+  const latestName = latest?.actorName ? playerName(latest.actorName) : null;
+  if (!latestName) return "Negation response open.";
+  if (responses.length === 1) return `${latestName} played Negation → ${recipientName}.`;
+
+  const previousName = previous?.actorName ? playerName(previous.actorName) : null;
+  return previousName ? `${latestName} countered ${previousName}'s Negation.` : "Negation response open.";
 }
 
 export function publicCardAnnouncement(
@@ -700,9 +852,7 @@ export function publicCardAnnouncement(
   const actor = actorName ?? targetName ?? "The target";
   const cardName = action.cardLabel.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
 
-  if (isInitialHarvestNegationNotice(action) && action.harvestEffectRecipient) {
-    return `${source} played ${cardName}. Negation may cancel its effect on ${action.harvestEffectRecipient.participantName}.`;
-  }
+  if (isHarvestNegationPresentation(action)) return bumperHarvestNegationCopy(action);
 
   switch (outcome) {
     case "ATTACK_DAMAGE_APPLIED":
@@ -775,14 +925,10 @@ function publicCardAnnouncementCopy(
       compactMessage: action.lustCostFrame.compactMessage,
     };
   }
-  if (isInitialHarvestNegationNotice(action) && action.harvestEffectRecipient) {
-    const recipient = action.harvestEffectRecipient;
-    const compactSource = sourceName?.trim() || "A player";
-    const compactRecipient = recipient.participantName.trim();
-    return {
-      message: publicCardAnnouncement(action, notice, actorName, sourceName, targetName),
-      compactMessage: `${compactSource}'s Bumper Harvest → ${compactRecipient} · Negation available.`,
-    };
+  if (isHarvestNegationPresentation(action)) {
+    const message = bumperHarvestNegationCopy(action);
+    const compactMessage = bumperHarvestNegationCopy(action, true);
+    return { message, compactMessage: compactMessage === message ? undefined : compactMessage };
   }
   const message = publicCardAnnouncement(action, notice, actorName, sourceName, targetName);
   const compactMessage = publicCardAnnouncement(
@@ -2068,6 +2214,18 @@ function singleTargetJourneyMotion(motion: PublicCardDisplayMotion | undefined):
     : null;
 }
 
+function singleTargetParkingOptions(action: PublicCardDisplayAction, event: JourneyCard): SeatHistoryCardParkingOptions {
+  const harvest = action.cardFace?.kind === "BumperHarvest";
+  return {
+    cardSize: harvest && event.role === "root" ? { width: 40, height: 60 } : PARKED_CARD,
+    ...(harvest ? {
+      anchorLocalHero: true,
+      protectInteractionControls: true,
+      allowHarvestPoolOverlap: event.role === "root",
+    } : {}),
+  };
+}
+
 function preserveGroupRootJourneyEvents(
   incoming: readonly JourneyCard[],
   previous: readonly SingleTargetJourneyCard[],
@@ -2174,12 +2332,11 @@ function SingleTargetCardJourney({
       const old = priorById.get(event.eventId);
       const actorIndex = actorIndexes.get(event.actorId) ?? 0;
       actorIndexes.set(event.actorId, actorIndex + 1);
-      const harvestRail = event.role === "root" && harvestRootPoolVisible ? bumperHarvestRootRailCard() : null;
-      const measuredTarget = harvestRail
-        ?? (old && !viewerChanged && !previous.layoutPending
+      const parkingOptions = singleTargetParkingOptions(currentAction, event);
+      const measuredTarget = (old && !viewerChanged && !previous.layoutPending
         ? old.target
-        : seatHistoryCardParking(event.actorId, actorIndex, occupied)?.rect
-          ?? actorParkedCard(event.actorId, actorIndex));
+        : seatHistoryCardParking(event.actorId, actorIndex, occupied, parkingOptions)?.rect
+          ?? (!parkingOptions.protectInteractionControls ? actorParkedCard(event.actorId, actorIndex) : null));
       if (measuredTarget) measuredTargetEventIds.add(event.eventId);
       const target = measuredTarget ?? old?.target ?? center;
       occupied.push(target);
@@ -2458,10 +2615,12 @@ function SingleTargetCardJourney({
         const cards = current.cards.map((card) => {
           const actorIndex = actorIndexes.get(card.actorId) ?? 0;
           actorIndexes.set(card.actorId, actorIndex + 1);
-          const harvestRail = harvestRootPoolVisible && card.role === "root" ? bumperHarvestRootRailCard() : null;
-          const measuredTarget = harvestRail
-            ?? seatHistoryCardParking(card.actorId, actorIndex, occupied)?.rect
-            ?? actorParkedCard(card.actorId, actorIndex);
+          const measuredTarget = seatHistoryCardParking(
+            card.actorId,
+            actorIndex,
+            occupied,
+            singleTargetParkingOptions(currentAction, card),
+          )?.rect;
           const target = measuredTarget ?? card.target;
           if (measuredTarget) measuredTargets.set(card.eventId, measuredTarget);
           occupied.push(target);
@@ -2607,11 +2766,12 @@ function SingleTargetCardJourney({
     targetName,
     compactPlayerNamesById,
   );
-  const announcementPhaseNotice = action.settlement || isInitialHarvestNegationNotice(action)
+  const harvestNegationPresentation = isHarvestNegationPresentation(action);
+  const announcementPhaseNotice = action.settlement || harvestNegationPresentation
     ? undefined
     : action.phaseNotice;
   const announcement = withPublicCardPhaseNotice(announcementCopy.message, announcementPhaseNotice);
-  const compactAnnouncement = announcementCopy.compactMessage || (!action.settlement && action.phaseNotice?.includes("NEGATION"))
+  const compactAnnouncement = announcementCopy.compactMessage || (!action.settlement && !harvestNegationPresentation && action.phaseNotice?.includes("NEGATION"))
     ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, announcementPhaseNotice, true)
     : undefined;
   useEffect(() => {

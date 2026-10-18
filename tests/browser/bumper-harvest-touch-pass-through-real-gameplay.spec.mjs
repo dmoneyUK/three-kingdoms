@@ -123,6 +123,131 @@ async function advanceHarvestNegationToActor(request, seed, expectedActor) {
   throw new Error(`Harvest Negation did not reach ${expectedActor.name}: ${JSON.stringify(current.currentAction)}`);
 }
 
+async function measureHarvestParking(page, cardId, eventId) {
+  return page.evaluate(({ expectedCardId, expectedEventId }) => {
+    const rect = (element) => {
+      if (!element) return null;
+      const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+      return { left, top, right, bottom, width, height };
+    };
+    const card = [...document.querySelectorAll("[data-public-card-journey-card-id]")]
+      .find((element) => element.dataset.publicCardJourneyCardId === expectedCardId
+        && element.dataset.publicCardJourneyEventId === expectedEventId);
+    if (!card) return null;
+    const actorId = card.dataset.publicCardJourneyActorId;
+    const actor = [...document.querySelectorAll("[data-player-anchor]")]
+      .find((element) => element.dataset.playerAnchor === actorId);
+    const hero = actor?.querySelector(actor?.classList.contains("local-player-dock")
+      ? ".local-hero-card" : ".opponent-hero-card");
+    const face = card.querySelector(".played-card");
+    const target = {
+      left: Number(card.dataset.publicCardJourneyTargetLeft),
+      top: Number(card.dataset.publicCardJourneyTargetTop),
+      width: Number(card.dataset.publicCardJourneyTargetWidth),
+      height: Number(card.dataset.publicCardJourneyTargetHeight),
+    };
+    const overlaps = (first, second) => Boolean(first && second
+      && first.left < second.right && first.right > second.left
+      && first.top < second.bottom && first.bottom > second.top);
+    const selectors = [
+      ".console-guidance", ".decision-status", ".public-card-display-journey-copy",
+      ".public-activity-chip", "[data-public-activity-chip]", ".visible-countdown", ".stage-system-cluster",
+      ".local-hand-rail [data-hand-card-id]", ".local-hand-rail button", ".turn-controls button",
+      ...(card.dataset.publicCardJourneyRole === "root" ? [] : [".harvest-choice-heading"]),
+      ...(card.dataset.publicCardJourneyRole === "root" ? [] : [
+        ".harvest-card-choice", ".harvest-card-select", ".harvest-card-info", ".harvest-confirm-row button",
+      ]),
+    ];
+    const blockers = selectors.flatMap((selector) => [...document.querySelectorAll(selector)]
+      .filter((element) => {
+        const bounds = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return style.display !== "none" && style.visibility !== "hidden" && bounds.width > 0 && bounds.height > 0;
+      })
+      .map((element) => ({ selector, rect: rect(element), hitTarget: element.matches("button, [role='button']") })));
+    const collisions = blockers.filter(({ rect: blocker }) => overlaps(target, blocker));
+    const heroRect = rect(hero);
+    const actorRect = rect(actor);
+    const sideColumn = actor?.dataset.sideColumn ?? null;
+    const tableRect = rect(document.querySelector(".play-table"));
+    const otherAnchors = [...document.querySelectorAll("[data-player-anchor]")]
+      .filter((element) => element !== actor)
+      .map((element) => ({ selector: "[data-player-anchor]", rect: rect(element) }));
+    const cardWidth = target.width;
+    const candidateProbes = tableRect && actorRect ? [
+      { name: "actor-centred-below", left: actorRect.left + (actorRect.width - cardWidth) / 2, top: actorRect.bottom + 6 },
+      { name: "table-right-below", left: tableRect.right - cardWidth - 8, top: actorRect.bottom + 6 },
+      { name: "pool-right-edge", left: (rect(document.querySelector(".harvest-choice-stage"))?.right ?? 0) + 2, top: actorRect.bottom + 6 },
+    ].map((candidate) => ({
+      ...candidate,
+      width: cardWidth,
+      height: target.height,
+      right: candidate.left + cardWidth,
+      bottom: candidate.top + target.height,
+      blockers: [
+        ...blockers,
+        ...otherAnchors,
+        ...[...document.querySelectorAll("[data-public-card-journey-phase='parked']")]
+          .filter((element) => element !== card)
+          .map((element) => ({ selector: "other parked card", rect: rect(element) })),
+      ].filter(({ rect: blocker }) => overlaps({ ...candidate, width: cardWidth, height: target.height,
+        right: candidate.left + cardWidth, bottom: candidate.top + target.height }, blocker)),
+    })) : [];
+    const otherParkedCards = [...document.querySelectorAll("[data-public-card-journey-phase='parked']")]
+      .filter((element) => element !== card)
+      .map((element) => ({ selector: "other parked card", rect: rect(element) }));
+    const edgeDistance = (bounds) => {
+      if (!bounds) return null;
+      const dx = Math.max(0, bounds.left - (target.left + target.width), target.left - bounds.right);
+      const dy = Math.max(0, bounds.top - (target.top + target.height), target.top - bounds.bottom);
+      return Math.hypot(dx, dy);
+    };
+    const actualRect = rect(card);
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      cardId: card.dataset.publicCardJourneyCardId,
+      eventId: card.dataset.publicCardJourneyEventId,
+      actorId,
+      role: card.dataset.publicCardJourneyRole,
+      actorIsLocal: Boolean(actor?.classList.contains("local-player-dock")),
+      sideColumn,
+      phase: card.dataset.publicCardJourneyPhase,
+      layoutPending: card.closest(".public-card-display")?.dataset.publicCardLayoutPending,
+      target,
+      actual: actualRect,
+      face: rect(face),
+      actorRect,
+      heroRect,
+      tableRect,
+      displayMotion: card.closest(".public-card-display")?.dataset.publicCardMotion ?? null,
+      displayHarvestActive: card.closest(".public-card-display")?.dataset.publicCardHarvestActive ?? null,
+      authorEdgeDistance: edgeDistance(actor?.classList.contains("local-player-dock") ? heroRect : actorRect),
+      collisions,
+      candidateProbes,
+      h4: rect(document.querySelector(".public-card-display-journey-copy")),
+      pool: rect(document.querySelector(".harvest-choice-panel")),
+    };
+  }, { expectedCardId: cardId, expectedEventId: eventId });
+}
+
+function expectHarvestCardParkedByAuthor(metrics, label) {
+  expect(metrics, `${label} card remains mounted`).toBeTruthy();
+  expect(metrics.actorId, JSON.stringify({ label, metrics })).toBeTruthy();
+  expect(metrics.phase, JSON.stringify({ label, metrics })).toBe("parked");
+  expect(metrics.layoutPending, JSON.stringify({ label, metrics })).toBe("false");
+  expect(metrics.target.width, JSON.stringify({ label, metrics })).toBe(metrics.role === "root" ? 40 : 48);
+  expect(metrics.target.height, JSON.stringify({ label, metrics })).toBe(metrics.role === "root" ? 60 : 72);
+  expect(metrics.actual.left, JSON.stringify({ label, metrics })).toBeCloseTo(metrics.target.left, 1);
+  expect(metrics.actual.top, JSON.stringify({ label, metrics })).toBeCloseTo(metrics.target.top, 1);
+  expect(metrics.authorEdgeDistance, JSON.stringify({ label, metrics })).toBeLessThanOrEqual(metrics.actorIsLocal || metrics.role === "root" ? 12 : 92);
+  if (metrics.sideColumn === "left") {
+    expect(metrics.target.left - metrics.actorRect.right, JSON.stringify({ label, metrics })).toBeCloseTo(6, 1);
+  } else if (metrics.sideColumn === "right") {
+    expect(metrics.actorRect.left - (metrics.target.left + metrics.target.width), JSON.stringify({ label, metrics })).toBeCloseTo(6, 1);
+  }
+  expect(metrics.collisions, JSON.stringify({ label, metrics })).toEqual([]);
+}
+
 async function openHarvestChoice(request, seed, observeRootJourney) {
   const source = seed.players[0];
   let latestRoom = null;
@@ -363,10 +488,16 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
   const [source, firstResponder, counterResponder] = seed.players;
   const rootCardId = `harvest-density-root-${seed.players.length}`;
   const viewerContexts = [];
+  const phoneViewports = [
+    { width: 390, height: 700 },
+    { width: 390, height: 844 },
+    { width: 440, height: 766 },
+    { width: 440, height: 894 },
+  ];
   try {
-    const viewerPages = await Promise.all(seed.players.map(async (viewer) => {
+    const viewerPages = await Promise.all(seed.players.map(async (viewer, index) => {
       const viewerContext = await browser.newContext({
-        viewport: { width: 390, height: 700 },
+        viewport: phoneViewports[index],
         isMobile: true,
         hasTouch: true,
         deviceScaleFactor: 3,
@@ -427,15 +558,20 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     });
     const rootEffectRecipient = seed.players.find(({ id }) => id === rootProgress.currentParticipantId);
     expect(rootEffectRecipient, "public progress identifies the current Harvest effect participant").toBeTruthy();
-    const initialAnnouncement = `${source.name} played Bumper Harvest. Negation may cancel its effect on ${rootEffectRecipient.name}.`;
-    await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
+    const initialAnnouncement = `Negation: Block ${rootEffectRecipient.name}'s Harvest pick?`;
+    await Promise.all(viewerPages.map(async ({ viewer, page: viewerPage }) => {
       const h4 = viewerPage.locator(".public-card-display-journey-copy b");
       await expect(h4).toHaveAttribute("aria-label", initialAnnouncement, { timeout: 10_000 });
       await expect(viewerPage.locator(".harvest-choice-heading span"))
         .toHaveText(`Negation for ${rootEffectRecipient.name} · Read-only`);
       await expect(viewerPage.locator(".harvest-card-select, .harvest-confirm-row")).toHaveCount(0);
+      await expect(h4).toBeVisible();
+      expect(await h4.innerText()).toContain("Negation");
       expect(await h4.innerText()).toContain(rootEffectRecipient.name);
       expect(await h4.innerText()).not.toContain("Negation can be played");
+      const lineCount = Number(await h4.locator("xpath=..").getAttribute("data-public-card-announcement-lines"));
+      expect(lineCount, `Harvest Negation guidance fits two phone lines for ${viewer.id}`).toBeGreaterThan(0);
+      expect(lineCount, `Harvest Negation guidance fits two phone lines for ${viewer.id}`).toBeLessThanOrEqual(2);
     }));
 
     const root = page.locator(`[data-public-card-journey-card-id="${rootCardId}"]`);
@@ -451,6 +587,23 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
       return card?.getAttribute("data-public-card-journey-reveal-started-at") === startedAt
         && Date.now() - Date.parse(startedAt) >= 500;
     }, { selector: rootSelector, startedAt: rootRevealStartedAt });
+    await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
+      const viewerRoot = viewerPage.locator(`[data-public-card-journey-card-id="${rootCardId}"][data-public-card-journey-event-id="${rootEvent.id}"]`);
+      await expect(viewerRoot).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });
+    }));
+    const rootParkingByViewer = await Promise.all(viewerPages.map(async ({ viewer, page: viewerPage }) => ({
+      viewerId: viewer.id,
+      parking: await measureHarvestParking(viewerPage, rootCardId, rootEvent.id),
+    })));
+    for (const { viewerId, parking } of rootParkingByViewer) {
+      expectHarvestCardParkedByAuthor(parking, `Harvest root viewer ${viewerId}`);
+      expect(parking.actorId, JSON.stringify({ viewerId, parking })).toBe(source.id);
+      expect(parking.actorIsLocal, JSON.stringify({ viewerId, parking })).toBe(viewerId === source.id);
+    }
+    await testInfo.attach("bumper-harvest-root-author-parking-four-viewers-phone-viewports", {
+      body: JSON.stringify(rootParkingByViewer, null, 2),
+      contentType: "application/json",
+    });
 
     await advanceHarvestNegationToActor(request, seed, firstResponder);
     const firstCommit = await commitHarvestNegation(request, seed, 1, firstNegationId);
@@ -461,12 +614,17 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     expect(firstCommitProgress?.semantics).toBe("PROVEN");
     const firstCommitChooser = seed.players.find(({ id }) => id === firstCommitProgress.currentParticipantId);
     expect(firstCommitChooser, "the next Harvest effect participant is named by shared public proof").toBeTruthy();
-    const firstCommitAnnouncement = `${firstResponder.name} played Negation against Bumper Harvest's effect on ${firstCommitChooser.name}; a Negation response is open.`;
+    const firstCommitAnnouncement = `${firstResponder.name} played Negation → ${firstCommitChooser.name}.`;
     await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
-      await expect(viewerPage.locator(".public-card-display-journey-copy b"))
+      const h4 = viewerPage.locator(".public-card-display-journey-copy b");
+      await expect(h4)
         .toHaveAttribute("aria-label", firstCommitAnnouncement, { timeout: 10_000 });
       await expect(viewerPage.locator(".harvest-choice-heading span"))
         .toHaveText(`Negation for ${firstCommitChooser.name} · Read-only`);
+      const lines = Number(await h4.locator("xpath=..")
+        .getAttribute("data-public-card-announcement-lines"));
+      expect(lines).toBeGreaterThan(0);
+      expect(lines).toBeLessThanOrEqual(2);
     }));
     await testInfo.attach("bumper-harvest-committed-negation-server-proof", {
       body: JSON.stringify({
@@ -589,6 +747,23 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     };
 
     await assertCommittedRevealAbovePool(firstNegationId, firstCommit.event, "committed-negation", "bumper-harvest-negation-reveal-over-pool-390x700");
+    await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
+      const responseCard = viewerPage.locator(`[data-public-card-journey-card-id="${firstNegationId}"][data-public-card-journey-event-id="${firstCommit.event.id}"]`);
+      await expect(responseCard).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });
+    }));
+    const firstResponseParkingByViewer = await Promise.all(viewerPages.map(async ({ viewer, page: viewerPage }) => ({
+      viewerId: viewer.id,
+      parking: await measureHarvestParking(viewerPage, firstNegationId, firstCommit.event.id),
+    })));
+    for (const { viewerId, parking } of firstResponseParkingByViewer) {
+      expectHarvestCardParkedByAuthor(parking, `Negation response viewer ${viewerId}`);
+      expect(parking.actorId, JSON.stringify({ viewerId, parking })).toBe(firstResponder.id);
+      expect(parking.actorIsLocal, JSON.stringify({ viewerId, parking })).toBe(viewerId === firstResponder.id);
+    }
+    await testInfo.attach("bumper-harvest-first-negation-author-parking-four-viewers-phone-viewports", {
+      body: JSON.stringify(firstResponseParkingByViewer, null, 2),
+      contentType: "application/json",
+    });
     const counterWindow = await advanceHarvestNegationToActor(request, seed, counterResponder);
     expect(counterWindow.publicHarvestPool?.revealed.map(({ id }) => id)).toEqual(rootPool.revealed.map(({ id }) => id));
     const counterCommit = await commitHarvestNegation(request, seed, 2, counterNegationId);
@@ -598,13 +773,17 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     const counterProgress = counterCommit.room.presentationSnapshot?.bumperHarvestProgress;
     const counterEffectRecipient = seed.players.find(({ id }) => id === counterProgress?.currentParticipantId);
     expect(counterEffectRecipient, "public progress keeps the current effect participant named").toBeTruthy();
-    const counterAnnouncement = `${counterResponder.name} played Negation against Negation 1; a Negation response is open.`;
+    const counterAnnouncement = `${counterResponder.name} countered ${firstResponder.name}'s Negation.`;
     await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
-      await expect(viewerPage.locator(".public-card-display-journey-copy b"))
+      const h4 = viewerPage.locator(".public-card-display-journey-copy b");
+      await expect(h4)
         .toHaveAttribute("aria-label", counterAnnouncement, { timeout: 10_000 });
       await expect(viewerPage.locator(".harvest-choice-heading span"))
         .toHaveText(`Negation for ${counterEffectRecipient.name} · Read-only`);
-      const h4 = viewerPage.locator(".public-card-display-journey-copy b");
+      const lines = Number(await h4.locator("xpath=..")
+        .getAttribute("data-public-card-announcement-lines"));
+      expect(lines).toBeGreaterThan(0);
+      expect(lines).toBeLessThanOrEqual(2);
       expect(await h4.getAttribute("aria-label")).not.toContain(`Bumper Harvest's effect on ${counterEffectRecipient.name}`);
     }));
     await viewerPages[3].page.reload();
@@ -613,6 +792,23 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     await expect(viewerPages[3].page.locator(".harvest-choice-heading span"))
       .toHaveText(`Negation for ${counterEffectRecipient.name} · Read-only`);
     await assertCommittedRevealAbovePool(counterNegationId, counterCommit.event, "committed-counter-negation", "bumper-harvest-counter-reveal-over-pool-390x700");
+    await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
+      const responseCard = viewerPage.locator(`[data-public-card-journey-card-id="${counterNegationId}"][data-public-card-journey-event-id="${counterCommit.event.id}"]`);
+      await expect(responseCard).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });
+    }));
+    const counterParkingByViewer = await Promise.all(viewerPages.map(async ({ viewer, page: viewerPage }) => ({
+      viewerId: viewer.id,
+      parking: await measureHarvestParking(viewerPage, counterNegationId, counterCommit.event.id),
+    })));
+    for (const { viewerId, parking } of counterParkingByViewer) {
+      expectHarvestCardParkedByAuthor(parking, `Counter Negation viewer ${viewerId}`);
+      expect(parking.actorId, JSON.stringify({ viewerId, parking })).toBe(counterResponder.id);
+      expect(parking.actorIsLocal, JSON.stringify({ viewerId, parking })).toBe(viewerId === counterResponder.id);
+    }
+    await testInfo.attach("bumper-harvest-counter-author-parking-four-viewers-phone-viewports", {
+      body: JSON.stringify(counterParkingByViewer, null, 2),
+      contentType: "application/json",
+    });
 
     const finalCounterWindowId = counterCommit.room.currentAction?.negationWindowId;
     expect(finalCounterWindowId, "the counter opens its own response window").toBeTruthy();
@@ -660,7 +856,7 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     const nextEffectRecipient = seed.players.find(({ id }) => id === nextEffectProgress.currentParticipantId);
     expect(nextEffectRecipient, "shared public progress advances to the next effect participant").toBeTruthy();
     expect(nextEffectRecipient.id).not.toBe(rootEffectRecipient.id);
-    const nextParticipantAnnouncement = `${source.name} played Bumper Harvest. Negation may cancel its effect on ${nextEffectRecipient.name}.`;
+    const nextParticipantAnnouncement = `Negation: Block ${nextEffectRecipient.name}'s Harvest pick?`;
     await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
       await expect(viewerPage.locator(".public-card-display-journey-copy b"))
         .toHaveAttribute("aria-label", nextParticipantAnnouncement, { timeout: 10_000 });
@@ -913,6 +1109,92 @@ async function harvestGeometry(page) {
   });
 }
 
+test("Bumper Harvest root and Negation park beside their own side-seat authors on phones", async ({ browser, request }, testInfo) => {
+  test.setTimeout(120_000);
+  for (const scenario of [
+    { seats: 6, viewport: { width: 390, height: 844 } },
+    { seats: 8, viewport: { width: 440, height: 894 } },
+  ]) {
+    const negationId = `harvest-side-negation-${scenario.seats}`;
+    const seed = await seedHarvestPool(request, scenario.seats, scenario.seats, {
+      4: [{ id: negationId, kind: "Negation", suit: "♦", rank: "A" }],
+    });
+    const source = seed.players[0];
+    const responder = seed.players[4];
+    const rootCardId = `harvest-density-root-${scenario.seats}`;
+    const initialViewer = seed.players[2];
+    const context = await browser.newContext({
+      viewport: scenario.viewport,
+      isMobile: true,
+      hasTouch: true,
+      deviceScaleFactor: 3,
+    });
+    try {
+      const page = await context.newPage();
+      await page.addInitScript(({ code, token, name }) => {
+        localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
+      }, { code: seed.code, token: initialViewer.token, name: initialViewer.name });
+      await page.goto(`${API}/`);
+      await expect(page.locator(".game-shell")).toBeVisible();
+
+      const played = await request.post(`${API}/api/rooms`, {
+        data: { action: "play_card", code: seed.code, token: source.token, cardId: rootCardId },
+      });
+      expect(played.ok(), await played.text()).toBeTruthy();
+      const opening = await readRoom(request, seed.code, source.token);
+      const progress = opening.presentationSnapshot?.bumperHarvestProgress;
+      expect(progress?.semantics).toBe("PROVEN");
+      expect(progress.rootEventId).toBeTruthy();
+      expect(opening.publicHarvestPool?.semantics).toBe("PROVEN");
+      const currentChooserId = progress.currentParticipantId;
+      expect(currentChooserId, "public progress names the pending effect participant").toBeTruthy();
+      expect(currentChooserId).not.toBe(responder.id);
+      const viewer = initialViewer;
+      expect(viewer.id).not.toBe(source.id);
+      expect(viewer.id).not.toBe(currentChooserId);
+      expect(viewer.id).not.toBe(responder.id);
+
+      const windowId = opening.currentAction?.negationWindowId;
+      expect(windowId).toBeTruthy();
+      const held = await request.post(`${API}/__test/negation-window-clock`, {
+        data: { code: seed.code, windowId, mode: "hold" },
+      });
+      expect(held.ok(), await held.text()).toBeTruthy();
+      await expect(page.locator('.harvest-choice-stage[data-harvest-readonly="true"]')).toBeVisible();
+      const root = page.locator(`[data-public-card-journey-card-id="${rootCardId}"][data-public-card-journey-event-id="${progress.rootEventId}"]`);
+      await expect(root).toHaveAttribute("data-public-card-journey-phase", "reveal", { timeout: 10_000 });
+      await expect(root).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 15_000 });
+      const rootParking = await measureHarvestParking(page, rootCardId, progress.rootEventId);
+      expectHarvestCardParkedByAuthor(rootParking, `${scenario.seats}-seat Harvest root`);
+      expect(rootParking.actorId).toBe(source.id);
+      expect(rootParking.sideColumn, "root parks beside a true side-column seat").toMatch(/^(left|right)$/);
+      const rootScreenshot = testInfo.outputPath(`harvest-side-root-${scenario.seats}-seats-${scenario.viewport.width}x${scenario.viewport.height}.png`);
+      await page.screenshot({ path: rootScreenshot, animations: "disabled" });
+      await testInfo.attach(`harvest-side-root-${scenario.seats}-seats`, { path: rootScreenshot, contentType: "image/png" });
+
+      await advanceHarvestNegationToActor(request, seed, responder);
+      const committed = await commitHarvestNegation(request, seed, 4, negationId);
+      const responseCard = page.locator(`[data-public-card-journey-card-id="${negationId}"][data-public-card-journey-event-id="${committed.event.id}"]`);
+      await expect(responseCard).toHaveAttribute("data-public-card-journey-role", "response", { timeout: 10_000 });
+      await expect(responseCard).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 15_000 });
+      const responseParking = await measureHarvestParking(page, negationId, committed.event.id);
+      expectHarvestCardParkedByAuthor(responseParking, `${scenario.seats}-seat committed Negation`);
+      expect(responseParking.actorId).toBe(responder.id);
+      expect(responseParking.sideColumn, "Negation parks beside its own side-column author").toMatch(/^(left|right)$/);
+      expect(responseParking.actorId).not.toBe(source.id);
+      await testInfo.attach(`harvest-side-parking-${scenario.seats}-seats`, {
+        body: JSON.stringify({ scenario, viewerId: viewer.id, currentChooserId, sourceId: source.id, responderId: responder.id, rootParking, responseParking }, null, 2),
+        contentType: "application/json",
+      });
+      const responseScreenshot = testInfo.outputPath(`harvest-side-negation-${scenario.seats}-seats-${scenario.viewport.width}x${scenario.viewport.height}.png`);
+      await page.screenshot({ path: responseScreenshot, animations: "disabled" });
+      await testInfo.attach(`harvest-side-negation-${scenario.seats}-seats`, { path: responseScreenshot, contentType: "image/png" });
+    } finally {
+      await context.close();
+    }
+  }
+});
+
 test("Bumper Harvest spectators can switch views while another player chooses", async ({ browser, request }, testInfo) => {
   test.setTimeout(90_000);
   const name = `HARVEST SWITCH ${Date.now().toString(36).toUpperCase()}`;
@@ -1058,6 +1340,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
       await negationPage.evaluate(async ({ width, height }) => {
         const deadline = performance.now() + 5000;
         let stableFrames = 0;
+        let lastState = null;
         while (performance.now() < deadline) {
           await new Promise((resolve) => requestAnimationFrame(() => resolve()));
           const root = document.querySelector("[data-harvest-root-parked='true']");
@@ -1066,6 +1349,28 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
           const announcement = document.querySelector("[data-public-card-announcement='true']");
           const rootRect = root?.getBoundingClientRect();
           const chipRect = chip?.getBoundingClientRect();
+          lastState = {
+            renderer: display?.dataset.publicCardRendererKind,
+            motion: display?.dataset.publicCardMotion,
+            sourceId: display?.dataset.publicCardSourceId,
+            cardId: display?.dataset.publicCardId,
+            pending: display?.dataset.publicCardLayoutPending,
+            root: rootRect ? { left: rootRect.left, top: rootRect.top, width: rootRect.width, height: rootRect.height,
+              targetLeft: root?.dataset.publicCardJourneyTargetLeft, targetTop: root?.dataset.publicCardJourneyTargetTop,
+              actorId: root?.dataset.publicCardJourneyActorId, role: root?.dataset.publicCardJourneyRole,
+              phase: root?.dataset.publicCardJourneyPhase, visibility: getComputedStyle(root).visibility } : null,
+            chip: chipRect ? { left: chipRect.left, top: chipRect.top, width: chipRect.width, height: chipRect.height,
+              visibility: getComputedStyle(chip).visibility, layout: chip?.dataset.publicActivityLayout } : null,
+            announcementVisibility: announcement ? getComputedStyle(announcement).visibility : null,
+            localDock: (() => {
+              const dock = document.querySelector(".local-player-dock");
+              const identity = dock?.querySelector(".local-dock-identity");
+              const hero = dock?.querySelector(".local-hero-card");
+              const dockStyle = dock ? getComputedStyle(dock) : null;
+              return { dock: dock?.getBoundingClientRect().toJSON(), dockPadding: dockStyle?.padding, dockPaddingBottom: dockStyle?.paddingBottom, dockBorderBottom: dockStyle?.borderBottomWidth, identity: identity?.getBoundingClientRect().toJSON(), hero: hero?.getBoundingClientRect().toJSON(), hand: document.querySelector(".local-hand-rail")?.getBoundingClientRect().toJSON(), guidance: document.querySelector(".console-guidance")?.getBoundingClientRect().toJSON(), decision: document.querySelector(".decision-status")?.getBoundingClientRect().toJSON() };
+            })(),
+
+          };
           const stable = window.innerWidth === width && window.innerHeight === height
             && Boolean(root && display && chip && announcement && rootRect && chipRect)
             && display?.dataset.publicCardLayoutPending === "false"
@@ -1073,14 +1378,13 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
             && getComputedStyle(root).visibility === "visible"
             && rootRect.left === Number(root?.dataset.publicCardJourneyTargetLeft)
             && rootRect.top === Number(root?.dataset.publicCardJourneyTargetTop)
-            && chip?.dataset.publicActivityLayout === "harvest-root-rail"
+            && /^(harvest-root-rail|bottom-center|lower-band-(center|left|right))$/.test(chip?.dataset.publicActivityLayout ?? "")
             && getComputedStyle(chip).visibility === "visible"
-            && chipRect?.top === rootRect.top
             && getComputedStyle(announcement).visibility === "visible";
           stableFrames = stable ? stableFrames + 1 : 0;
           if (stableFrames >= 2) return;
         }
-        throw new Error(`Harvest layer did not settle at ${width}x${height}`);
+        throw new Error(`Harvest layer did not settle at ${width}x${height}: ${JSON.stringify(lastState)}`);
       }, viewport);
       const geometry = await harvestGeometry(negationPage);
       await testInfo.attach(`bumper-harvest-layer-${viewport.width}x${viewport.height}`, {
@@ -1095,27 +1399,29 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
       expect(geometry.stageBackground).toBe("rgba(0, 0, 0, 0)");
       expect(geometry.announcement).toBeTruthy();
       expect(geometry.announcementPaint.visibility).toBe("visible");
-      expect(geometry.announcementPaint.ariaLabel).toContain("played Bumper Harvest");
+      expect(geometry.announcementPaint.ariaLabel).toBe(`Negation: Block ${currentChooser.name}'s Harvest pick?`);
+      const announcementLines = Number(await negationPage.locator(".public-card-display-journey-copy").getAttribute("data-public-card-announcement-lines"));
+      expect(announcementLines).toBeGreaterThan(0);
+      expect(announcementLines).toBeLessThanOrEqual(2);
       expect(geometry.activityPaint.visibility).toBe("visible");
-      expect(geometry.activityPaint.layout).toBe("harvest-root-rail");
-      const table = geometry.table;
-      expect(Math.abs(geometry.root.left - (table.left + 8))).toBeLessThanOrEqual(1);
-      expect(geometry.root.top).toBeGreaterThan(geometry.panel.bottom);
+      expect(geometry.activityPaint.layout).toMatch(/^(harvest-root-rail|bottom-center|lower-band-(center|left|right))$/);
+      const rootParking = await measureHarvestParking(negationPage, currentProgress.rootCardId, publicPool.rootEventId);
+      expectHarvestCardParkedByAuthor(rootParking, `Harvest root at ${viewport.width}x${viewport.height}`);
+      expect(rootParking.actorId).toBe(source.id);
       expect(geometry.layerOrder.root).not.toBeNull();
       expect(geometry.layerOrder.pool).toBeGreaterThan(geometry.layerOrder.root);
-      expect(geometry.overlaps.rootPanel).toBe(false);
-      expect(geometry.overlaps.rootRow).toBe(false);
+      // Plan A permits the already-seen root thumbnail to sit behind the pool.
+      // Its layer must remain below the real pool, whose Info targets stay tappable.
+      expect(geometry.controlHits.harvestInfo).toHaveLength(publicPool.revealed.length);
+      expect(geometry.controlHits.harvestInfo.every((hit) => hit.hitMatches), JSON.stringify(geometry.controlHits.harvestInfo)).toBe(true);
       expect(geometry.overlaps.rootAnnouncement).toBe(false);
       expect(geometry.overlaps.rootTimer).toBe(false);
       expect(geometry.overlaps.rootActivity).toBe(false);
-      expect(geometry.overlaps.rootDock).toBe(false);
-      expect(geometry.dock ? geometry.root.bottom : 0).toBeLessThanOrEqual(geometry.dock?.top ?? 0);
       expect(geometry.overlaps.rootSeat).toBe(false);
       expect(geometry.overlaps.panelAnnouncement).toBe(false);
       expect(geometry.overlaps.announcementActivity).toBe(false);
       expect(geometry.overlaps.activityTimer).toBe(false);
       expect(geometry.overlaps.panelTimer).toBe(false);
-      expect(geometry.overlaps.panelActivity).toBe(false);
       expect(geometry.overlaps.panelSeat).toBe(false);
       const evidenceName = `bumper-harvest-negation-readonly-${viewport.width}x${viewport.height}${evidenceSuffix ? `-${evidenceSuffix}` : ""}`;
       const screenshot = testInfo.outputPath(`${evidenceName}.png`);
@@ -1249,7 +1555,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
         contentType: "application/json",
       });
       const mismatchedH4 = mismatchedProofPage.locator(".public-card-display-journey-copy b");
-      const genericHarvestAnnouncement = `${source.name} played Bumper Harvest.`;
+      const genericHarvestAnnouncement = "Negation available.";
       await expect(mismatchedH4).toHaveAttribute("aria-label", genericHarvestAnnouncement, { timeout: 1_500 });
       const mismatchedH4Label = await mismatchedH4.getAttribute("aria-label");
       const forgedParticipantName = mismatchRender.proof?.forgedParticipantName;
@@ -1519,13 +1825,13 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(page.locator(".harvest-choice-heading span"))
       .toHaveText(`Negation for ${firstEffectRecipient.name} · Read-only`);
     await expect(page.locator(".public-card-display-journey-copy b"))
-      .toHaveAttribute("aria-label", new RegExp(`Negation may cancel its effect on ${firstEffectRecipient.name}\\.`));
+      .toHaveAttribute("aria-label", `Negation: Block ${firstEffectRecipient.name}'s Harvest pick?`);
     await page.reload();
     await expect(page.locator(".game-shell")).toBeVisible();
     await expect(page.locator(".harvest-choice-heading span"))
       .toHaveText(`Negation for ${firstEffectRecipient.name} · Read-only`);
     await expect(page.locator(".public-card-display-journey-copy b"))
-      .toHaveAttribute("aria-label", new RegExp(`Negation may cancel its effect on ${firstEffectRecipient.name}\\.`));
+      .toHaveAttribute("aria-label", `Negation: Block ${firstEffectRecipient.name}'s Harvest pick?`);
     room = await passCurrentNegationWindow();
     await expect.poll(async () => {
       const current = await readRoom(request, code, token);
@@ -1581,7 +1887,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(page.locator(".harvest-choice-heading span"))
       .toHaveText(`Negation for ${secondEffectRecipient.name} · Read-only`);
     await expect(page.locator(".public-card-display-journey-copy b"))
-      .toHaveAttribute("aria-label", new RegExp(`Negation may cancel its effect on ${secondEffectRecipient.name}\\.`));
+      .toHaveAttribute("aria-label", `Negation: Block ${secondEffectRecipient.name}'s Harvest pick?`);
   } finally {
     await context.close();
   }
