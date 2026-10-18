@@ -175,6 +175,38 @@ test("preserves only privacy-safe Bumper Harvest settlement and exact root-frame
   assert.equal(JSON.stringify(root.bumperHarvestRoot).includes("private-card-id"), false);
 });
 
+test("normalizes only a complete proven public Bumper Harvest pool", () => {
+  const pool = {
+    semantics: "PROVEN", rootEventId: "harvest-root-event", revealEventId: "harvest-reveal-event",
+    revealed: [
+      { id: "harvest-card-1", kind: "Attack", suit: "♠", rank: "7" },
+      { id: "harvest-card-2", kind: "Dodge", suit: "♥", rank: "8" },
+    ],
+    availableIds: ["harvest-card-2"],
+    choices: [{ cardId: "harvest-card-1", playerId: "chooser-1", playerName: "CHOOSER" }],
+    currentActorId: "private-negation-scan-actor",
+    legalActions: ["choose_harvest"],
+  };
+  const normalized = normalizeRoomData({
+    code: "HARVEST1", status: "playing", players: [], myHand: [], timeline: [], publicHarvestPool: pool,
+  });
+  assert.deepEqual(normalized.publicHarvestPool, {
+    semantics: "PROVEN", rootEventId: "harvest-root-event", revealEventId: "harvest-reveal-event",
+    revealed: pool.revealed, availableIds: ["harvest-card-2"],
+    choices: [{ cardId: "harvest-card-1", playerId: "chooser-1", playerName: "CHOOSER" }],
+  });
+  assert.equal(JSON.stringify(normalized.publicHarvestPool).includes("private-negation"), false);
+  assert.equal(JSON.stringify(normalized.publicHarvestPool).includes("choose_harvest"), false);
+  assert.equal(normalizeRoomData({
+    code: "HARVEST2", status: "playing", players: [], myHand: [], timeline: [],
+    publicHarvestPool: { ...pool, availableIds: ["harvest-card-2", "harvest-card-2"] },
+  }).publicHarvestPool, null, "duplicate IDs fail closed");
+  assert.equal(normalizeRoomData({
+    code: "HARVEST3", status: "playing", players: [], myHand: [], timeline: [],
+    publicHarvestPool: { ...pool, availableIds: [] },
+  }).publicHarvestPool, null, "missing physical cards fail closed");
+});
+
 test("handles missing collections and rejects malformed items while preserving valid data", () => {
   const empty = normalizeRoomData({ code: "SAFE1", status: "lobby", players: [], myHand: [], timeline: [] });
   assert.deepEqual(empty.players, []); assert.deepEqual(empty.myHand, []); assert.deepEqual(empty.timeline, []);

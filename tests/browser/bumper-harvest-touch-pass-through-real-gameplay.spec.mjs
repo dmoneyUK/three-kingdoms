@@ -314,6 +314,81 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     }
     return readRoom(request, code, token);
   };
+  const negationRoom = await readRoom(request, code, token);
+  expect(negationRoom.phase).toBe("response");
+  const negationWindowId = negationRoom.currentAction?.negationWindowId;
+  expect(negationWindowId).toBeTruthy();
+  const heldWindow = await request.post(`${API}/__test/negation-window-clock`, {
+    data: { code, windowId: negationWindowId, mode: "hold" },
+  });
+  expect(heldWindow.ok()).toBeTruthy();
+  const publicPool = negationRoom.publicHarvestPool;
+  expect(publicPool?.semantics).toBe("PROVEN");
+  expect(negationRoom.pendingHarvest).toBeNull();
+  expect(negationRoom.currentAction?.legalActions).not.toContain("choose_harvest");
+  const controlledViews = await Promise.all(room.players.map((player) => readRoom(request, code, token, player.id)));
+  expect(controlledViews.map((view) => view.publicHarvestPool)).toEqual(Array(room.players.length).fill(publicPool));
+
+  const negationContext = await browser.newContext({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  try {
+    const negationPage = await negationContext.newPage();
+    const chooseHarvestPosts = [];
+    negationPage.on("request", (requestEvent) => {
+      if (requestEvent.method() !== "POST" || requestEvent.url() !== `${API}/api/rooms`) return;
+      try {
+        if (JSON.parse(requestEvent.postData() ?? "{}").action === "choose_harvest") chooseHarvestPosts.push(requestEvent.postData());
+      } catch { /* Ignore non-JSON requests. */ }
+    });
+    await negationPage.addInitScript(({ roomCode, sessionToken, playerName }) => {
+      localStorage.setItem("three-realms-session", JSON.stringify({ code: roomCode, token: sessionToken, name: playerName }));
+    }, { roomCode: code, sessionToken: token, playerName: name });
+    await negationPage.goto(`${API}/`);
+    await expect(negationPage.locator(".game-shell")).toBeVisible();
+    await expect(negationPage.locator('.harvest-choice-stage[data-harvest-readonly="true"]')).toBeVisible();
+    await expect(negationPage.locator(".harvest-card-choice")).toHaveCount(publicPool.revealed.length);
+    await expect(negationPage.locator(".harvest-card-select")).toHaveCount(0);
+    await expect(negationPage.locator(".harvest-confirm-row")).toHaveCount(0);
+    await expect(negationPage.locator(".harvest-availability-label")).toHaveCount(publicPool.revealed.length);
+    expect(await negationPage.locator(".harvest-card-choice").evaluateAll((cards) => cards.map((card) => card.dataset.harvestCardId)))
+      .toEqual(publicPool.revealed.map(({ id }) => id));
+    await expect(negationPage.locator(".harvest-choice-panel")).toHaveCSS("pointer-events", "none");
+    await expect(negationPage.locator(".harvest-choice-stage")).toHaveCSS("pointer-events", "none");
+
+    await tapHarvestCard(negationPage, negationPage.locator(".harvest-card-choice").first());
+    expect(chooseHarvestPosts).toEqual([]);
+    await tap(negationPage, negationPage.locator(".harvest-card-info").first());
+    await expect(negationPage.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
+    await tap(negationPage, negationPage.getByRole("button", { name: "Close card details" }));
+
+    const switchTarget = room.players.find((player) => player.id !== host.id);
+    await tap(negationPage, negationPage.getByTestId(`test-view-switch-${switchTarget.id}`));
+    await expect(negationPage.locator(`.local-player-dock[data-player-anchor="${switchTarget.id}"]`)).toBeVisible();
+    await expect(negationPage.locator(".harvest-choice-stage[data-harvest-readonly='true'] .harvest-card-choice")).toHaveCount(publicPool.revealed.length);
+    const inspectedHero = negationPage.locator(`.opponent-player-card[data-player-anchor="${host.id}"] .opponent-hero-target`);
+    await tap(negationPage, inspectedHero);
+    await expect(negationPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${host.id}"]`)).toBeVisible();
+    await tap(negationPage, negationPage.getByRole("button", { name: `Close ${host.name} inspection` }));
+    const negationShot390 = testInfo.outputPath("bumper-harvest-negation-readonly-390x700.png");
+    await negationPage.screenshot({ path: negationShot390, animations: "disabled" });
+    await testInfo.attach("bumper-harvest-negation-readonly-390x700", { path: negationShot390, contentType: "image/png" });
+    await negationPage.setViewportSize({ width: 440, height: 766 });
+    await expect(negationPage.locator('.harvest-choice-stage[data-harvest-readonly="true"]')).toBeVisible();
+    await expect(negationPage.locator(".harvest-card-choice")).toHaveCount(publicPool.revealed.length);
+    await expect(negationPage.locator(".harvest-card-select, .harvest-confirm-row")).toHaveCount(0);
+    expect(await negationPage.locator(".harvest-card-choice").evaluateAll((cards) => cards.map((card) => card.dataset.harvestCardId)))
+      .toEqual(publicPool.revealed.map(({ id }) => id));
+    expect(chooseHarvestPosts).toEqual([]);
+    await testInfo.attach("bumper-harvest-negation-readonly-pool", {
+      body: JSON.stringify({ viewport: negationPage.viewportSize(), viewerIds: controlledViews.map((view) => view.meId), publicPool }, null, 2),
+      contentType: "application/json",
+    });
+    const negationShot440 = testInfo.outputPath("bumper-harvest-negation-readonly-440x766.png");
+    await negationPage.screenshot({ path: negationShot440, animations: "disabled" });
+    await testInfo.attach("bumper-harvest-negation-readonly-440x766", { path: negationShot440, contentType: "image/png" });
+  } finally {
+    await negationContext.close();
+  }
+
   room = await passCurrentNegationWindow();
   expect(room.pendingHarvest, "Negation responses advance to a live Harvest choice").toBeTruthy();
   expect(room.pendingHarvest.actorId).toBe(source.id);
@@ -427,12 +502,14 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     const initialDeadline = initialHarvest.pendingHarvest.countdownUntil;
     await auditHarvestView("spectator", false, host.id);
     await page.setViewportSize({ width: 390, height: 700 });
-    const spectatorFirstCard = page.locator(".harvest-card-select").first();
-    await expect(spectatorFirstCard).toBeDisabled();
+    await expect(page.locator(".harvest-card-select")).toHaveCount(0);
+    await expect(page.locator(".harvest-availability-label")).toHaveCount(initialHarvest.pendingHarvest.revealed.length);
+    await tapHarvestCard(page, page.locator(".harvest-card-choice").first());
     await tap(page, page.locator(".harvest-card-info").first());
     await expect(page.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
     await expect(page.getByRole("button", { name: "Confirm choice" })).toHaveCount(0);
-    await expect(spectatorFirstCard).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator(".harvest-card-select")).toHaveCount(0);
+    await expect(page.locator(".harvest-card-choice[data-harvest-card-state='selected']")).toHaveCount(0);
     await tap(page, page.getByRole("button", { name: "Close card details" }));
     const hitMapHandle = await page.waitForFunction(() => {
       const stage = document.querySelector(".harvest-choice-stage");
@@ -646,7 +723,7 @@ test("Harvest content-fit scales from 1 to 8 genuine cards and swipes at 6–8 s
       }
       if (scenario.choices >= 6) {
         expect(rowSize.scrollWidth, contextLabel).toBeGreaterThan(rowSize.clientWidth);
-        const cardFace = page.locator(".harvest-card-select:not([disabled]) .played-card").first();
+        const cardFace = page.locator(".harvest-card-choice > .played-card").first();
         const faceBounds = await cardFace.boundingBox();
         const rowBounds = await row.boundingBox();
         expect(faceBounds && rowBounds).toBeTruthy();

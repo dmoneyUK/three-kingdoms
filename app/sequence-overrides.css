@@ -5142,19 +5142,22 @@
 .game-shell .harvest-card-select {
   position: absolute;
   inset: 0;
+  z-index: 3;
   display: block;
   width: 100%;
   height: 100%;
   padding: 0;
   overflow: hidden;
-  border: 1px solid #8d784f;
-  border-radius: 4px;
+  border: 1px solid transparent;
+  border-radius: 5px;
   background: transparent;
   cursor: pointer;
   pointer-events: auto;
 }
 .game-shell .harvest-card-select:disabled { cursor: default; }
-.game-shell .harvest-card-select > .played-card {
+.game-shell .harvest-card-choice > .played-card {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   padding: 5px 3px;
@@ -5163,17 +5166,19 @@
   box-shadow: none;
   transition: filter .15s ease, opacity .15s ease, translate .15s ease, box-shadow .15s ease;
 }
-.game-shell .harvest-card-select > .played-card > i { left: 2px; top: 2px; width: 14px; min-height: 20px; padding: 1px 1px 3px; border-width: 1px; border-radius: 0 0 4px 0; font-size: 9px; }
-.game-shell .harvest-card-select > .played-card > i small { margin-top: 0; font-size: 7px; }
-.game-shell .harvest-card-select > .played-card > strong { display: none; }
-.game-shell .harvest-card-select > .played-card .card-name-mark { max-width: 94%; font-size: 12px; line-height: 1; translate: 0 -8px; }
-.game-shell .harvest-card-choice.taken .harvest-card-select > .played-card {
+.game-shell .harvest-card-choice > .played-card > i { left: 2px; top: 2px; width: 14px; min-height: 20px; padding: 1px 1px 3px; border-width: 1px; border-radius: 0 0 4px 0; font-size: 9px; }
+.game-shell .harvest-card-choice > .played-card > i small { margin-top: 0; font-size: 7px; }
+.game-shell .harvest-card-choice > .played-card > strong { display: none; }
+.game-shell .harvest-card-choice > .played-card .card-name-mark { max-width: 94%; font-size: 12px; line-height: 1; translate: 0 -8px; }
+.game-shell .harvest-card-choice.taken > .played-card {
   filter: grayscale(1) brightness(.3);
   opacity: .58;
 }
 .game-shell .harvest-card-choice.pending-choice .harvest-card-select {
   border: 2px solid #f2ca65;
   box-shadow: 0 0 0 2px #f2ca6555, 0 0 12px #f2ca6588;
+}
+.game-shell .harvest-card-choice.pending-choice > .played-card {
   translate: 0 -3px;
 }
 .game-shell .harvest-taken-label,
@@ -5192,6 +5197,20 @@
   white-space: nowrap;
 }
 .game-shell .harvest-pending-label { bottom: auto; top: 2px; background: #70531de8; }
+.game-shell .harvest-availability-label {
+  position: absolute;
+  z-index: 2;
+  inset: auto 1px 2px;
+  overflow: hidden;
+  padding: 2px 1px;
+  background: #050605e8;
+  color: #f2d58f;
+  font: 700 5px/1.1 Arial, sans-serif;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
 .game-shell .harvest-card-info {
   position: absolute;
   z-index: 4;
@@ -5274,7 +5293,7 @@
   flex-basis: clamp(58px, 14vw, 62px);
   width: clamp(58px, 14vw, 62px);
 }
-.game-shell .harvest-choice-panel:not(.harvest-choice-panel--actor) .harvest-card-select > .played-card .card-name-mark {
+.game-shell .harvest-choice-panel:not(.harvest-choice-panel--actor) .harvest-card-choice > .played-card .card-name-mark {
   translate: 0 -10px;
 }
 

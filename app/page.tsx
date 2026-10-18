@@ -194,7 +194,7 @@ function verifiedLustCostFrameForEvent(
 type LocalTargetPreviewPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null };
 type LocalTargetPreviewSubmission = { targetId: string; presentationKey: string; actionRevision: string; currentActionKey: string };
 type LocalOpponentInspectionPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null; handCount: number; equipmentCards: Card[]; judgementCards: Card[] };
-type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number; attackResponseCount?: number; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; latestNegationCardId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; complete: boolean; countdownUntil: number } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
+type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestRoom: boolean; testHandPreset: (TestHandPreset & { revision: number }) | null; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number; attackResponseCount?: number; lust?: { rootEventId: string; ownerId: string; firstParticipantId: string; secondParticipantId: string; firstActorId: string } } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; latestNegationCardId?: string | null; chainDepth?: number; negated: boolean; deadline?: number; submitted?: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealEventId: string | null; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; complete: boolean; countdownUntil: number } | null; publicHarvestPool?: { semantics: "PROVEN"; rootEventId: string; revealEventId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[] } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
 
 export const HERO_ART_BY_ID: Record<string, string> = {
   "cao-cao": "/hero-cao-cao.jpg",
@@ -1942,8 +1942,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   );
   const visibleInfoCard = infoCardSourceAvailable ? infoCard : null;
   const [infoHero, setInfoHero] = useState<Hero | null>(null);
-  const harvestPending = Boolean(room.pendingHarvest);
-  const harvestActorId = room.pendingHarvest?.actorId;
+  const harvestDisplay = room.pendingHarvest ?? room.publicHarvestPool;
+  const harvestReadOnlyDuringNegation = Boolean(room.publicHarvestPool && !room.pendingHarvest);
+  const harvestPending = Boolean(harvestDisplay);
+  const harvestActorId = room.pendingHarvest?.actorId ?? "";
   useLayoutEffect(() => {
     if (!harvestPending) return;
     const stage = harvestStageRef.current;
@@ -6450,51 +6452,55 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {privateDistribution && !presentationBusy && <PrivateCardDistributionDialog key={room.actionRevision} cards={privateDistribution.cards} players={room.players.filter((player) => privateDistribution.eligibleRecipientIds.includes(player.id) && player.alive)} disabled={busy} error={error} onSubmit={(assignments) => onAction("trigger", { providerId: "private_card_distribution", assignments })} />}
       {privateDeckReorder && <PrivateDeckReorderDialog key={room.actionRevision} cards={privateDeckReorder.cards} minTop={privateDeckReorder.minTop} maxTop={privateDeckReorder.maxTop} disabled={busy} error={error} onSubmit={(topCardIds, bottomCardIds) => onAction("trigger", { providerId: "private_deck_reorder", topCardIds, bottomCardIds })} />}
       {tablePresentationVisible && <TableResolutionSequence events={displayedSequenceEvents} activeEvent={displayedTableEvent} players={room.players} myTableIndex={myTableIndex} concluding={resolutionClosing} />}
-      {room.pendingHarvest && !presentationBusy && <div
+      {harvestDisplay && <div
+        key={harvestDisplay.revealEventId ?? "bumper-harvest-public-pool"}
         ref={harvestStageRef}
         className="game-event-stage harvest-choice-stage"
-        data-harvest-actor={canChooseHarvest ? room.meId : undefined}
+        data-harvest-actor={canChooseHarvest && !presentationBusy ? room.meId : undefined}
+        data-harvest-readonly={canChooseHarvest && !presentationBusy ? undefined : "true"}
+        data-harvest-root-event-id={room.publicHarvestPool?.rootEventId ?? room.presentationV2?.bumperHarvestProgress?.rootEventId}
+        data-harvest-reveal-event-id={harvestDisplay.revealEventId ?? undefined}
         data-harvest-panel-top={harvestStageTop ?? undefined}
         role="region"
-        aria-label="Bumper Harvest revealed cards"
+        aria-label={harvestReadOnlyDuringNegation ? "Bumper Harvest public cards during Negation" : "Bumper Harvest revealed cards"}
         style={{ top: harvestStageTop === null ? undefined : `${harvestStageTop}px` }}
       >
-        <section className={`harvest-choice-panel${canChooseHarvest ? " harvest-choice-panel--actor" : ""}`} aria-label={canChooseHarvest ? "Your Bumper Harvest choice" : "Public Bumper Harvest cards"}>
+        <section className={`harvest-choice-panel${canChooseHarvest && !presentationBusy ? " harvest-choice-panel--actor" : ""}`} aria-label={canChooseHarvest && !presentationBusy ? "Your Bumper Harvest choice" : "Public Bumper Harvest cards"}>
           <header className="harvest-choice-heading">
             <b>Bumper Harvest</b>
-            <span>{canChooseHarvest ? "Choose one revealed card" : room.pendingHarvest.complete ? "Choices complete" : `Waiting for ${room.players.find((player) => player.id === room.pendingHarvest?.actorId)?.name ?? "the current player"}`}</span>
+            <span>{harvestReadOnlyDuringNegation ? "Read-only · Negation resolving" : canChooseHarvest && !presentationBusy ? "Choose one revealed card" : room.pendingHarvest?.complete ? "Choices complete" : "Public cards · read-only"}</span>
           </header>
           <div className="harvest-card-row" role="group" aria-label="Public revealed Harvest cards">
-            {room.pendingHarvest.revealed.map((choice) => {
+            {harvestDisplay.revealed.map((choice) => {
               const name = cardDefinition(choice.kind).name;
-              const takenBy = room.pendingHarvest?.choices.find((entry) => entry.cardId === choice.id);
+              const takenBy = harvestDisplay.choices.find((entry) => entry.cardId === choice.id);
               const submittedByMe = harvestSubmitting?.playerId === room.meId && harvestSubmitting.cardId === choice.id;
-              const available = room.pendingHarvest?.availableIds.includes(choice.id) ?? false;
-              const awaitingConfirmation = !submittedByMe && activeHarvestSelection === choice.id;
+              const available = harvestDisplay.availableIds.includes(choice.id);
+              const awaitingConfirmation = canChooseHarvest && !presentationBusy && !submittedByMe && activeHarvestSelection === choice.id;
               const choiceLabel = takenBy
                 ? `${name}, taken by ${takenBy.playerName}`
                 : submittedByMe
                   ? `${name}, your choice is submitting`
-                  : `${name}, ${awaitingConfirmation ? "selected" : "available"}`;
+                  : `${name}, ${awaitingConfirmation ? "selected" : available ? "available" : "unavailable"}`;
               return <div
                 className={`harvest-card-choice${takenBy || submittedByMe ? " taken" : ""}${awaitingConfirmation ? " pending-choice" : ""}`}
                 data-harvest-card-id={choice.id}
-                data-harvest-card-state={takenBy || submittedByMe ? "taken" : awaitingConfirmation ? "selected" : "available"}
+                data-harvest-card-state={takenBy || submittedByMe ? "taken" : awaitingConfirmation ? "selected" : available ? "available" : "unavailable"}
                 key={choice.id}
               >
-                <button
+                <CardFace card={choice} />
+                {canChooseHarvest && !presentationBusy && <button
                   type="button"
                   className="harvest-card-select"
-                  disabled={!canChooseHarvest || Boolean(harvestSubmitting) || busy || !available}
+                  disabled={Boolean(harvestSubmitting) || busy || !available}
                   aria-pressed={awaitingConfirmation}
                   aria-label={choiceLabel}
                   onClick={() => toggleHarvestSelection(choice.id)}
-                >
-                  <CardFace card={choice} />
-                  {takenBy && <span className="harvest-taken-label">Taken by {takenBy.playerName}</span>}
-                  {submittedByMe && !takenBy && <span className="harvest-taken-label">Submitting</span>}
-                  {awaitingConfirmation && <span className="harvest-pending-label">Selected</span>}
-                </button>
+                />}
+                {!canChooseHarvest || presentationBusy
+                  ? <span className="harvest-availability-label">{takenBy ? `Taken by ${takenBy.playerName}` : submittedByMe ? "Submitting" : available ? "Available" : "Unavailable"}</span>
+                  : null}
+                {awaitingConfirmation && <span className="harvest-pending-label">Selected</span>}
                 <button
                   type="button"
                   className="harvest-card-info"
@@ -6505,7 +6511,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               </div>;
             })}
           </div>
-          {canChooseHarvest && <footer className="harvest-confirm-row">
+          {canChooseHarvest && !presentationBusy && <footer className="harvest-confirm-row">
             <span className="harvest-selection-count" aria-live="polite">{harvestSelectedCard ? "1 selected" : "Choose 1 card"}</span>
             <button type="button" className="primary" disabled={busy || !harvestSelectedCard || Boolean(harvestSubmitting)} onClick={confirmHarvestChoice}>Confirm choice</button>
           </footer>}

@@ -19,13 +19,13 @@ import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
 import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
 import { deckReorderCount, rebuildDeckForReorder } from "../../../game/decisions/deck-reorder";
-import { asTriggerPending, isGroupParticipantProgressOutcomeAllowed, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupParticipantProgressOutcome, type GroupResolutionSemantics, type GroupResponsePending, type HarvestParticipantProgress, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type HarvestPending, type HeroChoiceTriggerContinuation, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type NegationWindowPending, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
+import { asTriggerPending, isGroupParticipantProgressOutcomeAllowed, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupParticipantProgressOutcome, type GroupResolutionSemantics, type GroupResponsePending, type HarvestChoice, type HarvestParticipantProgress, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type HarvestPending, type HeroChoiceTriggerContinuation, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type NegationWindowPending, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
 import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { attackRootProjectionDiagnosticsFor, projectPresentationV2, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof } from "../../../game/presentation-v2";
+import { attackRootProjectionDiagnosticsFor, projectPresentationV2, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2 } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
@@ -3570,13 +3570,16 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
     await advanceGroup(roomId); return [];
   } else if (pending.effect.kind === "harvest") {
     const choosers = pending.effect.chooserIds.map((id) => players.find((player) => player.id === id)).filter((player): player is PlayerRow => Boolean(player?.alive));
-    const draw = drawCards(deck, discard, choosers.length, log); deck = draw.deck; discard = draw.discard; log = addCardGroupEvent(draw.log, source.name, draw.drawn, "reveal", false);
+    const draw = drawCards(deck, discard, choosers.length, log); deck = draw.deck; discard = draw.discard;
+    const revealEventId = crypto.randomUUID();
+    const reveal = addCardGroupEventWithId(draw.log, source.name, draw.drawn, "reveal", false, source.name, undefined, { resolutionId: pending.effect.rootResolutionId }, revealEventId);
+    log = reveal.log;
     log = addHistory(log, `${source.name} reveals ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"} for Bumper Harvest. ${choosers[0]?.name ?? "No player"} chooses first.`);
     if (!choosers.length || !draw.drawn.length) await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run();
     else {
       const participantIds = choosers.map((player) => player.id);
       const progress = initialHarvestProgress(source.id, participantIds, pending.effect.rootEventId, pending.effect.rootResolutionId, pending.effect.rootCardId);
-      const harvest: HarvestPending = { kind: "harvest", sourceId: source.id, actorId: choosers[0].id, remainingIds: participantIds.slice(1), revealed: draw.drawn, availableIds: draw.drawn.map((card) => card.id), choices: [], resumePhase: pending.resumePhase, reason: "Choose 1 revealed card from Bumper Harvest", causal: progress.causal, participantProgress: progress.participantProgress, ...(pending.heldCards?.length ? { heldCards: pending.heldCards } : {}) };
+      const harvest: HarvestPending = { kind: "harvest", sourceId: source.id, actorId: choosers[0].id, remainingIds: participantIds.slice(1), revealed: draw.drawn, revealEventId, availableIds: draw.drawn.map((card) => card.id), choices: [], resumePhase: pending.resumePhase, reason: "Choose 1 revealed card from Bumper Harvest", causal: progress.causal, participantProgress: progress.participantProgress, ...(pending.heldCards?.length ? { heldCards: pending.heldCards } : {}) };
       await beginHarvestTarget({ ...room, causal_envelope_json: JSON.stringify(progress.causalEnvelope) }, harvest, players, deck, discard, log, [], progress.causalEnvelope);
       return [];
     }
@@ -3772,7 +3775,9 @@ async function resumeNormalStratagemUse(room: RoomRow, source: PlayerRow, player
     const draw = drawCards(deck, discard, choosersInOrder.length, log);
     const nextDeck = draw.deck;
     const nextDiscard = draw.discard;
-    let nextLog = addCardGroupEvent(draw.log, source.name, draw.drawn, "reveal", false);
+    const revealEventId = crypto.randomUUID();
+    const reveal = addCardGroupEventWithId(draw.log, source.name, draw.drawn, "reveal", false, source.name, undefined, { resolutionId: effect.rootResolutionId }, revealEventId);
+    let nextLog = reveal.log;
     const choosers = choosersInOrder.slice(0, draw.drawn.length);
     nextLog = addHistory(nextLog, `${source.name} reveals ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"} for Bumper Harvest. ${choosers[0]?.name ?? "No player"} resolves first.`);
     if (!choosers.length || !draw.drawn.length) {
@@ -3782,7 +3787,7 @@ async function resumeNormalStratagemUse(room: RoomRow, source: PlayerRow, player
       const participantIds = choosers.map((player) => player.id);
       const progress = initialHarvestProgress(source.id, participantIds, effect.rootEventId, effect.rootResolutionId, effect.rootCardId);
       nextLog = attachBumperHarvestRootFrame(nextLog, effect.rootEventId, source.id, effect.rootCardId, progress.causal.interactionId, progress.causal.frameId);
-      const harvest: HarvestPending = { kind: "harvest", sourceId: source.id, actorId: choosers[0].id, remainingIds: participantIds.slice(1), revealed: draw.drawn, availableIds: draw.drawn.map((revealed) => revealed.id), choices: [], resumePhase: room.phase ?? "play", reason: "Choose 1 revealed card from Bumper Harvest", causal: progress.causal, participantProgress: progress.participantProgress, heldCards: [card] };
+      const harvest: HarvestPending = { kind: "harvest", sourceId: source.id, actorId: choosers[0].id, remainingIds: participantIds.slice(1), revealed: draw.drawn, revealEventId, availableIds: draw.drawn.map((revealed) => revealed.id), choices: [], resumePhase: room.phase ?? "play", reason: "Choose 1 revealed card from Bumper Harvest", causal: progress.causal, participantProgress: progress.participantProgress, heldCards: [card] };
       await beginHarvestTarget({ ...room, causal_envelope_json: JSON.stringify(progress.causalEnvelope) }, harvest, players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(hand) } : player), nextDeck, nextDiscard, nextLog, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), source.id)], progress.causalEnvelope);
     }
     return [];
@@ -5107,6 +5112,95 @@ function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: P
 }
 
 
+type PublicHarvestPoolProjection = {
+  semantics: "PROVEN";
+  rootEventId: string;
+  revealEventId: string;
+  revealed: Card[];
+  availableIds: string[];
+  choices: HarvestChoice[];
+};
+
+function publicHarvestPoolDuringNegation(
+  window: NegationWindowPending | null,
+  presentation: PresentationV2,
+  timeline: readonly unknown[],
+  players: readonly PlayerRow[],
+): PublicHarvestPoolProjection | null {
+  const continuation = window?.continuation;
+  const effect = continuation?.effect;
+  if (!window || continuation?.cardName !== "Bumper Harvest" || effect?.kind !== "harvest_target") return null;
+
+  const harvest = effect.pending;
+  const storedProgress = harvest.participantProgress;
+  const proof = presentation.bumperHarvestProgress;
+  const source = players.find((player) => player.id === harvest.sourceId);
+  const revealed = harvest.revealed;
+  const revealEventId = harvest.revealEventId;
+  if (!source || !storedProgress || storedProgress.version !== 2 || !proof || proof.semantics !== "PROVEN"
+    || !revealEventId || !revealed.length || !Array.isArray(harvest.availableIds) || !Array.isArray(harvest.choices)
+    || !storedProgress.rootEventId || !storedProgress.rootResolutionId || !storedProgress.rootCardId
+    || continuation.effectTargetId !== proof.currentParticipantId
+    || proof.currentEffectState !== (continuation.negated ? "BLOCKED" : "ACTIVE")
+    || proof.sourceId !== source.id || proof.rootEventId !== storedProgress.rootEventId
+    || proof.rootResolutionId !== storedProgress.rootResolutionId || proof.rootCardId !== storedProgress.rootCardId
+    || proof.interactionId !== storedProgress.interactionId || proof.rootFrameId !== storedProgress.rootFrameId
+    || proof.currentParticipantId !== storedProgress.currentParticipantId
+    || !proof.currentParticipantId || !proof.targetIds.includes(proof.currentParticipantId)) return null;
+
+  const events = timeline.flatMap((value) => {
+    const event = record(value);
+    return event ? [event] : [];
+  });
+  const rootMatches = events.filter((event) => event.id === proof.rootEventId);
+  const revealMatches = events.filter((event) => event.id === revealEventId);
+  const root = rootMatches.length === 1 ? rootMatches[0] : null;
+  const reveal = revealMatches.length === 1 ? revealMatches[0] : null;
+  const rootCard = record(root?.card);
+  const rootProof = record(root?.bumperHarvestRoot);
+  const revealCards = Array.isArray(reveal?.cards) ? reveal.cards.map(record) : [];
+  if (!root || !reveal || root.type !== "card" || root.action !== "play" || root.presentation === false
+    || root.player !== source.name || root.resolutionId !== proof.rootResolutionId
+    || rootCard?.id !== proof.rootCardId || rootCard.kind !== "BumperHarvest"
+    || rootProof?.semantics !== "PROVEN" || rootProof.sourceId !== source.id || rootProof.cardId !== proof.rootCardId
+    || rootProof.interactionId !== proof.interactionId || rootProof.rootFrameId !== proof.rootFrameId
+    || reveal.type !== "cards" || reveal.action !== "reveal" || reveal.presentation !== false
+    || reveal.player !== source.name || reveal.privateToPlayerId !== undefined
+    || reveal.resolutionId !== proof.rootResolutionId || revealCards.length !== revealed.length
+    || revealCards.some((card, index) => !card || card.id !== revealed[index]?.id || card.kind !== revealed[index]?.kind
+      || card.suit !== revealed[index]?.suit || card.rank !== revealed[index]?.rank)) return null;
+
+  const cardIds = revealed.map((card) => card.id);
+  const availableIds = harvestAvailableIds(harvest);
+  const choices = harvestChoices(harvest);
+  if (cardIds.some((id) => typeof id !== "string" || !id) || new Set(cardIds).size !== cardIds.length
+    || availableIds.some((id) => typeof id !== "string" || !id) || new Set(availableIds).size !== availableIds.length
+    || choices.some((choice) => !choice.cardId || !choice.playerId || !choice.playerName)
+    || new Set(choices.map((choice) => choice.cardId)).size !== choices.length
+    || new Set(choices.map((choice) => choice.playerId)).size !== choices.length
+    || [...availableIds, ...choices.map((choice) => choice.cardId)].length !== cardIds.length
+    || cardIds.some((id) => !availableIds.includes(id) && !choices.some((choice) => choice.cardId === id))
+    || availableIds.some((id) => !cardIds.includes(id))
+    || choices.some((choice) => !cardIds.includes(choice.cardId))) return null;
+
+  const provenChoices = proof.participants.filter((participant) => participant.outcome === "CHOSE_CARD");
+  if (provenChoices.length !== choices.length || choices.some((choice, index) => {
+    const participant = provenChoices[index];
+    const player = players.find((candidate) => candidate.id === choice.playerId);
+    return !participant || participant.playerId !== choice.playerId || !player || player.name !== choice.playerName
+      || participant.status !== "RESOLVED";
+  })) return null;
+
+  return {
+    semantics: "PROVEN",
+    rootEventId: proof.rootEventId,
+    revealEventId,
+    revealed,
+    availableIds,
+    choices,
+  };
+}
+
 async function roomState(code: string, token?: string, includeAttackDodgeDiagnostics = false, requestedViewerId?: string | null) {
   const db = env.DB;
   const room = await db.prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
@@ -5280,6 +5374,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     oathRecipientIds: oathRecipientIds(players.map((player) => ({ id: player.id, alive: Boolean(player.alive), hp: player.hp, maxHp: player.max_hp }))),
   };
   const presentationV2 = projectPresentationV2(presentationInput);
+  const publicHarvestPool = publicHarvestPoolDuringNegation(negationWindow, presentationV2, projectedTimeline, players);
   const attackDodgeProjectionDiagnostics = includeAttackDodgeDiagnostics
     ? attackRootProjectionDiagnosticsFor(presentationInput)
     : null;
@@ -5311,7 +5406,8 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     // Keep it on these projected public shapes too; otherwise a valid server
     // response is mistaken for an unknown state and its controls disappear.
     pendingNegation,
-    pendingHarvest: pending?.kind === "harvest" ? { kind: "harvest", sourceId: pending.sourceId, actorId: pending.actorId, revealed: pending.revealed, availableIds: harvestAvailableIds(pending), choices: harvestChoices(pending), complete: Boolean(pending.completeAt), countdownUntil: pending.completeAt ?? pending.choiceDeadlineAt ?? 0 } : null,
+    pendingHarvest: pending?.kind === "harvest" ? { kind: "harvest", sourceId: pending.sourceId, actorId: pending.actorId, revealEventId: pending.revealEventId ?? null, revealed: pending.revealed, availableIds: harvestAvailableIds(pending), choices: harvestChoices(pending), complete: Boolean(pending.completeAt), countdownUntil: pending.completeAt ?? pending.choiceDeadlineAt ?? 0 } : null,
+    publicHarvestPool,
     pendingTargetCard: pending?.kind === "target_card" ? { kind: "target_card", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, cardKind: pending.cardKind } : null,
     pendingBorrowedSword: pending?.kind === "borrowed_sword" ? { kind: "borrowed_sword", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, holderId: pending.holderId, stage: pending.stage, weaponId: pending.weaponId ?? null, eligibleTargetIds: pending.stage === "choose_target" ? borrowedSwordForcedTargetIds(players, pending.sourceId, pending.holderId) : [] } : responsePending?.continuation.kind === "borrowed_sword_attack" ? { kind: "borrowed_sword", sourceId: responsePending.continuation.sourceId, actorId: responsePending.actorId, targetId: responsePending.continuation.targetId, holderId: responsePending.continuation.holderId, stage: "force_attack", weaponId: responsePending.continuation.weaponId, eligibleTargetIds: [] } : null,
     pendingDying: pending?.kind === "dying" ? { kind: "dying", sourceId: pending.sourceId, targetId: pending.targetId, origin: pending.origin ?? null, recoveryNeeded: recoveryNeeded(players.find((player) => player.id === pending.targetId)?.hp ?? 0), deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,
