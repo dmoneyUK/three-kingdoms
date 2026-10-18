@@ -1112,26 +1112,26 @@ for (const viewport of [
     await expect(inspectButton).toHaveAttribute("aria-label", "Inspect INSPECTED");
     await expect(page.locator(`[data-player-anchor="${inspected.id}"] .hero-card-info-button, [data-player-anchor="${inspected.id}"] .opponent-hand-footer, [data-player-anchor="${inspected.id}"] .player-hand-count`)).toHaveCount(0);
     await inspectButton.click();
-    const readOnlyPanel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
+    const readOnlyPanel = page.getByRole("region", { name: "INSPECTED opponent inspection" });
     await expect(readOnlyPanel).toBeVisible();
     await expect(page.locator(`[data-player-anchor="${inspected.id}"].selected-target`)).toHaveCount(0);
     await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
     expect(submissions).toEqual([]);
-    await readOnlyPanel.getByRole("button", { name: "Close INSPECTED inspection" }).click();
+    await inspectButton.click();
 
     await page.locator(`[data-hand-card-id="${attack.id}"] .game-card`).click();
     await page.getByRole("button", { name: "Select INSPECTED", exact: true }).click();
     const stage = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"]');
-    const panel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
+    const panel = page.getByRole("region", { name: "INSPECTED opponent inspection" });
     await expect(panel).toBeVisible();
     await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
     await expect(page.locator(`[data-player-anchor="${inspected.id}"].selected-target`)).toHaveCount(1);
     await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
-    await expect(panel.locator(".hero-focus-heading strong")).toHaveText("INSPECT · INSPECTED");
-    await expect(panel.locator(".hero-focus-identity")).toContainText("Xiahou Dun");
+    await expect(panel.locator(".hero-focus-inspect-identity-caption .hero-focus-identity-player")).toHaveText("INSPECTED");
+    await expect(panel.locator(".hero-focus-inspect-identity-caption .hero-focus-identity-hero")).toContainText("Xiahou Dun");
     await expect(panel.locator(".hero-focus-identity")).not.toContainText("INSPECTED");
     await expect(panel.locator(".hero-focus-identity")).toContainText("HP 2/4");
-    await expect(panel.locator(".hero-focus-identity [data-public-hand-count]")).toHaveText("Hand · 1");
+    await expect(panel.locator(".hero-focus-identity-stats [data-public-hand-count]")).toHaveText("Hand · 1");
     await expect(panel.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill')).toHaveCount(1);
     await expect(panel.locator('[aria-label="Public Skills"]')).toContainText("Stauchness");
     await expect(panel.locator('[aria-label="Equipment"] .opponent-inspection-card')).toHaveCount(2);
@@ -1144,8 +1144,9 @@ for (const viewport of [
     const bodyText = await page.locator("body").innerText();
     for (const hiddenCard of hidden) expect(bodyText).not.toContain(hiddenCard.id);
     const third = seed.players[2];
-    await page.locator(`[data-player-anchor="${third.id}"] .opponent-hero-inspect-name`).click();
-    const thirdPanel = page.getByRole("dialog", { name: "THIRD opponent inspection" });
+    const thirdInspectButton = page.locator(`[data-player-anchor="${third.id}"] .opponent-hero-inspect-name`);
+    await thirdInspectButton.click();
+    const thirdPanel = page.getByRole("region", { name: "THIRD opponent inspection" });
     await expect(thirdPanel).toBeVisible();
     await expect(thirdPanel).toHaveAttribute("data-inspect-player-id", third.id);
     await expect(page.locator(`[data-player-anchor="${inspected.id}"].selected-target`)).toHaveCount(1);
@@ -1153,7 +1154,7 @@ for (const viewport of [
     await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
     await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
     expect(submissions).toEqual([]);
-    await thirdPanel.getByRole("button", { name: "Close THIRD inspection" }).click();
+    await thirdInspectButton.click();
     await expect(page.locator(`[data-player-anchor="${inspected.id}"].selected-target`)).toHaveCount(1);
     await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
     await inspectButton.click();
@@ -1173,11 +1174,11 @@ for (const viewport of [
     ]);
     for (const box of [bodyBox, portraitBox, mainBox, upperBox, identityBox, profileBox, identityStatsBox, skillsBox, equipmentBox, judgementBox]) expect(box).not.toBeNull();
     expect(portraitBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.25);
-    expect(portraitBox.width / bodyBox.width).toBeLessThanOrEqual(0.33);
+    expect(portraitBox.width / bodyBox.width).toBeLessThanOrEqual(0.42);
     expect(portraitBox.height / portraitBox.width).toBeGreaterThanOrEqual(1.2);
     expect(portraitBox.height / portraitBox.width).toBeLessThanOrEqual(1.3);
     if (viewport.width <= 520) {
-      expect(mainBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.67);
+      expect(mainBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.58);
       expect(mainBox.width / bodyBox.width).toBeLessThanOrEqual(0.75);
     }
     expect(judgementBox.x).toBeGreaterThanOrEqual(identityBox.x + identityBox.width - 1);
@@ -1245,8 +1246,8 @@ for (const viewport of [
       && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
     expect(surfaceBox.width).toBeLessThan(stageBox.width);
     expect(surfaceBox.height).toBeLessThan(stageBox.height);
-    expect(surfaceBox.y).toBeGreaterThanOrEqual(stageBox.y + 10);
-    expect(surfaceBox.y + surfaceBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height - 10);
+    expect(surfaceBox.y).toBeGreaterThanOrEqual(stageBox.y - 1);
+    expect(surfaceBox.y + surfaceBox.height).toBeLessThanOrEqual(stageBox.y + stageBox.height + 1);
     expect(panelBox.x).toBeGreaterThanOrEqual(surfaceBox.x);
     expect(panelBox.y).toBeGreaterThanOrEqual(surfaceBox.y);
     expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(surfaceBox.x + surfaceBox.width);
@@ -1272,13 +1273,12 @@ for (const viewport of [
       expect(Math.abs(equipmentCardBoxes[0].y - equipmentCardBoxes[1].y)).toBeLessThanOrEqual(1);
       for (const cardBox of equipmentCardBoxes) expect(cardBox.width).toBeGreaterThanOrEqual(27);
     }
-    if (viewport.width <= 520) expect(surfaceBox.width / stageBox.width).toBeGreaterThanOrEqual(0.88);
-    expect(surfaceBox.width / stageBox.width).toBeLessThanOrEqual(0.94);
+    expect(surfaceBox.width / stageBox.width).toBeLessThanOrEqual(0.82);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
     await attachScreenshot(testInfo, `server-opponent-inspect-${viewport.width}`, page);
     await saveInspectionScreenshot(page, `server-opponent-inspect-${viewport.width}.png`);
 
-    await panel.getByRole("button", { name: "Close INSPECTED inspection" }).click();
+    await page.locator(`[data-player-anchor="${inspected.id}"] .opponent-hero-inspect-name`).click();
     await expect(page.locator('.interaction-stage[data-local-ui-mode="INSPECT"]')).toHaveCount(0);
     const dockAfter = await page.locator(".local-player-dock").boundingBox();
     expect(Math.abs(dockAfter.x - dockBefore.x)).toBeLessThanOrEqual(2);
@@ -1314,7 +1314,7 @@ test("server-backed INS-5 inspector keeps public identity and two-level zones wi
     if (requestEvent.url() === `${API}/api/rooms` && requestEvent.method() === "POST") submissions.push(requestEvent.postData() ?? "");
   });
   await page.locator(`[data-player-anchor="${seed.players[1].id}"] .opponent-hero-target`).click();
-  const panel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
+  const panel = page.getByRole("region", { name: "INSPECTED opponent inspection" });
   await expect(panel).toBeVisible();
   const profile = panel.locator(".hero-focus-inspect-profile");
   const stats = panel.locator(".hero-focus-identity-stats");
@@ -1336,10 +1336,10 @@ test("server-backed INS-5 inspector keeps public identity and two-level zones wi
   ]);
   for (const box of [bodyBox, portraitBox, mainBox, upperBox, identityBox, profileBox, statsBox, skillsBox, equipmentBox, judgementBox]) expect(box).not.toBeNull();
   expect(portraitBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.25);
-  expect(portraitBox.width / bodyBox.width).toBeLessThanOrEqual(0.33);
+  expect(portraitBox.width / bodyBox.width).toBeLessThanOrEqual(0.42);
   expect(portraitBox.height / portraitBox.width).toBeGreaterThanOrEqual(1.2);
   expect(portraitBox.height / portraitBox.width).toBeLessThanOrEqual(1.3);
-  expect(mainBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.67);
+  expect(mainBox.width / bodyBox.width).toBeGreaterThanOrEqual(0.58);
   expect(mainBox.width / bodyBox.width).toBeLessThanOrEqual(0.75);
   expect(judgementBox.x).toBeGreaterThanOrEqual(identityBox.x + identityBox.width - 1);
   expect(Math.abs(judgementBox.y - profileBox.y)).toBeLessThanOrEqual(2);
@@ -1420,9 +1420,9 @@ test.describe("iPhone 17 Pro Max mobile browser emulation", () => {
     };
     const inspectButton = page.locator(`[data-player-anchor="${seed.players[1].id}"] .opponent-hero-target`);
     await tap(inspectButton);
-    const panel = page.getByRole("dialog", { name: "INSPECTED opponent inspection" });
+    const panel = page.getByRole("region", { name: "INSPECTED opponent inspection" });
     await expect(panel).toBeVisible();
-    await expect(panel.locator(".hero-focus-identity [data-public-hand-count]")).toHaveText("Hand · 1");
+    await expect(panel.locator(".hero-focus-identity-stats [data-public-hand-count]")).toHaveText("Hand · 1");
     expect(await page.locator("body").innerText()).not.toContain(hidden[0].id);
     const skill = panel.getByRole("button", { name: "Show Stauchness description" });
     await skill.focus();
@@ -1441,7 +1441,7 @@ test.describe("iPhone 17 Pro Max mobile browser emulation", () => {
     await expect(panel.getByRole("region", { name: "Stauchness description" })).toContainText("After you take damage, you may enter Judgement phase");
     expect(gameplayPosts).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
-    await tap(panel.getByRole("button", { name: "Close INSPECTED inspection" }));
+    await tap(inspectButton);
     await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
   });
 });

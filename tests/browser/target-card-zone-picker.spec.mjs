@@ -919,7 +919,7 @@ test("picker fixture changes preserve baseline public Equipment for Inspect", as
   await expect(seat.locator('.opponent-equipment-summary [data-slot="weapon"][data-card-kind="ZhugeCrossbow"]')).toHaveCount(1);
   await seat.locator(".opponent-hero-target").click();
 
-  const inspection = page.getByRole("dialog", { name: "Player 2 opponent inspection" });
+  const inspection = page.getByRole("region", { name: "Player 2 opponent inspection" });
   await expect(inspection.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]')).toHaveCount(1);
 });
 

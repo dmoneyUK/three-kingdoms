@@ -2414,6 +2414,25 @@ Only a proven regression or new Reviewer-approved design requirement does.
   production smoke for `50e9bb6f8c67574214436e3ca49a7547faca1b64`. Pending user
   phone review; Reviewer acceptance is not claimed.
 
+### UX2 §10.17.1.2 BCP-1-F2 — Harvest pool during Negation — 2026-10-18
+
+- Negation now carries a separate public, read-only Harvest pool only when the
+  exact typed Bumper Harvest root and public reveal event match the server
+  continuation and `PresentationV2` proof. The branch must prove `ACTIVE` or
+  `BLOCKED` consistently; card identities and available/taken partitions must
+  match. The DTO has no chooser actor or legal-action data. The UI preserves
+  the same reveal/card keys when the authoritative chooser gains selection.
+- Build passed; focused Worker/D1 API tests 44/44, room-safety tests 11/11 and
+  mobile browser tests 2/2 passed. Browser checks cover four TEST SWITCH seats,
+  independent viewer equality, read-only touch with no `choose_harvest` POST,
+  Info/Inspector access, and promotion at 390×700 and 440×766. Exact-SHA
+  Actions run [`39131345860`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39131345860)
+  passed browser smoke, lint/fast, API, D1 migration, Worker deploy and
+  production smoke for `6836aa2905a3dc71f7d8dfde8619ae190f6f4e14`. Worker
+  version `705b26bf-2802-46d6-9869-e6aceaac282c`; production health returned
+  available and the served page bundle contained the exact build SHA. Pending
+  user phone review; Reviewer acceptance is not claimed.
+
 ### UX2 §10.17.2 BCP-2 — Steal / Burning Bridge picker — 2026-10-18
 
 - Compact mandatory target-card choices inside the table corridor, with

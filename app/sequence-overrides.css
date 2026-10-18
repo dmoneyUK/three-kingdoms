@@ -5845,6 +5845,273 @@
    tracks without covering their Hero or SWITCH controls. */
 @media (max-width: 520px) {
   .game-shell .play-table[data-seat-topology="side-column"] > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
-    inset-inline: 19vw;
+    inset-inline: 23.3vw;
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-layer {
+    padding-inline: 4px;
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell .hero-focus-body {
+    gap: 1px;
+  }
+}
+
+/* UX2 §10.17.5.1-R: content-wrap only the Inspector and keep its real public
+   zones at readable, stable card sizes. */
+.game-shell .play-table[data-seat-topology="top-row"] .opponent-inspection-floating-shell {
+  --inspector-portrait-width: 90px;
+  --inspector-slot-width: 36px;
+}
+
+.game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell {
+  --inspector-portrait-width: 64px;
+  --inspector-slot-width: 42px;
+}
+
+.opponent-inspection-layer {
+  padding: 4px 12px 12px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.opponent-inspection-floating-shell {
+  width: max-content;
+  max-width: calc(100% - 2px);
+  padding: 1px;
+}
+
+.opponent-inspection-floating-shell > .hero-focus.hero-focus-inspect {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: max-content;
+  max-width: 100%;
+  padding: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
+  display: grid;
+  grid-template-columns: minmax(0, var(--inspector-portrait-width, 90px)) minmax(0, max-content);
+  grid-template-areas: "portrait main";
+  align-items: start;
+  gap: 2px;
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-portrait-column {
+  grid-area: portrait;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 2px;
+  width: var(--inspector-portrait-width, 90px);
+  min-width: 0;
+}
+
+.game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-inspect-portrait-column > .hero-focus-portrait {
+  grid-area: auto;
+  align-self: start;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  aspect-ratio: 4 / 5;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-identity-caption {
+  display: grid;
+  gap: 1px;
+  box-sizing: border-box;
+  width: calc(100% + 2px);
+  min-width: 0;
+  margin-left: -1px;
+  padding: 1px 2px 0;
+  text-align: center;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-identity-caption .hero-focus-identity-hero,
+.opponent-inspection-floating-shell .hero-focus-inspect-identity-caption .hero-focus-identity-player {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-identity-caption .hero-focus-identity-hero {
+  color: #f0d28c;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-identity-caption .hero-focus-identity-player {
+  color: #d9d0bb;
+  font: 700 9px/1.1 Arial, sans-serif;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-main {
+  width: max-content;
+  max-width: 100%;
+  min-width: 0;
+  gap: 1px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-upper {
+  width: 100%;
+  grid-template-columns: minmax(72px, 1fr) max-content;
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity {
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-profile {
+  display: grid;
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-line {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 3px 6px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-stats {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 2px 6px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-stats small {
+  font-size: 10px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skills {
+  gap: 2px;
+  max-height: 72px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skill {
+  min-height: 20px;
+  padding: 2px 4px;
+  font-size: 10px;
+  line-height: 1.15;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement,
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment {
+  width: max-content;
+  max-width: 100%;
+  gap: 1px;
+  padding: 1px;
+}
+
+.game-shell .play-table[data-seat-topology="top-row"] > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+  inset-block-start: -12px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-slot-row {
+  display: grid;
+  grid-template-columns: repeat(2, var(--inspector-slot-width, 42px));
+  justify-content: start;
+  gap: 2px;
+  width: max-content;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-slot-row {
+  display: grid;
+  grid-template-columns: repeat(4, var(--inspector-slot-width, 42px));
+  justify-content: start;
+  gap: 2px;
+  width: max-content;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-card,
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-empty-slot,
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-card,
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-empty-slot {
+  justify-self: start;
+  width: var(--inspector-slot-width, 42px);
+  max-width: 100%;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context {
+  box-sizing: border-box;
+  width: calc(
+    var(--inspector-slot-width, 42px)
+    + var(--inspector-slot-width, 42px)
+    + var(--inspector-slot-width, 42px)
+    + var(--inspector-slot-width, 42px)
+    + 8px
+  );
+  max-width: 100%;
+}
+
+@media (max-width: 520px) {
+  .game-shell .play-table[data-seat-topology="top-row"] .opponent-inspection-floating-shell {
+    --inspector-portrait-width: clamp(74px, 20vw, 80px);
+    --inspector-slot-width: clamp(36px, 9.25vw, 38px);
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell {
+    --inspector-portrait-width: clamp(50px, 13.2vw, 58px);
+    --inspector-slot-width: clamp(28px, 7vw, 32px);
+  }
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-public-skills > h3 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skill-detail .hero-focus-inspect-detail-kicker,
+.opponent-inspection-floating-shell .hero-focus-inspect-skill-detail .hero-focus-inspect-scroll-hint {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skill-detail {
+  gap: 1px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skill-name {
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skill-description {
+  max-height: calc(5 * 1.2em);
+  margin-top: 1px;
+  padding: 3px 5px;
+  font: 11.5px/1.2 Arial, sans-serif;
+}
+
+@media (max-height: 740px) {
+  .game-shell .play-table[data-seat-topology="top-row"] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body,
+  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
+    grid-template-columns: minmax(0, var(--inspector-portrait-width, 90px)) minmax(0, max-content);
+    gap: 3px;
   }
 }

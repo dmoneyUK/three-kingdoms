@@ -858,8 +858,8 @@ for (const { width, height } of [{ width: 1440, height: 900 }, { width: 480, hei
 
     const playerTwoOpener = page.locator('[data-player-anchor="p2"] .opponent-hero-target');
     const playerThreeOpener = page.locator('[data-player-anchor="p3"] .opponent-hero-target');
-    const playerTwoInspection = page.getByRole("dialog", { name: "Player 2 opponent inspection" });
-    const playerThreeInspection = page.getByRole("dialog", { name: "Player 3 opponent inspection" });
+    const playerTwoInspection = page.getByRole("region", { name: "Player 2 opponent inspection" });
+    const playerThreeInspection = page.getByRole("region", { name: "Player 3 opponent inspection" });
     await playerTwoOpener.click();
     await expect(playerTwoInspection).toBeVisible();
     await expect(page.locator('.opponent-inspection-zone[aria-label="Equipment"] .opponent-inspection-card')).toHaveCount(1);
@@ -883,7 +883,7 @@ for (const { width, height } of [{ width: 1440, height: 900 }, { width: 480, hei
     await expect(playerThreeOpener).toBeFocused();
     await playerThreeOpener.click();
     await expect(playerThreeInspection).toBeVisible();
-    await page.getByRole("button", { name: "Close Player 3 inspection" }).click();
+    await playerThreeOpener.click();
     await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
     await expect(playerThreeOpener).toBeFocused();
 
@@ -1606,15 +1606,15 @@ for (const width of [480, 650]) {
   test(`UX2.0VIS-10C opponent Inspect and target selection remain reachable at ${width}px`, async ({ page }) => {
     await loadFixture(page, { state: "rest", count: 4, width, height: 900, equipmentCase: "matrix" });
     await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
-    await expect(page.getByRole("dialog", { name: "Player 2 opponent inspection" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Player 2 opponent inspection" })).toBeVisible();
     await expect(page.locator('.opponent-inspection-zone[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]')).toHaveCount(1);
-    await page.getByRole("button", { name: "Close Player 2 inspection" }).click();
+    await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
 
     await loadFixture(page, { state: "confirm-cancel", count: 4, width, height: 900, equipmentCase: "matrix" });
     const targetSeat = page.locator('[data-player-anchor="p3"]');
     const inspectOpener = page.getByRole("button", { name: "Inspect Player 3", exact: true });
     await inspectOpener.click();
-    await expect(page.getByRole("dialog", { name: "Player 3 opponent inspection" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Player 3 opponent inspection" })).toBeVisible();
     await expect(targetSeat).not.toHaveClass(/selected-target/);
     await expect.poll(() => page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
     await inspectOpener.click();
@@ -2717,10 +2717,10 @@ for (const width of [480, 1440]) {
       for (const id of new Set([...extremes, "p3"])) {
         const number = id.slice(1);
         await page.locator(`[data-player-anchor="${id}"] .opponent-hero-target`).click();
-        await expect(page.getByRole("dialog", { name: `Player ${number} opponent inspection` })).toBeVisible();
+        await expect(page.getByRole("region", { name: `Player ${number} opponent inspection` })).toBeVisible();
         if (id === "p2") await expect(page.locator('.opponent-inspection-zone[aria-label="Equipment"] .opponent-inspection-card')).toHaveCount(1);
         if (id === "p3") await expect(page.locator('.opponent-inspection-zone[aria-label="Judgement Zone"] .opponent-inspection-card[aria-label="Explain Lightning"]')).toHaveCount(1);
-        await page.getByRole("button", { name: `Close Player ${number} inspection` }).click();
+        await page.locator(`[data-player-anchor="${id}"] .opponent-hero-target`).click();
         await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
         expect((await sideColumnGeometry(page)).seats).toEqual(before.seats);
       }
@@ -2856,8 +2856,8 @@ for (const width of [480, 1440]) {
     await loadFixture(page, { state: "rest", count: 6, width, height: 900 });
     const before = await sideColumnGeometry(page);
     await page.locator('[data-player-anchor="p4"] .opponent-hero-target').click();
-    await expect(page.getByRole("dialog", { name: "Player 4 opponent inspection" })).toBeVisible();
-    await page.getByRole("button", { name: "Close Player 4 inspection" }).click();
+    await expect(page.getByRole("region", { name: "Player 4 opponent inspection" })).toBeVisible();
+    await page.locator('[data-player-anchor="p4"] .opponent-hero-target').click();
     expect((await sideColumnGeometry(page)).seats).toEqual(before.seats);
   });
   for (const count of [2, 3, 4]) {

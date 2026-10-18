@@ -892,6 +892,7 @@ type OpponentPlayerCardProps = {
   isGroupPreview: boolean;
   interactionRoles: InteractionSeatSemanticRoles;
   targetSelectionActive: boolean;
+  isInspected: boolean;
   targetablePlayer: boolean;
   daqiaoDeflectionTargetMode: boolean;
   testViewerController: boolean;
@@ -928,7 +929,7 @@ function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
   return <span className="opponent-equipment-horse-mark" aria-hidden="true">{slot === "defensiveHorse" ? "+1" : "−1"}</span>;
 }
 
-function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
+function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, isInspected, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
   const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex);
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
   for (const equipment of player.equipmentCards) {
@@ -957,7 +958,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
   return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${targetSelectionActive && targetablePlayer && player.alive ? "targetable-target" : ""} ${isGroupPreview ? "local-group-preview" : ""} ${interactionRoles.isInteractionSource ? "interaction-seat-source" : ""} ${interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : ""} ${interactionRoles.isActiveTarget ? "interaction-seat-active-target" : ""} ${interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : ""} ${interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : ""} ${interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : ""} ${interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : ""} ${!player.alive ? "defeated-square" : ""}`} data-side-column={sideColumnSeat?.side} data-side-row={sideColumnSeat?.row} style={sideColumnSeat ? { gridRow: sideColumnSeat.row } : undefined} data-player-anchor={player.id} data-target-selectable={targetSelectionActive && targetablePlayer && player.alive ? "true" : undefined} data-deflection-targetable={deflectionTargetSelectable ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined}>
     <div className="opponent-public-zones">
       <div className="player-hero-card opponent-hero-card">
-        <button type="button" className="player-square-target opponent-hero-target" disabled={targetButtonDisabled} aria-label={targetButtonLabel} onClick={(event) => {
+        <button type="button" className="player-square-target opponent-hero-target" disabled={targetButtonDisabled} aria-label={targetButtonLabel} aria-pressed={targetSelectionActive ? isSelectedTarget : isInspected} aria-expanded={isInspected} onClick={(event) => {
           const trigger = event?.currentTarget ?? null;
           return targetSelectionActive ? onTarget(trigger) : onInspect(trigger);
         }}>
@@ -965,7 +966,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
         </button>
         <div className="opponent-hero-overlay">
           <span className="opponent-player-name" aria-label={player.name} title={player.name}>{player.name}</span>
-          {targetSelectionActive && <button type="button" className="opponent-hero-inspect-name opponent-seat-inspect-button" aria-label={`Inspect ${player.name}`} title={`Inspect ${player.name}`} onClick={(event) => { event.stopPropagation(); onInspect(event.currentTarget); }}><span aria-hidden="true">i</span></button>}
+          {targetSelectionActive && <button type="button" className="opponent-hero-inspect-name opponent-seat-inspect-button" aria-label={`Inspect ${player.name}`} aria-pressed={isInspected} aria-expanded={isInspected} title={`Inspect ${player.name}`} onClick={(event) => { event.stopPropagation(); onInspect(event.currentTarget); }}><span aria-hidden="true">i</span></button>}
         </div>
         {playerHero && (player.isTestPlayer || player.isHost) && testViewerController && <button type="button" className="test-view-switch-button" data-testid={`test-view-switch-${player.id}`} data-test-viewer-id={player.id} aria-label={`Switch to ${player.name}`} title={`Switch to ${player.name}`} onClick={(event) => { event.stopPropagation(); onSwitchTestViewer(player.id); }}>SWITCH</button>}
       </div>
@@ -1048,7 +1049,7 @@ function supportsLocalEquipmentTargetSelection(selection: PublicTargetCardSelect
   return selection.eligibleKeys.length >= selection.min && selection.eligibleKeys.every((key) => equipmentIds.has(key));
 }
 
-function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCardDetailDismissRef }: { player: LocalOpponentInspectionPresentation; judgementInFlight?: ReadonlySet<string>; onClose?: () => void; nestedCardDetailDismissRef?: InspectorCardDetailDismissRef }) {
+function OpponentPublicInspector({ player, judgementInFlight, nestedCardDetailDismissRef }: { player: LocalOpponentInspectionPresentation; judgementInFlight?: ReadonlySet<string>; nestedCardDetailDismissRef?: InspectorCardDetailDismissRef }) {
   const [expandedSkillName, setExpandedSkillName] = useState<string | null>(null);
   const [selectedCardDetail, setSelectedCardDetail] = useState<Card | null>(null);
   const [skillDescriptionScrollable, setSkillDescriptionScrollable] = useState(false);
@@ -1142,30 +1143,50 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCar
 
     const dock = document.querySelector<HTMLElement>(".local-player-dock");
     const hand = document.querySelector<HTMLElement>(".local-hand-rail");
+    const activityChip = table.querySelector<HTMLElement>(".public-activity-chip");
+    const stageSystemCluster = table.querySelector<HTMLElement>(".stage-system-cluster");
+    const stageObstacles = [activityChip, ...table.querySelectorAll<HTMLElement>(".visible-countdown")].filter((element): element is HTMLElement => Boolean(element));
     const seats = Array.from(table.querySelectorAll<HTMLElement>(".player-board [data-player-anchor]"));
     const visualViewport = window.visualViewport;
     const measure = () => {
       const layerRect = layer.getBoundingClientRect();
       const viewportTop = visualViewport?.offsetTop ?? 0;
       const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight);
-      let panelTop = Math.max(layerRect.top + 12, viewportTop + 12);
+      let panelTop = Math.max(layerRect.top + 4, viewportTop + 12);
       if (table.dataset.seatTopology === "top-row") {
         for (const seat of seats) panelTop = Math.max(panelTop, seat.getBoundingClientRect().bottom + 12);
       }
+      const shellRect = shell.getBoundingClientRect();
+      const shellLeft = layerRect.left + (layerRect.width - shellRect.width) / 2;
+      const shellRight = shellLeft + shellRect.width;
+      const obstacleRects = stageObstacles.flatMap((element) => {
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0
+          || rect.width <= 0 || rect.height <= 0 || rect.right <= shellLeft || rect.left >= shellRight) return [];
+        return [rect];
+      });
+      for (const rect of obstacleRects) {
+        if (rect.top < panelTop && rect.bottom + 8 > panelTop) panelTop = rect.bottom + 8;
+      }
+      const obstacleBottomLimit = obstacleRects.reduce((limit, rect) => (
+        rect.top > panelTop ? Math.min(limit, rect.top - 8) : limit
+      ), Number.POSITIVE_INFINITY);
       const safeBottom = Math.min(
-        layerRect.bottom,
-        dock?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
-        hand?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY,
-        viewportBottom,
-      ) - 12;
-      shell.style.marginTop = `${Math.max(0, panelTop - (layerRect.top + 12))}px`;
+        layerRect.bottom - 12,
+        (dock?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY) - 12,
+        (hand?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY) - 12,
+        viewportBottom - 12,
+        obstacleBottomLimit,
+      );
+      shell.style.marginTop = `${Math.max(0, panelTop - (layerRect.top + 4))}px`;
       shell.style.maxHeight = `${Math.max(0, safeBottom - panelTop)}px`;
     };
 
     measure();
     const frame = requestAnimationFrame(measure);
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    for (const element of [table, layer, dock, hand, ...seats]) if (element) observer?.observe(element);
+    for (const element of [table, layer, dock, hand, stageSystemCluster, activityChip, ...seats]) if (element) observer?.observe(element);
     window.addEventListener("resize", measure);
     visualViewport?.addEventListener("resize", measure);
     visualViewport?.addEventListener("scroll", measure);
@@ -1196,16 +1217,20 @@ function OpponentPublicInspector({ player, judgementInFlight, onClose, nestedCar
     const selected = selectedCardDetail?.id === card.id;
     return <button key={card.id} type="button" className={`opponent-inspection-card${equipmentMiniature ? " opponent-inspection-equipment-card" : ""}`} data-inspector-slot={inspectionSlot} style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} aria-controls={detailsId} aria-pressed={selected} onClick={(event) => { event.stopPropagation(); openCardDetail(card, event.currentTarget); }}><CardFace card={card} /></button>;
   };
-  return <section ref={inspectorRef} key={player.id} className="hero-focus hero-focus-inspect opponent-inspection-panel" role="dialog" aria-label={`${player.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={player.id} data-inspector-layout="two-level">
-    <div className="hero-focus-heading"><strong>{`INSPECT · ${player.name}`}</strong><button type="button" className="hero-focus-inspect-close" aria-label={`Close ${player.name} inspection`} onClick={onClose}>×</button></div>
+  return <section ref={inspectorRef} key={player.id} id={baseId} className="hero-focus hero-focus-inspect opponent-inspection-panel" role="region" aria-label={`${player.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={player.id} data-inspector-layout="content-wrapped">
     <div className="hero-focus-body">
-      <span className={hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={hero?.id}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
+      <div className="hero-focus-inspect-portrait-column">
+        <span className={hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={hero?.id}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
+        <div className="hero-focus-inspect-identity-caption">
+          <span className="hero-focus-identity-hero" aria-label={hero?.name ?? "Unknown Hero"} title={hero?.name ?? "Unknown Hero"}>{hero?.name ?? "Unknown Hero"}</span>
+          <span className="hero-focus-identity-player" aria-label={player.name} title={player.name}>{player.name}</span>
+        </div>
+      </div>
       <div className="hero-focus-inspect-main">
         <div className="hero-focus-inspect-upper">
           <div className="hero-focus-identity">
             <div className="hero-focus-inspect-profile">
               <div className="hero-focus-identity-line">
-                <span className="hero-focus-identity-hero">{hero?.name ?? "Unknown Hero"}</span>
                 <div className="hero-focus-identity-stats"><small>HP {player.hp ?? "?"}/{player.maxHp ?? "?"}</small><small data-public-hand-count={player.handCount}>Hand · {player.handCount}</small></div>
               </div>
               <section className="opponent-inspection-zone hero-focus-inspect-public-skills" aria-label="Public Skills">
@@ -1292,7 +1317,6 @@ export function InteractionStage({
   resolvePlayerName,
   inspectPlayer = null,
   judgementInFlight,
-  onCloseInspect,
   nestedCardDetailDismissRef,
 }: {
   view: PresentationClientView;
@@ -1300,7 +1324,6 @@ export function InteractionStage({
   resolvePlayerName: (playerId: string) => string | null | undefined;
   inspectPlayer?: LocalOpponentInspectionPresentation | null;
   judgementInFlight?: ReadonlySet<string>;
-  onCloseInspect?: () => void;
   nestedCardDetailDismissRef?: InspectorCardDetailDismissRef;
 }) {
   if (inspectPlayer) {
@@ -1308,7 +1331,7 @@ export function InteractionStage({
       <div className="opponent-inspection-layer">
         <div className="opponent-inspection-backdrop" aria-hidden="true" />
         <div className="opponent-inspection-floating-shell">
-        <OpponentPublicInspector key={inspectPlayer.id} player={inspectPlayer} judgementInFlight={judgementInFlight} onClose={onCloseInspect} nestedCardDetailDismissRef={nestedCardDetailDismissRef} />
+        <OpponentPublicInspector key={inspectPlayer.id} player={inspectPlayer} judgementInFlight={judgementInFlight} nestedCardDetailDismissRef={nestedCardDetailDismissRef} />
         </div>
       </div>
     </section>;
@@ -6434,7 +6457,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   return <main className="game-shell" data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"} data-presentation-transition={presentationTransition.kind}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div></header>
     <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
     <section className={`play-table ${displayedSequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}>
-      <div className="interaction-safe-zone"><InteractionStage view={clientPresentation} transitionKind={presentationTransition.kind} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} inspectPlayer={opponentInspectionPresentation} judgementInFlight={judgementInFlight} onCloseInspect={() => closeOpponentInspection()} nestedCardDetailDismissRef={nestedInspectorCardDetailDismissRef} /><StageSystemCluster
+      <div className="interaction-safe-zone"><InteractionStage view={clientPresentation} transitionKind={presentationTransition.kind} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} inspectPlayer={opponentInspectionPresentation} judgementInFlight={judgementInFlight} nestedCardDetailDismissRef={nestedInspectorCardDetailDismissRef} /><StageSystemCluster
         publicResponseTimerPending={seatCountdown?.kind === "response"}
         responseTimer={seatCountdown?.kind === "response"
           ? <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} responseTimer />
@@ -6551,6 +6574,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             isGroupPreview={groupScopePreview.affectedPlayerIds.includes(player.id)}
             interactionRoles={interactionRoles}
             targetSelectionActive={targetSelectionActive}
+            isInspected={expandedOpponentId === player.id}
             targetablePlayer={targetablePlayer}
             daqiaoDeflectionTargetMode={daqiaoDeflectionSelectionActive}
             testViewerController={Boolean(room.isTestController)}
