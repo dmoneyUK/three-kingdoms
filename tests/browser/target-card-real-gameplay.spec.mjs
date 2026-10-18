@@ -687,6 +687,67 @@ test("real Burning Bridge Hand + Equipment omits Judgment and balances the full 
   await attachScreenshot(testInfo, "burning-bridge-hand-equipment-no-empty-judgment-390", page);
 });
 
+test("real Burning Bridge one-card Hand-only choice fits and submits an anonymous position", async ({ page, request }, testInfo) => {
+  const viewport = { width: 390, height: 700 };
+  const { dialog, actorView } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 1, equipment: false, judgement: false });
+  const zones = dialog.locator(".target-card-picker-zones");
+  const handCard = dialog.getByRole("button", { name: "Hidden hand card 1", exact: true });
+  const use = dialog.getByRole("button", { name: "Use Burning Bridge" });
+  await expect(zones).toHaveAttribute("data-zone-composition", "hand");
+  await expect(zones).toHaveAttribute("data-zone-count", "1");
+  await expect(dialog.locator(".target-card-picker-zone-equipment, .target-card-picker-zone-judgement")).toHaveCount(0);
+  expect(actorView.currentAction.targetCardSelection.eligibleKeys).toEqual(["hand:0"]);
+  await expect(handCard).toBeVisible();
+  await expect(handCard).toBeEnabled();
+  await expect(use).toBeDisabled();
+  await handCard.click();
+  await expect(handCard).toHaveAttribute("aria-pressed", "true");
+  await expect(use).toBeEnabled();
+
+  const submitPromise = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+    catch { return false; }
+  });
+  await use.click();
+  const submitted = await submitPromise;
+  expect(submitted.ok()).toBe(true);
+  expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
+    action: "choose_target_card", targetCardZone: "hand", targetCardIndex: 0,
+  });
+  await attachScreenshot(testInfo, "burning-bridge-one-card-hand-only-390x700", page);
+});
+
+test("real Burning Bridge equipment-only choice omits empty Hand and Judgment groups", async ({ page, request }, testInfo) => {
+  const viewport = { width: 390, height: 700 };
+  const { seed, dialog, armor } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 0, judgement: false });
+  const zones = dialog.locator(".target-card-picker-zones");
+  const equipmentCard = dialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true });
+  const use = dialog.getByRole("button", { name: "Use Burning Bridge" });
+  await expect(zones).toHaveAttribute("data-zone-composition", "equipment");
+  await expect(zones).toHaveAttribute("data-zone-count", "1");
+  await expect(dialog.locator(".target-card-picker-zone-hand, .target-card-picker-zone-judgement")).toHaveCount(0);
+  await expect(dialog.locator('[data-target-card-zone="equipment"]')).toHaveCount(2);
+  await expect(use).toBeDisabled();
+  await equipmentCard.click();
+  await expect(equipmentCard).toHaveAttribute("aria-pressed", "true");
+  await expect(use).toBeEnabled();
+
+  const submitPromise = page.waitForResponse((response) => {
+    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+    try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+    catch { return false; }
+  });
+  await use.click();
+  const submitted = await submitPromise;
+  expect(submitted.ok()).toBe(true);
+  expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
+    action: "choose_target_card", targetCardZone: "equipment", targetCardId: armor.id,
+  });
+  await attachScreenshot(testInfo, "burning-bridge-equipment-only-390x700", page);
+  expect((await roomView(request, seed, 0)).currentAction?.kind).not.toBe("target_card");
+});
+
 test("real Burning Bridge Hand-only target uses the full modal width for four anonymous positions", async ({ page, request }, testInfo) => {
   const viewport = { width: 390, height: 844 };
   const { dialog } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, equipment: false, judgement: false });
