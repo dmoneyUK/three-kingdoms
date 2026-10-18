@@ -2471,6 +2471,33 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `{"ok":true,"worker":"available"}`. Pending user phone review; Reviewer
   acceptance is not claimed.
 
+### UX2 §10.17.1.1/.2 BCP-1 F1/F2 follow-up — 2026-10-18
+
+- Commit `22e20ba6517fc2fe45d589a6ee2bd9f612d409fa` completes the directed
+  root-thumbnail / public-pool layer correction and public current-chooser hint.
+  During the proof-backed read-only Negation pool, the genuine root card parks
+  at 40×60 in the lower-left rail below the selectable-card layer, with zero
+  measured overlap against the pool, H4, timer, activity chip, seats or Dock at
+  390×700 and 440×766. Original card/event IDs are preserved; the no-proof path
+  retains the existing reveal/move. The generic Negation status remains visible.
+- The chooser hint uses only the validated shared Bumper Harvest progress and
+  public player name. It matches across authenticated views and TEST SWITCH;
+  missing or mismatched progress removes the hint and retains generic
+  Negation status. No chooser control, `choose_harvest` action, private
+  responder, response identity or Hand data is exposed.
+- Focused mobile Worker/D1 browser coverage passed 3/3, including true-root
+  identity, mobile geometry/screenshots, actual SWITCH/Inspector/Card Details
+  touch, actor selection/Confirm preservation and fail-closed proof mismatch.
+  Local build and `git diff --check` passed. The focused local ESLint process
+  exceeded the machine's default 2GB Node heap; exact-SHA Actions
+  [`39147264299`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39147264299)
+  passed full lint/fast, API, browser startup/room smoke, D1 migration, Worker
+  deploy and production `/` + `/api/health` smoke. Worker version:
+  `263e76a7-49c5-4e93-94ed-b1d1d015311c`. Focused gameplay replay used the
+  local Worker/D1 browser harness; no production four-client interaction replay
+  is claimed. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**, not
+  accepted. H4 stays accepted and Q1–Q4 stay paused.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
