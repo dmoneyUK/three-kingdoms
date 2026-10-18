@@ -1180,7 +1180,16 @@ function OpponentPublicInspector({ player, judgementInFlight, nestedCardDetailDi
         obstacleBottomLimit,
       );
       shell.style.marginTop = `${Math.max(0, panelTop - (layerRect.top + 4))}px`;
-      shell.style.maxHeight = `${Math.max(0, safeBottom - panelTop)}px`;
+      const safePanelHeight = Math.max(0, safeBottom - panelTop);
+      shell.style.maxHeight = `${safePanelHeight}px`;
+      const shellStyle = window.getComputedStyle(shell);
+      const shellVerticalInsets = [
+        shellStyle.borderTopWidth,
+        shellStyle.borderBottomWidth,
+        shellStyle.paddingTop,
+        shellStyle.paddingBottom,
+      ].reduce((total, value) => total + (Number.parseFloat(value) || 0), 0);
+      inspector.style.maxHeight = `${Math.max(0, safePanelHeight - shellVerticalInsets)}px`;
     };
 
     measure();

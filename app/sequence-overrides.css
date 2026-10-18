@@ -5641,18 +5641,24 @@
 .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell > .hero-focus.hero-focus-inspect {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  overflow: auto;
+  flex: 0 1 auto;
+  gap: 2px;
+  min-height: 0;
+  width: calc(var(--inspector-portrait-width, 90px) + 3px + var(--inspector-main-width, 154px));
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
   display: grid;
-  grid-template-columns: minmax(0, 28%) minmax(0, 1fr);
+  grid-template-columns: var(--inspector-portrait-width, 90px) minmax(0, 1fr);
   grid-template-areas: "portrait main";
-  align-items: stretch;
-  gap: 5px;
+  align-items: start;
+  gap: 3px;
   flex: 0 0 auto;
   min-height: 0;
+  width: calc(var(--inspector-portrait-width, 90px) + 3px + var(--inspector-main-width, 154px));
+  max-width: 100%;
 }
 
 .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-portrait {
@@ -5687,7 +5693,7 @@
   grid-area: upper;
   display: grid;
   grid-template-areas: "identity judgement";
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: stretch;
   gap: 4px;
   min-width: 0;
@@ -5815,20 +5821,14 @@
   justify-self: end;
 }
 
-.opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context {
-  flex: 0 0 auto;
-  min-height: 0;
-  overflow: visible;
-}
-
 @media (max-height: 740px) {
   .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
-    grid-template-columns: minmax(0, 28%) minmax(0, 1fr);
-    gap: 5px;
+    grid-template-columns: var(--inspector-portrait-width, 90px) minmax(0, 1fr);
+    gap: 3px;
   }
 
   .opponent-inspection-floating-shell .hero-focus-inspect-upper {
-    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) max-content;
   }
 
   .opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-card,
@@ -5862,11 +5862,13 @@
 .game-shell .play-table[data-seat-topology="top-row"] .opponent-inspection-floating-shell {
   --inspector-portrait-width: 90px;
   --inspector-slot-width: 36px;
+  --inspector-main-width: calc(var(--inspector-slot-width) + var(--inspector-slot-width) + var(--inspector-slot-width) + var(--inspector-slot-width) + 10px);
 }
 
 .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell {
   --inspector-portrait-width: 64px;
   --inspector-slot-width: 42px;
+  --inspector-main-width: calc(var(--inspector-slot-width) + var(--inspector-slot-width) + var(--inspector-slot-width) + var(--inspector-slot-width) + 10px);
 }
 
 .opponent-inspection-layer {
@@ -5891,11 +5893,11 @@
 
 .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
   display: grid;
-  grid-template-columns: minmax(0, var(--inspector-portrait-width, 90px)) minmax(0, max-content);
+  grid-template-columns: var(--inspector-portrait-width, 90px) minmax(0, 1fr);
   grid-template-areas: "portrait main";
   align-items: start;
-  gap: 2px;
-  width: max-content;
+  gap: 3px;
+  width: calc(var(--inspector-portrait-width, 90px) + 3px + var(--inspector-main-width, 154px));
   max-width: 100%;
   min-width: 0;
 }
@@ -5953,7 +5955,7 @@
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-main {
-  width: max-content;
+  width: 100%;
   max-width: 100%;
   min-width: 0;
   gap: 1px;
@@ -5961,7 +5963,7 @@
 
 .opponent-inspection-floating-shell .hero-focus-inspect-upper {
   width: 100%;
-  grid-template-columns: minmax(72px, 1fr) max-content;
+  grid-template-columns: minmax(0, 1fr) max-content;
   gap: 2px;
 }
 
@@ -6008,10 +6010,20 @@
 
 .opponent-inspection-floating-shell .hero-focus-inspect-judgement,
 .opponent-inspection-floating-shell .hero-focus-inspect-equipment {
-  width: max-content;
+  box-sizing: border-box;
   max-width: 100%;
   gap: 1px;
   padding: 1px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement {
+  justify-self: end;
+  width: max-content;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment {
+  width: 100%;
+  min-width: 0;
 }
 
 .game-shell .play-table[data-seat-topology="top-row"] > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
@@ -6028,10 +6040,10 @@
 
 .opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-slot-row {
   display: grid;
-  grid-template-columns: repeat(4, var(--inspector-slot-width, 42px));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   justify-content: start;
   gap: 2px;
-  width: max-content;
+  width: 100%;
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-card,
@@ -6044,15 +6056,26 @@
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context {
+  align-self: stretch;
+  flex: 1 1 auto;
   box-sizing: border-box;
-  width: calc(
-    var(--inspector-slot-width, 42px)
-    + var(--inspector-slot-width, 42px)
-    + var(--inspector-slot-width, 42px)
-    + var(--inspector-slot-width, 42px)
-    + 8px
-  );
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context:empty {
+  flex: 0 0 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context:not(:empty) {
+  padding: 2px 2px 0;
 }
 
 @media (max-width: 520px) {
@@ -6093,7 +6116,14 @@
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-skill-detail {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 0 0 auto;
   gap: 1px;
+  overflow: visible;
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-skill-name {
@@ -6102,16 +6132,45 @@
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-skill-description {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
   max-height: calc(5 * 1.2em);
+  overflow-y: auto;
   margin-top: 1px;
-  padding: 3px 5px;
+  padding: 1px 5px;
   font: 11.5px/1.2 Arial, sans-serif;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-card-detail {
+  grid-template-columns: minmax(0, 1fr);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 0 0 auto;
+  grid-template-rows: auto auto auto auto;
+  overflow: visible;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-card-rules {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-height: calc(5 * 1.35em);
+  overflow-y: auto;
 }
 
 @media (max-height: 740px) {
   .game-shell .play-table[data-seat-topology="top-row"] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body,
   .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
-    grid-template-columns: minmax(0, var(--inspector-portrait-width, 90px)) minmax(0, max-content);
+    grid-template-columns: var(--inspector-portrait-width, 90px) minmax(0, 1fr);
     gap: 3px;
   }
 }
