@@ -51,6 +51,42 @@ test("public battle announcements keep proof-backed event meaning in concise cop
   ), "Deflection: Target redirected Attack to Third; discarded Dodge.");
 });
 
+test("Bumper Harvest Negation copy names only the proven effect recipient and keeps counters aimed at the prior Negation", () => {
+  const harvestAction = action({
+    targetId: null,
+    cardFace: { id: "harvest-root", kind: "BumperHarvest" },
+    cardLabel: "BUMPER HARVEST",
+    ariaLabel: "JD played Bumper Harvest.",
+    phaseNotice: "NEGATION MAY BE PLAYED",
+    motion: { type: "negation", scopeKey: "room:harvest", freshEventIds: ["root-event"] },
+    harvestEffectRecipient: { participantId: "chooser-3", participantName: "Test Player 3" },
+  });
+  assert.equal(publicCardAnnouncement(
+    harvestAction, harvestAction.ariaLabel, "JD", "JD", null,
+  ), "JD played Bumper Harvest. Negation may cancel its effect on Test Player 3.");
+
+  const unprovenHarvest = { ...harvestAction, harvestEffectRecipient: undefined };
+  assert.equal(publicCardAnnouncement(
+    unprovenHarvest, unprovenHarvest.ariaLabel, "JD", "JD", null,
+  ), "JD played Bumper Harvest.");
+
+  const firstNegation = {
+    ...harvestAction,
+    responses: [{ eventId: "negation-event", actorId: "responder-4" }],
+  };
+  assert.equal(publicCardAnnouncement(
+    firstNegation,
+    "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3",
+    "Test Player 4", "JD", null,
+  ), "Test Player 4 played Negation against Bumper Harvest's effect on Test Player 3.");
+
+  const counterNotice = "Test Player 2 played Negation to counter Negation 1";
+  assert.equal(publicCardAnnouncement(
+    { ...firstNegation, responses: [{ eventId: "negation-event" }, { eventId: "counter-event" }] },
+    counterNotice, "Test Player 2", "JD", null,
+  ), "Test Player 2 played Negation against Negation 1.");
+});
+
 test("public announcement typography is readable and never truncates its verified sentence", () => {
   const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
   const announcement = css.match(/\.public-card-display-journey-copy\{([^}]+)\}/)?.[1] ?? "";

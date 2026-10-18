@@ -73,6 +73,8 @@ export type PublicCardDisplayAction = {
   ariaLabel: string;
   publicNotice?: string;
   publicNoticeCompact?: string;
+  /** Public participant proven to be affected by the active Bumper Harvest Negation. */
+  harvestEffectRecipient?: { participantId: string; participantName: string };
   motion?: PublicCardDisplayMotion;
   settlement?: {
     eventId: string;
@@ -676,6 +678,15 @@ function compactLustDuelPlayerName(name: string | null) {
   return characters.length > 10 ? `${characters.slice(0, 9).join("").trimEnd()}…` : normalized;
 }
 
+function isInitialHarvestNegationNotice(action: PublicCardDisplayAction) {
+  const recipient = action.harvestEffectRecipient;
+  return action.motion?.type === "negation"
+    && action.cardFace?.kind === "BumperHarvest"
+    && action.phaseNotice?.includes("NEGATION") === true
+    && Boolean(recipient?.participantId && recipient.participantName.trim())
+    && (action.responses?.length ?? 0) === 0;
+}
+
 export function publicCardAnnouncement(
   action: PublicCardDisplayAction,
   notice: string,
@@ -688,6 +699,10 @@ export function publicCardAnnouncement(
   const target = targetName ?? "the target";
   const actor = actorName ?? targetName ?? "The target";
   const cardName = action.cardLabel.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+
+  if (isInitialHarvestNegationNotice(action) && action.harvestEffectRecipient) {
+    return `${source} played ${cardName}. Negation may cancel its effect on ${action.harvestEffectRecipient.participantName}.`;
+  }
 
   switch (outcome) {
     case "ATTACK_DAMAGE_APPLIED":
@@ -758,6 +773,15 @@ function publicCardAnnouncementCopy(
     return {
       message: action.lustCostFrame.message,
       compactMessage: action.lustCostFrame.compactMessage,
+    };
+  }
+  if (isInitialHarvestNegationNotice(action) && action.harvestEffectRecipient) {
+    const recipient = action.harvestEffectRecipient;
+    const compactSource = sourceName?.trim() || "A player";
+    const compactRecipient = recipient.participantName.trim();
+    return {
+      message: publicCardAnnouncement(action, notice, actorName, sourceName, targetName),
+      compactMessage: `${compactSource}'s Bumper Harvest → ${compactRecipient} · Negation available.`,
     };
   }
   const message = publicCardAnnouncement(action, notice, actorName, sourceName, targetName);
@@ -2583,9 +2607,12 @@ function SingleTargetCardJourney({
     targetName,
     compactPlayerNamesById,
   );
-  const announcement = withPublicCardPhaseNotice(announcementCopy.message, action.settlement ? undefined : action.phaseNotice);
+  const announcementPhaseNotice = action.settlement || isInitialHarvestNegationNotice(action)
+    ? undefined
+    : action.phaseNotice;
+  const announcement = withPublicCardPhaseNotice(announcementCopy.message, announcementPhaseNotice);
   const compactAnnouncement = announcementCopy.compactMessage || (!action.settlement && action.phaseNotice?.includes("NEGATION"))
-    ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, action.settlement ? undefined : action.phaseNotice, true)
+    ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, announcementPhaseNotice, true)
     : undefined;
   useEffect(() => {
     const settlementEventId = action.settlement?.eventId;

@@ -362,14 +362,25 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
   });
   const [source, firstResponder, counterResponder] = seed.players;
   const rootCardId = `harvest-density-root-${seed.players.length}`;
-  const context = await browser.newContext({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const viewerContexts = [];
   try {
-    const page = await context.newPage();
-    await page.addInitScript(({ code, token, name }) => {
-      localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
-    }, { code: seed.code, token: source.token, name: source.name });
-    await page.goto(`${API}/`);
-    await expect(page.locator(".game-shell")).toBeVisible();
+    const viewerPages = await Promise.all(seed.players.map(async (viewer) => {
+      const viewerContext = await browser.newContext({
+        viewport: { width: 390, height: 700 },
+        isMobile: true,
+        hasTouch: true,
+        deviceScaleFactor: 3,
+      });
+      viewerContexts.push(viewerContext);
+      const viewerPage = await viewerContext.newPage();
+      await viewerPage.addInitScript(({ code, token, name }) => {
+        localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
+      }, { code: seed.code, token: viewer.token, name: viewer.name });
+      await viewerPage.goto(`${API}/`);
+      await expect(viewerPage.locator(".game-shell")).toBeVisible();
+      return { viewer, page: viewerPage };
+    }));
+    const page = viewerPages[0].page;
 
     const declared = await request.post(`${API}/api/rooms`, {
       data: { action: "play_card", code: seed.code, token: source.token, cardId: rootCardId },
@@ -381,6 +392,51 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     const rootEvent = rootWindow.timeline.find((event) => event?.type === "card" && event.card?.id === rootCardId);
     expect(rootPool?.semantics).toBe("PROVEN");
     expect(rootProgress?.rootEventId).toBe(rootEvent?.id);
+    expect(rootProgress?.semantics).toBe("PROVEN");
+    const initialWindowId = rootWindow.currentAction?.negationWindowId;
+    expect(initialWindowId, "the initial Bumper Harvest Negation window is active").toBeTruthy();
+    const holdInitialWindow = await request.post(`${API}/__test/negation-window-clock`, {
+      data: { code: seed.code, windowId: initialWindowId, mode: "hold" },
+    });
+    expect(holdInitialWindow.ok(), await holdInitialWindow.text()).toBeTruthy();
+    await testInfo.attach("bumper-harvest-initial-negation-public-proof", {
+      body: JSON.stringify({
+        phase: rootWindow.phase,
+        pendingKind: rootWindow.pending?.kind ?? null,
+        currentActionKind: rootWindow.currentAction?.kind ?? null,
+        decisionActorId: rootWindow.currentAction?.actorId ?? null,
+        interactionScene: rootWindow.presentationV2?.interactionScene ?? null,
+        bumperHarvestProgress: rootProgress,
+        reactionChain: rootWindow.presentationSnapshot?.reactionChain ?? null,
+        pendingHarvest: rootWindow.pendingHarvest ? {
+          actorId: rootWindow.pendingHarvest.actorId,
+          revealedIds: rootWindow.pendingHarvest.revealed?.map(({ id }) => id) ?? [],
+          availableIds: rootWindow.pendingHarvest.availableIds,
+          choices: rootWindow.pendingHarvest.choices,
+        } : null,
+        publicHarvestPool: rootPool ? {
+          semantics: rootPool.semantics,
+          rootEventId: rootPool.rootEventId,
+          revealEventId: rootPool.revealEventId,
+          revealedIds: rootPool.revealed.map(({ id }) => id),
+          availableIds: rootPool.availableIds,
+          choices: rootPool.choices,
+        } : null,
+      }, null, 2),
+      contentType: "application/json",
+    });
+    const rootEffectRecipient = seed.players.find(({ id }) => id === rootProgress.currentParticipantId);
+    expect(rootEffectRecipient, "public progress identifies the current Harvest effect participant").toBeTruthy();
+    const initialAnnouncement = `${source.name} played Bumper Harvest. Negation may cancel its effect on ${rootEffectRecipient.name}.`;
+    await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
+      const h4 = viewerPage.locator(".public-card-display-journey-copy b");
+      await expect(h4).toHaveAttribute("aria-label", initialAnnouncement, { timeout: 10_000 });
+      await expect(viewerPage.locator(".harvest-choice-heading span"))
+        .toHaveText(`Negation for ${rootEffectRecipient.name} · Read-only`);
+      await expect(viewerPage.locator(".harvest-card-select, .harvest-confirm-row")).toHaveCount(0);
+      expect(await h4.innerText()).toContain(rootEffectRecipient.name);
+      expect(await h4.innerText()).not.toContain("Negation can be played");
+    }));
 
     const root = page.locator(`[data-public-card-journey-card-id="${rootCardId}"]`);
     const rootSelector = `[data-public-card-journey-event-id="${rootEvent.id}"]`;
@@ -405,7 +461,13 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     expect(firstCommitProgress?.semantics).toBe("PROVEN");
     const firstCommitChooser = seed.players.find(({ id }) => id === firstCommitProgress.currentParticipantId);
     expect(firstCommitChooser, "the next Harvest effect participant is named by shared public proof").toBeTruthy();
-    await expect(page.locator(".harvest-current-chooser")).toHaveText(`Current chooser · ${firstCommitChooser.name}`, { timeout: 10_000 });
+    const firstCommitAnnouncement = `${firstResponder.name} played Negation against Bumper Harvest's effect on ${firstCommitChooser.name}; a Negation response is open.`;
+    await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
+      await expect(viewerPage.locator(".public-card-display-journey-copy b"))
+        .toHaveAttribute("aria-label", firstCommitAnnouncement, { timeout: 10_000 });
+      await expect(viewerPage.locator(".harvest-choice-heading span"))
+        .toHaveText(`Negation for ${firstCommitChooser.name} · Read-only`);
+    }));
     await testInfo.attach("bumper-harvest-committed-negation-server-proof", {
       body: JSON.stringify({
         stage: firstCommit.room.presentationV2?.interactionScene?.stage,
@@ -533,9 +595,131 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     expect(counterCommit.event.card.id).toBe(counterNegationId);
     expect(counterCommit.room.publicHarvestPool?.revealed.map(({ id }) => id)).toEqual(rootPool.revealed.map(({ id }) => id));
     expect(counterCommit.room.pendingHarvest).toBeNull();
+    const counterProgress = counterCommit.room.presentationSnapshot?.bumperHarvestProgress;
+    const counterEffectRecipient = seed.players.find(({ id }) => id === counterProgress?.currentParticipantId);
+    expect(counterEffectRecipient, "public progress keeps the current effect participant named").toBeTruthy();
+    const counterAnnouncement = `${counterResponder.name} played Negation against Negation 1; a Negation response is open.`;
+    await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
+      await expect(viewerPage.locator(".public-card-display-journey-copy b"))
+        .toHaveAttribute("aria-label", counterAnnouncement, { timeout: 10_000 });
+      await expect(viewerPage.locator(".harvest-choice-heading span"))
+        .toHaveText(`Negation for ${counterEffectRecipient.name} · Read-only`);
+      const h4 = viewerPage.locator(".public-card-display-journey-copy b");
+      expect(await h4.getAttribute("aria-label")).not.toContain(`Bumper Harvest's effect on ${counterEffectRecipient.name}`);
+    }));
+    await viewerPages[3].page.reload();
+    await expect(viewerPages[3].page.locator(".public-card-display-journey-copy b"))
+      .toHaveAttribute("aria-label", counterAnnouncement, { timeout: 10_000 });
+    await expect(viewerPages[3].page.locator(".harvest-choice-heading span"))
+      .toHaveText(`Negation for ${counterEffectRecipient.name} · Read-only`);
     await assertCommittedRevealAbovePool(counterNegationId, counterCommit.event, "committed-counter-negation", "bumper-harvest-counter-reveal-over-pool-390x700");
+
+    const finalCounterWindowId = counterCommit.room.currentAction?.negationWindowId;
+    expect(finalCounterWindowId, "the counter opens its own response window").toBeTruthy();
+    const holdFinalCounterWindow = await request.post(`${API}/__test/negation-window-clock`, {
+      data: { code: seed.code, windowId: finalCounterWindowId, mode: "hold" },
+    });
+    expect(holdFinalCounterWindow.ok(), await holdFinalCounterWindow.text()).toBeTruthy();
+    for (const responder of seed.players) {
+      const current = await readRoom(request, seed.code, responder.token);
+      if (current.phase !== "response" || current.currentAction?.negationWindowId !== finalCounterWindowId) break;
+      const pass = await request.post(`${API}/api/rooms`, {
+        data: { action: "decline_response", code: seed.code, token: responder.token, context: { windowId: finalCounterWindowId } },
+      });
+      expect(pass.ok(), `${responder.name} passes the counter response window: ${await pass.text()}`).toBeTruthy();
+    }
+
+    const firstChoiceRoom = await readRoom(request, seed.code, rootEffectRecipient.token);
+    expect(firstChoiceRoom.pendingHarvest?.actorId).toBe(rootEffectRecipient.id);
+    const firstChooserPage = viewerPages.find(({ viewer }) => viewer.id === firstChoiceRoom.pendingHarvest.actorId)?.page;
+    expect(firstChooserPage, "the affected chooser has an authenticated mobile view").toBeTruthy();
+    await expect(firstChooserPage.locator(".harvest-choice-panel--actor"), JSON.stringify({
+      meId: firstChoiceRoom.meId,
+      pendingHarvest: firstChoiceRoom.pendingHarvest,
+      currentAction: firstChoiceRoom.currentAction,
+      isMyAction: firstChoiceRoom.isMyAction,
+    })).toBeVisible({ timeout: 20_000 });
+    const firstHarvestChoice = firstChooserPage.locator(".harvest-card-select:not([disabled])").first();
+    await tapHarvestCard(firstChooserPage, firstHarvestChoice);
+    const firstHarvestConfirm = firstChooserPage.getByRole("button", { name: "Confirm choice" });
+    await expect(firstHarvestConfirm).toBeEnabled();
+    const firstHarvestChoiceResponse = firstChooserPage.waitForResponse((response) => {
+      if (response.request().method() !== "POST" || response.url() !== `${API}/api/rooms`) return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_harvest"; }
+      catch { return false; }
+    });
+    await tap(firstChooserPage, firstHarvestConfirm);
+    expect((await firstHarvestChoiceResponse).ok()).toBeTruthy();
+
+    const nextEffectWindow = await readRoom(request, seed.code, source.token);
+    expect(nextEffectWindow.phase).toBe("response");
+    expect(nextEffectWindow.pendingHarvest).toBeNull();
+    const nextEffectProgress = nextEffectWindow.presentationSnapshot?.bumperHarvestProgress;
+    expect(nextEffectProgress?.semantics).toBe("PROVEN");
+    expect(nextEffectProgress.participants.find(({ playerId }) => playerId === rootEffectRecipient.id)?.status).toBe("RESOLVED");
+    const nextEffectRecipient = seed.players.find(({ id }) => id === nextEffectProgress.currentParticipantId);
+    expect(nextEffectRecipient, "shared public progress advances to the next effect participant").toBeTruthy();
+    expect(nextEffectRecipient.id).not.toBe(rootEffectRecipient.id);
+    const nextParticipantAnnouncement = `${source.name} played Bumper Harvest. Negation may cancel its effect on ${nextEffectRecipient.name}.`;
+    await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
+      await expect(viewerPage.locator(".public-card-display-journey-copy b"))
+        .toHaveAttribute("aria-label", nextParticipantAnnouncement, { timeout: 10_000 });
+      await expect(viewerPage.locator(".harvest-choice-heading span"))
+        .toHaveText(`Negation for ${nextEffectRecipient.name} · Read-only`);
+    }));
+    await viewerPages[3].page.reload();
+    await expect(viewerPages[3].page.locator(".public-card-display-journey-copy b"))
+      .toHaveAttribute("aria-label", nextParticipantAnnouncement, { timeout: 10_000 });
+    await expect(viewerPages[3].page.locator(".harvest-choice-heading span"))
+      .toHaveText(`Negation for ${nextEffectRecipient.name} · Read-only`);
+    await Promise.all(viewerPages.map(({ page: viewerPage }) => viewerPage.setViewportSize({ width: 440, height: 766 })));
+    await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
+      await expect(viewerPage.locator(".public-card-display-journey-copy b"))
+        .toHaveAttribute("aria-label", nextParticipantAnnouncement, { timeout: 10_000 });
+      await expect(viewerPage.locator(".harvest-choice-heading span"))
+        .toHaveText(`Negation for ${nextEffectRecipient.name} · Read-only`);
+    }));
+    const phoneCopyGeometry = await viewerPages[0].page.evaluate(() => {
+      const bounds = (selector) => {
+        const element = document.querySelector(selector);
+        if (!element) return null;
+        const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+        return { left, top, right, bottom, width, height };
+      };
+      const h4 = bounds(".public-card-display-journey-copy");
+      const pool = bounds(".harvest-choice-stage");
+      const activity = bounds("[data-public-activity-chip]");
+      const dock = bounds(".local-player-dock");
+      const overlaps = (first, second) => Boolean(first && second
+        && first.left < second.right && first.right > second.left
+        && first.top < second.bottom && first.bottom > second.top);
+      return {
+        viewport: { width: innerWidth, height: innerHeight },
+        h4,
+        pool,
+        activity,
+        dock,
+        overlaps: {
+          pool: overlaps(h4, pool),
+          activity: overlaps(h4, activity),
+          dock: overlaps(h4, dock),
+        },
+      };
+    });
+    expect(phoneCopyGeometry.viewport).toEqual({ width: 440, height: 766 });
+    expect(phoneCopyGeometry.h4?.width).toBeGreaterThan(0);
+    expect(phoneCopyGeometry.h4?.height).toBeGreaterThan(0);
+    expect(phoneCopyGeometry.overlaps).toEqual({ pool: false, activity: false, dock: false });
+    await testInfo.attach("bumper-harvest-effect-recipient-copy-440x766", {
+      body: JSON.stringify(phoneCopyGeometry, null, 2), contentType: "application/json",
+    });
+    const phoneCopyScreenshot = testInfo.outputPath("bumper-harvest-effect-recipient-copy-440x766.png");
+    await viewerPages[0].page.screenshot({ path: phoneCopyScreenshot, animations: "disabled" });
+    await testInfo.attach("bumper-harvest-effect-recipient-copy-440x766-screenshot", {
+      path: phoneCopyScreenshot, contentType: "image/png",
+    });
   } finally {
-    await context.close();
+    await Promise.all(viewerContexts.map((viewerContext) => viewerContext.close()));
   }
 });
 
@@ -831,6 +1015,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     .toEqual(Array(room.players.length).fill(currentChooserId));
 
   const negationContext = await browser.newContext({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  let mismatchedProofContext = null;
   try {
     const negationPage = await negationContext.newPage();
     const chooseHarvestPosts = [];
@@ -853,7 +1038,8 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(parkedRoot).toHaveAttribute("data-public-card-journey-card-id", currentProgress.rootCardId);
     await expect(parkedRoot).toHaveAttribute("data-public-card-journey-event-id", publicPool.rootEventId);
     await expect(negationPage.locator("[data-harvest-root-parked='true']")).toHaveCount(1);
-    await expect(negationPage.locator(".harvest-current-chooser")).toHaveText(`Current chooser · ${currentChooser.name}`);
+    await expect(negationPage.locator(".harvest-choice-heading span"))
+      .toHaveText(`Negation for ${currentChooser.name} · Read-only`);
     await expect(negationPage.locator(".harvest-card-choice")).toHaveCount(publicPool.revealed.length);
     await expect(negationPage.locator(".harvest-card-select")).toHaveCount(0);
     await expect(negationPage.locator(".harvest-confirm-row")).toHaveCount(0);
@@ -943,7 +1129,8 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await tap(negationPage, negationPage.getByTestId(`test-view-switch-${switchTarget.id}`));
     await expect(negationPage.locator(`.local-player-dock[data-player-anchor="${switchTarget.id}"]`)).toBeVisible();
     await expect(negationPage.locator(".harvest-choice-stage[data-harvest-readonly='true'] .harvest-card-choice")).toHaveCount(publicPool.revealed.length);
-    await expect(negationPage.locator(".harvest-current-chooser")).toHaveText(`Current chooser · ${currentChooser.name}`);
+    await expect(negationPage.locator(".harvest-choice-heading span"))
+      .toHaveText(`Negation for ${currentChooser.name} · Read-only`);
     const inspectedHero = negationPage.locator(`.opponent-player-card[data-player-anchor="${host.id}"] .opponent-hero-target`);
     await tap(negationPage, inspectedHero);
     await expect(negationPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${host.id}"]`)).toBeVisible();
@@ -961,34 +1148,123 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
       body: JSON.stringify({ viewport: negationPage.viewportSize(), viewerIds: controlledViews.map((view) => view.meId), publicPool }, null, 2),
       contentType: "application/json",
     });
-    const mismatchedProofPage = await negationContext.newPage();
-    await mismatchedProofPage.addInitScript(({ roomCode, sessionToken, playerName }) => {
+    mismatchedProofContext = await browser.newContext({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+    const mismatchedProofPage = await mismatchedProofContext.newPage();
+    await mismatchedProofPage.addInitScript(({ roomCode, sessionToken, playerName, hostId }) => {
       localStorage.setItem("three-realms-session", JSON.stringify({ code: roomCode, token: sessionToken, name: playerName }));
-    }, { roomCode: code, sessionToken: token, playerName: name });
-    let mismatchedChooserProofResponses = 0;
-    await mismatchedProofPage.route(`${API}/api/rooms?**`, async (route) => {
-      const response = await route.fetch();
-      const payload = await response.json();
-      const roomView = payload.room ?? payload;
-      const progress = roomView.presentationSnapshot?.bumperHarvestProgress;
-      const mismatchedParticipantId = roomView.players?.find((player) => player.id !== progress?.currentParticipantId)?.id;
-      if (progress && mismatchedParticipantId) {
-        mismatchedChooserProofResponses += 1;
+      window.__mismatchedChooserProofResponses = 0;
+      window.__mismatchedProofSummary = null;
+      let mismatchedRoomPayload = null;
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const requestUrl = new URL(typeof input === "string" ? input : input.url, location.href);
+        const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+        if (requestUrl.pathname !== "/api/rooms" || requestUrl.searchParams.get("code") !== roomCode
+          || requestUrl.searchParams.get("testViewerId") !== hostId || method !== "GET") {
+          return originalFetch(input, init);
+        }
+        if (mismatchedRoomPayload) {
+          // Hold one locally-mutated public snapshot stable across React polls.
+          return new Response(mismatchedRoomPayload, { status: 200, headers: { "content-type": "application/json" } });
+        }
+        const response = await originalFetch(input, init);
+        if (!response.ok) return response;
+        const payload = await response.clone().json();
+        const roomView = payload.room ?? payload;
+        const progress = roomView.presentationSnapshot?.bumperHarvestProgress;
+        const mismatchedParticipantId = roomView.players?.find((player) => player.id !== progress?.currentParticipantId)?.id;
+        if (!progress || !mismatchedParticipantId) return response;
+        const snapshot = roomView.presentationSnapshot;
         roomView.presentationSnapshot = {
-          ...roomView.presentationSnapshot,
+          ...snapshot,
+          interaction: {
+            ...snapshot.interaction,
+            currentParticipantId: mismatchedParticipantId,
+            participantRoles: {
+              ...snapshot.interaction.participantRoles,
+              currentParticipantId: mismatchedParticipantId,
+            },
+          },
           bumperHarvestProgress: { ...progress, currentParticipantId: mismatchedParticipantId },
         };
-      }
-      if (payload.room) payload.room = roomView;
-      await route.fulfill({ response, body: JSON.stringify(payload) });
-    });
-    await mismatchedProofPage.goto(`${API}/`);
-    await expect(mismatchedProofPage.locator(".game-shell")).toBeVisible();
-    await expect(mismatchedProofPage.locator('.harvest-choice-stage[data-harvest-readonly="true"]')).toBeVisible();
-    await expect.poll(() => mismatchedChooserProofResponses).toBeGreaterThan(0);
-    await expect(mismatchedProofPage.locator(".harvest-current-chooser")).toHaveCount(0);
-    await expect(mismatchedProofPage.locator(".harvest-choice-heading span")).toHaveText("Read-only · Negation resolving");
+        window.__mismatchedProofSummary = {
+          interaction: {
+            semantics: snapshot.interaction?.semantics,
+            stage: snapshot.interaction?.stage,
+            interactionId: snapshot.interaction?.interactionId,
+            rootFrameId: snapshot.interaction?.rootFrameId,
+            activeFrameId: snapshot.interaction?.activeFrameId,
+            checkpointId: snapshot.interaction?.checkpointId,
+            presentationRevision: snapshot.interaction?.presentationRevision,
+            sourceId: snapshot.interaction?.sourceId,
+            currentParticipantId: mismatchedParticipantId,
+          },
+          progress: {
+            semantics: progress.semantics,
+            interactionId: progress.interactionId,
+            rootFrameId: progress.rootFrameId,
+            activeFrameId: progress.activeFrameId,
+            checkpointId: progress.checkpointId,
+            presentationRevision: progress.presentationRevision,
+            sourceId: progress.sourceId,
+            currentParticipantId: mismatchedParticipantId,
+            currentEffectState: progress.currentEffectState,
+            participants: progress.participants.map(({ playerId, order, status }) => ({ playerId, order, status })),
+          },
+          forgedParticipantName: roomView.players.find((player) => player.id === mismatchedParticipantId)?.name ?? null,
+          reactionChain: snapshot.reactionChain ? {
+            semantics: snapshot.reactionChain.semantics,
+            interactionId: snapshot.reactionChain.interactionId,
+            frameId: snapshot.reactionChain.frameId,
+            rootCard: snapshot.reactionChain.rootCard,
+            nodeCount: snapshot.reactionChain.nodes?.length ?? null,
+            publicLinkCount: snapshot.reactionChain.publicNodeEventLinks?.length ?? null,
+          } : null,
+        };
+        if (payload.room) payload.room = roomView;
+        mismatchedRoomPayload = JSON.stringify(payload);
+        window.__mismatchedChooserProofResponses = 1;
+        return new Response(mismatchedRoomPayload, { status: response.status, headers: { "content-type": "application/json" } });
+      };
+    }, { roomCode: code, sessionToken: token, playerName: name, hostId: host.id });
+    try {
+      await mismatchedProofPage.goto(`${API}/`);
+      await expect(mismatchedProofPage.locator(".game-shell")).toBeVisible();
+      await expect(mismatchedProofPage.locator('.harvest-choice-stage[data-harvest-readonly="true"]')).toBeVisible();
+      await expect.poll(() => mismatchedProofPage.evaluate(() => window.__mismatchedChooserProofResponses)).toBe(1);
+      await expect(mismatchedProofPage.locator(".harvest-choice-heading span"))
+        .toHaveText("Read-only · Negation resolving", { timeout: 1_500 });
+      const mismatchRender = await mismatchedProofPage.evaluate(() => ({
+        proof: window.__mismatchedProofSummary,
+        h4Count: document.querySelectorAll(".public-card-display-journey-copy b").length,
+        publicDisplays: [...document.querySelectorAll("[data-public-card-display]")].map((node) => ({
+          renderer: node.getAttribute("data-public-card-renderer-kind"),
+          rootEventId: node.getAttribute("data-public-card-root-event-id"),
+          motion: node.getAttribute("data-public-card-motion"),
+          ready: node.getAttribute("data-public-card-ready"),
+        })),
+      }));
+      await testInfo.attach("bumper-harvest-mismatched-proof-render", {
+        body: JSON.stringify(mismatchRender, null, 2),
+        contentType: "application/json",
+      });
+      const mismatchedH4 = mismatchedProofPage.locator(".public-card-display-journey-copy b");
+      const genericHarvestAnnouncement = `${source.name} played Bumper Harvest.`;
+      await expect(mismatchedH4).toHaveAttribute("aria-label", genericHarvestAnnouncement, { timeout: 1_500 });
+      const mismatchedH4Label = await mismatchedH4.getAttribute("aria-label");
+      const forgedParticipantName = mismatchRender.proof?.forgedParticipantName;
+      expect(forgedParticipantName).toBeTruthy();
+      expect(mismatchedH4Label).not.toContain(forgedParticipantName);
+      expect(mismatchedH4Label).not.toContain("effect on");
+    } finally {
+      // Close the isolated context so its locally cached proof cannot affect the
+      // four-viewer gameplay context or leave any intercepted room polling live.
+      await mismatchedProofPage.close().catch(() => {});
+      await mismatchedProofContext.close().catch(() => {});
+      mismatchedProofContext = null;
+    }
   } finally {
+    await mismatchedProofContext?.close().catch(() => {});
     await negationContext.close();
   }
 
@@ -1225,6 +1501,31 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await tap(page, firstConfirm);
     expect((await firstChoiceResponse).ok()).toBeTruthy();
     const secondActorId = room.players.find((player) => player.seat === 2).id;
+    const firstEffectWindow = await readRoom(request, code, token);
+    expect(firstEffectWindow.phase).toBe("response");
+    expect(firstEffectWindow.pendingHarvest).toBeNull();
+    expect(firstEffectWindow.publicHarvestPool?.revealed.map(({ id }) => id)).toEqual(initialHarvest.pendingHarvest.revealed.map(({ id }) => id));
+    const firstEffectProgress = firstEffectWindow.presentationSnapshot?.bumperHarvestProgress;
+    expect(firstEffectProgress?.semantics).toBe("PROVEN");
+    const firstEffectRecipient = room.players.find(({ id }) => id === firstEffectProgress.currentParticipantId);
+    expect(firstEffectRecipient, "the first effect recipient is selected by shared public progress").toBeTruthy();
+    const firstEffectWindowId = firstEffectWindow.currentAction?.negationWindowId;
+    expect(firstEffectWindowId).toBeTruthy();
+    const holdFirstEffectWindow = await request.post(`${API}/__test/negation-window-clock`, {
+      data: { code, windowId: firstEffectWindowId, mode: "hold" },
+    });
+    expect(holdFirstEffectWindow.ok(), await holdFirstEffectWindow.text()).toBeTruthy();
+    await expect(page.locator('.harvest-choice-stage[data-harvest-readonly="true"]')).toBeVisible();
+    await expect(page.locator(".harvest-choice-heading span"))
+      .toHaveText(`Negation for ${firstEffectRecipient.name} · Read-only`);
+    await expect(page.locator(".public-card-display-journey-copy b"))
+      .toHaveAttribute("aria-label", new RegExp(`Negation may cancel its effect on ${firstEffectRecipient.name}\\.`));
+    await page.reload();
+    await expect(page.locator(".game-shell")).toBeVisible();
+    await expect(page.locator(".harvest-choice-heading span"))
+      .toHaveText(`Negation for ${firstEffectRecipient.name} · Read-only`);
+    await expect(page.locator(".public-card-display-journey-copy b"))
+      .toHaveAttribute("aria-label", new RegExp(`Negation may cancel its effect on ${firstEffectRecipient.name}\\.`));
     room = await passCurrentNegationWindow();
     await expect.poll(async () => {
       const current = await readRoom(request, code, token);
@@ -1261,6 +1562,26 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     // Each accepted Harvest choice immediately opens that participant's Negation
     // window, so pendingHarvest is intentionally parked until those responses end.
     expect(afterSecondChoice.log.some((entry) => entry.includes(`${room.players.find((player) => player.id === secondActorId).name} chooses`))).toBe(true);
+    expect(afterSecondChoice.phase).toBe("response");
+    expect(afterSecondChoice.pendingHarvest).toBeNull();
+    expect(afterSecondChoice.publicHarvestPool?.revealed.map(({ id }) => id)).toEqual(initialHarvest.pendingHarvest.revealed.map(({ id }) => id));
+    const secondEffectProgress = afterSecondChoice.presentationSnapshot?.bumperHarvestProgress;
+    expect(secondEffectProgress?.semantics).toBe("PROVEN");
+    expect(secondEffectProgress.participants.find(({ playerId }) => playerId === secondActorId)?.status).toBe("RESOLVED");
+    expect(secondEffectProgress.currentParticipantId).not.toBe(firstEffectRecipient.id);
+    const secondEffectWindowId = afterSecondChoice.currentAction?.negationWindowId;
+    expect(secondEffectWindowId).toBeTruthy();
+    const holdSecondEffectWindow = await request.post(`${API}/__test/negation-window-clock`, {
+      data: { code, windowId: secondEffectWindowId, mode: "hold" },
+    });
+    expect(holdSecondEffectWindow.ok(), await holdSecondEffectWindow.text()).toBeTruthy();
+    await expect(page.locator('.harvest-choice-stage[data-harvest-readonly="true"]')).toBeVisible();
+    const secondEffectRecipient = room.players.find(({ id }) => id === secondEffectProgress.currentParticipantId);
+    expect(secondEffectRecipient?.name).toBeTruthy();
+    await expect(page.locator(".harvest-choice-heading span"))
+      .toHaveText(`Negation for ${secondEffectRecipient.name} · Read-only`);
+    await expect(page.locator(".public-card-display-journey-copy b"))
+      .toHaveAttribute("aria-label", new RegExp(`Negation may cancel its effect on ${secondEffectRecipient.name}\\.`));
   } finally {
     await context.close();
   }

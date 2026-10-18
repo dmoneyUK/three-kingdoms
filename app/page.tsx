@@ -3830,7 +3830,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     };
   })();
   const bumperHarvestRootCandidate = (() => {
-    const progress = clientPresentation.bumperHarvestProgress;
+    const progress = clientPresentation.bumperHarvestProgress ?? room.presentationSnapshot?.bumperHarvestProgress;
+    const snapshotInteraction = room.presentationSnapshot?.interaction;
     const isSequentialScene = clientPresentation.stage === "SEQUENTIAL_CHOICE"
       && clientPresentation.continuity.relation === "ROOT_FRAME"
       && progress?.activeFrameId === progress?.rootFrameId;
@@ -3847,14 +3848,32 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || progress.sourceId !== clientPresentation.sourceId
       || !progress.rootEventId || !progress.rootResolutionId || !progress.rootCardId
       || !progress.targetIds.length || progress.targetIds.length !== progress.participants.length
-      || new Set(progress.targetIds).size !== progress.targetIds.length
-      || progress.currentParticipantId !== clientPresentation.currentParticipantId) return null;
+      || new Set(progress.targetIds).size !== progress.targetIds.length) return null;
+
+    const expectedTargetIds = isSequentialScene ? snapshotInteraction?.targetIds : snapshotInteraction?.rootOrigin?.targetIds;
+    if (!expectedTargetIds || expectedTargetIds.length !== progress.targetIds.length
+      || progress.targetIds.some((targetId, index) => targetId !== expectedTargetIds[index])
+      || isSequentialScene && progress.currentEffectState !== undefined
+      || isNegationScene && (snapshotInteraction?.rootOrigin?.frameId !== progress.rootFrameId
+        || snapshotInteraction.rootOrigin.effect !== "BumperHarvest"
+        || snapshotInteraction.decisionActorId !== null || snapshotInteraction.activeResolverId !== null
+        || progress.currentEffectState !== "ACTIVE" && progress.currentEffectState !== "BLOCKED")) return null;
 
     const currentParticipants = progress.participants.filter(({ status }) => status === "CURRENT");
-    if (!progress.currentParticipantId || currentParticipants.length !== 1
-      || currentParticipants[0].playerId !== progress.currentParticipantId
-      || progress.participants.some((participant, index) => participant.playerId !== progress.targetIds[index]
-        || participant.order !== index + 1)) return null;
+    const participantOrderIsValid = progress.participants.every((participant, index) =>
+      participant.playerId === progress.targetIds[index] && participant.order === index + 1);
+    const validStatuses = new Set(["PENDING", "CURRENT", "RESOLVED", "NO_LONGER_APPLICABLE"]);
+    const participantStatesAreValid = progress.participants.every((participant) => validStatuses.has(participant.status)
+      && (participant.status === "RESOLVED"
+        ? participant.outcome === "CHOSE_CARD" || participant.outcome === "NEGATED"
+        : participant.outcome === undefined));
+    if (!participantOrderIsValid || !participantStatesAreValid) return null;
+    const validatedProgress = clientPresentation.bumperHarvestProgress;
+    const currentParticipantIsProven = Boolean(validatedProgress && progress.currentParticipantId
+      && validatedProgress.currentParticipantId === progress.currentParticipantId
+      && progress.currentParticipantId === clientPresentation.currentParticipantId
+      && currentParticipants.length === 1
+      && currentParticipants[0].playerId === progress.currentParticipantId);
 
     const rootMatches = room.timeline.filter((event) => event.id === progress.rootEventId);
     if (rootMatches.length !== 1) return null;
@@ -3871,51 +3890,60 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (targets.some((target) => target === null)) return null;
 
     let responses: { index: number; ordinal: number; eventId: string; actorId: string; actorName: string; cardFace: Card; cardLabel: string; ariaLabel: string; counterTarget: { kind: "ORDERED_TARGET_EFFECT"; targetId: string } | { kind: "RESPONSE"; index: number } }[] = [];
+    let negationProofIsValid = false;
     if (isNegationScene) {
       const chain = clientPresentation.reactionChain;
-      if (!chain || chain.semantics !== "PROVEN" || chain.rootCard !== null
-        || chain.interactionId !== progress.interactionId || chain.frameId !== progress.activeFrameId
-        || !Array.isArray(chain.nodes) || !Array.isArray(chain.publicNodeEventLinks)
-        || chain.publicNodeEventLinks.length !== chain.nodes.length
-        || progress.currentEffectState !== (chain.nodes.length % 2 === 0 ? "ACTIVE" : "BLOCKED")) return null;
-      const responseEventIds = new Set([rootEvent.id]);
-      const responseCardIds = new Set([rootEvent.card.id]);
-      const mapped = chain.nodes.map((node, index) => {
-        const link = chain.publicNodeEventLinks?.[index];
-        const matches = link ? room.timeline.filter((event) => event.id === link.eventId) : [];
-        const event = matches.length === 1 ? matches[0] : null;
-        const actor = room.players.find((player) => player.id === node.actorId);
-        const previousNodeId = index === 0 ? null : chain.nodes[index - 1]?.nodeId;
-        // Reaction-chain nodes carry semantic/cause identity. The separately
-        // typed publicNodeEventLinks projection is the authoritative binding to
-        // exact committed timeline events; eventId/resolutionId are not node fields.
-        if (!link || link.nodeId !== node.nodeId
-          || node.frameId !== progress.activeFrameId
-          || node.causedByNodeId !== previousNodeId || !event || !actor?.name
-          || event.type !== "card" || event.action !== "play" || event.presentation === false
-          || event.playedAs !== undefined || event.card?.kind !== "Negation"
-          || !link.eventId || !link.resolutionId || !event.card.id || event.player !== actor.name
-          || event.id === rootEvent.id || event.resolutionId !== link.resolutionId
-          || responseEventIds.has(event.id) || responseCardIds.has(event.card.id)
-          || chain.publicNodeEventLinks?.slice(0, index).some((previous) => previous.eventId === event.id || previous.resolutionId === event.resolutionId)) return null;
-        responseEventIds.add(event.id);
-        responseCardIds.add(event.card.id);
-        return {
-          index,
-          ordinal: index + 1,
-          eventId: event.id,
-          actorId: actor.id,
-          actorName: actor.name,
-          cardFace: event.card,
-          cardLabel: "NEGATION",
-          ariaLabel: `${actor.name} played Negation to counter ${index === 0 ? `Bumper Harvest's effect on ${room.players.find((player) => player.id === progress.currentParticipantId)?.name ?? "the current participant"}` : `Negation ${index}`}`,
-          counterTarget: index === 0
-            ? { kind: "ORDERED_TARGET_EFFECT" as const, targetId: progress.currentParticipantId! }
-            : { kind: "RESPONSE" as const, index: index - 1 },
-        };
-      });
-      if (mapped.some((response) => response === null)) return null;
-      responses = mapped as typeof responses;
+      const validChain = Boolean(chain && chain.semantics === "PROVEN" && chain.rootCard === null
+        && chain.interactionId === progress.interactionId && chain.frameId === progress.activeFrameId
+        && Array.isArray(chain.nodes) && Array.isArray(chain.publicNodeEventLinks)
+        && chain.publicNodeEventLinks.length === chain.nodes.length
+        && progress.currentEffectState === (chain.nodes.length % 2 === 0 ? "ACTIVE" : "BLOCKED"));
+      if (validChain && chain) {
+        negationProofIsValid = true;
+      }
+      // Keep the separately proven public root visible when chooser identity is
+      // stale. Response-to-effect attribution stays hidden until the participant
+      // proof and the matching reaction chain agree again.
+      if (validChain && chain && currentParticipantIsProven) {
+        const responseEventIds = new Set([rootEvent.id]);
+        const responseCardIds = new Set([rootEvent.card.id]);
+        const mapped = chain.nodes.map((node, index) => {
+          const link = chain.publicNodeEventLinks?.[index];
+          const matches = link ? room.timeline.filter((event) => event.id === link.eventId) : [];
+          const event = matches.length === 1 ? matches[0] : null;
+          const actor = room.players.find((player) => player.id === node.actorId);
+          const previousNodeId = index === 0 ? null : chain.nodes[index - 1]?.nodeId;
+          // Reaction-chain nodes carry semantic/cause identity. The separately
+          // typed publicNodeEventLinks projection is the authoritative binding to
+          // exact committed timeline events; eventId/resolutionId are not node fields.
+          if (!link || link.nodeId !== node.nodeId
+            || node.frameId !== progress.activeFrameId
+            || node.causedByNodeId !== previousNodeId || !event || !actor?.name
+            || event.type !== "card" || event.action !== "play" || event.presentation === false
+            || event.playedAs !== undefined || event.card?.kind !== "Negation"
+            || !link.eventId || !link.resolutionId || !event.card.id || event.player !== actor.name
+            || event.id === rootEvent.id || event.resolutionId !== link.resolutionId
+            || responseEventIds.has(event.id) || responseCardIds.has(event.card.id)
+            || chain.publicNodeEventLinks?.slice(0, index).some((previous) => previous.eventId === event.id || previous.resolutionId === event.resolutionId)) return null;
+          responseEventIds.add(event.id);
+          responseCardIds.add(event.card.id);
+          return {
+            index,
+            ordinal: index + 1,
+            eventId: event.id,
+            actorId: actor.id,
+            actorName: actor.name,
+            cardFace: event.card,
+            cardLabel: "NEGATION",
+            ariaLabel: `${actor.name} played Negation to counter ${index === 0 ? `Bumper Harvest's effect on ${room.players.find((player) => player.id === progress.currentParticipantId)?.name ?? "the current participant"}` : `Negation ${index}`}`,
+            counterTarget: index === 0
+              ? { kind: "ORDERED_TARGET_EFFECT" as const, targetId: progress.currentParticipantId! }
+              : { kind: "RESPONSE" as const, index: index - 1 },
+          };
+        });
+        if (mapped.some((response) => response === null)) return null;
+        responses = mapped as typeof responses;
+      }
     } else if (progress.currentEffectState !== undefined || clientPresentation.reactionChain !== null) {
       return null;
     }
@@ -3926,10 +3954,24 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       source,
       targets: targets as NonNullable<(typeof targets)[number]>[],
       responses,
+      isNegationScene,
+      currentParticipantIsProven,
+      negationProofIsValid,
     };
   })();
-  const harvestCurrentChooserName = harvestReadOnlyDuringNegation && clientPresentation.stage === "NEGATION"
-    ? bumperHarvestRootCandidate?.targets.find((target) => target.playerId === bumperHarvestRootCandidate.progress.currentParticipantId)?.playerName ?? null
+  const harvestEffectRecipient = clientPresentation.stage === "NEGATION"
+    ? (() => {
+      const participantId = bumperHarvestRootCandidate?.currentParticipantIsProven
+        && bumperHarvestRootCandidate.negationProofIsValid
+        ? bumperHarvestRootCandidate.progress.currentParticipantId
+        : null;
+      const currentParticipants = participantId
+        ? bumperHarvestRootCandidate?.targets.filter((target) => target.playerId === participantId && target.status === "CURRENT") ?? []
+        : [];
+      return participantId && currentParticipants.length === 1
+        ? { participantId, participantName: currentParticipants[0].playerName }
+        : null;
+    })()
     : null;
   const halberdOrderedRootCandidate = (() => {
     const group = clientPresentation.groupResolution;
@@ -4390,6 +4432,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && room.presentationSnapshot.reactionChain.interactionId === activePublicNegationRead.action.interactionId
     && room.presentationSnapshot.reactionChain.frameId === activePublicNegationRead.action.rootFrameId
     && room.presentationSnapshot.reactionChain.publicEventLinks?.root.eventId === activePublicNegationRead.action.rootEventId);
+  const heldHarvestEffectRecipient = activePublicNegationRead?.action.cardKind === "BumperHarvest"
+    && bumperHarvestRootCandidate?.rootEvent.id === activePublicNegationRead.action.rootEventId
+    && bumperHarvestRootCandidate.progress.interactionId === activePublicNegationRead.action.interactionId
+    && bumperHarvestRootCandidate.progress.rootFrameId === activePublicNegationRead.action.rootFrameId
+    ? harvestEffectRecipient
+    : null;
   const heldPublicNegationReadAction = activeNegationReadIdentityMatches && activePublicNegationRead
     && (activeNegationReadStillLive || activeNegationReadSettled)
     && !(activePublicNegationRead.action.cardKind === "Duel" && (duelNegationProofCandidate || duelExchangeDisplayCandidate))
@@ -4397,6 +4445,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || activePublicNegationRead.action.cardKind === "Duel" && activePublicNegationRead.action.rootEventId === duelNegationProofCandidate?.rootEvent.id)
     ? {
       ...activePublicNegationRead.action,
+      ...(activePublicNegationRead.action.cardKind === "BumperHarvest" ? {
+        // A retained root announcement must not retain a chooser name after
+        // the live public participant proof becomes stale or mismatched.
+        harvestEffectRecipient: heldHarvestEffectRecipient ?? undefined,
+      } : {}),
       ...((activePublicNegationRead.action.motion?.type === "single-target" || activePublicNegationRead.action.motion?.type === "negation" || activePublicNegationRead.action.motion?.type === "group-root") && activeNegationReadSettled
         ? { phaseNotice: undefined }
         : {}),
@@ -4688,11 +4741,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? {
       key: ["bumper-harvest", bumperHarvestRootCandidate.progress.interactionId, bumperHarvestRootCandidate.progress.rootFrameId, bumperHarvestRootCandidate.rootEvent.id].join(":"),
       rootEventId: bumperHarvestRootCandidate.rootEvent.id,
+      interactionId: bumperHarvestRootCandidate.progress.interactionId,
+      rootFrameId: bumperHarvestRootCandidate.progress.rootFrameId,
       sourceId: bumperHarvestRootCandidate.progress.sourceId,
       targetId: null,
       cardFace: bumperHarvestRootCandidate.rootEvent.card,
-      ...(bumperHarvestRootCandidate.progress.currentEffectState !== undefined ? {
-        phaseNotice: bumperHarvestRootCandidate.responses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED",
+      ...(bumperHarvestRootCandidate.isNegationScene ? {
+        ...(bumperHarvestRootCandidate.currentParticipantIsProven && bumperHarvestRootCandidate.negationProofIsValid ? {
+          phaseNotice: bumperHarvestRootCandidate.responses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED",
+        } : {}),
+        ...(harvestEffectRecipient ? { harvestEffectRecipient } : {}),
         motion: {
           type: "negation" as const,
           // One Bumper Harvest root owns one visual lifecycle across every
@@ -6509,11 +6567,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         <section className={`harvest-choice-panel${canChooseHarvest && !presentationBusy ? " harvest-choice-panel--actor" : ""}`} aria-label={canChooseHarvest && !presentationBusy ? "Your Bumper Harvest choice" : "Public Bumper Harvest cards"}>
           <header className="harvest-choice-heading">
             <b>Bumper Harvest</b>
-            <span>{harvestReadOnlyDuringNegation ? "Read-only · Negation resolving" : canChooseHarvest && !presentationBusy ? "Choose one revealed card" : room.pendingHarvest?.complete ? "Choices complete" : "Public cards · read-only"}</span>
+            <span>{harvestReadOnlyDuringNegation
+              ? harvestEffectRecipient ? `Negation for ${harvestEffectRecipient.participantName} · Read-only` : "Read-only · Negation resolving"
+              : canChooseHarvest && !presentationBusy ? "Choose one revealed card" : room.pendingHarvest?.complete ? "Choices complete" : "Public cards · read-only"}</span>
           </header>
-          {harvestReadOnlyDuringNegation && harvestCurrentChooserName && <p className="harvest-current-chooser" role="status" aria-label={`Current Bumper Harvest chooser: ${harvestCurrentChooserName}`}>
-            Current chooser · {harvestCurrentChooserName}
-          </p>}
           <div className="harvest-card-row" role="group" aria-label="Public revealed Harvest cards">
             {harvestDisplay.revealed.map((choice) => {
               const name = cardDefinition(choice.kind).name;
