@@ -37,4 +37,7 @@ The fixture set covers one and multiple choices, Rebel/publicly revealed Lord, l
 - `git diff --check`: passed.
 - Measured test-process duration: approximately **271 ms**. This is mock harness time, not model latency.
 - Live OpenAI calls: **0**; token usage: **not applicable**; API cost: **0**. No key was read or used. Live evaluation remains unauthorized and unrun.
-- A full-repository `tsc --noEmit` attempt reports numerous errors in untouched app/game/worker modules (including missing Cloudflare ambient types); no unrelated fixes were made. Exact-SHA GitHub Actions for the implementation commit is still required.
+- A full-repository `tsc --noEmit` attempt reports numerous errors in untouched app/game/worker modules (including missing Cloudflare ambient types); no unrelated fixes were made. The scoped strict TypeScript check passed.
+- Implementation commit: `e61ae4045a3948038b2ab72058fa689c64282901`; exact-SHA [GitHub Actions run 39137036867](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39137036867) completed successfully. Lint/build/fast, browser startup/room smoke, API tests, isolated Staging deployment and its smoke all passed. The first API attempt had transient `fetch failed` errors in shard 2 (shard 1 passed 167/167); rerunning the failed API job on the same SHA passed all 294 tests.
+- Staging target assertions confirmed the `three-kingdoms-ai-staging` Worker and its separate D1, with `BOT_AI_ENABLED=false`; there were no pending migrations. The mobile room refresh/rejoin smoke passed 1/1. Production `deploy` was skipped.
+- No live OpenAI call, key use, model invocation, paid usage, or real-player data transfer occurred. The Staging deployment did not enable AI behavior.
