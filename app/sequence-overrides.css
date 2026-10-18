@@ -5067,11 +5067,11 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 2px;
+  gap: 1px;
   width: fit-content;
   min-width: 0;
   max-width: min(calc(100vw - 16px), 520px);
-  padding: 4px 7px;
+  padding: 2px 7px;
   overflow: visible;
   border: 1px solid #c6a45c;
   background: #10130ff5;
@@ -5090,7 +5090,7 @@
   justify-content: space-between;
   gap: 6px;
   min-width: 0;
-  min-height: 12px;
+  min-height: 10px;
   color: #d7c28f;
   font: 700 7px/1.1 Arial, sans-serif;
 }
@@ -5130,8 +5130,8 @@
 .game-shell .harvest-card-choice {
   box-sizing: border-box;
   position: relative;
-  flex: 0 0 clamp(62px, 15vw, 68px);
-  width: clamp(62px, 15vw, 68px);
+  flex: 0 0 clamp(78px, 20vw, 88px);
+  width: clamp(78px, 20vw, 88px);
   height: auto;
   aspect-ratio: 2 / 3;
   padding: 0;
@@ -5257,7 +5257,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 38px;
+  min-height: 34px;
   margin: 0;
   padding: 0 1px;
 }
@@ -5274,7 +5274,7 @@
   width: auto;
   min-width: 126px;
   max-width: 150px;
-  min-height: 38px;
+  min-height: 34px;
   margin: 0;
   padding: 0 12px;
   border-color: #be9b53;
@@ -5290,12 +5290,32 @@
 /* Read-only public observers get a slightly denser pool while preserving full
    CardFace proportions and the same independent lower-centre Info hit target. */
 .game-shell .harvest-choice-panel:not(.harvest-choice-panel--actor) .harvest-card-choice {
-  flex-basis: clamp(58px, 14vw, 62px);
-  width: clamp(58px, 14vw, 62px);
+  flex-basis: clamp(70px, 18vw, 80px);
+  width: clamp(70px, 18vw, 80px);
 }
 .game-shell .harvest-choice-panel:not(.harvest-choice-panel--actor) .harvest-card-choice > .played-card .card-name-mark {
   translate: 0 -10px;
 }
+
+/* The genuine Harvest root becomes a 40x60 phone thumbnail beside the pool.
+   Scale its internal frame and marks together so the corner does not dominate
+   the parked card after the large reveal has settled. */
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card {
+  border-width: 1px;
+  border-radius: 2.5px;
+  padding: 1.5px .75px;
+}
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i {
+  width: 6.5px;
+  min-height: 10.5px;
+  padding: 0 .75px 1.5px;
+  border-width: .75px;
+  border-radius: 0 0 2.25px 0;
+  font-size: 4.25px;
+}
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i small { font-size: 3.5px; }
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card .card-name-mark { font-size: 5px; }
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > strong { font-size: 3.5px; }
 
 /* §10.17.2–10.17.3 BCP-2/3: compact card decisions stay in the table
    corridor. The table-wide backdrop remains pass-through; this panel owns

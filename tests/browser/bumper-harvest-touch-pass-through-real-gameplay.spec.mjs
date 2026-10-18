@@ -51,7 +51,7 @@ async function seedHarvestPool(request, seatCount, aliveCount = seatCount) {
   return response.json();
 }
 
-async function openHarvestChoice(request, seed) {
+async function openHarvestChoice(request, seed, observeRootJourney) {
   const source = seed.players[0];
   let latestRoom = null;
   const declines = [];
@@ -59,6 +59,7 @@ async function openHarvestChoice(request, seed) {
     data: { action: "play_card", code: seed.code, token: source.token, cardId: `harvest-density-root-${seed.players.length}` },
   });
   expect(played.ok(), await played.text()).toBeTruthy();
+  if (observeRootJourney) await observeRootJourney();
   for (let attempt = 0; attempt < 20; attempt += 1) {
     let room = await readRoom(request, seed.code, source.token);
     latestRoom = room;
@@ -100,6 +101,107 @@ async function openHarvestChoice(request, seed) {
   }
   throw new Error(`Bumper Harvest did not reach a choice after Negation: ${JSON.stringify({ phase: latestRoom?.phase, pending: latestRoom?.pending, currentAction: latestRoom?.currentAction, alive: seed.players.map(({ id, name }) => ({ id, name })), declines })}`);
 }
+
+test("Bumper Harvest real root keeps reveal dimensions and scales its parked thumbnail on phone", async ({ browser, request }, testInfo) => {
+  test.setTimeout(60_000);
+  const seed = await seedHarvestPool(request, 4, 4);
+  const source = seed.players[0];
+  const rootCardId = `harvest-density-root-${seed.players.length}`;
+  const context = await browser.newContext({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  try {
+    const page = await context.newPage();
+    await page.addInitScript(({ code, token, name }) => {
+      localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
+    }, { code: seed.code, token: source.token, name: source.name });
+    await page.goto(`${API}/`);
+    await expect(page.locator(".game-shell")).toBeVisible();
+
+    const journey = page.locator(`[data-public-card-journey-card-id="${rootCardId}"]`);
+    const journeyMeasurements = [];
+    const measureJourney = async (phase) => journey.evaluate((element, expectedPhase) => {
+      const rect = (node) => {
+        if (!node) return null;
+        const { left, top, right, bottom, width, height } = node.getBoundingClientRect();
+        return { left, top, right, bottom, width, height };
+      };
+      const face = element.querySelector(".played-card");
+      const corner = face?.querySelector("i");
+      const title = face?.querySelector(".card-name-mark");
+      const type = face?.querySelector("strong");
+      const styleSize = (node) => node ? getComputedStyle(node).fontSize : null;
+      return {
+        cardId: element.getAttribute("data-public-card-journey-card-id"),
+        eventId: element.getAttribute("data-public-card-journey-event-id"),
+        phase: element.getAttribute("data-public-card-journey-phase"),
+        size: element.getAttribute("data-public-card-journey-size"),
+        face: rect(face),
+        corner: rect(corner),
+        cornerFontSize: styleSize(corner),
+        suitFontSize: styleSize(corner?.querySelector("small")),
+        titleFontSize: styleSize(title),
+        typeFontSize: styleSize(type),
+        expectedPhase,
+      };
+    }, phase);
+
+    const root = await openHarvestChoice(request, seed, async () => {
+      await expect(journey).toHaveAttribute("data-public-card-journey-phase", "reveal", { timeout: 10_000 });
+      const reveal = await measureJourney("reveal");
+      journeyMeasurements.push(reveal);
+      await expect(journey).toHaveAttribute("data-public-card-journey-phase", "move", { timeout: 10_000 });
+      journeyMeasurements.push(await measureJourney("move"));
+      await expect(journey).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 10_000 });
+      journeyMeasurements.push(await measureJourney("parked"));
+      expect(journeyMeasurements.map(({ phase }) => phase)).toEqual(["reveal", "move", "parked"]);
+      expect(journeyMeasurements.every(({ cardId }) => cardId === rootCardId)).toBe(true);
+      expect(journeyMeasurements.every(({ eventId }) => eventId === journeyMeasurements[0].eventId)).toBe(true);
+    });
+    expect(root.pendingHarvest?.actorId).toBe(source.id);
+    await expect(page.locator(".harvest-choice-panel--actor")).toBeVisible();
+
+    const parkedRoot = page.locator('[data-public-card-harvest-active="true"] .public-card-display-static-card');
+    await expect(parkedRoot).toBeVisible();
+    const parkedMetrics = await parkedRoot.evaluate((element) => {
+      const rect = (node) => {
+        if (!node) return null;
+        const { left, top, right, bottom, width, height } = node.getBoundingClientRect();
+        return { left, top, right, bottom, width, height };
+      };
+      const face = element.querySelector(".played-card");
+      const corner = face?.querySelector("i");
+      const title = face?.querySelector(".card-name-mark");
+      const type = face?.querySelector("strong");
+      const size = (node) => node ? getComputedStyle(node).fontSize : null;
+      return {
+        cardId: element.getAttribute("data-public-card-static-card-id"),
+        eventId: element.getAttribute("data-public-card-static-event-id"),
+        face: rect(face),
+        corner: rect(corner),
+        cornerFontSize: size(corner),
+        suitFontSize: size(corner?.querySelector("small")),
+        titleFontSize: size(title),
+        typeFontSize: size(type),
+      };
+    });
+    expect(parkedMetrics.cardId).toBe(rootCardId);
+    expect(parkedMetrics.eventId).toBe(journeyMeasurements[0].eventId);
+    expect(parkedMetrics.face).toMatchObject({ width: 40, height: 60 });
+    expect(parkedMetrics.corner.width / parkedMetrics.face.width).toBeLessThanOrEqual(.18);
+    expect(parkedMetrics.corner.height / parkedMetrics.face.height).toBeLessThanOrEqual(.19);
+    expect(Number.parseFloat(parkedMetrics.cornerFontSize)).toBeLessThan(Number.parseFloat(journeyMeasurements[0].cornerFontSize));
+    expect(Number.parseFloat(parkedMetrics.suitFontSize)).toBeLessThan(Number.parseFloat(journeyMeasurements[0].suitFontSize));
+    expect(Number.parseFloat(parkedMetrics.titleFontSize)).toBeLessThan(Number.parseFloat(journeyMeasurements[0].titleFontSize));
+    await testInfo.attach("bumper-harvest-root-lifecycle-390x700", {
+      body: JSON.stringify({ rootCardId, journeyMeasurements, parkedMetrics }, null, 2),
+      contentType: "application/json",
+    });
+    const screenshot = testInfo.outputPath("bumper-harvest-root-parked-390x700.png");
+    await page.screenshot({ path: screenshot, animations: "disabled" });
+    await testInfo.attach("bumper-harvest-root-parked-390x700", { path: screenshot, contentType: "image/png" });
+  } finally {
+    await context.close();
+  }
+});
 
 async function tap(page, locator) {
   const bounds = await locator.boundingBox();
@@ -156,6 +258,8 @@ async function harvestGeometry(page) {
     const rootRect = rect(root);
     const rootFace = root?.querySelector(".played-card");
     const rootCorner = rootFace?.querySelector("i");
+    const rootTitle = rootFace?.querySelector(".card-name-mark");
+    const rootType = rootFace?.querySelector("strong");
     const announcementRect = announcement && getComputedStyle(announcement).visibility !== "hidden" ? rect(announcement) : null;
     const footerRect = rect(footer);
     const rowRect = rect(row);
@@ -186,6 +290,8 @@ async function harvestGeometry(page) {
       rootCorner: rect(rootCorner),
       rootCornerFontSize: rootCorner ? getComputedStyle(rootCorner).fontSize : null,
       rootSuitFontSize: rootCorner?.querySelector("small") ? getComputedStyle(rootCorner.querySelector("small")).fontSize : null,
+      rootTitleFontSize: rootTitle ? getComputedStyle(rootTitle).fontSize : null,
+      rootTypeFontSize: rootType ? getComputedStyle(rootType).fontSize : null,
       announcement: announcementRect,
       row: rowRect,
       rowClip,
@@ -477,13 +583,18 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
         expect(geometry.cardDetailsTargets.every((detail) => detail.infoHitMatches && detail.infoCentered
           && detail.infoBottomInset >= 0 && detail.infoBottomInset <= 2
           && detail.infoWidth >= 44 && detail.infoHeight >= 44 && detail.titleClearOfInfoGlyph), JSON.stringify({ viewerLabel, geometry })).toBe(true);
-        expect(geometry.cards.every((card) => card.width >= (actor ? 62 : 52)), JSON.stringify({ viewerLabel, geometry })).toBe(true);
+        const expectedCardWidth = actor
+          ? Math.min(88, Math.max(78, viewport.width * .2))
+          : Math.min(80, Math.max(70, viewport.width * .18));
+        expect(geometry.cards.every((card) => Math.abs(card.width - expectedCardWidth) <= .5), JSON.stringify({ viewerLabel, geometry })).toBe(true);
         if (actor) expect(geometry.cardDetailsTargets.every((detail) => detail.cardCenterOutsideInfo), JSON.stringify({ viewerLabel, geometry })).toBe(true);
         expect(geometry.rootFace, JSON.stringify({ viewerLabel, geometry })).toMatchObject({ width: 40, height: 60 });
-        expect(geometry.rootCorner.width / geometry.rootFace.width, JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(.25);
-        expect(geometry.rootCorner.height / geometry.rootFace.height, JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(.26);
-        expect(Number.parseFloat(geometry.rootCornerFontSize), JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(5);
-        expect(Number.parseFloat(geometry.rootSuitFontSize), JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(4);
+        expect(geometry.rootCorner.width / geometry.rootFace.width, JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(.18);
+        expect(geometry.rootCorner.height / geometry.rootFace.height, JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(.19);
+        expect(Number.parseFloat(geometry.rootCornerFontSize), JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(4.5);
+        expect(Number.parseFloat(geometry.rootSuitFontSize), JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(3.75);
+        expect(Number.parseFloat(geometry.rootTitleFontSize), JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(5);
+        expect(Number.parseFloat(geometry.rootTypeFontSize), JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(3.5);
         const screenshot = testInfo.outputPath(`bumper-harvest-${viewerLabel}-${viewport.width}x${viewport.height}.png`);
         await page.screenshot({ path: screenshot, animations: "disabled" });
         await testInfo.attach(`bumper-harvest-${viewerLabel}-${viewport.width}x${viewport.height}`, { path: screenshot, contentType: "image/png" });
@@ -675,6 +786,10 @@ test("Harvest content-fit scales from 1 to 8 genuine cards and swipes at 6–8 s
   for (const scenario of [
     { seats: 4, alive: 1, choices: 1, viewport: { width: 390, height: 700 } },
     { seats: 4, alive: 2, choices: 2, viewport: { width: 390, height: 844 } },
+    { seats: 4, alive: 4, choices: 4, viewport: { width: 390, height: 700 } },
+    { seats: 4, alive: 4, choices: 4, viewport: { width: 390, height: 844 } },
+    { seats: 4, alive: 4, choices: 4, viewport: { width: 440, height: 766 } },
+    { seats: 4, alive: 4, choices: 4, viewport: { width: 480, height: 900 } },
     { seats: 6, alive: 6, choices: 6, viewport: { width: 390, height: 700 } },
     { seats: 8, alive: 8, choices: 8, viewport: { width: 440, height: 766 } },
   ]) {
@@ -707,6 +822,11 @@ test("Harvest content-fit scales from 1 to 8 genuine cards and swipes at 6–8 s
         panelTimer: false,
       });
       expect(geometry.cards.every((card) => card.width >= 58), contextLabel).toBe(true);
+      if (scenario.choices === 4) {
+        const expectedCardWidth = scenario.viewport.width >= 440 ? 88 : 78;
+        expect(geometry.cards.every((card) => Math.abs(card.width - expectedCardWidth) <= .5), contextLabel).toBe(true);
+        expect(geometry.panel.width, contextLabel).toBeLessThanOrEqual(geometry.row.width + 20);
+      }
       expect(geometry.footer.bottom, contextLabel).toBeLessThanOrEqual(scenario.viewport.height + 1);
       const initialVisibleDetails = geometry.cardDetailsTargets.filter((detail) => detail.card.left >= geometry.rowClip.left - 1
         && detail.card.right <= geometry.rowClip.right + 1);
@@ -730,19 +850,31 @@ test("Harvest content-fit scales from 1 to 8 genuine cards and swipes at 6–8 s
         const touch = await context.newCDPSession(page);
         await row.evaluate((element) => { element.scrollLeft = 0; });
         for (let gesture = 0; gesture < 3; gesture += 1) {
-          const position = await row.evaluate((element) => ({
-            left: element.getBoundingClientRect().left,
-            right: element.getBoundingClientRect().right,
-            top: element.querySelector(".harvest-card-choice").getBoundingClientRect().top,
-            height: element.querySelector(".harvest-card-choice").getBoundingClientRect().height,
-            scrollLeft: element.scrollLeft,
-            maxScroll: element.scrollWidth - element.clientWidth,
-          }));
+          const position = await row.evaluate((element) => {
+            const bounds = element.getBoundingClientRect();
+            const clipLeft = bounds.left + element.clientLeft;
+            const clipRight = clipLeft + element.clientWidth;
+            const visibleCards = [...element.querySelectorAll(".harvest-card-choice")].map((card) => card.getBoundingClientRect())
+              .filter((card) => card.right > clipLeft + 1 && card.left < clipRight - 1);
+            const lastVisible = visibleCards.at(-1);
+            const swipeY = lastVisible.top + lastVisible.height * .42;
+            const segmentLeft = Math.max(lastVisible.left, clipLeft);
+            const segmentRight = Math.min(lastVisible.right, clipRight);
+            const swipeX = (segmentLeft + segmentRight) / 2;
+            return {
+              left: bounds.left,
+              right: bounds.right,
+              scrollLeft: element.scrollLeft,
+              maxScroll: element.scrollWidth - element.clientWidth,
+              clientWidth: element.clientWidth,
+              scrollWidth: element.scrollWidth,
+              swipeStart: { x: Math.round(swipeX), y: Math.round(swipeY) },
+              swipeTarget: document.elementFromPoint(swipeX, swipeY)?.className ?? null,
+            };
+          });
           if (position.scrollLeft >= position.maxScroll - 1) break;
-          const start = {
-            x: Math.round(position.right - 12),
-            y: Math.round(position.top + position.height * .42),
-          };
+          const start = position.swipeStart;
+          expect(String(position.swipeTarget), contextLabel).toContain("harvest-card-select");
           await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...start, id: 77 }] });
           for (let step = 1; step <= 12; step += 1) {
             await touch.send("Input.dispatchTouchEvent", {
@@ -776,9 +908,10 @@ test("Harvest content-fit scales from 1 to 8 genuine cards and swipes at 6–8 s
         expect(await page.evaluate(() => window.scrollY)).toBe(0);
       }
 
-      const screenshot = testInfo.outputPath(`harvest-density-${scenario.choices}-cards-${scenario.seats}-seats.png`);
+      const viewportLabel = `${scenario.viewport.width}x${scenario.viewport.height}`;
+      const screenshot = testInfo.outputPath(`harvest-density-${scenario.choices}-cards-${scenario.seats}-seats-${viewportLabel}.png`);
       await page.screenshot({ path: screenshot, animations: "disabled" });
-      await testInfo.attach(`harvest-density-${scenario.choices}-cards-${scenario.seats}-seats`, { path: screenshot, contentType: "image/png" });
+      await testInfo.attach(`harvest-density-${scenario.choices}-cards-${scenario.seats}-seats-${viewportLabel}`, { path: screenshot, contentType: "image/png" });
       await testInfo.attach(`harvest-density-${scenario.choices}-geometry-${scenario.seats}-seats`, {
         body: JSON.stringify({ scenario, geometry, rowSize }, null, 2),
         contentType: "application/json",
