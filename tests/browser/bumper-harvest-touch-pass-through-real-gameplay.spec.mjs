@@ -21,10 +21,96 @@ async function readRoom(request, code, token, viewerId) {
   return response.json();
 }
 
+const harvestSeedRoles = {
+  4: ["Lord", "Loyalist", "Rebel", "Renegade"],
+  6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"],
+  8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"],
+};
+const harvestSeedHeroes = ["cao-cao", "liu-bei", "sun-quan", "simayi", "zhao-yun", "guan-yu", "xiahou-dun", "huang-gai"];
+
+async function seedHarvestPool(request, seatCount, aliveCount = seatCount) {
+  const deck = Array.from({ length: seatCount }, (_, index) => ({
+    id: `harvest-density-${seatCount}-${index + 1}`,
+    kind: index % 2 ? "Dodge" : "Attack",
+    suit: ["♠", "♥", "♦", "♣"][index % 4],
+    rank: String(index + 2),
+  }));
+  const players = harvestSeedRoles[seatCount].map((role, index) => ({
+    name: `DENSITY ${seatCount} PLAYER ${index + 1}`,
+    role,
+    hero: harvestSeedHeroes[index],
+    hp: index < aliveCount ? 4 : 0,
+    maxHp: 4,
+    alive: index < aliveCount,
+    hand: index === 0 ? [{ id: `harvest-density-root-${seatCount}`, kind: "BumperHarvest", suit: "♣", rank: "7" }] : [],
+  }));
+  const response = await request.post(`${API}/__test/seed-playing-game`, {
+    data: { phase: "play", turnSeat: 0, players, deck },
+  });
+  if (!response.ok()) throw new Error(`Harvest density room seed failed: ${await response.text()}`);
+  return response.json();
+}
+
+async function openHarvestChoice(request, seed) {
+  const source = seed.players[0];
+  let latestRoom = null;
+  const declines = [];
+  const played = await request.post(`${API}/api/rooms`, {
+    data: { action: "play_card", code: seed.code, token: source.token, cardId: `harvest-density-root-${seed.players.length}` },
+  });
+  expect(played.ok(), await played.text()).toBeTruthy();
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    let room = await readRoom(request, seed.code, source.token);
+    latestRoom = room;
+    if (room.pendingHarvest) return room;
+    if (room.phase !== "response") throw new Error(`Expected Harvest choice or Negation, got ${room.phase}/${room.pending?.kind}`);
+    const actor = seed.players.find((player) => player.id === room.currentAction?.actorId);
+    expect(actor, "the authoritative Negation actor belongs to this room").toBeTruthy();
+    const actorRoom = await readRoom(request, seed.code, actor.token);
+    const windowId = actorRoom.currentAction?.negationWindowId;
+    expect(windowId).toBeTruthy();
+    if (!actorRoom.currentAction?.legalActions?.includes("decline_response")) {
+      const expired = await request.post(`${API}/__test/negation-window-clock`, {
+        data: { code: seed.code, windowId, mode: "expire" },
+      });
+      expect(expired.ok(), await expired.text()).toBeTruthy();
+      const advanced = await request.post(`${API}/api/rooms`, {
+        data: { action: "advance_timers", code: seed.code, token: source.token },
+      });
+      expect(advanced.ok(), await advanced.text()).toBeTruthy();
+      continue;
+    }
+    const declined = await request.post(`${API}/api/rooms`, {
+      data: {
+        action: "decline_response",
+        code: seed.code,
+        token: actor.token,
+        context: {
+          actionRevision: actorRoom.actionRevision,
+          meId: actor.id,
+          phase: "response",
+          pendingKind: "response",
+          windowId,
+        },
+      },
+    });
+    const body = await declined.json();
+    expect(declined.ok(), JSON.stringify(body)).toBeTruthy();
+    declines.push({ actor: actor.name, response: body.room?.phase ?? null, pendingKind: body.room?.pending?.kind ?? null });
+  }
+  throw new Error(`Bumper Harvest did not reach a choice after Negation: ${JSON.stringify({ phase: latestRoom?.phase, pending: latestRoom?.pending, currentAction: latestRoom?.currentAction, alive: seed.players.map(({ id, name }) => ({ id, name })), declines })}`);
+}
+
 async function tap(page, locator) {
   const bounds = await locator.boundingBox();
   expect(bounds, "the intended mobile control has a visible hit box").toBeTruthy();
   await page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+}
+
+async function tapHarvestCard(page, locator) {
+  const bounds = await locator.boundingBox();
+  expect(bounds, "the intended mobile Harvest card has a visible hit box").toBeTruthy();
+  await page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height * .3);
 }
 
 async function harvestGeometry(page) {
@@ -68,6 +154,8 @@ async function harvestGeometry(page) {
     const stageRect = rect(stage);
     const panelRect = rect(panel);
     const rootRect = rect(root);
+    const rootFace = root?.querySelector(".played-card");
+    const rootCorner = rootFace?.querySelector("i");
     const announcementRect = announcement && getComputedStyle(announcement).visibility !== "hidden" ? rect(announcement) : null;
     const footerRect = rect(footer);
     const rowRect = rect(row);
@@ -94,10 +182,32 @@ async function harvestGeometry(page) {
       panelZIndex: panel ? getComputedStyle(panel).zIndex : null,
       stageZIndex: stage ? getComputedStyle(stage).zIndex : null,
       root: rootRect,
+      rootFace: rect(rootFace),
+      rootCorner: rect(rootCorner),
+      rootCornerFontSize: rootCorner ? getComputedStyle(rootCorner).fontSize : null,
+      rootSuitFontSize: rootCorner?.querySelector("small") ? getComputedStyle(rootCorner.querySelector("small")).fontSize : null,
       announcement: announcementRect,
       row: rowRect,
       rowClip,
       cards: [...(row?.querySelectorAll(".harvest-card-choice") ?? [])].map(rect),
+      cardDetailsTargets: [...(row?.querySelectorAll(".harvest-card-choice") ?? [])].map((choice) => {
+        const card = rect(choice);
+        const infoButton = choice.querySelector(".harvest-card-info");
+        const info = rect(infoButton);
+        const title = rect(choice.querySelector(".card-name-mark"));
+        const visibleGlyph = info ? { left: info.left + (info.width - 20) / 2, top: info.top + (info.height - 20) / 2,
+          right: info.left + (info.width + 20) / 2, bottom: info.top + (info.height + 20) / 2 } : null;
+        return { card, info, infoHitMatches: hit(infoButton).hitMatches,
+          infoCentered: Boolean(card && info && Math.abs((card.left + card.right) / 2 - (info.left + info.right) / 2) <= 1),
+          titleClearOfInfoGlyph: !intersects(title, visibleGlyph),
+          cardCenterOutsideInfo: Boolean(card && info && !(
+            (card.left + card.right) / 2 >= info.left && (card.left + card.right) / 2 <= info.right
+            && (card.top + card.bottom) / 2 >= info.top && (card.top + card.bottom) / 2 <= info.bottom
+          )),
+          infoBottomInset: card && info ? card.bottom - info.bottom : null,
+          infoWidth: info?.width ?? 0, infoHeight: info?.height ?? 0,
+          infoGlyphSize: infoButton ? getComputedStyle(infoButton, "::before").width : null };
+      }),
       footer: footerRect,
       timer: rect(timer),
       activity: rect(activity),
@@ -114,6 +224,7 @@ async function harvestGeometry(page) {
       overlaps: {
         rootPanel: intersects(rootRect, panelRect),
         rootRow: intersects(rootRect, rowRect),
+        rootAnnouncement: intersects(rootRect, announcementRect),
         panelAnnouncement: intersects(panelRect, announcementRect),
         panelTimer: intersects(panelRect, rect(timer)),
         panelActivity: intersects(panelRect, rect(activity)),
@@ -242,6 +353,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
         expect(geometry.overlaps, JSON.stringify({ viewerLabel, geometry })).toEqual({
           rootPanel: false,
           rootRow: false,
+          rootAnnouncement: false,
           panelAnnouncement: false,
           panelTimer: false,
           panelActivity: false,
@@ -285,6 +397,18 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
           expect(geometry.footer).toBeNull();
           expect(geometry.panelPointerEvents).toBe("none");
         }
+        expect(geometry.cards).toHaveLength(4);
+        expect(geometry.panel.width, JSON.stringify({ viewerLabel, geometry })).toBeLessThan(viewport.width - 32);
+        expect(geometry.cardDetailsTargets.every((detail) => detail.infoHitMatches && detail.infoCentered
+          && detail.infoBottomInset >= 0 && detail.infoBottomInset <= 2
+          && detail.infoWidth >= 44 && detail.infoHeight >= 44 && detail.titleClearOfInfoGlyph), JSON.stringify({ viewerLabel, geometry })).toBe(true);
+        expect(geometry.cards.every((card) => card.width >= (actor ? 62 : 52)), JSON.stringify({ viewerLabel, geometry })).toBe(true);
+        if (actor) expect(geometry.cardDetailsTargets.every((detail) => detail.cardCenterOutsideInfo), JSON.stringify({ viewerLabel, geometry })).toBe(true);
+        expect(geometry.rootFace, JSON.stringify({ viewerLabel, geometry })).toMatchObject({ width: 40, height: 60 });
+        expect(geometry.rootCorner.width / geometry.rootFace.width, JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(.25);
+        expect(geometry.rootCorner.height / geometry.rootFace.height, JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(.26);
+        expect(Number.parseFloat(geometry.rootCornerFontSize), JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(5);
+        expect(Number.parseFloat(geometry.rootSuitFontSize), JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(4);
         const screenshot = testInfo.outputPath(`bumper-harvest-${viewerLabel}-${viewport.width}x${viewport.height}.png`);
         await page.screenshot({ path: screenshot, animations: "disabled" });
         await testInfo.attach(`bumper-harvest-${viewerLabel}-${viewport.width}x${viewport.height}`, { path: screenshot, contentType: "image/png" });
@@ -303,6 +427,13 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     const initialDeadline = initialHarvest.pendingHarvest.countdownUntil;
     await auditHarvestView("spectator", false, host.id);
     await page.setViewportSize({ width: 390, height: 700 });
+    const spectatorFirstCard = page.locator(".harvest-card-select").first();
+    await expect(spectatorFirstCard).toBeDisabled();
+    await tap(page, page.locator(".harvest-card-info").first());
+    await expect(page.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
+    await expect(page.getByRole("button", { name: "Confirm choice" })).toHaveCount(0);
+    await expect(spectatorFirstCard).toHaveAttribute("aria-pressed", "false");
+    await tap(page, page.getByRole("button", { name: "Close card details" }));
     const hitMapHandle = await page.waitForFunction(() => {
       const stage = document.querySelector(".harvest-choice-stage");
       const panel = document.querySelector(".harvest-choice-panel");
@@ -365,18 +496,18 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await page.setViewportSize({ width: 390, height: 700 });
     const firstCard = page.locator(".harvest-card-select:not([disabled])").first();
     await expect(firstCard).toBeVisible();
-    await tap(page, firstCard);
+    await tapHarvestCard(page, firstCard);
     await expect(firstCard).toHaveAttribute("aria-pressed", "true");
     const firstCardInfo = page.locator(".harvest-card-choice").first().locator(".harvest-card-info");
     await tap(page, firstCardInfo);
     await expect(page.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
     await expect(firstCard).toHaveAttribute("aria-pressed", "true");
     await tap(page, page.getByRole("button", { name: "Close card details" }));
-    await tap(page, firstCard);
+    await tapHarvestCard(page, firstCard);
     await expect(firstCard).toHaveAttribute("aria-pressed", "false");
     const firstConfirm = page.getByRole("button", { name: "Confirm choice" });
     await expect(firstConfirm).toBeDisabled();
-    await tap(page, firstCard);
+    await tapHarvestCard(page, firstCard);
     await expect(firstCard).toHaveAttribute("aria-pressed", "true");
     await expect(firstConfirm).toBeEnabled();
     await expect(page.getByRole("button", { name: "Confirm choice" })).toHaveCount(1);
@@ -405,12 +536,12 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(page.locator(`.opponent-inspection-panel[data-inspect-player-id="${activeSwitchTarget.id}"]`)).toBeVisible();
     await tap(page, page.getByRole("button", { name: `Close ${activeSwitchTarget.name} inspection` }));
     const finalHarvestCard = page.locator(".harvest-card-select:not([disabled])").first();
-    await tap(page, finalHarvestCard);
+    await tapHarvestCard(page, finalHarvestCard);
     await expect(finalHarvestCard).toHaveAttribute("aria-pressed", "true");
-    await tap(page, finalHarvestCard);
+    await tapHarvestCard(page, finalHarvestCard);
     await expect(finalHarvestCard).toHaveAttribute("aria-pressed", "false");
     await expect(firstConfirm).toBeDisabled();
-    await tap(page, finalHarvestCard);
+    await tapHarvestCard(page, finalHarvestCard);
     await expect(finalHarvestCard).toHaveAttribute("aria-pressed", "true");
     await expect(firstConfirm).toBeEnabled();
     const firstChoiceResponse = page.waitForResponse((response) => {
@@ -443,7 +574,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     const secondActorDock = page.locator(`.local-player-dock[data-player-anchor="${secondActorId}"]`);
     await expect(secondActorDock).toBeVisible();
     await expect(secondActorDock).toBeFocused();
-    await tap(page, page.locator(".harvest-card-select:not([disabled])").first());
+    await tapHarvestCard(page, page.locator(".harvest-card-select:not([disabled])").first());
     const secondConfirm = page.getByRole("button", { name: "Confirm choice" });
     await expect(secondConfirm).toBeEnabled();
     const secondChoiceResponse = page.waitForResponse((response) => {
@@ -459,5 +590,124 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     expect(afterSecondChoice.log.some((entry) => entry.includes(`${room.players.find((player) => player.id === secondActorId).name} chooses`))).toBe(true);
   } finally {
     await context.close();
+  }
+});
+
+test("Harvest content-fit scales from 1 to 8 genuine cards and swipes at 6–8 seats", async ({ browser, request }, testInfo) => {
+  test.setTimeout(120_000);
+  for (const scenario of [
+    { seats: 4, alive: 1, choices: 1, viewport: { width: 390, height: 700 } },
+    { seats: 4, alive: 2, choices: 2, viewport: { width: 390, height: 844 } },
+    { seats: 6, alive: 6, choices: 6, viewport: { width: 390, height: 700 } },
+    { seats: 8, alive: 8, choices: 8, viewport: { width: 440, height: 766 } },
+  ]) {
+    const seed = await seedHarvestPool(request, scenario.seats, scenario.alive);
+    const room = await openHarvestChoice(request, seed);
+    expect(room.pendingHarvest.revealed).toHaveLength(scenario.choices);
+    expect(room.pendingHarvest.actorId).toBe(seed.players[0].id);
+
+    const context = await browser.newContext({ viewport: scenario.viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+    try {
+      const page = await context.newPage();
+      await page.addInitScript(({ code, token, name }) => {
+        localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
+      }, { code: seed.code, token: seed.players[0].token, name: seed.players[0].name });
+      await page.goto(`${API}/`);
+      await expect(page.locator(".game-shell")).toBeVisible();
+      await expect(page.locator(".harvest-choice-panel--actor")).toBeVisible();
+      await expect(page.locator(".harvest-card-choice")).toHaveCount(scenario.choices);
+      await expect(page.locator(`.player-board[data-player-count="${scenario.seats}"]`)).toBeVisible();
+      if (scenario.seats >= 6) {
+        await expect(page.locator(`.player-board[data-player-count="${scenario.seats}"][data-seat-topology="side-column"]`)).toBeVisible();
+      }
+
+      const geometry = await harvestGeometry(page);
+      const contextLabel = JSON.stringify({ scenario, geometry });
+      expect(geometry.panel.width, contextLabel).toBeLessThanOrEqual(scenario.viewport.width - 16);
+      expect(geometry.overlaps, contextLabel).toMatchObject({
+        panelAnnouncement: false,
+        panelSeat: false,
+        panelTimer: false,
+      });
+      expect(geometry.cards.every((card) => card.width >= 58), contextLabel).toBe(true);
+      expect(geometry.footer.bottom, contextLabel).toBeLessThanOrEqual(scenario.viewport.height + 1);
+      const initialVisibleDetails = geometry.cardDetailsTargets.filter((detail) => detail.card.left >= geometry.rowClip.left - 1
+        && detail.card.right <= geometry.rowClip.right + 1);
+      expect(initialVisibleDetails.length, contextLabel).toBeGreaterThan(0);
+      expect(initialVisibleDetails.every((detail) => detail.infoWidth >= 44
+        && detail.infoHeight >= 44 && detail.infoCentered && detail.titleClearOfInfoGlyph), contextLabel).toBe(true);
+      expect(scenario.choices <= 4 ? geometry.panel.width < scenario.viewport.width - 16 : geometry.panel.width <= scenario.viewport.width - 16, contextLabel).toBe(true);
+      expect(geometry.document.documentWidth).toBeLessThanOrEqual(scenario.viewport.width);
+
+      const row = page.locator(".harvest-card-row");
+      const rowSize = await row.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
+      if (scenario.choices <= 2) {
+        expect(rowSize.scrollWidth).toBeLessThanOrEqual(rowSize.clientWidth + 1);
+      }
+      if (scenario.choices >= 6) {
+        expect(rowSize.scrollWidth, contextLabel).toBeGreaterThan(rowSize.clientWidth);
+        const cardFace = page.locator(".harvest-card-select:not([disabled]) .played-card").first();
+        const faceBounds = await cardFace.boundingBox();
+        const rowBounds = await row.boundingBox();
+        expect(faceBounds && rowBounds).toBeTruthy();
+        const touch = await context.newCDPSession(page);
+        await row.evaluate((element) => { element.scrollLeft = 0; });
+        for (let gesture = 0; gesture < 3; gesture += 1) {
+          const position = await row.evaluate((element) => ({
+            left: element.getBoundingClientRect().left,
+            right: element.getBoundingClientRect().right,
+            top: element.querySelector(".harvest-card-choice").getBoundingClientRect().top,
+            height: element.querySelector(".harvest-card-choice").getBoundingClientRect().height,
+            scrollLeft: element.scrollLeft,
+            maxScroll: element.scrollWidth - element.clientWidth,
+          }));
+          if (position.scrollLeft >= position.maxScroll - 1) break;
+          const start = {
+            x: Math.round(position.right - 12),
+            y: Math.round(position.top + position.height * .42),
+          };
+          await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...start, id: 77 }] });
+          for (let step = 1; step <= 12; step += 1) {
+            await touch.send("Input.dispatchTouchEvent", {
+              type: "touchMove",
+              touchPoints: [{ x: start.x - step * 18, y: start.y, id: 77 }],
+            });
+          }
+          await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+          await expect.poll(() => row.evaluate((element) => element.scrollLeft)).toBeGreaterThan(position.scrollLeft);
+        }
+        await expect.poll(() => row.evaluate((element) => element.scrollLeft >= element.scrollWidth - element.clientWidth - 1)).toBe(true);
+        await expect(page.locator(".harvest-card-select[aria-pressed='true']")).toHaveCount(0);
+        await expect.poll(() => page.locator(".harvest-card-select:not([disabled])").last().evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          const rowRect = element.closest(".harvest-card-row").getBoundingClientRect();
+          return rect.left >= rowRect.left - 1 && rect.right <= rowRect.right + 1;
+        })).toBe(true);
+        const lastCard = page.locator(".harvest-card-choice").last();
+        const lastInfo = lastCard.locator(".harvest-card-info");
+        const lastInfoHit = await lastInfo.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          return Boolean(hit && (hit === element || element.contains(hit)));
+        });
+        expect(lastInfoHit, contextLabel).toBe(true);
+        await tap(page, lastInfo);
+        await expect(page.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
+        await expect(lastCard.locator(".harvest-card-select")).toHaveAttribute("aria-pressed", "false");
+        await tap(page, page.getByRole("button", { name: "Close card details" }));
+        await touch.detach();
+        expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      }
+
+      const screenshot = testInfo.outputPath(`harvest-density-${scenario.choices}-cards-${scenario.seats}-seats.png`);
+      await page.screenshot({ path: screenshot, animations: "disabled" });
+      await testInfo.attach(`harvest-density-${scenario.choices}-cards-${scenario.seats}-seats`, { path: screenshot, contentType: "image/png" });
+      await testInfo.attach(`harvest-density-${scenario.choices}-geometry-${scenario.seats}-seats`, {
+        body: JSON.stringify({ scenario, geometry, rowSize }, null, 2),
+        contentType: "application/json",
+      });
+    } finally {
+      await context.close();
+    }
   }
 });
