@@ -2400,6 +2400,37 @@ Only a proven regression or new Reviewer-approved design requirement does.
   server projection plus production-page interaction, not deployed-game
   screenshot or Reviewer acceptance.
 
+### UX2 §10.17.1 BCP-1 — Bumper Harvest choice panel — 2026-10-18
+
+- Separated the public revealed-card pool from the played Harvest root,
+  compacted the pool, and added independent card details and actor-only
+  confirmation. Selection remains viewer/action scoped and retaps deselect;
+  server `choose_harvest` authorization and public taken status are unchanged.
+- Commits `8b7fd9a` and `50e9bb6`. Focused real-gameplay browser checks passed
+  6/6, including selection touch pass-through to TEST SWITCH; build passed.
+  Exact-SHA Actions run
+  [`39114579762`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39114579762)
+  passed API, lint/fast, browser smoke, D1 migration, Worker deployment and
+  production smoke for `50e9bb6f8c67574214436e3ca49a7547faca1b64`. Pending user
+  phone review; Reviewer acceptance is not claimed.
+
+### UX2 §10.17.2 BCP-2 — Steal / Burning Bridge picker — 2026-10-18
+
+- Compact mandatory target-card choices inside the table corridor, with
+  independent public-card details, same-card retap deselection and pinned
+  Confirm. Actor legality remains `CurrentAction`-owned; no standalone Cancel
+  or hidden Hand identity was added.
+- Real-gameplay browser regression passed 21/21 at 390×700, 390×844, 440×766,
+  480×900 and 1440×900, including Hand-only, Equipment-only, mixed zones,
+  Inspector, SWITCH, privacy and legal submission. `test:fast` passed 280/280.
+  Exact-SHA Actions run
+  [`39116626824`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39116626824)
+  passed lint/fast, API, browser smoke, D1 migration, Worker deployment and
+  production smoke for `641bf4079c8a991c2c54a2a9f6d00fdf45875107` (API passed
+  on the same-SHA rerun). Worker version:
+  `ec194d74-7faf-4689-975a-20b092565cd6`. Pending user phone review; Reviewer
+  acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,

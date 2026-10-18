@@ -5217,10 +5217,10 @@
   color: #8f846e;
 }
 
-/* §10.17.2 BCP-2: mandatory Steal/Burning Bridge decisions stay compact in
-   the table corridor. The table-wide backdrop remains pass-through; this
-   panel owns the card selection and pinned confirmation controls only. */
-.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel--mandatory {
+/* §10.17.2–10.17.3 BCP-2/3: compact card decisions stay in the table
+   corridor. The table-wide backdrop remains pass-through; this panel owns
+   selection and its pinned action controls only. */
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel--compact {
   display: flex;
   width: min(560px, 100%);
   max-height: calc(100% - 8px);
@@ -5230,15 +5230,15 @@
   padding: 8px;
   text-align: left;
 }
-.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.target-card-picker-panel--mandatory {
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.target-card-picker-panel--compact {
   overflow: hidden;
 }
-.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.target-card-picker-panel--mandatory > .target-card-picker-zones {
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.target-card-picker-panel--compact > .target-card-picker-zones {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
 }
-.target-card-picker-panel--mandatory > header {
+.target-card-picker-panel--compact > header {
   display: flex;
   flex: 0 0 auto;
   align-items: baseline;
@@ -5247,18 +5247,18 @@
   padding: 0 2px 4px;
   border-bottom: 1px solid #554a31;
 }
-.target-card-picker-panel--mandatory > header strong {
+.target-card-picker-panel--compact > header strong {
   font-size: 11px;
   letter-spacing: .09em;
 }
-.target-card-picker-panel--mandatory > header span {
+.target-card-picker-panel--compact > header span {
   margin: 0;
   color: #d0c8b4;
   font-size: 9px;
   line-height: 1.2;
   text-align: right;
 }
-.target-card-picker-panel--mandatory > .target-card-picker-zones {
+.target-card-picker-panel--compact > .target-card-picker-zones {
   display: grid;
   flex: 1 1 auto;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5269,59 +5269,59 @@
   padding: 0;
   overscroll-behavior: contain;
 }
-.target-card-picker-panel--mandatory .target-card-picker-zone {
+.target-card-picker-panel--compact .target-card-picker-zone {
   min-width: 0;
   padding: 4px;
 }
-.target-card-picker-panel--mandatory .target-card-picker-zone-heading {
+.target-card-picker-panel--compact .target-card-picker-zone-heading {
   gap: 4px;
   min-height: 11px;
 }
-.target-card-picker-panel--mandatory .target-card-picker-zone h3 {
+.target-card-picker-panel--compact .target-card-picker-zone h3 {
   font-size: 8px;
   letter-spacing: .08em;
 }
-.target-card-picker-panel--mandatory .target-card-picker-zone-scroll-hint {
+.target-card-picker-panel--compact .target-card-picker-zone-scroll-hint {
   display: none;
 }
-.target-card-picker-panel--mandatory .target-card-picker-zone-hand {
+.target-card-picker-panel--compact .target-card-picker-zone-hand {
   grid-column: 1 / -1;
 }
-.target-card-picker-panel--mandatory .target-card-picker-zone .target-card-picker-card-row {
+.target-card-picker-panel--compact .target-card-picker-zone .target-card-picker-card-row {
   justify-content: flex-start;
   gap: 5px;
   padding: 4px 1px 2px;
 }
-.target-card-picker-panel--mandatory .target-card-picker-zones[data-zone-composition="hand"] .target-card-picker-zone-hand .target-card-picker-card-row:not([data-hand-scrollable="true"]) {
+.target-card-picker-panel--compact .target-card-picker-zones[data-zone-composition="hand"] .target-card-picker-zone-hand .target-card-picker-card-row:not([data-hand-scrollable="true"]) {
   justify-content: center;
 }
-.target-card-picker-panel--mandatory .target-card-picker-zone-equipment,
-.target-card-picker-panel--mandatory .target-card-picker-zone-judgement {
+.target-card-picker-panel--compact .target-card-picker-zone-equipment,
+.target-card-picker-panel--compact .target-card-picker-zone-judgement {
   grid-column: span 1;
 }
-.target-card-picker-panel--mandatory .target-card-picker-zones[data-zone-composition="hand-equipment"] .target-card-picker-zone-equipment,
-.target-card-picker-panel--mandatory .target-card-picker-zones[data-zone-composition="hand-judgement"] .target-card-picker-zone-judgement {
+.target-card-picker-panel--compact .target-card-picker-zones[data-zone-composition="hand-equipment"] .target-card-picker-zone-equipment,
+.target-card-picker-panel--compact .target-card-picker-zones[data-zone-composition="hand-judgement"] .target-card-picker-zone-judgement {
   grid-column: 1 / -1;
 }
-.target-card-picker-panel--mandatory .target-card-picker-zones[data-zone-count="1"] .target-card-picker-zone,
-.target-card-picker-panel--mandatory .target-card-picker-zones[data-zone-composition="hand-equipment-judgement"] .target-card-picker-zone-hand {
+.target-card-picker-panel--compact .target-card-picker-zones[data-zone-count="1"] .target-card-picker-zone,
+.target-card-picker-panel--compact .target-card-picker-zones[data-zone-composition="hand-equipment-judgement"] .target-card-picker-zone-hand {
   grid-column: 1 / -1;
 }
-.target-card-picker-panel--mandatory .target-card-picker-public-card {
+.target-card-picker-panel--compact .target-card-picker-public-card {
   position: relative;
   flex: 0 0 auto;
   width: clamp(74px, 12vw, 92px);
   height: auto;
   aspect-ratio: 5 / 7;
 }
-.target-card-picker-panel--mandatory .target-card-picker-public-card > .target-card-picker-card {
+.target-card-picker-panel--compact .target-card-picker-public-card > .target-card-picker-card {
   box-sizing: border-box;
   width: 100%;
   height: 100%;
   flex: 0 0 100%;
   aspect-ratio: auto;
 }
-.target-card-picker-panel--mandatory .target-card-picker-info {
+.target-card-picker-panel--compact .target-card-picker-info {
   position: absolute;
   z-index: 3;
   top: 0;
@@ -5337,7 +5337,7 @@
   color: #f0d28c;
   cursor: pointer;
 }
-.target-card-picker-panel--mandatory .target-card-picker-info > span {
+.target-card-picker-panel--compact .target-card-picker-info > span {
   display: grid;
   width: 19px;
   height: 19px;
@@ -5347,16 +5347,18 @@
   background: #0c0f0df0;
   font: 700 11px/1 Arial, sans-serif;
 }
-.target-card-picker-panel--mandatory .target-card-picker-info:focus-visible {
+.target-card-picker-panel--compact .target-card-picker-info:focus-visible {
   outline: 2px solid #ffe5a5;
   outline-offset: 1px;
 }
-.target-card-picker-panel--mandatory > .target-card-picker-count {
+.target-card-picker-panel--compact > .target-card-picker-count {
   flex: 0 0 auto;
   padding: 1px 2px;
   text-align: right;
 }
-.target-card-picker-panel--mandatory > .target-card-picker-actions {
+.target-card-picker-panel--compact > .target-card-picker-actions {
+  display: flex;
+  flex-direction: row;
   flex: 0 0 auto;
   justify-content: stretch;
   gap: 6px;
@@ -5364,69 +5366,72 @@
   padding-top: 4px;
   border-top: 1px solid #554a31;
 }
-.target-card-picker-panel--mandatory > .target-card-picker-actions button {
+.target-card-picker-panel--compact > .target-card-picker-actions button {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
   min-height: 44px;
 }
 
 @media (max-width: 600px) {
-  .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel--mandatory {
+  .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel--compact {
     width: 100%;
     gap: 3px;
     padding: 4px;
   }
-  .target-card-picker-panel--mandatory > header {
+  .target-card-picker-panel--compact > header {
     padding-bottom: 2px;
   }
-  .target-card-picker-panel--mandatory > header strong {
+  .target-card-picker-panel--compact > header strong {
     font-size: 10px;
   }
-  .target-card-picker-panel--mandatory > header span {
+  .target-card-picker-panel--compact > header span {
     font-size: 8px;
   }
-  .target-card-picker-panel--mandatory > .target-card-picker-zones {
+  .target-card-picker-panel--compact > .target-card-picker-zones {
     grid-template-columns: minmax(0, 2.1fr) minmax(0, 1.3fr) minmax(0, .6fr);
     gap: 3px;
     overflow-x: hidden;
     overflow-y: auto;
   }
-  .target-card-picker-panel--mandatory .target-card-picker-zone {
+  .target-card-picker-panel--compact .target-card-picker-zone {
     grid-column: span 1;
     padding: 2px;
   }
-  .target-card-picker-panel--mandatory .target-card-picker-zone-hand {
+  .target-card-picker-panel--compact .target-card-picker-zone-hand {
     grid-column: span 1;
   }
-  .target-card-picker-panel--mandatory > .target-card-picker-zones[data-zone-composition="hand-equipment-judgement"] > .target-card-picker-zone-hand {
+  .target-card-picker-panel--compact > .target-card-picker-zones[data-zone-composition="hand-equipment-judgement"] > .target-card-picker-zone-hand {
     grid-column: span 1;
   }
-  .target-card-picker-panel--mandatory .target-card-picker-zone h3 {
+  .target-card-picker-panel--compact .target-card-picker-zone h3 {
     font-size: 7px;
     letter-spacing: .05em;
   }
-  .target-card-picker-panel--mandatory .target-card-picker-zone .target-card-picker-card-row {
+  .target-card-picker-panel--compact .target-card-picker-zone .target-card-picker-card-row {
     gap: 1.5px;
     padding: 2px 0;
     touch-action: pan-x;
   }
-  .target-card-picker-panel--mandatory .target-card-picker-zones[data-zone-count="1"] .target-card-picker-zone {
+  .target-card-picker-panel--compact .target-card-picker-zones[data-zone-count="1"] .target-card-picker-zone {
     grid-column: 1 / -1;
   }
-  .target-card-picker-panel--mandatory .target-card-picker-zones[data-zone-composition="hand-equipment"] .target-card-picker-zone-hand,
-  .target-card-picker-panel--mandatory .target-card-picker-zones[data-zone-composition="hand-judgement"] .target-card-picker-zone-hand,
-  .target-card-picker-panel--mandatory .target-card-picker-zones[data-zone-composition="equipment-judgement"] .target-card-picker-zone-equipment {
+  .target-card-picker-panel--compact .target-card-picker-zones[data-zone-composition="hand-equipment"] .target-card-picker-zone-hand,
+  .target-card-picker-panel--compact .target-card-picker-zones[data-zone-composition="hand-judgement"] .target-card-picker-zone-hand,
+  .target-card-picker-panel--compact .target-card-picker-zones[data-zone-composition="equipment-judgement"] .target-card-picker-zone-equipment {
     grid-column: span 2;
   }
-  .target-card-picker-panel--mandatory .target-card-picker-card[data-target-card-zone="hand-position"] {
+  .target-card-picker-panel--compact .target-card-picker-card[data-target-card-zone="hand-position"] {
     flex-basis: clamp(44px, 11vw, 46px);
     width: clamp(44px, 11vw, 46px);
     height: auto;
     aspect-ratio: 5 / 7;
   }
-  .target-card-picker-panel--mandatory .target-card-picker-public-card {
+  .target-card-picker-panel--compact .target-card-picker-public-card {
     width: clamp(48px, 11.5vw, 54px);
   }
-  .target-card-picker-panel--mandatory .target-card-picker-public-card > .target-card-picker-card[data-target-card-zone="equipment"] .played-card .card-name-mark,
-  .target-card-picker-panel--mandatory .target-card-picker-public-card > .target-card-picker-card[data-target-card-zone="judgement"] .played-card .card-name-mark {
+  .target-card-picker-panel--compact .target-card-picker-public-card > .target-card-picker-card[data-target-card-zone="equipment"] .played-card .card-name-mark,
+  .target-card-picker-panel--compact .target-card-picker-public-card > .target-card-picker-card[data-target-card-zone="judgement"] .played-card .card-name-mark {
     max-width: 100%;
     font-size: clamp(7px, 1.8vw, 8px);
     letter-spacing: normal;
@@ -5434,14 +5439,15 @@
     overflow-wrap: anywhere;
     word-break: break-word;
   }
-  .target-card-picker-panel--mandatory .target-card-picker-public-card .played-card > strong {
+  .target-card-picker-panel--compact .target-card-picker-public-card .played-card > strong {
     margin-top: 3px;
     font-size: 5px;
   }
-  .target-card-picker-panel--mandatory > .target-card-picker-actions {
+  .target-card-picker-panel--compact > .target-card-picker-actions {
+    flex-direction: row;
     gap: 6px;
   }
-  .target-card-picker-panel--mandatory > .target-card-picker-actions button {
+  .target-card-picker-panel--compact > .target-card-picker-actions button {
     flex: 1 1 0;
     min-width: 0;
     min-height: 44px;

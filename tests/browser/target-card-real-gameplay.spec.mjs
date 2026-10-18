@@ -402,76 +402,182 @@ for (const kind of ["Steal", "Dismantle"]) {
   });
 }
 
-test("real Sima Yi Retaliation reaches the modal with private Hand positions from the server", async ({ page, request }) => {
+test("real Sima Yi Retaliation is compact, deselectable, private, and actor-only at 390x700", async ({ browser, request }, testInfo) => {
+  test.setTimeout(90_000);
   const attack = card("Attack", "real-retaliation-attack");
   const hidden = [card("Peach", "real-retaliation-hidden-a"), card("Dodge", "real-retaliation-hidden-b")];
   const seed = await seedGame(request, fourPlayers(
     { hand: [attack, ...hidden] },
     { hero: "simayi", hand: [card("Peach", "real-retaliation-target-peach")] },
   ));
-  await openGame(page, seed, 1);
-  await act(request, seed, 0, "play_card", { cardId: attack.id, targetId: seed.players[1].id });
-  await act(request, seed, 1, "decline_response");
+  const actorContext = await browser.newContext({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const observerContext = await browser.newContext({ viewport: { width: 440, height: 766 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  try {
+    const actorPage = await actorContext.newPage();
+    await openGame(actorPage, seed, 1, { width: 390, height: 700 });
+    await act(request, seed, 0, "play_card", { cardId: attack.id, targetId: seed.players[1].id });
+    await act(request, seed, 1, "decline_response");
 
-  const reaction = await roomView(request, seed, 1);
-  const option = reaction.currentAction.triggerOptions.find((entry) => entry.effectId === "sima_yi_fankui");
-  expect(reaction.currentAction.kind).toBe("trigger");
-  expect(option?.selection).toMatchObject({ type: "target_cards", targetId: seed.players[0].id, min: 1, max: 1, eligibleKeys: ["hand:0", "hand:1"] });
-  expect(JSON.stringify(reaction.currentAction)).not.toContain(hidden[0].id);
-  expect(JSON.stringify(reaction.currentAction)).not.toContain(hidden[1].id);
+    const reaction = await roomView(request, seed, 1);
+    const option = reaction.currentAction.triggerOptions.find((entry) => entry.effectId === "sima_yi_fankui");
+    expect(reaction.currentAction.kind).toBe("trigger");
+    expect(reaction.currentAction.legalActions).toEqual(expect.arrayContaining(["trigger", "decline_trigger"]));
+    expect(option?.selection).toMatchObject({ type: "target_cards", targetId: seed.players[0].id, min: 1, max: 1, eligibleKeys: ["hand:0", "hand:1"] });
+    expect(JSON.stringify(reaction.currentAction)).not.toContain(hidden[0].id);
+    expect(JSON.stringify(reaction.currentAction)).not.toContain(hidden[1].id);
 
-  const skill = page.getByRole("button", { name: "Retaliation", exact: true });
-  const dock = page.locator(`.local-player-dock[data-player-anchor="${seed.players[1].id}"]`);
-  const duplicate = dock.locator('[data-action-extras="true"]').getByRole("button", { name: /Retaliation/ });
-  await expect(skill).toBeEnabled({ timeout: 15_000 });
-  await expect(duplicate).toHaveCount(0);
-  await skill.click();
-  await expect(skill).toHaveAttribute("aria-pressed", "true");
-  const dialog = await expectModal(page, "Retaliation", "Choose 1 card to obtain", "Use Retaliation");
-  const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 2" });
-  await expect(hiddenPosition).not.toContainText(/Peach|Dodge|real-retaliation/);
-  await hiddenPosition.click();
-  await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+    const observerPage = await observerContext.newPage();
+    await openGame(observerPage, seed, 2, { width: 440, height: 766 });
+    const observerView = await roomView(request, seed, 2);
+    expect(observerView.isMyAction).toBe(false);
+    expect(observerView.currentAction?.actorId).toBe(seed.players[1].id);
+    expect(JSON.stringify(observerView)).not.toContain(hidden[0].id);
+    expect(JSON.stringify(observerView)).not.toContain(hidden[1].id);
+    await expect(observerPage.locator(".target-card-picker-panel")).toHaveCount(0);
 
-  const beforeInspection = await roomView(request, seed, 1);
-  const inspectedPlayerName = seed.players[0].name;
-  await page.locator(`[data-player-anchor="${seed.players[0].id}"] .opponent-hero-target`).click();
-  const inspection = page.locator(`.opponent-inspection-panel[data-inspect-player-id="${seed.players[0].id}"]`);
-  await expect(inspection).toBeVisible();
-  await page.getByRole("button", { name: `Close ${inspectedPlayerName} inspection` }).click();
-  await expect(inspection).toHaveCount(0);
-  await expect(dialog).toBeVisible();
-  await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
-  const afterInspection = await roomView(request, seed, 1);
-  expect(afterInspection.actionRevision).toBe(beforeInspection.actionRevision);
+    const skill = actorPage.getByRole("button", { name: "Retaliation", exact: true });
+    const dock = actorPage.locator(`.local-player-dock[data-player-anchor="${seed.players[1].id}"]`);
+    const duplicate = dock.locator('[data-action-extras="true"]').getByRole("button", { name: /Retaliation/ });
+    await expect(skill).toBeEnabled({ timeout: 15_000 });
+    await expect(duplicate).toHaveCount(0);
+    await tapMobile(actorPage, skill);
+    await expect(skill).toHaveAttribute("aria-pressed", "true");
+    const dialog = await expectModal(actorPage, "Retaliation", "Choose 1 card to obtain", "Use Retaliation");
+    await expect(dialog).toHaveClass(/target-card-picker-panel--compact/);
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
+    const skip = dialog.getByRole("button", { name: "Skip", exact: true });
+    const use = dialog.getByRole("button", { name: "Use Retaliation", exact: true });
+    await expect(skip).toBeEnabled();
+    await expect(use).toBeDisabled();
+    const actionRects = await Promise.all([skip, use].map((button) => button.evaluate((element) => {
+      const { x, y, right, bottom } = element.getBoundingClientRect();
+      return { x, y, right, bottom };
+    })));
+    expect(Math.abs(actionRects[0].y - actionRects[1].y)).toBeLessThan(2);
+    expect(actionRects[0].right).toBeLessThan(actionRects[1].x + 2);
+    expect(actionRects.every(({ bottom }) => bottom <= 700)).toBe(true);
 
-  await page.getByTestId("hand-card-inspection-action").first().click();
-  const cardDetailsAction = page.getByTestId("hand-card-details-action").first();
-  await expect(cardDetailsAction).toBeVisible();
-  await cardDetailsAction.click();
-  const privateCardDetails = page.locator('.card-details-panel[data-card-details-context="private-hand"]');
-  await expect(privateCardDetails).toBeVisible();
-  await page.getByRole("button", { name: "Close card details" }).click();
-  await expect(privateCardDetails).toHaveCount(0);
-  await expect(dialog).toBeVisible();
-  await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
-  expect((await roomView(request, seed, 1)).actionRevision).toBe(beforeInspection.actionRevision);
+    const hiddenPosition = dialog.getByRole("button", { name: "Hidden hand card 2" });
+    await expect(hiddenPosition).not.toContainText(/Peach|Dodge|real-retaliation/);
+    await tapMobile(actorPage, hiddenPosition);
+    await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+    await expect(use).toBeEnabled();
+    await tapMobile(actorPage, hiddenPosition);
+    await expect(hiddenPosition).toHaveAttribute("aria-pressed", "false");
+    await expect(use).toBeDisabled();
+    await tapMobile(actorPage, hiddenPosition);
+    await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+    await actorPage.screenshot({ path: testInfo.outputPath("bcp3-retaliation-390x700.png") });
 
-  const submitPromise = page.waitForResponse((response) => {
-    if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
-    try {
-      const body = JSON.parse(response.request().postData() ?? "{}");
-      return body.action === "trigger" && body.providerId === "sima_yi_fankui";
-    } catch { return false; }
-  });
-  await dialog.getByRole("button", { name: "Use Retaliation" }).click();
-  const submitted = await submitPromise;
-  expect(submitted.ok()).toBe(true);
-  expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
-    action: "trigger", providerId: "sima_yi_fankui", cardKeys: ["hand:1"],
-  });
-  await expect(duplicate).toHaveCount(0);
-  await expect.poll(async () => (await roomView(request, seed, 1)).myHand.map((held) => held.id)).toContain(hidden[1].id);
+    const actionPosts = [];
+    actorPage.on("request", (requestEvent) => {
+      if (requestEvent.url() !== `${API}/api/rooms` || requestEvent.method() !== "POST") return;
+      try { actionPosts.push(JSON.parse(requestEvent.postData() ?? "{}")); } catch { /* Non-JSON form request. */ }
+    });
+    const beforeInspection = await roomView(request, seed, 1);
+    const inspectedPlayerName = seed.players[0].name;
+    await tapMobile(actorPage, actorPage.locator(`[data-player-anchor="${seed.players[0].id}"] .opponent-hero-target`));
+    const inspection = actorPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${seed.players[0].id}"]`);
+    await expect(inspection).toBeVisible();
+    await tapMobile(actorPage, actorPage.getByRole("button", { name: `Close ${inspectedPlayerName} inspection` }));
+    await expect(inspection).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+    expect((await roomView(request, seed, 1)).actionRevision).toBe(beforeInspection.actionRevision);
+
+    await tapMobile(actorPage, actorPage.getByTestId("hand-card-inspection-action").first());
+    const cardDetailsAction = actorPage.getByTestId("hand-card-details-action").first();
+    await expect(cardDetailsAction).toBeVisible();
+    await tapMobile(actorPage, cardDetailsAction);
+    const privateCardDetails = actorPage.locator('.card-details-panel[data-card-details-context="private-hand"]');
+    await expect(privateCardDetails).toBeVisible();
+    await tapMobile(actorPage, actorPage.getByRole("button", { name: "Close card details" }));
+    await expect(privateCardDetails).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+    expect((await roomView(request, seed, 1)).actionRevision).toBe(beforeInspection.actionRevision);
+    expect(actionPosts).toEqual([]);
+
+    const submitPromise = actorPage.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try {
+        const body = JSON.parse(response.request().postData() ?? "{}");
+        return body.action === "trigger" && body.providerId === "sima_yi_fankui";
+      } catch { return false; }
+    });
+    await tapMobile(actorPage, use);
+    const submitted = await submitPromise;
+    expect(submitted.ok()).toBe(true);
+    expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
+      action: "trigger", providerId: "sima_yi_fankui", cardKeys: ["hand:1"],
+    });
+    await expect(dialog).toHaveCount(0);
+    expect(actionPosts).toHaveLength(1);
+    expect(actionPosts[0]).toMatchObject({ action: "trigger", providerId: "sima_yi_fankui", cardKeys: ["hand:1"] });
+    await expect(duplicate).toHaveCount(0);
+    await expect.poll(async () => (await roomView(request, seed, 1)).myHand.map((held) => held.id)).toContain(hidden[1].id);
+  } finally {
+    await actorContext.close();
+    await observerContext.close();
+  }
+});
+
+test("Retaliation Skip is a distinct authorized server action at 440x766", async ({ browser, request }, testInfo) => {
+  test.setTimeout(90_000);
+  const attack = card("Attack", "retaliation-skip-attack");
+  const hidden = card("Dodge", "retaliation-skip-hidden");
+  const seed = await seedGame(request, fourPlayers(
+    { hand: [attack, hidden] },
+    { hero: "simayi", hand: [card("Peach", "retaliation-skip-target-peach")] },
+  ));
+  const context = await browser.newContext({ viewport: { width: 440, height: 766 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  try {
+    const page = await context.newPage();
+    await openGame(page, seed, 1, { width: 440, height: 766 });
+    await act(request, seed, 0, "play_card", { cardId: attack.id, targetId: seed.players[1].id });
+    await act(request, seed, 1, "decline_response");
+    const actorView = await roomView(request, seed, 1);
+    expect(actorView.currentAction.legalActions).toContain("decline_trigger");
+
+    const skill = page.getByRole("button", { name: "Retaliation", exact: true });
+    await expect(skill).toBeEnabled({ timeout: 15_000 });
+    await tapMobile(page, skill);
+    const dialog = await expectModal(page, "Retaliation", "Choose 1 card to obtain", "Use Retaliation");
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
+    const use = dialog.getByRole("button", { name: "Use Retaliation", exact: true });
+    await expect(use).toBeDisabled();
+    const skip = dialog.getByRole("button", { name: "Skip", exact: true });
+    await expect(skip).toBeEnabled();
+    const rects = await Promise.all([skip, use].map((button) => button.evaluate((element) => {
+      const { x, y, right, bottom } = element.getBoundingClientRect();
+      return { x, y, right, bottom };
+    })));
+    expect(Math.abs(rects[0].y - rects[1].y)).toBeLessThan(2);
+    expect(rects.every(({ bottom }) => bottom <= 766)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("bcp3-retaliation-440x766-skip.png") });
+
+    const actionPosts = [];
+    page.on("request", (requestEvent) => {
+      if (requestEvent.url() !== `${API}/api/rooms` || requestEvent.method() !== "POST") return;
+      try { actionPosts.push(JSON.parse(requestEvent.postData() ?? "{}")); } catch { /* Non-JSON form request. */ }
+    });
+    const skipPromise = page.waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "decline_trigger"; }
+      catch { return false; }
+    });
+    await tapMobile(page, skip);
+    const skipped = await skipPromise;
+    expect(skipped.ok()).toBe(true);
+    expect(JSON.parse(skipped.request().postData() ?? "{}").action).toBe("decline_trigger");
+    await expect(dialog).toHaveCount(0);
+    expect(actionPosts).toHaveLength(1);
+    expect(actionPosts[0].action).toBe("decline_trigger");
+    expect(actionPosts.some((body) => body.action === "trigger")).toBe(false);
+    expect((await roomView(request, seed, 1)).myHand.map((held) => held.id)).not.toContain(hidden.id);
+  } finally {
+    await context.close();
+  }
 });
 
 for (const weapon of ["FrostSword", "KirinBow"]) {
@@ -502,6 +608,9 @@ for (const weapon of ["FrostSword", "KirinBow"]) {
     const actionTitle = weapon === "FrostSword" ? "Frost Sword" : "Kirin Bow";
     const instruction = weapon === "FrostSword" ? "Choose 2 cards to discard" : "Choose 1 Mount to discard";
     const dialog = await expectModal(page, actionTitle, instruction, `Use ${actionTitle}`);
+    const skip = dialog.getByRole("button", { name: "Skip", exact: true });
+    if (current.currentAction.legalActions.includes("decline_trigger")) await expect(skip).toBeVisible();
+    else await expect(skip).toHaveCount(0);
     const selectableCards = dialog.locator(".target-card-picker-card");
     if (weapon === "FrostSword") {
       const positions = dialog.locator('[data-target-card-zone="hand-position"]');
