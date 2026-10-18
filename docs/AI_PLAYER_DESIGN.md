@@ -1,7 +1,7 @@
 # WTK Smart Bot Player — Product Roadmap and Implementation Design
 
 > Feature branch: `feature/smart-bot-player`
-> Design revision: **AIP-D10 / 2026-10-18**
+> Design revision: **AIP-D11 / 2026-10-18**
 > Owner: **Human Reviewer + Planner**. Planner edits **this file for normal design/review**; governance docs only under explicit user instruction.
 > Status: **DESIGN-DRIVEN AUTONOMOUS QUEUE**. AIP-00A is **ACCEPTED by the human Product Owner (2026-10-17)**. AIP-00B is **ACCEPTED following positive Staging device/browser feedback from the user on 2026-10-18**. AIP-00C was **ACCEPTED by explicit human Product Owner decision on 2026-10-18**. AIP-01's offline/mock implementation is **PENDING_REVIEW (submitted 2026-10-18)**. Actual OpenAI API requests, spend, and real-player data transfer remain UNAUTHORIZED pending separate human approval. Other roadmap stages are DRAFT.
 > Coding Agent: **one agent, one bounded task per cycle; re-read design and automatically select the next eligible independent APPROVED task after each PENDING_REVIEW delivery**. Never self-accept or bypass dependencies.
@@ -167,6 +167,7 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 | Security follow-up | AIP-SEC-01 | Isolate Staging deployment credential and restrict account scope | separate GitHub environment secret and safe cutover evidence | DRAFT — separate approval needed |
 | AI lab | **AIP-01** | Offline/read-only OpenAI Decision Prototype (mock first, tiny opt-in live eval) | 10–20 anonymous fixtures, valid candidate IDs, latency, usage report | **PENDING_REVIEW — MOCK/OFFLINE (2026-10-18)** |
 | Legal contracts | AIP-02 | Canonical BotObservation and narrowly scoped legal candidates | privacy, valid cards/targets, stale decisions | DRAFT |
+| Next detailed proposal | AIP-02A | Server-authoritative response candidate bridge, revision and privacy contracts | internal mapping, replay/actor/stale guards; offline tests | DRAFT — AIP-01 acceptance + human approval required |
 | Player identity | AIP-03 | Dedicated bot seats and host-only lobby lifecycle | auth/race tests; no Test Player token reuse | DRAFT |
 | Shared action | AIP-04 | Bot Executor through existing canonical server validation | no forged actor, replay, stale revision, card loss | DRAFT |
 | Driver | AIP-05 | Autonomous bot loop and reliable scheduler | restart/duplicate wakeup, human waiting protected | DRAFT |
@@ -298,11 +299,52 @@ Each row is a **long-term phase goal**. A task is executable only if the **detai
 
 **Acceptance:** mocked tests deterministic/offline; no secrets in git/logs; all successful responses select supplied IDs; malformed and unauthorized outputs fail closed; at least 10 valid privacy-reviewed scenarios; optional live run is **reported honestly** as not run if API key/permission/budget unavailable. AIP-01 may be submitted PENDING_REVIEW with robust mock coverage and the real-call capability disabled. If live evaluation is desired, obtain explicit user approval of hard cost/request budget and secure API key; never infer free tokens guarantee free usage. CI green for any code commit. After PENDING_REVIEW, re-evaluate the design queue for *independent* approved work; do not self-accept.
 
+**Independent Planner / Reviewer review (2026-10-18): RECOMMEND ACCEPT FOR AIP-01 OFFLINE CONTRACT ONLY; human acceptance NOT yet recorded.**
+
+**Verified scope/evidence:**
+1. Reviewed the exact code diff from approved AIP-D10: `ai/decision-prototype.ts` (pure V1 request/response and injected transport), `ai/decision-fixtures.ts` (11 synthetic scenarios), `tests/ai-decision-prototype.test.mjs` (31 reported subtests, including contract/privacy/failure paths), `tests/run-fast-tests.mjs` registration, and `docs/AIP-01_OFFLINE_EVALUATION.md`. Subsequent submit-for-review SHA `dcc03e594500a1a7623483a927fe8e449b97204e` contains only AI design/handover/report changes, **not** new source behavior.
+2. Source code validates an exact-key input shape and candidate ID uniqueness; rejects hidden hand/role fields, unknown/duplicate/stale ID outputs, malformed payloads, multi-card selection and unsupported turn decisions; bounds reason/label length and maps timeout, HTTP 429/5xx, incomplete/refusal and transport errors to finite failure codes. The model transport is entirely injected; no actual network/OpenAI/key/room action code was introduced. Canonical provider IDs and physical card IDs are not put in the model request by the pure projection.
+3. Exact code-SHA `e61ae4045a3948038b2ab72058fa689c64282901` [Actions run 39137036867](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39137036867) eventually **SUCCESS (attempt 2)**: Lint/build/fast, API, browser smoke and `deploy-staging` all succeeded; production `deploy` was **skipped**. **Not green on first attempt:** API job failed in attempt 1, then succeeded on same-SHA rerun; Agent reports intermittent `fetch failed` in shard 2, not an established cause. Track repeated API flakiness rather than declaring it fixed from one rerun.
+4. Published [offline evaluation report](AIP-01_OFFLINE_EVALUATION.md) discloses that all 11 mock outputs are FIXED CHOICES supplied by fixtures, **not** model intelligence or tactical benchmarks. Many acceptable sets include multiple/all supplied candidates; tests establish allowlist/parser behavior but **do not** measure strategic decision quality.
+5. Reported focused `31/31` and strict scoped TS checks are compatible with reviewed tests and passing CI fast suite; Reviewer did not independently execute local TypeScript and full-repo `tsc --noEmit`. Agent reports unrelated global TS errors in untouched modules; record as pre-existing/unresolved typecheck debt, not as a passing repo-wide typecheck. Staging remains `BOT_AI_ENABLED=false` and CI mobile-emulated smoke passes.
+
+**Explicit limitations / next-stage prerequisites (not failure of the narrowly scoped mock acceptance):**
+- `observationVersion: 1` is **schema version**, not an authoritative room action revision; the result echoes the caller's `decisionId`. This detects mismatched replies but is NOT a live stale-state/actor/replay defense. In AIP-02A/B, require a server-minted room/action revision and atomically revalidate actor/ownership/state at execution.
+- `self` and `publicContext` are supplied to the pure function by its caller rather than constructed from a tested, privacy-filtered server projection. For real model use, derive actor-private/public permitted facts on the server and whitelist candidate labels to prevent private values or prompt-injection-like content being smuggled into requests. Never infer hidden opponent roles from private room state.
+- Source `responseDecisionFor` and `legalActionsFor` are real existing authorities, but this prototype is **not wired to actual authenticated current game state**, **not a legal candidate execution map**, and supports only single-card explicit response options plus decline. Multi-card Dodge / pending response counts, turn-phase target legality, physical card selection and shared response windows require later narrow contracts. Do not claim full legal play.
+- No Responses API client, strict provider-side JSON schema, named model verification, cancellation of a pending real request, spend accounting or live evaluation was delivered. These were outside the approved **offline/mock-only** acceptance gate; any live adapter/invocation remains separately human-gated. Real model name `gpt-6-luna` in the older roadmap is **UNVERIFIED** and must be checked against actual API availability before use.
+- No live player data transmission, secrets, bot seats, scheduler or real action mutations are approved. Completing AIP-01 must not silently enable `BOT_AI_ENABLED`, bypass CI or deploy production.
+
+**Review decision:** Technically **RECOMMEND ACCEPT** the AIP-01 mock-only protocol as a deliberately limited offline foundation. Retain `PENDING_REVIEW` until explicit human decision. AIP-02 and the scoped AIP-02A proposal below remain `DRAFT` and cannot be auto-picked; the detailed AIP-02A draft is intended to eliminate ambiguity for a later separately authorized Agent task.
+
 ### AIP-02 — Bot Observation + Canonical Legal Candidates
 
 **Status: DRAFT. Depends on accepted AIP-01 and review of actual candidate gaps.**
 
 Inspect `app/api/rooms/route.ts`, `game/protocol.d.ts`, `game/responses.ts`, capability/decision modules. Expand source-backed candidate enumeration **one decision family at a time**, beginning with the proven AIP-01 response family and then play-phase candidates. Actor-private observation must not leak to public presentation, audit or telemetry. Design recheck includes full candidate payload mapping, stale revision and exact card/target tests; separate large refactor into sub-tasks. Do not start real autonomous seats until this has stable shared executor boundaries.
+
+### AIP-02A — Server-authoritative response candidate bridge (first bounded AIP-02 slice)
+
+**Status: DRAFT — NOT AUTHORIZED. Priority: P0 when authorized. Dependencies: AIP-01 ACCEPTED.** This is a planner-authored future subtask and must not be picked until the human authorizes the precise scope and sets it to APPROVED. AIP-02 parent remains DRAFT until later slices are defined/reviewed.
+
+**Desired observable outcome:** in offline/server-side tests only, create a **sealed internal mapping** from a server-projected, actor-authorized response decision and exact room/action revision to small displayable candidate IDs; the model-facing request exposes ONLY compact permitted values. A selected candidate ID can be resolved against the same immutable local revision as the exact internal action payload, but **cannot execute** the action in this task.
+
+**Real code anchors (reviewed 2026-10-18):**
+- `app/api/rooms/route.ts`: `legalActionsFor` (~line 5065), `roomState` projection (~5190), `actionRevisionFor` (~492), per-actor response pending handling; these exist today and remain authoritative. Do not create a duplicate game legality engine.
+- `game/response-decision.ts`: `responseDecisionFor` and option fields `providerId`, `satisfies`, `selection`, `declineAction`.
+- `game/responses.ts` and `game/protocol.d.ts`: physical response provider semantics and `CurrentAction` V3 shape.
+- `ai/decision-prototype.ts`: AIP-01 safe request/output parser. Existing function loses provider/physical card IDs deliberately, so do NOT reverse that privacy safeguard by placing execution payload into `BotDecisionRequestV1`.
+
+**Proposed implementation when authorized:**
+1. Inspect above actual code and actor authorization/projection paths. Record precisely what is available to the *acting player* and which response families require extra card selection, multiple Dodge/Attack requirements or shared windows. Enumerate support matrix before altering any code.
+2. Introduce one small, isolated pure **internal** bridge module (suggest `ai/response-candidates.ts`) with immutable `{decisionId, actionRevision, actorId, candidatesById}`; map only authoritative eligible single-card-or-null response providers and legal decline, without inventing legal actions. Reject unsupported configurations as `unsupported_decision_family`, never fabricated defaults.
+3. Expose an independent **model-facing** `BotDecisionRequestV1` with compact candidate IDs/labels and permitted self/public context only, excluding `actorId`, tokens, provider IDs, physical card IDs, raw pending JSON, raw PlayerRows, opponents' hidden roles/hands and internal execution payload. Require safe labels from reviewed server-controlled strings; test malicious/untrusted label content, not just control characters.
+4. Add a server-minted opaque state/revision contract based on existing `actionRevisionFor` or an approved exact equivalent. **Clearly separate schema version from revision**, and require `decisionId + actor + revision + candidate ID` match for resolution. A changed revision, actor mismatch, consumed decision, unknown candidate or duplicate result must fail closed. Do not treat a caller-generated ID echo as authorization.
+5. Focused tests with constructed real-shape CurrentAction fixtures (no external API, no cloud). Cases: single Dodge, no provider/decline, Negation, Peach rescue, 1-card explicit provider, >1 eligible physical cards, required multiple Dodges, hidden opponent role, forged actor, stale revision, duplicate/replay, unsupported play-turn. Assert no private execution payload can appear in serialized model request. Include exact source-to-candidate mapping positive/negative tests without a server mutation.
+6. Wire **no authenticated room routes, D1 writes, live bot seats, scheduler, OpenAI calls, gameplay executor or UI** in AIP-02A; those require a later individually approved AIP-02B/AIP-04 task. No prod secrets/deployment and keep `BOT_AI_ENABLED=false`.
+7. Run focused tests and existing full GitHub exact-code-SHA CI, verify production deploy skipped, Staging worker keeps AI disabled; submit `PENDING_REVIEW` with implemented supported-family matrix, diff, private/public projection test report and exact SHA/CI. Agent owns only its `AI_PLAYER_HANDOVER.md` and selected task evidence; Planner never edits handover.
+
+**Acceptance:** no rules duplication or illegal fabricated candidates; authoritative action revision and actor/replay guards tested; internal execution mapping never serializes into model request; unsupported multi-step families explicitly fail closed; >=12 focused positive/negative privacy/staleness cases, CI green exact SHA; no actual room actions, live API, secrets, cost or production changes. Finish PENDING_REVIEW; no automatic AIP-02B start.
 
 ### Later-task decomposition policy
 
