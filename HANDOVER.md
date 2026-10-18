@@ -10,4 +10,4 @@ Branch: `ux-v2`
 
 ## Exactly one current bounded task
 
-**CI repair for `UX2-10.17.5.1-INS5-F1-R-APPROVED-CONTENT-WRAPPED-PANEL` — rebase the validated full stale-test repair onto current `origin/ux-v2`, push it, then verify exact-SHA Actions and Worker/D1 deployment.** Keep the Inspector **PENDING USER REVIEW** after technical delivery. All visual and browser verification for this and subsequent UX tasks is mobile-only; prioritize short-height phones. Do not claim user acceptance.
+**CI repair for `UX2-10.17.5.1-INS5-F1-R-APPROVED-CONTENT-WRAPPED-PANEL` — merge the latest `origin/ux-v2` tip while preserving local work, push the complete stale-test repair, then verify exact-SHA Actions and Worker/D1 deployment.** Keep the Inspector **PENDING USER REVIEW** after technical delivery. All visual and browser verification for this and subsequent UX tasks is mobile-only; prioritize short-height phones. Do not claim user acceptance.
