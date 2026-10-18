@@ -193,9 +193,6 @@ async function measureHarvestParking(page, cardId, eventId) {
       ].filter(({ rect: blocker }) => overlaps({ ...candidate, width: cardWidth, height: target.height,
         right: candidate.left + cardWidth, bottom: candidate.top + target.height }, blocker)),
     })) : [];
-    const otherParkedCards = [...document.querySelectorAll("[data-public-card-journey-phase='parked']")]
-      .filter((element) => element !== card)
-      .map((element) => ({ selector: "other parked card", rect: rect(element) }));
     const edgeDistance = (bounds) => {
       if (!bounds) return null;
       const dx = Math.max(0, bounds.left - (target.left + target.width), target.left - bounds.right);
