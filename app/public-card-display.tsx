@@ -863,7 +863,7 @@ function PublicCardAnnouncement({
     let anchorObserver: MutationObserver | null = null;
     let frame = 0;
     const bandKey = `${viewerLayoutKey}:${placementKey}`;
-    const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-content"] : [])].join(", ");
+    const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-content"] : [])].join(", ");
 
     const place = () => {
       if (display.dataset.publicCardLayoutPending === "true") {
@@ -912,7 +912,7 @@ function PublicCardAnnouncement({
 
       const gap = PUBLIC_CARD_ANNOUNCEMENT_GAP;
       const obstacles: Array<{ element: HTMLElement | null; rect: DOMRect }> = [...document.querySelectorAll<HTMLElement>(
-        [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".local-player-dock", ".local-hand-rail", ".console-guidance", "[data-public-card-copy-anchor-event-id]", ...(privateDrawAware ? [".private-draw-content"] : [])].join(", "),
+        [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", "[data-public-card-copy-anchor-event-id]", ...(privateDrawAware ? [".private-draw-content"] : [])].join(", "),
       )].flatMap((element) => {
         if (element === anchor || element === copy
           || element.dataset.publicCardCopyAnchorEventId === copyAnchorEventId
@@ -1149,7 +1149,9 @@ function PublicCardAnnouncement({
     };
     const anchor = getAnchor();
     anchorObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
-    if (anchor) anchorObserver?.observe(anchor, { attributes: true, attributeFilter: ["style"] });
+    if (anchor) anchorObserver?.observe(anchor, { attributes: true, attributeFilter: ["style", "data-harvest-root-parked"] });
+    const harvestStage = display.closest<HTMLElement>(".play-table")?.querySelector<HTMLElement>(".harvest-choice-stage");
+    if (harvestStage) anchorObserver?.observe(harvestStage, { attributes: true, attributeFilter: ["style"] });
     anchorObserver?.observe(display, { attributes: true, attributeFilter: ["data-public-card-layout-pending"] });
     const onResize = schedule;
     place();
@@ -3382,6 +3384,7 @@ export function publicCardActionKey(action: PresentationSnapshotRootAction): str
 export function PublicCardDisplay({
   action,
   enabled,
+  harvestChoiceActive = false,
   sourceName,
   targetName,
   compactPlayerNamesById,
@@ -3395,6 +3398,7 @@ export function PublicCardDisplay({
 }: {
   action: PublicCardDisplayAction | null;
   enabled: boolean;
+  harvestChoiceActive?: boolean;
   sourceName: string | null;
   targetName: string | null;
   compactPlayerNamesById: CompactPublicPlayerNames;
@@ -3428,8 +3432,9 @@ export function PublicCardDisplay({
   const compactAnnouncement = announcementCopy.compactMessage || (!action.settlement && action.phaseNotice?.includes("NEGATION"))
     ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, action.settlement ? undefined : action.phaseNotice, true)
     : undefined;
+  const harvestRootParked = harvestChoiceActive && card?.kind === "BumperHarvest";
   return <section
-    className={`public-card-display${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}`}
+    className={`public-card-display${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${harvestRootParked ? " public-card-display-harvest-active" : ""}`}
     data-public-card-display="true"
     data-public-card-renderer-kind="static-fallback"
     data-public-card-ready="true"
@@ -3443,6 +3448,8 @@ export function PublicCardDisplay({
     data-public-card-checkpoint-id={action.checkpointId ?? undefined}
     data-public-card-presentation-revision={action.presentationRevision ?? undefined}
     data-public-card-id={card?.id}
+    data-public-card-kind={card?.kind}
+    data-public-card-harvest-active={harvestRootParked ? "true" : undefined}
     data-public-card-actor-id={actorId}
     data-public-card-source-id={action.sourceId}
     data-public-card-target-id={action.targetId ?? undefined}
@@ -3450,7 +3457,7 @@ export function PublicCardDisplay({
     data-public-card-settlement-outcome={action.settlement?.outcome}
     data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
-    {card && <div className="public-card-display-static-card" data-public-card-copy-anchor-event-id={eventId} data-public-card-static-event-id={eventId} data-public-card-static-card-id={card.id}><CardFace card={card} /></div>}
+    {card && <div className="public-card-display-static-card" data-public-card-copy-anchor-event-id={eventId} data-public-card-static-event-id={eventId} data-public-card-static-card-id={card.id} data-harvest-root-parked={harvestRootParked ? "true" : undefined}><CardFace card={card} /></div>}
     <PublicCardAnnouncement
       eventId={eventId}
       placementKey={publicCardAnnouncementPlacementKey(action, roomCode)}

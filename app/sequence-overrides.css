@@ -4990,3 +4990,229 @@
   justify-content: flex-end;
   gap: 0;
 }
+
+/* UX2 §10.17.1 BCP-1: park the authentic Harvest root away from the compact
+   public pool; the H4 announcement remains independently measured. */
+.game-shell .play-table > .public-card-display.public-card-display-harvest-active {
+  top: auto;
+  right: auto;
+  bottom: 10px;
+  left: 8px;
+  translate: none;
+  width: auto;
+  max-width: none;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  z-index: 17;
+}
+.game-shell .public-card-display-harvest-active .public-card-display-static-card {
+  width: 40px;
+  height: 60px;
+}
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card {
+  width: 40px;
+  height: 60px;
+  box-shadow: 0 0 0 1px #d4b46f99, 0 4px 12px #000b;
+}
+
+/* The active decision frame is the only Harvest hit target. Its stage has no
+   backdrop hit box, so seat controls and public inspection stay reachable. */
+.game-shell .play-table > .harvest-choice-stage {
+  inset: auto 0 auto;
+  top: max(92px, calc(var(--interaction-safe-top, 149px) - 53px));
+  bottom: auto;
+  z-index: 25;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  background: transparent;
+  pointer-events: none;
+}
+.game-shell .harvest-choice-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: min(calc(100% - 16px), 520px);
+  min-width: 0;
+  max-width: calc(100vw - 16px);
+  padding: 6px 8px;
+  overflow: visible;
+  border: 1px solid #c6a45c;
+  background: #10130ff5;
+  box-shadow: 0 5px 16px #000b, inset 0 0 0 1px #d7bd7840;
+  text-align: left;
+  pointer-events: none;
+}
+.game-shell .harvest-choice-panel--actor { pointer-events: auto; }
+.game-shell .harvest-choice-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  min-height: 14px;
+  color: #d7c28f;
+  font: 700 8px/1.2 Arial, sans-serif;
+}
+.game-shell .harvest-choice-heading > b {
+  flex: 0 0 auto;
+  margin: 0;
+  color: #f2d58f;
+  font: 700 9px/1.2 Georgia, serif;
+}
+.game-shell .harvest-choice-heading > span {
+  min-width: 0;
+  overflow: hidden;
+  color: #d2c8b2;
+  font: 600 8px/1.2 Arial, sans-serif;
+  letter-spacing: 0;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.game-shell .harvest-card-row {
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  max-height: 73px;
+  padding: 2px 1px 3px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  pointer-events: none;
+}
+.game-shell .harvest-card-row::-webkit-scrollbar { display: none; }
+.game-shell .harvest-card-choice {
+  box-sizing: border-box;
+  position: relative;
+  flex: 0 0 clamp(44px, 11vw, 52px);
+  width: clamp(44px, 11vw, 52px);
+  height: clamp(66px, 16.5vw, 78px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
+.game-shell .harvest-card-select {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #8d784f;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.game-shell .harvest-card-select:disabled { cursor: default; }
+.game-shell .harvest-card-select > .played-card {
+  width: 100%;
+  height: 100%;
+  animation: none;
+  box-shadow: none;
+  transition: filter .15s ease, opacity .15s ease, translate .15s ease, box-shadow .15s ease;
+}
+.game-shell .harvest-card-select > .played-card > i { font-size: 9px; }
+.game-shell .harvest-card-select > .played-card > i small { font-size: 8px; }
+.game-shell .harvest-card-select > .played-card > strong { font-size: 6px; }
+.game-shell .harvest-card-select > .played-card .card-name-mark { font-size: 10px; line-height: 1; }
+.game-shell .harvest-card-choice.taken .harvest-card-select > .played-card {
+  filter: grayscale(1) brightness(.3);
+  opacity: .58;
+}
+.game-shell .harvest-card-choice.pending-choice .harvest-card-select {
+  border: 2px solid #f2ca65;
+  box-shadow: 0 0 0 2px #f2ca6555, 0 0 12px #f2ca6588;
+  translate: 0 -3px;
+}
+.game-shell .harvest-taken-label,
+.game-shell .harvest-pending-label {
+  position: absolute;
+  inset: auto 1px 2px;
+  translate: none;
+  padding: 2px 1px;
+  border: 0;
+  background: #050605e8;
+  color: #f2d58f;
+  font: 700 5px/1.1 Arial, sans-serif;
+  letter-spacing: 0;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.game-shell .harvest-pending-label { bottom: auto; top: 2px; background: #70531de8; }
+.game-shell .harvest-card-info {
+  position: absolute;
+  z-index: 4;
+  top: 1px;
+  right: 1px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #f0d38c;
+  border-radius: 50%;
+  background: #15130df2;
+  color: #ffe5a5;
+  font: italic 700 11px/1 Georgia, serif;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.game-shell .harvest-card-info:focus-visible,
+.game-shell .harvest-card-select:focus-visible {
+  outline: 2px solid #ffe5a5;
+  outline-offset: 1px;
+}
+.game-shell .harvest-confirm-row {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 1px;
+}
+.game-shell .harvest-selection-count {
+  min-width: 0;
+  overflow: hidden;
+  color: #d5c7a1;
+  font: 600 8px/1.2 Arial, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.game-shell .harvest-confirm-row > .primary {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 126px;
+  max-width: 150px;
+  min-height: 40px;
+  margin: 0;
+  padding: 0 12px;
+  border-color: #be9b53;
+  font: 700 9px/1 Arial, sans-serif;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.game-shell .harvest-confirm-row > .primary:disabled {
+  border-color: #5b513b;
+  color: #8f846e;
+}

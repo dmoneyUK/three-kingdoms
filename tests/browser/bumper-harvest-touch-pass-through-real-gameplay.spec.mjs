@@ -27,6 +27,67 @@ async function tap(page, locator) {
   await page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
 }
 
+async function harvestGeometry(page) {
+  return page.evaluate(() => {
+    const rect = (element) => {
+      if (!element) return null;
+      const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+      return { left, top, right, bottom, width, height };
+    };
+    const intersects = (first, second) => Boolean(first && second
+      && first.left < second.right - 0.5 && first.right > second.left + 0.5
+      && first.top < second.bottom - 0.5 && first.bottom > second.top + 0.5);
+    const stage = document.querySelector(".harvest-choice-stage");
+    const panel = stage?.querySelector(".harvest-choice-panel");
+    const row = panel?.querySelector(".harvest-card-row");
+    const root = document.querySelector("[data-public-card-harvest-active='true'] .public-card-display-static-card");
+    const announcement = document.querySelector("[data-public-card-announcement='true']");
+    const footer = panel?.querySelector(".harvest-confirm-row");
+    const timer = document.querySelector(".stage-system-cluster .visible-countdown-event");
+    const activity = document.querySelector("[data-public-activity-chip]");
+    const seats = [...document.querySelectorAll(".player-board > .opponent-player-card")];
+    const switches = [...document.querySelectorAll("[data-testid^='test-view-switch-']")];
+    const hit = (element) => {
+      const bounds = element.getBoundingClientRect();
+      const target = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+      return { id: element.getAttribute("data-testid"), target: target?.getAttribute("data-testid") ?? target?.className ?? target?.tagName };
+    };
+    const stageRect = rect(stage);
+    const panelRect = rect(panel);
+    const rootRect = rect(root);
+    const announcementRect = announcement && getComputedStyle(announcement).visibility !== "hidden" ? rect(announcement) : null;
+    const footerRect = rect(footer);
+    const rowRect = rect(row);
+    const rowClip = row ? { left: row.getBoundingClientRect().left + row.clientLeft, right: row.getBoundingClientRect().left + row.clientLeft + row.clientWidth } : null;
+    return {
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      table: rect(document.querySelector(".play-table")),
+      stage: stageRect,
+      panel: panelRect,
+      panelPointerEvents: panel ? getComputedStyle(panel).pointerEvents : null,
+      stagePointerEvents: stage ? getComputedStyle(stage).pointerEvents : null,
+      root: rootRect,
+      announcement: announcementRect,
+      row: rowRect,
+      rowClip,
+      cards: [...(row?.querySelectorAll(".harvest-card-choice") ?? [])].map(rect),
+      footer: footerRect,
+      timer: rect(timer),
+      activity: rect(activity),
+      seats: seats.map(rect),
+      overlaps: {
+        rootPanel: intersects(rootRect, panelRect),
+        rootRow: intersects(rootRect, rowRect),
+        panelAnnouncement: intersects(panelRect, announcementRect),
+        panelTimer: intersects(panelRect, rect(timer)),
+        panelActivity: intersects(panelRect, rect(activity)),
+        panelSeat: seats.some((seat) => intersects(panelRect, rect(seat))),
+      },
+      switches: switches.map(hit),
+    };
+  });
+}
+
 test("Bumper Harvest spectators can switch views while another player chooses", async ({ browser, request }, testInfo) => {
   test.setTimeout(90_000);
   const name = `HARVEST SWITCH ${Date.now().toString(36).toUpperCase()}`;
@@ -111,7 +172,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
   expect(room.pendingHarvest.actorId).toBe(source.id);
   expect(room.pendingHarvest.choices).toHaveLength(0);
 
-  const context = await browser.newContext({ viewport: { width: 440, height: 766 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const context = await browser.newContext({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
   try {
     const page = await context.newPage();
     await page.addInitScript(({ roomCode, sessionToken, playerName }) => {
@@ -120,14 +181,64 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await page.goto(`${API}/`);
     await expect(page.locator(".game-shell")).toBeVisible();
     await expect(page.locator(".harvest-choice-stage")).toBeVisible();
+    await expect(page.locator(".harvest-choice-panel")).toBeVisible();
     await expect(page.locator(`.local-player-dock[data-player-anchor="${host.id}"]`)).toBeVisible();
+
+    const auditHarvestView = async (viewerLabel, actor) => {
+      for (const viewport of [
+        { width: 390, height: 700 },
+        { width: 390, height: 844 },
+        { width: 440, height: 766 },
+        { width: 480, height: 900 },
+      ]) {
+        await page.setViewportSize(viewport);
+        await expect.poll(async () => {
+          const geometry = await harvestGeometry(page);
+          return Boolean(geometry.panel && geometry.root && geometry.announcement && geometry.table
+            && geometry.stagePointerEvents === "none"
+            && Object.values(geometry.overlaps).every((overlap) => !overlap)
+            && geometry.panel.top >= Math.max(...geometry.seats.map((seat) => seat.bottom)) - 1
+            && geometry.panel.bottom <= geometry.table.bottom + 1
+            && (!actor || geometry.footer && geometry.footer.bottom <= viewport.height + 1));
+        }, { timeout: 10_000 }).toBe(true);
+        const geometry = await harvestGeometry(page);
+        expect(geometry.viewport).toEqual(viewport);
+        expect(geometry.overlaps, JSON.stringify({ viewerLabel, geometry })).toEqual({
+          rootPanel: false,
+          rootRow: false,
+          panelAnnouncement: false,
+          panelTimer: false,
+          panelActivity: false,
+          panelSeat: false,
+        });
+        expect(geometry.switches.map((item) => item.target), JSON.stringify({ viewerLabel, geometry }))
+          .toEqual(geometry.switches.map((item) => item.id));
+        if (actor) {
+          expect(geometry.footer, JSON.stringify({ viewerLabel, geometry })).toBeTruthy();
+          expect(geometry.panelPointerEvents).toBe("auto");
+          expect(geometry.footer.bottom).toBeLessThanOrEqual(viewport.height + 1);
+        } else {
+          expect(geometry.footer).toBeNull();
+          expect(geometry.panelPointerEvents).toBe("none");
+        }
+        const screenshot = testInfo.outputPath(`bumper-harvest-${viewerLabel}-${viewport.width}x${viewport.height}.png`);
+        await page.screenshot({ path: screenshot, animations: "disabled" });
+        await testInfo.attach(`bumper-harvest-${viewerLabel}-${viewport.width}x${viewport.height}`, { path: screenshot, contentType: "image/png" });
+        await testInfo.attach(`bumper-harvest-${viewerLabel}-${viewport.width}x${viewport.height}-geometry`, {
+          body: JSON.stringify(geometry, null, 2),
+          contentType: "application/json",
+        });
+      }
+    };
 
     const initialHarvest = await readRoom(request, code, token, host.id);
     expect(initialHarvest.isMyAction).toBe(false);
+    expect(initialHarvest.pendingHarvest).not.toHaveProperty("previewCardId");
     const initialActorId = initialHarvest.pendingHarvest.actorId;
     const initialChoices = initialHarvest.pendingHarvest.choices.map((choice) => choice.cardId);
-    const initialPreview = initialHarvest.pendingHarvest.previewCardId;
     const initialDeadline = initialHarvest.pendingHarvest.countdownUntil;
+    await auditHarvestView("spectator", false);
+    await page.setViewportSize({ width: 390, height: 700 });
     const hitMapHandle = await page.waitForFunction(() => {
       const stage = document.querySelector(".harvest-choice-stage");
       const panel = document.querySelector(".harvest-choice-panel");
@@ -166,7 +277,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     let afterSwitch = await readRoom(request, code, token, spectator.id);
     expect(afterSwitch.pendingHarvest.actorId).toBe(initialActorId);
     expect(afterSwitch.pendingHarvest.choices.map((choice) => choice.cardId)).toEqual(initialChoices);
-    expect(afterSwitch.pendingHarvest.previewCardId).toBe(initialPreview);
+    expect(afterSwitch.pendingHarvest).not.toHaveProperty("previewCardId");
     expect(afterSwitch.pendingHarvest.countdownUntil).toBe(initialDeadline);
 
     const inspectedHero = page.locator(`.opponent-player-card[data-player-anchor="${source.id}"] .opponent-hero-target`);
@@ -186,9 +297,57 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(sourceDock).toBeVisible();
     await expect(sourceDock).toBeFocused();
     await expect(page.locator(".harvest-choice-panel--actor")).toHaveCSS("pointer-events", "auto");
-    await expect(page.locator(".harvest-card-choice:not([disabled])").first()).toBeVisible();
-    await tap(page, page.locator(".harvest-card-choice:not([disabled])").first());
+    await auditHarvestView("actor", true);
+    await page.setViewportSize({ width: 390, height: 700 });
+    const firstCard = page.locator(".harvest-card-select:not([disabled])").first();
+    await expect(firstCard).toBeVisible();
+    await tap(page, firstCard);
+    await expect(firstCard).toHaveAttribute("aria-pressed", "true");
+    const firstCardInfo = page.locator(".harvest-card-choice").first().locator(".harvest-card-info");
+    await tap(page, firstCardInfo);
+    await expect(page.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
+    await expect(firstCard).toHaveAttribute("aria-pressed", "true");
+    await tap(page, page.getByRole("button", { name: "Close card details" }));
+    await tap(page, firstCard);
+    await expect(firstCard).toHaveAttribute("aria-pressed", "false");
     const firstConfirm = page.getByRole("button", { name: "Confirm choice" });
+    await expect(firstConfirm).toBeDisabled();
+    await tap(page, firstCard);
+    await expect(firstCard).toHaveAttribute("aria-pressed", "true");
+    await expect(firstConfirm).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Confirm choice" })).toHaveCount(1);
+    const beforeDraftSwitch = await readRoom(request, code, token, source.id);
+    expect(beforeDraftSwitch.pendingHarvest.actorId).toBe(initialActorId);
+    expect(beforeDraftSwitch.pendingHarvest.choices.map((choice) => choice.cardId)).toEqual(initialChoices);
+    expect(beforeDraftSwitch.pendingHarvest).not.toHaveProperty("previewCardId");
+    const activeSwitchTarget = room.players.find((player) => player.isTestPlayer && player.id !== source.id);
+    await tap(page, page.getByTestId(`test-view-switch-${activeSwitchTarget.id}`));
+    const activeSpectatorDock = page.locator(`.local-player-dock[data-player-anchor="${activeSwitchTarget.id}"]`);
+    await expect(activeSpectatorDock).toBeVisible();
+    await expect(activeSpectatorDock).toBeFocused();
+    await expect(page.locator(".harvest-choice-panel--actor")).toHaveCount(0);
+    await expect(page.locator(".harvest-card-select[aria-pressed='true']")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Confirm choice" })).toHaveCount(0);
+    const afterDraftSwitch = await readRoom(request, code, token, activeSwitchTarget.id);
+    expect(afterDraftSwitch.pendingHarvest.actorId).toBe(initialActorId);
+    expect(afterDraftSwitch.pendingHarvest.choices.map((choice) => choice.cardId)).toEqual(initialChoices);
+    expect(afterDraftSwitch.pendingHarvest).not.toHaveProperty("previewCardId");
+    await tap(page, page.getByTestId(`test-view-switch-${source.id}`));
+    await expect(sourceDock).toBeVisible();
+    await expect(sourceDock).toBeFocused();
+    await expect(page.locator(".harvest-card-select[aria-pressed='true']")).toHaveCount(0);
+    const inspectedActorHero = page.locator(`.opponent-player-card[data-player-anchor="${activeSwitchTarget.id}"] .opponent-hero-target`);
+    await tap(page, inspectedActorHero);
+    await expect(page.locator(`.opponent-inspection-panel[data-inspect-player-id="${activeSwitchTarget.id}"]`)).toBeVisible();
+    await tap(page, page.getByRole("button", { name: `Close ${activeSwitchTarget.name} inspection` }));
+    const finalHarvestCard = page.locator(".harvest-card-select:not([disabled])").first();
+    await tap(page, finalHarvestCard);
+    await expect(finalHarvestCard).toHaveAttribute("aria-pressed", "true");
+    await tap(page, finalHarvestCard);
+    await expect(finalHarvestCard).toHaveAttribute("aria-pressed", "false");
+    await expect(firstConfirm).toBeDisabled();
+    await tap(page, finalHarvestCard);
+    await expect(finalHarvestCard).toHaveAttribute("aria-pressed", "true");
     await expect(firstConfirm).toBeEnabled();
     const firstChoiceResponse = page.waitForResponse((response) => {
       if (response.request().method() !== "POST" || response.url() !== `${API}/api/rooms`) return false;
@@ -205,6 +364,8 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     }).toEqual({ actorId: secondActorId, choices: 1 });
     await expect(page.locator(".harvest-choice-stage")).toBeVisible();
     await expect(page.locator(`.harvest-choice-panel:not(.harvest-choice-panel--actor)`)).toHaveCSS("pointer-events", "none");
+    await expect(page.locator(".harvest-card-choice[data-harvest-card-state='taken']")).toHaveCount(1);
+    await expect(page.getByText(`Taken by ${source.name}`)).toBeVisible();
 
     const secondSpectator = room.players.find((player) => player.isTestPlayer && player.id !== source.id && player.id !== secondActorId);
     await tap(page, page.getByTestId(`test-view-switch-${secondSpectator.id}`));
@@ -218,7 +379,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     const secondActorDock = page.locator(`.local-player-dock[data-player-anchor="${secondActorId}"]`);
     await expect(secondActorDock).toBeVisible();
     await expect(secondActorDock).toBeFocused();
-    await tap(page, page.locator(".harvest-card-choice:not([disabled])").first());
+    await tap(page, page.locator(".harvest-card-select:not([disabled])").first());
     const secondConfirm = page.getByRole("button", { name: "Confirm choice" });
     await expect(secondConfirm).toBeEnabled();
     const secondChoiceResponse = page.waitForResponse((response) => {

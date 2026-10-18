@@ -122,7 +122,7 @@ async function geometry(page) {
       ".interaction-stage-dying", ".dying-handoff-compact",
       ".public-card-display-journey-copy", ".public-card-journey-card", ".public-card-duel-parked-card",
       ".public-card-display-static-card > .played-card", ".effect-notice", ".turn-notice", ".played-card-stage .played-card",
-      ".game-event-stage > div", ".harvest-choice-stage > div", ".victory-banner", ".table-resolution-layer .played-card",
+      ".game-event-stage > div", ".harvest-choice-panel", ".victory-banner", ".table-resolution-layer .played-card",
     ].join(",");
     const overlaps = [...document.querySelectorAll(protectedSelector)]
       .filter((element) => element !== chip && getComputedStyle(element).display !== "none" && getComputedStyle(element).visibility !== "hidden")
