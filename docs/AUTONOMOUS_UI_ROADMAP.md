@@ -2899,3 +2899,26 @@ Profile command measurements:
   `8bc9f9d4-699c-471b-bbf4-b02fd2fbedd5`. The CI browser job was startup/room
   smoke, not the focused gameplay specs. Pending user phone review; the earlier
   U13-F no-change measurement remains a pre-implementation baseline.
+
+### UX2 §10.17.4 HUD-4 — four fixed public Equipment slots — 2026-10-18
+
+- Commit `5a8505efa0d29e4eeea34e41baa5267956419efb` reserves fixed opponent
+  positions Weapon | Armour | +1 Horse | −1 Horse, including neutral empty
+  footprints, and redraws the sword as a diagonal blade with a shorter grip,
+  crossguard and pommel. HP remains at the left with a stable visible gap.
+  Public equipment projection and all game rules are unchanged.
+- Local validation: build passed; server-render regression passed 20/20;
+  occupied/empty slot geometry passed 37/37 across 0–4 items, Horse-only,
+  Weapon-only, 4/6/8/10 seats and mobile layouts; Side Column/H2 geometry
+  passed 8/8; actual viewer-switch and Inspector-touch regressions passed 2/2.
+  Measured DOMRects and screenshots for 390×700 and 440×766 are in
+  `/tmp/hud4-evidence/` (local evidence, not committed). `git diff --check`
+  passed.
+- Exact-SHA Actions run
+  [`39118588563`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39118588563)
+  passed lint/fast, API, browser startup smoke, build, D1 migrations, Worker
+  deployment and production smoke. Worker version:
+  `27ff6996-a6bc-4c39-ac5b-4c16461f1a61`. The technical delivery remains
+  **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**, not accepted.
+- The next separately bounded design slice is INS-5 (§10.17.5); see the current
+  task in `HANDOVER.md`.
