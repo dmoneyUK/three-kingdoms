@@ -1811,6 +1811,7 @@
 
 .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-heading {
   grid-area: heading;
+  flex: 0 0 auto;
   min-height: 20px;
   justify-content: space-between;
   gap: 8px;
@@ -1824,6 +1825,7 @@
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 12px;
+  line-height: 1.15;
 }
 
 .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
@@ -5695,9 +5697,9 @@
 
 .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-hero {
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-stats {
@@ -5725,13 +5727,13 @@
   width: 100%;
   min-width: 0;
   min-height: 19px;
+  flex: 0 0 auto;
   padding: 2px 4px;
-  overflow: hidden;
+  overflow-wrap: anywhere;
   font-size: 10px;
-  line-height: 1.1;
+  line-height: 1.15;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-judgement,

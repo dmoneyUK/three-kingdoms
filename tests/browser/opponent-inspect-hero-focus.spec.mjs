@@ -510,6 +510,87 @@ for (const viewport of ins5Viewports) {
   });
 }
 
+test("INS5-F1 wraps long identity and skill labels in the compact phone Inspector", async ({ page }, testInfo) => {
+  const viewport = { width: 390, height: 700 };
+  await loadFixture(page, {
+    ...viewport,
+    count: 6,
+    equipmentCase: "weapon",
+    judgementCase: "single-lightning",
+    targetHero: "zhuge-liang",
+    playerNamePrefix: "A Very Long Inspector Player Name That Must Wrap",
+  });
+  await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
+  const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+  const shell = page.locator(".opponent-inspection-floating-shell");
+  const heading = inspect.locator(".hero-focus-heading strong");
+  const heroName = inspect.locator(".hero-focus-identity-hero");
+  const wrappedSkill = inspect.getByRole("button", { name: "Show Empty Fortress Strategem description" });
+  await expect(inspect).toBeVisible();
+  await expect(heroName).toHaveText("Zhuge Liang");
+  await expect(wrappedSkill).toBeVisible();
+
+  const [headingGeometry, heroGeometry, skillGeometry, headingBox, closeBox, bodyBox, panelBox, dockBox, handBox, seatBoxes] = await Promise.all([
+    heading.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const rects = [...range.getClientRects()];
+      const box = element.getBoundingClientRect();
+      return { lines: rects.length, right: Math.max(...rects.map((rect) => rect.right)), bottom: Math.max(...rects.map((rect) => rect.bottom)), box: { x: box.x, y: box.y, right: box.right, bottom: box.bottom } };
+    }),
+    heroName.evaluate((element) => ({ whiteSpace: getComputedStyle(element).whiteSpace, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth })),
+    wrappedSkill.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const rects = [...range.getClientRects()];
+      const box = element.getBoundingClientRect();
+      return {
+        whiteSpace: getComputedStyle(element).whiteSpace,
+        lines: rects.length,
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth,
+        textBottom: Math.max(...rects.map((rect) => rect.bottom)),
+        boxBottom: box.bottom,
+      };
+    }),
+    inspect.locator(".hero-focus-heading").boundingBox(),
+    inspect.locator(".hero-focus-inspect-close").boundingBox(),
+    inspect.locator(".hero-focus-body").boundingBox(),
+    shell.boundingBox(), page.locator(".local-player-dock").boundingBox(), page.locator(".local-hand-rail").boundingBox(), seatGeometry(page),
+  ]);
+
+  expect(headingGeometry.lines).toBeGreaterThan(1);
+  expect(headingGeometry.right).toBeLessThanOrEqual(headingGeometry.box.right + 1);
+  expect(headingGeometry.bottom).toBeLessThanOrEqual(headingGeometry.box.bottom + 1);
+  expect(headingGeometry.right).toBeLessThanOrEqual(closeBox.x + 1);
+  expect(headingBox.y + headingBox.height).toBeLessThanOrEqual(bodyBox.y + 1);
+  expect(heroGeometry.whiteSpace).toBe("normal");
+  expect(heroGeometry.scrollWidth).toBeLessThanOrEqual(heroGeometry.clientWidth + 1);
+  expect(skillGeometry.whiteSpace).toBe("normal");
+  expect(skillGeometry.lines).toBeGreaterThan(1);
+  expect(skillGeometry.scrollWidth).toBeLessThanOrEqual(skillGeometry.clientWidth + 1);
+  expect(skillGeometry.textBottom).toBeLessThanOrEqual(skillGeometry.boxBottom + 1);
+  expect(panelBox).not.toBeNull();
+  expect(panelBox.x).toBeGreaterThanOrEqual(0);
+  expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(viewport.width);
+  expect(panelBox.y).toBeGreaterThanOrEqual(0);
+  expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(viewport.height);
+  expect(overlaps(panelBox, dockBox)).toBe(false);
+  expect(overlaps(panelBox, handBox)).toBe(false);
+  for (const seatBox of seatBoxes) expect(overlaps(panelBox, seatBox)).toBe(false);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+
+  const actionsBefore = await page.evaluate(() => window.__browserActions.length);
+  await wrappedSkill.click();
+  await expect(inspect.locator(".hero-focus-inspect-skill-name")).toHaveText("Empty Fortress Strategem");
+  expect(await page.evaluate(() => window.__browserActions.length)).toBe(actionsBefore);
+  await testInfo.attach("INS5-F1 wrapped inspector geometry", {
+    body: Buffer.from(JSON.stringify({ viewport, headingGeometry, heroGeometry, skillGeometry, headingBox, closeBox, bodyBox, panelBox, dockBox, handBox, seatBoxes }, null, 2)),
+    contentType: "application/json",
+  });
+  await testInfo.attach("INS5-F1 compact wrapped inspector screenshot", { body: await page.screenshot({ animations: "disabled" }), contentType: "image/png" });
+});
+
 for (const count of [6, 8, 10]) {
   test(`Inspect keeps public Hand count private and Judgment compact with ${count} seats`, async ({ page }) => {
     const viewport = { width: 390, height: 844 };
