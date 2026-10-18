@@ -284,12 +284,26 @@ test("Bumper Harvest keeps the root reveal and move while the proven Negation po
 
       await expect(journey).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 2_000 });
       await expect(journey).toHaveAttribute("data-public-card-journey-size", "thumbnail");
+      await expect.poll(async () => {
+        const current = await measureJourney("thumbnail-transition");
+        return Math.abs(current.corner.width / current.face.width - revealed.corner.width / revealed.face.width);
+      }, { timeout: 2_000 }).toBeLessThanOrEqual(.06);
       const parked = await measureJourney("negation-parked");
       journeyMeasurements.push(parked);
       expect(parked.cardId).toBe(rootCardId);
       expect(parked.eventId).toBe(revealed.eventId);
       expect(parked.face).toMatchObject({ width: 40, height: 60 });
       expect(Number.parseInt(parked.cardZIndex, 10)).toBeLessThan(Number.parseInt(parked.poolZIndex, 10));
+      expect(Math.abs(parked.corner.width / parked.face.width - revealed.corner.width / revealed.face.width)).toBeLessThanOrEqual(.06);
+      expect(Math.abs(parked.corner.height / parked.face.height - revealed.corner.height / revealed.face.height)).toBeLessThanOrEqual(.06);
+      expect(Math.abs(Number.parseFloat(parked.cornerFontSize) / parked.face.width
+        - Number.parseFloat(revealed.cornerFontSize) / revealed.face.width)).toBeLessThanOrEqual(.06);
+      expect(Math.abs(Number.parseFloat(parked.suitFontSize) / parked.face.width
+        - Number.parseFloat(revealed.suitFontSize) / revealed.face.width)).toBeLessThanOrEqual(.06);
+      expect(Math.abs(Number.parseFloat(parked.titleFontSize) / parked.face.width
+        - Number.parseFloat(revealed.titleFontSize) / revealed.face.width)).toBeLessThanOrEqual(.06);
+      expect(Math.abs(Number.parseFloat(parked.typeFontSize) / parked.face.width
+        - Number.parseFloat(revealed.typeFontSize) / revealed.face.width)).toBeLessThanOrEqual(.06);
     });
     expect(root.pendingHarvest?.actorId).toBe(source.id);
     await expect(page.locator(".harvest-choice-panel--actor")).toBeVisible();
@@ -1055,8 +1069,8 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
           && detail.infoBottomInset >= 0 && detail.infoBottomInset <= 2
           && detail.infoWidth >= 44 && detail.infoHeight >= 44 && detail.titleClearOfInfoGlyph), JSON.stringify({ viewerLabel, geometry })).toBe(true);
         const expectedCardWidth = actor
-          ? Math.min(88, Math.max(78, viewport.width * .2))
-          : Math.min(80, Math.max(70, viewport.width * .18));
+          ? Math.min(76, Math.max(70, viewport.width * .17))
+          : Math.min(68, Math.max(64, viewport.width * .147));
         expect(geometry.cards.every((card) => Math.abs(card.width - expectedCardWidth) <= .5), JSON.stringify({ viewerLabel, geometry })).toBe(true);
         if (actor) expect(geometry.cardDetailsTargets.every((detail) => detail.cardCenterOutsideInfo), JSON.stringify({ viewerLabel, geometry })).toBe(true);
         expect(geometry.rootFace, JSON.stringify({ viewerLabel, geometry })).toMatchObject({ width: 40, height: 60 });
@@ -1294,7 +1308,7 @@ test("Harvest content-fit scales from 1 to 8 genuine cards and swipes at 6–8 s
       });
       expect(geometry.cards.every((card) => card.width >= 58), contextLabel).toBe(true);
       if (scenario.choices === 4) {
-        const expectedCardWidth = scenario.viewport.width >= 440 ? 88 : 78;
+        const expectedCardWidth = Math.min(76, Math.max(70, scenario.viewport.width * .17));
         expect(geometry.cards.every((card) => Math.abs(card.width - expectedCardWidth) <= .5), contextLabel).toBe(true);
         expect(geometry.panel.width, contextLabel).toBeLessThanOrEqual(geometry.row.width + 20);
       }

@@ -5031,24 +5031,53 @@
 .game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card {
   width: 40px;
   height: 60px;
-  padding: 2px 1px;
-  border-radius: 3px;
+  padding: 1.6px .8px;
+  border-radius: 2.4px;
   box-shadow: 0 0 0 1px #d4b46f99, 0 4px 12px #000b;
 }
 .game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i {
   left: 0;
   top: 0;
-  width: 8px;
-  min-height: 13px;
-  padding: 0 1px 2px;
-  border-width: 1px;
-  border-radius: 0 0 3px 0;
-  font-size: 5px;
+  width: 6.4px;
+  min-height: 10.4px;
+  padding: 0 .8px 1.6px;
+  border-width: .8px;
+  border-radius: 0 0 2.4px 0;
+  font-size: 4px;
   line-height: .9;
 }
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i small { margin-top: 0; font-size: 4px; line-height: 1; }
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card .card-name-mark { max-width: 92%; font-size: 6px; line-height: 1; }
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > strong { margin-top: 0; font-size: 4px; letter-spacing: .02em; }
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i small { margin-top: 0; font-size: 3.2px; line-height: 1; }
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card .card-name-mark { max-width: 92%; font-size: 4.8px; line-height: 1; }
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > strong { margin-top: 0; font-size: 3.2px; letter-spacing: .02em; }
+
+/* Keep the genuine Bumper Harvest root face proportional while its public
+   journey card moves from the centre to its parked seat thumbnail. */
+.game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest {
+  padding: 4.48px 2.56px;
+  border-radius: 4.48px;
+  transition: padding .38s cubic-bezier(.2, .7, .2, 1), border-radius .38s cubic-bezier(.2, .7, .2, 1);
+}
+.game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest > i {
+  left: 4px;
+  top: 3.2px;
+  width: 9.6px;
+  min-height: 12.8px;
+  padding: .64px .64px 1.92px;
+  border-width: .64px;
+  border-radius: 0 0 3.2px 0;
+  font-size: 4.8px;
+  transition: left .38s cubic-bezier(.2, .7, .2, 1), top .38s cubic-bezier(.2, .7, .2, 1), width .38s cubic-bezier(.2, .7, .2, 1), min-height .38s cubic-bezier(.2, .7, .2, 1), padding .38s cubic-bezier(.2, .7, .2, 1), border-width .38s cubic-bezier(.2, .7, .2, 1), border-radius .38s cubic-bezier(.2, .7, .2, 1), font-size .38s cubic-bezier(.2, .7, .2, 1);
+}
+.game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest > i small {
+  font-size: 4px;
+  transition: font-size .38s cubic-bezier(.2, .7, .2, 1);
+}
+.game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest .card-name-mark,
+.game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest > strong {
+  transition: font-size .38s cubic-bezier(.2, .7, .2, 1);
+}
+.game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest .card-name-mark { font-size: clamp(6.4px, 1.92vw, 8px); }
+.game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest > strong { font-size: 3.2px; }
 
 /* The active decision frame is the only Harvest hit target. Its stage has no
    backdrop hit box, so seat controls and public inspection stay reachable. */
@@ -5093,11 +5122,11 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 1px;
+  gap: 2px;
   width: fit-content;
   min-width: 0;
   max-width: min(calc(100vw - 16px), 520px);
-  padding: 2px 7px;
+  padding: 4px 7px;
   overflow: visible;
   border: 1px solid #c6a45c;
   background: #10130ff5;
@@ -5116,7 +5145,7 @@
   justify-content: space-between;
   gap: 6px;
   min-width: 0;
-  min-height: 10px;
+  min-height: 12px;
   color: #d7c28f;
   font: 700 7px/1.1 Arial, sans-serif;
 }
@@ -5165,8 +5194,8 @@
 .game-shell .harvest-card-choice {
   box-sizing: border-box;
   position: relative;
-  flex: 0 0 clamp(78px, 20vw, 88px);
-  width: clamp(78px, 20vw, 88px);
+  flex: 0 0 clamp(70px, 17vw, 76px);
+  width: clamp(70px, 17vw, 76px);
   height: auto;
   aspect-ratio: 2 / 3;
   padding: 0;
@@ -5201,10 +5230,10 @@
   box-shadow: none;
   transition: filter .15s ease, opacity .15s ease, translate .15s ease, box-shadow .15s ease;
 }
-.game-shell .harvest-card-choice > .played-card > i { left: 2px; top: 2px; width: 14px; min-height: 20px; padding: 1px 1px 3px; border-width: 1px; border-radius: 0 0 4px 0; font-size: 9px; }
-.game-shell .harvest-card-choice > .played-card > i small { margin-top: 0; font-size: 7px; }
+.game-shell .harvest-card-choice > .played-card > i { left: 2px; top: 2px; width: 16px; min-height: 23px; padding: 1px 1px 3px; border-width: 1px; border-radius: 0 0 4px 0; font-size: 10px; }
+.game-shell .harvest-card-choice > .played-card > i small { margin-top: 0; font-size: 8px; }
 .game-shell .harvest-card-choice > .played-card > strong { display: none; }
-.game-shell .harvest-card-choice > .played-card .card-name-mark { max-width: 94%; font-size: 12px; line-height: 1; translate: 0 -8px; }
+.game-shell .harvest-card-choice > .played-card .card-name-mark { max-width: 94%; font-size: clamp(11.5px, 2.8vw, 12.5px); line-height: 1; translate: 0 -9px; }
 .game-shell .harvest-card-choice.taken > .played-card {
   filter: grayscale(1) brightness(.3);
   opacity: .58;
@@ -5251,7 +5280,7 @@
   z-index: 4;
   top: auto;
   right: auto;
-  bottom: 0;
+  bottom: 2px;
   left: 50%;
   translate: -50% 0;
   display: grid;
@@ -5292,7 +5321,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 34px;
+  min-height: 38px;
   margin: 0;
   padding: 0 1px;
 }
@@ -5309,7 +5338,7 @@
   width: auto;
   min-width: 126px;
   max-width: 150px;
-  min-height: 34px;
+  min-height: 38px;
   margin: 0;
   padding: 0 12px;
   border-color: #be9b53;
@@ -5325,8 +5354,8 @@
 /* Read-only public observers get a slightly denser pool while preserving full
    CardFace proportions and the same independent lower-centre Info hit target. */
 .game-shell .harvest-choice-panel:not(.harvest-choice-panel--actor) .harvest-card-choice {
-  flex-basis: clamp(70px, 18vw, 80px);
-  width: clamp(70px, 18vw, 80px);
+  flex-basis: clamp(64px, 14.7vw, 68px);
+  width: clamp(64px, 14.7vw, 68px);
 }
 .game-shell .harvest-choice-panel:not(.harvest-choice-panel--actor) .harvest-card-choice > .played-card .card-name-mark {
   translate: 0 -10px;
