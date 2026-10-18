@@ -2431,6 +2431,27 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `ec194d74-7faf-4689-975a-20b092565cd6`. Pending user phone review; Reviewer
   acceptance is not claimed.
 
+### UX2 §10.17.3 BCP-3 — Retaliation picker — 2026-10-18
+
+- Sima Yi Retaliation reuses the compact battlefield picker, removes its
+  redundant Cancel, and keeps authoritative Use/Skip actions side by side.
+  Re-tapping an opaque Hand position clears that local selection. Server
+  authorization, hidden-card projection and game semantics remain unchanged;
+  Frost Sword and Kirin Bow retain their existing authorization-driven
+  actions.
+- Focused real Worker/D1 browser regression passed 22/22, including 390×700 and
+  440×766 touch, actor/nonactor privacy, Inspector and Card Details without an
+  action, one submission, and distinct Skip. The two viewport screenshots were
+  captured and visually reviewed. Active-skill tests passed 45/45; build,
+  browser-test ESLint, CI lint/fast, API tests, and browser smoke passed.
+  Exact-SHA Actions run
+  [`39117542770`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39117542770)
+  passed D1 migration, Worker deploy and production smoke for
+  `f0df9b63fe417f6b2bcc3b743616f9527bdcc2d7`. Worker version:
+  `736e1301-bc09-4346-b4ac-962a098dfc09`; production `/api/health` returned
+  `{"ok":true,"worker":"available"}`. Pending user phone review; Reviewer
+  acceptance is not claimed.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
