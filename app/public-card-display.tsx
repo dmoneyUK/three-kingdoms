@@ -619,8 +619,8 @@ function seatHistoryCardParking(
   const cardSize = options.cardSize ?? PARKED_CARD;
   const isLocalAnchor = anchor.classList.contains("local-player-dock");
   if (options.protectInteractionControls && options.anchorLocalHero) {
-    const authorSlot = [...document.querySelectorAll<HTMLElement>("[data-harvest-author-slot]")]
-      .find((candidate) => {
+    const slots = [...document.querySelectorAll<HTMLElement>("[data-harvest-author-slot]")]
+      .filter((candidate) => {
         if (candidate.dataset.harvestAuthorSlot !== actorId) return false;
         const slotAnchor = candidate.closest<HTMLElement>("[data-player-anchor]");
         if (slotAnchor !== anchor) return false;
@@ -629,15 +629,9 @@ function seatHistoryCardParking(
         return style.display !== "none" && style.visibility !== "hidden"
           && rect.width >= cardSize.width && rect.height >= cardSize.height;
       });
-    if (authorSlot) {
-      const slotRect = authorSlot.getBoundingClientRect();
+    if (slots.length) {
       const authorHero = anchor.querySelector<HTMLElement>(isLocalAnchor ? ".local-hero-card" : ".opponent-hero-card");
       const heroRect = authorHero?.getBoundingClientRect() ?? seat;
-      const centered: CardRect = {
-        left: slotRect.left + (slotRect.width - cardSize.width) / 2,
-        top: slotRect.top + (slotRect.height - cardSize.height) / 2,
-        ...cardSize,
-      };
       const slotDistance = (candidate: CardRect) => {
         const dx = Math.max(0, heroRect.left - (candidate.left + candidate.width), candidate.left - heroRect.right);
         const dy = Math.max(0, heroRect.top - (candidate.top + candidate.height), candidate.top - heroRect.bottom);
@@ -655,14 +649,22 @@ function seatHistoryCardParking(
         .filter((candidate) => candidate !== anchor && candidate.dataset.playerAnchor !== actorId)
         .map((candidate) => candidate.getBoundingClientRect())
         .filter((rect) => rect.width > 0 && rect.height > 0);
-      const inViewport = centered.left >= 2 && centered.left + centered.width <= window.innerWidth - 2
-        && centered.top >= 2 && centered.top + centered.height <= window.innerHeight - 2;
-      const isFree = !occupied.some((rect) => rectsOverlap(rect, centered, 2))
-        && !rectsOverlap(heroRect, centered, 2)
-        && obstacles.every((rect) => !rectsOverlap(rect, centered, 2))
-        && otherAnchors.every((rect) => !rectsOverlap(rect, centered, 2));
-      if (inViewport && slotDistance(centered) <= 8 && isFree) {
-        return { rect: centered, side: isLocalAnchor ? "local" : anchor.dataset.sideColumn === "left" ? "left" : anchor.dataset.sideColumn === "right" ? "right" : "top" };
+      for (const authorSlot of slots) {
+        const slotRect = authorSlot.getBoundingClientRect();
+        const centered: CardRect = {
+          left: slotRect.left + (slotRect.width - cardSize.width) / 2,
+          top: slotRect.top + (slotRect.height - cardSize.height) / 2,
+          ...cardSize,
+        };
+        const inViewport = centered.left >= 2 && centered.left + centered.width <= window.innerWidth - 2
+          && centered.top >= 2 && centered.top + centered.height <= window.innerHeight - 2;
+        const isFree = !occupied.some((rect) => rectsOverlap(rect, centered, 2))
+          && !rectsOverlap(heroRect, centered, 2)
+          && obstacles.every((rect) => !rectsOverlap(rect, centered, 2))
+          && otherAnchors.every((rect) => !rectsOverlap(rect, centered, 2));
+        if (inViewport && slotDistance(centered) <= 8 && isFree) {
+          return { rect: centered, side: isLocalAnchor ? "local" : anchor.dataset.sideColumn === "left" ? "left" : anchor.dataset.sideColumn === "right" ? "right" : "top" };
+        }
       }
     }
     // Harvest cards never fall through to a screen-edge or stale rectangle:
@@ -2786,8 +2788,10 @@ function SingleTargetCardJourney({
     mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
       const containsPlayerAnchor = (node: Node) => node instanceof Element
         && (node.matches("[data-player-anchor]") || Boolean(node.querySelector("[data-player-anchor]")));
+      const containsHarvestAuthorSlot = (node: Node) => node instanceof Element
+        && (node.matches("[data-harvest-author-slot]") || Boolean(node.querySelector("[data-harvest-author-slot]")));
       if (records.some((record) => record.type === "attributes"
-        || [...record.addedNodes, ...record.removedNodes].some(containsPlayerAnchor))) {
+        || [...record.addedNodes, ...record.removedNodes].some((node) => containsPlayerAnchor(node) || containsHarvestAuthorSlot(node)))) {
         observeLayout();
         reflow();
       }

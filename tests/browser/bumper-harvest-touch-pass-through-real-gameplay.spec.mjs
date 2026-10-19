@@ -135,8 +135,10 @@ async function measureHarvestParking(page, cardId, eventId) {
         && element.dataset.publicCardJourneyEventId === expectedEventId);
     if (!card) return null;
     const actorId = card.dataset.publicCardJourneyActorId;
-    const actor = [...document.querySelectorAll("[data-player-anchor]")]
-      .find((element) => element.dataset.playerAnchor === actorId);
+    const actorAnchors = [...document.querySelectorAll("[data-player-anchor]")]
+      .filter((element) => element.dataset.playerAnchor === actorId);
+    const actor = actorAnchors.find((element) => element.classList.contains("local-player-dock"))
+      ?? actorAnchors.find((element) => rect(element)?.width > 0 && rect(element)?.height > 0);
     const hero = actor?.querySelector(actor?.classList.contains("local-player-dock")
       ? ".local-hero-card" : ".opponent-hero-card");
     const face = card.querySelector(".played-card");
@@ -198,9 +200,20 @@ async function measureHarvestParking(page, cardId, eventId) {
     const structuralPanels = new Set([".play-command", ".local-player-dock", ".local-dock-identity"]);
     const actionableCollisions = collisions.filter(({ selector }) => !structuralPanels.has(selector));
     const heroRect = rect(hero);
-    const authorSlot = [...(actor?.querySelectorAll("[data-harvest-author-slot]") ?? [])]
-      .find((element) => element.getAttribute("data-harvest-author-slot") === actorId);
+    const authorSlots = [...(actor?.querySelectorAll("[data-harvest-author-slot]") ?? [])]
+      .filter((element) => element.getAttribute("data-harvest-author-slot") === actorId)
+      .map((element) => ({ element, rect: rect(element) }))
+      .filter(({ rect: bounds }) => bounds)
+      .sort((first, second) => {
+        const distance = (bounds) => Math.hypot(
+          bounds.left + bounds.width / 2 - (target.left + target.width / 2),
+          bounds.top + bounds.height / 2 - (target.top + target.height / 2),
+        );
+        return distance(first.rect) - distance(second.rect);
+      });
+    const authorSlot = authorSlots[0]?.element;
     const authorSlotRect = rect(authorSlot);
+    const authorSlotIndex = authorSlot ? Number(authorSlot.getAttribute("data-harvest-author-slot-index") ?? 0) : null;
     const actorRect = rect(actor);
     const zones = actor?.querySelector(".opponent-public-zones");
     const zonesStyle = zones ? getComputedStyle(zones) : null;
@@ -235,11 +248,11 @@ async function measureHarvestParking(page, cardId, eventId) {
       .map((element) => ({ selector: "[data-player-anchor]", rect: rect(element) }));
     const cardWidth = target.width;
     const candidateProbes = tableRect && actorRect ? [
-      ...(authorSlotRect ? [{
-        name: "author-slot",
-        left: authorSlotRect.left + (authorSlotRect.width - cardWidth) / 2,
-        top: authorSlotRect.top + (authorSlotRect.height - target.height) / 2,
-      }] : []),
+      ...authorSlots.map(({ rect: slotRect }, index) => ({
+        name: `author-slot-${index}`,
+        left: slotRect.left + (slotRect.width - cardWidth) / 2,
+        top: slotRect.top + (slotRect.height - target.height) / 2,
+      })),
       { name: "actor-centred-below", left: actorRect.left + (actorRect.width - cardWidth) / 2, top: actorRect.bottom + 6 },
       { name: "table-right-below", left: tableRect.right - cardWidth - 8, top: actorRect.bottom + 6 },
       { name: "pool-right-edge", left: (rect(document.querySelector(".harvest-choice-stage"))?.right ?? 0) + 2, top: actorRect.bottom + 6 },
@@ -318,6 +331,7 @@ async function measureHarvestParking(page, cardId, eventId) {
       actorRect,
       heroRect,
       authorSlotRect,
+      authorSlotIndex,
       authorSlotDisplay: authorSlotStyle?.display ?? null,
       authorZonesClass: zones?.className ?? null,
       authorBoardAttributes: board ? { className: board.className, topology: board.dataset.seatTopology, playerCount: board.dataset.playerCount } : null,
@@ -615,6 +629,256 @@ test("Bumper Harvest keeps the root reveal and move while the proven Negation po
   }
 });
 
+test("Bumper Harvest keeps separate parked cards when one player authors the root and a Negation", async ({ browser, request }, testInfo) => {
+  test.setTimeout(90_000);
+  const negationId = "harvest-same-author-negation";
+  const seed = await seedHarvestPool(request, 4, 4, {
+    0: [{ id: negationId, kind: "Negation", suit: "♠", rank: "A" }],
+  });
+  const source = seed.players[0];
+  const rootCardId = `harvest-density-root-${seed.players.length}`;
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 700 },
+    isMobile: true,
+    hasTouch: true,
+    deviceScaleFactor: 3,
+  });
+  try {
+    const page = await context.newPage();
+    await page.addInitScript(({ code, token, name }) => {
+      localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
+    }, { code: seed.code, token: source.token, name: source.name });
+    await page.goto(`${API}/`);
+    await expect(page.locator(".game-shell")).toBeVisible();
+
+    const played = await request.post(`${API}/api/rooms`, {
+      data: { action: "play_card", code: seed.code, token: source.token, cardId: rootCardId },
+    });
+    expect(played.ok(), await played.text()).toBeTruthy();
+    const opening = await readRoom(request, seed.code, source.token);
+    const rootEvent = opening.timeline.find((event) => event?.type === "card" && event.card?.id === rootCardId);
+    const rootId = opening.publicHarvestPool?.rootEventId;
+    expect(rootId).toBe(rootEvent?.id);
+    expect(opening.publicHarvestPool?.semantics).toBe("PROVEN");
+    const root = page.locator(`[data-public-card-journey-card-id="${rootCardId}"][data-public-card-journey-event-id="${rootId}"]`);
+    await expect(root).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });
+
+    await advanceHarvestNegationToActor(request, seed, source);
+    const committed = await commitHarvestNegation(request, seed, 0, negationId);
+    const response = page.locator(`[data-public-card-journey-card-id="${negationId}"][data-public-card-journey-event-id="${committed.event.id}"]`);
+    const journey = response.locator("xpath=ancestor::section[@data-public-card-renderer-kind='single-target-journey']");
+    await expect(response).toHaveAttribute("data-public-card-journey-role", "response");
+    await expect(response).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });
+    await expect(journey).toHaveAttribute("data-public-card-layout-pending", "false", { timeout: 5_000 });
+
+    const [rootParking, responseParking, cardBounds] = await Promise.all([
+      measureHarvestParking(page, rootCardId, rootId),
+      measureHarvestParking(page, negationId, committed.event.id),
+      page.evaluate(({ rootCardId: expectedRoot, responseCardId: expectedResponse }) => {
+        const find = (cardId) => [...document.querySelectorAll("[data-public-card-journey-card-id]")]
+          .find((card) => card.dataset.publicCardJourneyCardId === cardId);
+        const rect = (element) => {
+          if (!element) return null;
+          const { left, top, right, bottom } = element.getBoundingClientRect();
+          return { left, top, right, bottom };
+        };
+        return { root: rect(find(expectedRoot)), response: rect(find(expectedResponse)) };
+      }, { rootCardId, responseCardId: negationId }),
+    ]);
+    expectHarvestCardParkedByAuthor(rootParking, "same-author Harvest root");
+    expectHarvestCardParkedByAuthor(responseParking, "same-author Negation");
+    expect(rootParking.actorId).toBe(source.id);
+    expect(responseParking.actorId).toBe(source.id);
+    expect(rootParking.actorIsLocal).toBe(true);
+    expect(responseParking.actorIsLocal).toBe(true);
+    expect(rootParking.authorSlotIndex).toBe(0);
+    expect(responseParking.authorSlotIndex).toBe(1);
+    expect(cardBounds.root.right <= cardBounds.response.left || cardBounds.response.right <= cardBounds.root.left
+      || cardBounds.root.bottom <= cardBounds.response.top || cardBounds.response.bottom <= cardBounds.root.top,
+    JSON.stringify({ rootParking, responseParking, cardBounds })).toBe(true);
+    await testInfo.attach("bumper-harvest-same-author-parking-390x700", {
+      body: JSON.stringify({ rootParking, responseParking, cardBounds }, null, 2),
+      contentType: "application/json",
+    });
+    const screenshot = testInfo.outputPath("bumper-harvest-same-author-parking-390x700.png");
+    await page.screenshot({ path: screenshot, animations: "disabled" });
+    await testInfo.attach("bumper-harvest-same-author-parking-390x700", { path: screenshot, contentType: "image/png" });
+
+    await tap(page, response);
+    await expect(page.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
+    await tap(page, page.getByRole("button", { name: "Close card details" }));
+  } finally {
+    await context.close();
+  }
+});
+
+test("Bumper Harvest keeps an opponent's authored cards beside the same Hero through response and Inspector", async ({ browser, request }, testInfo) => {
+  test.setTimeout(90_000);
+  const negationId = "harvest-opponent-author-negation";
+  const seed = await seedHarvestPool(request, 4, 4, {
+    0: [{ id: negationId, kind: "Negation", suit: "♠", rank: "A" }],
+  });
+  const source = seed.players[0];
+  const viewer = seed.players[1];
+  const rootCardId = `harvest-density-root-${seed.players.length}`;
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+    deviceScaleFactor: 3,
+  });
+  try {
+    const page = await context.newPage();
+    await page.addInitScript(({ code, token, name }) => {
+      localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
+    }, { code: seed.code, token: viewer.token, name: viewer.name });
+    await page.goto(`${API}/`);
+    await expect(page.locator(".game-shell")).toBeVisible();
+
+    const played = await request.post(`${API}/api/rooms`, {
+      data: { action: "play_card", code: seed.code, token: source.token, cardId: rootCardId },
+    });
+    expect(played.ok(), await played.text()).toBeTruthy();
+    const opening = await readRoom(request, seed.code, viewer.token);
+    const rootEvent = opening.timeline.find((event) => event?.type === "card" && event.card?.id === rootCardId);
+    const rootId = opening.publicHarvestPool?.rootEventId;
+    expect(rootId).toBe(rootEvent?.id);
+    const root = page.locator(`[data-public-card-journey-card-id="${rootCardId}"][data-public-card-journey-event-id="${rootId}"]`);
+    await expect(root).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });
+    const rootParking = await measureHarvestParking(page, rootCardId, rootId);
+    expectHarvestCardParkedByAuthor(rootParking, "opponent-author Harvest root");
+    expect(rootParking.actorId).toBe(source.id);
+    expect(rootParking.actorIsLocal).toBe(false);
+
+    await advanceHarvestNegationToActor(request, seed, source);
+    const committed = await commitHarvestNegation(request, seed, 0, negationId);
+    const response = page.locator(`[data-public-card-journey-card-id="${negationId}"][data-public-card-journey-event-id="${committed.event.id}"]`);
+    await expect(response).toBeAttached({ timeout: 12_000 });
+    await expect(response).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });
+    const responseParking = await measureHarvestParking(page, negationId, committed.event.id);
+    const expandedRootParking = await measureHarvestParking(page, rootCardId, rootId);
+    expectHarvestCardParkedByAuthor(expandedRootParking, "opponent-author Harvest root after a second slot is reserved");
+    expectHarvestCardParkedByAuthor(responseParking, "opponent-author Negation");
+    expect(responseParking.actorId).toBe(source.id);
+    expect(responseParking.actorIsLocal).toBe(false);
+    expect(rootParking.authorSlotIndex).toBe(0);
+    expect(responseParking.authorSlotIndex).toBe(1);
+    expect(responseParking.pool).toBeTruthy();
+    expect(responseParking.actionableCollisions, JSON.stringify(responseParking)).toEqual([]);
+    expect(responseParking.hitSamples.every((sample) => sample.hitsCard), JSON.stringify(responseParking.hitSamples)).toBe(true);
+    expect(expandedRootParking.actual.right <= responseParking.actual.left || responseParking.actual.right <= expandedRootParking.actual.left
+      || expandedRootParking.actual.bottom <= responseParking.actual.top || responseParking.actual.bottom <= expandedRootParking.actual.top,
+    JSON.stringify({ expandedRootParking, responseParking })).toBe(true);
+
+    const topSeatEvidence = await page.evaluate((actorId) => {
+      const actor = [...document.querySelectorAll(".opponent-player-card[data-player-anchor]")]
+        .find((element) => element.dataset.playerAnchor === actorId);
+      const rect = (element) => {
+        if (!element) return null;
+        const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+        return { left, top, right, bottom, width, height };
+      };
+      const hero = actor?.querySelector(".opponent-hero-card");
+      const heroTarget = actor?.querySelector(".opponent-hero-target");
+      const status = actor?.querySelector(".opponent-status-equipment-strip");
+      const statusBounds = rect(status);
+      const statusHit = statusBounds && document.elementFromPoint(statusBounds.left + statusBounds.width / 2, statusBounds.top + statusBounds.height / 2);
+      const heroBounds = rect(heroTarget);
+      const heroHit = heroBounds && document.elementFromPoint(heroBounds.left + heroBounds.width / 2, heroBounds.top + heroBounds.height / 2);
+      return {
+        seat: rect(actor), hero: rect(hero), status: statusBounds,
+        statusVisible: Boolean(status && status.getClientRects().length && getComputedStyle(status).visibility === "visible"),
+        statusHit: Boolean(statusHit && status?.contains(statusHit)),
+        heroTarget: heroBounds,
+        heroHit: Boolean(heroHit && heroTarget?.contains(heroHit)),
+        pool: rect(document.querySelector(".harvest-choice-panel")),
+        h4: rect(document.querySelector(".public-card-display-journey-copy")),
+        grid: actor?.parentElement ? getComputedStyle(actor.parentElement).gridTemplateColumns : null,
+      };
+    }, source.id);
+    expect(topSeatEvidence.statusVisible).toBe(true);
+    expect(topSeatEvidence.statusHit).toBe(true);
+    expect(topSeatEvidence.heroHit, JSON.stringify(topSeatEvidence)).toBe(true);
+    expect(topSeatEvidence.status.bottom).toBeLessThanOrEqual(topSeatEvidence.pool.top);
+    await testInfo.attach("bumper-harvest-opponent-multi-slot-390x844", {
+      body: JSON.stringify({ rootParking, responseParking, topSeatEvidence }, null, 2),
+      contentType: "application/json",
+    });
+    const spectatorShot = testInfo.outputPath("bumper-harvest-opponent-multi-slot-390x844.png");
+    await page.screenshot({ path: spectatorShot, animations: "disabled" });
+    await testInfo.attach("bumper-harvest-opponent-multi-slot-390x844", { path: spectatorShot, contentType: "image/png" });
+
+    await tap(page, response);
+    await expect(page.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
+    await tap(page, page.getByRole("button", { name: "Close card details" }));
+    const poolCardIds = await page.locator(".harvest-choice-stage .harvest-card-choice").evaluateAll((cards) => cards.map((card) => card.dataset.harvestCardId));
+    await tap(page, page.locator(".harvest-choice-stage .harvest-card-info").first());
+    await expect(page.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
+    await expect(page.locator(".harvest-choice-stage .harvest-card-choice[aria-pressed='true']")).toHaveCount(0);
+    await tap(page, page.getByRole("button", { name: "Close card details" }));
+    expect(await page.locator(".harvest-choice-stage .harvest-card-choice").evaluateAll((cards) => cards.map((card) => card.dataset.harvestCardId))).toEqual(poolCardIds);
+    await inspectHarvestPool(page, source.id, testInfo, "bumper-harvest-opponent-multi-slot-inspector-390x844", false);
+    await page.evaluate(async () => {
+      const deadline = performance.now() + 8000;
+      let stableFrames = 0;
+      let latest = null;
+      while (performance.now() < deadline) {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        const display = document.querySelector("[data-public-card-renderer-kind='single-target-journey']");
+        const cards = [...document.querySelectorAll("[data-public-card-journey-card-id]")];
+        latest = {
+          pending: display?.dataset.publicCardLayoutPending ?? null,
+          cards: cards.map((card) => ({ phase: card.dataset.publicCardJourneyPhase, visibility: getComputedStyle(card).visibility, id: card.dataset.publicCardJourneyCardId })),
+        };
+        const stable = display?.dataset.publicCardLayoutPending === "false"
+          && cards.length >= 2
+          && cards.every((card) => card.dataset.publicCardJourneyPhase === "parked" && getComputedStyle(card).visibility === "visible");
+        stableFrames = stable ? stableFrames + 1 : 0;
+        if (stableFrames >= 3) return;
+      }
+      throw new Error(`Harvest Inspector close did not restore a stable card layout: ${JSON.stringify(latest)}`);
+    });
+    const postInspectorState = await page.evaluate(() => {
+      const display = document.querySelector("[data-public-card-renderer-kind='single-target-journey']");
+      return {
+        display: display ? {
+          pending: display.dataset.publicCardLayoutPending,
+          viewer: display.dataset.publicCardViewerId,
+          layoutViewer: display.dataset.publicCardLayoutViewerId,
+          className: display.className,
+        } : null,
+        cards: [...document.querySelectorAll("[data-public-card-journey-card-id]")].map((card) => ({
+          cardId: card.dataset.publicCardJourneyCardId,
+          eventId: card.dataset.publicCardJourneyEventId,
+          role: card.dataset.publicCardJourneyRole,
+          actorId: card.dataset.publicCardJourneyActorId,
+          phase: card.dataset.publicCardJourneyPhase,
+          visibility: getComputedStyle(card).visibility,
+          target: Object.fromEntries(["left", "top", "width", "height"].map((key) => [key, card.dataset[`publicCardJourneyTarget${key[0].toUpperCase()}${key.slice(1)}`]])),
+        })),
+        slots: [...document.querySelectorAll(".opponent-player-card.harvest-author-multi-slot [data-harvest-author-slot]")]
+          .map((slot) => ({ actorId: slot.dataset.harvestAuthorSlot, index: slot.dataset.harvestAuthorSlotIndex, rect: slot.getBoundingClientRect().toJSON() })),
+      };
+    });
+    await testInfo.attach("bumper-harvest-post-inspector-layout-390x844", {
+      body: JSON.stringify(postInspectorState, null, 2), contentType: "application/json",
+    });
+    expect(postInspectorState.display?.pending, JSON.stringify(postInspectorState)).toBe("false");
+    await expect(page.locator(`[data-public-card-journey-card-id="${rootCardId}"][data-public-card-journey-event-id="${rootId}"]`)).toHaveCount(1);
+    await expect(page.locator(`[data-public-card-journey-card-id="${negationId}"][data-public-card-journey-event-id="${committed.event.id}"]`))
+      .toHaveAttribute("data-public-card-journey-phase", "parked");
+    const postInspectorRoot = await measureHarvestParking(page, rootCardId, rootId);
+    const postInspectorResponse = await measureHarvestParking(page, negationId, committed.event.id);
+    expectHarvestCardParkedByAuthor(postInspectorRoot, "opponent-author root after Inspector closes");
+    expectHarvestCardParkedByAuthor(postInspectorResponse, "opponent-author Negation after Inspector closes");
+    const postInspectorShot = testInfo.outputPath("bumper-harvest-opponent-author-after-inspector-390x844.png");
+    await page.screenshot({ path: postInspectorShot, animations: "disabled" });
+    await testInfo.attach("bumper-harvest-opponent-author-after-inspector-390x844", { path: postInspectorShot, contentType: "image/png" });
+  } finally {
+    await context.close();
+  }
+});
+
 test("committed Bumper Harvest Negation and counter reveals paint above the read-only pool on phone", async ({ browser, request }, testInfo) => {
   test.setTimeout(90_000);
   const firstNegationId = "harvest-layer-first-negation";
@@ -726,10 +990,12 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
           const wordRange = document.createRange();
           wordRange.setStart(textNode, match.index);
           wordRange.setEnd(textNode, match.index + match[0].length);
-          return { word: match[0], lines: wordRange.getClientRects().length };
+          const lines = new Set([...wordRange.getClientRects()].map(({ top }) => Math.round(top * 100) / 100));
+          return { word: match[0].replace(/\u00ad/g, ""), lines: lines.size };
         });
         return {
-          name: title.textContent?.trim(),
+          name: title.textContent?.replace(/\u00ad/g, "").trim(),
+          displayName: title.textContent?.trim(),
           width: card.getBoundingClientRect().width,
           titleLines,
           wordLineCounts,
@@ -742,7 +1008,8 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
       expect(choiceAudit.map((entry) => entry?.name), JSON.stringify({ viewerId: viewer.id, choiceAudit }))
         .toEqual(["Something Out of Nothing", "Overindulgence", "Burning Bridges", "Steal"]);
       expect(choiceAudit.every((entry) => entry && entry.width >= 82 && entry.lineClamp === "3"
-        && entry.titleLines.length <= 3 && entry.wordLineCounts.every(({ lines }) => lines <= 1)
+        && entry.titleLines.length <= 3 && entry.wordLineCounts.every(({ word, lines }) => lines <= 1
+          || (word === "Overindulgence" && lines === 2 && entry.displayName?.includes("\u00ad")))
         && entry.titleRect.bottom < entry.infoRect.top),
       JSON.stringify({ viewerId: viewer.id, choiceAudit })).toBe(true);
     }));
@@ -1713,6 +1980,76 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
         body: JSON.stringify({ rootCardId: card.id, rootEventId: rootEvent.id, revealStartedAt, switchFrames }, null, 2),
         contentType: "application/json",
       });
+      const switchSettledByViewer = [{ viewerId: switchTarget.id, frames: switchFrames }];
+      for (const nextViewer of room.players.filter((player) => player.id !== switchTarget.id)) {
+        await switchProbePage.evaluate(() => {
+          window.__bcp1MoveSwitchFrames = [];
+          window.__bcp1CaptureMoveSwitch = true;
+          const sample = () => {
+            if (!window.__bcp1CaptureMoveSwitch) return;
+            const display = document.querySelector('.public-card-display-journey[data-public-card-motion="negation"]');
+            const card = display?.querySelector(".public-card-journey-card");
+            const bounds = card?.getBoundingClientRect();
+            window.__bcp1MoveSwitchFrames.push({
+              viewerId: display?.dataset.publicCardViewerId ?? null,
+              layoutViewerId: display?.dataset.publicCardLayoutViewerId ?? null,
+              layoutPending: display?.dataset.publicCardLayoutPending ?? null,
+              cardVisibility: card ? getComputedStyle(card).visibility : null,
+              phase: card?.dataset.publicCardJourneyPhase ?? null,
+              cardId: card?.dataset.publicCardJourneyCardId ?? null,
+              eventId: card?.dataset.publicCardJourneyEventId ?? null,
+              revealStartedAt: card?.dataset.publicCardJourneyRevealStartedAt ?? null,
+              actual: bounds ? { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height } : null,
+              target: card ? {
+                left: Number(card.dataset.publicCardJourneyTargetLeft),
+                top: Number(card.dataset.publicCardJourneyTargetTop),
+                width: Number(card.dataset.publicCardJourneyTargetWidth),
+                height: Number(card.dataset.publicCardJourneyTargetHeight),
+              } : null,
+              poolVisible: Boolean(document.querySelector('.harvest-choice-stage[data-harvest-readonly="true"]')),
+            });
+            requestAnimationFrame(sample);
+          };
+          requestAnimationFrame(sample);
+        });
+        await tap(switchProbePage, switchProbePage.getByTestId(`test-view-switch-${nextViewer.id}`));
+        await expect(switchProbePage.locator(`.local-player-dock[data-player-anchor="${nextViewer.id}"]`)).toBeVisible();
+        await switchProbePage.waitForTimeout(250);
+        const frames = await switchProbePage.evaluate(() => {
+          window.__bcp1CaptureMoveSwitch = false;
+          return window.__bcp1MoveSwitchFrames;
+        });
+        expect(frames.length, JSON.stringify({ nextViewer: nextViewer.id, frames })).toBeGreaterThan(2);
+        expect(frames.every((frame) => frame.poolVisible), JSON.stringify(frames)).toBe(true);
+        expect(frames.every((frame) => frame.cardId === card.id && frame.eventId === rootEvent.id), JSON.stringify(frames)).toBe(true);
+        expect(frames.every((frame) => frame.revealStartedAt === revealStartedAt), JSON.stringify(frames)).toBe(true);
+        expect(frames.every((frame) => frame.viewerId === frame.layoutViewerId
+          || (frame.layoutPending === "true" && frame.cardVisibility === "hidden")), JSON.stringify(frames)).toBe(true);
+        expect(frames.every((frame) => frame.layoutPending !== "true" || frame.cardVisibility === "hidden"), JSON.stringify(frames)).toBe(true);
+        const settled = frames.at(-1);
+        expect(settled.viewerId).toBe(nextViewer.id);
+        expect(settled.layoutViewerId).toBe(nextViewer.id);
+        expect(settled.cardVisibility).toBe("visible");
+        expect(settled.phase).toBe("parked");
+        await expect(switchProbePage.locator(rootSelector)).toHaveAttribute("data-public-card-journey-phase", "parked");
+        await expect(switchProbePage.locator(rootSelector).locator("xpath=ancestor::section[@data-public-card-renderer-kind='single-target-journey']"))
+          .toHaveAttribute("data-public-card-layout-pending", "false");
+        const parked = await measureHarvestParking(switchProbePage, card.id, rootEvent.id);
+        expectHarvestCardParkedByAuthor(parked, `root after TEST SWITCH to ${nextViewer.name}`);
+        expect(parked.actorId).toBe(source.id);
+        await testInfo.attach(`bumper-harvest-switch-viewer-${nextViewer.seat}-frames`, {
+          body: JSON.stringify({ rootCardId: card.id, rootEventId: rootEvent.id, revealStartedAt, viewerId: nextViewer.id, frames, parked }, null, 2),
+          contentType: "application/json",
+        });
+        const screenshot = testInfo.outputPath(`bumper-harvest-switch-viewer-${nextViewer.seat}-390x700.png`);
+        await switchProbePage.screenshot({ path: screenshot, animations: "disabled" });
+        await testInfo.attach(`bumper-harvest-switch-viewer-${nextViewer.seat}`, { path: screenshot, contentType: "image/png" });
+        switchSettledByViewer.push({ viewerId: nextViewer.id, frames });
+      }
+      await testInfo.attach("bumper-harvest-switch-all-viewers-summary", {
+        body: JSON.stringify({ rootCardId: card.id, rootEventId: rootEvent.id, revealStartedAt, viewers: switchSettledByViewer.map(({ viewerId }) => viewerId) }, null, 2),
+        contentType: "application/json",
+      });
       break;
     } else if (room.phase?.startsWith("draw")) {
       await controlledAction("draw");
@@ -2497,14 +2834,14 @@ test("Harvest content-fit scales from 1 to 8 genuine cards and swipes at 6–8 s
   for (const scenario of [
     { seats: 4, alive: 1, choices: 1, viewport: { width: 390, height: 700 } },
     { seats: 4, alive: 2, choices: 2, viewport: { width: 390, height: 844 } },
-    { seats: 4, alive: 4, choices: 4, viewport: { width: 390, height: 700 } },
-    { seats: 4, alive: 4, choices: 4, viewport: { width: 390, height: 844 } },
-    { seats: 4, alive: 4, choices: 4, viewport: { width: 440, height: 766 } },
-    { seats: 4, alive: 4, choices: 4, viewport: { width: 480, height: 900 } },
+    { seats: 4, alive: 4, choices: 4, viewport: { width: 390, height: 700 }, cardKinds: ["DrawTwo", "Overindulgence", "Dismantle", "Lightning"] },
+    { seats: 4, alive: 4, choices: 4, viewport: { width: 390, height: 844 }, cardKinds: ["DrawTwo", "Overindulgence", "Dismantle", "Lightning"] },
+    { seats: 4, alive: 4, choices: 4, viewport: { width: 440, height: 766 }, cardKinds: ["DrawTwo", "Overindulgence", "Dismantle", "Lightning"] },
+    { seats: 4, alive: 4, choices: 4, viewport: { width: 480, height: 900 }, cardKinds: ["DrawTwo", "Overindulgence", "Dismantle", "Lightning"] },
     { seats: 6, alive: 6, choices: 6, viewport: { width: 390, height: 700 } },
     { seats: 8, alive: 8, choices: 8, viewport: { width: 440, height: 766 } },
   ]) {
-    const seed = await seedHarvestPool(request, scenario.seats, scenario.alive);
+    const seed = await seedHarvestPool(request, scenario.seats, scenario.alive, {}, scenario.cardKinds ?? null);
     const room = await openHarvestChoice(request, seed);
     expect(room.pendingHarvest.revealed).toHaveLength(scenario.choices);
     expect(room.pendingHarvest.actorId).toBe(seed.players[0].id);
@@ -2537,6 +2874,40 @@ test("Harvest content-fit scales from 1 to 8 genuine cards and swipes at 6–8 s
         const expectedCardWidth = Math.min(88, Math.max(82, scenario.viewport.width * .20));
         expect(geometry.cards.every((card) => Math.abs(card.width - expectedCardWidth) <= .5), contextLabel).toBe(true);
         expect(geometry.panel.width, contextLabel).toBeLessThanOrEqual(geometry.row.width + 20);
+        const titleMetrics = await page.locator(".harvest-card-choice").evaluateAll((choices) => choices.map((choice) => {
+          const title = choice.querySelector(".played-card .card-name-mark");
+          const face = choice.querySelector(".played-card");
+          const range = document.createRange();
+          if (title) range.selectNodeContents(title);
+          const lines = [...range.getClientRects()].map(({ left, top, right, bottom }) => ({ left, top, right, bottom }));
+          const titleRect = title?.getBoundingClientRect();
+          const faceRect = face?.getBoundingClientRect();
+          return {
+            text: title?.textContent?.replace(/\u00ad/g, "") ?? "",
+            displayText: title?.textContent ?? "",
+            width: title?.clientWidth ?? 0,
+            height: title?.clientHeight ?? 0,
+            scrollWidth: title?.scrollWidth ?? 0,
+            scrollHeight: title?.scrollHeight ?? 0,
+            lines,
+            titleBounds: titleRect ? { left: titleRect.left, top: titleRect.top, right: titleRect.right, bottom: titleRect.bottom } : null,
+            faceBounds: faceRect ? { left: faceRect.left, top: faceRect.top, right: faceRect.right, bottom: faceRect.bottom } : null,
+            overflowWrap: title ? getComputedStyle(title).overflowWrap : null,
+            lineClamp: title ? getComputedStyle(title).webkitLineClamp : null,
+          };
+        }));
+        await testInfo.attach(`harvest-long-card-titles-${scenario.viewport.width}x${scenario.viewport.height}`, {
+          body: JSON.stringify(titleMetrics, null, 2), contentType: "application/json",
+        });
+        expect(titleMetrics.map(({ text }) => text)).toEqual([
+          "Something Out of Nothing", "Overindulgence", "Burning Bridges", "Lightning",
+        ]);
+        expect(titleMetrics[1].displayText).toBe("Overindul\u00adgence");
+        expect(titleMetrics.every((title) => title.width > 0 && title.height > 0
+          && title.scrollWidth <= title.width + 1 && title.scrollHeight <= title.height + 1), contextLabel).toBe(true);
+        expect(titleMetrics.every((title) => title.titleBounds && title.faceBounds
+          && title.titleBounds.left >= title.faceBounds.left && title.titleBounds.right <= title.faceBounds.right
+          && title.titleBounds.top >= title.faceBounds.top && title.titleBounds.bottom <= title.faceBounds.bottom), contextLabel).toBe(true);
       }
       expect(geometry.footer.bottom, contextLabel).toBeLessThanOrEqual(scenario.viewport.height + 1);
       const initialVisibleDetails = geometry.cardDetailsTargets.filter((detail) => detail.card.left >= geometry.rowClip.left - 1
