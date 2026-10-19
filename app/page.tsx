@@ -893,8 +893,6 @@ type OpponentPlayerCardProps = {
   interactionRoles: InteractionSeatSemanticRoles;
   targetSelectionActive: boolean;
   isInspected: boolean;
-  harvestAuthorSlotActive: boolean;
-  harvestAuthorSlotCount: number;
   targetablePlayer: boolean;
   daqiaoDeflectionTargetMode: boolean;
   testViewerController: boolean;
@@ -932,7 +930,7 @@ function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
   return <span className="opponent-equipment-horse-mark" aria-hidden="true">{slot === "defensiveHorse" ? "+1" : "−1"}</span>;
 }
 
-function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, isInspected, harvestAuthorSlotActive, harvestAuthorSlotCount, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
+function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, isInspected, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
   const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex);
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
   for (const equipment of player.equipmentCards) {
@@ -958,13 +956,8 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
       : `${player.name}, not an eligible Deflection target`
     : `${targetSelectionActive ? "Select" : "Inspect"} ${player.name}`;
   const interactionRoleNames = Object.entries(interactionRoles).filter(([, active]) => active).map(([role]) => role.replace(/^is/, "").replace(/([A-Z])/g, "-$1").toLowerCase()).join(" ");
-  const multiSlotHeight = harvestAuthorSlotCount > 1 && sideColumnSeat ? harvestAuthorSlotCount * 72 + 18 : undefined;
-  const harvestSeatStyle = {
-    ...(sideColumnSeat ? { gridRow: sideColumnSeat.row } : {}),
-    ...(multiSlotHeight ? { height: `${multiSlotHeight}px` } : {}),
-  };
-  return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${targetSelectionActive && targetablePlayer && player.alive ? "targetable-target" : ""} ${isGroupPreview ? "local-group-preview" : ""} ${harvestAuthorSlotActive ? "harvest-author-layout" : ""} ${harvestAuthorSlotCount > 1 ? "harvest-author-multi-slot" : ""} ${interactionRoles.isInteractionSource ? "interaction-seat-source" : ""} ${interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : ""} ${interactionRoles.isActiveTarget ? "interaction-seat-active-target" : ""} ${interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : ""} ${interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : ""} ${interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : ""} ${interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : ""} ${!player.alive ? "defeated-square" : ""}`} data-harvest-author-layout={harvestAuthorSlotActive ? "true" : undefined} data-harvest-author-slot-count={harvestAuthorSlotActive ? harvestAuthorSlotCount : undefined} data-side-column={sideColumnSeat?.side} data-side-row={sideColumnSeat?.row} style={harvestSeatStyle} data-player-anchor={player.id} data-target-selectable={targetSelectionActive && targetablePlayer && player.alive ? "true" : undefined} data-deflection-targetable={deflectionTargetSelectable ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined}>
-      <div className={`opponent-public-zones${harvestAuthorSlotActive ? " harvest-author-layout" : ""}${harvestAuthorSlotCount > 1 ? " harvest-author-multi-slot" : ""}`} style={multiSlotHeight ? { gridTemplateRows: `repeat(${harvestAuthorSlotCount}, 72px) 18px`, height: `${multiSlotHeight}px` } : undefined}>
+  return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${targetSelectionActive && targetablePlayer && player.alive ? "targetable-target" : ""} ${isGroupPreview ? "local-group-preview" : ""} ${interactionRoles.isInteractionSource ? "interaction-seat-source" : ""} ${interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : ""} ${interactionRoles.isActiveTarget ? "interaction-seat-active-target" : ""} ${interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : ""} ${interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : ""} ${interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : ""} ${interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : ""} ${!player.alive ? "defeated-square" : ""}`} data-side-column={sideColumnSeat?.side} data-side-row={sideColumnSeat?.row} style={sideColumnSeat ? { gridRow: sideColumnSeat.row } : undefined} data-player-anchor={player.id} data-target-selectable={targetSelectionActive && targetablePlayer && player.alive ? "true" : undefined} data-deflection-targetable={deflectionTargetSelectable ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined}>
+      <div className="opponent-public-zones">
       <div className="player-hero-card opponent-hero-card">
         <button type="button" className="player-square-target opponent-hero-target" disabled={targetButtonDisabled} aria-label={targetButtonLabel} aria-pressed={targetSelectionActive ? isSelectedTarget : isInspected} aria-expanded={isInspected} onClick={(event) => {
           const trigger = event?.currentTarget ?? null;
@@ -978,10 +971,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
         </div>
         {playerHero && (player.isTestPlayer || player.isHost) && testViewerController && <button type="button" className="test-view-switch-button" data-testid={`test-view-switch-${player.id}`} data-test-viewer-id={player.id} aria-label={`Switch to ${player.name}`} title={`Switch to ${player.name}`} onClick={(event) => { event.stopPropagation(); onSwitchTestViewer(player.id); }}>SWITCH</button>}
       </div>
-        {harvestAuthorSlotActive && Array.from({ length: Math.max(1, harvestAuthorSlotCount) }, (_, index) => (
-          <div className="harvest-author-slot" data-harvest-author-slot={player.id} data-harvest-author-slot-index={index} key={`${player.id}-harvest-slot-${index}`} style={harvestAuthorSlotCount > 1 ? sideColumnSeat ? { gridColumn: 2, gridRow: index + 1 } : { gridColumn: index === 0 ? 1 : 3, gridRow: 1 } : undefined} aria-hidden="true" />
-        ))}
-      <div className="opponent-status-equipment-strip" style={multiSlotHeight ? { gridColumn: "1 / -1", gridRow: harvestAuthorSlotCount + 1 } : undefined}>
+      <div className="opponent-status-equipment-strip">
         <span className="opponent-hp-chip" aria-label={`HP ${player.hp ?? 0} of ${player.maxHp ?? 0}`}>HP {player.hp ?? 0}/{player.maxHp ?? 0}</span>
         <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count={equipmentBySlot.size}>{equipmentSummary}</div>
       </div>
@@ -1768,11 +1758,9 @@ type LocalPlayerDockProps = {
   isGroupPreview?: boolean;
   preserveGuidanceHeight?: boolean;
   attackResponsePrompt?: boolean;
-  harvestAuthorSlotActive?: boolean;
-  harvestAuthorSlotCount?: number;
 };
 
-export function LocalPlayerDock({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), isGroupPreview = false, preserveGuidanceHeight = false, attackResponsePrompt = false, harvestAuthorSlotActive = false, harvestAuthorSlotCount = 1 }: LocalPlayerDockProps) {
+export function LocalPlayerDock({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), isGroupPreview = false, preserveGuidanceHeight = false, attackResponsePrompt = false }: LocalPlayerDockProps) {
   const dockRef = useRef<HTMLElement | null>(null);
   const guidanceHeightRef = useRef<number | null>(null);
   const preserveGuidanceHeightRef = useRef(preserveGuidanceHeight);
@@ -1856,7 +1844,7 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
         : <button type="button" className="zone-info-button" aria-label={`Explain ${definition.name}`} onClick={(event) => { event.stopPropagation(); inspect(event.currentTarget); }}>i</button>}
     </div>;
   };
-  return <section ref={dockRef} className={`local-player-dock${isGroupPreview ? " local-group-preview" : ""}${interactionRoleClasses ? ` ${interactionRoleClasses}` : ""}${attackResponsePrompt ? " local-dock-attack-response" : ""}${harvestAuthorSlotActive ? " harvest-author-layout" : ""}${harvestAuthorSlotCount > 1 ? " harvest-author-multi-slot" : ""}`} data-player-anchor={player?.id ?? undefined} data-harvest-author-layout={harvestAuthorSlotActive ? "true" : undefined} data-harvest-author-slot-count={harvestAuthorSlotActive ? harvestAuthorSlotCount : undefined} data-attack-response-prompt={attackResponsePrompt ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-guidance-height-preserved={preserveGuidanceHeight ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined} aria-label="Your player area" tabIndex={-1}>
+  return <section ref={dockRef} className={`local-player-dock${isGroupPreview ? " local-group-preview" : ""}${interactionRoleClasses ? ` ${interactionRoleClasses}` : ""}${attackResponsePrompt ? " local-dock-attack-response" : ""}`} data-player-anchor={player?.id ?? undefined} data-attack-response-prompt={attackResponsePrompt ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-guidance-height-preserved={preserveGuidanceHeight ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined} aria-label="Your player area" tabIndex={-1}>
     {guidance}
     <div className="local-dock-identity">
       <div className="local-hero-anchor">
@@ -1874,9 +1862,6 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
           {judgementCards.map((card, index) => <div className="local-judgement-card-slot" key={card.id} style={{ marginLeft: index === 0 ? 0 : `${judgementCardLayout.step - judgementCardWidth}px` }}>{renderZoneCard(card)}</div>)}
         </div>}
       </div>
-      {harvestAuthorSlotActive && player?.id && Array.from({ length: Math.max(1, harvestAuthorSlotCount) }, (_, index) => (
-        <div className="harvest-author-slot" data-harvest-author-slot={player.id} data-harvest-author-slot-index={index} key={`${player.id}-harvest-slot-${index}`} aria-hidden="true" />
-      ))}
     </div>
     <div className="local-dock-zones" aria-label="Your status and equipment zones">
       <div className="local-status-panel" aria-label="Hero skills">{heroSkillControl ?? <section className="hero-skills local-hero-skills" aria-label="Hero skills">{fallbackSkills.map((skill) => <button type="button" className="hero-skill-button" key={skill.name} title={skill.description} disabled>{skill.name}</button>)}</section>}</div>
@@ -2000,33 +1985,112 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const table = stage?.closest<HTMLElement>(".play-table");
     if (!stage || !table) return;
     let frame = 0;
+    const observed = new Set<Element>();
+    let observer: ResizeObserver | null = null;
+    const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
+      observeLayout();
+      measure();
+    });
+    const protectedSelectors = [
+      ".player-board > .opponent-player-card",
+      ".public-card-display-journey-copy",
+      ".public-activity-chip",
+      "[data-public-activity-chip]",
+      ".visible-countdown",
+      ".stage-system-cluster",
+      ".opponent-inspection-floating-shell",
+      ".local-player-dock",
+      ".local-hand-section",
+      ".turn-controls",
+    ];
+    const observeLayout = () => {
+      for (const node of [table, stage, stage.querySelector(".harvest-choice-panel"), ...protectedSelectors.flatMap((selector) => [...document.querySelectorAll(selector)])]) {
+        if (!node || observed.has(node)) continue;
+        observed.add(node);
+        observer?.observe(node);
+      }
+    };
     const measure = () => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
         const tableRect = table.getBoundingClientRect();
-        const board = table.querySelector<HTMLElement>(".player-board[data-seat-topology='top-row']");
-        const seats = board ? [...board.querySelectorAll<HTMLElement>(":scope > .opponent-player-card")] : [];
-        const measuredSeatBottom = seats.length ? Math.max(...seats.map((seat) => seat.getBoundingClientRect().bottom)) : null;
-        const top = measuredSeatBottom === null
-          ? Math.max(8, Math.round(tableRect.height * 0.28))
-          : Math.max(8, Math.ceil(measuredSeatBottom - tableRect.top + 4));
-        setHarvestStageTop((current) => current === top ? current : top);
+        const panel = stage.querySelector<HTMLElement>(".harvest-choice-panel");
+        if (!panel || tableRect.width <= 0 || tableRect.height <= 0) return;
+        const panelRect = panel.getBoundingClientRect();
+        if (panelRect.width <= 0 || panelRect.height <= 0) return;
+
+        const margin = 6;
+        const minimumTop = Math.max(tableRect.top + margin, margin);
+        const maximumTop = Math.min(tableRect.bottom, window.innerHeight) - panelRect.height - margin;
+        const obstacles = [...new Set(protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]))]
+          .filter((element) => element !== stage && !stage.contains(element))
+          .map((element) => ({ element, rect: element.getBoundingClientRect() }))
+          .filter(({ element, rect }) => {
+            const style = window.getComputedStyle(element);
+            return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
+              && panelRect.left < rect.right + margin && panelRect.right > rect.left - margin;
+          });
+
+        const desiredTop = minimumTop + Math.max(0, maximumTop - minimumTop) / 2;
+        let safeRanges = maximumTop >= minimumTop ? [{ minimum: minimumTop, maximum: maximumTop }] : [];
+        for (const { rect } of obstacles) {
+          const blockedMinimum = rect.top - panelRect.height - margin;
+          const blockedMaximum = rect.bottom + margin;
+          safeRanges = safeRanges.flatMap((range) => {
+            if (blockedMaximum <= range.minimum || blockedMinimum >= range.maximum) return [range];
+            return [
+              ...(range.minimum < blockedMinimum ? [{ minimum: range.minimum, maximum: Math.min(range.maximum, blockedMinimum) }] : []),
+              ...(range.maximum > blockedMaximum ? [{ minimum: Math.max(range.minimum, blockedMaximum), maximum: range.maximum }] : []),
+            ];
+          }).filter((range) => range.maximum >= range.minimum);
+        }
+
+        const nearestSafeTop = safeRanges
+          .map((range) => Math.max(range.minimum, Math.min(range.maximum, desiredTop)))
+          .sort((first, second) => Math.abs(first - desiredTop) - Math.abs(second - desiredTop))[0];
+        let top = nearestSafeTop;
+        if (top === undefined) {
+          const viewportMaximumTop = Math.max(margin, window.innerHeight - panelRect.height - margin);
+          const candidates = [
+            minimumTop,
+            maximumTop,
+            desiredTop,
+            tableRect.top + (tableRect.height - panelRect.height) / 2,
+            ...obstacles.flatMap(({ rect }) => [
+            rect.top - panelRect.height - margin,
+            rect.bottom + margin,
+            ]),
+          ].filter(Number.isFinite)
+            .map((candidate) => Math.max(margin, Math.min(viewportMaximumTop, candidate)));
+          const overlapArea = (candidateTop: number) => obstacles.reduce((total, { rect }) => {
+            const width = Math.max(0, Math.min(panelRect.right, rect.right) - Math.max(panelRect.left, rect.left));
+            const height = Math.max(0, Math.min(candidateTop + panelRect.height, rect.bottom) - Math.max(candidateTop, rect.top));
+            const weight = rect.width > 0 && rect.height > 0 ? 1 : 0;
+            return total + width * height * weight;
+          }, 0) + (Math.max(0, tableRect.top - candidateTop)
+            + Math.max(0, candidateTop + panelRect.height - tableRect.bottom)) * panelRect.width * 2;
+          top = candidates.sort((first, second) => overlapArea(first) - overlapArea(second)
+            || Math.abs(first - desiredTop) - Math.abs(second - desiredTop))[0];
+        }
+        if (top === undefined) top = Math.max(margin, Math.min(window.innerHeight - panelRect.height - margin, desiredTop));
+        const offset = Math.round(top - tableRect.top);
+        setHarvestStageTop((current) => current === offset ? current : offset);
       });
     };
+    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observeLayout();
     measure();
     window.addEventListener("resize", measure);
     window.visualViewport?.addEventListener("resize", measure);
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    observer?.observe(table);
-    const board = table.querySelector<HTMLElement>(".player-board");
-    if (board) observer?.observe(board);
+    mutationObserver?.observe(table, { childList: true, subtree: true, characterData: true });
     return () => {
       window.removeEventListener("resize", measure);
       window.visualViewport?.removeEventListener("resize", measure);
       observer?.disconnect();
+      mutationObserver?.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [harvestPending, harvestActorId, room.players.length]);
+  }, [harvestPending, harvestActorId, room.players.length, room.meId, expandedOpponentId]);
   const cardInfoReturnFocusRef = useRef<HTMLElement | null>(null);
   const heroInfoReturnFocusRef = useRef<HTMLElement | null>(null);
   const closeCardDetails = useCallback((restoreFocus = true) => {
@@ -5086,23 +5150,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     } : {}),
     deflection: activeDeflectionAction ?? undefined,
   } : null;
-  const harvestAuthorSlotCounts = new Map<string, number>();
-  const reserveHarvestAuthorSlot = (playerId: string | null | undefined) => {
-    if (!playerId) return;
-    harvestAuthorSlotCounts.set(playerId, Math.max(1, harvestAuthorSlotCounts.get(playerId) ?? 0));
-  };
-  if (room.pendingHarvest?.sourceId) reserveHarvestAuthorSlot(room.pendingHarvest.sourceId);
-  if (publicCardDisplayAction?.cardKind === "BumperHarvest") {
-    reserveHarvestAuthorSlot(publicCardDisplayAction.sourceId);
-    const responsesByEventId = new Map<string, string>();
-    for (const response of publicCardDisplayAction.responses ?? []) responsesByEventId.set(response.eventId, response.actorId);
-    if (publicCardDisplayAction.response && !responsesByEventId.has(publicCardDisplayAction.response.eventId)) {
-      responsesByEventId.set(publicCardDisplayAction.response.eventId, publicCardDisplayAction.response.actorId);
-    }
-    for (const actorId of responsesByEventId.values()) {
-      harvestAuthorSlotCounts.set(actorId, (harvestAuthorSlotCounts.get(actorId) ?? 0) + 1);
-    }
-  }
   const rootActionSource = publicCardDisplayAction ? room.players.find((player) => player.id === publicCardDisplayAction.sourceId) : null;
   const rootActionTarget = publicCardDisplayAction ? room.players.find((player) => player.id === publicCardDisplayAction.targetId) : null;
   const compactPublicPlayerNamesById = Object.fromEntries(room.players.flatMap((player) => player.hero
@@ -6689,8 +6736,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             interactionRoles={interactionRoles}
             targetSelectionActive={targetSelectionActive}
             isInspected={expandedOpponentId === player.id}
-            harvestAuthorSlotActive={harvestAuthorSlotCounts.has(player.id)}
-            harvestAuthorSlotCount={harvestAuthorSlotCounts.get(player.id) ?? 1}
             targetablePlayer={targetablePlayer}
             daqiaoDeflectionTargetMode={daqiaoDeflectionSelectionActive}
             testViewerController={Boolean(room.isTestController)}
@@ -6723,7 +6768,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {infoHero && me && <HeroDetailsPreview hero={infoHero} onClose={closeHeroDetails} returnFocusTo={heroInfoReturnFocusRef.current} />}
     </section>
     <footer className="play-command">
-    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { closeOpponentInspection(false); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={openHeroDetails} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} attackResponsePrompt={Boolean(rootAction?.action === "ATTACK" && rootActionCardFace && rootAction.targetId === room.meId && room.currentAction?.kind === "response" && room.currentAction.requirement === "dodge" && room.currentAction.actorId === room.meId && canUseAction(room.currentAction, "respond"))} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))} harvestAuthorSlotActive={Boolean(me?.id && harvestAuthorSlotCounts.has(me.id))} harvestAuthorSlotCount={me?.id ? harvestAuthorSlotCounts.get(me.id) ?? 1 : 1}
+    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { closeOpponentInspection(false); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={openHeroDetails} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} attackResponsePrompt={Boolean(rootAction?.action === "ATTACK" && rootActionCardFace && rootAction.targetId === room.meId && room.currentAction?.kind === "response" && room.currentAction.requirement === "dodge" && room.currentAction.actorId === room.meId && canUseAction(room.currentAction, "respond"))} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
       heroSkillControl={
         <section className="hero-skills local-hero-skills" data-hero-id={localHero?.id ?? undefined} aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => skill.passive

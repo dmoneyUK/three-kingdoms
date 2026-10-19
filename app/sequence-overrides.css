@@ -4975,131 +4975,6 @@
   }
 }
 
-/* BCP-1 R1: reserve a real card-sized landing slot beside each visible Hero
-   while a public Bumper Harvest interaction is active. The slot is part of
-   the author's seat/Dock, so a viewer switch can remeasure the same author
-   without sending cards to a viewport edge or over the local action tray. */
-@media (max-width: 700px) {
-  .game-shell .player-board .opponent-public-zones.harvest-author-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 48px;
-    grid-template-rows: 72px 18px;
-    align-items: stretch;
-    column-gap: 4px;
-    row-gap: 0;
-  }
-
-  .game-shell .player-board .opponent-public-zones.harvest-author-layout > .opponent-hero-card {
-    grid-column: 1;
-    grid-row: 1;
-    width: 100%;
-    height: 72px;
-    min-height: 0;
-    flex: none;
-    aspect-ratio: auto;
-  }
-
-  .game-shell .player-board .opponent-public-zones.harvest-author-layout > .harvest-author-slot {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .game-shell .player-board .opponent-public-zones.harvest-author-layout > .opponent-status-equipment-strip {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    min-width: 0;
-    width: 100%;
-    height: 18px;
-    min-height: 18px;
-    flex: none;
-  }
-
-  .game-shell .player-board .opponent-public-zones.harvest-author-layout > .opponent-judgement-zone {
-    grid-column: 1 / -1;
-  }
-
-  /* Keep the physical-card owner identifiable after reserving the adjacent
-     48px card lane. The name stays within the portrait column and wraps
-     instead of collapsing to an ellipsis under the Harvest layout. */
-  .game-shell .player-board .opponent-public-zones.harvest-author-layout > .opponent-hero-card .opponent-player-name {
-    display: -webkit-box;
-    max-height: 30px;
-    padding: 1px 2px;
-    overflow: hidden;
-    font-size: clamp(7px, 2vw, 8px);
-    line-height: 1.05;
-    text-align: center;
-    text-overflow: clip;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    word-break: normal;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
-  }
-
-  .game-shell .player-board[data-seat-topology="side-column"] > .opponent-player-card.harvest-author-layout {
-    width: 100%;
-    max-width: none;
-    height: min(92px, 100%);
-  }
-
-  .game-shell .local-player-dock.harvest-author-layout {
-    grid-template-columns: 112px minmax(0, 1fr);
-  }
-
-  .game-shell .local-player-dock.harvest-author-layout .local-dock-identity {
-    flex-direction: row;
-    align-items: flex-start;
-    justify-content: center;
-    gap: 4px;
-    padding: 3px;
-  }
-
-  /* A local author may commit more than one public physical card in the same
-     Harvest chain. Give each card its own real, Hero-adjacent landing cell;
-     the identity column spans the phone hand row, so a second row stays clear
-     of the skills, equipment, Hand and action controls. */
-  .game-shell .local-player-dock.harvest-author-layout.harvest-author-multi-slot .local-dock-identity {
-    display: grid;
-    grid-template-columns: 48px 48px;
-    grid-auto-rows: 72px;
-    align-content: start;
-    justify-content: center;
-    align-items: start;
-    gap: 4px;
-  }
-
-  .game-shell .local-player-dock.harvest-author-layout.harvest-author-multi-slot .local-hero-anchor {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  .game-shell .local-player-dock.harvest-author-layout .local-hero-anchor {
-    width: 48px;
-    max-width: 48px;
-    flex: 0 0 48px;
-  }
-
-  .game-shell .local-player-dock.harvest-author-layout .local-hero-card {
-    width: 48px;
-    max-width: 48px;
-    height: 72px;
-  }
-
-  .game-shell .harvest-author-slot {
-    display: block;
-    box-sizing: border-box;
-    width: 48px;
-    height: 72px;
-    min-width: 48px;
-    border: 1px dashed rgb(198 164 92 / 45%);
-    border-radius: 4px;
-    background: rgb(8 11 8 / 20%);
-    box-shadow: inset 0 0 0 1px rgb(215 189 120 / 8%);
-    pointer-events: none;
-  }
-}
-
 @media (max-width: 520px) {
   .game-shell .play-table[data-seat-topology="side-column"] > .harvest-choice-stage {
     left: clamp(112px, calc(30vw - 4px), 124px);
@@ -5215,7 +5090,7 @@
    backdrop hit box, so seat controls and public inspection stay reachable. */
 .game-shell .play-table > .harvest-choice-stage {
   inset: auto 0 auto;
-  top: max(92px, calc(var(--interaction-safe-top, 149px) - 53px));
+  top: 50%;
   bottom: auto;
   z-index: 25;
   display: flex;
@@ -6059,7 +5934,6 @@
     width: min(100%, clamp(27px, 10.5vw, 42px));
   }
 }
-
 /* Give the Inspector the full seat-free corridor on phone side-column tables.
    The generic interaction corridor reserves extra room for wide event cards;
    Inspect is shorter and can safely use the space between the actual seat
@@ -6411,71 +6285,5 @@
   .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
     grid-template-columns: var(--inspector-portrait-width, 90px) minmax(0, 1fr);
     gap: 3px;
-  }
-}
-
-/* The four-seat top row has a more specific legacy flex rule; repeat the
-   Harvest slot geometry here so the reserved lane wins the final cascade. */
-@media (max-width: 700px) {
-  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-public-zones.harvest-author-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 48px;
-    grid-template-rows: 72px 18px;
-    align-content: start;
-    align-items: stretch;
-    column-gap: 4px;
-    row-gap: 0;
-    height: 90px;
-  }
-
-  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .harvest-author-slot {
-    transform: translateY(2px);
-  }
-}
-
-/* When one top-row Hero authored multiple public cards in the same Harvest
-   chain, keep both real-card landing cells on the same Hero row. Expanding the
-   seat downward would move its HP/equipment strip under the public Harvest
-   pool; this row instead gives the author a third card-sized column while the
-   two other seats retain their own columns. */
-@media (max-width: 700px) {
-  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"]:has(> .player-square-1.harvest-author-multi-slot) {
-    grid-template-columns: minmax(168px, 1.5fr) minmax(82px, 1fr) minmax(82px, 1fr);
-  }
-
-  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"]:has(> .player-square-2.harvest-author-multi-slot) {
-    grid-template-columns: minmax(82px, 1fr) minmax(168px, 1.5fr) minmax(82px, 1fr);
-  }
-
-  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"]:has(> .player-square-3.harvest-author-multi-slot) {
-    grid-template-columns: minmax(82px, 1fr) minmax(82px, 1fr) minmax(168px, 1.5fr);
-  }
-
-  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] > .opponent-player-card.harvest-author-multi-slot {
-    width: min(180px, 100%);
-    max-width: none;
-    height: 94px;
-    justify-self: center;
-  }
-
-  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-public-zones.harvest-author-layout.harvest-author-multi-slot {
-    grid-template-columns: 48px minmax(0, 1fr) 48px;
-    grid-template-rows: 72px 18px;
-    height: 90px;
-  }
-
-  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-public-zones.harvest-author-layout.harvest-author-multi-slot > .opponent-hero-card {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-public-zones.harvest-author-layout.harvest-author-multi-slot > .harvest-author-slot {
-    grid-row: 1;
-    transform: translateY(2px);
-  }
-
-  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-public-zones.harvest-author-layout.harvest-author-multi-slot > .opponent-status-equipment-strip {
-    grid-column: 1 / -1;
-    grid-row: 2;
   }
 }
