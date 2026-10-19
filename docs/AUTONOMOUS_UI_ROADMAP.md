@@ -2498,6 +2498,49 @@ Only a proven regression or new Reviewer-approved design requirement does.
   is claimed. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**, not
   accepted. H4 stays accepted and Q1–Q4 stay paused.
 
+### UX2 §10.17.1.2 BCP-1-F2 re-audit — 2026-10-20
+
+- Re-reviewed the current mobile implementation against the latest concise-copy
+  and shared-proof requirements. The existing Harvest-specific Negation path
+  already suppresses the generic phase suffix and fails closed without a proven
+  current chooser; no additional product-code change was needed.
+- Existing mobile browser coverage passed for the committed Negation/counter
+  chain with four authenticated views at 390×700, 390×844, 440×766 and 440×894,
+  including refresh and progression to the next chooser (1/1). The TEST SWITCH
+  and proof-mismatch flow passed at a phone viewport (1/1); public announcement
+  assertions passed 3/3, including source-equals-recipient and generic fallback.
+- Exact source SHA `4c75ec2af9166304b0e09b07367e4ab681371faf` passed all required
+  Actions jobs on rerun [`39341070164`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39341070164)
+  attempt 2. Worker version `9d312402-ad06-43c2-b885-37852c8df297` deployed;
+  production `/` and `/api/health` smoke passed, and a direct health check
+  returned `{"ok":true,"worker":"available"}`. No production multi-viewer
+  gameplay replay is claimed. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE
+  REVIEW**, not accepted.
+
+### UX2 §10.17.1.2 BCP-1-F2 public response continuity repair — 2026-10-20
+
+- Corrected the confirmed stage-transition gap: a publicly committed Harvest
+  Negation/counter card was projected from the live reaction chain only during
+  `NEGATION`, so the physical response identity could be lost when Harvest
+  advanced to `SEQUENTIAL_CHOICE` or a viewer refreshed/joined late. The room
+  route now retains exact root-bound public response records; presentation
+  projection revalidates each against the public timeline and causal root, then
+  carries the proof through the public snapshot/client path. The renderer
+  restores genuine cards as parked minis using the real event/card/author. It
+  does not replay historical cards as fresh reveals. No private hand or pending
+  response is exposed.
+- Scope stayed within BCP-1-F2: no F1 pool/root/seat changes, H4 changes, rules,
+  deadlines, or new tests/fixtures. No manual iPhone or production
+  multi-viewer gameplay replay is claimed; owner phone re-review is still
+  required. **BCP-1-F1 remains USER-ACCEPTED/CLOSED; BCP-1-F2 is IMPLEMENTED /
+  DEPLOYED — PENDING USER PHONE RE-REVIEW**, not accepted.
+- Exact code SHA `a79b63282d986b14871bb78a21e9e2b63c2ac841` passed all required
+  Actions jobs, including lint/fast, API, browser startup/room smoke, D1
+  migration, Worker deploy, and production smoke in
+  [`39342640589`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39342640589).
+  Worker version `b744c3d4-50ef-471a-9a38-0527458815e0` deployed; direct
+  `/api/health` returned `{"ok":true,"worker":"available"}`.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
