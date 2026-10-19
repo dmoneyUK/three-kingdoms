@@ -893,6 +893,7 @@ type OpponentPlayerCardProps = {
   interactionRoles: InteractionSeatSemanticRoles;
   targetSelectionActive: boolean;
   isInspected: boolean;
+  harvestAuthorSlotActive: boolean;
   targetablePlayer: boolean;
   daqiaoDeflectionTargetMode: boolean;
   testViewerController: boolean;
@@ -930,7 +931,7 @@ function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
   return <span className="opponent-equipment-horse-mark" aria-hidden="true">{slot === "defensiveHorse" ? "+1" : "−1"}</span>;
 }
 
-function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, isInspected, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
+function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, isInspected, harvestAuthorSlotActive, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
   const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex);
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
   for (const equipment of player.equipmentCards) {
@@ -956,8 +957,8 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
       : `${player.name}, not an eligible Deflection target`
     : `${targetSelectionActive ? "Select" : "Inspect"} ${player.name}`;
   const interactionRoleNames = Object.entries(interactionRoles).filter(([, active]) => active).map(([role]) => role.replace(/^is/, "").replace(/([A-Z])/g, "-$1").toLowerCase()).join(" ");
-  return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${targetSelectionActive && targetablePlayer && player.alive ? "targetable-target" : ""} ${isGroupPreview ? "local-group-preview" : ""} ${interactionRoles.isInteractionSource ? "interaction-seat-source" : ""} ${interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : ""} ${interactionRoles.isActiveTarget ? "interaction-seat-active-target" : ""} ${interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : ""} ${interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : ""} ${interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : ""} ${interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : ""} ${!player.alive ? "defeated-square" : ""}`} data-side-column={sideColumnSeat?.side} data-side-row={sideColumnSeat?.row} style={sideColumnSeat ? { gridRow: sideColumnSeat.row } : undefined} data-player-anchor={player.id} data-target-selectable={targetSelectionActive && targetablePlayer && player.alive ? "true" : undefined} data-deflection-targetable={deflectionTargetSelectable ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined}>
-    <div className="opponent-public-zones">
+  return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${targetSelectionActive && targetablePlayer && player.alive ? "targetable-target" : ""} ${isGroupPreview ? "local-group-preview" : ""} ${harvestAuthorSlotActive ? "harvest-author-layout" : ""} ${interactionRoles.isInteractionSource ? "interaction-seat-source" : ""} ${interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : ""} ${interactionRoles.isActiveTarget ? "interaction-seat-active-target" : ""} ${interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : ""} ${interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : ""} ${interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : ""} ${interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : ""} ${!player.alive ? "defeated-square" : ""}`} data-harvest-author-layout={harvestAuthorSlotActive ? "true" : undefined} data-side-column={sideColumnSeat?.side} data-side-row={sideColumnSeat?.row} style={sideColumnSeat ? { gridRow: sideColumnSeat.row } : undefined} data-player-anchor={player.id} data-target-selectable={targetSelectionActive && targetablePlayer && player.alive ? "true" : undefined} data-deflection-targetable={deflectionTargetSelectable ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined}>
+      <div className={`opponent-public-zones${harvestAuthorSlotActive ? " harvest-author-layout" : ""}`}>
       <div className="player-hero-card opponent-hero-card">
         <button type="button" className="player-square-target opponent-hero-target" disabled={targetButtonDisabled} aria-label={targetButtonLabel} aria-pressed={targetSelectionActive ? isSelectedTarget : isInspected} aria-expanded={isInspected} onClick={(event) => {
           const trigger = event?.currentTarget ?? null;
@@ -971,6 +972,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
         </div>
         {playerHero && (player.isTestPlayer || player.isHost) && testViewerController && <button type="button" className="test-view-switch-button" data-testid={`test-view-switch-${player.id}`} data-test-viewer-id={player.id} aria-label={`Switch to ${player.name}`} title={`Switch to ${player.name}`} onClick={(event) => { event.stopPropagation(); onSwitchTestViewer(player.id); }}>SWITCH</button>}
       </div>
+        {harvestAuthorSlotActive && <div className="harvest-author-slot" data-harvest-author-slot={player.id} aria-hidden="true" />}
       <div className="opponent-status-equipment-strip">
         <span className="opponent-hp-chip" aria-label={`HP ${player.hp ?? 0} of ${player.maxHp ?? 0}`}>HP {player.hp ?? 0}/{player.maxHp ?? 0}</span>
         <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment" data-slot-count={equipmentBySlot.size}>{equipmentSummary}</div>
@@ -1758,9 +1760,10 @@ type LocalPlayerDockProps = {
   isGroupPreview?: boolean;
   preserveGuidanceHeight?: boolean;
   attackResponsePrompt?: boolean;
+  harvestAuthorSlotActive?: boolean;
 };
 
-export function LocalPlayerDock({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), isGroupPreview = false, preserveGuidanceHeight = false, attackResponsePrompt = false }: LocalPlayerDockProps) {
+export function LocalPlayerDock({ player, hero, interactionRoles, guidance, children, heroSkillControl, selfTargetable, selfTargetSelected, onSelfTarget, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set(), isGroupPreview = false, preserveGuidanceHeight = false, attackResponsePrompt = false, harvestAuthorSlotActive = false }: LocalPlayerDockProps) {
   const dockRef = useRef<HTMLElement | null>(null);
   const guidanceHeightRef = useRef<number | null>(null);
   const preserveGuidanceHeightRef = useRef(preserveGuidanceHeight);
@@ -1844,7 +1847,7 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
         : <button type="button" className="zone-info-button" aria-label={`Explain ${definition.name}`} onClick={(event) => { event.stopPropagation(); inspect(event.currentTarget); }}>i</button>}
     </div>;
   };
-  return <section ref={dockRef} className={`local-player-dock${isGroupPreview ? " local-group-preview" : ""}${interactionRoleClasses ? ` ${interactionRoleClasses}` : ""}${attackResponsePrompt ? " local-dock-attack-response" : ""}`} data-player-anchor={player?.id ?? undefined} data-attack-response-prompt={attackResponsePrompt ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-guidance-height-preserved={preserveGuidanceHeight ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined} aria-label="Your player area" tabIndex={-1}>
+  return <section ref={dockRef} className={`local-player-dock${isGroupPreview ? " local-group-preview" : ""}${interactionRoleClasses ? ` ${interactionRoleClasses}` : ""}${attackResponsePrompt ? " local-dock-attack-response" : ""}${harvestAuthorSlotActive ? " harvest-author-layout" : ""}`} data-player-anchor={player?.id ?? undefined} data-harvest-author-layout={harvestAuthorSlotActive ? "true" : undefined} data-attack-response-prompt={attackResponsePrompt ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-guidance-height-preserved={preserveGuidanceHeight ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined} aria-label="Your player area" tabIndex={-1}>
     {guidance}
     <div className="local-dock-identity">
       <div className="local-hero-anchor">
@@ -1862,6 +1865,7 @@ export function LocalPlayerDock({ player, hero, interactionRoles, guidance, chil
           {judgementCards.map((card, index) => <div className="local-judgement-card-slot" key={card.id} style={{ marginLeft: index === 0 ? 0 : `${judgementCardLayout.step - judgementCardWidth}px` }}>{renderZoneCard(card)}</div>)}
         </div>}
       </div>
+      {harvestAuthorSlotActive && player?.id && <div className="harvest-author-slot" data-harvest-author-slot={player.id} aria-hidden="true" />}
     </div>
     <div className="local-dock-zones" aria-label="Your status and equipment zones">
       <div className="local-status-panel" aria-label="Hero skills">{heroSkillControl ?? <section className="hero-skills local-hero-skills" aria-label="Hero skills">{fallbackSkills.map((skill) => <button type="button" className="hero-skill-button" key={skill.name} title={skill.description} disabled>{skill.name}</button>)}</section>}</div>
@@ -4751,17 +4755,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           phaseNotice: bumperHarvestRootCandidate.responses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED",
         } : {}),
         ...(harvestEffectRecipient ? { harvestEffectRecipient } : {}),
-        motion: {
-          type: "negation" as const,
-          // One Bumper Harvest root owns one visual lifecycle across every
-          // participant's Negation checkpoint. Participant progress is public
-          // state, but it must not restart or park the same physical root.
-          scopeKey: [room.code, bumperHarvestRootCandidate.progress.interactionId, bumperHarvestRootCandidate.rootEvent.id].join(":"),
-          freshEventIds: [bumperHarvestRootCandidate.rootEvent.id, ...bumperHarvestRootCandidate.responses.map((response) => response.eventId)]
-            .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
-        },
         ...(bumperHarvestRootCandidate.responses.length ? { responses: bumperHarvestRootCandidate.responses } : {}),
       } : {}),
+      // Keep the authentic root in one journey after Negation closes and the
+      // Harvest chooser becomes active. The previous static fallback pinned
+      // that same physical card to the lower-left corner, detached from its
+      // publicly proven author. Reuse the root scope and never replay a reveal
+      // when entering the chooser phase.
+      motion: {
+        type: bumperHarvestRootCandidate.isNegationScene ? "negation" as const : "group-root" as const,
+        scopeKey: [room.code, bumperHarvestRootCandidate.progress.interactionId, bumperHarvestRootCandidate.rootEvent.id].join(":"),
+        freshEventIds: bumperHarvestRootCandidate.isNegationScene
+          ? [bumperHarvestRootCandidate.rootEvent.id, ...bumperHarvestRootCandidate.responses.map((response) => response.eventId)]
+            .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId))
+          : [],
+      },
       cardKind: "BumperHarvest",
       cardLabel: cardDefinition("BumperHarvest").name.toUpperCase(),
       ariaLabel: `${bumperHarvestRootCandidate.source.name} played Bumper Harvest.`,
@@ -5067,6 +5075,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     } : {}),
     deflection: activeDeflectionAction ?? undefined,
   } : null;
+  const harvestAuthorSlotPlayerIds = new Set<string>();
+  if (room.pendingHarvest?.sourceId) harvestAuthorSlotPlayerIds.add(room.pendingHarvest.sourceId);
+  if (publicCardDisplayAction?.cardKind === "BumperHarvest") {
+    harvestAuthorSlotPlayerIds.add(publicCardDisplayAction.sourceId);
+    if (publicCardDisplayAction.response?.actorId) harvestAuthorSlotPlayerIds.add(publicCardDisplayAction.response.actorId);
+    for (const response of publicCardDisplayAction.responses ?? []) harvestAuthorSlotPlayerIds.add(response.actorId);
+  }
   const rootActionSource = publicCardDisplayAction ? room.players.find((player) => player.id === publicCardDisplayAction.sourceId) : null;
   const rootActionTarget = publicCardDisplayAction ? room.players.find((player) => player.id === publicCardDisplayAction.targetId) : null;
   const compactPublicPlayerNamesById = Object.fromEntries(room.players.flatMap((player) => player.hero
@@ -6653,6 +6668,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             interactionRoles={interactionRoles}
             targetSelectionActive={targetSelectionActive}
             isInspected={expandedOpponentId === player.id}
+            harvestAuthorSlotActive={harvestAuthorSlotPlayerIds.has(player.id)}
             targetablePlayer={targetablePlayer}
             daqiaoDeflectionTargetMode={daqiaoDeflectionSelectionActive}
             testViewerController={Boolean(room.isTestController)}
@@ -6685,7 +6701,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {infoHero && me && <HeroDetailsPreview hero={infoHero} onClose={closeHeroDetails} returnFocusTo={heroInfoReturnFocusRef.current} />}
     </section>
     <footer className="play-command">
-    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { closeOpponentInspection(false); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={openHeroDetails} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} attackResponsePrompt={Boolean(rootAction?.action === "ATTACK" && rootActionCardFace && rootAction.targetId === room.meId && room.currentAction?.kind === "response" && room.currentAction.requirement === "dodge" && room.currentAction.actorId === room.meId && canUseAction(room.currentAction, "respond"))} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))}
+    <LocalPlayerDock player={me} hero={localHero} selfTargetable={localDockSelfTargetable} selfTargetSelected={localDockSelfTargetSelected} onSelfTarget={() => { closeOpponentInspection(false); setTarget(room.meId); setTargetCardIndex(null); }} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(room.meId)} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={openHeroDetails} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight} attackResponsePrompt={Boolean(rootAction?.action === "ATTACK" && rootActionCardFace && rootAction.targetId === room.meId && room.currentAction?.kind === "response" && room.currentAction.requirement === "dodge" && room.currentAction.actorId === room.meId && canUseAction(room.currentAction, "respond"))} preserveGuidanceHeight={Boolean(activeAttackHitSettlement || attackHitSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeGroupSettlement || clientPresentation.groupSettlements.some((proof) => !processedEventIds.has(proof.eventId)) || activeBumperHarvestSettlement || clientPresentation.bumperHarvestSettlements.some((proof) => !processedEventIds.has(proof.eventId)))} harvestAuthorSlotActive={Boolean(me?.id && harvestAuthorSlotPlayerIds.has(me.id))}
       heroSkillControl={
         <section className="hero-skills local-hero-skills" data-hero-id={localHero?.id ?? undefined} aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => skill.passive

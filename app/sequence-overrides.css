@@ -4975,6 +4975,100 @@
   }
 }
 
+/* BCP-1 R1: reserve a real card-sized landing slot beside each visible Hero
+   while a public Bumper Harvest interaction is active. The slot is part of
+   the author's seat/Dock, so a viewer switch can remeasure the same author
+   without sending cards to a viewport edge or over the local action tray. */
+@media (max-width: 700px) {
+  .game-shell .player-board .opponent-public-zones.harvest-author-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 48px;
+    grid-template-rows: 72px 18px;
+    align-items: stretch;
+    column-gap: 4px;
+    row-gap: 0;
+  }
+
+  .game-shell .player-board .opponent-public-zones.harvest-author-layout > .opponent-hero-card {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+    height: 72px;
+    min-height: 0;
+    flex: none;
+    aspect-ratio: auto;
+  }
+
+  .game-shell .player-board .opponent-public-zones.harvest-author-layout > .harvest-author-slot {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .game-shell .player-board .opponent-public-zones.harvest-author-layout > .opponent-status-equipment-strip {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0;
+    width: 100%;
+    height: 18px;
+    min-height: 18px;
+    flex: none;
+  }
+
+  .game-shell .player-board .opponent-public-zones.harvest-author-layout > .opponent-judgement-zone {
+    grid-column: 1 / -1;
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"] > .opponent-player-card.harvest-author-layout {
+    width: 100%;
+    max-width: none;
+    height: min(92px, 100%);
+  }
+
+  .game-shell .local-player-dock.harvest-author-layout {
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+
+  .game-shell .local-player-dock.harvest-author-layout .local-dock-identity {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 4px;
+    padding: 3px;
+  }
+
+  .game-shell .local-player-dock.harvest-author-layout .local-hero-anchor {
+    width: 48px;
+    max-width: 48px;
+    flex: 0 0 48px;
+  }
+
+  .game-shell .local-player-dock.harvest-author-layout .local-hero-card {
+    width: 48px;
+    max-width: 48px;
+    height: 72px;
+  }
+
+  .game-shell .harvest-author-slot {
+    display: block;
+    box-sizing: border-box;
+    width: 48px;
+    height: 72px;
+    min-width: 48px;
+    border: 1px dashed rgb(198 164 92 / 45%);
+    border-radius: 4px;
+    background: rgb(8 11 8 / 20%);
+    box-shadow: inset 0 0 0 1px rgb(215 189 120 / 8%);
+    pointer-events: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .game-shell .play-table[data-seat-topology="side-column"] > .harvest-choice-stage {
+    left: clamp(112px, calc(30vw - 4px), 124px);
+    right: clamp(112px, calc(30vw - 4px), 124px);
+  }
+}
+
 /* UX2 §10.13.4.1 U13-D-F: keep HP at the left and cluster only real Equipment
    at the right, leaving the strip's flexible middle as the visible gap. */
 .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-hp-chip {
@@ -5108,6 +5202,9 @@
 }
 .game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-harvest-root-parked="true"] {
   z-index: 5;
+}
+.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-public-card-journey-role="response"] {
+  z-index: 36;
 }
 .game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-display-journey-copy {
   z-index: 36;
@@ -6247,5 +6344,24 @@
   .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
     grid-template-columns: var(--inspector-portrait-width, 90px) minmax(0, 1fr);
     gap: 3px;
+  }
+}
+
+/* The four-seat top row has a more specific legacy flex rule; repeat the
+   Harvest slot geometry here so the reserved lane wins the final cascade. */
+@media (max-width: 700px) {
+  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-public-zones.harvest-author-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 48px;
+    grid-template-rows: 72px 18px;
+    align-content: start;
+    align-items: stretch;
+    column-gap: 4px;
+    row-gap: 0;
+    height: 90px;
+  }
+
+  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .harvest-author-slot {
+    transform: translateY(2px);
   }
 }
