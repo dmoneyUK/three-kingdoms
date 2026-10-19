@@ -1,16 +1,15 @@
 # Current Handover
 
-Working branch: `ux-v2`. Latest design reviewed: `docs/UX2-refine.md` §10.17.1.1, owner-approved minimal Plan A (design commit `b8b62cf6d42acd09d9dd70c0ea4b532adbd8f6d5`). Preserve unrelated work in the primary checkout.
+Target branch: `ux-v2`. Latest design reviewed: `docs/UX2-refine.md` §10.7.4.3, including the user's 2026-10-20 smaller hand-card information mark request.
 
-## Latest implementation and verification
+## Latest result
 
-- BCP-1-F1 phone-feedback correction: code SHA `c56e10a343ecbfcac9bde2db5ed98a49161e2571`. Cause: the Harvest root thumbnail used the Hero portrait’s bottom edge as its vertical anchor, while the opponent seat continues below the portrait to its HP/equipment strip. The 40×60 card therefore overlapped equipment.
-- The root thumbnail now avoids the author’s full seat bounds and uses measured lower candidates when the seat-adjacent band is occupied by H4. The accepted H4 position and thumbnail size are unchanged; the public pool may cover the parked root. Negation response placement and gameplay, identity, permissions and privacy are unchanged.
-- Exact-SHA GitHub Actions [39338531582](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39338531582) for `c56e10a` passed: lint/fast, API, browser startup/room smoke, D1 migration, Worker deployment and production smoke. Worker version: `6600e513-2853-45b7-a091-43da01d5babf`. A post-deployment `/api/health` check returned HTTP 200.
-- No additional local or bespoke test campaign was run. The owner has not yet re-reviewed this correction on iPhone.
+- BCP-1-F1 Harvest seat-overlap correction remains deployed at `c56e10a343ecbfcac9bde2db5ed98a49161e2571`; exact-SHA Actions `39338531582` passed. It remains pending the user's iPhone re-review.
+- This task's implementation commit is `fbbebd2c4fe846c4816cf42f72023ceb7159f927` (`feat: customize host test player count`). The selected-hand info ring/glyph is now 30px/16px with its 44×44 target unchanged. The lobby can add a chosen number of host-controlled Test Players, capped by open seats; old requests without a count still fill to four players. These Test Players remain manually controlled, not autonomous AI.
+- No local test suite or desktop visual check was run. Exact-SHA CI/deployment and user phone review for this change are pending.
 
-**Status: IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW.** Not user-accepted.
+**Status: IMPLEMENTED LOCALLY — PENDING CI/DEPLOYMENT AND USER PHONE REVIEW.** Not user-accepted.
 
 ## One next action
 
-Owner re-reviews BCP-1-F1 on iPhone, confirming the Harvest root no longer covers the author’s HP/equipment strip and that the H4/pool and Negation presentation remain correct. Do not begin another UX task before that review.
+Verify the pushed `ux-v2` head's exact-SHA GitHub Actions/deployment, then request the user's mobile review of both changes. Preserve the earlier BCP-1-F1 phone-review handoff as a separate pending item in the roadmap.
