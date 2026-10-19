@@ -1928,6 +1928,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const harvestStageRef = useRef<HTMLDivElement | null>(null);
   const [harvestStageTop, setHarvestStageTop] = useState<number | null>(null);
   const [harvestSubmitting, setHarvestSubmitting] = useState<{ cardId: string; playerId: string; playerName: string } | null>(null);
+  const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
   const [optimisticPlay, setOptimisticPlay] = useState<GameEvent | null>(null);
   const [serpentMode, setSerpentMode] = useState(false); const [serpentSelected, setSerpentSelected] = useState<string[]>([]);
   const [activeSkillSelectionState, setActiveSkillSelectionState] = useState<ActiveSkillSelectionState | null>(null);
@@ -2134,7 +2135,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     setInfoCard(null);
     setInfoHero(hero);
   }, [closeHeroDetails, infoHero?.id]);
-  const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
   const opponentInspectionReturnFocusRef = useRef<HTMLElement | null>(null);
   const openOpponentInspection = useCallback((playerId: string, trigger?: HTMLElement | null) => {
     const activeElement = typeof document !== "undefined" && typeof HTMLElement !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null;
