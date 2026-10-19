@@ -1106,6 +1106,128 @@ async function tapHarvestCard(page, locator) {
   await page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height * .3);
 }
 
+async function inspectHarvestPool(page, playerId, testInfo, evidenceName, requireOverlap = true) {
+  const gameplayPosts = [];
+  const onRequest = (requestEvent) => {
+    if (requestEvent.method() !== "POST" || requestEvent.url() !== `${API}/api/rooms`) return;
+    try {
+      const payload = JSON.parse(requestEvent.postData() ?? "{}");
+      if (payload.action) gameplayPosts.push(payload.action);
+    } catch { /* Non-JSON requests do not carry game actions. */ }
+  };
+  page.on("request", onRequest);
+  try {
+    const pool = page.locator('.harvest-choice-stage[data-harvest-readonly="true"]');
+    const opener = page.locator(`.opponent-player-card[data-player-anchor="${playerId}"] .opponent-hero-target`);
+    const panel = page.locator(`.opponent-inspection-panel[data-inspect-player-id="${playerId}"]`);
+    const cardIdsBefore = await pool.locator(".harvest-card-choice").evaluateAll((cards) => cards.map((card) => card.dataset.harvestCardId));
+    await expect(pool).toBeVisible();
+    await tap(page, opener);
+    await expect(panel).toBeVisible();
+    const audit = await page.evaluate((expectedPlayerId) => {
+      const panelElement = document.querySelector(`.opponent-inspection-panel[data-inspect-player-id="${expectedPlayerId}"]`);
+      const shell = panelElement?.closest(".opponent-inspection-floating-shell");
+      const stage = document.querySelector(".harvest-choice-stage");
+      const poolPanel = stage?.querySelector(".harvest-choice-panel");
+      const safeZone = panelElement?.closest(".interaction-safe-zone");
+      const rect = (element) => {
+        if (!element) return null;
+        const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+        return { left, top, right, bottom, width, height };
+      };
+      const overlaps = (a, b) => Boolean(a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
+      const targets = [
+        ["portrait", panelElement?.querySelector(".hero-focus-portrait")],
+        ["identity", panelElement?.querySelector(".hero-focus-inspect-identity-caption")],
+        ["skills", panelElement?.querySelector(".hero-focus-inspect-public-skills")],
+        ["judgement", panelElement?.querySelector(".hero-focus-inspect-judgement")],
+        ["equipment", panelElement?.querySelector(".hero-focus-inspect-equipment")],
+      ].map(([name, element]) => {
+        const bounds = rect(element);
+        const center = bounds && { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+        const hit = center ? document.elementFromPoint(center.x, center.y) : null;
+        return {
+          name,
+          rect: bounds,
+          overlapsPool: overlaps(bounds, rect(poolPanel)),
+          hit: hit?.className?.baseVal ?? hit?.className ?? hit?.tagName ?? null,
+          hitInsideInspector: Boolean(hit && panelElement?.contains(hit)),
+        };
+      });
+      const skillControl = panelElement?.querySelector(".hero-focus-inspect-skill");
+      const skillBounds = rect(skillControl);
+      const skillHit = skillBounds ? document.elementFromPoint(skillBounds.left + skillBounds.width / 2, skillBounds.top + skillBounds.height / 2) : null;
+      return {
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        mode: panelElement?.closest("[data-local-ui-mode]")?.getAttribute("data-local-ui-mode") ?? null,
+        playerId: panelElement?.getAttribute("data-inspect-player-id") ?? null,
+        panel: rect(panelElement),
+        shell: rect(shell),
+        pool: rect(poolPanel),
+        overlap: overlaps(rect(shell), rect(poolPanel)),
+        stack: {
+          safeZone: safeZone ? getComputedStyle(safeZone).zIndex : null,
+          poolStage: stage ? getComputedStyle(stage).zIndex : null,
+          inspectorLayer: panelElement?.closest(".opponent-inspection-layer") ? getComputedStyle(panelElement.closest(".opponent-inspection-layer")).zIndex : null,
+        },
+        skillControlHitInsideInspector: Boolean(skillHit && panelElement?.contains(skillHit)),
+        targets,
+      };
+    }, playerId);
+    expect(audit.mode).toBe("INSPECT");
+    expect(audit.playerId).toBe(playerId);
+    if (requireOverlap) expect(audit.overlap, "the compact Inspector shares space with the public pool in this reproduction").toBe(true);
+    expect(Number(audit.stack.safeZone), "the Inspector stacking context paints above the pool stage").toBeGreaterThan(Number(audit.stack.poolStage));
+    for (const target of audit.targets) {
+      expect(target.rect?.width, `${target.name} has a painted box`).toBeGreaterThan(0);
+      expect(target.rect?.height, `${target.name} has a painted box`).toBeGreaterThan(0);
+      if (requireOverlap) expect(target.overlapsPool, `${target.name} overlaps the pool in the reproducing geometry`).toBe(true);
+    }
+    expect(audit.skillControlHitInsideInspector, `a real public skill hit remains available above the pool: ${JSON.stringify(audit)}`).toBe(true);
+    await testInfo.attach(`${evidenceName}-geometry`, { body: JSON.stringify(audit, null, 2), contentType: "application/json" });
+    const screenshot = testInfo.outputPath(`${evidenceName}.png`);
+    await page.screenshot({ path: screenshot, animations: "disabled" });
+    await testInfo.attach(evidenceName, { path: screenshot, contentType: "image/png" });
+
+    const skill = panel.locator(".hero-focus-inspect-skill").first();
+    await expect(skill, "the real Inspector exposes a tappable public skill").toBeVisible();
+    await tap(page, skill);
+    await expect(panel.locator(".hero-focus-inspect-skill-detail")).toBeVisible();
+    const closeHitAudit = await page.evaluate((expectedPlayerId) => {
+      const openerElement = document.querySelector(`.opponent-player-card[data-player-anchor="${expectedPlayerId}"] .opponent-hero-target`);
+      const bounds = openerElement?.getBoundingClientRect();
+      const x = bounds ? bounds.left + bounds.width / 2 : -1;
+      const y = bounds ? bounds.top + bounds.height / 2 : -1;
+      const hit = bounds ? document.elementFromPoint(x, y) : null;
+      const inspectorStage = document.querySelector('.interaction-stage[data-local-ui-mode="INSPECT"]');
+      const inspectorStageRect = inspectorStage?.getBoundingClientRect().toJSON() ?? null;
+      const safeZoneRect = openerElement?.closest(".play-table")?.querySelector(":scope > .interaction-safe-zone")?.getBoundingClientRect().toJSON() ?? null;
+      return {
+        opener: bounds ? { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom, width: bounds.width, height: bounds.height } : null,
+        openerExpanded: openerElement?.getAttribute("aria-expanded") ?? null,
+        hit: hit?.className?.baseVal ?? hit?.className ?? hit?.tagName ?? null,
+        hitIsOpener: Boolean(hit && openerElement?.contains(hit)),
+        safeZone: safeZoneRect,
+        inspectorStage: inspectorStageRect,
+        panel: document.querySelector(`.opponent-inspection-panel[data-inspect-player-id="${expectedPlayerId}"]`)?.getBoundingClientRect().toJSON() ?? null,
+      };
+    }, playerId);
+    expect(closeHitAudit.inspectorStage.left).toBeGreaterThanOrEqual(closeHitAudit.safeZone.left - 1);
+    expect(closeHitAudit.inspectorStage.right).toBeLessThanOrEqual(closeHitAudit.safeZone.right + 1);
+    expect(closeHitAudit.hitIsOpener, `the same Hero remains the real touch target used to close Inspect: ${JSON.stringify(closeHitAudit)}`).toBe(true);
+    await testInfo.attach(`${evidenceName}-close-hit`, { body: JSON.stringify(closeHitAudit, null, 2), contentType: "application/json" });
+    await tap(page, opener);
+    await expect(opener).toHaveAttribute("aria-expanded", "false");
+    await expect(panel).toHaveCount(0);
+    expect(await pool.locator(".harvest-card-choice").evaluateAll((cards) => cards.map((card) => card.dataset.harvestCardId)))
+      .toEqual(cardIdsBefore);
+    expect(gameplayPosts, "opening/using/closing public Inspector does not submit a game action").toEqual([]);
+    return audit;
+  } finally {
+    page.off("request", onRequest);
+  }
+}
+
 async function harvestGeometry(page) {
   return page.evaluate(() => {
     const rect = (element) => {
@@ -1399,6 +1521,10 @@ test("Bumper Harvest root and Negation park beside their own side-seat authors o
       const responseScreenshot = testInfo.outputPath(`harvest-side-negation-${scenario.seats}-seats-${scenario.viewport.width}x${scenario.viewport.height}.png`);
       await page.screenshot({ path: responseScreenshot, animations: "disabled" });
       await testInfo.attach(`harvest-side-negation-${scenario.seats}-seats`, { path: responseScreenshot, contentType: "image/png" });
+      const inspectorAudit = await inspectHarvestPool(page, source.id, testInfo,
+        `bumper-harvest-inspector-${scenario.seats}-seats-${scenario.viewport.width}x${scenario.viewport.height}`, false);
+      expect(inspectorAudit.viewport).toEqual(scenario.viewport);
+      await expect(page.locator(".harvest-card-select, .harvest-confirm-row")).toHaveCount(0);
     } finally {
       await context.close();
     }
@@ -1731,19 +1857,27 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(negationPage.locator(".harvest-choice-stage[data-harvest-readonly='true'] .harvest-card-choice")).toHaveCount(publicPool.revealed.length);
     await expect(negationPage.locator(".harvest-choice-heading span"))
       .toHaveText(`Negation for ${currentChooser.name} · Read-only`);
-    const inspectedHero = negationPage.locator(`.opponent-player-card[data-player-anchor="${host.id}"] .opponent-hero-target`);
-    await tap(negationPage, inspectedHero);
-    await expect(negationPage.locator(`.opponent-inspection-panel[data-inspect-player-id="${host.id}"]`)).toBeVisible();
-    await tap(negationPage, inspectedHero);
+    const inspectorPoolAudit = await inspectHarvestPool(negationPage, host.id, testInfo, "bumper-harvest-inspector-above-pool-390x700");
     await assertRootPoolLayer({ width: 390, height: 700 }, "after-switch-and-inspector");
+    await tap(negationPage, negationPage.locator(".harvest-card-info").first());
+    await expect(negationPage.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
+    await tap(negationPage, negationPage.getByRole("button", { name: "Close card details" }));
     await negationPage.setViewportSize({ width: 440, height: 766 });
     await expect(negationPage.locator('.harvest-choice-stage[data-harvest-readonly="true"]')).toBeVisible();
     await expect(negationPage.locator(".harvest-card-choice")).toHaveCount(publicPool.revealed.length);
     await assertRootPoolLayer({ width: 440, height: 766 });
+    const inspectorPoolAuditWide = await inspectHarvestPool(negationPage, host.id, testInfo, "bumper-harvest-inspector-above-pool-440x766");
+    await tap(negationPage, negationPage.locator(".harvest-card-info").first());
+    await expect(negationPage.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
+    await tap(negationPage, negationPage.getByRole("button", { name: "Close card details" }));
     await expect(negationPage.locator(".harvest-card-select, .harvest-confirm-row")).toHaveCount(0);
     expect(await negationPage.locator(".harvest-card-choice").evaluateAll((cards) => cards.map((card) => card.dataset.harvestCardId)))
       .toEqual(publicPool.revealed.map(({ id }) => id));
     expect(chooseHarvestPosts).toEqual([]);
+    expect([inspectorPoolAudit.viewport, inspectorPoolAuditWide.viewport]).toEqual([
+      { width: 390, height: 700 },
+      { width: 440, height: 766 },
+    ]);
     await testInfo.attach("bumper-harvest-negation-readonly-pool", {
       body: JSON.stringify({ viewport: negationPage.viewportSize(), viewerIds: controlledViews.map((view) => view.meId), publicPool }, null, 2),
       contentType: "application/json",

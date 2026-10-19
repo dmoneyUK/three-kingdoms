@@ -5214,6 +5214,15 @@
   left: clamp(88px, calc(25vw + 4px), 120px);
   width: auto;
 }
+
+/* UX2 §10.17.1 R2: a read-only Harvest pool stays mounted, but an explicitly
+   opened opponent Inspector must be readable above it. Raise only the
+   Inspector's transparent safe-zone stacking context; response card reveals
+   retain their separate higher layer and closing Inspect restores the pool. */
+.game-shell .play-table:has(> .harvest-choice-stage) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+  z-index: 27;
+}
+
 .game-shell .harvest-choice-panel {
   box-sizing: border-box;
   display: flex;
@@ -6200,6 +6209,24 @@
 
 .game-shell .play-table[data-seat-topology="top-row"] > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
   inset-block-start: -12px;
+}
+
+/* The base interaction stage carries translateX(-50%). Anchor its full-width
+   box at the safe corridor midpoint so that translation lands it exactly back
+   inside the corridor instead of covering the side-seat Hero/SWITCH controls. */
+.game-shell .play-table[data-seat-topology="side-column"] > .interaction-safe-zone > .interaction-stage[data-local-ui-mode="INSPECT"] {
+  position: absolute;
+  inset: 0 !important;
+  left: 50% !important;
+  top: 0 !important;
+  right: auto !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  translate: -50% 0 !important;
+  transform: none !important;
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-slot-row {
