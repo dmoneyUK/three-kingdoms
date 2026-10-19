@@ -5018,6 +5018,25 @@
     grid-column: 1 / -1;
   }
 
+  /* Keep the physical-card owner identifiable after reserving the adjacent
+     48px card lane. The name stays within the portrait column and wraps
+     instead of collapsing to an ellipsis under the Harvest layout. */
+  .game-shell .player-board .opponent-public-zones.harvest-author-layout > .opponent-hero-card .opponent-player-name {
+    display: -webkit-box;
+    max-height: 30px;
+    padding: 1px 2px;
+    overflow: hidden;
+    font-size: clamp(7px, 2vw, 8px);
+    line-height: 1.05;
+    text-align: center;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+
   .game-shell .player-board[data-seat-topology="side-column"] > .opponent-player-card.harvest-author-layout {
     width: 100%;
     max-width: none;
@@ -5291,8 +5310,8 @@
 .game-shell .harvest-card-choice {
   box-sizing: border-box;
   position: relative;
-  flex: 0 0 clamp(70px, 17vw, 76px);
-  width: clamp(70px, 17vw, 76px);
+  flex: 0 0 clamp(82px, 20vw, 88px);
+  width: clamp(82px, 20vw, 88px);
   height: auto;
   aspect-ratio: 2 / 3;
   padding: 0;
@@ -5330,7 +5349,16 @@
 .game-shell .harvest-card-choice > .played-card > i { left: 2px; top: 2px; width: 16px; min-height: 23px; padding: 1px 1px 3px; border-width: 1px; border-radius: 0 0 4px 0; font-size: 10px; }
 .game-shell .harvest-card-choice > .played-card > i small { margin-top: 0; font-size: 8px; }
 .game-shell .harvest-card-choice > .played-card > strong { display: none; }
-.game-shell .harvest-card-choice > .played-card .card-name-mark { max-width: 94%; font-size: clamp(11.5px, 2.8vw, 12.5px); line-height: 1; translate: 0 -9px; }
+.game-shell .harvest-card-choice > .played-card .card-name-mark {
+  max-width: 96%;
+  font-size: clamp(10.5px, 2.7vw, 12px);
+  line-height: 1.02;
+  -webkit-line-clamp: 3;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+  translate: 0 -14px;
+}
 .game-shell .harvest-card-choice.taken > .played-card {
   filter: grayscale(1) brightness(.3);
   opacity: .58;
@@ -5448,15 +5476,8 @@
   color: #8f846e;
 }
 
-/* Read-only public observers get a slightly denser pool while preserving full
-   CardFace proportions and the same independent lower-centre Info hit target. */
-.game-shell .harvest-choice-panel:not(.harvest-choice-panel--actor) .harvest-card-choice {
-  flex-basis: clamp(64px, 14.7vw, 68px);
-  width: clamp(64px, 14.7vw, 68px);
-}
-.game-shell .harvest-choice-panel:not(.harvest-choice-panel--actor) .harvest-card-choice > .played-card .card-name-mark {
-  translate: 0 -10px;
-}
+/* Read-only and active viewers share the same content-fit CardFace geometry;
+   shrinking only the observer pool made public card identities unreadable. */
 
 /* The genuine Harvest root becomes a 40x60 phone thumbnail beside the pool.
    Scale its internal frame and marks together so the corner does not dominate

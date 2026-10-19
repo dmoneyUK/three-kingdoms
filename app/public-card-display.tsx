@@ -937,9 +937,15 @@ function bumperHarvestNegationCopy(
   if (!recipient?.participantId || !recipient.participantName.trim()) {
     return responses.length > 0 ? "Negation response open." : "Negation available.";
   }
-  const playerName = (name: string) => compact ? compactLustDuelPlayerName(name) ?? name.trim() : name.trim();
+  // Harvest's shared message must keep the recipient distinguishable for all
+  // viewers. Compact the repeated card context, never the public player name.
+  const playerName = (name: string) => name.trim();
   const recipientName = playerName(recipient.participantName);
-  if (responses.length === 0) return `Negation: Block ${recipientName}'s Harvest pick?`;
+  if (responses.length === 0) {
+    return compact
+      ? `Negation: Block ${recipientName}'s pick?`
+      : `Negation: Block ${recipientName}'s Harvest pick?`;
+  }
 
   const latest = responses.at(-1);
   const previous = responses.at(-2);

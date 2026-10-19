@@ -28,10 +28,10 @@ const harvestSeedRoles = {
 };
 const harvestSeedHeroes = ["cao-cao", "liu-bei", "sun-quan", "simayi", "zhao-yun", "guan-yu", "xiahou-dun", "huang-gai"];
 
-async function seedHarvestPool(request, seatCount, aliveCount = seatCount, additionalHandsBySeat = {}) {
+async function seedHarvestPool(request, seatCount, aliveCount = seatCount, additionalHandsBySeat = {}, revealedCardKinds = null) {
   const deck = Array.from({ length: seatCount }, (_, index) => ({
     id: `harvest-density-${seatCount}-${index + 1}`,
-    kind: index % 2 ? "Dodge" : "Attack",
+    kind: revealedCardKinds?.[index] ?? (index % 2 ? "Dodge" : "Attack"),
     suit: ["♠", "♥", "♦", "♣"][index % 4],
     rank: String(index + 2),
   }));
@@ -280,6 +280,7 @@ async function measureHarvestParking(page, cardId, eventId) {
         target: hit?.getAttribute("data-testid") ?? hit?.getAttribute("data-player-anchor")
           ?? hit?.getAttribute("data-public-card-journey-card-id") ?? hit?.className ?? hit?.tagName ?? null,
         hitsCard: Boolean(hit && (hit === card || card.contains(hit))),
+        hitsPool: Boolean(hit?.closest(".harvest-choice-stage")),
       };
     }) : [];
     const clippingAncestors = [];
@@ -372,9 +373,9 @@ function expectHarvestCardParkedByAuthor(metrics, label) {
   expect(metrics.actual.top, JSON.stringify({ label, metrics })).toBeGreaterThanOrEqual(0);
   expect(metrics.actual.right, JSON.stringify({ label, metrics })).toBeLessThanOrEqual(metrics.viewport.width);
   expect(metrics.actual.bottom, JSON.stringify({ label, metrics })).toBeLessThanOrEqual(metrics.viewport.height);
-  if (!(metrics.role === "root" && metrics.displayHarvestActive === "true")) {
-    expect(metrics.hitSamples.every((sample) => sample.hitsCard), JSON.stringify({ label, metrics })).toBe(true);
-  }
+  expect(metrics.hitSamples.every((sample) => sample.hitsCard
+    || (metrics.role === "root" && metrics.displayHarvestActive === "true" && sample.hitsPool)),
+  JSON.stringify({ label, metrics })).toBe(true);
 }
 
 async function openHarvestChoice(request, seed, observeRootJourney) {
@@ -564,6 +565,19 @@ test("Bumper Harvest keeps the root reveal and move while the proven Negation po
 
     const parkedRoot = page.locator('[data-harvest-root-parked="true"][data-public-card-journey-role="root"][data-public-card-journey-phase="parked"]');
     await expect(parkedRoot).toBeVisible();
+    expect(await page.locator(`[data-public-card-journey-card-id="${rootCardId}"]`).count(), "one public face carries the authentic Harvest root card ID").toBe(1);
+    const rootEventId = await parkedRoot.getAttribute("data-public-card-journey-event-id");
+    expect(rootEventId).toBeTruthy();
+    const rootParking = await measureHarvestParking(page, rootCardId, rootEventId);
+    expectHarvestCardParkedByAuthor(rootParking, "four-seat local-author Harvest root");
+    expect(rootParking.actorId).toBe(source.id);
+    expect(rootParking.actorIsLocal, JSON.stringify(rootParking)).toBe(true);
+    const choiceStatesBeforeRootInfo = await page.locator(".harvest-card-choice").evaluateAll((cards) => cards.map((card) => [card.dataset.harvestCardId, card.dataset.harvestCardState]));
+    await tap(page, parkedRoot);
+    await expect(page.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
+    await tap(page, page.getByRole("button", { name: "Close card details" }));
+    expect(await page.locator(".harvest-card-choice").evaluateAll((cards) => cards.map((card) => [card.dataset.harvestCardId, card.dataset.harvestCardState])))
+      .toEqual(choiceStatesBeforeRootInfo);
     const parkedMetrics = await parkedRoot.evaluate((element) => {
       const rect = (node) => {
         if (!node) return null;
@@ -590,7 +604,7 @@ test("Bumper Harvest keeps the root reveal and move while the proven Negation po
     expect(parkedMetrics.eventId).toBe(journeyMeasurements[0].eventId);
     expect(parkedMetrics.face).toMatchObject({ width: 40, height: 60 });
     await testInfo.attach("bumper-harvest-root-lifecycle-390x700", {
-      body: JSON.stringify({ rootCardId, journeyMeasurements, parkedMetrics }, null, 2),
+      body: JSON.stringify({ rootCardId, rootEventId, rootParking, journeyMeasurements, parkedMetrics }, null, 2),
       contentType: "application/json",
     });
     const screenshot = testInfo.outputPath("bumper-harvest-root-parked-390x700.png");
@@ -608,7 +622,7 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
   const seed = await seedHarvestPool(request, 4, 4, {
     1: [{ id: firstNegationId, kind: "Negation", suit: "♦", rank: "A" }],
     2: [{ id: counterNegationId, kind: "Negation", suit: "♣", rank: "K" }],
-  });
+  }, ["DrawTwo", "Overindulgence", "Dismantle", "Steal"]);
   const [source, firstResponder, counterResponder] = seed.players;
   const rootCardId = `harvest-density-root-${seed.players.length}`;
   const viewerContexts = [];
@@ -696,6 +710,41 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
       const lineCount = Number(await h4.locator("xpath=..").getAttribute("data-public-card-announcement-lines"));
       expect(lineCount, `Harvest Negation guidance fits two phone lines for ${viewer.id}`).toBeGreaterThan(0);
       expect(lineCount, `Harvest Negation guidance fits two phone lines for ${viewer.id}`).toBeLessThanOrEqual(2);
+      const choiceAudit = await viewerPage.locator(".harvest-card-choice").evaluateAll((cards) => cards.map((card) => {
+        const title = card.querySelector(".played-card .card-name-mark");
+        const info = card.querySelector(".harvest-card-info");
+        if (!title || !info) return null;
+        const range = document.createRange();
+        range.selectNodeContents(title);
+        const titleLines = [...range.getClientRects()].map((rect) => ({ top: rect.top, bottom: rect.bottom }));
+        const titleRect = title.getBoundingClientRect();
+        const infoRect = info.getBoundingClientRect();
+        const style = getComputedStyle(title);
+        const textNode = [...title.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
+        const text = textNode?.textContent ?? "";
+        const wordLineCounts = [...text.matchAll(/\S+/g)].map((match) => {
+          const wordRange = document.createRange();
+          wordRange.setStart(textNode, match.index);
+          wordRange.setEnd(textNode, match.index + match[0].length);
+          return { word: match[0], lines: wordRange.getClientRects().length };
+        });
+        return {
+          name: title.textContent?.trim(),
+          width: card.getBoundingClientRect().width,
+          titleLines,
+          wordLineCounts,
+          titleRect: { left: titleRect.left, top: titleRect.top, right: titleRect.right, bottom: titleRect.bottom },
+          infoRect: { left: infoRect.left, top: infoRect.top, right: infoRect.right, bottom: infoRect.bottom },
+          lineClamp: style.webkitLineClamp,
+          fontSize: style.fontSize,
+        };
+      }));
+      expect(choiceAudit.map((entry) => entry?.name), JSON.stringify({ viewerId: viewer.id, choiceAudit }))
+        .toEqual(["Something Out of Nothing", "Overindulgence", "Burning Bridges", "Steal"]);
+      expect(choiceAudit.every((entry) => entry && entry.width >= 82 && entry.lineClamp === "3"
+        && entry.titleLines.length <= 3 && entry.wordLineCounts.every(({ lines }) => lines <= 1)
+        && entry.titleRect.bottom < entry.infoRect.top),
+      JSON.stringify({ viewerId: viewer.id, choiceAudit })).toBe(true);
     }));
 
     const root = page.locator(`[data-public-card-journey-card-id="${rootCardId}"]`);
@@ -925,6 +974,12 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
       expect(parking.actorId, JSON.stringify({ viewerId, parking })).toBe(firstResponder.id);
       expect(parking.actorIsLocal, JSON.stringify({ viewerId, parking })).toBe(viewerId === firstResponder.id);
     }
+    const firstResponderPage = viewerPages.find(({ viewer }) => viewer.id === firstResponder.id)?.page;
+    expect(firstResponderPage, "the real response author has a local mobile view").toBeTruthy();
+    const firstResponderCard = firstResponderPage.locator(`[data-public-card-journey-card-id="${firstNegationId}"][data-public-card-journey-event-id="${firstCommit.event.id}"]`);
+    await tap(firstResponderPage, firstResponderCard);
+    await expect(firstResponderPage.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
+    await tap(firstResponderPage, firstResponderPage.getByRole("button", { name: "Close card details" }));
     await Promise.all(viewerPages.map(async ({ viewer, page: viewerPage }) => {
       const viewport = viewerPage.viewportSize();
       const screenshotName = `bumper-harvest-first-negation-parked-${viewer.id.slice(0, 8)}-${viewport.width}x${viewport.height}`;
@@ -2030,7 +2085,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
         try {
           await expect.poll(async () => {
             const geometry = await harvestGeometry(page);
-            return Boolean(geometry.panel && geometry.root && geometry.announcement && geometry.table
+            return Boolean(geometry.panel && geometry.root && (actor || geometry.announcement) && geometry.table
               && geometry.stagePointerEvents === "none"
               && Object.values(geometry.overlaps).every((overlap) => !overlap)
               && geometry.panel.top >= Math.max(...geometry.seats.map((seat) => seat.bottom)) - 1
@@ -2050,6 +2105,28 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
         }
         const geometry = await harvestGeometry(page);
         expect(geometry.viewport).toEqual(viewport);
+        const authorNameAudit = await page.locator(".opponent-player-card.harvest-author-layout .opponent-player-name").evaluateAll((names) => names.map((name) => {
+          const style = getComputedStyle(name);
+          const range = document.createRange();
+          range.selectNodeContents(name);
+          return {
+            text: name.textContent?.trim(),
+            ariaLabel: name.getAttribute("aria-label"),
+            title: name.getAttribute("title"),
+            width: name.clientWidth,
+            scrollWidth: name.scrollWidth,
+            height: name.clientHeight,
+            scrollHeight: name.scrollHeight,
+            lineCount: range.getClientRects().length,
+            whiteSpace: style.whiteSpace,
+            textOverflow: style.textOverflow,
+            lineClamp: style.webkitLineClamp,
+          };
+        }));
+        expect(authorNameAudit.every((name) => name.text && name.text === name.ariaLabel && name.text === name.title
+          && name.whiteSpace === "normal" && name.textOverflow === "clip" && name.lineClamp === "3"
+          && name.scrollWidth <= name.width + 1 && name.scrollHeight <= name.height + 1 && name.lineCount <= 3),
+        JSON.stringify({ viewerLabel, viewport, authorNameAudit })).toBe(true);
         expect(geometry.overlaps, JSON.stringify({ viewerLabel, geometry })).toEqual({
           rootPanel: false,
           rootRow: false,
@@ -2080,6 +2157,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
         expect(geometry.controlHits.handInspection.length, JSON.stringify({ viewerLabel, geometry })).toBeGreaterThan(0);
         expect(geometry.controlHits.handInspection.every((item) => item.hitMatches), JSON.stringify({ viewerLabel, geometry })).toBe(true);
         if (actor) {
+          await expect(page.locator(".harvest-choice-heading span")).toHaveText("Choose one revealed card");
           expect(geometry.footer, JSON.stringify({ viewerLabel, geometry })).toBeTruthy();
           expect(geometry.panelPointerEvents).toBe("auto");
           expect(geometry.footer.bottom).toBeLessThanOrEqual(viewport.height + 1);
@@ -2092,13 +2170,11 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
           expect(geometry.panelPointerEvents).toBe("none");
         }
         expect(geometry.cards).toHaveLength(4);
-        expect(geometry.panel.width, JSON.stringify({ viewerLabel, geometry })).toBeLessThan(viewport.width - 32);
+        expect(geometry.panel.width, JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(viewport.width - 32);
         expect(geometry.cardDetailsTargets.every((detail) => detail.infoHitMatches && detail.infoCentered
           && detail.infoBottomInset >= 0 && detail.infoBottomInset <= 2
           && detail.infoWidth >= 44 && detail.infoHeight >= 44 && detail.titleClearOfInfoGlyph), JSON.stringify({ viewerLabel, geometry })).toBe(true);
-        const expectedCardWidth = actor
-          ? Math.min(76, Math.max(70, viewport.width * .17))
-          : Math.min(68, Math.max(64, viewport.width * .147));
+        const expectedCardWidth = Math.min(88, Math.max(82, viewport.width * .20));
         expect(geometry.cards.every((card) => Math.abs(card.width - expectedCardWidth) <= .5), JSON.stringify({ viewerLabel, geometry })).toBe(true);
         if (actor) expect(geometry.cardDetailsTargets.every((detail) => detail.cardCenterOutsideInfo), JSON.stringify({ viewerLabel, geometry })).toBe(true);
         expect(geometry.rootFace, JSON.stringify({ viewerLabel, geometry })).toMatchObject({ width: 40, height: 60 });
@@ -2458,7 +2534,7 @@ test("Harvest content-fit scales from 1 to 8 genuine cards and swipes at 6–8 s
       });
       expect(geometry.cards.every((card) => card.width >= 58), contextLabel).toBe(true);
       if (scenario.choices === 4) {
-        const expectedCardWidth = Math.min(76, Math.max(70, scenario.viewport.width * .17));
+        const expectedCardWidth = Math.min(88, Math.max(82, scenario.viewport.width * .20));
         expect(geometry.cards.every((card) => Math.abs(card.width - expectedCardWidth) <= .5), contextLabel).toBe(true);
         expect(geometry.panel.width, contextLabel).toBeLessThanOrEqual(geometry.row.width + 20);
       }
