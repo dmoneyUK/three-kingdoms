@@ -3971,6 +3971,39 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
     if (targets.some((target) => target === null)) return null;
 
+    const publicResponseHistory: { eventId: string; ordinal: number; actorId: string; actorName: string; cardFace: Card; ariaLabel: string }[] = [];
+    const historyEventIds = new Set<string>();
+    const historyCardIds = new Set<string>();
+    let responseHistoryIsValid = true;
+    for (const response of progress.publicNegationResponses ?? []) {
+      const matches = room.timeline.filter((event) => event.id === response.eventId);
+      const event = matches.length === 1 ? matches[0] : null;
+      const actor = room.players.find((player) => player.id === response.actorId);
+      if (response.semantics !== "PROVEN" || response.interactionId !== progress.interactionId
+        || response.rootFrameId !== progress.rootFrameId || response.rootEventId !== progress.rootEventId
+        || response.rootResolutionId !== progress.rootResolutionId || response.rootCardId !== progress.rootCardId
+        || response.parentFrameId !== progress.rootFrameId || !progress.targetIds.includes(response.effectParticipantId)
+        || response.order !== publicResponseHistory.length + 1 || !actor?.name || !event
+        || event.type !== "card" || event.action !== "play" || event.presentation === false
+        || event.playedAs !== undefined || event.card?.kind !== "Negation" || event.card.id !== response.cardId
+        || event.player !== actor.name || event.resolutionId !== response.resolutionId
+        || historyEventIds.has(response.eventId) || historyCardIds.has(response.cardId)) {
+        responseHistoryIsValid = false;
+        break;
+      }
+      historyEventIds.add(response.eventId);
+      historyCardIds.add(response.cardId);
+      publicResponseHistory.push({
+        eventId: event.id,
+        ordinal: response.order,
+        actorId: actor.id,
+        actorName: actor.name,
+        cardFace: event.card,
+        ariaLabel: `${actor.name} played Negation during Bumper Harvest.`,
+      });
+    }
+    if (!responseHistoryIsValid) publicResponseHistory.length = 0;
+
     let responses: { index: number; ordinal: number; eventId: string; actorId: string; actorName: string; cardFace: Card; cardLabel: string; ariaLabel: string; counterTarget: { kind: "ORDERED_TARGET_EFFECT"; targetId: string } | { kind: "RESPONSE"; index: number } }[] = [];
     let negationProofIsValid = false;
     if (isNegationScene) {
@@ -4036,6 +4069,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       source,
       targets: targets as NonNullable<(typeof targets)[number]>[],
       responses,
+      publicResponseHistory,
       isNegationScene,
       currentParticipantIsProven,
       negationProofIsValid,
@@ -4828,6 +4862,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       sourceId: bumperHarvestRootCandidate.progress.sourceId,
       targetId: null,
       cardFace: bumperHarvestRootCandidate.rootEvent.card,
+      ...(bumperHarvestRootCandidate.publicResponseHistory.length ? {
+        responseHistory: bumperHarvestRootCandidate.publicResponseHistory,
+      } : {}),
       ...(bumperHarvestRootCandidate.isNegationScene ? {
         ...(bumperHarvestRootCandidate.currentParticipantIsProven && bumperHarvestRootCandidate.negationProofIsValid ? {
           phaseNotice: bumperHarvestRootCandidate.responses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED",

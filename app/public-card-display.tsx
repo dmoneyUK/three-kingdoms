@@ -85,6 +85,8 @@ export type PublicCardDisplayAction = {
   };
   publicCounterRead?: { eventId: string; exiting: boolean };
   phaseNotice?: string;
+  /** Previously committed, root-bound public Negation cards; these restore parked history only. */
+  responseHistory?: readonly PublicCardDisplayResponseNode[];
   response?: {
     eventId: string;
     actorId: string;
@@ -2379,7 +2381,15 @@ function singleTargetJourneyEvents(action: PublicCardDisplayAction, sourceName: 
     rect: { left: 0, top: 0, ...PARKED_CARD },
     target: { left: 0, top: 0, ...PARKED_CARD },
   });
+  const responseByEventId = new Map<string, PublicCardDisplayResponseNode>();
+  for (const response of action.responseHistory ?? []) responseByEventId.set(response.eventId, response);
   for (const response of action.responses ?? []) {
+    const prior = responseByEventId.get(response.eventId);
+    responseByEventId.set(response.eventId, prior
+      ? { ...response, ordinal: prior.ordinal ?? response.ordinal }
+      : response);
+  }
+  for (const response of responseByEventId.values()) {
     const cardFaces = response.cardFaces ?? (response.cardFace ? [response.cardFace] : []);
     if (!cardFaces.length || !Number.isInteger(response.ordinal) || !response.ordinal || response.ordinal < 1) continue;
     events.push({
