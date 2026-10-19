@@ -207,6 +207,7 @@ async function measureHarvestParking(page, cardId, eventId) {
     const authorSlotStyle = authorSlot ? getComputedStyle(authorSlot) : null;
     const board = actor?.closest(".player-board");
     const authorZonesMatchedRules = [];
+    const unreadableStylesheets = [];
     const collectRules = (rules, conditions = []) => {
       for (const rule of rules) {
         if (rule.selectorText && zones?.matches(rule.selectorText)) {
@@ -221,7 +222,11 @@ async function measureHarvestParking(page, cardId, eventId) {
       }
     };
     for (const sheet of document.styleSheets) {
-      try { collectRules(sheet.cssRules, [sheet.href ?? "inline"]); } catch {}
+      try {
+        collectRules(sheet.cssRules, [sheet.href ?? "inline"]);
+      } catch (error) {
+        unreadableStylesheets.push({ href: sheet.href, error: error.name });
+      }
     }
     const sideColumn = actor?.dataset.sideColumn ?? null;
     const tableRect = rect(document.querySelector(".play-table"));
@@ -316,6 +321,7 @@ async function measureHarvestParking(page, cardId, eventId) {
       authorZonesClass: zones?.className ?? null,
       authorBoardAttributes: board ? { className: board.className, topology: board.dataset.seatTopology, playerCount: board.dataset.playerCount } : null,
       authorZonesMatchedRules,
+      unreadableStylesheets,
       authorZonesLayout: zonesStyle ? {
         display: zonesStyle.display,
         position: zonesStyle.position,
