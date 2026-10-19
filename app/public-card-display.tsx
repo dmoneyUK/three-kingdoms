@@ -550,6 +550,7 @@ type SeatHistoryCardParking = { rect: CardRect; side: "local" | "top" | "left" |
 type SeatHistoryCardParkingOptions = {
   cardSize?: Pick<CardRect, "width" | "height">;
   anchorLocalHero?: boolean;
+  avoidAuthorSeat?: boolean;
   protectInteractionControls?: boolean;
   allowHarvestPoolOverlap?: boolean;
 };
@@ -624,6 +625,9 @@ function seatHistoryCardParking(
     if (!authorHero) return null;
     const heroRect = authorHero.getBoundingClientRect();
     if (heroRect.width <= 0 || heroRect.height <= 0) return null;
+    // Opponent Hero portraits end above their HP/equipment strip. Keep parked
+    // Harvest cards clear of the complete seat, not just the portrait image.
+    const authorSeatRect = options.avoidAuthorSeat && !isLocalAnchor ? seat : null;
     const identity = isLocalAnchor ? anchor.querySelector<HTMLElement>(".local-dock-identity") : null;
     const identityRect = identity?.getBoundingClientRect() ?? null;
     const protectedSelectors = seatHistoryParkingProtectedSelectors(options);
@@ -648,9 +652,21 @@ function seatHistoryCardParking(
       && candidate.top + candidate.height <= window.innerHeight - 2;
     const isFree = (candidate: CardRect) => inViewport(candidate)
       && !rectsOverlap(heroRect, candidate, 2)
+      && (!authorSeatRect || !rectsOverlap(authorSeatRect, candidate, 2))
       && !occupied.some((rect) => rectsOverlap(rect, candidate, 2))
       && obstacles.every((rect) => !rectsOverlap(rect, candidate, 2))
       && otherAnchors.every((rect) => !rectsOverlap(rect, candidate, 2));
+    const belowSeatCandidates = (left: number): CardRect[] => {
+      const firstTop = seat.bottom + gap + cascade;
+      const tops = new Set([firstTop]);
+      obstacles
+        .filter((rect) => rect.right > left && rect.left < left + cardSize.width)
+        .forEach((rect) => {
+          const top = rect.bottom + gap + cascade;
+          if (top > firstTop) tops.add(top);
+        });
+      return [...tops].sort((a, b) => a - b).map((top) => ({ left, top, ...cardSize }));
+    };
     const candidates: CardRect[] = [];
     if (isLocalAnchor) {
       // The local identity column is the only free area alongside the full-size
@@ -681,27 +697,45 @@ function seatHistoryCardParking(
       const isTopSeat = !side && heroRect.top + heroRect.height / 2 < tableRect.top + tableRect.height * 0.38;
       if (side === "left") {
         candidates.push(
-          { left: heroRect.right + gap + cascade, top: heroCenterY - cardSize.height / 2, ...cardSize },
-          { left: heroCenterX - cardSize.width / 2, top: heroRect.bottom + gap, ...cardSize },
-          { left: heroCenterX - cardSize.width / 2, top: heroRect.top - cardSize.height - gap, ...cardSize },
+          ...(options.avoidAuthorSeat ? [
+            { left: seat.right + gap + cascade, top: seat.top + (seat.height - cardSize.height) / 2, ...cardSize },
+            ...belowSeatCandidates(heroCenterX - cardSize.width / 2),
+          ] : [
+            { left: heroRect.right + gap + cascade, top: heroCenterY - cardSize.height / 2, ...cardSize },
+            { left: heroCenterX - cardSize.width / 2, top: heroRect.bottom + gap, ...cardSize },
+          ]),
+          { left: heroCenterX - cardSize.width / 2, top: options.avoidAuthorSeat ? seat.top - cardSize.height - gap : heroRect.top - cardSize.height - gap, ...cardSize },
         );
       } else if (side === "right") {
         candidates.push(
-          { left: heroRect.left - cardSize.width - gap - cascade, top: heroCenterY - cardSize.height / 2, ...cardSize },
-          { left: heroCenterX - cardSize.width / 2, top: heroRect.bottom + gap, ...cardSize },
-          { left: heroCenterX - cardSize.width / 2, top: heroRect.top - cardSize.height - gap, ...cardSize },
+          ...(options.avoidAuthorSeat ? [
+            { left: seat.left - cardSize.width - gap - cascade, top: seat.top + (seat.height - cardSize.height) / 2, ...cardSize },
+            ...belowSeatCandidates(heroCenterX - cardSize.width / 2),
+          ] : [
+            { left: heroRect.left - cardSize.width - gap - cascade, top: heroCenterY - cardSize.height / 2, ...cardSize },
+            { left: heroCenterX - cardSize.width / 2, top: heroRect.bottom + gap, ...cardSize },
+          ]),
+          { left: heroCenterX - cardSize.width / 2, top: options.avoidAuthorSeat ? seat.top - cardSize.height - gap : heroRect.top - cardSize.height - gap, ...cardSize },
         );
       } else if (isTopSeat) {
+        const belowSeatLeft = heroCenterX - cardSize.width / 2;
         candidates.push(
-          { left: heroCenterX - cardSize.width / 2, top: heroRect.bottom + gap + cascade, ...cardSize },
+          // Use the whole seat boundary so the thumbnail cannot cover HP or
+          // equipment. If H4 fills the first safe band, continue below its
+          // measured bottom; the Harvest pool may cover the root by design.
+          ...(options.avoidAuthorSeat
+            ? belowSeatCandidates(belowSeatLeft)
+            : [{ left: belowSeatLeft, top: heroRect.bottom + gap + cascade, ...cardSize }]),
           { left: heroRect.right + gap, top: heroCenterY - cardSize.height / 2, ...cardSize },
           { left: heroRect.left - cardSize.width - gap, top: heroCenterY - cardSize.height / 2, ...cardSize },
           { left: heroCenterX - cardSize.width / 2, top: heroRect.top - cardSize.height - gap, ...cardSize },
         );
       } else {
         candidates.push(
-          { left: heroCenterX - cardSize.width / 2, top: heroRect.bottom + gap + cascade, ...cardSize },
-          { left: heroCenterX - cardSize.width / 2, top: heroRect.top - cardSize.height - gap, ...cardSize },
+          ...(options.avoidAuthorSeat
+            ? belowSeatCandidates(heroCenterX - cardSize.width / 2)
+            : [{ left: heroCenterX - cardSize.width / 2, top: heroRect.bottom + gap + cascade, ...cardSize }]),
+          { left: heroCenterX - cardSize.width / 2, top: options.avoidAuthorSeat ? seat.top - cardSize.height - gap : heroRect.top - cardSize.height - gap, ...cardSize },
           { left: heroRect.right + gap, top: heroCenterY - cardSize.height / 2, ...cardSize },
           { left: heroRect.left - cardSize.width - gap, top: heroCenterY - cardSize.height / 2, ...cardSize },
         );
@@ -2385,6 +2419,7 @@ function singleTargetParkingOptions(
     cardSize: harvest && event.role === "root" ? { width: 40, height: 60 } : PARKED_CARD,
     ...(harvest ? {
       anchorLocalHero: true,
+      avoidAuthorSeat: event.role === "root",
       protectInteractionControls: true,
       allowHarvestPoolOverlap: harvestPoolVisible && event.role === "root",
     } : {}),
