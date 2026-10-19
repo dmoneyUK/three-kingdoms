@@ -782,7 +782,7 @@
 .local-hand-rail .card-slot.inspect-focused .hand-card-inspection-action { transform: translateY(calc(0px - var(--selected-face-rise))); }
 .local-hand-rail .hand-card-inspection-action:focus-visible { outline: 2px solid #ffe28a; outline-offset: -3px; }
 .local-hand-rail .hand-card-details-action { position: absolute; z-index: 8; top: calc(var(--hand-card-height) - 44px); left: 50%; translate: -50% 0; display: grid; place-items: center; width: 44px; min-width: 44px; height: 44px; min-height: 44px; box-sizing: border-box; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; transition: transform .18s; }
-.local-hand-rail .hand-card-details-icon { display: grid; place-items: center; width: 34px; height: 34px; box-sizing: border-box; border: 1px solid #c5a45f; border-radius: 50%; background: #191a14f2; color: #f2d98e; font: 700 18px/1 Arial,sans-serif; }
+.local-hand-rail .hand-card-details-icon { display: grid; place-items: center; width: 30px; height: 30px; box-sizing: border-box; border: 1px solid #c5a45f; border-radius: 50%; background: #191a14f2; color: #f2d98e; font: 700 16px/1 Arial,sans-serif; }
 .local-hand-rail .card-slot.details-selected .hand-card-details-action { transform: translateY(calc(0px - var(--selected-face-rise))); }
 .local-hand-rail .card-slot.inspect-focused .hand-card-details-action { transform: translateY(calc(0px - var(--selected-face-rise))); }
 .local-hand-rail .hand-card-details-action:hover .hand-card-details-icon { background: #2a271b; color: #ffe8a7; }

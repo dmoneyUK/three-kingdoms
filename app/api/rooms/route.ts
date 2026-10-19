@@ -7157,12 +7157,20 @@ export async function POST(request: Request) {
   if (action === "add_test_players") {
     if (!me || me.id !== room.host_player_id) return json({ error: "Only the host can add test players." }, 403);
     if (room.status !== "lobby") return json({ error: "Test players can only be added before the match starts." }, 409);
+    const requestedCount = body.count;
+    if (requestedCount !== undefined && (typeof requestedCount !== "number" || !Number.isInteger(requestedCount) || requestedCount < 1)) {
+      return json({ error: "Choose a whole number of test players to add." }, 400);
+    }
     const result = await db.prepare("SELECT seat FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<{ seat: number }>();
     const seats = new Set((result.results ?? []).map((row) => row.seat));
-    const needed = Math.max(0, 4 - seats.size);
+    const needed = requestedCount === undefined ? Math.max(0, 4 - seats.size) : requestedCount;
+    const availableSeats = Math.max(0, room.max_players - seats.size);
+    if (needed > availableSeats) return json({ error: "There are not enough open seats for that many test players." }, 409);
     const inserts = [];
     for (let index = 0; index < needed; index++) {
-      let seat = 0; while (seats.has(seat)) seat++; seats.add(seat);
+      let seat = 0; while (seat < room.max_players && seats.has(seat)) seat++;
+      if (seat >= room.max_players) return json({ error: "There are no open seats for another test player." }, 409);
+      seats.add(seat);
       inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, ready, connected_at, is_test_player) VALUES (?, ?, ?, ?, ?, 1, ?, 1)").bind(crypto.randomUUID(), room.id, `Test Player ${seat + 1}`, tokenHash, seat, Date.now()));
     }
     if (inserts.length) await db.batch(inserts);

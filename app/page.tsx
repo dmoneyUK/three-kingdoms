@@ -635,7 +635,7 @@ export default function Home() {
 
   if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <GameRoomErrorBoundary room={room} onRecover={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy} busyAction={busyAction} error={error} onAction={send} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary>;
   if (room?.status === "heroes") return <HeroSelection room={room} busy={busy} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} />;
-  if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onAddTestPlayers={() => send("add_test_players")} onEnableTestRoom={() => send("enable_test_room")} onConfigureTestHands={(presetId, handsBySeat, expectedRevision) => send("configure_test_hands", { presetId, handsBySeat, expectedRevision })} onLeave={leave} />;
+  if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onAddTestPlayers={(count) => send("add_test_players", { count })} onEnableTestRoom={() => send("enable_test_room")} onConfigureTestHands={(presetId, handsBySeat, expectedRevision) => send("configure_test_hands", { presetId, handsBySeat, expectedRevision })} onLeave={leave} />;
 
   return (
     <main className="landing-shell">
@@ -680,7 +680,7 @@ type WaitingRoomProps = {
   busy: boolean;
   error: string;
   onStart: () => void;
-  onAddTestPlayers: () => void;
+  onAddTestPlayers: (count: number) => void;
   onEnableTestRoom: () => void;
   onConfigureTestHands: (presetId: TestHandPresetId, handsBySeat: Record<number, CardKind[]>, expectedRevision: number) => void;
   onLeave: () => void;
@@ -695,6 +695,9 @@ export function WaitingRoom(props: WaitingRoomProps) {
 function WaitingRoomEditor({ room, busy, error, onStart, onAddTestPlayers, onEnableTestRoom, onConfigureTestHands, onLeave }: WaitingRoomProps) {
   const share = async () => { await navigator.clipboard?.writeText(room.code); };
   const canStart = room.players.length >= 4 && room.players.length <= room.maxPlayers;
+  const availableTestPlayerSeats = Math.max(0, room.maxPlayers - room.players.length);
+  const [testPlayerCount, setTestPlayerCount] = useState(() => Math.max(1, Math.min(3, 4 - room.players.length)));
+  const selectedTestPlayerCount = Math.min(testPlayerCount, availableTestPlayerSeats);
   const savedPreset = room.testHandPreset;
   const [selectedPreset, setSelectedPreset] = useState<TestHandPresetId>(savedPreset?.id ?? "random");
   const [customDraft, setCustomDraft] = useState<TestHandDraft>(() => testHandDraftFrom(savedPreset?.id === "custom" ? savedPreset : null));
@@ -720,7 +723,7 @@ function WaitingRoomEditor({ room, busy, error, onStart, onAddTestPlayers, onEna
   return <main className="lobby-shell"><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><button className="text-button" onClick={onLeave}>Leave room</button></header>
     <section className="lobby-content"><div className="lobby-heading"><span className="eyebrow">THE GENERALS ASSEMBLE</span><h1>Waiting room</h1>{room.isTestRoom && <span className="test-game-label">TEST GAME · HOST CONTROLLED</span>}<p>Share this code with your friends. The game can start when 4–8 players have joined.</p><button className="copy-code" onClick={share}><span>{room.code}</span><small>Tap to copy room code</small></button></div>
       <div className="seat-grid">{Array.from({ length: room.maxPlayers }, (_, seat) => { const player = room.players.find((item) => item.seat === seat); return <div className={`seat ${player ? "filled" : ""}`} key={seat}>{player ? <><span className="seat-number">{seat + 1}</span><div className="seal">{player.name[0].toUpperCase()}</div><b>{player.name}</b><small>{player.isHost ? "HOST" : player.isTestPlayer ? "TEST PLAYER" : "PLAYER"}</small></> : <><span className="seat-number">{seat + 1}</span><div className="empty-seal">+</div><b>Open seat</b><small>WAITING FOR PLAYER</small></>}</div>; })}</div>
-      <div className="lobby-actions"><span>{room.players.length} / {room.maxPlayers} players</span><div className="host-actions">{room.isHost && <>{room.players.length < 4 && <button className="test-button" disabled={busy} onClick={onAddTestPlayers}>+ Add {4 - room.players.length} Test Player{4 - room.players.length === 1 ? "" : "s"}</button>}{!room.isTestRoom && <button className="test-mode-button" disabled={busy || !canStart} onClick={onEnableTestRoom}>Enable Test Game</button>}<button className="gold-button" disabled={busy || !canStart || room.isTestRoom && (!savedPreset || presetDirty)} onClick={onStart}>{busy ? "Preparing…" : room.players.length < 4 ? `Need ${4 - room.players.length} more` : "Start game"}</button></>}{!room.isHost && <p>Waiting for the host to start…</p>}</div></div>
+      <div className="lobby-actions"><span>{room.players.length} / {room.maxPlayers} players</span><div className="host-actions">{room.isHost && <>{availableTestPlayerSeats > 0 && <div className="test-player-add-control"><label className="test-player-count-label"><span>TEST PLAYERS TO ADD</span><select aria-label="Test players to add" value={selectedTestPlayerCount} disabled={busy} onChange={(event) => setTestPlayerCount(Number(event.target.value))}>{Array.from({ length: availableTestPlayerSeats }, (_, index) => index + 1).map((count) => <option value={count} key={count}>{count} player{count === 1 ? "" : "s"}</option>)}</select></label><button className="test-button" disabled={busy || selectedTestPlayerCount < 1} onClick={() => onAddTestPlayers(selectedTestPlayerCount)}>+ Add {selectedTestPlayerCount} Test Player{selectedTestPlayerCount === 1 ? "" : "s"}</button></div>}{!room.isTestRoom && <button className="test-mode-button" disabled={busy || !canStart} onClick={onEnableTestRoom}>Enable Test Game</button>}<button className="gold-button" disabled={busy || !canStart || room.isTestRoom && (!savedPreset || presetDirty)} onClick={onStart}>{busy ? "Preparing…" : room.players.length < 4 ? `Need ${4 - room.players.length} more` : "Start game"}</button></>}{!room.isHost && <p>Waiting for the host to start…</p>}</div></div>
       {room.isTestRoom && room.isHost && savedPreset && <section className="test-preset-panel" aria-label="Preset Hands configuration">
         <div className="test-preset-heading"><div><span className="eyebrow">HOST TEST CONTROLS</span><h2>Preset Hands</h2></div><span className="preset-revision">Saved · v{savedPreset.revision}</span></div>
         <label className="preset-select-label"><span>STARTING-HAND SCENARIO</span><select aria-label="Preset Hands" value={selectedPreset} disabled={busy} onChange={(event) => setSelectedPreset(event.target.value as TestHandPresetId)}>{TEST_HAND_PRESET_OPTIONS.map((option) => <option value={option.id} key={option.id}>{option.name}</option>)}</select></label>
