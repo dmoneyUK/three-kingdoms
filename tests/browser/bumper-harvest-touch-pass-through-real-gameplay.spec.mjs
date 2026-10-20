@@ -23,6 +23,7 @@ async function readRoom(request, code, token, viewerId) {
 
 const harvestSeedRoles = {
   4: ["Lord", "Loyalist", "Rebel", "Renegade"],
+  5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"],
   6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"],
   8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"],
 };
@@ -361,6 +362,10 @@ async function measureHarvestParking(page, cardId, eventId) {
       candidateProbes,
       h4: rect(document.querySelector(".public-card-display-journey-copy")),
       pool: rect(document.querySelector(".harvest-choice-panel")),
+      cardZIndex: getComputedStyle(card).zIndex,
+      poolZIndex: getComputedStyle(document.querySelector(".harvest-choice-stage")).zIndex,
+      seatRects: [...document.querySelectorAll(".player-board > .opponent-player-card[data-player-anchor]")]
+        .map((element) => ({ id: element.dataset.playerAnchor, ...rect(element) })),
     };
   }, { expectedCardId: cardId, expectedEventId: eventId });
 }
@@ -374,14 +379,19 @@ function expectHarvestCardParkedByAuthor(metrics, label) {
   expect(metrics.target.height, JSON.stringify({ label, metrics })).toBe(metrics.role === "root" ? 60 : 72);
   expect(metrics.actual.left, JSON.stringify({ label, metrics })).toBeCloseTo(metrics.target.left, 1);
   expect(metrics.actual.top, JSON.stringify({ label, metrics })).toBeCloseTo(metrics.target.top, 1);
-  expect(metrics.authorSlotRect, JSON.stringify({ label, metrics })).toBeTruthy();
-  expect(metrics.target.left, JSON.stringify({ label, metrics })).toBeGreaterThanOrEqual(metrics.authorSlotRect.left - .5);
-  expect(metrics.target.top, JSON.stringify({ label, metrics })).toBeGreaterThanOrEqual(metrics.authorSlotRect.top - .5);
-  expect(metrics.target.left + metrics.target.width, JSON.stringify({ label, metrics })).toBeLessThanOrEqual(metrics.authorSlotRect.right + .5);
-  expect(metrics.target.top + metrics.target.height, JSON.stringify({ label, metrics })).toBeLessThanOrEqual(metrics.authorSlotRect.bottom + .5);
-  expect(metrics.target.left + metrics.target.width / 2, JSON.stringify({ label, metrics })).toBeCloseTo(metrics.authorSlotRect.left + metrics.authorSlotRect.width / 2, 1);
-  expect(metrics.target.top + metrics.target.height / 2, JSON.stringify({ label, metrics })).toBeCloseTo(metrics.authorSlotRect.top + metrics.authorSlotRect.height / 2, 1);
+  expect(metrics.authorSlotRect, JSON.stringify({ label, metrics })).toBeNull();
   expect(metrics.authorEdgeDistance, JSON.stringify({ label, metrics })).toBeLessThanOrEqual(8);
+  const overlaps = (first, second) => Boolean(first && second
+    && first.left < second.right && first.right > second.left
+    && first.top < second.bottom && first.bottom > second.top);
+  for (const seat of metrics.seatRects) {
+    expect(overlaps(metrics.target, seat), `${label} mini does not cover ${seat.id}`).toBe(false);
+  }
+  expect(overlaps(metrics.target, metrics.h4), `${label} mini clears the H4 announcement`).toBe(false);
+  if (metrics.role === "root" && overlaps(metrics.target, metrics.pool)) {
+    expect(Number.parseInt(metrics.cardZIndex, 10), JSON.stringify({ label, metrics }))
+      .toBeLessThan(Number.parseInt(metrics.poolZIndex, 10));
+  }
   expect(metrics.actionableCollisions, JSON.stringify({ label, metrics })).toEqual([]);
   expect(metrics.actual.left, JSON.stringify({ label, metrics })).toBeGreaterThanOrEqual(0);
   expect(metrics.actual.top, JSON.stringify({ label, metrics })).toBeGreaterThanOrEqual(0);
@@ -1761,10 +1771,12 @@ async function harvestGeometry(page) {
 
 test("Bumper Harvest root and Negation park beside their own side-seat authors on phones", async ({ browser, request }, testInfo) => {
   test.setTimeout(120_000);
-  for (const scenario of [
+  const scenarios = [
+    { seats: 5, viewport: { width: 390, height: 700 } },
     { seats: 6, viewport: { width: 390, height: 844 } },
     { seats: 8, viewport: { width: 440, height: 894 } },
-  ]) {
+  ].filter((scenario) => process.env.ST5_PHONE_ONLY !== "1" || scenario.seats === 5);
+  for (const scenario of scenarios) {
     const negationId = `harvest-side-negation-${scenario.seats}`;
     const seed = await seedHarvestPool(request, scenario.seats, scenario.seats, {
       4: [{ id: negationId, kind: "Negation", suit: "♦", rank: "A" }],
@@ -1817,8 +1829,7 @@ test("Bumper Harvest root and Negation park beside their own side-seat authors o
       const rootParking = await measureHarvestParking(page, rootCardId, progress.rootEventId);
       expectHarvestCardParkedByAuthor(rootParking, `${scenario.seats}-seat Harvest root`);
       expect(rootParking.actorId).toBe(source.id);
-      expect(await page.locator("[data-harvest-author-slot]").evaluateAll((slots) => slots.map((slot) => slot.getAttribute("data-harvest-author-slot")).sort()))
-        .toEqual([source.id]);
+      expect(await page.locator("[data-harvest-author-slot]")).toHaveCount(0);
       expect(rootParking.sideColumn, "root parks beside a true side-column seat").toMatch(/^(left|right)$/);
       const rootScreenshot = testInfo.outputPath(`harvest-side-root-${scenario.seats}-seats-${scenario.viewport.width}x${scenario.viewport.height}.png`);
       await page.screenshot({ path: rootScreenshot, animations: "disabled" });
@@ -1834,8 +1845,7 @@ test("Bumper Harvest root and Negation park beside their own side-seat authors o
       expect(responseParking.actorId).toBe(responder.id);
       expect(responseParking.sideColumn, "Negation parks beside its own side-column author").toMatch(/^(left|right)$/);
       expect(responseParking.actorId).not.toBe(source.id);
-      expect(await page.locator("[data-harvest-author-slot]").evaluateAll((slots) => slots.map((slot) => slot.getAttribute("data-harvest-author-slot")).sort()))
-        .toEqual([source.id, responder.id].sort());
+      expect(await page.locator("[data-harvest-author-slot]")).toHaveCount(0);
       await testInfo.attach(`harvest-side-parking-${scenario.seats}-seats`, {
         body: JSON.stringify({ scenario, viewerId: viewer.id, currentChooserId, sourceId: source.id, responderId: responder.id, rootParking, responseParking }, null, 2),
         contentType: "application/json",

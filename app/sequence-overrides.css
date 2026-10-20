@@ -6287,3 +6287,19 @@
     gap: 3px;
   }
 }
+
+/* ST5-1: five-player phone tables keep the existing relative seat mapping,
+   while the two physical opponent rows follow the top safe edge. */
+@media (max-width: 520px) {
+  .game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] {
+    grid-template-rows: repeat(2, max-content);
+    align-content: start;
+    align-items: start;
+    row-gap: clamp(8px, 2.5vw, 16px);
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] > .opponent-player-card {
+    align-self: start;
+    height: 108px;
+  }
+}
