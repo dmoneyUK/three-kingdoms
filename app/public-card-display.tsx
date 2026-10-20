@@ -148,6 +148,8 @@ type JourneyCard = {
   revealRemainingMs?: number;
   moveStartedAtMs?: number | null;
   layoutChangeReason?: string;
+  /** Keep one unresolved actor placement from hiding unrelated public cards. */
+  layoutPending?: boolean;
 };
 type JourneyState = {
   scopeKey: string;
@@ -193,7 +195,7 @@ function PublicJourneyCard({
   const definition = cardDefinition(card.cardFace.kind);
   return <button
     type="button"
-    className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${className} ${lustCostFrame ? "is-lust-cost" : ""} ${inspectable ? "is-inspectable" : ""}`}
+    className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${card.layoutPending ? "is-layout-pending" : ""} ${className} ${lustCostFrame ? "is-lust-cost" : ""} ${inspectable ? "is-inspectable" : ""}`}
     disabled={!inspectable}
     tabIndex={inspectable ? 0 : -1}
     aria-hidden={inspectable ? undefined : true}
@@ -207,6 +209,7 @@ function PublicJourneyCard({
     data-harvest-root-parked={harvestRootParked ? "true" : undefined}
     data-public-card-journey-phase={card.phase}
     data-public-card-journey-size={size}
+    data-public-card-journey-layout-pending={card.layoutPending ? "true" : "false"}
     data-public-card-journey-layout-reason={card.layoutChangeReason}
     data-public-card-journey-reveal-started-at={card.revealStartedAtIso ?? undefined}
     data-public-card-journey-target-left={card.target.left}
@@ -2643,6 +2646,7 @@ function SingleTargetCardJourney({
             revealStartedAtMs: null,
             revealRemainingMs: 0,
             target,
+            layoutPending: !measuredTarget,
             layoutChangeReason: "interrupted-by-new-committed-response",
           };
         }
@@ -2655,6 +2659,7 @@ function SingleTargetCardJourney({
           semanticLabel: event.semanticLabel,
           rect: old.phase === "parked" ? target : old.phase === "reveal" ? center : old.rect,
           target,
+          layoutPending: !measuredTarget,
         };
       }
       if (old && viewerChanged) {
@@ -2670,6 +2675,7 @@ function SingleTargetCardJourney({
           rect: phase === "parked" ? target : phase === "reveal" ? center : old.rect,
           target,
           moveStartedAtMs: null,
+          layoutPending: !measuredTarget,
           layoutChangeReason: "viewer-switch",
         };
       }
@@ -2684,6 +2690,7 @@ function SingleTargetCardJourney({
         revealElapsedMs: 0,
         revealRemainingMs: STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
         moveStartedAtMs: null,
+        layoutPending: !measuredTarget,
         layoutChangeReason: phase === "reveal"
           ? "public-event-committed"
           : latestFreshResponseEventId && event.eventId !== latestFreshResponseEventId
@@ -2919,6 +2926,7 @@ function SingleTargetCardJourney({
             target,
             rect: phase === "reveal" ? center : phase === "parked" && measuredTarget ? target : card.rect,
             moveStartedAtMs: card.phase === "move" ? null : card.moveStartedAtMs,
+            layoutPending: !measuredTarget,
             layoutChangeReason: "viewport-resize",
           };
         });
@@ -3040,6 +3048,7 @@ function SingleTargetCardJourney({
           anchorKind: playerAnchor?.classList.contains("local-player-dock") ? "local-hero" : playerAnchor ? "opponent-seat" : null,
           anchorRect,
           pendingLayout,
+          cardLayoutPending: Boolean(card.layoutPending),
           publicCardId: card.cardFace.id,
           interactionTargetId: action.targetId,
           cardKind: card.cardFace.kind,
