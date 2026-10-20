@@ -557,6 +557,7 @@ type SeatHistoryCardParkingOptions = {
   allowHarvestPoolOverlap?: boolean;
   allowAuthorPortraitEdgeOverlap?: boolean;
   preserveAuthorControls?: boolean;
+  keepHarvestResponseNearAuthor?: boolean;
 };
 
 function seatHistoryParkingProtectedSelectors(options: SeatHistoryCardParkingOptions) {
@@ -668,12 +669,17 @@ function seatHistoryCardParking(
     const belowSeatCandidates = (left: number): CardRect[] => {
       const firstTop = seat.bottom + gap + cascade;
       const tops = new Set([firstTop]);
-      obstacles
-        .filter((rect) => rect.right > left && rect.left < left + cardSize.width)
-        .forEach((rect) => {
-          const top = rect.bottom + gap + cascade;
-          if (top > firstTop) tops.add(top);
-        });
+      // A response mini must stay visibly attached to its real author. Do not
+      // keep walking below obstacles (especially the Harvest pool), where a
+      // technically clear slot becomes a misleading distant parking location.
+      if (!options.keepHarvestResponseNearAuthor) {
+        obstacles
+          .filter((rect) => rect.right > left && rect.left < left + cardSize.width)
+          .forEach((rect) => {
+            const top = rect.bottom + gap + cascade;
+            if (top > firstTop) tops.add(top);
+          });
+      }
       return [...tops].sort((a, b) => a - b).map((top) => ({ left, top, ...cardSize }));
     };
     const candidates: CardRect[] = [];
@@ -2497,6 +2503,7 @@ function singleTargetParkingOptions(
       allowHarvestPoolOverlap: harvestPoolVisible && event.role === "root",
       allowAuthorPortraitEdgeOverlap: event.role === "response",
       preserveAuthorControls: event.role === "response",
+      keepHarvestResponseNearAuthor: event.role === "response",
     } : {}),
   };
 }
