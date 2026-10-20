@@ -3062,3 +3062,25 @@ Profile command measurements:
   relevant turn. This was explicitly selected by the user. The delivery is
   **IMPLEMENTED / DEPLOYED — PENDING USER REVIEW**, not accepted. Q1–Q4 remain
   paused; accepted H4 positioning and wording are unchanged.
+
+### UX2 §10.18.1 ST5-1 — compact five-player phone Seats — 2026-10-20
+
+- Commit `76d5b89faad227725d3a184468f00e0cefb4a035` scopes two content-sized,
+  top-aligned Seat rows to five-player phone boards. The original relative seat
+  mapping and 108px Seat height remain unchanged; no author slots, gameplay,
+  private projection, H4 or card timing changes were made.
+- Mobile browser evidence passed at 390×700, 390×844, 440×766, 440×894 and
+  480×900, including actual Hero Inspector and TEST SWITCH taps, Harvest-pool
+  collision checks, and 8-player/6- and 10-player phone regressions. The real
+  five-player Harvest + committed Negation author-parking scenario passed.
+  Screenshots and geometry JSON were attached to the focused local Playwright
+  runs; screenshots from the original five-player report remain the before
+  evidence.
+- Exact-SHA Actions run
+  [`39504188992`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39504188992)
+  passed lint/fast, API, browser startup/room smoke, D1 migration, Worker deploy
+  and production smoke. Worker version `8e86bd75-5bfd-45c3-9420-7b8523870fe4`;
+  direct production `/` returned 200 and `/api/health` returned
+  `{"ok":true,"worker":"available"}`. **IMPLEMENTED / DEPLOYED — PENDING
+  OWNER PHONE REVIEW**, not accepted. The next separately bounded item is
+  INS5-2; no code for INS5-2 or BH5-1 is included.
