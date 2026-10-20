@@ -25,7 +25,7 @@ import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus } from "../game/public-activity";
 import { CardFace } from "./card-face";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
-import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, publicCardActionKey, type PublicCardDisplayAction, type PublicSkillEventAnnouncement } from "./public-card-display";
+import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, harvestNegationDecisionCopy, publicCardActionKey, type PublicCardDisplayAction, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
@@ -6608,7 +6608,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : lustLocalSelectionActive && activeSkillSelection
     ? `Select ${activeSkillSelection.min} card${activeSkillSelection.min === 1 ? "" : "s"} and ${activeSkillTargetMin} Duel participant${activeSkillTargetMin === 1 ? "" : "s"}.`
     : sharedNegationWindow
-    ? room.currentAction?.reason || "Negation response window"
+    ? negationResponseGuidance
+      && publicCardDisplayAction?.cardFace?.kind === "BumperHarvest"
+      && publicCardDisplayAction.motion?.type === "negation"
+      && !publicCardDisplayAction.settlement
+      ? harvestNegationDecisionCopy(publicCardDisplayAction)
+      : room.currentAction?.reason || "Negation response window"
     : negationResponseGuidance
       ? "Play Negation or Skip."
     : rainingArrowsDamageDecline

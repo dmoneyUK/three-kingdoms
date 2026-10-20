@@ -555,6 +555,8 @@ type SeatHistoryCardParkingOptions = {
   avoidAuthorSeat?: boolean;
   protectInteractionControls?: boolean;
   allowHarvestPoolOverlap?: boolean;
+  allowAuthorPortraitEdgeOverlap?: boolean;
+  preserveAuthorControls?: boolean;
 };
 
 function seatHistoryParkingProtectedSelectors(options: SeatHistoryCardParkingOptions) {
@@ -570,6 +572,11 @@ function seatHistoryParkingProtectedSelectors(options: SeatHistoryCardParkingOpt
       ".harvest-choice-heading",
       ".harvest-card-choice", ".harvest-card-select", ".harvest-card-info", ".harvest-confirm-row button",
     ]),
+    ...(options.preserveAuthorControls ? [
+      ".test-view-switch-button", ".opponent-seat-inspect-button", ".opponent-player-name",
+      ".opponent-player-name-strip", ".opponent-status-equipment-strip", ".opponent-hp-chip",
+      ".opponent-equipment-summary", ".opponent-judgement-zone", ".opponent-judgement-cards",
+    ] : []),
   ];
 }
 
@@ -744,6 +751,51 @@ function seatHistoryCardParking(
       }
     }
     const parking = candidates.find(isFree);
+    if (!parking && options.allowAuthorPortraitEdgeOverlap && !isLocalAnchor) {
+      // Harvest responses still need an author-relative home when the pool and
+      // H4 consume every clear pocket. Permit only a thin overlap on the
+      // decorative portrait edge; keep the name, HP, SWITCH, Inspector,
+      // equipment, judgement Info, other Seats and action controls untouched.
+      const portrait = anchor.querySelector<HTMLElement>(".opponent-hero-portrait");
+      const portraitRect = portrait?.getBoundingClientRect();
+      if (portraitRect && portraitRect.width > 0 && portraitRect.height > 0) {
+        const edgeOverlap = 6;
+        const intersection = (first: CardRect | DOMRect, second: CardRect | DOMRect) => {
+          const width = Math.max(0, Math.min(first.left + first.width, second.left + second.width) - Math.max(first.left, second.left));
+          const height = Math.max(0, Math.min(first.top + first.height, second.top + second.height) - Math.max(first.top, second.top));
+          return { width, height, area: width * height };
+        };
+        const portraitCenterX = portraitRect.left + portraitRect.width / 2;
+        const portraitCenterY = portraitRect.top + portraitRect.height / 2;
+        const edgeCandidates: CardRect[] = [
+          { left: portraitRect.left - cardSize.width + edgeOverlap, top: portraitCenterY - cardSize.height / 2, ...cardSize },
+          { left: portraitRect.right - edgeOverlap, top: portraitCenterY - cardSize.height / 2, ...cardSize },
+          { left: portraitCenterX - cardSize.width / 2, top: portraitRect.top - cardSize.height + edgeOverlap, ...cardSize },
+          { left: portraitCenterX - cardSize.width / 2, top: portraitRect.bottom - edgeOverlap, ...cardSize },
+        ];
+        edgeCandidates.sort((first, second) =>
+          Math.hypot(first.left + first.width / 2 - heroCenterX, first.top + first.height / 2 - heroCenterY)
+          - Math.hypot(second.left + second.width / 2 - heroCenterX, second.top + second.height / 2 - heroCenterY));
+        const edgeParking = edgeCandidates.find((candidate) => {
+          const portraitOverlap = intersection(candidate, portraitRect);
+          const heroOverlap = intersection(candidate, heroRect);
+          const seatOverlap = authorSeatRect ? intersection(candidate, authorSeatRect) : { area: 0, width: 0, height: 0 };
+          const thinPortraitEdge = portraitOverlap.area > 0
+            && (portraitOverlap.width <= edgeOverlap + 0.5 || portraitOverlap.height <= edgeOverlap + 0.5);
+          return inViewport(candidate)
+            && thinPortraitEdge
+            && heroOverlap.area <= portraitOverlap.area + 0.5
+            && seatOverlap.area <= portraitOverlap.area + 0.5
+            && !occupied.some((rect) => rectsOverlap(rect, candidate, 2))
+            && obstacles.every((rect) => !rectsOverlap(rect, candidate, 2))
+            && otherAnchors.every((rect) => !rectsOverlap(rect, candidate, 2));
+        });
+        if (edgeParking) {
+          const parkingSide = anchor.dataset.sideColumn === "left" ? "left" : anchor.dataset.sideColumn === "right" ? "right" : "top";
+          return { rect: edgeParking, side: parkingSide };
+        }
+      }
+    }
     if (!parking) return null;
     const parkingSide = isLocalAnchor ? "local" : anchor.dataset.sideColumn === "left" ? "left" : anchor.dataset.sideColumn === "right" ? "right" : "top";
     return { rect: parking, side: parkingSide };
@@ -1007,33 +1059,44 @@ function isHarvestNegationPresentation(action: PublicCardDisplayAction) {
     && action.cardFace?.kind === "BumperHarvest"
 }
 
+type HarvestNegationTarget =
+  | { kind: "harvest-effect"; recipientName: string }
+  | { kind: "negation-response"; actorName: string };
+
+/** The next counter target, using only the current proof-backed public chain. */
+export function harvestNegationTarget(action: PublicCardDisplayAction): HarvestNegationTarget | null {
+  if (!isHarvestNegationPresentation(action)) return null;
+  const responses = action.responses ?? [];
+  if (responses.length > 0) {
+    const latestActorName = responses.at(-1)?.actorName?.trim();
+    return latestActorName ? { kind: "negation-response", actorName: latestActorName } : null;
+  }
+  const recipient = action.harvestEffectRecipient;
+  return recipient?.participantId && recipient.participantName.trim()
+    ? { kind: "harvest-effect", recipientName: recipient.participantName.trim() }
+    : null;
+}
+
+/** Local response wording for the same public counter-target model as H4. */
+export function harvestNegationDecisionCopy(action: PublicCardDisplayAction) {
+  const target = harvestNegationTarget(action);
+  if (!target) return "Negation response open · Play / Pass";
+  return target.kind === "harvest-effect"
+    ? `Cancel Harvest for ${target.recipientName} · Negation / Pass`
+    : `Counter ${target.actorName}'s Negation · Play / Pass`;
+}
+
 function bumperHarvestNegationCopy(
   action: PublicCardDisplayAction,
   compact = false,
 ) {
   const responses = action.responses ?? [];
-  const recipient = action.harvestEffectRecipient;
-  if (!recipient?.participantId || !recipient.participantName.trim()) {
-    return responses.length > 0 ? "Negation response open." : "Negation available.";
-  }
-  // Harvest's shared message must keep the recipient distinguishable for all
-  // viewers. Compact the repeated card context, never the public player name.
-  const playerName = (name: string) => name.trim();
-  const recipientName = playerName(recipient.participantName);
-  if (responses.length === 0) {
-    return compact
-      ? `Negation: Block ${recipientName}'s pick?`
-      : `Negation: Block ${recipientName}'s Harvest pick?`;
-  }
-
-  const latest = responses.at(-1);
-  const previous = responses.at(-2);
-  const latestName = latest?.actorName ? playerName(latest.actorName) : null;
-  if (!latestName) return "Negation response open.";
-  if (responses.length === 1) return `${latestName} played Negation → ${recipientName}.`;
-
-  const previousName = previous?.actorName ? playerName(previous.actorName) : null;
-  return previousName ? `${latestName} countered ${previousName}'s Negation.` : "Negation response open.";
+  const target = harvestNegationTarget(action);
+  if (!target) return responses.length > 0 ? "Negation response open." : "Negation available.";
+  if (target.kind === "harvest-effect") return compact
+    ? `Cancel Harvest for ${target.recipientName}?`
+    : `Negation: Cancel Harvest for ${target.recipientName}?`;
+  return `Counter ${target.actorName}'s Negation?`;
 }
 
 export function publicCardAnnouncement(
@@ -2429,9 +2492,11 @@ function singleTargetParkingOptions(
     cardSize: harvest && event.role === "root" ? { width: 40, height: 60 } : PARKED_CARD,
     ...(harvest ? {
       anchorLocalHero: true,
-      avoidAuthorSeat: event.role === "root",
+      avoidAuthorSeat: true,
       protectInteractionControls: true,
       allowHarvestPoolOverlap: harvestPoolVisible && event.role === "root",
+      allowAuthorPortraitEdgeOverlap: event.role === "response",
+      preserveAuthorControls: event.role === "response",
     } : {}),
   };
 }
