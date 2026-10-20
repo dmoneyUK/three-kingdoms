@@ -5086,6 +5086,34 @@
 .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest .card-name-mark { font-size: clamp(6.4px, 1.92vw, 8px); }
 .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest > strong { font-size: 3.2px; }
 
+/* BCP-1-F2: the approved phone response mini is 32×48. Scale only its face
+   details with the physical card; keep the 90×135 reveal and 48×72 wide view. */
+@media (max-width: 520px) {
+  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card {
+    padding: 3.73px 2.13px;
+    border-radius: 3.73px;
+  }
+  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card > i {
+    left: 3.33px;
+    top: 2.67px;
+    width: 8px;
+    min-height: 10.67px;
+    padding: .53px .53px 1.6px;
+    border-width: .53px;
+    border-radius: 0 0 2.67px 0;
+    font-size: 4px;
+  }
+  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card > i small {
+    font-size: 3.33px;
+  }
+  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card .card-name-mark {
+    font-size: clamp(5.33px, 1.6vw, 6.67px);
+  }
+  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card > strong {
+    font-size: 2.67px;
+  }
+}
+
 /* The active decision frame is the only Harvest hit target. Its stage has no
    backdrop hit box, so seat controls and public inspection stay reachable. */
 .game-shell .play-table > .harvest-choice-stage {

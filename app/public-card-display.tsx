@@ -206,6 +206,7 @@ function PublicJourneyCard({
     data-public-card-journey-card-id={card.cardFace.id}
     data-public-card-journey-card-ids={(card.cardFaces ?? [card.cardFace]).map((face) => face.id).join(",")}
     data-public-card-journey-role={card.role}
+    data-public-card-compact-response={card.role === "response" && card.rect.width < PARKED_CARD.width ? "true" : undefined}
     data-harvest-root-parked={harvestRootParked ? "true" : undefined}
     data-public-card-journey-phase={card.phase}
     data-public-card-journey-size={size}
@@ -316,6 +317,8 @@ function withFirstQueuedAttackDodgeReveal(cards: JourneyCard[], center: CardRect
 const REVEAL_CARD = { width: 90, height: 135 };
 const DUEL_REVEAL_CARD = { width: 90, height: 135 };
 const PARKED_CARD = { width: 48, height: 72 };
+const HARVEST_ROOT_CARD = { width: 40, height: 60 };
+const HARVEST_MOBILE_RESPONSE_CARD = { width: 32, height: 48 };
 const LUST_COST_FRAME = { width: 168, height: 190, cardOffsetLeft: 39, cardOffsetTop: 43 };
 const PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH = 520;
 // Two 15px mobile lines at 1.2 line-height plus 4px vertical padding and
@@ -2497,8 +2500,12 @@ function singleTargetParkingOptions(
   harvestPoolVisible: boolean,
 ): SeatHistoryCardParkingOptions {
   const harvest = action.cardFace?.kind === "BumperHarvest";
+  const compactHarvestResponse = harvest && event.role === "response"
+    && typeof window !== "undefined" && window.matchMedia("(max-width: 520px)").matches;
   return {
-    cardSize: harvest && event.role === "root" ? { width: 40, height: 60 } : PARKED_CARD,
+    cardSize: harvest && event.role === "root"
+      ? HARVEST_ROOT_CARD
+      : compactHarvestResponse ? HARVEST_MOBILE_RESPONSE_CARD : PARKED_CARD,
     ...(harvest ? {
       anchorLocalHero: true,
       avoidAuthorSeat: true,

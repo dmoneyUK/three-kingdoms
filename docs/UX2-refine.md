@@ -2041,6 +2041,8 @@ C: Proven public semantic stage N -> stage N+1 = replace/retire stage-N text;
 
 **STATUS: §10.17.1.2 BCP-1-F2 — NOT USER ACCEPTED / CORRECTION REQUIRED (2026-10-20 00:09 UTC).** This amendment takes priority over older F2 recommendations only when they conflict. §10.17.1.1 F1 stays USER-ACCEPTED/CLOSED.
 
+**2026-10-20 OWNER-APPROVED MOBILE PLACEMENT TRADE-OFF:** For BCP-1-F2 only, a parked Harvest `role="response"` mini uses **32×48 CSS px at viewport widths ≤520px**, positioned from the true response author's current Hero/Seat anchor below that seat and above the accepted public pool. This narrowly supersedes the earlier 48×72 response-mini size for phones; keep 48×72 above 520px, the genuine 90×135 reveal, and the existing 40×60 Harvest root unchanged. Preserve the accepted pool, H4, seat controls, privacy and game behavior. If the 32×48 card still cannot fit the measured author-to-pool band without obscuring those protected elements, stop and report the actual geometry rather than moving or covering them.
+
 
 #### 10.17.2 BCP-2 — Burning Bridges (过河拆桥) / Steal compact target card picker (P1)
 
