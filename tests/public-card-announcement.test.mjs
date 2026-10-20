@@ -51,7 +51,7 @@ test("public battle announcements keep proof-backed event meaning in concise cop
   ), "Deflection: Target redirected Attack to Third; discarded Dodge.");
 });
 
-test("Bumper Harvest Negation announcements lead with the pending pick and name only proven committed responders", () => {
+test("Bumper Harvest Negation announcements name the current effect or Negation target", () => {
   const harvestAction = action({
     targetId: null,
     cardFace: { id: "harvest-root", kind: "BumperHarvest" },
@@ -63,11 +63,11 @@ test("Bumper Harvest Negation announcements lead with the pending pick and name 
   });
   assert.equal(publicCardAnnouncement(
     harvestAction, harvestAction.ariaLabel, "JD", "JD", null,
-  ), "Negation: Block Test Player 3's Harvest pick?");
+  ), "Negation: Cancel Harvest for Test Player 3?");
   assert.equal(publicCardAnnouncement(
     { ...harvestAction, harvestEffectRecipient: { participantId: "source", participantName: "JD" } },
     harvestAction.ariaLabel, "JD", "JD", null,
-  ), "Negation: Block JD's Harvest pick?");
+  ), "Negation: Cancel Harvest for JD?");
 
   const unprovenHarvest = { ...harvestAction, harvestEffectRecipient: undefined };
   assert.equal(publicCardAnnouncement(
@@ -82,18 +82,18 @@ test("Bumper Harvest Negation announcements lead with the pending pick and name 
     firstNegation,
     "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3",
     "Test Player 4", "JD", null,
-  ), "Test Player 4 played Negation → Test Player 3.");
+  ), "Counter Test Player 4's Negation?");
   assert.equal(publicCardAnnouncement(
     { ...firstNegation, harvestEffectRecipient: undefined },
     "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3",
     "Test Player 4", "JD", null,
-  ), "Negation response open.");
+  ), "Counter Test Player 4's Negation?");
 
   const counterNotice = "Test Player 2 played Negation to counter Negation 1";
   assert.equal(publicCardAnnouncement(
     { ...firstNegation, responses: [firstNegation.responses[0], { eventId: "counter-event", ordinal: 2, actorId: "responder-2", actorName: "Test Player 2" }] },
     counterNotice, "Test Player 2", "JD", null,
-  ), "Test Player 2 countered Test Player 4's Negation.");
+  ), "Counter Test Player 2's Negation?");
 });
 
 test("public announcement typography is readable and never truncates its verified sentence", () => {
