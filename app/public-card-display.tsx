@@ -581,9 +581,13 @@ function seatHistoryParkingProtectedSelectors(options: SeatHistoryCardParkingOpt
     ".local-judgement-cards",
     ".local-dock-zones", ".local-status-panel", ".local-equipment-panel", ".local-hand-section",
     ".local-hand-rail [data-hand-card-id]", ".local-hand-rail button", ".turn-controls", ".turn-controls button",
-    ...(options.allowHarvestPoolOverlap ? [] : [
-      ".harvest-choice-panel",
-      ".harvest-choice-heading",
+    ...(options.allowHarvestPoolOverlap ? [
+      // The panel itself is a soft overlay for a parked Harvest history mini.
+      // Keep the real choice faces and their Info/selection controls as hard
+      // obstacles for any part of the miniature that remains visible.
+      ".harvest-card-choice", ".harvest-card-select", ".harvest-card-info", ".harvest-confirm-row button",
+    ] : [
+      ".harvest-choice-panel", ".harvest-choice-heading",
       ".harvest-card-choice", ".harvest-card-select", ".harvest-card-info", ".harvest-confirm-row button",
     ]),
     ...(options.preserveAuthorControls ? [
@@ -664,6 +668,14 @@ function seatHistoryCardParking(
         return rect ? [{ selector, rect }] : [];
       }));
     const obstacles = obstacleDetails.map(({ rect }) => rect);
+    const harvestPoolOverlayRects = options.allowHarvestPoolOverlap
+      ? [...table.querySelectorAll<HTMLElement>(".harvest-choice-panel")]
+        .flatMap((element) => {
+          const style = window.getComputedStyle(element);
+          const rect = style.display !== "none" && style.visibility !== "hidden" ? clippedElementBounds(element) : null;
+          return rect ? [rect] : [];
+        })
+      : [];
     const otherAnchors = [...document.querySelectorAll<HTMLElement>("[data-player-anchor]")]
       .filter((candidate) => candidate !== anchor && candidate.dataset.playerAnchor !== actorId)
       .map((candidate) => candidate.getBoundingClientRect())
@@ -672,17 +684,35 @@ function seatHistoryCardParking(
     const heroCenterX = heroRect.left + heroRect.width / 2;
     const heroCenterY = heroRect.top + heroRect.height / 2;
     const harvestResponse = options.keepHarvestResponseNearAuthor === true;
+    const harvestHistory = options.anchorLocalHero === true && options.protectInteractionControls === true;
     const cascade = harvestResponse ? 0 : actorIndex * (cardSize.height + gap);
     const inViewport = (candidate: CardRect) => candidate.left >= 2
       && candidate.left + candidate.width <= window.innerWidth - 2
       && candidate.top >= 2
       && candidate.top + candidate.height <= window.innerHeight - 2;
-    const isFree = (candidate: CardRect) => inViewport(candidate)
-      && !rectsOverlap(heroRect, candidate, 2)
-      && (!authorSeatRect || !rectsOverlap(authorSeatRect, candidate, 2))
-      && !occupied.some((rect) => rectsOverlap(rect, candidate, 2))
-      && obstacles.every((rect) => !rectsOverlap(rect, candidate, 2))
-      && otherAnchors.every((rect) => !rectsOverlap(rect, candidate, 2));
+    const visibleFront = (candidate: CardRect): { rect: CardRect; poolOccludedTail: number } | null => {
+      const pool = harvestPoolOverlayRects.find((rect) => rectsOverlap(candidate, rect));
+      if (!pool) return { rect: candidate, poolOccludedTail: 0 };
+      const poolCoversCardWidth = pool.left <= candidate.left + 1 && pool.right >= candidate.left + candidate.width - 1;
+      const visibleHeight = Math.min(candidate.height, pool.top - candidate.top);
+      // The ordinal badge lives in the top 16px of a parked mini. Only accept
+      // a pool overlap when that complete head stays visibly above the panel.
+      if (!poolCoversCardWidth || visibleHeight < 16) return null;
+      return {
+        rect: { ...candidate, height: visibleHeight },
+        poolOccludedTail: Math.max(0, candidate.height - visibleHeight),
+      };
+    };
+    const isFree = (candidate: CardRect) => {
+      const visible = visibleFront(candidate);
+      if (!visible) return false;
+      return inViewport(candidate)
+        && !rectsOverlap(heroRect, visible.rect, 2)
+        && (!authorSeatRect || !rectsOverlap(authorSeatRect, visible.rect, 2))
+        && !occupied.some((rect) => rectsOverlap(rect, candidate, 2))
+        && obstacles.every((rect) => !rectsOverlap(rect, visible.rect, 2))
+        && otherAnchors.every((rect) => !rectsOverlap(rect, visible.rect, 2));
+    };
     const belowSeatCandidates = (left: number): CardRect[] => {
       const firstTop = seat.bottom + gap + cascade;
       const tops = new Set([firstTop]);
@@ -700,6 +730,29 @@ function seatHistoryCardParking(
       return [...tops].sort((a, b) => a - b).map((top) => ({ left, top, ...cardSize }));
     };
     const candidates: CardRect[] = [];
+    const topSeatHarvestCandidates = (firstTop: number): CardRect[] => {
+      const minLeft = Math.max(2, seat.left + 2);
+      const maxLeft = Math.min(window.innerWidth - cardSize.width - 2, seat.right - cardSize.width - 2);
+      if (maxLeft < minLeft) return [];
+      const lefts: number[] = [];
+      const addLeft = (left: number) => {
+        if (left < minLeft || left > maxLeft || lefts.some((value) => Math.abs(value - left) < 1)) return;
+        lefts.push(left);
+      };
+      // Keep repeat plays in one horizontal row and fill the nearest free
+      // column beside this author's existing real cards first.
+      for (const authorCard of options.sameAuthorRects ?? []) {
+        addLeft(authorCard.left + authorCard.width + gap);
+        addLeft(authorCard.left - cardSize.width - gap);
+      }
+      const centered = Math.max(minLeft, Math.min(maxLeft, heroCenterX - cardSize.width / 2));
+      addLeft(centered);
+      for (let column = 1; column <= 4; column += 1) {
+        addLeft(centered + column * (cardSize.width + gap));
+        addLeft(centered - column * (cardSize.width + gap));
+      }
+      return lefts.map((left) => ({ left, top: firstTop, ...cardSize }));
+    };
     if (harvestResponse && options.sameAuthorRects?.length) {
       const authorCards = [...options.sameAuthorRects].sort((first, second) =>
         Math.hypot(first.left + first.width / 2 - heroCenterX, first.top + first.height / 2 - heroCenterY)
@@ -772,15 +825,19 @@ function seatHistoryCardParking(
       } else if (isTopSeat) {
         const belowSeatLeft = heroCenterX - cardSize.width / 2;
         candidates.push(
-          // Use the whole seat boundary so the thumbnail cannot cover HP or
-          // equipment. If H4 fills the first safe band, continue below its
-          // measured bottom; the Harvest pool may cover the root by design.
-          ...(options.avoidAuthorSeat
+          // Harvest history parks immediately below the whole top Seat. The
+          // pool may cover only the lower tail after a measured 16px head and
+          // its ordinal remain visible; do not walk the mini to a distant row.
+          ...(harvestHistory
+            ? topSeatHarvestCandidates(seat.bottom + gap)
+            : options.avoidAuthorSeat
             ? belowSeatCandidates(belowSeatLeft)
             : [{ left: belowSeatLeft, top: heroRect.bottom + gap + cascade, ...cardSize }]),
-          { left: heroRect.right + gap, top: heroCenterY - cardSize.height / 2, ...cardSize },
-          { left: heroRect.left - cardSize.width - gap, top: heroCenterY - cardSize.height / 2, ...cardSize },
-          { left: heroCenterX - cardSize.width / 2, top: heroRect.top - cardSize.height - gap, ...cardSize },
+          ...(!harvestHistory ? [
+            { left: heroRect.right + gap, top: heroCenterY - cardSize.height / 2, ...cardSize },
+            { left: heroRect.left - cardSize.width - gap, top: heroCenterY - cardSize.height / 2, ...cardSize },
+            { left: heroCenterX - cardSize.width / 2, top: heroRect.top - cardSize.height - gap, ...cardSize },
+          ] : []),
         );
       } else {
         candidates.push(
@@ -795,7 +852,9 @@ function seatHistoryCardParking(
     }
     const parking = candidates.find(isFree);
     let portraitEdgeCandidates: CardRect[] = [];
-    if (!parking && options.allowAuthorPortraitEdgeOverlap && !isLocalAnchor) {
+    const topSeatHarvestHistory = harvestHistory && !isLocalAnchor && !anchor.dataset.sideColumn
+      && heroRect.top + heroRect.height / 2 < tableRect.top + tableRect.height * 0.38;
+    if (!parking && options.allowAuthorPortraitEdgeOverlap && !isLocalAnchor && !topSeatHarvestHistory) {
       // Harvest responses still need an author-relative home when the pool and
       // H4 consume every clear pocket. Permit only a thin overlap on the
       // decorative portrait edge; keep the name, HP, SWITCH, Inspector,
@@ -849,22 +908,30 @@ function seatHistoryCardParking(
           width: Math.round(rect.width * 10) / 10,
           height: Math.round(rect.height * 10) / 10,
         });
-        const candidateFailures = [...candidates, ...portraitEdgeCandidates].slice(0, 40).map((candidate) => ({
-          candidateRect: rectRecord(candidate),
-          blockingRects: [
-            ...(!inViewport(candidate) ? [{ kind: "viewport", rect: rectRecord({ left: 2, top: 2, width: window.innerWidth - 4, height: window.innerHeight - 4 }) }] : []),
-            ...(rectsOverlap(heroRect, candidate, 2) ? [{ kind: "actor-hero", rect: rectRecord(heroRect) }] : []),
-            ...(authorSeatRect && rectsOverlap(authorSeatRect, candidate, 2) ? [{ kind: "actor-seat", rect: rectRecord(authorSeatRect) }] : []),
-            ...occupied.filter((rect) => rectsOverlap(rect, candidate, 2)).map((rect) => ({ kind: "measured-card", rect: rectRecord(rect) })),
-            ...obstacleDetails.filter(({ rect }) => rectsOverlap(rect, candidate, 2)).map(({ selector, rect }) => ({ kind: selector, rect: rectRecord(rect) })),
-            ...otherAnchors.filter((rect) => rectsOverlap(rect, candidate, 2)).map((rect) => ({ kind: "other-player-seat", rect: rectRecord(rect) })),
-          ],
-        }));
+        const candidateFailures = [...candidates, ...portraitEdgeCandidates].slice(0, 40).map((candidate) => {
+          const visible = visibleFront(candidate);
+          return {
+            candidateRect: rectRecord(candidate),
+            visibleFrontRect: visible ? rectRecord(visible.rect) : null,
+            poolOccludedTailPx: visible?.poolOccludedTail ?? null,
+            blockingRects: [
+              ...(!inViewport(candidate) ? [{ kind: "viewport", rect: rectRecord({ left: 2, top: 2, width: window.innerWidth - 4, height: window.innerHeight - 4 }) }] : []),
+              ...(!visible && harvestPoolOverlayRects.length ? [{ kind: "harvest-pool-peek-under-16px", rect: rectRecord(harvestPoolOverlayRects[0]) }] : []),
+              ...(visible && rectsOverlap(heroRect, visible.rect, 2) ? [{ kind: "actor-hero", rect: rectRecord(heroRect) }] : []),
+              ...(visible && authorSeatRect && rectsOverlap(authorSeatRect, visible.rect, 2) ? [{ kind: "actor-seat", rect: rectRecord(authorSeatRect) }] : []),
+              ...occupied.filter((rect) => rectsOverlap(rect, candidate, 2)).map((rect) => ({ kind: "measured-card", rect: rectRecord(rect) })),
+              ...obstacleDetails.filter(({ rect }) => visible && rectsOverlap(rect, visible.rect, 2)).map(({ selector, rect }) => ({ kind: selector, rect: rectRecord(rect) })),
+              ...otherAnchors.filter((rect) => visible && rectsOverlap(rect, visible.rect, 2)).map((rect) => ({ kind: "other-player-seat", rect: rectRecord(rect) })),
+            ],
+          };
+        });
         options.onPlacementFailure?.({
           actorId,
           actorRect: rectRecord(seat),
           heroRect: rectRecord(heroRect),
           cardSize,
+          harvestPoolOverlayRects: harvestPoolOverlayRects.map(rectRecord),
+          minimumVisiblePoolPeekPx: 16,
           occupiedAuthorRects: (options.sameAuthorRects ?? []).map(rectRecord),
           candidateFailures,
         });
@@ -2601,7 +2668,7 @@ function singleTargetParkingOptions(
       anchorLocalHero: true,
       avoidAuthorSeat: event.role !== "response",
       protectInteractionControls: true,
-      allowHarvestPoolOverlap: harvestPoolVisible && event.role === "root",
+      allowHarvestPoolOverlap: harvestPoolVisible,
       allowAuthorPortraitEdgeOverlap: event.role === "response",
       preserveAuthorControls: event.role === "response",
       keepHarvestResponseNearAuthor: event.role === "response",
