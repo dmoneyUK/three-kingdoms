@@ -5057,37 +5057,9 @@
 .game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card .card-name-mark { max-width: 92%; font-size: 4.8px; line-height: 1; }
 .game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > strong { margin-top: 0; font-size: 3.2px; letter-spacing: .02em; }
 
-/* Keep the genuine Bumper Harvest root face proportional while its public
-   journey card moves from the centre to its parked seat thumbnail. */
-.game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest {
-  padding: 4.48px 2.56px;
-  border-radius: 4.48px;
-  transition: padding .38s cubic-bezier(.2, .7, .2, 1), border-radius .38s cubic-bezier(.2, .7, .2, 1);
-}
-.game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest > i {
-  left: 4px;
-  top: 3.2px;
-  width: 9.6px;
-  min-height: 12.8px;
-  padding: .64px .64px 1.92px;
-  border-width: .64px;
-  border-radius: 0 0 3.2px 0;
-  font-size: 4.8px;
-  transition: left .38s cubic-bezier(.2, .7, .2, 1), top .38s cubic-bezier(.2, .7, .2, 1), width .38s cubic-bezier(.2, .7, .2, 1), min-height .38s cubic-bezier(.2, .7, .2, 1), padding .38s cubic-bezier(.2, .7, .2, 1), border-width .38s cubic-bezier(.2, .7, .2, 1), border-radius .38s cubic-bezier(.2, .7, .2, 1), font-size .38s cubic-bezier(.2, .7, .2, 1);
-}
-.game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest > i small {
-  font-size: 4px;
-  transition: font-size .38s cubic-bezier(.2, .7, .2, 1);
-}
-.game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest .card-name-mark,
-.game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest > strong {
-  transition: font-size .38s cubic-bezier(.2, .7, .2, 1);
-}
-.game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest .card-name-mark { font-size: clamp(6.4px, 1.92vw, 8px); }
-.game-shell .public-card-display-journey .public-card-journey-card[data-public-card-journey-role="root"][data-public-card-journey-size="thumbnail"] > .played-card.bumperharvest > strong { font-size: 3.2px; }
-
-/* BCP-1-F2: the approved phone response mini is 32×48. Scale only its face
-   details with the physical card; keep the 90×135 reveal and 48×72 wide view. */
+/* BCP-1-F2: the approved phone history mini is 32×48. Scale only its face
+   details with the physical card; root and committed responses share this
+   parked mini footprint while the 90×135 reveal and 48×72 wide view remain. */
 @media (max-width: 520px) {
   .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card {
     padding: 3.73px 2.13px;
@@ -5141,10 +5113,11 @@
   height: 0 !important;
   z-index: auto !important;
 }
-.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-harvest-root-parked="true"] {
+.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-public-card-journey-phase="parked"] {
   z-index: 5;
 }
-.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-public-card-journey-role="response"] {
+.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-public-card-journey-phase="reveal"],
+.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-public-card-journey-phase="move"] {
   z-index: 36;
 }
 .game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-display-journey-copy {
@@ -5161,7 +5134,36 @@
    Inspector's transparent safe-zone stacking context; response card reveals
    retain their separate higher layer and closing Inspect restores the pool. */
 .game-shell .play-table:has(> .harvest-choice-stage) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
-  z-index: 27;
+  z-index: 40;
+}
+.game-shell .play-table:has(.public-card-display-journey.is-harvest-history-passive) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+  z-index: 40;
+}
+
+.game-shell .public-card-display-journey .public-card-journey-card.is-harvest-history-parked {
+  opacity: 1 !important;
+  filter: none !important;
+}
+.game-shell .public-card-display-journey .public-card-journey-card.is-harvest-history-parked > .played-card {
+  opacity: .60;
+}
+.game-shell .public-card-display-journey .public-card-journey-card.is-harvest-history-parked > .public-card-journey-ordinal {
+  opacity: 1;
+}
+.game-shell .public-card-display-journey.is-harvest-history-passive > .public-card-journey-card:not([data-public-card-journey-phase="parked"]) {
+  visibility: hidden !important;
+}
+.game-shell .public-card-display-journey.is-harvest-history-passive > .public-card-journey-card {
+  pointer-events: none;
+}
+.game-shell .public-card-display-journey.is-harvest-history-passive > .public-card-journey-card.is-layout-pending.is-revealing {
+  visibility: hidden !important;
+}
+.game-shell .public-card-display-journey.is-harvest-pool-active:not(.is-harvest-history-passive) > .public-card-journey-card.is-layout-pending.is-revealing {
+  visibility: visible !important;
+}
+.game-shell .public-card-display-journey.is-harvest-history-passive > .public-card-journey-card.is-harvest-history-parked {
+  transform: translate(var(--harvest-inspector-peek-x, 0px), var(--harvest-inspector-peek-y, 0px));
 }
 
 .game-shell .harvest-choice-panel {

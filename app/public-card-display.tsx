@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Card, CardKind } from "../game/model";
 import type { PresentationSnapshotRootAction } from "../game/presentation-snapshot";
 import { cardDefinition } from "../game/cards";
@@ -177,6 +177,8 @@ function PublicJourneyCard({
   primary = false,
   parkingSide,
   showOrdinal = false,
+  harvestHistory = false,
+  passive = false,
   harvestRootParked = false,
   lustCostFrame,
   onInspectCard,
@@ -187,26 +189,30 @@ function PublicJourneyCard({
   primary?: boolean;
   parkingSide?: string;
   showOrdinal?: boolean;
+  harvestHistory?: boolean;
+  passive?: boolean;
   harvestRootParked?: boolean;
   lustCostFrame?: PublicCardDisplayAction["lustCostFrame"];
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
 }) {
-  const inspectable = card.phase === "parked" && Boolean(onInspectCard);
+  const inspectable = !passive && card.phase === "parked" && Boolean(onInspectCard);
   const definition = cardDefinition(card.cardFace.kind);
+  const publicOrdinalLabel = card.globalOrdinal === undefined ? "" : `, public card chain step ${card.globalOrdinal}`;
   return <button
     type="button"
-    className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${card.layoutPending ? "is-layout-pending" : ""} ${className} ${lustCostFrame ? "is-lust-cost" : ""} ${inspectable ? "is-inspectable" : ""}`}
+    className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${card.layoutPending ? "is-layout-pending" : ""} ${harvestHistory && card.phase === "parked" ? "is-harvest-history-parked" : ""} ${passive ? "is-harvest-history-passive" : ""} ${className} ${lustCostFrame ? "is-lust-cost" : ""} ${inspectable ? "is-inspectable" : ""}`}
     disabled={!inspectable}
     tabIndex={inspectable ? 0 : -1}
     aria-hidden={inspectable ? undefined : true}
-    aria-label={inspectable ? `View public ${card.actorName}'s ${definition.name} card details, ${card.cardFace.rank}${card.cardFace.suit}` : undefined}
+    aria-label={inspectable ? `View public ${card.actorName}'s ${definition.name} card details, ${card.cardFace.rank}${card.cardFace.suit}${publicOrdinalLabel}` : undefined}
     onClick={inspectable ? (event) => onInspectCard?.(card.cardFace, event.currentTarget) : undefined}
     data-public-card-journey-event-id={card.eventId}
     data-public-card-journey-actor-id={card.actorId}
     data-public-card-journey-card-id={card.cardFace.id}
     data-public-card-journey-card-ids={(card.cardFaces ?? [card.cardFace]).map((face) => face.id).join(",")}
     data-public-card-journey-role={card.role}
-    data-public-card-compact-response={card.role === "response" && card.rect.width < PARKED_CARD.width ? "true" : undefined}
+    data-public-card-harvest-history-parked={harvestHistory && card.phase === "parked" ? "true" : undefined}
+    data-public-card-compact-response={(harvestHistory || card.role === "response") && card.rect.width < PARKED_CARD.width ? "true" : undefined}
     data-harvest-root-parked={harvestRootParked ? "true" : undefined}
     data-public-card-journey-phase={card.phase}
     data-public-card-journey-size={size}
@@ -253,7 +259,7 @@ function PublicJourneyCard({
       : <CardFace card={card.cardFace} />}
     {lustCostFrame && card.phase === "parked" && <small className="public-card-lust-cost-parked">LUST</small>}
     {card.semanticLabel && <small className="public-card-journey-semantic">{card.semanticLabel}</small>}
-    {showOrdinal && card.globalOrdinal !== undefined && <small className="public-card-journey-ordinal" aria-label={`Duel event ${card.globalOrdinal}`}>#{card.globalOrdinal}</small>}
+    {showOrdinal && card.globalOrdinal !== undefined && <small className="public-card-journey-ordinal" aria-hidden="true">#{card.globalOrdinal}</small>}
   </button>;
 }
 
@@ -317,7 +323,6 @@ function withFirstQueuedAttackDodgeReveal(cards: JourneyCard[], center: CardRect
 const REVEAL_CARD = { width: 90, height: 135 };
 const DUEL_REVEAL_CARD = { width: 90, height: 135 };
 const PARKED_CARD = { width: 48, height: 72 };
-const HARVEST_ROOT_CARD = { width: 40, height: 60 };
 const HARVEST_MOBILE_RESPONSE_CARD = { width: 32, height: 48 };
 const LUST_COST_FRAME = { width: 168, height: 190, cardOffsetLeft: 39, cardOffsetTop: 43 };
 const PUBLIC_CARD_ANNOUNCEMENT_MAX_WIDTH = 520;
@@ -557,6 +562,8 @@ type SeatHistoryCardParking = { rect: CardRect; side: "local" | "top" | "left" |
 
 type SeatHistoryCardParkingOptions = {
   cardSize?: Pick<CardRect, "width" | "height">;
+  sameAuthorRects?: readonly CardRect[];
+  onPlacementFailure?: (detail: Record<string, unknown>) => void;
   anchorLocalHero?: boolean;
   avoidAuthorSeat?: boolean;
   protectInteractionControls?: boolean;
@@ -647,13 +654,16 @@ function seatHistoryCardParking(
     const identity = isLocalAnchor ? anchor.querySelector<HTMLElement>(".local-dock-identity") : null;
     const identityRect = identity?.getBoundingClientRect() ?? null;
     const protectedSelectors = seatHistoryParkingProtectedSelectors(options);
-    const obstacles = protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]
+    const obstacleDetails = protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]
       .filter((element) => {
         const style = window.getComputedStyle(element);
         return style.display !== "none" && style.visibility !== "hidden" && clippedElementBounds(element) !== null;
       })
-      .map((element) => clippedElementBounds(element))
-      .filter((rect): rect is DOMRect => rect !== null));
+      .flatMap((element) => {
+        const rect = clippedElementBounds(element);
+        return rect ? [{ selector, rect }] : [];
+      }));
+    const obstacles = obstacleDetails.map(({ rect }) => rect);
     const otherAnchors = [...document.querySelectorAll<HTMLElement>("[data-player-anchor]")]
       .filter((candidate) => candidate !== anchor && candidate.dataset.playerAnchor !== actorId)
       .map((candidate) => candidate.getBoundingClientRect())
@@ -661,7 +671,8 @@ function seatHistoryCardParking(
     const gap = 6;
     const heroCenterX = heroRect.left + heroRect.width / 2;
     const heroCenterY = heroRect.top + heroRect.height / 2;
-    const cascade = actorIndex * (cardSize.height + gap);
+    const harvestResponse = options.keepHarvestResponseNearAuthor === true;
+    const cascade = harvestResponse ? 0 : actorIndex * (cardSize.height + gap);
     const inViewport = (candidate: CardRect) => candidate.left >= 2
       && candidate.left + candidate.width <= window.innerWidth - 2
       && candidate.top >= 2
@@ -689,6 +700,26 @@ function seatHistoryCardParking(
       return [...tops].sort((a, b) => a - b).map((top) => ({ left, top, ...cardSize }));
     };
     const candidates: CardRect[] = [];
+    if (harvestResponse && options.sameAuthorRects?.length) {
+      const authorCards = [...options.sameAuthorRects].sort((first, second) =>
+        Math.hypot(first.left + first.width / 2 - heroCenterX, first.top + first.height / 2 - heroCenterY)
+        - Math.hypot(second.left + second.width / 2 - heroCenterX, second.top + second.height / 2 - heroCenterY));
+      for (const authorCard of authorCards) {
+        for (let column = 1; column <= 4; column += 1) {
+          candidates.push(
+            { left: authorCard.left + authorCard.width + gap + (column - 1) * (cardSize.width + gap), top: authorCard.top + (authorCard.height - cardSize.height) / 2, ...cardSize },
+            { left: authorCard.left - cardSize.width - gap - (column - 1) * (cardSize.width + gap), top: authorCard.top + (authorCard.height - cardSize.height) / 2, ...cardSize },
+          );
+        }
+      }
+      // If the root/past response row is blocked by the public pool, stay in a
+      // bounded horizontal band beside the true portrait. Control DOMRects
+      // below continue to reject the name, HP, SWITCH and equipment regions.
+      candidates.push(
+        { left: heroRect.right + gap, top: heroCenterY - cardSize.height / 2, ...cardSize },
+        { left: heroRect.left - cardSize.width - gap, top: heroCenterY - cardSize.height / 2, ...cardSize },
+      );
+    }
     if (isLocalAnchor) {
       // The local identity column is the only free area alongside the full-size
       // Hero on short phones. Use it only when the genuine thumbnail fits; the
@@ -763,6 +794,7 @@ function seatHistoryCardParking(
       }
     }
     const parking = candidates.find(isFree);
+    let portraitEdgeCandidates: CardRect[] = [];
     if (!parking && options.allowAuthorPortraitEdgeOverlap && !isLocalAnchor) {
       // Harvest responses still need an author-relative home when the pool and
       // H4 consume every clear pocket. Permit only a thin overlap on the
@@ -785,6 +817,7 @@ function seatHistoryCardParking(
           { left: portraitCenterX - cardSize.width / 2, top: portraitRect.top - cardSize.height + edgeOverlap, ...cardSize },
           { left: portraitCenterX - cardSize.width / 2, top: portraitRect.bottom - edgeOverlap, ...cardSize },
         ];
+        portraitEdgeCandidates = edgeCandidates;
         edgeCandidates.sort((first, second) =>
           Math.hypot(first.left + first.width / 2 - heroCenterX, first.top + first.height / 2 - heroCenterY)
           - Math.hypot(second.left + second.width / 2 - heroCenterX, second.top + second.height / 2 - heroCenterY));
@@ -808,7 +841,36 @@ function seatHistoryCardParking(
         }
       }
     }
-    if (!parking) return null;
+    if (!parking) {
+      if (harvestResponse) {
+        const rectRecord = (rect: CardRect | DOMRect) => ({
+          left: Math.round(rect.left * 10) / 10,
+          top: Math.round(rect.top * 10) / 10,
+          width: Math.round(rect.width * 10) / 10,
+          height: Math.round(rect.height * 10) / 10,
+        });
+        const candidateFailures = [...candidates, ...portraitEdgeCandidates].slice(0, 40).map((candidate) => ({
+          candidateRect: rectRecord(candidate),
+          blockingRects: [
+            ...(!inViewport(candidate) ? [{ kind: "viewport", rect: rectRecord({ left: 2, top: 2, width: window.innerWidth - 4, height: window.innerHeight - 4 }) }] : []),
+            ...(rectsOverlap(heroRect, candidate, 2) ? [{ kind: "actor-hero", rect: rectRecord(heroRect) }] : []),
+            ...(authorSeatRect && rectsOverlap(authorSeatRect, candidate, 2) ? [{ kind: "actor-seat", rect: rectRecord(authorSeatRect) }] : []),
+            ...occupied.filter((rect) => rectsOverlap(rect, candidate, 2)).map((rect) => ({ kind: "measured-card", rect: rectRecord(rect) })),
+            ...obstacleDetails.filter(({ rect }) => rectsOverlap(rect, candidate, 2)).map(({ selector, rect }) => ({ kind: selector, rect: rectRecord(rect) })),
+            ...otherAnchors.filter((rect) => rectsOverlap(rect, candidate, 2)).map((rect) => ({ kind: "other-player-seat", rect: rectRecord(rect) })),
+          ],
+        }));
+        options.onPlacementFailure?.({
+          actorId,
+          actorRect: rectRecord(seat),
+          heroRect: rectRecord(heroRect),
+          cardSize,
+          occupiedAuthorRects: (options.sameAuthorRects ?? []).map(rectRecord),
+          candidateFailures,
+        });
+      }
+      return null;
+    }
     const parkingSide = isLocalAnchor ? "local" : anchor.dataset.sideColumn === "left" ? "left" : anchor.dataset.sideColumn === "right" ? "right" : "top";
     return { rect: parking, side: parkingSide };
   }
@@ -1270,6 +1332,8 @@ function PublicCardAnnouncement({
   outcome,
   negationWaiting = false,
   stableCenterAnchor = false,
+  stableHarvestAnchor = false,
+  ignoreJourneyLayoutPending = false,
   preferredVerticalMode,
   privateDrawAware = false,
 }: {
@@ -1286,6 +1350,8 @@ function PublicCardAnnouncement({
   outcome?: NonNullable<PublicCardDisplayAction["settlement"]>["outcome"];
   negationWaiting?: boolean;
   stableCenterAnchor?: boolean;
+  stableHarvestAnchor?: boolean;
+  ignoreJourneyLayoutPending?: boolean;
   preferredVerticalMode?: "above" | "below";
   privateDrawAware?: boolean;
 }) {
@@ -1321,7 +1387,7 @@ function PublicCardAnnouncement({
     const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(privateDrawAware ? [".private-draw-content"] : [])].join(", ");
 
     const place = () => {
-      if (display.dataset.publicCardLayoutPending === "true") {
+      if (!ignoreJourneyLayoutPending && display.dataset.publicCardLayoutPending === "true") {
         copy.style.visibility = "hidden";
         return;
       }
@@ -1352,7 +1418,16 @@ function PublicCardAnnouncement({
       ));
       const isLargeRevealAnchor = phase === "reveal" && !stableCenterAnchor
         && actualRect && actualRect.width > 0 && actualRect.height > 0;
-      let centerCardRect = isLargeRevealAnchor ? toCardRect(actualRect) : null;
+      const harvestPool = stableHarvestAnchor
+        ? display.closest<HTMLElement>(".play-table")?.querySelector<HTMLElement>(".harvest-choice-panel") ?? null
+        : null;
+      const harvestPoolBounds = harvestPool?.getBoundingClientRect();
+      const stableHarvestPoolRect = harvestPoolBounds && harvestPoolBounds.width > 0 && harvestPoolBounds.height > 0
+        ? toCardRect(harvestPoolBounds)
+        : null;
+      let centerCardRect = stableHarvestAnchor
+        ? stableHarvestPoolRect
+        : isLargeRevealAnchor ? toCardRect(actualRect) : null;
       if (centerCardRect) measuredCenterRef.current = { bandKey, rect: centerCardRect };
       if (!centerCardRect && measuredCenterRef.current?.bandKey === bandKey) centerCardRect = measuredCenterRef.current.rect;
       if (!centerCardRect && stableFallbackCardRect) centerCardRect = stableFallbackCardRect;
@@ -1367,7 +1442,7 @@ function PublicCardAnnouncement({
 
       const gap = PUBLIC_CARD_ANNOUNCEMENT_GAP;
       const obstacles: Array<{ element: HTMLElement | null; rect: DOMRect }> = [...document.querySelectorAll<HTMLElement>(
-        [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", "[data-public-card-copy-anchor-event-id]", ...(privateDrawAware ? [".private-draw-content"] : [])].join(", "),
+        [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", ...(stableHarvestAnchor ? [] : ["[data-public-card-copy-anchor-event-id]"]), ...(privateDrawAware ? [".private-draw-content"] : [])].join(", "),
       )].flatMap((element) => {
         if (element === anchor || element === copy
           || element.dataset.publicCardCopyAnchorEventId === copyAnchorEventId
@@ -1416,6 +1491,7 @@ function PublicCardAnnouncement({
         && !existingBandOverlapsReveal
         && !existingBandOverlapsObstacle
         && Math.abs(existingBand.centerX - revealedCenterX) <= 12
+        && (!stableHarvestAnchor || Math.abs(existingBand.top + copy.getBoundingClientRect().height + gap - centerCardRect.top) <= 16)
         && existingBand.top >= safeTop
         && existingBand.top + copy.getBoundingClientRect().height <= safeBottom;
       const reusableBand = existingBandFitsCurrentStage ? existingBand : null;
@@ -1580,6 +1656,17 @@ function PublicCardAnnouncement({
         copy.dataset.publicCardAnnouncementFallback = "true";
         return;
       }
+      if (stableHarvestAnchor) {
+        const parkedMiniOverlaps = [...display.querySelectorAll<HTMLElement>("[data-public-card-harvest-history-parked='true']")]
+          .filter((mini) => {
+            const style = window.getComputedStyle(mini);
+            const rect = mini.getBoundingClientRect();
+            return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
+              && rectsOverlap(selected!, rect, 0);
+          });
+        if (parkedMiniOverlaps.length) copy.dataset.publicCardAnnouncementHarvestMiniOverlapCount = `${parkedMiniOverlaps.length}`;
+        else delete copy.dataset.publicCardAnnouncementHarvestMiniOverlapCount;
+      }
       delete copy.dataset.publicCardAnnouncementFallback;
       rememberPublicCardAnnouncementBand(bandKey, {
         left: selected.left,
@@ -1606,7 +1693,7 @@ function PublicCardAnnouncement({
     anchorObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
     if (anchor) anchorObserver?.observe(anchor, { attributes: true, attributeFilter: ["style", "data-harvest-root-parked"] });
     const harvestStage = display.closest<HTMLElement>(".play-table")?.querySelector<HTMLElement>(".harvest-choice-stage");
-    if (harvestStage) anchorObserver?.observe(harvestStage, { attributes: true, attributeFilter: ["style"] });
+    if (harvestStage) anchorObserver?.observe(harvestStage, { attributes: true, attributeFilter: ["style"], childList: stableHarvestAnchor, subtree: stableHarvestAnchor });
     anchorObserver?.observe(display, { attributes: true, attributeFilter: ["data-public-card-layout-pending"] });
     const onResize = schedule;
     place();
@@ -1620,6 +1707,10 @@ function PublicCardAnnouncement({
     if (table) resizeObserver?.observe(table);
     if (playerBoard) resizeObserver?.observe(playerBoard);
     for (const element of document.querySelectorAll<HTMLElement>(protectedSelectors)) resizeObserver?.observe(element);
+    if (stableHarvestAnchor) {
+      const harvestPool = table?.querySelector<HTMLElement>(".harvest-choice-panel");
+      if (harvestPool) resizeObserver?.observe(harvestPool);
+    }
     if (privateDrawAware && typeof MutationObserver !== "undefined") {
       mutationObserver = new MutationObserver((records) => {
         const affectsPrivateDraw = records.some((record) => {
@@ -1647,7 +1738,7 @@ function PublicCardAnnouncement({
       anchorObserver?.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [anchorEventId, compactMessage, displayedMessage, eventId, heading, message, negationWaiting, phase, placementKey, preferredVerticalMode, privateDrawAware, stableCenterAnchor, stableFallbackCardRect, viewerLayoutKey]);
+  }, [anchorEventId, compactMessage, displayedMessage, eventId, heading, ignoreJourneyLayoutPending, message, negationWaiting, phase, placementKey, preferredVerticalMode, privateDrawAware, stableCenterAnchor, stableFallbackCardRect, stableHarvestAnchor, viewerLayoutKey]);
 
   return <div
     ref={copyRef}
@@ -2500,15 +2591,15 @@ function singleTargetParkingOptions(
   harvestPoolVisible: boolean,
 ): SeatHistoryCardParkingOptions {
   const harvest = action.cardFace?.kind === "BumperHarvest";
-  const compactHarvestResponse = harvest && event.role === "response"
+  const compactHarvestMini = harvest
     && typeof window !== "undefined" && window.matchMedia("(max-width: 520px)").matches;
   return {
-    cardSize: harvest && event.role === "root"
-      ? HARVEST_ROOT_CARD
-      : compactHarvestResponse ? HARVEST_MOBILE_RESPONSE_CARD : PARKED_CARD,
+    // All parked Harvest history (root and committed responses) uses the
+    // same footprint. The 90×135 reveal remains a separate live phase.
+    cardSize: compactHarvestMini ? HARVEST_MOBILE_RESPONSE_CARD : PARKED_CARD,
     ...(harvest ? {
       anchorLocalHero: true,
-      avoidAuthorSeat: true,
+      avoidAuthorSeat: event.role !== "response",
       protectInteractionControls: true,
       allowHarvestPoolOverlap: harvestPoolVisible && event.role === "root",
       allowAuthorPortraitEdgeOverlap: event.role === "response",
@@ -2533,6 +2624,7 @@ function preserveGroupRootJourneyEvents(
 function SingleTargetCardJourney({
   action,
   enabled,
+  retainHarvestHistory = false,
   harvestChoiceActive,
   harvestPoolReadOnly,
   sourceName,
@@ -2546,6 +2638,7 @@ function SingleTargetCardJourney({
 }: {
   action: PublicCardDisplayAction;
   enabled: boolean;
+  retainHarvestHistory?: boolean;
   harvestChoiceActive: boolean;
   harvestPoolReadOnly: boolean;
   sourceName: string | null;
@@ -2559,13 +2652,17 @@ function SingleTargetCardJourney({
 }) {
   const motion = singleTargetJourneyMotion(action.motion);
   const isBumperHarvest = action.cardFace?.kind === "BumperHarvest";
+  const harvestPoolVisible = isBumperHarvest && (harvestPoolReadOnly || harvestChoiceActive);
   const harvestRootPoolVisible = harvestPoolReadOnly && isBumperHarvest;
-  const harvestPoolAboveRoot = isBumperHarvest && (harvestPoolReadOnly || harvestChoiceActive);
+  const harvestPoolAboveRoot = harvestPoolVisible;
+  const historyOnly = Boolean(retainHarvestHistory && isBumperHarvest && !enabled);
+  const journeyEnabled = enabled || historyOnly;
   const scopeKey = motion?.scopeKey ?? action.rootEventId;
   const [journey, setJourney] = useState<SingleTargetJourneyState>({ scopeKey: "", viewerId: "", harvestPoolReadOnly: false, cards: [], center: null, suppressTransitions: false, layoutPending: false });
   const journeyRef = useRef(journey);
   const actionRef = useRef(action);
   const sourceNameRef = useRef(sourceName);
+  const viewerIdRef = useRef(viewerId);
   const mountedRef = useRef(false);
   const enabledRef = useRef(enabled);
   const documentVisibleRef = useRef(true);
@@ -2573,6 +2670,28 @@ function SingleTargetCardJourney({
   const notifiedSettlementEventIdRef = useRef<string | null>(null);
   const parkedNotifiedEventIdsRef = useRef(new Set<string>());
   const traceSignaturesRef = useRef(new Map<string, string>());
+  const parkingFailureSignaturesRef = useRef(new Map<string, string>());
+  const placementFailureReporter = useCallback((event: JourneyCard): SeatHistoryCardParkingOptions => ({
+    onPlacementFailure: isBumperHarvest && event.role === "response"
+      ? (detail: Record<string, unknown>) => {
+        const currentViewerId = viewerIdRef.current;
+        const currentAction = actionRef.current;
+        const key = `${currentViewerId}:${event.eventId}`;
+        const signature = JSON.stringify(detail);
+        if (parkingFailureSignaturesRef.current.get(key) === signature) return;
+        parkingFailureSignaturesRef.current.set(key, signature);
+        recordAttackDodgeUxTrace("harvest-response-parking-failure", {
+          interactionId: currentAction.interactionId ?? null,
+          rootEventId: currentAction.rootEventId,
+          eventId: event.eventId,
+          publicActorId: event.actorId,
+          publicViewerId: currentViewerId,
+          publicCardId: event.cardFace.id,
+          ...detail,
+        });
+      }
+      : undefined,
+  }), [isBumperHarvest]);
   const incoming = singleTargetJourneyEvents(action, sourceName);
   const journeyEvents = motion?.type === "group-root" && journey.scopeKey === scopeKey
     ? preserveGroupRootJourneyEvents(incoming, journey.cards)
@@ -2587,14 +2706,15 @@ function SingleTargetCardJourney({
   useLayoutEffect(() => {
     actionRef.current = action;
     sourceNameRef.current = sourceName;
-  }, [action, sourceName]);
+    viewerIdRef.current = viewerId;
+  }, [action, sourceName, viewerId]);
   useLayoutEffect(() => {
     journeyRef.current = journey;
   }, [journey]);
   useLayoutEffect(() => {
-    enabledRef.current = enabled;
+    enabledRef.current = journeyEnabled;
     documentVisibleRef.current = documentVisible;
-  }, [enabled, documentVisible]);
+  }, [documentVisible, journeyEnabled]);
   useEffect(() => {
     const updateVisibility = () => setDocumentVisible(document.visibilityState === "visible");
     document.addEventListener("visibilitychange", updateVisibility);
@@ -2606,7 +2726,7 @@ function SingleTargetCardJourney({
     const currentAction = actionRef.current;
     const currentMotion = singleTargetJourneyMotion(currentAction.motion);
     const currentSourceName = sourceNameRef.current;
-    if (!enabled || !currentMotion || !currentSourceName) return;
+    if (!journeyEnabled || !currentMotion || !currentSourceName) return;
     const center = currentMotion.type === "lust-cost" && currentAction.lustCostFrame
       ? battlefieldLustCostCard()
       : battlefieldCenterCard(REVEAL_CARD, currentMotion.type === "negation" || currentMotion.type === "group-root"
@@ -2623,20 +2743,31 @@ function SingleTargetCardJourney({
     const latestFreshResponseEventId = [...journeyEvents].reverse()
       .find((event) => event.role === "response" && fresh.has(event.eventId) && !priorById.has(event.eventId))?.eventId ?? null;
     const occupied: CardRect[] = [];
+    const measuredRectsByActor = new Map<string, CardRect[]>();
     const actorIndexes = new Map<string, number>();
     const measuredTargetEventIds = new Set<string>();
     const cards = journeyEvents.map((event) => {
       const old = priorById.get(event.eventId);
       const actorIndex = actorIndexes.get(event.actorId) ?? 0;
       actorIndexes.set(event.actorId, actorIndex + 1);
-      const parkingOptions = singleTargetParkingOptions(currentAction, event, harvestPoolAboveRoot);
+      const parkingOptions = {
+        ...singleTargetParkingOptions(currentAction, event, harvestPoolAboveRoot),
+        sameAuthorRects: measuredRectsByActor.get(event.actorId) ?? [],
+        ...placementFailureReporter(event),
+      };
       const measuredTarget = (old && !viewerChanged && !harvestLayoutChanged && !previous.layoutPending && !parkingOptions.protectInteractionControls
         ? old.target
         : seatHistoryCardParking(event.actorId, actorIndex, occupied, parkingOptions)?.rect
           ?? (!parkingOptions.protectInteractionControls ? actorParkedCard(event.actorId, actorIndex) : null));
-      if (measuredTarget) measuredTargetEventIds.add(event.eventId);
-      const target = measuredTarget ?? old?.target ?? center;
-      occupied.push(target);
+      const parkedSize = parkingOptions.cardSize ?? PARKED_CARD;
+      const fallbackRect = old?.target ?? center;
+      const target = measuredTarget ?? { left: fallbackRect.left, top: fallbackRect.top, ...parkedSize };
+      if (measuredTarget) {
+        parkingFailureSignaturesRef.current.delete(`${viewerIdRef.current}:${event.eventId}`);
+        measuredTargetEventIds.add(event.eventId);
+        occupied.push(measuredTarget);
+        measuredRectsByActor.set(event.actorId, [...(measuredRectsByActor.get(event.actorId) ?? []), measuredTarget]);
+      }
       if (old && !viewerChanged) {
         if (latestFreshResponseEventId && event.eventId !== latestFreshResponseEventId && old.phase === "reveal") {
           const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -2706,23 +2837,34 @@ function SingleTargetCardJourney({
       };
     });
     const layoutPending = cards.some((card) => !measuredTargetEventIds.has(card.eventId));
+    const presentedCards = historyOnly
+      ? cards.map((card) => ({
+        ...card,
+        phase: "parked" as const,
+        rect: card.target,
+        revealStartedAtMs: null,
+        revealRemainingMs: 0,
+        moveStartedAtMs: null,
+        layoutChangeReason: card.layoutPending ? "inspector-history-retained-awaiting-author-anchor" : "inspector-history-retained",
+      }))
+      : viewerChanged ? cards : withFirstQueuedSingleTargetReveal(cards, center);
     const next: SingleTargetJourneyState = {
       scopeKey,
       viewerId,
       harvestPoolReadOnly,
-      cards: viewerChanged ? cards : withFirstQueuedSingleTargetReveal(cards, center),
+      cards: presentedCards,
       center,
-      suppressTransitions: viewerChanged || harvestLayoutChanged || previous.suppressTransitions || previous.layoutPending || layoutPending,
+      suppressTransitions: viewerChanged || harvestLayoutChanged || previous.suppressTransitions,
       layoutPending,
     };
     journeyRef.current = next;
     setJourney(next);
-  }, [enabled, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, scopeKey, eventSignature, freshSignature, viewerId]);
+  }, [enabled, journeyEnabled, historyOnly, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, scopeKey, eventSignature, freshSignature, viewerId, placementFailureReporter]);
 
   useEffect(() => {
-    if (!journey.suppressTransitions || journey.layoutPending || journey.scopeKey !== scopeKey) return;
+    if (!journey.suppressTransitions || journey.scopeKey !== scopeKey) return;
     const frame = window.requestAnimationFrame(() => setJourney((current) => {
-      if (current.scopeKey !== scopeKey || current.layoutPending || !current.suppressTransitions) return current;
+      if (current.scopeKey !== scopeKey || !current.suppressTransitions) return current;
       const next = { ...current, suppressTransitions: false };
       journeyRef.current = next;
       return next;
@@ -2750,7 +2892,7 @@ function SingleTargetCardJourney({
             if (current.scopeKey !== scopeKey || !currentCard || currentCard.phase !== "reveal") return current;
             const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
             const now = performance.now();
-            const shouldMove = !reducedMotion && !current.layoutPending;
+            const shouldMove = !reducedMotion && !currentCard.layoutPending;
             const cards = current.cards.map((candidate) => candidate.eventId === card.eventId
               ? {
                 ...candidate,
@@ -2760,7 +2902,7 @@ function SingleTargetCardJourney({
                 revealElapsedMs: (candidate.revealElapsedMs ?? 0) + Math.max(0, now - (candidate.revealStartedAtMs ?? now)),
                 revealRemainingMs: 0,
                 moveStartedAtMs: shouldMove ? now : null,
-                layoutChangeReason: current.layoutPending ? "reveal-complete-awaiting-seat-anchor"
+                layoutChangeReason: currentCard.layoutPending ? "reveal-complete-awaiting-seat-anchor"
                   : reducedMotion ? "four-second-reveal-complete-reduced-motion" : "four-second-reveal-complete",
               }
               : candidate);
@@ -2850,7 +2992,7 @@ function SingleTargetCardJourney({
   }, [enabled, documentVisible, journey.scopeKey, scopeKey, activeCard?.eventId, activeCard?.phase, activeCard?.revealStartedAtMs]);
 
   useLayoutEffect(() => {
-    if (!enabled || journey.scopeKey !== scopeKey) return;
+    if (!journeyEnabled || journey.scopeKey !== scopeKey) return;
     let resizeFrame = 0;
     let previousLayoutSignature = "";
     let stableFrames = 0;
@@ -2868,7 +3010,7 @@ function SingleTargetCardJourney({
     const reflow = () => {
       window.cancelAnimationFrame(resizeFrame);
       setJourney((current) => {
-        if (current.scopeKey !== scopeKey || current.layoutPending) return current;
+        if (current.scopeKey !== scopeKey) return current;
         const next: SingleTargetJourneyState = {
           ...current,
           suppressTransitions: true,
@@ -2912,20 +3054,31 @@ function SingleTargetCardJourney({
             ? { reserveSeatHistoryDepth: 2 }
             : { reservePlayerIds: [currentAction.sourceId, currentAction.targetId].filter((id): id is string => Boolean(id)) });
         const occupied: CardRect[] = [];
+        const measuredRectsByActor = new Map<string, CardRect[]>();
         const actorIndexes = new Map<string, number>();
         const measuredTargets = new Map<string, CardRect>();
         const cards = current.cards.map((card) => {
           const actorIndex = actorIndexes.get(card.actorId) ?? 0;
           actorIndexes.set(card.actorId, actorIndex + 1);
+          const parkingOptions = {
+            ...singleTargetParkingOptions(currentAction, card, harvestPoolAboveRoot),
+            sameAuthorRects: measuredRectsByActor.get(card.actorId) ?? [],
+            ...placementFailureReporter(card),
+          };
           const measuredTarget = seatHistoryCardParking(
             card.actorId,
             actorIndex,
             occupied,
-            singleTargetParkingOptions(currentAction, card, harvestPoolAboveRoot),
+            parkingOptions,
           )?.rect;
-          const target = measuredTarget ?? card.target;
-          if (measuredTarget) measuredTargets.set(card.eventId, measuredTarget);
-          occupied.push(target);
+          const parkedSize = parkingOptions.cardSize ?? PARKED_CARD;
+          const target = measuredTarget ?? { left: card.target.left, top: card.target.top, ...parkedSize };
+          if (measuredTarget) {
+            parkingFailureSignaturesRef.current.delete(`${viewerIdRef.current}:${card.eventId}`);
+            measuredTargets.set(card.eventId, measuredTarget);
+            occupied.push(measuredTarget);
+            measuredRectsByActor.set(card.actorId, [...(measuredRectsByActor.get(card.actorId) ?? []), measuredTarget]);
+          }
           const phase = card.phase === "move" ? "parked" as const : card.phase;
           return {
             ...card,
@@ -2978,7 +3131,7 @@ function SingleTargetCardJourney({
       mutationObserver?.disconnect();
       window.cancelAnimationFrame(resizeFrame);
     };
-  }, [enabled, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, journey.scopeKey, scopeKey]);
+  }, [journeyEnabled, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, journey.scopeKey, scopeKey, placementFailureReporter]);
 
   const currentCard = activeCard ?? journey.cards.find((card) => card.eventId === activeEventId) ?? null;
   const allParked = !journey.layoutPending && journey.cards.length > 0 && journey.cards.every((card) => card.phase === "parked");
@@ -2986,10 +3139,65 @@ function SingleTargetCardJourney({
   // measured the new author's anchor. Never paint a previous viewer's card
   // coordinates against the new roster, even for one rendered frame.
   const viewerLayoutPending = journey.scopeKey === scopeKey && journey.viewerId !== viewerId;
+  useLayoutEffect(() => {
+    const historyCards = [...document.querySelectorAll<HTMLElement>(".public-card-display-journey.is-harvest-history-passive [data-public-card-harvest-history-parked='true']")];
+    for (const card of historyCards) {
+      card.style.removeProperty("--harvest-inspector-peek-x");
+      card.style.removeProperty("--harvest-inspector-peek-y");
+      delete card.dataset.publicCardHarvestHistoryPeek;
+    }
+    if (!historyOnly) return;
+    const inspector = document.querySelector<HTMLElement>(".opponent-inspection-floating-shell");
+    const inspectorRect = inspector?.getBoundingClientRect();
+    if (!inspectorRect || inspectorRect.width <= 0 || inspectorRect.height <= 0) return;
+    const protectedRects = [...document.querySelectorAll<HTMLElement>([
+      ".opponent-player-card", ".player-square", ".visible-countdown", ".stage-system-cluster",
+      ".public-activity-chip", ".harvest-choice-panel", ".public-card-display-journey-copy",
+      ".local-player-dock", ".local-hand-rail", ".test-view-switch-button", ".opponent-seat-inspect-button",
+      ".opponent-player-name-strip", ".opponent-status-equipment-strip", ".opponent-hp-chip",
+    ].join(", "))]
+      .filter((element) => element !== inspector && !inspector.contains(element))
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+    const intersectionArea = (first: DOMRect | { left: number; top: number; width: number; height: number }, second: DOMRect) =>
+      Math.max(0, Math.min(first.left + first.width, second.right) - Math.max(first.left, second.left))
+      * Math.max(0, Math.min(first.top + first.height, second.bottom) - Math.max(first.top, second.top));
+    for (const card of historyCards) {
+      const rect = card.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0 || intersectionArea(rect, inspectorRect) <= 0) continue;
+      const leftFirst = rect.left + rect.width / 2 < inspectorRect.left + inspectorRect.width / 2;
+      const aboveFirst = rect.top + rect.height / 2 < inspectorRect.top + inspectorRect.height / 2;
+      const offsets = [
+        ...(leftFirst ? [{ x: -8, y: 0 }, { x: 8, y: 0 }] : [{ x: 8, y: 0 }, { x: -8, y: 0 }]),
+        ...(aboveFirst ? [{ x: 0, y: -8 }, { x: 0, y: 8 }] : [{ x: 0, y: 8 }, { x: 0, y: -8 }]),
+      ];
+      const baseVisibleArea = rect.width * rect.height - intersectionArea(rect, inspectorRect);
+      const best = offsets.map((offset) => ({
+        ...offset,
+        rect: { left: rect.left + offset.x, top: rect.top + offset.y, width: rect.width, height: rect.height },
+      })).filter(({ rect: candidate }) => candidate.left >= 2 && candidate.top >= 2
+        && candidate.left + candidate.width <= window.innerWidth - 2
+        && candidate.top + candidate.height <= window.innerHeight - 2
+        && protectedRects.every((obstacle) => !rectsOverlap(candidate, obstacle, 1)))
+        .map((candidate) => ({ ...candidate, visibleArea: rect.width * rect.height - intersectionArea(candidate.rect, inspectorRect) }))
+        .sort((first, second) => second.visibleArea - first.visibleArea)[0];
+      if (!best || best.visibleArea <= baseVisibleArea + 1) continue;
+      card.style.setProperty("--harvest-inspector-peek-x", `${best.x}px`);
+      card.style.setProperty("--harvest-inspector-peek-y", `${best.y}px`);
+      card.dataset.publicCardHarvestHistoryPeek = `${best.x},${best.y}`;
+    }
+    return () => {
+      for (const card of historyCards) {
+        card.style.removeProperty("--harvest-inspector-peek-x");
+        card.style.removeProperty("--harvest-inspector-peek-y");
+        delete card.dataset.publicCardHarvestHistoryPeek;
+      }
+    };
+  }, [historyOnly, journey.cards, viewerId]);
   useEffect(() => {
-    if (!enabled || journey.layoutPending || journey.scopeKey !== scopeKey) return;
+    if (!enabled || journey.scopeKey !== scopeKey) return;
     for (const card of journey.cards) {
-      if (card.phase !== "parked" || parkedNotifiedEventIdsRef.current.has(card.eventId)) continue;
+      if (card.phase !== "parked" || card.layoutPending || parkedNotifiedEventIdsRef.current.has(card.eventId)) continue;
       parkedNotifiedEventIdsRef.current.add(card.eventId);
       onJourneyEventParked?.(card.eventId);
     }
@@ -3033,7 +3241,7 @@ function SingleTargetCardJourney({
           ? (card.revealElapsedMs ?? 0) + Math.max(0, performance.now() - card.revealStartedAtMs)
           : card.revealElapsedMs ?? 0;
         const roundedElapsedMs = Math.round(revealElapsedMs);
-        const pendingLayout = journey.layoutPending || viewerLayoutPending;
+        const pendingLayout = Boolean(card.layoutPending || viewerLayoutPending);
         const signature = JSON.stringify([card.phase, actualCardRect, targetParkingRect, viewerId, journey.viewerId, anchorRect, pendingLayout, card.revealStartedAtIso, roundedElapsedMs, card.layoutChangeReason]);
         if (traceSignaturesRef.current.get(card.eventId) === signature) continue;
         traceSignaturesRef.current.set(card.eventId, signature);
@@ -3111,9 +3319,9 @@ function SingleTargetCardJourney({
     notifiedSettlementEventIdRef.current = settlementEventId;
     onJourneySettled?.(settlementEventId);
   }, [action.settlement?.eventId, allParked, enabled, journey.scopeKey, onJourneySettled, scopeKey]);
-  if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
+  if (!journeyEnabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
   return <section
-    className={`public-card-display public-card-display-journey${harvestPoolAboveRoot ? " is-harvest-pool-active" : ""}${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}${viewerLayoutPending ? " is-viewer-layout-pending" : ""}`}
+    className={`public-card-display public-card-display-journey${harvestPoolAboveRoot ? " is-harvest-pool-active" : ""}${historyOnly ? " is-harvest-history-passive" : ""}${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}${viewerLayoutPending ? " is-viewer-layout-pending" : ""}`}
     data-public-card-display="true"
     data-public-card-renderer-kind="single-target-journey"
     data-public-card-ready="true"
@@ -3122,6 +3330,7 @@ function SingleTargetCardJourney({
     data-public-card-layout-pending={journey.layoutPending || viewerLayoutPending ? "true" : "false"}
     data-public-card-layout-viewer-id={journey.viewerId || undefined}
     data-public-card-harvest-active={harvestRootPoolVisible ? "true" : undefined}
+    data-public-card-harvest-history-passive={historyOnly ? "true" : undefined}
     data-public-card-event-id={activeEventId}
     data-public-card-root-event-id={action.rootEventId}
     data-public-card-id={currentPublicCard?.id}
@@ -3138,10 +3347,13 @@ function SingleTargetCardJourney({
       return <PublicJourneyCard
         key={card.eventId}
         card={card}
-        onInspectCard={onInspectCard}
+        onInspectCard={historyOnly ? undefined : onInspectCard}
         size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
         className={isCurrent ? "is-current" : "is-prior"}
         primary={isCurrent}
+        showOrdinal={isBumperHarvest && card.phase === "parked"}
+        harvestHistory={isBumperHarvest}
+        passive={historyOnly}
         harvestRootParked={(harvestRootPoolVisible || harvestChoiceActive && isBumperHarvest)
           && card.role === "root" && card.phase === "parked"}
         lustCostFrame={action.motion?.type === "lust-cost" && card.role === "root" ? action.lustCostFrame : undefined}
@@ -3152,26 +3364,25 @@ function SingleTargetCardJourney({
         Public card event {event.globalOrdinal}: {event.ariaLabel}
       </li>)}
     </ol>
-    <PublicCardAnnouncement
+    {!historyOnly && <PublicCardAnnouncement
       eventId={motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId}
-      placementKey={`${publicCardAnnouncementPlacementKey(action)}${harvestRootPoolVisible ? ":harvest-negation-pool" : ""}`}
-      viewerLayoutKey={viewerId}
-      anchorEventId={groupRootStageOwnsCopy ? null : activeEventId}
-      phase={announcementAnchorCard?.phase ?? "static"}
+      placementKey={`${publicCardAnnouncementPlacementKey(action)}${harvestPoolVisible ? ":harvest-public-pool" : ""}`}
+      viewerLayoutKey={harvestPoolVisible ? "public-harvest" : viewerId}
+      anchorEventId={harvestPoolVisible || groupRootStageOwnsCopy ? null : activeEventId}
+      phase={harvestPoolVisible ? "static" : announcementAnchorCard?.phase ?? "static"}
       message={announcement}
       compactMessage={compactAnnouncement}
-      fallbackCardRect={harvestRootPoolVisible
-        ? (() => {
-          const root = journey.cards.find((card) => card.role === "root");
-          return root ? { left: 0, top: root.target.top, width: 0, height: 0 } : null;
-        })()
+      fallbackCardRect={harvestPoolVisible
+        ? journey.center
         : motion?.type === "lust-cost" && journey.center ? battlefieldLustDuelAnnouncementAnchor(journey.center) : journey.center}
       phaseNotice={action.phaseNotice}
       outcome={allParked ? action.settlement?.outcome : undefined}
       negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
       stableCenterAnchor={motion?.type === "lust-cost"}
-      preferredVerticalMode={motion?.type === "lust-cost" ? "below" : undefined}
-    />
+      stableHarvestAnchor={harvestPoolVisible}
+      ignoreJourneyLayoutPending={harvestPoolVisible}
+      preferredVerticalMode={harvestPoolVisible ? "above" : motion?.type === "lust-cost" ? "below" : undefined}
+    />}
   </section>;
 }
 
@@ -3928,6 +4139,7 @@ export function publicCardActionKey(action: PresentationSnapshotRootAction): str
 export function PublicCardDisplay({
   action,
   enabled,
+  retainHarvestHistory = false,
   harvestChoiceActive = false,
   harvestPoolReadOnly = false,
   sourceName,
@@ -3943,6 +4155,7 @@ export function PublicCardDisplay({
 }: {
   action: PublicCardDisplayAction | null;
   enabled: boolean;
+  retainHarvestHistory?: boolean;
   harvestChoiceActive?: boolean;
   harvestPoolReadOnly?: boolean;
   sourceName: string | null;
@@ -3962,7 +4175,7 @@ export function PublicCardDisplay({
   }
   if (action.motion?.type === "single-target" || action.motion?.type === "negation"
     || action.motion?.type === "group-root" || action.motion?.type === "lust-cost") {
-    return <SingleTargetCardJourney action={action} enabled={enabled} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} />;
+    return <SingleTargetCardJourney action={action} enabled={enabled} retainHarvestHistory={retainHarvestHistory} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {
     return <DuelCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
