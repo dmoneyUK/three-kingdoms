@@ -1573,6 +1573,7 @@ async function harvestGeometry(page) {
     const stage = document.querySelector(".harvest-choice-stage");
     const panel = stage?.querySelector(".harvest-choice-panel");
     const row = panel?.querySelector(".harvest-card-row");
+    const handFace = document.querySelector(".local-hand-rail .card-slot .game-card");
     const root = document.querySelector("[data-harvest-root-parked='true']");
     const announcement = document.querySelector("[data-public-card-announcement='true']");
     const footer = panel?.querySelector(".harvest-confirm-row");
@@ -1650,6 +1651,7 @@ async function harvestGeometry(page) {
       localGuidance: rect(localGuidance),
       localZones: rect(localZones),
       panel: panelRect,
+      handFace: rect(handFace),
       panelPointerEvents: panel ? getComputedStyle(panel).pointerEvents : null,
       stagePointerEvents: stage ? getComputedStyle(stage).pointerEvents : null,
       stageBackground: stage ? getComputedStyle(stage).backgroundColor : null,
@@ -1705,6 +1707,7 @@ async function harvestGeometry(page) {
       row: rowRect,
       rowClip,
       cards: [...(row?.querySelectorAll(".harvest-card-choice") ?? [])].map(rect),
+      cardFaces: [...(row?.querySelectorAll(".harvest-card-choice > .played-card") ?? [])].map(rect),
       cardDetailsTargets: [...(row?.querySelectorAll(".harvest-card-choice") ?? [])].map((choice) => {
         const card = rect(choice);
         const infoButton = choice.querySelector(".harvest-card-info");
@@ -2839,7 +2842,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
   }
 });
 
-test("Harvest content-fit scales from 1 to 8 genuine cards and swipes at 6–8 seats", async ({ browser, request }, testInfo) => {
+test("Harvest cards match hand size and swipe through genuine public choices", async ({ browser, request }, testInfo) => {
   test.setTimeout(120_000);
   for (const scenario of [
     { seats: 4, alive: 1, choices: 1, viewport: { width: 390, height: 700 } },
@@ -2851,7 +2854,9 @@ test("Harvest content-fit scales from 1 to 8 genuine cards and swipes at 6–8 s
     { seats: 6, alive: 6, choices: 6, viewport: { width: 390, height: 700 } },
     { seats: 8, alive: 8, choices: 8, viewport: { width: 440, height: 766 } },
   ]) {
-    const seed = await seedHarvestPool(request, scenario.seats, scenario.alive, {}, scenario.cardKinds ?? null);
+    const seed = await seedHarvestPool(request, scenario.seats, scenario.alive, {
+      0: [{ id: `harvest-hand-reference-${scenario.seats}-${scenario.choices}`, kind: "Attack", suit: "♠", rank: "A" }],
+    }, scenario.cardKinds ?? null);
     const room = await openHarvestChoice(request, seed);
     expect(room.pendingHarvest.revealed).toHaveLength(scenario.choices);
     expect(room.pendingHarvest.actorId).toBe(seed.players[0].id);
@@ -2879,10 +2884,10 @@ test("Harvest content-fit scales from 1 to 8 genuine cards and swipes at 6–8 s
         panelSeat: false,
         panelTimer: false,
       });
-      expect(geometry.cards.every((card) => card.width >= 58), contextLabel).toBe(true);
+      expect(geometry.handFace, contextLabel).not.toBeNull();
+      expect(geometry.cardFaces.every((face) => Math.abs(face.width - geometry.handFace.width) <= 1
+        && Math.abs(face.height - geometry.handFace.height) <= 1), contextLabel).toBe(true);
       if (scenario.choices === 4) {
-        const expectedCardWidth = Math.min(88, Math.max(82, scenario.viewport.width * .20));
-        expect(geometry.cards.every((card) => Math.abs(card.width - expectedCardWidth) <= .5), contextLabel).toBe(true);
         expect(geometry.panel.width, contextLabel).toBeLessThanOrEqual(geometry.row.width + 20);
         const titleMetrics = await page.locator(".harvest-card-choice").evaluateAll((choices) => choices.map((choice) => {
           const title = choice.querySelector(".played-card .card-name-mark");
@@ -2929,6 +2934,9 @@ test("Harvest content-fit scales from 1 to 8 genuine cards and swipes at 6–8 s
       expect(geometry.document.documentWidth).toBeLessThanOrEqual(scenario.viewport.width);
 
       const row = page.locator(".harvest-card-row");
+      if (scenario.seats >= 6 && scenario.choices >= 4) {
+        await expect(page.locator(".harvest-scroll-hint")).toBeVisible();
+      }
       const rowSize = await row.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
       if (scenario.choices <= 2) {
         expect(rowSize.scrollWidth).toBeLessThanOrEqual(rowSize.clientWidth + 1);

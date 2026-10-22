@@ -6704,7 +6704,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               ? harvestEffectRecipient ? `Negation for ${harvestEffectRecipient.participantName} · Read-only` : "Read-only · Negation resolving"
               : canChooseHarvest && !presentationBusy ? "Choose one revealed card" : room.pendingHarvest?.complete ? "Choices complete" : "Public cards · read-only"}</span>
           </header>
-          <div className="harvest-card-row" role="group" aria-label="Public revealed Harvest cards">
+          <div
+            className="harvest-card-row"
+            role="region"
+            aria-label="Public revealed Harvest cards — scroll horizontally to browse"
+            tabIndex={harvestDisplay.revealed.length > 1 ? 0 : undefined}
+          >
             {harvestDisplay.revealed.map((choice) => {
               const name = cardDefinition(choice.kind).name;
               const takenBy = harvestDisplay.choices.find((entry) => entry.cardId === choice.id);
@@ -6745,6 +6750,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               </div>;
             })}
           </div>
+          {room.players.length >= 5 && harvestDisplay.revealed.length >= 4 && <span className="harvest-scroll-hint" aria-hidden="true">Swipe to see all cards ↔</span>}
           {canChooseHarvest && !presentationBusy && <footer className="harvest-confirm-row">
             <span className="harvest-selection-count" aria-live="polite">{harvestSelectedCard ? "1 selected" : "Choose 1 card"}</span>
             <button type="button" className="primary" disabled={busy || !harvestSelectedCard || Boolean(harvestSubmitting)} onClick={confirmHarvestChoice}>Confirm choice</button>

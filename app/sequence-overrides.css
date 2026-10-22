@@ -491,6 +491,8 @@
 /* Step 2: the local seat is a compact dock and the hand is a layered peek
    rail. These rules intentionally do not change the table-resolution anchors. */
 .game-shell {
+  --hand-card-face-width: 68px;
+  --hand-card-face-height: 102px;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -514,8 +516,8 @@
 /* LocalPlayerDock layout. Each visible region owns its complete panel border. */
 .local-player-dock {
   --hand-panel-height: 108px;
-  --hand-peek-height: 102px;
-  --hand-card-height: 102px;
+  --hand-peek-height: var(--hand-card-face-height);
+  --hand-card-height: var(--hand-card-face-height);
   --hand-top-inset: 4px;
   --selected-rise: 48px;
   --selected-face-rise: 17px;
@@ -764,7 +766,7 @@
 .local-hand-rail { position: absolute; top: calc(-1 * var(--hand-lift-clearance)); right: 4px; left: 4px; z-index: 60; display: flex; align-items: flex-start; justify-content: flex-start; box-sizing: border-box; width: auto; height: calc(var(--hand-peek-height) + var(--hand-lift-clearance)); min-width: 0; padding: var(--hand-lift-clearance) 0 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; pointer-events: none; scrollbar-width: none; }
 .local-hand-rail::-webkit-scrollbar { display: none; }
 .local-hand-rail:focus-visible { outline: 1px solid #e6cc8c; outline-offset: -1px; }
-.local-hand-rail .card-slot { position: relative; z-index: 1; flex: 0 0 68px; width: 68px; height: var(--hand-peek-height); overflow: hidden; pointer-events: auto; }
+.local-hand-rail .card-slot { position: relative; z-index: 1; flex: 0 0 var(--hand-card-face-width); width: var(--hand-card-face-width); height: var(--hand-peek-height); overflow: hidden; pointer-events: auto; }
 .local-hand-rail .card-slot.single-selected { z-index: 80; height: var(--hand-peek-height); overflow: visible; }
 .local-hand-rail .card-slot.details-selected { z-index: 90; overflow: visible; }
 .local-hand-rail .card-slot.inspect-focused { z-index: 90; overflow: visible; }
@@ -5220,23 +5222,25 @@
   align-items: flex-start;
   justify-content: flex-start;
   gap: 4px;
-  width: max-content;
+  flex: 0 0 auto;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
-  padding: 0 1px 2px;
+  padding: 0 6px 2px 1px;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
-  pointer-events: none;
+  pointer-events: auto;
+  touch-action: pan-x;
 }
 .game-shell .harvest-card-row::-webkit-scrollbar { display: none; }
 .game-shell .harvest-card-choice {
   box-sizing: border-box;
   position: relative;
-  flex: 0 0 clamp(82px, 20vw, 88px);
-  width: clamp(82px, 20vw, 88px);
-  height: auto;
+  flex: 0 0 var(--hand-card-face-width);
+  width: var(--hand-card-face-width);
+  height: var(--hand-card-face-height);
   aspect-ratio: 2 / 3;
   padding: 0;
   border: 0;
@@ -5257,6 +5261,7 @@
   background: transparent;
   cursor: pointer;
   pointer-events: auto;
+  touch-action: pan-x;
 }
 .game-shell .harvest-card-select:disabled { cursor: default; }
 .game-shell .harvest-card-choice > .played-card {
@@ -5344,6 +5349,10 @@
   font-size: 0;
   cursor: pointer;
   pointer-events: auto;
+  touch-action: pan-x;
+}
+.game-shell .harvest-scroll-hint {
+  display: none;
 }
 .game-shell .harvest-card-info::before {
   content: "i";
@@ -5398,6 +5407,18 @@
 .game-shell .harvest-confirm-row > .primary:disabled {
   border-color: #5b513b;
   color: #8f846e;
+}
+
+@media (max-width: 520px) {
+  .game-shell .harvest-scroll-hint {
+    display: block;
+    align-self: flex-end;
+    margin: -1px 2px 0 0;
+    color: #a99a76;
+    font: 600 6px/1.1 Arial, sans-serif;
+    letter-spacing: .04em;
+    pointer-events: none;
+  }
 }
 
 /* Read-only and active viewers share the same content-fit CardFace geometry;
