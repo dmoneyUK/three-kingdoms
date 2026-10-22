@@ -51,6 +51,51 @@ test("public battle announcements keep proof-backed event meaning in concise cop
   ), "Deflection: Target redirected Attack to Third; discarded Dodge.");
 });
 
+test("Bumper Harvest Negation announcements name the current effect or Negation target", () => {
+  const harvestAction = action({
+    targetId: null,
+    cardFace: { id: "harvest-root", kind: "BumperHarvest" },
+    cardLabel: "BUMPER HARVEST",
+    ariaLabel: "JD played Bumper Harvest.",
+    phaseNotice: "NEGATION MAY BE PLAYED",
+    motion: { type: "negation", scopeKey: "room:harvest", freshEventIds: ["root-event"] },
+    harvestEffectRecipient: { participantId: "chooser-3", participantName: "Test Player 3" },
+  });
+  assert.equal(publicCardAnnouncement(
+    harvestAction, harvestAction.ariaLabel, "JD", "JD", null,
+  ), "Negation: Cancel Harvest for Test Player 3?");
+  assert.equal(publicCardAnnouncement(
+    { ...harvestAction, harvestEffectRecipient: { participantId: "source", participantName: "JD" } },
+    harvestAction.ariaLabel, "JD", "JD", null,
+  ), "Negation: Cancel Harvest for JD?");
+
+  const unprovenHarvest = { ...harvestAction, harvestEffectRecipient: undefined };
+  assert.equal(publicCardAnnouncement(
+    unprovenHarvest, unprovenHarvest.ariaLabel, "JD", "JD", null,
+  ), "Negation available.");
+
+  const firstNegation = {
+    ...harvestAction,
+    responses: [{ eventId: "negation-event", ordinal: 1, actorId: "responder-4", actorName: "Test Player 4" }],
+  };
+  assert.equal(publicCardAnnouncement(
+    firstNegation,
+    "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3",
+    "Test Player 4", "JD", null,
+  ), "Counter Test Player 4's Negation?");
+  assert.equal(publicCardAnnouncement(
+    { ...firstNegation, harvestEffectRecipient: undefined },
+    "Test Player 4 played Negation to counter Bumper Harvest's effect on Test Player 3",
+    "Test Player 4", "JD", null,
+  ), "Counter Test Player 4's Negation?");
+
+  const counterNotice = "Test Player 2 played Negation to counter Negation 1";
+  assert.equal(publicCardAnnouncement(
+    { ...firstNegation, responses: [firstNegation.responses[0], { eventId: "counter-event", ordinal: 2, actorId: "responder-2", actorName: "Test Player 2" }] },
+    counterNotice, "Test Player 2", "JD", null,
+  ), "Counter Test Player 2's Negation?");
+});
+
 test("public announcement typography is readable and never truncates its verified sentence", () => {
   const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
   const announcement = css.match(/\.public-card-display-journey-copy\{([^}]+)\}/)?.[1] ?? "";

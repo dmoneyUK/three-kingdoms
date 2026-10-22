@@ -1,14 +1,13 @@
 # Current Handover
 
-Branch: `ux-v2`
+Branch: `ux-v2`. Latest design reviewed: `docs/UX2-refine.md §10.18` and §10.17.1.2 (2026-10-20).
 
-## Latest relevant result
+## Latest result: BCP-1-F2
 
-- Latest design reviewed: `origin/ux-v2` commit `cc991b3`, `docs/UX2-refine.md` §§10.15.3–10.15.6 and U13-E follow-up. Q1 remains the sole active task; H4-A/B/C are user-accepted, and Q4 is cross-player consistency verification only.
-- Exact-SHA Actions run `39036995766` for `60da3d5e8262164971da1e29f291f5abf64f3968` passed Lint/fast tests, API tests, browser startup smoke, D1 migration, Worker deploy and production smoke. Deployed Worker version: `8297fe5e-8459-4293-bdd5-2ae11876e086`. The prior `413f86f` lint failure was two render-time `react-hooks/refs` errors; `journeyEvents` now reads synchronized React state and the focused file lint plus exact-SHA CI pass.
-- Local focused path checks: both Negation-counter tests and Raining Arrows through settlement passed; Barbarian Invasion still failed to expose `GROUP_RESOLVED`. Its trace preserves the same proven root/card/author identity from NEGATION into the first GROUP checkpoint and shows one root DOM instance, but the final sampled server projection contains no active interaction or settlement. This was not a current-Worker reproduction. Q1 remains inconclusive; retain local diagnostics for both card kinds.
-- Preserve the unrelated untracked `HANDOVER 3.md`. H4 is unchanged.
+- **IMPLEMENTED / DEPLOYED — PENDING OWNER PHONE RE-REVIEW.** Code commit `a66d1ba5b641dbc079595708c8ea0e0b17b7c48d`; CI assertion repair commit `5b5719c21ce742ef8001c05703569e73e29463ca` is deployed. Exact-SHA Actions [39506905518](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39506905518) passed lint/build/fast, API, browser room smoke, D1 migration, Worker deploy and production smoke. Worker version `409364c3-f265-4154-9e96-cb12170a6139`; direct production check returned `/` HTTP 200 and `/api/health` `{"ok":true,"worker":"available"}`.
+- Harvest response minis now remeasure the genuine actor Seat for each viewer, avoid the whole Seat, and have a deterministic 6px portrait-edge fallback that protects SWITCH, Inspector, name, HP, equipment, judgement Info, other Seats, pool/H4 and action controls. H4 and local legal response guidance share a target derived from the current proof-backed recipient or current `action.responses`. F1/root layout, H4 position, privacy, timers and game rules were not changed.
+- The uploaded trace confirmed event `3e4d5792…` was a real Negation: the actor anchor changed across local/left/centre/right opponent views, but target stayed `(30,396,48×72)` and `pendingLayout` stayed true. No post-deploy multi-viewer trace or real-phone run was performed; required CI's browser job is startup/room smoke only. The existing announcement test was updated for the approved copy; its focused file passed 3/3. Targeted ESLint had 0 errors (15 hook warnings).
 
-## Exactly one active task
+## ONE current bounded task: owner phone re-review of BCP-1-F2
 
-**UX2-10.15-Q1-P0 — FORENSIC AUDIT.** Against deployed SHA `60da3d5e` / Worker version `8297fe5e-8459-4293-bdd5-2ae11876e086`, use detailed diagnostics to retest Barbarian Invasion and Raining Arrows through Negation, each target response, damage/trigger, settlement and TEST SWITCH. Trace the same proven root/card/author IDs through server projection and presenter selection; identify the first state-transfer or presenter-arbitration divergence and whether static fallback reappears. Preserve current local Q1 instrumentation and the separate uncommitted presentation candidate; do not add Q2 behavior changes until Q1 has evidence. Keep Q3/Q4 deferred; Q4 verifies H4 across players and only changes it if a failure is reproduced.
+On mobile, verify the same committed Negation mini remains beside its true author after switching among all four perspectives, including top-row authors; it is not hidden or left at an old viewer coordinate, and SWITCH/Inspector still work. Confirm H4/local prompt says `Negation: Cancel Harvest for <chooser>?` before a response and `Counter <latest actor>'s Negation?` after one, with `No Negation available. Pass.` preserved where applicable. Keep BCP-1-F1 USER-ACCEPTED/CLOSED. Do not mark F2 USER-ACCEPTED until the owner gives that verdict.

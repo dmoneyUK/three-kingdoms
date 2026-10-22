@@ -54,16 +54,20 @@ const SEAT_EQUIPMENT_CASES = {
   plusHorse: [["Shadowrunner", "♠", "5"]],
   minusHorse: [["FerganaSteed", "♠", "K"]],
   weaponArmor: [["ZhugeCrossbow", "♦", "A"], ["NioShield", "♣", "2"]],
+  three: [["ZhugeCrossbow", "♦", "A"], ["NioShield", "♣", "2"], ["Shadowrunner", "♠", "5"]],
   multiple: [["ZhugeCrossbow", "♦", "A"], ["NioShield", "♣", "2"], ["Shadowrunner", "♠", "5"], ["FerganaSteed", "♠", "K"]],
+  localInspectPair: [["KirinBow", "♥", "Q"], ["NioShield", "♣", "2"]],
   miniaturePair: [["NioShield", "♣", "2"], ["Shadowrunner", "♥", "10"]],
   miniatureSet: [["ZhugeCrossbow", "♦", "A"], ["NioShield", "♣", "2"], ["Shadowrunner", "♥", "Q"], ["FerganaSteed", "♠", "K"]],
   inspectorNamedDetails: [["FrostSword", "♠", "J"], ["NioShield", "♣", "2"]],
+  ins5PhoneDetails: [["SerpentSpear", "♠", "Q"], ["NioShield", "♣", "2"], ["Shadowrunner", "♠", "5"], ["FerganaSteed", "♠", "K"]],
+  ins5PhoneLongRules: [["FrostSword", "♠", "J"], ["NioShield", "♣", "2"]],
 };
 const SEAT_EQUIPMENT_MATRIX = ["weapon", "armor", "plusHorse", "minusHorse", "weaponArmor", "multiple"];
 
 function fixtureSeatEquipment(playerId, equipmentCase) {
   const playerIndex = Number(playerId.slice(1)) - 2;
-  const scenario = equipmentCase === "matrix" ? SEAT_EQUIPMENT_MATRIX[playerIndex] : playerId === "p2" ? equipmentCase : null;
+  const scenario = equipmentCase === "matrix" ? SEAT_EQUIPMENT_MATRIX[playerIndex] : equipmentCase === "localInspectPair" ? playerId === "p1" ? equipmentCase : null : playerId === "p2" ? equipmentCase : null;
   return (SEAT_EQUIPMENT_CASES[scenario] ?? []).map(([kind, suit, rank], index) => card(`browser-${playerId}-seat-equipment-${index}`, kind, suit, rank));
 }
 
@@ -637,6 +641,8 @@ function browserRoom({ state, count, handSize, handKind, targetHandCount, target
     ? []
     : ordinaryTurn
     ? ["Shadowrunner", "Overindulgence", "Negation", "Dodge", "Attack", "Attack"].map((kind, index) => card(`browser-ordinary-${index + 1}`, kind))
+    : state === "active-attack-observer" && handSize !== null
+    ? Array.from({ length: handSize }, (_, index) => card(`browser-offturn-${index + 1}`, handKind))
     : borrowedSwordFixture
       ? [card("browser-borrowed-sword", "BorrowedSword", "♣", "Q")]
     : state === "normal" && handSize !== null
@@ -830,6 +836,12 @@ function browserRoom({ state, count, handSize, handKind, targetHandCount, target
         ? [card("browser-target-judgement", "Lightning", "♥", "Q")]
       : hasLocalJudgementFixture && id === meId
       ? [card("browser-local-lightning", "Lightning", "♥", "Q"), card("browser-local-overindulgence", "Overindulgence", "♠", "7")].slice(0, localJudgementCount)
+      : judgementCase === "three" && id === "p2"
+        ? [card("browser-inspector-lightning-one", "Lightning", "♥", "Q"), card("browser-inspector-lightning-two", "Lightning", "♦", "8"), card("browser-inspector-overindulgence", "Overindulgence", "♠", "7")]
+      : judgementCase === "two" && id === "p2"
+        ? [card("browser-inspector-lightning-one", "Lightning", "♥", "Q"), card("browser-inspector-overindulgence", "Overindulgence", "♠", "7")]
+      : judgementCase === "single-lightning" && id === "p2"
+        ? [card("browser-inspector-lightning", "Lightning", "♥", "Q")]
       : judgementCase === "public-lightning" && id === "p3" ? [card("browser-inspector-lightning", "Lightning", "♥", "Q")]
       : state === "rest" && id === "p3" ? [card("browser-lightning", "Lightning", "♥", "Q")] : [],
     equipmentCards: retaliationModalFixture && id === "p2"
@@ -1033,6 +1045,14 @@ window.__setBrowserHandIds = (ids) => {
     ...fixtureRoom,
     myHand,
     players: fixtureRoom.players.map((player) => player.id === fixtureRoom.meId ? { ...player, handCount: myHand.length } : player),
+  };
+  window.__browserRoom = fixtureRoom;
+  renderFixture();
+};
+window.__setBrowserPlayerEquipment = (playerId, equipmentCards) => {
+  fixtureRoom = {
+    ...fixtureRoom,
+    players: fixtureRoom.players.map((player) => player.id === playerId ? { ...player, equipmentCards } : player),
   };
   window.__browserRoom = fixtureRoom;
   renderFixture();

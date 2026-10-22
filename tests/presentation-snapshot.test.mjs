@@ -930,7 +930,7 @@ test("snapshot exposes identical ordered Group settlement proofs to actor and ob
     groupFrameId: "barbarian-frame",
     cardKind: "BarbarianInvasion",
     participants: [
-      { playerId: "B", order: 1, status: "RESOLVED", outcome: "DAMAGED" },
+      { playerId: "B", order: 1, status: "RESOLVED" },
       { playerId: "C", order: 2, status: "RESOLVED", outcome: "DEFEATED" },
     ],
   };

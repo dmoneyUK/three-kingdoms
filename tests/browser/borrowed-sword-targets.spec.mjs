@@ -27,7 +27,7 @@ test("Borrowed Sword target selection consumes only the CurrentAction projection
   await expect(inspector).toHaveAttribute("data-inspect-player-id", "p2");
   const confirm = page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" });
   await expect(confirm).toBeEnabled();
-  await page.getByRole("button", { name: "Close Player 2 inspection", exact: true }).click();
+  await page.getByRole("button", { name: "Inspect Player 2", exact: true }).click();
   await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
   await expect(confirm).toBeEnabled();
   await confirm.click();

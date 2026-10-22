@@ -224,7 +224,8 @@ async function selectDeflectionAndConfirm({ page, request, seed, daQiaoDock, ski
   await expect(inspectControl).toHaveCount(1);
   await inspectControl.click();
   await expect(page.locator(".interaction-stage-inspect-only")).toHaveCount(1);
-  await page.locator(".hero-focus-inspect-close").click();
+  await inspectControl.click();
+  await expect(inspectControl).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator(".interaction-stage-inspect-only")).toHaveCount(0);
   await assertProgress(0, 0);
 

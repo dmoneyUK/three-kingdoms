@@ -115,6 +115,17 @@ test("preserves only ordered public Group settlement fields", () => {
   assert.equal("publicRainingArrowsSettlement" in normalizedLegacyEvent, false, "legacy metadata does not pass through unsanitized");
   const barbarianProof = { ...proof, cardKind: "BarbarianInvasion", participants: [{ ...proof.participants[0], outcome: "DAMAGED" }, proof.participants[1]] };
   assert.equal(normalizeTimeline([{ ...event, publicGroupSettlement: barbarianProof }])[0].publicGroupSettlement.cardKind, "BarbarianInvasion");
+  const barbarianProofWithoutOutcomes = {
+    ...barbarianProof,
+    participants: [
+      { playerId: "first", order: 1, status: "RESOLVED" },
+      { playerId: "second", order: 2, status: "RESOLVED" },
+    ],
+  };
+  const normalizedBarbarianWithoutOutcomes = normalizeTimeline([{ ...event, publicGroupSettlement: barbarianProofWithoutOutcomes }])[0].publicGroupSettlement;
+  assert.equal(normalizedBarbarianWithoutOutcomes.cardKind, "BarbarianInvasion");
+  assert.deepEqual(normalizedBarbarianWithoutOutcomes.participants, barbarianProofWithoutOutcomes.participants);
+  assert.equal(JSON.stringify(normalizedBarbarianWithoutOutcomes).includes("privateResolverOrder"), false);
   assert.equal(normalizeTimeline([{ ...event, publicGroupSettlement: { ...barbarianProof, participants: [{ ...barbarianProof.participants[0], outcome: "AVOIDED" }, barbarianProof.participants[1]] } }])[0].publicGroupSettlement, undefined);
   assert.equal(normalizeTimeline([{ ...event, publicGroupSettlement: { ...proof, cardKind: "Attack" } }])[0].publicGroupSettlement, undefined);
 });
@@ -162,6 +173,38 @@ test("preserves only privacy-safe Bumper Harvest settlement and exact root-frame
     semantics: "PROVEN", sourceId: "source", cardId: "bumper-card-id", interactionId: "bumper-interaction", rootFrameId: "bumper-frame",
   });
   assert.equal(JSON.stringify(root.bumperHarvestRoot).includes("private-card-id"), false);
+});
+
+test("normalizes only a complete proven public Bumper Harvest pool", () => {
+  const pool = {
+    semantics: "PROVEN", rootEventId: "harvest-root-event", revealEventId: "harvest-reveal-event",
+    revealed: [
+      { id: "harvest-card-1", kind: "Attack", suit: "♠", rank: "7" },
+      { id: "harvest-card-2", kind: "Dodge", suit: "♥", rank: "8" },
+    ],
+    availableIds: ["harvest-card-2"],
+    choices: [{ cardId: "harvest-card-1", playerId: "chooser-1", playerName: "CHOOSER" }],
+    currentActorId: "private-negation-scan-actor",
+    legalActions: ["choose_harvest"],
+  };
+  const normalized = normalizeRoomData({
+    code: "HARVEST1", status: "playing", players: [], myHand: [], timeline: [], publicHarvestPool: pool,
+  });
+  assert.deepEqual(normalized.publicHarvestPool, {
+    semantics: "PROVEN", rootEventId: "harvest-root-event", revealEventId: "harvest-reveal-event",
+    revealed: pool.revealed, availableIds: ["harvest-card-2"],
+    choices: [{ cardId: "harvest-card-1", playerId: "chooser-1", playerName: "CHOOSER" }],
+  });
+  assert.equal(JSON.stringify(normalized.publicHarvestPool).includes("private-negation"), false);
+  assert.equal(JSON.stringify(normalized.publicHarvestPool).includes("choose_harvest"), false);
+  assert.equal(normalizeRoomData({
+    code: "HARVEST2", status: "playing", players: [], myHand: [], timeline: [],
+    publicHarvestPool: { ...pool, availableIds: ["harvest-card-2", "harvest-card-2"] },
+  }).publicHarvestPool, null, "duplicate IDs fail closed");
+  assert.equal(normalizeRoomData({
+    code: "HARVEST3", status: "playing", players: [], myHand: [], timeline: [],
+    publicHarvestPool: { ...pool, availableIds: [] },
+  }).publicHarvestPool, null, "missing physical cards fail closed");
 });
 
 test("handles missing collections and rejects malformed items while preserving valid data", () => {

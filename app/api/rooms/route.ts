@@ -8,7 +8,7 @@ import { responseDecisionFor, resolveResponseDecision } from "../../../game/resp
 import { responseCostActor, semanticResponseActor } from "../../../game/response-identity";
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
 import { borrowedSwordLegality as resolveBorrowedSwordLegality, type BorrowedSwordPlayer } from "../../../game/capabilities/borrowed-sword";
-import { getTriggeredEffects, resolveTriggeredEffect, triggerActorId, triggerAllowsDecline, triggerRepeatsPerDamagePoint } from "../../../game/capabilities/triggers";
+import { getTriggeredEffects, privateOpportunityWindowEffectIds, resolveTriggeredEffect, triggerActorId, triggerAvailability, triggerAllowsDecline, triggerRepeatsPerDamagePoint } from "../../../game/capabilities/triggers";
 import { IMPLEMENTED_STANDARD_HEROES, STANDARD_HEROES, heroGender, type HeroDefinition } from "../../../game/heroes";
 import { continueTriggerEvent, resumeTriggerContinuation } from "../../../game/decisions/triggers";
 import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement, responseAfterSemanticSuccess } from "../../../game/decisions/responses";
@@ -19,13 +19,13 @@ import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
 import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
 import { deckReorderCount, rebuildDeckForReorder } from "../../../game/decisions/deck-reorder";
-import { asTriggerPending, isGroupParticipantProgressOutcomeAllowed, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupParticipantProgressOutcome, type GroupResolutionSemantics, type GroupResponsePending, type HarvestParticipantProgress, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type HarvestPending, type HeroChoiceTriggerContinuation, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type NegationWindowPending, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
+import { asTriggerPending, isGroupParticipantProgressOutcomeAllowed, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupParticipantProgressOutcome, type GroupResolutionSemantics, type GroupResponsePending, type HarvestChoice, type HarvestNegationResponseRecord, type HarvestParticipantProgress, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type HarvestPending, type HeroChoiceTriggerContinuation, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type NegationWindowPending, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
 import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { attackRootProjectionDiagnosticsFor, projectPresentationV2, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof } from "../../../game/presentation-v2";
+import { attackRootProjectionDiagnosticsFor, projectPresentationV2, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2 } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
@@ -2432,21 +2432,30 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
   if (endingPlayer?.alive) {
     const resolved = continuation.resolvedEffectIds ?? [];
     for (const actor of playersInTurnOrder(players, continuation.endingSeat)) {
-      const options = getTriggeredEffects(turnEndTriggerContext(actor, endingPlayer, "activation"), resolved);
-      if (!options.length) continue;
+      const context = turnEndTriggerContext(actor, endingPlayer, "activation");
+      const options = getTriggeredEffects(context, resolved);
+      const privateWindowEffectIds = privateOpportunityWindowEffectIds(context, resolved);
+      if (!options.length && !privateWindowEffectIds.length) continue;
+      const publicOptions = options.filter((option) => triggerAvailability(option.effectId, context) === "public");
+      const publicLabels = publicOptions.map((option) => option.label).join(" or ");
+      const presentation = publicLabels
+        ? addLogWithId(log, `${actor.name} may use ${publicLabels} at the end of ${endingPlayer.name}'s turn.`)
+        : null;
       const labels = options.map((option) => option.label).join(" or ");
-      const presentation = addLogWithId(log, `${actor.name} may use ${labels} at the end of ${endingPlayer.name}'s turn.`);
-      const pending: TriggerPending = withPresentationBarrier({
+      const pendingWithoutBarrier = {
         kind: "trigger",
         event: "turn_end",
         actorId: actor.id,
-        reason: `${actor.name} may use ${labels} at the end of ${endingPlayer.name}'s turn, or decline`,
+        reason: labels ? `${actor.name} may use ${labels} at the end of ${endingPlayer.name}'s turn, or decline` : "Turn-end check; Pass to continue.",
         deadline: nextResponseDeadline(actor),
         resolvedEffectIds: resolved,
         continuation: { ...continuation, stage: "activation" },
-      }, presentation.log, presentation.eventId);
+      } satisfies TriggerPending;
+      const pending: TriggerPending = presentation
+        ? withPresentationBarrier(pendingWithoutBarrier, presentation.log, presentation.eventId)
+        : pendingWithoutBarrier;
       await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-        .bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(presentation.log), room.id).run();
+        .bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(presentation?.log ?? log), room.id).run();
       return;
     }
   }
@@ -3561,13 +3570,16 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
     await advanceGroup(roomId); return [];
   } else if (pending.effect.kind === "harvest") {
     const choosers = pending.effect.chooserIds.map((id) => players.find((player) => player.id === id)).filter((player): player is PlayerRow => Boolean(player?.alive));
-    const draw = drawCards(deck, discard, choosers.length, log); deck = draw.deck; discard = draw.discard; log = addCardGroupEvent(draw.log, source.name, draw.drawn, "reveal", false);
+    const draw = drawCards(deck, discard, choosers.length, log); deck = draw.deck; discard = draw.discard;
+    const revealEventId = crypto.randomUUID();
+    const reveal = addCardGroupEventWithId(draw.log, source.name, draw.drawn, "reveal", false, source.name, undefined, { resolutionId: pending.effect.rootResolutionId }, revealEventId);
+    log = reveal.log;
     log = addHistory(log, `${source.name} reveals ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"} for Bumper Harvest. ${choosers[0]?.name ?? "No player"} chooses first.`);
     if (!choosers.length || !draw.drawn.length) await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run();
     else {
       const participantIds = choosers.map((player) => player.id);
       const progress = initialHarvestProgress(source.id, participantIds, pending.effect.rootEventId, pending.effect.rootResolutionId, pending.effect.rootCardId);
-      const harvest: HarvestPending = { kind: "harvest", sourceId: source.id, actorId: choosers[0].id, remainingIds: participantIds.slice(1), revealed: draw.drawn, availableIds: draw.drawn.map((card) => card.id), choices: [], resumePhase: pending.resumePhase, reason: "Choose 1 revealed card from Bumper Harvest", causal: progress.causal, participantProgress: progress.participantProgress, ...(pending.heldCards?.length ? { heldCards: pending.heldCards } : {}) };
+      const harvest: HarvestPending = { kind: "harvest", sourceId: source.id, actorId: choosers[0].id, remainingIds: participantIds.slice(1), revealed: draw.drawn, revealEventId, availableIds: draw.drawn.map((card) => card.id), choices: [], resumePhase: pending.resumePhase, reason: "Choose 1 revealed card from Bumper Harvest", causal: progress.causal, participantProgress: progress.participantProgress, ...(pending.heldCards?.length ? { heldCards: pending.heldCards } : {}) };
       await beginHarvestTarget({ ...room, causal_envelope_json: JSON.stringify(progress.causalEnvelope) }, harvest, players, deck, discard, log, [], progress.causalEnvelope);
       return [];
     }
@@ -3620,6 +3632,126 @@ async function advanceNegation(roomId: string, options: { allowExplicitEarlySett
     await settleNegationWindow({ ...room, phase: "resolving", pending_json: serializePending(claimedWindow) }, claimedWindow);
     return;
   }
+}
+
+function retainHarvestNegationPublicResponses(
+  continuation: NegationContinuation,
+  log: string[],
+  players: readonly PlayerRow[],
+): NegationContinuation {
+  const effect = continuation.effect;
+  const harvest = effect.kind === "harvest_target" ? effect.pending : null;
+  const progress = harvest?.participantProgress;
+  const causal = continuation.causal;
+  const history = continuation.negationHistory;
+  if (!harvest || !progress || !causal || !Array.isArray(history) || !history.length
+    || causal.interactionId !== progress.interactionId || causal.parentFrameId !== progress.rootFrameId
+    || continuation.effectTargetId !== progress.currentParticipantId || harvest.actorId !== progress.currentParticipantId
+    || continuation.chainDepth !== history.length || continuation.negated !== (history.length % 2 === 1)) return continuation;
+
+  const timeline = gameTimeline(log);
+  const rootMatches = timeline.filter((event) => event.id === progress.rootEventId);
+  const root = rootMatches.length === 1 ? rootMatches[0] : null;
+  const source = players.find((player) => player.id === harvest.sourceId);
+  const rootProof = root?.bumperHarvestRoot as { semantics?: unknown; sourceId?: unknown; cardId?: unknown; interactionId?: unknown; rootFrameId?: unknown } | undefined;
+  if (!root || root.type !== "card" || root.action !== "play" || root.presentation === false
+    || root.card?.kind !== "BumperHarvest" || root.card.id !== progress.rootCardId
+    || root.resolutionId !== progress.rootResolutionId || root.player !== source?.name
+    || rootProof?.semantics !== "PROVEN" || rootProof.sourceId !== harvest.sourceId
+    || rootProof.cardId !== progress.rootCardId
+    || rootProof.interactionId !== undefined && rootProof.interactionId !== progress.interactionId
+    || rootProof.rootFrameId !== undefined && rootProof.rootFrameId !== progress.rootFrameId) return continuation;
+
+  const publicResponses = progress.publicNegationResponses ? [...progress.publicNegationResponses] : [];
+  const seenEventIds = new Set<string>();
+  const seenCardIds = new Set<string>();
+  const seenNodeIds = new Set<string>();
+  const previousByChain = new Map<string, string>();
+  const eventForRecord = (record: HarvestNegationResponseRecord) => {
+    const matches = timeline.filter((event) => event.id === record.eventId);
+    const event = matches.length === 1 ? matches[0] : null;
+    const actor = players.find((player) => player.id === record.actorId);
+    return event && actor && event.type === "card" && event.action === "play" && event.presentation !== false
+      && event.playedAs === undefined && event.card?.kind === "Negation" && event.card.id === record.cardId
+      && event.player === actor.name && event.resolutionId === record.resolutionId
+      ? event
+      : null;
+  };
+  const recordIsValid = (record: HarvestNegationResponseRecord, index: number) => {
+    if (!record || record.order !== index + 1
+      || record.interactionId !== progress.interactionId || record.rootFrameId !== progress.rootFrameId
+      || record.rootEventId !== progress.rootEventId || record.rootResolutionId !== progress.rootResolutionId
+      || record.rootCardId !== progress.rootCardId || record.parentFrameId !== progress.rootFrameId
+      || !progress.participants.some((participant) => participant.playerId === record.effectParticipantId)
+      || !record.frameId || !record.nodeId || !record.actorId || !record.cardId || !record.eventId || !record.resolutionId
+      || record.causedByNodeId !== null && typeof record.causedByNodeId !== "string"
+      || seenEventIds.has(record.eventId) || seenCardIds.has(record.cardId) || seenNodeIds.has(record.nodeId)
+      || !eventForRecord(record)) return false;
+    const chainKey = `${record.effectParticipantId}:${record.frameId}`;
+    const previous = previousByChain.get(chainKey);
+    if (previous === undefined && record.causedByNodeId !== null
+      || previous !== undefined && record.causedByNodeId !== previous) return false;
+    seenEventIds.add(record.eventId);
+    seenCardIds.add(record.cardId);
+    seenNodeIds.add(record.nodeId);
+    previousByChain.set(chainKey, record.nodeId);
+    return true;
+  };
+  if (!publicResponses.every(recordIsValid)) return continuation;
+
+  let previousNodeId: string | null = null;
+  for (let index = 0; index < history.length; index++) {
+    const node = history[index];
+    if (!node || node.kind !== "NEGATION_CARD" || node.interactionId !== causal.interactionId
+      || node.frameId !== causal.frameId || node.causedByNodeId !== previousNodeId
+      || !node.actorId || !node.physicalCardId) return continuation;
+    previousNodeId = node.nodeId;
+    const actor = players.find((player) => player.id === node.actorId);
+    const matches = timeline.filter((event) => event.type === "card" && event.action === "play"
+      && event.presentation !== false && event.playedAs === undefined
+      && event.card?.kind === "Negation" && event.card.id === node.physicalCardId
+      && event.player === actor?.name);
+    if (matches.length !== 1 || !matches[0].resolutionId) return continuation;
+    const event = matches[0];
+    const duplicate = publicResponses.find((candidate) => candidate.eventId === event.id || candidate.cardId === node.physicalCardId);
+    if (duplicate) {
+      if (duplicate.eventId !== event.id || duplicate.cardId !== node.physicalCardId
+        || duplicate.actorId !== node.actorId || duplicate.nodeId !== node.nodeId
+        || duplicate.frameId !== node.frameId || duplicate.causedByNodeId !== node.causedByNodeId
+        || duplicate.effectParticipantId !== continuation.effectTargetId) return continuation;
+      continue;
+    }
+    const response: HarvestNegationResponseRecord = {
+      order: publicResponses.length + 1,
+      interactionId: progress.interactionId,
+      rootFrameId: progress.rootFrameId,
+      rootEventId: progress.rootEventId,
+      rootResolutionId: progress.rootResolutionId,
+      rootCardId: progress.rootCardId,
+      effectParticipantId: continuation.effectTargetId,
+      parentFrameId: causal.parentFrameId,
+      frameId: node.frameId,
+      nodeId: node.nodeId,
+      causedByNodeId: node.causedByNodeId,
+      actorId: node.actorId,
+      cardId: node.physicalCardId,
+      eventId: event.id,
+      resolutionId: event.resolutionId,
+    };
+    if (!recordIsValid(response, publicResponses.length)) return continuation;
+    publicResponses.push(response);
+  }
+
+  return {
+    ...continuation,
+    effect: {
+      ...effect,
+      pending: {
+        ...harvest,
+        participantProgress: { ...progress, publicNegationResponses: publicResponses },
+      },
+    },
+  };
 }
 
 async function settleNegationWindow(room: RoomRow, window: NegationWindowPending) {
@@ -3687,7 +3819,11 @@ async function settleNegationWindow(room: RoomRow, window: NegationWindowPending
       current: { currentSourceId: window.continuation.sourceId, currentEffect: negationSemanticEffect(window.continuation), currentTargetIds: [window.continuation.effectTargetId], resolvingPlayerId: actor.id },
     })
     : envelope;
-  const transitioned = applySuccessfulNegation(window.continuation, actor, consumed, winnerEnvelope);
+  const transitioned = retainHarvestNegationPublicResponses(
+    applySuccessfulNegation(window.continuation, actor, consumed, winnerEnvelope),
+    log,
+    players,
+  );
   const discard = parse<Card[]>(room.discard_json, []);
   if (!window.continuation.heldCards) discard.push(...consumed);
   log = addLog(log, `New Negation window opens for ${transitioned.responseTarget ?? transitioned.cardName}.`);
@@ -3763,7 +3899,9 @@ async function resumeNormalStratagemUse(room: RoomRow, source: PlayerRow, player
     const draw = drawCards(deck, discard, choosersInOrder.length, log);
     const nextDeck = draw.deck;
     const nextDiscard = draw.discard;
-    let nextLog = addCardGroupEvent(draw.log, source.name, draw.drawn, "reveal", false);
+    const revealEventId = crypto.randomUUID();
+    const reveal = addCardGroupEventWithId(draw.log, source.name, draw.drawn, "reveal", false, source.name, undefined, { resolutionId: effect.rootResolutionId }, revealEventId);
+    let nextLog = reveal.log;
     const choosers = choosersInOrder.slice(0, draw.drawn.length);
     nextLog = addHistory(nextLog, `${source.name} reveals ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"} for Bumper Harvest. ${choosers[0]?.name ?? "No player"} resolves first.`);
     if (!choosers.length || !draw.drawn.length) {
@@ -3773,7 +3911,7 @@ async function resumeNormalStratagemUse(room: RoomRow, source: PlayerRow, player
       const participantIds = choosers.map((player) => player.id);
       const progress = initialHarvestProgress(source.id, participantIds, effect.rootEventId, effect.rootResolutionId, effect.rootCardId);
       nextLog = attachBumperHarvestRootFrame(nextLog, effect.rootEventId, source.id, effect.rootCardId, progress.causal.interactionId, progress.causal.frameId);
-      const harvest: HarvestPending = { kind: "harvest", sourceId: source.id, actorId: choosers[0].id, remainingIds: participantIds.slice(1), revealed: draw.drawn, availableIds: draw.drawn.map((revealed) => revealed.id), choices: [], resumePhase: room.phase ?? "play", reason: "Choose 1 revealed card from Bumper Harvest", causal: progress.causal, participantProgress: progress.participantProgress, heldCards: [card] };
+      const harvest: HarvestPending = { kind: "harvest", sourceId: source.id, actorId: choosers[0].id, remainingIds: participantIds.slice(1), revealed: draw.drawn, revealEventId, availableIds: draw.drawn.map((revealed) => revealed.id), choices: [], resumePhase: room.phase ?? "play", reason: "Choose 1 revealed card from Bumper Harvest", causal: progress.causal, participantProgress: progress.participantProgress, heldCards: [card] };
       await beginHarvestTarget({ ...room, causal_envelope_json: JSON.stringify(progress.causalEnvelope) }, harvest, players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(hand) } : player), nextDeck, nextDiscard, nextLog, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), source.id)], progress.causalEnvelope);
     }
     return [];
@@ -4678,13 +4816,14 @@ function groupSettlementProofFor(room: RoomRow, response: ResponsePending, conti
     || progress.participants.length !== targetIds.length
     || progress.participants.some((participant, index) => participant.playerId !== targetIds[index]
       || participant.status !== "RESOLVED" && participant.status !== "NO_LONGER_APPLICABLE"
-      || participant.status === "RESOLVED" && (!participant.outcome
-        || !isGroupParticipantProgressOutcomeAllowed(cardKind, "GROUP", participant.status, participant.outcome))
+      || participant.status === "RESOLVED" && participant.outcome !== undefined
+        && !isGroupParticipantProgressOutcomeAllowed(cardKind, "GROUP", participant.status, participant.outcome)
       || participant.status === "NO_LONGER_APPLICABLE" && participant.outcome !== undefined)) return undefined;
 
   const roots = gameTimeline(log).filter((event) => {
     const card = event.card && typeof event.card === "object" ? event.card as { id?: unknown } : null;
-    return card?.id === completed.sequenceStartCardId;
+    return event.type === "card" && event.action === "play" && event.presentation !== false
+      && event.playedAs === undefined && card?.id === completed.sequenceStartCardId;
   });
   const root = roots.length === 1 ? roots[0] : null;
   const rootCard = root?.card && typeof root.card === "object" ? root.card as { id?: unknown; kind?: unknown } : null;
@@ -5097,6 +5236,95 @@ function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: P
 }
 
 
+type PublicHarvestPoolProjection = {
+  semantics: "PROVEN";
+  rootEventId: string;
+  revealEventId: string;
+  revealed: Card[];
+  availableIds: string[];
+  choices: HarvestChoice[];
+};
+
+function publicHarvestPoolDuringNegation(
+  window: NegationWindowPending | null,
+  presentation: PresentationV2,
+  timeline: readonly unknown[],
+  players: readonly PlayerRow[],
+): PublicHarvestPoolProjection | null {
+  const continuation = window?.continuation;
+  const effect = continuation?.effect;
+  if (!window || continuation?.cardName !== "Bumper Harvest" || effect?.kind !== "harvest_target") return null;
+
+  const harvest = effect.pending;
+  const storedProgress = harvest.participantProgress;
+  const proof = presentation.bumperHarvestProgress;
+  const source = players.find((player) => player.id === harvest.sourceId);
+  const revealed = harvest.revealed;
+  const revealEventId = harvest.revealEventId;
+  if (!source || !storedProgress || storedProgress.version !== 2 || !proof || proof.semantics !== "PROVEN"
+    || !revealEventId || !revealed.length || !Array.isArray(harvest.availableIds) || !Array.isArray(harvest.choices)
+    || !storedProgress.rootEventId || !storedProgress.rootResolutionId || !storedProgress.rootCardId
+    || continuation.effectTargetId !== proof.currentParticipantId
+    || proof.currentEffectState !== (continuation.negated ? "BLOCKED" : "ACTIVE")
+    || proof.sourceId !== source.id || proof.rootEventId !== storedProgress.rootEventId
+    || proof.rootResolutionId !== storedProgress.rootResolutionId || proof.rootCardId !== storedProgress.rootCardId
+    || proof.interactionId !== storedProgress.interactionId || proof.rootFrameId !== storedProgress.rootFrameId
+    || proof.currentParticipantId !== storedProgress.currentParticipantId
+    || !proof.currentParticipantId || !proof.targetIds.includes(proof.currentParticipantId)) return null;
+
+  const events = timeline.flatMap((value) => {
+    const event = record(value);
+    return event ? [event] : [];
+  });
+  const rootMatches = events.filter((event) => event.id === proof.rootEventId);
+  const revealMatches = events.filter((event) => event.id === revealEventId);
+  const root = rootMatches.length === 1 ? rootMatches[0] : null;
+  const reveal = revealMatches.length === 1 ? revealMatches[0] : null;
+  const rootCard = record(root?.card);
+  const rootProof = record(root?.bumperHarvestRoot);
+  const revealCards = Array.isArray(reveal?.cards) ? reveal.cards.map(record) : [];
+  if (!root || !reveal || root.type !== "card" || root.action !== "play" || root.presentation === false
+    || root.player !== source.name || root.resolutionId !== proof.rootResolutionId
+    || rootCard?.id !== proof.rootCardId || rootCard.kind !== "BumperHarvest"
+    || rootProof?.semantics !== "PROVEN" || rootProof.sourceId !== source.id || rootProof.cardId !== proof.rootCardId
+    || rootProof.interactionId !== proof.interactionId || rootProof.rootFrameId !== proof.rootFrameId
+    || reveal.type !== "cards" || reveal.action !== "reveal" || reveal.presentation !== false
+    || reveal.player !== source.name || reveal.privateToPlayerId !== undefined
+    || reveal.resolutionId !== proof.rootResolutionId || revealCards.length !== revealed.length
+    || revealCards.some((card, index) => !card || card.id !== revealed[index]?.id || card.kind !== revealed[index]?.kind
+      || card.suit !== revealed[index]?.suit || card.rank !== revealed[index]?.rank)) return null;
+
+  const cardIds = revealed.map((card) => card.id);
+  const availableIds = harvestAvailableIds(harvest);
+  const choices = harvestChoices(harvest);
+  if (cardIds.some((id) => typeof id !== "string" || !id) || new Set(cardIds).size !== cardIds.length
+    || availableIds.some((id) => typeof id !== "string" || !id) || new Set(availableIds).size !== availableIds.length
+    || choices.some((choice) => !choice.cardId || !choice.playerId || !choice.playerName)
+    || new Set(choices.map((choice) => choice.cardId)).size !== choices.length
+    || new Set(choices.map((choice) => choice.playerId)).size !== choices.length
+    || [...availableIds, ...choices.map((choice) => choice.cardId)].length !== cardIds.length
+    || cardIds.some((id) => !availableIds.includes(id) && !choices.some((choice) => choice.cardId === id))
+    || availableIds.some((id) => !cardIds.includes(id))
+    || choices.some((choice) => !cardIds.includes(choice.cardId))) return null;
+
+  const provenChoices = proof.participants.filter((participant) => participant.outcome === "CHOSE_CARD");
+  if (provenChoices.length !== choices.length || choices.some((choice, index) => {
+    const participant = provenChoices[index];
+    const player = players.find((candidate) => candidate.id === choice.playerId);
+    return !participant || participant.playerId !== choice.playerId || !player || player.name !== choice.playerName
+      || participant.status !== "RESOLVED";
+  })) return null;
+
+  return {
+    semantics: "PROVEN",
+    rootEventId: proof.rootEventId,
+    revealEventId,
+    revealed,
+    availableIds,
+    choices,
+  };
+}
+
 async function roomState(code: string, token?: string, includeAttackDodgeDiagnostics = false, requestedViewerId?: string | null) {
   const db = env.DB;
   const room = await db.prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
@@ -5168,10 +5396,16 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   // Reading a room must not create D1 writes. Presence is refreshed by the
   // throttled heartbeat action below, never by normal room polling.
   const viewerPlayerIds = new Set(sessionPlayers.map((player) => player.id));
-  const actionRevision = await actionRevisionFor(room, players, projectedActionPlayerId);
   const responseDeadline = negationWindow?.deadline ?? (pending && "deadline" in pending ? pending.deadline ?? 0 : 0);
   const responseCountdownVisibleAt = negationWindow?.openedAt ?? (room.phase === "response" && responseDeadline ? responseDeadline - HUMAN_RESPONSE_TIMEOUT_MS : 0);
   const actionPlayerId = room.status === "heroes" ? projectedActionPlayerId : negationWindow ? null : negationWaitingForOther || room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
+  const currentTriggerContext = triggerPending ? triggerContextFor(triggerPending, players) : null;
+  const currentTriggerOptions = triggerPending ? triggerOptionsFor(triggerPending, players) : [];
+  const privateTriggerDecision = Boolean(triggerPending && currentTriggerContext
+    && (currentTriggerOptions.some((option) => triggerAvailability(option.effectId, currentTriggerContext) === "private")
+      || privateOpportunityWindowEffectIds(currentTriggerContext, triggerPending.resolvedEffectIds).length > 0));
+  const concealPrivateTriggerDecision = privateTriggerDecision && me?.id !== actualActionPlayerId;
+  const actionRevision = await actionRevisionFor(room, players, concealPrivateTriggerDecision ? null : projectedActionPlayerId);
   const isRoomHost = me?.id === room.host_player_id;
   const hostPresetResult = room.test_room && room.status === "lobby" && isRoomHost
     ? testPresetFromRoom(room, new Set(players.map((player) => player.seat)))
@@ -5192,6 +5426,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
   const actionReason = negationWaitingForOther
     ? "Waiting for Negation..."
     : negationWindow ? negationWindowSubmitted ? "Response submitted — waiting" : sharedWindowDecision?.options.length ? "Play Negation or Pass" : "No Negation available. Pass."
+    : concealPrivateTriggerDecision ? "Resolving…"
     : room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
   const responseDecision = negationWindow ? sharedWindowDecision
     : me?.id === actualActionPlayerId ? responseDecisionFor(responsePending ?? pending, me ? responseContext(me, players, room.turn_seat) : undefined) : null;
@@ -5204,7 +5439,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     }))
     : [];
   const triggerOptions = me?.id === actualActionPlayerId && triggerPending
-    ? triggerOptionsFor(triggerPending, players)
+    ? currentTriggerOptions
     : me?.id === actualActionPlayerId ? activeHeroSkillOptions(me, room, players) : [];
   const legacyFrostAvailable = triggerPending?.event === "damage_about_to_apply"
     && triggerOptionsFor(triggerPending, players).some((option) => option.effectId === "frost_sword_damage_about_to_apply");
@@ -5222,9 +5457,9 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     : undefined;
   const currentAction: CurrentAction = {
     version: 3,
-    kind: responsePending || negationWindow ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
-    actorId: room.status === "heroes" ? projectedActionPlayerId : negationWindow ? me?.id ?? null : actionPlayerId,
-    deadline: responseDeadline,
+    kind: concealPrivateTriggerDecision ? "none" : responsePending || negationWindow ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
+    actorId: concealPrivateTriggerDecision ? null : room.status === "heroes" ? projectedActionPlayerId : negationWindow ? me?.id ?? null : actionPlayerId,
+    deadline: concealPrivateTriggerDecision ? 0 : responseDeadline,
     reason: actionReason,
     ...(negationWindow ? { negationWindowId: negationWindow.windowId } : {}),
     // This list is calculated only for the current private view. It is never
@@ -5235,10 +5470,12 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     ...(borrowedSwordTargets.length ? { borrowedSwordTargets } : {}),
     ...(targetCardSelection ? { targetCardSelection } : {}),
     ...(responseDecision ? { requirement: responseDecision.requirement, options: responseDecision.options, declineAction: responseDecision.declineAction } : {}),
-    ...(triggerPending ? { triggerEvent: triggerPending.event, triggerOptions, ...(legalActions.includes("decline_trigger") ? { declineAction: "decline_trigger" as GameplayAction } : {}) } : triggerOptions.length ? { triggerOptions } : {}),
+    ...(!concealPrivateTriggerDecision && triggerPending ? { triggerEvent: triggerPending.event, triggerOptions, ...(legalActions.includes("decline_trigger") ? { declineAction: "decline_trigger" as GameplayAction } : {}) }
+      : concealPrivateTriggerDecision ? { triggerOptions: [] }
+      : triggerOptions.length ? { triggerOptions } : {}),
     ...(distributionPending && me?.id === distributionPending.actorId ? { distribution: { cards: distributionPending.cards, eligibleRecipientIds: distributionPending.eligibleRecipientIds } } : {}),
     ...(deckReorderPending && me?.id === deckReorderPending.actorId ? { deckReorder: { cards: deckReorderPending.cards, minTop: deckReorderPending.minTop, maxTop: deckReorderPending.maxTop } } : {}),
-    ...(presentation ? { presentation } : {}),
+    ...(!concealPrivateTriggerDecision && presentation ? { presentation } : {}),
   };
   const projectedTimeline = gameTimeline(rawLog, me?.id);
   const presentationInput = {
@@ -5261,19 +5498,20 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     oathRecipientIds: oathRecipientIds(players.map((player) => ({ id: player.id, alive: Boolean(player.alive), hp: player.hp, maxHp: player.max_hp }))),
   };
   const presentationV2 = projectPresentationV2(presentationInput);
+  const publicHarvestPool = publicHarvestPoolDuringNegation(negationWindow, presentationV2, projectedTimeline, players);
   const attackDodgeProjectionDiagnostics = includeAttackDodgeDiagnostics
     ? attackRootProjectionDiagnosticsFor(presentationInput)
     : null;
   const presentationSnapshot = composePresentationSnapshot({ presentationV2, currentAction, actionRevision, viewerId: me?.id ?? null });
   return {
     ...(attackDodgeProjectionDiagnostics ? { attackDodgeProjectionDiagnostics } : {}),
-    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, isTestRoom: Boolean(room.test_room), testHandPreset: hostTestHandPreset, responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending ? { kind: responsePending || negationWindow ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction, presentationSnapshot,
+    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, isTestRoom: Boolean(room.test_room), testHandPreset: hostTestHandPreset, responseCountdownVisibleAt: concealPrivateTriggerDecision ? 0 : responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending && !concealPrivateTriggerDecision ? { kind: responsePending || negationWindow ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction, presentationSnapshot,
     isHost: isRoomHost, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
     myHeroOptions,
     turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null,
     log: rawLog.flatMap((entry, index) => { if (entry.startsWith("@card:") || entry.startsWith("@cards:")) return []; if (entry.startsWith("@history:")) { try { return [(JSON.parse(entry.slice(9)) as { message: string }).message]; } catch { return []; } } const event = messageEvent(entry, index); return event ? [event.message] : []; }),
-    timeline: projectedTimeline, presentationV2, myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && me?.seat === room.turn_seat, actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && (negationWindow ? Boolean(sharedWindowResponse) : me?.id === actualActionPlayerId),
+    timeline: projectedTimeline, presentationV2, myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && me?.seat === room.turn_seat, actionPlayerId: concealPrivateTriggerDecision ? null : actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && (negationWindow ? Boolean(sharedWindowResponse) : me?.id === actualActionPlayerId),
     pendingAttack,
     // Compatibility projection for old clients/tests; canonical damage
     // reactions are persisted as TriggerPending and submitted via trigger or
@@ -5292,7 +5530,8 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     // Keep it on these projected public shapes too; otherwise a valid server
     // response is mistaken for an unknown state and its controls disappear.
     pendingNegation,
-    pendingHarvest: pending?.kind === "harvest" ? { kind: "harvest", sourceId: pending.sourceId, actorId: pending.actorId, revealed: pending.revealed, availableIds: harvestAvailableIds(pending), choices: harvestChoices(pending), previewCardId: pending.previewCardId ?? null, complete: Boolean(pending.completeAt), countdownUntil: pending.completeAt ?? pending.choiceDeadlineAt ?? 0 } : null,
+    pendingHarvest: pending?.kind === "harvest" ? { kind: "harvest", sourceId: pending.sourceId, actorId: pending.actorId, revealEventId: pending.revealEventId ?? null, revealed: pending.revealed, availableIds: harvestAvailableIds(pending), choices: harvestChoices(pending), complete: Boolean(pending.completeAt), countdownUntil: pending.completeAt ?? pending.choiceDeadlineAt ?? 0 } : null,
+    publicHarvestPool,
     pendingTargetCard: pending?.kind === "target_card" ? { kind: "target_card", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, cardKind: pending.cardKind } : null,
     pendingBorrowedSword: pending?.kind === "borrowed_sword" ? { kind: "borrowed_sword", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, holderId: pending.holderId, stage: pending.stage, weaponId: pending.weaponId ?? null, eligibleTargetIds: pending.stage === "choose_target" ? borrowedSwordForcedTargetIds(players, pending.sourceId, pending.holderId) : [] } : responsePending?.continuation.kind === "borrowed_sword_attack" ? { kind: "borrowed_sword", sourceId: responsePending.continuation.sourceId, actorId: responsePending.actorId, targetId: responsePending.continuation.targetId, holderId: responsePending.continuation.holderId, stage: "force_attack", weaponId: responsePending.continuation.weaponId, eligibleTargetIds: [] } : null,
     pendingDying: pending?.kind === "dying" ? { kind: "dying", sourceId: pending.sourceId, targetId: pending.targetId, origin: pending.origin ?? null, recoveryNeeded: recoveryNeeded(players.find((player) => player.id === pending.targetId)?.hp ?? 0), deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,
@@ -6192,7 +6431,8 @@ export async function POST(request: Request) {
       const discard = parse<Card[]>(liveRoom.discard_json, []);
       let log = parse<string[]>(liveRoom.log_json, []);
       if (action === "decline_trigger_effect") {
-        const resolved = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), ...available.map((option) => option.effectId)])] } satisfies TurnEndTriggerContinuation;
+        const privateWindows = context ? privateOpportunityWindowEffectIds(context, trigger.resolvedEffectIds) : [];
+        const resolved = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), ...available.map((option) => option.effectId), ...privateWindows])] } satisfies TurnEndTriggerContinuation;
         await continueTurnEndEvent({ ...liveRoom, phase: "resolving", pending_json: null }, resolved, players, parse<Card[]>(liveRoom.deck_json, []), discard, addLog(log, `${source.name} declines the turn-end option; the event continues.`));
         return json({ room: await roomState(code, token) });
       }
@@ -7041,12 +7281,20 @@ export async function POST(request: Request) {
   if (action === "add_test_players") {
     if (!me || me.id !== room.host_player_id) return json({ error: "Only the host can add test players." }, 403);
     if (room.status !== "lobby") return json({ error: "Test players can only be added before the match starts." }, 409);
+    const requestedCount = body.count;
+    if (requestedCount !== undefined && (typeof requestedCount !== "number" || !Number.isInteger(requestedCount) || requestedCount < 1)) {
+      return json({ error: "Choose a whole number of test players to add." }, 400);
+    }
     const result = await db.prepare("SELECT seat FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<{ seat: number }>();
     const seats = new Set((result.results ?? []).map((row) => row.seat));
-    const needed = Math.max(0, 4 - seats.size);
+    const needed = requestedCount === undefined ? Math.max(0, 4 - seats.size) : requestedCount;
+    const availableSeats = Math.max(0, room.max_players - seats.size);
+    if (needed > availableSeats) return json({ error: "There are not enough open seats for that many test players." }, 409);
     const inserts = [];
     for (let index = 0; index < needed; index++) {
-      let seat = 0; while (seats.has(seat)) seat++; seats.add(seat);
+      let seat = 0; while (seat < room.max_players && seats.has(seat)) seat++;
+      if (seat >= room.max_players) return json({ error: "There are no open seats for another test player." }, 409);
+      seats.add(seat);
       inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, ready, connected_at, is_test_player) VALUES (?, ?, ?, ?, ?, 1, ?, 1)").bind(crypto.randomUUID(), room.id, `Test Player ${seat + 1}`, tokenHash, seat, Date.now()));
     }
     if (inserts.length) await db.batch(inserts);

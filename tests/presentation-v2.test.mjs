@@ -1417,7 +1417,7 @@ test("Group settlement projection requires one exact root and complete ordered t
   assert.deepEqual(project(timeline.map((event) => event.id === "raining-settlement-event" ? { ...event, resolutionId: "stale-resolution" } : event)).groupSettlements, [], "stale settlement resolution fails closed");
 
   const barbarianProof = { ...proof, rootEventId: "barbarian-root-event", rootResolutionId: "barbarian-resolution", interactionId: "barbarian-interaction", groupFrameId: "barbarian-frame", cardKind: "BarbarianInvasion", participants: [
-    { playerId: "B", order: 1, status: "RESOLVED", outcome: "DAMAGED" },
+    { playerId: "B", order: 1, status: "RESOLVED" },
     { playerId: "C", order: 2, status: "RESOLVED", outcome: "DEFEATED" },
   ] };
   const barbarianTimeline = [

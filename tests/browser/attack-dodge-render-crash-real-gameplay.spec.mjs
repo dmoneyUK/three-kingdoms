@@ -93,7 +93,8 @@ async function playAttack({ page, room, attacker, defender, attack }) {
   const attackCard = dock.locator(`[data-hand-card-id="${attack.id}"] .game-card`);
   await expect(attackCard).toBeEnabled();
   await attackCard.click();
-  await page.getByRole("button", { name: `Select ${defender.name}`, exact: true }).click();
+  const target = page.getByRole("button", { name: `Select ${defender.name}`, exact: true });
+  await target.click({ position: { x: 8, y: 8 } });
   const confirm = dock.locator('[data-console-surface="local-operation"] button.primary');
   await expect(confirm).toBeEnabled();
   const submitted = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
@@ -137,6 +138,7 @@ async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth
     };
     const messageBox = box(message);
     const cardBox = box(card);
+    const messageStyle = getComputedStyle(message);
     const tableElement = document.querySelector(".play-table");
     const tableBox = tableElement ? box(tableElement) : null;
     const obstacles = [...document.querySelectorAll(".opponent-player-card,.player-square,.player-board-status,.visible-countdown,.stage-system-cluster,.local-player-dock,.decision-status,.public-card-journey-card")]
@@ -159,6 +161,7 @@ async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth
         top: Number(card.getAttribute("data-public-card-journey-target-top")),
       },
       viewport: { width: document.documentElement.clientWidth, height: document.documentElement.clientHeight },
+      layoutPending: root.getAttribute("data-public-card-layout-pending"),
       overlaps: obstacles.filter((obstacle) => messageBox.left < obstacle.right && messageBox.right > obstacle.left
         && messageBox.top < obstacle.bottom && messageBox.bottom > obstacle.top),
       cardOverlaps: obstacles.filter((obstacle) => cardBox.left < obstacle.right && cardBox.right > obstacle.left
@@ -190,6 +193,17 @@ async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth
         fontFamily: getComputedStyle(message.querySelector("b")).fontFamily,
         letterSpacing: Number.parseFloat(getComputedStyle(message.querySelector("b")).letterSpacing),
       },
+      frame: {
+        paddingTop: Number.parseFloat(messageStyle.paddingTop),
+        paddingRight: Number.parseFloat(messageStyle.paddingRight),
+        paddingBottom: Number.parseFloat(messageStyle.paddingBottom),
+        paddingLeft: Number.parseFloat(messageStyle.paddingLeft),
+        borderColor: messageStyle.borderTopColor,
+        borderWidth: Number.parseFloat(messageStyle.borderTopWidth),
+        backgroundColor: messageStyle.backgroundColor,
+        boxShadow: messageStyle.boxShadow,
+      },
+      computedVisibility: getComputedStyle(message).visibility,
     };
   }, eventId);
   let latestGeometry = null;
@@ -198,6 +212,8 @@ async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth
       latestGeometry = await measure();
       return Boolean(latestGeometry?.positioned === "true"
         && latestGeometry.fallback == null
+        && latestGeometry.layoutPending === "false"
+        && latestGeometry.declaredLines <= 2
         && latestGeometry.overlaps.length === 0
         && (latestGeometry.cardPhase !== "reveal" || latestGeometry.cardOverlaps.length === 0)
         && (latestGeometry.cardPhase !== "reveal" || latestGeometry.message.bottom <= latestGeometry.card.top - 5));
@@ -212,13 +228,27 @@ async function assertAnnouncementAboveCurrentCard(display, eventId, minimumWidth
   expect(geometry.message.left).toBeGreaterThanOrEqual(8);
   expect(geometry.message.right).toBeLessThanOrEqual(geometry.viewport.width - 8);
   if (geometry.cardPhase === "reveal") expect(geometry.message.bottom).toBeLessThanOrEqual(geometry.card.top - 5);
-  expect(geometry.message.width).toBeGreaterThanOrEqual(minimumWidth);
+  expect(geometry.message.width, JSON.stringify(geometry)).toBeGreaterThanOrEqual(minimumWidth);
   expect(geometry.declaredWidth).toBe(Math.round(geometry.message.width));
   expect(geometry.declaredLines).toBeLessThanOrEqual(2);
   expect(geometry.typography.fontSize).toBeGreaterThanOrEqual(14);
   expect(geometry.typography.fontSize).toBeLessThanOrEqual(16);
   expect(geometry.typography.fontFamily).not.toMatch(/condensed|narrow/i);
   expect(geometry.typography.letterSpacing).toBeLessThanOrEqual(0.3);
+  expect(geometry.frame.borderWidth).toBe(1);
+  for (const [edge, padding] of Object.entries({
+    top: geometry.frame.paddingTop,
+    right: geometry.frame.paddingRight,
+    bottom: geometry.frame.paddingBottom,
+    left: geometry.frame.paddingLeft,
+  })) {
+    const innerSpacing = padding + geometry.frame.borderWidth;
+    expect(innerSpacing, `${edge} inner spacing: ${JSON.stringify(geometry.frame)}`).toBeGreaterThanOrEqual(6);
+    expect(innerSpacing).toBeLessThanOrEqual(10);
+  }
+  expect(geometry.frame.borderColor).toMatch(/217, 193, 127/);
+  expect(geometry.frame.backgroundColor).toMatch(/17, 20, 15/);
+  expect(geometry.frame.boxShadow).toContain("inset");
   expect(geometry.overlaps).toEqual([]);
   if (geometry.cardPhase === "reveal") expect(geometry.cardOverlaps).toEqual([]);
   expect(geometry.liveStatusCount).toBe(1);
@@ -357,10 +387,8 @@ test("Attack and Dodge mount the card journey and settle without a GameRoom cras
   const confirm = defenderDock.locator('[data-action-slot="primary"] button.primary');
   await expect(confirm).toHaveText("Confirm");
   await expect(confirm).toBeEnabled();
-  await expect(details).toBeVisible();
-  await page.keyboard.press("Escape");
+  // Selecting the response closes its nonmodal card preview.
   await expect(details).toHaveCount(0);
-  await expect(attackCardJourney).toBeFocused();
   const dodgeSubmission = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
     && response.request().method() === "POST"
     && response.request().postDataJSON()?.action === "respond");

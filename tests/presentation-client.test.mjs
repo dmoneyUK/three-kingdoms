@@ -82,6 +82,7 @@ function groupProgressSnapshot({ child = false, outcome = null, cardKind = "Rain
       sourceId: "A", originalTargetIds: targetIds, activeTargetIds: ["B"], currentParticipantId: "B",
       decisionActorId: "B", activeResolverId: "B", parentParticipantId: child ? "B" : null, participantIds: ["A", ...targetIds],
     },
+    ...(child ? { rootOrigin: { frameId: "group-frame", stage: "GROUP_RESOLUTION", sourceId: "A", effect, targetIds } } : {}),
     continuity: child ? { relation: "CHILD_FRAME", parentFrameId: "group-frame" } : { relation: "ROOT_FRAME", parentFrameId: null },
   });
   return snapshot({
@@ -644,6 +645,9 @@ test("adapter carries validated ordered Standard AOE progress through root and c
     const view = buildPresentationClientView(groupProgressSnapshot({ child }), "D");
     assert.equal(view.hasInteraction, true);
     assert.equal(view.groupResolution.resolutionSemantics, "GROUP");
+    if (child) assert.deepEqual(view.rootOrigin, {
+      frameId: "group-frame", stage: "GROUP_RESOLUTION", sourceId: "A", effect: "Raining Arrows", targetIds: ["C", "B", "E", "D"],
+    }, "nested Group children preserve the server-owned root origin in ID form");
     assert.deepEqual(view.groupParticipantProgress.map(({ playerId, order, status }) => ({ playerId, order, status })), [
       { playerId: "C", order: 1, status: "RESOLVED" },
       { playerId: "B", order: 2, status: child ? "PAUSED" : "CURRENT" },
@@ -662,6 +666,19 @@ test("adapter carries validated ordered Standard AOE progress through root and c
       { id: "E", order: 3, status: "PENDING", isViewer: false },
       { id: "D", order: 4, status: "PENDING", isViewer: true },
     ]);
+  }
+});
+
+test("Group child root origins retain ID-shaped proof for both Standard AOE cards", () => {
+  for (const cardKind of ["BarbarianInvasion", "RainingArrows"]) {
+    const view = buildPresentationClientView(groupProgressSnapshot({ child: true, cardKind }), "D");
+    const expectedEffect = cardKind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows";
+    assert.deepEqual(view.rootOrigin, {
+      frameId: "group-frame", stage: "GROUP_RESOLUTION", sourceId: "A", effect: expectedEffect, targetIds: ["C", "B", "E", "D"],
+    });
+    const stage = buildInteractionStageView(view, resolveDisplayName);
+    assert.deepEqual(stage.rootOrigin?.source, { id: "A", name: "Ma Chao", known: true });
+    assert.deepEqual(stage.rootOrigin?.targets.map(({ id }) => id), ["C", "B", "E", "D"]);
   }
 });
 

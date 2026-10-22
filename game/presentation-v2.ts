@@ -2,7 +2,7 @@ import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
 import { CARD_DEFINITIONS } from "./cards";
 import { CARD_KINDS, type Card, type CardKind } from "./model";
-import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type NegationHistoryRecord } from "./pending";
+import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestNegationResponseRecord, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type NegationHistoryRecord } from "./pending";
 
 export type PresentationV2Event = {
   id: string;
@@ -746,6 +746,12 @@ export type PresentationBumperHarvestProgress = {
   currentParticipantId: string | null;
   currentEffectState?: "ACTIVE" | "BLOCKED";
   participants: readonly { playerId: string; order: number; status: HarvestParticipantProgressStatus; outcome?: HarvestParticipantProgressOutcome }[];
+  publicNegationResponses?: readonly PresentationBumperHarvestNegationResponse[];
+};
+
+/** Exact public Negation card events retained for one proven Bumper Harvest root. */
+export type PresentationBumperHarvestNegationResponse = HarvestNegationResponseRecord & {
+  semantics: "PROVEN";
 };
 
 export type PresentationStableBoundaryKind = "REST" | "CHOICE" | "SETTLEMENT" | "SPECIAL";
@@ -911,6 +917,75 @@ function isBumperHarvestNegationPending(pending: unknown): boolean {
   const effect = record(continuation?.effect);
   return item?.kind === "response" && continuation?.kind === "negation" && effect?.kind === "harvest_target"
     && record(effect.pending)?.kind === "harvest";
+}
+
+function publicHarvestNegationResponsesFor(
+  value: unknown,
+  progress: Pick<PresentationBumperHarvestProgress, "interactionId" | "rootFrameId" | "rootEventId" | "rootResolutionId" | "rootCardId" | "targetIds">,
+  timeline: readonly PresentationV2Event[],
+): PresentationBumperHarvestNegationResponse[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return undefined;
+  if (!value.length) return [];
+
+  const responseEvents = new Set<string>();
+  const physicalCards = new Set<string>();
+  const nodeIds = new Set<string>();
+  const previousByChain = new Map<string, string>();
+  const responses: PresentationBumperHarvestNegationResponse[] = [];
+  for (let index = 0; index < value.length; index++) {
+    const raw = record(value[index]);
+    const participantId = stringValue(raw?.effectParticipantId);
+    const frameId = stringValue(raw?.frameId);
+    const nodeId = stringValue(raw?.nodeId);
+    const cardId = stringValue(raw?.cardId);
+    const eventId = stringValue(raw?.eventId);
+    const resolutionId = stringValue(raw?.resolutionId);
+    const actorId = stringValue(raw?.actorId);
+    const causedByNodeId = raw?.causedByNodeId;
+    if (!raw || raw.order !== index + 1
+      || raw.interactionId !== progress.interactionId || raw.rootFrameId !== progress.rootFrameId
+      || raw.rootEventId !== progress.rootEventId || raw.rootResolutionId !== progress.rootResolutionId
+      || raw.rootCardId !== progress.rootCardId || raw.parentFrameId !== progress.rootFrameId
+      || !participantId || !progress.targetIds.includes(participantId)
+      || !frameId || !nodeId || !cardId || !eventId || !resolutionId || !actorId
+      || causedByNodeId !== null && typeof causedByNodeId !== "string"
+      || responseEvents.has(eventId) || physicalCards.has(cardId) || nodeIds.has(nodeId)) return undefined;
+
+    const chainKey = `${participantId}:${frameId}`;
+    const previousNodeId = previousByChain.get(chainKey);
+    if ((previousNodeId === undefined && causedByNodeId !== null)
+      || (previousNodeId !== undefined && causedByNodeId !== previousNodeId)) return undefined;
+    const matches = timeline.filter((event) => event.id === eventId);
+    const event = matches.length === 1 ? matches[0] : null;
+    if (!event || event.type !== "card" || event.action !== "play" || event.presentation === false
+      || event.playedAs !== undefined || event.card?.kind !== "Negation" || event.card.id !== cardId
+      || event.resolutionId !== resolutionId) return undefined;
+
+    responseEvents.add(eventId);
+    physicalCards.add(cardId);
+    nodeIds.add(nodeId);
+    previousByChain.set(chainKey, nodeId);
+    responses.push({
+      semantics: "PROVEN",
+      order: index + 1,
+      interactionId: progress.interactionId,
+      rootFrameId: progress.rootFrameId,
+      rootEventId: progress.rootEventId,
+      rootResolutionId: progress.rootResolutionId,
+      rootCardId: progress.rootCardId,
+      effectParticipantId: participantId,
+      parentFrameId: progress.rootFrameId,
+      frameId,
+      nodeId,
+      causedByNodeId: causedByNodeId as string | null,
+      actorId,
+      cardId,
+      eventId,
+      resolutionId,
+    });
+  }
+  return responses;
 }
 
 type DyingDecisionProof = {
@@ -1436,6 +1511,14 @@ function bumperHarvestProgressFor(
     } else if (outcome !== undefined) return null;
     participants.push({ playerId, order: index + 1, status: status as HarvestParticipantProgressStatus, ...(outcome === "CHOSE_CARD" || outcome === "NEGATED" ? { outcome } : {}) });
   }
+  const publicNegationResponses = publicHarvestNegationResponsesFor(progress.publicNegationResponses, {
+    interactionId: progress.interactionId,
+    rootFrameId,
+    rootEventId,
+    rootResolutionId,
+    rootCardId,
+    targetIds: root.origin.originalTargetIds,
+  }, timeline);
   const current = participants.filter(({ status }) => status === "CURRENT");
   const currentParticipantId = typeof progress.currentParticipantId === "string" && progress.currentParticipantId.length
     ? progress.currentParticipantId
@@ -1506,6 +1589,7 @@ function bumperHarvestProgressFor(
     currentParticipantId,
     ...(currentEffectState ? { currentEffectState } : {}),
     participants,
+    ...(publicNegationResponses?.length ? { publicNegationResponses } : {}),
   };
 }
 
@@ -1652,7 +1736,11 @@ function groupRootCardProofFor(
   const heldRootCards = heldCards.filter((heldCard) => heldCard?.id === rootCardId);
   const heldRootCard = heldRootCards.length === 1 ? heldRootCards[0] : null;
   const rootEvent = uniqueTimelineEventById(rootEventId, timeline);
-  const cardEvents = rootCardId ? timeline.filter((event) => eventCardIds(event).includes(rootCardId)) : [];
+  // Internal/non-presented draws can retain the same physical card ID that is
+  // later used by the public play. The root's public identity is unique among
+  // committed, visible play events; private draw history must not shadow it.
+  const cardEvents = rootCardId ? timeline.filter((event) => event.type === "card"
+    && event.action === "play" && event.presentation !== false && event.card?.id === rootCardId) : [];
   const sourceId = values?.sourceId;
   const targetIds = values?.targetIds ?? [];
 
@@ -2997,7 +3085,8 @@ function groupSettlementsFor(timeline: readonly PresentationV2Event[]): Presenta
       const outcome = participant?.outcome;
       if (!playerId || participantIds.has(playerId) || participant?.order !== index + 1
         || (status !== "RESOLVED" && status !== "NO_LONGER_APPLICABLE")
-        || status === "RESOLVED" && (outcome !== "AVOIDED" && outcome !== "DAMAGED" && outcome !== "NEGATED" && outcome !== "DEFEATED")
+        || status === "RESOLVED" && outcome !== undefined
+          && outcome !== "AVOIDED" && outcome !== "DAMAGED" && outcome !== "NEGATED" && outcome !== "DEFEATED"
         || status === "NO_LONGER_APPLICABLE" && outcome !== undefined
         || outcome !== undefined && !isGroupParticipantProgressOutcomeAllowed(proof.cardKind as "RainingArrows" | "BarbarianInvasion", "GROUP", status as GroupParticipantProgressStatus, outcome as GroupParticipantProgressOutcome)) return [];
       participantIds.add(playerId);

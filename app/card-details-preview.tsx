@@ -11,10 +11,12 @@ export function CardDetailsPreview({
   card,
   context,
   onClose,
+  returnFocusTo,
 }: {
   card: Card;
   context: CardDetailsContext;
   onClose: (restoreFocus?: boolean) => void;
+  returnFocusTo: HTMLElement | null;
 }) {
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
@@ -28,13 +30,16 @@ export function CardDetailsPreview({
     const dismissOutsideTap = (event: PointerEvent) => {
       const target = event.target;
       if (target instanceof Node && panelRef.current?.contains(target)) return;
+      // Keep the opener mounted through its click so it can toggle this same
+      // physical card's preview closed.
+      if (target instanceof Node && returnFocusTo?.contains(target)) return;
       // The stage passes pointer events through outside the panel. Closing on
       // pointerdown keeps the underlying game control's click available.
       onClose(false);
     };
     document.addEventListener("pointerdown", dismissOutsideTap);
     return () => document.removeEventListener("pointerdown", dismissOutsideTap);
-  }, [onClose]);
+  }, [onClose, returnFocusTo]);
 
   return <div className="card-details-stage" data-card-details-stage="true">
     <section

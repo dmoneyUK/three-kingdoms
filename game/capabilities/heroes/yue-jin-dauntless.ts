@@ -7,6 +7,13 @@ const id = "yue_jin_dauntless";
 export const yueJinDauntlessTrigger: TriggeredEffect = {
   id,
   event: "turn_end",
+  privateOpportunityWindow(context) {
+    return context.turnEndStage === "activation" && context.hero === "yue-jin"
+      && Boolean(context.playerId && context.targetId && context.playerId !== context.targetId);
+  },
+  publicAvailability(context) {
+    return context.turnEndStage === "activation" ? "private" : "public";
+  },
   getOption(context) {
     if (context.turnEndStage === "equipment" && context.playerId === context.targetId && (context.targetEquipment?.length ?? 0) > 0) {
       return {

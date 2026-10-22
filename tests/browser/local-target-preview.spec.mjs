@@ -8,7 +8,15 @@ async function loadFixture(page, { state, count = 4, width, height = 900, hero, 
 
 async function selectOrdinaryTarget(page, targetId = "p2") {
   await page.locator('[data-hand-card-id="browser-ordinary-5"] .game-card').click();
-  await page.getByRole("button", { name: `Select Player ${targetId.slice(1)}`, exact: true }).click();
+  await selectOpponentTarget(page, targetId);
+}
+
+async function selectOpponentTarget(page, targetId) {
+  // The separate 44px Inspect control occupies a corner of compact seats.
+  // Tap an unobstructed point on the Hero target so the real target action is
+  // exercised without relying on a forced click through the Inspect button.
+  await page.getByRole("button", { name: `Select Player ${targetId.slice(1)}`, exact: true })
+    .click({ position: { x: 7, y: 7 } });
 }
 
 function inspector(page) {
@@ -26,9 +34,8 @@ for (const width of [390, 480, 1440]) {
     await selectOrdinaryTarget(page, "p2");
     const panel = inspector(page);
     await expect(panel).toHaveAttribute("data-inspect-player-id", "p2");
-    await expect(panel.locator(".hero-focus-heading strong")).toHaveText("INSPECT · Player 2");
-    await expect(panel.locator(".hero-focus-identity")).toContainText("Player 2");
-    await expect(panel.locator(".hero-focus-identity [data-public-hand-count]")).toHaveText("Hand · 2");
+    await expect(panel.locator(".hero-focus-inspect-identity-caption .hero-focus-identity-player")).toHaveText("Player 2");
+    await expect(panel.locator(".hero-focus-identity-stats [data-public-hand-count]")).toHaveText("Hand · 2");
     await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
     await expect(page.locator(".hero-focus-preview, [data-hero-focus-mode=PREVIEW]")).toHaveCount(0);
     await expect(page.locator('.opponent-player-card.selected-target')).toHaveAttribute("data-player-anchor", "p2");
@@ -55,14 +62,27 @@ test("information affordance changes only the inspector subject and closing pres
   const panel = inspector(page);
   await expect(panel).toHaveAttribute("data-inspect-player-id", "p2");
 
-  await page.getByRole("button", { name: "Inspect Player 3", exact: true }).click();
+  const inspectPlayerTwo = page.getByRole("button", { name: "Inspect Player 2", exact: true });
+  const inspectPlayerThree = page.getByRole("button", { name: "Inspect Player 3", exact: true });
+  await inspectPlayerTwo.click();
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+  await expect(page.locator('.opponent-player-card.selected-target')).toHaveAttribute("data-player-anchor", "p2");
+  await inspectPlayerTwo.click();
+  await expect(panel).toHaveAttribute("data-inspect-player-id", "p2");
+  await inspectPlayerThree.click();
   await expect(panel).toHaveAttribute("data-inspect-player-id", "p3");
   await expect(page.locator('.opponent-player-card.selected-target')).toHaveAttribute("data-player-anchor", "p2");
   await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
   await expect.poll(() => page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
 
-  await page.getByRole("button", { name: "Close Player 3 inspection", exact: true }).click();
+  await inspectPlayerThree.click();
   await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+  await expect(page.locator('.opponent-player-card.selected-target')).toHaveAttribute("data-player-anchor", "p2");
+  await inspectPlayerThree.click();
+  await expect(panel).toHaveAttribute("data-inspect-player-id", "p3");
+  await inspectPlayerThree.click();
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+  await expect(inspectPlayerThree).toBeFocused();
   await expect(page.locator('.opponent-player-card.selected-target')).toHaveAttribute("data-player-anchor", "p2");
   await expect(page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" })).toBeEnabled();
 });
@@ -86,7 +106,7 @@ test("multi-target selection updates one inspector to the latest explicit Seat c
   await page.getByRole("button", { name: "Use Multi Target", exact: true }).click();
   const panel = inspector(page);
   for (const playerId of ["p2", "p3", "p4"]) {
-    await page.getByRole("button", { name: `Select Player ${playerId.slice(1)}`, exact: true }).click();
+    await selectOpponentTarget(page, playerId);
     await expect(panel).toHaveAttribute("data-inspect-player-id", playerId);
   }
   const selected = await page.locator(".opponent-player-card.selected-target").evaluateAll((seats) => seats.map((seat) => seat.dataset.playerAnchor).sort());
@@ -100,15 +120,14 @@ test("active-skill self target stays in the Local Dock and opponent choices use 
   await page.getByRole("button", { name: "Prodigal Healer", exact: true }).click();
   await page.locator('[data-hand-card-id="browser-attack"] .game-card').click();
   const selfTarget = page.getByRole("button", { name: "Select Player 1", exact: true });
-  const opponentTarget = page.getByRole("button", { name: "Select Player 2", exact: true });
-  await opponentTarget.click();
+  await selectOpponentTarget(page, "p2");
   await expect(inspector(page)).toHaveAttribute("data-inspect-player-id", "p2");
   await selfTarget.click();
   await expect(page.locator(".interaction-stage")).toHaveCount(0);
   await expect(page.locator('.local-player-dock[data-player-anchor="p1"] .local-hero-card')).toHaveClass(/selected-target/);
   await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
 
-  await opponentTarget.click();
+  await selectOpponentTarget(page, "p2");
   const panel = inspector(page);
   await expect(panel).toHaveAttribute("data-inspect-player-id", "p2");
   await page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" }).click();

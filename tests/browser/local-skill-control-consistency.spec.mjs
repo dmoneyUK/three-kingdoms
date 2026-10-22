@@ -57,19 +57,38 @@ test("implemented Hero skill bands fill their allocation and keep natural labels
           const labelRange = document.createRange();
           labelRange.selectNodeContents(button);
           const labelRects = [...labelRange.getClientRects()];
-          const textNode = [...button.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
-          const sourceText = textNode?.textContent ?? "";
-          const wordFragments = [...sourceText.matchAll(/\S+/g)].map((match) => {
+          const visibleTextNodes = [];
+          const walker = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+          while (walker.nextNode()) {
+            const textNode = walker.currentNode;
+            if (!textNode.textContent.trim()) continue;
+            let parent = textNode.parentElement;
+            let visible = true;
+            while (parent && parent !== button) {
+              if (getComputedStyle(parent).display === "none" || parent.hidden) {
+                visible = false;
+                break;
+              }
+              parent = parent.parentElement;
+            }
+            if (visible) visibleTextNodes.push(textNode);
+          }
+          const wordFragments = visibleTextNodes.flatMap((textNode) => [...textNode.textContent.matchAll(/\S+/g)].map((match) => {
             const wordRange = document.createRange();
             wordRange.setStart(textNode, match.index);
             wordRange.setEnd(textNode, match.index + match[0].length);
             const wordRects = [...wordRange.getClientRects()].map((bounds) => ({ left: bounds.left, right: bounds.right }));
             return { word: match[0], rectCount: wordRects.length, rects: wordRects };
-          });
-          const lineTops = [...new Set(labelRects.map((line) => Math.round(line.top * 2) / 2))];
+          }));
+          const lineTops = [];
+          for (const line of labelRects.sort((first, second) => first.top - second.top)) {
+            if (lineTops.every((top) => Math.abs(top - line.top) > 2)) lineTops.push(line.top);
+          }
           return {
             ...bounds,
-            label: button.textContent.trim(),
+            label: button.querySelector(".diao-chan-beauty-label")
+              ? [...button.querySelectorAll(".diao-chan-beauty-label")].find((node) => getComputedStyle(node).display !== "none")?.textContent.trim().replace(/\s+/g, " ") ?? ""
+              : button.textContent.trim(),
             labelLines: lineTops.length,
             wordFragments,
             role: button.getAttribute("role"),
@@ -160,6 +179,100 @@ test("implemented Hero skill bands fill their allocation and keep natural labels
           expect(button.labelLines, context).toBe(1);
         }
       }
+    }
+  }
+});
+
+test("Diao Chan local skills have equal readable controls and a balanced Beauty label", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tests/browser/fixture.html?state=rest&count=4&hero=diao-chan");
+
+  const skills = page.locator('.local-player-dock[data-player-anchor="p1"] .local-status-panel .local-hero-skills');
+  const lust = skills.getByRole("button", { name: "Lust", exact: true });
+  const beauty = skills.getByRole("button", { name: "Beauty Outshining the Moon", exact: true });
+  await expect(lust).toBeVisible();
+  await expect(beauty).toBeVisible();
+  await expect(lust).toHaveAccessibleName("Lust");
+  await expect(beauty).toHaveAccessibleName("Beauty Outshining the Moon");
+  await expect(lust).toBeDisabled();
+  await expect(beauty).toBeDisabled();
+  await expect(lust).toHaveAttribute("aria-pressed", "false");
+  await expect(beauty).toHaveAttribute("aria-pressed", "false");
+
+  for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 320, height: 640 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    const geometry = await skills.evaluate((element) => {
+      const rect = (node) => {
+        const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
+        return { left, right, top, bottom, width, height };
+      };
+      const buttons = [...element.querySelectorAll(".hero-skill-button")].map((button) => {
+        const bounds = rect(button);
+        const style = getComputedStyle(button);
+        const range = document.createRange();
+        range.selectNodeContents(button);
+        const labelRects = [...range.getClientRects()].filter((line) => line.width > 0 && line.height > 0);
+        const lineTops = [];
+        for (const line of labelRects.sort((first, second) => first.top - second.top)) {
+          if (lineTops.every((top) => Math.abs(top - line.top) > 1)) lineTops.push(line.top);
+        }
+        return {
+          ...bounds,
+          label: button.querySelector(".diao-chan-beauty-label")
+            ? [...button.querySelectorAll(".diao-chan-beauty-label")].find((node) => getComputedStyle(node).display !== "none")?.textContent.trim().replace(/\s+/g, " ") ?? ""
+            : button.textContent.trim().replace(/\s+/g, " "),
+          ariaLabel: button.getAttribute("aria-label"),
+          lineCount: lineTops.length,
+          lineCenters: labelRects.map((line) => line.left + line.width / 2),
+          fontSize: Number.parseFloat(style.fontSize),
+          lineHeight: Number.parseFloat(style.lineHeight),
+          scrollWidth: button.scrollWidth,
+          clientWidth: button.clientWidth,
+          scrollHeight: button.scrollHeight,
+          clientHeight: button.clientHeight,
+          disabled: button.disabled,
+          ariaPressed: button.getAttribute("aria-pressed"),
+          centerHitTarget: document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)?.closest(".hero-skill-button") === button,
+        };
+      });
+      const dock = element.closest(".local-player-dock");
+      const excludedRects = [".local-hero-anchor", ".local-equipment-panel", ".local-hand-section", ".turn-controls"]
+        .map((selector) => ({ selector, bounds: rect(dock.querySelector(selector)) }));
+      const overlaps = buttons.flatMap((button) => excludedRects.filter(({ bounds }) =>
+        button.left < bounds.right && button.right > bounds.left && button.top < bounds.bottom && button.bottom > bounds.top)
+        .map(({ selector }) => ({ label: button.label, selector })));
+      return {
+        skills: rect(element),
+        hand: rect(dock.querySelector(".local-hand-section")),
+        actions: rect(dock.querySelector(".turn-controls")),
+        documentWidth: document.documentElement.scrollWidth,
+        overlaps,
+        buttons,
+      };
+    });
+    const context = JSON.stringify({ viewport, geometry });
+    const [lustBox, beautyBox] = geometry.buttons;
+    expect(geometry.buttons.map(({ ariaLabel }) => ariaLabel), context).toEqual(["Lust", "Beauty Outshining the Moon"]);
+    expect(Math.abs(lustBox.width - beautyBox.width), context).toBeLessThanOrEqual(1);
+    expect(Math.abs(lustBox.height - beautyBox.height), context).toBeLessThanOrEqual(1);
+    for (const button of geometry.buttons) {
+      expect(button.width, context).toBeGreaterThanOrEqual(44);
+      expect(button.height, context).toBeGreaterThanOrEqual(44);
+      expect(button.lineCenters.every((center) => Math.abs(center - (button.left + button.width / 2)) <= 2), context).toBe(true);
+      expect(button.scrollWidth, context).toBeLessThanOrEqual(button.clientWidth + 1);
+      expect(button.scrollHeight, context).toBeLessThanOrEqual(button.clientHeight + 1);
+      expect(button.centerHitTarget, context).toBe(true);
+    }
+    expect(lustBox.label).toBe("Lust");
+    expect(lustBox.lineCount).toBe(1);
+    expect(beautyBox.label).toBe("Beauty Outshining the Moon");
+    expect(beautyBox.lineCount, context).toBeLessThanOrEqual(2);
+    expect(geometry.overlaps, context).toEqual([]);
+    expect(geometry.documentWidth, context).toBeLessThanOrEqual(viewport.width);
+    if (viewport.width === 390) {
+      expect(geometry.buttons.every(({ fontSize }) => fontSize >= 11.5), context).toBe(true);
+      expect(beautyBox.lineCount, context).toBe(2);
+      await testInfo.attach("diao-chan-skill-buttons-390x844.png", { body: await page.screenshot(), contentType: "image/png" });
     }
   }
 });

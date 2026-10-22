@@ -923,6 +923,9 @@ export function buildInteractionStageView(
       ...view.bumperHarvestProgress,
       targetIds: [...view.bumperHarvestProgress.targetIds],
       participants: view.bumperHarvestProgress.participants.map((participant) => ({ ...participant })),
+      ...(view.bumperHarvestProgress.publicNegationResponses ? {
+        publicNegationResponses: view.bumperHarvestProgress.publicNegationResponses.map((response) => ({ ...response })),
+      } : {}),
     } : null,
     reactionChainNegationNodes: view.stage === "NEGATION"
       ? (view.reactionChain?.nodes ?? []).map((node, index) => {

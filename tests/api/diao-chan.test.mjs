@@ -355,13 +355,25 @@ test("Beauty Outshining the Moon is an optional private own-turn draw and shares
   const reloaded = await state(game.code, game.members[0].token);
   const accepted = await requestAndSettle("trigger", { code: game.code, token: game.members[0].token, providerId: "diao_chan_beauty_outshining_moon", preserveResponse: true });
   assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
-  assert.equal((await state(game.code, game.members[0].token)).data.myHand.some((held) => held.id === draw.id), true);
-  assert.equal((await state(game.code, game.members[1].token)).data.players.find((player) => player.id === diao.id).handCount, 1);
-  const publicBeautyView = (await state(game.code, game.members[1].token)).data;
-  assert.equal(JSON.stringify(publicBeautyView).includes(draw.id), false);
-  assert.deepEqual(publicBeautyView.presentationSnapshot.diaoChanSkillNotices.map((notice) => notice.notice), ["ACTIVATION", "DRAWN"]);
-  assert.equal(publicBeautyView.presentationSnapshot.diaoChanSkillNotices.find((notice) => notice.notice === "DRAWN").drawCount, 1);
+  const viewerViews = await Promise.all(game.members.map(async (member) => (await state(game.code, member.token)).data));
+  assert.equal(viewerViews[0].myHand.some((held) => held.id === draw.id), true, "the owner receives the physical card in Hand");
+  const publicBeautyView = viewerViews[1];
+  const provenNotice = publicBeautyView.presentationSnapshot.diaoChanSkillNotices;
+  assert.deepEqual(provenNotice.map((notice) => notice.notice), ["ACTIVATION", "DRAWN"]);
+  assert.equal(provenNotice.find((notice) => notice.notice === "DRAWN").drawCount, 1);
   assert.equal(publicBeautyView.timeline.filter((event) => event.effectNotice === true && event.message.includes("Beauty")).length, 0);
+  for (const [index, viewerView] of viewerViews.entries()) {
+    assert.deepEqual(viewerView.presentationSnapshot.diaoChanSkillNotices, provenNotice,
+      `viewer ${index + 1} receives the same public Beauty proof`);
+    assert.equal(viewerView.players.find((player) => player.id === diao.id).handCount, 1,
+      `viewer ${index + 1} receives the same public Hand count`);
+    if (index > 0) {
+      assert.equal(viewerView.myHand.some((held) => held.id === draw.id), false,
+        `viewer ${index + 1} does not receive the private draw`);
+      assert.equal(JSON.stringify(viewerView).includes(draw.id), false,
+        `viewer ${index + 1}'s complete projection omits the drawn card identity`);
+    }
+  }
   const stale = await request("trigger", { code: game.code, token: game.members[0].token, providerId: "diao_chan_beauty_outshining_moon", context: { actionRevision: reloaded.data.actionRevision, meId: diao.id, phase: "response", pendingKind: "trigger", actorId: diao.id } });
   assert.equal(stale.status, 409);
   assert.equal(roomCardCount(game.code, draw.id), 1);
@@ -382,6 +394,53 @@ test("Beauty Outshining the Moon is an optional private own-turn draw and shares
   assert.equal(declinedResult.status, 200, JSON.stringify(declinedResult.data));
   assert.equal((await state(declined.code, declined.members[0].token)).data.myHand.some((held) => held.id === "beauty-decline-draw"), false);
   assert.equal((await state(declined.code, declined.members[1].token)).data.presentationSnapshot.diaoChanSkillNotices.length, 0);
+});
+
+test("Beauty draws from a shuffled discard pile and reports an empty-deck outcome truthfully", async () => {
+  const shuffled = await createHumanGame();
+  const [shuffleDiao, ...shuffleOthers] = shuffled.room.players;
+  const shuffledCard = card("Peach", "beauty-shuffled-private-draw", "♥");
+  sql(`UPDATE players SET hero='diao-chan', hp=3, max_hp=3 WHERE id=${quote(shuffleDiao.id)}`);
+  for (const player of shuffleOthers) sql(`UPDATE players SET hero='zhao-yun', hp=4, max_hp=4 WHERE id=${quote(player.id)}`);
+  for (const player of shuffled.room.players) setHand(player.id, [], player.id === shuffleDiao.id ? 3 : 4, player.id === shuffleDiao.id ? 3 : 4);
+  setDeck(shuffled.code, []);
+  sql(`UPDATE rooms SET discard_json=${quote(JSON.stringify([shuffledCard]))} WHERE code=${quote(shuffled.code)}`);
+  setTurn(shuffled.code, shuffleDiao.seat, "play");
+
+  const opened = await requestAndSettle("end_turn", { code: shuffled.code, token: shuffled.members[0].token, preserveResponse: true });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const accepted = await requestAndSettle("trigger", { code: shuffled.code, token: shuffled.members[0].token, providerId: "diao_chan_beauty_outshining_moon", preserveResponse: true });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const shuffledOwner = (await state(shuffled.code, shuffled.members[0].token)).data;
+  assert.equal(shuffledOwner.myHand.some((held) => held.id === shuffledCard.id), true,
+    "Beauty refills from the discard pile after the deck is exhausted");
+  assert.equal(shuffledOwner.log.some((entry) => entry.includes("The discard pile is shuffled into a new draw deck.")), true);
+  const shuffledObservers = await Promise.all(shuffled.members.slice(1).map(async (member) => (await state(shuffled.code, member.token)).data));
+  for (const observer of shuffledObservers) {
+    assert.deepEqual(observer.presentationSnapshot.diaoChanSkillNotices.map((notice) => notice.notice), ["ACTIVATION", "DRAWN"]);
+    assert.equal(JSON.stringify(observer).includes(shuffledCard.id), false);
+  }
+
+  const exhausted = await createHumanGame();
+  const [emptyDiao, ...emptyOthers] = exhausted.room.players;
+  sql(`UPDATE players SET hero='diao-chan', hp=3, max_hp=3 WHERE id=${quote(emptyDiao.id)}`);
+  for (const player of emptyOthers) sql(`UPDATE players SET hero='zhao-yun', hp=4, max_hp=4 WHERE id=${quote(player.id)}`);
+  for (const player of exhausted.room.players) setHand(player.id, [], player.id === emptyDiao.id ? 3 : 4, player.id === emptyDiao.id ? 3 : 4);
+  setDeck(exhausted.code, []);
+  setTurn(exhausted.code, emptyDiao.seat, "play");
+
+  const emptyOpened = await requestAndSettle("end_turn", { code: exhausted.code, token: exhausted.members[0].token, preserveResponse: true });
+  assert.equal(emptyOpened.status, 200, JSON.stringify(emptyOpened.data));
+  const emptyAccepted = await requestAndSettle("trigger", { code: exhausted.code, token: exhausted.members[0].token, providerId: "diao_chan_beauty_outshining_moon", preserveResponse: true });
+  assert.equal(emptyAccepted.status, 200, JSON.stringify(emptyAccepted.data));
+  const emptyOwner = (await state(exhausted.code, exhausted.members[0].token)).data;
+  assert.deepEqual(emptyOwner.presentationSnapshot.diaoChanSkillNotices.map((notice) => notice.notice), ["ACTIVATION"]);
+  assert.equal(JSON.stringify(emptyOwner).includes("used Beauty and drew 1 card"), false);
+  for (const member of exhausted.members.slice(1)) {
+    const observer = (await state(exhausted.code, member.token)).data;
+    assert.deepEqual(observer.presentationSnapshot.diaoChanSkillNotices.map((notice) => notice.notice), ["ACTIVATION"]);
+    assert.equal(JSON.stringify(observer).includes("used Beauty and drew 1 card"), false);
+  }
 });
 
 test("Quick Test keeps Lust projected to the acting controlled Diao Chan seat", async () => {

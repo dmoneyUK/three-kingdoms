@@ -491,6 +491,8 @@
 /* Step 2: the local seat is a compact dock and the hand is a layered peek
    rail. These rules intentionally do not change the table-resolution anchors. */
 .game-shell {
+  --hand-card-face-width: 68px;
+  --hand-card-face-height: 102px;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -514,8 +516,8 @@
 /* LocalPlayerDock layout. Each visible region owns its complete panel border. */
 .local-player-dock {
   --hand-panel-height: 108px;
-  --hand-peek-height: 102px;
-  --hand-card-height: 102px;
+  --hand-peek-height: var(--hand-card-face-height);
+  --hand-card-height: var(--hand-card-face-height);
   --hand-top-inset: 4px;
   --selected-rise: 48px;
   --selected-face-rise: 17px;
@@ -743,6 +745,9 @@
 .local-zone-card-button b { display: block; overflow: hidden; font: 700 5px/1.1 Arial, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .local-zone-card .zone-info-button { right: -1px; top: -1px; z-index: 2; width: 18px; height: 18px; padding: 0; border: 0; background: transparent; font-size: 0; translate: none; }
 .local-zone-card .zone-info-button::after { content: "i"; display: grid; place-items: center; width: 9px; height: 9px; border: 1px solid #8e7548; border-radius: 50%; background: #f5ead4; color: #493f31; font: bold italic 6px/1 Georgia, serif; }
+.local-zone-card .local-equipment-inspect-button { position: absolute; top: -1px; right: -1px; z-index: 2; translate: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 0; background: transparent; opacity: 0; pointer-events: none; cursor: pointer; }
+.local-zone-card .local-equipment-inspect-button::after { content: none; }
+.local-zone-card .local-equipment-inspect-button:focus-visible { opacity: 1; border: 1px solid #fff0b4; border-radius: 2px; outline: 2px solid #fff0b4; outline-offset: -2px; background: rgb(12 14 11 / 82%); }
 
 .local-zone-card > .played-card { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; animation: none; pointer-events: none; }
 .local-zone-card > .played-card > i { left: -1px; top: -1px; width: 12px !important; min-height: 17px !important; padding: 1px !important; border-width: 1px; font-size: 6px !important; line-height: 1; }
@@ -761,21 +766,29 @@
 .local-hand-rail { position: absolute; top: calc(-1 * var(--hand-lift-clearance)); right: 4px; left: 4px; z-index: 60; display: flex; align-items: flex-start; justify-content: flex-start; box-sizing: border-box; width: auto; height: calc(var(--hand-peek-height) + var(--hand-lift-clearance)); min-width: 0; padding: var(--hand-lift-clearance) 0 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; pointer-events: none; scrollbar-width: none; }
 .local-hand-rail::-webkit-scrollbar { display: none; }
 .local-hand-rail:focus-visible { outline: 1px solid #e6cc8c; outline-offset: -1px; }
-.local-hand-rail .card-slot { position: relative; z-index: 1; flex: 0 0 68px; width: 68px; height: var(--hand-peek-height); overflow: hidden; pointer-events: auto; }
+.local-hand-rail .card-slot { position: relative; z-index: 1; flex: 0 0 var(--hand-card-face-width); width: var(--hand-card-face-width); height: var(--hand-peek-height); overflow: hidden; pointer-events: auto; }
 .local-hand-rail .card-slot.single-selected { z-index: 80; height: var(--hand-peek-height); overflow: visible; }
 .local-hand-rail .card-slot.details-selected { z-index: 90; overflow: visible; }
+.local-hand-rail .card-slot.inspect-focused { z-index: 90; overflow: visible; }
 .local-hand-rail .hand-card-visual { position: relative; width: 100%; height: var(--hand-card-height); }
 .local-hand-rail .card-slot .game-card { width: 100%; height: var(--hand-card-height); margin-left: 0; padding: 8px 5px; }
 .local-hand-rail .card-slot.single-selected .hand-card-visual,
 .local-hand-rail .card-slot.multi-selected .hand-card-visual,
-.local-hand-rail .card-slot.details-selected .hand-card-visual { transform: translateY(calc(-1 * var(--selected-rise))); }
+.local-hand-rail .card-slot.details-selected .hand-card-visual,
+.local-hand-rail .card-slot.inspect-focused .hand-card-visual { transform: translateY(calc(-1 * var(--selected-rise))); }
 .local-hand-rail .card-slot.single-selected .game-card { transform: translateY(calc(-1 * var(--selected-face-rise))); }
-.local-hand-rail .card-slot.details-selected .game-card { transform: translateY(calc(0px - var(--selected-face-rise))); }
+.local-hand-rail .card-slot.details-selected .game-card,
+.local-hand-rail .card-slot.inspect-focused .game-card { transform: translateY(calc(0px - var(--selected-face-rise))); }
 .local-hand-rail .hand-card-details-frame { position: absolute; z-index: 2; top: calc(0px - var(--hand-lift-clearance)); left: 0; width: 100%; height: var(--hand-card-height); box-sizing: border-box; border: 1px solid #e5c976; border-radius: 5px; box-shadow: 0 0 0 2px #e5c97633; pointer-events: none; }
-.local-hand-rail .hand-card-details-action { position: absolute; z-index: 8; top: calc(var(--hand-card-height) - 44px); left: 50%; translate: -50% 0; display: grid; place-items: center; width: 44px; min-width: 44px; height: 44px; min-height: 44px; box-sizing: border-box; padding: 3px; border: 1px solid #c5a45f; border-radius: 0 0 4px 4px; background: #191a14f2; color: #f2d98e; font: 700 8px/1.1 Arial,sans-serif; letter-spacing: .04em; cursor: pointer; transition: transform .18s; }
+.local-hand-rail .hand-card-inspection-action { position: absolute; z-index: 7; top: 0; left: 0; display: block; width: 100%; height: var(--hand-card-height); box-sizing: border-box; padding: 0; border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; touch-action: pan-x; }
+.local-hand-rail .card-slot.inspect-focused .hand-card-inspection-action { transform: translateY(calc(0px - var(--selected-face-rise))); }
+.local-hand-rail .hand-card-inspection-action:focus-visible { outline: 2px solid #ffe28a; outline-offset: -3px; }
+.local-hand-rail .hand-card-details-action { position: absolute; z-index: 8; top: calc(var(--hand-card-height) - 44px); left: 50%; translate: -50% 0; display: grid; place-items: center; width: 44px; min-width: 44px; height: 44px; min-height: 44px; box-sizing: border-box; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; transition: transform .18s; }
+.local-hand-rail .hand-card-details-icon { display: grid; place-items: center; width: 30px; height: 30px; box-sizing: border-box; border: 1px solid #c5a45f; border-radius: 50%; background: #191a14f2; color: #f2d98e; font: 700 16px/1 Arial,sans-serif; }
 .local-hand-rail .card-slot.details-selected .hand-card-details-action { transform: translateY(calc(0px - var(--selected-face-rise))); }
-.local-hand-rail .hand-card-details-action:hover { background: #2a271b; color: #ffe8a7; }
-.local-hand-rail .hand-card-details-action:focus-visible { outline: 2px solid #ffe28a; outline-offset: 2px; }
+.local-hand-rail .card-slot.inspect-focused .hand-card-details-action { transform: translateY(calc(0px - var(--selected-face-rise))); }
+.local-hand-rail .hand-card-details-action:hover .hand-card-details-icon { background: #2a271b; color: #ffe8a7; }
+.local-hand-rail .hand-card-details-action:focus-visible { outline: 2px solid #ffe28a; outline-offset: -2px; }
 .local-hand-rail .card-slot:not(.single-selected) .game-card.selected { transform: translateY(-5px); }
 .local-hand-rail .card-slot.details-selected:not(.single-selected) .game-card.selected { transform: translateY(calc(0px - var(--selected-face-rise))); }
 /* Every selected physical slot uses the same two-part lift: 48px at the wrapper
@@ -1320,6 +1333,16 @@
   }
 }
 
+@media (max-width: 420px) and (max-height: 740px) {
+  .game-shell .private-draw-content {
+    right: auto;
+    bottom: 1px;
+    left: 50%;
+    width: min(224px, calc(100vw - 16px));
+    transform: translateX(-50%);
+  }
+}
+
 /* Keep the private opening reveal the same physical size and card rhythm as the hand. */
 .private-draw-row {
   gap: 0;
@@ -1785,10 +1808,10 @@
 
 .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell > .hero-focus.hero-focus-inspect {
   display: grid;
-  grid-template-areas: "heading" "body" "context";
+  grid-template-areas: "heading" "body" "zones" "context";
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto minmax(0, 1fr);
-  flex: 0 1 auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  flex: 0 0 auto;
   gap: 3px;
   width: 100%;
   height: fit-content;
@@ -1800,17 +1823,21 @@
 
 .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-heading {
   grid-area: heading;
+  flex: 0 0 auto;
   min-height: 20px;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: nowrap;
   padding-bottom: 1px;
   border-bottom: 1px solid #51452f;
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-heading strong {
+  flex: 1 1 0;
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 12px;
+  line-height: 1.15;
 }
 
 .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
@@ -1833,7 +1860,7 @@
 .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity {
   grid-area: auto;
   display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(130px, 1.15fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 6px;
   min-width: 0;
@@ -1958,6 +1985,8 @@
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-close {
+  flex: 0 0 20px;
+  margin-left: auto;
   width: 20px;
   height: 20px;
   font-size: 14px;
@@ -1972,7 +2001,7 @@
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   margin: 2px 0 0;
-  padding: 6px 7px;
+  padding: 5px 7px;
   border-left: 2px solid #a58e5d;
   background: #090b08;
   color: #e4dcc9;
@@ -1986,7 +2015,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   min-height: 0;
 }
@@ -2071,30 +2100,64 @@
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-public-zones {
+  grid-area: zones;
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
-  gap: 3px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: stretch;
+  gap: 4px;
 }
 
 .opponent-inspection-floating-shell .opponent-inspection-zone {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  gap: 3px;
   min-width: 0;
-  padding: 2px 3px;
+  padding: 3px 4px;
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-public-zones .opponent-inspection-zone h3 {
-  margin: 0 0 3px;
+  min-width: 0;
+  margin: 0;
   font-size: 8px;
 }
 
-.opponent-inspection-floating-shell .opponent-inspection-card-row {
-  gap: 3px;
+.opponent-inspection-floating-shell .opponent-inspection-slot-row {
+  display: grid;
+  align-items: stretch;
+  justify-content: center;
+  min-width: 0;
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-judgement-slots {
+  grid-template-columns: repeat(2, minmax(0, 60px));
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-equipment-slots {
+  grid-template-columns: repeat(4, minmax(0, 60px));
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect .opponent-inspection-card {
-  width: 38px;
-  flex-basis: 38px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  aspect-ratio: 2 / 3;
+  flex: none;
+  overflow: hidden;
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-empty-slot {
+  display: block;
+  box-sizing: border-box;
+  min-width: 0;
+  aspect-ratio: 2 / 3;
+  border: 1px dashed #8d7956a6;
+  border-radius: 5px;
+  background: #090b0870;
 }
 
 .opponent-inspection-floating-shell .opponent-inspection-card .played-card > i {
@@ -2102,16 +2165,51 @@
   transform-origin: top left;
 }
 
-.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-inspect-public-zones .opponent-inspection-zone[aria-label="Equipment"] .opponent-inspection-card-row:has(> .opponent-inspection-card:only-child) > .opponent-inspection-card {
-  width: 38px;
-  flex-basis: 38px;
+.opponent-inspection-floating-shell .opponent-inspection-overflow {
+  position: relative;
+  justify-self: center;
+  min-width: 0;
+  font: 700 9px/1 Arial, sans-serif;
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-overflow summary {
+  min-width: 24px;
+  min-height: 14px;
+  padding: 2px 5px;
+  border: 1px solid #8d7956a6;
+  border-radius: 8px;
+  color: #e5c77f;
+  text-align: center;
+  list-style: none;
+  cursor: pointer;
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-overflow summary::-webkit-details-marker {
+  display: none;
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-overflow-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 3px;
+  max-width: min(70vw, 340px);
+  max-height: 96px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid #9c8249;
+  background: #11140ff5;
+}
+
+.opponent-inspection-floating-shell .opponent-inspection-overflow .opponent-inspection-card {
+  flex: 0 0 42px;
+  width: 42px;
 }
 
 @media (max-width: 520px) {
   .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell > .hero-focus.hero-focus-inspect {
-    grid-template-areas: "heading" "body" "context";
+    grid-template-areas: "heading" "body" "zones" "context";
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
     max-height: max(0px, min(388px, calc(100cqh - 12px)));
   }
 
@@ -2121,29 +2219,24 @@
   }
 
   .opponent-inspection-floating-shell .hero-focus-inspect-public-zones {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    gap: 3px;
   }
 
   .opponent-inspection-floating-shell .hero-focus-inspect-public-zones .opponent-inspection-zone {
-    padding: 2px;
+    padding: 2px 3px;
   }
 
   .opponent-inspection-floating-shell .hero-focus-inspect-public-zones .opponent-inspection-zone h3 {
     overflow: hidden;
-    font-size: 6px;
+    font-size: 7px;
     letter-spacing: .03em;
-    text-overflow: clip;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .opponent-inspection-floating-shell .hero-focus-inspect-public-zones .opponent-inspection-card-row {
-    gap: 2px;
-  }
-
-  .opponent-inspection-floating-shell .hero-focus-inspect-public-zones .opponent-inspection-card {
-    width: clamp(29px, 8vw, 36px);
-    flex-basis: clamp(29px, 8vw, 36px);
+  .opponent-inspection-floating-shell .opponent-inspection-overflow-row {
+    max-width: min(76vw, 300px);
   }
 
   .opponent-inspection-floating-shell .opponent-inspection-card .played-card > i {
@@ -2773,6 +2866,66 @@
 
 @media (max-width: 340px) and (max-height: 700px) {
   .local-hero-skills .hero-skill-button { font-size: 6px; letter-spacing: 0; }
+}
+
+/* UX2 §10.13.8: Diao Chan's two local skills share real equal cells. Give the
+   long Beauty label a deliberate second line on phone layouts with room for
+   readable type; narrow/short screens retain the compact natural wrap. */
+.local-hero-skills[data-hero-id="diao-chan"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(44px, 1fr));
+  align-items: center;
+  align-content: center;
+}
+
+.local-hero-skills[data-hero-id="diao-chan"] .hero-skill-button {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-width: 44px;
+  min-height: 44px;
+  text-align: center;
+}
+
+.local-hero-skills[data-hero-id="diao-chan"] .diao-chan-beauty-label-wide {
+  display: inline-block;
+  white-space: normal;
+}
+
+.local-hero-skills[data-hero-id="diao-chan"] .diao-chan-beauty-label-compact {
+  display: none;
+}
+
+@media (min-width: 380px) and (min-height: 700px) {
+  .local-hero-skills[data-hero-id="diao-chan"] .hero-skill-button {
+    font-size: clamp(10px, 3.1vw, 12px);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: 0;
+  }
+
+  .local-hero-skills[data-hero-id="diao-chan"] .diao-chan-beauty-label-wide {
+    white-space: pre-line;
+    text-wrap: balance;
+  }
+}
+
+@media (min-width: 401px) and (max-width: 520px) and (min-height: 700px) {
+  .local-hero-skills[data-hero-id="diao-chan"] .hero-skill-button {
+    font-size: 9px;
+    font-family: "Arial Narrow", "Liberation Sans Narrow", "DejaVu Sans Condensed", Arial, sans-serif;
+    line-height: 1.2;
+  }
+
+  .local-hero-skills[data-hero-id="diao-chan"] .diao-chan-beauty-label-wide {
+    display: none;
+  }
+
+  .local-hero-skills[data-hero-id="diao-chan"] .diao-chan-beauty-label-compact {
+    display: inline-block;
+    white-space: pre-line;
+    text-wrap: balance;
+  }
 }
 
 /* UX2 refinement §3.5–3.7: keep system navigation and the public response
@@ -3703,6 +3856,64 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .deck-reorder-card, .deck-reorder-group { transition: none; }
+}
+
+/* EM-01: selection backdrops cover only the play table and pass pointer input
+   through. The decision panel is the sole interactive child; the reserved
+   side-seat tracks, interaction inspection, and Local Player Dock stay usable. */
+.game-shell .play-table > .target-card-picker-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: var(--interaction-safe-top, 8px) 8px 8px;
+  pointer-events: none;
+  overflow: visible;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel {
+  box-sizing: border-box;
+  width: min(720px, 100%);
+  max-width: 100%;
+  max-height: calc(100% - 8px);
+  margin: 0 0 8px;
+  pointer-events: auto;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.target-card-picker-panel--zones {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.target-card-picker-panel--zones > .target-card-picker-zones {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.deck-reorder-panel > .deck-reorder-sequences {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.choice-trigger-panel:not(.deck-reorder-panel) {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.game-shell .play-table[data-seat-topology="side-column"] > .target-card-picker-overlay {
+  padding-top: 8px;
+  padding-right: var(--side-safe-edge);
+  padding-left: var(--side-safe-edge);
+}
+.game-shell .play-table[data-seat-topology="side-column"] > .target-card-picker-overlay > .target-card-picker-panel {
+  width: 100%;
+  max-width: 100%;
+}
+.game-shell .play-table:has(> .target-card-picker-overlay) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+  z-index: 41;
 }
 
 /* UX2 P5: reclaim the unused phone-width status band without changing the
@@ -4752,5 +4963,1394 @@
   .game-shell .player-board[data-seat-topology="side-column"][data-player-count="10"] .opponent-seat-inspect-button {
     top: 4px;
     bottom: auto;
+  }
+}
+
+@media (max-width: 650px) {
+  /* The legacy mobile rule leaves top: 60%; clear it so the bottom name scrim
+     shrink-wraps its single text line instead of stretching across the art. */
+  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-hero-overlay .opponent-player-name {
+    top: auto;
+    height: auto;
+    min-height: 0;
+    padding-block: 1px;
+  }
+}
+
+@media (max-width: 520px) {
+  .game-shell .play-table[data-seat-topology="side-column"] > .harvest-choice-stage {
+    left: clamp(112px, calc(30vw - 4px), 124px);
+    right: clamp(112px, calc(30vw - 4px), 124px);
+  }
+}
+
+/* UX2 §10.13.4.1 U13-D-F: keep HP at the left and cluster only real Equipment
+   at the right, leaving the strip's flexible middle as the visible gap. */
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-hp-chip {
+  font-size: 11px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-equipment-summary {
+  justify-content: flex-end;
+  gap: 1.5px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-equipment-indicator {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 14px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-equipment-indicator[data-slot$="Horse"] {
+  flex-basis: 13px;
+  width: 13px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-equipment-indicator svg {
+  width: 11px;
+  height: 11px;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-status-equipment-strip .opponent-equipment-summary {
+  justify-content: flex-end;
+  gap: 0;
+}
+
+/* UX2 §10.17.1 BCP-1: park the authentic Harvest root away from the compact
+   public pool; the H4 announcement remains independently measured. */
+.game-shell .play-table > .public-card-display.public-card-display-harvest-active {
+  top: auto;
+  right: auto;
+  bottom: -2px;
+  left: 8px;
+  translate: none;
+  width: auto;
+  max-width: none;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  z-index: 17;
+}
+.game-shell .public-card-display-harvest-active .public-card-display-static-card {
+  width: 40px;
+  height: 60px;
+}
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card {
+  width: 40px;
+  height: 60px;
+  padding: 1.6px .8px;
+  border-radius: 2.4px;
+  box-shadow: 0 0 0 1px #d4b46f99, 0 4px 12px #000b;
+}
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i {
+  left: 0;
+  top: 0;
+  width: 6.4px;
+  min-height: 10.4px;
+  padding: 0 .8px 1.6px;
+  border-width: .8px;
+  border-radius: 0 0 2.4px 0;
+  font-size: 4px;
+  line-height: .9;
+}
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i small { margin-top: 0; font-size: 3.2px; line-height: 1; }
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card .card-name-mark { max-width: 92%; font-size: 4.8px; line-height: 1; }
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > strong { margin-top: 0; font-size: 3.2px; letter-spacing: .02em; }
+
+/* BCP-1-F2: the approved phone history mini is 32×48. Scale only its face
+   details with the physical card; root and committed responses share this
+   parked mini footprint while the 90×135 reveal and 48×72 wide view remain. */
+@media (max-width: 520px) {
+  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card {
+    padding: 3.73px 2.13px;
+    border-radius: 3.73px;
+  }
+  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card > i {
+    left: 3.33px;
+    top: 2.67px;
+    width: 8px;
+    min-height: 10.67px;
+    padding: .53px .53px 1.6px;
+    border-width: .53px;
+    border-radius: 0 0 2.67px 0;
+    font-size: 4px;
+  }
+  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card > i small {
+    font-size: 3.33px;
+  }
+  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card .card-name-mark {
+    font-size: clamp(5.33px, 1.6vw, 6.67px);
+  }
+  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card > strong {
+    font-size: 2.67px;
+  }
+}
+
+/* The active decision frame is the only Harvest hit target. Its stage has no
+   backdrop hit box, so seat controls and public inspection stay reachable. */
+.game-shell .play-table > .harvest-choice-stage {
+  inset: auto 0 auto;
+  top: 50%;
+  bottom: auto;
+  z-index: 25;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  background: transparent;
+  pointer-events: none;
+}
+.game-shell .public-card-display-journey.is-harvest-pool-active {
+  /* Fixed wrappers establish a stacking context even with z-index:auto. Let
+     the root mini (z 5), pool (z 25), and committed response (z 36) share the
+     table stacking context so Plan A can layer each phase independently. */
+  position: absolute !important;
+  inset: 0 auto auto 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  z-index: auto !important;
+}
+.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-public-card-journey-phase="parked"] {
+  z-index: 5;
+}
+.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-public-card-journey-phase="reveal"],
+.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-public-card-journey-phase="move"] {
+  z-index: 36;
+}
+.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-display-journey-copy {
+  z-index: 36;
+}
+.game-shell .play-table[data-seat-topology="side-column"] > .harvest-choice-stage {
+  right: clamp(88px, calc(25vw + 4px), 120px);
+  left: clamp(88px, calc(25vw + 4px), 120px);
+  width: auto;
+}
+
+/* UX2 §10.17.1 R2: a read-only Harvest pool stays mounted, but an explicitly
+   opened opponent Inspector must be readable above it. Raise only the
+   Inspector's transparent safe-zone stacking context; response card reveals
+   retain their separate higher layer and closing Inspect restores the pool. */
+.game-shell .play-table:has(> .harvest-choice-stage) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+  z-index: 40;
+}
+.game-shell .play-table:has(.public-card-display-journey.is-harvest-history-passive) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+  z-index: 40;
+}
+
+.game-shell .public-card-display-journey .public-card-journey-card.is-harvest-history-parked {
+  opacity: 1 !important;
+  filter: none !important;
+}
+.game-shell .public-card-display-journey .public-card-journey-card.is-harvest-history-parked > .played-card {
+  opacity: .60;
+}
+.game-shell .public-card-display-journey .public-card-journey-card.is-harvest-history-parked > .public-card-journey-ordinal {
+  opacity: 1;
+}
+.game-shell .public-card-display-journey.is-harvest-history-passive > .public-card-journey-card:not([data-public-card-journey-phase="parked"]) {
+  visibility: hidden !important;
+}
+.game-shell .public-card-display-journey.is-harvest-history-passive > .public-card-journey-card {
+  pointer-events: none;
+}
+.game-shell .public-card-display-journey.is-harvest-history-passive > .public-card-journey-card.is-layout-pending.is-revealing {
+  visibility: hidden !important;
+}
+.game-shell .public-card-display-journey.is-harvest-pool-active:not(.is-harvest-history-passive) > .public-card-journey-card.is-layout-pending.is-revealing {
+  visibility: visible !important;
+}
+.game-shell .public-card-display-journey.is-harvest-history-passive > .public-card-journey-card.is-harvest-history-parked {
+  transform: translate(var(--harvest-inspector-peek-x, 0px), var(--harvest-inspector-peek-y, 0px));
+}
+
+.game-shell .harvest-choice-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: fit-content;
+  min-width: 0;
+  max-width: min(calc(100vw - 16px), 520px);
+  padding: 4px 7px;
+  overflow: visible;
+  border: 1px solid #c6a45c;
+  background: #10130ff5;
+  box-shadow: 0 5px 16px #000b, inset 0 0 0 1px #d7bd7840;
+  text-align: left;
+  pointer-events: none;
+}
+.game-shell .play-table[data-seat-topology="side-column"] .harvest-choice-panel {
+  width: 100%;
+  max-width: 100%;
+}
+.game-shell .harvest-choice-panel--actor { pointer-events: auto; }
+.game-shell .harvest-choice-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  min-height: 12px;
+  color: #d7c28f;
+  font: 700 7px/1.1 Arial, sans-serif;
+}
+.game-shell .harvest-choice-heading > b {
+  flex: 0 0 auto;
+  margin: 0;
+  color: #f2d58f;
+  font: 700 8px/1.1 Georgia, serif;
+}
+.game-shell .harvest-choice-heading > span {
+  min-width: 0;
+  overflow: hidden;
+  color: #d2c8b2;
+  font: 600 7px/1.1 Arial, sans-serif;
+  letter-spacing: 0;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.game-shell .harvest-card-row {
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 4px;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 6px 2px 1px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  pointer-events: auto;
+  touch-action: pan-x;
+}
+.game-shell .harvest-card-row::-webkit-scrollbar { display: none; }
+.game-shell .harvest-card-choice {
+  box-sizing: border-box;
+  position: relative;
+  flex: 0 0 var(--hand-card-face-width);
+  width: var(--hand-card-face-width);
+  height: var(--hand-card-face-height);
+  aspect-ratio: 2 / 3;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
+.game-shell .harvest-card-select {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: pan-x;
+}
+.game-shell .harvest-card-select:disabled { cursor: default; }
+.game-shell .harvest-card-choice > .played-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  padding: 5px 3px;
+  border-radius: 5px;
+  animation: none;
+  box-shadow: none;
+  transition: filter .15s ease, opacity .15s ease, translate .15s ease, box-shadow .15s ease;
+}
+.game-shell .harvest-card-choice > .played-card > i { left: 2px; top: 2px; width: 16px; min-height: 23px; padding: 1px 1px 3px; border-width: 1px; border-radius: 0 0 4px 0; font-size: 10px; }
+.game-shell .harvest-card-choice > .played-card > i small { margin-top: 0; font-size: 8px; }
+.game-shell .harvest-card-choice > .played-card > strong { display: none; }
+.game-shell .harvest-card-choice > .played-card .card-name-mark {
+  max-width: 96%;
+  font-size: clamp(10.5px, 2.7vw, 12px);
+  line-height: 1.02;
+  -webkit-line-clamp: 3;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  hyphens: auto;
+  translate: 0 -14px;
+}
+.game-shell .harvest-card-choice.taken > .played-card {
+  filter: grayscale(1) brightness(.3);
+  opacity: .58;
+}
+.game-shell .harvest-card-choice.pending-choice .harvest-card-select {
+  border: 2px solid #f2ca65;
+  box-shadow: 0 0 0 2px #f2ca6555, 0 0 12px #f2ca6588;
+}
+.game-shell .harvest-card-choice.pending-choice > .played-card {
+  translate: 0 -3px;
+}
+.game-shell .harvest-taken-label,
+.game-shell .harvest-pending-label {
+  position: absolute;
+  inset: auto 1px 2px;
+  translate: none;
+  padding: 2px 1px;
+  border: 0;
+  background: #050605e8;
+  color: #f2d58f;
+  font: 700 5px/1.1 Arial, sans-serif;
+  letter-spacing: 0;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.game-shell .harvest-pending-label { bottom: auto; top: 2px; background: #70531de8; }
+.game-shell .harvest-availability-label {
+  position: absolute;
+  z-index: 2;
+  inset: auto 1px 2px;
+  overflow: hidden;
+  padding: 2px 1px;
+  background: #050605e8;
+  color: #f2d58f;
+  font: 700 5px/1.1 Arial, sans-serif;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.game-shell .harvest-card-info {
+  position: absolute;
+  z-index: 4;
+  top: auto;
+  right: auto;
+  bottom: 2px;
+  left: 50%;
+  translate: -50% 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: transparent;
+  font-size: 0;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: pan-x;
+}
+.game-shell .harvest-scroll-hint {
+  display: none;
+}
+.game-shell .harvest-card-info::before {
+  content: "i";
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid #f0d38c;
+  border-radius: 50%;
+  background: #15130df2;
+  color: #ffe5a5;
+  font: italic 700 11px/1 Georgia, serif;
+}
+.game-shell .harvest-card-info:focus-visible,
+.game-shell .harvest-card-select:focus-visible {
+  outline: 2px solid #ffe5a5;
+  outline-offset: 1px;
+}
+.game-shell .harvest-confirm-row {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
+  margin: 0;
+  padding: 0 1px;
+}
+.game-shell .harvest-selection-count {
+  min-width: 0;
+  overflow: hidden;
+  color: #d5c7a1;
+  font: 600 8px/1.2 Arial, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.game-shell .harvest-confirm-row > .primary {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 126px;
+  max-width: 150px;
+  min-height: 38px;
+  margin: 0;
+  padding: 0 12px;
+  border-color: #be9b53;
+  font: 700 9px/1 Arial, sans-serif;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+.game-shell .harvest-confirm-row > .primary:disabled {
+  border-color: #5b513b;
+  color: #8f846e;
+}
+
+@media (max-width: 520px) {
+  .game-shell .harvest-scroll-hint {
+    display: block;
+    align-self: flex-end;
+    margin: -1px 2px 0 0;
+    color: #a99a76;
+    font: 600 6px/1.1 Arial, sans-serif;
+    letter-spacing: .04em;
+    pointer-events: none;
+  }
+}
+
+/* Read-only and active viewers share the same content-fit CardFace geometry;
+   shrinking only the observer pool made public card identities unreadable. */
+
+/* The genuine Harvest root becomes a 40x60 phone thumbnail beside the pool.
+   Scale its internal frame and marks together so the corner does not dominate
+   the parked card after the large reveal has settled. */
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card {
+  border-width: 1px;
+  border-radius: 2.5px;
+  padding: 1.5px .75px;
+}
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i {
+  width: 6.5px;
+  min-height: 10.5px;
+  padding: 0 .75px 1.5px;
+  border-width: .75px;
+  border-radius: 0 0 2.25px 0;
+  font-size: 4.25px;
+}
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i small { font-size: 3.5px; }
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card .card-name-mark { font-size: 5px; }
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > strong { font-size: 3.5px; }
+
+/* §10.17.2–10.17.3 BCP-2/3: compact card decisions stay in the table
+   corridor. The table-wide backdrop remains pass-through; this panel owns
+   selection and its pinned action controls only. */
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel--compact {
+  display: flex;
+  width: min(560px, 100%);
+  max-height: calc(100% - 8px);
+  flex-direction: column;
+  gap: 5px;
+  overflow: hidden;
+  padding: 8px;
+  text-align: left;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.target-card-picker-panel--compact {
+  overflow: hidden;
+}
+.game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.target-card-picker-panel--compact > .target-card-picker-zones {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.target-card-picker-panel--compact > header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 2px 4px;
+  border-bottom: 1px solid #554a31;
+}
+.target-card-picker-panel--compact > header strong {
+  font-size: 11px;
+  letter-spacing: .09em;
+}
+.target-card-picker-panel--compact > header span {
+  margin: 0;
+  color: #d0c8b4;
+  font-size: 9px;
+  line-height: 1.2;
+  text-align: right;
+}
+.target-card-picker-panel--compact > .target-card-picker-zones {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 5px;
+  min-height: 0;
+  overflow: auto;
+  padding: 0;
+  overscroll-behavior: contain;
+}
+.target-card-picker-panel--compact .target-card-picker-zone {
+  min-width: 0;
+  padding: 4px;
+}
+.target-card-picker-panel--compact .target-card-picker-zone-heading {
+  gap: 4px;
+  min-height: 11px;
+}
+.target-card-picker-panel--compact .target-card-picker-zone h3 {
+  font-size: 8px;
+  letter-spacing: .08em;
+}
+.target-card-picker-panel--compact .target-card-picker-zone-scroll-hint {
+  display: none;
+}
+.target-card-picker-panel--compact .target-card-picker-zone-hand {
+  grid-column: 1 / -1;
+}
+.target-card-picker-panel--compact .target-card-picker-zone .target-card-picker-card-row {
+  justify-content: flex-start;
+  gap: 5px;
+  padding: 4px 1px 2px;
+}
+.target-card-picker-panel--compact .target-card-picker-zones[data-zone-composition="hand"] .target-card-picker-zone-hand .target-card-picker-card-row:not([data-hand-scrollable="true"]) {
+  justify-content: center;
+}
+.target-card-picker-panel--compact .target-card-picker-zone-equipment,
+.target-card-picker-panel--compact .target-card-picker-zone-judgement {
+  grid-column: span 1;
+}
+.target-card-picker-panel--compact .target-card-picker-zones[data-zone-composition="hand-equipment"] .target-card-picker-zone-equipment,
+.target-card-picker-panel--compact .target-card-picker-zones[data-zone-composition="hand-judgement"] .target-card-picker-zone-judgement {
+  grid-column: 1 / -1;
+}
+.target-card-picker-panel--compact .target-card-picker-zones[data-zone-count="1"] .target-card-picker-zone,
+.target-card-picker-panel--compact .target-card-picker-zones[data-zone-composition="hand-equipment-judgement"] .target-card-picker-zone-hand {
+  grid-column: 1 / -1;
+}
+.target-card-picker-panel--compact .target-card-picker-public-card {
+  position: relative;
+  flex: 0 0 auto;
+  width: clamp(74px, 12vw, 92px);
+  height: auto;
+  aspect-ratio: 5 / 7;
+}
+.target-card-picker-panel--compact .target-card-picker-public-card > .target-card-picker-card {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  flex: 0 0 100%;
+  aspect-ratio: auto;
+}
+.target-card-picker-panel--compact .target-card-picker-info {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: 0;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #f0d28c;
+  cursor: pointer;
+}
+.target-card-picker-panel--compact .target-card-picker-info > span {
+  display: grid;
+  width: 19px;
+  height: 19px;
+  place-items: center;
+  border: 1px solid #d5ae5a;
+  border-radius: 50%;
+  background: #0c0f0df0;
+  font: 700 11px/1 Arial, sans-serif;
+}
+.target-card-picker-panel--compact .target-card-picker-info:focus-visible {
+  outline: 2px solid #ffe5a5;
+  outline-offset: 1px;
+}
+.target-card-picker-panel--compact > .target-card-picker-count {
+  flex: 0 0 auto;
+  padding: 1px 2px;
+  text-align: right;
+}
+.target-card-picker-panel--compact > .target-card-picker-actions {
+  display: flex;
+  flex-direction: row;
+  flex: 0 0 auto;
+  justify-content: stretch;
+  gap: 6px;
+  margin: 0;
+  padding-top: 4px;
+  border-top: 1px solid #554a31;
+}
+.target-card-picker-panel--compact > .target-card-picker-actions button {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  min-height: 44px;
+}
+
+@media (max-width: 600px) {
+  .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel--compact {
+    width: 100%;
+    gap: 3px;
+    padding: 4px;
+  }
+  .target-card-picker-panel--compact > header {
+    padding-bottom: 2px;
+  }
+  .target-card-picker-panel--compact > header strong {
+    font-size: 10px;
+  }
+  .target-card-picker-panel--compact > header span {
+    font-size: 8px;
+  }
+  .target-card-picker-panel--compact > .target-card-picker-zones {
+    grid-template-columns: minmax(0, 2.1fr) minmax(0, 1.3fr) minmax(0, .6fr);
+    gap: 3px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .target-card-picker-panel--compact .target-card-picker-zone {
+    grid-column: span 1;
+    padding: 2px;
+  }
+  .target-card-picker-panel--compact .target-card-picker-zone-hand {
+    grid-column: span 1;
+  }
+  .target-card-picker-panel--compact > .target-card-picker-zones[data-zone-composition="hand-equipment-judgement"] > .target-card-picker-zone-hand {
+    grid-column: span 1;
+  }
+  .target-card-picker-panel--compact .target-card-picker-zone h3 {
+    font-size: 7px;
+    letter-spacing: .05em;
+  }
+  .target-card-picker-panel--compact .target-card-picker-zone .target-card-picker-card-row {
+    gap: 1.5px;
+    padding: 2px 0;
+    touch-action: pan-x;
+  }
+  .target-card-picker-panel--compact .target-card-picker-zones[data-zone-count="1"] .target-card-picker-zone {
+    grid-column: 1 / -1;
+  }
+  .target-card-picker-panel--compact .target-card-picker-zones[data-zone-composition="hand-equipment"] .target-card-picker-zone-hand,
+  .target-card-picker-panel--compact .target-card-picker-zones[data-zone-composition="hand-judgement"] .target-card-picker-zone-hand,
+  .target-card-picker-panel--compact .target-card-picker-zones[data-zone-composition="equipment-judgement"] .target-card-picker-zone-equipment {
+    grid-column: span 2;
+  }
+  .target-card-picker-panel--compact .target-card-picker-card[data-target-card-zone="hand-position"] {
+    flex-basis: clamp(44px, 11vw, 46px);
+    width: clamp(44px, 11vw, 46px);
+    height: auto;
+    aspect-ratio: 5 / 7;
+  }
+  .target-card-picker-panel--compact .target-card-picker-public-card {
+    width: clamp(48px, 11.5vw, 54px);
+  }
+  .target-card-picker-panel--compact .target-card-picker-public-card > .target-card-picker-card[data-target-card-zone="equipment"] .played-card .card-name-mark,
+  .target-card-picker-panel--compact .target-card-picker-public-card > .target-card-picker-card[data-target-card-zone="judgement"] .played-card .card-name-mark {
+    max-width: 100%;
+    font-size: clamp(7px, 1.8vw, 8px);
+    letter-spacing: normal;
+    line-height: 1;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .target-card-picker-panel--compact .target-card-picker-public-card .played-card > strong {
+    margin-top: 3px;
+    font-size: 5px;
+  }
+  .target-card-picker-panel--compact > .target-card-picker-actions {
+    flex-direction: row;
+    gap: 6px;
+  }
+  .target-card-picker-panel--compact > .target-card-picker-actions button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0 8px;
+    font-size: 9px;
+  }
+}
+
+/* UX2 §10.17.4 HUD-4: the public gear row reserves one fixed footprint for
+   every authoritative equipment slot, even when a slot is empty. */
+.game-shell .player-board .opponent-equipment-summary {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(4, 14px);
+  gap: 2px;
+  width: 62px;
+  margin-left: auto;
+  overflow: visible;
+}
+
+.game-shell .player-board .opponent-equipment-slot {
+  display: grid;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 2px;
+}
+
+.game-shell .player-board .opponent-equipment-slot.is-empty {
+  border-color: rgb(198 170 110 / 22%);
+  background: rgb(21 23 17 / 40%);
+}
+
+.game-shell .player-board .opponent-equipment-slot.is-occupied {
+  border: 0;
+}
+
+.game-shell .player-board .opponent-equipment-slot .opponent-equipment-indicator {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.game-shell .player-board .opponent-equipment-slot .opponent-equipment-indicator svg {
+  width: 11px;
+  height: 11px;
+  overflow: hidden;
+}
+
+.game-shell .player-board .opponent-equipment-slot .opponent-equipment-horse-mark {
+  font-size: 7px;
+  letter-spacing: -0.07em;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-equipment-summary {
+  display: grid;
+  flex: 0 0 52.5px;
+  grid-template-columns: repeat(4, 12px);
+  gap: 1.5px;
+  width: 52.5px;
+  margin-left: auto;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-equipment-slot {
+  width: 12px;
+  height: 14px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-equipment-slot .opponent-equipment-indicator[data-slot$="Horse"] {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-status-equipment-strip .opponent-equipment-summary {
+  display: grid;
+  flex: 0 0 32px;
+  grid-template-columns: repeat(4, 8px);
+  gap: 0;
+  width: 32px;
+  margin-left: auto;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-status-equipment-strip .opponent-equipment-slot {
+  width: 8px;
+  height: 11px;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-status-equipment-strip .opponent-equipment-slot .opponent-equipment-indicator[data-slot$="Horse"] {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-status-equipment-strip .opponent-equipment-slot .opponent-equipment-indicator svg {
+  width: 7px;
+  height: 7px;
+}
+
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-status-equipment-strip .opponent-equipment-slot .opponent-equipment-horse-mark {
+  font-size: 5.5px;
+}
+
+/* UX2 §10.17.5 INS-5: make the public Hero image the left anchor and stack
+   identity/skills + Judgement above a separate full-width Equipment row. */
+.game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell > .hero-focus.hero-focus-inspect {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  gap: 2px;
+  min-height: 0;
+  width: calc(var(--inspector-portrait-width, 90px) + 3px + var(--inspector-main-width, 154px));
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
+  display: grid;
+  grid-template-columns: var(--inspector-portrait-width, 90px) minmax(0, 1fr);
+  grid-template-areas: "portrait main";
+  align-items: start;
+  gap: 3px;
+  flex: 0 0 auto;
+  min-height: 0;
+  width: calc(var(--inspector-portrait-width, 90px) + 3px + var(--inspector-main-width, 154px));
+  max-width: 100%;
+}
+
+.game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-portrait {
+  grid-area: portrait;
+  align-self: center;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+}
+
+.game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-portrait > .hero-art-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-main {
+  grid-area: main;
+  display: grid;
+  grid-template-areas: "upper" "equipment";
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 4px;
+  min-width: 0;
+  min-height: min-content;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-upper {
+  grid-area: upper;
+  display: grid;
+  grid-template-areas: "identity judgement";
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+  min-height: min-content;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity {
+  grid-area: identity;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-profile {
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-line {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-hero {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-stats {
+  gap: 2px 6px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-public-skills {
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skills {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  gap: 2px;
+  min-width: 0;
+  max-height: 66px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skill {
+  width: 100%;
+  min-width: 0;
+  min-height: 19px;
+  flex: 0 0 auto;
+  padding: 2px 4px;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  line-height: 1.15;
+  text-align: left;
+  white-space: normal;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement,
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment {
+  grid-area: auto;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
+  min-height: 0;
+  padding: 3px 4px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement {
+  grid-area: judgement;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment {
+  grid-area: equipment;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement h3,
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment h3 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 8px;
+  line-height: 1.1;
+  letter-spacing: .04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-slot-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  justify-content: stretch;
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-slot-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  justify-content: stretch;
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-card,
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-empty-slot,
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-card,
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-empty-slot {
+  justify-self: center;
+  width: min(100%, clamp(28px, 11vw, 46px));
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-overflow {
+  justify-self: start;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-overflow {
+  justify-self: end;
+}
+
+@media (max-height: 740px) {
+  .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
+    grid-template-columns: var(--inspector-portrait-width, 90px) minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .opponent-inspection-floating-shell .hero-focus-inspect-upper {
+    grid-template-columns: minmax(0, 1fr) max-content;
+  }
+
+  .opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-card,
+  .opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-empty-slot,
+  .opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-card,
+  .opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-empty-slot {
+    width: min(100%, clamp(27px, 10.5vw, 42px));
+  }
+}
+/* Give the Inspector the full seat-free corridor on phone side-column tables.
+   The generic interaction corridor reserves extra room for wide event cards;
+   Inspect is shorter and can safely use the space between the actual seat
+   tracks without covering their Hero or SWITCH controls. */
+@media (max-width: 520px) {
+  .game-shell .play-table[data-seat-topology="side-column"] > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+    inset-inline: 23.3vw;
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-layer {
+    padding-inline: 4px;
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell .hero-focus-body {
+    gap: 1px;
+  }
+}
+
+/* UX2 §10.17.5.1-R: content-wrap only the Inspector and keep its real public
+   zones at readable, stable card sizes. */
+.game-shell .play-table[data-seat-topology="top-row"] .opponent-inspection-floating-shell {
+  --inspector-portrait-width: 90px;
+  --inspector-slot-width: 36px;
+  --inspector-main-width: calc(var(--inspector-slot-width) + var(--inspector-slot-width) + var(--inspector-slot-width) + var(--inspector-slot-width) + 10px);
+}
+
+.game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell {
+  --inspector-portrait-width: 64px;
+  --inspector-slot-width: 42px;
+  --inspector-main-width: calc(var(--inspector-slot-width) + var(--inspector-slot-width) + var(--inspector-slot-width) + var(--inspector-slot-width) + 10px);
+}
+
+.opponent-inspection-layer {
+  padding: 4px 12px 12px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.opponent-inspection-floating-shell {
+  width: max-content;
+  max-width: calc(100% - 2px);
+  padding: 1px;
+}
+
+.opponent-inspection-floating-shell > .hero-focus.hero-focus-inspect {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: max-content;
+  max-width: 100%;
+  padding: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
+  display: grid;
+  grid-template-columns: var(--inspector-portrait-width, 90px) minmax(0, 1fr);
+  grid-template-areas: "portrait main";
+  align-items: start;
+  gap: 3px;
+  width: calc(var(--inspector-portrait-width, 90px) + 3px + var(--inspector-main-width, 154px));
+  max-width: 100%;
+  min-width: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-portrait-column {
+  grid-area: portrait;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 2px;
+  width: var(--inspector-portrait-width, 90px);
+  min-width: 0;
+}
+
+.game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-inspect-portrait-column > .hero-focus-portrait {
+  grid-area: auto;
+  align-self: start;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  aspect-ratio: 4 / 5;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-identity-caption {
+  display: grid;
+  gap: 1px;
+  box-sizing: border-box;
+  width: calc(100% + 2px);
+  min-width: 0;
+  margin-left: -1px;
+  padding: 1px 2px 0;
+  text-align: center;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-identity-caption .hero-focus-identity-hero,
+.opponent-inspection-floating-shell .hero-focus-inspect-identity-caption .hero-focus-identity-player {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-identity-caption .hero-focus-identity-hero {
+  color: #f0d28c;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-identity-caption .hero-focus-identity-player {
+  color: #d9d0bb;
+  font: 700 9px/1.1 Arial, sans-serif;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-main {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  gap: 1px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-upper {
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity {
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-profile {
+  display: grid;
+  gap: 2px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-line {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 3px 6px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-stats {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 2px 6px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-identity-stats small {
+  font-size: 10px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skills {
+  gap: 2px;
+  max-height: 72px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skill {
+  min-height: 20px;
+  padding: 2px 4px;
+  font-size: 10px;
+  line-height: 1.15;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement,
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment {
+  box-sizing: border-box;
+  max-width: 100%;
+  gap: 1px;
+  padding: 1px;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement {
+  justify-self: end;
+  width: max-content;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment {
+  width: 100%;
+  min-width: 0;
+}
+
+.game-shell .play-table[data-seat-topology="top-row"] > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+  inset-block-start: -12px;
+}
+
+/* The base interaction stage carries translateX(-50%). Anchor its full-width
+   box at the safe corridor midpoint so that translation lands it exactly back
+   inside the corridor instead of covering the side-seat Hero/SWITCH controls. */
+.game-shell .play-table[data-seat-topology="side-column"] > .interaction-safe-zone > .interaction-stage[data-local-ui-mode="INSPECT"] {
+  position: absolute;
+  inset: 0 !important;
+  left: 50% !important;
+  top: 0 !important;
+  right: auto !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  translate: -50% 0 !important;
+  transform: none !important;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-slot-row {
+  display: grid;
+  grid-template-columns: repeat(2, var(--inspector-slot-width, 42px));
+  justify-content: start;
+  gap: 2px;
+  width: max-content;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-slot-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  justify-content: start;
+  gap: 2px;
+  width: 100%;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-card,
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-empty-slot,
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-card,
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-empty-slot {
+  justify-self: start;
+  width: var(--inspector-slot-width, 42px);
+  max-width: 100%;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context {
+  align-self: stretch;
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context:empty {
+  flex: 0 0 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context:not(:empty) {
+  padding: 2px 2px 0;
+}
+
+@media (max-width: 520px) {
+  .game-shell .play-table[data-seat-topology="top-row"] .opponent-inspection-floating-shell {
+    --inspector-portrait-width: clamp(74px, 20vw, 80px);
+    --inspector-slot-width: clamp(36px, 9.25vw, 38px);
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell {
+    --inspector-portrait-width: clamp(50px, 13.2vw, 58px);
+    --inspector-slot-width: clamp(28px, 7vw, 32px);
+  }
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-public-skills > h3 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skill-detail .hero-focus-inspect-detail-kicker,
+.opponent-inspection-floating-shell .hero-focus-inspect-skill-detail .hero-focus-inspect-scroll-hint {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skill-detail {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 0 0 auto;
+  gap: 1px;
+  overflow: visible;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skill-name {
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-skill-description {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-height: calc(5 * 1.2em);
+  overflow-y: auto;
+  margin-top: 1px;
+  padding: 1px 5px;
+  font: 11.5px/1.2 Arial, sans-serif;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-card-detail {
+  grid-template-columns: minmax(0, 1fr);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 0 0 auto;
+  grid-template-rows: auto auto auto auto;
+  overflow: visible;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-card-rules {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-height: calc(5 * 1.35em);
+  overflow-y: auto;
+}
+
+@media (max-height: 740px) {
+  .game-shell .play-table[data-seat-topology="top-row"] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body,
+  .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
+    grid-template-columns: var(--inspector-portrait-width, 90px) minmax(0, 1fr);
+    gap: 3px;
+  }
+}
+
+/* ST5-1: five-player phone tables keep the existing relative seat mapping,
+   while the two physical opponent rows follow the top safe edge. */
+@media (max-width: 520px) {
+  .game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] {
+    grid-template-rows: repeat(2, max-content);
+    align-content: start;
+    align-items: start;
+    row-gap: clamp(8px, 2.5vw, 16px);
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] > .opponent-player-card {
+    align-self: start;
+    height: 108px;
   }
 }

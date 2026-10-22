@@ -100,9 +100,9 @@ function normalizePresentationMeta(entry) {
     && publicGroupSettlement.participants.every((participant, index) => isRecord(participant)
       && typeof participant.playerId === "string"
       && participant.order === index + 1
-      && (participant.status === "RESOLVED" && (publicGroupSettlement.cardKind === "RainingArrows"
+      && (participant.status === "RESOLVED" && (participant.outcome === undefined || (publicGroupSettlement.cardKind === "RainingArrows"
         ? ["AVOIDED", "DAMAGED", "NEGATED", "DEFEATED"].includes(participant.outcome)
-        : ["DAMAGED", "NEGATED", "DEFEATED"].includes(participant.outcome))
+        : ["DAMAGED", "NEGATED", "DEFEATED"].includes(participant.outcome)))
         || participant.status === "NO_LONGER_APPLICABLE" && participant.outcome === undefined))) {
     metadata.publicGroupSettlement = {
       semantics: "PROVEN",
@@ -192,12 +192,34 @@ function normalizePending(value, kind) {
   if ("heldCards" in pending) pending.heldCards = normalizeCards(pending.heldCards);
   if (kind === "harvest") {
     pending.revealed = normalizeCards(pending.revealed);
+    pending.revealEventId = typeof pending.revealEventId === "string" ? pending.revealEventId : undefined;
     pending.availableIds = Array.isArray(pending.availableIds) ? pending.availableIds.filter((id) => typeof id === "string") : [];
     pending.choices = Array.isArray(pending.choices) ? pending.choices.filter(isRecord).filter((choice) => typeof choice.cardId === "string" && typeof choice.playerId === "string" && typeof choice.playerName === "string") : [];
   }
   if (kind === "borrowed_sword") pending.eligibleTargetIds = Array.isArray(pending.eligibleTargetIds) ? pending.eligibleTargetIds.filter((id) => typeof id === "string") : [];
   if (kind === "dying" && typeof pending.recoveryNeeded !== "number") pending.recoveryNeeded = 1;
   return pending;
+}
+
+function normalizePublicHarvestPool(value) {
+  if (!isRecord(value) || value.semantics !== "PROVEN"
+    || typeof value.rootEventId !== "string" || !value.rootEventId
+    || typeof value.revealEventId !== "string" || !value.revealEventId) return null;
+  const revealed = normalizeCards(value.revealed);
+  const availableIds = Array.isArray(value.availableIds) ? value.availableIds.filter((id) => typeof id === "string" && id) : [];
+  const choices = Array.isArray(value.choices)
+    ? value.choices.filter(isRecord).filter((choice) => typeof choice.cardId === "string" && choice.cardId
+      && typeof choice.playerId === "string" && choice.playerId && typeof choice.playerName === "string" && choice.playerName)
+      .map(({ cardId, playerId, playerName }) => ({ cardId, playerId, playerName }))
+    : [];
+  const ids = revealed.map(({ id }) => id);
+  const partition = [...availableIds, ...choices.map(({ cardId }) => cardId)];
+  if (!revealed.length || new Set(ids).size !== ids.length || new Set(availableIds).size !== availableIds.length
+    || new Set(choices.map(({ cardId }) => cardId)).size !== choices.length
+    || new Set(choices.map(({ playerId }) => playerId)).size !== choices.length
+    || partition.length !== ids.length || partition.some((id) => !ids.includes(id))
+    || ids.some((id) => !partition.includes(id))) return null;
+  return { semantics: "PROVEN", rootEventId: value.rootEventId, revealEventId: value.revealEventId, revealed, availableIds, choices };
 }
 
 function normalizeCurrentAction(value) {
@@ -283,6 +305,7 @@ export function normalizeRoomData(value) {
     players: normalizePlayers(value.players),
     myHand: normalizeCards(value.myHand),
     timeline: normalizeTimeline(value.timeline),
+    publicHarvestPool: normalizePublicHarvestPool(value.publicHarvestPool),
     log: Array.isArray(value.log) ? value.log.filter((entry) => typeof entry === "string") : [],
     myHeroOptions: normalizeHeroes(value.myHeroOptions),
     discardTop: normalizeCard(value.discardTop),
