@@ -1140,8 +1140,53 @@ function bumperHarvestProgressFor(
   if (childRelation && stable.kind !== "SPECIAL") return null;
   if (rootRelation && progress.currentEffectState !== undefined
     || childRelation && progress.currentEffectState !== "ACTIVE" && progress.currentEffectState !== "BLOCKED") return null;
+  const rawResponses = progress.publicNegationResponses;
+  const publicNegationResponses: NonNullable<PresentationSnapshotBumperHarvestProgress["publicNegationResponses"]> = [];
+  if (Array.isArray(rawResponses)) {
+    const eventIds = new Set<string>();
+    const cardIds = new Set<string>();
+    const nodeIds = new Set<string>();
+    const previousByChain = new Map<string, string>();
+    let historyIsValid = true;
+    for (let index = 0; index < rawResponses.length; index++) {
+      const response = rawResponses[index];
+      if (!response || response.semantics !== "PROVEN" || response.order !== index + 1
+        || response.interactionId !== progress.interactionId || response.rootFrameId !== progress.rootFrameId
+        || response.rootEventId !== progress.rootEventId || response.rootResolutionId !== progress.rootResolutionId
+        || response.rootCardId !== progress.rootCardId || response.parentFrameId !== progress.rootFrameId
+        || !progress.targetIds.includes(response.effectParticipantId)
+        || !nonEmptyString(response.frameId) || !nonEmptyString(response.nodeId)
+        || !nonEmptyString(response.actorId) || !nonEmptyString(response.cardId)
+        || !nonEmptyString(response.eventId) || !nonEmptyString(response.resolutionId)
+        || response.causedByNodeId !== null && !nonEmptyString(response.causedByNodeId)
+        || eventIds.has(response.eventId) || cardIds.has(response.cardId) || nodeIds.has(response.nodeId)) {
+        historyIsValid = false;
+        break;
+      }
+      const chainKey = `${response.effectParticipantId}:${response.frameId}`;
+      const previousNodeId = previousByChain.get(chainKey);
+      if ((previousNodeId === undefined && response.causedByNodeId !== null)
+        || (previousNodeId !== undefined && response.causedByNodeId !== previousNodeId)) {
+        historyIsValid = false;
+        break;
+      }
+      eventIds.add(response.eventId);
+      cardIds.add(response.cardId);
+      nodeIds.add(response.nodeId);
+      previousByChain.set(chainKey, response.nodeId);
+      publicNegationResponses.push({ ...response });
+    }
+    if (!historyIsValid) publicNegationResponses.length = 0;
+  }
 
-  return { ...progress, targetIds: [...progress.targetIds], participants };
+  const provenProgress = { ...progress };
+  delete provenProgress.publicNegationResponses;
+  return {
+    ...provenProgress,
+    targetIds: [...progress.targetIds],
+    participants,
+    ...(publicNegationResponses.length ? { publicNegationResponses } : {}),
+  };
 }
 
 function groupTargetEffectScopeForSnapshot(

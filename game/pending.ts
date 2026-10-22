@@ -14,6 +14,24 @@ export type AttackDeclaration = { sourceId: string; targetId: string; origin: At
 export type HarvestChoice = { cardId: string; playerId: string; playerName: string };
 export type HarvestParticipantProgressStatus = "PENDING" | "CURRENT" | "RESOLVED" | "NO_LONGER_APPLICABLE";
 export type HarvestParticipantProgressOutcome = "CHOSE_CARD" | "NEGATED";
+/** Persisted public identity for a real Negation card committed against one Harvest participant. */
+export type HarvestNegationResponseRecord = {
+  order: number;
+  interactionId: string;
+  rootFrameId: string;
+  rootEventId: string;
+  rootResolutionId: string;
+  rootCardId: string;
+  effectParticipantId: string;
+  parentFrameId: string;
+  frameId: string;
+  nodeId: string;
+  causedByNodeId: string | null;
+  actorId: string;
+  cardId: string;
+  eventId: string;
+  resolutionId: string;
+};
 export type HarvestParticipantProgress = {
   version: 2;
   interactionId: string;
@@ -23,6 +41,8 @@ export type HarvestParticipantProgress = {
   rootCardId: string;
   currentParticipantId: string | null;
   participants: Array<{ playerId: string; status: HarvestParticipantProgressStatus; outcome?: HarvestParticipantProgressOutcome }>;
+  /** Public committed responses retained across the sequential Harvest checkpoints. */
+  publicNegationResponses?: HarvestNegationResponseRecord[];
 };
 export type HarvestPending = CausalFields & { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; revealEventId?: string; availableIds?: string[]; choices?: HarvestChoice[]; participantProgress?: HarvestParticipantProgress; previewCardId?: string; choiceDeadlineAt?: number; completeAt?: number; resumePhase: string; reason: string; heldCards?: Card[] };
 export type TargetCardPending = CausalFields & { kind: "target_card"; sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal"; resumePhase: string; reason: string; heldCards?: Card[] };

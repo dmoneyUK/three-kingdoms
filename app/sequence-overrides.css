@@ -491,6 +491,8 @@
 /* Step 2: the local seat is a compact dock and the hand is a layered peek
    rail. These rules intentionally do not change the table-resolution anchors. */
 .game-shell {
+  --hand-card-face-width: 68px;
+  --hand-card-face-height: 102px;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -514,8 +516,8 @@
 /* LocalPlayerDock layout. Each visible region owns its complete panel border. */
 .local-player-dock {
   --hand-panel-height: 108px;
-  --hand-peek-height: 102px;
-  --hand-card-height: 102px;
+  --hand-peek-height: var(--hand-card-face-height);
+  --hand-card-height: var(--hand-card-face-height);
   --hand-top-inset: 4px;
   --selected-rise: 48px;
   --selected-face-rise: 17px;
@@ -764,7 +766,7 @@
 .local-hand-rail { position: absolute; top: calc(-1 * var(--hand-lift-clearance)); right: 4px; left: 4px; z-index: 60; display: flex; align-items: flex-start; justify-content: flex-start; box-sizing: border-box; width: auto; height: calc(var(--hand-peek-height) + var(--hand-lift-clearance)); min-width: 0; padding: var(--hand-lift-clearance) 0 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; pointer-events: none; scrollbar-width: none; }
 .local-hand-rail::-webkit-scrollbar { display: none; }
 .local-hand-rail:focus-visible { outline: 1px solid #e6cc8c; outline-offset: -1px; }
-.local-hand-rail .card-slot { position: relative; z-index: 1; flex: 0 0 68px; width: 68px; height: var(--hand-peek-height); overflow: hidden; pointer-events: auto; }
+.local-hand-rail .card-slot { position: relative; z-index: 1; flex: 0 0 var(--hand-card-face-width); width: var(--hand-card-face-width); height: var(--hand-peek-height); overflow: hidden; pointer-events: auto; }
 .local-hand-rail .card-slot.single-selected { z-index: 80; height: var(--hand-peek-height); overflow: visible; }
 .local-hand-rail .card-slot.details-selected { z-index: 90; overflow: visible; }
 .local-hand-rail .card-slot.inspect-focused { z-index: 90; overflow: visible; }
@@ -782,7 +784,7 @@
 .local-hand-rail .card-slot.inspect-focused .hand-card-inspection-action { transform: translateY(calc(0px - var(--selected-face-rise))); }
 .local-hand-rail .hand-card-inspection-action:focus-visible { outline: 2px solid #ffe28a; outline-offset: -3px; }
 .local-hand-rail .hand-card-details-action { position: absolute; z-index: 8; top: calc(var(--hand-card-height) - 44px); left: 50%; translate: -50% 0; display: grid; place-items: center; width: 44px; min-width: 44px; height: 44px; min-height: 44px; box-sizing: border-box; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; transition: transform .18s; }
-.local-hand-rail .hand-card-details-icon { display: grid; place-items: center; width: 34px; height: 34px; box-sizing: border-box; border: 1px solid #c5a45f; border-radius: 50%; background: #191a14f2; color: #f2d98e; font: 700 18px/1 Arial,sans-serif; }
+.local-hand-rail .hand-card-details-icon { display: grid; place-items: center; width: 30px; height: 30px; box-sizing: border-box; border: 1px solid #c5a45f; border-radius: 50%; background: #191a14f2; color: #f2d98e; font: 700 16px/1 Arial,sans-serif; }
 .local-hand-rail .card-slot.details-selected .hand-card-details-action { transform: translateY(calc(0px - var(--selected-face-rise))); }
 .local-hand-rail .card-slot.inspect-focused .hand-card-details-action { transform: translateY(calc(0px - var(--selected-face-rise))); }
 .local-hand-rail .hand-card-details-action:hover .hand-card-details-icon { background: #2a271b; color: #ffe8a7; }
@@ -1328,6 +1330,16 @@
 @media (min-width: 600px) {
   .private-draw-content {
     bottom: calc(44px + 20px + 4px);
+  }
+}
+
+@media (max-width: 420px) and (max-height: 740px) {
+  .game-shell .private-draw-content {
+    right: auto;
+    bottom: 1px;
+    left: 50%;
+    width: min(224px, calc(100vw - 16px));
+    transform: translateX(-50%);
   }
 }
 
@@ -4965,6 +4977,13 @@
   }
 }
 
+@media (max-width: 520px) {
+  .game-shell .play-table[data-seat-topology="side-column"] > .harvest-choice-stage {
+    left: clamp(112px, calc(30vw - 4px), 124px);
+    right: clamp(112px, calc(30vw - 4px), 124px);
+  }
+}
+
 /* UX2 §10.13.4.1 U13-D-F: keep HP at the left and cluster only real Equipment
    at the right, leaving the strip's flexible middle as the visible gap. */
 .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] .opponent-status-equipment-strip .opponent-hp-chip {
@@ -5021,30 +5040,59 @@
 .game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card {
   width: 40px;
   height: 60px;
-  padding: 2px 1px;
-  border-radius: 3px;
+  padding: 1.6px .8px;
+  border-radius: 2.4px;
   box-shadow: 0 0 0 1px #d4b46f99, 0 4px 12px #000b;
 }
 .game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i {
   left: 0;
   top: 0;
-  width: 8px;
-  min-height: 13px;
-  padding: 0 1px 2px;
-  border-width: 1px;
-  border-radius: 0 0 3px 0;
-  font-size: 5px;
+  width: 6.4px;
+  min-height: 10.4px;
+  padding: 0 .8px 1.6px;
+  border-width: .8px;
+  border-radius: 0 0 2.4px 0;
+  font-size: 4px;
   line-height: .9;
 }
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i small { margin-top: 0; font-size: 4px; line-height: 1; }
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card .card-name-mark { max-width: 92%; font-size: 6px; line-height: 1; }
-.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > strong { margin-top: 0; font-size: 4px; letter-spacing: .02em; }
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i small { margin-top: 0; font-size: 3.2px; line-height: 1; }
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card .card-name-mark { max-width: 92%; font-size: 4.8px; line-height: 1; }
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > strong { margin-top: 0; font-size: 3.2px; letter-spacing: .02em; }
+
+/* BCP-1-F2: the approved phone history mini is 32×48. Scale only its face
+   details with the physical card; root and committed responses share this
+   parked mini footprint while the 90×135 reveal and 48×72 wide view remain. */
+@media (max-width: 520px) {
+  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card {
+    padding: 3.73px 2.13px;
+    border-radius: 3.73px;
+  }
+  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card > i {
+    left: 3.33px;
+    top: 2.67px;
+    width: 8px;
+    min-height: 10.67px;
+    padding: .53px .53px 1.6px;
+    border-width: .53px;
+    border-radius: 0 0 2.67px 0;
+    font-size: 4px;
+  }
+  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card > i small {
+    font-size: 3.33px;
+  }
+  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card .card-name-mark {
+    font-size: clamp(5.33px, 1.6vw, 6.67px);
+  }
+  .game-shell .public-card-display-journey .public-card-journey-card[data-public-card-compact-response="true"] > .played-card > strong {
+    font-size: 2.67px;
+  }
+}
 
 /* The active decision frame is the only Harvest hit target. Its stage has no
    backdrop hit box, so seat controls and public inspection stay reachable. */
 .game-shell .play-table > .harvest-choice-stage {
   inset: auto 0 auto;
-  top: max(92px, calc(var(--interaction-safe-top, 149px) - 53px));
+  top: 50%;
   bottom: auto;
   z-index: 25;
   display: flex;
@@ -5057,11 +5105,69 @@
   background: transparent;
   pointer-events: none;
 }
+.game-shell .public-card-display-journey.is-harvest-pool-active {
+  /* Fixed wrappers establish a stacking context even with z-index:auto. Let
+     the root mini (z 5), pool (z 25), and committed response (z 36) share the
+     table stacking context so Plan A can layer each phase independently. */
+  position: absolute !important;
+  inset: 0 auto auto 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  z-index: auto !important;
+}
+.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-public-card-journey-phase="parked"] {
+  z-index: 5;
+}
+.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-public-card-journey-phase="reveal"],
+.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-journey-card[data-public-card-journey-phase="move"] {
+  z-index: 36;
+}
+.game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-display-journey-copy {
+  z-index: 36;
+}
 .game-shell .play-table[data-seat-topology="side-column"] > .harvest-choice-stage {
   right: clamp(88px, calc(25vw + 4px), 120px);
   left: clamp(88px, calc(25vw + 4px), 120px);
   width: auto;
 }
+
+/* UX2 §10.17.1 R2: a read-only Harvest pool stays mounted, but an explicitly
+   opened opponent Inspector must be readable above it. Raise only the
+   Inspector's transparent safe-zone stacking context; response card reveals
+   retain their separate higher layer and closing Inspect restores the pool. */
+.game-shell .play-table:has(> .harvest-choice-stage) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+  z-index: 40;
+}
+.game-shell .play-table:has(.public-card-display-journey.is-harvest-history-passive) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+  z-index: 40;
+}
+
+.game-shell .public-card-display-journey .public-card-journey-card.is-harvest-history-parked {
+  opacity: 1 !important;
+  filter: none !important;
+}
+.game-shell .public-card-display-journey .public-card-journey-card.is-harvest-history-parked > .played-card {
+  opacity: .60;
+}
+.game-shell .public-card-display-journey .public-card-journey-card.is-harvest-history-parked > .public-card-journey-ordinal {
+  opacity: 1;
+}
+.game-shell .public-card-display-journey.is-harvest-history-passive > .public-card-journey-card:not([data-public-card-journey-phase="parked"]) {
+  visibility: hidden !important;
+}
+.game-shell .public-card-display-journey.is-harvest-history-passive > .public-card-journey-card {
+  pointer-events: none;
+}
+.game-shell .public-card-display-journey.is-harvest-history-passive > .public-card-journey-card.is-layout-pending.is-revealing {
+  visibility: hidden !important;
+}
+.game-shell .public-card-display-journey.is-harvest-pool-active:not(.is-harvest-history-passive) > .public-card-journey-card.is-layout-pending.is-revealing {
+  visibility: visible !important;
+}
+.game-shell .public-card-display-journey.is-harvest-history-passive > .public-card-journey-card.is-harvest-history-parked {
+  transform: translate(var(--harvest-inspector-peek-x, 0px), var(--harvest-inspector-peek-y, 0px));
+}
+
 .game-shell .harvest-choice-panel {
   box-sizing: border-box;
   display: flex;
@@ -5116,23 +5222,25 @@
   align-items: flex-start;
   justify-content: flex-start;
   gap: 4px;
-  width: max-content;
+  flex: 0 0 auto;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
-  padding: 0 1px 2px;
+  padding: 0 6px 2px 1px;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
-  pointer-events: none;
+  pointer-events: auto;
+  touch-action: pan-x;
 }
 .game-shell .harvest-card-row::-webkit-scrollbar { display: none; }
 .game-shell .harvest-card-choice {
   box-sizing: border-box;
   position: relative;
-  flex: 0 0 clamp(62px, 15vw, 68px);
-  width: clamp(62px, 15vw, 68px);
-  height: auto;
+  flex: 0 0 var(--hand-card-face-width);
+  width: var(--hand-card-face-width);
+  height: var(--hand-card-face-height);
   aspect-ratio: 2 / 3;
   padding: 0;
   border: 0;
@@ -5153,6 +5261,7 @@
   background: transparent;
   cursor: pointer;
   pointer-events: auto;
+  touch-action: pan-x;
 }
 .game-shell .harvest-card-select:disabled { cursor: default; }
 .game-shell .harvest-card-choice > .played-card {
@@ -5166,10 +5275,19 @@
   box-shadow: none;
   transition: filter .15s ease, opacity .15s ease, translate .15s ease, box-shadow .15s ease;
 }
-.game-shell .harvest-card-choice > .played-card > i { left: 2px; top: 2px; width: 14px; min-height: 20px; padding: 1px 1px 3px; border-width: 1px; border-radius: 0 0 4px 0; font-size: 9px; }
-.game-shell .harvest-card-choice > .played-card > i small { margin-top: 0; font-size: 7px; }
+.game-shell .harvest-card-choice > .played-card > i { left: 2px; top: 2px; width: 16px; min-height: 23px; padding: 1px 1px 3px; border-width: 1px; border-radius: 0 0 4px 0; font-size: 10px; }
+.game-shell .harvest-card-choice > .played-card > i small { margin-top: 0; font-size: 8px; }
 .game-shell .harvest-card-choice > .played-card > strong { display: none; }
-.game-shell .harvest-card-choice > .played-card .card-name-mark { max-width: 94%; font-size: 12px; line-height: 1; translate: 0 -8px; }
+.game-shell .harvest-card-choice > .played-card .card-name-mark {
+  max-width: 96%;
+  font-size: clamp(10.5px, 2.7vw, 12px);
+  line-height: 1.02;
+  -webkit-line-clamp: 3;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  hyphens: auto;
+  translate: 0 -14px;
+}
 .game-shell .harvest-card-choice.taken > .played-card {
   filter: grayscale(1) brightness(.3);
   opacity: .58;
@@ -5216,7 +5334,7 @@
   z-index: 4;
   top: auto;
   right: auto;
-  bottom: 0;
+  bottom: 2px;
   left: 50%;
   translate: -50% 0;
   display: grid;
@@ -5231,6 +5349,10 @@
   font-size: 0;
   cursor: pointer;
   pointer-events: auto;
+  touch-action: pan-x;
+}
+.game-shell .harvest-scroll-hint {
+  display: none;
 }
 .game-shell .harvest-card-info::before {
   content: "i";
@@ -5287,15 +5409,40 @@
   color: #8f846e;
 }
 
-/* Read-only public observers get a slightly denser pool while preserving full
-   CardFace proportions and the same independent lower-centre Info hit target. */
-.game-shell .harvest-choice-panel:not(.harvest-choice-panel--actor) .harvest-card-choice {
-  flex-basis: clamp(58px, 14vw, 62px);
-  width: clamp(58px, 14vw, 62px);
+@media (max-width: 520px) {
+  .game-shell .harvest-scroll-hint {
+    display: block;
+    align-self: flex-end;
+    margin: -1px 2px 0 0;
+    color: #a99a76;
+    font: 600 6px/1.1 Arial, sans-serif;
+    letter-spacing: .04em;
+    pointer-events: none;
+  }
 }
-.game-shell .harvest-choice-panel:not(.harvest-choice-panel--actor) .harvest-card-choice > .played-card .card-name-mark {
-  translate: 0 -10px;
+
+/* Read-only and active viewers share the same content-fit CardFace geometry;
+   shrinking only the observer pool made public card identities unreadable. */
+
+/* The genuine Harvest root becomes a 40x60 phone thumbnail beside the pool.
+   Scale its internal frame and marks together so the corner does not dominate
+   the parked card after the large reveal has settled. */
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card {
+  border-width: 1px;
+  border-radius: 2.5px;
+  padding: 1.5px .75px;
 }
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i {
+  width: 6.5px;
+  min-height: 10.5px;
+  padding: 0 .75px 1.5px;
+  border-width: .75px;
+  border-radius: 0 0 2.25px 0;
+  font-size: 4.25px;
+}
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > i small { font-size: 3.5px; }
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card .card-name-mark { font-size: 5px; }
+.game-shell .public-card-display-harvest-active .public-card-display-static-card > .played-card > strong { font-size: 3.5px; }
 
 /* §10.17.2–10.17.3 BCP-2/3: compact card decisions stay in the table
    corridor. The table-wide backdrop remains pass-through; this panel owns
@@ -5641,18 +5788,24 @@
 .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell > .hero-focus.hero-focus-inspect {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  overflow: auto;
+  flex: 0 1 auto;
+  gap: 2px;
+  min-height: 0;
+  width: calc(var(--inspector-portrait-width, 90px) + 3px + var(--inspector-main-width, 154px));
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
   display: grid;
-  grid-template-columns: minmax(0, 28%) minmax(0, 1fr);
+  grid-template-columns: var(--inspector-portrait-width, 90px) minmax(0, 1fr);
   grid-template-areas: "portrait main";
-  align-items: stretch;
-  gap: 5px;
+  align-items: start;
+  gap: 3px;
   flex: 0 0 auto;
   min-height: 0;
+  width: calc(var(--inspector-portrait-width, 90px) + 3px + var(--inspector-main-width, 154px));
+  max-width: 100%;
 }
 
 .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-portrait {
@@ -5687,7 +5840,7 @@
   grid-area: upper;
   display: grid;
   grid-template-areas: "identity judgement";
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: stretch;
   gap: 4px;
   min-width: 0;
@@ -5815,20 +5968,14 @@
   justify-self: end;
 }
 
-.opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context {
-  flex: 0 0 auto;
-  min-height: 0;
-  overflow: visible;
-}
-
 @media (max-height: 740px) {
   .game-shell .play-table[data-seat-topology] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
-    grid-template-columns: minmax(0, 28%) minmax(0, 1fr);
-    gap: 5px;
+    grid-template-columns: var(--inspector-portrait-width, 90px) minmax(0, 1fr);
+    gap: 3px;
   }
 
   .opponent-inspection-floating-shell .hero-focus-inspect-upper {
-    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) max-content;
   }
 
   .opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-card,
@@ -5838,7 +5985,6 @@
     width: min(100%, clamp(27px, 10.5vw, 42px));
   }
 }
-
 /* Give the Inspector the full seat-free corridor on phone side-column tables.
    The generic interaction corridor reserves extra room for wide event cards;
    Inspect is shorter and can safely use the space between the actual seat
@@ -5862,11 +6008,13 @@
 .game-shell .play-table[data-seat-topology="top-row"] .opponent-inspection-floating-shell {
   --inspector-portrait-width: 90px;
   --inspector-slot-width: 36px;
+  --inspector-main-width: calc(var(--inspector-slot-width) + var(--inspector-slot-width) + var(--inspector-slot-width) + var(--inspector-slot-width) + 10px);
 }
 
 .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell {
   --inspector-portrait-width: 64px;
   --inspector-slot-width: 42px;
+  --inspector-main-width: calc(var(--inspector-slot-width) + var(--inspector-slot-width) + var(--inspector-slot-width) + var(--inspector-slot-width) + 10px);
 }
 
 .opponent-inspection-layer {
@@ -5891,11 +6039,11 @@
 
 .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
   display: grid;
-  grid-template-columns: minmax(0, var(--inspector-portrait-width, 90px)) minmax(0, max-content);
+  grid-template-columns: var(--inspector-portrait-width, 90px) minmax(0, 1fr);
   grid-template-areas: "portrait main";
   align-items: start;
-  gap: 2px;
-  width: max-content;
+  gap: 3px;
+  width: calc(var(--inspector-portrait-width, 90px) + 3px + var(--inspector-main-width, 154px));
   max-width: 100%;
   min-width: 0;
 }
@@ -5953,7 +6101,7 @@
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-main {
-  width: max-content;
+  width: 100%;
   max-width: 100%;
   min-width: 0;
   gap: 1px;
@@ -5961,7 +6109,7 @@
 
 .opponent-inspection-floating-shell .hero-focus-inspect-upper {
   width: 100%;
-  grid-template-columns: minmax(72px, 1fr) max-content;
+  grid-template-columns: minmax(0, 1fr) max-content;
   gap: 2px;
 }
 
@@ -6008,14 +6156,42 @@
 
 .opponent-inspection-floating-shell .hero-focus-inspect-judgement,
 .opponent-inspection-floating-shell .hero-focus-inspect-equipment {
-  width: max-content;
+  box-sizing: border-box;
   max-width: 100%;
   gap: 1px;
   padding: 1px;
 }
 
+.opponent-inspection-floating-shell .hero-focus-inspect-judgement {
+  justify-self: end;
+  width: max-content;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-equipment {
+  width: 100%;
+  min-width: 0;
+}
+
 .game-shell .play-table[data-seat-topology="top-row"] > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
   inset-block-start: -12px;
+}
+
+/* The base interaction stage carries translateX(-50%). Anchor its full-width
+   box at the safe corridor midpoint so that translation lands it exactly back
+   inside the corridor instead of covering the side-seat Hero/SWITCH controls. */
+.game-shell .play-table[data-seat-topology="side-column"] > .interaction-safe-zone > .interaction-stage[data-local-ui-mode="INSPECT"] {
+  position: absolute;
+  inset: 0 !important;
+  left: 50% !important;
+  top: 0 !important;
+  right: auto !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  translate: -50% 0 !important;
+  transform: none !important;
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-slot-row {
@@ -6028,10 +6204,10 @@
 
 .opponent-inspection-floating-shell .hero-focus-inspect-equipment .opponent-inspection-slot-row {
   display: grid;
-  grid-template-columns: repeat(4, var(--inspector-slot-width, 42px));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   justify-content: start;
   gap: 2px;
-  width: max-content;
+  width: 100%;
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-judgement .opponent-inspection-card,
@@ -6044,15 +6220,26 @@
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context {
+  align-self: stretch;
+  flex: 1 1 auto;
   box-sizing: border-box;
-  width: calc(
-    var(--inspector-slot-width, 42px)
-    + var(--inspector-slot-width, 42px)
-    + var(--inspector-slot-width, 42px)
-    + var(--inspector-slot-width, 42px)
-    + 8px
-  );
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context:empty {
+  flex: 0 0 0;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-details.hero-focus-context:not(:empty) {
+  padding: 2px 2px 0;
 }
 
 @media (max-width: 520px) {
@@ -6093,7 +6280,14 @@
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-skill-detail {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 0 0 auto;
   gap: 1px;
+  overflow: visible;
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-skill-name {
@@ -6102,16 +6296,61 @@
 }
 
 .opponent-inspection-floating-shell .hero-focus-inspect-skill-description {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
   max-height: calc(5 * 1.2em);
+  overflow-y: auto;
   margin-top: 1px;
-  padding: 3px 5px;
+  padding: 1px 5px;
   font: 11.5px/1.2 Arial, sans-serif;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-card-detail {
+  grid-template-columns: minmax(0, 1fr);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 0 0 auto;
+  grid-template-rows: auto auto auto auto;
+  overflow: visible;
+}
+
+.opponent-inspection-floating-shell .hero-focus-inspect-card-rules {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-height: calc(5 * 1.35em);
+  overflow-y: auto;
 }
 
 @media (max-height: 740px) {
   .game-shell .play-table[data-seat-topology="top-row"] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body,
   .game-shell .play-table[data-seat-topology="side-column"] .opponent-inspection-floating-shell .hero-focus-inspect .hero-focus-body {
-    grid-template-columns: minmax(0, var(--inspector-portrait-width, 90px)) minmax(0, max-content);
+    grid-template-columns: var(--inspector-portrait-width, 90px) minmax(0, 1fr);
     gap: 3px;
+  }
+}
+
+/* ST5-1: five-player phone tables keep the existing relative seat mapping,
+   while the two physical opponent rows follow the top safe edge. */
+@media (max-width: 520px) {
+  .game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] {
+    grid-template-rows: repeat(2, max-content);
+    align-content: start;
+    align-items: start;
+    row-gap: clamp(8px, 2.5vw, 16px);
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] > .opponent-player-card {
+    align-self: start;
+    height: 108px;
   }
 }

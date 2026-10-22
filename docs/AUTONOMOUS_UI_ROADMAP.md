@@ -2471,6 +2471,76 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `{"ok":true,"worker":"available"}`. Pending user phone review; Reviewer
   acceptance is not claimed.
 
+### UX2 §10.17.1.1/.2 BCP-1 F1/F2 follow-up — 2026-10-18
+
+- Commit `22e20ba6517fc2fe45d589a6ee2bd9f612d409fa` completes the directed
+  root-thumbnail / public-pool layer correction and public current-chooser hint.
+  During the proof-backed read-only Negation pool, the genuine root card parks
+  at 40×60 in the lower-left rail below the selectable-card layer, with zero
+  measured overlap against the pool, H4, timer, activity chip, seats or Dock at
+  390×700 and 440×766. Original card/event IDs are preserved; the no-proof path
+  retains the existing reveal/move. The generic Negation status remains visible.
+- The chooser hint uses only the validated shared Bumper Harvest progress and
+  public player name. It matches across authenticated views and TEST SWITCH;
+  missing or mismatched progress removes the hint and retains generic
+  Negation status. No chooser control, `choose_harvest` action, private
+  responder, response identity or Hand data is exposed.
+- Focused mobile Worker/D1 browser coverage passed 3/3, including true-root
+  identity, mobile geometry/screenshots, actual SWITCH/Inspector/Card Details
+  touch, actor selection/Confirm preservation and fail-closed proof mismatch.
+  Local build and `git diff --check` passed. The focused local ESLint process
+  exceeded the machine's default 2GB Node heap; exact-SHA Actions
+  [`39147264299`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39147264299)
+  passed full lint/fast, API, browser startup/room smoke, D1 migration, Worker
+  deploy and production `/` + `/api/health` smoke. Worker version:
+  `263e76a7-49c5-4e93-94ed-b1d1d015311c`. Focused gameplay replay used the
+  local Worker/D1 browser harness; no production four-client interaction replay
+  is claimed. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**, not
+  accepted. H4 stays accepted and Q1–Q4 stay paused.
+
+### UX2 §10.17.1.2 BCP-1-F2 re-audit — 2026-10-20
+
+- Re-reviewed the current mobile implementation against the latest concise-copy
+  and shared-proof requirements. The existing Harvest-specific Negation path
+  already suppresses the generic phase suffix and fails closed without a proven
+  current chooser; no additional product-code change was needed.
+- Existing mobile browser coverage passed for the committed Negation/counter
+  chain with four authenticated views at 390×700, 390×844, 440×766 and 440×894,
+  including refresh and progression to the next chooser (1/1). The TEST SWITCH
+  and proof-mismatch flow passed at a phone viewport (1/1); public announcement
+  assertions passed 3/3, including source-equals-recipient and generic fallback.
+- Exact source SHA `4c75ec2af9166304b0e09b07367e4ab681371faf` passed all required
+  Actions jobs on rerun [`39341070164`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39341070164)
+  attempt 2. Worker version `9d312402-ad06-43c2-b885-37852c8df297` deployed;
+  production `/` and `/api/health` smoke passed, and a direct health check
+  returned `{"ok":true,"worker":"available"}`. No production multi-viewer
+  gameplay replay is claimed. **IMPLEMENTED / DEPLOYED — PENDING USER PHONE
+  REVIEW**, not accepted.
+
+### UX2 §10.17.1.2 BCP-1-F2 public response continuity repair — 2026-10-20
+
+- Corrected the confirmed stage-transition gap: a publicly committed Harvest
+  Negation/counter card was projected from the live reaction chain only during
+  `NEGATION`, so the physical response identity could be lost when Harvest
+  advanced to `SEQUENTIAL_CHOICE` or a viewer refreshed/joined late. The room
+  route now retains exact root-bound public response records; presentation
+  projection revalidates each against the public timeline and causal root, then
+  carries the proof through the public snapshot/client path. The renderer
+  restores genuine cards as parked minis using the real event/card/author. It
+  does not replay historical cards as fresh reveals. No private hand or pending
+  response is exposed.
+- Scope stayed within BCP-1-F2: no F1 pool/root/seat changes, H4 changes, rules,
+  deadlines, or new tests/fixtures. No manual iPhone or production
+  multi-viewer gameplay replay is claimed; owner phone re-review is still
+  required. **BCP-1-F1 remains USER-ACCEPTED/CLOSED; BCP-1-F2 is IMPLEMENTED /
+  DEPLOYED — PENDING USER PHONE RE-REVIEW**, not accepted.
+- Exact code SHA `a79b63282d986b14871bb78a21e9e2b63c2ac841` passed all required
+  Actions jobs, including lint/fast, API, browser startup/room smoke, D1
+  migration, Worker deploy, and production smoke in
+  [`39342640589`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39342640589).
+  Worker version `b744c3d4-50ef-471a-9a38-0527458815e0` deployed; direct
+  `/api/health` returned `{"ok":true,"worker":"available"}`.
+
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
@@ -2942,6 +3012,32 @@ Profile command measurements:
 - The next separately bounded design slice is INS-5 (§10.17.5); see the current
   task in `HANDOVER.md`.
 
+### UX2-10.17.4.1 HUD-4-F — compact diagonal sword silhouette — 2026-10-18
+
+- Commit `e2e645f06bb24045be38a238f3f335f3cec08c7d` changes only the Weapon
+  glyph SVG and its focused phone regression coverage. The icon now has a broad
+  northeast diagonal blade with a center groove, short grip, distinct guard and
+  pommel. Blade diagonal span is 1.94× the grip; every vector part stays inside
+  the existing 18×18 viewBox. No equipment CSS, slot order, badge size, HP
+  placement, projection or gameplay rule changed.
+- Focused phone browser validation passed 47/47 across 390×700, 440×766,
+  390×844, 440×894 and 480×900 four-seat layouts; 6/8/10-seat side columns;
+  0–4 occupied slots, Weapon-only, Horse-only, equip/replace/discard and
+  empty-to-occupied transitions. Four fixed slot DOMRects matched the
+  390×700 baseline exactly (Weapon x=69.75, Armour x=83.25, +1 Horse
+  x=96.75, −1 Horse x=110.25; 12×14 each). Targeted screenshot captures also
+  passed 5/5 for 390×700/440×766 and side-column views, plus 3/3 empty/occupied
+  6/8/10-seat checks. Native badges and zoomed vector diagnostics are in
+  `/tmp/hud4-candidate/` (local evidence, not committed). Build and focused
+  browser-spec ESLint passed; local app/page ESLint exceeded the Node heap
+  limit, while full ESLint passed in CI.
+- Exact-SHA Actions run
+  [`39143287983`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39143287983)
+  passed lint/fast, API, browser startup/room smoke, D1 migration, Worker deploy
+  and production smoke. Worker version `182ff32a-807f-4e34-b423-5a000e5fa34b`.
+  The result is **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**, not
+  accepted. Next bounded task: BCP-1-F2 live public-proof audit.
+
 ### UX2-10.13.2.1-U13-B-F privacy-first unconditional public activity — 2026-10-18
 
 - Commit `082091d752ff9e98a8eda23c8392b31396908022` opens the same private
@@ -2966,3 +3062,25 @@ Profile command measurements:
   relevant turn. This was explicitly selected by the user. The delivery is
   **IMPLEMENTED / DEPLOYED — PENDING USER REVIEW**, not accepted. Q1–Q4 remain
   paused; accepted H4 positioning and wording are unchanged.
+
+### UX2 §10.18.1 ST5-1 — compact five-player phone Seats — 2026-10-20
+
+- Commit `76d5b89faad227725d3a184468f00e0cefb4a035` scopes two content-sized,
+  top-aligned Seat rows to five-player phone boards. The original relative seat
+  mapping and 108px Seat height remain unchanged; no author slots, gameplay,
+  private projection, H4 or card timing changes were made.
+- Mobile browser evidence passed at 390×700, 390×844, 440×766, 440×894 and
+  480×900, including actual Hero Inspector and TEST SWITCH taps, Harvest-pool
+  collision checks, and 8-player/6- and 10-player phone regressions. The real
+  five-player Harvest + committed Negation author-parking scenario passed.
+  Screenshots and geometry JSON were attached to the focused local Playwright
+  runs; screenshots from the original five-player report remain the before
+  evidence.
+- Exact-SHA Actions run
+  [`39504188992`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39504188992)
+  passed lint/fast, API, browser startup/room smoke, D1 migration, Worker deploy
+  and production smoke. Worker version `8e86bd75-5bfd-45c3-9420-7b8523870fe4`;
+  direct production `/` returned 200 and `/api/health` returned
+  `{"ok":true,"worker":"available"}`. **IMPLEMENTED / DEPLOYED — PENDING
+  OWNER PHONE REVIEW**, not accepted. The next separately bounded item is
+  INS5-2; no code for INS5-2 or BH5-1 is included.

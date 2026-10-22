@@ -25,7 +25,7 @@ import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus } from "../game/public-activity";
 import { CardFace } from "./card-face";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
-import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, publicCardActionKey, type PublicCardDisplayAction, type PublicSkillEventAnnouncement } from "./public-card-display";
+import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, harvestNegationDecisionCopy, publicCardActionKey, type PublicCardDisplayAction, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
@@ -635,7 +635,7 @@ export default function Home() {
 
   if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <GameRoomErrorBoundary room={room} onRecover={leave}><GameRoom room={room} presentationView={presentationView ?? buildPresentationClientView(null, null)} busy={busy} busyAction={busyAction} error={error} onAction={send} onLeave={leave} onPublicCounterReadVisible={notePublicCounterReadVisible} onSwitchTestViewer={switchTestViewer} /></GameRoomErrorBoundary>;
   if (room?.status === "heroes") return <HeroSelection room={room} busy={busy} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} />;
-  if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onAddTestPlayers={() => send("add_test_players")} onEnableTestRoom={() => send("enable_test_room")} onConfigureTestHands={(presetId, handsBySeat, expectedRevision) => send("configure_test_hands", { presetId, handsBySeat, expectedRevision })} onLeave={leave} />;
+  if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onAddTestPlayers={(count) => send("add_test_players", { count })} onEnableTestRoom={() => send("enable_test_room")} onConfigureTestHands={(presetId, handsBySeat, expectedRevision) => send("configure_test_hands", { presetId, handsBySeat, expectedRevision })} onLeave={leave} />;
 
   return (
     <main className="landing-shell">
@@ -680,7 +680,7 @@ type WaitingRoomProps = {
   busy: boolean;
   error: string;
   onStart: () => void;
-  onAddTestPlayers: () => void;
+  onAddTestPlayers: (count: number) => void;
   onEnableTestRoom: () => void;
   onConfigureTestHands: (presetId: TestHandPresetId, handsBySeat: Record<number, CardKind[]>, expectedRevision: number) => void;
   onLeave: () => void;
@@ -695,6 +695,9 @@ export function WaitingRoom(props: WaitingRoomProps) {
 function WaitingRoomEditor({ room, busy, error, onStart, onAddTestPlayers, onEnableTestRoom, onConfigureTestHands, onLeave }: WaitingRoomProps) {
   const share = async () => { await navigator.clipboard?.writeText(room.code); };
   const canStart = room.players.length >= 4 && room.players.length <= room.maxPlayers;
+  const availableTestPlayerSeats = Math.max(0, room.maxPlayers - room.players.length);
+  const [testPlayerCount, setTestPlayerCount] = useState(() => Math.max(1, Math.min(3, 4 - room.players.length)));
+  const selectedTestPlayerCount = Math.min(testPlayerCount, availableTestPlayerSeats);
   const savedPreset = room.testHandPreset;
   const [selectedPreset, setSelectedPreset] = useState<TestHandPresetId>(savedPreset?.id ?? "random");
   const [customDraft, setCustomDraft] = useState<TestHandDraft>(() => testHandDraftFrom(savedPreset?.id === "custom" ? savedPreset : null));
@@ -720,7 +723,7 @@ function WaitingRoomEditor({ room, busy, error, onStart, onAddTestPlayers, onEna
   return <main className="lobby-shell"><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><button className="text-button" onClick={onLeave}>Leave room</button></header>
     <section className="lobby-content"><div className="lobby-heading"><span className="eyebrow">THE GENERALS ASSEMBLE</span><h1>Waiting room</h1>{room.isTestRoom && <span className="test-game-label">TEST GAME · HOST CONTROLLED</span>}<p>Share this code with your friends. The game can start when 4–8 players have joined.</p><button className="copy-code" onClick={share}><span>{room.code}</span><small>Tap to copy room code</small></button></div>
       <div className="seat-grid">{Array.from({ length: room.maxPlayers }, (_, seat) => { const player = room.players.find((item) => item.seat === seat); return <div className={`seat ${player ? "filled" : ""}`} key={seat}>{player ? <><span className="seat-number">{seat + 1}</span><div className="seal">{player.name[0].toUpperCase()}</div><b>{player.name}</b><small>{player.isHost ? "HOST" : player.isTestPlayer ? "TEST PLAYER" : "PLAYER"}</small></> : <><span className="seat-number">{seat + 1}</span><div className="empty-seal">+</div><b>Open seat</b><small>WAITING FOR PLAYER</small></>}</div>; })}</div>
-      <div className="lobby-actions"><span>{room.players.length} / {room.maxPlayers} players</span><div className="host-actions">{room.isHost && <>{room.players.length < 4 && <button className="test-button" disabled={busy} onClick={onAddTestPlayers}>+ Add {4 - room.players.length} Test Player{4 - room.players.length === 1 ? "" : "s"}</button>}{!room.isTestRoom && <button className="test-mode-button" disabled={busy || !canStart} onClick={onEnableTestRoom}>Enable Test Game</button>}<button className="gold-button" disabled={busy || !canStart || room.isTestRoom && (!savedPreset || presetDirty)} onClick={onStart}>{busy ? "Preparing…" : room.players.length < 4 ? `Need ${4 - room.players.length} more` : "Start game"}</button></>}{!room.isHost && <p>Waiting for the host to start…</p>}</div></div>
+      <div className="lobby-actions"><span>{room.players.length} / {room.maxPlayers} players</span><div className="host-actions">{room.isHost && <>{availableTestPlayerSeats > 0 && <div className="test-player-add-control"><label className="test-player-count-label"><span>TEST PLAYERS TO ADD</span><select aria-label="Test players to add" value={selectedTestPlayerCount} disabled={busy} onChange={(event) => setTestPlayerCount(Number(event.target.value))}>{Array.from({ length: availableTestPlayerSeats }, (_, index) => index + 1).map((count) => <option value={count} key={count}>{count} player{count === 1 ? "" : "s"}</option>)}</select></label><button className="test-button" disabled={busy || selectedTestPlayerCount < 1} onClick={() => onAddTestPlayers(selectedTestPlayerCount)}>+ Add {selectedTestPlayerCount} Test Player{selectedTestPlayerCount === 1 ? "" : "s"}</button></div>}{!room.isTestRoom && <button className="test-mode-button" disabled={busy || !canStart} onClick={onEnableTestRoom}>Enable Test Game</button>}<button className="gold-button" disabled={busy || !canStart || room.isTestRoom && (!savedPreset || presetDirty)} onClick={onStart}>{busy ? "Preparing…" : room.players.length < 4 ? `Need ${4 - room.players.length} more` : "Start game"}</button></>}{!room.isHost && <p>Waiting for the host to start…</p>}</div></div>
       {room.isTestRoom && room.isHost && savedPreset && <section className="test-preset-panel" aria-label="Preset Hands configuration">
         <div className="test-preset-heading"><div><span className="eyebrow">HOST TEST CONTROLS</span><h2>Preset Hands</h2></div><span className="preset-revision">Saved · v{savedPreset.revision}</span></div>
         <label className="preset-select-label"><span>STARTING-HAND SCENARIO</span><select aria-label="Preset Hands" value={selectedPreset} disabled={busy} onChange={(event) => setSelectedPreset(event.target.value as TestHandPresetId)}>{TEST_HAND_PRESET_OPTIONS.map((option) => <option value={option.id} key={option.id}>{option.name}</option>)}</select></label>
@@ -920,10 +923,11 @@ export function projectSideColumnSeat(totalPlayers: number, relativeIndex: numbe
 
 function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
   if (slot === "weapon") return <svg viewBox="0 0 18 18" aria-hidden="true" data-equipment-glyph="sword">
-    <path data-sword-part="blade" d="M8.7 7.8 15.8 1.2 17 1l-.2 1.2-6.6 7.1-1.6-.2Z" />
-    <path data-sword-part="crossguard" d="m6.4 6.4 5.2 5.2-1.2 1.2-5.2-5.2Z" />
-    <path data-sword-part="grip" d="m6.5 9.1 1.5 1.5-4.2 4.2-1.5-1.5Z" />
-    <circle data-sword-part="pommel" cx="2.7" cy="15.3" r="1.4" />
+    <path data-sword-part="blade" d="M7.2 7.7 16 1.4 17.6.6l-.4 1.9-7.1 7.9Z" />
+    <path data-sword-groove="true" d="m9 8.7 7-6.4" fill="none" stroke="#70552d" strokeWidth=".8" strokeLinecap="round" />
+    <path data-sword-part="crossguard" d="m6.3 6.3 6.2 6.2-1.2 1.2-6.2-6.2Z" />
+    <path data-sword-part="grip" d="m7.1 9.1 1.5 1.5-3.7 3.7-1.5-1.5Z" />
+    <circle data-sword-part="pommel" cx="3.2" cy="15" r="1.2" />
   </svg>;
   if (slot === "armor") return <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1.2 12.2 3v3.8c0 2.8-2.4 4.9-5.2 6.4C4.2 11.7 1.8 9.6 1.8 6.8V3L7 1.2Z" /><path d="M4.5 4.2v3.2c0 1.2 1 2.2 2.5 3 1.5-.8 2.5-1.8 2.5-3V4.2" /></svg>;
   return <span className="opponent-equipment-horse-mark" aria-hidden="true">{slot === "defensiveHorse" ? "+1" : "−1"}</span>;
@@ -956,7 +960,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
     : `${targetSelectionActive ? "Select" : "Inspect"} ${player.name}`;
   const interactionRoleNames = Object.entries(interactionRoles).filter(([, active]) => active).map(([role]) => role.replace(/^is/, "").replace(/([A-Z])/g, "-$1").toLowerCase()).join(" ");
   return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${targetSelectionActive && targetablePlayer && player.alive ? "targetable-target" : ""} ${isGroupPreview ? "local-group-preview" : ""} ${interactionRoles.isInteractionSource ? "interaction-seat-source" : ""} ${interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : ""} ${interactionRoles.isActiveTarget ? "interaction-seat-active-target" : ""} ${interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : ""} ${interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : ""} ${interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : ""} ${interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : ""} ${!player.alive ? "defeated-square" : ""}`} data-side-column={sideColumnSeat?.side} data-side-row={sideColumnSeat?.row} style={sideColumnSeat ? { gridRow: sideColumnSeat.row } : undefined} data-player-anchor={player.id} data-target-selectable={targetSelectionActive && targetablePlayer && player.alive ? "true" : undefined} data-deflection-targetable={deflectionTargetSelectable ? "true" : undefined} data-local-group-preview={isGroupPreview ? "true" : undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined}>
-    <div className="opponent-public-zones">
+      <div className="opponent-public-zones">
       <div className="player-hero-card opponent-hero-card">
         <button type="button" className="player-square-target opponent-hero-target" disabled={targetButtonDisabled} aria-label={targetButtonLabel} aria-pressed={targetSelectionActive ? isSelectedTarget : isInspected} aria-expanded={isInspected} onClick={(event) => {
           const trigger = event?.currentTarget ?? null;
@@ -1180,7 +1184,16 @@ function OpponentPublicInspector({ player, judgementInFlight, nestedCardDetailDi
         obstacleBottomLimit,
       );
       shell.style.marginTop = `${Math.max(0, panelTop - (layerRect.top + 4))}px`;
-      shell.style.maxHeight = `${Math.max(0, safeBottom - panelTop)}px`;
+      const safePanelHeight = Math.max(0, safeBottom - panelTop);
+      shell.style.maxHeight = `${safePanelHeight}px`;
+      const shellStyle = window.getComputedStyle(shell);
+      const shellVerticalInsets = [
+        shellStyle.borderTopWidth,
+        shellStyle.borderBottomWidth,
+        shellStyle.paddingTop,
+        shellStyle.paddingBottom,
+      ].reduce((total, value) => total + (Number.parseFloat(value) || 0), 0);
+      inspector.style.maxHeight = `${Math.max(0, safePanelHeight - shellVerticalInsets)}px`;
     };
 
     measure();
@@ -1918,6 +1931,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const harvestStageRef = useRef<HTMLDivElement | null>(null);
   const [harvestStageTop, setHarvestStageTop] = useState<number | null>(null);
   const [harvestSubmitting, setHarvestSubmitting] = useState<{ cardId: string; playerId: string; playerName: string } | null>(null);
+  const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
   const [optimisticPlay, setOptimisticPlay] = useState<GameEvent | null>(null);
   const [serpentMode, setSerpentMode] = useState(false); const [serpentSelected, setSerpentSelected] = useState<string[]>([]);
   const [activeSkillSelectionState, setActiveSkillSelectionState] = useState<ActiveSkillSelectionState | null>(null);
@@ -1975,33 +1989,112 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     const table = stage?.closest<HTMLElement>(".play-table");
     if (!stage || !table) return;
     let frame = 0;
+    const observed = new Set<Element>();
+    let observer: ResizeObserver | null = null;
+    const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
+      observeLayout();
+      measure();
+    });
+    const protectedSelectors = [
+      ".player-board > .opponent-player-card",
+      ".public-card-display-journey-copy",
+      ".public-activity-chip",
+      "[data-public-activity-chip]",
+      ".visible-countdown",
+      ".stage-system-cluster",
+      ".opponent-inspection-floating-shell",
+      ".local-player-dock",
+      ".local-hand-section",
+      ".turn-controls",
+    ];
+    const observeLayout = () => {
+      for (const node of [table, stage, stage.querySelector(".harvest-choice-panel"), ...protectedSelectors.flatMap((selector) => [...document.querySelectorAll(selector)])]) {
+        if (!node || observed.has(node)) continue;
+        observed.add(node);
+        observer?.observe(node);
+      }
+    };
     const measure = () => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
         const tableRect = table.getBoundingClientRect();
-        const board = table.querySelector<HTMLElement>(".player-board[data-seat-topology='top-row']");
-        const seats = board ? [...board.querySelectorAll<HTMLElement>(":scope > .opponent-player-card")] : [];
-        const measuredSeatBottom = seats.length ? Math.max(...seats.map((seat) => seat.getBoundingClientRect().bottom)) : null;
-        const top = measuredSeatBottom === null
-          ? Math.max(8, Math.round(tableRect.height * 0.28))
-          : Math.max(8, Math.ceil(measuredSeatBottom - tableRect.top + 4));
-        setHarvestStageTop((current) => current === top ? current : top);
+        const panel = stage.querySelector<HTMLElement>(".harvest-choice-panel");
+        if (!panel || tableRect.width <= 0 || tableRect.height <= 0) return;
+        const panelRect = panel.getBoundingClientRect();
+        if (panelRect.width <= 0 || panelRect.height <= 0) return;
+
+        const margin = 6;
+        const minimumTop = Math.max(tableRect.top + margin, margin);
+        const maximumTop = Math.min(tableRect.bottom, window.innerHeight) - panelRect.height - margin;
+        const obstacles = [...new Set(protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]))]
+          .filter((element) => element !== stage && !stage.contains(element))
+          .map((element) => ({ element, rect: element.getBoundingClientRect() }))
+          .filter(({ element, rect }) => {
+            const style = window.getComputedStyle(element);
+            return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
+              && panelRect.left < rect.right + margin && panelRect.right > rect.left - margin;
+          });
+
+        const desiredTop = minimumTop + Math.max(0, maximumTop - minimumTop) / 2;
+        let safeRanges = maximumTop >= minimumTop ? [{ minimum: minimumTop, maximum: maximumTop }] : [];
+        for (const { rect } of obstacles) {
+          const blockedMinimum = rect.top - panelRect.height - margin;
+          const blockedMaximum = rect.bottom + margin;
+          safeRanges = safeRanges.flatMap((range) => {
+            if (blockedMaximum <= range.minimum || blockedMinimum >= range.maximum) return [range];
+            return [
+              ...(range.minimum < blockedMinimum ? [{ minimum: range.minimum, maximum: Math.min(range.maximum, blockedMinimum) }] : []),
+              ...(range.maximum > blockedMaximum ? [{ minimum: Math.max(range.minimum, blockedMaximum), maximum: range.maximum }] : []),
+            ];
+          }).filter((range) => range.maximum >= range.minimum);
+        }
+
+        const nearestSafeTop = safeRanges
+          .map((range) => Math.max(range.minimum, Math.min(range.maximum, desiredTop)))
+          .sort((first, second) => Math.abs(first - desiredTop) - Math.abs(second - desiredTop))[0];
+        let top = nearestSafeTop;
+        if (top === undefined) {
+          const viewportMaximumTop = Math.max(margin, window.innerHeight - panelRect.height - margin);
+          const candidates = [
+            minimumTop,
+            maximumTop,
+            desiredTop,
+            tableRect.top + (tableRect.height - panelRect.height) / 2,
+            ...obstacles.flatMap(({ rect }) => [
+            rect.top - panelRect.height - margin,
+            rect.bottom + margin,
+            ]),
+          ].filter(Number.isFinite)
+            .map((candidate) => Math.max(margin, Math.min(viewportMaximumTop, candidate)));
+          const overlapArea = (candidateTop: number) => obstacles.reduce((total, { rect }) => {
+            const width = Math.max(0, Math.min(panelRect.right, rect.right) - Math.max(panelRect.left, rect.left));
+            const height = Math.max(0, Math.min(candidateTop + panelRect.height, rect.bottom) - Math.max(candidateTop, rect.top));
+            const weight = rect.width > 0 && rect.height > 0 ? 1 : 0;
+            return total + width * height * weight;
+          }, 0) + (Math.max(0, tableRect.top - candidateTop)
+            + Math.max(0, candidateTop + panelRect.height - tableRect.bottom)) * panelRect.width * 2;
+          top = candidates.sort((first, second) => overlapArea(first) - overlapArea(second)
+            || Math.abs(first - desiredTop) - Math.abs(second - desiredTop))[0];
+        }
+        if (top === undefined) top = Math.max(margin, Math.min(window.innerHeight - panelRect.height - margin, desiredTop));
+        const offset = Math.round(top - tableRect.top);
+        setHarvestStageTop((current) => current === offset ? current : offset);
       });
     };
+    observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observeLayout();
     measure();
     window.addEventListener("resize", measure);
     window.visualViewport?.addEventListener("resize", measure);
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    observer?.observe(table);
-    const board = table.querySelector<HTMLElement>(".player-board");
-    if (board) observer?.observe(board);
+    mutationObserver?.observe(table, { childList: true, subtree: true, characterData: true });
     return () => {
       window.removeEventListener("resize", measure);
       window.visualViewport?.removeEventListener("resize", measure);
       observer?.disconnect();
+      mutationObserver?.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [harvestPending, harvestActorId, room.players.length]);
+  }, [harvestPending, harvestActorId, room.players.length, room.meId, expandedOpponentId]);
   const cardInfoReturnFocusRef = useRef<HTMLElement | null>(null);
   const heroInfoReturnFocusRef = useRef<HTMLElement | null>(null);
   const closeCardDetails = useCallback((restoreFocus = true) => {
@@ -2045,7 +2138,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     setInfoCard(null);
     setInfoHero(hero);
   }, [closeHeroDetails, infoHero?.id]);
-  const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
   const opponentInspectionReturnFocusRef = useRef<HTMLElement | null>(null);
   const openOpponentInspection = useCallback((playerId: string, trigger?: HTMLElement | null) => {
     const activeElement = typeof document !== "undefined" && typeof HTMLElement !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -3820,7 +3912,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     };
   })();
   const bumperHarvestRootCandidate = (() => {
-    const progress = clientPresentation.bumperHarvestProgress;
+    const progress = clientPresentation.bumperHarvestProgress ?? room.presentationSnapshot?.bumperHarvestProgress;
+    const snapshotInteraction = room.presentationSnapshot?.interaction;
     const isSequentialScene = clientPresentation.stage === "SEQUENTIAL_CHOICE"
       && clientPresentation.continuity.relation === "ROOT_FRAME"
       && progress?.activeFrameId === progress?.rootFrameId;
@@ -3837,14 +3930,32 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || progress.sourceId !== clientPresentation.sourceId
       || !progress.rootEventId || !progress.rootResolutionId || !progress.rootCardId
       || !progress.targetIds.length || progress.targetIds.length !== progress.participants.length
-      || new Set(progress.targetIds).size !== progress.targetIds.length
-      || progress.currentParticipantId !== clientPresentation.currentParticipantId) return null;
+      || new Set(progress.targetIds).size !== progress.targetIds.length) return null;
+
+    const expectedTargetIds = isSequentialScene ? snapshotInteraction?.targetIds : snapshotInteraction?.rootOrigin?.targetIds;
+    if (!expectedTargetIds || expectedTargetIds.length !== progress.targetIds.length
+      || progress.targetIds.some((targetId, index) => targetId !== expectedTargetIds[index])
+      || isSequentialScene && progress.currentEffectState !== undefined
+      || isNegationScene && (snapshotInteraction?.rootOrigin?.frameId !== progress.rootFrameId
+        || snapshotInteraction.rootOrigin.effect !== "BumperHarvest"
+        || snapshotInteraction.decisionActorId !== null || snapshotInteraction.activeResolverId !== null
+        || progress.currentEffectState !== "ACTIVE" && progress.currentEffectState !== "BLOCKED")) return null;
 
     const currentParticipants = progress.participants.filter(({ status }) => status === "CURRENT");
-    if (!progress.currentParticipantId || currentParticipants.length !== 1
-      || currentParticipants[0].playerId !== progress.currentParticipantId
-      || progress.participants.some((participant, index) => participant.playerId !== progress.targetIds[index]
-        || participant.order !== index + 1)) return null;
+    const participantOrderIsValid = progress.participants.every((participant, index) =>
+      participant.playerId === progress.targetIds[index] && participant.order === index + 1);
+    const validStatuses = new Set(["PENDING", "CURRENT", "RESOLVED", "NO_LONGER_APPLICABLE"]);
+    const participantStatesAreValid = progress.participants.every((participant) => validStatuses.has(participant.status)
+      && (participant.status === "RESOLVED"
+        ? participant.outcome === "CHOSE_CARD" || participant.outcome === "NEGATED"
+        : participant.outcome === undefined));
+    if (!participantOrderIsValid || !participantStatesAreValid) return null;
+    const validatedProgress = clientPresentation.bumperHarvestProgress;
+    const currentParticipantIsProven = Boolean(validatedProgress && progress.currentParticipantId
+      && validatedProgress.currentParticipantId === progress.currentParticipantId
+      && progress.currentParticipantId === clientPresentation.currentParticipantId
+      && currentParticipants.length === 1
+      && currentParticipants[0].playerId === progress.currentParticipantId);
 
     const rootMatches = room.timeline.filter((event) => event.id === progress.rootEventId);
     if (rootMatches.length !== 1) return null;
@@ -3860,49 +3971,94 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     });
     if (targets.some((target) => target === null)) return null;
 
+    const publicResponseHistory: { eventId: string; ordinal: number; actorId: string; actorName: string; cardFace: Card; ariaLabel: string }[] = [];
+    const historyEventIds = new Set<string>();
+    const historyCardIds = new Set<string>();
+    let responseHistoryIsValid = true;
+    for (const response of progress.publicNegationResponses ?? []) {
+      const matches = room.timeline.filter((event) => event.id === response.eventId);
+      const event = matches.length === 1 ? matches[0] : null;
+      const actor = room.players.find((player) => player.id === response.actorId);
+      if (response.semantics !== "PROVEN" || response.interactionId !== progress.interactionId
+        || response.rootFrameId !== progress.rootFrameId || response.rootEventId !== progress.rootEventId
+        || response.rootResolutionId !== progress.rootResolutionId || response.rootCardId !== progress.rootCardId
+        || response.parentFrameId !== progress.rootFrameId || !progress.targetIds.includes(response.effectParticipantId)
+        || response.order !== publicResponseHistory.length + 1 || !actor?.name || !event
+        || event.type !== "card" || event.action !== "play" || event.presentation === false
+        || event.playedAs !== undefined || event.card?.kind !== "Negation" || event.card.id !== response.cardId
+        || event.player !== actor.name || event.resolutionId !== response.resolutionId
+        || historyEventIds.has(response.eventId) || historyCardIds.has(response.cardId)) {
+        responseHistoryIsValid = false;
+        break;
+      }
+      historyEventIds.add(response.eventId);
+      historyCardIds.add(response.cardId);
+      publicResponseHistory.push({
+        eventId: event.id,
+        ordinal: response.order,
+        actorId: actor.id,
+        actorName: actor.name,
+        cardFace: event.card,
+        ariaLabel: `${actor.name} played Negation during Bumper Harvest.`,
+      });
+    }
+    if (!responseHistoryIsValid) publicResponseHistory.length = 0;
+
     let responses: { index: number; ordinal: number; eventId: string; actorId: string; actorName: string; cardFace: Card; cardLabel: string; ariaLabel: string; counterTarget: { kind: "ORDERED_TARGET_EFFECT"; targetId: string } | { kind: "RESPONSE"; index: number } }[] = [];
+    let negationProofIsValid = false;
     if (isNegationScene) {
       const chain = clientPresentation.reactionChain;
-      if (!chain || chain.semantics !== "PROVEN" || chain.rootCard !== null
-        || chain.interactionId !== progress.interactionId || chain.frameId !== progress.activeFrameId
-        || !Array.isArray(chain.nodes) || !Array.isArray(chain.publicNodeEventLinks)
-        || chain.publicNodeEventLinks.length !== chain.nodes.length
-        || progress.currentEffectState !== (chain.nodes.length % 2 === 0 ? "ACTIVE" : "BLOCKED")) return null;
-      const responseEventIds = new Set([rootEvent.id]);
-      const responseCardIds = new Set([rootEvent.card.id]);
-      const mapped = chain.nodes.map((node, index) => {
-        const link = chain.publicNodeEventLinks?.[index];
-        const matches = link ? room.timeline.filter((event) => event.id === link.eventId) : [];
-        const event = matches.length === 1 ? matches[0] : null;
-        const actor = room.players.find((player) => player.id === node.actorId);
-        const previousNodeId = index === 0 ? null : chain.nodes[index - 1]?.nodeId;
-        if (!link || link.nodeId !== node.nodeId || node.eventId !== link.eventId || node.resolutionId !== link.resolutionId
-          || node.frameId !== progress.activeFrameId
-          || node.causedByNodeId !== previousNodeId || !event || !actor?.name
-          || event.type !== "card" || event.action !== "play" || event.presentation === false
-          || event.playedAs !== undefined || event.card?.kind !== "Negation"
-          || !link.eventId || !link.resolutionId || !event.card.id || event.player !== actor.name
-          || event.id === rootEvent.id || event.resolutionId !== link.resolutionId
-          || responseEventIds.has(event.id) || responseCardIds.has(event.card.id)
-          || chain.publicNodeEventLinks?.slice(0, index).some((previous) => previous.eventId === event.id || previous.resolutionId === event.resolutionId)) return null;
-        responseEventIds.add(event.id);
-        responseCardIds.add(event.card.id);
-        return {
-          index,
-          ordinal: index + 1,
-          eventId: event.id,
-          actorId: actor.id,
-          actorName: actor.name,
-          cardFace: event.card,
-          cardLabel: "NEGATION",
-          ariaLabel: `${actor.name} played Negation to counter ${index === 0 ? `Bumper Harvest's effect on ${room.players.find((player) => player.id === progress.currentParticipantId)?.name ?? "the current participant"}` : `Negation ${index}`}`,
-          counterTarget: index === 0
-            ? { kind: "ORDERED_TARGET_EFFECT" as const, targetId: progress.currentParticipantId! }
-            : { kind: "RESPONSE" as const, index: index - 1 },
-        };
-      });
-      if (mapped.some((response) => response === null)) return null;
-      responses = mapped as typeof responses;
+      const validChain = Boolean(chain && chain.semantics === "PROVEN" && chain.rootCard === null
+        && chain.interactionId === progress.interactionId && chain.frameId === progress.activeFrameId
+        && Array.isArray(chain.nodes) && Array.isArray(chain.publicNodeEventLinks)
+        && chain.publicNodeEventLinks.length === chain.nodes.length
+        && progress.currentEffectState === (chain.nodes.length % 2 === 0 ? "ACTIVE" : "BLOCKED"));
+      if (validChain && chain) {
+        negationProofIsValid = true;
+      }
+      // Keep the separately proven public root visible when chooser identity is
+      // stale. Response-to-effect attribution stays hidden until the participant
+      // proof and the matching reaction chain agree again.
+      if (validChain && chain && currentParticipantIsProven) {
+        const responseEventIds = new Set([rootEvent.id]);
+        const responseCardIds = new Set([rootEvent.card.id]);
+        const mapped = chain.nodes.map((node, index) => {
+          const link = chain.publicNodeEventLinks?.[index];
+          const matches = link ? room.timeline.filter((event) => event.id === link.eventId) : [];
+          const event = matches.length === 1 ? matches[0] : null;
+          const actor = room.players.find((player) => player.id === node.actorId);
+          const previousNodeId = index === 0 ? null : chain.nodes[index - 1]?.nodeId;
+          // Reaction-chain nodes carry semantic/cause identity. The separately
+          // typed publicNodeEventLinks projection is the authoritative binding to
+          // exact committed timeline events; eventId/resolutionId are not node fields.
+          if (!link || link.nodeId !== node.nodeId
+            || node.frameId !== progress.activeFrameId
+            || node.causedByNodeId !== previousNodeId || !event || !actor?.name
+            || event.type !== "card" || event.action !== "play" || event.presentation === false
+            || event.playedAs !== undefined || event.card?.kind !== "Negation"
+            || !link.eventId || !link.resolutionId || !event.card.id || event.player !== actor.name
+            || event.id === rootEvent.id || event.resolutionId !== link.resolutionId
+            || responseEventIds.has(event.id) || responseCardIds.has(event.card.id)
+            || chain.publicNodeEventLinks?.slice(0, index).some((previous) => previous.eventId === event.id || previous.resolutionId === event.resolutionId)) return null;
+          responseEventIds.add(event.id);
+          responseCardIds.add(event.card.id);
+          return {
+            index,
+            ordinal: index + 1,
+            eventId: event.id,
+            actorId: actor.id,
+            actorName: actor.name,
+            cardFace: event.card,
+            cardLabel: "NEGATION",
+            ariaLabel: `${actor.name} played Negation to counter ${index === 0 ? `Bumper Harvest's effect on ${room.players.find((player) => player.id === progress.currentParticipantId)?.name ?? "the current participant"}` : `Negation ${index}`}`,
+            counterTarget: index === 0
+              ? { kind: "ORDERED_TARGET_EFFECT" as const, targetId: progress.currentParticipantId! }
+              : { kind: "RESPONSE" as const, index: index - 1 },
+          };
+        });
+        if (mapped.some((response) => response === null)) return null;
+        responses = mapped as typeof responses;
+      }
     } else if (progress.currentEffectState !== undefined || clientPresentation.reactionChain !== null) {
       return null;
     }
@@ -3913,8 +4069,26 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       source,
       targets: targets as NonNullable<(typeof targets)[number]>[],
       responses,
+      publicResponseHistory,
+      isNegationScene,
+      currentParticipantIsProven,
+      negationProofIsValid,
     };
   })();
+  const harvestEffectRecipient = clientPresentation.stage === "NEGATION"
+    ? (() => {
+      const participantId = bumperHarvestRootCandidate?.currentParticipantIsProven
+        && bumperHarvestRootCandidate.negationProofIsValid
+        ? bumperHarvestRootCandidate.progress.currentParticipantId
+        : null;
+      const currentParticipants = participantId
+        ? bumperHarvestRootCandidate?.targets.filter((target) => target.playerId === participantId && target.status === "CURRENT") ?? []
+        : [];
+      return participantId && currentParticipants.length === 1
+        ? { participantId, participantName: currentParticipants[0].playerName }
+        : null;
+    })()
+    : null;
   const halberdOrderedRootCandidate = (() => {
     const group = clientPresentation.groupResolution;
     const rootProof = group?.orderedAttackRoot;
@@ -4374,6 +4548,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && room.presentationSnapshot.reactionChain.interactionId === activePublicNegationRead.action.interactionId
     && room.presentationSnapshot.reactionChain.frameId === activePublicNegationRead.action.rootFrameId
     && room.presentationSnapshot.reactionChain.publicEventLinks?.root.eventId === activePublicNegationRead.action.rootEventId);
+  const heldHarvestEffectRecipient = activePublicNegationRead?.action.cardKind === "BumperHarvest"
+    && bumperHarvestRootCandidate?.rootEvent.id === activePublicNegationRead.action.rootEventId
+    && bumperHarvestRootCandidate.progress.interactionId === activePublicNegationRead.action.interactionId
+    && bumperHarvestRootCandidate.progress.rootFrameId === activePublicNegationRead.action.rootFrameId
+    ? harvestEffectRecipient
+    : null;
   const heldPublicNegationReadAction = activeNegationReadIdentityMatches && activePublicNegationRead
     && (activeNegationReadStillLive || activeNegationReadSettled)
     && !(activePublicNegationRead.action.cardKind === "Duel" && (duelNegationProofCandidate || duelExchangeDisplayCandidate))
@@ -4381,6 +4561,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || activePublicNegationRead.action.cardKind === "Duel" && activePublicNegationRead.action.rootEventId === duelNegationProofCandidate?.rootEvent.id)
     ? {
       ...activePublicNegationRead.action,
+      ...(activePublicNegationRead.action.cardKind === "BumperHarvest" ? {
+        // A retained root announcement must not retain a chooser name after
+        // the live public participant proof becomes stale or mismatched.
+        harvestEffectRecipient: heldHarvestEffectRecipient ?? undefined,
+      } : {}),
       ...((activePublicNegationRead.action.motion?.type === "single-target" || activePublicNegationRead.action.motion?.type === "negation" || activePublicNegationRead.action.motion?.type === "group-root") && activeNegationReadSettled
         ? { phaseNotice: undefined }
         : {}),
@@ -4672,20 +4857,34 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? {
       key: ["bumper-harvest", bumperHarvestRootCandidate.progress.interactionId, bumperHarvestRootCandidate.progress.rootFrameId, bumperHarvestRootCandidate.rootEvent.id].join(":"),
       rootEventId: bumperHarvestRootCandidate.rootEvent.id,
+      interactionId: bumperHarvestRootCandidate.progress.interactionId,
+      rootFrameId: bumperHarvestRootCandidate.progress.rootFrameId,
       sourceId: bumperHarvestRootCandidate.progress.sourceId,
       targetId: null,
       cardFace: bumperHarvestRootCandidate.rootEvent.card,
-      ...(bumperHarvestRootCandidate.progress.currentEffectState !== undefined ? {
-        phaseNotice: bumperHarvestRootCandidate.responses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED",
-        motion: {
-          type: "negation" as const,
-          scopeKey: [room.code, bumperHarvestRootCandidate.progress.interactionId, bumperHarvestRootCandidate.rootEvent.id,
-            bumperHarvestRootCandidate.progress.currentParticipantId ?? ""].join(":"),
-          freshEventIds: [bumperHarvestRootCandidate.rootEvent.id, ...bumperHarvestRootCandidate.responses.map((response) => response.eventId)]
-            .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
-        },
+      ...(bumperHarvestRootCandidate.publicResponseHistory.length ? {
+        responseHistory: bumperHarvestRootCandidate.publicResponseHistory,
+      } : {}),
+      ...(bumperHarvestRootCandidate.isNegationScene ? {
+        ...(bumperHarvestRootCandidate.currentParticipantIsProven && bumperHarvestRootCandidate.negationProofIsValid ? {
+          phaseNotice: bumperHarvestRootCandidate.responses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED",
+        } : {}),
+        ...(harvestEffectRecipient ? { harvestEffectRecipient } : {}),
         ...(bumperHarvestRootCandidate.responses.length ? { responses: bumperHarvestRootCandidate.responses } : {}),
       } : {}),
+      // Keep the authentic root in one journey after Negation closes and the
+      // Harvest chooser becomes active. The previous static fallback pinned
+      // that same physical card to the lower-left corner, detached from its
+      // publicly proven author. Reuse the root scope and never replay a reveal
+      // when entering the chooser phase.
+      motion: {
+        type: bumperHarvestRootCandidate.isNegationScene ? "negation" as const : "group-root" as const,
+        scopeKey: [room.code, bumperHarvestRootCandidate.progress.interactionId, bumperHarvestRootCandidate.rootEvent.id].join(":"),
+        freshEventIds: bumperHarvestRootCandidate.isNegationScene
+          ? [bumperHarvestRootCandidate.rootEvent.id, ...bumperHarvestRootCandidate.responses.map((response) => response.eventId)]
+            .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId))
+          : [],
+      },
       cardKind: "BumperHarvest",
       cardLabel: cardDefinition("BumperHarvest").name.toUpperCase(),
       ariaLabel: `${bumperHarvestRootCandidate.source.name} played Bumper Harvest.`,
@@ -4999,6 +5198,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const rootActionTemporarilyBlocked = Boolean(targetPreviewPresentation || opponentInspectionPresentation
     || targetCardPickerInModal && !skillEffectActionCandidate
     || expandedOpponentId || groupScopePreview.active);
+  const retainHarvestHistoryDuringInspection = Boolean(publicCardDisplayAction?.cardFace?.kind === "BumperHarvest"
+    && (opponentInspectionPresentation || expandedOpponentId)
+    && !targetPreviewPresentation
+    && !(targetCardPickerInModal && !skillEffectActionCandidate)
+    && !groupScopePreview.active);
   const publicCardDisplayEnabled = Boolean(publicCardDisplayAction && rootActionSource?.name
     && (publicCardDisplayAction.targetId === null || rootActionTarget?.name)
     && !rootActionTemporarilyBlocked);
@@ -6409,7 +6613,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : lustLocalSelectionActive && activeSkillSelection
     ? `Select ${activeSkillSelection.min} card${activeSkillSelection.min === 1 ? "" : "s"} and ${activeSkillTargetMin} Duel participant${activeSkillTargetMin === 1 ? "" : "s"}.`
     : sharedNegationWindow
-    ? room.currentAction?.reason || "Negation response window"
+    ? negationResponseGuidance
+      && publicCardDisplayAction?.cardFace?.kind === "BumperHarvest"
+      && publicCardDisplayAction.motion?.type === "negation"
+      && !publicCardDisplayAction.settlement
+      ? harvestNegationDecisionCopy(publicCardDisplayAction)
+      : room.currentAction?.reason || "Negation response window"
     : negationResponseGuidance
       ? "Play Negation or Skip."
     : rainingArrowsDamageDecline
@@ -6491,9 +6700,16 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         <section className={`harvest-choice-panel${canChooseHarvest && !presentationBusy ? " harvest-choice-panel--actor" : ""}`} aria-label={canChooseHarvest && !presentationBusy ? "Your Bumper Harvest choice" : "Public Bumper Harvest cards"}>
           <header className="harvest-choice-heading">
             <b>Bumper Harvest</b>
-            <span>{harvestReadOnlyDuringNegation ? "Read-only · Negation resolving" : canChooseHarvest && !presentationBusy ? "Choose one revealed card" : room.pendingHarvest?.complete ? "Choices complete" : "Public cards · read-only"}</span>
+            <span>{harvestReadOnlyDuringNegation
+              ? harvestEffectRecipient ? `Negation for ${harvestEffectRecipient.participantName} · Read-only` : "Read-only · Negation resolving"
+              : canChooseHarvest && !presentationBusy ? "Choose one revealed card" : room.pendingHarvest?.complete ? "Choices complete" : "Public cards · read-only"}</span>
           </header>
-          <div className="harvest-card-row" role="group" aria-label="Public revealed Harvest cards">
+          <div
+            className="harvest-card-row"
+            role="region"
+            aria-label="Public revealed Harvest cards — scroll horizontally to browse"
+            tabIndex={harvestDisplay.revealed.length > 1 ? 0 : undefined}
+          >
             {harvestDisplay.revealed.map((choice) => {
               const name = cardDefinition(choice.kind).name;
               const takenBy = harvestDisplay.choices.find((entry) => entry.cardId === choice.id);
@@ -6511,7 +6727,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                 data-harvest-card-state={takenBy || submittedByMe ? "taken" : awaitingConfirmation ? "selected" : available ? "available" : "unavailable"}
                 key={choice.id}
               >
-                <CardFace card={choice} />
+                <CardFace card={choice} harvestChoice />
                 {canChooseHarvest && !presentationBusy && <button
                   type="button"
                   className="harvest-card-select"
@@ -6534,6 +6750,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               </div>;
             })}
           </div>
+          {room.players.length >= 5 && harvestDisplay.revealed.length >= 4 && <span className="harvest-scroll-hint" aria-hidden="true">Swipe to see all cards ↔</span>}
           {canChooseHarvest && !presentationBusy && <footer className="harvest-confirm-row">
             <span className="harvest-selection-count" aria-live="polite">{harvestSelectedCard ? "1 selected" : "Choose 1 card"}</span>
             <button type="button" className="primary" disabled={busy || !harvestSelectedCard || Boolean(harvestSubmitting)} onClick={confirmHarvestChoice}>Confirm choice</button>
@@ -6592,7 +6809,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         })}
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
-      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} harvestChoiceActive={Boolean(room.pendingHarvest && !presentationBusy)} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardJourneyEventParked} onJourneySettled={(settlementEventId) => {
+      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} retainHarvestHistory={retainHarvestHistoryDuringInspection} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardJourneyEventParked} onJourneySettled={(settlementEventId) => {
         setActiveDismantleSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
           ? { ...current, journeySettled: true }
           : current);
@@ -6602,7 +6819,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         roomCode={room.code}
         viewerId={room.meId}
       />}
-      <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey} />
+      <PublicActivityChip status={publicActivityStatus} viewerId={room.meId} seatLayoutKey={publicActivitySeatLayoutKey} harvestPoolReadOnly={harvestReadOnlyDuringNegation} />
       {visibleInfoCard && <CardDetailsPreview card={visibleInfoCard} context={infoCardContext} onClose={closeCardDetails} returnFocusTo={cardInfoReturnFocusRef.current} />}
       {infoHero && me && <HeroDetailsPreview hero={infoHero} onClose={closeHeroDetails} returnFocusTo={heroInfoReturnFocusRef.current} />}
     </section>

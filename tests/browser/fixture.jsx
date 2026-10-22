@@ -60,6 +60,8 @@ const SEAT_EQUIPMENT_CASES = {
   miniaturePair: [["NioShield", "♣", "2"], ["Shadowrunner", "♥", "10"]],
   miniatureSet: [["ZhugeCrossbow", "♦", "A"], ["NioShield", "♣", "2"], ["Shadowrunner", "♥", "Q"], ["FerganaSteed", "♠", "K"]],
   inspectorNamedDetails: [["FrostSword", "♠", "J"], ["NioShield", "♣", "2"]],
+  ins5PhoneDetails: [["SerpentSpear", "♠", "Q"], ["NioShield", "♣", "2"], ["Shadowrunner", "♠", "5"], ["FerganaSteed", "♠", "K"]],
+  ins5PhoneLongRules: [["FrostSword", "♠", "J"], ["NioShield", "♣", "2"]],
 };
 const SEAT_EQUIPMENT_MATRIX = ["weapon", "armor", "plusHorse", "minusHorse", "weaponArmor", "multiple"];
 

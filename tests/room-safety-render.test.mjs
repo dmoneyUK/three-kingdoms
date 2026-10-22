@@ -674,7 +674,10 @@ test("the local player dock replaces the self battlefield square and follows Qui
   const sharedPanelChrome = sequenceStyleSource.match(/\.local-dock-identity,\s*\.local-dock-zones,\s*\.local-status-panel,\s*\.local-equipment-panel,\s*\.local-hand-section,\s*\.local-player-dock \.console-guidance,\s*\.local-player-dock \.turn-controls\s*\{([^}]*)\}/)?.[1] ?? "";
   assert.match(sharedPanelChrome, /border: 1px solid #765f3c99;/);
   assert.match(sharedPanelChrome, /background: #0e120dcc;/);
-  assert.match(sequenceStyleSource, /--hand-panel-height: 108px[\s\S]*--hand-peek-height: 102px[\s\S]*--hand-card-height: 102px[\s\S]*--hand-top-inset: 4px[\s\S]*--selected-rise: 48px[\s\S]*--hand-bottom-gutter: 10px/);
+  assert.match(sequenceStyleSource, /\.game-shell\s*\{[^}]*--hand-card-face-width: 68px;[^}]*--hand-card-face-height: 102px;/, "Harvest and Hand share the current full CardFace dimensions");
+  assert.match(sequenceStyleSource, /\.local-player-dock\s*\{[\s\S]*--hand-panel-height: 108px[\s\S]*--hand-peek-height: var\(--hand-card-face-height\)[\s\S]*--hand-card-height: var\(--hand-card-face-height\)[\s\S]*--hand-top-inset: 4px[\s\S]*--selected-rise: 48px[\s\S]*--hand-bottom-gutter: 10px/);
+  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot \{[^}]*flex: 0 0 var\(--hand-card-face-width\); width: var\(--hand-card-face-width\);/);
+  assert.match(sequenceStyleSource, /\.game-shell \.harvest-card-choice \{[^}]*flex: 0 0 var\(--hand-card-face-width\);[^}]*width: var\(--hand-card-face-width\);[^}]*height: var\(--hand-card-face-height\);/);
   assert.match(sequenceStyleSource, /hand-top-inset - selected-rise \+ hand-card-height[\s\S]*hand-panel-height - hand-bottom-gutter/);
   const compactDockRule = [...sequenceStyleSource.matchAll(/@media \(max-width: 480px\) \{([\s\S]*?)\n\}/g)]
     .map(([, mediaRules]) => mediaRules.match(/\.local-player-dock\s*\{([^}]*)\}/)?.[1])

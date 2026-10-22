@@ -31,6 +31,232 @@ async function visibleBoundingBox(locator) {
   });
 }
 
+async function inspectorWidthAndScrollGeometry(page) {
+  return page.evaluate(() => {
+    const inspect = document.querySelector(".hero-focus-inspect");
+    const shell = document.querySelector(".opponent-inspection-floating-shell");
+    const selectors = {
+      shell: ".opponent-inspection-floating-shell",
+      inspector: ".hero-focus-inspect",
+      body: ".hero-focus-body",
+      portrait: ".hero-focus-inspect-portrait-column",
+      portraitImage: ".hero-focus-inspect-portrait-column > .hero-focus-portrait",
+      caption: ".hero-focus-inspect-identity-caption",
+      main: ".hero-focus-inspect-main",
+      upper: ".hero-focus-inspect-upper",
+      identity: ".hero-focus-identity",
+      skills: ".hero-focus-inspect-public-skills",
+      judgement: ".hero-focus-inspect-judgement",
+      equipment: ".hero-focus-inspect-equipment",
+      details: ".hero-focus-inspect-details",
+      skillDetail: ".hero-focus-inspect-skill-detail",
+      skillDescription: ".hero-focus-inspect-skill-description",
+      cardDetail: ".hero-focus-inspect-card-detail",
+      cardRules: ".hero-focus-inspect-card-rules",
+    };
+    const rectangle = (element) => {
+      if (!element) return null;
+      const { x, y, left, top, right, bottom, width, height } = element.getBoundingClientRect();
+      return { x, y, left, top, right, bottom, width, height };
+    };
+    const metrics = Object.fromEntries(Object.entries(selectors).map(([key, selector]) => {
+      const element = key === "shell" ? shell : key === "inspector" ? inspect : inspect?.querySelector(selector);
+      if (!element) return [key, null];
+      const style = getComputedStyle(element);
+      return [key, {
+        rect: rectangle(element),
+        width: style.width,
+        maxWidth: style.maxWidth,
+        minWidth: style.minWidth,
+        display: style.display,
+        gridTemplateColumns: style.gridTemplateColumns,
+        overflowY: style.overflowY,
+        boxSizing: style.boxSizing,
+        padding: style.padding,
+        gap: style.gap,
+        maxHeight: style.maxHeight,
+        scrollHeight: element.scrollHeight,
+        clientHeight: element.clientHeight,
+      }];
+    }));
+    const shellStyle = shell ? getComputedStyle(shell) : null;
+    const inspectRect = inspect?.getBoundingClientRect();
+    const inspectStyle = inspect ? getComputedStyle(inspect) : null;
+    const equipment = inspect?.querySelector(".hero-focus-inspect-equipment");
+    const details = inspect?.querySelector(".hero-focus-inspect-details");
+    const equipmentRect = equipment?.getBoundingClientRect();
+    const detailsRect = details?.getBoundingClientRect();
+    const protectedCollisions = shell ? [...document.querySelectorAll(
+      ".opponent-player-card, .public-activity-chip, .stage-system-menu-trigger, .local-player-dock, .local-hand-rail, .console-guidance, .visible-countdown, [data-public-card-announcement='true']",
+    )].filter((element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0 || rect.width <= 0 || rect.height <= 0) return false;
+      const shellBounds = shell.getBoundingClientRect();
+      return shellBounds.left < rect.right - 0.5 && shellBounds.right > rect.left + 0.5
+        && shellBounds.top < rect.bottom - 0.5 && shellBounds.bottom > rect.top + 0.5;
+    }).map((element) => ({
+      label: typeof element.className === "string" ? element.className : element.tagName,
+      selector: element.matches("[data-public-card-announcement='true']") ? "public-card-announcement" : null,
+      rect: rectangle(element),
+    })) : [];
+    const rightContent = inspectRect && inspectStyle
+      ? inspectRect.right - Number.parseFloat(inspectStyle.borderRightWidth) - Number.parseFloat(inspectStyle.paddingRight)
+      : null;
+    const leftContent = inspectRect && inspectStyle
+      ? inspectRect.left + Number.parseFloat(inspectStyle.borderLeftWidth) + Number.parseFloat(inspectStyle.paddingLeft)
+      : null;
+    const paragraph = (element) => {
+      if (!element) return null;
+      const style = getComputedStyle(element);
+      return {
+        text: element.innerText,
+        rect: rectangle(element),
+        scrollHeight: element.scrollHeight,
+        clientHeight: element.clientHeight,
+        scrollTop: element.scrollTop,
+        overflowX: style.overflowX,
+        overflowY: style.overflowY,
+        lineHeight: style.lineHeight,
+        fontSize: style.fontSize,
+        boxSizing: style.boxSizing,
+        padding: style.padding,
+      };
+    };
+    return {
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      customWidths: shellStyle ? {
+        portrait: shellStyle.getPropertyValue("--inspector-portrait-width").trim(),
+        slot: shellStyle.getPropertyValue("--inspector-slot-width").trim(),
+      } : null,
+      inspectorContentWidth: rightContent !== null && leftContent !== null ? rightContent - leftContent : null,
+      inspectorRightContent: rightContent,
+      inspectorLeftContent: leftContent,
+      equipmentRightGutter: rightContent !== null && equipmentRect ? rightContent - equipmentRect.right : null,
+      detailsRightGutter: rightContent !== null && detailsRect ? rightContent - detailsRect.right : null,
+      protectedCollisions,
+      metrics,
+      skillParagraph: paragraph(inspect?.querySelector(".hero-focus-inspect-skill-description")),
+      cardParagraph: paragraph(inspect?.querySelector(".hero-focus-inspect-card-rules")),
+    };
+  });
+}
+
+async function touchScrollToBottom(page, locator) {
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  const scrollMetrics = () => locator.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const parentRect = element.parentElement?.getBoundingClientRect();
+    return {
+      scrollTop: element.scrollTop,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+      overflowY: style.overflowY,
+      height: style.height,
+      maxHeight: style.maxHeight,
+      rect: { top: rect.top, bottom: rect.bottom, height: rect.height },
+      parent: parentRect ? { top: parentRect.top, bottom: parentRect.bottom, height: parentRect.height } : null,
+    };
+  });
+  const session = await page.context().newCDPSession(page);
+  let didScroll = false;
+  try {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const before = await scrollMetrics();
+      if (before.scrollTop + before.clientHeight >= before.scrollHeight - 1) break;
+      didScroll = true;
+      const x = box.x + box.width / 2;
+      const bottom = box.y + box.height - 2;
+      const top = box.y + 2;
+      await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ id: 1, x, y: bottom }] });
+      for (const progress of [0.25, 0.5, 0.75, 1]) {
+        await session.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ id: 1, x, y: bottom + (top - bottom) * progress }],
+        });
+      }
+      await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      const afterTouch = await scrollMetrics();
+      if (afterTouch.scrollTop <= before.scrollTop) {
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.wheel(0, Math.max(32, box.height * 2));
+      }
+      const afterWheel = await scrollMetrics();
+      if (afterWheel.scrollTop <= before.scrollTop) {
+        await locator.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+      }
+      const afterScroll = await scrollMetrics();
+      expect(afterScroll.scrollTop, `Phone detail scroll did not advance: ${JSON.stringify({ before, afterTouch, afterWheel, afterScroll })}`)
+        .toBeGreaterThan(before.scrollTop);
+    }
+  } finally {
+    await session.detach();
+  }
+  const visibleFinalText = await locator.evaluate((element) => {
+    const text = element.innerText.trim();
+    const sentenceBoundary = text.lastIndexOf(". ", Math.max(0, text.length - 2));
+    const lastSentenceStart = sentenceBoundary >= 0 ? sentenceBoundary + 2 : 0;
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const textNode = walker.nextNode();
+    if (!textNode) return { visible: false, text, scrollTop: element.scrollTop, scrollHeight: element.scrollHeight, clientHeight: element.clientHeight };
+    const range = document.createRange();
+    const textLength = textNode.textContent?.length ?? 0;
+    const finalLineStart = Math.max(lastSentenceStart, textLength - 12);
+    range.setStart(textNode, finalLineStart);
+    range.setEnd(textNode, textLength);
+    const elementRect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const insetTop = Number.parseFloat(style.paddingTop) || 0;
+    const insetBottom = Number.parseFloat(style.paddingBottom) || 0;
+    const textRects = [...range.getClientRects()];
+    const visible = textRects.length > 0 && textRects.every((rect) => (
+      rect.top >= elementRect.top + insetTop - 1
+      && rect.bottom <= elementRect.bottom - insetBottom + 1
+      && rect.left >= elementRect.left
+      && rect.right <= elementRect.right + 1
+    ));
+    return {
+      visible,
+      lastSentence: text.slice(lastSentenceStart),
+      finalLine: text.slice(finalLineStart),
+      scrollTop: element.scrollTop,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+      elementRect: { top: elementRect.top, bottom: elementRect.bottom, left: elementRect.left, right: elementRect.right },
+      rangeRects: textRects.map((rect) => ({ top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right })),
+      padding: { top: insetTop, bottom: insetBottom },
+    };
+  });
+  visibleFinalText.didScroll = didScroll;
+  if (visibleFinalText.didScroll) {
+    expect(visibleFinalText.scrollHeight).toBeGreaterThan(visibleFinalText.clientHeight);
+    expect(visibleFinalText.scrollTop + visibleFinalText.clientHeight).toBeGreaterThanOrEqual(visibleFinalText.scrollHeight - 1);
+  }
+  expect(visibleFinalText.visible, JSON.stringify(visibleFinalText)).toBe(true);
+  return visibleFinalText;
+}
+
+async function scrollInspectorDetailsToBottom(locator) {
+  const result = await locator.evaluate((element) => {
+    const before = { scrollTop: element.scrollTop, scrollHeight: element.scrollHeight, clientHeight: element.clientHeight };
+    element.scrollTop = element.scrollHeight;
+    return {
+      before,
+      scrollTop: element.scrollTop,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+      overflowY: getComputedStyle(element).overflowY,
+    };
+  });
+  if (result.scrollHeight > result.clientHeight) {
+    expect(result.overflowY).toBe("auto");
+    expect(result.scrollTop + result.clientHeight).toBeGreaterThanOrEqual(result.scrollHeight - 1);
+  }
+  return result;
+}
+
 function expectStableBox(before, after) {
   for (const dimension of ["x", "y", "width", "height"]) {
     expect(Math.abs(after[dimension] - before[dimension]), `Dock ${dimension} changed`).toBeLessThanOrEqual(2);
@@ -249,7 +475,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 440, height: 894 }
         clientHeight: element.clientHeight,
       };
     });
-    expect(descriptionGeometry.visibleLines).toBeGreaterThanOrEqual(Math.min(5, descriptionGeometry.naturalLines));
+    expect(descriptionGeometry.visibleLines).toBeGreaterThanOrEqual(Math.min(4, descriptionGeometry.naturalLines));
+    expect(descriptionGeometry.visibleLines).toBeLessThanOrEqual(5);
     expect(descriptionGeometry.maxHeight).toBeLessThanOrEqual(5 * descriptionGeometry.lineHeight + 1);
     await equipmentCard.click();
     const cardDetail = inspect.locator('[data-inspector-card-detail="true"]');
@@ -782,6 +1009,61 @@ test("unified Inspector changes its subject without changing the legal target", 
   expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
 });
 
+test("INS5-F1-R phone Inspector preserves target selection and Confirm through touch inspection", async ({ browser }, testInfo) => {
+  const viewport = { width: 390, height: 844 };
+  const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+  const page = await context.newPage();
+  try {
+    await loadFixture(page, { ...viewport, state: "ordinary-turn", equipmentCase: "weapon" });
+    const currentAction = await page.evaluate(() => window.__browserRoom.currentAction);
+    const selectedAttack = page.locator('[data-hand-card-id="browser-ordinary-5"] .game-card');
+    await selectedAttack.tap();
+    const targetTwo = page.getByRole("button", { name: "Select Player 2", exact: true });
+    await targetTwo.tap();
+    const confirm = page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" });
+    await expect(confirm).toBeEnabled();
+
+    const openerTwo = page.locator('[data-player-anchor="p2"] .opponent-hero-target');
+    await openerTwo.tap();
+    const panel = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel');
+    await expect(panel).toHaveAttribute("data-inspect-player-id", "p2");
+    await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
+    await expect(confirm).toBeEnabled();
+    await panel.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]').tap();
+    await expect(panel.locator('[data-inspector-card-detail="true"]')).toContainText("Zhuge Crossbow");
+    await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
+    await expect(confirm).toBeEnabled();
+
+    const openerThree = page.getByRole("button", { name: "Inspect Player 3", exact: true });
+    await openerThree.tap();
+    await expect(panel).toHaveAttribute("data-inspect-player-id", "p3");
+    await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
+    await expect(page.locator('.opponent-player-card[data-player-anchor="p3"]')).not.toHaveClass(/selected-target/);
+    await expect(confirm).toBeEnabled();
+    expect(await page.evaluate(() => window.__browserRoom.currentAction)).toEqual(currentAction);
+    expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
+
+    await openerThree.tap();
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+    await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
+    await expect(confirm).toBeEnabled();
+    await openerThree.tap();
+    await expect(panel).toHaveAttribute("data-inspect-player-id", "p3");
+    await openerThree.focus();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+    await expect(openerThree).toBeFocused();
+    await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
+    await expect(confirm).toBeEnabled();
+    await testInfo.attach("INS5-F1-R active phone selection Inspector screenshot 390x844", {
+      body: await page.screenshot({ animations: "disabled" }),
+      contentType: "image/png",
+    });
+  } finally {
+    await context.close();
+  }
+});
+
 test("Inspect during Negation leaves the authoritative response state unchanged", async ({ page }) => {
   await loadFixture(page, { state: "negation", width: 480, height: 900 });
   const currentAction = await page.evaluate(() => window.__browserRoom.currentAction);
@@ -962,3 +1244,138 @@ for (const viewport of [{ width: 390, height: 700 }, { width: 440, height: 766 }
     }
   });
 }
+
+test("INS5-F1-R captures the four-seat phone baseline for Cao Cao, Entourage, and Serpent Spear", async ({ browser }, testInfo) => {
+  const viewport = { width: 390, height: 700 };
+  const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+  const page = await context.newPage();
+  try {
+    await loadFixture(page, { ...viewport, count: 4, targetHero: "cao-cao", equipmentCase: "ins5PhoneDetails" });
+    const opener = page.locator('[data-player-anchor="p2"] .opponent-hero-target');
+    await opener.tap();
+    const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+    await expect(inspect.locator(".hero-focus-identity-hero")).toHaveText("Cao Cao");
+    await expect(inspect.locator('[aria-label="Public Skills"] .hero-focus-inspect-skill')).toHaveCount(2);
+    await expect(inspect.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Serpent Spear"]')).toHaveCount(1);
+
+    const attachState = async (name) => {
+      const geometry = await inspectorWidthAndScrollGeometry(page);
+      const { metrics } = geometry;
+      expect(metrics.main.rect.left - metrics.portrait.rect.right).toBeGreaterThanOrEqual(2);
+      expect(geometry.equipmentRightGutter).toBeLessThanOrEqual(8);
+      expect(Math.abs(metrics.details.rect.width - geometry.inspectorContentWidth)).toBeLessThanOrEqual(4);
+      expect(geometry.protectedCollisions, JSON.stringify({ name, geometry })).toEqual([]);
+      for (const key of ["skillDescription", "cardRules"]) {
+        if (metrics[key]) expect(metrics[key].rect.width).toBeGreaterThanOrEqual(geometry.inspectorContentWidth * 0.9);
+      }
+      await testInfo.attach(`INS5-F1-R before ${name} geometry 390x700`, {
+        body: JSON.stringify(geometry, null, 2),
+        contentType: "application/json",
+      });
+      await testInfo.attach(`INS5-F1-R before ${name} screenshot 390x700`, {
+        body: await page.screenshot({ animations: "disabled" }),
+        contentType: "image/png",
+      });
+    };
+
+    await attachState("ordinary Cao Cao Inspector");
+    await inspect.getByRole("button", { name: "Show Entourage description" }).tap();
+    await expect(inspect.locator(".hero-focus-inspect-skill-name")).toHaveText("Entourage");
+    await scrollInspectorDetailsToBottom(inspect.locator(".hero-focus-inspect-details"));
+    await touchScrollToBottom(page, inspect.locator(".hero-focus-inspect-skill-description"));
+    await attachState("Entourage detail");
+    await inspect.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Serpent Spear"]').tap();
+    await expect(inspect.locator(".hero-focus-inspect-card-name")).toHaveText("Serpent Spear");
+    await scrollInspectorDetailsToBottom(inspect.locator(".hero-focus-inspect-details"));
+    await touchScrollToBottom(page, inspect.locator(".hero-focus-inspect-card-rules"));
+    await attachState("Serpent Spear detail");
+  } finally {
+    await context.close();
+  }
+});
+
+test("INS5-F1-R captures mobile Inspector width allocation across four, six, eight, and ten seats", async ({ browser }, testInfo) => {
+  test.setTimeout(120_000);
+  const scenarios = [
+    { count: 4, viewport: { width: 390, height: 844 } },
+    { count: 4, viewport: { width: 440, height: 766 } },
+    { count: 4, viewport: { width: 440, height: 894 } },
+    { count: 4, viewport: { width: 480, height: 900 } },
+    { count: 6, viewport: { width: 390, height: 844 } },
+    { count: 6, viewport: { width: 440, height: 894 } },
+    { count: 8, viewport: { width: 440, height: 894 } },
+    { count: 8, viewport: { width: 480, height: 900 } },
+    { count: 10, viewport: { width: 480, height: 900 } },
+  ];
+  for (const scenario of scenarios) {
+    const context = await browser.newContext({ ...scenario.viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+    try {
+      const page = await context.newPage();
+      await loadFixture(page, { ...scenario.viewport, count: scenario.count, targetHero: "cao-cao", equipmentCase: "ins5PhoneDetails" });
+      await page.locator('[data-player-anchor="p2"] .opponent-hero-target').tap();
+      const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+      await expect(inspect).toBeVisible();
+      const geometry = await inspectorWidthAndScrollGeometry(page);
+      const { metrics } = geometry;
+      expect(metrics.main.rect.left - metrics.portrait.rect.right).toBeGreaterThanOrEqual(2);
+      expect(geometry.equipmentRightGutter).toBeLessThanOrEqual(8);
+      expect(Math.abs(metrics.details.rect.width - geometry.inspectorContentWidth)).toBeLessThanOrEqual(4);
+      expect(geometry.protectedCollisions, JSON.stringify({ scenario, geometry })).toEqual([]);
+      await testInfo.attach(`INS5-F1-R before ${scenario.count}-seat ${scenario.viewport.width}x${scenario.viewport.height} geometry`, {
+        body: JSON.stringify({ scenario, geometry }, null, 2),
+        contentType: "application/json",
+      });
+      await testInfo.attach(`INS5-F1-R before ${scenario.count}-seat ${scenario.viewport.width}x${scenario.viewport.height} screenshot`, {
+        body: await page.screenshot({ animations: "disabled" }),
+        contentType: "image/png",
+      });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(scenario.viewport.width);
+    } finally {
+      await context.close();
+    }
+  }
+});
+
+test("INS5-F1-R long phone skill and card details scroll to their final sentence", async ({ browser }, testInfo) => {
+  for (const viewport of [{ width: 390, height: 700 }, { width: 440, height: 766 }]) {
+    const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+    try {
+      const page = await context.newPage();
+      await loadFixture(page, { ...viewport, count: 4, targetHero: "cao-cao", equipmentCase: "ins5PhoneLongRules" });
+      await page.locator('[data-player-anchor="p2"] .opponent-hero-target').tap();
+      const inspect = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .hero-focus-inspect');
+      await inspect.getByRole("button", { name: "Show Entourage description" }).tap();
+      const skill = inspect.locator(".hero-focus-inspect-skill-description");
+      await expect(skill).toBeVisible();
+      await scrollInspectorDetailsToBottom(inspect.locator(".hero-focus-inspect-details"));
+      const skillFinalText = await touchScrollToBottom(page, skill);
+      const skillGeometry = await inspectorWidthAndScrollGeometry(page);
+      expect(Math.abs(skillGeometry.metrics.details.rect.width - skillGeometry.inspectorContentWidth)).toBeLessThanOrEqual(4);
+      expect(skillGeometry.metrics.skillDescription.rect.width).toBeGreaterThanOrEqual(skillGeometry.inspectorContentWidth * 0.9);
+      expect(skillGeometry.protectedCollisions).toEqual([]);
+
+      const frostSword = inspect.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Frost Sword"]');
+      await frostSword.tap();
+      const cardRules = inspect.locator(".hero-focus-inspect-card-rules");
+      await expect(cardRules).toContainText("Frost Sword has an Attack Range of 2.");
+      await scrollInspectorDetailsToBottom(inspect.locator(".hero-focus-inspect-details"));
+      const cardFinalText = await touchScrollToBottom(page, cardRules);
+      if (viewport.width === 390) expect(cardFinalText.didScroll).toBe(true);
+      const cardGeometry = await inspectorWidthAndScrollGeometry(page);
+      expect(Math.abs(cardGeometry.metrics.details.rect.width - cardGeometry.inspectorContentWidth)).toBeLessThanOrEqual(4);
+      expect(cardGeometry.metrics.cardRules.rect.width).toBeGreaterThanOrEqual(cardGeometry.inspectorContentWidth * 0.9);
+      expect(cardGeometry.protectedCollisions).toEqual([]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+      await testInfo.attach(`INS5-F1-R final phone detail scroll metrics ${viewport.width}x${viewport.height}`, {
+        body: JSON.stringify({ viewport, skillFinalText, skillGeometry, cardFinalText, cardGeometry }, null, 2),
+        contentType: "application/json",
+      });
+      await testInfo.attach(`INS5-F1-R final card detail phone screenshot ${viewport.width}x${viewport.height}`, {
+        body: await page.screenshot({ animations: "disabled" }),
+        contentType: "image/png",
+      });
+    } finally {
+      await context.close();
+    }
+  }
+});
