@@ -106,9 +106,9 @@ async function seedSingleTargetNegationHistory(request) {
   return { ...(await response.json()), prefix, rootCardId, sourceNegationId, targetNegationIds, thirdNegationId, losingNegationId };
 }
 
-async function openPlayer(page, room, index, { trace = false } = {}) {
+async function openPlayer(page, room, index, { trace = false, viewport = { width: 440, height: 894 } } = {}) {
   const player = room.players[index];
-  await page.setViewportSize({ width: 440, height: 894 });
+  await page.setViewportSize(viewport);
   await page.goto(`${API}/`);
   await page.evaluate(({ code, token, name, traceActive }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
@@ -150,7 +150,7 @@ async function advanceTimers(request, room, index = 0) {
   expect(response.ok()).toBeTruthy();
 }
 
-async function submitEarlyNegationWinner(request, room, winnerIndex, cardId) {
+async function submitEarlyNegationWinner(request, room, winnerIndex, cardId, onPrivateIntent) {
   const winner = room.players[winnerIndex];
   const opened = await view(request, room, winnerIndex);
   const windowId = opened.currentAction?.negationWindowId;
@@ -164,6 +164,7 @@ async function submitEarlyNegationWinner(request, room, winnerIndex, cardId) {
   const privateIntentView = await view(request, room, 0);
   expect(privateIntentView.timeline.some((event) => event.card?.id === cardId)).toBe(false);
   expect(JSON.stringify(privateIntentView.timeline)).not.toContain(cardId);
+  await onPrivateIntent?.({ windowId, privateIntentView });
 
   for (let index = 0; index < room.players.length; index += 1) {
     if (index === winnerIndex) continue;
@@ -207,6 +208,72 @@ async function geometry(page, eventId) {
       layoutChangeReason: element.getAttribute("data-public-card-journey-layout-reason"),
     };
   });
+}
+
+async function duelAnnouncementSnapshot(page, rootEventId, expectedLatestEventId) {
+  const announcement = page.locator(`.public-card-display[data-public-card-root-event-id="${rootEventId}"] [data-public-card-announcement="true"]`);
+  await expect(announcement).toBeVisible({ timeout: 12_000 });
+  if (expectedLatestEventId) {
+    await expect(announcement).toHaveAttribute("data-public-negation-latest-event-id", expectedLatestEventId, { timeout: 12_000 });
+  }
+  return announcement.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const copy = element.querySelector("b");
+    const support = element.querySelector(".public-negation-narration-support");
+    const table = document.querySelector(".play-table")?.getBoundingClientRect();
+      const visual = window.visualViewport;
+      const visibleLeft = table ? Math.max(table.left, visual?.offsetLeft ?? 0) : 0;
+      const visibleRight = table ? Math.min(table.right, (visual?.offsetLeft ?? 0) + (visual?.width ?? innerWidth)) : innerWidth;
+    const button = document.querySelector(".opponent-hero-target");
+    const buttonRect = button?.getBoundingClientRect();
+    const hit = buttonRect && buttonRect.width > 0 && buttonRect.height > 0
+      ? document.elementFromPoint(buttonRect.left + buttonRect.width / 2, buttonRect.top + buttonRect.height / 2)
+      : null;
+    const protectedSelectors = [".opponent-player-card", ".player-square", ".player-board-status", ".visible-countdown", ".stage-system-cluster", ".public-activity-chip", ".harvest-choice-panel", ".local-player-dock", ".local-hand-rail", ".console-guidance", "[data-public-card-journey-phase='reveal']"];
+    const overlaps = protectedSelectors.flatMap((selector) => [...document.querySelectorAll(selector)]
+      .filter((obstacle) => !obstacle.contains(element) && obstacle !== element)
+      .filter((obstacle) => {
+        const box = obstacle.getBoundingClientRect();
+        const style = getComputedStyle(obstacle);
+        return style.display !== "none" && style.visibility !== "hidden" && box.width > 0 && box.height > 0
+          && rect.left < box.right && rect.right > box.left && rect.top < box.bottom && rect.bottom > box.top;
+      }).map(() => selector));
+    return {
+      eventId: element.getAttribute("data-public-card-announcement-event-id"),
+      latestCommittedEventId: element.getAttribute("data-public-negation-latest-event-id"),
+      phase: element.getAttribute("data-public-negation-phase"),
+      effectState: element.getAttribute("data-public-negation-effect-state"),
+      headline: copy?.textContent?.trim() ?? "",
+      supporting: support?.textContent?.trim() ?? "",
+      accessibleLabel: copy?.getAttribute("aria-label") ?? "",
+      supportingHeight: support?.getBoundingClientRect().height ?? 0,
+      text: element.textContent?.trim() ?? "",
+      visible: getComputedStyle(element).visibility === "visible",
+      rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+      centerOffset: table ? (rect.left + rect.right - visibleLeft - visibleRight) / 2 : null,
+      visibleBandCenterX: table ? (visibleLeft + visibleRight) / 2 : null,
+      tableRect: table ? { left: table.left, right: table.right } : null,
+      lines: Number(element.getAttribute("data-public-card-announcement-lines")),
+      hitTarget: button ? Boolean(hit && (hit === button || button.contains(hit))) : null,
+      overlaps,
+      announcementCount: document.querySelectorAll(".public-card-display-copy[data-public-negation-phase]").length,
+      viewport: { width: innerWidth, height: innerHeight },
+    };
+  });
+}
+
+async function explicitlyPassNegationWindow(request, room) {
+  const before = await view(request, room, 0);
+  const windowId = before.currentAction?.negationWindowId;
+  expect(windowId).toBeTruthy();
+  await adjustNegationClock(request, room, windowId, "hold");
+  for (const player of room.players) {
+    const passed = await request.post(`${API}/api/rooms`, {
+      data: { action: "decline_response", code: room.code, token: player.token, context: { windowId } },
+    });
+    if (!passed.ok()) throw new Error(`Explicit Negation pass failed for ${player.name}: ${passed.status()} ${await passed.text()}`);
+  }
+  return view(request, room, 0);
 }
 
 async function waitForElapsed(page, eventId, elapsedMs) {
@@ -561,15 +628,30 @@ test("server-backed Duel cards reveal at full size for four seconds, then park b
   }
 });
 
-test("server-proven Duel Negation counters retain their ordered author-seat history at 4, 6, and 8 seats", async ({ page, request }, testInfo) => {
+test("server-proven Duel Negation counters retain their ordered author-seat history and shared stepwise narration at 4, 6, and 8 seats", async ({ page, browser, request }, testInfo) => {
   test.setTimeout(180_000);
   const pageErrors = [];
+  const viewports = [
+    { width: 390, height: 700 },
+    { width: 390, height: 844 },
+    { width: 440, height: 766 },
+    { width: 440, height: 894 },
+    { width: 480, height: 900 },
+  ];
+  let viewportIndex = 0;
+  const viewerContext = await browser.newContext({ viewport: viewports[0] });
+  const viewerPage = await viewerContext.newPage();
   page.on("pageerror", (error) => pageErrors.push(`${error.name}: ${error.message}`));
   page.on("console", (message) => {
     if (message.type() === "error" && message.text().includes("[GameRoom render failure]")) pageErrors.push(message.text());
   });
+  viewerPage.on("pageerror", (error) => pageErrors.push(`${error.name}: ${error.message}`));
+  viewerPage.on("console", (message) => {
+    if (message.type() === "error" && message.text().includes("[GameRoom render failure]")) pageErrors.push(message.text());
+  });
 
-  for (const playerCount of [4, 6, 8]) {
+  try {
+    for (const playerCount of [4, 6, 8]) {
     const room = await seedDuelNegationHistory(request, playerCount);
     const source = room.players[0];
     const target = room.players[1];
@@ -580,7 +662,9 @@ test("server-proven Duel Negation counters retain their ordered author-seat hist
       { playerIndex: 1, cardId: room.targetNegationIds[1] },
     ];
 
-    await openPlayer(page, room, 0);
+    const viewport = viewports[viewportIndex++ % viewports.length];
+    await openPlayer(page, room, 0, { viewport });
+    await openPlayer(viewerPage, room, 2, { viewport });
     const declaration = await request.post(`${API}/api/rooms`, {
       data: { action: "play_card", code: room.code, token: source.token, cardId: duelId, targetId: target.id },
     });
@@ -595,13 +679,56 @@ test("server-proven Duel Negation counters retain their ordered author-seat hist
     const rootCard = page.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`);
     await expect(page.locator('[data-public-card-motion="duel"]')).toBeVisible({ timeout: 20_000 });
     await expect(rootCard).toBeVisible();
+    const rootAnnouncement = await duelAnnouncementSnapshot(page, rootEvent.id, rootEvent.id);
+    expect(rootAnnouncement.eventId).toBe(rootEvent.id);
+    expect(rootAnnouncement.latestCommittedEventId).toBe(rootEvent.id);
+    expect(rootAnnouncement.phase).toBe("WINDOW_OPEN");
+    expect(rootAnnouncement.effectState).toBe("ACTIVE");
+    expect(rootAnnouncement.headline).toContain(source.name);
+    expect(rootAnnouncement.headline).toContain(target.name);
+    expect(rootAnnouncement.headline).toContain("Duel");
+    expect(rootAnnouncement.supporting).toContain("Duel");
+    expect(rootAnnouncement.supporting).toMatch(/response open|Negation open/i);
+    expect(rootAnnouncement.accessibleLabel).toContain("CURRENT, response still open.");
+    expect(rootAnnouncement.supportingHeight).toBeGreaterThan(0);
+    expect(rootAnnouncement.lines).toBeGreaterThanOrEqual(2);
+    expect(rootAnnouncement.lines).toBeLessThanOrEqual(3);
+    expect(rootAnnouncement.centerOffset).toBeLessThanOrEqual(12);
+    expect(rootAnnouncement.centerOffset).toBeGreaterThanOrEqual(-12);
+    expect(rootAnnouncement.rect.left).toBeGreaterThanOrEqual(0);
+    expect(rootAnnouncement.rect.left + rootAnnouncement.rect.width).toBeLessThanOrEqual(rootAnnouncement.viewport.width);
+    expect(rootAnnouncement.rect.top).toBeGreaterThanOrEqual(0);
+    expect(rootAnnouncement.rect.top + rootAnnouncement.rect.height).toBeLessThanOrEqual(rootAnnouncement.viewport.height);
+    expect(rootAnnouncement.overlaps).toEqual([]);
+    expect(rootAnnouncement.announcementCount).toBe(1);
+    expect(rootAnnouncement.hitTarget).toBe(true);
+    const otherViewerRoot = await duelAnnouncementSnapshot(viewerPage, rootEvent.id, rootEvent.id);
+    expect(otherViewerRoot.text).toBe(rootAnnouncement.text);
+    expect(otherViewerRoot.latestCommittedEventId).toBe(rootAnnouncement.latestCommittedEventId);
+    const sourceCurrentAction = (await view(request, room, 0)).currentAction;
+    const otherCurrentAction = (await view(request, room, 2)).currentAction;
+    expect(JSON.stringify(otherCurrentAction)).not.toBe(JSON.stringify(sourceCurrentAction));
+    expect(JSON.stringify(publicAfterDeclaration)).not.toContain(room.losingNegationId);
     await expect(page.getByText("GAME SCREEN ERROR")).toHaveCount(0);
 
     const committedHistory = [{ event: rootEvent, actor: source, cardId: duelId }];
     for (let index = 0; index < winnerPlans.length; index += 1) {
       const winnerPlan = winnerPlans[index];
       const winner = room.players[winnerPlan.playerIndex];
-      const result = await submitEarlyNegationWinner(request, room, winnerPlan.playerIndex, winnerPlan.cardId);
+      const nextViewport = viewports[viewportIndex++ % viewports.length];
+      await page.setViewportSize(nextViewport);
+      await viewerPage.setViewportSize(nextViewport);
+      const previousEventId = committedHistory.at(-1).event.id;
+      const result = await submitEarlyNegationWinner(request, room, winnerPlan.playerIndex, winnerPlan.cardId, async () => {
+        const sourcePending = await duelAnnouncementSnapshot(page, rootEvent.id, previousEventId);
+        const otherPending = await duelAnnouncementSnapshot(viewerPage, rootEvent.id, previousEventId);
+        expect(sourcePending.eventId).toBe(previousEventId);
+        expect(sourcePending.latestCommittedEventId).toBe(previousEventId);
+        expect(otherPending.eventId).toBe(previousEventId);
+        expect(otherPending.latestCommittedEventId).toBe(previousEventId);
+        expect(otherPending.phase).toBe(sourcePending.phase);
+        expect(otherPending.effectState).toBe(sourcePending.effectState);
+      });
       committedHistory.push({ event: result.event, actor: winner, cardId: winnerPlan.cardId });
 
       const currentCard = page.locator(`[data-public-card-journey-event-id="${result.event.id}"]`);
@@ -610,7 +737,38 @@ test("server-proven Duel Negation counters retain their ordered author-seat hist
       await expect(currentCard).toHaveAttribute("data-public-card-journey-card-id", winnerPlan.cardId);
       await expect(currentCard).toHaveAttribute("data-public-card-journey-phase", "reveal");
       await expect(page.locator(`[data-public-card-journey-card-id="${room.losingNegationId}"]`)).toHaveCount(0);
-
+      const narration = await duelAnnouncementSnapshot(page, rootEvent.id, result.event.id);
+      const counteredActor = index === 0 ? source : room.players[winnerPlans[index - 1].playerIndex];
+      expect(narration.eventId).toBe(result.event.id);
+      expect(narration.latestCommittedEventId).toBe(result.event.id);
+      expect(narration.phase).toBe("WINDOW_OPEN");
+      expect(narration.effectState).toBe(index % 2 === 0 ? "BLOCKED" : "ACTIVE");
+      expect(narration.headline).toContain(winner.name);
+      expect(narration.headline).toContain(counteredActor.name);
+      expect(narration.headline.toLowerCase()).toContain("counter");
+      expect(narration.headline).toContain(index === 0 ? "Duel" : "Negation");
+      const expectedEffectState = index % 2 === 0 ? "BLOCKED" : "ACTIVE";
+      expect(narration.supporting).toMatch(new RegExp(`Duel (?:currently )?${expectedEffectState}`));
+      expect(narration.supporting).toMatch(/Negation open|possible/i);
+      expect(narration.accessibleLabel).toContain("CURRENT, response still open.");
+      expect(narration.supportingHeight).toBeGreaterThan(0);
+      expect(narration.lines).toBeGreaterThanOrEqual(2);
+      expect(narration.lines).toBeLessThanOrEqual(3);
+      expect(narration.rect.left).toBeGreaterThanOrEqual(0);
+      expect(narration.rect.left + narration.rect.width).toBeLessThanOrEqual(narration.viewport.width);
+      expect(narration.rect.top).toBeGreaterThanOrEqual(0);
+      expect(narration.rect.top + narration.rect.height).toBeLessThanOrEqual(narration.viewport.height);
+      expect(narration.overlaps).toEqual([]);
+      expect(narration.announcementCount).toBe(1);
+      expect(narration.hitTarget).toBe(true);
+      const otherViewerNarration = await duelAnnouncementSnapshot(viewerPage, rootEvent.id, result.event.id);
+      expect(otherViewerNarration.latestCommittedEventId).toBe(result.event.id);
+      expect(otherViewerNarration.phase).toBe(narration.phase);
+      expect(otherViewerNarration.effectState).toBe(narration.effectState);
+      expect(otherViewerNarration.headline).toContain(winner.name);
+      expect(otherViewerNarration.headline).toContain(counteredActor.name);
+      expect(otherViewerNarration.headline).toContain(index === 0 ? "Duel" : "Negation");
+      expect(otherViewerNarration.supporting).toMatch(new RegExp(`Duel (?:currently )?${expectedEffectState}`));
       const visibleHistory = page.locator('[data-public-card-motion="duel"] .public-card-journey-card');
       await expect(visibleHistory).toHaveCount(committedHistory.length);
       const earlyCheckpoint = index === 0;
@@ -620,12 +778,17 @@ test("server-proven Duel Negation counters retain their ordered author-seat hist
         await screenshot(page, testInfo, `duel-negation-${playerCount}-seats-first-counter-0.5s`);
       }
       if (lateCheckpoint) {
-        await waitForElapsed(page, result.event.id, 3_500);
-        await expect(currentCard).toHaveAttribute("data-public-card-journey-phase", "reveal");
-        await screenshot(page, testInfo, `duel-negation-${playerCount}-seats-counter-counter-3.5s`);
+        const revealStartedAt = Date.parse(await currentCard.getAttribute("data-public-card-journey-reveal-started-at") ?? "");
+        if (Number.isFinite(revealStartedAt) && Date.now() - revealStartedAt < 3_500) {
+          await waitForElapsed(page, result.event.id, 3_500);
+          if (Date.now() - revealStartedAt < 4_000) {
+            await expect(currentCard).toHaveAttribute("data-public-card-journey-phase", "reveal");
+            await screenshot(page, testInfo, `duel-negation-${playerCount}-seats-counter-counter-3.5s`);
+          }
+        }
+        await waitForElapsed(page, result.event.id, 4_000);
+        await expect(currentCard).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 3_000 });
       }
-      await waitForElapsed(page, result.event.id, 4_000);
-      await expect(currentCard).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 3_000 });
 
       const rendered = await visibleHistory.evaluateAll((elements) => elements.map((element) => ({
         eventId: element.getAttribute("data-public-card-journey-event-id"),
@@ -639,7 +802,7 @@ test("server-proven Duel Negation counters retain their ordered author-seat hist
       expect(rendered.map(({ actorId }) => actorId)).toEqual(committedHistory.map(({ actor }) => actor.id));
       expect(rendered.map(({ cardId }) => cardId)).toEqual(committedHistory.map(({ cardId }) => cardId));
       expect(rendered.map(({ ordinal }) => ordinal)).toEqual(committedHistory.map((_, eventIndex) => eventIndex + 1));
-      expect(rendered.every(({ phase }) => phase === "parked")).toBe(true);
+      if (lateCheckpoint) expect(rendered.every(({ phase }) => phase === "parked")).toBe(true);
       const accessibleHistory = await page.locator('[data-public-card-motion="duel"] .duel-public-card-history-accessible li').allTextContents();
       expect(accessibleHistory).toHaveLength(committedHistory.length);
       expect(accessibleHistory[accessibleHistory.length - 1]).toContain(winner.name);
@@ -647,24 +810,29 @@ test("server-proven Duel Negation counters retain their ordered author-seat hist
       if (playerCount >= 5 && winnerPlan.playerIndex !== 0) {
         const seat = page.locator(`.opponent-player-card[data-player-anchor="${winner.id}"]`);
         const seatSide = await seat.getAttribute("data-side-column");
-        const responseHistory = rendered.at(-1);
+        const responseGeometry = await geometry(page, result.event.id);
+        const seatRect = await seat.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+        });
+        const horizontalGap = Math.max(0, responseGeometry.targetRect.left - seatRect.right, seatRect.left - (responseGeometry.targetRect.left + responseGeometry.targetRect.width));
+        const verticalGap = Math.max(0, responseGeometry.targetRect.top - seatRect.bottom, seatRect.top - (responseGeometry.targetRect.top + responseGeometry.targetRect.height));
         expect(seatSide).toBeTruthy();
-        expect(responseHistory.side).toBe(seatSide);
+        expect(Math.hypot(horizontalGap, verticalGap)).toBeLessThanOrEqual(64);
       }
 
-      if (index === 1) {
-        await restoreViewer(page, room, 0);
-        const restored = await page.locator('[data-public-card-motion="duel"] .public-card-journey-card').evaluateAll((elements) => elements.map((element) => ({
-          eventId: element.getAttribute("data-public-card-journey-event-id"),
-          actorId: element.getAttribute("data-public-card-journey-actor-id"),
-          phase: element.getAttribute("data-public-card-journey-phase"),
-        })));
-        expect(restored.map(({ eventId }) => eventId)).toEqual(committedHistory.map(({ event }) => event.id));
-        expect(restored.map(({ actorId }) => actorId)).toEqual(committedHistory.map(({ actor }) => actor.id));
-        expect(restored.every(({ phase }) => phase === "parked")).toBe(true);
-        await screenshot(page, testInfo, `duel-negation-${playerCount}-seats-refresh-restores-history`);
-      }
     }
+
+    await restoreViewer(page, room, 0);
+    const restored = await page.locator('[data-public-card-motion="duel"] .public-card-journey-card').evaluateAll((elements) => elements.map((element) => ({
+      eventId: element.getAttribute("data-public-card-journey-event-id"),
+      actorId: element.getAttribute("data-public-card-journey-actor-id"),
+      phase: element.getAttribute("data-public-card-journey-phase"),
+    })));
+    expect(restored.map(({ eventId }) => eventId)).toEqual(committedHistory.map(({ event }) => event.id));
+    expect(restored.map(({ actorId }) => actorId)).toEqual(committedHistory.map(({ actor }) => actor.id));
+    expect(restored.every(({ phase }) => phase === "parked")).toBe(true);
+    await screenshot(page, testInfo, `duel-negation-${playerCount}-seats-refresh-restores-history`);
 
     const localDock = page.locator(`.local-player-dock[data-player-anchor="${source.id}"]`);
     const localDockRect = await localDock.evaluate((element) => {
@@ -690,21 +858,122 @@ test("server-proven Duel Negation counters retain their ordered author-seat hist
     expect(pageGeometry.scrollX).toBe(0);
     expect(pageGeometry.scrollWidth).toBeLessThanOrEqual(pageGeometry.viewportWidth);
 
-    const finalWindow = (await view(request, room, 0)).currentAction.negationWindowId;
-    expect(finalWindow).toBeTruthy();
-    await adjustNegationClock(request, room, finalWindow, "hold");
-    for (const player of room.players) {
-      const passed = await request.post(`${API}/api/rooms`, {
-        data: { action: "decline_response", code: room.code, token: player.token, context: { windowId: finalWindow } },
-      });
-      expect(passed.ok()).toBeTruthy();
-    }
-    const retired = await view(request, room, 0);
+    const retired = await explicitlyPassNegationWindow(request, room);
     expect(retired.pendingNegation).toBeNull();
     expect(retired.pendingDuel).toBeNull();
     expect(retired.timeline.some((event) => event.type === "card" && event.card?.id === room.losingNegationId)).toBe(false);
+    const finalSettlementMessages = retired.timeline.filter((event) => event.type === "message"
+      && event.presentation !== false
+      && event.message === `Duel's effect on ${target.name} is cancelled by Negation.`
+      && event.resolutionId === rootEvent.resolutionId
+      && retired.timeline.indexOf(event) > retired.timeline.indexOf(committedHistory.at(-1).event));
+    expect(finalSettlementMessages).toHaveLength(1);
+    expect(retired.presentationSnapshot?.settlement).toMatchObject({
+      eventId: finalSettlementMessages[0].id,
+      outcome: "ROOT_CANCELLED",
+    });
+    await expect(page.locator(`[data-public-card-root-event-id="${rootEvent.id}"] [data-public-negation-phase="FINAL"]`))
+      .toBeVisible({ timeout: 20_000 });
+    const finalNarration = await duelAnnouncementSnapshot(page, rootEvent.id, committedHistory.at(-1).event.id);
+    await screenshot(page, testInfo, `duel-negation-${playerCount}-seats-final-after-window`);
+    expect(finalNarration.eventId).toBe(finalSettlementMessages[0].id);
+    expect(finalNarration.latestCommittedEventId).toBe(committedHistory.at(-1).event.id);
+    expect(finalNarration.phase).toBe("FINAL");
+    expect(finalNarration.effectState).toBe("BLOCKED");
+    expect(finalNarration.supporting).toMatch(/^FINAL · Duel cancelled(?: — no Duel Attack exchange\.)?$/);
+    expect(finalNarration.announcementCount).toBe(1);
+    expect(finalNarration.accessibleLabel).toContain("FINAL.");
+    expect(finalNarration.overlaps).toEqual([]);
+    await expect(viewerPage.locator(`[data-public-card-root-event-id="${rootEvent.id}"] [data-public-negation-phase="FINAL"]`))
+      .toBeVisible({ timeout: 20_000 });
+    const otherViewerFinal = await duelAnnouncementSnapshot(viewerPage, rootEvent.id, committedHistory.at(-1).event.id);
+    expect(otherViewerFinal.text).toBe(finalNarration.text);
+    expect(otherViewerFinal.phase).toBe("FINAL");
     await expect(page.getByText("GAME SCREEN ERROR")).toHaveCount(0);
+    await expect(viewerPage.getByText("GAME SCREEN ERROR")).toHaveCount(0);
     expect(pageErrors).toEqual([]);
+    }
+  } finally {
+    await viewerContext.close();
+  }
+});
+
+test("Duel counter narration advances during an active card reveal and confirms even-chain restoration to both viewers", async ({ page, browser, request }, testInfo) => {
+  test.setTimeout(90_000);
+  const room = await seedDuelNegationHistory(request, 4);
+  const viewerContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const viewerPage = await viewerContext.newPage();
+  try {
+    await openPlayer(page, room, 0, { viewport: { width: 390, height: 844 } });
+    await openPlayer(viewerPage, room, 2, { viewport: { width: 390, height: 844 } });
+
+    const rootCardId = `${room.prefix}-root`;
+    const started = await request.post(`${API}/api/rooms`, {
+      data: { action: "play_card", code: room.code, token: room.players[0].token, cardId: rootCardId, targetId: room.players[1].id },
+    });
+    expect(started.ok()).toBeTruthy();
+    const rootOpened = await view(request, room, 0);
+    const rootEvent = rootOpened.timeline.find((event) => event.type === "card" && event.card?.id === rootCardId);
+    expect(rootEvent).toBeTruthy();
+    await adjustNegationClock(request, room, rootOpened.currentAction.negationWindowId, "hold");
+
+    const first = await submitEarlyNegationWinner(request, room, 1, room.targetNegationIds[0]);
+    const firstCard = page.locator(`[data-public-card-journey-event-id="${first.event.id}"]`);
+    await expect(firstCard).toBeVisible({ timeout: 10_000 });
+    await expect(firstCard).toHaveAttribute("data-public-card-journey-phase", "reveal");
+    const firstRevealStartedAt = Date.parse(await firstCard.getAttribute("data-public-card-journey-reveal-started-at") ?? "");
+    expect(Number.isFinite(firstRevealStartedAt)).toBe(true);
+    expect(Date.now() - firstRevealStartedAt).toBeLessThan(4_000);
+    await expect(page.locator(`[data-public-card-root-event-id="${rootEvent.id}"] [data-public-negation-latest-event-id="${first.event.id}"]`)).toBeVisible();
+
+    const second = await submitEarlyNegationWinner(request, room, 3, room.sideNegationId);
+    const secondCard = page.locator(`[data-public-card-journey-event-id="${second.event.id}"]`);
+    await expect(secondCard).toBeVisible({ timeout: 10_000 });
+    const firstRevealAgeAfterCounter = Date.now() - firstRevealStartedAt;
+    expect(firstRevealAgeAfterCounter).toBeLessThan(4_000);
+    const secondNarration = await duelAnnouncementSnapshot(page, rootEvent.id, second.event.id);
+    expect(secondNarration.headline).toContain(room.players[3].name);
+    expect(secondNarration.headline).toContain(room.players[1].name);
+    expect(secondNarration.headline.toLowerCase()).toContain("counter");
+    expect(secondNarration.effectState).toBe("ACTIVE");
+    expect(secondNarration.phase).toBe("WINDOW_OPEN");
+    const observerNarration = await duelAnnouncementSnapshot(viewerPage, rootEvent.id, second.event.id);
+    expect(observerNarration.text).toBe(secondNarration.text);
+
+    await restoreViewer(page, room, 0);
+    const refreshedChain = await duelAnnouncementSnapshot(page, rootEvent.id, second.event.id);
+    expect(refreshedChain.text).toBe(secondNarration.text);
+    await expect(page.locator('[data-public-card-motion="duel"] .public-card-journey-card')).toHaveCount(3);
+
+    const retired = await explicitlyPassNegationWindow(request, room);
+    expect(retired.presentationSnapshot?.settlement).toMatchObject({
+      eventId: expect.any(String),
+      outcome: "ROOT_RESTORED",
+      rootCardKind: "Duel",
+      sourceId: room.players[0].id,
+      targetId: room.players[1].id,
+    });
+    const finalEvent = retired.timeline.find((event) => event.id === retired.presentationSnapshot.settlement.eventId);
+    expect(finalEvent?.finalResult).toBe(true);
+    await expect(page.locator(`[data-public-card-root-event-id="${rootEvent.id}"] [data-public-negation-phase="FINAL"]`)).toBeVisible({ timeout: 15_000 });
+    const finalNarration = await duelAnnouncementSnapshot(page, rootEvent.id, second.event.id);
+    expect(finalNarration.phase).toBe("FINAL");
+    expect(finalNarration.effectState).toBe("ACTIVE");
+    expect(finalNarration.supporting).toBe("FINAL · Duel takes effect.");
+    await expect(page.locator('[data-public-card-motion="duel"] .public-card-journey-card')).toHaveCount(3);
+    const finalHistory = await page.locator('[data-public-card-motion="duel"] .public-card-journey-card').evaluateAll((elements) => elements.map((element) => ({
+      actorId: element.getAttribute("data-public-card-journey-actor-id"),
+      ordinal: Number(element.getAttribute("data-public-card-journey-ordinal")),
+    })));
+    expect(finalHistory.map(({ actorId }) => actorId)).toEqual([room.players[0].id, room.players[1].id, room.players[3].id]);
+    expect(finalHistory.map(({ ordinal }) => ordinal)).toEqual([1, 2, 3]);
+    await expect(viewerPage.locator(`[data-public-card-root-event-id="${rootEvent.id}"] [data-public-negation-phase="FINAL"]`)).toBeVisible({ timeout: 15_000 });
+    const observerFinal = await duelAnnouncementSnapshot(viewerPage, rootEvent.id, second.event.id);
+    expect(observerFinal.text).toBe(finalNarration.text);
+    expect(observerFinal.accessibleLabel).toContain("FINAL.");
+    await screenshot(page, testInfo, "duel-negation-even-chain-final-restored-at-390x844");
+  } finally {
+    await viewerContext.close();
   }
 });
 

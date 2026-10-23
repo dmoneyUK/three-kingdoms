@@ -1327,9 +1327,15 @@ function negationSettlementProof(
     || causal.interactionId !== envelope.interactionId || causal.frameId !== envelope.activeFrameId
     || envelope.checkpoint.frameId !== causal.frameId || envelope.checkpoint.stage !== "NEGATION") return undefined;
   const root = envelope.frames.find((frame) => frame.frameId === causal.frameId);
+  const expectedOriginEffect = pending.effect.kind === "duel" ? "duel" : pending.cardName;
+  const expectedOriginTargetIds = pending.effect.kind === "duel" ? [pending.sourceId, pending.effectTargetId] : [pending.effectTargetId];
+  const actualOriginTargetIds = root?.origin.originalTargetIds;
+  const originTargetsMatch = actualOriginTargetIds?.length === expectedOriginTargetIds.length
+    && new Set(actualOriginTargetIds).size === expectedOriginTargetIds.length
+    && expectedOriginTargetIds.every((playerId) => actualOriginTargetIds.includes(playerId));
   if (!root || root.stage !== "NEGATION" || root.parentFrameId !== undefined && root.parentFrameId !== null
-    || root.origin.originSourceId !== pending.sourceId || root.origin.originEffect !== pending.cardName
-    || root.origin.originalTargetIds.length !== 1 || root.origin.originalTargetIds[0] !== pending.effectTargetId
+    || root.origin.originSourceId !== pending.sourceId || root.origin.originEffect !== expectedOriginEffect
+    || !originTargetsMatch
     || root.current.currentSourceId !== pending.sourceId || root.current.currentEffect !== pending.cardName
     || root.current.currentTargetIds.length !== 1 || root.current.currentTargetIds[0] !== pending.effectTargetId) return undefined;
 
@@ -1369,22 +1375,24 @@ function ensureNegationResolutionEvent(log: string[], pending: NegationContinuat
   for (let index = log.length - 1; index >= 0; index--) {
     if (!log[index]?.startsWith("@event:")) continue;
     try {
-      const event = JSON.parse(log[index].slice(7)) as { message?: unknown; resolutionId?: unknown; negationSettlement?: unknown };
+      const event = JSON.parse(log[index].slice(7)) as { message?: unknown; resolutionId?: unknown; importance?: unknown; finalResult?: unknown; negationSettlement?: unknown };
       if (event.message === message && (!pending.resolutionId || event.resolutionId === pending.resolutionId)) {
         matchingIndex = index;
-        if (proof && !event.negationSettlement) {
-          const updated = { ...event, resolutionId: proof.resolutionId, importance: "essential", negationSettlement: proof };
+        if (proof && (event.finalResult !== true || event.importance !== "essential"
+          || JSON.stringify(event.negationSettlement) !== JSON.stringify(proof))) {
+          const updated = { ...event, resolutionId: proof.resolutionId, importance: "essential", finalResult: true, negationSettlement: proof };
           const next = [...log];
           next[index] = `@event:${JSON.stringify(updated)}`;
           return next;
         }
-        if (event.negationSettlement && proof && JSON.stringify(event.negationSettlement) === JSON.stringify(proof)) return log;
+        if (event.finalResult === true && event.importance === "essential" && event.negationSettlement && proof
+          && JSON.stringify(event.negationSettlement) === JSON.stringify(proof)) return log;
         break;
       }
     } catch { /* Ignore malformed legacy events. */ }
   }
   if (matchingIndex >= 0) return log;
-  return addLog(log, message, undefined, proof ? { resolutionId: proof.resolutionId, importance: "essential", negationSettlement: proof } : undefined);
+  return addLog(log, message, undefined, proof ? { resolutionId: proof.resolutionId, importance: "essential", finalResult: true, negationSettlement: proof } : undefined);
 }
 function addDiscardEvent(log: string[], player: string, cards: Card[]) { return addCardGroupEvent(log, player, cards, "discard"); }
 function drawCards(deck: Card[], discard: Card[], count: number, log: string[]) {
@@ -3368,14 +3376,17 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   const players = rows.results ?? []; const source = players.find((player) => player.id === pending.sourceId);
   let deck = parse<Card[]>(room.deck_json, []); let discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []);
-  if (!pending.negated) log = ensureNegationResolutionEvent(log, pending, resumedEnvelope);
+  // Settle Negation against its NEGATION checkpoint before resuming a nested
+  // effect. For Duel, resume advances this same frame to DUEL_EXCHANGE, which
+  // is continuation state rather than proof of the completed Negation window.
+  if (!pending.negated) log = ensureNegationResolutionEvent(log, pending, storedEnvelope);
   const heldCards = pending.heldCards ?? [];
   if (pending.negated) {
     const target = players.find((player) => player.id === pending.effectTargetId);
     if (pending.effect.kind !== "judgement") {
-      const settlement = negationSettlementProof(pending, resumedEnvelope, "ROOT_CANCELLED");
+      const settlement = negationSettlementProof(pending, storedEnvelope, "ROOT_CANCELLED");
       log = addLog(log, `${pending.cardName}'s effect on ${target?.name ?? "its target"} is cancelled by Negation.`, undefined,
-        settlement ? { resolutionId: settlement.resolutionId, importance: "essential", negationSettlement: settlement } : undefined);
+        settlement ? { resolutionId: settlement.resolutionId, importance: "essential", finalResult: true, negationSettlement: settlement } : undefined);
     }
     if (pending.effect.kind === "harvest_target") {
       let harvest = { ...pending.effect.pending, heldCards: pending.heldCards ?? pending.effect.pending.heldCards } satisfies HarvestPending;

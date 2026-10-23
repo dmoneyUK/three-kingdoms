@@ -2122,9 +2122,16 @@ function negationSettlementFor(
     || (value.presentationRevision as number) > envelope.presentationRevision) return null;
 
   const root = envelope.frames.find((frame) => frame.frameId === value.rootFrameId);
+  const isDuelRoot = value.rootCardKind === "Duel";
+  const originTargets = root?.origin.originalTargetIds;
+  const originTargetsMatch = isDuelRoot
+    ? originTargets?.length === 2 && originTargets[0] === value.targetId && originTargets[1] === value.sourceId
+    : originTargets?.length === 1 && originTargets[0] === value.targetId;
+  const originEffectMatches = isDuelRoot
+    ? root?.origin.originEffect.toLowerCase() === "duel"
+    : true;
   if (!root || (root.parentFrameId !== undefined && root.parentFrameId !== null)
-    || root.origin.originSourceId !== value.sourceId
-    || root.origin.originalTargetIds.length !== 1 || root.origin.originalTargetIds[0] !== value.targetId) return null;
+    || root.origin.originSourceId !== value.sourceId || !originTargetsMatch || !originEffectMatches) return null;
 
   return {
     semantics: "PROVEN",

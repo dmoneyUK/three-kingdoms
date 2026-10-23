@@ -1331,6 +1331,10 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-display-journey-copy.public-event-announcement-copy>b{font:600 12.5px/1.35 Arial,sans-serif;letter-spacing:normal}
 .public-card-display-journey[data-public-card-motion="lust-duel"]>.public-card-display-journey-copy{display:flex;min-height:50px;align-items:center;justify-content:center}
 .public-card-display-journey-copy>b{display:block;max-width:100%;color:#f3ead8;font:600 15px/1.2 Arial,sans-serif;letter-spacing:.01em;white-space:normal;overflow-wrap:anywhere}
+.public-card-display-journey-copy.is-negation-narration>b{font-size:15px;line-height:1.15}
+.public-card-display-journey-copy>.public-negation-narration-support{display:block;margin-top:2px;max-width:100%;color:#e2cc91;font:600 13px/1.2 Arial,sans-serif;letter-spacing:normal;white-space:normal;overflow-wrap:anywhere}
+.public-card-display-journey-copy.is-negation-narration[data-public-card-announcement-tight-copy="true"]>b{font-size:13px;line-height:1.15}
+.public-card-display-journey-copy.is-negation-narration[data-public-card-announcement-tight-copy="true"]>.public-negation-narration-support{font-size:11.5px;line-height:1.2}
 .public-card-display-journey-copy.is-negation-waiting{width:min(calc(100vw - 24px),420px);padding:5px 8px;background:#11140fe8}
 .public-card-duel-parked-card{direction:ltr}
 .public-card-duel-parked-card.is-prior{opacity:1;filter:none}
@@ -1344,7 +1348,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .public-card-display-journey.is-viewer-layout-pending .public-card-journey-card{visibility:hidden!important}
 .public-card-display-journey.is-exiting{animation:none;opacity:0;transition:opacity .18s ease}
 .public-card-display-journey-copy[data-public-card-announcement-positioned="true"]{height:auto}
-@media(min-width:801px){.public-card-display-journey-copy>b{font-size:16px}}
+@media(min-width:801px){.public-card-display-journey-copy>b{font-size:16px}.public-card-display-journey-copy.is-negation-narration>b{font-size:16px}.public-card-display-journey-copy>.public-negation-narration-support{font-size:14px}}
 @media(max-width:420px){.public-card-display-journey-copy{padding:5px 8px}.public-card-display-journey-copy.is-negation-waiting{padding:5px 8px}}
 .local-player-dock.local-dock-attack-response{position:relative;outline:2px solid #c94e43;outline-offset:-3px;box-shadow:inset 0 0 0 2px #c94e4355,0 0 18px #d15a4e33}
 @media(prefers-reduced-motion:reduce){.public-card-journey-card,.public-card-journey-card>.played-card>i,.public-card-journey-card>.played-card>i small{transition:none}.public-card-display-journey-copy{transition:none}}

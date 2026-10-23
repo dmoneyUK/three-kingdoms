@@ -25,7 +25,7 @@ import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus } from "../game/public-activity";
 import { CardFace } from "./card-face";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
-import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, harvestNegationDecisionCopy, publicCardActionKey, type PublicCardDisplayAction, type PublicSkillEventAnnouncement } from "./public-card-display";
+import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, harvestNegationDecisionCopy, publicCardActionKey, type PublicCardDisplayAction, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
 import { beginAttackDodgeUxTraceSession, exportAttackDodgeUxTrace, getAttackDodgeUxTraceId, getAttackDodgeUxTraceServerSnapshot, isAttackDodgeUxTraceActive, recordAttackDodgeUxTrace, recordPublicGameRoomSnapshot, resumeAttackDodgeUxTraceSession, sanitizeAttackDodgeUxTraceData, stopAttackDodgeUxTrace, subscribeToAttackDodgeUxTraceActive } from "./attack-dodge-ux-trace";
 import { BUILD_LABEL, BUILD_SHA } from "./build-info";
@@ -44,6 +44,37 @@ type ActiveAttackDodgeSettlement = {
 type RetiredAttackDodgeComposition = { roomCode: string; eventIds: Set<string>; cardIds: Set<string> };
 type AttackDodgeObservedProof = { roomCode: string; proofKey: string; responseEventId: string };
 type ActivePublicNegationRead = { key: string; action: PublicCardDisplayAction; expiresAt: number; phase: "reading" | "elapsed" | "live" | "settlement-pending" | "exiting" };
+
+function finalizePublicNegationNarration(
+  narration: PublicNegationNarration,
+  outcome: "ROOT_CANCELLED" | "ROOT_RESTORED",
+  settlementEventId: string,
+): PublicNegationNarration {
+  const rootEffectState = outcome === "ROOT_CANCELLED" ? "BLOCKED" : "ACTIVE";
+  const supportingMessage = narration.rootLabel === "Duel"
+    ? rootEffectState === "BLOCKED"
+      ? "FINAL · Duel cancelled — no Duel Attack exchange."
+      : "FINAL · Duel takes effect."
+    : rootEffectState === "BLOCKED"
+      ? `FINAL · ${narration.rootLabel} cancelled.`
+      : `FINAL · ${narration.rootLabel} takes effect.`;
+  const compactSupportingMessage = narration.rootLabel === "Duel" && rootEffectState === "BLOCKED"
+    ? "FINAL · Duel cancelled"
+    : supportingMessage;
+  const publicHeadline = narration.compactHeadline;
+  const publicSupportingMessage = compactSupportingMessage;
+  return {
+    ...narration,
+    eventId: settlementEventId,
+    phase: "FINAL",
+    rootEffectState,
+    headline: publicHeadline,
+    compactHeadline: publicHeadline,
+    supportingMessage: publicSupportingMessage,
+    compactSupportingMessage: publicSupportingMessage,
+    accessibleLabel: `FINAL. ${publicHeadline} ${publicSupportingMessage}`,
+  };
+}
 
 function persistAttackDodgeSettlementRetirement(held: ActiveAttackDodgeSettlement): RetiredAttackDodgeComposition {
   let storage: Storage | null = null;
@@ -3797,6 +3828,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
       || rootEvent.playedAs !== undefined || rootEvent.card?.kind !== root.cardKind
       || rootEvent.resolutionId !== links.root.resolutionId) return [];
+    const rootSource = root.source.id ? room.players.find((player) => player.id === root.source.id) : undefined;
+    const rootTarget = root.targets[0]?.id ? room.players.find((player) => player.id === root.targets[0]?.id) : undefined;
+    if (!rootSource?.name || !rootTarget?.name || rootEvent.player !== rootSource.name || !rootEvent.card.id
+      || room.timeline.filter((event) => event.type === "card" && event.card?.id === rootEvent.card.id).length !== 1) return [];
     const responseEventIds = new Set([rootEvent.id]);
     const responseCardIds = new Set([rootEvent.card.id]);
     const responseNodes = chain.negationNodes.flatMap((node, index) => {
@@ -3843,6 +3878,54 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     && singleTargetNegationProofCandidate.chain.interactionId === clientPresentation.interactionId
     && singleTargetNegationProofCandidate.chain.publicEventLinks?.root.eventId === singleTargetNegationProofCandidate.rootEvent.id
     ? singleTargetNegationProofCandidate
+    : null;
+  const deriveSingleTargetNegationNarration = (candidate: NonNullable<typeof singleTargetNegationProofCandidate>): PublicNegationNarration | null => {
+    const sourceName = candidate.root.source.name?.trim();
+    const targetName = candidate.root.targets[0]?.name?.trim();
+    const rootLabel = cardDefinition(candidate.root.cardKind!).name;
+    const rootEffectState = candidate.chain.rootEffectState;
+    if (!sourceName || !targetName || (rootEffectState !== "ACTIVE" && rootEffectState !== "BLOCKED")) return null;
+    const depth = candidate.responseNodes.length;
+    const latest = candidate.responseNodes.at(-1);
+    let headline = `${sourceName} played ${rootLabel} on ${targetName}.`;
+    let compactHeadline = `${sourceName}: ${rootLabel} on ${targetName}`;
+    let supportingMessage = rootLabel === "Duel"
+      ? "Negation response open · Duel not yet resolved."
+      : `${rootLabel} response open · Effect not yet resolved.`;
+    let compactSupportingMessage = `${rootLabel} · Negation open`;
+    if (depth > 0 && latest) {
+      const targetActorName = latest.node.counterTarget?.kind === "ROOT"
+        ? sourceName
+        : latest.node.counterTarget?.kind === "NEGATION_NODE" && latest.node.counterTarget.index === depth - 2
+          ? candidate.responseNodes[depth - 2]?.actor.name?.trim()
+          : null;
+      const actorName = latest.actor.name?.trim();
+      if (!actorName || !targetActorName) return null;
+      headline = depth === 1
+        ? `${actorName}'s Negation counters ${sourceName}'s ${rootLabel}.`
+        : `${actorName} counters ${targetActorName}'s Negation.`;
+      compactHeadline = depth === 1
+        ? `${actorName} counters ${sourceName}'s ${rootLabel}`
+        : `${actorName} counters ${targetActorName}'s Negation`;
+      const nextCounterLabel = depth === 1 ? "Counter-Negation still possible" : "Another Negation is possible";
+      supportingMessage = `${rootLabel} currently ${rootEffectState} · ${nextCounterLabel}.`;
+      compactSupportingMessage = `${rootLabel} ${rootEffectState} · Negation open`;
+    }
+    return {
+      rootLabel,
+      eventId: latest?.event.id ?? candidate.rootEvent.id,
+      latestCommittedEventId: latest?.event.id ?? candidate.rootEvent.id,
+      phase: "WINDOW_OPEN",
+      rootEffectState,
+      headline,
+      compactHeadline,
+      supportingMessage,
+      compactSupportingMessage,
+      accessibleLabel: `CURRENT, response still open. ${headline} ${supportingMessage}`,
+    };
+  };
+  const singleTargetNegationNarration = singleTargetNegationProofCandidate
+    ? deriveSingleTargetNegationNarration(singleTargetNegationProofCandidate)
     : null;
   const oathSimultaneousRootCandidate = (() => {
     const scope = clientPresentation.oathRecipientScope;
@@ -4525,20 +4608,74 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     return [{ action, event, source }];
   });
   const selfTargetCandidate = selfTargetCandidates.length === 1 ? selfTargetCandidates[0] : null;
+  const publicNegationSettlementProof = room.presentationSnapshot?.settlement ?? clientPresentation.negationSettlement;
+  const activeReadMatchesFinalNegation = Boolean(activePublicNegationRead
+    && activePublicNegationRead.action.cardKind === "Duel"
+    && publicNegationSettlementProof?.semantics === "PROVEN"
+    && publicNegationSettlementProof.rootCardKind === "Duel"
+    && publicNegationSettlementProof.interactionId === activePublicNegationRead.action.interactionId
+    && publicNegationSettlementProof.rootFrameId === activePublicNegationRead.action.rootFrameId
+    && publicNegationSettlementProof.checkpointId === activePublicNegationRead.action.checkpointId
+    && publicNegationSettlementProof.presentationRevision === activePublicNegationRead.action.presentationRevision
+    && publicNegationSettlementProof.sourceId === activePublicNegationRead.action.sourceId
+    && publicNegationSettlementProof.targetId === activePublicNegationRead.action.targetId
+    && room.timeline.some((event) => event.id === publicNegationSettlementProof.eventId
+      && event.type === "message" && event.resolutionId === publicNegationSettlementProof.resolutionId
+      && event.finalResult === true && event.negationSettlement?.outcome === publicNegationSettlementProof.outcome)
+    && room.timeline.some((event) => event.id === activePublicNegationRead.action.rootEventId
+      && event.type === "card" && event.resolutionId === publicNegationSettlementProof.resolutionId));
   const activeNegationReadIdentityMatches = Boolean(activePublicNegationRead
-    && (!clientPresentation.interactionId || clientPresentation.interactionId === activePublicNegationRead.action.interactionId)
-    && (!clientPresentation.rootFrameId || clientPresentation.rootFrameId === activePublicNegationRead.action.rootFrameId)
-    && (!rootAction || rootAction.rootEventId === activePublicNegationRead.action.rootEventId));
+    && (activeReadMatchesFinalNegation
+      || (!clientPresentation.interactionId || clientPresentation.interactionId === activePublicNegationRead.action.interactionId)
+        && (!clientPresentation.rootFrameId || clientPresentation.rootFrameId === activePublicNegationRead.action.rootFrameId)
+        && (!rootAction || rootAction.rootEventId === activePublicNegationRead.action.rootEventId)));
   const activeNegationReadSettled = Boolean(activePublicNegationRead
     && room.presentationSnapshot?.interaction?.stage !== "NEGATION"
-    && clientPresentation.negationSettlement?.semantics === "PROVEN"
-    && clientPresentation.negationSettlement.interactionId === activePublicNegationRead.action.interactionId
-    && clientPresentation.negationSettlement.rootFrameId === activePublicNegationRead.action.rootFrameId
-    && clientPresentation.negationSettlement.rootCardKind === activePublicNegationRead.action.cardKind
-    && clientPresentation.negationSettlement.sourceId === activePublicNegationRead.action.sourceId
-    && clientPresentation.negationSettlement.targetId === activePublicNegationRead.action.targetId
+    && publicNegationSettlementProof?.semantics === "PROVEN"
+    && publicNegationSettlementProof.interactionId === activePublicNegationRead.action.interactionId
+    && publicNegationSettlementProof.rootFrameId === activePublicNegationRead.action.rootFrameId
+    && publicNegationSettlementProof.checkpointId === activePublicNegationRead.action.checkpointId
+    && publicNegationSettlementProof.presentationRevision === activePublicNegationRead.action.presentationRevision
+    && publicNegationSettlementProof.rootCardKind === activePublicNegationRead.action.cardKind
+    && publicNegationSettlementProof.sourceId === activePublicNegationRead.action.sourceId
+    && publicNegationSettlementProof.targetId === activePublicNegationRead.action.targetId
     && room.timeline.some((event) => event.id === activePublicNegationRead.action.rootEventId
-      && event.type === "card" && event.resolutionId === clientPresentation.negationSettlement?.resolutionId));
+      && event.type === "card" && event.resolutionId === publicNegationSettlementProof.resolutionId));
+  const provenDuelNegationSettlement = (() => {
+    // The final Negation disposition is still a public fact after an even
+    // chain advances into the Duel exchange frame. The client interaction
+    // view intentionally drops settlements that no longer belong to its
+    // active frame, so validate the proof from the public snapshot directly.
+    const proof = room.presentationSnapshot?.settlement ?? clientPresentation.negationSettlement;
+    if (proof?.semantics === "PROVEN" && proof.rootCardKind === "Duel") {
+      const roots = room.timeline.filter((event) => event.type === "card" && event.action === "play"
+      && event.presentation !== false && event.playedAs === undefined && event.card?.kind === "Duel"
+      && event.resolutionId === proof.resolutionId);
+      const settlements = room.timeline.filter((event) => event.id === proof.eventId);
+      if (roots.length === 1 && settlements.length === 1) {
+        const rootEvent = roots[0];
+        const settlementEvent = settlements[0];
+        const source = room.players.find((player) => player.id === proof.sourceId);
+        const target = room.players.find((player) => player.id === proof.targetId);
+        const eventProof = settlementEvent.type === "message"
+          ? settlementEvent.negationSettlement as { semantics?: unknown; outcome?: unknown; interactionId?: unknown; rootFrameId?: unknown; checkpointId?: unknown; presentationRevision?: unknown; resolutionId?: unknown; rootCardKind?: unknown; sourceId?: unknown; targetId?: unknown } | undefined
+          : undefined;
+        if (source?.name && target?.name && rootEvent.player === source.name && rootEvent.card?.id
+          && room.timeline.filter((event) => event.type === "card" && event.card?.id === rootEvent.card?.id).length === 1
+          && settlementEvent.type === "message" && settlementEvent.presentation !== false
+          && settlementEvent.importance === "essential" && settlementEvent.finalResult === true
+          && settlementEvent.resolutionId === proof.resolutionId
+          && eventProof?.semantics === proof.semantics && eventProof.outcome === proof.outcome
+          && eventProof.interactionId === proof.interactionId && eventProof.rootFrameId === proof.rootFrameId
+          && eventProof.checkpointId === proof.checkpointId && eventProof.presentationRevision === proof.presentationRevision
+          && eventProof.resolutionId === proof.resolutionId && eventProof.rootCardKind === proof.rootCardKind
+          && eventProof.sourceId === proof.sourceId && eventProof.targetId === proof.targetId) {
+          return { proof, rootEvent, settlementEvent, source, target };
+        }
+      }
+    }
+    return null;
+  })();
   const activeNegationReadStillLive = Boolean(activePublicNegationRead
     && room.presentationSnapshot?.interaction?.semantics === "PROVEN"
     && room.presentationSnapshot.interaction.stage === "NEGATION"
@@ -4556,11 +4693,22 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : null;
   const heldPublicNegationReadAction = activeNegationReadIdentityMatches && activePublicNegationRead
     && (activeNegationReadStillLive || activeNegationReadSettled)
-    && !(activePublicNegationRead.action.cardKind === "Duel" && (duelNegationProofCandidate || duelExchangeDisplayCandidate))
+    && !(activePublicNegationRead.action.cardKind === "Duel"
+      && (duelNegationProofCandidate || duelExchangeDisplayCandidate && !activeReadMatchesFinalNegation))
     && (!singleTargetNegationActionKey || singleTargetNegationActionKey === activePublicNegationRead.key
       || activePublicNegationRead.action.cardKind === "Duel" && activePublicNegationRead.action.rootEventId === duelNegationProofCandidate?.rootEvent.id)
     ? {
       ...activePublicNegationRead.action,
+      ...(activePublicNegationRead.action.cardKind === "Duel"
+        && activePublicNegationRead.action.publicNegationNarration
+        && provenDuelNegationSettlement?.rootEvent.id === activePublicNegationRead.action.rootEventId
+        && provenDuelNegationSettlement.proof.interactionId === activePublicNegationRead.action.interactionId
+        ? { publicNegationNarration: finalizePublicNegationNarration(
+          activePublicNegationRead.action.publicNegationNarration,
+          provenDuelNegationSettlement.proof.outcome,
+          provenDuelNegationSettlement.settlementEvent.id,
+        ) }
+        : {}),
       ...(activePublicNegationRead.action.cardKind === "BumperHarvest" ? {
         // A retained root announcement must not retain a chooser name after
         // the live public participant proof becomes stale or mismatched.
@@ -4591,11 +4739,24 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || proof.rootFrameId !== clientPresentation.rootFrameId
       || proof.rootCardKind !== candidate.root.cardKind
       || proof.sourceId !== candidate.root.source.id
-      || proof.targetId !== candidate.root.targets[0]?.id) return null;
+      || proof.targetId !== candidate.root.targets[0]?.id
+      || proof.outcome !== "ROOT_CANCELLED" && proof.outcome !== "ROOT_RESTORED") return null;
+    const rootEvents = room.timeline.filter((event) => event.id === candidate.rootEvent.id);
     const settlementEvents = room.timeline.filter((event) => event.id === proof.eventId);
-    if (settlementEvents.length !== 1) return null;
+    if (rootEvents.length !== 1 || settlementEvents.length !== 1) return null;
+    const rootEvent = rootEvents[0];
     const event = settlementEvents[0];
-    if (event.type !== "message" || event.presentation === false || event.resolutionId !== proof.resolutionId) return null;
+    const eventProof = event.type === "message" ? event.negationSettlement : undefined;
+    if (rootEvent.type !== "card" || rootEvent.action !== "play" || rootEvent.presentation === false
+      || rootEvent.playedAs !== undefined || rootEvent.card?.kind !== proof.rootCardKind
+      || rootEvent.resolutionId !== proof.resolutionId
+      || event.type !== "message" || event.presentation === false || event.importance !== "essential"
+      || event.finalResult !== true || event.resolutionId !== proof.resolutionId
+      || eventProof?.semantics !== proof.semantics || eventProof.outcome !== proof.outcome
+      || eventProof.interactionId !== proof.interactionId || eventProof.rootFrameId !== proof.rootFrameId
+      || eventProof.checkpointId !== proof.checkpointId || eventProof.presentationRevision !== proof.presentationRevision
+      || eventProof.resolutionId !== proof.resolutionId || eventProof.rootCardKind !== proof.rootCardKind
+      || eventProof.sourceId !== proof.sourceId || eventProof.targetId !== proof.targetId) return null;
     return { eventId: proof.eventId, outcome: proof.outcome };
   })();
   const singleTargetNegationResponses = singleTargetNegationProofCandidate?.responseNodes.map(({ event, node, actor }, index) => {
@@ -4627,6 +4788,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardFace: singleTargetNegationProofCandidate.rootEvent.card,
       cardLabel: cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name.toUpperCase(),
       ariaLabel: `${singleTargetNegationProofCandidate.root.source.name} played ${cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name} targeting ${singleTargetNegationProofCandidate.root.targets[0]!.name}`,
+      ...(singleTargetNegationUsesJourney && singleTargetNegationNarration ? {
+        publicNegationNarration: singleTargetNegationSettlement
+          ? finalizePublicNegationNarration(singleTargetNegationNarration, singleTargetNegationSettlement.outcome, singleTargetNegationSettlement.eventId)
+          : singleTargetNegationNarration,
+      } : {}),
       phaseNotice: singleTargetNegationUsesJourney
         ? singleTargetNegationSettlement ? undefined : singleTargetNegationResponses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED"
         : undefined,
@@ -4663,6 +4829,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         duelNegationProofCandidate.rootEvent.id, duelNegationProofCandidate.root.source.id!, duelNegationProofCandidate.root.targets[0]!.id!].join(":"),
       interactionId: duelNegationProofCandidate.chain.interactionId!,
       rootFrameId: clientPresentation.rootFrameId!,
+      checkpointId: clientPresentation.checkpointId ?? undefined,
+      presentationRevision: clientPresentation.presentationRevision ?? undefined,
       rootEventId: duelNegationProofCandidate.rootEvent.id,
       sourceId: duelNegationProofCandidate.root.source.id!,
       targetId: duelNegationProofCandidate.root.targets[0]!.id!,
@@ -4670,6 +4838,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardFace: duelNegationProofCandidate.rootEvent.card,
       cardLabel: "DUEL",
       ariaLabel: `${duelNegationProofCandidate.root.source.name} played Duel targeting ${duelNegationProofCandidate.root.targets[0]!.name}`,
+      ...(singleTargetNegationNarration ? { publicNegationNarration: singleTargetNegationNarration } : {}),
       phaseNotice: duelNegationProofCandidate.responseNodes.length
         ? "NEGATION RESPONSE"
         : duelNegationProofCandidate.chain.rootEffectState === "BLOCKED" ? "DUEL NEGATED" : "NEGATION MAY BE PLAYED",
@@ -5010,6 +5179,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardFace: duelExchangeDisplayCandidate.rootEvent.card,
       cardLabel: "DUEL",
       ariaLabel: `${duelExchangeDisplayCandidate.source.name} played Duel targeting ${duelExchangeDisplayCandidate.target.name}`,
+      ...(provenDuelNegationSettlement?.proof.outcome === "ROOT_RESTORED"
+        && provenDuelNegationSettlement.rootEvent.id === duelExchangeDisplayCandidate.exchange.root.eventId ? {
+        publicNegationNarration: finalizePublicNegationNarration({
+          rootLabel: "Duel",
+          eventId: duelExchangeDisplayCandidate.exchange.root.eventId,
+          latestCommittedEventId: duelExchangeDisplayCandidate.exchange.root.eventId,
+          phase: "WINDOW_OPEN",
+          rootEffectState: provenDuelNegationSettlement.proof.outcome === "ROOT_CANCELLED" ? "BLOCKED" : "ACTIVE",
+          headline: `${duelExchangeDisplayCandidate.source.name} played Duel on ${duelExchangeDisplayCandidate.target.name}.`,
+          compactHeadline: `${duelExchangeDisplayCandidate.source.name} played Duel on ${duelExchangeDisplayCandidate.target.name}.`,
+          supportingMessage: "Duel effect status awaiting server settlement.",
+          compactSupportingMessage: "Duel status pending",
+          accessibleLabel: "CURRENT. Duel effect status awaiting server settlement.",
+        }, provenDuelNegationSettlement.proof.outcome, provenDuelNegationSettlement.settlementEvent.id),
+      } : {}),
       motion: {
         type: "duel",
         scopeKey: [room.code, duelExchangeDisplayCandidate.exchange.interactionId, duelExchangeDisplayCandidate.exchange.rootFrameId, duelExchangeDisplayCandidate.exchange.root.eventId].join(":"),
@@ -5391,7 +5575,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         && current.phase === "settlement-pending"
         ? reducedMotion ? null : { ...current, phase: "exiting" }
         : current);
-    }, UI_TIMING.publicCounterSettlementConfirm);
+    // Keep the proof-backed final H4 state available long enough to read before
+    // the existing short fade removes the retained public-card interaction.
+    }, Math.max(UI_TIMING.publicCounterRead, UI_TIMING.publicCounterSettlementConfirm));
     return () => window.clearTimeout(timer);
   }, [activeNegationReadIdentityMatches, activeNegationReadSettled, activePublicNegationRead]);
   useEffect(() => {

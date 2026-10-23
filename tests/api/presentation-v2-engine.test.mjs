@@ -2647,6 +2647,41 @@ test("R2 D1 reproduction keeps fresh Negation roots bound to their persisted cau
   assert.ok(discardIds(game.code).includes(targetAttack.id));
 });
 
+test("single-target Duel Negation cancellation proves the root before resuming the nested exchange", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [sourceMember, targetMember] = game.members;
+  const [source, target] = game.room.players;
+  const duel = card("Duel", "settlement-negation-root");
+  const negation = card("Negation", "settlement-negation-physical-card");
+  setHand(source.id, [duel], 4, 4);
+  setHand(target.id, [negation], 4, 4);
+  for (const player of game.room.players.slice(2)) setHand(player.id, [], 4, 4);
+  setTurn(game.code, source.seat);
+
+  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: duel.id, targetId: target.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const response = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  assert.equal(response.currentAction.actorId, target.id);
+  assert.equal(response.presentationSnapshot.settlement, null, "an open Negation window has no terminal disposition");
+
+  const windowId = response.currentAction.negationWindowId;
+  const cancelled = await requestAndSettle("respond", { code: game.code, token: targetMember.token, cardId: negation.id, preserveResponse: true });
+  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
+  await advanceNegationWindow(game.code, sourceMember.token, windowId);
+  await passNegationWindows(game.code, game.members);
+  const cancelledView = await assertProjectionMatchesEngine(game.code, sourceMember.token);
+  const settlement = cancelledView.presentationSnapshot.settlement;
+  assert.equal(settlement?.outcome, "ROOT_CANCELLED");
+  assert.equal(settlement?.rootCardKind, "Duel");
+  assert.equal(cancelledView.timeline.find((event) => event.id === settlement?.eventId)?.finalResult, true, "the public settlement event explicitly confirms finality");
+  assert.equal(settlement?.sourceId, source.id);
+  assert.equal(settlement?.targetId, target.id);
+  assert.equal(settlement?.resolutionId, cancelledView.presentationV2.negationSettlement?.resolutionId);
+  assert.equal(JSON.stringify(settlement).includes("settlement-negation-physical-card"), false, "proof carries no physical responder card identity");
+  const observer = await assertProjectionMatchesEngine(game.code, targetMember.token);
+  assert.deepEqual(publicSnapshot(observer.presentationSnapshot), publicSnapshot(cancelledView.presentationSnapshot), "root cancellation proof is public and viewer-equal");
+});
+
 test("single-target Negation cancellation exposes an explicit public root disposition", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [sourceMember, targetMember] = game.members;
