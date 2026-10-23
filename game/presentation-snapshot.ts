@@ -13,6 +13,7 @@ import type {
   PresentationRootAction,
   PresentationDismantleSettlement,
   PresentationStealSettlement,
+  PresentationTargetCardSettlementMovement,
   PresentationAttackHitSettlement,
   PresentationBumperHarvestSettlement,
   PresentationGroupSettlement,
@@ -267,6 +268,32 @@ function publicPhysicalCard(value: unknown): Card | null {
     : null;
 }
 
+function provenTargetCardMovement(
+  candidate: Record<string, unknown>,
+  effect: "Dismantle" | "Steal",
+  sourceId: string,
+  targetId: string,
+): PresentationTargetCardSettlementMovement | null {
+  const sourceZone = candidate.sourceZone;
+  if (sourceZone !== "hand" && sourceZone !== "equipment" && sourceZone !== "judgement") return null;
+  const destinationZone = effect === "Dismantle" ? "discard" : "hand";
+  const destinationOwnerId = effect === "Dismantle" ? null : sourceId;
+  const affectedCardOwnerId = sourceZone === "judgement" ? null : targetId;
+  if (candidate.destinationZone !== destinationZone || candidate.destinationOwnerId !== destinationOwnerId
+    || candidate.affectedCardOwnerId !== affectedCardOwnerId) return null;
+  const hasCardFace = Object.prototype.hasOwnProperty.call(candidate, "affectedCardFace");
+  if (effect === "Steal" && sourceZone === "hand") return hasCardFace
+    ? null
+    : { sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId };
+  const affectedCardFace = publicPhysicalCard(candidate.affectedCardFace);
+  if (!hasCardFace || !affectedCardFace) return null;
+  if (effect === "Dismantle" && sourceZone === "hand") {
+    // The selected card is public only after commitment, when it enters the face-up discard pile.
+    return { sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId, affectedCardFace };
+  }
+  return { sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId, affectedCardFace };
+}
+
 export function provenDeflectionActions(value: unknown): PresentationSnapshotDeflectionAction[] {
   if (!Array.isArray(value)) return [];
   const actions = value.filter((candidate): candidate is PresentationSnapshotDeflectionAction => {
@@ -443,60 +470,52 @@ export function provenDiaoChanSkillNotices(
 
 export function provenDismantleSettlements(value: unknown): PresentationSnapshotDismantleSettlement[] {
   if (!Array.isArray(value)) return [];
-  const settlements = value.filter((candidate): candidate is PresentationSnapshotDismantleSettlement => Boolean(candidate && typeof candidate === "object" && !Array.isArray(candidate)
-    && (candidate as PresentationSnapshotDismantleSettlement).semantics === "PROVEN"
-    && nonEmptyString((candidate as PresentationSnapshotDismantleSettlement).eventId)
-    && nonEmptyString((candidate as PresentationSnapshotDismantleSettlement).rootEventId)
-    && (candidate as PresentationSnapshotDismantleSettlement).eventId !== (candidate as PresentationSnapshotDismantleSettlement).rootEventId
-    && nonEmptyString((candidate as PresentationSnapshotDismantleSettlement).rootResolutionId)
-    && nonEmptyString((candidate as PresentationSnapshotDismantleSettlement).sourceId)
-    && nonEmptyString((candidate as PresentationSnapshotDismantleSettlement).targetId)
-    && (candidate as PresentationSnapshotDismantleSettlement).sourceId !== (candidate as PresentationSnapshotDismantleSettlement).targetId
-    && (candidate as PresentationSnapshotDismantleSettlement).outcome === "DISMANTLE_RESOLVED"));
+  const settlements = value.flatMap((valueCandidate) => {
+    if (!valueCandidate || typeof valueCandidate !== "object" || Array.isArray(valueCandidate)) return [];
+    const candidate = valueCandidate as Record<string, unknown>;
+    const eventId = candidate.eventId;
+    const rootEventId = candidate.rootEventId;
+    const rootResolutionId = candidate.rootResolutionId;
+    const sourceId = candidate.sourceId;
+    const targetId = candidate.targetId;
+    if (candidate.semantics !== "PROVEN" || !nonEmptyString(eventId) || !nonEmptyString(rootEventId)
+      || eventId === rootEventId || !nonEmptyString(rootResolutionId) || !nonEmptyString(sourceId)
+      || !nonEmptyString(targetId) || sourceId === targetId || candidate.outcome !== "DISMANTLE_RESOLVED") return [];
+    const movement = provenTargetCardMovement(candidate, "Dismantle", sourceId, targetId);
+    return movement ? [{ semantics: "PROVEN" as const, eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "DISMANTLE_RESOLVED" as const, ...movement }] : [];
+  });
   const eventCounts = new Map<string, number>();
   const rootCounts = new Map<string, number>();
   settlements.forEach((settlement) => {
     eventCounts.set(settlement.eventId, (eventCounts.get(settlement.eventId) ?? 0) + 1);
     rootCounts.set(settlement.rootEventId, (rootCounts.get(settlement.rootEventId) ?? 0) + 1);
   });
-  return settlements.filter((settlement) => eventCounts.get(settlement.eventId) === 1 && rootCounts.get(settlement.rootEventId) === 1).map((settlement) => ({
-    semantics: "PROVEN",
-    eventId: settlement.eventId,
-    rootEventId: settlement.rootEventId,
-    rootResolutionId: settlement.rootResolutionId,
-    sourceId: settlement.sourceId,
-    targetId: settlement.targetId,
-    outcome: "DISMANTLE_RESOLVED",
-  }));
+  return settlements.filter((settlement) => eventCounts.get(settlement.eventId) === 1 && rootCounts.get(settlement.rootEventId) === 1);
 }
 
 export function provenStealSettlements(value: unknown): PresentationSnapshotStealSettlement[] {
   if (!Array.isArray(value)) return [];
-  const settlements = value.filter((candidate): candidate is PresentationSnapshotStealSettlement => Boolean(candidate && typeof candidate === "object" && !Array.isArray(candidate)
-    && (candidate as PresentationSnapshotStealSettlement).semantics === "PROVEN"
-    && nonEmptyString((candidate as PresentationSnapshotStealSettlement).eventId)
-    && nonEmptyString((candidate as PresentationSnapshotStealSettlement).rootEventId)
-    && (candidate as PresentationSnapshotStealSettlement).eventId !== (candidate as PresentationSnapshotStealSettlement).rootEventId
-    && nonEmptyString((candidate as PresentationSnapshotStealSettlement).rootResolutionId)
-    && nonEmptyString((candidate as PresentationSnapshotStealSettlement).sourceId)
-    && nonEmptyString((candidate as PresentationSnapshotStealSettlement).targetId)
-    && (candidate as PresentationSnapshotStealSettlement).sourceId !== (candidate as PresentationSnapshotStealSettlement).targetId
-    && (candidate as PresentationSnapshotStealSettlement).outcome === "STEAL_RESOLVED"));
+  const settlements = value.flatMap((valueCandidate) => {
+    if (!valueCandidate || typeof valueCandidate !== "object" || Array.isArray(valueCandidate)) return [];
+    const candidate = valueCandidate as Record<string, unknown>;
+    const eventId = candidate.eventId;
+    const rootEventId = candidate.rootEventId;
+    const rootResolutionId = candidate.rootResolutionId;
+    const sourceId = candidate.sourceId;
+    const targetId = candidate.targetId;
+    if (candidate.semantics !== "PROVEN" || !nonEmptyString(eventId) || !nonEmptyString(rootEventId)
+      || eventId === rootEventId || !nonEmptyString(rootResolutionId) || !nonEmptyString(sourceId)
+      || !nonEmptyString(targetId) || sourceId === targetId || candidate.outcome !== "STEAL_RESOLVED") return [];
+    const movement = provenTargetCardMovement(candidate, "Steal", sourceId, targetId);
+    return movement ? [{ semantics: "PROVEN" as const, eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "STEAL_RESOLVED" as const, ...movement }] : [];
+  });
   const eventCounts = new Map<string, number>();
   const rootCounts = new Map<string, number>();
   settlements.forEach((settlement) => {
     eventCounts.set(settlement.eventId, (eventCounts.get(settlement.eventId) ?? 0) + 1);
     rootCounts.set(settlement.rootEventId, (rootCounts.get(settlement.rootEventId) ?? 0) + 1);
   });
-  return settlements.filter((settlement) => eventCounts.get(settlement.eventId) === 1 && rootCounts.get(settlement.rootEventId) === 1).map((settlement) => ({
-    semantics: "PROVEN",
-    eventId: settlement.eventId,
-    rootEventId: settlement.rootEventId,
-    rootResolutionId: settlement.rootResolutionId,
-    sourceId: settlement.sourceId,
-    targetId: settlement.targetId,
-    outcome: "STEAL_RESOLVED",
-  }));
+  return settlements.filter((settlement) => eventCounts.get(settlement.eventId) === 1 && rootCounts.get(settlement.rootEventId) === 1);
 }
 
 export function provenAttackHitSettlements(value: unknown): PresentationSnapshotAttackHitSettlement[] {

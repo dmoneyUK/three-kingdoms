@@ -22,7 +22,9 @@ test("drops null and incomplete timeline entries without throwing", () => {
 test("preserves only the privacy-safe Dismantle settlement proof fields", () => {
   const proof = {
     semantics: "PROVEN", rootEventId: "dismantle-root-event", rootResolutionId: "dismantle-resolution",
-    sourceId: "source", targetId: "target", outcome: "DISMANTLE_RESOLVED", selectedCardId: "hidden-card-id",
+    sourceId: "source", targetId: "target", outcome: "DISMANTLE_RESOLVED",
+    sourceZone: "hand", affectedCardOwnerId: "target", destinationZone: "discard", destinationOwnerId: null,
+    affectedCardFace: { id: "discarded-card-id", kind: "Peach", suit: "♥", rank: "3" }, selectedCardId: "hidden-card-id",
   };
   const event = normalizeTimeline([{
     type: "card", id: "dismantle-settlement-event", player: "TARGET", target: "TARGET", action: "discard",
@@ -33,15 +35,20 @@ test("preserves only the privacy-safe Dismantle settlement proof fields", () => 
   assert.deepEqual(event.publicDismantleSettlement, {
     semantics: "PROVEN", rootEventId: "dismantle-root-event", rootResolutionId: "dismantle-resolution",
     sourceId: "source", targetId: "target", outcome: "DISMANTLE_RESOLVED",
+    sourceZone: "hand", affectedCardOwnerId: "target", destinationZone: "discard", destinationOwnerId: null,
+    affectedCardFace: { id: "discarded-card-id", kind: "Peach", suit: "♥", rank: "3" },
   });
   assert.equal(JSON.stringify(event.publicDismantleSettlement).includes("hidden-card-id"), false);
   assert.equal(normalizeTimeline([{ ...event, publicDismantleSettlement: { ...proof, outcome: "STEAL_RESOLVED" } }])[0].publicDismantleSettlement, undefined);
+  assert.equal(normalizeTimeline([{ ...event, publicDismantleSettlement: { ...proof, affectedCardFace: { ...proof.affectedCardFace, id: "different-card" } } }])[0].publicDismantleSettlement, undefined, "discard proof must match the committed public discard face");
+  assert.equal(normalizeTimeline([{ ...event, publicDismantleSettlement: { ...proof, destinationOwnerId: "source" } }])[0].publicDismantleSettlement, undefined, "discard destination cannot have a card owner");
 });
 
 test("preserves only the privacy-safe Steal settlement proof fields", () => {
   const proof = {
     semantics: "PROVEN", rootEventId: "steal-root-event", rootResolutionId: "steal-resolution",
     sourceId: "source", targetId: "target", outcome: "STEAL_RESOLVED", acquiredCardId: "hidden-card-id",
+    sourceZone: "hand", affectedCardOwnerId: "target", destinationZone: "hand", destinationOwnerId: "source",
   };
   const event = normalizeTimeline([{
     type: "message", id: "steal-settlement-event", message: "Steal resolved.", presentation: true,
@@ -51,9 +58,12 @@ test("preserves only the privacy-safe Steal settlement proof fields", () => {
   assert.deepEqual(event.publicStealSettlement, {
     semantics: "PROVEN", rootEventId: "steal-root-event", rootResolutionId: "steal-resolution",
     sourceId: "source", targetId: "target", outcome: "STEAL_RESOLVED",
+    sourceZone: "hand", affectedCardOwnerId: "target", destinationZone: "hand", destinationOwnerId: "source",
   });
   assert.equal(JSON.stringify(event.publicStealSettlement).includes("hidden-card-id"), false);
   assert.equal(normalizeTimeline([{ ...event, publicStealSettlement: { ...proof, outcome: "DISMANTLE_RESOLVED" } }])[0].publicStealSettlement, undefined);
+  assert.equal(normalizeTimeline([{ ...event, publicStealSettlement: { ...proof, affectedCardFace: { id: "private-face", kind: "Peach", suit: "♥", rank: "3" } } }])[0].publicStealSettlement, undefined, "Hand Steal never carries the acquired card face");
+  assert.equal(normalizeTimeline([{ ...event, publicStealSettlement: { ...proof, destinationOwnerId: "target" } }])[0].publicStealSettlement, undefined, "Steal destination belongs to the authenticated actor");
 });
 
 test("preserves only the privacy-safe direct Attack hit settlement fields", () => {

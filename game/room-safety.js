@@ -16,6 +16,37 @@ export function normalizeCard(value) {
   return { ...value };
 }
 
+function normalizePhysicalCard(value) {
+  const card = normalizeCard(value);
+  const suits = ["♥", "♦", "♣", "♠"];
+  const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+  if (!card || !suits.includes(card.suit) || !ranks.includes(card.rank)) return null;
+  return { id: card.id, kind: card.kind, suit: card.suit, rank: card.rank };
+}
+
+function normalizeTargetCardMovement(proof, event, effect) {
+  if (!isRecord(proof) || (proof.sourceZone !== "hand" && proof.sourceZone !== "equipment" && proof.sourceZone !== "judgement")
+    || typeof proof.targetId !== "string" || typeof proof.sourceId !== "string") return null;
+  const destinationZone = effect === "Dismantle" ? "discard" : "hand";
+  const destinationOwnerId = effect === "Dismantle" ? null : proof.sourceId;
+  const affectedCardOwnerId = proof.sourceZone === "judgement" ? null : proof.targetId;
+  if (proof.destinationZone !== destinationZone || proof.destinationOwnerId !== destinationOwnerId
+    || proof.affectedCardOwnerId !== affectedCardOwnerId) return null;
+  const hasCardFace = Object.prototype.hasOwnProperty.call(proof, "affectedCardFace");
+  if (effect === "Steal" && proof.sourceZone === "hand") return hasCardFace
+    ? null
+    : { sourceZone: proof.sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId };
+  const affectedCardFace = normalizePhysicalCard(proof.affectedCardFace);
+  if (!hasCardFace || !affectedCardFace) return null;
+  if (effect === "Dismantle") {
+    const eventCardFace = normalizePhysicalCard(event.card);
+    if (event.type !== "card" || event.action !== "discard" || !eventCardFace
+      || eventCardFace.id !== affectedCardFace.id || eventCardFace.kind !== affectedCardFace.kind
+      || eventCardFace.suit !== affectedCardFace.suit || eventCardFace.rank !== affectedCardFace.rank) return null;
+  }
+  return { sourceZone: proof.sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId, affectedCardFace };
+}
+
 function normalizeCards(value) {
   return Array.isArray(value) ? value.map(normalizeCard).filter(Boolean) : [];
 }
@@ -45,7 +76,9 @@ function normalizePresentationMeta(entry) {
     && typeof entry.publicDismantleSettlement.rootResolutionId === "string"
     && typeof entry.publicDismantleSettlement.sourceId === "string"
     && typeof entry.publicDismantleSettlement.targetId === "string"
-    && entry.publicDismantleSettlement.outcome === "DISMANTLE_RESOLVED") {
+    && entry.publicDismantleSettlement.outcome === "DISMANTLE_RESOLVED"
+    && normalizeTargetCardMovement(entry.publicDismantleSettlement, entry, "Dismantle")) {
+    const movement = normalizeTargetCardMovement(entry.publicDismantleSettlement, entry, "Dismantle");
     metadata.publicDismantleSettlement = {
       semantics: "PROVEN",
       rootEventId: entry.publicDismantleSettlement.rootEventId,
@@ -53,6 +86,7 @@ function normalizePresentationMeta(entry) {
       sourceId: entry.publicDismantleSettlement.sourceId,
       targetId: entry.publicDismantleSettlement.targetId,
       outcome: "DISMANTLE_RESOLVED",
+      ...movement,
     };
   }
   if (isRecord(entry.publicStealSettlement)
@@ -61,7 +95,9 @@ function normalizePresentationMeta(entry) {
     && typeof entry.publicStealSettlement.rootResolutionId === "string"
     && typeof entry.publicStealSettlement.sourceId === "string"
     && typeof entry.publicStealSettlement.targetId === "string"
-    && entry.publicStealSettlement.outcome === "STEAL_RESOLVED") {
+    && entry.publicStealSettlement.outcome === "STEAL_RESOLVED"
+    && normalizeTargetCardMovement(entry.publicStealSettlement, entry, "Steal")) {
+    const movement = normalizeTargetCardMovement(entry.publicStealSettlement, entry, "Steal");
     metadata.publicStealSettlement = {
       semantics: "PROVEN",
       rootEventId: entry.publicStealSettlement.rootEventId,
@@ -69,6 +105,7 @@ function normalizePresentationMeta(entry) {
       sourceId: entry.publicStealSettlement.sourceId,
       targetId: entry.publicStealSettlement.targetId,
       outcome: "STEAL_RESOLVED",
+      ...movement,
     };
   }
   if (isRecord(entry.publicAttackHitSettlement)

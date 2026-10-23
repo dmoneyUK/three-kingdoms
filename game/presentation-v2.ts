@@ -158,8 +158,21 @@ export type DiaoChanSkillNoticeProof =
 
 export type PresentationDiaoChanSkillNotice = DiaoChanSkillNoticeProof & { eventId: string; rootEventId: string };
 
+export type PresentationTargetCardSourceZone = "hand" | "equipment" | "judgement";
+
+/** Public, server-authored physical card movement from a committed target-card choice. */
+export type PresentationTargetCardSettlementMovement = {
+  sourceZone: PresentationTargetCardSourceZone;
+  /** Judgement-zone cards are unowned; other selected cards belong to the target. */
+  affectedCardOwnerId: string | null;
+  destinationZone: "hand" | "discard";
+  destinationOwnerId: string | null;
+  /** Omitted only for a card taken from a hidden Hand by Steal. */
+  affectedCardFace?: Card;
+};
+
 /** Server-authored result for a resolved Dismantle target-card choice. */
-export type PresentationDismantleSettlementProof = {
+export type PresentationDismantleSettlementProof = PresentationTargetCardSettlementMovement & {
   semantics: "PROVEN";
   rootEventId: string;
   rootResolutionId: string;
@@ -180,7 +193,7 @@ export type PresentationStealSettlementProof = {
   sourceId: string;
   targetId: string;
   outcome: "STEAL_RESOLVED";
-};
+} & PresentationTargetCardSettlementMovement;
 
 export type PresentationStealSettlement = PresentationStealSettlementProof & {
   eventId: string;
@@ -2703,6 +2716,37 @@ function diaoChanSkillNoticesFor(
   return notices;
 }
 
+function targetCardSettlementMovementFor(
+  proof: Record<string, unknown>,
+  event: PresentationV2Event,
+  effect: "Dismantle" | "Steal",
+  sourceId: string,
+  targetId: string,
+): PresentationTargetCardSettlementMovement | null {
+  const sourceZone = proof.sourceZone;
+  if (sourceZone !== "hand" && sourceZone !== "equipment" && sourceZone !== "judgement") return null;
+  const destinationZone = effect === "Dismantle" ? "discard" : "hand";
+  const destinationOwnerId = effect === "Dismantle" ? null : sourceId;
+  const affectedCardOwnerId = sourceZone === "judgement" ? null : targetId;
+  if (proof.destinationZone !== destinationZone || proof.destinationOwnerId !== destinationOwnerId
+    || proof.affectedCardOwnerId !== affectedCardOwnerId) return null;
+
+  const hasCardFace = Object.prototype.hasOwnProperty.call(proof, "affectedCardFace");
+  if (effect === "Dismantle") {
+    const affectedCardFace = publicPhysicalCard(proof.affectedCardFace);
+    const eventCardFace = publicPhysicalCard(event.card);
+    if (!hasCardFace || !affectedCardFace || !eventCardFace || !samePublicPhysicalCard(eventCardFace, affectedCardFace)) return null;
+    return { sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId, affectedCardFace };
+  }
+
+  if (sourceZone === "hand") return hasCardFace
+    ? null
+    : { sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId };
+  const affectedCardFace = publicPhysicalCard(proof.affectedCardFace);
+  if (!hasCardFace || !affectedCardFace) return null;
+  return { sourceZone, affectedCardOwnerId, destinationZone, destinationOwnerId, affectedCardFace };
+}
+
 function dismantleSettlementsFor(timeline: readonly PresentationV2Event[]): PresentationDismantleSettlement[] {
   const eventIdCounts = new Map<string, number>();
   const rootIdCounts = new Map<string, number>();
@@ -2722,13 +2766,15 @@ function dismantleSettlementsFor(timeline: readonly PresentationV2Event[]): Pres
     const sourceId = stringValue(proof?.sourceId);
     const targetId = stringValue(proof?.targetId);
     const discardedCard = record(event.card);
+    const movement = proof && sourceId && targetId ? targetCardSettlementMovementFor(proof, event, "Dismantle", sourceId, targetId) : null;
     if (!proof || !eventId || eventIdCounts.get(eventId) !== 1
       || !rootEventId || rootEventId === eventId || rootIdCounts.get(rootEventId) !== 1
       || !rootResolutionId || !sourceId || !targetId || sourceId === targetId
       || proof.semantics !== "PROVEN" || proof.outcome !== "DISMANTLE_RESOLVED"
       || event.type !== "card" || event.presentation === false || event.action !== "discard"
       || event.playedAs !== undefined || event.importance !== "essential" || event.finalResult !== true
-      || event.resolutionId !== rootResolutionId || !stringValue(discardedCard?.id) || !stringValue(discardedCard?.kind)) return [];
+      || event.resolutionId !== rootResolutionId || !stringValue(discardedCard?.id) || !stringValue(discardedCard?.kind)
+      || !movement) return [];
 
     const roots = timeline.filter((candidate) => candidate.id === rootEventId);
     const rootEvent = roots.length === 1 ? roots[0] : null;
@@ -2738,7 +2784,7 @@ function dismantleSettlementsFor(timeline: readonly PresentationV2Event[]): Pres
       || rootEvent.resolutionId !== rootResolutionId
       || rootCard?.kind !== "Dismantle" || !stringValue(rootCard.id)) return [];
 
-    return [{ semantics: "PROVEN", eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "DISMANTLE_RESOLVED" }];
+    return [{ semantics: "PROVEN", eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "DISMANTLE_RESOLVED", ...movement }];
   });
 }
 
@@ -2760,13 +2806,14 @@ function stealSettlementsFor(timeline: readonly PresentationV2Event[]): Presenta
     const rootResolutionId = stringValue(proof?.rootResolutionId);
     const sourceId = stringValue(proof?.sourceId);
     const targetId = stringValue(proof?.targetId);
+    const movement = proof && sourceId && targetId ? targetCardSettlementMovementFor(proof, event, "Steal", sourceId, targetId) : null;
     if (!proof || !eventId || eventIdCounts.get(eventId) !== 1
       || !rootEventId || rootEventId === eventId || rootIdCounts.get(rootEventId) !== 1
       || !rootResolutionId || !sourceId || !targetId || sourceId === targetId
       || proof.semantics !== "PROVEN" || proof.outcome !== "STEAL_RESOLVED"
       || event.type !== "message" || event.presentation === false || !stringValue(event.message)
       || event.importance !== "essential" || event.finalResult !== true
-      || event.resolutionId !== rootResolutionId) return [];
+      || event.resolutionId !== rootResolutionId || !movement) return [];
 
     const roots = timeline.filter((candidate) => candidate.id === rootEventId);
     const rootEvent = roots.length === 1 ? roots[0] : null;
@@ -2776,7 +2823,7 @@ function stealSettlementsFor(timeline: readonly PresentationV2Event[]): Presenta
       || rootEvent.resolutionId !== rootResolutionId
       || rootCard?.kind !== "Steal" || !stringValue(rootCard.id)) return [];
 
-    return [{ semantics: "PROVEN", eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "STEAL_RESOLVED" }];
+    return [{ semantics: "PROVEN", eventId, rootEventId, rootResolutionId, sourceId, targetId, outcome: "STEAL_RESOLVED", ...movement }];
   });
 }
 

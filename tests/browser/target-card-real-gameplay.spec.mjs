@@ -530,6 +530,142 @@ for (const kind of ["Steal", "Dismantle"]) {
   });
 }
 
+test("settled Steal and Burning Bridges share proven source-to-destination outcomes across six mobile paths", async ({ browser, request }, testInfo) => {
+  test.setTimeout(240_000);
+  const cases = [
+    { effect: "Steal", kind: "Steal", zone: "hand", destination: "hand" },
+    { effect: "Steal", kind: "Steal", zone: "equipment", destination: "hand" },
+    { effect: "Steal", kind: "Steal", zone: "judgement", destination: "hand" },
+    { effect: "Dismantle", kind: "Dismantle", zone: "hand", destination: "discard" },
+    { effect: "Dismantle", kind: "Dismantle", zone: "equipment", destination: "discard" },
+    { effect: "Dismantle", kind: "Dismantle", zone: "judgement", destination: "discard" },
+  ];
+
+  for (const { effect, kind, zone, destination } of cases) {
+    const suffix = `settlement-${effect.toLowerCase()}-${zone}`;
+    const material = card(kind, `${suffix}-root`);
+    const hidden = card("Peach", `${suffix}-hidden-hand`, "♥", "7");
+    const equipment = card("NioShield", `${suffix}-equipment`, "♦", "A");
+    const judgement = card("Lightning", `${suffix}-judgement`, "♣", "K");
+    const seed = await seedGame(request, fourPlayers(
+      { hand: [material] },
+      { hand: [hidden], equipment: { armor: equipment }, judgement: [judgement] },
+    ));
+    const contexts = await Promise.all(seed.players.map(() => browser.newContext({
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+      deviceScaleFactor: 3,
+    })));
+    const pages = await Promise.all(contexts.map((context) => context.newPage()));
+
+    try {
+      await Promise.all(pages.map((viewerPage, index) => openGame(viewerPage, seed, index, { width: 390, height: 844 })));
+      await playCardThroughPage(pages[0], material.id, "TARGET");
+      await passEmptyResponses(request, seed);
+
+      const kindTitle = kind === "Steal" ? "Steal" : "Burning Bridge";
+      const instruction = kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
+      const dialog = await expectModal(pages[0], kindTitle, instruction, `Use ${kindTitle}`);
+      const option = zone === "hand"
+        ? dialog.getByRole("button", { name: "Hidden hand card 1", exact: true })
+        : zone === "equipment"
+          ? dialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true })
+          : dialog.getByRole("button", { name: "Judgement: Lightning", exact: true });
+      await expect(option).toBeVisible();
+      await option.click();
+      await expect(option).toHaveAttribute("aria-pressed", "true");
+
+      const submitPromise = pages[0].waitForResponse((response) => {
+        if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+        try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+        catch { return false; }
+      });
+      await dialog.getByRole("button", { name: `Use ${kindTitle}` }).click();
+      const submitted = await submitPromise;
+      expect(submitted.ok(), `${effect}/${zone} commits successfully`).toBe(true);
+      const submission = JSON.parse(submitted.request().postData() ?? "{}");
+      expect(submission).toMatchObject({ action: "choose_target_card", targetCardZone: zone });
+      if (zone === "hand") expect(submission).toMatchObject({ targetCardIndex: 0 });
+      else expect(submission).toMatchObject({ targetCardId: zone === "equipment" ? equipment.id : judgement.id });
+
+      const views = await Promise.all(seed.players.map((_, index) => roomView(request, seed, index)));
+      const publicField = effect === "Steal" ? "stealSettlements" : "dismantleSettlements";
+      const proof = views[0].presentationV2[publicField][0];
+      expect(proof).toMatchObject({
+        semantics: "PROVEN",
+        sourceId: seed.players[0].id,
+        targetId: seed.players[1].id,
+        sourceZone: zone,
+        affectedCardOwnerId: zone === "judgement" ? null : seed.players[1].id,
+        destinationZone: destination,
+        destinationOwnerId: destination === "hand" ? seed.players[0].id : null,
+      });
+      const affected = zone === "hand" ? hidden : zone === "equipment" ? equipment : judgement;
+      const publiclyIdentified = effect === "Dismantle" || zone !== "hand";
+      expect(Object.hasOwn(proof, "affectedCardFace")).toBe(publiclyIdentified);
+      if (publiclyIdentified) expect(proof.affectedCardFace).toEqual(affected);
+      else expect(JSON.stringify(proof)).not.toContain(hidden.id);
+
+      for (const view of views) {
+        expect(view.pendingTargetCard).toBeNull();
+        expect(view.currentAction?.targetCardSelection).toBeUndefined();
+        expect(view.presentationV2[publicField]).toEqual(views[0].presentationV2[publicField]);
+        expect(view.presentationSnapshot[publicField]).toEqual(views[0].presentationSnapshot[publicField]);
+        const wire = JSON.stringify({ presentationV2: view.presentationV2, presentationSnapshot: view.presentationSnapshot, timeline: view.timeline, log: view.log });
+        expect(wire.includes(hidden.id)).toBe(effect === "Dismantle" && zone === "hand");
+      }
+
+      const expectedOutcome = effect === "Steal" ? "STEAL_RESOLVED" : "DISMANTLE_RESOLVED";
+      const expectedFaceId = publiclyIdentified ? affected.id : null;
+      const expectedName = publiclyIdentified
+        ? `${zone === "hand" ? "Peach" : zone === "equipment" ? "Nio Shield" : "Lightning"} (${affected.rank}${affected.suit})`
+        : "one card";
+      const expectedCopy = effect === "Steal"
+        ? `SOURCE took ${expectedName} from TARGET's ${zone[0].toUpperCase()}${zone.slice(1)} into SOURCE's Hand.`
+        : `SOURCE discarded ${expectedName} from TARGET's ${zone[0].toUpperCase()}${zone.slice(1)} to the discard pile.`;
+
+      await Promise.all(pages.map(async (viewerPage, index) => {
+        const journey = viewerPage.locator('[data-public-card-display="true"]');
+        await expect(journey).toHaveCount(1);
+        await expect(journey).toHaveAttribute("data-public-card-settlement-outcome", expectedOutcome, { timeout: 15_000 });
+        await expect(journey).toHaveAttribute("data-public-card-settlement-source-zone", zone);
+        await expect(journey).toHaveAttribute("data-public-card-settlement-destination-zone", destination);
+        await expect(journey).toHaveAttribute("data-public-card-settlement-affected-card-owner-id", zone === "judgement" ? "none" : seed.players[1].id);
+        await expect(journey).toHaveAttribute("data-public-card-settlement-destination-owner-id", destination === "hand" ? seed.players[0].id : "none");
+        if (expectedFaceId) await expect(journey).toHaveAttribute("data-public-card-settlement-card-id", expectedFaceId);
+        else await expect(journey).not.toHaveAttribute("data-public-card-settlement-card-id");
+        const announcement = viewerPage.locator('[data-public-card-announcement="true"]');
+        await expect(announcement).toHaveCount(1);
+        await expect(announcement).toContainText(expectedCopy);
+        const publicPresenterMarkup = await journey.innerHTML();
+        if (effect === "Steal" && zone === "hand") expect(publicPresenterMarkup).not.toContain(hidden.id);
+        if (index > 0 && effect === "Steal" && zone === "hand") {
+          expect(await viewerPage.locator("body").innerHTML()).not.toContain(hidden.id);
+        }
+      }));
+
+      const screenshotPaths = pages.map((_, index) => testInfo.outputPath(`${effect.toLowerCase()}-${zone}-settlement-view-${index + 1}-390x844.png`));
+      const screenshots = await Promise.all(pages.map((viewerPage, index) => viewerPage.screenshot({ path: screenshotPaths[index], animations: "disabled" })));
+      for (const [index, screenshot] of screenshots.entries()) {
+        await testInfo.attach(`${effect.toLowerCase()}-${zone}-settlement-view-${index + 1}-390x844`, { body: screenshot, contentType: "image/png" });
+      }
+
+      await Promise.all(pages.map((viewerPage) => viewerPage.reload()));
+      for (const [index, viewerPage] of pages.entries()) {
+        await expect(viewerPage.locator(".game-shell")).toBeVisible();
+        const replayed = await roomView(request, seed, index);
+        expect(replayed.presentationV2[publicField]).toEqual(views[index].presentationV2[publicField]);
+        expect(replayed.presentationSnapshot[publicField]).toEqual(views[index].presentationSnapshot[publicField]);
+        expect(JSON.stringify(replayed.presentationSnapshot[publicField])).toBe(JSON.stringify(views[0].presentationSnapshot[publicField]));
+        await expect(viewerPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+      }
+    } finally {
+      await Promise.all(contexts.map((context) => context.close()));
+    }
+  }
+});
+
 for (const kind of ["Steal", "Dismantle"]) {
   test(`Negated ${kind} never publishes the target-card choice cue to mobile viewers`, async ({ browser, request }, testInfo) => {
     test.setTimeout(90_000);

@@ -37,6 +37,36 @@ test("public battle announcements keep proof-backed event meaning in concise cop
   ), "Source resolved Burning Bridge on Target.");
 
   assert.equal(publicCardAnnouncement(
+    action({ cardLabel: "STEAL", settlement: {
+      eventId: "steal-hand", outcome: "STEAL_RESOLVED", exiting: false,
+      targetCardMovement: { sourceZone: "hand", affectedCardOwnerId: "target", destinationZone: "hand", destinationOwnerId: "source" },
+    } }),
+    "Source played Steal targeting Target", "Source", "Source", "Target",
+  ), "Source took one card from Target's Hand into Source's Hand.");
+
+  assert.equal(publicCardAnnouncement(
+    action({ cardLabel: "STEAL", settlement: {
+      eventId: "steal-equipment", outcome: "STEAL_RESOLVED", exiting: false,
+      targetCardMovement: {
+        sourceZone: "equipment", affectedCardOwnerId: "target", destinationZone: "hand", destinationOwnerId: "source",
+        affectedCardFace: { id: "public-equipment", kind: "ZhugeCrossbow", suit: "♦", rank: "A" },
+      },
+    } }),
+    "Source played Steal targeting Target", "Source", "Source", "Target",
+  ), "Source took Zhuge Crossbow (A♦) from Target's Equipment into Source's Hand.");
+
+  assert.equal(publicCardAnnouncement(
+    action({ cardLabel: "BURNING BRIDGE", settlement: {
+      eventId: "dismantle-hand", outcome: "DISMANTLE_RESOLVED", exiting: false,
+      targetCardMovement: {
+        sourceZone: "hand", affectedCardOwnerId: "target", destinationZone: "discard", destinationOwnerId: null,
+        affectedCardFace: { id: "discarded-card", kind: "Peach", suit: "♥", rank: "3" },
+      },
+    } }),
+    "Source played Burning Bridge targeting Target", "Source", "Source", "Target",
+  ), "Source discarded Peach (3♥) from Target's Hand to the discard pile.");
+
+  assert.equal(publicCardAnnouncement(
     action({ cardLabel: "RAINING ARROWS", ariaLabel: "Source played Raining Arrows. 4 targets resolved.", settlement: { eventId: "settlement", outcome: "GROUP_RESOLVED", exiting: false } }),
     "Source played Raining Arrows. 4 targets resolved.", "Source", "Source", null,
   ), "Source played Raining Arrows; 4 targets resolved.");

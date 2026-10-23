@@ -4860,7 +4860,19 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || settlementEvent.publicDismantleSettlement.rootResolutionId !== settlement.rootResolutionId
       || settlementEvent.publicDismantleSettlement.sourceId !== settlement.sourceId
       || settlementEvent.publicDismantleSettlement.targetId !== settlement.targetId
-      || settlementEvent.publicDismantleSettlement.outcome !== settlement.outcome) return null;
+      || settlementEvent.publicDismantleSettlement.outcome !== settlement.outcome
+      || settlementEvent.publicDismantleSettlement.sourceZone !== settlement.sourceZone
+      || settlementEvent.publicDismantleSettlement.affectedCardOwnerId !== settlement.affectedCardOwnerId
+      || settlementEvent.publicDismantleSettlement.destinationZone !== settlement.destinationZone
+      || settlementEvent.publicDismantleSettlement.destinationOwnerId !== settlement.destinationOwnerId
+      || settlementEvent.publicDismantleSettlement.affectedCardFace?.id !== settlement.affectedCardFace?.id
+      || settlementEvent.publicDismantleSettlement.affectedCardFace?.kind !== settlement.affectedCardFace?.kind
+      || settlementEvent.publicDismantleSettlement.affectedCardFace?.suit !== settlement.affectedCardFace?.suit
+      || settlementEvent.publicDismantleSettlement.affectedCardFace?.rank !== settlement.affectedCardFace?.rank
+      || settlementEvent.card.id !== settlement.affectedCardFace?.id
+      || settlementEvent.card.kind !== settlement.affectedCardFace?.kind
+      || settlementEvent.card.suit !== settlement.affectedCardFace?.suit
+      || settlementEvent.card.rank !== settlement.affectedCardFace?.rank) return null;
     const source = room.players.find((player) => player.id === settlement.sourceId);
     const target = room.players.find((player) => player.id === settlement.targetId);
     if (!source?.name || !target?.name || source.id === target.id) return null;
@@ -4884,7 +4896,15 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       || settlementEvent.publicStealSettlement.rootResolutionId !== settlement.rootResolutionId
       || settlementEvent.publicStealSettlement.sourceId !== settlement.sourceId
       || settlementEvent.publicStealSettlement.targetId !== settlement.targetId
-      || settlementEvent.publicStealSettlement.outcome !== settlement.outcome) return null;
+      || settlementEvent.publicStealSettlement.outcome !== settlement.outcome
+      || settlementEvent.publicStealSettlement.sourceZone !== settlement.sourceZone
+      || settlementEvent.publicStealSettlement.affectedCardOwnerId !== settlement.affectedCardOwnerId
+      || settlementEvent.publicStealSettlement.destinationZone !== settlement.destinationZone
+      || settlementEvent.publicStealSettlement.destinationOwnerId !== settlement.destinationOwnerId
+      || settlementEvent.publicStealSettlement.affectedCardFace?.id !== settlement.affectedCardFace?.id
+      || settlementEvent.publicStealSettlement.affectedCardFace?.kind !== settlement.affectedCardFace?.kind
+      || settlementEvent.publicStealSettlement.affectedCardFace?.suit !== settlement.affectedCardFace?.suit
+      || settlementEvent.publicStealSettlement.affectedCardFace?.rank !== settlement.affectedCardFace?.rank) return null;
     const source = room.players.find((player) => player.id === settlement.sourceId);
     const target = room.players.find((player) => player.id === settlement.targetId);
     if (!source?.name || !target?.name || source.id === target.id) return null;
@@ -5476,7 +5496,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           ? []
           : [dismantleSettlementCandidate.action.rootEventId],
       },
-      settlement: { eventId: dismantleSettlementCandidate.action.eventId, outcome: dismantleSettlementCandidate.action.outcome, exiting: dismantleSettlementCandidate.exiting },
+      settlement: {
+        eventId: dismantleSettlementCandidate.action.eventId,
+        outcome: dismantleSettlementCandidate.action.outcome,
+        exiting: dismantleSettlementCandidate.exiting,
+        targetCardMovement: {
+          sourceZone: dismantleSettlementCandidate.action.sourceZone,
+          affectedCardOwnerId: dismantleSettlementCandidate.action.affectedCardOwnerId,
+          destinationZone: dismantleSettlementCandidate.action.destinationZone,
+          destinationOwnerId: dismantleSettlementCandidate.action.destinationOwnerId,
+          ...(dismantleSettlementCandidate.action.affectedCardFace ? { affectedCardFace: dismantleSettlementCandidate.action.affectedCardFace } : {}),
+        },
+      },
     }
     : stealSettlementCandidate
     ? {
@@ -5488,7 +5519,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       cardFace: stealSettlementCandidate.rootEvent.card,
       cardLabel: "STEAL",
       ariaLabel: `${stealSettlementCandidate.source.name} played Steal targeting ${stealSettlementCandidate.target.name}`,
-      settlement: { eventId: stealSettlementCandidate.action.eventId, outcome: stealSettlementCandidate.action.outcome, exiting: stealSettlementCandidate.exiting },
+      settlement: {
+        eventId: stealSettlementCandidate.action.eventId,
+        outcome: stealSettlementCandidate.action.outcome,
+        exiting: stealSettlementCandidate.exiting,
+        targetCardMovement: {
+          sourceZone: stealSettlementCandidate.action.sourceZone,
+          affectedCardOwnerId: stealSettlementCandidate.action.affectedCardOwnerId,
+          destinationZone: stealSettlementCandidate.action.destinationZone,
+          destinationOwnerId: stealSettlementCandidate.action.destinationOwnerId,
+          ...(stealSettlementCandidate.action.affectedCardFace ? { affectedCardFace: stealSettlementCandidate.action.affectedCardFace } : {}),
+        },
+      },
     }
     : attackHitSettlementCandidate
     ? {
@@ -6743,7 +6785,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       "data-public-card-viewer-id", "data-public-card-interaction-id", "data-public-card-root-frame-id", "data-public-card-checkpoint-id",
       "data-public-card-presentation-revision", "data-public-card-event-id", "data-public-card-root-event-id", "data-public-card-id",
       "data-public-card-actor-id", "data-public-card-source-id", "data-public-card-target-id", "data-public-card-settlement-event-id",
-      "data-public-card-settlement-outcome", "data-public-card-static-event-id", "data-public-card-static-card-id",
+      "data-public-card-settlement-outcome", "data-public-card-settlement-source-zone", "data-public-card-settlement-destination-zone",
+      "data-public-card-settlement-affected-card-owner-id", "data-public-card-settlement-destination-owner-id",
+      "data-public-card-settlement-card-id", "data-public-card-static-event-id", "data-public-card-static-card-id",
       "data-public-card-journey-event-id", "data-public-card-journey-actor-id", "data-public-card-journey-card-id",
       "data-public-card-journey-role", "data-public-card-journey-phase", "data-public-card-journey-size",
       "data-public-card-journey-layout-reason", "data-public-card-journey-reveal-started-at", "data-public-card-journey-target-left",

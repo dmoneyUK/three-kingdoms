@@ -723,7 +723,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
   return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.actorId ? { actorId: meta.actorId } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}), ...(meta?.selfTargetAction ? { selfTargetAction: meta.selfTargetAction } : {}), ...(meta?.attackDodgeResponse ? { attackDodgeResponse: meta.attackDodgeResponse } : {}), ...(meta?.duelAttackResponse ? { duelAttackResponse: meta.duelAttackResponse } : {}), ...(meta?.lustDuelAttackResponse ? { lustDuelAttackResponse: meta.lustDuelAttackResponse } : {}), ...(meta?.publicSkillEffect ? { publicSkillEffect: meta.publicSkillEffect } : {}), ...(meta?.publicDiaoChanNotice ? { publicDiaoChanNotice: meta.publicDiaoChanNotice } : {}), ...(meta?.publicDeflectionAction ? { publicDeflectionAction: meta.publicDeflectionAction } : {}), ...(meta?.publicCardEffects?.length ? { publicCardEffects: meta.publicCardEffects } : {}), ...(meta?.publicSkillEffectSettlement ? { publicSkillEffectSettlement: meta.publicSkillEffectSettlement } : {}), ...(meta?.publicDismantleSettlement ? { publicDismantleSettlement: meta.publicDismantleSettlement } : {}), ...(meta?.publicStealSettlement ? { publicStealSettlement: meta.publicStealSettlement } : {}), ...(meta?.publicAttackHitSettlement ? { publicAttackHitSettlement: meta.publicAttackHitSettlement } : {}), ...(meta?.publicGroupSettlement ? { publicGroupSettlement: meta.publicGroupSettlement } : {}), ...(meta?.publicBumperHarvestSettlement ? { publicBumperHarvestSettlement: meta.publicBumperHarvestSettlement } : {}), ...(meta?.bumperHarvestRoot ? { bumperHarvestRoot: meta.bumperHarvestRoot } : {}) };
 }
-function dismantleSettlementProofFor(room: RoomRow, pending: TargetCardPending, log: string[]): PresentationDismantleSettlementProof | undefined {
+function dismantleSettlementProofFor(room: RoomRow, pending: TargetCardPending, zone: TargetCardZone, chosen: Card, log: string[]): PresentationDismantleSettlementProof | undefined {
   if (pending.cardKind !== "Dismantle") return undefined;
   const timeline = gameTimeline(log);
   const presentation = projectPresentationV2({
@@ -749,9 +749,14 @@ function dismantleSettlementProofFor(room: RoomRow, pending: TargetCardPending, 
     sourceId: rootAction.sourceId,
     targetId: rootAction.targetId,
     outcome: "DISMANTLE_RESOLVED",
+    sourceZone: zone,
+    affectedCardOwnerId: zone === "judgement" ? null : rootAction.targetId,
+    destinationZone: "discard",
+    destinationOwnerId: null,
+    affectedCardFace: chosen,
   };
 }
-function stealSettlementProofFor(room: RoomRow, pending: TargetCardPending, log: string[]): PresentationStealSettlementProof | undefined {
+function stealSettlementProofFor(room: RoomRow, pending: TargetCardPending, zone: TargetCardZone, chosen: Card, log: string[]): PresentationStealSettlementProof | undefined {
   if (pending.cardKind !== "Steal") return undefined;
   const timeline = gameTimeline(log);
   const presentation = projectPresentationV2({
@@ -777,6 +782,11 @@ function stealSettlementProofFor(room: RoomRow, pending: TargetCardPending, log:
     sourceId: rootAction.sourceId,
     targetId: rootAction.targetId,
     outcome: "STEAL_RESOLVED",
+    sourceZone: zone,
+    affectedCardOwnerId: zone === "judgement" ? null : rootAction.targetId,
+    destinationZone: "hand",
+    destinationOwnerId: rootAction.sourceId,
+    ...(zone === "hand" ? {} : { affectedCardFace: chosen }),
   };
 }
 function attackHitSettlementProofFor(room: RoomRow, source: PlayerRow, target: PlayerRow, sequenceStartCardId: string, expectedResolutionId: string | undefined, causal: CausalContext | undefined, log: string[]): PresentationAttackHitSettlementProof | undefined {
@@ -7578,7 +7588,7 @@ export async function POST(request: Request) {
     const lostEquipment = zone === "equipment" ? [chosen] : [];
     discard.push(...(pending.heldCards ?? []));
     if (pending.cardKind === "Dismantle") {
-      const settlementProof = dismantleSettlementProofFor(liveRoom, pending, log);
+      const settlementProof = dismantleSettlementProofFor(liveRoom, pending, zone, chosen, log);
       discard.push(chosen);
       log = addCardEvent(log, target.name, chosen, target.name, "discard", true, settlementProof ? {
         resolutionId: settlementProof.rootResolutionId,
@@ -7588,7 +7598,7 @@ export async function POST(request: Request) {
       } : undefined);
       log = addHistory(log, `${me.name} uses Burning Bridges to discard one ${zone === "hand" ? "hidden hand" : zone} card from ${target.name}.`);
     } else {
-      const settlementProof = stealSettlementProofFor(liveRoom, pending, log);
+      const settlementProof = stealSettlementProofFor(liveRoom, pending, zone, chosen, log);
       sourceHand = [...sourceHand, chosen];
       const message = `${me.name} uses Steal to obtain one ${zone === "hand" ? "hidden hand" : zone} card from ${target.name}.`;
       if (settlementProof) {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Card, CardKind } from "../game/model";
 import type { PresentationSnapshotRootAction } from "../game/presentation-snapshot";
+import type { PresentationTargetCardSettlementMovement } from "../game/presentation-v2";
 import { cardDefinition } from "../game/cards";
 import { CardFace } from "./card-face";
 import { recordAttackDodgeUxTrace } from "./attack-dodge-ux-trace";
@@ -99,6 +100,8 @@ export type PublicCardDisplayAction = {
     exiting: boolean;
     /** Server-derived remaining portion of the short post-settlement history read. */
     readRemainingMs?: number;
+    /** Validated source/destination facts for Steal and Burning Bridges. */
+    targetCardMovement?: PresentationTargetCardSettlementMovement;
   };
   publicCounterRead?: { eventId: string; exiting: boolean };
   phaseNotice?: string;
@@ -1440,6 +1443,14 @@ export function publicCardAnnouncement(
   const target = targetName ?? "the target";
   const actor = actorName ?? targetName ?? "The target";
   const cardName = action.cardLabel.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+  const targetCardMovement = action.settlement?.targetCardMovement;
+  const targetCardSourceZone = targetCardMovement?.sourceZone === "hand" ? "Hand"
+    : targetCardMovement?.sourceZone === "equipment" ? "Equipment"
+      : targetCardMovement?.sourceZone === "judgement" ? "Judgement" : null;
+  const targetCardFace = targetCardMovement?.affectedCardFace;
+  const targetCardName = targetCardFace
+    ? `${cardDefinition(targetCardFace.kind).name} (${targetCardFace.rank}${targetCardFace.suit})`
+    : "one card";
 
   if (isHarvestNegationPresentation(action)) return bumperHarvestNegationCopy(action);
 
@@ -1461,8 +1472,14 @@ export function publicCardAnnouncement(
         : compactPublicNotice(action.ariaLabel, actorName);
     }
     case "DISMANTLE_RESOLVED":
+      if (targetCardMovement?.destinationZone === "discard" && targetCardSourceZone) {
+        return `${source} discarded ${targetCardName} from ${target}'s ${targetCardSourceZone} to the discard pile.`;
+      }
       return `${source} resolved ${cardName} on ${target}.`;
     case "STEAL_RESOLVED":
+      if (targetCardMovement?.destinationZone === "hand" && targetCardSourceZone) {
+        return `${source} took ${targetCardName} from ${target}'s ${targetCardSourceZone} into ${source}'s Hand.`;
+      }
       return `${source} resolved ${cardName} on ${target}.`;
     case "ROOT_CANCELLED":
       return `${actor}'s Negation cancelled ${source}'s ${cardName}${targetName ? ` on ${targetName}` : ""}.`;
@@ -3728,6 +3745,11 @@ function SingleTargetCardJourney({
     data-public-card-negation-outcome={motion?.type === "negation" && allParked ? action.settlement?.outcome : undefined}
     data-public-card-settlement-outcome={allParked ? action.settlement?.outcome : undefined}
     data-public-card-settlement-event-id={action.settlement?.eventId}
+    data-public-card-settlement-source-zone={allParked ? action.settlement?.targetCardMovement?.sourceZone : undefined}
+    data-public-card-settlement-destination-zone={allParked ? action.settlement?.targetCardMovement?.destinationZone : undefined}
+    data-public-card-settlement-affected-card-owner-id={allParked ? action.settlement?.targetCardMovement?.affectedCardOwnerId ?? "none" : undefined}
+    data-public-card-settlement-destination-owner-id={allParked ? action.settlement?.targetCardMovement?.destinationOwnerId ?? "none" : undefined}
+    data-public-card-settlement-card-id={allParked ? action.settlement?.targetCardMovement?.affectedCardFace?.id : undefined}
     data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
     {journey.cards.filter((card) => card.phase !== "queued").map((card) => {
@@ -4667,6 +4689,11 @@ export function PublicCardDisplay({
     data-public-card-target-id={action.targetId ?? undefined}
     data-public-card-settlement-event-id={action.settlement?.eventId}
     data-public-card-settlement-outcome={action.settlement?.outcome}
+    data-public-card-settlement-source-zone={action.settlement?.targetCardMovement?.sourceZone}
+    data-public-card-settlement-destination-zone={action.settlement?.targetCardMovement?.destinationZone}
+    data-public-card-settlement-affected-card-owner-id={action.settlement?.targetCardMovement ? action.settlement.targetCardMovement.affectedCardOwnerId ?? "none" : undefined}
+    data-public-card-settlement-destination-owner-id={action.settlement?.targetCardMovement ? action.settlement.targetCardMovement.destinationOwnerId ?? "none" : undefined}
+    data-public-card-settlement-card-id={action.settlement?.targetCardMovement?.affectedCardFace?.id}
     data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
     {card && <div className="public-card-display-static-card" data-public-card-copy-anchor-event-id={eventId} data-public-card-static-event-id={eventId} data-public-card-static-card-id={card.id} data-harvest-root-parked={harvestRootParked ? "true" : undefined}><CardFace card={card} /></div>}
