@@ -23,6 +23,7 @@ import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSele
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus } from "../game/public-activity";
 import { CardFace } from "./card-face";
+import { CardPoolPanel, type CardPoolPanelProps, type PublicCardPoolChoice } from "./card-pool-panel";
 import { BattlefieldChoiceStage, chooseBattlefieldChoiceInsets, chooseBattlefieldChoiceTopOffset } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
 import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, harvestNegationDecisionCopy, publicCardActionKey, type PublicCardDisplayAction, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
@@ -7513,6 +7514,55 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     secondaryControls: consoleSecondaryControls,
   });
   const consolePrimaryId = consoleDecision.primary?.id ?? null;
+  const harvestPoolProps: CardPoolPanelProps | null = harvestDisplay ? (() => {
+    const choices: PublicCardPoolChoice[] = harvestDisplay.revealed.map((choice) => {
+      const name = cardDefinition(choice.kind).name;
+      const takenBy = harvestDisplay.choices.find((entry) => entry.cardId === choice.id);
+      const submittedByMe = harvestSubmitting?.playerId === room.meId && harvestSubmitting.cardId === choice.id;
+      const available = harvestDisplay.availableIds.includes(choice.id);
+      const awaitingConfirmation = canChooseHarvest && !submittedByMe && activeHarvestSelection === choice.id;
+      return {
+        type: "public-card",
+        publicCardFace: choice,
+        cardName: name,
+        state: takenBy || submittedByMe ? "taken" : awaitingConfirmation ? "selected" : available ? "available" : "unavailable",
+        accessibleLabel: takenBy
+          ? `${name}, taken by ${takenBy.playerName}`
+          : submittedByMe
+            ? `${name}, your choice is submitting`
+            : `${name}, ${awaitingConfirmation ? "selected" : available ? "available" : "unavailable"}`,
+        statusLabel: takenBy
+          ? `Taken by ${takenBy.playerName}`
+          : submittedByMe
+            ? "Submitting"
+            : available
+              ? "Available"
+              : "Unavailable",
+        selectDisabled: Boolean(harvestSubmitting) || busy || !available,
+      };
+    });
+    const shared = {
+      title: "Bumper Harvest",
+      instruction: harvestReadOnlyDuringNegation
+        ? harvestEffectRecipient ? `Negation for ${harvestEffectRecipient.participantName} · Read-only` : "Read-only · Negation resolving"
+        : canChooseHarvest ? "Choose one revealed card" : room.pendingHarvest?.complete ? "Choices complete" : "Public cards · read-only",
+      accessibilityLabel: canChooseHarvest ? "Your Bumper Harvest choice" : "Public Bumper Harvest cards",
+      rowAccessibilityLabel: "Public revealed Harvest cards — scroll horizontally to browse",
+      choices,
+      scrollHint: room.players.length >= 5 && harvestDisplay.revealed.length >= 4 ? "Swipe to see all cards ↔" : undefined,
+      onInfo: (card: Card, trigger: HTMLButtonElement) => openCardDetails(card, "public-zone", trigger),
+    };
+    return canChooseHarvest
+      ? {
+        ...shared,
+        mode: "actor-select" as const,
+        selectionCount: harvestSelectedCard ? "1 selected" : "Choose 1 card",
+        confirmDisabled: busy || !harvestSelectedCard || Boolean(harvestSubmitting),
+        onToggle: toggleHarvestSelection,
+        onConfirm: confirmHarvestChoice,
+      }
+      : { ...shared, mode: "public-readonly" as const };
+  })() : null;
   return <main className="game-shell" data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"} data-presentation-transition={presentationTransition.kind}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div></header>
     <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
     <section className={`play-table ${displayedSequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"} data-public-card-journey-ownership-ready={publicCardJourneyOwnershipReady ? "true" : "false"} data-public-card-owned-history-count={publicDisplayOwnedResponseHistory.length}>
@@ -7553,65 +7603,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           right: harvestStageInsets ? `${harvestStageInsets.right}px` : undefined,
         }}
       >
-        <section className={`harvest-choice-panel${canChooseHarvest ? " harvest-choice-panel--actor" : ""}`} aria-label={canChooseHarvest ? "Your Bumper Harvest choice" : "Public Bumper Harvest cards"}>
-          <header className="harvest-choice-heading">
-            <b>Bumper Harvest</b>
-            <span>{harvestReadOnlyDuringNegation
-              ? harvestEffectRecipient ? `Negation for ${harvestEffectRecipient.participantName} · Read-only` : "Read-only · Negation resolving"
-              : canChooseHarvest ? "Choose one revealed card" : room.pendingHarvest?.complete ? "Choices complete" : "Public cards · read-only"}</span>
-          </header>
-          <div
-            className="harvest-card-row"
-            role="region"
-            aria-label="Public revealed Harvest cards — scroll horizontally to browse"
-            tabIndex={harvestDisplay.revealed.length > 1 ? 0 : undefined}
-          >
-            {harvestDisplay.revealed.map((choice) => {
-              const name = cardDefinition(choice.kind).name;
-              const takenBy = harvestDisplay.choices.find((entry) => entry.cardId === choice.id);
-              const submittedByMe = harvestSubmitting?.playerId === room.meId && harvestSubmitting.cardId === choice.id;
-              const available = harvestDisplay.availableIds.includes(choice.id);
-              const awaitingConfirmation = canChooseHarvest && !submittedByMe && activeHarvestSelection === choice.id;
-              const choiceLabel = takenBy
-                ? `${name}, taken by ${takenBy.playerName}`
-                : submittedByMe
-                  ? `${name}, your choice is submitting`
-                  : `${name}, ${awaitingConfirmation ? "selected" : available ? "available" : "unavailable"}`;
-              return <div
-                className={`harvest-card-choice${takenBy || submittedByMe ? " taken" : ""}${awaitingConfirmation ? " pending-choice" : ""}`}
-                data-harvest-card-id={choice.id}
-                data-harvest-card-state={takenBy || submittedByMe ? "taken" : awaitingConfirmation ? "selected" : available ? "available" : "unavailable"}
-                key={choice.id}
-              >
-                <CardFace card={choice} harvestChoice />
-                {canChooseHarvest && <button
-                  type="button"
-                  className="harvest-card-select"
-                  disabled={Boolean(harvestSubmitting) || busy || !available}
-                  aria-pressed={awaitingConfirmation}
-                  aria-label={choiceLabel}
-                  onClick={() => toggleHarvestSelection(choice.id)}
-                />}
-                {!canChooseHarvest
-                  ? <span className="harvest-availability-label">{takenBy ? `Taken by ${takenBy.playerName}` : submittedByMe ? "Submitting" : available ? "Available" : "Unavailable"}</span>
-                  : null}
-                {awaitingConfirmation && <span className="harvest-pending-label">Selected</span>}
-                <button
-                  type="button"
-                  className="harvest-card-info"
-                  aria-label={`Details for ${name}`}
-                  title={`Details for ${name}`}
-                  onClick={(event) => openCardDetails(choice, "public-zone", event.currentTarget)}
-                >i</button>
-              </div>;
-            })}
-          </div>
-          {room.players.length >= 5 && harvestDisplay.revealed.length >= 4 && <span className="harvest-scroll-hint" aria-hidden="true">Swipe to see all cards ↔</span>}
-          {canChooseHarvest && <footer className="harvest-confirm-row">
-            <span className="harvest-selection-count" aria-live="polite">{harvestSelectedCard ? "1 selected" : "Choose 1 card"}</span>
-            <button type="button" className="primary" disabled={busy || !harvestSelectedCard || Boolean(harvestSubmitting)} onClick={confirmHarvestChoice}>Confirm choice</button>
-          </footer>}
-        </section>
+        {harvestPoolProps && <CardPoolPanel {...harvestPoolProps} />}
       </BattlefieldChoiceStage>}
       <div className="play-center" aria-hidden="true"><div className="draw-stack" data-draw-anchor="true" /><div className="discard-stack" data-discard-anchor="true" /></div>
       {pendingTargetCardUsesUnifiedModal && pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget && supportsAuthoritativeTargetCardSelection(pendingTargetCardSelectableSelection, pendingTargetCardSelectableTarget) && room.pendingTargetCard && pendingTargetCardActionName && <TargetCardPicker option={null} presentationCopy={{ title: pendingTargetCardActionName, accessibleName: `${pendingTargetCardActionName} target card selection`, instruction: room.pendingTargetCard.cardKind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard", actionLabel: `Use ${pendingTargetCardActionName}` }} selection={pendingTargetCardSelectableSelection} target={pendingTargetCardSelectableTarget} selectedKeys={pendingTargetCardSelectedKeys} disabled={busy || !canUseAction(room.currentAction, "choose_target_card")} canDecline={false} showCancel={false} allowPublicCardInfo error={error} onToggle={togglePendingTargetCardSelection} onUse={submitPendingTargetCardPicker} onCancel={clearPendingTargetCardSelection} onDecline={() => undefined} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} />}
