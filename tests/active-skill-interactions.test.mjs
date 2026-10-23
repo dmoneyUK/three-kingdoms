@@ -85,7 +85,7 @@ function normalHalberdTargetRoom() {
       { id: "p3", name: "SECOND TARGET", seat: 2, hero: "sun-quan", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Spy" },
     ],
     myHand: [card("halberd-attack", "Attack")], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play a card", isMyAction: true,
-    actionRevision: "halberd-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [{ cardId: "halberd-attack", canPlayAs: "attack" }] },
+    actionRevision: "halberd-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [{ cardId: "halberd-attack", canPlayAs: "attack" }], playTargetEligibility: [{ mode: "card", cardId: "halberd-attack", effectiveKind: "Attack", eligibleTargetIds: ["p2", "p3"], rejections: [] }] },
   });
 }
 
@@ -97,7 +97,7 @@ function normalWushengTargetRoom() {
       { id: "p2", name: "TARGET", seat: 1, hero: "liu-bei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
     ],
     myHand: [{ id: "wusheng-card", kind: "Dodge", suit: "♥", rank: "Q" }], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play a card", isMyAction: true,
-    actionRevision: "wusheng-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [{ cardId: "wusheng-card", canPlayAs: "attack" }] },
+    actionRevision: "wusheng-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [{ cardId: "wusheng-card", canPlayAs: "attack" }], playTargetEligibility: [{ mode: "card", cardId: "wusheng-card", effectiveKind: "Attack", eligibleTargetIds: ["p2"], rejections: [] }] },
   });
 }
 
@@ -109,7 +109,7 @@ function serpentTargetRoom() {
       { id: "p2", name: "TARGET", seat: 1, hero: "liu-bei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
     ],
     myHand: [card("serpent-cost-one", "Peach"), card("serpent-cost-two", "Dodge")], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play a card", isMyAction: true,
-    actionRevision: "serpent-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [] },
+    actionRevision: "serpent-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card", "serpent_spear_attack"], canDeclareAttack: true, playPhaseActions: [], playTargetEligibility: [{ mode: "serpent_spear_attack", effectiveKind: "Attack", eligibleTargetIds: ["p2"], rejections: [] }] },
   });
 }
 
