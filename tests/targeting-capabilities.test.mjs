@@ -14,8 +14,8 @@ test("Empty Fortress is live Attack and Duel target legality", () => {
   assert.equal(canTargetCharacter(context("Attack", 0, "zhao-yun")), true);
 });
 
-const eligibilityPlayer = (id, seat, { hero = "cao-cao", handCount = 1, weapon, judgementCards = [], alive = true } = {}) => ({
-  id, seat, hero, alive, handCount, equipment: weapon ? { weapon: { id: `${id}-weapon`, kind: weapon, suit: "♠", rank: "A" } } : {}, judgementCards,
+const eligibilityPlayer = (id, seat, { hero = "cao-cao", hp = 4, handCount = 1, weapon, judgementCards = [], alive = true } = {}) => ({
+  id, seat, hero, hp, alive, handCount, equipment: weapon ? { weapon: { id: `${id}-weapon`, kind: weapon, suit: "♠", rank: "A" } } : {}, judgementCards,
 });
 const playMode = (effectiveKind, cardId = `${effectiveKind}-physical`) => ({ mode: "card", cardId, effectiveKind });
 
@@ -55,6 +55,27 @@ test("play target evaluator keeps Steal and Rations card range separate from Att
   const wizard = players.map((player) => player.id === "source" ? { ...player, hero: "huang-yueying" } : player);
   assert.deepEqual(evaluatePlayTarget(wizard, "source", "far", playMode("Steal")), { eligible: true });
   assert.deepEqual(evaluatePlayTarget(wizard, "source", "far", playMode("RationsDepleted")), { eligible: true });
+});
+
+test("play target evaluator preserves HP-dependent effective distance modifiers", () => {
+  const players = [
+    eligibilityPlayer("source", 0, { hero: "gongsun-zan", hp: 4 }),
+    eligibilityPlayer("near", 1),
+    eligibilityPlayer("far", 2),
+    eligibilityPlayer("other", 3),
+    eligibilityPlayer("last", 4),
+  ];
+  assert.deepEqual(evaluatePlayTarget(players, "source", "far", playMode("Attack")), { eligible: true }, "healthy Militia reduces the raw distance from 2 to 1");
+  const lowHpSource = players.map((player) => player.id === "source" ? { ...player, hp: 2 } : player);
+  assert.deepEqual(evaluatePlayTarget(lowHpSource, "source", "far", playMode("Attack")), {
+    eligible: false, rejection: { code: "OUT_OF_RANGE", distance: 2, range: 1 },
+  }, "low HP disables Gongsun Zan's outbound distance reduction");
+  const lowHpTarget = players.map((player) => player.id === "source"
+    ? { ...player, hero: "cao-cao" }
+    : player.id === "far" ? { ...player, hero: "gongsun-zan", hp: 2 } : player);
+  assert.deepEqual(evaluatePlayTarget(lowHpTarget, "source", "far", playMode("Attack")), {
+    eligible: false, rejection: { code: "OUT_OF_RANGE", distance: 3, range: 1 },
+  }, "low HP Gongsun Zan increases incoming effective distance");
 });
 
 test("play target evaluator reports card-specific restrictions and does not range-limit Duel or Dismantle", () => {

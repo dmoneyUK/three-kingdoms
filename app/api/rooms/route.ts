@@ -536,6 +536,7 @@ function playTargetPlayers(players: PlayerRow[]): PlayTargetEligibilityPlayer[] 
     seat: player.seat,
     alive: Boolean(player.alive),
     hero: player.hero,
+    hp: player.hp,
     handCount: parse<Card[]>(player.hand_json, []).length,
     equipment: equipmentZone(player),
     judgementCards: parse<Card[]>(player.judgement_json, []),

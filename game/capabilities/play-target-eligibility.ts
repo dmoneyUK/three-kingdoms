@@ -6,6 +6,7 @@ import { isWithinRange } from "./range";
 import { canTargetCharacter } from "./targeting";
 
 export type PlayTargetEligibilityPlayer = GamePlayer & {
+  hp?: number | null;
   handCount: number;
   equipment: EquipmentZone;
   judgementCards: Card[];
