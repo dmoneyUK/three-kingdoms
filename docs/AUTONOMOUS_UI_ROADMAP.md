@@ -3084,3 +3084,31 @@ Profile command measurements:
   `{"ok":true,"worker":"available"}`. **IMPLEMENTED / DEPLOYED — PENDING
   OWNER PHONE REVIEW**, not accepted. The next separately bounded item is
   INS5-2; no code for INS5-2 or BH5-1 is included.
+
+### UX2 §10.13.4.2 E1-F — Equipment miniature waits for physical arrival — 2026-10-23
+
+- Feature implementation `7745c6fc312687cb59858fb04f8470a9e614cb46` gates
+  public Equipment miniatures on the committed card journey's actual arrival
+  at the matching owner and slot. The central physical CardFace remains the
+  same card, server Equipment ownership/effect is immediate, stable empty slot
+  anchors preserve real destinations, and the legal Local Dock controls stay
+  usable during this Equipment-only flight. Identity/arrival logic is isolated
+  in `game/equipment-arrival.js` and its public Equip actor is server-derived.
+- Focused local evidence: the four-player Worker/D1 mobile browser suite passed
+  7/7 with an owner and independently authenticated observer, including public
+  event/card/actor identity, no premature or duplicated miniature, exact target
+  slot, settled refresh without replay, Reduced Motion, Armor/Horses,
+  replacement, and 4/6/8/10-seat layouts. Equipment API tests passed 20/20;
+  arrival identity unit tests passed 4/4; build and targeted ESLint passed.
+- Feature-only exact-SHA Actions run [`39904085359`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39904085359)
+  exposed two stale source assertions in the room-render fast suite. The
+  test-only correction `3142f7b7eb718f15a7260471b573ef37590b7605` updates those
+  assertions to the current empty-slot anchor and Equipment-arrival busy-state
+  contracts; it does not change product behavior. The final deployed head
+  passed every required exact-SHA job in [Actions 39904467908](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39904467908):
+  browser startup/room smoke, lint/build/fast (292/292), API tests, D1 migration,
+  Worker deployment and production smoke. Worker version
+  `502ad7b4-63d8-4548-b877-0be433e2cc05`; direct production
+  `/api/health` returned `{"ok":true,"worker":"available"}`.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. No user
+  acceptance is inferred from automated or CI results.
