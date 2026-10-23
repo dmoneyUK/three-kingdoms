@@ -1189,7 +1189,7 @@ for (const { cardKind, responseKind } of [
   });
 }
 
-test("server-proven single-target Negation and counter history survives refresh without exposing losing cards", async ({ page, request }, testInfo) => {
+test("server-proven single-target Negation and counter history rebases across viewers and refresh without exposing losing cards", async ({ page, request }, testInfo) => {
   test.setTimeout(120_000);
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(`${error.name}: ${error.message}`));
@@ -1263,15 +1263,149 @@ test("server-proven single-target Negation and counter history survives refresh 
   expect(provenChain?.nodes?.map(({ actorId }) => actorId)).toEqual([third.id, source.id, target.id]);
   expect(publicState.timeline.some((event) => event.card?.id === room.losingNegationId)).toBe(false);
   expect(JSON.stringify(publicState.presentationSnapshot)).not.toContain(room.losingNegationId);
+  const nextWindowId = publicState.currentAction?.negationWindowId;
+  expect(nextWindowId).toBeTruthy();
+  await adjustNegationClock(request, room, nextWindowId, "hold");
   await page.reload();
   await expect(page.locator('[data-public-card-motion="single-target"] .public-card-journey-card')).toHaveCount(4);
   await expect(page.locator('[data-public-card-motion="single-target"] .public-card-journey-card[data-public-card-journey-phase="parked"]')).toHaveCount(4);
   await expect(page.locator(`[data-public-card-journey-card-id="${room.losingNegationId}"]`)).toHaveCount(0);
   await screenshot(page, testInfo, "single-target-negation-history-refresh-restores-all-committed-cards");
 
-  const nextWindowId = (await view(request, room, 0)).currentAction?.negationWindowId;
-  expect(nextWindowId).toBeTruthy();
-  await adjustNegationClock(request, room, nextWindowId, "hold");
+  const expectedCards = await page.locator('[data-public-card-motion="single-target"] [data-public-card-journey-event-id]').evaluateAll((elements) => elements.map((element) => ({
+    eventId: element.getAttribute("data-public-card-journey-event-id"),
+    actorId: element.getAttribute("data-public-card-journey-actor-id"),
+    revealStartedAt: element.getAttribute("data-public-card-journey-reveal-started-at"),
+  })));
+  expect(expectedCards.map(({ eventId }) => eventId)).toEqual(committedHistory.map(({ event }) => event.id));
+  await page.setViewportSize({ width: 390, height: 700 });
+  await expect.poll(() => page.locator('[data-public-card-motion="single-target"]').getAttribute("data-public-card-layout-pending")).toBe("false");
+  const mobileHistory = await page.locator('[data-public-card-motion="single-target"]').evaluate((display) => ({
+    viewerId: display.getAttribute("data-public-card-viewer-id"),
+    layoutViewerId: display.getAttribute("data-public-card-layout-viewer-id"),
+    cards: [...display.querySelectorAll("[data-public-card-journey-event-id]")].map((card) => {
+      const rect = card.getBoundingClientRect();
+      const actorId = card.getAttribute("data-public-card-journey-actor-id");
+      const anchor = [...document.querySelectorAll("[data-player-anchor]")]
+        .find((element) => element.getAttribute("data-player-anchor") === actorId);
+      return {
+        eventId: card.getAttribute("data-public-card-journey-event-id"),
+        actorId,
+        phase: card.getAttribute("data-public-card-journey-phase"),
+        revealStartedAt: card.getAttribute("data-public-card-journey-reveal-started-at"),
+        visibility: getComputedStyle(card).visibility,
+        actual: { left: rect.left, top: rect.top },
+        target: {
+          left: Number(card.getAttribute("data-public-card-journey-target-left")),
+          top: Number(card.getAttribute("data-public-card-journey-target-top")),
+        },
+        actorAnchorPresent: Boolean(anchor && anchor.getBoundingClientRect().width > 0 && anchor.getBoundingClientRect().height > 0),
+      };
+    }),
+  }));
+  expect(mobileHistory.viewerId).toBe(source.id);
+  expect(mobileHistory.layoutViewerId).toBe(source.id);
+  expect(mobileHistory.cards.map(({ eventId }) => eventId)).toEqual(expectedCards.map(({ eventId }) => eventId));
+  for (const card of mobileHistory.cards) {
+    const expected = expectedCards.find((candidate) => candidate.eventId === card.eventId);
+    expect(card.actorId).toBe(expected.actorId);
+    expect(card.revealStartedAt).toBe(expected.revealStartedAt);
+    expect(card.phase).toBe("parked");
+    expect(card.visibility).toBe("visible");
+    expect(card.actorAnchorPresent).toBe(true);
+    expect(Math.abs(card.actual.left - card.target.left)).toBeLessThanOrEqual(2);
+    expect(Math.abs(card.actual.top - card.target.top)).toBeLessThanOrEqual(2);
+  }
+  await testInfo.attach("q3-single-target-negation-390x700-mobile-history.json", {
+    body: JSON.stringify(mobileHistory, null, 2),
+    contentType: "application/json",
+  });
+  await screenshot(page, testInfo, "q3-single-target-negation-history-390x700");
+  console.log(`[Q3 SINGLE-TARGET NEGATION mobile history] ${JSON.stringify(mobileHistory)}`);
+
+  const rebaseViewer = room.players[3];
+  await page.addInitScript(({ viewerId, cards }) => {
+    const capture = { samples: [], frame: 0, complete: false };
+    const inspectFrame = () => {
+      capture.frame += 1;
+      const localViewerId = document.querySelector(".local-player-dock")?.getAttribute("data-player-anchor") ?? null;
+      for (const expected of cards) {
+        const card = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
+          .find((element) => element.getAttribute("data-public-card-journey-event-id") === expected.eventId);
+        const display = card?.closest("[data-public-card-display='true']");
+        if (!card || !display) continue;
+        const rect = card.getBoundingClientRect();
+        const anchor = [...document.querySelectorAll("[data-player-anchor]")]
+          .find((element) => element.getAttribute("data-player-anchor") === expected.actorId);
+        capture.samples.push({
+          frame: capture.frame,
+          eventId: expected.eventId,
+          expectedActorId: expected.actorId,
+          cardId: card.getAttribute("data-public-card-journey-card-id"),
+          actorId: card.getAttribute("data-public-card-journey-actor-id"),
+          phase: card.getAttribute("data-public-card-journey-phase"),
+          viewerId: display.getAttribute("data-public-card-viewer-id"),
+          layoutViewerId: display.getAttribute("data-public-card-layout-viewer-id"),
+          localViewerId,
+          displayPending: display.getAttribute("data-public-card-layout-pending"),
+          cardPending: card.getAttribute("data-public-card-journey-layout-pending"),
+          visibility: getComputedStyle(card).visibility,
+          actual: { left: rect.left, top: rect.top },
+          target: {
+            left: Number(card.getAttribute("data-public-card-journey-target-left")),
+            top: Number(card.getAttribute("data-public-card-journey-target-top")),
+          },
+          anchorPresent: Boolean(anchor && anchor.getBoundingClientRect().width > 0 && anchor.getBoundingClientRect().height > 0),
+          revealStartedAt: card.getAttribute("data-public-card-journey-reveal-started-at"),
+          activeTransitions: card.getAnimations().filter((animation) => animation.playState === "running").length,
+        });
+      }
+      const visibleForNewViewer = (eventId) => capture.samples.some((sample) =>
+        sample.eventId === eventId && sample.viewerId === viewerId && sample.visibility === "visible");
+      capture.complete = cards.every(({ eventId }) => visibleForNewViewer(eventId));
+      if (!capture.complete && capture.frame < 600) window.requestAnimationFrame(inspectFrame);
+    };
+    window.__q3SingleTargetRebase = capture;
+    window.requestAnimationFrame(inspectFrame);
+  }, {
+    viewerId: rebaseViewer.id,
+    cards: expectedCards.map(({ eventId, actorId }) => ({ eventId, actorId })),
+  });
+  await page.evaluate(({ code, token, name }) => {
+    localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
+  }, { code: room.code, token: rebaseViewer.token, name: rebaseViewer.name });
+  await page.reload();
+  await expect(page.locator(`.local-player-dock[data-player-anchor="${rebaseViewer.id}"]`)).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__q3SingleTargetRebase.complete), { timeout: 15_000 }).toBe(true);
+  const singleTargetRebaseSamples = await page.evaluate(() => window.__q3SingleTargetRebase.samples);
+  for (const expected of expectedCards) {
+    const firstVisible = singleTargetRebaseSamples.find((sample) =>
+      sample.eventId === expected.eventId && sample.viewerId === rebaseViewer.id && sample.visibility === "visible");
+    expect(firstVisible, JSON.stringify(singleTargetRebaseSamples)).toBeTruthy();
+    expect(firstVisible.localViewerId).toBe(rebaseViewer.id);
+    expect(firstVisible.layoutViewerId).toBe(rebaseViewer.id);
+    expect(firstVisible.displayPending).toBe("false");
+    expect(firstVisible.cardPending).toBe("false");
+    expect(firstVisible.actorId).toBe(expected.actorId);
+    expect(firstVisible.phase).toBe("parked");
+    expect(firstVisible.anchorPresent).toBe(true);
+    expect(Math.abs(firstVisible.actual.left - firstVisible.target.left)).toBeLessThanOrEqual(2);
+    expect(Math.abs(firstVisible.actual.top - firstVisible.target.top)).toBeLessThanOrEqual(2);
+    expect(firstVisible.revealStartedAt).toBe(expected.revealStartedAt);
+    expect(firstVisible.activeTransitions).toBe(0);
+  }
+  expect(singleTargetRebaseSamples.every((sample) => sample.cardId !== room.losingNegationId)).toBe(true);
+  const rebaseProjection = await view(request, room, 3);
+  expect(JSON.stringify(rebaseProjection.presentationSnapshot)).not.toContain(room.losingNegationId);
+  expect(rebaseProjection.timeline.some((event) => event.card?.id === room.losingNegationId)).toBe(false);
+  await testInfo.attach("q3-single-target-negation-first-new-view-frames.json", {
+    body: JSON.stringify(singleTargetRebaseSamples, null, 2),
+    contentType: "application/json",
+  });
+  await screenshot(page, testInfo, "q3-single-target-negation-history-rebased-390x700");
+
+  await page.setViewportSize({ width: 440, height: 894 });
+
   for (const player of room.players) {
     const passed = await request.post(`${API}/api/rooms`, {
       data: { action: "decline_response", code: room.code, token: player.token, context: { windowId: nextWindowId } },

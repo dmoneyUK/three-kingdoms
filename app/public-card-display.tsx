@@ -2311,6 +2311,7 @@ function AttackDodgeCardJourney({
             target: parkedTarget,
             rect: phase === "parked" ? parkedTarget : phase === "reveal" ? center : prior.rect,
             moveStartedAtMs: null,
+            layoutPending: phase === "parked" && !target,
             layoutChangeReason: "viewer-switch",
           };
         }
@@ -2320,7 +2321,7 @@ function AttackDodgeCardJourney({
           rememberAttackDodgeJourneyLifecycle(
             attackDodgeJourneyLifecycleKey(roomCode, currentAction.rootEventId, scopeKey, prior.eventId),
             {
-              phase: reducedMotion ? "parked" : "move",
+              phase: !target || reducedMotion ? "parked" : "move",
               revealStartedAtMs: null,
               revealStartedAtIso: prior.revealStartedAtIso ?? null,
               revealElapsedMs: (prior.revealElapsedMs ?? 0) + elapsed,
@@ -2334,13 +2335,14 @@ function AttackDodgeCardJourney({
             cardFace: candidate.cardFace,
             ariaLabel: candidate.ariaLabel,
             semanticLabel: candidate.semanticLabel,
-            phase: reducedMotion ? "parked" as const : "move" as const,
+            phase: !target || reducedMotion ? "parked" as const : "move" as const,
             target: parkedTarget,
             rect: parkedTarget,
             revealStartedAtMs: null,
             revealElapsedMs: (prior.revealElapsedMs ?? 0) + elapsed,
             revealRemainingMs: 0,
-            moveStartedAtMs: reducedMotion ? null : performance.now(),
+            moveStartedAtMs: !target || reducedMotion ? null : performance.now(),
+            layoutPending: !target,
             layoutChangeReason: "interrupted-by-new-committed-response",
           };
         }
@@ -2353,6 +2355,7 @@ function AttackDodgeCardJourney({
           semanticLabel: candidate.semanticLabel,
           target: parkedTarget,
           rect: prior.phase === "parked" ? parkedTarget : prior.phase === "reveal" ? center : prior.rect,
+          layoutPending: prior.phase === "parked" && !target,
         };
       }
       const showCenterReveal = candidate.reveal && Boolean(target);
@@ -2384,6 +2387,7 @@ function AttackDodgeCardJourney({
         revealElapsedMs: retained?.revealElapsedMs ?? 0,
         revealRemainingMs: retained?.revealRemainingMs ?? STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
         moveStartedAtMs: null,
+        layoutPending: phase === "parked" && !target,
         layoutChangeReason: phase === "reveal"
           ? "public-event-committed"
           : latestNewResponseEventId && candidate.role !== "root"
@@ -2395,14 +2399,15 @@ function AttackDodgeCardJourney({
     const presentEventIds = new Set(nextCards.map((card) => card.eventId));
     for (const previouslyProvenCard of previous) {
       if (presentEventIds.has(previouslyProvenCard.eventId)) continue;
-      const target = actorParkedCard(previouslyProvenCard.actorId) ?? previouslyProvenCard.target;
+      const measuredTarget = actorParkedCard(previouslyProvenCard.actorId);
+      const target = measuredTarget ?? previouslyProvenCard.target;
       if (latestNewResponseEventId && previouslyProvenCard.phase === "reveal") {
         const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         const elapsed = previouslyProvenCard.revealStartedAtMs == null ? 0 : Math.max(0, performance.now() - previouslyProvenCard.revealStartedAtMs);
         rememberAttackDodgeJourneyLifecycle(
           attackDodgeJourneyLifecycleKey(roomCode, currentAction.rootEventId, scopeKey, previouslyProvenCard.eventId),
           {
-            phase: reducedMotion ? "parked" : "move",
+            phase: !measuredTarget || reducedMotion ? "parked" : "move",
             revealStartedAtMs: null,
             revealStartedAtIso: previouslyProvenCard.revealStartedAtIso ?? null,
             revealElapsedMs: (previouslyProvenCard.revealElapsedMs ?? 0) + elapsed,
@@ -2411,13 +2416,14 @@ function AttackDodgeCardJourney({
         );
         nextCards.push({
           ...previouslyProvenCard,
-          phase: reducedMotion ? "parked" : "move",
+          phase: !measuredTarget || reducedMotion ? "parked" : "move",
           target,
           rect: target,
           revealStartedAtMs: null,
           revealElapsedMs: (previouslyProvenCard.revealElapsedMs ?? 0) + elapsed,
           revealRemainingMs: 0,
-          moveStartedAtMs: reducedMotion ? null : performance.now(),
+          moveStartedAtMs: !measuredTarget || reducedMotion ? null : performance.now(),
+          layoutPending: !measuredTarget,
           layoutChangeReason: "interrupted-by-new-committed-response",
         });
       } else {
@@ -2425,12 +2431,13 @@ function AttackDodgeCardJourney({
           ...previouslyProvenCard,
           target,
           rect: previouslyProvenCard.phase === "parked" ? target : previouslyProvenCard.rect,
+          layoutPending: previouslyProvenCard.phase === "parked" && !measuredTarget,
         });
       }
     }
     const roleOrder: Record<JourneyCard["role"], number> = { root: 0, response: 1, deflection: 2 };
     nextCards.sort((left, right) => roleOrder[left.role] - roleOrder[right.role]);
-    const layoutPending = nextCards.some((card) => !actorParkedCard(card.actorId));
+    const layoutPending = nextCards.some((card) => card.layoutPending);
     const nextState: JourneyState = {
       scopeKey,
       viewerId,
@@ -2740,16 +2747,18 @@ function AttackDodgeCardJourney({
             target,
             rect: card.phase === "reveal" ? center : target,
             moveStartedAtMs: null,
+            layoutPending: false,
             layoutChangeReason: "viewport-or-seat-anchor-reflow",
           };
           return {
             ...card,
             phase: card.phase === "move" ? "parked" as const : card.phase,
+            layoutPending: card.phase === "parked" || card.phase === "move",
             layoutChangeReason: "viewport-or-seat-anchor-reflow",
           };
         }),
       };
-      next.layoutPending = next.cards.some((card) => !actorParkedCard(card.actorId));
+      next.layoutPending = next.cards.some((card) => card.layoutPending);
       if (journeyGeometryMatches(current, next) && !current.layoutPending && !next.layoutPending) return;
       journeyRef.current = next;
       setJourney(next);
@@ -2763,7 +2772,8 @@ function AttackDodgeCardJourney({
           suppressTransitions: true,
           layoutPending: true,
           cards: current.cards.map((card) => card.phase === "move"
-            ? { ...card, phase: "parked", rect: card.target, moveStartedAtMs: null, layoutChangeReason: "layout-epoch-pending" }
+            ? { ...card, phase: "parked", rect: card.target, moveStartedAtMs: null, layoutPending: true, layoutChangeReason: "layout-epoch-pending" }
+            : card.phase === "parked" ? { ...card, layoutPending: true, layoutChangeReason: "layout-epoch-pending" }
             : card),
         };
         journeyRef.current = pending;
@@ -2841,15 +2851,17 @@ function AttackDodgeCardJourney({
 
   if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
   const cards = journey.cards;
+  const viewerLayoutPending = journey.scopeKey === scopeKey && journey.viewerId !== viewerId;
   return <section
-    className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}`}
+    className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}${viewerLayoutPending ? " is-viewer-layout-pending" : ""}`}
     data-public-card-display="true"
     data-public-card-renderer-kind="attack-dodge-journey"
     data-public-card-ready="true"
     data-public-card-visual-phase={activePhase?.toUpperCase() ?? undefined}
     data-public-card-motion="attack-dodge"
     data-public-card-viewer-id={viewerId}
-    data-public-card-layout-pending={journey.layoutPending ? "true" : "false"}
+    data-public-card-layout-viewer-id={journey.viewerId || undefined}
+    data-public-card-layout-pending={journey.layoutPending || viewerLayoutPending ? "true" : "false"}
     data-public-card-interaction-id={action.interactionId ?? undefined}
     data-public-card-root-frame-id={action.rootFrameId ?? undefined}
     data-public-card-checkpoint-id={action.checkpointId ?? undefined}
@@ -3816,6 +3828,7 @@ type DuelJourneyCard = DuelJourneyEvent & {
   revealElapsedMs: number;
   revealRemainingMs: number;
   moveStartedAtMs: number | null;
+  layoutPending: boolean;
   layoutChangeReason: string;
 };
 type DuelJourneyState = {
@@ -4021,20 +4034,23 @@ function DuelCardJourney({
           ariaLabel: event.ariaLabel,
           semanticLabel: event.semanticLabel,
           globalOrdinal: event.globalOrdinal,
+          layoutPending: old.phase === "parked" && !actorParkedCard(event.actorId),
         };
         if (latestFreshEventId && old.eventId !== latestFreshEventId && old.phase === "reveal") {
           const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          const measuredTarget = actorParkedCard(event.actorId);
           const elapsed = old.revealStartedAtMs == null ? 0 : Math.max(0, performance.now() - old.revealStartedAtMs);
           return [{
             ...updated,
-            phase: reducedMotion ? "parked" : "move",
+            phase: !measuredTarget || reducedMotion ? "parked" : "move",
             rect: target.rect,
             target: target.rect,
             parkingSide: target.side,
             revealStartedAtMs: null,
             revealElapsedMs: (old.revealElapsedMs ?? 0) + elapsed,
-            moveStartedAtMs: reducedMotion ? null : performance.now(),
+            moveStartedAtMs: !measuredTarget || reducedMotion ? null : performance.now(),
             revealRemainingMs: 0,
+            layoutPending: !measuredTarget,
             layoutChangeReason: "interrupted-by-new-committed-response",
           }];
         }
@@ -4042,6 +4058,7 @@ function DuelCardJourney({
       }
       if (old && viewerChanged) {
         const phase: DuelJourneyPhase = old.phase === "move" ? "parked" : old.phase;
+        const hasMeasuredTarget = measuredTargetEventIds.has(event.eventId);
         return [{
           ...event,
           phase,
@@ -4053,10 +4070,12 @@ function DuelCardJourney({
           revealElapsedMs: old.revealElapsedMs ?? 0,
           revealRemainingMs: old.revealRemainingMs,
           moveStartedAtMs: null,
+          layoutPending: phase === "parked" && !hasMeasuredTarget,
           layoutChangeReason: "viewer-switch",
         }];
       }
       const phase = fresh.has(event.eventId) && event.eventId === latestFreshEventId ? "reveal" as const : "parked" as const;
+      const hasMeasuredTarget = measuredTargetEventIds.has(event.eventId);
       return [{
         ...event,
         phase,
@@ -4068,11 +4087,12 @@ function DuelCardJourney({
         revealElapsedMs: 0,
         revealRemainingMs: STANDARD_PUBLIC_CARD_REVEAL_HOLD_MS,
         moveStartedAtMs: null,
+        layoutPending: phase === "parked" && !hasMeasuredTarget,
         layoutChangeReason: phase === "reveal" ? "public-event-committed" : viewerChanged ? "viewer-switch" : "public-event-restored",
       }];
     }).sort((a, b) => (a.globalOrdinal ?? 0) - (b.globalOrdinal ?? 0));
     const cardsWithReveal = viewerChanged ? cards : withFirstQueuedDuelReveal(cards, center, "public-event-committed");
-    const layoutPending = cardsWithReveal.some((card) => !measuredTargetEventIds.has(card.eventId));
+    const layoutPending = cardsWithReveal.some((card) => card.layoutPending);
     const next: DuelJourneyState = {
       scopeKey,
       viewerId,
@@ -4320,8 +4340,8 @@ function DuelCardJourney({
         suppressTransitions: true,
         layoutPending: true,
         cards: current.cards.map((card) => card.phase === "move"
-          ? { ...card, phase: "parked", rect: card.target, moveStartedAtMs: null, layoutChangeReason: "layout-epoch-pending" }
-          : card),
+          ? { ...card, phase: "parked", rect: card.target, moveStartedAtMs: null, layoutPending: true, layoutChangeReason: "layout-epoch-pending" }
+          : card.phase === "parked" ? { ...card, layoutPending: true, layoutChangeReason: "layout-epoch-pending" } : card),
       };
       journeyRef.current = next;
       return next;
@@ -4365,10 +4385,11 @@ function DuelCardJourney({
               parkingSide: target?.side ?? card.parkingSide,
               rect: phase === "reveal" ? center : phase === "parked" && target ? target.rect : card.rect,
               moveStartedAtMs: phase === "parked" ? null : card.moveStartedAtMs,
+              layoutPending: phase === "parked" && !target,
               layoutChangeReason: "viewport-or-seat-anchor-reflow",
             };
           });
-          const layoutPending = cards.some((card) => !targets.has(card.eventId));
+          const layoutPending = cards.some((card) => card.layoutPending);
           const next: DuelJourneyState = { ...current, cards, center, suppressTransitions: true, layoutPending };
           journeyRef.current = next;
           return next;
@@ -4432,6 +4453,7 @@ function DuelCardJourney({
     ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, action.settlement ? undefined : action.phaseNotice, true)
     : undefined);
   const parkedHistoryCards = journey.cards.filter((card) => card.phase === "parked");
+  const viewerLayoutPending = journey.scopeKey === scopeKey && journey.viewerId !== viewerId;
 
   useEffect(() => {
     if (!enabled || journey.scopeKey !== scopeKey) return;
@@ -4504,14 +4526,15 @@ function DuelCardJourney({
     if (!parkedHistoryCards.length) return null;
     const latestParkedCard = parkedHistoryCards.at(-1)!;
     return <section
-      className={`public-card-display public-card-display-journey is-duel-inspection-history${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}`}
+      className={`public-card-display public-card-display-journey is-duel-inspection-history${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}${viewerLayoutPending ? " is-viewer-layout-pending" : ""}`}
       data-public-card-display="true"
       data-public-card-renderer-kind="duel-journey"
       data-public-card-ready="true"
       data-public-card-inspection-history="true"
       data-public-card-motion={action.motion?.type === "lust-duel" ? "lust-duel" : "duel"}
       data-public-card-viewer-id={viewerId}
-      data-public-card-layout-pending={journey.layoutPending ? "true" : "false"}
+      data-public-card-layout-viewer-id={journey.viewerId || undefined}
+      data-public-card-layout-pending={journey.layoutPending || viewerLayoutPending ? "true" : "false"}
       data-public-card-interaction-id={action.interactionId ?? undefined}
       data-public-card-root-frame-id={action.rootFrameId ?? undefined}
       data-public-card-checkpoint-id={action.checkpointId ?? undefined}
@@ -4543,13 +4566,14 @@ function DuelCardJourney({
   }
 
   return <section
-    className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}`}
+    className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}${viewerLayoutPending ? " is-viewer-layout-pending" : ""}`}
     data-public-card-display="true"
     data-public-card-renderer-kind="duel-journey"
     data-public-card-ready="true"
     data-public-card-motion={action.motion?.type === "lust-duel" ? "lust-duel" : "duel"}
     data-public-card-viewer-id={viewerId}
-    data-public-card-layout-pending={journey.layoutPending ? "true" : "false"}
+    data-public-card-layout-viewer-id={journey.viewerId || undefined}
+    data-public-card-layout-pending={journey.layoutPending || viewerLayoutPending ? "true" : "false"}
     data-public-card-interaction-id={action.interactionId ?? undefined}
     data-public-card-root-frame-id={action.rootFrameId ?? undefined}
     data-public-card-checkpoint-id={action.checkpointId ?? undefined}

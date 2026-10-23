@@ -54,6 +54,182 @@ async function readRootH4Announcement(page, rootEventId) {
   }, rootEventId);
 }
 
+async function installQ3LayoutCapture(page, eventId, viewerId) {
+  await page.evaluate(({ eventId: watchedEventId, viewerId: watchedViewerId }) => {
+    window.__q3LayoutCapture?.stop?.();
+    const capture = {
+      eventId: watchedEventId,
+      viewerId: watchedViewerId,
+      samples: [],
+      scheduled: false,
+      pendingTriggers: new Set(),
+      triggerFrames: new Map(),
+    };
+    const read = () => {
+      const card = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
+        .find((element) => element.getAttribute("data-public-card-journey-event-id") === watchedEventId);
+      const display = card?.closest("[data-public-card-display='true']");
+      if (!card || !display) return null;
+      const rect = card.getBoundingClientRect();
+      const actorId = card.getAttribute("data-public-card-journey-actor-id");
+      const anchor = [...document.querySelectorAll("[data-player-anchor]")]
+        .find((element) => element.getAttribute("data-player-anchor") === actorId);
+      return {
+        phase: card.getAttribute("data-public-card-journey-phase"),
+        viewerId: display.getAttribute("data-public-card-viewer-id"),
+        layoutViewerId: display.getAttribute("data-public-card-layout-viewer-id"),
+        localViewerId: document.querySelector(".local-player-dock")?.getAttribute("data-player-anchor") ?? null,
+        actorId,
+        actorAnchorPresent: Boolean(anchor && anchor.getBoundingClientRect().width > 0 && anchor.getBoundingClientRect().height > 0),
+        displayPending: display.getAttribute("data-public-card-layout-pending"),
+        displayClass: display.className,
+        cardPending: card.getAttribute("data-public-card-journey-layout-pending"),
+        cardClass: card.className,
+        visibility: getComputedStyle(card).visibility,
+        actual: { left: rect.left, top: rect.top },
+        target: {
+          left: Number(card.getAttribute("data-public-card-journey-target-left")),
+          top: Number(card.getAttribute("data-public-card-journey-target-top")),
+        },
+        transitionProperty: getComputedStyle(card).transitionProperty,
+        activeTransitions: card.getAnimations().filter((animation) => animation.playState === "running").length,
+        revealStartedAt: card.getAttribute("data-public-card-journey-reveal-started-at"),
+      };
+    };
+    const sample = (label) => {
+      const values = read();
+      if (values) capture.samples.push({ label, ...values });
+    };
+    const requestFrames = (trigger) => {
+      capture.pendingTriggers.add(trigger);
+      if (capture.scheduled) return;
+      capture.scheduled = true;
+      const next = () => {
+        for (const pendingTrigger of capture.pendingTriggers) {
+          const frame = capture.triggerFrames.get(pendingTrigger) ?? 0;
+          if (frame >= 3) continue;
+          capture.triggerFrames.set(pendingTrigger, frame + 1);
+          sample(`${pendingTrigger}-frame-${frame + 1}`);
+        }
+        const hasPendingFrames = [...capture.pendingTriggers].some((pendingTrigger) =>
+          (capture.triggerFrames.get(pendingTrigger) ?? 0) < 3);
+        if (hasPendingFrames) window.requestAnimationFrame(next);
+        else capture.scheduled = false;
+      };
+      window.requestAnimationFrame(next);
+    };
+    const observer = new MutationObserver(() => {
+      if (!read()) return;
+      sample("viewer-commit");
+      requestFrames("viewer");
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+      attributeFilter: [
+        "class", "style", "data-public-card-viewer-id", "data-public-card-layout-pending",
+        "data-public-card-journey-event-id", "data-public-card-journey-phase",
+        "data-public-card-journey-layout-pending", "data-public-card-journey-target-left",
+        "data-public-card-journey-target-top",
+      ],
+    });
+    const onResize = () => requestFrames("resize");
+    window.addEventListener("resize", onResize);
+    window.visualViewport?.addEventListener("resize", onResize);
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onResize);
+    for (const element of document.querySelectorAll(".play-table, .player-board, [data-player-anchor]")) resizeObserver?.observe(element);
+    capture.stop = () => {
+      observer.disconnect();
+      window.removeEventListener("resize", onResize);
+      window.visualViewport?.removeEventListener("resize", onResize);
+      resizeObserver?.disconnect();
+    };
+    capture.requestFrames = requestFrames;
+    window.__q3LayoutCapture = capture;
+  }, { eventId, viewerId });
+}
+
+async function resetQ3LayoutCapture(page) {
+  await expect.poll(() => page.evaluate(() => !window.__q3LayoutCapture?.scheduled)).toBe(true);
+  await page.evaluate(() => {
+    window.__q3LayoutCapture.samples = [];
+    window.__q3LayoutCapture.pendingTriggers = new Set();
+    window.__q3LayoutCapture.triggerFrames = new Map();
+  });
+}
+
+function expectQ3ParkedFrames(samples, viewerId, actorId, trigger = "viewer") {
+  const frames = samples.filter((sample) => /(?:viewer|resize)-frame-\d+$/.test(sample.label));
+  expect(frames.length, JSON.stringify(samples)).toBeGreaterThan(0);
+  expect(frames.some((sample) => sample.label.startsWith(`${trigger}-frame-`)), JSON.stringify(samples)).toBe(true);
+  for (const sample of frames) {
+    expect(sample.actorId, JSON.stringify(sample)).toBe(actorId);
+    expect(sample.phase, JSON.stringify(sample)).not.toBe("move");
+    const currentViewerOwnsDock = sample.localViewerId === viewerId;
+    const layoutBelongsToAnotherViewer = sample.viewerId !== viewerId || (sample.layoutViewerId && sample.layoutViewerId !== viewerId);
+    if (currentViewerOwnsDock && layoutBelongsToAnotherViewer) {
+      expect(sample.visibility, JSON.stringify(sample)).toBe("hidden");
+      expect(sample.transitionProperty, JSON.stringify(sample)).toBe("none");
+      continue;
+    }
+    if (layoutBelongsToAnotherViewer) continue;
+    if (sample.phase !== "parked") continue;
+    const awaitingMeasuredAnchor = sample.cardPending === "true"
+      || sample.displayClass.includes("is-viewer-layout-pending");
+    if (awaitingMeasuredAnchor) {
+      expect(sample.visibility, JSON.stringify(sample)).toBe("hidden");
+    } else {
+      expect(sample.actorAnchorPresent, JSON.stringify(sample)).toBe(true);
+      expect(sample.visibility, JSON.stringify(sample)).toBe("visible");
+      expect(Math.abs(sample.actual.left - sample.target.left), JSON.stringify(sample)).toBeLessThanOrEqual(2);
+      expect(Math.abs(sample.actual.top - sample.target.top), JSON.stringify(sample)).toBeLessThanOrEqual(2);
+    }
+  }
+  const firstVisibleFrame = frames.find((sample) => sample.phase === "parked" && sample.visibility === "visible");
+  if (firstVisibleFrame) {
+    expect(firstVisibleFrame.activeTransitions, JSON.stringify(firstVisibleFrame)).toBe(0);
+  }
+  return frames;
+}
+
+async function waitForQ3CardAtCurrentAnchor(page, eventId, viewerId, actorId) {
+  let latest = null;
+  await expect.poll(async () => {
+    latest = await page.evaluate(({ watchedEventId }) => {
+      const card = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
+        .find((element) => element.getAttribute("data-public-card-journey-event-id") === watchedEventId);
+      const display = card?.closest("[data-public-card-display='true']");
+      const actualRect = card?.getBoundingClientRect();
+      const actorId = card?.getAttribute("data-public-card-journey-actor-id");
+      const anchor = [...document.querySelectorAll("[data-player-anchor]")]
+        .find((element) => element.getAttribute("data-player-anchor") === actorId);
+      const target = card ? {
+        left: Number(card.getAttribute("data-public-card-journey-target-left")),
+        top: Number(card.getAttribute("data-public-card-journey-target-top")),
+      } : null;
+      return {
+        viewerId: display?.getAttribute("data-public-card-viewer-id"),
+        layoutViewerId: display?.getAttribute("data-public-card-layout-viewer-id"),
+        actorId,
+        phase: card?.getAttribute("data-public-card-journey-phase"),
+        displayPending: display?.getAttribute("data-public-card-layout-pending"),
+        cardPending: card?.getAttribute("data-public-card-journey-layout-pending"),
+        visibility: card ? getComputedStyle(card).visibility : null,
+        actorAnchorPresent: Boolean(anchor && anchor.getBoundingClientRect().width > 0 && anchor.getBoundingClientRect().height > 0),
+        actual: actualRect ? { left: actualRect.left, top: actualRect.top } : null,
+        target,
+      };
+    }, { watchedEventId: eventId });
+    return latest.viewerId === viewerId && latest.layoutViewerId === viewerId && latest.actorId === actorId
+      && latest.phase === "parked" && latest.displayPending === "false" && latest.cardPending === "false"
+      && latest.visibility === "visible" && latest.actorAnchorPresent
+      && Math.abs(latest.actual.left - latest.target.left) <= 2
+      && Math.abs(latest.actual.top - latest.target.top) <= 2;
+  }, { timeout: 12_000 }).toBe(true);
+  return latest;
+}
+
 test("test-game perspective switches manually and stays selected when the server advances the turn", async ({ page, request }) => {
   const created = await request.post(`${API}/api/rooms`, { data: { action: "create", name: "DUEL VIEW HOST" } });
   const createdBody = await created.json();
@@ -321,14 +497,42 @@ test("opponent Inspect retains parked public Duel history through SWITCH and ref
 
   const switchButton = page.getByTestId(`test-view-switch-${alternateViewer.id}`);
   await expect(switchButton).toBeVisible();
+  await installQ3LayoutCapture(page, rootEvent.id, alternateViewer.id);
+  await resetQ3LayoutCapture(page);
   await switchButton.click();
   await expect(page.locator(`.local-player-dock[data-player-anchor="${alternateViewer.id}"]`)).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__q3LayoutCapture.samples.some((sample) => sample.label === "viewer-frame-1"))).toBe(true);
+  const switchFrames = await page.evaluate(() => window.__q3LayoutCapture.samples);
+  expectQ3ParkedFrames(switchFrames, alternateViewer.id, source.id);
+  for (const sample of switchFrames.filter((item) => item.label.startsWith("viewer-frame-"))) {
+    expect(sample.revealStartedAt).toBe(revealStartedAt);
+  }
   const switchedDisplay = page.locator(`.public-card-display[data-public-card-motion="duel"][data-public-card-root-event-id="${rootEvent.id}"]`);
   const switchedRoot = switchedDisplay.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`);
   await expect(switchedRoot).toHaveAttribute("data-public-card-journey-phase", "parked");
   await expect(switchedRoot).toHaveAttribute("data-public-card-journey-event-id", rootEvent.id);
   expect(await switchedRoot.getAttribute("data-public-card-journey-reveal-started-at")).toBe(revealStartedAt);
   expect(submittedPosts).toEqual([]);
+
+  const duelPhoneViewports = [
+    { width: 390, height: 700 },
+    { width: 390, height: 844 },
+    { width: 440, height: 766 },
+    { width: 440, height: 894 },
+    { width: 480, height: 900 },
+  ];
+  for (const viewport of duelPhoneViewports) {
+    await resetQ3LayoutCapture(page);
+    await page.setViewportSize(viewport);
+    await expect.poll(() => page.evaluate(() => !window.__q3LayoutCapture.scheduled)).toBe(true);
+    await page.evaluate(() => window.__q3LayoutCapture.requestFrames("resize"));
+    await expect.poll(() => page.evaluate(() => window.__q3LayoutCapture.samples.some((sample) => sample.label === "resize-frame-1"))).toBe(true);
+    const resizeSamples = await page.evaluate(() => window.__q3LayoutCapture.samples);
+    const resizeFrames = expectQ3ParkedFrames(resizeSamples, alternateViewer.id, source.id, "resize");
+    expect(resizeFrames[0].activeTransitions, JSON.stringify(resizeFrames[0])).toBe(0);
+    for (const sample of resizeFrames) expect(sample.revealStartedAt).toBe(revealStartedAt);
+    await waitForQ3CardAtCurrentAnchor(page, rootEvent.id, alternateViewer.id, source.id);
+  }
 
   await page.reload();
   await expect(page.locator(`.local-player-dock[data-player-anchor="${host.id}"]`)).toBeVisible();
@@ -338,7 +542,7 @@ test("opponent Inspect retains parked public Duel history through SWITCH and ref
   await expect(refreshedRoot).toHaveAttribute("data-public-card-journey-event-id", rootEvent.id);
 });
 
-test("Quick Test switching rebases a parked Barbarian Invasion card before the first new-view frame", async ({ page, request }) => {
+test("Quick Test switching rebases a parked Barbarian Invasion card before the first new-view frame", async ({ page, request }, testInfo) => {
   test.setTimeout(90_000);
   const hostName = "GROUP ROOT VIEW REBASE";
   const created = await request.post(`${API}/api/rooms`, { data: { action: "create", name: hostName } });
@@ -477,6 +681,11 @@ test("Quick Test switching rebases a parked Barbarian Invasion card before the f
         label,
         phase: card.getAttribute("data-public-card-journey-phase"),
         layoutPending: root.getAttribute("data-public-card-layout-pending"),
+        cardLayoutPending: card.getAttribute("data-public-card-journey-layout-pending"),
+        viewerId: root.getAttribute("data-public-card-viewer-id"),
+        layoutViewerId: root.getAttribute("data-public-card-layout-viewer-id"),
+        displayClass: root.className,
+        cardClass: card.className,
         visibility: getComputedStyle(card).visibility,
         actual: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
         target: {
@@ -549,10 +758,12 @@ test("Quick Test switching rebases a parked Barbarian Invasion card before the f
     ]));
     for (const sample of samples) {
       expect(sample.phase).toBe("parked");
-      if (sample.layoutPending === "true") {
-        expect(sample.visibility).toBe("hidden");
+      expect(sample.viewerId).toBe(viewer.id);
+      if (sample.cardLayoutPending === "true" || sample.displayClass.includes("is-viewer-layout-pending")) {
+        expect(sample.visibility, JSON.stringify(sample)).toBe("hidden");
       } else {
         expect(sample.visibility).toBe("visible");
+        expect(sample.layoutViewerId).toBe(viewer.id);
         expect(Math.abs(sample.actual.left - sample.target.left), JSON.stringify(sample)).toBeLessThanOrEqual(2);
         expect(Math.abs(sample.actual.top - sample.target.top), JSON.stringify(sample)).toBeLessThanOrEqual(2);
       }
@@ -564,6 +775,40 @@ test("Quick Test switching rebases a parked Barbarian Invasion card before the f
     switchResults.push({ viewerId: viewer.id, viewport: page.viewportSize(), h4: h4AfterSwitch, firstCommit });
     await page.evaluate(() => window.__q3RebaseCapture.observer.disconnect());
   }
+  await installQ3LayoutCapture(page, rootEventId, host.id);
+  const groupPhoneViewports = [
+    { width: 390, height: 700 },
+    { width: 390, height: 844 },
+    { width: 440, height: 766 },
+    { width: 440, height: 894 },
+    { width: 480, height: 900 },
+  ];
+  const resizeEvidence = [];
+  for (const viewport of groupPhoneViewports) {
+    await resetQ3LayoutCapture(page);
+    await page.setViewportSize(viewport);
+    await expect.poll(() => page.evaluate(() => !window.__q3LayoutCapture.scheduled)).toBe(true);
+    await page.evaluate(() => window.__q3LayoutCapture.requestFrames("resize"));
+    await expect.poll(() => page.evaluate(() => window.__q3LayoutCapture.samples.some((sample) => sample.label === "resize-frame-1"))).toBe(true);
+    const samples = await page.evaluate(() => window.__q3LayoutCapture.samples);
+    const frames = expectQ3ParkedFrames(samples, host.id, host.id, "resize");
+    for (const sample of frames) expect(sample.revealStartedAt).toBe(revealStartedAt);
+    const settled = await waitForQ3CardAtCurrentAnchor(page, rootEventId, host.id, host.id);
+    resizeEvidence.push({ viewport, frames: frames.map(({ label, phase, visibility, actual, target, transitionProperty }) => ({
+      label, phase, visibility, actual, target, transitionProperty,
+    })), settled } );
+    if (["390x700", "440x766", "480x900"].includes(`${viewport.width}x${viewport.height}`)) {
+      await testInfo.attach(`q3-group-root-${viewport.width}x${viewport.height}.png`, {
+        body: await page.screenshot({ animations: "disabled" }),
+        contentType: "image/png",
+      });
+    }
+  }
+  await testInfo.attach("q3-group-root-mobile-resize-geometry.json", {
+    body: JSON.stringify(resizeEvidence, null, 2),
+    contentType: "application/json",
+  });
+  console.log(`[Q3 GROUP ROOT mobile resize] ${JSON.stringify(resizeEvidence)}`);
   console.log(`[Q4 TEST SWITCH viewer cycle] ${JSON.stringify(switchResults.map(({ viewerId, h4, firstCommit }) => ({
     viewerId,
     eventId: h4.eventId,
@@ -572,4 +817,146 @@ test("Quick Test switching rebases a parked Barbarian Invasion card before the f
     centerOffset: h4.centerOffset,
     firstPaint: { phase: firstCommit.phase, layoutPending: firstCommit.layoutPending, transition: firstCommit.transitionProperty },
   })))} `);
+});
+
+test("Quick Test SWITCH hides an Attack journey until its current mobile author anchor is measured", async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const hostName = "ATTACK VIEW REBASE";
+  const created = await request.post(`${API}/api/rooms`, { data: { action: "create", name: hostName } });
+  expect(created.status()).toBe(201);
+  const createdBody = await created.json();
+  const code = createdBody.room.code;
+  const token = createdBody.token;
+  const post = async (action, values = {}) => {
+    const response = await request.post(`${API}/api/rooms`, { data: { action, code, token, ...values } });
+    const body = await response.json();
+    expect(response.status(), JSON.stringify(body)).toBeLessThan(300);
+    return body.room;
+  };
+
+  let room = await post("add_test_players");
+  room = await post("enable_test_room");
+  const host = room.players.find((player) => player.isHost);
+  const target = room.players.find((player) => player.isTestPlayer && player.seat === host.seat + 1);
+  expect(host).toBeTruthy();
+  expect(target).toBeTruthy();
+  room = await post("configure_test_hands", {
+    presetId: "custom",
+    handsBySeat: Object.fromEntries(room.players.map((player) => [player.seat, player.id === host.id ? ["Attack"] : ["Negation"]])),
+    expectedRevision: 0,
+  });
+  room = await post("start");
+  const noAutomaticTurnPrompts = new Set([
+    "cao-cao", "xiahou-dun", "liu-bei", "guan-yu", "zhang-fei", "zhao-yun",
+    "sun-quan", "gan-ning", "huang-gai", "lu-xun", "huaxiong", "gongsun-zan",
+    "pan-feng", "ma-chao", "lü-bu", "simayi", "guo-jia",
+  ]);
+  while (room.status === "heroes") {
+    const hero = room.myHeroOptions.find((candidate) => noAutomaticTurnPrompts.has(candidate.id));
+    expect(hero, "each controlled test seat has a Standard hero candidate").toBeTruthy();
+    room = await post("choose_hero", { heroId: hero.id });
+  }
+  const context = () => ({
+    actionRevision: room.actionRevision,
+    meId: room.meId,
+    phase: room.phase,
+    pendingKind: room.pending?.kind ?? null,
+    actorId: room.currentAction?.actorId ?? room.actionPlayerId,
+  });
+  for (let turns = 0; (room.currentAction?.actorId ?? room.actionPlayerId) !== host.id && turns < room.players.length; ) {
+    if (room.phase?.startsWith("draw")) {
+      room = await post("draw", { context: context() });
+    } else if (room.phase?.startsWith("play")) {
+      room = await post("end_turn", { context: context() });
+      turns += 1;
+    } else if (room.phase === "discard") {
+      const actor = room.players.find((player) => player.id === (room.currentAction?.actorId ?? room.actionPlayerId));
+      const discardCount = Math.max(0, room.myHand.length - (actor?.hp ?? 0));
+      room = await post("discard_cards", { cardIds: room.myHand.slice(0, discardCount).map((card) => card.id), context: context() });
+    } else {
+      throw new Error(`Unexpected phase while advancing to the host Attack turn: ${room.phase}`);
+    }
+  }
+  expect(room.currentAction?.actorId ?? room.actionPlayerId).toBe(host.id);
+  if (room.phase?.startsWith("draw")) room = await post("draw", { context: context() });
+  expect(room.phase?.startsWith("play")).toBe(true);
+  const attack = room.myHand.find((card) => card.kind === "Attack");
+  expect(attack, "the host has a configured physical Attack").toBeTruthy();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(({ roomCode, sessionToken, name }) => {
+    localStorage.setItem("three-realms-session", JSON.stringify({ code: roomCode, token: sessionToken, name }));
+  }, { roomCode: code, sessionToken: token, name: hostName });
+  await page.goto(`${API}/`);
+  await expect(page.locator(".game-shell")).toBeVisible();
+  room = await post("play_card", { cardId: attack.id, targetId: target.id, context: context() });
+  expect(room.currentAction?.kind).toBe("response");
+  expect(room.currentAction?.requirement).toBe("dodge");
+  const rootEvent = [...room.timeline].reverse().find((event) => event.type === "card"
+    && event.action === "play" && event.card?.id === attack.id && event.presentation !== false);
+  expect(rootEvent, "the Attack has one proven public root event").toBeTruthy();
+  const display = page.locator(`.public-card-display[data-public-card-motion="attack-dodge"][data-public-card-root-event-id="${rootEvent.id}"]`);
+  const rootCard = display.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`);
+  await expect(display).toBeVisible({ timeout: 20_000 });
+  await expect(rootCard).toHaveAttribute("data-public-card-journey-actor-id", host.id);
+  await expect(rootCard).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });
+  const revealStartedAt = await rootCard.getAttribute("data-public-card-journey-reveal-started-at");
+  expect(revealStartedAt).toBeTruthy();
+  await testInfo.attach("q3-attack-root-before-switch-390x844.png", {
+    body: await page.screenshot({ animations: "disabled" }),
+    contentType: "image/png",
+  });
+
+  const firstViewer = room.players.find((player) => player.isTestPlayer && player.id !== host.id);
+  expect(firstViewer).toBeTruthy();
+  const hiddenAuthorAnchor = await page.addStyleTag({ content: `[data-player-anchor="${host.id}"]{display:none!important}` });
+  await installQ3LayoutCapture(page, rootEvent.id, firstViewer.id);
+  await resetQ3LayoutCapture(page);
+  const switchButton = page.getByTestId(`test-view-switch-${firstViewer.id}`);
+  await expect(switchButton).toBeVisible();
+  await switchButton.click();
+  await expect(page.locator(`.local-player-dock[data-player-anchor="${firstViewer.id}"]`)).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__q3LayoutCapture.samples.some((sample) => sample.label === "viewer-frame-1"))).toBe(true);
+  let switchSamples = await page.evaluate(() => window.__q3LayoutCapture.samples);
+  const withheldFrames = expectQ3ParkedFrames(switchSamples, firstViewer.id, host.id);
+  expect(withheldFrames.some((sample) => sample.actorAnchorPresent === false && sample.visibility === "hidden"), JSON.stringify(withheldFrames)).toBe(true);
+  expect((await rootCard.getAttribute("data-public-card-journey-reveal-started-at"))).toBe(revealStartedAt);
+
+  await hiddenAuthorAnchor.evaluate((style) => style.remove());
+  await waitForQ3CardAtCurrentAnchor(page, rootEvent.id, firstViewer.id, host.id);
+  switchSamples = await page.evaluate(() => window.__q3LayoutCapture.samples);
+  expectQ3ParkedFrames(switchSamples, firstViewer.id, host.id);
+  expect(await rootCard.getAttribute("data-public-card-journey-reveal-started-at")).toBe(revealStartedAt);
+
+  const resizeViewports = [
+    { width: 390, height: 700 },
+    { width: 390, height: 844 },
+    { width: 440, height: 766 },
+    { width: 440, height: 894 },
+    { width: 480, height: 900 },
+  ];
+  const resizeEvidence = [];
+  for (const viewport of resizeViewports) {
+    await resetQ3LayoutCapture(page);
+    await page.setViewportSize(viewport);
+    await expect.poll(() => page.evaluate(() => !window.__q3LayoutCapture.scheduled)).toBe(true);
+    await page.evaluate(() => window.__q3LayoutCapture.requestFrames("resize"));
+    await expect.poll(() => page.evaluate(() => window.__q3LayoutCapture.samples.some((sample) => sample.label === "resize-frame-1"))).toBe(true);
+    const samples = await page.evaluate(() => window.__q3LayoutCapture.samples);
+    const frames = expectQ3ParkedFrames(samples, firstViewer.id, host.id, "resize");
+    for (const sample of frames) expect(sample.revealStartedAt).toBe(revealStartedAt);
+    const settled = await waitForQ3CardAtCurrentAnchor(page, rootEvent.id, firstViewer.id, host.id);
+    resizeEvidence.push({ viewport, frames: frames.map(({ label, phase, visibility, actual, target, transitionProperty }) => ({ label, phase, visibility, actual, target, transitionProperty })), settled });
+    if (["390x700", "440x766", "480x900"].includes(`${viewport.width}x${viewport.height}`)) {
+      await testInfo.attach(`q3-attack-root-${viewport.width}x${viewport.height}.png`, {
+        body: await page.screenshot({ animations: "disabled" }),
+        contentType: "image/png",
+      });
+    }
+  }
+  await testInfo.attach("q3-attack-mobile-resize-geometry.json", {
+    body: JSON.stringify(resizeEvidence, null, 2),
+    contentType: "application/json",
+  });
+  console.log(`[Q3 ATTACK-DODGE mobile resize] ${JSON.stringify(resizeEvidence)}`);
 });

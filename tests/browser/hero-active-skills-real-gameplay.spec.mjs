@@ -734,14 +734,78 @@ test("real Lust keeps player-name order through Skip and settlement after the co
   expect(firstProjection.currentAction).toMatchObject({ kind: "response", actorId: firstViewer.id, requirement: "attack" });
   expect(firstProjection.currentAction.legalActions).toContain("decline_response");
   expect(JSON.stringify(firstProjection.presentationSnapshot.publicCardEffects)).not.toContain(hiddenCard.id);
+  await page.addInitScript(({ targetViewerId, actorId, cardId }) => {
+    const capture = {
+      samples: [],
+      frame: 0,
+      firstVisibleFrame: null,
+      done: false,
+    };
+    const read = () => {
+      const card = [...document.querySelectorAll("[data-public-card-journey-card-id]")]
+        .find((element) => element.getAttribute("data-public-card-journey-card-id") === cardId);
+      const display = card?.closest(".public-card-display");
+      if (!display || !card) return null;
+      const rect = card.getBoundingClientRect();
+      const anchor = [...document.querySelectorAll("[data-player-anchor]")]
+        .find((element) => element.getAttribute("data-player-anchor") === actorId);
+      return {
+        viewerId: display.getAttribute("data-public-card-viewer-id"),
+        layoutViewerId: display.getAttribute("data-public-card-layout-viewer-id"),
+        displayPending: display.getAttribute("data-public-card-layout-pending"),
+        displayClass: display.className,
+        actorId: card.getAttribute("data-public-card-journey-actor-id"),
+        phase: card.getAttribute("data-public-card-journey-phase"),
+        cardPending: card.getAttribute("data-public-card-journey-layout-pending"),
+        visibility: getComputedStyle(card).visibility,
+        actual: { left: rect.left, top: rect.top },
+        target: {
+          left: Number(card.getAttribute("data-public-card-journey-target-left")),
+          top: Number(card.getAttribute("data-public-card-journey-target-top")),
+        },
+        transitionProperty: getComputedStyle(card).transitionProperty,
+        actorAnchorPresent: Boolean(anchor && anchor.getBoundingClientRect().width > 0 && anchor.getBoundingClientRect().height > 0),
+      };
+    };
+    const sample = () => {
+      const values = read();
+      if (values) capture.samples.push({ frame: capture.frame, ...values });
+    };
+    const inspectFrame = () => {
+      capture.frame += 1;
+      sample();
+      if (capture.firstVisibleFrame == null && capture.samples.some((entry) => entry.viewerId === targetViewerId && entry.visibility === "visible")) {
+        capture.firstVisibleFrame = capture.frame;
+      }
+      if (capture.firstVisibleFrame != null && capture.frame - capture.firstVisibleFrame >= 3) {
+        capture.done = true;
+        return;
+      }
+      if (capture.frame < 600) window.requestAnimationFrame(inspectFrame);
+    };
+    window.__q3LustRebase = capture;
+    window.requestAnimationFrame(inspectFrame);
+  }, { targetViewerId: firstViewer.id, actorId: seed.players[0].id, cardId: cost.id });
   await page.evaluate(({ code, token, name }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
   }, { code: seed.code, token: firstViewer.token, name: firstViewer.name });
   await page.reload();
   await expect(page.locator(`.public-card-display[data-public-card-viewer-id="${firstViewer.id}"]`)).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__q3LustRebase.samples.some((sample) => sample.viewerId)), { timeout: 15_000 }).toBe(true);
   const restored = page.locator(`[data-public-card-journey-card-id="${cost.id}"]`);
   await expect(restored).toHaveAttribute("data-public-card-journey-phase", "parked");
   await expect(restored).toHaveAttribute("data-public-card-journey-actor-id", seed.players[0].id);
+  const lustRebaseSamples = await page.evaluate(() => window.__q3LustRebase.samples);
+  const firstVisibleLustFrame = lustRebaseSamples.find((sample) => sample.viewerId === firstViewer.id && sample.visibility === "visible");
+  expect(firstVisibleLustFrame, JSON.stringify(lustRebaseSamples)).toBeTruthy();
+  expect(firstVisibleLustFrame.phase).toBe("parked");
+  expect(firstVisibleLustFrame.actorId).toBe(seed.players[0].id);
+  expect(firstVisibleLustFrame.layoutViewerId).toBe(firstViewer.id);
+  expect(firstVisibleLustFrame.actorAnchorPresent).toBe(true);
+  expect(Math.abs(firstVisibleLustFrame.actual.left - firstVisibleLustFrame.target.left)).toBeLessThanOrEqual(2);
+  expect(Math.abs(firstVisibleLustFrame.actual.top - firstVisibleLustFrame.target.top)).toBeLessThanOrEqual(2);
+  expect(firstVisibleLustFrame.transitionProperty).toBe("none");
+  console.log(`[Q3 LUST viewer rebase] ${JSON.stringify({ firstVisibleLustFrame, sampleCount: lustRebaseSamples.length })}`);
   await expect(page.locator(`[data-public-card-frame-event-id="${activation.eventId}"]`)).toHaveCount(0);
   await expect(page.locator(`[data-effect-notice-event-id="${activation.eventId}"]`)).toHaveCount(0);
   await expect(page.locator(`[data-public-card-announcement-event-id="${activation.costEventId}"]`)).toBeVisible();
