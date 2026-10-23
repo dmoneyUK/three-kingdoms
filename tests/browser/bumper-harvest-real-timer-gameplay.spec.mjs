@@ -207,6 +207,85 @@ async function publicCardInstances(page, identities) {
   }, identities);
 }
 
+async function startPublicCardIdentityCapture(page, cardIds) {
+  await page.evaluate((capturedCardIds) => {
+    const selector = [
+      "[data-public-card-journey-event-id]",
+      "[data-public-card-static-event-id]",
+      ".active-table-reveal [data-settlement-card-id]",
+      ".table-played-card[data-settlement-card-id]",
+    ].join(",");
+    const capture = { samples: 0, duplicateFrames: 0, firstDuplicate: null, identities: {} };
+    let frame = 0;
+    const sample = () => {
+      capture.samples += 1;
+      const visibleByCardId = new Map();
+      for (const element of document.querySelectorAll(selector)) {
+        const journey = element.matches("[data-public-card-journey-event-id]");
+        const active = element.closest(".active-table-reveal");
+        const settled = element.closest(".table-played-card");
+        const cardId = element.getAttribute("data-public-card-journey-card-id")
+          ?? element.getAttribute("data-public-card-static-card-id")
+          ?? element.getAttribute("data-settlement-card-id");
+        if (!capturedCardIds.includes(cardId)) continue;
+        const eventId = element.getAttribute("data-public-card-journey-event-id")
+          ?? element.getAttribute("data-public-card-static-event-id")
+          ?? active?.getAttribute("data-settlement-event-id")
+          ?? settled?.getAttribute("data-settlement-event-id");
+        const rect = element.getBoundingClientRect();
+        const visible = rect.width > 0 && rect.height > 0
+          && element.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+        if (!visible) continue;
+        const instance = {
+          eventId,
+          cardId,
+          renderer: journey ? "public-journey" : active ? "active-table-reveal" : settled ? "settled-table-card" : "public-static",
+          phase: element.getAttribute("data-public-card-journey-phase")
+            ?? element.getAttribute("data-public-card-visual-phase")
+            ?? active?.getAttribute("data-public-card-visual-phase")
+            ?? null,
+          rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
+          sampledAt: Math.round(performance.now()),
+        };
+        const instances = visibleByCardId.get(cardId) ?? [];
+        instances.push(instance);
+        visibleByCardId.set(cardId, instances);
+        const identity = capture.identities[cardId] ?? { eventIds: new Set(), visibleFrames: 0, renderers: new Set() };
+        if (eventId) identity.eventIds.add(eventId);
+        identity.visibleFrames += 1;
+        identity.renderers.add(instance.renderer);
+        capture.identities[cardId] = identity;
+      }
+      for (const [cardId, instances] of visibleByCardId) {
+        if (instances.length < 2) continue;
+        capture.duplicateFrames += 1;
+        if (!capture.firstDuplicate) capture.firstDuplicate = { cardId, instances };
+      }
+    };
+    const loop = () => {
+      sample();
+      frame = requestAnimationFrame(loop);
+    };
+    frame = requestAnimationFrame(loop);
+    window.__negA1PublicCardIdentityCapture = {
+      stop() {
+        cancelAnimationFrame(frame);
+        sample();
+        return {
+          samples: capture.samples,
+          duplicateFrames: capture.duplicateFrames,
+          firstDuplicate: capture.firstDuplicate,
+          identities: Object.fromEntries(Object.entries(capture.identities).map(([cardId, identity]) => [cardId, {
+            eventIds: [...identity.eventIds],
+            visibleFrames: identity.visibleFrames,
+            renderers: [...identity.renderers],
+          }])),
+        };
+      },
+    };
+  }, cardIds);
+}
+
 async function playHarvest(page) {
   await page.locator(`[data-hand-card-id="${harvest.id}"] .game-card`).click();
   const play = page.locator('[data-console-surface="local-operation"] button.primary');
@@ -436,6 +515,8 @@ test("NEG-A1 restores Harvest choice and deduplicates public Negation cards on p
       await openPlayer(page, seed, index, phones[index]);
       return { viewer, page };
     }));
+    const trackedNegationCardIds = [negation.id, counterNegation.id];
+    await Promise.all(viewers.map(({ page }) => startPublicCardIdentityCapture(page, trackedNegationCardIds)));
 
     const root = await request.post(`${API}/api/rooms`, {
       data: { action: "play_card", code: seed.code, token: seed.players[0].token, cardId: harvest.id },
@@ -473,6 +554,11 @@ test("NEG-A1 restores Harvest choice and deduplicates public Negation cards on p
     const committed = await commitNegation(request, seed, 1, negation.id);
     expect(committed.event.card.id).toBe(negation.id);
     expect(committed.event.player).toBe(seed.players[1].name);
+    await Promise.all(viewers.map(async ({ page: viewerPage }) => {
+      const stage = viewerPage.locator(".harvest-choice-stage");
+      await expect(stage).toHaveAttribute("data-harvest-readonly", "true");
+      await expect(viewerPage.locator(".harvest-card-select, .harvest-confirm-row")).toHaveCount(0);
+    }));
     const committedCounter = await commitNegation(request, seed, 2, counterNegation.id);
     expect(committedCounter.event.card.id).toBe(counterNegation.id);
     expect(committedCounter.event.player).toBe(seed.players[2].name);
@@ -526,11 +612,25 @@ test("NEG-A1 restores Harvest choice and deduplicates public Negation cards on p
         expect(visibleInstances, `${viewer.viewer} renders ${identity.actor}'s committed Negation once`).toHaveLength(1);
       }
     }
+    const animatedIdentityCapture = await Promise.all(viewers.map(async ({ viewer, page: viewerPage }) => ({
+      viewer: viewer.name,
+      capture: await viewerPage.evaluate(() => window.__negA1PublicCardIdentityCapture?.stop?.() ?? null),
+    })));
+    for (const { viewer, capture } of animatedIdentityCapture) {
+      expect(capture, `${viewer} records the Negation animation and sequential-choice handoff`).not.toBeNull();
+      expect(capture.samples, `${viewer} samples live card frames`).toBeGreaterThan(0);
+      expect(capture.duplicateFrames, `${viewer} never paints one physical Negation twice in one frame: ${JSON.stringify(capture.firstDuplicate)}`).toBe(0);
+      for (const identity of committedIdentities) {
+        expect(capture.identities[identity.cardId]?.eventIds, `${viewer} observes the authenticated event for ${identity.actor}'s card`).toContain(identity.eventId);
+        expect(capture.identities[identity.cardId]?.visibleFrames, `${viewer} shows ${identity.actor}'s physical card during transition`).toBeGreaterThan(0);
+      }
+    }
     await testInfo.attach("neg-a1-f2-negation-card-ownership-after-fix", {
       body: JSON.stringify({
         publicEvents: committedIdentities,
         action: chooserRoom.currentAction,
         instances: negationInstances,
+        animatedIdentityCapture,
       }, null, 2),
       contentType: "application/json",
     });
@@ -567,6 +667,8 @@ test("NEG-A1 restores Harvest choice and deduplicates public Negation cards on p
         presentationBusyCauses: busyCauses,
       };
     });
+    expect(readiness.presentationBusy, "the authorized choice remains available while old Negation presentation is busy").toBe(true);
+    expect(Object.values(readiness.presentationBusyCauses ?? {}).some(Boolean), "the presentation-busy diagnostic identifies the active cause").toBe(true);
     console.info(`NEG-A1 P0 authorized choice: ${JSON.stringify(readiness)}`);
     await testInfo.attach("neg-a1-authorized-mobile-choice-readiness", {
       body: JSON.stringify({

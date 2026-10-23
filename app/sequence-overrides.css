@@ -6465,3 +6465,7 @@
     inset-inline: var(--side-safe-edge);
   }
 }
+
+.game-shell .public-card-display-journey > .public-card-journey-card.is-response-history-owner-pending {
+  visibility: hidden !important;
+}

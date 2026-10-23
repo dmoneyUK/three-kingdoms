@@ -3087,6 +3087,7 @@ function SingleTargetCardJourney({
   action,
   enabled,
   retainHarvestHistory = false,
+  responseHistoryOwnership = [],
   harvestChoiceActive,
   harvestPoolReadOnly,
   sourceName,
@@ -3102,6 +3103,7 @@ function SingleTargetCardJourney({
   action: PublicCardDisplayAction;
   enabled: boolean;
   retainHarvestHistory?: boolean;
+  responseHistoryOwnership?: readonly { eventId: string; cardIds: readonly string[] }[];
   harvestChoiceActive: boolean;
   harvestPoolReadOnly: boolean;
   sourceName: string | null;
@@ -3129,6 +3131,9 @@ function SingleTargetCardJourney({
   const harvestPoolAboveRoot = harvestPoolVisible;
   const historyOnly = Boolean(retainHarvestHistory && isBumperHarvest && !enabled);
   const journeyEnabled = enabled || historyOnly;
+  const responseHistoryEventIds = new Set((action.responseHistory ?? []).map((response) => response.eventId));
+  const activeResponseEventIds = new Set((action.responses ?? []).map((response) => response.eventId));
+  const responseHistoryOwnershipByEventId = new Map(responseHistoryOwnership.map((response) => [response.eventId, new Set(response.cardIds)]));
   const scopeKey = motion?.scopeKey ?? action.rootEventId;
   const [journey, setJourney] = useState<SingleTargetJourneyState>({ scopeKey: "", viewerId: "", harvestPoolReadOnly: false, showNegationChainOrdinals: false, cards: [], center: null, suppressTransitions: false, layoutPending: false });
   const journeyRef = useRef(journey);
@@ -3865,12 +3870,22 @@ function SingleTargetCardJourney({
   >
     {journey.cards.filter((card) => card.phase !== "queued").map((card) => {
       const isCurrent = card.eventId === activeEventId;
+      const responseHistoryOwnedCardIds = responseHistoryOwnershipByEventId.get(card.eventId);
+      const responseCardIds = card.cardFaces ?? [card.cardFace];
+      const responseHistoryOwnershipAcknowledged = Boolean(responseHistoryOwnedCardIds
+        && responseCardIds.length > 0
+        && responseCardIds.every((face) => responseHistoryOwnedCardIds.has(face.id)));
+      const responseHistoryOwnerPending = isBumperHarvest
+        && card.role === "response"
+        && responseHistoryEventIds.has(card.eventId)
+        && !activeResponseEventIds.has(card.eventId)
+        && !responseHistoryOwnershipAcknowledged;
       return <PublicJourneyCard
         key={card.eventId}
         card={card}
         onInspectCard={historyOnly ? undefined : onInspectCard}
         size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
-        className={isCurrent ? "is-current" : "is-prior"}
+        className={`${isCurrent ? "is-current" : "is-prior"}${responseHistoryOwnerPending ? " is-response-history-owner-pending" : ""}`}
         primary={isCurrent}
         showOrdinal={showNegationChainOrdinals || isBumperHarvest && card.phase === "parked"}
         ordinalContext={showNegationChainOrdinals ? "negation-chain" : undefined}
@@ -4748,6 +4763,7 @@ export function PublicCardDisplay({
   viewerId,
   viewerSeat,
   resultReadRemainingMs = null,
+  responseHistoryOwnership = [],
   onInspectCard,
   onJourneyEventParked,
   onJourneySettled,
@@ -4766,6 +4782,7 @@ export function PublicCardDisplay({
   viewerId: string;
   viewerSeat: number | null;
   resultReadRemainingMs?: number | null;
+  responseHistoryOwnership?: readonly { eventId: string; cardIds: readonly string[] }[];
   onInspectCard?: (card: Card, trigger: HTMLButtonElement) => void;
   onJourneyEventParked?: (eventId: string) => void;
   onJourneySettled?: (settlementEventId: string) => void;
@@ -4782,7 +4799,7 @@ export function PublicCardDisplay({
   }
   if (action.motion?.type === "single-target" || action.motion?.type === "negation"
     || action.motion?.type === "group-root" || action.motion?.type === "lust-cost") {
-    return <SingleTargetCardJourney action={action} enabled={enabled} retainHarvestHistory={retainHarvestHistory} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
+    return <SingleTargetCardJourney action={action} enabled={enabled} retainHarvestHistory={retainHarvestHistory} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
   }
   if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {
     return <DuelCardJourney action={action} enabled={enabled} retainHistoryDuringInspection={retainDuelHistoryDuringInspection} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
