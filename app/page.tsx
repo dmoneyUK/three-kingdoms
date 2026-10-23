@@ -2521,6 +2521,30 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       return { roomCode: room.code, eventIds: new Set([...seen, eventId]) };
     });
   }, [room.code, room.timeline]);
+  const [publicCardJourneyOwnership, setPublicCardJourneyOwnership] = useState<{
+    roomCode: string;
+    viewerId: string;
+    actionKey: string;
+    ready: boolean;
+    eventIds: Set<string>;
+    cardIds: Set<string>;
+  }>({ roomCode: "", viewerId: "", actionKey: "", ready: false, eventIds: new Set(), cardIds: new Set() });
+  const reportPublicCardJourneyOwnership = useCallback((
+    actionKey: string,
+    viewerId: string,
+    ready: boolean,
+    cards: readonly { eventId: string; cardIds: readonly string[] }[],
+  ) => {
+    const eventIds = new Set(cards.map(({ eventId }) => eventId));
+    const cardIds = new Set(cards.flatMap(({ cardIds: ids }) => ids));
+    setPublicCardJourneyOwnership((current) => {
+      const matches = current.roomCode === room.code && current.viewerId === viewerId && current.actionKey === actionKey;
+      if (!ready && !matches) return current;
+      const sameSet = (left: Set<string>, right: Set<string>) => left.size === right.size && [...left].every((value) => right.has(value));
+      if (matches && current.ready === ready && sameSet(current.eventIds, eventIds) && sameSet(current.cardIds, cardIds)) return current;
+      return { roomCode: room.code, viewerId, actionKey, ready, eventIds, cardIds };
+    });
+  }, [room.code]);
   if (publicCardJourneySeen.roomCode !== room.code) {
     setPublicCardJourneySeen({ roomCode: room.code, eventIds: new Set((room.timeline ?? []).map((event) => event.id)) });
   }
@@ -5947,6 +5971,20 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   }, [room.code, room.timeline, publicCardDisplayAction?.motion?.type, publicCardDisplayReady, publicCardJourneyEventIdKey]);
   const duelJourneyOwnsRootAndAttacks = publicCardDisplayAction?.motion?.type === "duel"
     || publicCardDisplayAction?.motion?.type === "lust-duel";
+  const publicCardJourneyOwnershipReady = Boolean(publicCardDisplayAction
+    && publicCardJourneyOwnership.ready
+    && publicCardJourneyOwnership.roomCode === room.code
+    && publicCardJourneyOwnership.viewerId === room.meId
+    && publicCardJourneyOwnership.actionKey === publicCardDisplayAction.key);
+  const publicDisplayOwnedResponseHistory = publicCardJourneyOwnershipReady && publicCardDisplayAction
+    ? (publicCardDisplayAction.responseHistory ?? []).filter((response) => {
+      const responseCards = response.cardFaces ?? (response.cardFace ? [response.cardFace] : []);
+      return publicCardJourneyOwnership.eventIds.has(response.eventId)
+        && responseCards.length > 0
+        && responseCards.every((card) => publicCardJourneyOwnership.cardIds.has(card.id))
+        && (!duelJourneyOwnsRootAndAttacks || Number.isInteger(response.ordinal));
+    })
+    : [];
   const publicDisplayOwnedEventIds = publicCardDisplayOwnsPresentation && publicCardDisplayAction
     ? [...new Set([
       publicCardDisplayAction.rootEventId,
@@ -5957,6 +5995,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ...(publicCardDisplayAction.responses ?? [])
         .filter((response) => !duelJourneyOwnsRootAndAttacks || Number.isInteger(response.ordinal))
         .map((response) => response.eventId),
+      ...publicDisplayOwnedResponseHistory.map((response) => response.eventId),
     ].filter((eventId): eventId is string => Boolean(eventId)))]
     : [];
   const publicDisplayOwnedPhysicalCardIds = new Set(publicCardDisplayOwnsPresentation && publicCardDisplayAction
@@ -5967,6 +6006,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ...(publicCardDisplayAction.responses ?? [])
         .filter((response) => !duelJourneyOwnsRootAndAttacks || Number.isInteger(response.ordinal))
         .flatMap((response) => (response.cardFaces ?? (response.cardFace ? [response.cardFace] : [])).map((card) => card.id)),
+      ...publicDisplayOwnedResponseHistory.flatMap((response) => (response.cardFaces ?? (response.cardFace ? [response.cardFace] : [])).map((card) => card.id)),
     ].filter((cardId): cardId is string => Boolean(cardId))
     : []);
   const activePublicCardSettlementEventId = publicCardDisplayAction?.settlement?.eventId ?? null;
@@ -6705,6 +6745,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       enabled: publicCardDisplayEnabled,
       ready: publicCardDisplayReady,
       ownsPresentation: publicCardDisplayOwnsPresentation,
+      journeyOwnership: {
+        ready: publicCardJourneyOwnershipReady,
+        actionKey: publicCardJourneyOwnership.actionKey || null,
+        viewerMatches: publicCardJourneyOwnership.viewerId === room.meId,
+        eventIds: [...publicCardJourneyOwnership.eventIds],
+        cardIds: [...publicCardJourneyOwnership.cardIds],
+      },
+      responseHistoryEventIds: publicCardDisplayAction?.responseHistory?.map((response) => response.eventId) ?? [],
       ownedEventCount: publicDisplayOwnedEventIds.length,
       temporarilyBlockedBy: {
         targetPreview: Boolean(targetPreviewPresentation),
@@ -7341,7 +7389,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const consolePrimaryId = consoleDecision.primary?.id ?? null;
   return <main className="game-shell" data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"} data-presentation-transition={presentationTransition.kind}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div></header>
     <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
-    <section className={`play-table ${displayedSequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}>
+    <section className={`play-table ${displayedSequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"} data-public-card-journey-ownership-ready={publicCardJourneyOwnershipReady ? "true" : "false"} data-public-card-owned-history-count={publicDisplayOwnedResponseHistory.length}>
       <div className="interaction-safe-zone"><InteractionStage view={clientPresentation} transitionKind={presentationTransition.kind} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} inspectPlayer={opponentInspectionPresentation} judgementInFlight={judgementInFlight} equipmentArrivalPendingIds={pendingEquipmentArrivalCardIds} nestedCardDetailDismissRef={nestedInspectorCardDetailDismissRef} /><StageSystemCluster
         publicResponseTimerPending={seatCountdown?.kind === "response"}
         responseTimer={seatCountdown?.kind === "response"
@@ -7518,7 +7566,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         })}
       </div>
       {seatCountdown?.kind === "rescue" && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
-      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardJourneyEventParked} onJourneySettled={(settlementEventId) => {
+      <PublicCardDisplay action={publicCardDisplayAction} enabled={publicCardDisplayEnabled} retainHarvestHistory={retainHarvestHistoryDuringInspection} retainDuelHistoryDuringInspection={retainDuelHistoryDuringInspection} harvestChoiceActive={harvestPending} harvestPoolReadOnly={harvestReadOnlyDuringNegation} sourceName={rootActionSource?.name ?? null} targetName={rootActionTarget?.name ?? null} compactPlayerNamesById={compactPublicPlayerNamesById} roomCode={room.code} viewerId={room.meId} viewerSeat={me?.seat ?? null} resultReadRemainingMs={publicCardDisplayResultReadRemainingMs} onInspectCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} onJourneyEventParked={markPublicCardJourneyEventParked} onJourneyOwnershipChange={reportPublicCardJourneyOwnership} onJourneySettled={(settlementEventId) => {
         setActiveDismantleSettlement((current) => current?.eventId === settlementEventId && !current.journeySettled
           ? { ...current, journeySettled: true }
           : current);

@@ -56,6 +56,38 @@ const worker = {
         return Response.json({ error: error instanceof Error ? error.message : "Invalid test fixture." }, { status: 400 });
       }
     }
+    if (url.pathname === "/__test/enable-seeded-controller" && env.WTK_TEST_CAPABILITIES === "1" && request.method === "POST") {
+      const body = await request.json<{ code?: unknown; hostToken?: unknown; targetPlayerId?: unknown }>().catch(() => ({}));
+      if (typeof body.code !== "string" || typeof body.hostToken !== "string" || typeof body.targetPlayerId !== "string") {
+        return Response.json({ error: "A seeded room, authenticated host token, and target player are required." }, { status: 400 });
+      }
+      const room = await env.DB.prepare("SELECT id, host_player_id, status, phase, pending_json FROM rooms WHERE code = ?")
+        .bind(body.code.toUpperCase())
+        .first<{ id: string; host_player_id: string; status: string; phase: string; pending_json: string | null }>();
+      if (!room || room.status !== "playing" || room.phase !== "response") {
+        return Response.json({ error: "A seeded room with an active Harvest choice is required." }, { status: 409 });
+      }
+      let pending: { kind?: unknown } | null = null;
+      try { pending = room.pending_json ? JSON.parse(room.pending_json) as { kind?: unknown } : null; } catch { /* fail closed */ }
+      if (pending?.kind !== "harvest") {
+        return Response.json({ error: "The controller can only be enabled during the active Harvest choice." }, { status: 409 });
+      }
+      const tokenBytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body.hostToken));
+      const hostTokenHash = Array.from(new Uint8Array(tokenBytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+      const host = await env.DB.prepare("SELECT id FROM players WHERE room_id = ? AND id = ? AND token_hash = ?")
+        .bind(room.id, room.host_player_id, hostTokenHash)
+        .first<{ id: string }>();
+      if (!host) return Response.json({ error: "The supplied token is not the seeded room host session." }, { status: 403 });
+      const target = await env.DB.prepare("SELECT id FROM players WHERE room_id = ? AND id = ? AND id <> ?")
+        .bind(room.id, body.targetPlayerId, room.host_player_id)
+        .first<{ id: string }>();
+      if (!target) return Response.json({ error: "The target must be another player in this seeded room." }, { status: 404 });
+      const update = await env.DB.prepare("UPDATE players SET token_hash = ?, is_test_player = 1 WHERE room_id = ? AND id = ? AND EXISTS (SELECT 1 FROM rooms WHERE id = ? AND status = 'playing' AND phase = 'response' AND json_extract(pending_json, '$.kind') = 'harvest')")
+        .bind(hostTokenHash, room.id, target.id, room.id)
+        .run();
+      if ((update.meta.changes ?? 0) <= 0) return Response.json({ error: "The Harvest choice advanced before the controller was enabled." }, { status: 409 });
+      return Response.json({ enabled: true, targetPlayerId: target.id });
+    }
     if (url.pathname === "/__test/negation-window-clock" && env.WTK_TEST_CAPABILITIES === "1" && request.method === "POST") {
       const body = await request.json<{ code?: unknown; windowId?: unknown; mode?: unknown }>().catch(() => ({}));
       if (typeof body.code !== "string" || typeof body.windowId !== "string" || body.mode !== "hold" && body.mode !== "expire") {

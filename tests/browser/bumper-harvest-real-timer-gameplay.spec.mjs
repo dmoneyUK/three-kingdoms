@@ -15,7 +15,7 @@ const deck = [
   { id: "real-harvest-timer-duel", kind: "Duel", suit: "♦", rank: "10" },
 ];
 
-async function seedGame(request, { firstNegation = null } = {}) {
+async function seedGame(request, { firstNegation = null, secondNegation = null } = {}) {
   const response = await request.post(`${API}/__test/seed-playing-game`, {
     data: {
       phase: "play",
@@ -23,7 +23,7 @@ async function seedGame(request, { firstNegation = null } = {}) {
       players: [
         { name: "HARVEST SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [harvest] },
         { name: "CHOOSER TWO", role: "Loyalist", hero: "sun-quan", hp: 4, maxHp: 4, hand: firstNegation ? [firstNegation] : [] },
-        { name: "CHOOSER THREE", role: "Rebel", hero: "guo-jia", hp: 4, maxHp: 4, hand: [] },
+        { name: "CHOOSER THREE", role: "Rebel", hero: "guo-jia", hp: 4, maxHp: 4, hand: secondNegation ? [secondNegation] : [] },
         { name: "CHOOSER FOUR", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: [] },
       ],
       deck,
@@ -164,6 +164,47 @@ function postedAction(page, action) {
     try { return JSON.parse(response.request().postData() ?? "{}").action === action; }
     catch { return false; }
   });
+}
+
+async function publicCardInstances(page, identities) {
+  return page.evaluate((expected) => {
+    const selector = [
+      "[data-public-card-journey-event-id]",
+      "[data-public-card-static-event-id]",
+      ".active-table-reveal [data-settlement-card-id]",
+      ".table-played-card[data-settlement-card-id]",
+    ].join(",");
+    return [...document.querySelectorAll(selector)].flatMap((element) => {
+      const journey = element.matches("[data-public-card-journey-event-id]");
+      const active = element.closest(".active-table-reveal");
+      const settled = element.closest(".table-played-card");
+      const eventId = element.getAttribute("data-public-card-journey-event-id")
+        ?? element.getAttribute("data-public-card-static-event-id")
+        ?? active?.getAttribute("data-settlement-event-id")
+        ?? settled?.getAttribute("data-settlement-event-id");
+      const cardId = element.getAttribute("data-public-card-journey-card-id")
+        ?? element.getAttribute("data-public-card-static-card-id")
+        ?? element.getAttribute("data-settlement-card-id");
+      if (!expected.some((identity) => identity.eventId === eventId || identity.cardId === cardId)) return [];
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const owner = element.closest("[data-public-card-display]");
+      return [{
+        eventId,
+        cardId,
+        renderer: journey ? "public-journey" : active ? "active-table-reveal" : settled ? "settled-table-card" : "public-static",
+        phase: element.getAttribute("data-public-card-journey-phase")
+          ?? element.getAttribute("data-public-card-visual-phase")
+          ?? active?.getAttribute("data-public-card-visual-phase")
+          ?? null,
+        visible: rect.width > 0 && rect.height > 0 && element.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
+        rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
+        opacity: style.opacity,
+        owner: owner?.getAttribute("data-public-card-renderer-kind") ?? null,
+        journeyLayoutPending: owner?.getAttribute("data-public-card-layout-pending") ?? null,
+      }];
+    });
+  }, identities);
 }
 
 async function playHarvest(page) {
@@ -375,10 +416,11 @@ test("real Bumper Harvest gives each active chooser a server-owned 60-second Sta
   }
 });
 
-test("NEG-A1 restores the authenticated Harvest choice after a committed Negation on phones", async ({ browser, request }, testInfo) => {
+test("NEG-A1 restores Harvest choice and deduplicates public Negation cards on phones", async ({ browser, request }, testInfo) => {
   test.setTimeout(120_000);
   const negation = { id: "neg-a1-harvest-negation", kind: "Negation", suit: "♠", rank: "A" };
-  const seed = await seedGame(request, { firstNegation: negation });
+  const counterNegation = { id: "neg-a1-harvest-counter-negation", kind: "Negation", suit: "♥", rank: "K" };
+  const seed = await seedGame(request, { firstNegation: negation, secondNegation: counterNegation });
   const phones = [
     { width: 390, height: 700 },
     { width: 390, height: 844 },
@@ -431,6 +473,10 @@ test("NEG-A1 restores the authenticated Harvest choice after a committed Negatio
     const committed = await commitNegation(request, seed, 1, negation.id);
     expect(committed.event.card.id).toBe(negation.id);
     expect(committed.event.player).toBe(seed.players[1].name);
+    const committedCounter = await commitNegation(request, seed, 2, counterNegation.id);
+    expect(committedCounter.event.card.id).toBe(counterNegation.id);
+    expect(committedCounter.event.player).toBe(seed.players[2].name);
+    const committedNegations = [committed, committedCounter];
 
     const chooserRoom = await reachAuthorizedHarvestChoice(request, seed);
     const actorIndex = seed.players.findIndex(({ id }) => id === chooserRoom.pendingHarvest.actorId);
@@ -459,6 +505,46 @@ test("NEG-A1 restores the authenticated Harvest choice after a committed Negatio
         await expect(viewerPage.locator(".harvest-card-select, .harvest-confirm-row")).toHaveCount(0);
       }
     }));
+
+    const committedIdentities = committedNegations.map(({ event }) => ({ eventId: event.id, cardId: event.card.id, actor: event.player }));
+    const negationInstances = await Promise.all(viewers.map(async ({ viewer, page: viewerPage }) => ({
+      viewer: viewer.name,
+      ownership: await viewerPage.locator(".play-table").evaluate((table) => ({
+        journeyReady: table.getAttribute("data-public-card-journey-ownership-ready"),
+        responseHistoryOwnedCount: table.getAttribute("data-public-card-owned-history-count"),
+      })),
+      instances: await publicCardInstances(viewerPage, committedIdentities),
+    })));
+    console.info(`NEG-A1 F2 committed Negation ownership: ${JSON.stringify({
+      committedNegations: committedIdentities,
+      instances: negationInstances,
+    })}`);
+    for (const viewer of negationInstances) {
+      for (const identity of committedIdentities) {
+        const visibleInstances = viewer.instances.filter((instance) => instance.visible
+          && instance.eventId === identity.eventId && instance.cardId === identity.cardId);
+        expect(visibleInstances, `${viewer.viewer} renders ${identity.actor}'s committed Negation once`).toHaveLength(1);
+      }
+    }
+    await testInfo.attach("neg-a1-f2-negation-card-ownership-after-fix", {
+      body: JSON.stringify({
+        publicEvents: committedIdentities,
+        action: chooserRoom.currentAction,
+        instances: negationInstances,
+      }, null, 2),
+      contentType: "application/json",
+    });
+
+    const lateSpectator = viewers[3].page;
+    await lateSpectator.reload();
+    await expect(lateSpectator.locator(".game-shell")).toBeVisible();
+    await expect(lateSpectator.locator(`.local-player-dock[data-player-anchor="${viewers[3].viewer.id}"]`)).toBeVisible();
+    await expect(lateSpectator.locator(".play-table")).toHaveAttribute("data-public-card-journey-ownership-ready", "true");
+    for (const identity of committedIdentities) {
+      const instances = (await publicCardInstances(lateSpectator, [identity])).filter((instance) => instance.visible
+        && instance.eventId === identity.eventId && instance.cardId === identity.cardId);
+      expect(instances, `late-refreshed spectator retains one authentic copy of ${identity.actor}'s Negation`).toHaveLength(1);
+    }
 
     const chooserPage = viewers[actorIndex].page;
     const stage = chooserPage.locator(".harvest-choice-stage");
@@ -569,6 +655,30 @@ test("NEG-A1 restores the authenticated Harvest choice after a committed Negatio
         await expect(viewerPage.locator(".harvest-card-select, .harvest-confirm-row")).toHaveCount(0);
       }
     }));
+
+    const switchTarget = seed.players.find((player, index) => index > 0 && index !== nextActorIndex);
+    expect(switchTarget, "TEST SWITCH can use a non-chooser seat while the next player selects").toBeTruthy();
+    const enabledController = await request.post(`${API}/__test/enable-seeded-controller`, {
+      data: { code: seed.code, hostToken: seed.players[0].token, targetPlayerId: switchTarget.id },
+    });
+    expect(enabledController.ok(), await enabledController.text()).toBeTruthy();
+    const switchedPage = viewers[0].page;
+    await switchedPage.setViewportSize({ width: 390, height: 844 });
+    await switchedPage.reload();
+    await expect(switchedPage.locator(".game-shell")).toBeVisible();
+    const switchButton = switchedPage.getByRole("button", { name: `Switch to ${switchTarget.name}` });
+    await expect(switchButton).toBeVisible();
+    await switchButton.tap();
+    await expect(switchedPage.locator(`.local-player-dock[data-player-anchor="${switchTarget.id}"]`)).toBeVisible();
+    await expect(switchedPage.locator(".play-table")).toHaveAttribute("data-public-card-journey-ownership-ready", "true");
+    for (const identity of committedIdentities) {
+      const instances = (await publicCardInstances(switchedPage, [identity])).filter((instance) => instance.visible
+        && instance.eventId === identity.eventId && instance.cardId === identity.cardId);
+      expect(instances, `TEST SWITCH view of ${switchTarget.name} retains one authentic copy of ${identity.actor}'s Negation`).toHaveLength(1);
+    }
+    const activeChooserStage = viewers[nextActorIndex].page.locator(".harvest-choice-stage");
+    await expect(activeChooserStage).toHaveAttribute("data-harvest-choice-authorized", "true");
+    await expect(viewers[nextActorIndex].page.locator(".harvest-card-select:not([disabled])").first()).toBeEnabled();
   } finally {
     await Promise.all(contexts.map((context) => context.close()));
   }
