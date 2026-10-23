@@ -3219,3 +3219,27 @@ Profile command measurements:
 - Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. G2
   all-zone/order/privacy end-to-end remains a separate uncompleted slice; no
   phone acceptance is inferred.
+
+### UX2 §10.11 G2 — Stargazing all-zone ordering and privacy proof — 2026-10-23
+
+- Source/test commit `ca82a1d340d979f30d4ca12c61afedd9701fccbc` converts the
+  authenticated Stargazing end-to-end coverage to real mobile touch input.
+  Against Worker/D1 it proves middle-to-Top/Bottom, Top↔Bottom, ordered
+  insertion within both zones, Bottom reorder, Return to middle, empty zones,
+  invalid drop/cancel, horizontal edge scrolling, rapid operations, exact
+  submitted arrays, one-each identity conservation, `minTop/maxTop`,
+  Complete-disabled safety and no server update before explicit completion.
+- An independent-token viewer's raw room projection and visible DOM remain
+  free of the owner's private card IDs and rearranged order. Focused browser
+  coverage passed 5/5 across 390×844, 390×700, 440×894, 480×900 and the 320×640
+  edge-scroll case; focused API tests passed 8/8. Build, targeted ESLint,
+  syntax and diff checks passed. No desktop checks were run.
+- Exact-SHA [Actions 39925022548](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39925022548)
+  passed browser smoke, API, lint/fast, D1 migration, Worker deployment and
+  production smoke. Worker version
+  `c95b877a-b54d-459c-869c-6c281ddc8e78`; direct
+  `/api/health` returned `{"ok":true,"worker":"available"}`.
+- The installed host WebKit runner still fails before page setup with
+  `Page.overrideSetting: Unknown setting: PushAPIEnabled`; no native Safari
+  evidence is claimed. G1/G2 status: **IMPLEMENTED / DEPLOYED — PENDING USER
+  PHONE RE-REVIEW**. No user acceptance is inferred.
