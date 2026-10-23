@@ -9,9 +9,8 @@ import { mergeEffectNoticeQueue, type EffectNoticeQueueEntry } from "./effect-no
 import { getResponseOptions } from "../game/responses";
 import { HEROES, type HeroSkill } from "../game/heroes";
 import { normalizeRoomData } from "../game/room-safety.js";
-import { canUseAction, type CurrentAction, type GameplayAction, type TriggerOptionView } from "../game/protocol.js";
+import { canUseAction, type CurrentAction, type GameplayAction, type PlayTargetRejectionView, type TriggerOptionView } from "../game/protocol.js";
 import { latestPublicMessages } from "../game/messages.js";
-import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot, PresentationSnapshotDiaoChanSkillNotice, PresentationSnapshotPublicCardEffect } from "../game/presentation-snapshot";
 import type { PresentationAttackDodgeResponse, PresentationAttackHitSettlementProof, PresentationBumperHarvestSettlementProof, PresentationDismantleSettlementProof, PresentationGroupSettlementProof, PresentationLustDuelAttackResponseProof, PresentationPublicCardEffectProof, PresentationSkillEffectSettlementProof, PresentationStealSettlementProof, PresentationV2 } from "../game/presentation-v2";
 import { attackDodgeResponseEventMatchesProof } from "../game/presentation-v2";
@@ -915,6 +914,32 @@ function heroDefinition(id?: string | null): Hero | null {
   return hero ? { id: hero.id, name: hero.name, faction: hero.faction, hp: hero.hp, ability: hero.ability, skills: hero.skills, skill: heroSkillName(hero.id) ?? undefined } : null;
 }
 
+function playTargetRejectionMessage(cardKind: CardKind, targetName: string, rejection: PlayTargetRejectionView | undefined) {
+  if (!rejection) return "Target eligibility is unavailable. Refresh the game state before choosing.";
+  const cardName = cardDefinition(cardKind).name;
+  if (rejection.code === "OUT_OF_RANGE" && Number.isFinite(rejection.distance) && Number.isFinite(rejection.range)) {
+    const rangeName = cardKind === "Attack" ? "Attack" : cardName;
+    return cardKind === "Attack"
+      ? `Cannot attack ${targetName} — distance ${rejection.distance}; Attack range ${rejection.range}.`
+      : `Cannot use ${rangeName} on ${targetName} — distance ${rejection.distance}; ${rangeName} range ${rejection.range}.`;
+  }
+  if (rejection.code === "NO_TARGETABLE_CARDS") return `Cannot use ${cardName} on ${targetName} — no removable cards are available.`;
+  if (rejection.code === "DUPLICATE_DELAYED_CARD") return `Cannot use ${cardName} on ${targetName} — that card is already in their Judgement Zone.`;
+  if (rejection.code === "TARGET_RESTRICTED") return `Cannot target ${targetName} with ${cardName} because of a target restriction.`;
+  if (rejection.code === "ACTION_UNAVAILABLE") return `Target selection for ${cardName} is unavailable right now.`;
+  return `Cannot target ${targetName} with ${cardName} right now.`;
+}
+
+type LocalPlayTargetNotice = {
+  roomCode: string;
+  viewerId: string;
+  actionRevision: string;
+  modeKey: string;
+  targetId: string;
+  message: string;
+  stale?: boolean;
+};
+
 type OpponentPlayerCardProps = {
   totalPlayers: number;
   player: Player;
@@ -926,6 +951,8 @@ type OpponentPlayerCardProps = {
   isGroupPreview: boolean;
   interactionRoles: InteractionSeatSemanticRoles;
   targetSelectionActive: boolean;
+  targetAttemptEnabled: boolean;
+  targetAttemptDescription: string | null;
   isInspected: boolean;
   targetablePlayer: boolean;
   daqiaoDeflectionTargetMode: boolean;
@@ -964,7 +991,7 @@ function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
   return <span className="opponent-equipment-horse-mark" aria-hidden="true">{slot === "defensiveHorse" ? "+1" : "−1"}</span>;
 }
 
-function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, isInspected, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
+function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, targetAttemptEnabled, targetAttemptDescription, isInspected, targetablePlayer, daqiaoDeflectionTargetMode, testViewerController, onTarget, onInspect, onSwitchTestViewer, judgementInFlight }: OpponentPlayerCardProps) {
   const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex);
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
   for (const equipment of player.equipmentCards) {
@@ -982,9 +1009,11 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
     <span><small>{judgement.rank}{judgement.suit}</small><b>{cardDefinition(judgement.kind).name}</b></span>
     <button type="button" className="zone-info-button" aria-label={`Inspect ${player.name} to explain ${cardDefinition(judgement.kind).name}`} onClick={(event) => { event?.stopPropagation(); onInspect(event?.currentTarget ?? null); }}>i</button>
   </span>);
-  const targetButtonDisabled = targetSelectionActive && (!targetablePlayer || !player.alive);
+  const targetButtonDisabled = targetSelectionActive && !targetAttemptEnabled && (!targetablePlayer || !player.alive);
   const deflectionTargetSelectable = daqiaoDeflectionTargetMode && targetSelectionActive && targetablePlayer && player.alive;
-  const targetButtonLabel = daqiaoDeflectionTargetMode && targetSelectionActive
+  const targetButtonLabel = targetAttemptEnabled && !targetablePlayer
+    ? `Check ${player.name}${targetAttemptDescription ? ` — ${targetAttemptDescription}` : ""}`
+    : daqiaoDeflectionTargetMode && targetSelectionActive
     ? deflectionTargetSelectable
       ? `${isSelectedTarget ? "Deselect" : "Select"} ${player.name} as Deflection target`
       : `${player.name}, not an eligible Deflection target`
@@ -1954,7 +1983,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => {
     presentationTransitionStore.accept(clientPresentation);
   }, [clientPresentation, presentationTransitionStore]);
-  const [selected, setSelected] = useState(""); const [inspectOnlyHandCardId, setInspectOnlyHandCardId] = useState(""); const [wushengMode, setWushengMode] = useState<"play" | "response" | null>(null); const [longdanMode, setLongdanMode] = useState<"play" | "response" | null>(null); const [targetIds, setTargetIds] = useState<string[]>([]); const [borrowedSwordTargetId, setBorrowedSwordTargetId] = useState(""); const target = targetIds[0] ?? "";
+  const [selected, setSelected] = useState(""); const [inspectOnlyHandCardId, setInspectOnlyHandCardId] = useState(""); const [wushengMode, setWushengMode] = useState<"play" | "response" | null>(null); const [longdanMode, setLongdanMode] = useState<"play" | "response" | null>(null); const [targetIds, setTargetIds] = useState<string[]>([]); const [borrowedSwordTargetId, setBorrowedSwordTargetId] = useState(""); const [localPlayTargetNotice, setLocalPlayTargetNotice] = useState<LocalPlayTargetNotice | null>(null); const target = targetIds[0] ?? "";
+  const targetActionIdentityRef = useRef({ roomCode: room.code, viewerId: room.meId, actionRevision: room.actionRevision ?? "" });
   const handRailRef = useRef<HTMLDivElement | null>(null);
   const handViewportSnapshotRef = useRef<HandViewportSnapshot | null>(null);
   const [handRailWidth, setHandRailWidth] = useState(0);
@@ -2559,7 +2589,41 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? room.currentAction.borrowedSwordTargets?.find((projection) => projection.cardId === card.id)?.targetIds ?? []
     : [];
   const halberdAttack = Boolean(canDeclareAttack && selectedCanPlayAsAttack && me?.equipmentCards.some((equipment) => equipment.kind === "SkyPiercingHalberd") && room.myHand.length === 1);
+  const targetEligibilityModeKey = serpentMode
+    ? "serpent_spear_attack:Attack"
+    : card
+      ? `card:${card.id}:${selectedCanPlayAsAttack ? "Attack" : card.kind}:${wushengMode ?? ""}:${longdanMode ?? ""}`
+      : "";
+  const targetEligibilityModeKeyRef = useRef(targetEligibilityModeKey);
+  useEffect(() => {
+    if (targetEligibilityModeKeyRef.current === targetEligibilityModeKey) return;
+    targetEligibilityModeKeyRef.current = targetEligibilityModeKey;
+    setLocalPlayTargetNotice((notice) => notice?.stale ? notice : null);
+  }, [targetEligibilityModeKey]);
+  const targetEligibilityActionAvailable = Boolean(
+    room.currentAction?.kind === "turn"
+    && room.currentAction.actorId === room.meId
+    && room.isMyAction
+    && canPlay
+    && (serpentMode
+      ? canUseAction(room.currentAction, "serpent_spear_attack")
+      : card && canUseAction(room.currentAction, "play_card")),
+  );
+  const currentPlayTargetEligibility = targetEligibilityActionAvailable
+    ? serpentMode
+      ? room.currentAction?.playTargetEligibility?.find((entry) => entry.mode === "serpent_spear_attack" && entry.effectiveKind === "Attack") ?? null
+      : card
+        ? room.currentAction?.playTargetEligibility?.find((entry) => entry.mode === "card" && entry.cardId === card.id && entry.effectiveKind === (selectedCanPlayAsAttack ? "Attack" : card.kind)) ?? null
+        : null
+    : null;
+  const playTargetEligibleIds = useMemo(() => new Set(currentPlayTargetEligibility?.eligibleTargetIds.filter((id) => (
+    room.players.some((player) => player.id === id && player.alive && player.id !== room.meId)
+    && (card?.kind !== "BorrowedSword" || room.currentAction?.borrowedSwordTargets?.find((projection) => projection.cardId === card.id)?.targetIds.includes(id))
+  )) ?? []), [currentPlayTargetEligibility, room.players, room.meId, card?.id, card?.kind, room.currentAction?.borrowedSwordTargets]);
+  const selectedPlayTargetsValid = Boolean(currentPlayTargetEligibility && targetIds.length > 0 && targetIds.every((id) => playTargetEligibleIds.has(id)));
+  const selectedCardNeedsTarget = Boolean(card && (selectedCanPlayAsAttack || ["Dismantle", "Steal", "Duel", "BorrowedSword", "Overindulgence", "RationsDepleted"].includes(card.kind)));
   const setTarget = (playerId: string) => {
+    setLocalPlayTargetNotice(null);
     if (!playerId) {
       setTargetIds([]);
       if (activeSkillStateIsCurrent) setActiveSkillSelectionState((state) => state ? { ...state, targetIds: [] } : state);
@@ -2601,7 +2665,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ? { ...state, cardIds: validIds.filter((id) => id !== cardId) }
       : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, cardId] } : { ...state, cardIds: validIds };
   });
-  const attackTargetsValid = targetIds.length > 0 && targetIds.every((id) => room.players.some((player) => player.id === id && player.alive && player.id !== room.meId && (player.distance ?? 99) <= (me?.attackRange ?? 1)));
+  const attackTargetsValid = selectedPlayTargetsValid;
   const canFormSerpentAttack = hasSerpentSpear && room.myHand.length >= 2 && room.isMyTurn && canPlay && canDeclareAttack;
   const responseDeadline = room.currentAction?.deadline ?? room.pendingNegation?.deadline ?? room.pendingGreenDragon?.deadline ?? room.pendingRockCleaving?.deadline ?? room.pendingDuel?.deadline ?? room.pendingAttack?.deadline ?? 0;
   const canRescue = room.phase === "dying" && room.isMyAction;
@@ -2680,13 +2744,28 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const triggerSubmissionComplete = triggerSelectionComplete && (!triggerTargetSelection || triggerTargetComplete);
   const normalTargetSelectionActive = targetSelectionActive && !borrowedSwordTargetSelectionActive && !triggerTargetMode && !activeSkillTargetMode;
   const localTargetFlow: LocalTargetFlow | null = borrowedSwordTargetSelectionActive ? "borrowed-sword" : triggerTargetMode ? "trigger" : activeSkillTargetMode ? "active-skill" : serpentMode ? "serpent" : normalTargetSelectionActive ? "normal" : null;
-  const localTargetIds = borrowedSwordTargetSelectionActive ? (borrowedSwordTargetId ? [borrowedSwordTargetId] : []) : triggerTargetMode ? targetIds : activeSkillTargetMode ? activeSkillSelectedTargetIds : targetIds;
+  const localTargetIds = borrowedSwordTargetSelectionActive
+    ? (borrowedSwordTargetId ? [borrowedSwordTargetId] : [])
+    : triggerTargetMode
+      ? targetIds
+      : activeSkillTargetMode
+        ? activeSkillSelectedTargetIds
+        : normalTargetSelectionActive
+          ? targetIds.filter((id) => playTargetEligibleIds.has(id))
+          : targetIds;
   const localDockTargetIds = activeSkillTargetMode ? activeSkillTargetIds : triggerTargetMode ? triggerTargetSelection?.targetIds ?? [] : [];
   const localDockSelfTargetable = localDockTargetIds.includes(room.meId);
   const localDockSelfTargetSelected = localDockSelfTargetable && localTargetIds.includes(room.meId);
   const localTargetMin = borrowedSwordTargetSelectionActive ? 1 : triggerTargetMode ? triggerTargetMin : activeSkillTargetMode ? activeSkillTargetMin : 1;
   const localTargetMax = borrowedSwordTargetSelectionActive ? 1 : triggerTargetMode ? triggerTargetMax : activeSkillTargetMode ? activeSkillTargetMax : halberdAttack ? 3 : 1;
-  const localTargetCanConfirm = borrowedSwordTargetSelectionActive ? Boolean(borrowedSwordTargetId) : triggerTargetMode ? triggerTargetComplete : activeSkillTargetMode ? activeSkillComplete : serpentMode ? serpentSelected.length === 2 && attackTargetsValid : selectedCanPlayAsAttack ? attackTargetsValid : Boolean(target);
+  const localTargetCanConfirm = borrowedSwordTargetSelectionActive ? Boolean(borrowedSwordTargetId) : triggerTargetMode ? triggerTargetComplete : activeSkillTargetMode ? activeSkillComplete : serpentMode ? serpentSelected.length === 2 && attackTargetsValid : normalTargetSelectionActive ? selectedPlayTargetsValid : Boolean(target);
+  const activeLocalPlayTargetNotice = localPlayTargetNotice
+    && localPlayTargetNotice.roomCode === room.code
+    && localPlayTargetNotice.viewerId === room.meId
+    && localPlayTargetNotice.actionRevision === (room.actionRevision ?? "")
+    && (localPlayTargetNotice.stale || localPlayTargetNotice.modeKey === targetEligibilityModeKey)
+    ? localPlayTargetNotice
+    : null;
   const localSelectionHasInput = localTargetFlow === "borrowed-sword"
     ? Boolean(borrowedSwordTargetId)
     : localTargetFlow === "trigger"
@@ -2777,6 +2856,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const triggerHasProviderCancelSurface = Boolean(triggerTargetMode && selectedTriggerOption && !heroTriggerEffectIds.has(selectedTriggerOption.effectId));
   const normalHasProviderCancelSurface = wushengMode === "play" || longdanMode === "play";
   const resetLocalTargetFlow = (flow: LocalTargetFlow) => {
+    setLocalPlayTargetNotice(null);
     closeOpponentInspection(false);
     setTargetIds([]);
     if (flow === "normal") {
@@ -3306,6 +3386,30 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   // decision and prevents a previous provider/cost from leaking into it.
   useEffect(() => { const timer = setTimeout(() => { setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setResponseProviderId(""); setSelected(""); setTargetIds([]); setBorrowedSwordTargetId(""); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); targetCardSubmissionRef.current = ""; targetCardPickerSubmissionRef.current = ""; }, 0); return () => clearTimeout(timer); }, [room.actionRevision]);
   useEffect(() => {
+    const nextIdentity = { roomCode: room.code, viewerId: room.meId, actionRevision: room.actionRevision ?? "" };
+    const previousIdentity = targetActionIdentityRef.current;
+    if (previousIdentity.roomCode === nextIdentity.roomCode && previousIdentity.viewerId === nextIdentity.viewerId && previousIdentity.actionRevision === nextIdentity.actionRevision) return;
+    targetActionIdentityRef.current = nextIdentity;
+    if (previousIdentity.roomCode !== nextIdentity.roomCode || previousIdentity.viewerId !== nextIdentity.viewerId) {
+      setLocalPlayTargetNotice(null);
+      return;
+    }
+    if (!normalTargetSelectionActive) {
+      setLocalPlayTargetNotice(null);
+      return;
+    }
+    const invalidatedTarget = targetIds.find((id) => !playTargetEligibleIds.has(id));
+    setLocalPlayTargetNotice(invalidatedTarget ? {
+      roomCode: room.code,
+      viewerId: room.meId,
+      actionRevision: nextIdentity.actionRevision,
+      modeKey: "stale",
+      targetId: invalidatedTarget,
+      message: "Target is no longer eligible. Select another target.",
+      stale: true,
+    } : null);
+  }, [room.code, room.meId, room.actionRevision, targetIds, playTargetEligibleIds, normalTargetSelectionActive]);
+  useEffect(() => {
     if (!submittedTargetPreview) return;
     const presentationUnchanged = presentationViewKey(clientPresentation) === submittedTargetPreview.presentationKey;
     const actionUnchanged = (room.actionRevision ?? "") === submittedTargetPreview.actionRevision
@@ -3417,7 +3521,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     await submitWithLocalTargetPreview(() => onAction("choose_borrowed_sword_target", { targetId }));
   };
   const play = async () => {
-    if (!card || !me || (selectedCanPlayAsAttack && (!canDeclareAttack || !attackTargetsValid)) || card.kind === "BorrowedSword" && (!target || !borrowedSwordPlayTargetIds.includes(target))) return;
+    if (!card || !me || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || card.kind === "BorrowedSword" && (!target || !borrowedSwordPlayTargetIds.includes(target))) return;
     const playedCard = card;
     const definition = cardDefinition(card.kind);
     const needsTarget = selectedCanPlayAsAttack || ["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind);
@@ -6697,7 +6801,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ...(dyingFirstAidSelectionActive ? [{ id: "first-aid", label: "Confirm", enabled: canUseAction(room.currentAction, "respond") && responseSelectionComplete, priority: 65 }] : []),
     ...(rescueDecisionReady && !canRespond ? [{ id: "rescue", label: "Peach", enabled: canUseAction(room.currentAction, "give_peach") && card?.kind === "Peach", priority: 60 }] : []),
     ...(room.isMyTurn && room.phase === "discard" && currentActionOwnedByViewer ? [{ id: "discard", label: `Discard ${excessCards} selected`, enabled: canUseAction(room.currentAction, "discard_cards") && discardSelected.length === excessCards, priority: 60 }] : []),
-    ...(room.isMyTurn && canPlay && currentActionOwnedByViewer ? [{ id: "turn", label: serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play", enabled: (canUseAction(room.currentAction, "play_card") || canUseAction(room.currentAction, "serpent_spear_attack")) && (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack && attackTargetsValid) && (!(["Dodge", "Negation"].includes(card?.kind ?? "")) || selectedCanPlayAsAttack)), priority: 40 }] : []),
+    ...(room.isMyTurn && canPlay && currentActionOwnedByViewer ? [{ id: "turn", label: serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play", enabled: (canUseAction(room.currentAction, "play_card") || canUseAction(room.currentAction, "serpent_spear_attack")) && (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack) && (!selectedCardNeedsTarget || selectedPlayTargetsValid) && (!(["Dodge", "Negation"].includes(card?.kind ?? "")) || selectedCanPlayAsAttack)), priority: 40 }] : []),
   ];
   const consoleIsDecisionActor = currentActionOwnedByViewer;
   const rainingArrowsDamageDecline = Boolean(
@@ -6953,16 +7057,18 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         {room.players.filter((player) => player.id !== room.meId).map((player) => {
           const index = room.players.findIndex((candidate) => candidate.id === player.id);
           const relativeIndex = (index - myTableIndex + room.players.length) % room.players.length;
-          const selectedTargetCardKind = selectedCanPlayAsAttack ? "Attack" : card?.kind;
-          const cardTargetLegal = Boolean(card && (card.kind === "BorrowedSword"
-            ? borrowedSwordPlayTargetIds.includes(player.id)
-            : selectedTargetCardKind && canTargetCharacter({ sourceId: room.meId, targetId: player.id, targetHero: player.hero, targetHandCount: player.handCount, cardKind: selectedTargetCardKind })));
+          const playTargetRejection = currentPlayTargetEligibility?.rejections.find((entry) => entry.targetId === player.id);
+          const selectedPlayKind = serpentMode ? "Attack" : selectedCanPlayAsAttack ? "Attack" : card?.kind ?? "Attack";
           const targetablePlayer = Boolean(
             borrowedSwordTargetSelectionActive && borrowedSwordEligibleTargetIds.includes(player.id) && player.alive
             || activeSkillTargetMode && activeSkillTargetIds.includes(player.id) && player.alive
             || triggerTargetSelection?.targetIds.includes(player.id) && triggerTargetMode
-            || serpentMode && canPlay
-            || card && cardTargetLegal && (selectedCanPlayAsAttack || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "BorrowedSword" || card.kind === "Overindulgence" || card.kind === "RationsDepleted"),
+            || normalTargetSelectionActive && playTargetEligibleIds.has(player.id),
+          );
+          const blockedTargetReason = playTargetRejectionMessage(
+            selectedPlayKind,
+            player.name,
+            player.alive ? playTargetRejection : { targetId: player.id, code: "NOT_ELIGIBLE" },
           );
           const interactionRoles = projectInteractionSeatRoles(clientPresentation, player.id);
           return <OpponentPlayerCard
@@ -6973,15 +7079,40 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             playerHero={heroDefinition(player.hero)}
             relativeIndex={relativeIndex}
             isTurn={player.seat === room.turnSeat}
-            isSelectedTarget={borrowedSwordTargetId === player.id || (daqiaoDeflectionSelectionActive ? activeSkillSelectedTargetIds.includes(player.id) : targetIds.includes(player.id))}
+            isSelectedTarget={borrowedSwordTargetId === player.id || (daqiaoDeflectionSelectionActive ? activeSkillSelectedTargetIds.includes(player.id) : targetIds.includes(player.id) && (!normalTargetSelectionActive || playTargetEligibleIds.has(player.id)))}
             isGroupPreview={groupScopePreview.affectedPlayerIds.includes(player.id)}
             interactionRoles={interactionRoles}
             targetSelectionActive={targetSelectionActive}
+            targetAttemptEnabled={normalTargetSelectionActive}
+            targetAttemptDescription={normalTargetSelectionActive && !targetablePlayer ? blockedTargetReason : null}
             isInspected={expandedOpponentId === player.id}
             targetablePlayer={targetablePlayer}
             daqiaoDeflectionTargetMode={daqiaoDeflectionSelectionActive}
             testViewerController={Boolean(room.isTestController)}
-            onTarget={(trigger) => { if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id); else { setTarget(player.id); setTargetCardIndex(null); } if (!daqiaoDeflectionSelectionActive) openOpponentInspection(player.id, trigger); }}
+            onTarget={(trigger) => {
+              if (normalTargetSelectionActive) {
+                if (!playTargetEligibleIds.has(player.id)) {
+                  setLocalPlayTargetNotice({
+                    roomCode: room.code,
+                    viewerId: room.meId,
+                    actionRevision: room.actionRevision ?? "",
+                    modeKey: targetEligibilityModeKey,
+                    targetId: player.id,
+                    message: blockedTargetReason,
+                  });
+                  return;
+                }
+                setLocalPlayTargetNotice(null);
+                setTarget(player.id);
+                setTargetCardIndex(null);
+                openOpponentInspection(player.id, trigger);
+                return;
+              }
+              setLocalPlayTargetNotice(null);
+              if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id);
+              else { setTarget(player.id); setTargetCardIndex(null); }
+              if (!daqiaoDeflectionSelectionActive) openOpponentInspection(player.id, trigger);
+            }}
             onInspect={(trigger) => toggleOpponentInspection(player.id, trigger)}
             onSwitchTestViewer={(playerId) => { setHarvestDraft(null); void onSwitchTestViewer(playerId); }}
             judgementInFlight={judgementInFlight}
@@ -7045,12 +7176,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               data-console-active-skill-selection-busy={activeSkillSelectionBusy ? "true" : "false"}
               data-console-network-busy={busy ? "true" : "false"}
               data-lust-local-selection={lustLocalSelectionActive ? "true" : undefined}
+              data-local-target-notice={activeLocalPlayTargetNotice ? activeLocalPlayTargetNotice.stale ? "stale" : "rejected" : undefined}
               role="status"
               aria-live="polite"
               aria-atomic="true"
             >
               {!lustLocalSelectionActive && <small>{localWaitAlreadyPublic ? "NO ACTION NEEDED" : negationWindowSubmitted ? "RESPONSE SUBMITTED" : localSemanticResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small>}
-              <strong>{consoleDecision.instruction}</strong>
+              <strong>{activeLocalPlayTargetNotice?.message ?? consoleDecision.instruction}</strong>
               {lustTargetOrder && <em className="lust-order-guidance" data-testid="lust-order-guidance">
                 Attack order: <strong>{lustTargetOrder.firstName}</strong> first → <span className="lust-second-actor">{lustTargetOrder.secondName}</span> second.
               </em>}
@@ -7076,6 +7208,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             const multiSelectMode = room.phase === "discard" || Boolean(activeSkillSelection || serpentMode || responseSelectionMax > 1 || triggerSelectionMax > 1);
             const responseSelectionLimit = triggerResponse && triggerSelectionUsesCards ? triggerSelection.max : responseSelectionUsesCards ? responseSelection.max : 2;
             const toggleHandCard = (item: Card) => {
+              setLocalPlayTargetNotice(null);
               setInspectOnlyHandCardId("");
               if (infoCard && infoCardContext === "private-hand") closeCardDetails(false);
               const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1;
@@ -7149,7 +7282,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {(activeSkillSelection || activeSkillTargetSelection) && consolePrimaryId === "active-skill" && <button className="primary" disabled={busy || !activeSkillConfirmEnabled || !consoleDecision.primary?.enabled} onClick={() => activeSkillSubmission && submitWithLocalTargetPreview(() => onAction("trigger", activeSkillSubmission))}>Confirm</button>}
             {canRespond && genericResponse && semanticResponseOptions.length > 0 && selectedResponseProvider && consolePrimaryId === "response" && <button className="primary" disabled={responseControlsDisabled || !responseSelectionComplete || !consoleDecision.primary?.enabled} onClick={() => submitResponseProvider()}>{busy ? "Confirming…" : "Confirm"}</button>}
             {room.isMyTurn && room.phase === "discard" && consolePrimaryId === "discard" && <button className="primary" disabled={busy || discardSelected.length !== excessCards || !consoleDecision.primary?.enabled} onClick={() => onAction("discard_cards", { cardIds: discardSelected })}>{busy ? "Discarding…" : `Discard ${excessCards} selected`}</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || presentationBusy || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || presentationBusy || !card || selectedCanPlayAsAttack && (!canDeclareAttack || !attackTargetsValid) || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play"}</button>}
+            {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || presentationBusy || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || presentationBusy || !card || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play"}</button>}
           </div>
           <div data-action-slot="decline">
             {rescueDecisionReady && !canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={busy || !consoleDecision.authoritativeDecline.enabled} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button>}

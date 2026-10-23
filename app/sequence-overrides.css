@@ -6354,3 +6354,29 @@
     height: 108px;
   }
 }
+
+/* Keep the separate 44px Inspector control in the inner battlefield gutter on
+   compact side seats. In five-player mobile layouts a centred icon otherwise
+   covers nearly the entire portrait target button and makes target attempts
+   unreachable. The portrait itself remains clipped by its own button. */
+@media (max-width: 650px) {
+  .game-shell .player-board[data-seat-topology="side-column"] .opponent-hero-card {
+    overflow: visible;
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"] .opponent-player-card[data-side-column="left"] .opponent-seat-inspect-button {
+    top: 50%;
+    right: auto;
+    bottom: auto;
+    left: calc(100% + 2px);
+    transform: translateY(-50%);
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"] .opponent-player-card[data-side-column="right"] .opponent-seat-inspect-button {
+    top: 50%;
+    right: calc(100% + 2px);
+    bottom: auto;
+    left: auto;
+    transform: translateY(-50%);
+  }
+}
