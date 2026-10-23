@@ -345,6 +345,9 @@ const UI_TIMING = {
   sequenceDiscard: 700,
   interactionSettlement: 600,
   interactionSettlementReduced: 120,
+  // Cross-seat target-card results must outlast at least one mobile poll even
+  // when reduced motion removes the exit animation.
+  publicTargetCardSettlementRead: 2_400,
   // Group outcomes are public to every seat; keep the shared result visible
   // across the active-game polling interval so remote viewers can read it.
   groupSettlementRead: 2400,
@@ -6004,7 +6007,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       setActiveDismantleSettlement((current) => current?.eventId === activeDismantleSettlementEventId
         ? reducedMotion ? null : { ...current, exiting: true }
         : current);
-    }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
+    }, UI_TIMING.publicTargetCardSettlementRead - (reducedMotion ? 0 : UI_TIMING.interactionSettlementFade));
     return () => window.clearTimeout(timer);
   }, [activeDismantleSettlement?.eventId, activeDismantleSettlement?.exiting, activeDismantleSettlement?.journeySettled, activeDismantleSettlementEventId, publicCardDisplayReady]);
   useEffect(() => {
@@ -6026,7 +6029,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       setActiveStealSettlement((current) => current?.eventId === activeStealSettlementEventId
         ? reducedMotion ? null : { ...current, exiting: true }
         : current);
-    }, reducedMotion ? UI_TIMING.interactionSettlementReduced : UI_TIMING.interactionSettlement - UI_TIMING.interactionSettlementFade);
+    }, UI_TIMING.publicTargetCardSettlementRead - (reducedMotion ? 0 : UI_TIMING.interactionSettlementFade));
     return () => window.clearTimeout(timer);
   }, [activeStealSettlement?.eventId, activeStealSettlement?.exiting, activeStealSettlementEventId, publicCardDisplayReady]);
   useEffect(() => {
@@ -7340,7 +7343,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         </section>
       </div>}
       <div className="play-center" aria-hidden="true"><div className="draw-stack" data-draw-anchor="true" /><div className="discard-stack" data-discard-anchor="true" /></div>
-      {pendingTargetCardUsesUnifiedModal && pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget && supportsAuthoritativeTargetCardSelection(pendingTargetCardSelectableSelection, pendingTargetCardSelectableTarget) && room.pendingTargetCard && pendingTargetCardActionName && <TargetCardPicker option={null} presentationCopy={{ title: pendingTargetCardActionName, accessibleName: `${pendingTargetCardActionName} target card selection`, instruction: room.pendingTargetCard.cardKind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard", actionLabel: `Use ${pendingTargetCardActionName}` }} selection={pendingTargetCardSelectableSelection} target={pendingTargetCardSelectableTarget} selectedKeys={pendingTargetCardSelectedKeys} disabled={busy || presentationBusy || !canUseAction(room.currentAction, "choose_target_card")} canDecline={false} showCancel={false} allowPublicCardInfo error={error} onToggle={togglePendingTargetCardSelection} onUse={submitPendingTargetCardPicker} onCancel={clearPendingTargetCardSelection} onDecline={() => undefined} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} />}
+      {pendingTargetCardUsesUnifiedModal && pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget && supportsAuthoritativeTargetCardSelection(pendingTargetCardSelectableSelection, pendingTargetCardSelectableTarget) && room.pendingTargetCard && pendingTargetCardActionName && <TargetCardPicker option={null} presentationCopy={{ title: pendingTargetCardActionName, accessibleName: `${pendingTargetCardActionName} target card selection`, instruction: room.pendingTargetCard.cardKind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard", actionLabel: `Use ${pendingTargetCardActionName}` }} selection={pendingTargetCardSelectableSelection} target={pendingTargetCardSelectableTarget} selectedKeys={pendingTargetCardSelectedKeys} disabled={busy || !canUseAction(room.currentAction, "choose_target_card")} canDecline={false} showCancel={false} allowPublicCardInfo error={error} onToggle={togglePendingTargetCardSelection} onUse={submitPendingTargetCardPicker} onCancel={clearPendingTargetCardSelection} onDecline={() => undefined} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} />}
       {targetCardPickerInModal && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget && <TargetCardPicker option={targetCardPickerOption} compact={targetCardPickerOption.effectId === "sima_yi_fankui"} selection={targetCardPickerSelection} target={targetCardPickerTarget} selectedKeys={triggerSelectedKeys} disabled={triggerControlsDisabled} canDecline={Boolean(consoleDecision.authoritativeDecline)} showCancel={targetCardPickerOption.effectId !== "sima_yi_fankui" && (targetCardPickerUsesUnifiedModal || consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId))} error={error} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => targetCardPickerSelection.eligibleKeys.includes(selectedKey)); return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < targetCardPickerSelection.max ? [...validKeys, key] : validKeys; })} onUse={submitTargetCardPicker} onCancel={cancelTargetCardPicker} onDecline={() => onAction("decline_trigger")} />}
       {triggerResponse && responseDecisionReady && choiceTriggerOption?.selection?.type === "choice" && <MandatoryChoiceDialog option={choiceTriggerOption} selection={choiceTriggerOption.selection} hand={room.myHand} selectedChoice={triggerChoice} selectedKeys={triggerSelectionKeys} disabled={triggerControlsDisabled} error={error} onChoice={(choice) => { setTriggerChoice(choice); setTriggerSelectedKeys([]); }} onToggle={(key) => { const validKeys = triggerSelectedKeys.filter((selectedKey) => choiceTriggerOption.selection?.type === "choice" && choiceTriggerOption.selection.eligibleHandKeys.includes(selectedKey)); const required = choiceTriggerOption.selection?.type === "choice" ? choiceTriggerOption.selection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0; setTriggerSelectedKeys(validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < required ? [...validKeys, key] : validKeys); }} onConfirm={(choice, cardKeys) => onAction("trigger", { providerId: choiceTriggerOption.effectId, choice, ...(cardKeys.length ? { cardKeys } : {}) })} />}
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}

@@ -4391,6 +4391,27 @@
   letter-spacing: .035em;
 }
 
+@media (max-width: 520px) {
+  .game-shell .play-table > .public-activity-chip[data-public-activity-kind="target-card-choice"] {
+    width: min(156px, calc(100% - 16px));
+    min-height: 34px;
+    padding: 4px 6px;
+  }
+
+  .game-shell .play-table > .public-activity-chip[data-public-activity-kind="target-card-choice"] > strong {
+    width: 100%;
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .game-shell .play-table > .public-activity-chip[data-public-activity-kind="target-card-choice"] > small {
+    display: none;
+  }
+}
+
 @media (max-width: 420px) {
   .game-shell:has(.player-board[data-player-count="5"]) .play-table > .public-activity-chip {
     max-width: min(220px, calc(100% - 16px));

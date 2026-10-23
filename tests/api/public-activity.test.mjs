@@ -61,8 +61,7 @@ test("target-card choice progress is identical across viewers and exposes no sel
     const expected = {
       kind: "target-card-choice",
       text: `Test Player 1 is choosing one card from Test Player 2 · ${effect}`,
-      heading: "Test Player 1 is choosing one card",
-      stage: `${effect} · from Test Player 2`,
+      heading: "Choosing Test Player 2's card",
       anchorPlayerId: "p2",
     };
     for (const view of views) {

@@ -148,7 +148,7 @@ function placeNearPlayerSeat(chip: HTMLElement, table: HTMLElement, playerId: st
   return false;
 }
 
-function placeChip(chip: HTMLElement, table: HTMLElement, harvestPoolReadOnly: boolean, anchorPlayerId?: string): void {
+function placeChip(chip: HTMLElement, table: HTMLElement, harvestPoolReadOnly: boolean, anchorPlayerId?: string, allowUpperSafeBand = false): void {
   const tableRect = table.getBoundingClientRect();
   const width = chip.offsetWidth;
   const height = chip.offsetHeight;
@@ -157,7 +157,7 @@ function placeChip(chip: HTMLElement, table: HTMLElement, harvestPoolReadOnly: b
   const viewportBottom = Math.min(window.innerHeight, (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight));
   const leftBound = Math.max(tableRect.left + 8, 8);
   const rightBound = Math.min(tableRect.right - 8, window.innerWidth - 8);
-  const lowerBandTop = Math.max(tableRect.top + tableRect.height * 0.58, viewportTop + 8);
+  const lowerBandTop = Math.max(tableRect.top + (allowUpperSafeBand ? 8 : tableRect.height * 0.58), viewportTop + 8);
   const bottom = Math.min(tableRect.bottom - 8, viewportBottom - 8);
   const firstTop = bottom - height;
   const obstacles = protectedRects(table);
@@ -220,22 +220,25 @@ function placeChip(chip: HTMLElement, table: HTMLElement, harvestPoolReadOnly: b
   }
 
   const preferredCenter = tableRect.left + tableRect.width / 2;
-  const verticalSteps = [0, height + 8, (height + 8) * 2];
+  const regularVerticalSteps = [0, height + 8, (height + 8) * 2];
+  const obstacleEdgeTops = obstacles.flatMap((obstacle) => [
+    obstacle.top - height - ACTIVITY_CHIP_GAP - CANDIDATE_EPSILON,
+    obstacle.bottom + ACTIVITY_CHIP_GAP + CANDIDATE_EPSILON,
+  ]);
+  const verticalSteps = [...new Set([
+    ...regularVerticalSteps,
+    firstTop - lowerBandTop,
+    ...obstacleEdgeTops.map((top) => firstTop - top),
+  ].map((step) => Math.round(step * 100) / 100))]
+    .filter((step) => {
+      const top = firstTop - step;
+      return top >= lowerBandTop && top + height <= bottom;
+    });
   const minCenter = leftBound + width / 2;
   const maxCenter = rightBound - width / 2;
   const placements: Array<{ center: number; top: number; verticalStep: number }> = [];
   for (const verticalStep of verticalSteps) {
     const top = firstTop - verticalStep;
-    if (top < lowerBandTop) {
-      trace?.candidates.push({
-        verticalStep,
-        horizontalOffset: 0,
-        rect: { left: preferredCenter - width / 2, top, right: preferredCenter + width / 2, bottom: top + height, width, height },
-        accepted: false,
-        rejectedBy: [{ reason: "outside-safe-lower-bound", lowerBandTop }],
-      });
-      continue;
-    }
     const relevantObstacles = obstacles.filter((obstacle) =>
       top < obstacle.bottom + ACTIVITY_CHIP_GAP && top + height + ACTIVITY_CHIP_GAP > obstacle.top);
     const rawCenters = [preferredCenter];
@@ -312,7 +315,13 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
     let frame = 0;
     const schedule = () => {
       window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => placeChip(chip, table, harvestPoolReadOnly, status.anchorPlayerId));
+      frame = window.requestAnimationFrame(() => placeChip(
+        chip,
+        table,
+        harvestPoolReadOnly,
+        status.anchorPlayerId,
+        status.kind === "target-card-choice",
+      ));
     };
     const relevantMutation = (node: Node): boolean => {
       const element = node instanceof HTMLElement ? node : node.parentElement;

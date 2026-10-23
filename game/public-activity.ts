@@ -91,8 +91,7 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
       return {
         kind: "target-card-choice",
         text: `${actor} is choosing one card from ${target} · ${effect}`,
-        heading: `${actor} is choosing one card`,
-        stage: `${effect} · from ${target}`,
+        heading: `Choosing ${target}'s card`,
         anchorPlayerId: targetCard.targetId,
       };
     }

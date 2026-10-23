@@ -11,13 +11,13 @@ async function seedGame(request, players) {
   return response.json();
 }
 
-async function openGame(page, seed, playerIndex = 0, viewport = { width: 390, height: 844 }) {
+async function openGame(page, seed, playerIndex = 0, viewport = { width: 390, height: 844 }, query = "") {
   const member = seed.players[playerIndex];
   await page.setViewportSize(viewport);
   await page.addInitScript(({ code, token, name }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
   }, { code: seed.code, token: member.token, name: member.name });
-  await page.goto(`${API}/`);
+  await page.goto(`${API}/${query ? `?${query}` : ""}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
@@ -148,6 +148,28 @@ function fourPlayers(source, target) {
     { name: "THIRD", role: "Lord", hero: "guo-jia", hp: 4, maxHp: 4, hand: [] },
     { name: "FOURTH", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: [] },
   ];
+}
+
+const STANDARD_ROLES_BY_SEAT_COUNT = {
+  4: ["Lord", "Loyalist", "Rebel", "Renegade"],
+  6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"],
+  8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"],
+};
+const MOBILE_TEST_HEROES = ["cao-cao", "simayi", "zhao-yun", "xiahou-dun", "sun-quan", "guo-jia", "zhang-liao", "gongsun-zan"];
+
+function responsivePlayers(seatCount, { sourceName = "SOURCE", targetName = "TARGET", sourceHand, targetHand = [], equipment, judgement = [] }) {
+  const roles = STANDARD_ROLES_BY_SEAT_COUNT[seatCount];
+  if (!roles) throw new Error(`Unsupported responsive seat count: ${seatCount}`);
+  return roles.map((role, seat) => ({
+    name: seat === 0 ? sourceName : seat === 1 ? targetName : `OBSERVER ${seat + 1}`,
+    role,
+    hero: MOBILE_TEST_HEROES[seat],
+    hp: 4,
+    maxHp: 4,
+    hand: seat === 0 ? sourceHand : seat === 1 ? targetHand : [],
+    ...(seat === 1 && equipment ? { equipment } : {}),
+    ...(seat === 1 && judgement.length ? { judgement } : {}),
+  }));
 }
 
 async function openRealTargetCardDecision({ page, request, kind, viewport, handCount = 4, equipment = true, judgement = true }) {
@@ -663,6 +685,465 @@ test("settled Steal and Burning Bridges share proven source-to-destination outco
     } finally {
       await Promise.all(contexts.map((context) => context.close()));
     }
+  }
+});
+
+test("T3 settlement stays shared across mobile sizes, 4/6/8 seats, reloads, and a fast next Stratagem", async ({ browser, request }, testInfo) => {
+  test.setTimeout(360_000);
+  const scenarios = [
+    { seats: 4, viewport: { width: 390, height: 844 }, effect: "Steal", kind: "Steal", zone: "hand", extraRoot: true },
+    { seats: 6, viewport: { width: 440, height: 894 }, effect: "Dismantle", kind: "Dismantle", zone: "equipment", equipmentOnly: true, longNames: true },
+    { seats: 8, viewport: { width: 480, height: 900 }, effect: "Steal", kind: "Steal", zone: "judgement", reducedMotion: true },
+    { seats: 4, viewport: { width: 390, height: 700 }, effect: "Dismantle", kind: "Dismantle", zone: "hand", oneCard: true },
+  ];
+  const selectedScenarios = process.env.T3_CASE
+    ? scenarios.filter((scenario) => `${scenario.effect.toLowerCase()}-${scenario.zone}-${scenario.seats}p-${scenario.viewport.width}x${scenario.viewport.height}` === process.env.T3_CASE)
+    : scenarios;
+
+  for (const scenario of selectedScenarios) {
+    const label = `${scenario.effect.toLowerCase()}-${scenario.zone}-${scenario.seats}p-${scenario.viewport.width}x${scenario.viewport.height}`;
+    const rootCard = card(scenario.kind, `t3-${label}-root`);
+    const nextRoot = scenario.extraRoot ? card("Dismantle", `t3-${label}-next-root`, "♦", "8") : null;
+    const hiddenHand = scenario.equipmentOnly ? [] : scenario.oneCard
+      ? [card("Peach", `t3-${label}-target-one-card`, "♥", "3")]
+      : [card("Peach", `t3-${label}-target-hidden-one`, "♥", "7"), card("Dodge", `t3-${label}-target-hidden-two`, "♣", "4")];
+    const equipment = scenario.equipmentOnly || scenario.extraRoot ? { armor: card("NioShield", `t3-${label}-armor`, "♦", "A") } : undefined;
+    const judgement = scenario.zone === "judgement" ? [card("Lightning", `t3-${label}-judgement`, "♠", "K")] : [];
+    const sourceName = scenario.longNames ? "SOURCE WITH A LONG MOBILE PLAYER NAME" : "SOURCE";
+    const targetName = scenario.longNames ? "TARGET WITH A LONG MOBILE PLAYER NAME" : "TARGET";
+    const seed = await seedGame(request, responsivePlayers(scenario.seats, {
+      sourceName,
+      targetName,
+      sourceHand: [rootCard, ...(nextRoot ? [nextRoot] : [])],
+      targetHand: hiddenHand,
+      equipment,
+      judgement,
+    }));
+    const viewerIndexes = scenario.seats === 4 ? [0, 1, 2, 3] : [0, 1, 2, scenario.seats - 1];
+    const contexts = await Promise.all(viewerIndexes.map(() => browser.newContext({
+      viewport: scenario.viewport,
+      isMobile: true,
+      hasTouch: true,
+      deviceScaleFactor: 3,
+    })));
+    const pages = await Promise.all(contexts.map((context) => context.newPage()));
+    const activityPlacementLogs = pages.map(() => []);
+    for (const [index, viewerPage] of pages.entries()) {
+      viewerPage.on("console", async (message) => {
+        if (!message.text().includes("[U13-B-G activity-chip placement]")) return;
+        const values = await Promise.all(message.args().map((argument) => argument.jsonValue().catch(() => null)));
+        activityPlacementLogs[index].push(values);
+      });
+    }
+
+    try {
+      if (scenario.reducedMotion) await Promise.all(pages.map((viewerPage) => viewerPage.emulateMedia({ reducedMotion: "reduce" })));
+      await Promise.all(pages.map(async (viewerPage, index) => {
+        const query = scenario.longNames || process.env.T3_DIAGNOSTICS === "1" ? "publicActivityChipDiagnostics=1" : "";
+        if (scenario.seats === 8 && index === 3) {
+          const member = seed.players[viewerIndexes[index]];
+          await viewerPage.setViewportSize(scenario.viewport);
+          await viewerPage.goto(`${API}/api/health`);
+          await viewerPage.evaluate((session) => localStorage.setItem("three-realms-session", JSON.stringify(session)), {
+            code: seed.code,
+            token: member.token,
+            name: member.name,
+          });
+          await viewerPage.goto(`${API}/${query ? `?${query}` : ""}`);
+          await expect(viewerPage.locator(".game-shell")).toBeVisible();
+          return;
+        }
+        await openGame(viewerPage, seed, viewerIndexes[index], scenario.viewport, query);
+      }));
+      await playCardThroughPage(pages[0], rootCard.id, targetName);
+
+      const rootState = await roomView(request, seed, 0);
+      const rootEvent = rootState.timeline.find((event) => event?.type === "card" && event.action === "play" && event.card?.id === rootCard.id);
+      expect(rootEvent, `${label} has one genuine public root event`).toBeTruthy();
+      await passEmptyResponses(request, seed);
+
+      const choosingViews = await Promise.all(seed.players.map((_, index) => roomView(request, seed, index)));
+      const pending = choosingViews[0].pendingTargetCard;
+      expect(pending).toMatchObject({ kind: "target_card", sourceId: seed.players[0].id, targetId: seed.players[1].id, actorId: seed.players[0].id, cardKind: scenario.kind });
+      for (const [index, view] of choosingViews.entries()) {
+        expect(view.pendingTargetCard, `${label} pending state is shared with seat ${index}`).toEqual(pending);
+        if (index === 0) {
+          expect(view.currentAction?.targetCardSelection?.targetId).toBe(seed.players[1].id);
+          expect(view.currentAction?.legalActions).toContain("choose_target_card");
+        } else {
+          expect(view.currentAction?.targetCardSelection).toBeUndefined();
+        }
+      }
+
+      for (const [index, viewerPage] of pages.entries()) {
+        const actorPage = index === 0;
+        const choiceCue = viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]');
+        try {
+          await expect(choiceCue).toBeVisible();
+        } catch (error) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          const traces = activityPlacementLogs[index].map((args) => args[1]).filter(Boolean).map(({ measuredAt, chip, safeBounds, outcome, chosen, candidates }) => ({
+            measuredAt,
+            chip,
+            safeBounds,
+            outcome,
+            chosen,
+            rejectedCandidates: outcome?.startsWith("hidden") ? candidates?.map(({ verticalStep, horizontalOffset, rejectedBy }) => ({ verticalStep, horizontalOffset, rejectedBy })) : undefined,
+          }));
+          const geometry = await viewerPage.evaluate(() => {
+            const chip = document.querySelector(".public-activity-chip");
+            const table = document.querySelector(".play-table");
+            const rect = (element) => {
+              const box = element.getBoundingClientRect();
+              return { left: box.left, top: box.top, right: box.right, bottom: box.bottom, width: box.width, height: box.height };
+            };
+            const chipStyle = chip ? getComputedStyle(chip) : null;
+            const heading = chip?.querySelector("strong");
+            const headingStyle = heading ? getComputedStyle(heading) : null;
+            return { kind: chip?.dataset.publicActivityKind, layout: chip?.dataset.publicActivityLayout, matchesMobileRule: matchMedia("(max-width: 520px)").matches, chip: chip ? { rect: rect(chip), width: chip.offsetWidth, height: chip.offsetHeight, text: chip.innerText, textContent: chip.textContent, cssWidth: chipStyle?.width, cssMaxWidth: chipStyle?.maxWidth } : null, heading: heading ? { text: heading.textContent, width: heading.getBoundingClientRect().width, cssWidth: headingStyle?.width, cssFontSize: headingStyle?.fontSize, cssWhiteSpace: headingStyle?.whiteSpace } : null, table: table ? rect(table) : null };
+          });
+          console.log(`T3 target-choice placement failure ${label} viewer ${index}: ${JSON.stringify({ geometry, traces })}`);
+          throw error;
+        }
+        await expect(choiceCue).toBeVisible();
+        await expect(choiceCue).toHaveAttribute("aria-label", `${sourceName} is choosing one card from ${targetName} · ${scenario.effect === "Dismantle" ? "Burning Bridges" : scenario.effect}`);
+        await expect(choiceCue.locator("strong")).toContainText(`Choosing ${targetName}'s card`);
+        const cueGeometry = await choiceCue.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height, viewportWidth: innerWidth, viewportHeight: innerHeight };
+        });
+        expect(cueGeometry.left).toBeGreaterThanOrEqual(0);
+        expect(cueGeometry.top).toBeGreaterThanOrEqual(0);
+        expect(cueGeometry.right).toBeLessThanOrEqual(cueGeometry.viewportWidth);
+        expect(cueGeometry.bottom).toBeLessThanOrEqual(cueGeometry.viewportHeight);
+        expect(cueGeometry.width).toBeLessThanOrEqual(156);
+        const cueRect = await choiceCue.boundingBox();
+        for (const obstacle of await viewerPage.locator(
+          ".target-card-picker-panel, .public-card-display-journey-copy, .public-card-journey-card, .player-square, .visible-countdown",
+        ).all()) {
+          const obstacleRect = await obstacle.boundingBox();
+          if (!cueRect || !obstacleRect) continue;
+          expect(cueRect.x + cueRect.width <= obstacleRect.x || obstacleRect.x + obstacleRect.width <= cueRect.x
+            || cueRect.y + cueRect.height <= obstacleRect.y || obstacleRect.y + obstacleRect.height <= cueRect.y,
+          `${label} viewer ${index} cue avoids visible stage obstacles`).toBe(true);
+        }
+        const display = viewerPage.locator('[data-public-card-display="true"]');
+        await expect(display).toHaveCount(1);
+        await expect(display).toHaveAttribute("data-public-card-root-event-id", rootEvent.id);
+        await expect(display).toHaveAttribute("data-public-card-id", rootCard.id);
+        const rootCardRepresentations = viewerPage.locator(
+          `[data-public-card-journey-event-id="${rootEvent.id}"][data-public-card-journey-role="root"], [data-public-card-static-event-id="${rootEvent.id}"][data-public-card-static-card-id="${rootCard.id}"]`,
+        );
+        await expect(rootCardRepresentations).toHaveCount(1);
+        if (actorPage) {
+          await expect(viewerPage.locator(".target-card-picker-overlay")).toBeVisible();
+          const picker = viewerPage.locator(".target-card-picker-panel");
+          const [cueRect, pickerRect] = await Promise.all([choiceCue.boundingBox(), picker.boundingBox()]);
+          expect(cueRect && pickerRect).toBeTruthy();
+          expect(cueRect.x + cueRect.width <= pickerRect.x || pickerRect.x + pickerRect.width <= cueRect.x
+            || cueRect.y + cueRect.height <= pickerRect.y || pickerRect.y + pickerRect.height <= cueRect.y).toBe(true);
+        } else {
+          await expect(viewerPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+        }
+        expect(await viewerPage.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(scenario.viewport.width);
+        if (scenario.reducedMotion) {
+          expect(await viewerPage.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
+        }
+      }
+
+      const choosingScreenshots = await Promise.all(pages.map(async (viewerPage, index) => ({
+        index,
+        bytes: await viewerPage.screenshot({ animations: "disabled" }),
+      })));
+      for (const { index, bytes } of choosingScreenshots) {
+        await testInfo.attach(`t3-${label}-choosing-view-${index + 1}`, { body: bytes, contentType: "image/png" });
+      }
+
+      // Let the actor leave the real picker open while every separate client polls.
+      for (let sample = 0; sample < 4; sample += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        for (const viewerPage of pages) {
+          await expect(viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toBeVisible();
+        }
+        const sampleViews = await Promise.all(seed.players.map((_, index) => roomView(request, seed, index)));
+        for (const view of sampleViews) expect(view.pendingTargetCard).toEqual(pending);
+      }
+
+      if (scenario.seats === 8) {
+        const reconnectingObserver = pages[1];
+        await reconnectingObserver.reload();
+        await expect(reconnectingObserver.locator(".game-shell")).toBeVisible();
+        await expect(reconnectingObserver.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toBeVisible();
+        await expect(reconnectingObserver.locator(".target-card-picker-overlay")).toHaveCount(0);
+        const nextPoll = reconnectingObserver.waitForResponse((response) => response.request().method() === "GET"
+          && response.url().startsWith(`${API}/api/rooms?`), { timeout: 8_000 });
+        await nextPoll;
+        await expect(reconnectingObserver.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toBeVisible();
+
+        const switchingViewer = pages[3];
+        const switchedIndex = 6;
+        await switchingViewer.goto(`${API}/api/health`);
+        await switchingViewer.evaluate(({ code, token, name }) => {
+          localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
+        }, { code: seed.code, token: seed.players[switchedIndex].token, name: seed.players[switchedIndex].name });
+        await switchingViewer.goto(`${API}/`);
+        await expect(switchingViewer.locator(`.local-player-dock[data-player-anchor="${seed.players[switchedIndex].id}"]`)).toBeVisible();
+        await expect(switchingViewer.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toBeVisible();
+        expect(await roomView(request, seed, switchedIndex).then((view) => view.pendingTargetCard)).toEqual(pending);
+        viewerIndexes[3] = switchedIndex;
+      }
+
+      const modalTitle = scenario.kind === "Steal" ? "Steal" : "Burning Bridge";
+      const instruction = scenario.kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
+      const dialog = await expectModal(pages[0], modalTitle, instruction, `Use ${modalTitle}`);
+      const choice = scenario.zone === "hand"
+        ? dialog.getByRole("button", { name: "Hidden hand card 1", exact: true })
+        : scenario.zone === "equipment"
+          ? dialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true })
+          : dialog.getByRole("button", { name: "Judgement: Lightning", exact: true });
+      await expect(choice).toBeVisible();
+      await expect(choice).toBeEnabled();
+
+      // The current real root must remain singular and attributable when the actor confirms promptly.
+      const rootRenderer = await pages[0].locator('[data-public-card-display="true"]').getAttribute("data-public-card-renderer-kind");
+      if (rootRenderer === "single-target-journey") {
+        const rootPhase = await pages[0].locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`).getAttribute("data-public-card-journey-phase");
+        expect(["reveal", "move", "parked"]).toContain(rootPhase);
+      } else {
+        expect(rootRenderer).toBe("static-fallback");
+        await expect(pages[0].locator(`[data-public-card-static-event-id="${rootEvent.id}"][data-public-card-static-card-id="${rootCard.id}"]`)).toHaveCount(1);
+      }
+      await tapMobile(pages[0], choice);
+      await expect(choice).toHaveAttribute("aria-pressed", "true");
+      const use = dialog.getByRole("button", { name: `Use ${modalTitle}`, exact: true });
+      await expect(use).toBeEnabled();
+      const submitPromise = pages[0].waitForResponse((response) => {
+        if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+        try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+        catch { return false; }
+      });
+      await tapMobile(pages[0], use);
+      const submitted = await submitPromise;
+      expect(submitted.ok(), `${label} touch confirmation succeeds`).toBe(true);
+      expect(JSON.parse(submitted.request().postData() ?? "{}").targetCardZone).toBe(scenario.zone);
+
+      const settledViewsPromise = Promise.all(seed.players.map((_, index) => roomView(request, seed, index)));
+      const publicField = scenario.kind === "Steal" ? "stealSettlements" : "dismantleSettlements";
+      const affected = scenario.zone === "hand" ? hiddenHand[0]
+        : scenario.zone === "equipment" ? equipment.armor : judgement[0];
+      const faceIsPublic = scenario.kind === "Dismantle" || scenario.zone !== "hand";
+      const outcome = scenario.kind === "Steal" ? "STEAL_RESOLVED" : "DISMANTLE_RESOLVED";
+      const cardLabel = faceIsPublic ? `${scenario.zone === "equipment" ? "Nio Shield" : scenario.zone === "judgement" ? "Lightning" : "Peach"} (${affected.rank}${affected.suit})` : "one card";
+      const sourceZoneLabel = scenario.zone[0].toUpperCase() + scenario.zone.slice(1);
+      const expectedCopy = scenario.kind === "Steal"
+        ? `${sourceName} took ${cardLabel} from ${targetName}'s ${sourceZoneLabel} into ${sourceName}'s Hand.`
+        : `${sourceName} discarded ${cardLabel} from ${targetName}'s ${sourceZoneLabel} to the discard pile.`;
+      await Promise.all(pages.map(async (viewerPage, index) => {
+        const display = viewerPage.locator('[data-public-card-display="true"]');
+        await expect(display).toHaveCount(1);
+        await expect(display).toHaveAttribute("data-public-card-root-event-id", rootEvent.id);
+        await expect(display).toHaveAttribute("data-public-card-settlement-outcome", outcome, { timeout: 15_000 });
+        await expect(display).toHaveAttribute("data-public-card-settlement-source-zone", scenario.zone, { timeout: 15_000 });
+        await expect(display).toHaveAttribute("data-public-card-settlement-destination-zone", scenario.kind === "Steal" ? "hand" : "discard", { timeout: 15_000 });
+        const announcement = viewerPage.locator('[data-public-card-announcement="true"]');
+        if (scenario.longNames) {
+          await expect(announcement).toContainText(`${cardLabel} from`);
+          await expect(announcement).toContainText(`${sourceZoneLabel} to the discard pile.`);
+          await expect(announcement).toContainText("discarded");
+        } else if (scenario.seats === 8) {
+          await expect(announcement).toContainText(`Cao Cao took ${cardLabel} from Simayi's ${sourceZoneLabel} into Cao Cao's Hand.`);
+        } else {
+          await expect(announcement).toContainText(expectedCopy);
+        }
+        const copyGeometry = await announcement.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth, clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, viewportWidth: innerWidth, viewportHeight: innerHeight };
+        });
+        expect(copyGeometry.left).toBeGreaterThanOrEqual(0);
+        expect(copyGeometry.top).toBeGreaterThanOrEqual(0);
+        expect(copyGeometry.right).toBeLessThanOrEqual(copyGeometry.viewportWidth);
+        expect(copyGeometry.bottom).toBeLessThanOrEqual(copyGeometry.viewportHeight);
+        expect(copyGeometry.scrollWidth).toBeLessThanOrEqual(copyGeometry.clientWidth + 1);
+        expect(copyGeometry.scrollHeight).toBeLessThanOrEqual(copyGeometry.clientHeight + 1);
+        const screenshot = await viewerPage.screenshot({ animations: "disabled" });
+        await testInfo.attach(`t3-${label}-settled-view-${index + 1}`, { body: screenshot, contentType: "image/png" });
+        if (scenario.reducedMotion) {
+          await new Promise((resolve) => setTimeout(resolve, 750));
+          await expect(display).toHaveAttribute("data-public-card-settlement-outcome", outcome);
+        }
+      }));
+
+      const settledViews = await settledViewsPromise;
+      const proofByViewer = settledViews.map((view) => view.presentationV2[publicField].find((entry) => entry.rootEventId === rootEvent.id));
+      const proof = proofByViewer[0];
+      expect(proof).toMatchObject({ semantics: "PROVEN", rootEventId: rootEvent.id, sourceId: seed.players[0].id, targetId: seed.players[1].id });
+      expect(proofByViewer.every((entry) => JSON.stringify(entry) === JSON.stringify(proof))).toBe(true);
+      expect(Object.hasOwn(proof, "affectedCardFace")).toBe(faceIsPublic);
+      if (faceIsPublic) expect(proof.affectedCardFace).toEqual(affected);
+      else expect(JSON.stringify(proof)).not.toContain(affected.id);
+      for (const [index, view] of settledViews.entries()) {
+        expect(view.pendingTargetCard).toBeNull();
+        expect(view.currentAction?.targetCardSelection).toBeUndefined();
+        expect(view.presentationSnapshot[publicField].find((entry) => entry.rootEventId === rootEvent.id)).toEqual(proof);
+        expect(view.timeline.filter((event) => event?.id === rootEvent.id)).toHaveLength(1);
+        const publicWire = JSON.stringify({ presentationV2: view.presentationV2, presentationSnapshot: view.presentationSnapshot, timeline: view.timeline, log: view.log });
+        const hiddenId = hiddenHand[0]?.id;
+        if (hiddenId) expect(publicWire.includes(hiddenId)).toBe(scenario.kind === "Dismantle" && scenario.zone === "hand");
+        if (hiddenId && scenario.kind === "Steal" && scenario.zone === "hand" && index !== 0) {
+          expect(await pages[index].locator("body").innerHTML()).not.toContain(hiddenId);
+        }
+      }
+      await Promise.all(pages.map((viewerPage) => viewerPage.reload()));
+      for (const [index, viewerPage] of pages.entries()) {
+        await expect(viewerPage.locator(".game-shell")).toBeVisible();
+        await expect(viewerPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+        const replayed = await roomView(request, seed, viewerIndexes[index]);
+        expect(replayed.presentationV2[publicField].find((entry) => entry.rootEventId === rootEvent.id)).toEqual(proof);
+      }
+
+      if (scenario.extraRoot) {
+        await playCardThroughPage(pages[0], nextRoot.id, targetName);
+        const nextRootState = await roomView(request, seed, 0);
+        const nextRootEvent = nextRootState.timeline.find((event) => event?.type === "card" && event.action === "play" && event.card?.id === nextRoot.id);
+        expect(nextRootEvent).toBeTruthy();
+        expect(nextRootEvent.id).not.toBe(rootEvent.id);
+        await passEmptyResponses(request, seed);
+        for (const viewerPage of pages) {
+          await expect(viewerPage.locator('[data-public-card-display="true"]')).toHaveCount(1);
+          await expect(viewerPage.locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-root-event-id", nextRootEvent.id);
+          await expect(viewerPage.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`)).toHaveCount(0);
+        }
+        const nextDialog = await expectModal(pages[0], "Burning Bridge", "Choose 1 card to discard", "Use Burning Bridge");
+        const armorChoice = nextDialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true });
+        await expect(armorChoice).toBeEnabled();
+        await tapMobile(pages[0], armorChoice);
+        const nextUse = nextDialog.getByRole("button", { name: "Use Burning Bridge", exact: true });
+        const nextSubmissionPromise = pages[0].waitForResponse((response) => {
+          if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+          try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+          catch { return false; }
+        });
+        await tapMobile(pages[0], nextUse);
+        expect((await nextSubmissionPromise).ok()).toBe(true);
+        const nextProofs = await Promise.all(seed.players.map(async (_, index) => {
+          const view = await roomView(request, seed, index);
+          const entry = view.presentationV2.dismantleSettlements.find((candidate) => candidate.rootEventId === nextRootEvent.id);
+          expect(view.timeline.filter((event) => event?.id === nextRootEvent.id)).toHaveLength(1);
+          return entry;
+        }));
+        expect(nextProofs.every((entry) => JSON.stringify(entry) === JSON.stringify(nextProofs[0]))).toBe(true);
+        for (const viewerPage of pages) {
+          const display = viewerPage.locator('[data-public-card-display="true"]');
+          await expect(display).toHaveAttribute("data-public-card-root-event-id", nextRootEvent.id);
+          await expect(display).toHaveAttribute("data-public-card-settlement-card-id", equipment.armor.id);
+          await expect(viewerPage.locator(
+            `[data-public-card-journey-event-id="${nextRootEvent.id}"][data-public-card-journey-role="root"], [data-public-card-static-event-id="${nextRootEvent.id}"][data-public-card-static-card-id="${nextRoot.id}"]`,
+          )).toHaveCount(1);
+        }
+      }
+    } finally {
+      await Promise.all(contexts.map((context) => context.close()));
+    }
+  }
+});
+
+test("T3 counter-Negation keeps Steal private until the restored root opens its shared picker", async ({ browser, request }, testInfo) => {
+  test.setTimeout(150_000);
+  const steal = card("Steal", "t3-counter-steal-root");
+  const actorNegation = card("Negation", "t3-counter-steal-counter");
+  const targetNegation = card("Negation", "t3-counter-steal-first-negation");
+  const hidden = card("Peach", "t3-counter-steal-hidden", "♥", "4");
+  const seed = await seedGame(request, fourPlayers(
+    { hand: [steal, actorNegation] },
+    { hand: [targetNegation, hidden] },
+  ));
+  const contexts = await Promise.all(seed.players.map(() => browser.newContext({
+    viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3,
+  })));
+  const pages = await Promise.all(contexts.map((context) => context.newPage()));
+
+  async function commitNegationAndPassWindow(winnerIndex, negationCardId) {
+    const opened = await roomView(request, seed, winnerIndex);
+    const windowId = opened.currentAction?.negationWindowId;
+    expect(windowId).toBeTruthy();
+    const held = await request.post(`${API}/__test/negation-window-clock`, { data: { code: seed.code, windowId, mode: "hold" } });
+    expect(await held.json()).toEqual({ adjusted: true });
+    await act(request, seed, winnerIndex, "respond", { providerId: "negation_card", cardId: negationCardId });
+    for (const [index, player] of seed.players.entries()) {
+      if (index === winnerIndex) continue;
+      const passed = await request.post(`${API}/api/rooms`, { data: { action: "decline_response", code: seed.code, token: player.token, context: { windowId } } });
+      expect(passed.ok(), `${player.name} passes Negation window ${windowId}`).toBe(true);
+    }
+    return roomView(request, seed, winnerIndex);
+  }
+
+  try {
+    await Promise.all(pages.map((viewerPage, index) => openGame(viewerPage, seed, index, { width: 390, height: 844 })));
+    await playCardThroughPage(pages[0], steal.id, "TARGET");
+    let states = await Promise.all(seed.players.map((_, index) => roomView(request, seed, index)));
+    const rootEvent = states[0].timeline.find((event) => event?.type === "card" && event.action === "play" && event.card?.id === steal.id);
+    expect(rootEvent).toBeTruthy();
+    expect(states[0].pendingTargetCard).toBeNull();
+    for (const state of states) expect(state.pendingTargetCard).toBeNull();
+    for (const viewerPage of pages) {
+      await expect(viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toHaveCount(0);
+      await expect(viewerPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+    }
+
+    await commitNegationAndPassWindow(1, targetNegation.id);
+    states = await Promise.all(seed.players.map((_, index) => roomView(request, seed, index)));
+    expect(states[0].pendingNegation).toBeTruthy();
+    expect(states[0].pendingNegation.responseTarget).toContain("Negation");
+    for (const state of states) expect(state.pendingTargetCard).toBeNull();
+    for (const viewerPage of pages) {
+      await expect(viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toHaveCount(0);
+      await expect(viewerPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+    }
+
+    await commitNegationAndPassWindow(0, actorNegation.id);
+    await passEmptyResponses(request, seed);
+    states = await Promise.all(seed.players.map((_, index) => roomView(request, seed, index)));
+    const pending = states[0].pendingTargetCard;
+    expect(pending).toMatchObject({ kind: "target_card", cardKind: "Steal", sourceId: seed.players[0].id, targetId: seed.players[1].id });
+    expect(states[0].presentationSnapshot.rootAction?.rootEventId).toBe(rootEvent.id);
+    for (const state of states) expect(state.pendingTargetCard).toEqual(pending);
+    for (const [index, viewerPage] of pages.entries()) {
+      await expect(viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toBeVisible();
+      await expect(viewerPage.locator('[data-public-card-display="true"]')).toHaveAttribute("data-public-card-root-event-id", rootEvent.id);
+      if (index === 0) await expect(viewerPage.locator(".target-card-picker-overlay")).toBeVisible();
+      else await expect(viewerPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+      if (index !== 0) expect(JSON.stringify(states[index].presentationSnapshot)).not.toContain(hidden.id);
+    }
+    const dialog = await expectModal(pages[0], "Steal", "Choose 1 card to obtain", "Use Steal");
+    const hiddenChoice = dialog.getByRole("button", { name: "Hidden hand card 1", exact: true });
+    await expect(hiddenChoice, "the legal target-card choice stays touchable after counter-Negation restores Steal").toBeEnabled();
+    await tapMobile(pages[0], hiddenChoice);
+    const use = dialog.getByRole("button", { name: "Use Steal", exact: true });
+    await expect(hiddenChoice).toHaveAttribute("aria-pressed", "true");
+    await expect(use, "the actor can submit the selected legal target-card choice").toBeEnabled();
+    const submissionPromise = pages[0].waitForResponse((response) => {
+      if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+      try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+      catch { return false; }
+    });
+    await tapMobile(pages[0], use);
+    expect((await submissionPromise).ok()).toBe(true);
+    states = await Promise.all(seed.players.map((_, index) => roomView(request, seed, index)));
+    for (const state of states) {
+      expect(state.pendingTargetCard).toBeNull();
+      expect(JSON.stringify(state.presentationSnapshot.stealSettlements)).not.toContain(hidden.id);
+      expect(state.presentationSnapshot.stealSettlements[0].rootEventId).toBe(rootEvent.id);
+    }
+    for (const [index, viewerPage] of pages.entries()) {
+      await expect(viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toHaveCount(0);
+      const display = viewerPage.locator('[data-public-card-display="true"]');
+      await expect(display).toHaveAttribute("data-public-card-root-event-id", rootEvent.id);
+      if (index > 0) expect(await viewerPage.locator("body").innerHTML()).not.toContain(hidden.id);
+    }
+    const screenshots = await Promise.all(pages.map((viewerPage) => viewerPage.screenshot({ animations: "disabled" })));
+    for (const [index, screenshot] of screenshots.entries()) await testInfo.attach(`t3-counter-negation-view-${index + 1}-390x844`, { body: screenshot, contentType: "image/png" });
+  } finally {
+    await Promise.all(contexts.map((context) => context.close()));
   }
 });
 
