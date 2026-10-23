@@ -409,6 +409,8 @@ test("Green Dragon Blade and Attack-use-limit rules preserve normal Attack flow"
   const equipped = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "greendragonblade-human" });
   const publicHost = equipped.data.room.players.find((player) => player.id === hostPlayer.id);
   assert.equal(publicHost.equipmentCards[0].kind, "GreenDragonBlade"); assert.equal(publicHost.attackRange, 3);
+  const equipEvent = equipped.data.room.timeline.find((event) => event.type === "card" && event.action === "equip" && event.card?.id === "greendragonblade-human");
+  assert.equal(equipEvent?.actorId, hostPlayer.id, "a public Equip event carries the exact server-owned actor ID for its destination slot");
   assert.equal(equipped.data.room.players.find((player) => player.id === bobPlayer.id).distance, 2, "Bob is opposite Host at distance 2");
 
   const firstAttack = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-dragon-first", targetId: bobPlayer.id });

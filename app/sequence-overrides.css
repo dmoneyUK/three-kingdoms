@@ -60,6 +60,13 @@
   100% { left: var(--judgement-x, 50%); top: var(--judgement-y, 50%); opacity: 1; transform: scale(var(--judgement-scale-x, .32), var(--judgement-scale-y, .32)); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .active-table-reveal.equipment-flight {
+    animation-duration: 1ms !important;
+    animation-delay: 0s !important;
+  }
+}
+
 /* Reach the owner early enough to remain visibly settled before React swaps in
    the small persistent copy. No frame in this animation targets the discard. */
 @keyframes sequenceCardToOwner {
@@ -734,6 +741,8 @@
 
 .local-zone-empty,
 .local-zone-card { width: var(--zone-card-width); height: var(--zone-card-height); box-sizing: border-box; aspect-ratio: 2 / 3; }
+.local-zone-card.equipment-arrival-pending { border-color: transparent; background: transparent; box-shadow: none; }
+.local-zone-card.equipment-arrival-pending > .played-card { visibility: hidden; }
 .local-zone-empty { display: flex; align-items: flex-end; justify-content: center; padding: 3px 2px; border: 1px solid #765f3c99; background: #0e120dcc; color: #c8b487; font: 6px/1.1 Arial, sans-serif; text-align: center; }
 .local-zone-empty-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .local-zone-card { position: relative; display: block; overflow: hidden; border: 1px solid #bda574; background: #e9dfca; color: #29251e; box-shadow: 0 3px 8px #0008; }
@@ -2332,6 +2341,8 @@
   animation: none;
   pointer-events: none;
 }
+.opponent-inspection-card.equipment-arrival-pending { border-color: transparent; background: transparent; }
+.opponent-inspection-card.equipment-arrival-pending > .played-card { visibility: hidden; }
 
 .opponent-inspection-empty {
   color: #8f896f;
