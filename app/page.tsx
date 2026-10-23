@@ -2646,6 +2646,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const excessCards = Math.max(0, room.myHand.length - (me?.hp ?? 0));
   const myTableIndex = Math.max(0, room.players.findIndex((player) => player.id === room.meId));
   const canPlay = room.phase?.startsWith("play") && room.status === "playing";
+  const ordinaryTurnPlayAuthorized = Boolean(
+    canPlay
+    && room.isMyTurn
+    && room.isMyAction
+    && room.currentAction?.kind === "turn"
+    && room.currentAction.actorId === room.meId
+    && canUseAction(room.currentAction, "play_card"),
+  );
   const harvestActionRevision = room.actionRevision ?? "";
   const hasAvailableHarvestChoice = Boolean(room.pendingHarvest?.availableIds.some((availableId) =>
     room.pendingHarvest?.revealed.some((choice) => choice.id === availableId)));
@@ -2787,19 +2795,53 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     : activeSkillOption && activeSkillStateIsCurrent
       ? { providerId: activeSkillOption.effectId, ...(activeSkillTargetSelection && activeSkillTargetMax > 1 ? { targetIds: activeSkillSelectedTargetIds } : activeSkillTargetId ? { targetId: activeSkillTargetId } : {}) }
       : null;
-  const activeEquipmentArrivalEventId = activeEvent?.type === "card"
-    ? equipmentArrivalIdentity(activeEvent, room.players)?.eventId ?? null
+  const activeEquipmentArrival = activeEvent?.type === "card"
+    ? equipmentArrivalIdentity(activeEvent, room.players)
     : null;
+  const activeEquipmentArrivalEventId = activeEquipmentArrival?.eventId ?? null;
+  const activeEquipmentArrivalKey = activeEquipmentArrival
+    ? `${activeEquipmentArrival.eventId}|${activeEquipmentArrival.cardId}|${activeEquipmentArrival.ownerId}|${activeEquipmentArrival.slot}`
+    : "";
+  const activeEventTimerEventId = activeEvent?.id ?? "";
+  const activeEventTimerKind = activeEvent?.type === "card"
+    ? `card:${activeEvent.action}:${activeEvent.card.kind}`
+    : activeEvent?.type === "cards"
+      ? `cards:${activeEvent.action}:${activeEvent.cards.map((item) => item.kind).join(",")}`
+      : activeEvent ? "message" : "";
+  const activeEventTimerIdentity = activeEventTimerEventId ? `${activeEventTimerEventId}|${activeEventTimerKind}` : "";
+  const activeEventDisplayDuration = activeEvent?.type === "card" || activeEvent?.type === "cards"
+    ? isJudgementReveal(activeEvent) ? UI_TIMING.judgementCard : UI_TIMING.playedCard
+    : 0;
   const hasUnseenPresentations = room.timeline.some((event) => event.type !== "message" && event.presentation !== false
     && !presentedEventIds.has(event.id) && event.id !== activeEquipmentArrivalEventId);
-  const presentationBusy = Boolean(optimisticPlay || (activeEvent && !activeEquipmentArrivalEventId) || eventQueue.length || resolutionClosing || turnNotice || privateDrawCards.length || hasUnseenPresentations);
+  const presentationBusyCauses = {
+    optimisticPlay: Boolean(optimisticPlay),
+    activeEvent: Boolean(activeEvent && !activeEquipmentArrivalEventId),
+    eventQueue: eventQueue.length > 0,
+    resolutionClosing,
+    turnNotice: Boolean(turnNotice),
+    privateDrawCards: privateDrawCards.length > 0,
+    hasUnseenPresentations,
+  };
+  const presentationBusy = Object.values(presentationBusyCauses).some(Boolean);
+  const presentationTimerDiagnosticContextRef = useRef<Record<string, unknown>>({});
+  presentationTimerDiagnosticContextRef.current = {
+    phase: room.phase ?? "unknown",
+    actionRevisionPresent: Boolean(room.actionRevision),
+    currentActionKind: room.currentAction?.kind ?? "none",
+    currentActionOwnedByViewer: room.currentAction?.actorId === room.meId && room.isMyAction,
+    networkBusy: busy,
+    presentationBusy,
+    presentationBusyCauses,
+    queueCount: eventQueue.length,
+  };
   // A target selection is already an explicit local boundary over the same
   // server-owned CurrentAction. A late card animation must not remove its
   // Confirm/Cancel controls after the player has selected legal Assault
   // targets; the server still revalidates the action and revision on submit.
-  // A server-authorized response must not inherit visual presentation busy
-  // state. Network `busy` still blocks duplicate submissions while a request
-  // is in flight; turn actions remain presentation-gated below.
+  // A server-authorized response and ordinary turn action must not inherit
+  // decorative presentation busy state. Network `busy` still blocks duplicate
+  // submissions, and special skill/response readiness stays independently gated.
   const activeSkillSelectionBusy = Boolean(presentationBusy && !activeSkillTargetMode && !sharedNegationWindow && !responseDecisionReady);
   // CurrentAction owns whether this local card may be played. The helper only
   // mirrors the already-public scope rule for a selected, legal group card.
@@ -2808,7 +2850,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     sourceId: room.meId,
     turnSeat: room.turnSeat,
     players: room.players,
-    playAuthorized: Boolean(room.isMyTurn && room.isMyAction && canPlay && !busy && !presentationBusy && room.currentAction?.actorId === room.meId && canUseAction(room.currentAction, "play_card")),
+    playAuthorized: ordinaryTurnPlayAuthorized && !busy,
   });
   const mandatoryChoiceTriggerOption = triggerOptions.find((option) => option.selection?.type === "choice" && option.allowDecline === false) ?? null;
   const genericChoiceTriggerOption = triggerOptions.find((option) => option.selection?.type === "choice" && !heroSkillEffectIds.has(option.effectId)) ?? null;
@@ -3090,7 +3132,9 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const triggerTargetMax = triggerTargetSelection?.max ?? 1;
   const triggerTargetMode = Boolean(triggerResponse && responseDecisionReady && triggerTargetSelection && responseProviderId === selectedTriggerOption?.effectId);
   const borrowedSwordTargetSelectionActive = Boolean(canChooseBorrowedSword && !presentationBusy);
-  const targetSelectionActive = Boolean(borrowedSwordTargetSelectionActive || triggerTargetMode || activeSkillTargetMode || room.isMyTurn && canPlay && (serpentMode || selectedCanPlayAsAttack || card && ["Dismantle", "Steal", "Duel", "BorrowedSword", "Overindulgence", "RationsDepleted"].includes(card.kind)));
+  const normalTurnTargetSelectionActive = Boolean(ordinaryTurnPlayAuthorized
+    && (serpentMode || selectedCanPlayAsAttack || card && ["Dismantle", "Steal", "Duel", "BorrowedSword", "Overindulgence", "RationsDepleted"].includes(card.kind)));
+  const targetSelectionActive = Boolean(borrowedSwordTargetSelectionActive || triggerTargetMode || activeSkillTargetMode || normalTurnTargetSelectionActive);
   const triggerTargetComplete = Boolean(triggerTargetMode && targetIds.length >= triggerTargetMin && targetIds.length <= triggerTargetMax);
   const triggerSubmissionComplete = triggerSelectionComplete && (!triggerTargetSelection || triggerTargetComplete);
   const normalTargetSelectionActive = targetSelectionActive && !borrowedSwordTargetSelectionActive && !triggerTargetMode && !activeSkillTargetMode;
@@ -3295,7 +3339,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const cancelLocalTargetSelection = () => {
     const responseTargetSelection = responseDecisionReady && (triggerResponse || canRespond)
       && (localTargetFlow === "trigger" || localTargetFlow === "active-skill");
-    if (!localTargetSelection.selectionActive || !localTargetFlow || busy || presentationBusy && !responseTargetSelection && !(localTargetFlow === "active-skill" && daqiaoDeflectionSelectionActive)) return;
+    const presentationBlocksCancel = presentationBusy
+      && !ordinaryTurnPlayAuthorized
+      && !responseTargetSelection
+      && !(localTargetFlow === "active-skill" && daqiaoDeflectionSelectionActive);
+    if (!localTargetSelection.selectionActive || !localTargetFlow || busy || presentationBlocksCancel) return;
     resetLocalTargetFlow(localTargetFlow);
   };
   const canUseLongdanInResponse = Boolean(me?.hero === "zhao-yun" && responseDecisionReady && longdanResponseOptions.length > 0);
@@ -3709,7 +3757,36 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   useEffect(() => { if (!harvestSubmitting || room.pendingHarvest?.actorId === harvestSubmitting.playerId && !room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId)) return; const timer = setTimeout(() => setHarvestSubmitting(null), 0); return () => clearTimeout(timer); }, [harvestSubmitting, room.pendingHarvest]);
   useEffect(() => { const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || !room.phase?.startsWith("draw") || !canUseAction(room.currentAction, "draw") || activeEvent || eventQueue.length || hasUnseenPresentations || privateDrawCards.length || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey && canUseAction(room.currentAction, "draw")) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, UI_TIMING.turnDrawStart); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, room.currentAction, current?.name, lastTimelineId, hasUnseenPresentations, activeEvent, eventQueue.length, privateDrawCards.length]);
   useEffect(() => { if (optimisticPlay || activeEvent || !eventQueue.length) return; const timer = setTimeout(() => { const next = eventQueue[0]; setActiveEvent(next); if (retainsAtPlayer(next)) setResolutionEvents((events) => appendUniqueEvents(events, [next])); setEventQueue((queue) => queue.slice(1)); }, 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue]);
-  useEffect(() => { if (!activeEvent) return; if (activeEvent.type === "card" && activeEvent.action === "equip" && equipmentArrivalIdentity(activeEvent, room.players)) return; const displayTime = activeEvent.type === "card" || activeEvent.type === "cards" ? isJudgementReveal(activeEvent) ? UI_TIMING.judgementCard : UI_TIMING.playedCard : 0; const timer = setTimeout(() => { setPresentedEventIds((ids) => ids.has(activeEvent.id) ? ids : new Set([...ids, activeEvent.id])); setActiveEvent(null); }, displayTime); return () => clearTimeout(timer); }, [activeEvent, room.players]);
+  useEffect(() => {
+    if (!activeEventTimerEventId) return;
+    const timerContext = presentationTimerDiagnosticContextRef.current;
+    const traceTimer = (status: "scheduled" | "cancelled" | "fired" | "equipment-arrival-exempt") => recordAttackDodgeUxTrace("public-event-presentation-timer", {
+      status,
+      eventId: activeEventTimerEventId,
+      eventKind: activeEventTimerKind,
+      stableIdentity: activeEventTimerIdentity,
+      durationMs: activeEventDisplayDuration,
+      timerMode: activeEquipmentArrivalKey ? "equipment-arrival" : "timed-reveal",
+      equipmentArrivalIdentity: activeEquipmentArrivalKey || undefined,
+      ...timerContext,
+    });
+    if (activeEquipmentArrivalKey) {
+      traceTimer("equipment-arrival-exempt");
+      return;
+    }
+    let fired = false;
+    traceTimer("scheduled");
+    const timer = window.setTimeout(() => {
+      fired = true;
+      traceTimer("fired");
+      setPresentedEventIds((ids) => ids.has(activeEventTimerEventId) ? ids : new Set([...ids, activeEventTimerEventId]));
+      setActiveEvent((currentEvent) => currentEvent?.id === activeEventTimerEventId ? null : currentEvent);
+    }, activeEventDisplayDuration);
+    return () => {
+      window.clearTimeout(timer);
+      if (!fired) traceTimer("cancelled");
+    };
+  }, [activeEventTimerEventId, activeEventTimerKind, activeEventTimerIdentity, activeEventDisplayDuration, activeEquipmentArrivalKey]);
   useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || resolutionClosing || !resolutionEvents.length) return; const timer = setTimeout(() => setResolutionClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, room.phase, resolutionClosing, resolutionEvents.length]);
   useEffect(() => { if (!resolutionClosing) return; const closingRevision = resolutionRevision.current; const timer = setTimeout(() => { if (resolutionRevision.current !== closingRevision) { setResolutionClosing(false); return; } setResolutionEvents([]); setSequenceScopeStartId(""); setResolutionClosing(false); }, UI_TIMING.sequenceDiscard); return () => clearTimeout(timer); }, [resolutionClosing]);
   useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawPresentation({ playerId: room.meId, cards: [] }), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, room.meId, activeEvent, eventQueue.length]);
@@ -3900,7 +3977,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ...(selectedCanPlayAsAttack && !isAttackCard(card) ? { playedAs: "attack" } : {}),
     };
     const serverCommittedEquipmentJourney = Boolean(definition.equipmentSlot && !selectedCanPlayAsAttack);
-    if (!serverCommittedEquipmentJourney) {
+    const presentImmediately = !serverCommittedEquipmentJourney && !optimisticPlay && !activeEvent && eventQueue.length === 0;
+    if (presentImmediately) {
       resolutionRevision.current += 1;
       optimisticallyPresentedCards.current.add(playedCard.id);
       setResolutionClosing(false);
@@ -3915,7 +3993,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ...(needsTarget ? { targetId: target, ...(halberdAttack ? { targetIds } : {}) } : {}),
     }));
     if (!accepted) {
-      if (!serverCommittedEquipmentJourney) {
+      if (presentImmediately) {
         optimisticallyPresentedCards.current.delete(playedCard.id);
         setOptimisticPlay(null);
         setResolutionEvents([]);
@@ -7460,12 +7538,17 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     || Boolean(canChooseTargetCard && !pendingTargetCardUsesUnifiedModal)
     || canClearTargetCardPickerSelection
   );
+  const ordinaryTurnDecisionSurface = consoleKind === "turn"
+    && ordinaryTurnPlayAuthorized
+    && !activeSkillSelection
+    && !activeSkillTargetSelection;
+  const consoleDecisionBusy = busy || activeSkillSelectionBusy && !ordinaryTurnDecisionSurface;
   const consoleDecision = buildConsoleDecisionDisplay({
     kind: consoleKind,
     instruction: consoleInstruction,
     viewerIsDecisionActor: consoleIsDecisionActor || consoleKind === "turn" && room.isMyTurn && currentActionOwnedByViewer,
     authoritativeDecision: consoleAuthoritativeDecision,
-    busy: busy || activeSkillSelectionBusy,
+    busy: consoleDecisionBusy,
     selection: consoleSelection,
     primaryCandidates: consolePrimaryCandidates,
     localCancel: { visible: consoleLocalCancelVisible, enabled: consoleLocalCancelEnabled },
@@ -7699,7 +7782,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               data-console-response-presentation-ready={responsePresentationReady ? "true" : "false"}
               data-console-response-decision-ready={responseDecisionReady ? "true" : "false"}
               data-console-presentation-busy={presentationBusy ? "true" : "false"}
-              data-console-presentation-busy-causes={JSON.stringify({ optimisticPlay: Boolean(optimisticPlay), activeEvent: Boolean(activeEvent && !activeEquipmentArrivalEventId), eventQueue: eventQueue.length > 0, resolutionClosing, turnNotice: Boolean(turnNotice), privateDrawCards: privateDrawCards.length > 0, hasUnseenPresentations })}
+              data-console-presentation-busy-causes={JSON.stringify(presentationBusyCauses)}
+              data-console-ordinary-turn-play-authorized={ordinaryTurnPlayAuthorized ? "true" : "false"}
+              data-console-active-event-id={activeEventTimerEventId || undefined}
+              data-console-active-event-kind={activeEventTimerKind || undefined}
+              data-console-active-event-timer-mode={activeEventTimerEventId ? activeEquipmentArrivalKey ? "equipment-arrival" : "timed-reveal" : "idle"}
               data-console-active-skill-selection-busy={activeSkillSelectionBusy ? "true" : "false"}
               data-console-network-busy={busy ? "true" : "false"}
               data-lust-local-selection={lustLocalSelectionActive ? "true" : undefined}
@@ -7797,7 +7884,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {targetCardPickerInLocalDock && canClearTargetCardPickerSelection && <button className="end local-target-cancel" disabled={responseControlsDisabled || !consoleDecision.localCancel.enabled} onClick={cancelTargetCardPicker}>Clear selection</button>}
             {triggerResponse && triggerTargetMode && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !triggerHasProviderCancelSurface && <button className="end local-target-cancel" disabled={responseControlsDisabled || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
             {(activeSkillSelection || activeSkillTargetSelection) && activeSkillTargetMode && consoleDecision.localCancel.visible && localTargetSelection.canCancel && <button className="end local-target-cancel" disabled={busy || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && normalTargetSelectionActive && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !normalHasProviderCancelSurface && <button className="end local-target-cancel" disabled={busy || presentationBusy || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
+            {room.isMyTurn && canPlay && consoleKind === "turn" && normalTargetSelectionActive && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !normalHasProviderCancelSurface && <button className="end local-target-cancel" disabled={busy || presentationBusy && !ordinaryTurnPlayAuthorized || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
           </div>
           <div data-action-slot="primary">
             {rescueDecisionReady && !canRespond && consolePrimaryId === "rescue" && <button className="primary" disabled={busy || card?.kind !== "Peach" || !consoleDecision.primary?.enabled} onClick={() => { if (card?.kind === "Peach") void onAction("give_peach", { cardId: card.id }); setSelected(""); }}>{busy ? "Playing…" : "Peach"}</button>}
@@ -7809,13 +7896,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             {(activeSkillSelection || activeSkillTargetSelection) && consolePrimaryId === "active-skill" && <button className="primary" disabled={busy || !activeSkillConfirmEnabled || !consoleDecision.primary?.enabled} onClick={() => activeSkillSubmission && submitWithLocalTargetPreview(() => onAction("trigger", activeSkillSubmission))}>Confirm</button>}
             {canRespond && genericResponse && semanticResponseOptions.length > 0 && selectedResponseProvider && consolePrimaryId === "response" && <button className="primary" disabled={responseControlsDisabled || !responseSelectionComplete || !consoleDecision.primary?.enabled} onClick={() => submitResponseProvider()}>{busy ? "Confirming…" : "Confirm"}</button>}
             {room.isMyTurn && room.phase === "discard" && consolePrimaryId === "discard" && <button className="primary" disabled={busy || discardSelected.length !== excessCards || !consoleDecision.primary?.enabled} onClick={() => onAction("discard_cards", { cardIds: discardSelected })}>{busy ? "Discarding…" : `Discard ${excessCards} selected`}</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || presentationBusy || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || presentationBusy || !card || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play"}</button>}
+            {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || presentationBusy && !ordinaryTurnPlayAuthorized || !card || selectedCanPlayAsAttack && !canDeclareAttack || selectedCardNeedsTarget && !selectedPlayTargetsValid || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play"}</button>}
           </div>
           <div data-action-slot="decline">
             {rescueDecisionReady && !canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={busy || !consoleDecision.authoritativeDecline.enabled} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button>}
             {triggerResponse && triggerDeclineAction && (!targetCardPickerInModal || targetCardPickerInLocalDock) && consoleDecision.authoritativeDecline && <button className="end" disabled={responseControlsDisabled || !consoleDecision.authoritativeDecline.enabled} onClick={() => onAction("decline_trigger")}>Skip</button>}
             {canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={responseControlsDisabled || !responseDamageAction || !consoleDecision.authoritativeDecline.enabled} onClick={() => responseDamageAction && onAction(responseDamageAction)}>{responseDeclineLabel}</button>}
-            {room.isMyTurn && canPlay && consoleKind === "turn" && <button className="end" disabled={busy || presentationBusy} onClick={() => onAction("end_turn")}>{busy ? "Finishing…" : "End"}</button>}
+            {room.isMyTurn && canPlay && consoleKind === "turn" && <button className="end" disabled={busy || presentationBusy && !ordinaryTurnPlayAuthorized || !canUseAction(room.currentAction, "end_turn")} onClick={() => onAction("end_turn")}>{busy ? "Finishing…" : "End"}</button>}
           </div>
         </div>
       </div>

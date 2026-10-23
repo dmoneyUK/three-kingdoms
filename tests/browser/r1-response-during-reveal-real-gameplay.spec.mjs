@@ -5,6 +5,7 @@ const card = (kind, id, suit = "♠") => ({ id, kind, suit, rank: "7" });
 
 async function seedRoom(request, {
   suffix,
+  playerCount = 4,
   defenderHero = "liu-bei",
   defenderHand = [card("Dodge", `${suffix}-dodge`, "♣")],
   attackerCard = card("Attack", `${suffix}-attack`),
@@ -18,6 +19,7 @@ async function seedRoom(request, {
         { name: `${suffix} DEFENDER`, role: "Loyalist", hero: defenderHero, hp: 4, maxHp: 4, hand: defenderHand },
         { name: `${suffix} OBSERVER`, role: "Rebel", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
         { name: `${suffix} FOURTH`, role: "Renegade", hero: "simayi", hp: 4, maxHp: 4, hand: [] },
+        ...(playerCount >= 5 ? [{ name: `${suffix} FIFTH`, role: "Rebel", hero: "zhang-liao", hp: 4, maxHp: 4, hand: [] }] : []),
       ],
     },
   });
@@ -25,9 +27,9 @@ async function seedRoom(request, {
   return { ...(await result.json()), attackerCard, defenderHand };
 }
 
-async function openPlayer(page, room, index, width = 440) {
+async function openPlayer(page, room, index, width = 440, height = width === 390 ? 844 : 894) {
   const player = room.players[index];
-  await page.setViewportSize({ width, height: width === 390 ? 844 : 894 });
+  await page.setViewportSize({ width, height });
   await page.addInitScript(({ code, token, name }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
   }, { code: room.code, token: player.token, name: player.name });
@@ -36,17 +38,249 @@ async function openPlayer(page, room, index, width = 440) {
   return player;
 }
 
+test("P0 F1: harmless five-player room polls do not restart a genuine four-second public reveal", async ({ browser, request }, testInfo) => {
+  test.setTimeout(30_000);
+  const suffix = `P0-F1-${Date.now()}`;
+  const room = await seedRoom(request, { suffix, playerCount: 5 });
+  const viewport = { width: 440, height: 766 };
+  const actorPage = await browser.newPage({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const observerPage = await browser.newPage({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  try {
+    const actor = await openPlayer(actorPage, room, 0, viewport.width, viewport.height);
+    const defender = room.players[1];
+    await openPlayer(observerPage, room, 2, viewport.width, viewport.height);
+    let roomPolls = 0;
+    observerPage.on("request", (requestEvent) => {
+      const url = new URL(requestEvent.url());
+      if (requestEvent.method() === "GET" && url.pathname === "/api/rooms" && url.searchParams.get("code") === room.code) roomPolls += 1;
+    });
+    await observerPage.evaluate(() => {
+      window.__p0TimerStates = [];
+      const sample = () => {
+        const status = document.querySelector(".decision-status");
+        if (!status) return;
+        const next = {
+          at: performance.now(),
+          eventId: status.getAttribute("data-console-active-event-id"),
+          eventKind: status.getAttribute("data-console-active-event-kind"),
+          timerMode: status.getAttribute("data-console-active-event-timer-mode"),
+          busy: status.getAttribute("data-console-presentation-busy"),
+          busyCauses: status.getAttribute("data-console-presentation-busy-causes"),
+        };
+        const previous = window.__p0TimerStates.at(-1);
+        if (JSON.stringify(previous) !== JSON.stringify(next)) window.__p0TimerStates.push(next);
+      };
+      sample();
+      window.__p0TimerInterval = window.setInterval(sample, 100);
+    });
+    await watchCardPhases(observerPage, [room.attackerCard.id]);
+
+    await playAttack(actorPage, room, actor, defender);
+    const { start } = await revealStart(observerPage);
+    const pollCountAtReveal = roomPolls;
+    await observerPage.waitForTimeout(6_500);
+
+    const evidence = await observerPage.evaluate((cardId) => ({
+      elapsedSinceRevealMs: Math.round(performance.now() - window.__r1CardPhases.find((entry) => entry.cardId === cardId && entry.phase === "reveal").at),
+      cardPhases: window.__r1CardPhases.filter((entry) => entry.cardId === cardId).map((entry) => entry.phase),
+      cardPhaseTransitions: window.__r1CardPhaseTransitions.filter((entry) => entry.cardId === cardId).map((entry) => entry.phase),
+      stillRevealing: document.querySelectorAll(`[data-public-card-journey-card-id="${cardId}"][data-public-card-journey-phase="reveal"]`).length > 0,
+      presentationBusy: document.querySelector(".decision-status")?.getAttribute("data-console-presentation-busy") ?? null,
+      presentationBusyCauses: JSON.parse(document.querySelector(".decision-status")?.getAttribute("data-console-presentation-busy-causes") ?? "{}"),
+      timerStates: window.__p0TimerStates,
+      timerStateEventIds: [...new Set(window.__p0TimerStates.map((state) => state.eventId).filter(Boolean))],
+    }), room.attackerCard.id);
+    expect(roomPolls - pollCountAtReveal, "the observer continues normal one-second room polling during the response window").toBeGreaterThanOrEqual(4);
+    expect(start).toBeGreaterThan(0);
+    expect(evidence.elapsedSinceRevealMs).toBeGreaterThanOrEqual(6_000);
+    expect(evidence.presentationBusyCauses.activeEvent, JSON.stringify(evidence)).toBe(false);
+    expect(evidence.presentationBusyCauses.hasUnseenPresentations, JSON.stringify(evidence)).toBe(false);
+    expect(evidence.presentationBusy, JSON.stringify(evidence)).toBe("false");
+    expect(evidence.stillRevealing, JSON.stringify(evidence)).toBe(false);
+    expect(evidence.cardPhases).toContain("parked");
+    expect(evidence.cardPhaseTransitions.filter((phase) => phase === "reveal")).toHaveLength(1);
+    expect(evidence.timerStateEventIds).toHaveLength(1);
+    await testInfo.attach("p0-f1-harmless-poll-evidence.json", {
+      body: JSON.stringify({ viewport, pollCountAfterReveal: roomPolls - pollCountAtReveal, ...evidence }, null, 2),
+      contentType: "application/json",
+    });
+  } finally {
+    await actorPage.context().close();
+    await observerPage.context().close();
+  }
+});
+
+test("P0 F2: Sima Yi can equip Halberd and target Overindulgence during an older public reveal", async ({ browser, request }, testInfo) => {
+  test.setTimeout(45_000);
+  const suffix = `P0-F2-${Date.now()}`;
+  const priorPeach = card("Peach", `${suffix}-prior-peach`, "♥");
+  const halberd = card("SkyPiercingHalberd", `${suffix}-halberd`, "♠");
+  const overindulgence = card("Overindulgence", `${suffix}-overindulgence`, "♣");
+  const seeded = await request.post(`${API}/__test/seed-playing-game`, { data: {
+    phase: "play",
+    turnSeat: 1,
+    players: [
+      { name: `${suffix} LORD`, role: "Lord", hero: "zhang-fei", hp: 5, maxHp: 5, hand: [] },
+      { name: `${suffix} SIMA YI`, role: "Loyalist", hero: "simayi", hp: 2, maxHp: 3, hand: [priorPeach, halberd, overindulgence] },
+      { name: `${suffix} ZHANG LIAO`, role: "Rebel", hero: "zhang-liao", hp: 4, maxHp: 4, hand: [] },
+      { name: `${suffix} REBEL`, role: "Rebel", hero: "guan-yu", hp: 4, maxHp: 4, hand: [] },
+      { name: `${suffix} RENEGADE`, role: "Renegade", hero: "zhao-yun", hp: 4, maxHp: 4, hand: [] },
+    ],
+  } });
+  expect(seeded.ok(), await seeded.text()).toBeTruthy();
+  const room = await seeded.json();
+  const actor = room.players[1];
+  const target = room.players[2];
+  const viewport = { width: 440, height: 766 };
+  const page = await browser.newPage({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  const postedCardIds = [];
+  page.on("request", (requestEvent) => {
+    if (requestEvent.url() !== `${API}/api/rooms` || requestEvent.method() !== "POST") return;
+    try {
+      const body = requestEvent.postDataJSON();
+      if (body.action === "play_card" && body.token === actor.token) postedCardIds.push(body.cardId);
+    } catch { /* Ignore non-JSON traffic. */ }
+  });
+  try {
+    await openPlayer(page, room, 1, viewport.width, viewport.height);
+    const priorPlay = await request.post(`${API}/api/rooms`, { data: {
+      action: "play_card", code: room.code, token: actor.token,
+      cardId: priorPeach.id,
+    } });
+    expect(priorPlay.ok(), await priorPlay.text()).toBeTruthy();
+    const priorCommit = await priorPlay.json();
+    expect(priorCommit.room.phase).toBe("play");
+    expect(priorCommit.room.currentAction).toMatchObject({ kind: "turn", actorId: actor.id });
+    expect(priorCommit.room.players.find((player) => player.id === actor.id).hp).toBe(3);
+    const priorEvent = priorCommit.room.timeline.find((event) => event.type === "card" && event.card?.id === priorPeach.id);
+    expect(priorEvent, "the earlier public card is committed while Sima Yi retains the same Play action").toBeTruthy();
+    const dock = page.locator(`.local-player-dock[data-player-anchor="${actor.id}"]`);
+    const status = page.locator(".console-guidance .decision-status");
+    const playButton = dock.locator('[data-action-slot="primary"] button.primary');
+    const submitCard = async (physicalCard) => {
+      const handCard = dock.locator(`[data-hand-card-id="${physicalCard.id}"] .game-card`);
+      await expect(handCard).toBeEnabled();
+      await handCard.tap();
+      await expect(playButton).toBeEnabled();
+      const submitted = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+        && response.request().method() === "POST"
+        && response.request().postDataJSON()?.action === "play_card"
+        && response.request().postDataJSON()?.cardId === physicalCard.id);
+      await playButton.tap();
+      const response = await submitted;
+      const body = await response.json();
+      expect(response.status(), JSON.stringify(body)).toBe(200);
+      return body;
+    };
+
+    const initialActorView = await getView(request, room, actor);
+    expect(initialActorView.phase).toBe("play");
+    expect(initialActorView.currentAction).toMatchObject({ kind: "turn", actorId: actor.id });
+    expect(initialActorView.currentAction.legalActions).toContain("play_card");
+
+    await expect(status).toHaveAttribute("data-console-active-event-id", priorEvent.id);
+    await expect(status).toHaveAttribute("data-console-presentation-busy", "true");
+    await expect(page.locator(`.public-card-display[data-public-card-event-id="${priorEvent.id}"][data-public-card-id="${priorPeach.id}"]`)).toBeVisible();
+    await expect(page.getByRole("button", { name: "End", exact: true })).toBeEnabled();
+    const halberdCommit = await submitCard(halberd);
+    expect(halberdCommit.room.phase).toBe("play");
+    expect(halberdCommit.room.players.find((player) => player.id === actor.id).equipmentCards).toContainEqual(halberd);
+    expect(halberdCommit.room.timeline.filter((event) => event.type === "card" && event.card?.id === halberd.id)).toHaveLength(1);
+    expect(await status.getAttribute("data-console-presentation-busy")).toBe("true");
+    await expect(status).toHaveAttribute("data-console-active-event-id", priorEvent.id);
+
+    const overindulgenceEligibility = halberdCommit.room.currentAction.playTargetEligibility?.find((entry) => entry.cardId === overindulgence.id);
+    expect(overindulgenceEligibility, "the actor retains private CurrentAction eligibility for Overindulgence").toBeTruthy();
+    expect(overindulgenceEligibility.eligibleTargetIds).toContain(target.id);
+    const overindulgenceCard = dock.locator(`[data-hand-card-id="${overindulgence.id}"] .game-card`);
+    await expect(overindulgenceCard).toBeEnabled();
+    await overindulgenceCard.tap();
+    const targetButton = page.getByRole("button", { name: `Select ${target.name}`, exact: true });
+    await expect(targetButton).toBeEnabled();
+    await targetButton.tap();
+    await expect(playButton).toBeEnabled();
+    await expect(status).toHaveAttribute("data-console-presentation-busy", "true");
+    await expect(status).toHaveAttribute("data-console-ordinary-turn-play-authorized", "true");
+    await expect(status).toHaveAttribute("data-console-primary-enabled", "true");
+    const ordinaryTurnAuthorizedDuringConfirm = await status.getAttribute("data-console-ordinary-turn-play-authorized");
+    expect(ordinaryTurnAuthorizedDuringConfirm).toBe("true");
+
+    const overindulgenceRequest = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "play_card"
+      && response.request().postDataJSON()?.cardId === overindulgence.id);
+    await playButton.tap();
+    const overindulgenceResponse = await overindulgenceRequest;
+    const overindulgenceCommit = await overindulgenceResponse.json();
+    expect(overindulgenceResponse.status(), JSON.stringify(overindulgenceCommit)).toBe(200);
+    expect(overindulgenceResponse.request().postDataJSON()).toMatchObject({ action: "play_card", code: room.code, token: actor.token, cardId: overindulgence.id, targetId: target.id });
+    expect(overindulgenceCommit.room.pendingNegation?.cardName).toBe("Overindulgence");
+    for (let guard = 0; guard < 12; guard += 1) {
+      const responseView = await getView(request, room, actor);
+      const windowId = responseView.currentAction?.negationWindowId;
+      if (!windowId) break;
+      const responder = room.players.find((player) => player.id === responseView.currentAction.actorId);
+      expect(responder, "each Negation priority has an authenticated player token").toBeTruthy();
+      const passed = await request.post(`${API}/api/rooms`, { data: {
+        action: "decline_response", code: room.code, token: responder.token,
+        context: { windowId },
+      } });
+      expect(passed.ok(), await passed.text()).toBeTruthy();
+    }
+    let settledView = await getView(request, room, actor);
+    if (settledView.pendingNegation) {
+      const remainingMs = Math.max(0, settledView.pendingNegation.deadline - Date.now());
+      if (remainingMs > 0) await page.waitForTimeout(remainingMs + 50);
+      const advanced = await request.post(`${API}/api/rooms`, { data: { action: "advance_timers", code: room.code, token: actor.token } });
+      expect(advanced.ok(), await advanced.text()).toBeTruthy();
+      settledView = await getView(request, room, actor);
+    }
+    expect(settledView.pendingNegation).toBeNull();
+    expect(settledView.phase).toBe("play");
+    expect(settledView.players.find((player) => player.id === target.id).judgementCards).toContainEqual(overindulgence);
+    expect(settledView.timeline.filter((event) => event.type === "card" && event.card?.id === overindulgence.id)).toHaveLength(1);
+    const orderedPhysicalEvents = settledView.timeline.filter((event) => event.type === "card" && [priorPeach.id, halberd.id, overindulgence.id].includes(event.card?.id));
+    expect(orderedPhysicalEvents.map((event) => event.card.id)).toEqual([priorPeach.id, halberd.id, overindulgence.id]);
+    expect(postedCardIds.filter((id) => id === priorPeach.id)).toHaveLength(0);
+    expect(postedCardIds.filter((id) => id === halberd.id)).toHaveLength(1);
+    expect(postedCardIds.filter((id) => id === overindulgence.id)).toHaveLength(1);
+    await testInfo.attach("p0-f2-actor-play-during-public-reveal.json", {
+      body: JSON.stringify({
+        viewport,
+        actorId: actor.id,
+        targetId: target.id,
+        revealEventId: priorEvent.id,
+        revealStillActiveAtHalberdAndOverindulgence: true,
+        ordinaryTurnPlayAuthorizedDuringReveal: ordinaryTurnAuthorizedDuringConfirm,
+        acceptedPlayCardIds: postedCardIds,
+        halberdEquipped: true,
+        overindulgencePlaced: true,
+        targetEligibleInActorProjection: overindulgenceEligibility.eligibleTargetIds.includes(target.id),
+      }, null, 2),
+      contentType: "application/json",
+    });
+  } finally {
+    await page.context().close();
+  }
+});
+
 async function watchCardPhases(page, cardIds) {
   await page.evaluate((watchedCardIds) => {
     const watched = new Set(watchedCardIds);
     const recorded = new Set();
     const pending = new Set();
+    const latestPhaseByCard = new Map();
     window.__r1CardPhases = [];
+    window.__r1CardPhaseTransitions = [];
     const capture = () => {
       for (const element of document.querySelectorAll("[data-public-card-journey-card-id][data-public-card-journey-phase]")) {
         const cardId = element.getAttribute("data-public-card-journey-card-id");
         if (!watched.has(cardId)) continue;
         const phase = element.getAttribute("data-public-card-journey-phase");
+        if (latestPhaseByCard.get(cardId) !== phase) {
+          latestPhaseByCard.set(cardId, phase);
+          window.__r1CardPhaseTransitions.push({ cardId, phase, at: performance.now() });
+        }
         const key = `${cardId}:${phase}`;
         if (recorded.has(key) || pending.has(key)) continue;
         pending.add(key);
