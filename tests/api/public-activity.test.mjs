@@ -41,6 +41,48 @@ test("shared Negation wording is identical and ignores viewer-private submission
   assert.deepEqual(afterSomeViewerSubmitted, before);
 });
 
+test("target-card choice progress is identical across viewers and exposes no selection details", () => {
+  for (const cardKind of ["Steal", "Dismantle"]) {
+    const pendingTargetCard = {
+      kind: "target_card",
+      sourceId: "p1",
+      actorId: "p1",
+      targetId: "p2",
+      cardKind,
+    };
+    const views = players.map((_, viewerIndex) => derivePublicActivityStatus(room({
+      phase: "response",
+      pendingTargetCard,
+      // Viewer-specific fields are intentionally not inputs to this shared projection.
+      meId: `p${viewerIndex + 1}`,
+      isMyAction: viewerIndex === 0,
+    })));
+    const effect = cardKind === "Steal" ? "Steal" : "Burning Bridges";
+    const expected = {
+      kind: "target-card-choice",
+      text: `Test Player 1 is choosing one card from Test Player 2 · ${effect}`,
+      heading: "Test Player 1 is choosing one card",
+      stage: `${effect} · from Test Player 2`,
+      anchorPlayerId: "p2",
+    };
+    for (const view of views) {
+      assert.deepEqual(view, expected);
+      assert.doesNotMatch(JSON.stringify(view), /hand|equipment|judgement|candidate|eligible|index|cardId/i);
+    }
+  }
+});
+
+test("target-card choice progress is absent before Negation settles and fails closed on inconsistent public state", () => {
+  const pendingTargetCard = { kind: "target_card", sourceId: "p1", actorId: "p1", targetId: "p2", cardKind: "Steal" };
+  assert.equal(derivePublicActivityStatus(room({ phase: "response", pendingTargetCard: null })).kind, "resolving");
+  assert.notEqual(derivePublicActivityStatus(room({ phase: "response", pendingTargetCard: { ...pendingTargetCard, targetId: "p1" } })).kind, "target-card-choice");
+  assert.notEqual(derivePublicActivityStatus(room({ phase: "response", pendingTargetCard: { ...pendingTargetCard, cardKind: "Duel" } })).kind, "target-card-choice");
+  assert.notEqual(derivePublicActivityStatus(room({ phase: "play", pendingTargetCard })).kind, "target-card-choice");
+
+  const negationSnapshot = snapshot({ stage: "NEGATION", actorId: null, stableKind: "SPECIAL", effect: "Steal" });
+  assert.equal(derivePublicActivityStatus(room({ phase: "response", pendingTargetCard, presentationSnapshot: negationSnapshot })).kind, "negation");
+});
+
 test("Duel responder is named only from matching proven public actor fields", () => {
   const publicSnapshot = snapshot({
     stage: "DUEL_EXCHANGE",

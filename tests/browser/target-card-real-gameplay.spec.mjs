@@ -402,6 +402,183 @@ for (const kind of ["Steal", "Dismantle"]) {
   });
 }
 
+for (const kind of ["Steal", "Dismantle"]) {
+  test(`real ${kind} target choice has identical private-safe progress on four independent mobile views`, async ({ browser, request }, testInfo) => {
+    test.setTimeout(90_000);
+    const material = card(kind, `four-view-${kind.toLowerCase()}-material`);
+    const hidden = card("Peach", `four-view-${kind.toLowerCase()}-hidden`);
+    const seed = await seedGame(request, fourPlayers({ hand: [material] }, { hand: [hidden] }));
+    const contexts = await Promise.all(seed.players.map(() => browser.newContext({
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+      deviceScaleFactor: 3,
+    })));
+    const pages = await Promise.all(contexts.map((context) => context.newPage()));
+
+    try {
+      await Promise.all(pages.map((viewerPage, index) => openGame(viewerPage, seed, index, { width: 390, height: 844 })));
+      const actorPage = pages[0];
+      await playCardThroughPage(actorPage, material.id, "TARGET");
+
+      const preChoiceViews = await Promise.all(seed.players.map((_, index) => roomView(request, seed, index)));
+      expect(preChoiceViews[0].pendingNegation).toBeTruthy();
+      for (const view of preChoiceViews) expect(view.pendingTargetCard).toBeNull();
+      for (const viewerPage of pages) {
+        await expect(viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toHaveCount(0);
+      }
+
+      await passEmptyResponses(request, seed);
+      const choiceViews = await Promise.all(seed.players.map((_, index) => roomView(request, seed, index)));
+      const sharedPending = choiceViews[0].pendingTargetCard;
+      expect(sharedPending).toMatchObject({
+        kind: "target_card",
+        sourceId: seed.players[0].id,
+        actorId: seed.players[0].id,
+        targetId: seed.players[1].id,
+        cardKind: kind,
+      });
+      expect(Object.keys(sharedPending).sort()).toEqual(["actorId", "cardKind", "kind", "sourceId", "targetId"]);
+      for (const view of choiceViews) expect(view.pendingTargetCard).toEqual(sharedPending);
+
+      expect(choiceViews[0].currentAction).toMatchObject({ kind: "target_card", actorId: seed.players[0].id });
+      expect(choiceViews[0].currentAction.targetCardSelection).toMatchObject({ targetId: seed.players[1].id, eligibleKeys: ["hand:0"] });
+      expect(JSON.stringify(choiceViews[0].currentAction)).not.toContain(hidden.id);
+      for (let index = 1; index < choiceViews.length; index++) {
+        expect(choiceViews[index].currentAction?.targetCardSelection).toBeUndefined();
+        expect(JSON.stringify(choiceViews[index].presentationSnapshot)).not.toContain(hidden.id);
+        if (index !== 1) expect(JSON.stringify(choiceViews[index])).not.toContain(hidden.id);
+      }
+
+      const effectName = kind === "Steal" ? "Steal" : "Burning Bridges";
+      const modalTitle = kind === "Steal" ? "Steal" : "Burning Bridge";
+      const sharedLabel = `SOURCE is choosing one card from TARGET · ${effectName}`;
+      for (let index = 0; index < pages.length; index++) {
+        const viewerPage = pages[index];
+        const chip = viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]');
+        await expect(chip).toBeVisible();
+        await expect(chip).toHaveAttribute("aria-label", sharedLabel);
+        await expect(chip).toContainText("SOURCE is choosing one card");
+        await expect(chip).toContainText(`${effectName} · from TARGET`);
+        const chipRect = await chip.boundingBox();
+        const tableRect = await viewerPage.locator(".play-table").boundingBox();
+        expect(chipRect && tableRect).toBeTruthy();
+        expect(chipRect.x).toBeGreaterThanOrEqual(tableRect.x);
+        expect(chipRect.y).toBeGreaterThanOrEqual(tableRect.y);
+        expect(chipRect.x + chipRect.width).toBeLessThanOrEqual(tableRect.x + tableRect.width);
+        expect(chipRect.y + chipRect.height).toBeLessThanOrEqual(tableRect.y + tableRect.height);
+        if (index !== 1) {
+          const layout = await chip.getAttribute("data-public-activity-layout");
+          expect(layout).toMatch(/^(target-seat-adjacent|bottom-center|lower-band-(center|left|right))$/);
+        }
+        const targetPicker = viewerPage.locator(".target-card-picker-panel");
+        if (await targetPicker.count()) {
+          const pickerRect = await targetPicker.boundingBox();
+          expect(pickerRect && (chipRect.x + chipRect.width <= pickerRect.x
+            || pickerRect.x + pickerRect.width <= chipRect.x
+            || chipRect.y + chipRect.height <= pickerRect.y
+            || pickerRect.y + pickerRect.height <= chipRect.y)).toBeTruthy();
+        }
+        for (const obstacle of await viewerPage.locator(".public-card-journey-card, .public-card-display-journey-copy").all()) {
+          const obstacleRect = await obstacle.boundingBox();
+          if (!obstacleRect) continue;
+          expect(chipRect.x + chipRect.width <= obstacleRect.x
+            || obstacleRect.x + obstacleRect.width <= chipRect.x
+            || chipRect.y + chipRect.height <= obstacleRect.y
+            || obstacleRect.y + obstacleRect.height <= chipRect.y).toBeTruthy();
+        }
+        const chipText = `${await chip.innerText()} ${await chip.innerHTML()}`;
+        expect(chipText).not.toMatch(/Hand|Equipment|Judgement|hand:|index|eligible|candidate/i);
+        expect(chipText).not.toContain(hidden.id);
+        if (index > 0) await expect(viewerPage.locator(".target-card-picker-overlay")).toHaveCount(0);
+      }
+
+      for (const [index, viewerPage] of pages.entries()) {
+        const path = testInfo.outputPath(`${kind.toLowerCase()}-public-choice-view-${index + 1}-390x844.png`);
+        await viewerPage.screenshot({ path, animations: "disabled" });
+        await testInfo.attach(`${kind.toLowerCase()}-public-choice-view-${index + 1}-390x844`, { path, contentType: "image/png" });
+      }
+
+      const instruction = kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
+      const dialog = await expectModal(actorPage, modalTitle, instruction, `Use ${modalTitle}`);
+      const hiddenCard = dialog.getByRole("button", { name: "Hidden hand card 1", exact: true });
+      await hiddenCard.click();
+      await expect(hiddenCard).toHaveAttribute("aria-pressed", "true");
+      const submitPromise = actorPage.waitForResponse((response) => {
+        if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
+        try { return JSON.parse(response.request().postData() ?? "{}").action === "choose_target_card"; }
+        catch { return false; }
+      });
+      await dialog.getByRole("button", { name: `Use ${modalTitle}` }).click();
+      const submitted = await submitPromise;
+      expect(submitted.ok()).toBe(true);
+      expect(JSON.parse(submitted.request().postData() ?? "{}")).toMatchObject({
+        action: "choose_target_card",
+        targetCardZone: "hand",
+        targetCardIndex: 0,
+      });
+      expect((await submitted.json()).room.pendingTargetCard).toBeNull();
+      for (let index = 0; index < seed.players.length; index++) {
+        expect((await roomView(request, seed, index)).pendingTargetCard).toBeNull();
+      }
+      for (const viewerPage of pages) {
+        await expect(viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toHaveCount(0, { timeout: 15_000 });
+      }
+    } finally {
+      await Promise.all(contexts.map((context) => context.close()));
+    }
+  });
+}
+
+for (const kind of ["Steal", "Dismantle"]) {
+  test(`Negated ${kind} never publishes the target-card choice cue to mobile viewers`, async ({ browser, request }, testInfo) => {
+    test.setTimeout(90_000);
+    const material = card(kind, `four-view-negated-${kind.toLowerCase()}-material`);
+    const negation = card("Negation", `four-view-negated-${kind.toLowerCase()}-negation`);
+    const seed = await seedGame(request, fourPlayers({ hand: [material] }, { hand: [negation] }));
+    const contexts = await Promise.all(seed.players.map(() => browser.newContext({
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+      deviceScaleFactor: 3,
+    })));
+    const pages = await Promise.all(contexts.map((context) => context.newPage()));
+
+    try {
+      await Promise.all(pages.map((viewerPage, index) => openGame(viewerPage, seed, index, { width: 390, height: 844 })));
+      await playCardThroughPage(pages[0], material.id, "TARGET");
+      const responseViews = await Promise.all(seed.players.map((_, index) => roomView(request, seed, index)));
+      expect(responseViews[0].pendingNegation).toBeTruthy();
+      for (const view of responseViews) expect(view.pendingTargetCard).toBeNull();
+      for (const viewerPage of pages) {
+        await expect(viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toHaveCount(0);
+      }
+
+      const targetView = await roomView(request, seed, 1);
+      expect(targetView.currentAction.legalActions).toContain("respond");
+      await act(request, seed, 1, "respond", { providerId: "negation_card", cardId: negation.id });
+      await passEmptyResponses(request, seed);
+
+      const negatedViews = await Promise.all(seed.players.map((_, index) => roomView(request, seed, index)));
+      for (const view of negatedViews) {
+        expect(view.pendingNegation).toBeNull();
+        expect(view.pendingTargetCard).toBeNull();
+      }
+      for (const viewerPage of pages) {
+        await expect(viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toHaveCount(0, { timeout: 15_000 });
+      }
+
+      for (const [index, viewerPage] of pages.entries()) {
+        const path = testInfo.outputPath(`${kind.toLowerCase()}-negated-no-choice-view-${index + 1}-390x844.png`);
+        await viewerPage.screenshot({ path, animations: "disabled" });
+        await testInfo.attach(`${kind.toLowerCase()}-negated-no-choice-view-${index + 1}-390x844`, { path, contentType: "image/png" });
+      }
+    } finally {
+      await Promise.all(contexts.map((context) => context.close()));
+    }
+  });
+}
+
 test("real Sima Yi Retaliation is compact, deselectable, private, and actor-only at 390x700", async ({ browser, request }, testInfo) => {
   test.setTimeout(90_000);
   const attack = card("Attack", "real-retaliation-attack");

@@ -16,6 +16,7 @@ const SAFE_OBSTACLES = [
   ".interaction-stage-dying",
   ".dying-handoff-compact",
   ".public-card-display-journey-copy",
+  ".target-card-picker-panel",
   ".public-card-journey-card",
   ".public-card-duel-parked-card",
   ".public-card-display-static-card > .played-card",
@@ -98,7 +99,56 @@ function protectedRects(table: HTMLElement): ProtectedRect[] {
   return [...rectsByGeometry.values()];
 }
 
-function placeChip(chip: HTMLElement, table: HTMLElement, harvestPoolReadOnly: boolean): void {
+function placeNearPlayerSeat(chip: HTMLElement, table: HTMLElement, playerId: string): boolean {
+  const seat = [...table.querySelectorAll<HTMLElement>(".opponent-player-card[data-player-anchor]")]
+    .find((candidate) => candidate.dataset.playerAnchor === playerId);
+  const seatRect = seat && visibleRect(seat);
+  if (!seatRect) return false;
+
+  const tableRect = table.getBoundingClientRect();
+  const width = chip.offsetWidth;
+  const height = chip.offsetHeight;
+  const visualViewport = window.visualViewport;
+  const viewportTop = Math.max(0, visualViewport?.offsetTop ?? 0);
+  const viewportBottom = Math.min(window.innerHeight, (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight));
+  const leftBound = Math.max(tableRect.left + 8, 8);
+  const rightBound = Math.min(tableRect.right - 8, window.innerWidth - 8);
+  const minCenter = leftBound + width / 2;
+  const maxCenter = rightBound - width / 2;
+  if (width <= 0 || height <= 0 || minCenter > maxCenter) return false;
+
+  const seatCenter = seatRect.left + seatRect.width / 2;
+  const center = Math.max(minCenter, Math.min(maxCenter, seatCenter));
+  const candidates = [
+    ...[COLLISION_GAP, COLLISION_GAP + 12, COLLISION_GAP + 24, COLLISION_GAP + 36]
+      .map((offset) => ({ center, top: seatRect.bottom + offset })),
+    { center, top: seatRect.top - height - COLLISION_GAP },
+  ];
+  const obstacles = protectedRects(table);
+  for (const candidate of candidates) {
+    const rect = {
+      left: candidate.center - width / 2,
+      top: candidate.top,
+      right: candidate.center + width / 2,
+      bottom: candidate.top + height,
+      width,
+      height,
+    };
+    if (rect.left < leftBound || rect.right > rightBound
+      || rect.top < tableRect.top + 4 || rect.top < viewportTop + 4
+      || rect.bottom > Math.min(tableRect.bottom - 4, viewportBottom - 4)
+      || obstacles.some((obstacle) => intersects(rect, obstacle, ACTIVITY_CHIP_GAP))) continue;
+
+    chip.style.left = `${rect.left - tableRect.left}px`;
+    chip.style.top = `${rect.top - tableRect.top}px`;
+    chip.style.visibility = "visible";
+    chip.dataset.publicActivityLayout = "target-seat-adjacent";
+    return true;
+  }
+  return false;
+}
+
+function placeChip(chip: HTMLElement, table: HTMLElement, harvestPoolReadOnly: boolean, anchorPlayerId?: string): void {
   const tableRect = table.getBoundingClientRect();
   const width = chip.offsetWidth;
   const height = chip.offsetHeight;
@@ -159,6 +209,8 @@ function placeChip(chip: HTMLElement, table: HTMLElement, harvestPoolReadOnly: b
       return;
     }
   }
+
+  if (anchorPlayerId && placeNearPlayerSeat(chip, table, anchorPlayerId)) return;
 
   if (width <= 0 || height <= 0 || rightBound - leftBound < width || firstTop < lowerBandTop) {
     chip.style.visibility = "hidden";
@@ -260,7 +312,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
     let frame = 0;
     const schedule = () => {
       window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => placeChip(chip, table, harvestPoolReadOnly));
+      frame = window.requestAnimationFrame(() => placeChip(chip, table, harvestPoolReadOnly, status.anchorPlayerId));
     };
     const relevantMutation = (node: Node): boolean => {
       const element = node instanceof HTMLElement ? node : node.parentElement;
@@ -305,7 +357,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
       window.removeEventListener("resize", schedule);
       window.visualViewport?.removeEventListener("resize", schedule);
     };
-  }, [harvestPoolReadOnly, status.kind, status.text, viewerId, seatLayoutKey]);
+  }, [harvestPoolReadOnly, status.anchorPlayerId, status.kind, status.text, viewerId, seatLayoutKey]);
 
   return <div
     ref={chipRef}

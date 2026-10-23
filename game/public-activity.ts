@@ -7,19 +7,29 @@ export type PublicActivityPlayer = {
   alive: boolean;
 };
 
+export type PublicPendingTargetCard = {
+  kind?: "target_card";
+  sourceId: string;
+  actorId: string;
+  targetId: string;
+  cardKind: "Dismantle" | "Steal";
+};
+
 export type PublicActivityInput = {
   status: string;
   phase: string | null;
   turnSeat: number | null;
   players: readonly PublicActivityPlayer[];
   presentationSnapshot: PresentationSnapshot | null;
+  pendingTargetCard?: PublicPendingTargetCard | null;
 };
 
 export type PublicActivityStatus = {
-  kind: "turn" | "duel" | "response" | "negation" | "resolving" | "finished";
+  kind: "turn" | "duel" | "response" | "negation" | "target-card-choice" | "resolving" | "finished";
   text: string;
   heading?: string;
   stage?: string;
+  anchorPlayerId?: string;
 };
 
 const RESOLVING: PublicActivityStatus = { kind: "resolving", text: "Resolving…" };
@@ -50,9 +60,9 @@ function responseLabel(stage: string | null, effect: string | null): string | nu
 }
 
 /**
- * Derives shared public activity only from room turn state and validated public
- * PresentationSnapshot fields. It deliberately does not accept CurrentAction,
- * per-viewer submission flags, or private response reasons.
+ * Derives shared public activity only from room turn state, public pending
+ * decisions, and validated public PresentationSnapshot fields. It deliberately
+ * does not accept CurrentAction, per-viewer submission flags, or private reasons.
  */
 export function derivePublicActivityStatus(input: PublicActivityInput): PublicActivityStatus {
   if (input.status === "finished" || input.phase === "finished") {
@@ -66,6 +76,26 @@ export function derivePublicActivityStatus(input: PublicActivityInput): PublicAc
   if (input.status === "playing" && interaction?.semantics === "PROVEN" && stable?.kind === "SPECIAL"
     && interaction.stage === "NEGATION" && interaction.decisionActorId === null && stable.decisionActorId === null) {
     return { kind: "negation", text: "Waiting for Negation responses" };
+  }
+
+  const targetCard = input.pendingTargetCard;
+  if (input.status === "playing" && input.phase === "response" && targetCard?.kind === "target_card"
+    && targetCard.sourceId === targetCard.actorId && targetCard.targetId !== targetCard.actorId
+    && interaction?.stage !== "NEGATION") {
+    const actor = playerName(input, targetCard.actorId);
+    const target = playerName(input, targetCard.targetId);
+    const effect = targetCard.cardKind === "Steal" ? "Steal"
+      : targetCard.cardKind === "Dismantle" ? "Burning Bridges"
+        : null;
+    if (actor && target && effect) {
+      return {
+        kind: "target-card-choice",
+        text: `${actor} is choosing one card from ${target} · ${effect}`,
+        heading: `${actor} is choosing one card`,
+        stage: `${effect} · from ${target}`,
+        anchorPlayerId: targetCard.targetId,
+      };
+    }
   }
 
   if (input.status === "playing" && input.phase === "response" && interaction?.semantics === "PROVEN"
