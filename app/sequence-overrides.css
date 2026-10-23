@@ -3667,9 +3667,10 @@
   width: 100%;
   aspect-ratio: 5 / 7;
   overflow: visible;
-  touch-action: pan-x pan-y;
+  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 .deck-reorder-card-face > .played-card {
   width: 100%;
@@ -3907,7 +3908,7 @@
   overflow-x: auto;
   overflow-y: auto;
   overscroll-behavior: contain;
-  touch-action: pan-y;
+  touch-action: pan-x pan-y;
 }
 .game-shell .play-table > .target-card-picker-overlay > .target-card-picker-panel.choice-trigger-panel:not(.deck-reorder-panel) {
   overflow-x: hidden;

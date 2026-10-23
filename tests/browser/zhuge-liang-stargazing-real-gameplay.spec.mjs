@@ -246,12 +246,10 @@ async function assertResponsiveInitialState({ page, dialog, viewport, cards, tes
     const cdp = await page.context().newCDPSession(page);
     const touchId = nextTouchIdentifier++;
     await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...touchStart, id: touchId }] });
-    for (let step = 1; step <= 6; step += 1) {
-      await cdp.send("Input.dispatchTouchEvent", {
-        type: "touchMove",
-        touchPoints: [{ x: touchStart.x - step * 16, y: touchStart.y, id: touchId }],
-      });
-    }
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: touchStart.x - 96, y: touchStart.y, id: touchId }],
+    });
     await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     await expect.poll(() => row.evaluate((element) => element.scrollLeft)).toBeGreaterThan(beforeHorizontalScroll);
     expect(await page.evaluate(() => scrollY)).toBe(beforePageScroll);
@@ -294,20 +292,23 @@ async function keepDropPointVisible(page, point) {
   }, { y: point.y });
 }
 
-async function touchDrag({ page, cdp, dialog, cards, cardId, zoneName, index, screenshotName, testInfo }) {
+async function touchDrag({ page, cdp, dialog, cards, cardId, zoneName, index, screenshotName, testInfo, origin = "grip" }) {
   const grip = cardNode(dialog, cardId).locator("[data-deck-touch-handle]");
+  const face = cardNode(dialog, cardId).locator(".deck-reorder-card-face");
+  const touchOrigin = origin === "card-body" ? face : grip;
   await zone(dialog, zoneName).scrollIntoViewIfNeeded();
-  await grip.scrollIntoViewIfNeeded();
-  const gripBounds = await grip.boundingBox();
-  expect(gripBounds).toBeTruthy();
+  await touchOrigin.scrollIntoViewIfNeeded();
+  const originBounds = await touchOrigin.boundingBox();
+  expect(originBounds).toBeTruthy();
   const touchId = nextTouchIdentifier++;
-  const start = { x: Math.round(gripBounds.x + gripBounds.width / 2), y: Math.round(gripBounds.y + gripBounds.height / 2) };
-  const gripHit = await page.evaluate(({ x, y, cardId }) => {
+  const start = { x: Math.round(originBounds.x + (origin === "card-body" ? originBounds.width * 0.42 : originBounds.width / 2)), y: Math.round(originBounds.y + (origin === "card-body" ? originBounds.height * 0.58 : originBounds.height / 2)) };
+  const originHit = await page.evaluate(({ x, y, cardId, origin }) => {
     const hit = document.elementFromPoint(x, y);
-    const grip = document.querySelector(`[data-deck-card-id="${cardId}"] [data-deck-touch-handle]`);
-    return Boolean(grip && (hit === grip || grip.contains(hit)));
-  }, { ...start, cardId });
-  expect(gripHit).toBe(true);
+    const selector = origin === "card-body" ? ".deck-reorder-card-face" : "[data-deck-touch-handle]";
+    const target = document.querySelector(`[data-deck-card-id="${cardId}"] ${selector}`);
+    return Boolean(target && (hit === target || target.contains(hit)));
+  }, { ...start, cardId, origin });
+  expect(originHit).toBe(true);
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...start, id: touchId }] });
   await expect(cardNode(dialog, cardId)).toHaveAttribute("data-dragging", "true");
   const preview = page.locator(`.deck-reorder-overlay [data-deck-drag-preview="${cardId}"]`);
@@ -334,11 +335,13 @@ async function touchDrag({ page, cdp, dialog, cards, cardId, zoneName, index, sc
   await expect(indicator).toBeVisible();
   await expect(indicator).toHaveAttribute("data-insertion-index", String(index));
   const previewBounds = await preview.boundingBox();
+  const viewport = page.viewportSize();
   expect(previewBounds).toBeTruthy();
+  expect(viewport).toBeTruthy();
   expect(previewBounds.x).toBeGreaterThanOrEqual(0);
   expect(previewBounds.y).toBeGreaterThanOrEqual(0);
-  expect(previewBounds.x + previewBounds.width).toBeLessThanOrEqual(390);
-  expect(previewBounds.y + previewBounds.height).toBeLessThanOrEqual(844);
+  expect(previewBounds.x + previewBounds.width).toBeLessThanOrEqual(viewport.width);
+  expect(previewBounds.y + previewBounds.height).toBeLessThanOrEqual(viewport.height);
   if (screenshotName) {
     const path = testInfo.outputPath(`${screenshotName}.png`);
     await page.screenshot({ path, animations: "disabled" });
@@ -374,6 +377,103 @@ async function mouseDrag({ page, dialog, cardId, zoneName, index }) {
   await page.mouse.up();
   await expect(cardNode(dialog, cardId)).toHaveAttribute("data-deck-zone-name", zoneName);
 }
+
+test("Stargazing whole-card touch hold works at a short phone viewport without taking quick swipes", async ({ page, request, browser }, testInfo) => {
+  const viewport = { width: 390, height: 700 };
+  const opened = await openRealStargazingDecision({ page, request, browser, viewport, playerCount: 5 });
+  const cdp = await opened.actorPage.context().newCDPSession(opened.actorPage);
+  const [attack, dodge] = opened.cards;
+  const unassignedRow = zone(opened.dialog, "unassigned").locator("[data-deck-zone-items]");
+  const attackFace = cardNode(opened.dialog, attack.id).locator(".deck-reorder-card-face");
+  const faceBounds = await attackFace.boundingBox();
+  expect(faceBounds).toBeTruthy();
+  const tapStart = { x: Math.round(faceBounds.x + faceBounds.width * 0.42), y: Math.round(faceBounds.y + faceBounds.height * 0.58) };
+  const tapId = nextTouchIdentifier++;
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...tapStart, id: tapId }] });
+  await opened.actorPage.waitForTimeout(80);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect(cardNode(opened.dialog, attack.id)).toHaveAttribute("data-dragging", "false");
+  expect(await orderIn(opened.dialog, "unassigned")).toEqual(opened.cards.map((item) => item.id));
+
+  const rowMetrics = await unassignedRow.evaluate((row) => ({
+    left: row.scrollLeft,
+    max: row.scrollWidth - row.clientWidth,
+  }));
+  expect(rowMetrics.max).toBeGreaterThan(0);
+  await unassignedRow.evaluate((row) => { row.scrollLeft = 0; });
+  const swipeCard = opened.cards[3];
+  const swipeFace = cardNode(opened.dialog, swipeCard.id).locator(".deck-reorder-card-face");
+  await swipeFace.scrollIntoViewIfNeeded();
+  const swipeBounds = await swipeFace.boundingBox();
+  expect(swipeBounds).toBeTruthy();
+  const swipeStart = { x: Math.round(swipeBounds.x + swipeBounds.width * 0.42), y: Math.round(swipeBounds.y + swipeBounds.height * 0.58) };
+  const swipeId = nextTouchIdentifier++;
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...swipeStart, id: swipeId }] });
+  await opened.actorPage.waitForTimeout(60);
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [{ x: swipeStart.x - 80, y: swipeStart.y, id: swipeId }],
+  });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect.poll(() => unassignedRow.evaluate((row) => row.scrollLeft)).toBeGreaterThan(0);
+  await expect(cardNode(opened.dialog, swipeCard.id)).toHaveAttribute("data-dragging", "false");
+  expect(await orderIn(opened.dialog, "unassigned")).toEqual(opened.cards.map((item) => item.id));
+
+  const sequenceScroller = opened.dialog.locator(".deck-reorder-sequences");
+  const verticalMetrics = await sequenceScroller.evaluate((element) => ({
+    top: element.scrollTop,
+    max: element.scrollHeight - element.clientHeight,
+  }));
+  if (verticalMetrics.max > 1) {
+    await unassignedRow.evaluate((row) => { row.scrollLeft = 0; });
+    await attackFace.scrollIntoViewIfNeeded();
+    const verticalFaceBounds = await attackFace.boundingBox();
+    expect(verticalFaceBounds).toBeTruthy();
+    const verticalStart = { x: Math.round(verticalFaceBounds.x + verticalFaceBounds.width * 0.42), y: Math.round(verticalFaceBounds.y + verticalFaceBounds.height * 0.58) };
+    const verticalTouchId = nextTouchIdentifier++;
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ ...verticalStart, id: verticalTouchId }] });
+    await opened.actorPage.waitForTimeout(60);
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: verticalStart.x, y: verticalStart.y - 80, id: verticalTouchId }],
+    });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await expect.poll(() => sequenceScroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(verticalMetrics.top);
+    await expect(cardNode(opened.dialog, attack.id)).toHaveAttribute("data-dragging", "false");
+    expect(await orderIn(opened.dialog, "unassigned")).toEqual(opened.cards.map((item) => item.id));
+  }
+
+  const actorActions = [];
+  const recordActorAction = (requestEvent) => {
+    if (requestEvent.url() !== `${API}/api/rooms` || requestEvent.method() !== "POST") return;
+    try { actorActions.push(JSON.parse(requestEvent.postData() ?? "{}").action); }
+    catch { actorActions.push("invalid-request"); }
+  };
+  opened.actorPage.on("request", recordActorAction);
+  await unassignedRow.evaluate((row) => { row.scrollLeft = 0; });
+  await touchDrag({
+    page: opened.actorPage,
+    cdp,
+    dialog: opened.dialog,
+    cards: opened.cards,
+    cardId: attack.id,
+    zoneName: "top",
+    index: 0,
+    screenshotName: "stargazing-whole-card-touch-390x700",
+    testInfo,
+    origin: "card-body",
+  });
+  await assertCardConservation(opened.dialog, opened.cards);
+  await moveCardViaMenu(opened.dialog, dodge.id, "Dodge", "bottom");
+  expect(await orderIn(opened.dialog, "top")).toEqual([attack.id]);
+  expect(await orderIn(opened.dialog, "bottom")).toEqual([dodge.id]);
+  expect(actorActions).toEqual([], "touch drag and Move menu changes remain local until explicit completion");
+  opened.actorPage.off("request", recordActorAction);
+  await cdp.detach();
+  await opened.actorPage.close();
+  await opened.turnPage.close();
+  await opened.turnContext.close();
+});
 
 async function assertDockStaysPut(page, dialog, actorId) {
   const geometry = await page.evaluate(async ({ actorId }) => {
@@ -537,6 +637,7 @@ for (const entry of [
       index: 0,
       screenshotName: "stargazing-real-touch-drag-active",
       testInfo,
+      origin: "card-body",
     });
     await assertCardConservation(opened.dialog, opened.cards);
     await touchDrag({ page: opened.actorPage, cdp, dialog: opened.dialog, cards: opened.cards, cardId: dodge.id, zoneName: "bottom", index: 0 });
@@ -547,20 +648,21 @@ for (const entry of [
       window.__stargazingPointerCancelled = false;
       document.addEventListener("pointercancel", () => { window.__stargazingPointerCancelled = true; }, { once: true });
     });
-    const attackGrip = cardNode(opened.dialog, attack.id).locator("[data-deck-touch-handle]");
-    await attackGrip.scrollIntoViewIfNeeded();
-    const attackGripBox = await attackGrip.boundingBox();
-    expect(attackGripBox).toBeTruthy();
+    const attackCancelFace = cardNode(opened.dialog, attack.id).locator(".deck-reorder-card-face");
+    await attackCancelFace.scrollIntoViewIfNeeded();
+    const attackCancelFaceBox = await attackCancelFace.boundingBox();
+    expect(attackCancelFaceBox).toBeTruthy();
     const cancelTouchStart = {
-      x: Math.round(attackGripBox.x + attackGripBox.width / 2),
-      y: Math.round(attackGripBox.y + attackGripBox.height / 2),
+      x: Math.round(attackCancelFaceBox.x + attackCancelFaceBox.width * 0.42),
+      y: Math.round(attackCancelFaceBox.y + attackCancelFaceBox.height * 0.58),
     };
-    const cancelGripHit = await opened.actorPage.evaluate(({ x, y, cardId }) => {
+    const cancelFaceHit = await opened.actorPage.evaluate(({ x, y, cardId }) => {
       const hit = document.elementFromPoint(x, y);
+      const face = document.querySelector(`[data-deck-card-id="${cardId}"] .deck-reorder-card-face`);
       const grip = document.querySelector(`[data-deck-card-id="${cardId}"] [data-deck-touch-handle]`);
-      return Boolean(grip && (hit === grip || grip.contains(hit)));
+      return Boolean(face && (hit === face || face.contains(hit)) && !(grip && (hit === grip || grip.contains(hit))));
     }, { ...cancelTouchStart, cardId: attack.id });
-    expect(cancelGripHit).toBe(true);
+    expect(cancelFaceHit).toBe(true);
     const cancelTouchId = nextTouchIdentifier++;
     await cdp.send("Input.dispatchTouchEvent", {
       type: "touchStart",

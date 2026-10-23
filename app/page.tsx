@@ -7566,6 +7566,8 @@ type DeckDrag = {
   active: boolean;
   targetZone: DeckZone | null;
   insertionIndex: number | null;
+  touchScrollAxis?: "x" | "y";
+  scrolling?: boolean;
   sourceElement: HTMLElement;
 };
 type DeckEdgeScroll = { row: HTMLElement; zone: DeckZone; direction: -1 | 1; pointerId: number };
@@ -7730,10 +7732,18 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     const card = held.get(next.cardId);
     if (card) setAnnouncement("Picked up " + cardDefinition(card.kind).name + ". Move to a named zone, then release.");
   };
+  const scrollTouchGesture = (session: DeckDrag, deltaX: number, deltaY: number) => {
+    if (session.touchScrollAxis === "x") {
+      const row = session.sourceElement.closest<HTMLElement>(".deck-reorder-card-row");
+      if (row) row.scrollLeft -= deltaX;
+      return;
+    }
+    const scroller = dialogRef.current?.querySelector<HTMLElement>(".deck-reorder-sequences");
+    if (scroller) scroller.scrollTop -= deltaY;
+  };
   const beginDrag = (event: ReactPointerEvent<HTMLElement>, cardId: string, zone: DeckZone, index: number) => {
     if (disabled || !event.isPrimary || event.button !== 0 || dragRef.current) return;
     const eventTarget = event.target as Element;
-    if (event.pointerType === "touch" && !eventTarget.closest("[data-deck-touch-handle]")) return;
     if (event.pointerType !== "touch" && eventTarget.closest("button")) return;
     const face = event.currentTarget.matches(".deck-reorder-card-face")
       ? event.currentTarget
@@ -7776,7 +7786,21 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     if (!session.active) {
       const distance = Math.hypot(event.clientX - session.startX, event.clientY - session.startY);
       if (session.pointerType === "touch") {
-        if (distance > 12) clearDrag(session);
+        if (session.scrolling) {
+          scrollTouchGesture(session, event.clientX - session.clientX, event.clientY - session.clientY);
+          dragRef.current = { ...session, clientX: event.clientX, clientY: event.clientY };
+          return;
+        }
+        if (distance > 12) {
+          clearHoldTimer();
+          const next = {
+            ...session,
+            scrolling: true,
+            touchScrollAxis: Math.abs(event.clientX - session.startX) > Math.abs(event.clientY - session.startY) ? "x" as const : "y" as const,
+          };
+          scrollTouchGesture(next, event.clientX - session.clientX, event.clientY - session.clientY);
+          dragRef.current = { ...next, clientX: event.clientX, clientY: event.clientY };
+        }
         return;
       }
       if (distance < 5) return;
@@ -7925,7 +7949,7 @@ function PrivateDeckReorderDialog({ cards, minTop, maxTop, disabled, error, onSu
     onLostPointerCapture={(event) => finishPointer(event, true)}
     onKeyDown={(event) => { if (event.key === "Escape" && dragRef.current) { event.preventDefault(); cancelActiveDrag(); } else if (event.key === "Escape" && moveMenuCardId) { event.preventDefault(); setFocusCardId(moveMenuCardId); setMoveMenuCardId(null); } }}>
     <section ref={dialogRef} className="target-card-picker-panel choice-trigger-panel deck-reorder-panel" role="dialog" aria-modal="false" aria-label="Stargazing deck reorder" aria-describedby="stargazing-deck-instructions">
-      <header><strong id="stargazing-deck-title">STARGAZING</strong><span id="stargazing-deck-instructions">Touch and hold the grip, then drag. Use each card’s Move menu for keyboard and screen-reader controls.</span></header>
+      <header><strong id="stargazing-deck-title">STARGAZING</strong><span id="stargazing-deck-instructions">Hold and drag a card to Top or Bottom; drag again to change order. Use each card’s Move menu for keyboard and screen-reader controls.</span></header>
       <div className="deck-reorder-sequences">
         {renderZone("top")}
         {renderZone("unassigned")}
