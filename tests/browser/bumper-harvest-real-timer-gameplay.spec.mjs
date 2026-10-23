@@ -499,6 +499,11 @@ test("NEG-A1 restores the authenticated Harvest choice after a committed Negatio
       }, null, 2),
       contentType: "application/json",
     });
+    await chooserPage.reload();
+    await expect(chooserPage.locator(".game-shell")).toBeVisible();
+    await expect(stage).toHaveAttribute("data-harvest-choice-authorized", "true");
+    await expect(stage.locator(".harvest-card-select:not([disabled])").first()).toBeEnabled();
+    await expect(chooserPage.getByRole("button", { name: "Confirm choice" })).toBeDisabled();
     const choiceViewports = [
       { width: 390, height: 700 },
       { width: 390, height: 844 },
