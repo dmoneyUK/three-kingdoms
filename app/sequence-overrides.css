@@ -5141,7 +5141,7 @@
 
 /* The active decision frame is the only Harvest hit target. Its stage has no
    backdrop hit box, so seat controls and public inspection stay reachable. */
-.game-shell .play-table > .harvest-choice-stage {
+.game-shell .play-table > .battlefield-choice-stage {
   inset: auto 0 auto;
   top: 50%;
   bottom: auto;
@@ -5176,7 +5176,7 @@
 .game-shell .public-card-display-journey.is-harvest-pool-active > .public-card-display-journey-copy {
   z-index: 36;
 }
-.game-shell .play-table[data-seat-topology="side-column"] > .harvest-choice-stage {
+.game-shell .play-table[data-seat-topology="side-column"] > .battlefield-choice-stage {
   right: clamp(88px, calc(25vw + 4px), 120px);
   left: clamp(88px, calc(25vw + 4px), 120px);
   width: auto;

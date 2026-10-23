@@ -662,7 +662,7 @@ test("Bumper Harvest keeps the root reveal and move while the proven Negation po
       journeyMeasurements.push(parked);
       expect(parked.cardId).toBe(rootCardId);
       expect(parked.eventId).toBe(revealed.eventId);
-      expect(parked.face).toMatchObject({ width: 40, height: 60 });
+      expect(parked.face).toMatchObject({ width: 32, height: 48 });
       expect(Number.parseInt(parked.cardZIndex, 10)).toBeLessThan(Number.parseInt(parked.poolZIndex, 10));
       expect(Math.abs(parked.corner.width / parked.face.width - revealed.corner.width / revealed.face.width)).toBeLessThanOrEqual(.06);
       expect(Math.abs(parked.corner.height / parked.face.height - revealed.corner.height / revealed.face.height)).toBeLessThanOrEqual(.06);
@@ -717,7 +717,7 @@ test("Bumper Harvest keeps the root reveal and move while the proven Negation po
     });
     expect(parkedMetrics.cardId).toBe(rootCardId);
     expect(parkedMetrics.eventId).toBe(journeyMeasurements[0].eventId);
-    expect(parkedMetrics.face).toMatchObject({ width: 40, height: 60 });
+    expect(parkedMetrics.face).toMatchObject({ width: 32, height: 48 });
     await testInfo.attach("bumper-harvest-root-lifecycle-390x700", {
       body: JSON.stringify({ rootCardId, rootEventId, rootParking, journeyMeasurements, parkedMetrics }, null, 2),
       contentType: "application/json",

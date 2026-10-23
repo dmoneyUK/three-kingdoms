@@ -23,6 +23,7 @@ import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSele
 import { buildGroupScopePreview } from "../game/group-scope-preview";
 import { derivePublicActivityStatus } from "../game/public-activity";
 import { CardFace } from "./card-face";
+import { BattlefieldChoiceStage, chooseBattlefieldChoiceInsets, chooseBattlefieldChoiceTopOffset } from "./battlefield-choice-stage";
 import { CardDetailsPreview, type CardDetailsContext } from "./card-details-preview";
 import { PublicCardDisplay, PublicSkillEventAnnouncementLayer, harvestNegationDecisionCopy, publicCardActionKey, type PublicCardDisplayAction, type PublicNegationNarration, type PublicSkillEventAnnouncement } from "./public-card-display";
 import { PublicActivityChip } from "./public-activity-chip";
@@ -2363,14 +2364,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           const timerStyle = timer ? window.getComputedStyle(timer) : null;
           const timerVisible = Boolean(timerRect && timerStyle?.display !== "none" && timerStyle?.visibility !== "hidden"
             && timerRect.width > 0 && timerRect.height > 0);
-          const leftBoundary = Math.max(tableRect.left + 8, ...leftSeats.map((rect) => rect.right + margin));
-          const rightBoundary = Math.min(tableRect.right - 8, ...rightSeats.map((rect) => rect.left - margin));
-          const leftOfTimer = timerVisible ? Math.min(rightBoundary, timerRect!.left - margin - 1) : rightBoundary;
-          const rightOfTimer = timerVisible ? Math.max(leftBoundary, timerRect!.right + margin + 1) : leftBoundary;
-          const lanes = [
-            { left: leftBoundary, right: leftOfTimer },
-            { left: rightOfTimer, right: rightBoundary },
-          ].filter((lane) => lane.right - lane.left > 0);
           const requiredButton = panel.querySelector<HTMLElement>(".harvest-confirm-row > .primary");
           const footer = panel.querySelector<HTMLElement>(".harvest-confirm-row");
           const panelStyle = window.getComputedStyle(panel);
@@ -2383,19 +2376,19 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               + cssPixels(panelStyle.paddingLeft) + cssPixels(panelStyle.paddingRight)
               + cssPixels(panelStyle.borderLeftWidth) + cssPixels(panelStyle.borderRightWidth)
             : Number.POSITIVE_INFINITY;
-          const lane = lanes.sort((first, second) => (second.right - second.left) - (first.right - first.left))
-            .find((candidate) => candidate.right - candidate.left >= requiredWidth);
-          const insets = lane ? {
-            left: Math.round((lane.left - tableRect.left) * 2) / 2,
-            right: Math.round((tableRect.right - lane.right) * 2) / 2,
-          } : null;
+          const insets = chooseBattlefieldChoiceInsets({
+            table: tableRect,
+            leftSeats,
+            rightSeats,
+            timer: timerVisible ? timerRect! : null,
+            requiredWidth,
+            margin,
+          });
           setHarvestStageInsets((current) => current?.left === insets?.left && current?.right === insets?.right
             ? current : insets);
         } else {
           setHarvestStageInsets((current) => current ? null : current);
         }
-        const minimumTop = Math.max(tableRect.top + margin, margin);
-        const maximumTop = Math.min(tableRect.bottom, window.innerHeight) - panelRect.height - margin;
         const obstacles = [...new Set(protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]))]
           .filter((element) => element !== stage && !stage.contains(element))
           .map((element) => ({ element, rect: element.getBoundingClientRect() }))
@@ -2405,49 +2398,13 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               && panelRect.left < rect.right + margin && panelRect.right > rect.left - margin;
           });
 
-        const desiredTop = minimumTop + Math.max(0, maximumTop - minimumTop) / 2;
-        let safeRanges = maximumTop >= minimumTop ? [{ minimum: minimumTop, maximum: maximumTop }] : [];
-        for (const { rect } of obstacles) {
-          const blockedMinimum = rect.top - panelRect.height - margin;
-          const blockedMaximum = rect.bottom + margin;
-          safeRanges = safeRanges.flatMap((range) => {
-            if (blockedMaximum <= range.minimum || blockedMinimum >= range.maximum) return [range];
-            return [
-              ...(range.minimum < blockedMinimum ? [{ minimum: range.minimum, maximum: Math.min(range.maximum, blockedMinimum) }] : []),
-              ...(range.maximum > blockedMaximum ? [{ minimum: Math.max(range.minimum, blockedMaximum), maximum: range.maximum }] : []),
-            ];
-          }).filter((range) => range.maximum >= range.minimum);
-        }
-
-        const nearestSafeTop = safeRanges
-          .map((range) => Math.max(range.minimum, Math.min(range.maximum, desiredTop)))
-          .sort((first, second) => Math.abs(first - desiredTop) - Math.abs(second - desiredTop))[0];
-        let top = nearestSafeTop;
-        if (top === undefined) {
-          const viewportMaximumTop = Math.max(margin, window.innerHeight - panelRect.height - margin);
-          const candidates = [
-            minimumTop,
-            maximumTop,
-            desiredTop,
-            tableRect.top + (tableRect.height - panelRect.height) / 2,
-            ...obstacles.flatMap(({ rect }) => [
-            rect.top - panelRect.height - margin,
-            rect.bottom + margin,
-            ]),
-          ].filter(Number.isFinite)
-            .map((candidate) => Math.max(margin, Math.min(viewportMaximumTop, candidate)));
-          const overlapArea = (candidateTop: number) => obstacles.reduce((total, { rect }) => {
-            const width = Math.max(0, Math.min(panelRect.right, rect.right) - Math.max(panelRect.left, rect.left));
-            const height = Math.max(0, Math.min(candidateTop + panelRect.height, rect.bottom) - Math.max(candidateTop, rect.top));
-            const weight = rect.width > 0 && rect.height > 0 ? 1 : 0;
-            return total + width * height * weight;
-          }, 0) + (Math.max(0, tableRect.top - candidateTop)
-            + Math.max(0, candidateTop + panelRect.height - tableRect.bottom)) * panelRect.width * 2;
-          top = candidates.sort((first, second) => overlapArea(first) - overlapArea(second)
-            || Math.abs(first - desiredTop) - Math.abs(second - desiredTop))[0];
-        }
-        if (top === undefined) top = Math.max(margin, Math.min(window.innerHeight - panelRect.height - margin, desiredTop));
-        const offset = Math.round(top - tableRect.top);
+        const offset = chooseBattlefieldChoiceTopOffset({
+          table: tableRect,
+          panel: panelRect,
+          obstacles: obstacles.map(({ rect }) => rect),
+          viewportHeight: window.innerHeight,
+          margin,
+        });
         setHarvestStageTop((current) => current === offset ? current : offset);
       });
     };
@@ -7577,10 +7534,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       {privateDistribution && !presentationBusy && <PrivateCardDistributionDialog key={room.actionRevision} cards={privateDistribution.cards} players={room.players.filter((player) => privateDistribution.eligibleRecipientIds.includes(player.id) && player.alive)} disabled={busy} error={error} onSubmit={(assignments) => onAction("trigger", { providerId: "private_card_distribution", assignments })} />}
       {privateDeckReorder && <PrivateDeckReorderDialog key={room.actionRevision} cards={privateDeckReorder.cards} minTop={privateDeckReorder.minTop} maxTop={privateDeckReorder.maxTop} disabled={busy} error={error} onSubmit={(topCardIds, bottomCardIds) => onAction("trigger", { providerId: "private_deck_reorder", topCardIds, bottomCardIds })} />}
       {tablePresentationVisible && <TableResolutionSequence events={displayedSequenceEvents} activeEvent={displayedTableEvent} players={room.players} myTableIndex={myTableIndex} concluding={resolutionClosing} onEquipmentArrival={markEquipmentArrivalPresented} />}
-      {harvestDisplay && <div
+      {harvestDisplay && <BattlefieldChoiceStage
         key={harvestDisplay.revealEventId ?? "bumper-harvest-public-pool"}
         ref={harvestStageRef}
         className="game-event-stage harvest-choice-stage"
+        mode={canChooseHarvest ? "actor-select" : "public-readonly"}
+        accessibilityLabel={harvestReadOnlyDuringNegation ? "Bumper Harvest public cards during Negation" : "Bumper Harvest revealed cards"}
         data-harvest-actor={canChooseHarvest ? room.meId : undefined}
         data-harvest-readonly={canChooseHarvest ? undefined : "true"}
         data-harvest-choice-authorized={canChooseHarvest ? "true" : "false"}
@@ -7588,8 +7547,6 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         data-harvest-root-event-id={room.publicHarvestPool?.rootEventId ?? room.presentationV2?.bumperHarvestProgress?.rootEventId}
         data-harvest-reveal-event-id={harvestDisplay.revealEventId ?? undefined}
         data-harvest-panel-top={harvestStageTop ?? undefined}
-        role="region"
-        aria-label={harvestReadOnlyDuringNegation ? "Bumper Harvest public cards during Negation" : "Bumper Harvest revealed cards"}
         style={{
           top: harvestStageTop === null ? undefined : `${harvestStageTop}px`,
           left: harvestStageInsets ? `${harvestStageInsets.left}px` : undefined,
@@ -7655,7 +7612,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             <button type="button" className="primary" disabled={busy || !harvestSelectedCard || Boolean(harvestSubmitting)} onClick={confirmHarvestChoice}>Confirm choice</button>
           </footer>}
         </section>
-      </div>}
+      </BattlefieldChoiceStage>}
       <div className="play-center" aria-hidden="true"><div className="draw-stack" data-draw-anchor="true" /><div className="discard-stack" data-discard-anchor="true" /></div>
       {pendingTargetCardUsesUnifiedModal && pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget && supportsAuthoritativeTargetCardSelection(pendingTargetCardSelectableSelection, pendingTargetCardSelectableTarget) && room.pendingTargetCard && pendingTargetCardActionName && <TargetCardPicker option={null} presentationCopy={{ title: pendingTargetCardActionName, accessibleName: `${pendingTargetCardActionName} target card selection`, instruction: room.pendingTargetCard.cardKind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard", actionLabel: `Use ${pendingTargetCardActionName}` }} selection={pendingTargetCardSelectableSelection} target={pendingTargetCardSelectableTarget} selectedKeys={pendingTargetCardSelectedKeys} disabled={busy || !canUseAction(room.currentAction, "choose_target_card")} canDecline={false} showCancel={false} allowPublicCardInfo error={error} onToggle={togglePendingTargetCardSelection} onUse={submitPendingTargetCardPicker} onCancel={clearPendingTargetCardSelection} onDecline={() => undefined} onInfoCard={(card, trigger) => openCardDetails(card, "public-zone", trigger)} />}
       {targetCardPickerInModal && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget && <TargetCardPicker option={targetCardPickerOption} compact={targetCardPickerOption.effectId === "sima_yi_fankui"} selection={targetCardPickerSelection} target={targetCardPickerTarget} selectedKeys={triggerSelectedKeys} disabled={triggerControlsDisabled} canDecline={Boolean(consoleDecision.authoritativeDecline)} showCancel={targetCardPickerOption.effectId !== "sima_yi_fankui" && (targetCardPickerUsesUnifiedModal || consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId))} error={error} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => targetCardPickerSelection.eligibleKeys.includes(selectedKey)); return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < targetCardPickerSelection.max ? [...validKeys, key] : validKeys; })} onUse={submitTargetCardPicker} onCancel={cancelTargetCardPicker} onDecline={() => onAction("decline_trigger")} />}
