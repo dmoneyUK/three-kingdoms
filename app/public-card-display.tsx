@@ -58,7 +58,8 @@ type PublicCardDisplayMotion = {
 export type PublicNegationNarration = {
   rootLabel: string;
   eventId: string;
-  latestCommittedEventId: string;
+  latestCommittedEventId?: string;
+  checkpointId?: string;
   phase: "WINDOW_OPEN" | "FINAL";
   rootEffectState: "ACTIVE" | "BLOCKED";
   headline: string;
@@ -1505,6 +1506,7 @@ type DisplayedPublicCardAnnouncement = {
   supporting: string;
   eventId: string;
   latestCommittedEventId?: string;
+  checkpointId?: string;
   phase?: PublicNegationNarration["phase"];
   rootEffectState?: PublicNegationNarration["rootEffectState"];
   accessibleLabel?: string;
@@ -1579,6 +1581,7 @@ type PublicCardAnnouncementBand = {
   top: number;
   width: number;
   centerX: number;
+  centerY: number;
   centerCardRect: CardRect;
   verticalMode: "above" | "below";
 };
@@ -1651,6 +1654,7 @@ function PublicCardAnnouncement({
     supporting: negationNarration?.supportingMessage ?? supportingMessage ?? "",
     eventId: negationNarration?.eventId ?? eventId,
     latestCommittedEventId: negationNarration?.latestCommittedEventId,
+    checkpointId: negationNarration?.checkpointId,
     phase: negationNarration?.phase,
     rootEffectState: negationNarration?.rootEffectState,
     accessibleLabel: negationNarration?.accessibleLabel,
@@ -1658,6 +1662,7 @@ function PublicCardAnnouncement({
   const hasNegationNarration = Boolean(negationNarration);
   const narrationEventId = negationNarration?.eventId;
   const narrationLatestCommittedEventId = negationNarration?.latestCommittedEventId;
+  const narrationCheckpointId = negationNarration?.checkpointId;
   const narrationPhase = negationNarration?.phase;
   const narrationRootEffectState = negationNarration?.rootEffectState;
   const narrationAccessibleLabel = negationNarration?.accessibleLabel;
@@ -1694,6 +1699,7 @@ function PublicCardAnnouncement({
       if (placementGeneration !== placementGenerationRef.current) return;
       const displayedNarrationMatches = !hasNegationNarration || displayedCopy.eventId === narrationEventId
         && displayedCopy.latestCommittedEventId === narrationLatestCommittedEventId
+        && displayedCopy.checkpointId === narrationCheckpointId
         && displayedCopy.phase === narrationPhase
         && displayedCopy.rootEffectState === narrationRootEffectState;
       if (hasNegationNarration && !displayedNarrationMatches) copy.style.visibility = "hidden";
@@ -1796,30 +1802,42 @@ function PublicCardAnnouncement({
       const targetCenterX = hasNegationNarration ? narrationCenterX : revealedCenterX;
       const centerOffsets = hasNegationNarration ? [0, -4, 4, -8, 8, -12, 12] : [0];
       const existingBand = publicCardAnnouncementBands.get(bandKey);
+      const measuredCopyHeight = copy.getBoundingClientRect().height;
+      const existingBandCenterY = existingBand?.centerY ?? (existingBand ? existingBand.top + measuredCopyHeight / 2 : null);
+      const existingBandTop = existingBandCenterY === null ? null : existingBandCenterY - measuredCopyHeight / 2;
       const existingBandRect = existingBand
-        ? new DOMRect(existingBand.left, existingBand.top, existingBand.width, copy.getBoundingClientRect().height)
+        ? new DOMRect(existingBand.left, existingBandTop ?? existingBand.top, existingBand.width, measuredCopyHeight)
         : null;
       const existingBandOverlapsReveal = phase === "reveal" && existingBandRect && centerCardRect.height > 0
         && rectsOverlap(toCardRect(existingBandRect), centerCardRect, gap);
       const existingBandOverlapsObstacle = existingBandRect && obstacles.some(({ element, rect }) =>
         element !== anchor && overlapsObstacle(existingBandRect, element, rect));
-      const existingBandFitsCurrentStage = existingBand
+      const existingBandFitsCurrentStage = existingBand && existingBandTop !== null
         && !existingBandOverlapsReveal
         && !existingBandOverlapsObstacle
         && Math.abs(existingBand.centerX - targetCenterX) <= 12
-        && (!stableHarvestAnchor || Math.abs(existingBand.top + copy.getBoundingClientRect().height + gap - centerCardRect.top) <= 16)
-        && existingBand.top >= safeTop
-        && existingBand.top + copy.getBoundingClientRect().height <= safeBottom;
-      const reusableBand = existingBandFitsCurrentStage ? existingBand : null;
-      if (existingBandOverlapsReveal) publicCardAnnouncementBands.delete(bandKey);
-      const canonicalCenterX = reusableBand?.centerX ?? targetCenterX;
-      const widths = [...new Set([reusableBand?.width, maxWidth, 500, 480, 456, 440, 420, 400, 380, 360, 340, 320, 300, 280, 260, 240, 224, 208, 200, 192, 184, 176, 168, 160]
+        && (!stableHarvestAnchor || Math.abs(existingBandTop + measuredCopyHeight + gap - centerCardRect.top) <= 16)
+        && existingBandTop >= safeTop
+        && existingBandTop + measuredCopyHeight <= safeBottom;
+      const reusableBand = existingBandFitsCurrentStage && existingBand && existingBandTop !== null
+        ? { ...existingBand, top: existingBandTop }
+        : null;
+      // Even when the previous box is temporarily blocked by a moving card,
+      // search around its established centre first. Falling straight back to
+      // the reveal-card side can move the shared H4 narration across the table.
+      const placementBand = reusableBand ?? (existingBand
+        && Math.abs(existingBand.centerX - targetCenterX) <= 12
+        && existingBand.centerY >= safeTop && existingBand.centerY <= safeBottom
+        ? existingBand
+        : null);
+      const canonicalCenterX = placementBand?.centerX ?? targetCenterX;
+      const widths = [...new Set([placementBand?.width, maxWidth, 500, 480, 456, 440, 420, 400, 380, 360, 340, 320, 300, 280, 260, 240, 224, 208, 200, 192, 184, 176, 168, 160]
         .filter((width): width is number => typeof width === "number")
         .map((width) => Math.min(width, maxWidth)))]
         .filter((width) => width > 0)
         .sort((left, right) => right - left);
-      if (reusableBand) {
-        const reusableWidth = widths.indexOf(Math.min(reusableBand.width, maxWidth));
+      if (placementBand) {
+        const reusableWidth = widths.indexOf(Math.min(placementBand.width, maxWidth));
         if (reusableWidth > 0) widths.unshift(widths.splice(reusableWidth, 1)[0]);
       }
       const textElement = copy.querySelector<HTMLElement>("b");
@@ -1857,49 +1875,101 @@ function PublicCardAnnouncement({
           if (compactIndex > 0) announcementOptions.unshift(announcementOptions.splice(compactIndex, 1)[0]);
         }
       }
+      const sameDisplayedNarration = hasNegationNarration
+        && displayedCopy.eventId === narrationEventId
+        && displayedCopy.latestCommittedEventId === narrationLatestCommittedEventId
+        && displayedCopy.checkpointId === narrationCheckpointId
+        && displayedCopy.phase === narrationPhase
+        && displayedCopy.rootEffectState === narrationRootEffectState;
+      if (sameDisplayedNarration) {
+        const currentOptionIndex = announcementOptions.findIndex((option) =>
+          option.message === displayedCopy.message && option.supporting === displayedCopy.supporting);
+        if (currentOptionIndex > 0) announcementOptions.unshift(announcementOptions.splice(currentOptionIndex, 1)[0]);
+      }
       let selected: { left: number; top: number; width: number; height: number; lines: number; message: string; supporting: string; compact: boolean } | null = null;
-      let verticalMode: "above" | "below" = reusableBand?.verticalMode ?? preferredVerticalMode ?? "above";
-      const topOffsets = [0, -4, 4, -8, 8, -12, 12, -16, 16];
-      for (const option of announcementOptions) {
-        if (textElement) textElement.textContent = option.message;
-        if (supportElement) supportElement.textContent = option.supporting;
-        for (const width of widths) {
-          setAnnouncementMeasureMode(option.compact, width);
-          copy.style.width = `${width}px`;
-          const height = copy.getBoundingClientRect().height;
-          const baseTop = reusableBand?.top ?? (verticalMode === "below"
-            ? centerCardRect.top + centerCardRect.height + gap
-            : centerCardRect.top - height - gap);
-          for (const centerOffset of centerOffsets) {
-            const centeredLeft = canonicalCenterX + centerOffset - width / 2;
-            if (centeredLeft < safeLeft || centeredLeft + width > safeRight) continue;
-            for (const offset of topOffsets) {
-              const top = baseTop + offset;
-              if (reusableBand && Math.abs(top - reusableBand.top) > 16) continue;
-              if (top < safeTop || top + height > safeBottom) continue;
-              if (!staysAbovePrivateDraw(top, height)) continue;
-              const clearsCenterCard = !isLargeRevealAnchor || (verticalMode === "below"
-                ? top >= centerCardRect.top + centerCardRect.height + gap - 0.5
-                : top + height + gap <= centerCardRect.top + 0.5);
-              if (!clearsCenterCard) continue;
-              copy.style.left = `${centeredLeft}px`;
-              copy.style.top = `${top}px`;
-              const rect = copy.getBoundingClientRect();
-              const lines = textLines();
-              if (lines > maxTextLines) continue;
-              if (obstacles.some(({ element, rect: obstacleRect }) => element !== anchor
-                && overlapsObstacle(rect, element, obstacleRect))) continue;
-              selected = { left: centeredLeft, top, width, height: rect.height, lines, message: option.message, supporting: option.supporting, compact: option.compact };
-              break;
+      let verticalMode: "above" | "below" = placementBand && centerCardRect.height > 0
+        ? placementBand.centerY >= centerCardRect.top + centerCardRect.height / 2 ? "below" : "above"
+        : placementBand?.verticalMode ?? preferredVerticalMode ?? "above";
+      // Keep the established H4 centre within its accepted 16px vertical
+      // tolerance while allowing a small obstacle-clearing adjustment. A
+      // narrow phone can otherwise have no legal fit between parked history
+      // cards and the activity chip even though the band has safe room nearby.
+      const topOffsets = placementBand
+        ? [0, -2, 2, -4, 4, -6, 6, -8, 8, -10, 10, -12, 12, -14, 14, -16, 16]
+        : [0, -1, 1, -2, 2, -4, 4, -8, 8, -12, 12, -16, 16];
+      const considerCandidate = (
+        option: (typeof announcementOptions)[number],
+        width: number,
+        height: number,
+        centerOffset: number,
+        top: number,
+      ) => {
+        const centeredLeft = canonicalCenterX + centerOffset - width / 2;
+        if (centeredLeft < safeLeft || centeredLeft + width > safeRight) return false;
+        if (placementBand && Math.abs(top + height / 2 - placementBand.centerY) > 16) return false;
+        if (top < safeTop || top + height > safeBottom || !staysAbovePrivateDraw(top, height)) return false;
+        const clearsCenterCard = !isLargeRevealAnchor || (verticalMode === "below"
+          ? top >= centerCardRect.top + centerCardRect.height + gap - 0.5
+          : top + height + gap <= centerCardRect.top + 0.5);
+        if (!clearsCenterCard) return false;
+        copy.style.left = `${centeredLeft}px`;
+        copy.style.top = `${top}px`;
+        const rect = copy.getBoundingClientRect();
+        const lines = textLines();
+        if (lines > maxTextLines || obstacles.some(({ element, rect: obstacleRect }) => element !== anchor
+          && overlapsObstacle(rect, element, obstacleRect))) return false;
+        selected = { left: centeredLeft, top, width, height: rect.height, lines, message: option.message, supporting: option.supporting, compact: option.compact };
+        return true;
+      };
+      if (hasNegationNarration && placementBand) {
+        // For stage narration, find the nearest safe vertical band first,
+        // then use a narrower/mobile copy or a small horizontal adjustment.
+        // Searching each width's full vertical range first caused the same
+        // H4 caption to jump above a revealed card and below its parked mini.
+        for (const offset of topOffsets) {
+          for (const option of announcementOptions) {
+            if (textElement) textElement.textContent = option.message;
+            if (supportElement) supportElement.textContent = option.supporting;
+            for (const width of widths) {
+              setAnnouncementMeasureMode(option.compact, width);
+              copy.style.width = `${width}px`;
+              const height = copy.getBoundingClientRect().height;
+              const top = placementBand.centerY - height / 2 + offset;
+              for (const centerOffset of centerOffsets) {
+                if (considerCandidate(option, width, height, centerOffset, top)) break;
+              }
+              if (selected) break;
             }
             if (selected) break;
           }
           if (selected) break;
         }
-        if (selected) break;
+      } else {
+        for (const option of announcementOptions) {
+          if (textElement) textElement.textContent = option.message;
+          if (supportElement) supportElement.textContent = option.supporting;
+          for (const width of widths) {
+            setAnnouncementMeasureMode(option.compact, width);
+            copy.style.width = `${width}px`;
+            const height = copy.getBoundingClientRect().height;
+            const baseTop = placementBand
+              ? placementBand.centerY - height / 2
+              : verticalMode === "below"
+                ? centerCardRect.top + centerCardRect.height + gap
+                : centerCardRect.top - height - gap;
+            for (const centerOffset of centerOffsets) {
+              for (const offset of topOffsets) {
+                if (considerCandidate(option, width, height, centerOffset, baseTop + offset)) break;
+              }
+              if (selected) break;
+            }
+            if (selected) break;
+          }
+          if (selected) break;
+        }
       }
 
-      if (!selected && !reusableBand && centerCardRect.height > 0) {
+      if (!selected && !placementBand && centerCardRect.height > 0) {
         // A constrained short battlefield can place its one stable band just
         // below the reveal card. Skip every real or projected owner-card slot.
         const compactOption = announcementOptions.find((option) => option.compact) ?? announcementOptions[0];
@@ -1943,9 +2013,6 @@ function PublicCardAnnouncement({
       }
 
       if (!selected) {
-        const preferredTop = reusableBand?.top ?? (verticalMode === "below"
-          ? centerCardRect.top + centerCardRect.height + gap
-          : centerCardRect.top - copy.getBoundingClientRect().height - gap);
         for (const option of announcementOptions) {
           if (textElement) textElement.textContent = option.message;
           if (supportElement) supportElement.textContent = option.supporting;
@@ -1953,42 +2020,49 @@ function PublicCardAnnouncement({
             setAnnouncementMeasureMode(option.compact, width);
             copy.style.width = `${width}px`;
             const height = copy.getBoundingClientRect().height;
-          for (const centerOffset of centerOffsets) {
-            const left = canonicalCenterX + centerOffset - width / 2;
-            if (left < safeLeft || left + width > safeRight) continue;
-            const candidateTops = new Set<number>([
-              safeTop,
-              preferredTop,
-              safeBottom - height,
-              centerCardRect.top - height - gap,
-              centerCardRect.top + centerCardRect.height + gap,
-            ]);
-            for (let top = safeTop; top + height <= safeBottom; top += 2) candidateTops.add(top);
-            for (const { element, rect } of obstacles) {
-              const clearance = obstacleClearance(element);
-              candidateTops.add(rect.top - height - clearance);
-              candidateTops.add(rect.bottom + clearance);
-            }
-            const orderedTops = [...candidateTops]
-              .filter((top) => Number.isFinite(top) && top >= safeTop && top + height <= safeBottom && staysAbovePrivateDraw(top, height))
-              .sort((first, second) => Math.abs(first - preferredTop) - Math.abs(second - preferredTop));
-            for (const top of orderedTops) {
-              if (reusableBand && Math.abs(top - reusableBand.top) > 16) continue;
-              copy.style.left = `${left}px`;
-              copy.style.top = `${top}px`;
-              const rect = copy.getBoundingClientRect();
-              const lines = textLines();
-              const centerCardOverlap = centerCardRect.height > 0
-                && rectsOverlap(toCardRect(rect), centerCardRect, gap);
-              const hasObstacleCollision = obstacles.some(({ element, rect: obstacleRect }) =>
-                overlapsObstacle(rect, element, obstacleRect));
-              if (lines <= maxTextLines && !centerCardOverlap && !hasObstacleCollision) {
-                selected = { left, top, width, height: rect.height, lines, message: option.message, supporting: option.supporting, compact: option.compact };
-                verticalMode = top + height + gap <= centerCardRect.top ? "above" : "below";
-                break;
+            const preferredTop = placementBand
+              ? placementBand.centerY - height / 2
+              : verticalMode === "below"
+                ? centerCardRect.top + centerCardRect.height + gap
+                : centerCardRect.top - height - gap;
+            for (const centerOffset of centerOffsets) {
+              const left = canonicalCenterX + centerOffset - width / 2;
+              if (left < safeLeft || left + width > safeRight) continue;
+              const candidateTops = new Set<number>(placementBand ? [preferredTop] : [
+                safeTop,
+                preferredTop,
+                safeBottom - height,
+                centerCardRect.top - height - gap,
+                centerCardRect.top + centerCardRect.height + gap,
+              ]);
+              if (!placementBand) {
+                for (let top = safeTop; top + height <= safeBottom; top += 2) candidateTops.add(top);
+                for (const { element, rect } of obstacles) {
+                  const clearance = obstacleClearance(element);
+                  candidateTops.add(rect.top - height - clearance);
+                  candidateTops.add(rect.bottom + clearance);
+                }
               }
+              const orderedTops = [...candidateTops]
+                .filter((top) => Number.isFinite(top) && top >= safeTop && top + height <= safeBottom && staysAbovePrivateDraw(top, height))
+                .sort((first, second) => Math.abs(first - preferredTop) - Math.abs(second - preferredTop));
+              for (const top of orderedTops) {
+                if (placementBand && Math.abs(top + height / 2 - placementBand.centerY) > 16) continue;
+                copy.style.left = `${left}px`;
+                copy.style.top = `${top}px`;
+                const rect = copy.getBoundingClientRect();
+                const lines = textLines();
+                const centerCardOverlap = centerCardRect.height > 0
+                  && rectsOverlap(toCardRect(rect), centerCardRect, gap);
+                const hasObstacleCollision = obstacles.some(({ element, rect: obstacleRect }) =>
+                  overlapsObstacle(rect, element, obstacleRect));
+                if (lines <= maxTextLines && !centerCardOverlap && !hasObstacleCollision) {
+                  selected = { left, top, width, height: rect.height, lines, message: option.message, supporting: option.supporting, compact: option.compact };
+                  verticalMode = top + height + gap <= centerCardRect.top ? "above" : "below";
+                  break;
+                }
               }
-            if (selected) break;
+              if (selected) break;
             }
             if (selected) break;
           }
@@ -2017,7 +2091,8 @@ function PublicCardAnnouncement({
         left: selected.left,
         top: selected.top,
         width: selected.width,
-        centerX: selected.left + selected.width / 2,
+        centerX: hasNegationNarration && placementBand ? placementBand.centerX : selected.left + selected.width / 2,
+        centerY: hasNegationNarration && placementBand ? placementBand.centerY : selected.top + selected.height / 2,
         centerCardRect,
         verticalMode,
       });
@@ -2026,6 +2101,7 @@ function PublicCardAnnouncement({
         supporting: selected.supporting,
         eventId: narrationEventId ?? eventId,
         latestCommittedEventId: narrationLatestCommittedEventId,
+        checkpointId: narrationCheckpointId,
         phase: narrationPhase,
         rootEffectState: narrationRootEffectState,
         accessibleLabel: narrationAccessibleLabel,
@@ -2034,6 +2110,7 @@ function PublicCardAnnouncement({
         || displayedCopy.supporting !== nextDisplayedCopy.supporting
         || displayedCopy.eventId !== nextDisplayedCopy.eventId
         || displayedCopy.latestCommittedEventId !== nextDisplayedCopy.latestCommittedEventId
+        || displayedCopy.checkpointId !== nextDisplayedCopy.checkpointId
         || displayedCopy.phase !== nextDisplayedCopy.phase
         || displayedCopy.rootEffectState !== nextDisplayedCopy.rootEffectState
         || displayedCopy.accessibleLabel !== nextDisplayedCopy.accessibleLabel) {
@@ -2104,7 +2181,7 @@ function PublicCardAnnouncement({
       anchorObserver?.disconnect();
       window.cancelAnimationFrame(frame);
     };
-  }, [anchorEventId, compactMessage, compactSupportingMessage, displayedCopy, eventId, hasNegationNarration, heading, ignoreJourneyLayoutPending, message, narrationAccessibleLabel, narrationEventId, narrationLatestCommittedEventId, narrationPhase, narrationRootEffectState, negationWaiting, phase, placementKey, preferredVerticalMode, privateDrawAware, stableCenterAnchor, stableFallbackCardRect, stableHarvestAnchor, supportingMessage, viewerLayoutKey]);
+  }, [anchorEventId, compactMessage, compactSupportingMessage, displayedCopy, eventId, hasNegationNarration, heading, ignoreJourneyLayoutPending, message, narrationAccessibleLabel, narrationCheckpointId, narrationEventId, narrationLatestCommittedEventId, narrationPhase, narrationRootEffectState, negationWaiting, phase, placementKey, preferredVerticalMode, privateDrawAware, stableCenterAnchor, stableFallbackCardRect, stableHarvestAnchor, supportingMessage, viewerLayoutKey]);
 
   return <div
     ref={copyRef}
@@ -2116,6 +2193,7 @@ function PublicCardAnnouncement({
     data-public-card-announcement-key={displayedCopy.eventId}
     data-public-card-announcement-event-id={displayedCopy.eventId}
     data-public-negation-latest-event-id={displayedCopy.latestCommittedEventId}
+    data-public-negation-checkpoint-id={displayedCopy.checkpointId}
     data-public-negation-phase={displayedCopy.phase}
     data-public-negation-effect-state={displayedCopy.rootEffectState}
     data-public-card-copy-anchor-event-id={anchorEventId === null ? undefined : anchorEventId ?? eventId}
@@ -2125,7 +2203,7 @@ function PublicCardAnnouncement({
   >
     {heading && <span className="public-event-announcement-heading">{heading}</span>}
     <b aria-label={displayedCopy.accessibleLabel ?? displayedCopy.message}>{displayedCopy.message}</b>
-    {negationNarration && <span className="public-negation-narration-support" aria-hidden="true">{displayedCopy.supporting}</span>}
+    {negationNarration && displayedCopy.supporting && <span className="public-negation-narration-support" aria-hidden="true">{displayedCopy.supporting}</span>}
   </div>;
 }
 
@@ -3701,6 +3779,8 @@ function SingleTargetCardJourney({
   }, [action.targetId, enabled, journey.cards, journey.layoutPending, journey.scopeKey, journey.viewerId, scopeKey, viewerId, viewerLayoutPending]);
   const currentPublicCard = currentCard?.cardFace ?? action.cardFace ?? null;
   const groupRootStageOwnsCopy = motion?.type === "group-root" && !action.phaseNotice?.includes("NEGATION");
+  const groupRootCenterIsStillOccupied = motion?.type === "group-root"
+    && journey.cards.some((card) => card.phase === "reveal" || card.phase === "move");
   const announcementAnchorCard = groupRootStageOwnsCopy
     ? journey.cards.find((card) => card.eventId === action.rootEventId) ?? currentCard
     : currentCard;
@@ -3802,7 +3882,9 @@ function SingleTargetCardJourney({
       negationNarration={negationNarration}
       fallbackCardRect={harvestPoolVisible
         ? journey.center
-        : motion?.type === "lust-cost" && journey.center ? battlefieldLustDuelAnnouncementAnchor(journey.center) : journey.center}
+      : motion?.type === "lust-cost" && journey.center
+        ? battlefieldLustDuelAnnouncementAnchor(journey.center)
+        : motion?.type === "group-root" && !groupRootCenterIsStillOccupied ? undefined : journey.center}
       phaseNotice={negationNarration ? undefined : action.phaseNotice}
       outcome={allParked ? action.settlement?.outcome : undefined}
       negationWaiting={Boolean(negationNarration || action.phaseNotice?.includes("NEGATION"))}

@@ -338,6 +338,9 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
       childList: true,
       attributes: true,
       attributeFilter: [
+        // Protected obstacles enter/leave their collision geometry through
+        // state classes (for example, a centred reveal becoming a parked mini).
+        "class",
         "data-player-count",
         "data-seat-topology",
         "data-public-card-journey-target-left",

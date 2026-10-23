@@ -4715,6 +4715,86 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       responses: responses as NonNullable<(typeof responses)[number]>[],
     };
   })();
+  const deriveGroupTargetNegationNarration = (candidate: NonNullable<typeof groupTargetBranchCandidate>): PublicNegationNarration | null => {
+    const scope = candidate.groupTargetEffectScope;
+    const depth = candidate.responses.length;
+    const latest = candidate.responses.at(-1);
+    if (!scope || !candidate.group.rootCardProof
+      || scope.semantics !== "PROVEN" || scope.interactionId !== candidate.group.interactionId
+      || scope.groupFrameId !== candidate.group.groupFrameId || scope.activeFrameId !== candidate.group.activeFrameId
+      || scope.checkpointId !== candidate.group.checkpointId || scope.presentationRevision !== candidate.group.presentationRevision
+      || scope.sourceId !== candidate.source.id || !candidate.group.targetIds.includes(scope.targetId)) return null;
+    const targetMatches = candidate.targets.filter((target) => target.playerId === scope.targetId);
+    const targetName = targetMatches.length === 1 ? targetMatches[0]?.playerName.trim() : "";
+    const sourceName = candidate.source.name.trim();
+    const rootLabel = cardDefinition(candidate.group.cardKind).name;
+    const expectedEffectState = depth % 2 === 0 ? "ACTIVE" : "BLOCKED";
+    if (!targetName || !sourceName || scope.effectState !== expectedEffectState) return null;
+
+    if (depth === 0) {
+      const targetIndex = candidate.group.targetIds.indexOf(scope.targetId);
+      const hasCompletedPriorTarget = targetIndex > 0
+        && candidate.group.participants.slice(0, targetIndex).every((participant) =>
+          participant.status === "RESOLVED" || participant.status === "NO_LONGER_APPLICABLE");
+      // Preserve the accepted root copy at the first target. Once a prior
+      // target is complete, replace any retained response copy with the new
+      // server-proven target and checkpoint while its Negation window is open.
+      if (!hasCompletedPriorTarget || scope.effectState !== "ACTIVE") return null;
+      const compactTarget = targetName.length <= 16 ? targetName : `Target ${targetIndex + 1}`;
+      const headline = `${rootLabel} · ${compactTarget} · Negation open`;
+      return {
+        rootLabel,
+        eventId: candidate.rootEvent.id,
+        checkpointId: scope.checkpointId,
+        phase: "WINDOW_OPEN",
+        rootEffectState: scope.effectState,
+        headline,
+        compactHeadline: headline,
+        supportingMessage: "",
+        compactSupportingMessage: "",
+        accessibleLabel: `CURRENT. Negation window open. ${rootLabel} effect is active for ${targetName}.`,
+      };
+    }
+
+    if (!latest) return null;
+
+    let headline: string;
+    let compactHeadline: string;
+    let supportingMessage: string;
+    let compactSupportingMessage: string;
+    if (depth === 1) {
+      if (latest.counterTarget?.kind !== "GROUP_TARGET_EFFECT" || latest.counterTarget.targetId !== scope.targetId) return null;
+      headline = `${latest.actorName}'s Negation counters ${rootLabel}.`;
+      compactHeadline = `Negation → ${rootLabel} · T${targetIndex + 1} · ${scope.effectState}`;
+      supportingMessage = `On ${targetName} · ${scope.effectState} · response open.`;
+      compactSupportingMessage = "";
+    } else {
+      const previous = candidate.responses[depth - 2];
+      if (!previous || latest.counterTarget?.kind !== "RESPONSE" || latest.counterTarget.index !== depth - 2) return null;
+      headline = `${latest.actorName} counters ${previous.actorName}'s Negation.`;
+      // Keep the immediate public counter target visible in the compact H4
+      // line too. The chronological card minis already carry the ordinal.
+      compactHeadline = `${latest.actorName} counters ${previous.actorName}'s Negation.`;
+      supportingMessage = `${rootLabel} on ${targetName} · ${scope.effectState} · response open.`;
+      compactSupportingMessage = `${rootLabel} · T${targetIndex + 1} ${scope.effectState} · open`;
+    }
+    return {
+      rootLabel,
+      eventId: latest.eventId,
+      latestCommittedEventId: latest.eventId,
+      checkpointId: scope.checkpointId,
+      phase: "WINDOW_OPEN",
+      rootEffectState: scope.effectState,
+      headline,
+      compactHeadline,
+      supportingMessage,
+      compactSupportingMessage,
+      accessibleLabel: `CURRENT, response still open. ${headline} ${supportingMessage}`,
+    };
+  };
+  const groupTargetNegationNarration = groupTargetBranchCandidate
+    ? deriveGroupTargetNegationNarration(groupTargetBranchCandidate)
+    : null;
   const groupSettlementCandidate = (() => {
     const settlement = clientPresentation.groupSettlements.find((candidate) => candidate.eventId === activeGroupSettlement?.eventId);
     if (!settlement || settlement.semantics !== "PROVEN") return null;
@@ -5455,6 +5535,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         freshEventIds: [groupTargetBranchCandidate.rootEvent.id, ...groupTargetBranchCandidate.responses.map((response) => response.eventId)]
           .filter((eventId) => !publicCardJourneySeenEventIds.has(eventId)),
       },
+      ...(groupTargetNegationNarration ? { publicNegationNarration: groupTargetNegationNarration } : {}),
       ...(groupTargetBranchCandidate.groupTargetEffectScope ? {
         phaseNotice: groupTargetBranchCandidate.responses.length ? "NEGATION RESPONSE" : "NEGATION MAY BE PLAYED",
         ...(groupTargetBranchCandidate.responses.length ? { responses: groupTargetBranchCandidate.responses } : {}),
