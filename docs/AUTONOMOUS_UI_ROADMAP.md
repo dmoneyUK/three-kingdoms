@@ -3195,3 +3195,27 @@ Profile command measurements:
   `{"ok":true,"worker":"available"}`.
 - Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. No user
   phone acceptance is inferred.
+
+### UX2 §10.11 G1 — Stargazing whole-card touch origin — 2026-10-23
+
+- Source commit `deab81974aa08ea8335579d058e0237a3494261f` removes the tiny-grip
+  prerequisite for a touch drag. The whole private CardFace now captures touch;
+  a 260ms hold activates drag, while pre-hold movement scrolls its card row or
+  the three-zone sequence in the gesture's dominant direction. The Move menu,
+  keyboard fallback, local-only arrangement and server submission contract are
+  unchanged.
+- Focused real Worker/D1 browser checks passed 3/3 at 390×844, 390×700 and
+  320×640. They cover non-grip art touch, hold/move/drop, insertion/highlight,
+  quick tap, horizontal swipe, pointer cancellation, Move-menu arrangement,
+  card conservation and no request before explicit completion. Build and
+  targeted ESLint passed; ESLint reported 3 existing React Hook warnings in
+  `app/page.tsx` outside this change. Host WebKit validation was attempted but
+  could not start because its Page protocol rejected `PushAPIEnabled`; no native
+  Safari result is claimed.
+- Exact-SHA [Actions 39922538234](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39922538234)
+  passed lint/build/fast, API, browser startup/room smoke, D1 migration, Worker
+  deployment and production smoke. Worker `e9a0cf99-5e4b-4213-8374-93fc0664beaf`;
+  production `/api/health` returned `{"ok":true,"worker":"available"}`.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. G2
+  all-zone/order/privacy end-to-end remains a separate uncompleted slice; no
+  phone acceptance is inferred.
