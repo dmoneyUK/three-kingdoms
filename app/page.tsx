@@ -3776,14 +3776,14 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     }
     let fired = false;
     traceTimer("scheduled");
-    const timer = window.setTimeout(() => {
+    const timer = setTimeout(() => {
       fired = true;
       traceTimer("fired");
       setPresentedEventIds((ids) => ids.has(activeEventTimerEventId) ? ids : new Set([...ids, activeEventTimerEventId]));
       setActiveEvent((currentEvent) => currentEvent?.id === activeEventTimerEventId ? null : currentEvent);
     }, activeEventDisplayDuration);
     return () => {
-      window.clearTimeout(timer);
+      clearTimeout(timer);
       if (!fired) traceTimer("cancelled");
     };
   }, [activeEventTimerEventId, activeEventTimerKind, activeEventTimerIdentity, activeEventDisplayDuration, activeEquipmentArrivalKey]);

@@ -1134,8 +1134,10 @@ test("every card-and-target active hero skill has a valid empty-selection UI con
     assert.doesNotMatch(html, /GAME SCREEN ERROR|Previous game data is no longer compatible/, `${activeSkill.effectId} does not render recovery UI`);
   }
 
-  assert.match(gameRoomSource, /const presentationBusy = Boolean\(optimisticPlay \|\| \(activeEvent && !activeEquipmentArrivalEventId\) \|\| eventQueue\.length/,
-    "a committed Equipment arrival does not block a legal action while other public event animations remain busy");
+  assert.match(gameRoomSource, /activeEvent: Boolean\(activeEvent && !activeEquipmentArrivalEventId\)/,
+    "a committed Equipment arrival remains exempt while other public event animations remain busy");
+  assert.match(gameRoomSource, /const presentationBusy = Object\.values\(presentationBusyCauses\)\.some\(Boolean\)/,
+    "all explicit presentation busy causes still compose into one status");
   assert.match(gameRoomSource, /const activeSkillTargetIds = activeSkillSelection\?\.targetIds \?\? activeSkillTargetSelection\?\.targetIds \?\? \[\]/);
   assert.match(gameRoomSource, /const activeSkillSelectedTargetIds = activeSkillStateIsCurrent \? \(activeSkillSelectionState\?\.targetIds \?\? \[\]\)/);
 
