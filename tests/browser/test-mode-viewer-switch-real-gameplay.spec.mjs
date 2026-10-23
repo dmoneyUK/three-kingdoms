@@ -194,6 +194,150 @@ test("test-game perspective switches manually and stays selected when the server
   }).toEqual({ localViewer: actingPlayerId, actingSeat: nextActingPlayerId });
 });
 
+test("opponent Inspect retains parked public Duel history through SWITCH and refresh", async ({ page, request }) => {
+  const created = await request.post(`${API}/api/rooms`, { data: { action: "create", name: "DUEL INSPECT HISTORY HOST" } });
+  const createdBody = await created.json();
+  expect(created.status(), JSON.stringify(createdBody)).toBe(201);
+  const { code, token } = { code: createdBody.room.code, token: createdBody.token };
+  let room = (await postAction(request, "add_test_players", code, token)).room;
+  room = (await postAction(request, "enable_test_room", code, token)).room;
+  const host = room.players.find((player) => player.isHost);
+  const source = room.players.find((player) => player.isTestPlayer && player.seat === 1);
+  expect(host).toBeTruthy();
+  expect(source).toBeTruthy();
+  room = (await postAction(request, "configure_test_hands", code, token, {
+    presetId: "custom",
+    handsBySeat: Object.fromEntries(room.players.map((player) => [player.seat, player.id === source.id ? ["Duel"] : ["Attack"]])),
+    expectedRevision: 0,
+  })).room;
+  room = (await postAction(request, "start", code, token)).room;
+  const noAutomaticTurnPrompts = new Set([
+    "cao-cao", "xiahou-dun", "liu-bei", "guan-yu", "zhang-fei", "zhao-yun",
+    "sun-quan", "gan-ning", "huang-gai", "lu-xun", "huaxiong", "gongsun-zan",
+    "pan-feng", "ma-chao", "lü-bu", "simayi", "guo-jia",
+  ]);
+  while (room.status === "heroes") {
+    const hero = room.myHeroOptions.find((candidate) => noAutomaticTurnPrompts.has(candidate.id));
+    expect(hero, "each controlled test seat has a Standard hero option").toBeTruthy();
+    room = (await postAction(request, "choose_hero", code, token, { heroId: hero.id })).room;
+  }
+
+  const target = room.players.find((player) => player.seat === 2);
+  const alternateViewer = room.players.find((player) => player.seat === 3);
+  expect(host).toBeTruthy();
+  expect(target).toBeTruthy();
+  expect(alternateViewer).toBeTruthy();
+  const context = () => ({
+    actionRevision: room.actionRevision,
+    meId: room.meId,
+    phase: room.phase,
+    pendingKind: room.pending?.kind ?? null,
+    actorId: room.currentAction?.actorId ?? room.actionPlayerId,
+  });
+  for (let attempts = 0; attempts < room.players.length * 3; attempts += 1) {
+    if ((room.currentAction?.actorId ?? room.actionPlayerId) === source.id && room.phase?.startsWith("play")) break;
+    if (room.phase?.startsWith("draw")) {
+      room = (await postAction(request, "draw", code, token, { context: context() })).room;
+    } else if (room.phase?.startsWith("play")) {
+      room = (await postAction(request, "end_turn", code, token, { context: context() })).room;
+    } else if (room.phase === "discard") {
+      const actor = room.players.find((player) => player.id === (room.currentAction?.actorId ?? room.actionPlayerId));
+      const discardCount = Math.max(0, room.myHand.length - (actor?.hp ?? 0));
+      room = (await postAction(request, "discard_cards", code, token, {
+        cardIds: room.myHand.slice(0, discardCount).map((card) => card.id),
+        context: context(),
+      })).room;
+    } else {
+      throw new Error(`Unexpected phase while advancing to the test-player Duel turn: ${room.phase}`);
+    }
+  }
+  expect(room.currentAction?.actorId ?? room.actionPlayerId).toBe(source.id);
+  expect(room.phase?.startsWith("play")).toBe(true);
+  const duel = room.myHand.find((card) => card.kind === "Duel");
+  expect(duel, "the source has the configured physical Duel card").toBeTruthy();
+  const declared = (await postAction(request, "play_card", code, token, {
+    cardId: duel.id,
+    targetId: target.id,
+    context: context(),
+  })).room;
+  const negationWindowId = declared.currentAction?.negationWindowId;
+  expect(negationWindowId).toBeTruthy();
+  const heldClock = await request.post(`${API}/__test/negation-window-clock`, { data: { code, windowId: negationWindowId, mode: "hold" } });
+  expect(heldClock.ok()).toBeTruthy();
+  room = declared;
+  const rootEvent = [...room.timeline].reverse().find((event) => event.type === "card" && event.action === "play"
+    && event.card?.id === duel.id && event.presentation !== false);
+  expect(rootEvent, "the physical root Duel remains a proven public timeline event").toBeTruthy();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(({ roomCode, sessionToken, name }) => {
+    localStorage.setItem("three-realms-session", JSON.stringify({ code: roomCode, token: sessionToken, name }));
+  }, { roomCode: code, sessionToken: token, name: host.name });
+  await page.goto(`${API}/`);
+  await expect(page.locator(".game-shell")).toBeVisible();
+  const display = page.locator(`.public-card-display[data-public-card-motion="duel"][data-public-card-root-event-id="${rootEvent.id}"]`);
+  const root = display.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`);
+  await expect(display).toBeVisible({ timeout: 12_000 });
+  await expect(root).toHaveAttribute("data-public-card-journey-phase", "parked", { timeout: 12_000 });
+  const beforeInspect = await root.boundingBox();
+  const revealStartedAt = await root.getAttribute("data-public-card-journey-reveal-started-at");
+  expect(beforeInspect).toBeTruthy();
+
+  const submittedPosts = [];
+  page.on("request", (browserRequest) => {
+    if (browserRequest.url() === `${API}/api/rooms` && browserRequest.method() === "POST") {
+      submittedPosts.push(browserRequest.postDataJSON()?.action ?? "unknown");
+    }
+  });
+  const inspectionOpener = page.locator(`[data-player-anchor="${target.id}"] .opponent-hero-target`);
+  await inspectionOpener.click();
+  const inspector = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-floating-shell');
+  await expect(inspector).toBeVisible();
+  await expect(page.locator(`.public-card-display[data-public-card-inspection-history="true"][data-public-card-root-event-id="${rootEvent.id}"]`)).toBeVisible();
+  const retainedRoot = page.locator(`[data-public-card-inspection-history="true"] [data-public-card-journey-event-id="${rootEvent.id}"]`);
+  await expect(retainedRoot).toHaveAttribute("data-public-card-journey-phase", "parked");
+  await expect(retainedRoot).toHaveAttribute("data-public-card-inspectable", "false");
+  await expect(retainedRoot).toBeDisabled();
+  await expect(page.locator(".public-card-display-journey-copy")).toHaveCount(0);
+  const duringInspect = await retainedRoot.boundingBox();
+  expect(duringInspect).toBeTruthy();
+  expect(Math.abs(duringInspect.x - beforeInspect.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(duringInspect.y - beforeInspect.y)).toBeLessThanOrEqual(1);
+  expect(submittedPosts).toEqual([]);
+  const inspectorHit = await inspector.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const target = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return Boolean(target && element.contains(target));
+  });
+  expect(inspectorHit, "the modal remains topmost and usable over the passive public history").toBe(true);
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator('.interaction-stage[data-local-ui-mode="INSPECT"]')).toHaveCount(0);
+  await expect(display).toBeVisible();
+  await expect(root).toHaveAttribute("data-public-card-journey-phase", "parked");
+  expect(await root.getAttribute("data-public-card-journey-reveal-started-at")).toBe(revealStartedAt);
+  await expect(root).toHaveAttribute("data-public-card-journey-event-id", rootEvent.id);
+  expect(submittedPosts).toEqual([]);
+
+  const switchButton = page.getByTestId(`test-view-switch-${alternateViewer.id}`);
+  await expect(switchButton).toBeVisible();
+  await switchButton.click();
+  await expect(page.locator(`.local-player-dock[data-player-anchor="${alternateViewer.id}"]`)).toBeVisible();
+  const switchedDisplay = page.locator(`.public-card-display[data-public-card-motion="duel"][data-public-card-root-event-id="${rootEvent.id}"]`);
+  const switchedRoot = switchedDisplay.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`);
+  await expect(switchedRoot).toHaveAttribute("data-public-card-journey-phase", "parked");
+  await expect(switchedRoot).toHaveAttribute("data-public-card-journey-event-id", rootEvent.id);
+  expect(await switchedRoot.getAttribute("data-public-card-journey-reveal-started-at")).toBe(revealStartedAt);
+  expect(submittedPosts).toEqual([]);
+
+  await page.reload();
+  await expect(page.locator(`.local-player-dock[data-player-anchor="${host.id}"]`)).toBeVisible();
+  const refreshedDisplay = page.locator(`.public-card-display[data-public-card-motion="duel"][data-public-card-root-event-id="${rootEvent.id}"]`);
+  const refreshedRoot = refreshedDisplay.locator(`[data-public-card-journey-event-id="${rootEvent.id}"]`);
+  await expect(refreshedRoot).toHaveAttribute("data-public-card-journey-phase", "parked");
+  await expect(refreshedRoot).toHaveAttribute("data-public-card-journey-event-id", rootEvent.id);
+});
+
 test("Quick Test switching rebases a parked Barbarian Invasion card before the first new-view frame", async ({ page, request }) => {
   test.setTimeout(90_000);
   const hostName = "GROUP ROOT VIEW REBASE";

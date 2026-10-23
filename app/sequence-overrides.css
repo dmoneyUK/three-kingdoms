@@ -5170,6 +5170,9 @@
 .game-shell .play-table:has(.public-card-display-journey.is-harvest-history-passive) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
   z-index: 40;
 }
+.game-shell .play-table:has(.public-card-display-journey.is-duel-inspection-history) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+  z-index: 40;
+}
 
 .game-shell .public-card-display-journey .public-card-journey-card.is-harvest-history-parked {
   opacity: 1 !important;
@@ -5195,6 +5198,9 @@
 }
 .game-shell .public-card-display-journey.is-harvest-history-passive > .public-card-journey-card.is-harvest-history-parked {
   transform: translate(var(--harvest-inspector-peek-x, 0px), var(--harvest-inspector-peek-y, 0px));
+}
+.game-shell .public-card-display-journey.is-duel-inspection-history > .public-card-journey-card {
+  pointer-events: none;
 }
 
 .game-shell .harvest-choice-panel {

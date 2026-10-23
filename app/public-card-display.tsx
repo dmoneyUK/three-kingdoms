@@ -3890,6 +3890,7 @@ function withFirstQueuedDuelReveal(cards: DuelJourneyCard[], center: CardRect, r
 function DuelCardJourney({
   action,
   enabled,
+  retainHistoryDuringInspection = false,
   sourceName,
   targetName,
   compactPlayerNamesById,
@@ -3901,6 +3902,7 @@ function DuelCardJourney({
 }: {
   action: PublicCardDisplayAction;
   enabled: boolean;
+  retainHistoryDuringInspection?: boolean;
   sourceName: string | null;
   targetName: string | null;
   compactPlayerNamesById: CompactPublicPlayerNames;
@@ -3959,11 +3961,13 @@ function DuelCardJourney({
   const incoming = duelJourneyEvents(action, sourceName);
   const responseSignature = incoming.map((event) => `${event.eventId}:${event.globalOrdinal ?? 0}`).join(",");
   const freshSignature = action.motion?.type === "duel" || action.motion?.type === "lust-duel" ? [...action.motion.freshEventIds].join(",") : "";
+  const historyOnly = !enabled && retainHistoryDuringInspection;
+  const journeyEnabled = enabled || historyOnly;
   useLayoutEffect(() => {
     const currentAction = actionRef.current;
     const currentMotion = currentAction.motion;
     const currentSourceName = sourceNameRef.current;
-    if (!enabled || currentMotion?.type !== "duel" && currentMotion?.type !== "lust-duel" || !currentSourceName) return;
+    if (!journeyEnabled || currentMotion?.type !== "duel" && currentMotion?.type !== "lust-duel" || !currentSourceName) return;
 
     const events = duelJourneyEvents(currentAction, currentSourceName);
     const fresh = new Set(currentMotion.freshEventIds);
@@ -4058,7 +4062,7 @@ function DuelCardJourney({
     };
     journeyRef.current = next;
     setJourney(next);
-  }, [enabled, scopeKey, responseSignature, freshSignature, viewerId, viewerSeat]);
+  }, [journeyEnabled, scopeKey, responseSignature, freshSignature, viewerId, viewerSeat]);
 
   const activeCard = journey.cards.find((card) => card.phase === "reveal")
     ?? [...journey.cards].reverse().find((card) => card.phase === "move")
@@ -4201,7 +4205,7 @@ function DuelCardJourney({
   }, [enabled, journey.cards, journey.layoutPending, journey.scopeKey, onJourneyEventParked, scopeKey]);
 
   useLayoutEffect(() => {
-    if (!enabled || journey.scopeKey !== scopeKey) return;
+    if (!journeyEnabled || journey.scopeKey !== scopeKey) return;
     let frame = 0;
     let attempts = 0;
     let stableFrames = 0;
@@ -4251,10 +4255,10 @@ function DuelCardJourney({
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [action.lustCostFrame?.activationEventId, action.motion?.type, enabled, freshSignature, journey.scopeKey, scopeKey, viewerId]);
+  }, [action.lustCostFrame?.activationEventId, action.motion?.type, journeyEnabled, freshSignature, journey.scopeKey, scopeKey, viewerId]);
 
   useLayoutEffect(() => {
-    if (!enabled || journey.scopeKey !== scopeKey) return;
+    if (!journeyEnabled || journey.scopeKey !== scopeKey) return;
     let resizeFrame = 0;
     let sampledFrames = 0;
     let stableFrames = 0;
@@ -4377,7 +4381,7 @@ function DuelCardJourney({
       mutationObserver?.disconnect();
       window.cancelAnimationFrame(resizeFrame);
     };
-  }, [enabled, journey.scopeKey, scopeKey]);
+  }, [journeyEnabled, journey.scopeKey, scopeKey]);
 
   useEffect(() => {
     if (!journey.suppressTransitions || journey.layoutPending || journey.scopeKey !== scopeKey) return;
@@ -4405,6 +4409,7 @@ function DuelCardJourney({
   const compactAnnouncement = negationNarration?.compactHeadline ?? ((announcementCopy.compactMessage || (!action.settlement && action.phaseNotice?.includes("NEGATION")))
     ? withPublicCardPhaseNotice(announcementCopy.compactMessage ?? announcementCopy.message, action.settlement ? undefined : action.phaseNotice, true)
     : undefined);
+  const parkedHistoryCards = journey.cards.filter((card) => card.phase === "parked");
 
   useEffect(() => {
     if (!enabled || journey.scopeKey !== scopeKey) return;
@@ -4468,7 +4473,52 @@ function DuelCardJourney({
     && ((action.settlement.readRemainingMs ?? 0) === 0 || action.settlement.eventId === expiredLustSettlementEventId);
   const awaitingLustFrameLayout = action.motion?.type === "lust-duel" && Boolean(action.lustCostFrame)
     && incoming.at(-1)?.role === "root" && settledLustFrameViewerKey !== `${scopeKey}:${viewerId}`;
-  if (!enabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center || lustSettlementExpired || awaitingLustFrameLayout) return null;
+  if (!journeyEnabled || !sourceName || journey.scopeKey !== scopeKey
+    || (!journey.center && !historyOnly)
+    || lustSettlementExpired && !historyOnly
+    || awaitingLustFrameLayout && !historyOnly) return null;
+
+  if (historyOnly) {
+    if (!parkedHistoryCards.length) return null;
+    const latestParkedCard = parkedHistoryCards.at(-1)!;
+    return <section
+      className={`public-card-display public-card-display-journey is-duel-inspection-history${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}`}
+      data-public-card-display="true"
+      data-public-card-renderer-kind="duel-journey"
+      data-public-card-ready="true"
+      data-public-card-inspection-history="true"
+      data-public-card-motion={action.motion?.type === "lust-duel" ? "lust-duel" : "duel"}
+      data-public-card-viewer-id={viewerId}
+      data-public-card-layout-pending={journey.layoutPending ? "true" : "false"}
+      data-public-card-interaction-id={action.interactionId ?? undefined}
+      data-public-card-root-frame-id={action.rootFrameId ?? undefined}
+      data-public-card-checkpoint-id={action.checkpointId ?? undefined}
+      data-public-card-presentation-revision={action.presentationRevision ?? undefined}
+      data-public-card-event-id={latestParkedCard.eventId}
+      data-public-card-root-event-id={action.rootEventId}
+      data-public-card-id={latestParkedCard.cardFace.id}
+      data-public-card-actor-id={latestParkedCard.actorId}
+      data-public-card-source-id={action.sourceId}
+      data-public-card-target-id={action.targetId ?? undefined}
+      data-public-card-inspection-history-count={parkedHistoryCards.length}
+    >
+      {parkedHistoryCards.map((card) => <PublicJourneyCard
+        key={card.eventId}
+        card={card}
+        size="thumbnail"
+        className={`public-card-duel-parked-card is-inspection-history-card ${card.role === "root" ? "is-duel-root" : "is-duel-response"}`}
+        parkingSide={card.parkingSide}
+        showOrdinal
+        ordinalContext="duel"
+        lustCostFrame={action.motion?.type === "lust-duel" && card.role === "root" ? action.lustCostFrame : undefined}
+      />)}
+      <ol className="duel-public-card-history-accessible" aria-label="Chronological Duel card history">
+        {parkedHistoryCards.map((card, index) => <li key={card.eventId} value={card.globalOrdinal ?? index + 1}>
+          Duel event {card.globalOrdinal ?? index + 1}: {card.ariaLabel}
+        </li>)}
+      </ol>
+    </section>;
+  }
 
   return <section
     className={`public-card-display public-card-display-journey${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}`}
@@ -4541,6 +4591,7 @@ export function PublicCardDisplay({
   action,
   enabled,
   retainHarvestHistory = false,
+  retainDuelHistoryDuringInspection = false,
   harvestChoiceActive = false,
   harvestPoolReadOnly = false,
   sourceName,
@@ -4557,6 +4608,7 @@ export function PublicCardDisplay({
   action: PublicCardDisplayAction | null;
   enabled: boolean;
   retainHarvestHistory?: boolean;
+  retainDuelHistoryDuringInspection?: boolean;
   harvestChoiceActive?: boolean;
   harvestPoolReadOnly?: boolean;
   sourceName: string | null;
@@ -4579,7 +4631,7 @@ export function PublicCardDisplay({
     return <SingleTargetCardJourney action={action} enabled={enabled} retainHarvestHistory={retainHarvestHistory} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {
-    return <DuelCardJourney action={action} enabled={enabled} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
+    return <DuelCardJourney action={action} enabled={enabled} retainHistoryDuringInspection={retainDuelHistoryDuringInspection} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
   }
   if (!enabled || !sourceName) return null;
   const latestResponse = action.response ?? action.responses?.at(-1) ?? null;
