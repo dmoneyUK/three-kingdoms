@@ -23,18 +23,71 @@ async function readLayout(page) {
       return style.display !== "none" && style.visibility !== "hidden" && box.width > 0 && box.height > 0;
     };
     const table = board.closest(".play-table");
+    const tableRect = bounds(table);
     const localPlayerId = document.querySelector(".local-player-dock")?.getAttribute("data-player-anchor") ?? null;
     const safeZone = table.querySelector(":scope > .interaction-safe-zone");
     const stage = safeZone.querySelector(":scope > .interaction-stage");
     const systemCluster = safeZone.querySelector(":scope > .stage-system-cluster");
     const guidance = document.querySelector(".local-player-dock .console-guidance");
     const dock = document.querySelector(".local-player-dock");
+    const seats = [...board.querySelectorAll(":scope > [data-player-anchor]")].map((seat) => {
+      const target = seat.querySelector(".opponent-hero-target");
+      const targetBounds = bounds(target);
+      const hit = document.elementFromPoint(
+        targetBounds.x + targetBounds.width / 2,
+        targetBounds.y + targetBounds.height / 2,
+      );
+      const portrait = seat.querySelector(".opponent-hero-portrait");
+      const image = portrait.querySelector(".hero-art-image");
+      const art = bounds(portrait);
+      const focalPoint = { x: art.x + art.width * 0.45, y: art.y + art.height * 0.42 };
+      const focalText = [...seat.querySelectorAll(".opponent-player-name, .opponent-hero-name, .player-hp, .player-hearts")]
+        .filter(visible)
+        .some((element) => {
+          const box = bounds(element);
+          return focalPoint.x >= box.x && focalPoint.x <= box.right && focalPoint.y >= box.y && focalPoint.y <= box.bottom;
+        });
+      const equipment = seat.querySelector(".opponent-equipment-summary");
+      const equipmentBox = equipment && visible(equipment) ? bounds(equipment) : null;
+      const focalEquipment = Boolean(equipmentBox
+        && focalPoint.x >= equipmentBox.x && focalPoint.x <= equipmentBox.right
+        && focalPoint.y >= equipmentBox.y && focalPoint.y <= equipmentBox.bottom);
+      return {
+        id: seat.dataset.playerAnchor,
+        relativeIndex: localPlayerId && /^p\d+$/.test(localPlayerId) && /^p\d+$/.test(seat.dataset.playerAnchor)
+          ? (Number(seat.dataset.playerAnchor.slice(1)) - Number(localPlayerId.slice(1)) + 5) % 5
+          : null,
+        side: seat.dataset.sideColumn,
+        seat: bounds(seat),
+        row: Number(seat.dataset.sideRow),
+        target: targetBounds,
+        switch: (() => {
+          const button = seat.querySelector(".test-view-switch-button");
+          if (!button) return null;
+          const rect = bounds(button);
+          const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+          return { ...rect, hitSafe: Boolean(hit && button.contains(hit)) };
+        })(),
+        art,
+        imageLoaded: Boolean(image?.naturalWidth),
+        hitSafe: Boolean(hit && target.contains(hit)),
+        focalText,
+        focalEquipment,
+        equipment: [...seat.querySelectorAll(".opponent-equipment-indicator")].map(bounds),
+      };
+    });
+    const leftMost = Math.min(...seats.filter((seat) => seat.side === "left").map((seat) => seat.seat.x));
+    const rightMost = Math.max(...seats.filter((seat) => seat.side === "right").map((seat) => seat.seat.right));
     return {
       viewportWidth: window.innerWidth,
       localPlayerId,
       pageWidth: document.documentElement.scrollWidth,
       board: bounds(board),
+      table: tableRect,
+      outerGutters: { left: leftMost - tableRect.x, right: tableRect.right - rightMost },
+      sideSafeEdge: getComputedStyle(table).getPropertyValue("--side-safe-edge").trim(),
       boardStyle: {
+        gridTemplateColumns: getComputedStyle(board).gridTemplateColumns,
         gridTemplateRows: getComputedStyle(board).gridTemplateRows,
         rowGap: getComputedStyle(board).rowGap,
         alignContent: getComputedStyle(board).alignContent,
@@ -57,52 +110,7 @@ async function readLayout(page) {
       announcements: [...document.querySelectorAll("[data-public-card-announcement='true']")].map((element) => bounds(element)),
       timers: [...document.querySelectorAll(".visible-countdown")].map((element) => bounds(element)),
       harvestPools: [...document.querySelectorAll(".harvest-choice-panel")].map((element) => bounds(element)),
-      seats: [...board.querySelectorAll(":scope > [data-player-anchor]")].map((seat) => {
-        const target = seat.querySelector(".opponent-hero-target");
-        const targetBounds = bounds(target);
-        const hit = document.elementFromPoint(
-          targetBounds.x + targetBounds.width / 2,
-          targetBounds.y + targetBounds.height / 2,
-        );
-        const portrait = seat.querySelector(".opponent-hero-portrait");
-        const image = portrait.querySelector(".hero-art-image");
-        const art = bounds(portrait);
-        const focalPoint = { x: art.x + art.width * 0.45, y: art.y + art.height * 0.42 };
-        const focalText = [...seat.querySelectorAll(".opponent-player-name, .opponent-hero-name, .player-hp, .player-hearts")]
-          .filter(visible)
-          .some((element) => {
-            const box = bounds(element);
-            return focalPoint.x >= box.x && focalPoint.x <= box.right && focalPoint.y >= box.y && focalPoint.y <= box.bottom;
-          });
-        const equipment = seat.querySelector(".opponent-equipment-summary");
-        const equipmentBox = equipment && visible(equipment) ? bounds(equipment) : null;
-        const focalEquipment = Boolean(equipmentBox
-          && focalPoint.x >= equipmentBox.x && focalPoint.x <= equipmentBox.right
-          && focalPoint.y >= equipmentBox.y && focalPoint.y <= equipmentBox.bottom);
-        return {
-          id: seat.dataset.playerAnchor,
-          relativeIndex: localPlayerId && /^p\d+$/.test(localPlayerId) && /^p\d+$/.test(seat.dataset.playerAnchor)
-            ? (Number(seat.dataset.playerAnchor.slice(1)) - Number(localPlayerId.slice(1)) + 5) % 5
-            : null,
-          side: seat.dataset.sideColumn,
-          seat: bounds(seat),
-          row: Number(seat.dataset.sideRow),
-          target: targetBounds,
-          switch: (() => {
-            const button = seat.querySelector(".test-view-switch-button");
-            if (!button) return null;
-            const rect = bounds(button);
-            const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-            return { ...rect, hitSafe: Boolean(hit && button.contains(hit)) };
-          })(),
-          art,
-          imageLoaded: Boolean(image?.naturalWidth),
-          hitSafe: Boolean(hit && target.contains(hit)),
-          focalText,
-          focalEquipment,
-          equipment: [...seat.querySelectorAll(".opponent-equipment-indicator")].map(bounds),
-        };
-      }),
+      seats,
     };
   });
 }
@@ -119,10 +127,11 @@ function expectFivePlayerRelativeMapping(seats) {
   const expected = new Map([
     [1, { side: "right", row: 2 }],
     [2, { side: "right", row: 1 }],
-    [3, { side: "left", row: 2 }],
-    [4, { side: "left", row: 1 }],
+    [3, { side: "left", row: 1 }],
+    [4, { side: "left", row: 2 }],
   ]);
   for (const seat of seats) expect({ side: seat.side, row: seat.row }).toEqual(expected.get(seat.relativeIndex));
+  expect(new Set(seats.map((seat) => `${seat.side}:${seat.row}`)).size).toBe(4);
 }
 
 for (const viewport of FIVE_PLAYER_PHONE_VIEWPORTS) {
@@ -136,6 +145,7 @@ for (const viewport of FIVE_PLAYER_PHONE_VIEWPORTS) {
       const rowTwo = result.seats.filter((seat) => seat.row === 2);
       const rowGap = Math.min(...rowTwo.map((seat) => seat.seat.y)) - Math.max(...rowOne.map((seat) => seat.seat.bottom));
       const geometry = { ...result, rowGap };
+      console.log(`ST5-1 MOBILE GEOMETRY ${viewport.width}x${viewport.height}: ${JSON.stringify({ table: result.table, board: result.board, columns: result.boardStyle.gridTemplateColumns, outerGutters: result.outerGutters, sideSafeEdge: result.sideSafeEdge, safeZone: result.safeZone, rowGap, seats: result.seats.map(({ id, relativeIndex, side, row, seat, switch: switchRect }) => ({ id, relativeIndex, side, row, seat, switch: switchRect })) })}`);
 
       await testInfo.attach(`st5-1-after-${viewport.width}x${viewport.height}.json`, {
         body: Buffer.from(JSON.stringify(geometry, null, 2)),
@@ -148,6 +158,10 @@ for (const viewport of FIVE_PLAYER_PHONE_VIEWPORTS) {
 
       expect(result.seats).toHaveLength(4);
       expect(result.pageWidth, "five-player mobile layout stays within the viewport").toBeLessThanOrEqual(viewport.width);
+      expect(result.outerGutters.left).toBeGreaterThanOrEqual(6);
+      expect(result.outerGutters.left).toBeLessThanOrEqual(10);
+      expect(result.outerGutters.right).toBeGreaterThanOrEqual(6);
+      expect(result.outerGutters.right).toBeLessThanOrEqual(10);
       expect(rowOne).toHaveLength(2);
       expect(rowTwo).toHaveLength(2);
       expectFivePlayerRelativeMapping(result.seats);
@@ -156,6 +170,12 @@ for (const viewport of FIVE_PLAYER_PHONE_VIEWPORTS) {
       expect(rowGap).toBeGreaterThanOrEqual(8);
       expect(rowGap).toBeLessThanOrEqual(16);
       expect(Math.abs(Math.min(...rowOne.map((seat) => seat.seat.y)) - result.board.y)).toBeLessThanOrEqual(1);
+      const leftSeatInnerEdge = Math.max(...result.seats.filter((seat) => seat.side === "left").map((seat) => seat.seat.right));
+      const rightSeatInnerEdge = Math.min(...result.seats.filter((seat) => seat.side === "right").map((seat) => seat.seat.x));
+      expect(result.safeZone.x - leftSeatInnerEdge).toBeGreaterThanOrEqual(6);
+      expect(result.safeZone.x - leftSeatInnerEdge).toBeLessThanOrEqual(8);
+      expect(rightSeatInnerEdge - result.safeZone.right).toBeGreaterThanOrEqual(6);
+      expect(rightSeatInnerEdge - result.safeZone.right).toBeLessThanOrEqual(8);
       for (const seat of result.seats) expect(seat.seat.height).toBe(108);
       for (const seat of result.seats) {
         expect(seat.hitSafe, `${seat.id} Hero/Inspect target remains clickable`).toBe(true);
@@ -168,7 +188,6 @@ for (const viewport of FIVE_PLAYER_PHONE_VIEWPORTS) {
         await expect(page.locator(`.opponent-inspection-panel[data-inspect-player-id="${seat.id}"]`)).toBeVisible();
         await hero.tap();
         await expect(page.locator(`.opponent-inspection-panel[data-inspect-player-id="${seat.id}"]`)).toHaveCount(0);
-        await page.locator(`.test-view-switch-button[data-test-viewer-id="${seat.id}"]`).tap();
       }
 
       console.log(`ST5-1 ${viewport.width}x${viewport.height}: ${JSON.stringify({ rowGap, board: result.board, boardStyle: result.boardStyle, seats: result.seats.map(({ id, side, row, seat, switch: switchRect }) => ({ id, side, row, seat, switch: switchRect })) })}`);
@@ -200,6 +219,10 @@ for (const viewport of [{ width: 390, height: 700 }, { width: 440, height: 766 }
       expect(result.seats).toHaveLength(4);
       expect(result.harvestPools, "the public Harvest pool remains rendered").toHaveLength(1);
       expect(result.pageWidth).toBeLessThanOrEqual(viewport.width);
+      expect(result.outerGutters.left).toBeGreaterThanOrEqual(6);
+      expect(result.outerGutters.left).toBeLessThanOrEqual(10);
+      expect(result.outerGutters.right).toBeGreaterThanOrEqual(6);
+      expect(result.outerGutters.right).toBeLessThanOrEqual(10);
       expectFivePlayerRelativeMapping(result.seats);
       expect(rowGap).toBeGreaterThanOrEqual(8);
       expect(rowGap).toBeLessThanOrEqual(16);

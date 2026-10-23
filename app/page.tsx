@@ -974,9 +974,16 @@ export function projectSideColumnSeat(totalPlayers: number, relativeIndex: numbe
   const opponentCount = totalPlayers - 1;
   const rightCount = Math.ceil(opponentCount / 2);
   const leftCount = opponentCount - rightCount;
-  return relativeIndex <= rightCount
-    ? { side: "right", row: rightCount - relativeIndex + 1, rowCount: rightCount }
-    : { side: "left", row: leftCount - (relativeIndex - rightCount) + 1, rowCount: rightCount };
+  if (relativeIndex <= rightCount) {
+    return { side: "right", row: rightCount - relativeIndex + 1, rowCount: rightCount };
+  }
+  // ST5-1 corrects the five-seat ring only: relative Seat 3 starts at the
+  // upper-left row, and relative Seat 4 is the bottom-left neighbour. Keep
+  // the established 6–10-player projection unchanged.
+  const row = totalPlayers === 5
+    ? relativeIndex - rightCount
+    : leftCount - (relativeIndex - rightCount) + 1;
+  return { side: "left", row, rowCount: rightCount };
 }
 
 function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
@@ -1991,6 +1998,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const [harvestDraft, setHarvestDraft] = useState<{ viewerId: string; actorId: string; actionRevision: string; cardId: string } | null>(null);
   const harvestStageRef = useRef<HTMLDivElement | null>(null);
   const [harvestStageTop, setHarvestStageTop] = useState<number | null>(null);
+  const [harvestStageInsets, setHarvestStageInsets] = useState<{ left: number; right: number } | null>(null);
   const [harvestSubmitting, setHarvestSubmitting] = useState<{ cardId: string; playerId: string; playerName: string } | null>(null);
   const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
   const [optimisticPlay, setOptimisticPlay] = useState<GameEvent | null>(null);
@@ -2045,7 +2053,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const harvestPending = Boolean(harvestDisplay);
   const harvestActorId = room.pendingHarvest?.actorId ?? "";
   useLayoutEffect(() => {
-    if (!harvestPending) return;
+    if (!harvestPending) {
+      setHarvestStageInsets((current) => current ? null : current);
+      return;
+    }
     const stage = harvestStageRef.current;
     const table = stage?.closest<HTMLElement>(".play-table");
     if (!stage || !table) return;
@@ -2085,6 +2096,51 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         if (panelRect.width <= 0 || panelRect.height <= 0) return;
 
         const margin = 6;
+        const compactFiveSeatPhoneActor = room.players.length === 5
+          && window.matchMedia("(max-width: 400px)").matches
+          && panel.classList.contains("harvest-choice-panel--actor");
+        if (compactFiveSeatPhoneActor) {
+          const board = table.querySelector<HTMLElement>(".player-board[data-player-count='5']");
+          const leftSeats = [...(board?.querySelectorAll<HTMLElement>(":scope > [data-side-column='left']") ?? [])]
+            .map((seat) => seat.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
+          const rightSeats = [...(board?.querySelectorAll<HTMLElement>(":scope > [data-side-column='right']") ?? [])]
+            .map((seat) => seat.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
+          const timer = table.querySelector<HTMLElement>(".stage-system-cluster .visible-countdown-event");
+          const timerRect = timer?.getBoundingClientRect();
+          const timerStyle = timer ? window.getComputedStyle(timer) : null;
+          const timerVisible = Boolean(timerRect && timerStyle?.display !== "none" && timerStyle?.visibility !== "hidden"
+            && timerRect.width > 0 && timerRect.height > 0);
+          const leftBoundary = Math.max(tableRect.left + 8, ...leftSeats.map((rect) => rect.right + margin));
+          const rightBoundary = Math.min(tableRect.right - 8, ...rightSeats.map((rect) => rect.left - margin));
+          const leftOfTimer = timerVisible ? Math.min(rightBoundary, timerRect!.left - margin - 1) : rightBoundary;
+          const rightOfTimer = timerVisible ? Math.max(leftBoundary, timerRect!.right + margin + 1) : leftBoundary;
+          const lanes = [
+            { left: leftBoundary, right: leftOfTimer },
+            { left: rightOfTimer, right: rightBoundary },
+          ].filter((lane) => lane.right - lane.left > 0);
+          const requiredButton = panel.querySelector<HTMLElement>(".harvest-confirm-row > .primary");
+          const footer = panel.querySelector<HTMLElement>(".harvest-confirm-row");
+          const panelStyle = window.getComputedStyle(panel);
+          const footerStyle = footer ? window.getComputedStyle(footer) : null;
+          const cssPixels = (value: string | undefined) => Number.parseFloat(value ?? "0") || 0;
+          const requiredWidth = requiredButton && footerStyle
+            ? cssPixels(window.getComputedStyle(requiredButton).minWidth)
+              + cssPixels(footerStyle.columnGap || footerStyle.gap)
+              + cssPixels(footerStyle.paddingLeft) + cssPixels(footerStyle.paddingRight)
+              + cssPixels(panelStyle.paddingLeft) + cssPixels(panelStyle.paddingRight)
+              + cssPixels(panelStyle.borderLeftWidth) + cssPixels(panelStyle.borderRightWidth)
+            : Number.POSITIVE_INFINITY;
+          const lane = lanes.sort((first, second) => (second.right - second.left) - (first.right - first.left))
+            .find((candidate) => candidate.right - candidate.left >= requiredWidth);
+          const insets = lane ? {
+            left: Math.round((lane.left - tableRect.left) * 2) / 2,
+            right: Math.round((tableRect.right - lane.right) * 2) / 2,
+          } : null;
+          setHarvestStageInsets((current) => current?.left === insets?.left && current?.right === insets?.right
+            ? current : insets);
+        } else {
+          setHarvestStageInsets((current) => current ? null : current);
+        }
         const minimumTop = Math.max(tableRect.top + margin, margin);
         const maximumTop = Math.min(tableRect.bottom, window.innerHeight) - panelRect.height - margin;
         const obstacles = [...new Set(protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]))]
@@ -6985,7 +7041,11 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         data-harvest-panel-top={harvestStageTop ?? undefined}
         role="region"
         aria-label={harvestReadOnlyDuringNegation ? "Bumper Harvest public cards during Negation" : "Bumper Harvest revealed cards"}
-        style={{ top: harvestStageTop === null ? undefined : `${harvestStageTop}px` }}
+        style={{
+          top: harvestStageTop === null ? undefined : `${harvestStageTop}px`,
+          left: harvestStageInsets ? `${harvestStageInsets.left}px` : undefined,
+          right: harvestStageInsets ? `${harvestStageInsets.right}px` : undefined,
+        }}
       >
         <section className={`harvest-choice-panel${canChooseHarvest && !presentationBusy ? " harvest-choice-panel--actor" : ""}`} aria-label={canChooseHarvest && !presentationBusy ? "Your Bumper Harvest choice" : "Public Bumper Harvest cards"}>
           <header className="harvest-choice-heading">

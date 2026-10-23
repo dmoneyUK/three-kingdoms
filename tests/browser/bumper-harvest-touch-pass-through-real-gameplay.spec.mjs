@@ -21,6 +21,83 @@ async function readRoom(request, code, token, viewerId) {
   return response.json();
 }
 
+async function assertFiveSeatPhoneRing(page, players, viewer) {
+  const geometry = await page.evaluate(({ players: roomPlayers, viewer: currentViewer }) => {
+    const board = document.querySelector('.player-board[data-player-count="5"][data-seat-topology="side-column"]');
+    const table = board?.closest(".play-table");
+    const safeZone = table?.querySelector(":scope > .interaction-safe-zone");
+    const rect = (element) => {
+      const box = element?.getBoundingClientRect();
+      return box ? { x: box.x, y: box.y, right: box.right, bottom: box.bottom, width: box.width, height: box.height } : null;
+    };
+    const tableRect = rect(table);
+    const seats = [...(board?.querySelectorAll(":scope > [data-player-anchor]") ?? [])].map((seat) => {
+      const player = roomPlayers.find((candidate) => candidate.id === seat.dataset.playerAnchor);
+      const target = seat.querySelector(".opponent-hero-target");
+      const targetRect = rect(target);
+      const heroHit = targetRect && document.elementFromPoint(targetRect.x + targetRect.width / 2, targetRect.y + targetRect.height / 2);
+      const switchButton = seat.querySelector(".test-view-switch-button");
+      const switchRect = rect(switchButton);
+      const switchHit = switchRect && document.elementFromPoint(switchRect.x + switchRect.width / 2, switchRect.y + switchRect.height / 2);
+      return {
+        id: seat.dataset.playerAnchor,
+        seat: player?.seat ?? null,
+        relativeIndex: player ? (player.seat - currentViewer.seat + 5) % 5 : null,
+        side: seat.dataset.sideColumn,
+        row: Number(seat.dataset.sideRow),
+        rect: rect(seat),
+        heroHitSafe: Boolean(heroHit && target.contains(heroHit)),
+        switchHitSafe: Boolean(switchButton && switchHit && switchButton.contains(switchHit)),
+      };
+    });
+    const safeRect = rect(safeZone);
+    const leftEdge = Math.max(...seats.filter((seat) => seat.side === "left").map((seat) => seat.rect.right));
+    const rightEdge = Math.min(...seats.filter((seat) => seat.side === "right").map((seat) => seat.rect.x));
+    return {
+      viewerId: currentViewer.id,
+      localDockId: document.querySelector(".local-player-dock")?.getAttribute("data-player-anchor") ?? null,
+      viewportWidth: window.innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      table: tableRect,
+      safeZone: safeRect,
+      outerGutters: {
+        left: Math.min(...seats.filter((seat) => seat.side === "left").map((seat) => seat.rect.x)) - tableRect.x,
+        right: tableRect.right - Math.max(...seats.filter((seat) => seat.side === "right").map((seat) => seat.rect.right)),
+      },
+      innerClearance: { left: safeRect.x - leftEdge, right: rightEdge - safeRect.right },
+      seats,
+    };
+  }, {
+    players: players.map(({ id, seat }) => ({ id, seat })),
+    viewer: { id: viewer.id, seat: viewer.seat },
+  });
+
+  expect(geometry.localDockId, "the selected TEST viewer owns the local Dock").toBe(viewer.id);
+  expect(geometry.scrollWidth, "five-seat phone view has no horizontal document overflow").toBeLessThanOrEqual(geometry.viewportWidth);
+  expect(geometry.seats).toHaveLength(4);
+  expect(geometry.outerGutters.left).toBeGreaterThanOrEqual(6);
+  expect(geometry.outerGutters.left).toBeLessThanOrEqual(10);
+  expect(geometry.outerGutters.right).toBeGreaterThanOrEqual(6);
+  expect(geometry.outerGutters.right).toBeLessThanOrEqual(10);
+  expect(geometry.innerClearance.left).toBeGreaterThanOrEqual(6);
+  expect(geometry.innerClearance.left).toBeLessThanOrEqual(8);
+  expect(geometry.innerClearance.right).toBeGreaterThanOrEqual(6);
+  expect(geometry.innerClearance.right).toBeLessThanOrEqual(8);
+  const expected = new Map([
+    [1, { side: "right", row: 2 }],
+    [2, { side: "right", row: 1 }],
+    [3, { side: "left", row: 1 }],
+    [4, { side: "left", row: 2 }],
+  ]);
+  for (const seat of geometry.seats) {
+    expect({ side: seat.side, row: seat.row }, `server seat ${seat.seat} relative to ${viewer.seat}`).toEqual(expected.get(seat.relativeIndex));
+    expect(seat.rect.height).toBe(108);
+    expect(seat.heroHitSafe, `${seat.id} Hero target remains tappable`).toBe(true);
+    expect(seat.switchHitSafe, `${seat.id} TEST SWITCH remains tappable`).toBe(true);
+  }
+  return geometry;
+}
+
 const harvestSeedRoles = {
   4: ["Lord", "Loyalist", "Rebel", "Renegade"],
   5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"],
@@ -350,7 +427,9 @@ async function measureHarvestParking(page, cardId, eventId) {
       tableRect,
       displayMotion: card.closest(".public-card-display")?.dataset.publicCardMotion ?? null,
       displayHarvestActive: card.closest(".public-card-display")?.dataset.publicCardHarvestActive ?? null,
-      authorEdgeDistance: edgeDistance(heroRect),
+      // Side-column minis attach to the public Seat anchor (including its HP/
+      // equipment footer); top-row/local minis remain measured against Hero art.
+      authorEdgeDistance: edgeDistance(sideColumn ? actorRect : heroRect),
       collisions,
       actionableCollisions,
       hitSamples,
@@ -375,12 +454,24 @@ function expectHarvestCardParkedByAuthor(metrics, label) {
   expect(metrics.actorId, JSON.stringify({ label, metrics })).toBeTruthy();
   expect(metrics.phase, JSON.stringify({ label, metrics })).toBe("parked");
   expect(metrics.layoutPending, JSON.stringify({ label, metrics })).toBe("false");
-  expect(metrics.target.width, JSON.stringify({ label, metrics })).toBe(metrics.role === "root" ? 40 : 48);
-  expect(metrics.target.height, JSON.stringify({ label, metrics })).toBe(metrics.role === "root" ? 60 : 72);
+  const compactMobileHarvest = metrics.viewport.width <= 520;
+  const expectedSize = compactMobileHarvest
+    ? { width: 32, height: 48 }
+    : { width: metrics.role === "root" ? 40 : 48, height: metrics.role === "root" ? 60 : 72 };
+  expect(metrics.target.width, JSON.stringify({ label, metrics })).toBe(expectedSize.width);
+  expect(metrics.target.height, JSON.stringify({ label, metrics })).toBe(expectedSize.height);
   expect(metrics.actual.left, JSON.stringify({ label, metrics })).toBeCloseTo(metrics.target.left, 1);
   expect(metrics.actual.top, JSON.stringify({ label, metrics })).toBeCloseTo(metrics.target.top, 1);
   expect(metrics.authorSlotRect, JSON.stringify({ label, metrics })).toBeNull();
-  expect(metrics.authorEdgeDistance, JSON.stringify({ label, metrics })).toBeLessThanOrEqual(8);
+  if (metrics.actorIsLocal) {
+    const horizontalGap = metrics.target.right < metrics.actorRect.left ? metrics.actorRect.left - metrics.target.right
+      : metrics.target.left > metrics.actorRect.right ? metrics.target.left - metrics.actorRect.right : 0;
+    const verticalGap = metrics.target.bottom < metrics.actorRect.top ? metrics.actorRect.top - metrics.target.bottom
+      : metrics.target.top > metrics.actorRect.bottom ? metrics.target.top - metrics.actorRect.bottom : 0;
+    expect(Math.hypot(horizontalGap, verticalGap), JSON.stringify({ label, metrics })).toBeLessThanOrEqual(12);
+  } else {
+    expect(metrics.authorEdgeDistance, JSON.stringify({ label, metrics })).toBeLessThanOrEqual(8);
+  }
   const overlaps = (first, second) => Boolean(first && second
     && first.left < second.right && first.right > second.left
     && first.top < second.bottom && first.bottom > second.top);
@@ -398,7 +489,7 @@ function expectHarvestCardParkedByAuthor(metrics, label) {
   expect(metrics.actual.right, JSON.stringify({ label, metrics })).toBeLessThanOrEqual(metrics.viewport.width);
   expect(metrics.actual.bottom, JSON.stringify({ label, metrics })).toBeLessThanOrEqual(metrics.viewport.height);
   expect(metrics.hitSamples.every((sample) => sample.hitsCard
-    || (metrics.role === "root" && metrics.displayHarvestActive === "true" && sample.hitsPool)),
+    || (metrics.role === "root" && compactMobileHarvest && sample.hitsPool)),
   JSON.stringify({ label, metrics })).toBe(true);
 }
 
@@ -970,7 +1061,7 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     });
     const rootEffectRecipient = seed.players.find(({ id }) => id === rootProgress.currentParticipantId);
     expect(rootEffectRecipient, "public progress identifies the current Harvest effect participant").toBeTruthy();
-    const initialAnnouncement = `Negation: Block ${rootEffectRecipient.name}'s Harvest pick?`;
+    const initialAnnouncement = `Negation: Cancel Harvest for ${rootEffectRecipient.name}?`;
     await Promise.all(viewerPages.map(async ({ viewer, page: viewerPage }) => {
       const h4 = viewerPage.locator(".public-card-display-journey-copy b");
       await expect(h4).toHaveAttribute("aria-label", initialAnnouncement, { timeout: 10_000 });
@@ -1363,7 +1454,7 @@ test("committed Bumper Harvest Negation and counter reveals paint above the read
     const nextEffectRecipient = seed.players.find(({ id }) => id === nextEffectProgress.currentParticipantId);
     expect(nextEffectRecipient, "shared public progress advances to the next effect participant").toBeTruthy();
     expect(nextEffectRecipient.id).not.toBe(rootEffectRecipient.id);
-    const nextParticipantAnnouncement = `Negation: Block ${nextEffectRecipient.name}'s Harvest pick?`;
+    const nextParticipantAnnouncement = `Negation: Cancel Harvest for ${nextEffectRecipient.name}?`;
     await Promise.all(viewerPages.map(async ({ page: viewerPage }) => {
       await expect(viewerPage.locator(".public-card-display-journey-copy b"))
         .toHaveAttribute("aria-label", nextParticipantAnnouncement, { timeout: 10_000 });
@@ -1430,6 +1521,30 @@ async function tap(page, locator) {
   const bounds = await locator.boundingBox();
   expect(bounds, "the intended mobile control has a visible hit box").toBeTruthy();
   await page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+}
+
+async function waitForStableTouchTarget(page, selector) {
+  await page.waitForFunction((targetSelector) => new Promise((resolve) => {
+    let previous = "";
+    let stableFrames = 0;
+    const sample = () => {
+      const target = document.querySelector(targetSelector);
+      const rect = target?.getBoundingClientRect();
+      const visible = target && rect && rect.width > 0 && rect.height > 0
+        && getComputedStyle(target).visibility === "visible";
+      const point = visible ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
+      const hit = point ? document.elementFromPoint(point.x, point.y) : null;
+      const hitSafe = Boolean(target && hit && target.contains(hit));
+      const signature = visible && point
+        ? [rect.left, rect.top, rect.width, rect.height].map((value) => Math.round(value * 2) / 2).join(":")
+        : "";
+      stableFrames = hitSafe && signature === previous ? stableFrames + 1 : 0;
+      previous = signature;
+      if (stableFrames >= 3) resolve(true);
+      else requestAnimationFrame(sample);
+    };
+    sample();
+  }), selector, { timeout: 5_000 });
 }
 
 async function tapHarvestCard(page, locator) {
@@ -1579,11 +1694,22 @@ async function harvestGeometry(page) {
     const footer = panel?.querySelector(".harvest-confirm-row");
     const timer = document.querySelector(".stage-system-cluster .visible-countdown-event");
     const activity = document.querySelector("[data-public-activity-chip]");
+    const activityRect = activity && getComputedStyle(activity).visibility !== "hidden" ? rect(activity) : null;
     const seats = [...document.querySelectorAll(".player-board > .opponent-player-card")];
     const switches = [...document.querySelectorAll("[data-testid^='test-view-switch-']")];
-    const hit = (element) => {
+    const hit = (element, clipToHarvestRow = false) => {
       const bounds = element.getBoundingClientRect();
-      const target = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+      const visibleBounds = clipToHarvestRow && rowClip ? {
+        left: Math.max(bounds.left, rowClip.left),
+        right: Math.min(bounds.right, rowClip.right),
+        top: Math.max(bounds.top, rowClip.top),
+        bottom: Math.min(bounds.bottom, rowClip.bottom),
+      } : bounds;
+      if (clipToHarvestRow && (visibleBounds.right <= visibleBounds.left || visibleBounds.bottom <= visibleBounds.top)) return null;
+      const target = document.elementFromPoint(
+        (visibleBounds.left + visibleBounds.right) / 2,
+        (visibleBounds.top + visibleBounds.bottom) / 2,
+      );
       const style = getComputedStyle(element);
       return {
         id: element.getAttribute("data-testid") ?? element.getAttribute("aria-label") ?? element.className,
@@ -1592,12 +1718,18 @@ async function harvestGeometry(page) {
         pointerEvents: style.pointerEvents,
         zIndex: style.zIndex,
         inertAncestor: Boolean(element.closest("[inert]")),
-        bounds: rect(element),
+        bounds: clipToHarvestRow ? {
+          left: visibleBounds.left, top: visibleBounds.top, right: visibleBounds.right, bottom: visibleBounds.bottom,
+          width: visibleBounds.right - visibleBounds.left, height: visibleBounds.bottom - visibleBounds.top,
+        } : rect(element),
       };
     };
-    const visibleControls = (selector) => [...document.querySelectorAll(selector)].filter((element) => {
+    const visibleControls = (selector, clipToHarvestRow = false) => [...document.querySelectorAll(selector)].filter((element) => {
       const bounds = element.getBoundingClientRect();
-      return bounds.width > 0 && bounds.height > 0 && getComputedStyle(element).visibility !== "hidden";
+      if (!(bounds.width > 0 && bounds.height > 0 && getComputedStyle(element).visibility !== "hidden")) return false;
+      if (!clipToHarvestRow || !rowClip) return true;
+      return Math.min(bounds.right, rowClip.right) > Math.max(bounds.left, rowClip.left)
+        && Math.min(bounds.bottom, rowClip.bottom) > Math.max(bounds.top, rowClip.top);
     });
     const stageRect = rect(stage);
     const panelRect = rect(panel);
@@ -1619,13 +1751,28 @@ async function harvestGeometry(page) {
     const rootDisplayStyle = rootDisplay ? getComputedStyle(rootDisplay) : null;
     const dock = document.querySelector(".local-player-dock");
     const localHero = dock?.querySelector(".local-hero-card");
+    const localHeroPortrait = localHero?.querySelector(".local-hero-portrait");
     const localHeroAnchor = dock?.querySelector(".local-hero-anchor");
     const localHandSection = dock?.querySelector(".local-hand-section");
     const localHandRail = dock?.querySelector(".local-hand-rail");
     const localControls = dock?.querySelector(".turn-controls");
     const localGuidance = dock?.querySelector(".console-guidance");
     const localZones = dock?.querySelector(".local-dock-zones");
-    const rowClip = row ? { left: row.getBoundingClientRect().left + row.clientLeft, right: row.getBoundingClientRect().left + row.clientLeft + row.clientWidth } : null;
+    const localHeroArtRect = rect(localHeroPortrait);
+    const localHeroTextRects = [...(localHeroPortrait?.querySelectorAll(".local-hero-label, .local-hero-vitals, .local-hero-info-button") ?? [])]
+      .map(rect)
+      .filter((bounds) => bounds && bounds.width > 0 && bounds.height > 0);
+    const rootOnLocalHeroArt = Boolean(rootRect && localHero && localHeroPortrait && localHeroArtRect
+      && rootActorId === dock?.dataset.playerAnchor
+      && rootRect.left >= localHeroArtRect.left + 1 && rootRect.top >= localHeroArtRect.top + 1
+      && rootRect.right <= localHeroArtRect.right - 1 && rootRect.bottom <= localHeroArtRect.bottom - 1
+      && localHeroTextRects.every((bounds) => !intersects(rootRect, bounds)));
+    const rowClip = row ? {
+      left: row.getBoundingClientRect().left + row.clientLeft,
+      right: row.getBoundingClientRect().left + row.clientLeft + row.clientWidth,
+      top: row.getBoundingClientRect().top + row.clientTop,
+      bottom: row.getBoundingClientRect().top + row.clientTop + row.clientHeight,
+    } : null;
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
       document: {
@@ -1663,6 +1810,10 @@ async function harvestGeometry(page) {
       rootEventId: root?.getAttribute("data-public-card-journey-event-id") ?? root?.getAttribute("data-public-card-static-event-id"),
       rootPhase: root?.getAttribute("data-public-card-journey-phase"),
       rootSize: root?.getAttribute("data-public-card-journey-size"),
+      rootLayoutPending: root?.getAttribute("data-public-card-journey-layout-pending"),
+      rootOnLocalHeroArt,
+      localHeroArtRect,
+      localHeroTextRects,
       rootData: root ? { left: root.getAttribute("data-public-card-journey-target-left"), top: root.getAttribute("data-public-card-journey-target-top") } : null,
       rootPaint: root && rootStyle ? {
         visibility: rootStyle.visibility,
@@ -1687,6 +1838,17 @@ async function harvestGeometry(page) {
           || Number.parseInt(getComputedStyle(rootDisplay).zIndex, 10) : null,
         pool: stage ? Number.parseInt(getComputedStyle(stage).zIndex, 10) : null,
       },
+      harvestParkingFailures: (() => {
+        try {
+          const trace = JSON.parse(sessionStorage.getItem("wtk.game-ux-trace.document.v2") ?? "null");
+          return (trace?.entries ?? [])
+            .filter((entry) => entry.stage === "harvest-history-parking-failure")
+            .slice(-3)
+            .map((entry) => entry.data);
+        } catch {
+          return [];
+        }
+      })(),
       rootCorner: rect(rootCorner),
       rootCornerFontSize: rootCorner ? getComputedStyle(rootCorner).fontSize : null,
       rootSuitFontSize: rootCorner?.querySelector("small") ? getComputedStyle(rootCorner.querySelector("small")).fontSize : null,
@@ -1728,7 +1890,7 @@ async function harvestGeometry(page) {
       }),
       footer: footerRect,
       timer: rect(timer),
-      activity: rect(activity),
+      activity: activityRect,
       activityPaint: activity ? { visibility: getComputedStyle(activity).visibility, layout: activity.dataset.publicActivityLayout ?? null } : null,
       seats: seats.map(rect),
       authorSlotIds: [...document.querySelectorAll("[data-harvest-author-slot]")]
@@ -1738,20 +1900,20 @@ async function harvestGeometry(page) {
       rootActorId,
       rootOverlappingSeatIds,
       controlHits: {
-        switches: switches.map(hit),
-        heroInspector: visibleControls(".opponent-hero-target").slice(0, 4).map(hit),
-        handInspection: visibleControls('[data-testid="hand-card-inspection-action"]').slice(0, 4).map(hit),
-        publicEquipmentDetails: visibleControls(".opponent-inspection-card").slice(0, 4).map(hit),
-        harvestChoices: visibleControls(".harvest-card-select:not([disabled])").slice(0, 4).map(hit),
-        harvestInfo: visibleControls(".harvest-card-info").slice(0, 4).map(hit),
-        harvestConfirm: visibleControls(".harvest-confirm-row .primary").map(hit),
+        switches: switches.map((element) => hit(element)),
+        heroInspector: visibleControls(".opponent-hero-target").slice(0, 4).map((element) => hit(element)),
+        handInspection: visibleControls('[data-testid="hand-card-inspection-action"]').slice(0, 4).map((element) => hit(element)),
+        publicEquipmentDetails: visibleControls(".opponent-inspection-card").slice(0, 4).map((element) => hit(element)),
+        harvestChoices: visibleControls(".harvest-card-select:not([disabled])", true).slice(0, 4).map((element) => hit(element, true)),
+        harvestInfo: visibleControls(".harvest-card-info", true).slice(0, 4).map((element) => hit(element, true)),
+        harvestConfirm: visibleControls(".harvest-confirm-row .primary").map((element) => hit(element)),
       },
       overlaps: {
         rootPanel: intersects(rootRect, panelRect),
         rootRow: intersects(rootRect, rowRect),
         rootAnnouncement: intersects(rootRect, announcementRect),
         rootTimer: intersects(rootRect, rect(timer)),
-        rootActivity: intersects(rootRect, rect(activity)),
+        rootActivity: intersects(rootRect, activityRect),
         rootHero: intersects(rootRect, rect(localHero)),
         rootHeroAnchor: intersects(rootRect, rect(localHeroAnchor)),
         rootHandSection: intersects(rootRect, rect(localHandSection)),
@@ -1761,13 +1923,13 @@ async function harvestGeometry(page) {
         rootZones: intersects(rootRect, rect(localZones)),
         rootOtherSeat: rootOverlappingSeatIds.some((seatId) => seatId !== rootActorId),
         panelAnnouncement: intersects(panelRect, announcementRect),
-        announcementActivity: intersects(announcementRect, rect(activity)),
-        activityTimer: intersects(rect(activity), rect(timer)),
+        announcementActivity: intersects(announcementRect, activityRect),
+        activityTimer: intersects(activityRect, rect(timer)),
         panelTimer: intersects(panelRect, rect(timer)),
-        panelActivity: intersects(panelRect, rect(activity)),
+        panelActivity: intersects(panelRect, activityRect),
         panelSeat: seats.some((seat) => intersects(panelRect, rect(seat))),
       },
-      switches: switches.map(hit),
+      switches: switches.map((element) => hit(element)),
     };
   });
 }
@@ -1874,12 +2036,12 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
   expect(created.status(), JSON.stringify({ error: createdBody.error })).toBe(201);
   const { code, token } = { code: createdBody.room.code, token: createdBody.token };
 
-  let room = await postAction(request, name, code, token, "add_test_players");
+  let room = await postAction(request, name, code, token, "add_test_players", { count: 4 });
   room = await postAction(request, name, code, token, "enable_test_room");
   room = await postAction(request, name, code, token, "configure_test_hands", {
     presetId: "custom",
     expectedRevision: 0,
-    handsBySeat: { 0: ["Attack"], 1: ["BumperHarvest"], 2: ["Attack"], 3: ["Attack"] },
+    handsBySeat: { 0: ["Attack"], 1: ["BumperHarvest"], 2: ["Attack"], 3: ["Attack"], 4: ["Attack"] },
   });
   room = await postAction(request, name, code, token, "start");
   for (let selections = 0; room.status === "heroes" && selections < 8; selections++) {
@@ -1896,6 +2058,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
   const switchProbePage = await switchProbeContext.newPage();
   await switchProbePage.addInitScript(({ roomCode, sessionToken, playerName }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code: roomCode, token: sessionToken, name: playerName }));
+    sessionStorage.setItem("wtk.game-ux-trace.active.v2", "true");
   }, { roomCode: code, sessionToken: token, playerName: name });
   await switchProbePage.goto(`${API}/`);
   await expect(switchProbePage.locator(".game-shell")).toBeVisible();
@@ -1933,6 +2096,8 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
         data: { code, windowId, mode: "hold" },
       });
       expect(held.ok(), await held.text()).toBeTruthy();
+      const ringEvidence = [];
+      ringEvidence.push(await assertFiveSeatPhoneRing(switchProbePage, room.players, host));
       await switchProbePage.evaluate(() => {
         window.__bcp1MoveSwitchFrames = [];
         window.__bcp1CaptureMoveSwitch = true;
@@ -1950,6 +2115,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
             layoutViewerId: display?.dataset.publicCardLayoutViewerId ?? null,
             layoutPending: display?.dataset.publicCardLayoutPending ?? null,
             cardVisibility: card ? getComputedStyle(card).visibility : null,
+            cardLayoutPending: card?.dataset.publicCardJourneyLayoutPending ?? null,
             phase: card?.dataset.publicCardJourneyPhase ?? null,
             cardId: card?.dataset.publicCardJourneyCardId ?? null,
             eventId: card?.dataset.publicCardJourneyEventId ?? null,
@@ -1972,6 +2138,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
       const switchTarget = room.players.find((player) => player.id === source.id);
       await tap(switchProbePage, switchProbePage.getByTestId(`test-view-switch-${switchTarget.id}`));
       await expect(switchProbePage.locator(`.local-player-dock[data-player-anchor="${switchTarget.id}"]`)).toBeVisible();
+      ringEvidence.push(await assertFiveSeatPhoneRing(switchProbePage, room.players, switchTarget));
       await switchProbePage.waitForTimeout(250);
       const switchFrames = await switchProbePage.evaluate(() => {
         window.__bcp1CaptureMoveSwitch = false;
@@ -1982,8 +2149,8 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
       expect(switchFrames.every((frame) => frame.cardId === card.id && frame.eventId === rootEvent.id), JSON.stringify(switchFrames)).toBe(true);
       expect(switchFrames.every((frame) => frame.revealStartedAt === revealStartedAt), JSON.stringify(switchFrames)).toBe(true);
       expect(switchFrames.every((frame) => frame.viewerId === frame.layoutViewerId
-        || (frame.layoutPending === "true" && frame.cardVisibility === "hidden")), JSON.stringify(switchFrames)).toBe(true);
-      expect(switchFrames.every((frame) => frame.layoutPending !== "true" || frame.cardVisibility === "hidden"), JSON.stringify(switchFrames)).toBe(true);
+        || (frame.cardLayoutPending === "true" && frame.cardVisibility === "hidden")), JSON.stringify(switchFrames)).toBe(true);
+      expect(switchFrames.every((frame) => frame.cardLayoutPending !== "true" || frame.cardVisibility === "hidden"), JSON.stringify(switchFrames)).toBe(true);
       const settledSwitchFrame = switchFrames.at(-1);
       expect(settledSwitchFrame.viewerId).toBe(source.id);
       expect(settledSwitchFrame.layoutViewerId).toBe(source.id);
@@ -2008,6 +2175,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
               layoutViewerId: display?.dataset.publicCardLayoutViewerId ?? null,
               layoutPending: display?.dataset.publicCardLayoutPending ?? null,
               cardVisibility: card ? getComputedStyle(card).visibility : null,
+              cardLayoutPending: card?.dataset.publicCardJourneyLayoutPending ?? null,
               phase: card?.dataset.publicCardJourneyPhase ?? null,
               cardId: card?.dataset.publicCardJourneyCardId ?? null,
               eventId: card?.dataset.publicCardJourneyEventId ?? null,
@@ -2027,6 +2195,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
         });
         await tap(switchProbePage, switchProbePage.getByTestId(`test-view-switch-${nextViewer.id}`));
         await expect(switchProbePage.locator(`.local-player-dock[data-player-anchor="${nextViewer.id}"]`)).toBeVisible();
+        ringEvidence.push(await assertFiveSeatPhoneRing(switchProbePage, room.players, nextViewer));
         await switchProbePage.waitForTimeout(250);
         const frames = await switchProbePage.evaluate(() => {
           window.__bcp1CaptureMoveSwitch = false;
@@ -2037,12 +2206,68 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
         expect(frames.every((frame) => frame.cardId === card.id && frame.eventId === rootEvent.id), JSON.stringify(frames)).toBe(true);
         expect(frames.every((frame) => frame.revealStartedAt === revealStartedAt), JSON.stringify(frames)).toBe(true);
         expect(frames.every((frame) => frame.viewerId === frame.layoutViewerId
-          || (frame.layoutPending === "true" && frame.cardVisibility === "hidden")), JSON.stringify(frames)).toBe(true);
-        expect(frames.every((frame) => frame.layoutPending !== "true" || frame.cardVisibility === "hidden"), JSON.stringify(frames)).toBe(true);
+          || (frame.cardLayoutPending === "true" && frame.cardVisibility === "hidden")), JSON.stringify(frames)).toBe(true);
+        expect(frames.every((frame) => frame.cardLayoutPending !== "true" || frame.cardVisibility === "hidden"), JSON.stringify(frames)).toBe(true);
         const settled = frames.at(-1);
+        const trace = await switchProbePage.evaluate(() => sessionStorage.getItem("wtk.game-ux-trace.document.v2"));
+        if (trace) await testInfo.attach(`bumper-harvest-switch-layout-trace-seat-${nextViewer.seat}`, {
+          body: trace,
+          contentType: "application/json",
+        });
+        const parkingDebug = settled.cardVisibility === "visible" ? null : await switchProbePage.evaluate((actorId) => {
+          const rect = (element) => {
+            if (!element) return null;
+            const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+            return { left, top, right, bottom, width, height };
+          };
+          const actor = [...document.querySelectorAll("[data-player-anchor]")]
+            .find((element) => element.dataset.playerAnchor === actorId && !element.classList.contains("local-player-dock"));
+          const seat = actor?.getBoundingClientRect();
+          const side = actor?.dataset.sideColumn;
+          const card = { width: 32, height: 48 };
+          const candidates = seat ? [
+            { label: "inner-edge-center", left: side === "left" ? seat.right + 6 : seat.left - card.width - 6, top: seat.top + (seat.height - card.height) / 2 },
+            { label: "below-seat-center", left: seat.left + (seat.width - card.width) / 2, top: seat.bottom + 6 },
+            { label: "above-seat-center", left: seat.left + (seat.width - card.width) / 2, top: seat.top - card.height - 6 },
+          ].map((candidate) => ({ ...candidate, ...card, right: candidate.left + card.width, bottom: candidate.top + card.height })) : [];
+          const selectors = [
+            ".console-guidance", ".decision-status", ".public-card-display-journey-copy", ".visible-countdown",
+            ".stage-system-cluster", ".local-dock-zones", ".local-status-panel", ".local-equipment-panel",
+            ".local-hand-section", ".turn-controls", ".harvest-card-choice", ".harvest-card-select",
+            ".harvest-card-info", ".harvest-confirm-row button",
+          ];
+          const obstacles = selectors.flatMap((selector) => [...document.querySelectorAll(selector)]
+            .filter((element) => {
+              const style = getComputedStyle(element);
+              const bounds = element.getBoundingClientRect();
+              return style.display !== "none" && style.visibility !== "hidden" && bounds.width > 0 && bounds.height > 0;
+            })
+            .map((element) => ({ selector, rect: rect(element) })));
+          const otherSeats = [...document.querySelectorAll("[data-player-anchor]")]
+            .filter((element) => element !== actor && element.dataset.playerAnchor !== actorId)
+            .map((element) => ({ id: element.dataset.playerAnchor, rect: rect(element) }));
+          const overlaps = (a, b, gap = 2) => a.left < b.right + gap && a.right > b.left - gap
+            && a.top < b.bottom + gap && a.bottom > b.top - gap;
+          return {
+            viewport: { width: innerWidth, height: innerHeight },
+            actorId,
+            actorClass: actor?.className ?? null,
+            side,
+            actor: rect(actor),
+            hero: rect(actor?.querySelector(".opponent-hero-card")),
+            candidates: candidates.map((candidate) => ({
+              ...candidate,
+              obstacles: obstacles.filter((obstacle) => overlaps(candidate, obstacle.rect)).map(({ selector, rect: bounds }) => ({ selector, rect: bounds })),
+              otherSeats: otherSeats.filter((seat) => overlaps(candidate, seat.rect)).map(({ id, rect: bounds }) => ({ id, rect: bounds })),
+              harvestPools: [...document.querySelectorAll(".harvest-choice-panel")].map(rect),
+            })),
+            obstacles,
+            otherSeats,
+          };
+        }, source.id);
         expect(settled.viewerId).toBe(nextViewer.id);
         expect(settled.layoutViewerId).toBe(nextViewer.id);
-        expect(settled.cardVisibility).toBe("visible");
+        expect(settled.cardVisibility, JSON.stringify({ nextViewer: nextViewer.id, nextViewerSeat: nextViewer.seat, ring: ringEvidence.at(-1), settled, parkingDebug, frames: frames.slice(-4) })).toBe("visible");
         expect(settled.phase).toBe("parked");
         await expect(switchProbePage.locator(rootSelector)).toHaveAttribute("data-public-card-journey-phase", "parked");
         await expect(switchProbePage.locator(rootSelector).locator("xpath=ancestor::section[@data-public-card-renderer-kind='single-target-journey']"))
@@ -2060,7 +2285,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
         switchSettledByViewer.push({ viewerId: nextViewer.id, frames });
       }
       await testInfo.attach("bumper-harvest-switch-all-viewers-summary", {
-        body: JSON.stringify({ rootCardId: card.id, rootEventId: rootEvent.id, revealStartedAt, viewers: switchSettledByViewer.map(({ viewerId }) => viewerId) }, null, 2),
+        body: JSON.stringify({ rootCardId: card.id, rootEventId: rootEvent.id, revealStartedAt, viewers: switchSettledByViewer.map(({ viewerId }) => viewerId), ringEvidence }, null, 2),
         contentType: "application/json",
       });
       break;
@@ -2197,7 +2422,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
           const stable = window.innerWidth === width && window.innerHeight === height
             && Boolean(root && display && chip && announcement && rootRect && chipRect)
             && display?.dataset.publicCardLayoutPending === "false"
-            && rootRect?.width === 40 && rootRect.height === 60
+            && rootRect?.width === (width <= 520 ? 32 : 40) && rootRect.height === (width <= 520 ? 48 : 60)
             && getComputedStyle(root).visibility === "visible"
             && rootRect.left === Number(root?.dataset.publicCardJourneyTargetLeft)
             && rootRect.top === Number(root?.dataset.publicCardJourneyTargetTop)
@@ -2214,7 +2439,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
         body: JSON.stringify(geometry, null, 2), contentType: "application/json",
       });
       expect(geometry.viewport).toEqual(viewport);
-      expect(geometry.rootFace).toMatchObject({ width: 40, height: 60 });
+      expect(geometry.rootFace).toMatchObject({ width: viewport.width <= 520 ? 32 : 40, height: viewport.width <= 520 ? 48 : 60 });
       expect(geometry.rootCardId).toBe(currentProgress.rootCardId);
       expect(geometry.rootEventId).toBe(publicPool.rootEventId);
       expect(geometry.rootPhase).toBe("parked");
@@ -2222,7 +2447,10 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
       expect(geometry.stageBackground).toBe("rgba(0, 0, 0, 0)");
       expect(geometry.announcement).toBeTruthy();
       expect(geometry.announcementPaint.visibility).toBe("visible");
-      expect(geometry.announcementPaint.ariaLabel).toBe(`Negation: Block ${currentChooser.name}'s Harvest pick?`);
+      expect([
+        `Negation: Cancel Harvest for ${currentChooser.name}?`,
+        `Cancel Harvest for ${currentChooser.name}?`,
+      ]).toContain(geometry.announcementPaint.ariaLabel);
       const announcementLines = Number(await negationPage.locator(".public-card-display-journey-copy").getAttribute("data-public-card-announcement-lines"));
       expect(announcementLines).toBeGreaterThan(0);
       expect(announcementLines).toBeLessThanOrEqual(2);
@@ -2231,13 +2459,19 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
       const rootParking = await measureHarvestParking(negationPage, currentProgress.rootCardId, publicPool.rootEventId);
       expectHarvestCardParkedByAuthor(rootParking, `Harvest root at ${viewport.width}x${viewport.height}`);
       expect(rootParking.actorId).toBe(source.id);
-      expect(geometry.authorSlotIds).toEqual([source.id]);
+      expect(geometry.authorSlotIds).toEqual([]);
       expect(geometry.layerOrder.root).not.toBeNull();
       expect(geometry.layerOrder.pool).toBeGreaterThan(geometry.layerOrder.root);
       // Plan A permits the already-seen root thumbnail to sit behind the pool.
       // Its layer must remain below the real pool, whose Info targets stay tappable.
-      expect(geometry.controlHits.harvestInfo).toHaveLength(publicPool.revealed.length);
-      expect(geometry.controlHits.harvestInfo.every((hit) => hit.hitMatches), JSON.stringify(geometry.controlHits.harvestInfo)).toBe(true);
+      const visibleHarvestInfoHits = geometry.controlHits.harvestInfo.filter(({ bounds }) => {
+        const centerX = bounds.left + bounds.width / 2;
+        const centerY = bounds.top + bounds.height / 2;
+        return centerX >= geometry.rowClip.left && centerX < geometry.rowClip.right
+          && centerY >= geometry.rowClip.top && centerY < geometry.rowClip.bottom;
+      });
+      expect(visibleHarvestInfoHits.length, JSON.stringify({ rowClip: geometry.rowClip, hits: geometry.controlHits.harvestInfo })).toBeGreaterThan(0);
+      expect(visibleHarvestInfoHits.every((hit) => hit.hitMatches), JSON.stringify(visibleHarvestInfoHits)).toBe(true);
       expect(geometry.overlaps.rootAnnouncement).toBe(false);
       expect(geometry.overlaps.rootTimer).toBe(false);
       expect(geometry.overlaps.rootActivity).toBe(false);
@@ -2262,7 +2496,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(negationPage.locator(".harvest-choice-stage[data-harvest-readonly='true'] .harvest-card-choice")).toHaveCount(publicPool.revealed.length);
     await expect(negationPage.locator(".harvest-choice-heading span"))
       .toHaveText(`Negation for ${currentChooser.name} · Read-only`);
-    const inspectorPoolAudit = await inspectHarvestPool(negationPage, host.id, testInfo, "bumper-harvest-inspector-above-pool-390x700");
+    const inspectorPoolAudit = await inspectHarvestPool(negationPage, host.id, testInfo, "bumper-harvest-inspector-above-pool-390x700", false);
     await assertRootPoolLayer({ width: 390, height: 700 }, "after-switch-and-inspector");
     await tap(negationPage, negationPage.locator(".harvest-card-info").first());
     await expect(negationPage.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
@@ -2271,7 +2505,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(negationPage.locator('.harvest-choice-stage[data-harvest-readonly="true"]')).toBeVisible();
     await expect(negationPage.locator(".harvest-card-choice")).toHaveCount(publicPool.revealed.length);
     await assertRootPoolLayer({ width: 440, height: 766 });
-    const inspectorPoolAuditWide = await inspectHarvestPool(negationPage, host.id, testInfo, "bumper-harvest-inspector-above-pool-440x766");
+    const inspectorPoolAuditWide = await inspectHarvestPool(negationPage, host.id, testInfo, "bumper-harvest-inspector-above-pool-440x766", false);
     await tap(negationPage, negationPage.locator(".harvest-card-info").first());
     await expect(negationPage.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
     await tap(negationPage, negationPage.getByRole("button", { name: "Close card details" }));
@@ -2417,6 +2651,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     const page = await context.newPage();
     await page.addInitScript(({ roomCode, sessionToken, playerName }) => {
       localStorage.setItem("three-realms-session", JSON.stringify({ code: roomCode, token: sessionToken, name: playerName }));
+      sessionStorage.setItem("wtk.game-ux-trace.active.v2", "true");
     }, { roomCode: code, sessionToken: token, playerName: name });
     await page.goto(`${API}/`);
     await expect(page.locator(".game-shell")).toBeVisible();
@@ -2424,11 +2659,14 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(page.locator(".harvest-choice-panel")).toBeVisible();
     await expect(page.locator(`.local-player-dock[data-player-anchor="${host.id}"]`)).toBeVisible();
 
+    let localHeroTouchVerified = false;
+    let localCardDetailsTouchVerified = false;
     const auditHarvestView = async (viewerLabel, actor) => {
       for (const viewport of [
         { width: 390, height: 700 },
         { width: 390, height: 844 },
         { width: 440, height: 766 },
+        { width: 440, height: 894 },
         { width: 480, height: 900 },
       ]) {
         await page.setViewportSize(viewport);
@@ -2437,8 +2675,8 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
             const geometry = await harvestGeometry(page);
             return Boolean(geometry.panel && geometry.root && (actor || geometry.announcement) && geometry.table
               && geometry.stagePointerEvents === "none"
-              && Object.values(geometry.overlaps).every((overlap) => !overlap)
-              && geometry.panel.top >= Math.max(...geometry.seats.map((seat) => seat.bottom)) - 1
+              && Object.entries(geometry.overlaps).every(([name, overlap]) => !overlap
+                || geometry.rootOnLocalHeroArt && (name === "rootHero" || name === "rootHeroAnchor"))
               && geometry.panel.bottom <= geometry.table.bottom + 1
               && (!actor || geometry.footer && geometry.footer.bottom <= viewport.height + 1));
           }, { timeout: 10_000 }).toBe(true);
@@ -2449,6 +2687,10 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
           await testInfo.attach(`bumper-harvest-${viewerLabel}-${viewport.width}x${viewport.height}-layout-failure`, {
             path: screenshot,
             contentType: "image/png",
+          });
+          const uxTrace = await page.evaluate(() => sessionStorage.getItem("wtk.game-ux-trace.document.v2"));
+          if (uxTrace) await testInfo.attach(`bumper-harvest-${viewerLabel}-${viewport.width}x${viewport.height}-ux-trace`, {
+            body: uxTrace, contentType: "application/json",
           });
           console.info("HARVEST_LAYOUT_FAILURE", JSON.stringify({ viewerLabel, actor, viewport, geometry }));
           throw error;
@@ -2483,8 +2725,8 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
           rootAnnouncement: false,
           rootTimer: false,
           rootActivity: false,
-          rootHero: false,
-          rootHeroAnchor: false,
+          rootHero: geometry.rootOnLocalHeroArt,
+          rootHeroAnchor: geometry.rootOnLocalHeroArt,
           rootHandSection: false,
           rootHandRail: false,
           rootControls: false,
@@ -2498,6 +2740,48 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
           panelActivity: false,
           panelSeat: false,
         });
+        if (actor && !localHeroTouchVerified && geometry.rootOnLocalHeroArt) {
+          const heroTouchPoint = await page.evaluate(() => {
+            const hero = document.querySelector(".local-hero-card");
+            const portrait = hero?.querySelector(".local-hero-portrait");
+            const root = document.querySelector(".public-card-journey-card[data-public-card-journey-role='root'] .played-card");
+            if (!hero || !portrait || !root) return null;
+            const portraitRect = portrait.getBoundingClientRect();
+            const rootRect = root.getBoundingClientRect();
+            const textRects = [...portrait.querySelectorAll(".local-hero-label, .local-hero-vitals, .local-hero-info-button")]
+              .map((element) => element.getBoundingClientRect());
+            const candidates = [
+              { x: portraitRect.right - 6, y: portraitRect.top + portraitRect.height * .36 },
+              { x: portraitRect.right - 6, y: portraitRect.top + portraitRect.height * .48 },
+              { x: portraitRect.left + portraitRect.width * .72, y: portraitRect.top + portraitRect.height * .36 },
+            ];
+            return candidates.find((point) => {
+              const outsideRoot = point.x < rootRect.left || point.x > rootRect.right
+                || point.y < rootRect.top || point.y > rootRect.bottom;
+              const clearOfText = textRects.every((rect) => point.x < rect.left || point.x > rect.right
+                || point.y < rect.top || point.y > rect.bottom);
+              const hit = document.elementFromPoint(point.x, point.y);
+              return outsideRoot && clearOfText && hit instanceof Element && hero.contains(hit);
+            }) ?? null;
+          });
+          expect(heroTouchPoint, JSON.stringify({ viewerLabel, viewport, geometry })).toBeTruthy();
+          await page.touchscreen.tap(heroTouchPoint.x, heroTouchPoint.y);
+          await expect(page.locator(".hero-details-panel")).toBeVisible();
+          await tap(page, page.getByRole("button", { name: /^Close .* details$/ }));
+          await expect(page.locator(".hero-details-panel")).toHaveCount(0);
+          localHeroTouchVerified = true;
+          expect(geometry.rootLayoutPending, JSON.stringify({ viewerLabel, geometry })).toBe("false");
+        }
+        if (actor && !localCardDetailsTouchVerified) {
+          const info = page.locator(".harvest-choice-stage .harvest-card-info").first();
+          const infoBounds = await info.boundingBox();
+          expect(infoBounds, JSON.stringify({ viewerLabel, viewport, geometry })).toBeTruthy();
+          await page.touchscreen.tap(infoBounds.x + infoBounds.width / 2, infoBounds.y + infoBounds.height / 2);
+          await expect(page.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
+          await tap(page, page.getByRole("button", { name: "Close card details" }));
+          await expect(page.locator('.card-details-panel[data-card-details-context="public-zone"]')).toHaveCount(0);
+          localCardDetailsTouchVerified = true;
+        }
         expect(geometry.switches.map((item) => item.target), JSON.stringify({ viewerLabel, geometry }))
           .toEqual(geometry.switches.map((item) => item.id));
         expect(geometry.controlHits.switches.length, JSON.stringify({ viewerLabel, geometry })).toBeGreaterThan(0);
@@ -2519,15 +2803,23 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
           expect(geometry.footer).toBeNull();
           expect(geometry.panelPointerEvents).toBe("none");
         }
-        expect(geometry.cards).toHaveLength(4);
+        expect(geometry.cards).toHaveLength(room.players.length);
         expect(geometry.panel.width, JSON.stringify({ viewerLabel, geometry })).toBeLessThanOrEqual(viewport.width - 32);
-        expect(geometry.cardDetailsTargets.every((detail) => detail.infoHitMatches && detail.infoCentered
+        expect(geometry.cardDetailsTargets.every((detail) => detail.infoCentered
           && detail.infoBottomInset >= 0 && detail.infoBottomInset <= 2
           && detail.infoWidth >= 44 && detail.infoHeight >= 44 && detail.titleClearOfInfoGlyph), JSON.stringify({ viewerLabel, geometry })).toBe(true);
-        const expectedCardWidth = Math.min(88, Math.max(82, viewport.width * .20));
-        expect(geometry.cards.every((card) => Math.abs(card.width - expectedCardWidth) <= .5), JSON.stringify({ viewerLabel, geometry })).toBe(true);
+        expect(geometry.cards.every((card) => Math.abs(card.width - geometry.handFace.width) <= .5
+          && Math.abs(card.height - geometry.handFace.height) <= .5), JSON.stringify({ viewerLabel, geometry })).toBe(true);
         if (actor) expect(geometry.cardDetailsTargets.every((detail) => detail.cardCenterOutsideInfo), JSON.stringify({ viewerLabel, geometry })).toBe(true);
-        expect(geometry.rootFace, JSON.stringify({ viewerLabel, geometry })).toMatchObject({ width: 40, height: 60 });
+        expect(geometry.rootFace, JSON.stringify({ viewerLabel, geometry })).toMatchObject({ width: 32, height: 48 });
+        const visibleHarvestInfoHits = geometry.controlHits.harvestInfo.filter(({ bounds }) => {
+          const centerX = bounds.left + bounds.width / 2;
+          const centerY = bounds.top + bounds.height / 2;
+          return centerX >= geometry.rowClip.left && centerX < geometry.rowClip.right
+            && centerY >= geometry.rowClip.top && centerY < geometry.rowClip.bottom;
+        });
+        expect(visibleHarvestInfoHits.length, JSON.stringify({ viewerLabel, geometry })).toBeGreaterThan(0);
+        expect(visibleHarvestInfoHits.every((item) => item.hitMatches), JSON.stringify({ viewerLabel, visibleHarvestInfoHits })).toBe(true);
         const screenshot = testInfo.outputPath(`bumper-harvest-${viewerLabel}-${viewport.width}x${viewport.height}.png`);
         await page.screenshot({ path: screenshot, animations: "disabled" });
         await testInfo.attach(`bumper-harvest-${viewerLabel}-${viewport.width}x${viewport.height}`, { path: screenshot, contentType: "image/png" });
@@ -2549,6 +2841,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(page.locator(".harvest-card-select")).toHaveCount(0);
     await expect(page.locator(".harvest-availability-label")).toHaveCount(initialHarvest.pendingHarvest.revealed.length);
     await tapHarvestCard(page, page.locator(".harvest-card-choice").first());
+    await waitForStableTouchTarget(page, ".harvest-card-info");
     await tap(page, page.locator(".harvest-card-info").first());
     await expect(page.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
     await expect(page.getByRole("button", { name: "Confirm choice" })).toHaveCount(0);
@@ -2621,6 +2914,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
           layoutViewerId: display?.dataset.publicCardLayoutViewerId ?? null,
           layoutPending: display?.dataset.publicCardLayoutPending ?? null,
           cardVisibility: card ? getComputedStyle(card).visibility : null,
+          cardLayoutPending: card?.dataset.publicCardJourneyLayoutPending ?? null,
           cardRect: cardRect ? { left: cardRect.left, top: cardRect.top, width: cardRect.width, height: cardRect.height } : null,
           poolVisibility: pool ? getComputedStyle(pool).visibility : null,
           poolRect: pool?.getBoundingClientRect().toJSON() ?? null,
@@ -2650,8 +2944,8 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     });
     expect(switchFrames.length, JSON.stringify(switchFrames)).toBeGreaterThan(2);
     expect(switchFrames.every((frame) => frame.viewerId === frame.layoutViewerId
-      || (frame.layoutPending === "true" && frame.cardVisibility === "hidden")), JSON.stringify(switchFrames)).toBe(true);
-    expect(switchFrames.every((frame) => frame.layoutPending !== "true" || frame.cardVisibility === "hidden"), JSON.stringify(switchFrames)).toBe(true);
+      || (frame.cardLayoutPending === "true" && frame.cardVisibility === "hidden")), JSON.stringify(switchFrames)).toBe(true);
+    expect(switchFrames.every((frame) => frame.cardLayoutPending !== "true" || frame.cardVisibility === "hidden"), JSON.stringify(switchFrames)).toBe(true);
     expect(switchFrames.every((frame) => frame.poolVisibility === "visible" && frame.poolRect?.width > 0), JSON.stringify(switchFrames)).toBe(true);
     const stableAfterSwitch = switchFrames.at(-1);
     expect(stableAfterSwitch.displays, JSON.stringify(stableAfterSwitch)).toHaveLength(1);
@@ -2700,10 +2994,10 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await page.setViewportSize({ width: 390, height: 700 });
     const firstCard = page.locator(".harvest-card-select:not([disabled])").first();
     await expect(firstCard).toBeVisible();
-    await tapHarvestCard(page, firstCard);
+    await firstCard.tap({ position: { x: 8, y: 24 } });
     await expect(firstCard).toHaveAttribute("aria-pressed", "true");
     const firstCardInfo = page.locator(".harvest-card-choice").first().locator(".harvest-card-info");
-    await tap(page, firstCardInfo);
+    await firstCardInfo.tap();
     await expect(page.locator('.card-details-panel[data-card-details-context="public-zone"]')).toBeVisible();
     await expect(firstCard).toHaveAttribute("aria-pressed", "true");
     await tap(page, page.getByRole("button", { name: "Close card details" }));
@@ -2774,13 +3068,13 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(page.locator(".harvest-choice-heading span"))
       .toHaveText(`Negation for ${firstEffectRecipient.name} · Read-only`);
     await expect(page.locator(".public-card-display-journey-copy b"))
-      .toHaveAttribute("aria-label", `Negation: Block ${firstEffectRecipient.name}'s Harvest pick?`);
+      .toHaveAttribute("aria-label", `Negation: Cancel Harvest for ${firstEffectRecipient.name}?`);
     await page.reload();
     await expect(page.locator(".game-shell")).toBeVisible();
     await expect(page.locator(".harvest-choice-heading span"))
       .toHaveText(`Negation for ${firstEffectRecipient.name} · Read-only`);
     await expect(page.locator(".public-card-display-journey-copy b"))
-      .toHaveAttribute("aria-label", `Negation: Block ${firstEffectRecipient.name}'s Harvest pick?`);
+      .toHaveAttribute("aria-label", `Negation: Cancel Harvest for ${firstEffectRecipient.name}?`);
     room = await passCurrentNegationWindow();
     await expect.poll(async () => {
       const current = await readRoom(request, code, token);
@@ -2803,7 +3097,11 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     const secondActorDock = page.locator(`.local-player-dock[data-player-anchor="${secondActorId}"]`);
     await expect(secondActorDock).toBeVisible();
     await expect(secondActorDock).toBeFocused();
-    await tapHarvestCard(page, page.locator(".harvest-card-select:not([disabled])").first());
+    await expect(page.locator(".harvest-choice-panel--actor")).toBeVisible();
+    const secondHarvestCard = page.locator(".harvest-card-select:not([disabled])").first();
+    await expect(secondHarvestCard).toBeVisible();
+    await tapHarvestCard(page, secondHarvestCard);
+    await expect(secondHarvestCard).toHaveAttribute("aria-pressed", "true");
     const secondConfirm = page.getByRole("button", { name: "Confirm choice" });
     await expect(secondConfirm).toBeEnabled();
     const secondChoiceResponse = page.waitForResponse((response) => {
@@ -2836,7 +3134,7 @@ test("Bumper Harvest spectators can switch views while another player chooses", 
     await expect(page.locator(".harvest-choice-heading span"))
       .toHaveText(`Negation for ${secondEffectRecipient.name} · Read-only`);
     await expect(page.locator(".public-card-display-journey-copy b"))
-      .toHaveAttribute("aria-label", `Negation: Block ${secondEffectRecipient.name}'s Harvest pick?`);
+      .toHaveAttribute("aria-label", `Negation: Cancel Harvest for ${secondEffectRecipient.name}?`);
   } finally {
     await context.close();
   }

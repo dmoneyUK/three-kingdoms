@@ -591,7 +591,7 @@ type SeatHistoryCardParkingOptions = {
 function seatHistoryParkingProtectedSelectors(options: SeatHistoryCardParkingOptions) {
   if (!options.protectInteractionControls) return [];
   return [
-    ".console-guidance", ".decision-status", ".public-card-display-journey-copy",
+    ".console-guidance", ".decision-status", ".public-card-display-journey-copy", "[data-public-card-announcement='true']",
     ".public-activity-chip", "[data-public-activity-chip]", ".visible-countdown", ".stage-system-cluster",
     ".local-judgement-cards",
     ".local-dock-zones", ".local-status-panel", ".local-equipment-panel", ".local-hand-section",
@@ -643,6 +643,9 @@ function seatHistoryCardParking(
   occupied: readonly CardRect[],
   options: SeatHistoryCardParkingOptions = {},
 ): SeatHistoryCardParking | null {
+  const reportEarlyFailure = (reason: string, detail: Record<string, unknown> = {}) => {
+    options.onPlacementFailure?.({ actorId, reason, ...detail });
+  };
   const actorAnchors = [...document.querySelectorAll<HTMLElement>("[data-player-anchor]")]
     .filter((candidate) => candidate.dataset.playerAnchor === actorId);
   // The switched viewer remains represented in the opponent-seat DOM while
@@ -656,17 +659,29 @@ function seatHistoryCardParking(
     ? actorAnchors.find((candidate) => candidate.classList.contains("local-player-dock")) ?? visibleAnchor
     : visibleAnchor;
   const table = document.querySelector<HTMLElement>(".play-table");
-  if (!anchor || !table) return null;
+  if (!anchor || !table) {
+    reportEarlyFailure("author-anchor-or-table-missing", { actorAnchorCount: actorAnchors.length, hasTable: Boolean(table) });
+    return null;
+  }
   const seat = anchor.getBoundingClientRect();
   const tableRect = table.getBoundingClientRect();
-  if (seat.width <= 0 || seat.height <= 0 || tableRect.width <= 0 || tableRect.height <= 0) return null;
+  if (seat.width <= 0 || seat.height <= 0 || tableRect.width <= 0 || tableRect.height <= 0) {
+    reportEarlyFailure("author-anchor-or-table-has-no-size", { actorRect: { left: seat.left, top: seat.top, width: seat.width, height: seat.height }, tableRect: { left: tableRect.left, top: tableRect.top, width: tableRect.width, height: tableRect.height } });
+    return null;
+  }
   const cardSize = options.cardSize ?? PARKED_CARD;
   const isLocalAnchor = anchor.classList.contains("local-player-dock");
   if (options.protectInteractionControls && options.anchorLocalHero) {
     const authorHero = anchor.querySelector<HTMLElement>(isLocalAnchor ? ".local-hero-card" : ".opponent-hero-card");
-    if (!authorHero) return null;
+    if (!authorHero) {
+      reportEarlyFailure("author-hero-missing", { isLocalAnchor, anchorClass: anchor.className });
+      return null;
+    }
     const heroRect = authorHero.getBoundingClientRect();
-    if (heroRect.width <= 0 || heroRect.height <= 0) return null;
+    if (heroRect.width <= 0 || heroRect.height <= 0) {
+      reportEarlyFailure("author-hero-has-no-size", { isLocalAnchor, heroRect: { left: heroRect.left, top: heroRect.top, width: heroRect.width, height: heroRect.height } });
+      return null;
+    }
     // Opponent Hero portraits end above their HP/equipment strip. Keep parked
     // Harvest cards clear of the complete seat, not just the portrait image.
     const authorSeatRect = options.avoidAuthorSeat && !isLocalAnchor ? seat : null;
@@ -700,6 +715,8 @@ function seatHistoryCardParking(
     const heroCenterY = heroRect.top + heroRect.height / 2;
     const harvestResponse = options.keepHarvestResponseNearAuthor === true;
     const harvestHistory = options.anchorLocalHero === true && options.protectInteractionControls === true;
+    const compactFivePlayerPhone = window.matchMedia("(max-width: 520px)").matches
+      && Boolean(document.querySelector<HTMLElement>(".player-board[data-player-count='5']"));
     const cascade = harvestResponse ? 0 : actorIndex * (cardSize.height + gap);
     const inViewport = (candidate: CardRect) => candidate.left >= 2
       && candidate.left + candidate.width <= window.innerWidth - 2
@@ -743,6 +760,31 @@ function seatHistoryCardParking(
           });
       }
       return [...tops].sort((a, b) => a - b).map((top) => ({ left, top, ...cardSize }));
+    };
+    const compactFivePlayerInnerLaneCandidates = (left: number): CardRect[] => {
+      const centerTop = seat.top + (seat.height - cardSize.height) / 2;
+      const tops = new Set([centerTop]);
+      const announcementRects = [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
+        .flatMap((element) => {
+          const style = window.getComputedStyle(element);
+          const rect = style.display !== "none" && style.visibility !== "hidden" ? clippedElementBounds(element) : null;
+          return rect ? [rect] : [];
+        });
+      obstacles.forEach((rect) => {
+        const laneSharesObstacleColumn = left < rect.right + 2
+          && left + cardSize.width > rect.left - 2;
+        if (!laneSharesObstacleColumn) return;
+        tops.add(rect.top - cardSize.height - gap);
+        tops.add(rect.bottom + gap);
+      });
+      announcementRects.forEach((rect) => {
+        const laneSharesAnnouncementColumn = left < rect.right + 2
+          && left + cardSize.width > rect.left - 2;
+        if (laneSharesAnnouncementColumn) tops.add(rect.top - cardSize.height - (gap - 2));
+      });
+      return [...tops]
+        .sort((first, second) => Math.abs(first - centerTop) - Math.abs(second - centerTop))
+        .map((top) => ({ left, top, ...cardSize }));
     };
     const candidates: CardRect[] = [];
     const topSeatHarvestCandidates = (firstTop: number): CardRect[] => {
@@ -818,7 +860,9 @@ function seatHistoryCardParking(
       if (side === "left") {
         candidates.push(
           ...(options.avoidAuthorSeat ? [
-            { left: seat.right + gap + cascade, top: seat.top + (seat.height - cardSize.height) / 2, ...cardSize },
+            ...(compactFivePlayerPhone && harvestHistory
+              ? compactFivePlayerInnerLaneCandidates(seat.right + 2 + cascade)
+              : [{ left: seat.right + gap + cascade, top: seat.top + (seat.height - cardSize.height) / 2, ...cardSize }]),
             ...belowSeatCandidates(heroCenterX - cardSize.width / 2),
           ] : [
             { left: heroRect.right + gap + cascade, top: heroCenterY - cardSize.height / 2, ...cardSize },
@@ -829,7 +873,9 @@ function seatHistoryCardParking(
       } else if (side === "right") {
         candidates.push(
           ...(options.avoidAuthorSeat ? [
-            { left: seat.left - cardSize.width - gap - cascade, top: seat.top + (seat.height - cardSize.height) / 2, ...cardSize },
+            ...(compactFivePlayerPhone && harvestHistory
+              ? compactFivePlayerInnerLaneCandidates(seat.left - cardSize.width - 2 - cascade)
+              : [{ left: seat.left - cardSize.width - gap - cascade, top: seat.top + (seat.height - cardSize.height) / 2, ...cardSize }]),
             ...belowSeatCandidates(heroCenterX - cardSize.width / 2),
           ] : [
             { left: heroRect.left - cardSize.width - gap - cascade, top: heroCenterY - cardSize.height / 2, ...cardSize },
@@ -866,6 +912,58 @@ function seatHistoryCardParking(
       }
     }
     const parking = candidates.find(isFree);
+    let localPortraitFallbackAudit: Record<string, unknown> = {
+      attempted: false,
+      isLocalAnchor,
+      harvestHistory,
+      compactFivePlayerPhone,
+    };
+    if (!parking && isLocalAnchor && harvestHistory && compactFivePlayerPhone) {
+      // On short five-player phones, the public table, guidance strip and
+      // fixed action row can leave no full 32×48 pocket around the local Dock
+      // Hero. Keep the genuine mini attached to its real author inside the
+      // portrait's artwork area as a final floating-overlay fallback; preserve
+      // the Hero face, Info target, name, role and HP hit regions.
+      const localPortrait = anchor.querySelector<HTMLElement>(".local-hero-portrait");
+      const localPortraitRect = localPortrait?.getBoundingClientRect();
+      localPortraitFallbackAudit = {
+        attempted: true,
+        isLocalAnchor,
+        harvestHistory,
+        compactFivePlayerPhone,
+        localPortraitRect: localPortraitRect ? { left: localPortraitRect.left, top: localPortraitRect.top, right: localPortraitRect.right, bottom: localPortraitRect.bottom, width: localPortraitRect.width, height: localPortraitRect.height } : null,
+      };
+      if (localPortraitRect && localPortraitRect.width >= cardSize.width + 4
+        && localPortraitRect.height >= cardSize.height + 4) {
+        const protectedHeroContent = [...anchor.querySelectorAll<HTMLElement>(
+          ".local-hero-label, .local-hero-vitals, .local-hero-info-button",
+        )].map((element) => element.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
+        const artCandidates: CardRect[] = [
+          { left: localPortraitRect.left + 2, top: localPortraitRect.top + 2, ...cardSize },
+          { left: localPortraitRect.right - cardSize.width - 2, top: localPortraitRect.top + 2, ...cardSize },
+        ];
+        const artCandidateAudit: Record<string, unknown>[] = [];
+        const artParking = artCandidates.find((candidate) => {
+          const visible = visibleFront(candidate);
+          const withinPortrait = candidate.left >= localPortraitRect.left + 1
+            && candidate.top >= localPortraitRect.top + 1
+            && candidate.left + candidate.width <= localPortraitRect.right - 1
+            && candidate.top + candidate.height <= localPortraitRect.bottom - 1;
+          const heroContentClear = protectedHeroContent.every((rect) => !rectsOverlap(rect, candidate, 2));
+          const unoccupied = !occupied.some((rect) => rectsOverlap(rect, candidate, 2));
+          const obstacleClear = obstacles.every((rect) => !rectsOverlap(rect, visible?.rect ?? candidate, 2));
+          const otherSeatsClear = otherAnchors.every((rect) => !rectsOverlap(rect, visible?.rect ?? candidate, 2));
+          artCandidateAudit.push({ candidate, visible: visible?.rect ?? null, withinPortrait, inViewport: inViewport(candidate), heroContentClear, unoccupied, obstacleClear, otherSeatsClear });
+          return visible && withinPortrait && inViewport(candidate)
+            && protectedHeroContent.every((rect) => !rectsOverlap(rect, candidate, 2))
+            && !occupied.some((rect) => rectsOverlap(rect, candidate, 2))
+            && obstacles.every((rect) => !rectsOverlap(rect, visible.rect, 2))
+            && otherAnchors.every((rect) => !rectsOverlap(rect, visible.rect, 2));
+        });
+        localPortraitFallbackAudit = { ...localPortraitFallbackAudit, artCandidateAudit };
+        if (artParking) return { rect: artParking, side: "local" };
+      }
+    }
     let portraitEdgeCandidates: CardRect[] = [];
     const topSeatHarvestHistory = harvestHistory && !isLocalAnchor && !anchor.dataset.sideColumn
       && heroRect.top + heroRect.height / 2 < tableRect.top + tableRect.height * 0.38;
@@ -916,7 +1014,7 @@ function seatHistoryCardParking(
       }
     }
     if (!parking) {
-      if (harvestResponse) {
+      if (harvestResponse || harvestHistory) {
         const rectRecord = (rect: CardRect | DOMRect) => ({
           left: Math.round(rect.left * 10) / 10,
           top: Math.round(rect.top * 10) / 10,
@@ -948,6 +1046,7 @@ function seatHistoryCardParking(
           harvestPoolOverlayRects: harvestPoolOverlayRects.map(rectRecord),
           minimumVisiblePoolPeekPx: 16,
           occupiedAuthorRects: (options.sameAuthorRects ?? []).map(rectRecord),
+          localPortraitFallbackAudit,
           candidateFailures,
         });
       }
@@ -2852,7 +2951,7 @@ function SingleTargetCardJourney({
   const traceSignaturesRef = useRef(new Map<string, string>());
   const parkingFailureSignaturesRef = useRef(new Map<string, string>());
   const placementFailureReporter = useCallback((event: JourneyCard): SeatHistoryCardParkingOptions => ({
-    onPlacementFailure: isBumperHarvest && event.role === "response"
+    onPlacementFailure: isBumperHarvest && (event.role === "root" || event.role === "response")
       ? (detail: Record<string, unknown>) => {
         const currentViewerId = viewerIdRef.current;
         const currentAction = actionRef.current;
@@ -2860,7 +2959,7 @@ function SingleTargetCardJourney({
         const signature = JSON.stringify(detail);
         if (parkingFailureSignaturesRef.current.get(key) === signature) return;
         parkingFailureSignaturesRef.current.set(key, signature);
-        recordAttackDodgeUxTrace("harvest-response-parking-failure", {
+        recordAttackDodgeUxTrace("harvest-history-parking-failure", {
           interactionId: currentAction.interactionId ?? null,
           rootEventId: currentAction.rootEventId,
           eventId: event.eventId,
@@ -3179,11 +3278,13 @@ function SingleTargetCardJourney({
     let sampledFrames = 0;
     let layoutObserver: ResizeObserver | null = null;
     let mutationObserver: MutationObserver | null = null;
+    let announcementObserver: MutationObserver | null = null;
     const observeLayout = () => {
       const elements = [
         document.querySelector<HTMLElement>(".play-table"),
         document.querySelector<HTMLElement>(".player-board"),
         ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
+        ...(isBumperHarvest ? [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")] : []),
       ];
       for (const element of elements) if (element) layoutObserver?.observe(element);
     };
@@ -3210,6 +3311,7 @@ function SingleTargetCardJourney({
           document.querySelector<HTMLElement>(".play-table"),
           document.querySelector<HTMLElement>(".player-board"),
           ...document.querySelectorAll<HTMLElement>("[data-player-anchor]"),
+          ...(isBumperHarvest ? [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")] : []),
         ].filter((element): element is HTMLElement => Boolean(element));
         const layoutSignature = [window.innerWidth, window.innerHeight, window.visualViewport?.width ?? 0, window.visualViewport?.height ?? 0,
           ...layoutElements.flatMap((element) => {
@@ -3302,6 +3404,26 @@ function SingleTargetCardJourney({
       }
     });
     if (shell) mutationObserver?.observe(shell, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-player-anchor"] });
+    if (isBumperHarvest && typeof MutationObserver !== "undefined") {
+      const announcementLayoutSignature = () => [...document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")]
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          const style = window.getComputedStyle(element);
+          return [style.display, style.visibility, rect.left, rect.top, rect.width, rect.height]
+            .map((value) => typeof value === "number" ? Math.round(value * 2) / 2 : value)
+            .join(":");
+        }).join("|");
+      let previousAnnouncementSignature = announcementLayoutSignature();
+      announcementObserver = new MutationObserver(() => {
+        const nextSignature = announcementLayoutSignature();
+        if (nextSignature === previousAnnouncementSignature) return;
+        previousAnnouncementSignature = nextSignature;
+        reflow();
+      });
+      for (const announcement of document.querySelectorAll<HTMLElement>("[data-public-card-announcement='true']")) {
+        announcementObserver.observe(announcement, { attributes: true, attributeFilter: ["style"] });
+      }
+    }
     window.addEventListener("resize", reflow);
     window.visualViewport?.addEventListener("resize", reflow);
     return () => {
@@ -3309,9 +3431,10 @@ function SingleTargetCardJourney({
       window.visualViewport?.removeEventListener("resize", reflow);
       layoutObserver?.disconnect();
       mutationObserver?.disconnect();
+      announcementObserver?.disconnect();
       window.cancelAnimationFrame(resizeFrame);
     };
-  }, [journeyEnabled, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, journey.scopeKey, scopeKey, placementFailureReporter]);
+  }, [journeyEnabled, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, isBumperHarvest, journey.scopeKey, scopeKey, placementFailureReporter]);
 
   const currentCard = activeCard ?? journey.cards.find((card) => card.eventId === activeEventId) ?? null;
   const allParked = !journey.layoutPending && journey.cards.length > 0 && journey.cards.every((card) => card.phase === "parked");

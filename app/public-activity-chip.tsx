@@ -24,6 +24,7 @@ const SAFE_OBSTACLES = [
   ".played-card-stage .played-card",
   ".game-event-stage > div",
   ".harvest-choice-stage > div",
+  ".harvest-choice-panel",
   ".victory-banner",
   ".table-resolution-layer .played-card",
   "[data-public-frame]",
@@ -281,9 +282,15 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
         "data-public-card-layout-pending",
       ],
     });
+    const harvestStage = table.querySelector<HTMLElement>(".harvest-choice-stage");
+    const harvestPanel = harvestStage?.querySelector<HTMLElement>(".harvest-choice-panel");
+    const harvestLayoutObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
+    if (harvestStage) harvestLayoutObserver?.observe(harvestStage, { attributes: true, attributeFilter: ["style"] });
+    if (harvestPanel) harvestLayoutObserver?.observe(harvestPanel, { attributes: true, attributeFilter: ["style"] });
     const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
     resizeObserver?.observe(table);
     resizeObserver?.observe(chip);
+    if (harvestPanel) resizeObserver?.observe(harvestPanel);
     window.addEventListener("resize", schedule);
     window.visualViewport?.addEventListener("resize", schedule);
     schedule();
@@ -291,6 +298,7 @@ export function PublicActivityChip({ status, viewerId, seatLayoutKey, harvestPoo
     return () => {
       window.cancelAnimationFrame(frame);
       mutationObserver.disconnect();
+      harvestLayoutObserver?.disconnect();
       resizeObserver?.disconnect();
       window.removeEventListener("resize", schedule);
       window.visualViewport?.removeEventListener("resize", schedule);

@@ -4379,6 +4379,24 @@
   letter-spacing: .035em;
 }
 
+@media (max-width: 420px) {
+  .game-shell:has(.player-board[data-player-count="5"]) .play-table > .public-activity-chip {
+    max-width: min(220px, calc(100% - 16px));
+    min-height: 36px;
+    padding: 2px 8px;
+  }
+
+  .game-shell:has(.player-board[data-player-count="5"]) .play-table > .public-activity-chip > strong {
+    font-size: clamp(11px, 3.2vw, 12.5px);
+    line-height: 1.05;
+  }
+
+  .game-shell:has(.player-board[data-player-count="5"]) .play-table > .public-activity-chip > small {
+    font-size: 10px;
+    line-height: 1.05;
+  }
+}
+
 @media (max-width: 650px) {
   .game-shell .player-board[data-seat-topology="side-column"][data-player-count="10"] {
     row-gap: 3px;
@@ -6378,5 +6396,33 @@
     bottom: auto;
     left: auto;
     transform: translateY(-50%);
+  }
+}
+
+/* ST5-1 five-player phone correction: use content-sized edge tracks and keep
+   the actual Seat boxes 6–8px inside the table's content edge. Recompute all
+   consumers of the seat-free corridor from that measured Seat width, board
+   inset and 7px clearance. Other player counts retain their existing tracks. */
+@media (max-width: 520px) {
+  .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-player-count="5"]) {
+    --side-safe-board-inset: clamp(6px, 1.3vw, 8px);
+    --side-safe-edge: calc(var(--side-safe-board-inset) + var(--side-safe-thumb-width) + 7px);
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] {
+    inset-inline: var(--side-safe-board-inset);
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] > [data-side-column="left"] {
+    justify-self: start;
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"][data-player-count="5"] > [data-side-column="right"] {
+    justify-self: end;
+  }
+
+  .game-shell .play-table[data-seat-topology="side-column"]:has(> .player-board[data-player-count="5"]) > .interaction-safe-zone:has(> .interaction-stage[data-local-ui-mode="INSPECT"]) {
+    inset-inline: var(--side-safe-edge);
   }
 }
