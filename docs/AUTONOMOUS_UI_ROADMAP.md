@@ -3335,6 +3335,11 @@ Profile command measurements:
   deployment and production smoke for this source SHA. Worker version
   `f7278550-b125-4c0a-9e25-667fc3eb9b97`; direct production `/api/health`
   returned `{"ok":true,"worker":"available"}`.
-- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**. Q4 is the
-  next separate H4 cross-client verification task. No user acceptance is
-  inferred.
+- Status at Q3 delivery: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**. Q4 was subsequently completed and is recorded in the current design status index; no user acceptance is inferred.
+
+### UX2 §10.19 NEG-A1 — Harvest choice recovery and Negation identity dedup — 2026-10-23
+
+- P0 `UX2-10.19-NEG-A1-F1-HARVEST-CHOICE-UNBLOCK` restores the authentic server-authorized Bumper Harvest choice after a shared Negation window. An authenticated four-viewer Worker/D1 game proved card selection/deselection, one successful `choose_harvest`, refresh recovery, spectator read-only state, and authority moving to only the next chooser. P0 exact-SHA [Actions 40014350901](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40014350901) passed required CI and deployment; Worker `6a2b406b-82d7-4040-ae39-09178148d39f`.
+- F2 `UX2-10.19-NEG-A1-F2-NEGATION-CARD-DEDUP` source `7944ff26b59f259c1d67926ddaa3288f141bca10` validates public event and physical card identity across `responses` and `responseHistory`, and only suppresses duplicate fallback rendering while the public-card Journey owns those identities. The focused mobile authenticated browser run proved one visible copy for each of two committed Negation cards across four independent viewer identities, a late spectator refresh, and TEST SWITCH during the next authorized Harvest choice. The short-screen fallback remains available when the Journey is not ready. No game-rule, privacy or public-card identity changes were made.
+- Focused local build and ESLint passed (0 lint errors; 15 existing Hook warnings); `git diff --check` passed. Exact-SHA [Actions 40018567372](https://github.com/dmoneyUK/three-kingdoms/actions/runs/40018567372) passed API tests, lint/fast, browser startup/room smoke, deployment and production smoke. Worker version `11e17d33-3c75-4876-9092-bd680974ff07`; direct production `/api/health` returned `{"ok":true,"worker":"available"}`.
+- **P0 + F2 and combined NEG-A1 status: IMPLEMENTED / DEPLOYED — PENDING OWNER PHONE RE-REVIEW.** The 2026-10-23 phone failure remains part of the history; technical CI/browser evidence is not owner acceptance. No desktop UX review was run.
