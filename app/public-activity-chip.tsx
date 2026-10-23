@@ -34,6 +34,7 @@ type Rect = { left: number; top: number; right: number; bottom: number; width: n
 type ProtectedRect = Rect & { sources: string[] };
 
 const COLLISION_GAP = 6;
+const ACTIVITY_CHIP_GAP = 2;
 const CANDIDATE_EPSILON = 0.5;
 
 function intersects(left: Rect, right: Rect, gap = 6): boolean {
@@ -115,6 +116,7 @@ function placeChip(chip: HTMLElement, table: HTMLElement, harvestPoolReadOnly: b
       measuredAt: performance.now(),
       table: { left: tableRect.left, top: tableRect.top, right: tableRect.right, bottom: tableRect.bottom, width: tableRect.width, height: tableRect.height },
       chip: { width, height },
+      activityChipGap: ACTIVITY_CHIP_GAP,
       safeBounds: { left: leftBound, right: rightBound, lowerBandTop, bottom },
       obstacles: obstacles.map(({ sources, ...rect }) => ({ ...rect, sources })),
       candidates: [] as Array<Record<string, unknown>>,
@@ -183,12 +185,12 @@ function placeChip(chip: HTMLElement, table: HTMLElement, harvestPoolReadOnly: b
       continue;
     }
     const relevantObstacles = obstacles.filter((obstacle) =>
-      top < obstacle.bottom + COLLISION_GAP && top + height + COLLISION_GAP > obstacle.top);
+      top < obstacle.bottom + ACTIVITY_CHIP_GAP && top + height + ACTIVITY_CHIP_GAP > obstacle.top);
     const rawCenters = [preferredCenter];
     for (const obstacle of relevantObstacles) {
       rawCenters.push(
-        obstacle.left - width / 2 - COLLISION_GAP - CANDIDATE_EPSILON,
-        obstacle.right + width / 2 + COLLISION_GAP + CANDIDATE_EPSILON,
+        obstacle.left - width / 2 - ACTIVITY_CHIP_GAP - CANDIDATE_EPSILON,
+        obstacle.right + width / 2 + ACTIVITY_CHIP_GAP + CANDIDATE_EPSILON,
       );
     }
     const candidates = [...new Set(rawCenters.map((center) => {
@@ -219,7 +221,7 @@ function placeChip(chip: HTMLElement, table: HTMLElement, harvestPoolReadOnly: b
       width,
       height,
     };
-    const collisions = obstacles.filter((obstacle) => intersects(candidate, obstacle));
+    const collisions = obstacles.filter((obstacle) => intersects(candidate, obstacle, ACTIVITY_CHIP_GAP));
     const horizontalOffset = Math.round((center - preferredCenter) * 10) / 10;
     const candidateRecord = {
       verticalStep,
