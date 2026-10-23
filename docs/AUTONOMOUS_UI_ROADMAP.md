@@ -3112,3 +3112,27 @@ Profile command measurements:
   `/api/health` returned `{"ok":true,"worker":"available"}`.
 - Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. No user
   acceptance is inferred from automated or CI results.
+
+### UX2 §10.7.2.1 R2-D — proven single-target Negation chronology — 2026-10-23
+
+- Source commit `cd8615cd74fbc3c3a83343db6788bf0bf2c1b899` adds visible
+  `#1…#N` badges to physical cards in a fully proven single-target Negation
+  chain. The root and committed responses retain their genuine event, card and
+  author identities; only the current card reveals large at centre, and
+  previously committed cards stay at their actual author Seats. Group/Duel
+  ordinal compatibility is preserved. Server legality, shared Negation timing,
+  privacy and card identities are unchanged.
+- Focused mobile Worker/D1 browser proof passed root plus four physical
+  Negations in 4/6/8-seat rooms and four viewer identities, including refresh,
+  TEST SWITCH, new-root reset and one-card-at-centre behavior. Duel/Group
+  regression passed 6/6; focused presentation/client tests 9/9; API engine
+  tests 45/45; full API suite 301/301 locally; build passed.
+- The first exact-SHA workflow attempt recorded a Wrangler internal error in
+  API shard 1 after that Worker stopped serving requests; the other shard
+  passed 132/132 and the same full API suite passed locally. Re-running the
+  same SHA as workflow attempt 2 passed all required jobs and deployed Worker
+  `c291a53d-bd7b-490c-919c-55b3a4a15946` in Actions
+  [`39912653852`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39912653852).
+  Production `/api/health` returned `{"ok":true,"worker":"available"}`.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. No desktop
+  UX review or user acceptance is inferred.
