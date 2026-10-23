@@ -747,7 +747,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /\.game-shell \.play-center \{[\s\S]*top: clamp\(290px, 66%, 520px\)/, "nonvisual discard flights keep their lower-middle anchor");
   assert.match(sequenceStyleSource, /\.game-shell \.play-center > \.draw-stack,[\s\S]*?\.game-shell \.play-center > \.discard-stack \{[^}]*width: 1px;[^}]*height: 1px;[^}]*opacity: 0;[^}]*pointer-events: none;/, "Deck/Discard geometry targets are tiny, invisible and noninteractive");
   assert.match(gameRoomSource, /className="opponent-equipment-summary"[\s\S]*\{equipmentSummary\}/, "opponent equipment is summarized by its public slots");
-  assert.match(gameRoomSource, /className="opponent-equipment-slot is-empty" data-slot=\{key\} data-occupied="false" aria-hidden="true"/, "empty public Equipment positions reserve space without rendering fake equipped art");
+  assert.match(gameRoomSource, /className="opponent-equipment-slot is-empty" data-slot=\{key\} data-player-equipment-slot-owner=\{player\.id\} data-occupied="false" aria-hidden="true"/, "empty public Equipment positions keep a real owner-slot anchor without rendering fake equipped art");
   assert.match(gameRoomSource, /className="opponent-equipment-indicator" data-slot=\{key\} data-equipment-id=\{equipment\.id\} data-card-kind=\{equipment\.kind\} role="img"/, "equipment indicators retain the projected physical card identity and slot");
   assert.match(gameRoomSource, /function OpponentEquipmentGlyph/, "each equipment slot has its own compact visual glyph");
   assert.match(sequenceStyleSource, /UX2 §10\.8\.2\.2 H2-G1[\s\S]*?\.game-shell \.player-board \.opponent-status-equipment-strip\s*\{[\s\S]*?flex: 0 0 20px[\s\S]*?data-seat-topology="side-column"[\s\S]*?\.opponent-status-equipment-strip\s*\{[\s\S]*?flex-basis: 18px/, "the final seat rules use a compact shared HP/equipment band at both top and side seats");
@@ -1134,7 +1134,8 @@ test("every card-and-target active hero skill has a valid empty-selection UI con
     assert.doesNotMatch(html, /GAME SCREEN ERROR|Previous game data is no longer compatible/, `${activeSkill.effectId} does not render recovery UI`);
   }
 
-  assert.match(gameRoomSource, /const presentationBusy = Boolean\(optimisticPlay \|\| activeEvent \|\| eventQueue\.length/);
+  assert.match(gameRoomSource, /const presentationBusy = Boolean\(optimisticPlay \|\| \(activeEvent && !activeEquipmentArrivalEventId\) \|\| eventQueue\.length/,
+    "a committed Equipment arrival does not block a legal action while other public event animations remain busy");
   assert.match(gameRoomSource, /const activeSkillTargetIds = activeSkillSelection\?\.targetIds \?\? activeSkillTargetSelection\?\.targetIds \?\? \[\]/);
   assert.match(gameRoomSource, /const activeSkillSelectedTargetIds = activeSkillStateIsCurrent \? \(activeSkillSelectionState\?\.targetIds \?\? \[\]\)/);
 
