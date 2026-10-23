@@ -86,6 +86,8 @@ export type PublicCardDisplayAction = {
   ariaLabel: string;
   publicNotice?: string;
   publicNoticeCompact?: string;
+  /** True only when this action was built from the fully validated public Negation-chain proof. */
+  showNegationChainOrdinals?: boolean;
   /** Shared, read-only H4 explanation derived only from a proven public reaction chain. */
   publicNegationNarration?: PublicNegationNarration;
   /** Public participant proven to be affected by the active Bumper Harvest Negation. */
@@ -192,6 +194,7 @@ function PublicJourneyCard({
   primary = false,
   parkingSide,
   showOrdinal = false,
+  ordinalContext,
   harvestHistory = false,
   passive = false,
   harvestRootParked = false,
@@ -204,6 +207,7 @@ function PublicJourneyCard({
   primary?: boolean;
   parkingSide?: string;
   showOrdinal?: boolean;
+  ordinalContext?: "negation-chain" | "duel";
   harvestHistory?: boolean;
   passive?: boolean;
   harvestRootParked?: boolean;
@@ -212,7 +216,10 @@ function PublicJourneyCard({
 }) {
   const inspectable = !passive && card.phase === "parked" && Boolean(onInspectCard);
   const definition = cardDefinition(card.cardFace.kind);
-  const publicOrdinalLabel = card.globalOrdinal === undefined ? "" : `, public card chain step ${card.globalOrdinal}`;
+  const publicOrdinalLabel = card.globalOrdinal === undefined ? ""
+    : ordinalContext === "negation-chain" ? `, Negation chain step ${card.globalOrdinal}`
+      : ordinalContext === "duel" ? `, Duel event ${card.globalOrdinal}`
+        : `, public card chain step ${card.globalOrdinal}`;
   return <button
     type="button"
     className={`public-card-journey-card ${card.phase === "reveal" ? "is-revealing" : ""} ${card.phase === "move" ? "is-moving" : "is-parked"} ${card.layoutPending ? "is-layout-pending" : ""} ${harvestHistory && card.phase === "parked" ? "is-harvest-history-parked" : ""} ${passive ? "is-harvest-history-passive" : ""} ${className} ${lustCostFrame ? "is-lust-cost" : ""} ${inspectable ? "is-inspectable" : ""}`}
@@ -578,6 +585,7 @@ type SeatHistoryCardParking = { rect: CardRect; side: "local" | "top" | "left" |
 type SeatHistoryCardParkingOptions = {
   cardSize?: Pick<CardRect, "width" | "height">;
   sameAuthorRects?: readonly CardRect[];
+  extendNegationChainCollisionSlots?: boolean;
   onPlacementFailure?: (detail: Record<string, unknown>) => void;
   anchorLocalHero?: boolean;
   avoidAuthorSeat?: boolean;
@@ -1190,6 +1198,59 @@ function seatHistoryCardParking(
     top: preferred.top + (horizontalProgression ? offset * perpendicularStride : 0),
     ...cardSize,
   }));
+  if (options.extendNegationChainCollisionSlots) {
+    const extended: CardRect[] = [];
+    const maxColumns = Math.max(0, Math.ceil(tableRect.width / (cardSize.width + gap)));
+    const maxRows = Math.max(0, Math.ceil((safeBottom - safeTop) / (cardSize.height + gap)));
+    if (side === "top") {
+      const horizontalOffsets = [0, ...Array.from({ length: maxColumns }, (_, index) => [index + 1, -(index + 1)]).flat()];
+      const rowsBelowAuthor = Math.max(0, Math.floor((safeBottom - preferred.top) / (cardSize.height + gap)));
+      for (let row = 1; row <= rowsBelowAuthor; row += 1) {
+        for (const column of horizontalOffsets) {
+          extended.push({
+            left: preferred.left + column * (cardSize.width + gap),
+            top: preferred.top + row * (cardSize.height + gap),
+            ...cardSize,
+          });
+        }
+      }
+    } else if (side === "left" || side === "right") {
+      const verticalOffsets = [0, ...Array.from({ length: maxRows }, (_, index) => [index + 1, -(index + 1)]).flat()];
+      for (let column = -maxColumns; column <= maxColumns; column += 1) {
+        for (const row of verticalOffsets) {
+          if (!column && !row) continue;
+          extended.push({
+            left: preferred.left + direction * column * (cardSize.width + gap),
+            top: preferred.top + row * (cardSize.height + gap),
+            ...cardSize,
+          });
+        }
+      }
+      // When repeated authors exhaust the regular 78px grid, align another
+      // card in the same narrow seat-front lane to an occupied card edge.
+      // This keeps the public card close to its real author while preserving
+      // the measured 6px gap; the common safety predicate below still rejects
+      // any edge that would intersect a card, seat, or viewport boundary.
+      const seatFrontLeft = side === "left"
+        ? seat.right + gap
+        : seat.left - cardSize.width - gap;
+      const edgeAlignedTops = occupied.flatMap((rect) => [
+        rect.top + rect.height + gap,
+        rect.top - cardSize.height - gap,
+      ]);
+      for (const top of edgeAlignedTops) {
+        extended.push({ left: seatFrontLeft, top, ...cardSize });
+      }
+    }
+    extended.sort((first, second) => {
+      const distance = (candidate: CardRect) => Math.hypot(
+        Math.max(seat.left - candidate.left - candidate.width, candidate.left - seat.right, 0),
+        Math.max(seat.top - candidate.top - candidate.height, candidate.top - seat.bottom, 0),
+      );
+      return distance(first) - distance(second);
+    });
+    candidates.push(...extended);
+  }
   const anchors = [...document.querySelectorAll<HTMLElement>("[data-player-anchor]")]
     .filter((candidate) => candidate !== anchor && candidate.dataset.playerAnchor !== actorId)
     .map((candidate) => candidate.getBoundingClientRect())
@@ -1245,16 +1306,29 @@ function seatHistoryCardParking(
     });
   }
   const topPhoneEdgeCorridor = options.protectInteractionControls && side === "top";
-  const safe = candidates.find((candidate) => candidate.left >= (topPhoneEdgeCorridor ? 2 : Math.max(4, localAnchor ? 0 : tableRect.left + 4))
-    && candidate.left + candidate.width <= (topPhoneEdgeCorridor
-      ? window.innerWidth - 2
-      : Math.min(window.innerWidth - 4, localAnchor ? window.innerWidth - 4 : tableRect.right - 4))
-    && candidate.top >= (localAnchor ? 4 : safeTop)
-    && candidate.top <= (localAnchor ? window.innerHeight - cardSize.height - 4 : safeBottom)
-    && (!options.protectInteractionControls || !rectsOverlap(candidate, seat, 2))
-    && !occupied.some((rect) => rectsOverlap(rect, new DOMRect(candidate.left, candidate.top, candidate.width, candidate.height), 4))
-    && anchors.every((obstacle) => !rectsOverlap(candidate, obstacle, 3))
-    && protectedObstacles.every((obstacle) => !rectsOverlap(candidate, obstacle, 2)));
+  const candidateSafety = (candidate: CardRect) => ({
+    horizontalBounds: candidate.left >= (topPhoneEdgeCorridor ? 2 : Math.max(4, localAnchor ? 0 : tableRect.left + 4))
+      && candidate.left + candidate.width <= (topPhoneEdgeCorridor
+        ? window.innerWidth - 2
+        : Math.min(window.innerWidth - 4, localAnchor ? window.innerWidth - 4 : tableRect.right - 4)),
+    verticalBounds: candidate.top >= (localAnchor ? 4 : safeTop)
+      && candidate.top <= (localAnchor ? window.innerHeight - cardSize.height - 4 : safeBottom),
+    actorSeat: (!(options.extendNegationChainCollisionSlots || options.protectInteractionControls)
+      || !rectsOverlap(candidate, seat, 2)),
+    occupiedCards: occupied.filter((rect) => rectsOverlap(rect, new DOMRect(candidate.left, candidate.top, candidate.width, candidate.height), 4)),
+    otherSeats: anchors.filter((obstacle) => rectsOverlap(candidate, obstacle, 3)),
+    protectedObstacles: protectedObstacles.filter((obstacle) => rectsOverlap(candidate, obstacle, 2)),
+  });
+  const isSafeCandidate = (candidate: CardRect) => {
+    const safety = candidateSafety(candidate);
+    return safety.horizontalBounds
+      && safety.verticalBounds
+      && safety.actorSeat
+      && safety.occupiedCards.length === 0
+      && safety.otherSeats.length === 0
+      && safety.protectedObstacles.length === 0;
+  };
+  const safe = candidates.find(isSafeCandidate);
   if (safe) return { rect: safe, side };
   if (options.protectInteractionControls) return null;
   // Preserve the seat-front anchor as the deterministic final fallback. This
@@ -2868,11 +2942,13 @@ function singleTargetParkingOptions(
   action: PublicCardDisplayAction,
   event: JourneyCard,
   harvestPoolVisible: boolean,
+  extendNegationChainCollisionSlots = action.showNegationChainOrdinals === true,
 ): SeatHistoryCardParkingOptions {
   const harvest = action.cardFace?.kind === "BumperHarvest";
   const compactHarvestMini = harvest
     && typeof window !== "undefined" && window.matchMedia("(max-width: 520px)").matches;
   return {
+    extendNegationChainCollisionSlots,
     // All parked Harvest history (root and committed responses) uses the
     // same footprint. The 90×135 reveal remains a separate live phase.
     cardSize: compactHarvestMini ? HARVEST_MOBILE_RESPONSE_CARD : PARKED_CARD,
@@ -2931,13 +3007,16 @@ function SingleTargetCardJourney({
 }) {
   const motion = singleTargetJourneyMotion(action.motion);
   const isBumperHarvest = action.cardFace?.kind === "BumperHarvest";
+  const showNegationChainOrdinals = Boolean(action.showNegationChainOrdinals
+    && action.interactionId
+    && (motion?.type === "negation" || motion?.type === "single-target"));
   const harvestPoolVisible = isBumperHarvest && (harvestPoolReadOnly || harvestChoiceActive);
   const harvestRootPoolVisible = harvestPoolReadOnly && isBumperHarvest;
   const harvestPoolAboveRoot = harvestPoolVisible;
   const historyOnly = Boolean(retainHarvestHistory && isBumperHarvest && !enabled);
   const journeyEnabled = enabled || historyOnly;
   const scopeKey = motion?.scopeKey ?? action.rootEventId;
-  const [journey, setJourney] = useState<SingleTargetJourneyState>({ scopeKey: "", viewerId: "", harvestPoolReadOnly: false, cards: [], center: null, suppressTransitions: false, layoutPending: false });
+  const [journey, setJourney] = useState<SingleTargetJourneyState>({ scopeKey: "", viewerId: "", harvestPoolReadOnly: false, showNegationChainOrdinals: false, cards: [], center: null, suppressTransitions: false, layoutPending: false });
   const journeyRef = useRef(journey);
   const actionRef = useRef(action);
   const sourceNameRef = useRef(sourceName);
@@ -3014,6 +3093,9 @@ function SingleTargetCardJourney({
     const previous = journeyRef.current;
     const sameInteraction = previous.scopeKey === scopeKey;
     const viewerChanged = sameInteraction && previous.viewerId !== viewerId;
+    const hasNegationChainParking = currentAction.showNegationChainOrdinals === true
+      || journeyEvents.some((event) => event.role === "response" && (event.globalOrdinal ?? 0) > 1);
+    const ordinalLayoutChanged = sameInteraction && previous.showNegationChainOrdinals !== hasNegationChainParking;
     const harvestLayoutChanged = sameInteraction && previous.harvestPoolReadOnly !== harvestPoolReadOnly;
     const priorById = new Map(previous.cards.map((card) => [card.eventId, card]));
     const fresh = new Set(currentMotion.freshEventIds);
@@ -3030,11 +3112,11 @@ function SingleTargetCardJourney({
       const actorIndex = actorIndexes.get(event.actorId) ?? 0;
       actorIndexes.set(event.actorId, actorIndex + 1);
       const parkingOptions = {
-        ...singleTargetParkingOptions(currentAction, event, harvestPoolAboveRoot),
+        ...singleTargetParkingOptions(action, event, harvestPoolAboveRoot, hasNegationChainParking),
         sameAuthorRects: measuredRectsByActor.get(event.actorId) ?? [],
         ...placementFailureReporter(event),
       };
-      const measuredTarget = (old && !viewerChanged && !harvestLayoutChanged && !previous.layoutPending && !parkingOptions.protectInteractionControls
+      const measuredTarget = (old && !viewerChanged && !harvestLayoutChanged && !ordinalLayoutChanged && !hasNegationChainParking && !previous.layoutPending && !parkingOptions.protectInteractionControls
         ? old.target
         : seatHistoryCardParking(event.actorId, actorIndex, occupied, parkingOptions)?.rect
           ?? (!parkingOptions.protectInteractionControls ? actorParkedCard(event.actorId, actorIndex) : null));
@@ -3131,14 +3213,15 @@ function SingleTargetCardJourney({
       scopeKey,
       viewerId,
       harvestPoolReadOnly,
+      showNegationChainOrdinals: hasNegationChainParking,
       cards: presentedCards,
       center,
-      suppressTransitions: viewerChanged || harvestLayoutChanged || previous.suppressTransitions,
+      suppressTransitions: viewerChanged || harvestLayoutChanged || ordinalLayoutChanged || hasNegationChainParking || previous.suppressTransitions,
       layoutPending,
     };
     journeyRef.current = next;
     setJourney(next);
-  }, [enabled, journeyEnabled, historyOnly, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, scopeKey, eventSignature, freshSignature, viewerId, placementFailureReporter]);
+  }, [enabled, journeyEnabled, historyOnly, harvestChoiceActive, harvestPoolAboveRoot, harvestRootPoolVisible, harvestPoolReadOnly, action.showNegationChainOrdinals, scopeKey, eventSignature, freshSignature, viewerId, placementFailureReporter]);
 
   useEffect(() => {
     if (!journey.suppressTransitions || journey.scopeKey !== scopeKey) return;
@@ -3625,7 +3708,7 @@ function SingleTargetCardJourney({
   }, [action.settlement?.eventId, allParked, enabled, journey.scopeKey, onJourneySettled, scopeKey]);
   if (!journeyEnabled || !sourceName || journey.scopeKey !== scopeKey || !journey.center) return null;
   return <section
-    className={`public-card-display public-card-display-journey${harvestPoolAboveRoot ? " is-harvest-pool-active" : ""}${historyOnly ? " is-harvest-history-passive" : ""}${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}${viewerLayoutPending ? " is-viewer-layout-pending" : ""}`}
+    className={`public-card-display public-card-display-journey${harvestPoolAboveRoot ? " is-harvest-pool-active" : ""}${historyOnly ? " is-harvest-history-passive" : ""}${showNegationChainOrdinals ? " is-negation-chain-ordinal" : ""}${action.settlement?.exiting || action.publicCounterRead?.exiting ? " is-exiting" : ""}${journey.suppressTransitions ? " is-reflowing" : ""}${journey.layoutPending ? " is-layout-pending" : ""}${viewerLayoutPending ? " is-viewer-layout-pending" : ""}`}
     data-public-card-display="true"
     data-public-card-renderer-kind="single-target-journey"
     data-public-card-ready="true"
@@ -3635,6 +3718,7 @@ function SingleTargetCardJourney({
     data-public-card-layout-viewer-id={journey.viewerId || undefined}
     data-public-card-harvest-active={harvestRootPoolVisible ? "true" : undefined}
     data-public-card-harvest-history-passive={historyOnly ? "true" : undefined}
+    data-public-card-ordinal-context={showNegationChainOrdinals ? "negation-chain" : undefined}
     data-public-card-event-id={activeEventId}
     data-public-card-root-event-id={action.rootEventId}
     data-public-card-id={currentPublicCard?.id}
@@ -3655,7 +3739,8 @@ function SingleTargetCardJourney({
         size={card.rect.width < REVEAL_CARD.width ? "thumbnail" : "reveal"}
         className={isCurrent ? "is-current" : "is-prior"}
         primary={isCurrent}
-        showOrdinal={isBumperHarvest && card.phase === "parked"}
+        showOrdinal={showNegationChainOrdinals || isBumperHarvest && card.phase === "parked"}
+        ordinalContext={showNegationChainOrdinals ? "negation-chain" : undefined}
         harvestHistory={isBumperHarvest}
         passive={historyOnly}
         harvestRootParked={(harvestRootPoolVisible || harvestChoiceActive && isBumperHarvest)
@@ -3663,9 +3748,11 @@ function SingleTargetCardJourney({
         lustCostFrame={action.motion?.type === "lust-cost" && card.role === "root" ? action.lustCostFrame : undefined}
       />;
     })}
-    <ol className="duel-public-card-history-accessible" aria-label="Chronological public card history">
-      {incoming.map((event) => <li key={event.eventId} value={event.globalOrdinal}>
-        Public card event {event.globalOrdinal}: {event.ariaLabel}
+    <ol className="duel-public-card-history-accessible" aria-label={showNegationChainOrdinals ? "Chronological Negation chain history" : "Chronological public card history"}>
+      {incoming.map((event) => <li key={event.eventId} value={showNegationChainOrdinals || isBumperHarvest ? event.globalOrdinal : undefined}>
+        {showNegationChainOrdinals
+          ? `Negation chain step ${event.globalOrdinal}: ${event.ariaLabel}`
+          : isBumperHarvest ? `Public card event ${event.globalOrdinal}: ${event.ariaLabel}` : event.ariaLabel}
       </li>)}
     </ol>
     {!historyOnly && <PublicCardAnnouncement
@@ -3726,6 +3813,7 @@ type SingleTargetJourneyState = {
   scopeKey: string;
   viewerId: string;
   harvestPoolReadOnly: boolean;
+  showNegationChainOrdinals: boolean;
   cards: SingleTargetJourneyCard[];
   center: CardRect | null;
   suppressTransitions: boolean;
@@ -4413,6 +4501,7 @@ function DuelCardJourney({
       primary={card.eventId === activeEventId}
       parkingSide={card.parkingSide}
       showOrdinal
+      ordinalContext="duel"
       lustCostFrame={action.motion?.type === "lust-duel" && card.role === "root" ? action.lustCostFrame : undefined}
     />)}
     <ol className="duel-public-card-history-accessible" aria-label="Chronological Duel card history">

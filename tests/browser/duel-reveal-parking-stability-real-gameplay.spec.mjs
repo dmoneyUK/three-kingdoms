@@ -410,9 +410,10 @@ test("server-backed Duel cards reveal at full size for four seconds, then park b
     checkpoints.push({ checkpoint: "duel-3.5s-full-size", elapsedMs: Date.now() - revealStart, ...rootGeometry });
     await screenshot(page, testInfo, "duel-reveal-3.5s-440x894");
 
-    const waitingCopy = page.locator(".public-card-display-journey-copy[data-public-card-phase-notice]");
-    await expect(waitingCopy).toHaveAttribute("data-public-card-phase-notice", "NEGATION MAY BE PLAYED");
-    await expect(waitingCopy).toContainText("Negation can be played");
+    const waitingCopy = page.locator('.public-card-display-journey-copy[data-public-negation-phase="WINDOW_OPEN"]');
+    await expect(waitingCopy).toBeVisible();
+    await expect(waitingCopy).toContainText("Negation response open");
+    await expect(waitingCopy).toContainText("Duel not yet resolved");
     const pass = page.getByRole("button", { name: /^(?:Skip|Pass)$/ });
     await expect(pass).toBeEnabled();
     await screenshot(page, testInfo, "duel-negation-waiting-controls-live-440x894");
@@ -832,6 +833,10 @@ test("server-proven Duel Negation counters retain their ordered author-seat hist
     expect(restored.map(({ eventId }) => eventId)).toEqual(committedHistory.map(({ event }) => event.id));
     expect(restored.map(({ actorId }) => actorId)).toEqual(committedHistory.map(({ actor }) => actor.id));
     expect(restored.every(({ phase }) => phase === "parked")).toBe(true);
+    for (const [ordinalIndex, item] of committedHistory.entries()) {
+      await expect(page.locator(`[data-public-card-journey-event-id="${item.event.id}"]`))
+        .toHaveAttribute("aria-label", new RegExp(`Duel event ${ordinalIndex + 1}`));
+    }
     await screenshot(page, testInfo, `duel-negation-${playerCount}-seats-refresh-restores-history`);
 
     const localDock = page.locator(`.local-player-dock[data-player-anchor="${source.id}"]`);
@@ -1248,7 +1253,7 @@ test("server-proven single-target Negation and counter history survives refresh 
     expect(rendered.map(({ cardId }) => cardId)).toEqual(committedHistory.map(({ cardId }) => cardId));
     expect(rendered.map(({ ordinal }) => ordinal)).toEqual(committedHistory.map((_, eventIndex) => eventIndex + 1));
     expect(rendered.every(({ phase }) => phase === "parked")).toBe(true);
-    expect(await display.locator('[aria-label="Chronological public card history"] li').allTextContents()).toHaveLength(committedHistory.length);
+    expect(await display.locator('[aria-label="Chronological Negation chain history"] li').allTextContents()).toHaveLength(committedHistory.length);
   }
 
   const publicState = await view(request, room, 0);

@@ -5129,6 +5129,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       sourceId: singleTargetNegationProofCandidate.root.source.id!,
       targetId: singleTargetNegationProofCandidate.root.targets[0]!.id!,
       cardKind: singleTargetNegationProofCandidate.root.cardKind!,
+      ...(singleTargetNegationUsesJourney ? { showNegationChainOrdinals: true } : {}),
       cardFace: singleTargetNegationProofCandidate.rootEvent.card,
       cardLabel: cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name.toUpperCase(),
       ariaLabel: `${singleTargetNegationProofCandidate.root.source.name} played ${cardDefinition(singleTargetNegationProofCandidate.root.cardKind!).name} targeting ${singleTargetNegationProofCandidate.root.targets[0]!.name}`,
@@ -5305,8 +5306,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     } : {}),
   } : null;
   const singleTargetNegationOwnsRoot = Boolean(singleTargetNegationUsesJourney && singleTargetNegationProofCandidate
-    && (!rootAction || rootAction.rootEventId === singleTargetNegationProofCandidate.rootEvent.id)
-    && (clientPresentation.stage === "NEGATION" || singleTargetNegationProofCandidate.responseNodes.length > 0));
+    && (!rootAction || rootAction.rootEventId === singleTargetNegationProofCandidate.rootEvent.id));
   const livePublicCardAction: PublicCardDisplayAction | null = heldPublicNegationReadAction
     ? heldPublicNegationReadAction
     : lustDuelPublicAction
