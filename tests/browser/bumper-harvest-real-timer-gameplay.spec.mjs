@@ -553,6 +553,22 @@ test("NEG-A1 restores the authenticated Harvest choice after a committed Negatio
     expect(chooseRequests[0].cardId).toBe(chosenCardId);
     const settledActor = await roomView(request, seed, actorIndex);
     expect(settledActor.myHand.map(({ id }) => id)).toContain(chosenCardId);
+
+    const nextChooserRoom = await reachAuthorizedHarvestChoice(request, seed);
+    const nextActorIndex = seed.players.findIndex(({ id }) => id === nextChooserRoom.pendingHarvest.actorId);
+    expect(nextActorIndex, "the next sequential choice is owned by a different authenticated viewer").toBeGreaterThanOrEqual(0);
+    expect(nextActorIndex).not.toBe(actorIndex);
+    await Promise.all(viewers.map(async ({ viewer, page: viewerPage }) => {
+      const nextStage = viewerPage.locator(".harvest-choice-stage");
+      if (viewer.id === seed.players[nextActorIndex].id) {
+        await expect(nextStage).toHaveAttribute("data-harvest-choice-authorized", "true");
+        await expect(viewerPage.locator(".harvest-card-select:not([disabled])").first()).toBeVisible();
+      } else {
+        await expect(nextStage).toHaveAttribute("data-harvest-choice-authorized", "false");
+        await expect(nextStage).toHaveAttribute("data-harvest-readonly", "true");
+        await expect(viewerPage.locator(".harvest-card-select, .harvest-confirm-row")).toHaveCount(0);
+      }
+    }));
   } finally {
     await Promise.all(contexts.map((context) => context.close()));
   }
