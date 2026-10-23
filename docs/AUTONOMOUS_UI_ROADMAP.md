@@ -3171,3 +3171,27 @@ Profile command measurements:
 - Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. CI and
   browser checks do not constitute owner acceptance; no desktop or real-phone
   review is claimed.
+
+
+### UX2 §10.13.2.2 U13-B-G — Group/Negation activity-chip clearance correction — 2026-10-23
+
+- Source commit `b70c003eca12e5097e75201f95b8b1faabedce72` uses a 2px
+  collision clearance for the public activity plaque while retaining the
+  existing 6px Harvest-pool clearance. At 390×844, this accepts the measured
+  4.5px real gap below the current centre CardFace instead of hiding the shared
+  waiting status. H4/card geometry, public identity/projection, gameplay, chip
+  typography and touch behavior are unchanged.
+- Focused mobile proof: the existing four-viewer Group/Negation guard passed at
+  390×700, 390×844, 440×894 and 480×900; all four screenshots show the same
+  status plaque visible without collision with the centre CardFace or Local
+  Dock. The existing activity-chip mobile suite passed 4/4, covering the
+  original 440×766 Duel parking case (12px offset, no 102.5px jump) and 4/6/8/10
+  player arrangements. Targeted ESLint, build and `git diff --check` passed.
+- Exact-SHA [Actions 39920246252](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39920246252)
+  passed lint/build/fast, API, browser startup/room smoke, D1 migration, Worker
+  deployment and production smoke. Worker version
+  `cec77337-1ca5-412a-8120-b3468ec6d57b`; direct production `/` and
+  `/api/health` returned 200, with health
+  `{"ok":true,"worker":"available"}`.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. No user
+  phone acceptance is inferred.
