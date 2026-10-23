@@ -3263,3 +3263,26 @@ Profile command measurements:
 - Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. T2's
   public destination/real-card proof and T3's responsive end-to-end regression
   remain separate; no desktop or owner-phone acceptance is inferred.
+
+### UX2 §10.10 T2 — Public target-card source/destination proof — 2026-10-23
+
+- Source commit `8f4b13524236f2187217ffa85399584a2a7deea2` adds validated
+  public source-zone, affected-owner and destination evidence for Steal and
+  Burning Bridges. Hidden-Hand Steal never includes the selected CardFace;
+  public Equipment/Judgement transfers and committed public discards retain
+  the genuine authorized face. Presentation and timeline normalization fail
+  closed on incomplete or mismatched proof.
+- All six effect × source-zone cases passed the focused real Worker/D1 API
+  matrix (29/29) and four-independent-viewer mobile browser matrix (one test,
+  six cases at 390×844), including equal viewer proofs, actor-only picker
+  privacy, public result attributes, reload, and Hand privacy. Focused copy and
+  room-safety tests passed 14/14; targeted ESLint had zero errors and 15
+  existing Hook dependency warnings; local build, browser syntax and diff
+  checks passed. No desktop or owner-phone review is claimed.
+- Exact-SHA [Actions 39932636158](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39932636158)
+  passed browser startup/room smoke, lint/build/fast, API, D1 migration,
+  Worker deployment and production smoke. Worker version
+  `7fabca04-b429-46e2-8794-6d020cac85ef`; direct production `/api/health`
+  returned `{"ok":true,"worker":"available"}`.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. T3
+  responsive end-to-end regression is the next independent slice.
