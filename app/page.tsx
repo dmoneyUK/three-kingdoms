@@ -2536,7 +2536,21 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
   const excessCards = Math.max(0, room.myHand.length - (me?.hp ?? 0));
   const myTableIndex = Math.max(0, room.players.findIndex((player) => player.id === room.meId));
   const canPlay = room.phase?.startsWith("play") && room.status === "playing";
-  const canChooseHarvest = room.phase === "response" && Boolean(room.pendingHarvest) && !room.pendingHarvest?.complete && room.isMyAction;
+  const harvestActionRevision = room.actionRevision ?? "";
+  const hasAvailableHarvestChoice = Boolean(room.pendingHarvest?.availableIds.some((availableId) =>
+    room.pendingHarvest?.revealed.some((choice) => choice.id === availableId)));
+  // CurrentAction is the server-owned permission for this viewer. Decorative
+  // timeline animation must not hide an already-authorized Harvest decision.
+  const canChooseHarvest = Boolean(room.phase === "response"
+    && room.pendingHarvest
+    && !room.pendingHarvest.complete
+    && room.pendingHarvest.actorId === room.meId
+    && room.isMyAction
+    && room.currentAction?.kind === "harvest"
+    && room.currentAction.actorId === room.pendingHarvest.actorId
+    && canUseAction(room.currentAction, "choose_harvest")
+    && harvestActionRevision.length > 0
+    && hasAvailableHarvestChoice);
   const canChooseTargetCard = room.phase === "response" && Boolean(room.pendingTargetCard) && room.isMyAction;
   const canChooseBorrowedSword = room.phase === "response" && room.isMyAction && room.pendingBorrowedSword?.stage === "choose_target";
   const pendingBorrowedSwordEligibleTargetIds = room.pendingBorrowedSword?.eligibleTargetIds;
@@ -7350,8 +7364,10 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
         key={harvestDisplay.revealEventId ?? "bumper-harvest-public-pool"}
         ref={harvestStageRef}
         className="game-event-stage harvest-choice-stage"
-        data-harvest-actor={canChooseHarvest && !presentationBusy ? room.meId : undefined}
-        data-harvest-readonly={canChooseHarvest && !presentationBusy ? undefined : "true"}
+        data-harvest-actor={canChooseHarvest ? room.meId : undefined}
+        data-harvest-readonly={canChooseHarvest ? undefined : "true"}
+        data-harvest-choice-authorized={canChooseHarvest ? "true" : "false"}
+        data-harvest-choice-action-revision={canChooseHarvest ? harvestActionRevision : undefined}
         data-harvest-root-event-id={room.publicHarvestPool?.rootEventId ?? room.presentationV2?.bumperHarvestProgress?.rootEventId}
         data-harvest-reveal-event-id={harvestDisplay.revealEventId ?? undefined}
         data-harvest-panel-top={harvestStageTop ?? undefined}
@@ -7363,12 +7379,12 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           right: harvestStageInsets ? `${harvestStageInsets.right}px` : undefined,
         }}
       >
-        <section className={`harvest-choice-panel${canChooseHarvest && !presentationBusy ? " harvest-choice-panel--actor" : ""}`} aria-label={canChooseHarvest && !presentationBusy ? "Your Bumper Harvest choice" : "Public Bumper Harvest cards"}>
+        <section className={`harvest-choice-panel${canChooseHarvest ? " harvest-choice-panel--actor" : ""}`} aria-label={canChooseHarvest ? "Your Bumper Harvest choice" : "Public Bumper Harvest cards"}>
           <header className="harvest-choice-heading">
             <b>Bumper Harvest</b>
             <span>{harvestReadOnlyDuringNegation
               ? harvestEffectRecipient ? `Negation for ${harvestEffectRecipient.participantName} · Read-only` : "Read-only · Negation resolving"
-              : canChooseHarvest && !presentationBusy ? "Choose one revealed card" : room.pendingHarvest?.complete ? "Choices complete" : "Public cards · read-only"}</span>
+              : canChooseHarvest ? "Choose one revealed card" : room.pendingHarvest?.complete ? "Choices complete" : "Public cards · read-only"}</span>
           </header>
           <div
             className="harvest-card-row"
@@ -7381,7 +7397,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               const takenBy = harvestDisplay.choices.find((entry) => entry.cardId === choice.id);
               const submittedByMe = harvestSubmitting?.playerId === room.meId && harvestSubmitting.cardId === choice.id;
               const available = harvestDisplay.availableIds.includes(choice.id);
-              const awaitingConfirmation = canChooseHarvest && !presentationBusy && !submittedByMe && activeHarvestSelection === choice.id;
+              const awaitingConfirmation = canChooseHarvest && !submittedByMe && activeHarvestSelection === choice.id;
               const choiceLabel = takenBy
                 ? `${name}, taken by ${takenBy.playerName}`
                 : submittedByMe
@@ -7394,7 +7410,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                 key={choice.id}
               >
                 <CardFace card={choice} harvestChoice />
-                {canChooseHarvest && !presentationBusy && <button
+                {canChooseHarvest && <button
                   type="button"
                   className="harvest-card-select"
                   disabled={Boolean(harvestSubmitting) || busy || !available}
@@ -7402,7 +7418,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                   aria-label={choiceLabel}
                   onClick={() => toggleHarvestSelection(choice.id)}
                 />}
-                {!canChooseHarvest || presentationBusy
+                {!canChooseHarvest
                   ? <span className="harvest-availability-label">{takenBy ? `Taken by ${takenBy.playerName}` : submittedByMe ? "Submitting" : available ? "Available" : "Unavailable"}</span>
                   : null}
                 {awaitingConfirmation && <span className="harvest-pending-label">Selected</span>}
@@ -7417,7 +7433,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
             })}
           </div>
           {room.players.length >= 5 && harvestDisplay.revealed.length >= 4 && <span className="harvest-scroll-hint" aria-hidden="true">Swipe to see all cards ↔</span>}
-          {canChooseHarvest && !presentationBusy && <footer className="harvest-confirm-row">
+          {canChooseHarvest && <footer className="harvest-confirm-row">
             <span className="harvest-selection-count" aria-live="polite">{harvestSelectedCard ? "1 selected" : "Choose 1 card"}</span>
             <button type="button" className="primary" disabled={busy || !harvestSelectedCard || Boolean(harvestSubmitting)} onClick={confirmHarvestChoice}>Confirm choice</button>
           </footer>}
@@ -7549,6 +7565,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
               data-console-response-presentation-ready={responsePresentationReady ? "true" : "false"}
               data-console-response-decision-ready={responseDecisionReady ? "true" : "false"}
               data-console-presentation-busy={presentationBusy ? "true" : "false"}
+              data-console-presentation-busy-causes={JSON.stringify({ optimisticPlay: Boolean(optimisticPlay), activeEvent: Boolean(activeEvent && !activeEquipmentArrivalEventId), eventQueue: eventQueue.length > 0, resolutionClosing, turnNotice: Boolean(turnNotice), privateDrawCards: privateDrawCards.length > 0, hasUnseenPresentations })}
               data-console-active-skill-selection-busy={activeSkillSelectionBusy ? "true" : "false"}
               data-console-network-busy={busy ? "true" : "false"}
               data-lust-local-selection={lustLocalSelectionActive ? "true" : undefined}

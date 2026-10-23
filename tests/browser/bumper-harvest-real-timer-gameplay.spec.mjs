@@ -15,14 +15,14 @@ const deck = [
   { id: "real-harvest-timer-duel", kind: "Duel", suit: "♦", rank: "10" },
 ];
 
-async function seedGame(request) {
+async function seedGame(request, { firstNegation = null } = {}) {
   const response = await request.post(`${API}/__test/seed-playing-game`, {
     data: {
       phase: "play",
       turnSeat: 0,
       players: [
         { name: "HARVEST SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [harvest] },
-        { name: "CHOOSER TWO", role: "Loyalist", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
+        { name: "CHOOSER TWO", role: "Loyalist", hero: "sun-quan", hp: 4, maxHp: 4, hand: firstNegation ? [firstNegation] : [] },
         { name: "CHOOSER THREE", role: "Rebel", hero: "guo-jia", hp: 4, maxHp: 4, hand: [] },
         { name: "CHOOSER FOUR", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: [] },
       ],
@@ -51,6 +51,111 @@ async function roomView(request, seed, playerIndex) {
   })}`);
   expect(response.ok()).toBeTruthy();
   return response.json();
+}
+
+async function commitNegation(request, seed, winnerIndex, cardId) {
+  const winner = seed.players[winnerIndex];
+  let current = await roomView(request, seed, winnerIndex);
+  for (let attempt = 0; attempt < seed.players.length + 1 && current.currentAction?.actorId !== winner.id; attempt += 1) {
+    const actorIndex = seed.players.findIndex(({ id }) => id === current.currentAction?.actorId);
+    expect(actorIndex, "the Negation window actor belongs to this authenticated room").toBeGreaterThanOrEqual(0);
+    const actor = seed.players[actorIndex];
+    const windowId = current.currentAction?.negationWindowId;
+    expect(windowId).toBeTruthy();
+    expect(current.currentAction?.legalActions).toContain("decline_response");
+    const passed = await request.post(`${API}/api/rooms`, {
+      data: { action: "decline_response", code: seed.code, token: actor.token, context: { windowId } },
+    });
+    expect(passed.ok(), `${actor.name} passes before the Negation holder: ${await passed.text()}`).toBeTruthy();
+    current = await roomView(request, seed, winnerIndex);
+  }
+  expect(current.currentAction?.actorId).toBe(winner.id);
+  const windowId = current.currentAction?.negationWindowId;
+  expect(windowId).toBeTruthy();
+  const held = await request.post(`${API}/__test/negation-window-clock`, {
+    data: { code: seed.code, windowId, mode: "hold" },
+  });
+  expect(held.ok(), await held.text()).toBeTruthy();
+  const intent = await request.post(`${API}/api/rooms`, {
+    data: { action: "respond", code: seed.code, token: winner.token, providerId: "negation_card", cardId, context: { windowId } },
+  });
+  expect(intent.ok(), `the authenticated Negation intent is accepted: ${await intent.text()}`).toBeTruthy();
+  for (const player of seed.players) {
+    if (player.id === winner.id) continue;
+    const passed = await request.post(`${API}/api/rooms`, {
+      data: { action: "decline_response", code: seed.code, token: player.token, context: { windowId } },
+    });
+    expect(passed.ok(), `${player.name} passes the shared Negation window: ${await passed.text()}`).toBeTruthy();
+  }
+  const settled = await roomView(request, seed, 0);
+  const event = settled.timeline.find((entry) => entry?.type === "card" && entry.action === "play" && entry.card?.id === cardId);
+  expect(event, "the committed physical Negation becomes public after the shared window settles").toBeTruthy();
+  expect(event.player).toBe(winner.name);
+  return { event, room: settled };
+}
+
+async function reachAuthorizedHarvestChoice(request, seed) {
+  let latest = null;
+  for (let attempt = 0; attempt < seed.players.length * 5; attempt += 1) {
+    latest = await roomView(request, seed, 0);
+    if (latest.pendingHarvest
+      && latest.currentAction?.kind === "harvest"
+      && latest.currentAction.actorId === latest.pendingHarvest.actorId) {
+      const chooserIndex = seed.players.findIndex(({ id }) => id === latest.currentAction.actorId);
+      expect(chooserIndex, "the Harvest CurrentAction actor belongs to this room").toBeGreaterThanOrEqual(0);
+      const chooserRoom = await roomView(request, seed, chooserIndex);
+      if (chooserRoom.isMyAction && chooserRoom.currentAction?.legalActions?.includes("choose_harvest")) return chooserRoom;
+      throw new Error(`Harvest CurrentAction actor projection does not authorize the chooser: ${JSON.stringify({
+        observerMeId: latest.meId,
+        actorMeId: chooserRoom.meId,
+        pendingActorId: chooserRoom.pendingHarvest?.actorId,
+        currentAction: chooserRoom.currentAction,
+        actionRevision: chooserRoom.actionRevision,
+      })}`);
+    }
+    if (latest.phase !== "response") break;
+    const actorIndex = seed.players.findIndex(({ id }) => id === latest.currentAction?.actorId);
+    expect(actorIndex, "the next server-owned response actor belongs to this room").toBeGreaterThanOrEqual(0);
+    const actor = seed.players[actorIndex];
+    const actorRoom = await roomView(request, seed, actorIndex);
+    const windowId = actorRoom.currentAction?.negationWindowId;
+    expect(windowId, JSON.stringify({ phase: actorRoom.phase, pendingKind: actorRoom.pending?.kind, pendingHarvest: actorRoom.pendingHarvest ? {
+      actorId: actorRoom.pendingHarvest.actorId,
+      complete: actorRoom.pendingHarvest.complete,
+      availableIds: actorRoom.pendingHarvest.availableIds,
+    } : null, currentAction: actorRoom.currentAction, actionRevision: actorRoom.actionRevision })).toBeTruthy();
+    if (actorRoom.currentAction?.legalActions?.includes("decline_response")) {
+      const passed = await request.post(`${API}/api/rooms`, {
+        data: {
+          action: "decline_response",
+          code: seed.code,
+          token: actor.token,
+          context: {
+            actionRevision: actorRoom.actionRevision,
+            meId: actor.id,
+            phase: "response",
+            pendingKind: "response",
+            windowId,
+          },
+        },
+      });
+      expect(passed.ok(), `${actor.name} passes the next public Negation window: ${await passed.text()}`).toBeTruthy();
+    } else {
+      const expired = await request.post(`${API}/__test/negation-window-clock`, {
+        data: { code: seed.code, windowId, mode: "expire" },
+      });
+      expect(expired.ok(), await expired.text()).toBeTruthy();
+      const advanced = await request.post(`${API}/api/rooms`, {
+        data: { action: "advance_timers", code: seed.code, token: seed.players[0].token },
+      });
+      expect(advanced.ok(), await advanced.text()).toBeTruthy();
+    }
+  }
+  throw new Error(`No server-authorized Harvest choice after the committed Negation: ${JSON.stringify({
+    phase: latest?.phase,
+    pendingHarvest: latest?.pendingHarvest ? { actorId: latest.pendingHarvest.actorId, availableIds: latest.pendingHarvest.availableIds } : null,
+    currentAction: latest?.currentAction,
+  })}`);
 }
 
 function postedAction(page, action) {
@@ -267,5 +372,183 @@ test("real Bumper Harvest gives each active chooser a server-owned 60-second Sta
         contentType: "application/json",
       });
     }
+  }
+});
+
+test("NEG-A1 restores the authenticated Harvest choice after a committed Negation on phones", async ({ browser, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const negation = { id: "neg-a1-harvest-negation", kind: "Negation", suit: "♠", rank: "A" };
+  const seed = await seedGame(request, { firstNegation: negation });
+  const phones = [
+    { width: 390, height: 700 },
+    { width: 390, height: 844 },
+    { width: 440, height: 766 },
+    { width: 440, height: 894 },
+  ];
+  const contexts = [];
+  try {
+    const viewers = await Promise.all(seed.players.map(async (viewer, index) => {
+      const context = await browser.newContext({ viewport: phones[index], isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+      contexts.push(context);
+      const page = await context.newPage();
+      await openPlayer(page, seed, index, phones[index]);
+      return { viewer, page };
+    }));
+
+    const root = await request.post(`${API}/api/rooms`, {
+      data: { action: "play_card", code: seed.code, token: seed.players[0].token, cardId: harvest.id },
+    });
+    expect(root.ok(), await root.text()).toBeTruthy();
+    const opening = await roomView(request, seed, 0);
+    expect(opening.publicHarvestPool?.semantics).toBe("PROVEN");
+    expect(opening.currentAction?.negationWindowId).toBeTruthy();
+    await testInfo.attach("neg-a1-public-harvest-before-negation-settles", {
+      body: JSON.stringify({
+        phase: opening.phase,
+        pendingHarvest: opening.pendingHarvest ? {
+          actorId: opening.pendingHarvest.actorId,
+          revealedIds: opening.pendingHarvest.revealed.map(({ id }) => id),
+          availableIds: opening.pendingHarvest.availableIds,
+        } : null,
+        currentAction: opening.currentAction,
+        publicHarvestPool: opening.publicHarvestPool ? {
+          semantics: opening.publicHarvestPool.semantics,
+          rootEventId: opening.publicHarvestPool.rootEventId,
+          revealedIds: opening.publicHarvestPool.revealed.map(({ id }) => id),
+          availableIds: opening.publicHarvestPool.availableIds,
+        } : null,
+      }, null, 2),
+      contentType: "application/json",
+    });
+
+    await Promise.all(viewers.map(async ({ page: viewerPage }) => {
+      const stage = viewerPage.locator(".harvest-choice-stage");
+      await expect(stage).toHaveAttribute("data-harvest-choice-authorized", "false");
+      await expect(stage).toHaveAttribute("data-harvest-readonly", "true");
+      await expect(viewerPage.locator(".harvest-card-select, .harvest-confirm-row")).toHaveCount(0);
+    }));
+
+    const committed = await commitNegation(request, seed, 1, negation.id);
+    expect(committed.event.card.id).toBe(negation.id);
+    expect(committed.event.player).toBe(seed.players[1].name);
+
+    const chooserRoom = await reachAuthorizedHarvestChoice(request, seed);
+    const actorIndex = seed.players.findIndex(({ id }) => id === chooserRoom.pendingHarvest.actorId);
+    expect(actorIndex, "the server-selected Harvest actor is an authenticated player").toBeGreaterThanOrEqual(0);
+    const actorRoom = await roomView(request, seed, actorIndex);
+    expect(actorRoom.phase).toBe("response");
+    expect(actorRoom.isMyAction).toBe(true);
+    expect(actorRoom.pendingHarvest?.actorId).toBe(seed.players[actorIndex].id);
+    expect(actorRoom.currentAction?.kind).toBe("harvest");
+    expect(actorRoom.currentAction?.actorId).toBe(seed.players[actorIndex].id);
+    expect(actorRoom.currentAction?.legalActions).toContain("choose_harvest");
+    expect(actorRoom.actionRevision).toMatch(/\S/);
+    expect(actorRoom.pendingHarvest.availableIds.some((id) => actorRoom.pendingHarvest.revealed.some((card) => card.id === id))).toBe(true);
+
+    await Promise.all(viewers.map(async ({ viewer, page: viewerPage }) => {
+      const stage = viewerPage.locator(".harvest-choice-stage");
+      if (viewer.id === seed.players[actorIndex].id) {
+        await expect(stage).toHaveAttribute("data-harvest-choice-authorized", "true");
+        await expect(stage).toHaveAttribute("data-harvest-choice-action-revision", actorRoom.actionRevision);
+        await expect(viewerPage.locator(".harvest-choice-panel--actor")).toBeVisible();
+        await expect(viewerPage.locator(".harvest-card-select:not([disabled])").first()).toBeVisible();
+        await expect(viewerPage.getByRole("button", { name: "Confirm choice" })).toBeDisabled();
+      } else {
+        await expect(stage).toHaveAttribute("data-harvest-choice-authorized", "false");
+        await expect(stage).toHaveAttribute("data-harvest-readonly", "true");
+        await expect(viewerPage.locator(".harvest-card-select, .harvest-confirm-row")).toHaveCount(0);
+      }
+    }));
+
+    const chooserPage = viewers[actorIndex].page;
+    const stage = chooserPage.locator(".harvest-choice-stage");
+    const readiness = await chooserPage.evaluate(() => {
+      const harvestStage = document.querySelector(".harvest-choice-stage");
+      const decision = document.querySelector(".decision-status");
+      let busyCauses = null;
+      try { busyCauses = JSON.parse(decision?.dataset.consolePresentationBusyCauses ?? "null"); } catch { /* retain null */ }
+      return {
+        viewport: { width: innerWidth, height: innerHeight },
+        choiceAuthorized: harvestStage?.dataset.harvestChoiceAuthorized ?? null,
+        actionRevision: harvestStage?.dataset.harvestChoiceActionRevision ?? null,
+        actorId: harvestStage?.dataset.harvestActor ?? null,
+        readonly: harvestStage?.dataset.harvestReadonly === "true",
+        actorPanel: Boolean(harvestStage?.querySelector(".harvest-choice-panel--actor")),
+        selectableCardIds: [...(harvestStage?.querySelectorAll(".harvest-card-select:not([disabled])") ?? [])]
+          .map((button) => button.parentElement?.getAttribute("data-harvest-card-id") ?? null),
+        confirmPresent: Boolean(harvestStage?.querySelector(".harvest-confirm-row button")),
+        presentationBusy: decision?.dataset.consolePresentationBusy === "true",
+        presentationBusyCauses: busyCauses,
+      };
+    });
+    console.info(`NEG-A1 P0 authorized choice: ${JSON.stringify(readiness)}`);
+    await testInfo.attach("neg-a1-authorized-mobile-choice-readiness", {
+      body: JSON.stringify({
+        committedNegation: { eventId: committed.event.id, cardId: committed.event.card.id, actor: committed.event.player },
+        server: {
+          meId: actorRoom.meId,
+          phase: actorRoom.phase,
+          isMyAction: actorRoom.isMyAction,
+          actorId: actorRoom.pendingHarvest.actorId,
+          currentAction: actorRoom.currentAction,
+          actionRevision: actorRoom.actionRevision,
+          availableIds: actorRoom.pendingHarvest.availableIds,
+          revealedIds: actorRoom.pendingHarvest.revealed.map(({ id }) => id),
+        },
+        dom: readiness,
+      }, null, 2),
+      contentType: "application/json",
+    });
+    const choiceViewports = [
+      { width: 390, height: 700 },
+      { width: 390, height: 844 },
+      { width: 440, height: 766 },
+    ];
+    const firstCard = stage.locator(".harvest-card-select:not([disabled])").first();
+    const chosenCardId = await firstCard.locator("xpath=..").getAttribute("data-harvest-card-id");
+    expect(actorRoom.pendingHarvest.availableIds).toContain(chosenCardId);
+    const confirm = chooserPage.getByRole("button", { name: "Confirm choice" });
+    for (const viewport of choiceViewports) {
+      await chooserPage.setViewportSize(viewport);
+      await expect(stage).toHaveAttribute("data-harvest-choice-authorized", "true");
+      await expect(firstCard).toBeEnabled();
+      await expect(confirm).toBeInViewport();
+      await firstCard.tap();
+      await expect(stage.locator(`[data-harvest-card-id="${chosenCardId}"]`)).toHaveAttribute("data-harvest-card-state", "selected");
+      await expect(confirm).toBeEnabled();
+      await firstCard.tap();
+      await expect(stage.locator(`[data-harvest-card-id="${chosenCardId}"]`)).toHaveAttribute("data-harvest-card-state", "available");
+      await expect(confirm).toBeDisabled();
+    }
+    await chooserPage.setViewportSize({ width: 390, height: 844 });
+    const screenshot = testInfo.outputPath(`neg-a1-harvest-choice-${readiness.viewport.width}x${readiness.viewport.height}.png`);
+    await chooserPage.screenshot({ path: screenshot, animations: "disabled" });
+    await testInfo.attach("neg-a1-authorized-harvest-choice-phone", { path: screenshot, contentType: "image/png" });
+
+    const chooseRequests = [];
+    chooserPage.on("request", (requestEvent) => {
+      if (requestEvent.method() !== "POST" || requestEvent.url() !== `${API}/api/rooms`) return;
+      try {
+        const body = JSON.parse(requestEvent.postData() ?? "{}");
+        if (body.action === "choose_harvest") chooseRequests.push(body);
+      } catch { /* Ignore non-JSON requests. */ }
+    });
+    await firstCard.tap();
+    await expect(stage.locator(`[data-harvest-card-id="${chosenCardId}"]`)).toHaveAttribute("data-harvest-card-state", "selected");
+    await expect(confirm).toBeEnabled();
+    const response = chooserPage.waitForResponse((entry) => {
+      if (entry.request().method() !== "POST" || entry.url() !== `${API}/api/rooms`) return false;
+      try { return JSON.parse(entry.request().postData() ?? "{}").action === "choose_harvest"; }
+      catch { return false; }
+    });
+    await confirm.tap();
+    const result = await response;
+    expect(result.ok(), await result.text()).toBeTruthy();
+    expect(chooseRequests).toHaveLength(1);
+    expect(chooseRequests[0].cardId).toBe(chosenCardId);
+    const settledActor = await roomView(request, seed, actorIndex);
+    expect(settledActor.myHand.map(({ id }) => id)).toContain(chosenCardId);
+  } finally {
+    await Promise.all(contexts.map((context) => context.close()));
   }
 });
