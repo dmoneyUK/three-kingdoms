@@ -3286,3 +3286,30 @@ Profile command measurements:
   returned `{"ok":true,"worker":"available"}`.
 - Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. T3
   responsive end-to-end regression is the next independent slice.
+
+### UX2 §10.10 T3 — Responsive target-card end-to-end regression — 2026-10-23
+
+- Source commit `2ccbd7bfd772c2a713c94bb37fbab614f5ada19d` fixes the
+  `CurrentAction` target-card picker gate that disabled a valid restored Steal
+  choice during root-card presentation, and keeps shared settlement readable
+  across phone viewports. The real Worker/D1 mobile browser matrix passed four
+  scenarios: 4 seats at 390×844 (Steal/Hand and fast next root), 6 seats at
+  440×894 (Burning Bridges/Equipment and long names), 8 seats at 480×900
+  (Steal/Judgement, reduced motion, reconnect/viewer switch), and 4 seats at
+  390×700 (one-card Hand). A separate four-viewer 390×844 counter-Negation
+  scenario verifies that cancelled roots do not expose the chooser, restored
+  Steal stays legally selectable, and no target Hand identity leaks. All
+  independent observers retained equivalent public proof and one authentic
+  root card; the actor retained the private picker. Existing mobile
+  Negated-Steal/Dismantle and Inspector/SWITCH regressions also passed.
+- Local focused validation included API shard 1 (171/171, reproducing the
+  transient first-attempt CI `fetch failed` as a clean pass), targeted mobile
+  browser cases, build, ESLint, browser syntax, and `git diff --check`. The
+  same-SHA rerun of exact Actions
+  [39939272435](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39939272435)
+  passed all required jobs and deployed Worker
+  `dfcc8ba6-57e9-4fbd-b5e0-4f3afde9efe1`; production smoke and direct
+  `/api/health` (`{"ok":true,"worker":"available"}`) passed.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. This
+  completes T3 technically; T1/T2/T3 remain independently reviewable and no
+  owner phone acceptance is inferred.
