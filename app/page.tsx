@@ -397,6 +397,8 @@ export default function Home() {
   const testViewerRoomCodeRef = useRef<string | null>(null);
   const testViewerRevisionRef = useRef(0);
   const pendingTestViewerFocusIdRef = useRef<string | null>(null);
+  const harvestCompletionWatcherRef = useRef<{ key: string; attempt: number; timer: number | null } | null>(null);
+  const harvestCompletionRequestInFlightRef = useRef(false);
 
   const fetchRoom = useCallback(async function fetchRoomRequest(roomCode: string, playerToken: string, quiet = false, requestedViewerId?: string) {
     if (testViewerRoomCodeRef.current !== roomCode) {
@@ -462,7 +464,7 @@ export default function Home() {
         }
         setRoom(nextRoom as Room);
       }
-      return true;
+      return nextRoom as Room;
     } catch (cause) {
       if (uxTraceId) recordAttackDodgeUxTrace("room-poll-failure", { traceId: uxTraceId, kind: cause instanceof Error ? cause.name : "unknown" });
       if (cause instanceof Error && /Previous game data|no longer available|session is no longer valid/.test(cause.message)) {
@@ -521,7 +523,8 @@ export default function Home() {
 
   async function send(action: "create" | "join" | "start" | "add_test_players" | "enable_test_room" | "configure_test_hands" | "choose_hero" | "heartbeat" | "expire_inactive_room" | GameplayAction, extra: Record<string, unknown> = {}) {
     const backgroundPreview = action === "preview_harvest" || action === "heartbeat";
-    const nonBlocking = backgroundPreview;
+    const maintenanceAction = action === "advance_timers";
+    const nonBlocking = backgroundPreview || maintenanceAction;
     const mutationKey = `${action}:${room?.actionRevision ?? room?.phase ?? "landing"}`;
     if (!nonBlocking && mutationInFlight.current === mutationKey) return false;
     if (!nonBlocking && mutationInFlight.current) return false;
@@ -538,7 +541,7 @@ export default function Home() {
           if (session?.code === code && session.token && await fetchRoom(code, session.token, true)) return true;
         } catch { localStorage.removeItem("three-realms-session"); }
       }
-      const context = room && !["create", "join", "start", "add_test_players", "enable_test_room", "configure_test_hands", "choose_hero", "heartbeat"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId, ...(room.currentAction?.negationWindowId ? { windowId: room.currentAction.negationWindowId } : {}) } : undefined;
+      const context = room && !["create", "join", "start", "add_test_players", "enable_test_room", "configure_test_hands", "choose_hero", "heartbeat", "advance_timers"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId, ...(room.currentAction?.negationWindowId ? { windowId: room.currentAction.negationWindowId } : {}) } : undefined;
       if (uxTraceId) recordAttackDodgeUxTrace("gameplay-action-request", { traceId: uxTraceId, action, hasRevisionContext: Boolean(context?.actionRevision) });
       const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, code, token, ...(context ? { context } : {}), ...(uxTraceId ? { uxTraceId } : {}), ...extra }) });
       const rawData = await readApiJson<{ error?: string; token?: string; room?: unknown; stale?: boolean; attackDodgeUxTrace?: Record<string, unknown> }>(response);
@@ -588,7 +591,8 @@ export default function Home() {
       }
       if (data.room && !preserveTestViewer) recordPublicGameRoomSnapshot(data.room, "action");
       if (data.room?.status === "finished") stopAttackDodgeUxTrace("game-finished");
-      if (data.room && !preserveTestViewer && mutationSequence >= latestAppliedMutation.current && (nonBlocking || epoch === stateEpoch.current)) { latestAppliedMutation.current = Math.max(latestAppliedMutation.current, mutationSequence); setToken(data.token ?? token); setRoom(data.room); setCode(data.room.code); }
+      const responseMayApply = maintenanceAction ? epoch === stateEpoch.current : nonBlocking || epoch === stateEpoch.current;
+      if (data.room && !preserveTestViewer && mutationSequence >= latestAppliedMutation.current && responseMayApply) { latestAppliedMutation.current = Math.max(latestAppliedMutation.current, mutationSequence); setToken(data.token ?? token); setRoom(data.room); setCode(data.room.code); }
       if (!response.ok || action !== "heartbeat" && !data.room) throw new Error(data.error ?? "Something went wrong.");
       if (action === "heartbeat") return true;
       const nextToken = data.token ?? token;
@@ -597,7 +601,8 @@ export default function Home() {
       return true;
     } catch (cause) {
       if (uxTraceId) recordAttackDodgeUxTrace("gameplay-action-failure", { traceId: uxTraceId, action, kind: cause instanceof Error ? cause.name : "unknown" });
-      if (!backgroundPreview) setError(cause instanceof Error ? cause.message : "Something went wrong.");
+      if (maintenanceAction) console.warn("Harvest completion maintenance did not advance; checking the authoritative room state.");
+      else if (!backgroundPreview) setError(cause instanceof Error ? cause.message : "Something went wrong.");
       return false;
     }
     finally { if (!nonBlocking) { if (mutationInFlight.current === mutationKey) mutationInFlight.current = null; setBusy(false); setBusyAction(null); } }
@@ -638,15 +643,96 @@ export default function Home() {
   }, [roomCode, token]);
 
   const harvestDeadline = room?.pendingHarvest?.complete ? room.pendingHarvest.countdownUntil : 0;
-  const harvestRevision = room?.actionRevision ?? "";
+  const harvestComplete = room?.phase === "response" && room.pendingHarvest?.complete === true;
+  const harvestRevealEventId = room?.pendingHarvest?.revealEventId ?? "";
   useEffect(() => {
-    if (!roomCode || !token || !pageVisible || !harvestDeadline) return;
-    const timer = setTimeout(() => { void send("advance_timers"); }, Math.max(0, harvestDeadline - Date.now()));
-    return () => clearTimeout(timer);
-  // Only the final result-hold deadline advances Harvest state. The active
-  // chooser's 60-second timer is display-only and does not auto-select a card.
+    if (!roomCode || !token || !harvestComplete || !harvestDeadline) {
+      const existing = harvestCompletionWatcherRef.current;
+      if (existing?.timer !== null && existing?.timer !== undefined) clearTimeout(existing.timer);
+      harvestCompletionWatcherRef.current = null;
+      return;
+    }
+    const viewerId = room?.meId ?? "";
+    const key = `${roomCode}|${harvestRevealEventId}|${harvestDeadline}|${viewerId}`;
+    let watcher = harvestCompletionWatcherRef.current;
+    if (!watcher || watcher.key !== key) {
+      if (watcher?.timer !== null && watcher?.timer !== undefined) clearTimeout(watcher.timer);
+      watcher = { key, attempt: 0, timer: null };
+      harvestCompletionWatcherRef.current = watcher;
+    }
+    let cancelled = false;
+    const retryDelays = [1_000, 2_000, 4_000, 8_000, 15_000];
+    const sameExpiredHarvest = (fresh: Room | false): fresh is Room => Boolean(fresh
+      && fresh.code === roomCode
+      && fresh.meId === viewerId
+      && fresh.phase === "response"
+      && fresh.pendingHarvest?.complete === true
+      && fresh.pendingHarvest.revealEventId === harvestRevealEventId
+      && fresh.pendingHarvest.countdownUntil === harvestDeadline);
+    const schedule = (delay: number) => {
+      if (watcher!.timer !== null) clearTimeout(watcher!.timer);
+      watcher!.timer = window.setTimeout(() => { void checkAndAdvance(); }, Math.max(0, delay));
+    };
+    const scheduleRetry = () => {
+      watcher!.attempt += 1;
+      const delay = retryDelays[Math.min(watcher!.attempt - 1, retryDelays.length - 1)];
+      console.warn(`Harvest completion state could not be confirmed; the next room check is in ${delay} ms.`);
+      schedule(delay);
+    };
+    const refresh = () => fetchRoom(
+      roomCode,
+      token,
+      true,
+      room?.isTestController ? testViewerIdRef.current ?? viewerId : undefined,
+    );
+    const checkAndAdvance = async () => {
+      watcher!.timer = null;
+      if (cancelled || !pageVisible || harvestCompletionWatcherRef.current !== watcher) return;
+      if (harvestCompletionRequestInFlightRef.current) {
+        schedule(1_000);
+        return;
+      }
+      harvestCompletionRequestInFlightRef.current = true;
+      try {
+        const fresh = await refresh();
+        if (cancelled || harvestCompletionWatcherRef.current !== watcher) return;
+        if (fresh === false) {
+          scheduleRetry();
+          return;
+        }
+        if (!sameExpiredHarvest(fresh)) return;
+        if (fresh.pendingHarvest.countdownUntil > Date.now()) {
+          schedule(fresh.pendingHarvest.countdownUntil - Date.now());
+          return;
+        }
+        await send("advance_timers");
+        const after = await refresh();
+        if (cancelled || harvestCompletionWatcherRef.current !== watcher) return;
+        if (after === false) {
+          scheduleRetry();
+          return;
+        }
+        if (!sameExpiredHarvest(after)) return;
+        if (after.pendingHarvest.countdownUntil > Date.now()) {
+          schedule(after.pendingHarvest.countdownUntil - Date.now());
+          return;
+        }
+        scheduleRetry();
+      } finally {
+        harvestCompletionRequestInFlightRef.current = false;
+      }
+    };
+    if (pageVisible) schedule(Math.max(0, harvestDeadline - Date.now()));
+    return () => {
+      cancelled = true;
+      if (watcher!.timer !== null) clearTimeout(watcher!.timer);
+      watcher!.timer = null;
+    };
+  // Only the final result-hold deadline advances Harvest state. Each attempt
+  // first refreshes authoritative room state and retries only the same expired
+  // completion. Chooser countdown expiry never selects a card automatically.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomCode, token, pageVisible, harvestDeadline, harvestRevision]);
+  }, [roomCode, token, pageVisible, harvestComplete, harvestDeadline, harvestRevealEventId, room?.meId, room?.isTestController, fetchRoom]);
   const negationDeadline = room?.pendingNegation?.deadline ?? 0;
   useEffect(() => {
     if (!roomCode || !token || !pageVisible || !negationDeadline) return;

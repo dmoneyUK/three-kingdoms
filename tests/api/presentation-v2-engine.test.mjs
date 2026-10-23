@@ -2942,14 +2942,43 @@ test("engine-backed Bumper Harvest publishes ordered progress and keeps the Nega
   const settlementObserver = await assertProjectionMatchesEngine(game.code, alice.token);
   assert.deepEqual(publicSnapshot(settlementObserver.presentationSnapshot).bumperHarvestSettlements, [settlement], "settlement is viewer-equal");
 
-  const duePending = { ...completedPending, completeAt: Date.now() - 1 };
+  const futurePending = { ...completedPending, completeAt: Date.now() + 10_000 };
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(futurePending))} WHERE code=${quote(game.code)}`);
+  const pendingBeforeUnauthorized = authoritativePending(game.code);
+  const unauthorized = await request("advance_timers", { code: game.code, token: "not-a-room-member" });
+  assert.equal(unauthorized.status, 403, JSON.stringify(unauthorized.data));
+  assert.deepEqual(authoritativePending(game.code), pendingBeforeUnauthorized, "an invalid token cannot change the active Harvest hold");
+  const early = await request("advance_timers", {
+    code: game.code,
+    token: alice.token,
+    context: { actionRevision: "old-revision", meId: "old-viewer", phase: "play", pendingKind: "response", actorId: "old-actor" },
+  });
+  assert.equal(early.status, 200, JSON.stringify(early.data));
+  assert.equal(early.data.room.pendingHarvest.complete, true, "an authenticated non-acting viewer cannot settle before the server deadline");
+  assert.equal(authoritativePending(game.code).completeAt, futurePending.completeAt);
+
+  const duePending = { ...futurePending, completeAt: Date.now() - 1 };
   sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(duePending))} WHERE code=${quote(game.code)}`);
-  const closed = await request("advance_timers", { code: game.code, token: host.token });
-  assert.equal(closed.status, 200, JSON.stringify(closed.data));
-  assert.equal(closed.data.room.pending, null);
-  assert.equal(closed.data.room.causalEnvelope, null, "the completed Bumper Harvest causal identity is cleared atomically");
+  const staleTimerContext = { actionRevision: "stale-revision", meId: first.id, phase: "play", pendingKind: "response", actorId: third.id, windowId: "stale-window" };
+  const [closedByHost, closedByOtherViewer] = await Promise.all([
+    request("advance_timers", { code: game.code, token: host.token, context: staleTimerContext }),
+    request("advance_timers", { code: game.code, token: alice.token, context: staleTimerContext }),
+  ]);
+  assert.equal(closedByHost.status, 200, JSON.stringify(closedByHost.data));
+  assert.equal(closedByOtherViewer.status, 200, JSON.stringify(closedByOtherViewer.data));
+  assert.equal(closedByHost.data.room.pending, null);
+  assert.equal(closedByHost.data.room.pendingHarvest, null);
+  assert.equal(closedByHost.data.room.phase, completedPending.resumePhase);
+  assert.equal(closedByHost.data.room.causalEnvelope, null, "the completed Bumper Harvest causal identity is cleared atomically");
   const afterClose = await assertProjectionMatchesEngine(game.code, bob.token);
   assert.deepEqual(afterClose.presentationSnapshot.bumperHarvestSettlements, [settlement], "the exact public settlement survives causal cleanup");
+  assert.equal(afterClose.log.filter((entry) => entry === "Bumper Harvest finishes resolving.").length, 1, "racing timer requests publish the final result once");
+  for (const held of [harvest, ...harvestCards]) {
+    assert.equal(roomCardCount(game.code, held.id), 1, `${held.kind} remains in exactly one physical zone after timer races`);
+  }
+  const duplicateTimer = await request("advance_timers", { code: game.code, token: bob.token });
+  assert.equal(duplicateTimer.status, 200, JSON.stringify(duplicateTimer.data));
+  assert.equal(authoritativePending(game.code), null, "a later maintenance check is a harmless no-op after the CAS winner");
 });
 
 test("FIX10 shared Negation uses private viewer options and one stable public checkpoint", { timeout: 30_000 }, async () => {

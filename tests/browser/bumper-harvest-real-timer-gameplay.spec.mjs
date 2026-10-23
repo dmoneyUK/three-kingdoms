@@ -15,18 +15,20 @@ const deck = [
   { id: "real-harvest-timer-duel", kind: "Duel", suit: "♦", rank: "10" },
 ];
 
-async function seedGame(request, { firstNegation = null, secondNegation = null } = {}) {
+async function seedGame(request, { firstNegation = null, secondNegation = null, seatThreeNegation = null, includeFifthPlayer = false } = {}) {
+  const players = [
+    { name: "HARVEST SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [harvest] },
+    { name: "CHOOSER TWO", role: "Loyalist", hero: "sun-quan", hp: 4, maxHp: 4, hand: firstNegation ? [firstNegation] : [] },
+    { name: "CHOOSER THREE", role: "Rebel", hero: "guo-jia", hp: 4, maxHp: 4, hand: secondNegation ? [secondNegation] : [] },
+    { name: "CHOOSER FOUR", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: seatThreeNegation ? [seatThreeNegation] : [] },
+  ];
+  if (includeFifthPlayer) players.push({ name: "CHOOSER FIVE", role: "Rebel", hero: "zhuge-liang", hp: 4, maxHp: 4, hand: [] });
   const response = await request.post(`${API}/__test/seed-playing-game`, {
     data: {
       phase: "play",
       turnSeat: 0,
-      players: [
-        { name: "HARVEST SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [harvest] },
-        { name: "CHOOSER TWO", role: "Loyalist", hero: "sun-quan", hp: 4, maxHp: 4, hand: firstNegation ? [firstNegation] : [] },
-        { name: "CHOOSER THREE", role: "Rebel", hero: "guo-jia", hp: 4, maxHp: 4, hand: secondNegation ? [secondNegation] : [] },
-        { name: "CHOOSER FOUR", role: "Renegade", hero: "zhou-yu", hp: 4, maxHp: 4, hand: [] },
-      ],
-      deck,
+      players,
+      deck: includeFifthPlayer ? [...deck, { id: "real-harvest-timer-fifth-peach", kind: "Peach", suit: "♦", rank: "J" }] : deck,
     },
   });
   if (!response.ok()) throw new Error(`Bumper Harvest seed failed: ${await response.text()}`);
@@ -44,18 +46,31 @@ async function openPlayer(page, seed, playerIndex, viewport) {
   return member;
 }
 
-async function roomView(request, seed, playerIndex) {
-  const response = await request.get(`${API}/api/rooms?${new URLSearchParams({
+async function roomView(request, seed, playerIndex, token = seed.players[playerIndex].token, testViewerId = null) {
+  const query = new URLSearchParams({
     code: seed.code,
-    token: seed.players[playerIndex].token,
-  })}`);
+    token,
+  });
+  if (testViewerId) query.set("testViewerId", testViewerId);
+  const response = await request.get(`${API}/api/rooms?${query}`);
   expect(response.ok()).toBeTruthy();
   return response.json();
 }
 
-async function commitNegation(request, seed, winnerIndex, cardId) {
+function seatAuth(seed, playerIndex, controller = null) {
+  const player = seed.players[playerIndex];
+  const controlled = Boolean(controller?.controlledIds.has(player.id));
+  return { token: controlled ? controller.token : player.token, testViewerId: controlled ? player.id : null, contextMeId: controlled ? player.id : null };
+}
+
+async function roomViewForSeat(request, seed, playerIndex, controller = null) {
+  const auth = seatAuth(seed, playerIndex, controller);
+  return roomView(request, seed, playerIndex, auth.token, auth.testViewerId);
+}
+
+async function commitNegation(request, seed, winnerIndex, cardId, controller = null) {
   const winner = seed.players[winnerIndex];
-  let current = await roomView(request, seed, winnerIndex);
+  let current = await roomViewForSeat(request, seed, winnerIndex, controller);
   for (let attempt = 0; attempt < seed.players.length + 1 && current.currentAction?.actorId !== winner.id; attempt += 1) {
     const actorIndex = seed.players.findIndex(({ id }) => id === current.currentAction?.actorId);
     expect(actorIndex, "the Negation window actor belongs to this authenticated room").toBeGreaterThanOrEqual(0);
@@ -63,11 +78,12 @@ async function commitNegation(request, seed, winnerIndex, cardId) {
     const windowId = current.currentAction?.negationWindowId;
     expect(windowId).toBeTruthy();
     expect(current.currentAction?.legalActions).toContain("decline_response");
+    const actorAuth = seatAuth(seed, actorIndex, controller);
     const passed = await request.post(`${API}/api/rooms`, {
-      data: { action: "decline_response", code: seed.code, token: actor.token, context: { windowId } },
+      data: { action: "decline_response", code: seed.code, token: actorAuth.token, context: { windowId, ...(actorAuth.contextMeId ? { meId: actorAuth.contextMeId } : {}) } },
     });
     expect(passed.ok(), `${actor.name} passes before the Negation holder: ${await passed.text()}`).toBeTruthy();
-    current = await roomView(request, seed, winnerIndex);
+    current = await roomViewForSeat(request, seed, winnerIndex, controller);
   }
   expect(current.currentAction?.actorId).toBe(winner.id);
   const windowId = current.currentAction?.negationWindowId;
@@ -76,34 +92,37 @@ async function commitNegation(request, seed, winnerIndex, cardId) {
     data: { code: seed.code, windowId, mode: "hold" },
   });
   expect(held.ok(), await held.text()).toBeTruthy();
+  const winnerAuth = seatAuth(seed, winnerIndex, controller);
   const intent = await request.post(`${API}/api/rooms`, {
-    data: { action: "respond", code: seed.code, token: winner.token, providerId: "negation_card", cardId, context: { windowId } },
+    data: { action: "respond", code: seed.code, token: winnerAuth.token, providerId: "negation_card", cardId, context: { windowId, ...(winnerAuth.contextMeId ? { meId: winnerAuth.contextMeId } : {}) } },
   });
   expect(intent.ok(), `the authenticated Negation intent is accepted: ${await intent.text()}`).toBeTruthy();
   for (const player of seed.players) {
     if (player.id === winner.id) continue;
+    const actorIndex = seed.players.findIndex(({ id }) => id === player.id);
+    const actorAuth = seatAuth(seed, actorIndex, controller);
     const passed = await request.post(`${API}/api/rooms`, {
-      data: { action: "decline_response", code: seed.code, token: player.token, context: { windowId } },
+      data: { action: "decline_response", code: seed.code, token: actorAuth.token, context: { windowId, ...(actorAuth.contextMeId ? { meId: actorAuth.contextMeId } : {}) } },
     });
     expect(passed.ok(), `${player.name} passes the shared Negation window: ${await passed.text()}`).toBeTruthy();
   }
-  const settled = await roomView(request, seed, 0);
+  const settled = await roomViewForSeat(request, seed, 0, controller);
   const event = settled.timeline.find((entry) => entry?.type === "card" && entry.action === "play" && entry.card?.id === cardId);
   expect(event, "the committed physical Negation becomes public after the shared window settles").toBeTruthy();
   expect(event.player).toBe(winner.name);
   return { event, room: settled };
 }
 
-async function reachAuthorizedHarvestChoice(request, seed) {
+async function reachAuthorizedHarvestChoice(request, seed, controller = null) {
   let latest = null;
   for (let attempt = 0; attempt < seed.players.length * 5; attempt += 1) {
-    latest = await roomView(request, seed, 0);
+    latest = await roomViewForSeat(request, seed, 0, controller);
     if (latest.pendingHarvest
       && latest.currentAction?.kind === "harvest"
       && latest.currentAction.actorId === latest.pendingHarvest.actorId) {
       const chooserIndex = seed.players.findIndex(({ id }) => id === latest.currentAction.actorId);
       expect(chooserIndex, "the Harvest CurrentAction actor belongs to this room").toBeGreaterThanOrEqual(0);
-      const chooserRoom = await roomView(request, seed, chooserIndex);
+      const chooserRoom = await roomViewForSeat(request, seed, chooserIndex, controller);
       if (chooserRoom.isMyAction && chooserRoom.currentAction?.legalActions?.includes("choose_harvest")) return chooserRoom;
       throw new Error(`Harvest CurrentAction actor projection does not authorize the chooser: ${JSON.stringify({
         observerMeId: latest.meId,
@@ -117,7 +136,7 @@ async function reachAuthorizedHarvestChoice(request, seed) {
     const actorIndex = seed.players.findIndex(({ id }) => id === latest.currentAction?.actorId);
     expect(actorIndex, "the next server-owned response actor belongs to this room").toBeGreaterThanOrEqual(0);
     const actor = seed.players[actorIndex];
-    const actorRoom = await roomView(request, seed, actorIndex);
+    const actorRoom = await roomViewForSeat(request, seed, actorIndex, controller);
     const windowId = actorRoom.currentAction?.negationWindowId;
     expect(windowId, JSON.stringify({ phase: actorRoom.phase, pendingKind: actorRoom.pending?.kind, pendingHarvest: actorRoom.pendingHarvest ? {
       actorId: actorRoom.pendingHarvest.actorId,
@@ -125,14 +144,15 @@ async function reachAuthorizedHarvestChoice(request, seed) {
       availableIds: actorRoom.pendingHarvest.availableIds,
     } : null, currentAction: actorRoom.currentAction, actionRevision: actorRoom.actionRevision })).toBeTruthy();
     if (actorRoom.currentAction?.legalActions?.includes("decline_response")) {
+      const actorAuth = seatAuth(seed, actorIndex, controller);
       const passed = await request.post(`${API}/api/rooms`, {
         data: {
           action: "decline_response",
           code: seed.code,
-          token: actor.token,
+          token: actorAuth.token,
           context: {
             actionRevision: actorRoom.actionRevision,
-            meId: actor.id,
+            meId: actorAuth.contextMeId ?? actor.id,
             phase: "response",
             pendingKind: "response",
             windowId,
@@ -145,8 +165,9 @@ async function reachAuthorizedHarvestChoice(request, seed) {
         data: { code: seed.code, windowId, mode: "expire" },
       });
       expect(expired.ok(), await expired.text()).toBeTruthy();
+      const sourceAuth = seatAuth(seed, 0, controller);
       const advanced = await request.post(`${API}/api/rooms`, {
-        data: { action: "advance_timers", code: seed.code, token: seed.players[0].token },
+        data: { action: "advance_timers", code: seed.code, token: sourceAuth.token },
       });
       expect(advanced.ok(), await advanced.text()).toBeTruthy();
     }
@@ -781,6 +802,172 @@ test("NEG-A1 restores Harvest choice and deduplicates public Negation cards on p
     const activeChooserStage = viewers[nextActorIndex].page.locator(".harvest-choice-stage");
     await expect(activeChooserStage).toHaveAttribute("data-harvest-choice-authorized", "true");
     await expect(viewers[nextActorIndex].page.locator(".harvest-card-select:not([disabled])").first()).toBeEnabled();
+  } finally {
+    await Promise.all(contexts.map((context) => context.close()));
+  }
+});
+
+test("NEG-A1 F1-R2 final Negation closes the Harvest hold after a transient stale response on mobile", async ({ browser, request }, testInfo) => {
+  test.setTimeout(120_000);
+  const finalNegation = { id: "neg-a1-final-harvest-negation", kind: "Negation", suit: "♠", rank: "A" };
+  const seed = await seedGame(request, { seatThreeNegation: finalNegation, includeFifthPlayer: true });
+  const phone = { width: 390, height: 844 };
+  const contexts = [];
+  try {
+    const humanViewers = await Promise.all(seed.players.slice(0, 4).map(async (viewer, index) => {
+      const context = await browser.newContext({ viewport: phone, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+      contexts.push(context);
+      const page = await context.newPage();
+      await openPlayer(page, seed, index, phone);
+      return { viewer, page };
+    }));
+    const controllerContext = await browser.newContext({ viewport: phone, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+    contexts.push(controllerContext);
+    const controllerPage = await controllerContext.newPage();
+    await openPlayer(controllerPage, seed, 0, phone);
+
+    expect(seed.players).toHaveLength(5);
+    const initialViews = await Promise.all(humanViewers.map(({ viewer }) => roomView(request, seed, seed.players.findIndex(({ id }) => id === viewer.id))));
+    expect(initialViews.map(({ meId }) => meId)).toEqual(seed.players.slice(0, 4).map(({ id }) => id), "four separate authenticated room tokens retain their own mobile view");
+
+    await playHarvest(humanViewers[0].page);
+    const firstChoice = await reachAuthorizedHarvestChoice(request, seed);
+    expect(firstChoice.meId).toBe(seed.players[0].id);
+    const enabledController = await request.post(`${API}/__test/enable-seeded-controller`, {
+      data: { code: seed.code, hostToken: seed.players[0].token, targetPlayerId: seed.players[4].id },
+    });
+    expect(enabledController.ok(), await enabledController.text()).toBeTruthy();
+    const controller = { token: seed.players[0].token, controlledIds: new Set([seed.players[0].id, seed.players[4].id]) };
+
+    await controllerPage.reload();
+    await expect(controllerPage.locator(".game-shell")).toBeVisible();
+    const switchToFifth = controllerPage.getByRole("button", { name: `Switch to ${seed.players[4].name}` });
+    await expect(switchToFifth).toBeVisible();
+    await switchToFifth.tap();
+    await expect(controllerPage.locator(`.local-player-dock[data-player-anchor="${seed.players[4].id}"]`)).toBeVisible();
+    await expect(humanViewers[0].page.locator(".harvest-choice-stage")).toHaveAttribute("data-harvest-choice-authorized", "true");
+    await expect(controllerPage.locator(".harvest-choice-stage")).toHaveAttribute("data-harvest-choice-authorized", "false");
+
+    for (const expectedIndex of [0, 1, 2, 3]) {
+      const choice = await reachAuthorizedHarvestChoice(request, seed, controller);
+      const chooserIndex = seed.players.findIndex(({ id }) => id === choice.pendingHarvest.actorId);
+      expect(chooserIndex, "the next Harvest choice belongs to its current authenticated seat").toBe(expectedIndex);
+      expect(choice.currentAction?.legalActions).toContain("choose_harvest");
+      const cardId = choice.pendingHarvest.availableIds[0];
+      expect(cardId).toBeTruthy();
+      const chooserAuth = seatAuth(seed, chooserIndex, controller);
+      const picked = await request.post(`${API}/api/rooms`, {
+        data: { action: "choose_harvest", code: seed.code, token: chooserAuth.token, cardId },
+      });
+      expect(picked.ok(), `${seed.players[chooserIndex].name} chooses one real public card: ${await picked.text()}`).toBeTruthy();
+    }
+
+    const finalWindow = await roomViewForSeat(request, seed, 3, controller);
+    expect(finalWindow.presentationSnapshot.bumperHarvestProgress.currentParticipantId).toBe(seed.players[4].id);
+    expect(finalWindow.currentAction?.kind).toBe("response");
+    await expect(controllerPage.getByRole("button", { name: `Switch to ${seed.players[0].name}` })).toBeVisible();
+    await controllerPage.getByRole("button", { name: `Switch to ${seed.players[0].name}` }).tap();
+    await expect(controllerPage.locator(`.local-player-dock[data-player-anchor="${seed.players[0].id}"]`)).toBeVisible();
+
+    const controllerTimerStatuses = [];
+    const controllerTimerBodies = [];
+    const controllerTerminalSnapshots = [];
+    const backgroundTimerAttempts = [];
+    for (const { page } of humanViewers) {
+      await page.route(`${API}/api/rooms`, async (route) => {
+        const outgoing = route.request();
+        if (outgoing.method() === "POST") {
+          let body = {};
+          try { body = JSON.parse(outgoing.postData() ?? "{}"); } catch { /* Keep unrelated request intact. */ }
+          if (body.action === "advance_timers") {
+            const latest = await roomView(request, seed, 0, seed.players[0].token, seed.players[0].id);
+            if (latest.pendingHarvest?.complete) {
+              backgroundTimerAttempts.push(body);
+              await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "A different viewer will perform the terminal check.", stale: true }) });
+              return;
+            }
+          }
+        }
+        await route.continue();
+      });
+    }
+    let injectedTransient409 = false;
+    await controllerPage.route(`${API}/api/rooms`, async (route) => {
+      const outgoing = route.request();
+      if (outgoing.method() === "POST") {
+        let body = {};
+        try { body = JSON.parse(outgoing.postData() ?? "{}"); } catch { /* Keep unrelated request intact. */ }
+        if (body.action === "advance_timers") {
+          const latest = await roomView(request, seed, 0, controller.token, seed.players[0].id);
+          if (latest.pendingHarvest?.complete) {
+            controllerTimerBodies.push(body);
+            if (!injectedTransient409) {
+              injectedTransient409 = true;
+              await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: "Injected one transient stale completion response.", stale: true }) });
+              controllerTimerStatuses.push(409);
+              controllerTerminalSnapshots.push(latest);
+              return;
+            }
+            const response = await route.fetch();
+            await route.fulfill({ response });
+            controllerTimerStatuses.push(response.status());
+            return;
+          }
+        }
+      }
+      await route.continue();
+    });
+
+    const negated = await commitNegation(request, seed, 3, finalNegation.id, controller);
+    expect(negated.event.card.id).toBe(finalNegation.id);
+    await expect.poll(() => controllerTimerStatuses.length, { timeout: 10_000 }).toBeGreaterThanOrEqual(1);
+    expect(controllerTimerStatuses[0]).toBe(409);
+    const terminal = controllerTerminalSnapshots[0];
+    expect(terminal.pendingHarvest?.complete).toBe(true);
+    expect(terminal.pendingHarvest?.countdownUntil).toBeGreaterThan(0);
+    expect(terminal.pendingHarvest?.actorId).not.toBe(terminal.meId);
+    const actor = seed.players.find(({ id }) => id === terminal.pendingHarvest.actorId);
+    expect(actor).toBeTruthy();
+    await testInfo.attach("neg-a1-f1-r2-mobile-terminal-proof", {
+      body: JSON.stringify({
+        viewport: phone,
+        phase: terminal.phase,
+        pendingKind: terminal.pending?.kind,
+        complete: terminal.pendingHarvest.complete,
+        completeAt: terminal.pendingHarvest.countdownUntil,
+        viewerSeat: terminal.players.find(({ id }) => id === terminal.meId)?.seat,
+        persistedActorSeat: actor.seat,
+        finalParticipantOutcome: terminal.presentationSnapshot.bumperHarvestProgress.participants.at(-1)?.outcome,
+        transient409Injected: injectedTransient409,
+        backgroundTimerAttempts: backgroundTimerAttempts.length,
+      }, null, 2),
+      contentType: "application/json",
+    });
+
+    await expect.poll(async () => {
+      const latest = await roomView(request, seed, 0, controller.token, seed.players[0].id);
+      return { phase: latest.phase, pendingHarvest: latest.pendingHarvest, pending: latest.pending };
+    }, { timeout: 12_000 }).toMatchObject({ phase: "play", pendingHarvest: null, pending: null });
+    await expect.poll(() => controllerTimerStatuses.length, { timeout: 5_000 }).toBeGreaterThanOrEqual(2);
+    expect(controllerTimerStatuses.slice(0, 2)).toEqual([409, 200]);
+    expect(controllerTimerBodies.length).toBeGreaterThanOrEqual(2);
+    for (const body of controllerTimerBodies) expect(body.context).toBeUndefined();
+    const after = await roomView(request, seed, 0, controller.token, seed.players[0].id);
+    expect(after.pendingHarvest).toBeNull();
+    expect(after.phase).toBe("play");
+    expect(after.currentAction?.legalActions?.length).toBeGreaterThan(0);
+    expect(after.log.filter((entry) => entry === "Bumper Harvest finishes resolving.")).toHaveLength(1);
+    await expect(controllerPage.locator(".game-shell")).toBeVisible();
+    const finalPhone = testInfo.outputPath("neg-a1-f1-r2-harvest-resumed-390x844.png");
+    await controllerPage.screenshot({ path: finalPhone, animations: "disabled" });
+    await testInfo.attach("neg-a1-f1-r2-harvest-resumed-phone", { path: finalPhone, contentType: "image/png" });
+    const independentViews = await Promise.all(humanViewers.map(async ({ viewer }, index) => {
+      const auth = index === 0
+        ? { token: seed.players[0].token, viewerId: seed.players[0].id }
+        : { token: viewer.token, viewerId: viewer.id };
+      return roomView(request, seed, index, auth.token, index === 0 ? auth.viewerId : null);
+    }));
+    expect(independentViews.map(({ phase, pendingHarvest }) => [phase, pendingHarvest])).toEqual(seed.players.slice(0, 4).map(() => ["play", null]));
   } finally {
     await Promise.all(contexts.map((context) => context.close()));
   }

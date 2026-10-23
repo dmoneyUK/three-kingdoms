@@ -5258,10 +5258,28 @@ async function resolveHarvestChoice(room: RoomRow, pending: HarvestPending, acto
   await queueHarvestCompletion(room, advanced.pending, parse<Card[]>(room.deck_json, []), parse<Card[]>(room.discard_json, []), log, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id)]);
 }
 
-async function advanceHarvest(roomId: string) {
+type HarvestAdvanceDiagnostic = {
+  phase: string | null;
+  pendingKind: string | null;
+  completeAtPresent: boolean;
+  deadlineReached: boolean;
+  casOutcome: "NOT_ATTEMPTED" | "COMMITTED" | "LOST";
+};
+
+async function advanceHarvest(roomId: string): Promise<HarvestAdvanceDiagnostic> {
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
   const pending = parse<Pending | null>(room?.pending_json ?? null);
-  if (!room || room.phase !== "response" || pending?.kind !== "harvest" || !pending.completeAt || Date.now() < pending.completeAt) return;
+  const now = Date.now();
+  const completeAtPresent = pending?.kind === "harvest" && Number.isFinite(pending.completeAt) && pending.completeAt > 0;
+  const deadlineReached = completeAtPresent && now >= pending.completeAt;
+  const diagnostic: HarvestAdvanceDiagnostic = {
+    phase: room?.phase ?? null,
+    pendingKind: pending?.kind ?? null,
+    completeAtPresent,
+    deadlineReached,
+    casOutcome: "NOT_ATTEMPTED",
+  };
+  if (!room || room.phase !== "response" || pending?.kind !== "harvest" || !completeAtPresent || !deadlineReached) return diagnostic;
   const storedLog = parse<string[]>(room.log_json, []);
   const hasPublicSettlement = gameTimeline(storedLog).some((event) => event.publicBumperHarvestSettlement?.rootEventId === pending.participantProgress?.rootEventId);
   const log = hasPublicSettlement ? storedLog : addHistory(storedLog, "Bumper Harvest finishes resolving.");
@@ -5273,7 +5291,13 @@ async function advanceHarvest(roomId: string) {
     log,
     causalEnvelope: null,
   }, room.pending_json).run();
-  if ((claim.meta.changes ?? 0) > 0) await continueAfterDying(roomId, pending.sourceId);
+  if ((claim.meta.changes ?? 0) > 0) {
+    diagnostic.casOutcome = "COMMITTED";
+    await continueAfterDying(roomId, pending.sourceId);
+  } else {
+    diagnostic.casOutcome = "LOST";
+  }
+  return diagnostic;
 }
 
 function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: Pending | null, players: PlayerRow[]): GameplayAction[] {
@@ -5706,6 +5730,19 @@ export async function POST(request: Request) {
   let canonicalResponseSatisfied = false;
   let canonicalResponseDeclined = false;
   let canonicalResponseKind: string | null = null;
+  let advanceTimerContextDiagnostic: {
+    mismatchReasons: string[];
+    phase: string | null;
+    pendingKind: string | null;
+    viewerSeat: number | null;
+    pendingActorSeat: number | null;
+    revisionMatches: boolean | null;
+    viewerMatches: boolean | null;
+    phaseMatches: boolean | null;
+    pendingKindMatches: boolean | null;
+    actorMatches: boolean | null;
+    windowMatches: boolean | null;
+  } | null = null;
   // Saved clients may still submit concrete names. Translate them once at the
   // HTTP boundary; the domain path below only receives semantic decisions.
   const name = cleanName(body.name);
@@ -5751,7 +5788,7 @@ export async function POST(request: Request) {
   let allPlayers = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
   let allRoomPlayers = allPlayers.results ?? [];
   let rawControllerPending = parsePersistedPending(room.pending_json);
-  if (room.phase === "response" && rawControllerPending?.kind === "response" && rawControllerPending.continuation.kind === "negation") {
+  if (action !== "advance_timers" && room.phase === "response" && rawControllerPending?.kind === "response" && rawControllerPending.continuation.kind === "negation") {
     await advanceNegation(room.id);
     room = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>() ?? room;
     allPlayers = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
@@ -5793,13 +5830,24 @@ export async function POST(request: Request) {
   if (GAMEPLAY_ACTION_SET.has(action)) {
     const currentRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
     const currentPlayers = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-    const issue = currentRoom ? playingStateIssue(currentRoom, currentPlayers.results ?? []) : "The game room is unavailable.";
-    if (issue) return json({ error: `Game state check failed: ${issue}` }, 409);
+    const currentPlayerRows = currentPlayers.results ?? [];
+    const currentSessionPlayers = currentPlayerRows.filter((player) => player.token_hash === tokenHash);
+    if (action === "advance_timers" && !currentSessionPlayers.length) {
+      return json({ error: "Your player session is no longer valid." }, 403);
+    }
+    const issue = currentRoom ? playingStateIssue(currentRoom, currentPlayerRows) : "The game room is unavailable.";
+    if (issue) {
+      if (action === "advance_timers") {
+        const pendingKind = parsePersistedPending(currentRoom?.pending_json ?? null)?.kind ?? null;
+        if (pendingKind === "harvest") console.log(JSON.stringify({ event: "harvest_terminal_advance", stage: "PLAYING_STATE_GUARD", playingStateIssue: true, phase: currentRoom?.phase ?? null, pendingKind, authenticatedRoomMember: currentSessionPlayers.length > 0 }));
+      }
+      return json({ error: `Game state check failed: ${issue}` }, 409);
+    }
     if (!currentRoom) return json({ error: "The game room is unavailable." }, 409);
     room = currentRoom;
-    allPlayers = currentPlayers;
-    allRoomPlayers = currentPlayers.results ?? [];
-    sessionPlayers = allRoomPlayers.filter((player) => player.token_hash === tokenHash);
+    allPlayers = currentPlayerRows;
+    allRoomPlayers = currentPlayerRows;
+    sessionPlayers = currentSessionPlayers;
     const rawCurrentPending = parsePersistedPending(room.pending_json);
     pendingForController = rawCurrentPending;
     actionPlayerIdForController = room.status === "heroes" ? nextGeneralSelector(allRoomPlayers)?.id : actionPlayerIdForPending(room, pendingForController, allRoomPlayers);
@@ -5808,15 +5856,42 @@ export async function POST(request: Request) {
       ? actionPlayerIdForController && sessionPlayers.some((player) => player.id === actionPlayerIdForController) ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? controllerFallback : controllerFallback
       : sessionPlayers[0];
     const submitted = body.context && typeof body.context === "object" ? body.context as { actionRevision?: unknown; meId?: unknown; phase?: unknown; pendingKind?: unknown; actorId?: unknown; windowId?: unknown } : null;
-    if (pendingForController?.kind === "negation_window" && isTestController && typeof submitted?.meId === "string" && controlledPlayerIds.has(submitted.meId)) {
+    if (action !== "advance_timers" && pendingForController?.kind === "negation_window" && isTestController && typeof submitted?.meId === "string" && controlledPlayerIds.has(submitted.meId)) {
       me = allRoomPlayers.find((player) => player.id === submitted.meId) ?? controllerFallback;
     }
     const expectedRevision = await actionRevisionFor(room, allRoomPlayers, actionPlayerIdForController);
     const expectedPendingKind = pendingForController?.kind === "response" || pendingForController?.kind === "negation_window" ? "response" : asTriggerPending(pendingForController) ? "trigger" : pendingForController?.kind ?? null;
     const expectedContext = { meId: me?.id ?? null, phase: room.phase ?? null, pendingKind: expectedPendingKind, actorId: actionPlayerIdForController ?? null };
     const submittedPendingKind = submitted?.pendingKind === undefined ? undefined : String(submitted.pendingKind);
-    const contextMismatch = submitted && (submitted.actionRevision !== undefined && String(submitted.actionRevision) !== expectedRevision || submitted.meId !== undefined && String(submitted.meId) !== String(expectedContext.meId) || submitted.phase !== undefined && String(submitted.phase) !== String(expectedContext.phase) || submittedPendingKind !== undefined && submittedPendingKind !== String(expectedContext.pendingKind) || submitted.actorId !== undefined && String(submitted.actorId) !== String(expectedContext.actorId) || pendingForController?.kind === "negation_window" && submitted.windowId !== undefined && String(submitted.windowId) !== pendingForController.windowId);
-    if (contextMismatch) {
+    const contextMismatchReasons: string[] = [];
+    if (submitted?.actorId !== undefined && String(submitted.actorId) !== String(expectedContext.actorId)) contextMismatchReasons.push("ACTOR_CONTEXT");
+    if (submitted?.meId !== undefined && String(submitted.meId) !== String(expectedContext.meId)) contextMismatchReasons.push("VIEWER_CONTEXT");
+    if (submitted?.actionRevision !== undefined && String(submitted.actionRevision) !== expectedRevision) contextMismatchReasons.push("REVISION_CONTEXT");
+    if (submitted?.phase !== undefined && String(submitted.phase) !== String(expectedContext.phase)) contextMismatchReasons.push("PHASE_CONTEXT");
+    if (submittedPendingKind !== undefined && submittedPendingKind !== String(expectedContext.pendingKind)) contextMismatchReasons.push("PENDING_CONTEXT");
+    if (pendingForController?.kind === "negation_window" && submitted?.windowId !== undefined && String(submitted.windowId) !== pendingForController.windowId) contextMismatchReasons.push("WINDOW_CONTEXT");
+    const contextMismatch = contextMismatchReasons.length > 0;
+    if (action === "advance_timers") {
+      const pendingActorId = pendingForController && "actorId" in pendingForController ? pendingForController.actorId : null;
+      const pendingActor = pendingActorId ? allRoomPlayers.find((player) => player.id === pendingActorId) : null;
+      const submittedViewer = typeof submitted?.meId === "string"
+        ? sessionPlayers.find((player) => player.id === submitted.meId)
+        : null;
+      advanceTimerContextDiagnostic = {
+        mismatchReasons: contextMismatchReasons,
+        phase: room.phase ?? null,
+        pendingKind: pendingForController?.kind ?? null,
+        viewerSeat: submittedViewer?.seat ?? null,
+        pendingActorSeat: pendingActor?.seat ?? null,
+        revisionMatches: submitted?.actionRevision === undefined ? null : String(submitted.actionRevision) === expectedRevision,
+        viewerMatches: submitted?.meId === undefined ? null : String(submitted.meId) === String(expectedContext.meId),
+        phaseMatches: submitted?.phase === undefined ? null : String(submitted.phase) === String(expectedContext.phase),
+        pendingKindMatches: submittedPendingKind === undefined ? null : submittedPendingKind === String(expectedContext.pendingKind),
+        actorMatches: submitted?.actorId === undefined ? null : String(submitted.actorId) === String(expectedContext.actorId),
+        windowMatches: pendingForController?.kind !== "negation_window" || submitted?.windowId === undefined ? null : String(submitted.windowId) === pendingForController.windowId,
+      };
+    }
+    if (contextMismatch && action !== "advance_timers") {
       return json({ error: "That action is stale. The table has advanced to the next actor.", stale: true, room: await roomState(code, token) }, 409);
     }
     if (pendingForController?.kind === "negation_window") {
@@ -7355,7 +7430,10 @@ export async function POST(request: Request) {
 
   if (action === "advance_timers") {
     await expireDyingRescue(room.id);
-    await advanceHarvest(room.id);
+    const harvestAdvance = await advanceHarvest(room.id);
+    if (advanceTimerContextDiagnostic && (advanceTimerContextDiagnostic.pendingKind === "harvest" || harvestAdvance.pendingKind === "harvest")) {
+      console.log(JSON.stringify({ event: "harvest_terminal_advance", ...advanceTimerContextDiagnostic, completeAtPresent: harvestAdvance.completeAtPresent, deadlineReached: harvestAdvance.deadlineReached, casOutcome: harvestAdvance.casOutcome }));
+    }
     await advanceNegation(room.id);
     return json({ room: await roomState(code, token) });
   }
