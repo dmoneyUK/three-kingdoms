@@ -3136,3 +3136,38 @@ Profile command measurements:
   Production `/api/health` returned `{"ok":true,"worker":"available"}`.
 - Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. No desktop
   UX review or user acceptance is inferred.
+
+### UX2 §10.12.4.1 L4-F — retain Duel history during opponent Inspector — 2026-10-23
+
+- Source commit `74b344d5b298907744918c6eb96ec5f8375e1484` keeps already parked,
+  publicly proven Duel/LUST history mounted as a passive read-only presentation
+  while an opponent Inspector is open. It preserves genuine event/card/actor
+  identities and does not surface a new central reveal or announcement during
+  inspection. Closing Inspect returns to the existing journey without replay.
+- Mobile browser proof passed printed Duel Inspect→close→TEST SWITCH→refresh,
+  the LUST-cost Inspector case, and a four-viewer LUST exchange with one genuine
+  skill cost and three alternating Attacks at 390×844 and 440×894. All four
+  viewers retained identical public history/author anchors, private Peach
+  identity remained owner-only, Inspector operations sent no room POST, Skip
+  stayed usable, and settled history retired after its read window.
+- Focused local build and targeted ESLint passed (0 errors; 15 existing Hook
+  warnings). Exact-SHA Actions
+  [`39917886113`](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39917886113)
+  passed required browser startup/room smoke, lint/build/fast, API tests, D1
+  migration, Worker deploy and production smoke. Worker version
+  `23a48b13-c48b-409d-a388-741d3d8b26bf`; production `/` and `/api/health`
+  returned 200, with health `{"ok":true,"worker":"available"}`.
+- Adjacent phone-regression guards: ordinary Attack/Dodge and the proven
+  single-target Negation history/narration check passed. The Da Qiao browser
+  check reached correct current public copy but has an outdated `used
+  Deflection` assertion (source renders `Deflection: DA QIAO redirected Attack
+  to REPLACEMENT; discarded Eight Trigrams Formation.`). The four-viewer
+  Group/Negation guard surfaced a separate U13-B-G status-chip placement issue
+  before any Inspector interaction: at 390×844 the 249×44 chip is hidden
+  because its 6px clearance rejects a measured non-overlapping 4.5px gap below
+  the central CardFace. This independent follow-up is recorded in
+  `docs/UX2-refine.md` §10.13.2.2 and HANDOVER; it is not part of L4's Inspector
+  gate.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. CI and
+  browser checks do not constitute owner acceptance; no desktop or real-phone
+  review is claimed.
