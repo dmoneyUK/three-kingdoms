@@ -3243,3 +3243,23 @@ Profile command measurements:
   `Page.overrideSetting: Unknown setting: PushAPIEnabled`; no native Safari
   evidence is claimed. G1/G2 status: **IMPLEMENTED / DEPLOYED — PENDING USER
   PHONE RE-REVIEW**. No user acceptance is inferred.
+
+### UX2 §10.10 T1 — Shared Steal/Burning Bridges choosing progress — 2026-10-23
+
+- Source commit `5f6c2f76b3bc263739da33776e4dee0760367267` adds a public,
+  server-proven choosing cue shared across the actor, target and unaffected
+  viewers. The actor-only target-card picker remains private; selection zones,
+  card identities, indexes and unconfirmed intent remain hidden. The cue is
+  absent before Negation settles, after cancellation and once the choice
+  settles.
+- Four authenticated Worker/D1 mobile views passed focused browser coverage
+  4/4 at 390×844 for Steal and Burning Bridges; focused API cue/privacy checks
+  passed 9/9. Targeted ESLint, build, browser syntax and diff checks passed.
+- Exact-SHA [Actions 39928183907](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39928183907)
+  passed browser startup/room smoke, lint/fast, API, D1 migrations, Worker
+  deployment and production smoke. Worker
+  `6ae645da-7bff-4089-9ec6-0c7470ae9c0f`; live `/api/health` returned
+  `{"ok":true,"worker":"available"}`.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. T2's
+  public destination/real-card proof and T3's responsive end-to-end regression
+  remain separate; no desktop or owner-phone acceptance is inferred.
