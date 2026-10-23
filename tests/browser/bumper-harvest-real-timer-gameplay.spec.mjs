@@ -812,7 +812,14 @@ test("NEG-A1 F1-R2 final Negation closes the Harvest hold after a transient stal
   const finalNegation = { id: "neg-a1-final-harvest-negation", kind: "Negation", suit: "♠", rank: "A" };
   const seed = await seedGame(request, { seatThreeNegation: finalNegation, includeFifthPlayer: true });
   const phone = { width: 390, height: 844 };
+  const terminalViewports = [
+    { width: 390, height: 700 },
+    { width: 390, height: 844 },
+    { width: 440, height: 956 },
+    { width: 440, height: 766 },
+  ];
   const contexts = [];
+  let releaseControllerRetry = null;
   try {
     const humanViewers = await Promise.all(seed.players.slice(0, 4).map(async (viewer, index) => {
       const context = await browser.newContext({ viewport: phone, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
@@ -873,6 +880,11 @@ test("NEG-A1 F1-R2 final Negation closes the Harvest hold after a transient stal
     const controllerTimerBodies = [];
     const controllerTerminalSnapshots = [];
     const backgroundTimerAttempts = [];
+    let controllerRetryStarted = false;
+    let signalControllerRetryStarted;
+    const controllerRetryStartedPromise = new Promise((resolve) => { signalControllerRetryStarted = resolve; });
+    const controllerRetryGate = new Promise((resolve) => { releaseControllerRetry = resolve; });
+    let controllerRetryHeld = false;
     for (const { page } of humanViewers) {
       await page.route(`${API}/api/rooms`, async (route) => {
         const outgoing = route.request();
@@ -907,6 +919,12 @@ test("NEG-A1 F1-R2 final Negation closes the Harvest hold after a transient stal
               controllerTimerStatuses.push(409);
               controllerTerminalSnapshots.push(latest);
               return;
+            }
+            if (!controllerRetryHeld) {
+              controllerRetryHeld = true;
+              controllerRetryStarted = true;
+              signalControllerRetryStarted();
+              await controllerRetryGate;
             }
             const response = await route.fetch();
             await route.fulfill({ response });
@@ -944,6 +962,59 @@ test("NEG-A1 F1-R2 final Negation closes the Harvest hold after a transient stal
       contentType: "application/json",
     });
 
+    await controllerPage.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect.poll(() => controllerPage.evaluate(() => document.visibilityState)).toBe("hidden");
+    await controllerPage.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect.poll(() => controllerPage.evaluate(() => document.visibilityState)).toBe("visible");
+    await expect.poll(() => controllerRetryStarted, { timeout: 5_000 }).toBe(true);
+    await controllerRetryStartedPromise;
+
+    const viewportProofs = [];
+    for (const viewport of terminalViewports) {
+      await controllerPage.setViewportSize(viewport);
+      const held = await roomView(request, seed, 0, controller.token, seed.players[0].id);
+      expect(held.pendingHarvest?.complete, `Harvest remains in the authoritative result hold at ${viewport.width}×${viewport.height}`).toBe(true);
+      expect(held.pendingHarvest.actorId).not.toBe(held.meId, "the viewing seat differs from the persisted terminal actor");
+      const screenshot = testInfo.outputPath(`neg-a1-f1-r2-terminal-${viewport.width}x${viewport.height}.png`);
+      await controllerPage.screenshot({ path: screenshot, animations: "disabled" });
+      await testInfo.attach(`neg-a1-f1-r2-terminal-${viewport.width}x${viewport.height}`, { path: screenshot, contentType: "image/png" });
+      viewportProofs.push({
+        viewport,
+        sampledAt: Date.now(),
+        phase: held.phase,
+        pendingKind: held.pending?.kind,
+        completeAt: held.pendingHarvest.countdownUntil,
+        viewerSeat: held.players.find(({ id }) => id === held.meId)?.seat,
+        persistedActorSeat: seed.players.find(({ id }) => id === held.pendingHarvest.actorId)?.seat,
+        activeCards: held.pendingHarvest.availableIds.length,
+        chosenCardCount: held.pendingHarvest.choices.length,
+      });
+    }
+
+    const attemptsBeforeRefresh = backgroundTimerAttempts.length;
+    await humanViewers[0].page.reload();
+    await expect(humanViewers[0].page.locator(".game-shell")).toBeVisible();
+    await expect.poll(() => backgroundTimerAttempts.length, { timeout: 5_000 }).toBeGreaterThan(attemptsBeforeRefresh);
+
+    await controllerPage.setViewportSize(phone);
+    const switchDuringHold = controllerPage.getByRole("button", { name: `Switch to ${seed.players[4].name}` });
+    await expect(switchDuringHold).toBeVisible();
+    await switchDuringHold.tap();
+    await expect(controllerPage.locator(`.local-player-dock[data-player-anchor="${seed.players[4].id}"]`)).toBeVisible();
+    const switchedHold = await roomView(request, seed, 0, controller.token, seed.players[4].id);
+    expect(switchedHold.pendingHarvest?.complete).toBe(true, "TEST SWITCH remains usable during the terminal hold");
+    await testInfo.attach("neg-a1-f1-r2-terminal-viewports", {
+      body: JSON.stringify(viewportProofs, null, 2),
+      contentType: "application/json",
+    });
+    releaseControllerRetry();
+
     await expect.poll(async () => {
       const latest = await roomView(request, seed, 0, controller.token, seed.players[0].id);
       return { phase: latest.phase, pendingHarvest: latest.pendingHarvest, pending: latest.pending };
@@ -969,6 +1040,7 @@ test("NEG-A1 F1-R2 final Negation closes the Harvest hold after a transient stal
     }));
     expect(independentViews.map(({ phase, pendingHarvest }) => [phase, pendingHarvest])).toEqual(seed.players.slice(0, 4).map(() => ["play", null]));
   } finally {
+    releaseControllerRetry?.();
     await Promise.all(contexts.map((context) => context.close()));
   }
 });
