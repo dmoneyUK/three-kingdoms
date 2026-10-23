@@ -3313,3 +3313,28 @@ Profile command measurements:
 - Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE RE-REVIEW**. This
   completes T3 technically; T1/T2/T3 remain independently reviewable and no
   owner phone acceptance is inferred.
+
+### UX2 §10.15 Q3 — Viewer/layout rebase without motion — 2026-10-23
+
+- Source commit `1a0a5dc6185334353ab7e6148df4239c317888ef` adds the viewer/layout
+  epoch barrier for parked public-card Journeys. A parked card is withheld
+  until the current viewer's true-author anchor is measured, then snaps into
+  place without replaying its reveal or animating from another viewer's old
+  geometry. New committed-card REVEAL→MOVE behavior and game rules remain
+  unchanged.
+- Five focused mobile browser regressions passed across targeted runs:
+  Group-root history, Attack/Dodge with an unmeasured author anchor,
+  authenticated viewer change with single-target Negation history, Duel
+  history through SWITCH/resize, and Lust's first visible frame. The checks
+  confirmed current-view anchors, no stale first paint or transition, no
+  reveal reset, and privacy of losing Negation cards. Focused build, lint,
+  browser syntax and diff checks passed; no desktop or owner-phone acceptance
+  is claimed.
+- Exact-SHA [Actions 39945676809](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39945676809)
+  passed API, browser startup/room smoke, lint/fast, D1 migration, Worker
+  deployment and production smoke for this source SHA. Worker version
+  `f7278550-b125-4c0a-9e25-667fc3eb9b97`; direct production `/api/health`
+  returned `{"ok":true,"worker":"available"}`.
+- Status: **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW**. Q4 is the
+  next separate H4 cross-client verification task. No user acceptance is
+  inferred.
