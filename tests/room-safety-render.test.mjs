@@ -1154,3 +1154,39 @@ test("every card-and-target active hero skill has a valid empty-selection UI con
     assert.doesNotMatch(html, /GAME SCREEN ERROR|Previous game data is no longer compatible/);
   }
 });
+
+test("play-target CurrentAction normalization keeps bounded verdicts only during legal play turns", () => {
+  const payload = {
+    code: "TARGET-VIEW", status: "playing", maxPlayers: 2, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "ACTOR", seat: 0, hero: "cao-cao", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "NEAR", seat: 1, hero: "liu-bei", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    ],
+    myHand: [card("private-target-card", "Attack")], turnSeat: 0, phase: "play", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
+    currentAction: {
+      version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"],
+      playTargetEligibility: [
+        { mode: "card", cardId: "private-target-card", effectiveKind: "Attack", eligibleTargetIds: ["p2", "p2", ""], rejections: [
+          { targetId: "p3", code: "OUT_OF_RANGE", distance: 2, range: 1 },
+          { targetId: "p4", code: "OUT_OF_RANGE", distance: 2 },
+          { targetId: "p2", code: "TARGET_RESTRICTED" },
+          { targetId: "p5", code: "UNKNOWN_CODE" },
+        ] },
+        { mode: "serpent_spear_attack", effectiveKind: "Attack", eligibleTargetIds: ["p2"], rejections: [] },
+      ],
+    },
+  };
+  const room = normalizeRoomData(payload);
+  assert.ok(room);
+  assert.deepEqual(room.currentAction.playTargetEligibility, [
+    { mode: "card", cardId: "private-target-card", effectiveKind: "Attack", eligibleTargetIds: ["p2"], rejections: [{ targetId: "p3", code: "OUT_OF_RANGE", distance: 2, range: 1 }] },
+    { mode: "serpent_spear_attack", effectiveKind: "Attack", eligibleTargetIds: ["p2"], rejections: [] },
+  ]);
+
+  const responseRoom = normalizeRoomData({
+    ...payload,
+    currentAction: { ...payload.currentAction, kind: "response", legalActions: ["respond"] },
+  });
+  assert.ok(responseRoom);
+  assert.equal(responseRoom.currentAction.playTargetEligibility, undefined, "a stale play-target map is dropped outside a legal play turn");
+});

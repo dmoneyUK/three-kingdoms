@@ -13,7 +13,7 @@ import { IMPLEMENTED_STANDARD_HEROES, STANDARD_HEROES, heroGender, type HeroDefi
 import { continueTriggerEvent, resumeTriggerContinuation } from "../../../game/decisions/triggers";
 import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement, responseAfterSemanticSuccess } from "../../../game/decisions/responses";
 import { applySuccessfulNegation } from "../../../game/decisions/negation";
-import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../../../game/protocol.js";
+import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction, type PlayTargetEligibilityView } from "../../../game/protocol.js";
 import { applyDamage, applyRecovery, isDying, recoveredAmount, recoveryNeeded } from "../../../game/match/dying.js";
 import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
@@ -22,7 +22,7 @@ import { deckReorderCount, rebuildDeckForReorder } from "../../../game/decisions
 import { asTriggerPending, isGroupParticipantProgressOutcomeAllowed, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupParticipantProgressOutcome, type GroupResolutionSemantics, type GroupResponsePending, type HarvestChoice, type HarvestNegationResponseRecord, type HarvestParticipantProgress, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type HarvestPending, type HeroChoiceTriggerContinuation, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type NegationWindowPending, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
 import { canTargetCharacter } from "../../../game/capabilities/targeting";
-import { isWithinRange } from "../../../game/capabilities/range";
+import { evaluatePlayTarget, type PlayTargetEligibilityPlayer, type PlayTargetMode, type PlayTargetRejection } from "../../../game/capabilities/play-target-eligibility";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
 import { attackRootProjectionDiagnosticsFor, projectPresentationV2, type DiaoChanSkillNoticeProof, type PresentationAttackDodgeResponseProof, type PresentationAttackHitSettlementProof, type PresentationBumperHarvestSettlementProof, type PresentationDeflectionActionProof, type PresentationDismantleSettlementProof, type PresentationDuelAttackResponseProof, type PresentationLustDuelAttackResponseProof, type PresentationGroupSettlementProof, type PresentationNegationSettlementProof, type PresentationPublicCardEffectDraft, type PresentationPublicCardEffectProof, type PresentationSelfTargetActionProof, type PresentationSkillEffectActionEvent, type PresentationSkillEffectSettlementProof, type PresentationStealSettlementProof, type PresentationV2 } from "../../../game/presentation-v2";
@@ -514,9 +514,6 @@ function attackDistance(players: PlayerRow[], sourceId: string, targetId: string
   if (!source?.alive || !target?.alive) return 99;
   return effectiveDistanceBetween(players, sourceId, targetId, equipmentCards);
 }
-function stratagemRangeAllowed(players: PlayerRow[], source: PlayerRow, target: PlayerRow, effectiveCardKind: Card["kind"], ordinaryRange: number) {
-  return isWithinRange({ source, target, effectiveCardKind, ordinaryRange, effectiveDistance: attackDistance(players, source.id, target.id) });
-}
 function borrowedSwordLegalityFor(players: PlayerRow[], sourceId: string, sourceHandCountOverride?: number) {
   const characters: BorrowedSwordPlayer[] = players.map((player) => ({
     id: player.id,
@@ -532,6 +529,62 @@ function borrowedSwordLegalityFor(players: PlayerRow[], sourceId: string, source
 }
 function borrowedSwordForcedTargetIds(players: PlayerRow[], sourceId: string, holderId: string) {
   return borrowedSwordLegalityFor(players, sourceId).forcedTargetIdsByHolderId[holderId] ?? [];
+}
+function playTargetPlayers(players: PlayerRow[]): PlayTargetEligibilityPlayer[] {
+  return players.map((player) => ({
+    id: player.id,
+    seat: player.seat,
+    alive: Boolean(player.alive),
+    hero: player.hero,
+    handCount: parse<Card[]>(player.hand_json, []).length,
+    equipment: equipmentZone(player),
+    judgementCards: parse<Card[]>(player.judgement_json, []),
+  }));
+}
+function playTargetEligibilityFor(source: PlayerRow, players: PlayerRow[], playPhaseActions: CurrentAction["playPhaseActions"], canAttack: boolean): PlayTargetEligibilityView[] {
+  const hand = parse<Card[]>(source.hand_json, []);
+  const convertedAttackIds = new Set((playPhaseActions ?? []).filter((entry) => entry.canPlayAs === "attack").map((entry) => entry.cardId));
+  const candidates = new Map<string, PlayTargetMode>();
+  const cardTargetKinds = new Set<Card["kind"]>(["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"]);
+  for (const card of hand) {
+    if (isAttackCard(card)) candidates.set(`${card.id}:Attack`, { mode: "card", cardId: card.id, effectiveKind: "Attack" });
+    if (cardTargetKinds.has(card.kind)) candidates.set(`${card.id}:${card.kind}`, { mode: "card", cardId: card.id, effectiveKind: card.kind });
+    if (convertedAttackIds.has(card.id) && !isAttackCard(card)) candidates.set(`${card.id}:Attack`, { mode: "card", cardId: card.id, effectiveKind: "Attack" });
+  }
+  const modes: PlayTargetMode[] = [...candidates.values()];
+  if (hasSerpentSpear(source) && hand.length >= 2) modes.push({ mode: "serpent_spear_attack", effectiveKind: "Attack" });
+  const eligibilityPlayers = playTargetPlayers(players);
+  return modes.map((mode): PlayTargetEligibilityView => {
+    const eligibleTargetIds: string[] = [];
+    const rejections: PlayTargetEligibilityView["rejections"] = [];
+    for (const target of eligibilityPlayers) {
+      if (target.id === source.id) continue;
+      const evaluation = mode.effectiveKind === "Attack" && !canAttack
+        ? { eligible: false as const, rejection: { code: "ACTION_UNAVAILABLE" as const } }
+        : evaluatePlayTarget(eligibilityPlayers, source.id, target.id, mode);
+      if (evaluation.eligible) eligibleTargetIds.push(target.id);
+      else rejections.push({ targetId: target.id, ...evaluation.rejection });
+    }
+    return { ...mode, eligibleTargetIds, rejections };
+  });
+}
+function playTargetFailureFor(rejection: PlayTargetRejection, kind: Card["kind"], target: PlayerRow, serpentSpearAttack = false) {
+  if (rejection.code === "OUT_OF_RANGE") {
+    if (kind === "Attack" && serpentSpearAttack) return `That opponent is out of range. Your current Attack Range is ${rejection.range ?? 1}.`;
+    if (kind === "Attack") return `Every target must be within your current Attack Range of ${rejection.range ?? 1}.`;
+    if (kind === "Steal") return "Steal can target only a character within distance 1.";
+    if (kind === "RationsDepleted") return "Rations Depleted can target only a character within distance 1.";
+  }
+  if (rejection.code === "TARGET_RESTRICTED") {
+    if (kind === "Attack" && serpentSpearAttack) return "That character cannot be targeted by Attack.";
+    if (kind === "Duel") return "That character cannot be targeted by Duel.";
+    if (kind === "BorrowedSword") return `${target.name} is not a living Weapon holder for Borrowed Sword.`;
+    return "That card cannot target this character.";
+  }
+  if (rejection.code === "NO_TARGETABLE_CARDS") return "Choose a player who currently has at least one card.";
+  if (rejection.code === "DUPLICATE_DELAYED_CARD") return `${target.name} already has ${kind === "Overindulgence" ? "Overindulgence" : "Rations Depleted"} in their Judgement Zone.`;
+  if (rejection.code === "ACTION_UNAVAILABLE") return "That target action is no longer available.";
+  return "Choose another living character.";
 }
 function hasSerpentSpear(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SerpentSpear"; }
 function hasSkyPiercingHalberd(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SkyPiercingHalberd"; }
@@ -5466,6 +5519,12 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     && legalActions.includes("choose_target_card")
     ? targetCardSelectionFor(pending, players.find((player) => player.id === pending.targetId))
     : undefined;
+  const playTargetEligibility = !concealPrivateTriggerDecision
+    && me?.id === actualActionPlayerId
+    && room.phase?.startsWith("play")
+    && legalActions.includes("play_card")
+    ? playTargetEligibilityFor(me, players, playPhaseActions, canDeclareAttack)
+    : undefined;
   const currentAction: CurrentAction = {
     version: 3,
     kind: concealPrivateTriggerDecision ? "none" : responsePending || negationWindow ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
@@ -5478,6 +5537,7 @@ async function roomState(code: string, token?: string, includeAttackDodgeDiagnos
     legalActions,
     canDeclareAttack,
     ...(playPhaseActions.length ? { playPhaseActions } : {}),
+    ...(playTargetEligibility?.length ? { playTargetEligibility } : {}),
     ...(borrowedSwordTargets.length ? { borrowedSwordTargets } : {}),
     ...(targetCardSelection ? { targetCardSelection } : {}),
     ...(responseDecision ? { requirement: responseDecision.requirement, options: responseDecision.options, declineAction: responseDecision.declineAction } : {}),
@@ -8146,8 +8206,8 @@ export async function POST(request: Request) {
       const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
       if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent as the target." }, 400);
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
-      if (attackDistance(players, me.id, target.id) > attackRangeFor(me)) return json({ error: `That opponent is out of range. Your current Attack Range is ${attackRangeFor(me)}.` }, 409);
-      if (!canTargetCharacter({ sourceId: me.id, targetId: target.id, targetHero: target.hero, targetHandCount: parse<Card[]>(target.hand_json, []).length, cardKind: "Attack" })) return json({ error: "That character cannot be targeted by Attack." }, 409);
+      const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "serpent_spear_attack", effectiveKind: "Attack" });
+      if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, "Attack", target, true) }, 409);
       if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
       const materialIds = new Set(materials.map((item) => item.id)); hand = hand.filter((item) => !materialIds.has(item.id)); discard.push(...materials);
       const serpentProof = publicConversionDraft("serpent_spear_attack", me.id, materials, { playerId: me.id, hand: handBeforeAction, equipment: equipmentCards(me) }, target.id, "Attack");
@@ -8254,62 +8314,64 @@ export async function POST(request: Request) {
       } else if (card.kind === "Overindulgence" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id) return json({ error: "Choose another living character for Overindulgence." }, 400);
-        if (!canTargetCharacter({ sourceId: me.id, targetId: target.id, targetHero: target.hero, cardKind: card.kind })) return json({ error: "That card cannot target this character." }, 409);
-        if (parse<Card[]>(target.judgement_json, []).some((delayed) => delayed.kind === "Overindulgence")) return json({ error: `${target.name} already has Overindulgence in their Judgement Zone.` }, 409);
+        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
+        const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
+        if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
         log = addCardEvent(log, me.name, card, target.name); log = addLog(log, `${me.name} plays Overindulgence on ${target.name}.`);
-        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-        await beginStratagemUse(liveRoom, me, rows.results ?? [], card, card, target.name, target.id, { kind: "overindulgence", targetId: target.id, cardId: card.id }, hand, deck, discard, log);
+        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "overindulgence", targetId: target.id, cardId: card.id }, hand, deck, discard, log);
       } else if (card.kind === "RationsDepleted" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id) return json({ error: "Choose another living character for Rations Depleted." }, 400);
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-        if (!stratagemRangeAllowed(rows.results ?? [], me, target, card.kind, 1)) return json({ error: "Rations Depleted can target only a character within distance 1." }, 409);
-        if (parse<Card[]>(target.judgement_json, []).some((delayed) => delayed.kind === "RationsDepleted")) return json({ error: `${target.name} already has Rations Depleted in their Judgement Zone.` }, 409);
+        const players = rows.results ?? [];
+        const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
+        if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name);
-        await beginStratagemUse(liveRoom, me, rows.results ?? [], card, card, target.name, target.id, { kind: "rations_depleted", targetId: target.id, cardId: card.id }, hand, deck, discard, log);
+        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "rations_depleted", targetId: target.id, cardId: card.id }, hand, deck, discard, log);
       } else if (card.kind === "BorrowedSword" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id || !weaponCard(target)) return json({ error: "Choose another living character who has a Weapon for Borrowed Sword." }, 400);
-        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-        const liveSource = (rows.results ?? []).find((player) => player.id === me.id);
-        const remainingHandCount = Math.max(0, parse<Card[]>(liveSource?.hand_json ?? me.hand_json, []).length - 1);
-        if (!borrowedSwordLegalityFor(rows.results ?? [], me.id, remainingHandCount).eligibleHolderIds.includes(target.id)) return json({ error: `${target.name} is not a living Weapon holder for Borrowed Sword.` }, 409);
+        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
+        const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
+        if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name); log = addLog(log, `${me.name} plays Borrowed Sword on ${target.name}.`);
-        await beginStratagemUse(liveRoom, me, rows.results ?? [], card, card, target.name, target.id, { kind: "borrowed_sword", targetId: target.id }, hand, deck, discard, log);
+        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "borrowed_sword", targetId: target.id }, hand, deck, discard, log);
       } else if (card.kind === "Dismantle" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent for Burning Bridges." }, 400);
-        if (targetableCardCount(target) === 0) return json({ error: "Choose a player who currently has at least one card." }, 400);
+        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
+        const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
+        if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 400);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name);
-        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-        await beginStratagemUse(liveRoom, me, rows.results ?? [], card, card, target.name, target.id, { kind: "dismantle", targetId: target.id }, hand, deck, discard, log);
+        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "dismantle", targetId: target.id }, hand, deck, discard, log);
       } else if (card.kind === "Steal" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent for Steal." }, 400);
-        if (!canTargetCharacter({ sourceId: me.id, targetId: target.id, targetHero: target.hero, cardKind: card.kind })) return json({ error: "That card cannot target this character." }, 409);
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-        if (!stratagemRangeAllowed(rows.results ?? [], me, target, card.kind, 1)) return json({ error: "Steal can target only a character within distance 1." }, 409);
-        if (targetableCardCount(target) === 0) return json({ error: "Choose a player who currently has at least one card." }, 400);
+        const players = rows.results ?? [];
+        const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
+        if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, targetEvaluation.rejection.code === "NO_TARGETABLE_CARDS" ? 400 : 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name);
-        await beginStratagemUse(liveRoom, me, rows.results ?? [], card, card, target.name, target.id, { kind: "steal", targetId: target.id }, hand, deck, discard, log);
+        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "steal", targetId: target.id }, hand, deck, discard, log);
       } else if (card.kind === "Duel" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent for Duel." }, 400);
-        if (!canTargetCharacter({ sourceId: me.id, targetId: target.id, targetHero: target.hero, targetHandCount: parse<Card[]>(target.hand_json, []).length, cardKind: "Duel" })) return json({ error: "That character cannot be targeted by Duel." }, 409);
+        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
+        const targetEvaluation = evaluatePlayTarget(playTargetPlayers(players), me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: card.kind });
+        if (!targetEvaluation.eligible) return json({ error: playTargetFailureFor(targetEvaluation.rejection, card.kind, target) }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
         const presentation = addCardEventWithId(log, me.name, card, target.name); log = addLog(presentation.log, `${me.name} starts a Duel with ${target.name}.`);
         const wushuangPlayerId = me.hero === "lü-bu" ? me.id : target.hero === "lü-bu" ? target.id : undefined;
         const duelCreation = duelResponseDecision(me.id, target.id, me.id, liveRoom.phase, "Respond to Duel: select Attack or take 1 damage", nextResponseDeadline(target), [card], wushuangPlayerId);
         const pending = withPresentationBarrier(duelCreation.value, log, presentation.eventId);
-        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-        await beginStratagemUse(liveRoom, me, rows.results ?? [], card, card, target.name, target.id, { kind: "duel", pending }, hand, deck, discard, log, duelCreation.createdEnvelope);
+        await beginStratagemUse(liveRoom, me, players, card, card, target.name, target.id, { kind: "duel", pending }, hand, deck, discard, log, duelCreation.createdEnvelope);
       } else if (playableAttack) {
       if (!canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, liveRoom.phase)) return json({ error: "You may play only one Attack per turn." }, 409);
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
@@ -8320,8 +8382,16 @@ export async function POST(request: Request) {
         if (!halberdAttack && targetIds.length !== 1) return json({ error: "Choose one living opponent as the target." }, 400);
         const targets = playersInTurnOrder(players, me.seat).filter((player) => targetIds.includes(player.id));
         if (targets.length !== targetIds.length || targets.some((target) => !target.alive || target.id === me.id)) return json({ error: "Choose living opponents as Attack targets." }, 400);
-        if (targets.some((target) => attackDistance(players, me.id, target.id) > attackRangeFor(me))) return json({ error: `Every target must be within your current Attack Range of ${attackRangeFor(me)}.` }, 409);
-        if (targets.some((target) => !canTargetCharacter({ sourceId: me.id, targetId: target.id, targetHero: target.hero, targetHandCount: parse<Card[]>(target.hand_json, []).length, cardKind: "Attack" }))) return json({ error: "One or more selected characters cannot be targeted by Attack." }, 409);
+        const eligibilityPlayers = playTargetPlayers(players);
+        for (const target of targets) {
+          const targetEvaluation = evaluatePlayTarget(eligibilityPlayers, me.id, target.id, { mode: "card", cardId: card.id, effectiveKind: "Attack" });
+          if (!targetEvaluation.eligible) {
+            const message = targetEvaluation.rejection.code === "TARGET_RESTRICTED"
+              ? "One or more selected characters cannot be targeted by Attack."
+              : playTargetFailureFor(targetEvaluation.rejection, "Attack", target);
+            return json({ error: message }, 409);
+          }
+        }
         const target = targets[0];
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id);

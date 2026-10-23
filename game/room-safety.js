@@ -248,6 +248,31 @@ function normalizeCurrentAction(value) {
     return [{ effectId: option.effectId, label: option.label, ...(typeof option.description === "string" ? { description: option.description } : {}), ...(option.allowDecline === false ? { allowDecline: false } : {}), ...(typeof option.timeoutChoiceId === "string" ? { timeoutChoiceId: option.timeoutChoiceId } : {}), selection }];
   }) : [];
   const playPhaseActions = Array.isArray(value.playPhaseActions) ? value.playPhaseActions.filter(isRecord).flatMap((action) => typeof action.cardId === "string" && action.canPlayAs === "attack" ? [{ cardId: action.cardId, canPlayAs: "attack" }] : []).filter((action, index, all) => all.findIndex((candidate) => candidate.cardId === action.cardId) === index) : [];
+  const playTargetEligibility = value.kind === "turn" && Array.isArray(value.legalActions)
+    && (value.legalActions.includes("play_card") || value.legalActions.includes("serpent_spear_attack"))
+    && Array.isArray(value.playTargetEligibility)
+    ? value.playTargetEligibility.filter(isRecord).slice(0, 64).flatMap((entry) => {
+      const mode = entry.mode === "card" || entry.mode === "serpent_spear_attack" ? entry.mode : null;
+      const effectiveKind = typeof entry.effectiveKind === "string" && CARD_KINDS.has(entry.effectiveKind) ? entry.effectiveKind : null;
+      const cardId = typeof entry.cardId === "string" && entry.cardId.length > 0 ? entry.cardId : null;
+      if (!mode || !effectiveKind || mode === "card" && !cardId || mode === "serpent_spear_attack" && (effectiveKind !== "Attack" || cardId)) return [];
+      const eligibleTargetIds = Array.isArray(entry.eligibleTargetIds)
+        ? [...new Set(entry.eligibleTargetIds.filter((id) => typeof id === "string" && id.length > 0))].slice(0, 32)
+        : [];
+      const eligible = new Set(eligibleTargetIds);
+      const rejectionCodes = new Set(["OUT_OF_RANGE", "TARGET_RESTRICTED", "NO_TARGETABLE_CARDS", "DUPLICATE_DELAYED_CARD", "NOT_ELIGIBLE", "ACTION_UNAVAILABLE"]);
+      const rejections = Array.isArray(entry.rejections)
+        ? entry.rejections.filter(isRecord).flatMap((rejection) => {
+          if (typeof rejection.targetId !== "string" || !rejection.targetId || eligible.has(rejection.targetId) || !rejectionCodes.has(rejection.code)) return [];
+          const distance = Number.isInteger(rejection.distance) && rejection.distance >= 0 && rejection.distance <= 99 ? rejection.distance : undefined;
+          const range = Number.isInteger(rejection.range) && rejection.range >= 0 && rejection.range <= 99 ? rejection.range : undefined;
+          if (rejection.code === "OUT_OF_RANGE" && (distance === undefined || range === undefined)) return [];
+          return [{ targetId: rejection.targetId, code: rejection.code, ...(distance === undefined ? {} : { distance }), ...(range === undefined ? {} : { range }) }];
+        }).filter((rejection, index, all) => all.findIndex((candidate) => candidate.targetId === rejection.targetId) === index).slice(0, 32)
+        : [];
+      return [{ mode, ...(cardId ? { cardId } : {}), effectiveKind, eligibleTargetIds, rejections }];
+    }).filter((entry, index, all) => all.findIndex((candidate) => candidate.mode === entry.mode && candidate.cardId === entry.cardId && candidate.effectiveKind === entry.effectiveKind) === index)
+    : [];
   const borrowedSwordTargets = Array.isArray(value.borrowedSwordTargets) ? value.borrowedSwordTargets.filter(isRecord).flatMap((target) => typeof target.cardId === "string" && Array.isArray(target.targetIds) ? [{ cardId: target.cardId, targetIds: target.targetIds.filter((id) => typeof id === "string") }] : []).filter((target, index, all) => all.findIndex((candidate) => candidate.cardId === target.cardId) === index) : [];
   const targetCardSelection = value.kind === "target_card"
     && typeof value.actorId === "string"
@@ -271,6 +296,7 @@ function normalizeCurrentAction(value) {
     legalActions: Array.isArray(value.legalActions) ? value.legalActions.filter((action) => typeof action === "string" && GAMEPLAY_ACTION_SET.has(action)) : [],
     ...(typeof value.canDeclareAttack === "boolean" ? { canDeclareAttack: value.canDeclareAttack } : {}),
     ...(playPhaseActions.length ? { playPhaseActions } : {}),
+    ...(playTargetEligibility.length ? { playTargetEligibility } : {}),
     ...(borrowedSwordTargets.length ? { borrowedSwordTargets } : {}),
     ...(targetCardSelection ? { targetCardSelection } : {}),
     ...(requirement ? { requirement, options, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),

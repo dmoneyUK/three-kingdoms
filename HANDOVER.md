@@ -1,13 +1,17 @@
 # Current Handover
 
-Branch: `ux-v2`. Latest design reviewed: `docs/UX2-refine.md §10.18` and §10.17.1.2 (2026-10-20).
+Branch: `ux-v2` (synchronized with `origin/ux-v2` at `0eb03d3d651d173bec114d060d5990640fca34fe` before this task commit)
 
-## Latest result: BCP-1-F2
+## Latest result
 
-- **IMPLEMENTED / DEPLOYED — PENDING OWNER PHONE RE-REVIEW.** Code commit `a66d1ba5b641dbc079595708c8ea0e0b17b7c48d`; CI assertion repair commit `5b5719c21ce742ef8001c05703569e73e29463ca` is deployed. Exact-SHA Actions [39506905518](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39506905518) passed lint/build/fast, API, browser room smoke, D1 migration, Worker deploy and production smoke. Worker version `409364c3-f265-4154-9e96-cb12170a6139`; direct production check returned `/` HTTP 200 and `/api/health` `{"ok":true,"worker":"available"}`.
-- Harvest response minis now remeasure the genuine actor Seat for each viewer, avoid the whole Seat, and have a deterministic 6px portrait-edge fallback that protects SWITCH, Inspector, name, HP, equipment, judgement Info, other Seats, pool/H4 and action controls. H4 and local legal response guidance share a target derived from the current proof-backed recipient or current `action.responses`. F1/root layout, H4 position, privacy, timers and game rules were not changed.
-- The uploaded trace confirmed event `3e4d5792…` was a real Negation: the actor anchor changed across local/left/centre/right opponent views, but target stayed `(30,396,48×72)` and `pendingLayout` stayed true. No post-deploy multi-viewer trace or real-phone run was performed; required CI's browser job is startup/room smoke only. The existing announcement test was updated for the approved copy; its focused file passed 3/3. Targeted ESLint had 0 errors (15 hook warnings).
+- **`UX2-10.19-NEG-A1-STEPWISE-COUNTER-NARRATION` — IMPLEMENTED / DEPLOYED — PENDING OWNER REAL-PHONE REVIEW.** Code SHA `5d754977f22bedd122789947fb8fae96da6feec9`; exact-SHA Actions [39880416654](https://github.com/dmoneyUK/three-kingdoms/actions/runs/39880416654) passed lint/fast, API, browser startup smoke and deployment. Worker `2dbaed77-a338-48ff-b41d-4c7fde1b8a8e`; production `/api/health` returned `{"ok":true,"worker":"available"}`. The user has directed autonomous continuation without waiting for this phone review; the pending-review status remains truthful.
+- **Latest design reviewed:** `origin/ux-v2` commit `0eb03d3d651d173bec114d060d5990640fca34fe`, especially `docs/UX2-refine.md` §§10.18.1, 10.19 and 10.20. Accepted Harvest, H4 and INS-5-F1-R baselines remain closed. Five-seat physical layout work remains subject to the repository's §5 sequencing boundary.
+- The original dirty checkout and all its uncommitted EM-01/Harvest files remain preserved on local branch `codex/preserve-dirty-local-ux2-b085cbc`; this task uses the synchronized `ux-v2` worktree.
 
-## ONE current bounded task: owner phone re-review of BCP-1-F2
+## Exactly one current bounded task
 
-On mobile, verify the same committed Negation mini remains beside its true author after switching among all four perspectives, including top-row authors; it is not hidden or left at an old viewer coordinate, and SWITCH/Inspector still work. Confirm H4/local prompt says `Negation: Cancel Harvest for <chooser>?` before a response and `Counter <latest actor>'s Negation?` after one, with `No Negation available. Pass.` preserved where applicable. Keep BCP-1-F1 USER-ACCEPTED/CLOSED. Do not mark F2 USER-ACCEPTED until the owner gives that verdict.
+**`UX2-10.20-TGT-A1-A — release verification for the server-authoritative viewer-private target projection`.** Implementation is complete in this worktree. Focused evidence: `npm run build` passed; targeted capability and room-safety tests passed 26/26; the isolated API suite passed 3/3, covering actor-only projection/privacy, ordinary and converted Attack, Steal/Rations, Duel/Dismantle/Overindulgence/Borrowed Sword, virtual Serpent Spear, and 8-player Zhao Yun + Sky Piercing Halberd multi-target submission; targeted ESLint and `git diff --check` passed. No client tap behavior, gameplay rule, D1 schema or route was added.
+
+Commit and push only the Phase A implementation, its focused regressions and this handoff. Wait for exact-SHA required CI and Worker deployment. If CI fails, fix it and wait for a green exact-SHA run before continuing. Once deployment and `/api/health` are confirmed, record Phase A as **IMPLEMENTED / DEPLOYED — PENDING USER PHONE REVIEW** in §10.20 and hand off **`UX2-10.20-TGT-A1-B`** as the sole next task: Local Dock rejected-target tap UX, eligibility-based highlighting and focused real-browser interaction checks. Keep Phase B blocked on Phase A's exact-SHA release verification, not on human review.
+
+Latest observed required CI before this task commit is green: run `39880416654` for code SHA `5d754977f22bedd122789947fb8fae96da6feec9`.
