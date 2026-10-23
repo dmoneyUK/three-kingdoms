@@ -207,6 +207,44 @@ test("live five-seat mobile targeting preserves private authority, Inspector, De
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", { name: "Close card details" }).click();
 
+  const inspector = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel');
+  await blockedTarget.locator(".opponent-seat-inspect-button").click();
+  await expect(inspector).toHaveAttribute("data-inspect-player-id", blockedId);
+  const inspectorAnchorMetrics = () => page.evaluate((subjectId) => {
+    const rect = (element) => {
+      if (!element) return null;
+      const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+      return { left, top, right, bottom, width, height };
+    };
+    const panel = document.querySelector('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel');
+    const shell = panel?.closest(".opponent-inspection-floating-shell");
+    const table = panel?.closest(".play-table");
+    const seat = [...(table?.querySelectorAll(".player-board [data-player-anchor]") ?? [])]
+      .find((element) => element.dataset.playerAnchor === subjectId);
+    const board = table?.querySelector(".player-board");
+    const seatBox = rect(seat);
+    const shellBox = rect(shell);
+    return {
+      subjectId: panel?.dataset.inspectPlayerId,
+      seat: seatBox,
+      shell: shellBox,
+      centerDelta: seatBox && shellBox
+        ? Math.abs((seatBox.top + seatBox.height / 2) - (shellBox.top + shellBox.height / 2))
+        : null,
+      topology: table?.dataset.seatTopology,
+      playerCount: board?.dataset.playerCount,
+      mobileMedia: matchMedia("(max-width: 520px)").matches,
+      shellPosition: shell ? getComputedStyle(shell).position : null,
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: innerWidth,
+    };
+  }, blockedId);
+  const openBlockedInspector = async () => {
+    const inspectButton = blockedTarget.locator(".opponent-seat-inspect-button");
+    if (await inspectButton.count()) await inspectButton.click();
+    else await blockedTarget.locator(".opponent-hero-target").click();
+  };
+
   const switchToOther = page.getByTestId(`test-view-switch-${otherViewer.id}`);
   const otherViewResponsePromise = page.waitForResponse((response) => response.request().method() === "GET"
     && response.url().startsWith(`${API}/api/rooms?`)
@@ -217,10 +255,19 @@ test("live five-seat mobile targeting preserves private authority, Inspector, De
   const otherViewBody = await otherViewResponse.json();
   expect((otherViewBody.room ?? otherViewBody).currentAction.playTargetEligibility).toBeUndefined();
   await expect(page.locator(`.local-player-dock[data-player-anchor="${otherViewer.id}"]`)).toBeVisible();
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+  await openBlockedInspector();
+  await expect(inspector).toHaveAttribute("data-inspect-player-id", blockedId);
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const otherViewerInspectorGeometry = await inspectorAnchorMetrics();
+  expect(otherViewerInspectorGeometry.centerDelta, JSON.stringify(otherViewerInspectorGeometry)).toBeLessThanOrEqual(24);
+  expect(otherViewerInspectorGeometry.documentWidth).toBeLessThanOrEqual(otherViewerInspectorGeometry.viewportWidth);
   await expect(blockedTarget).not.toHaveClass(/selected-target/);
   await expect(page.locator(".decision-status")).not.toHaveAttribute("data-local-target-notice", "rejected");
 
   const switchBack = page.getByTestId(`test-view-switch-${actorView.meId}`);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
   const actorViewResponsePromise = page.waitForResponse((response) => response.request().method() === "GET"
     && response.url().startsWith(`${API}/api/rooms?`)
     && new URL(response.url()).searchParams.get("testViewerId") === actorView.meId);
@@ -231,6 +278,12 @@ test("live five-seat mobile targeting preserves private authority, Inspector, De
   const restoredActorView = actorViewBody.room ?? actorViewBody;
   expect(restoredActorView.currentAction.playTargetEligibility).toBeTruthy();
   await expect(page.locator(`.local-player-dock[data-player-anchor="${actorView.meId}"]`)).toBeVisible();
+  await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+  await openBlockedInspector();
+  await expect(inspector).toHaveAttribute("data-inspect-player-id", blockedId);
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const returnedViewerInspectorGeometry = await inspectorAnchorMetrics();
+  expect(returnedViewerInspectorGeometry.centerDelta, JSON.stringify(returnedViewerInspectorGeometry)).toBeLessThanOrEqual(24);
   await expect(page.locator(".decision-status")).not.toContainText("Cannot attack");
 
   await page.setViewportSize({ width: 440, height: 894 });

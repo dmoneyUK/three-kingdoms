@@ -1064,6 +1064,234 @@ test("INS5-F1-R phone Inspector preserves target selection and Confirm through t
   }
 });
 
+test("INS5-2 five-seat phone Inspector follows each actual Hero Seat across mobile viewports", async ({ browser }, testInfo) => {
+  const viewports = [
+    { width: 390, height: 700 },
+    { width: 390, height: 844 },
+    { width: 440, height: 766 },
+    { width: 440, height: 894 },
+    { width: 480, height: 900 },
+  ];
+  const measurements = [];
+  for (const viewport of viewports) {
+    const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+    const page = await context.newPage();
+    try {
+      await loadFixture(page, { ...viewport, count: 5, state: "rest", equipmentCase: "ins5PhoneDetails" });
+      const panel = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel');
+      for (const id of ["p4", "p2", "p5", "p3"]) {
+        const hero = page.locator(`.player-board [data-player-anchor="${id}"] .opponent-hero-target`);
+        await hero.tap();
+        await expect(panel).toHaveAttribute("data-inspect-player-id", id);
+        await expect(page.locator(".opponent-inspection-panel")).toHaveCount(1);
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const geometry = await page.evaluate((subjectId) => {
+          const rect = (element) => {
+            if (!element) return null;
+            const { x, y, width, height, left, right, top, bottom } = element.getBoundingClientRect();
+            return { x, y, width, height, left, right, top, bottom };
+          };
+          const visible = (element) => {
+            const style = getComputedStyle(element);
+            const box = element.getBoundingClientRect();
+            return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0
+              && box.width > 0 && box.height > 0;
+          };
+          const table = document.querySelector(".play-table");
+          const layer = document.querySelector(".opponent-inspection-layer");
+          const shell = document.querySelector(".opponent-inspection-floating-shell");
+          const subject = [...document.querySelectorAll(".player-board [data-player-anchor]")]
+            .find((seat) => seat.dataset.playerAnchor === subjectId);
+          const shellBox = rect(shell);
+          const subjectBox = rect(subject);
+          const obstacleSelector = [
+            ".public-activity-chip", ".stage-system-cluster", ".visible-countdown",
+            "[data-public-card-announcement='true']",
+            ".public-card-journey-card[data-public-card-journey-phase='reveal']",
+            ".public-card-journey-card[data-public-card-journey-phase='move']",
+            ".harvest-choice-panel", ".target-card-picker-overlay", ".target-card-picker-panel",
+          ].join(",");
+          return {
+            viewport: { width: innerWidth, height: innerHeight },
+            subjectId,
+            side: subject?.dataset.sideColumn,
+            seat: subjectBox,
+            layer: rect(layer),
+            shell: shellBox,
+            verticalCenterDelta: shellBox && subjectBox
+              ? Math.abs((shellBox.top + shellBox.height / 2) - (subjectBox.top + subjectBox.height / 2))
+              : null,
+            dock: rect(document.querySelector(".local-player-dock")),
+            hand: rect(document.querySelector(".local-hand-rail")),
+            seats: [...document.querySelectorAll(".player-board [data-player-anchor]")].map(rect),
+            obstacles: [...table.querySelectorAll(obstacleSelector)].filter(visible).map(rect),
+            documentWidth: document.documentElement.scrollWidth,
+          };
+        }, id);
+        expect(geometry.shell, JSON.stringify(geometry)).not.toBeNull();
+        expect(geometry.shell.height, JSON.stringify(geometry)).toBeGreaterThan(0);
+        expect(geometry.shell.left).toBeGreaterThanOrEqual(0);
+        expect(geometry.shell.right).toBeLessThanOrEqual(viewport.width);
+        expect(geometry.shell.top).toBeGreaterThanOrEqual(0);
+        expect(geometry.shell.bottom).toBeLessThanOrEqual(viewport.height);
+        expect(geometry.documentWidth).toBeLessThanOrEqual(viewport.width);
+        expect(geometry.verticalCenterDelta, JSON.stringify(geometry)).toBeLessThanOrEqual(24);
+        if (geometry.side === "left") expect(geometry.shell.left).toBeGreaterThanOrEqual(geometry.seat.right + 2);
+        else expect(geometry.shell.right).toBeLessThanOrEqual(geometry.seat.left - 2);
+        for (const seat of geometry.seats) expect(overlaps(geometry.shell, seat)).toBe(false);
+        expect(overlaps(geometry.shell, geometry.dock)).toBe(false);
+        expect(overlaps(geometry.shell, geometry.hand)).toBe(false);
+        for (const obstacle of geometry.obstacles) expect(overlaps(geometry.shell, obstacle)).toBe(false);
+        measurements.push({ viewport, ...geometry });
+      }
+
+      const lastHero = page.locator('.player-board [data-player-anchor="p3"] .opponent-hero-target');
+      await lastHero.tap();
+      await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+      await lastHero.tap();
+      await expect(panel).toHaveAttribute("data-inspect-player-id", "p3");
+      if (viewport.width === 390 && viewport.height === 700) {
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const resized = await page.evaluate(() => {
+          const seat = [...document.querySelectorAll(".player-board [data-player-anchor]")]
+            .find((element) => element.dataset.playerAnchor === "p3");
+          const shell = document.querySelector(".opponent-inspection-floating-shell");
+          const seatBox = seat?.getBoundingClientRect();
+          const shellBox = shell?.getBoundingClientRect();
+          return {
+            seatCenter: seatBox ? seatBox.top + seatBox.height / 2 : null,
+            shellCenter: shellBox ? shellBox.top + shellBox.height / 2 : null,
+            shell: shellBox ? { left: shellBox.left, top: shellBox.top, right: shellBox.right, bottom: shellBox.bottom } : null,
+            viewport: { width: innerWidth, height: innerHeight },
+          };
+        });
+        expect(resized.viewport).toEqual({ width: 390, height: 844 });
+        expect(Math.abs(resized.shellCenter - resized.seatCenter), JSON.stringify(resized)).toBeLessThanOrEqual(24);
+      }
+      await lastHero.focus();
+      await page.keyboard.press("Escape");
+      await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+      await expect(lastHero).toBeFocused();
+      await lastHero.tap();
+      await expect(panel).toHaveAttribute("data-inspect-player-id", "p3");
+      const judgementSlots = panel.locator('[aria-label="Judgement Zone"] .opponent-inspection-card, [aria-label="Judgement Zone"] .opponent-inspection-empty-slot');
+      const equipmentSlots = panel.locator('[aria-label="Equipment"] .opponent-inspection-card, [aria-label="Equipment"] .opponent-inspection-empty-slot');
+      await expect(judgementSlots).toHaveCount(2);
+      await expect(equipmentSlots).toHaveCount(4);
+      await testInfo.attach(`INS5-2 mobile anchor ${viewport.width}x${viewport.height}`, {
+        body: Buffer.from(JSON.stringify(measurements.filter((entry) => entry.viewport.width === viewport.width && entry.viewport.height === viewport.height), null, 2)),
+        contentType: "application/json",
+      });
+      if (viewport.width === 390 && viewport.height === 700) {
+        await testInfo.attach("INS5-2 compact five-seat mobile screenshot", {
+          body: await page.screenshot({ animations: "disabled" }),
+          contentType: "image/png",
+        });
+      }
+    } finally {
+      await context.close();
+    }
+  }
+  console.log("INS5-2 FIVE-SEAT MOBILE ANCHORS", JSON.stringify(measurements.map(({ viewport, subjectId, side, shell, seat, verticalCenterDelta }) => ({
+    viewport,
+    subjectId,
+    side,
+    shell: { left: shell.left, top: shell.top, width: shell.width, height: shell.height },
+    seat: { left: seat.left, top: seat.top, width: seat.width, height: seat.height },
+    verticalCenterDelta,
+  }))));
+  expect(measurements).toHaveLength(20);
+});
+
+test("INS5-2 five-seat Inspector preserves a live local target and Card Details through touch", async ({ browser }) => {
+  const viewport = { width: 390, height: 844 };
+  const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+  const page = await context.newPage();
+  try {
+    await loadFixture(page, {
+      ...viewport,
+      count: 5,
+      state: "ordinary-turn",
+      equipmentCase: "ins5PhoneLongRules",
+      targetHero: "cao-cao",
+    });
+    const currentAction = await page.evaluate(() => window.__browserRoom.currentAction);
+    await page.locator('[data-hand-card-id="browser-ordinary-5"] .game-card').tap();
+    await page.getByRole("button", { name: "Select Player 2", exact: true }).tap();
+    const confirm = page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" });
+    await expect(confirm).toBeEnabled();
+    await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
+
+    const inspectTwo = page.locator('.player-board [data-player-anchor="p2"] .opponent-hero-target');
+    await inspectTwo.tap();
+    const panel = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel');
+    await expect(panel).toHaveAttribute("data-inspect-player-id", "p2");
+    const entourage = panel.getByRole("button", { name: "Show Entourage description" });
+    await entourage.tap();
+    const skillDescription = panel.locator(".hero-focus-inspect-skill-description");
+    await expect(skillDescription).toBeVisible();
+    await scrollInspectorDetailsToBottom(panel.locator(".hero-focus-inspect-details"));
+    const skillFinalText = await touchScrollToBottom(page, skillDescription);
+    expect(skillFinalText.visible).toBe(true);
+
+    const frostSword = panel.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Frost Sword"]');
+    await frostSword.tap();
+    const cardRules = panel.locator(".hero-focus-inspect-card-rules");
+    await expect(cardRules).toContainText("Frost Sword has an Attack Range of 2.");
+    await scrollInspectorDetailsToBottom(panel.locator(".hero-focus-inspect-details"));
+    const cardFinalText = await touchScrollToBottom(page, cardRules);
+    expect(cardFinalText.visible).toBe(true);
+    await expect(confirm).toBeEnabled();
+    await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
+    await expect(confirm).toBeEnabled();
+    expect(await page.evaluate(() => window.__browserRoom.currentAction)).toEqual(currentAction);
+    expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "play_card" || action === "trigger"))).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
+
+test("INS5-2 five-seat Inspector stays clear of an active Harvest choice and its touch controls", async ({ browser }) => {
+  const viewport = { width: 390, height: 844 };
+  const context = await browser.newContext({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+  const page = await context.newPage();
+  try {
+    await loadFixture(page, { ...viewport, count: 5, state: "bumper-harvest-choosing" });
+    await page.evaluate(() => window.__updateBrowserRoom((room) => ({
+      ...room,
+      meId: "p2",
+      isMyAction: true,
+      phase: "response",
+    })));
+    const pool = page.locator(".harvest-choice-panel--actor");
+    await expect(pool).toBeVisible();
+    const poolCardsBefore = await pool.locator(".harvest-card-choice").count();
+    const inspectorOpener = page.locator('.player-board [data-player-anchor="p4"] .opponent-hero-target');
+    await inspectorOpener.tap();
+    const panel = page.locator('.interaction-stage[data-local-ui-mode="INSPECT"] .opponent-inspection-panel');
+    await expect(panel).toHaveAttribute("data-inspect-player-id", "p4");
+    const [shellBox, poolBox] = await Promise.all([
+      page.locator(".opponent-inspection-floating-shell").boundingBox(),
+      pool.boundingBox(),
+    ]);
+    expect(shellBox).not.toBeNull();
+    expect(poolBox).not.toBeNull();
+    expect(overlaps(shellBox, poolBox)).toBe(false);
+    expect(await pool.locator(".harvest-card-choice").count()).toBe(poolCardsBefore);
+
+    const choice = pool.locator(".harvest-card-choice").first();
+    const select = choice.locator(".harvest-card-select");
+    await select.tap();
+    await expect(choice).toHaveAttribute("data-harvest-card-state", "selected");
+    const confirm = pool.locator(".harvest-confirm-row button.primary");
+    await expect(confirm).toBeEnabled();
+    expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action === "choose_harvest"))).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
+
 test("Inspect during Negation leaves the authoritative response state unchanged", async ({ page }) => {
   await loadFixture(page, { state: "negation", width: 480, height: 900 });
   const currentAction = await page.evaluate(() => window.__browserRoom.currentAction);

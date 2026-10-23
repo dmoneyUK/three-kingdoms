@@ -1215,14 +1215,156 @@ function OpponentPublicInspector({ player, judgementInFlight, nestedCardDetailDi
     const dock = document.querySelector<HTMLElement>(".local-player-dock");
     const hand = document.querySelector<HTMLElement>(".local-hand-rail");
     const activityChip = table.querySelector<HTMLElement>(".public-activity-chip");
-    const stageSystemCluster = table.querySelector<HTMLElement>(".stage-system-cluster");
-    const stageObstacles = [activityChip, ...table.querySelectorAll<HTMLElement>(".visible-countdown")].filter((element): element is HTMLElement => Boolean(element));
-    const seats = Array.from(table.querySelectorAll<HTMLElement>(".player-board [data-player-anchor]"));
+    const playerBoard = table.querySelector<HTMLElement>(".player-board");
+    const obstacleSelector = [
+      ".public-activity-chip",
+      ".stage-system-cluster",
+      ".visible-countdown",
+      "[data-public-card-announcement='true']",
+      ".public-card-journey-card[data-public-card-journey-phase='reveal']",
+      ".public-card-journey-card[data-public-card-journey-phase='move']",
+      ".harvest-choice-panel",
+      ".target-card-picker-overlay",
+      ".target-card-picker-panel",
+    ].join(",");
+    let seats = Array.from(table.querySelectorAll<HTMLElement>(".player-board [data-player-anchor]"));
     const visualViewport = window.visualViewport;
+    const mobileFiveSeat = () => window.matchMedia("(max-width: 520px)").matches
+      && playerBoard?.dataset.playerCount === "5"
+      && table.dataset.seatTopology === "side-column";
+    let queuedFrame = 0;
+    let observedResizeTargets = new Set<Element>();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => scheduleMeasure());
+    const visibleRect = (element: HTMLElement | null | undefined) => {
+      if (!element) return null;
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0
+        || rect.width <= 0 || rect.height <= 0) return null;
+      return rect;
+    };
+    const observeCurrentTargets = () => {
+      seats = Array.from(table.querySelectorAll<HTMLElement>(".player-board [data-player-anchor]"));
+      if (!observer) return;
+      const targets = new Set<Element>([
+        table,
+        layer,
+        stage,
+        playerBoard,
+        dock,
+        hand,
+        ...seats,
+        ...Array.from(table.querySelectorAll<HTMLElement>(obstacleSelector)),
+      ].filter((element): element is HTMLElement => Boolean(element)));
+      for (const target of observedResizeTargets) if (!targets.has(target)) observer.unobserve(target);
+      for (const target of targets) if (!observedResizeTargets.has(target)) observer.observe(target);
+      observedResizeTargets = targets;
+    };
+    const scheduleMeasure = () => {
+      if (queuedFrame) return;
+      queuedFrame = requestAnimationFrame(() => {
+        queuedFrame = 0;
+        observeCurrentTargets();
+        measure();
+      });
+    };
     const measure = () => {
+      // TEST SWITCH can reuse the seat nodes while changing their projected
+      // player anchors in place. Always resolve the selected Hero from the
+      // current DOM instead of retaining a prior viewer's seat list.
+      seats = Array.from(table.querySelectorAll<HTMLElement>(".player-board [data-player-anchor]"));
       const layerRect = layer.getBoundingClientRect();
       const viewportTop = visualViewport?.offsetTop ?? 0;
       const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight);
+      const targetSeat = seats.find((seat) => seat.dataset.playerAnchor === player.id) ?? null;
+      if (mobileFiveSeat() && targetSeat) {
+        shell.style.marginTop = "0px";
+        shell.style.position = "absolute";
+        shell.style.right = "auto";
+        shell.style.bottom = "auto";
+        shell.style.transform = "none";
+        shell.style.maxHeight = "";
+        inspector.style.maxHeight = "";
+
+        const naturalShellRect = shell.getBoundingClientRect();
+        const seatRect = targetSeat.getBoundingClientRect();
+        const side = targetSeat.dataset.sideColumn;
+        const inspectButtonRect = visibleRect(targetSeat.querySelector<HTMLElement>(".opponent-seat-inspect-button"));
+        const viewLeft = visualViewport?.offsetLeft ?? 0;
+        const viewRight = viewLeft + (visualViewport?.width ?? window.innerWidth);
+        const safeLeft = Math.max(layerRect.left + 2, viewLeft + 2);
+        const safeRight = Math.min(layerRect.right - 2, viewRight - 2);
+        const safeTop = Math.max(layerRect.top - 8, viewportTop);
+        const safeBottom = Math.min(
+          layerRect.bottom,
+          viewportBottom - 4,
+          (visibleRect(dock)?.top ?? Number.POSITIVE_INFINITY) - 8,
+          (visibleRect(hand)?.top ?? Number.POSITIVE_INFINITY) - 8,
+        );
+        const shellWidth = naturalShellRect.width;
+        const horizontalGap = 6;
+        const preferredLeft = side === "left"
+          ? Math.max(seatRect.right, inspectButtonRect?.right ?? seatRect.right) + horizontalGap
+          : Math.min(seatRect.left, inspectButtonRect?.left ?? seatRect.left) - horizontalGap - shellWidth;
+        const minLeft = safeLeft;
+        const maxLeft = safeRight - shellWidth;
+        const shellLeft = Math.min(Math.max(preferredLeft, minLeft), maxLeft);
+        const idealTop = seatRect.top + seatRect.height / 2 - naturalShellRect.height / 2;
+        const obstacles = Array.from(table.querySelectorAll<HTMLElement>(obstacleSelector)).flatMap((element) => {
+          const rect = visibleRect(element);
+          return rect && rect.right > shellLeft + 2 && rect.left < shellLeft + shellWidth - 2 ? [rect] : [];
+        });
+        const fullHeight = naturalShellRect.height;
+        const availableTop = Math.min(Math.max(safeTop, viewportTop), safeBottom);
+        const availableBottom = Math.max(availableTop, safeBottom);
+        let verticalSpaces: Array<{ top: number; bottom: number }> = [{ top: availableTop, bottom: availableBottom }];
+        for (const rect of obstacles) {
+          const blockedTop = Math.max(availableTop, rect.top - 8);
+          const blockedBottom = Math.min(availableBottom, rect.bottom + 8);
+          if (blockedBottom <= blockedTop) continue;
+          verticalSpaces = verticalSpaces.flatMap((space) => {
+            if (blockedBottom <= space.top || blockedTop >= space.bottom) return [space];
+            const remaining: Array<{ top: number; bottom: number }> = [];
+            if (blockedTop > space.top) remaining.push({ top: space.top, bottom: blockedTop });
+            if (blockedBottom < space.bottom) remaining.push({ top: blockedBottom, bottom: space.bottom });
+            return remaining;
+          });
+        }
+        const fullPanelSpaces = verticalSpaces.filter((space) => space.bottom - space.top >= fullHeight);
+        const placementOptions = fullPanelSpaces.length
+          ? fullPanelSpaces.map((space) => ({
+            top: Math.min(Math.max(idealTop, space.top), space.bottom - fullHeight),
+            height: fullHeight,
+          }))
+          : verticalSpaces.map((space) => {
+            const height = Math.max(0, space.bottom - space.top);
+            return { top: Math.min(Math.max(idealTop, space.top), space.bottom - height), height };
+          });
+        const placement = placementOptions.sort((a, b) => (
+          Math.abs(a.top - idealTop) - Math.abs(b.top - idealTop)
+        ))[0] ?? { top: availableTop, height: 0 };
+        const safePanelHeight = Math.min(fullHeight, placement.height);
+        shell.style.left = `${shellLeft - layerRect.left}px`;
+        shell.style.top = `${placement.top - layerRect.top}px`;
+        shell.style.maxHeight = `${safePanelHeight}px`;
+        const shellStyle = window.getComputedStyle(shell);
+        const shellVerticalInsets = [
+          shellStyle.borderTopWidth,
+          shellStyle.borderBottomWidth,
+          shellStyle.paddingTop,
+          shellStyle.paddingBottom,
+        ].reduce((total, value) => total + (Number.parseFloat(value) || 0), 0);
+        inspector.style.maxHeight = `${Math.max(0, safePanelHeight - shellVerticalInsets)}px`;
+        return;
+      }
+
+      shell.style.position = "";
+      shell.style.left = "";
+      shell.style.top = "";
+      shell.style.right = "";
+      shell.style.bottom = "";
+      shell.style.transform = "";
+      shell.style.marginTop = "";
       let panelTop = Math.max(layerRect.top + 4, viewportTop + 12);
       if (table.dataset.seatTopology === "top-row") {
         for (const seat of seats) panelTop = Math.max(panelTop, seat.getBoundingClientRect().bottom + 12);
@@ -1230,11 +1372,9 @@ function OpponentPublicInspector({ player, judgementInFlight, nestedCardDetailDi
       const shellRect = shell.getBoundingClientRect();
       const shellLeft = layerRect.left + (layerRect.width - shellRect.width) / 2;
       const shellRight = shellLeft + shellRect.width;
-      const obstacleRects = stageObstacles.flatMap((element) => {
-        const style = window.getComputedStyle(element);
-        const rect = element.getBoundingClientRect();
-        if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0
-          || rect.width <= 0 || rect.height <= 0 || rect.right <= shellLeft || rect.left >= shellRight) return [];
+      const obstacleRects = [activityChip, ...table.querySelectorAll<HTMLElement>(".visible-countdown")].flatMap((element) => {
+        const rect = visibleRect(element);
+        if (!rect || rect.right <= shellLeft || rect.left >= shellRight) return [];
         return [rect];
       });
       for (const rect of obstacleRects) {
@@ -1243,15 +1383,15 @@ function OpponentPublicInspector({ player, judgementInFlight, nestedCardDetailDi
       const obstacleBottomLimit = obstacleRects.reduce((limit, rect) => (
         rect.top > panelTop ? Math.min(limit, rect.top - 8) : limit
       ), Number.POSITIVE_INFINITY);
-      const safeBottom = Math.min(
+      const safePanelBottom = Math.min(
         layerRect.bottom - 12,
         (dock?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY) - 12,
         (hand?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY) - 12,
         viewportBottom - 12,
         obstacleBottomLimit,
       );
+      const safePanelHeight = Math.max(0, safePanelBottom - panelTop);
       shell.style.marginTop = `${Math.max(0, panelTop - (layerRect.top + 4))}px`;
-      const safePanelHeight = Math.max(0, safeBottom - panelTop);
       shell.style.maxHeight = `${safePanelHeight}px`;
       const shellStyle = window.getComputedStyle(shell);
       const shellVerticalInsets = [
@@ -1263,19 +1403,37 @@ function OpponentPublicInspector({ player, judgementInFlight, nestedCardDetailDi
       inspector.style.maxHeight = `${Math.max(0, safePanelHeight - shellVerticalInsets)}px`;
     };
 
+    const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => scheduleMeasure());
+    if (playerBoard) {
+      mutationObserver?.observe(playerBoard, {
+        attributes: true,
+        subtree: true,
+        childList: true,
+        attributeFilter: ["data-player-anchor", "data-player-count", "data-side-column", "data-side-row", "style"],
+      });
+    }
+    mutationObserver?.observe(table, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-seat-topology"],
+    });
     measure();
     const frame = requestAnimationFrame(measure);
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    for (const element of [table, layer, dock, hand, stageSystemCluster, activityChip, ...seats]) if (element) observer?.observe(element);
-    window.addEventListener("resize", measure);
-    visualViewport?.addEventListener("resize", measure);
-    visualViewport?.addEventListener("scroll", measure);
+    observeCurrentTargets();
+    window.addEventListener("resize", scheduleMeasure);
+    window.addEventListener("orientationchange", scheduleMeasure);
+    visualViewport?.addEventListener("resize", scheduleMeasure);
+    visualViewport?.addEventListener("scroll", scheduleMeasure);
     return () => {
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(queuedFrame);
       observer?.disconnect();
-      window.removeEventListener("resize", measure);
-      visualViewport?.removeEventListener("resize", measure);
-      visualViewport?.removeEventListener("scroll", measure);
+      mutationObserver?.disconnect();
+      window.removeEventListener("resize", scheduleMeasure);
+      window.removeEventListener("orientationchange", scheduleMeasure);
+      visualViewport?.removeEventListener("resize", scheduleMeasure);
+      visualViewport?.removeEventListener("scroll", scheduleMeasure);
     };
   }, [player.id]);
   const inspectionEquipmentSlots = [
