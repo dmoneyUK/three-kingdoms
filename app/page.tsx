@@ -8359,7 +8359,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
           {invalidResponseState && <p className="error" role="status">Waiting for the latest response state…</p>}
         </div>
       }>
-        <div className="local-hand-section" data-raining-arrows-dodge-providers={rainingArrowsHasHandDodgeProvider ? "available" : undefined}>
+        <div className="local-hand-section" data-five-seat-phone-attack-mode={fiveSeatPhoneAttackMode ? "true" : undefined} data-raining-arrows-dodge-providers={rainingArrowsHasHandDodgeProvider ? "available" : undefined}>
           <div className="local-hand" data-card-origin-anchor={room.meId} aria-label="Your hand">{(() => {
             const multiSelectMode = room.phase === "discard" || Boolean(activeSkillSelection || serpentMode || responseSelectionMax > 1 || triggerSelectionMax > 1);
             const responseSelectionLimit = triggerResponse && triggerSelectionUsesCards ? triggerSelection.max : responseSelectionUsesCards ? responseSelection.max : 2;
@@ -8398,6 +8398,7 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
                   <button aria-pressed={isSelected} disabled={cardActionDisabled} onClick={() => { if (!cardActionDisabled) toggleHandCard(item); }} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}>
                     <span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-name-mark">{definition.name}</span><strong>{definition.category} card</strong>
                   </button>
+                  {fiveSeatPhoneAttackMode && singleSelected && item.kind === "Attack" && <button type="button" className="hand-card-retap-extension" aria-label={`Deselect ${definition.name}`} onClick={() => { if (!cardActionDisabled) toggleHandCard(item); }} />}
                   {inspectionAvailable && <button type="button" className="hand-card-inspection-action" data-testid="hand-card-inspection-action" aria-label={`Inspect ${definition.name}`} aria-pressed={inspectFocused} onClick={() => {
                     if (inspectFocused) {
                       setInspectOnlyHandCardId("");

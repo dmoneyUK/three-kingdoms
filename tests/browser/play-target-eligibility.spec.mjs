@@ -259,7 +259,7 @@ test("a target excluded by a newer CurrentAction revision is cleared and reporte
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 });
 
-test("live five-seat mobile targeting preserves private authority, Inspector, Details and TEST SWITCH", async ({ page, request }) => {
+test("live five-seat mobile targeting preserves private authority, Inspector, Details and TEST SWITCH", async ({ browser, request }) => {
   test.setTimeout(120_000);
   const hostName = "TARGET ELIGIBILITY MOBILE";
   const created = await request.post(`${API}/api/rooms`, { data: { action: "create", name: hostName } });
@@ -329,7 +329,14 @@ test("live five-seat mobile targeting preserves private authority, Inspector, De
   expect(observerView.currentAction.actorId).toBe(actorView.meId);
   expect(observerView.currentAction.playTargetEligibility).toBeUndefined();
 
-  await page.setViewportSize({ width: 390, height: 844 });
+  const touchContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    screen: { width: 390, height: 844 },
+    deviceScaleFactor: 3,
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await touchContext.newPage();
   await page.addInitScript(({ roomCode, sessionToken, name }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code: roomCode, token: sessionToken, name }));
   }, { roomCode: code, sessionToken: token, name: hostName });
@@ -353,20 +360,45 @@ test("live five-seat mobile targeting preserves private authority, Inspector, De
     expect((await actorSwitchResponsePromise).ok()).toBeTruthy();
   }
   await expect(page.locator(`.local-player-dock[data-player-anchor="${actorView.meId}"]`)).toBeVisible();
-  await page.locator(`[data-hand-card-id="${attack.id}"] .game-card`).click();
+  const attackCard = page.locator(`[data-hand-card-id="${attack.id}"] .game-card`);
+  const attackTap = await attackCard.evaluate((card) => {
+    const rect = card.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    return { x, y, hitIsCard: hit?.closest(".game-card") === card, hit: hit?.className?.toString() ?? hit?.tagName ?? null };
+  });
+  expect(attackTap.hitIsCard, JSON.stringify(attackTap)).toBe(true);
+  await page.touchscreen.tap(attackTap.x, attackTap.y);
+  await expect(page.locator(`[data-hand-card-id="${attack.id}"]`)).toHaveAttribute("data-card-selected", "true");
+  const attackModeSnapshot = await page.evaluate(() => ({
+    innerWidth,
+    phoneMedia: matchMedia("(max-width: 520px)").matches,
+    playerCount: document.querySelectorAll(".opponent-player-card").length + 1,
+    handMode: document.querySelector(".local-hand-section")?.getAttribute("data-five-seat-phone-attack-mode"),
+    selected: document.querySelector('.card-slot[data-card-selected="true"] .game-card')?.className,
+    localCancel: document.querySelector(".decision-status")?.getAttribute("data-console-local-cancel"),
+    targetable: document.querySelector('.opponent-player-card[data-target-selectable="true"]')?.dataset.playerAnchor,
+  }));
+  expect(attackModeSnapshot.handMode, JSON.stringify(attackModeSnapshot)).toBe("true");
+  const decisionStatus = page.locator(".decision-status");
+  await expect(decisionStatus).toHaveAttribute("data-console-local-cancel", "false");
+  await expect(page.locator("[data-local-target-selection], .local-target-cancel")).toHaveCount(0);
   const blockedTarget = page.locator(`.opponent-player-card[data-player-anchor="${blockedId}"]`);
   const eligibleTarget = page.locator(`.opponent-player-card[data-player-anchor="${eligibleId}"]`);
   await expect(eligibleTarget).toHaveAttribute("data-target-selectable", "true");
   await expect(blockedTarget).not.toHaveAttribute("data-target-selectable", "true");
   await expect(blockedTarget.locator(".opponent-hero-target")).toBeEnabled();
   await expect(page.locator(".opponent-seat-inspect-button")).toHaveCount(0);
-  const portraitHit = await blockedTarget.evaluate((seat) => {
+  const portraitTap = await blockedTarget.evaluate((seat) => {
     const target = seat.querySelector(".opponent-hero-target").getBoundingClientRect();
-    const hit = document.elementFromPoint(target.left + target.width / 2, target.top + target.height / 2);
-    return Boolean(hit?.closest(".opponent-hero-target") === seat.querySelector(".opponent-hero-target"));
+    const x = target.left + target.width / 2;
+    const y = target.top + target.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    return { x, y, hitIsPortrait: hit?.closest(".opponent-hero-target") === seat.querySelector(".opponent-hero-target"), hit: hit?.className?.toString() ?? hit?.tagName ?? null };
   });
-  expect(portraitHit).toBe(true);
-  await blockedTarget.locator(".opponent-hero-target").click();
+  expect(portraitTap.hitIsPortrait, JSON.stringify(portraitTap)).toBe(true);
+  await page.touchscreen.tap(portraitTap.x, portraitTap.y);
   const distanceRejection = attackProjection.rejections.find((entry) => entry.targetId === blockedId);
   await expect(page.locator(".decision-status")).toContainText(
     `Cannot attack ${blockedPlayer.name} — distance ${distanceRejection.distance}; Attack range ${distanceRejection.range}.`,
@@ -374,6 +406,31 @@ test("live five-seat mobile targeting preserves private authority, Inspector, De
   await expect(blockedTarget).not.toHaveClass(/selected-target/);
   await expect(page.locator('[data-console-surface="local-operation"] button.primary')).toBeDisabled();
   await expect(page.locator(`.opponent-inspection-panel[data-inspect-player-id="${blockedId}"]`)).toBeVisible();
+  expect(playPosts).toHaveLength(0);
+
+  const retapPoint = await attackCard.evaluate((card, point) => {
+    const hit = document.elementFromPoint(point.x, point.y);
+    const details = card.closest(".hand-card-visual")?.querySelector(".hand-card-details-action")?.getBoundingClientRect();
+    return {
+      ...point,
+      selectedCardRect: (() => { const rect = card.getBoundingClientRect(); return { left: rect.left, top: rect.top, width: rect.width, height: rect.height }; })(),
+      detailsRect: details ? { left: details.left, top: details.top, width: details.width, height: details.height } : null,
+      hit: hit?.className?.toString() ?? hit?.tagName ?? null,
+      hitIsRetapAction: Boolean(hit?.closest(".hand-card-retap-extension")),
+    };
+  }, attackTap);
+  expect(retapPoint.hitIsRetapAction, JSON.stringify(retapPoint)).toBe(true);
+  await page.touchscreen.tap(retapPoint.x, retapPoint.y);
+  await expect(page.locator(`[data-hand-card-id="${attack.id}"]`), JSON.stringify(retapPoint)).toHaveAttribute("data-card-selected", "false");
+  await expect(blockedTarget).not.toHaveClass(/selected-target/);
+  await expect(page.locator('[data-console-surface="local-operation"] button.primary')).toBeDisabled();
+  expect(playPosts).toHaveLength(0);
+  await expect(decisionStatus).toHaveAttribute("data-console-local-cancel", "false");
+  await expect(page.locator("[data-local-target-selection], .local-target-cancel")).toHaveCount(0);
+  const restoredAttack = page.locator(`[data-hand-card-id="${attack.id}"] .game-card`);
+  const restoredAttackRect = await restoredAttack.boundingBox();
+  await page.touchscreen.tap(restoredAttackRect.x + restoredAttackRect.width / 2, restoredAttackRect.y + restoredAttackRect.height / 2);
+  await expect(page.locator(`[data-hand-card-id="${attack.id}"]`)).toHaveAttribute("data-card-selected", "true");
   expect(playPosts).toHaveLength(0);
 
   await expect(page.getByRole("region", { name: `${blockedPlayer.name} opponent inspection` })).toBeVisible();

@@ -89,6 +89,10 @@ For the active task:
 6. Update HANDOVER with a concise implementation result and exact validation actually run.
 7. Commit and push to `ux-v2`.
 
+### Local UI-test time limit
+
+For each bounded task, cap the **combined local UI/browser testing time at five minutes**. If the needed UI test has not produced a result by then, stop it, record it as **SKIPPED — exceeded five-minute limit**, and do not start another UI test or retry a broader suite. Continue implementation or documentation work only when it remains safe without that evidence; keep the task unverified and do not claim UI behavior was validated. This cap applies to agent-run local UI/browser tests and does not disable the repository's required GitHub Actions release gate in §5.
+
 Prefer behavioral/semantic assertions over source-shape assertions. For layout, use real browser geometry and normal hit/click behavior. Screenshots supplement, but do not replace, measurable assertions.
 
 ## 5. Commit-time CI gate
