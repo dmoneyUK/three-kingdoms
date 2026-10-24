@@ -146,10 +146,30 @@ async function expectModal(page, title, instruction, cta) {
 
 async function expectTargetPool(page, title, instruction, cta) {
   const pool = page.locator(".card-pool-panel--actor-target-select");
-  await expect(pool).toBeVisible();
-  await expect(pool).toHaveAccessibleName(`${title} target card selection`);
-  await expect(pool.locator(".card-pool-panel__title")).toHaveText(title);
-  await expect(pool.locator(".card-pool-panel__instruction")).toHaveText(instruction);
+  const stage = page.locator(".card-pool-target-stage");
+  const viewportWidth = await page.evaluate(() => innerWidth);
+  const mergedPhoneSelection = viewportWidth <= 520 && await stage.getAttribute("data-target-card-pool-layout") === "central";
+  if (viewportWidth <= 520) {
+    const layout = await stage.getAttribute("data-target-card-pool-layout");
+    expect(layout, `mobile forced choice must merge: ${await stage.getAttribute("data-target-card-pool-merge-miss")}`).toBe("central");
+  }
+  if (mergedPhoneSelection) await expect(stage).toHaveAttribute("data-target-card-pool-ready", "true", { timeout: 12_000 });
+  await expect(pool).toBeVisible({ timeout: mergedPhoneSelection ? 12_000 : undefined });
+  const titleNode = pool.locator(".card-pool-panel__title");
+  const instructionNode = pool.locator(".card-pool-panel__instruction");
+  if (mergedPhoneSelection) {
+    const mergedTitle = (await titleNode.innerText()).replace(/\s+/g, " ").trim();
+    expect(mergedTitle).toMatch(new RegExp(`^.+ played ${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} on .+\\.$`));
+    const action = title === "Steal" ? "obtain" : "discard";
+    await expect(instructionNode).toHaveText(`You are choosing one card to ${action}`);
+    await expect(pool).toHaveAccessibleName(`${mergedTitle} You are choosing one card to ${action}.`);
+    await expect(page.locator(".public-card-display-journey-copy")).toHaveCount(0);
+    await expect(page.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]')).toHaveCount(0);
+  } else {
+    await expect(pool).toHaveAccessibleName(`${title} target card selection`);
+    await expect(titleNode).toHaveText(title);
+    await expect(instructionNode).toHaveText(instruction);
+  }
   await expect(pool.getByRole("button", { name: cta, exact: true })).toBeVisible();
   await expect(page.locator(".target-card-picker-overlay")).toHaveCount(0);
   const geometry = await pool.evaluate((element) => {
@@ -164,6 +184,16 @@ async function expectTargetPool(page, title, instruction, cta) {
       viewportWidth: innerWidth, viewportHeight: innerHeight,
       stageRect: stage && (() => { const rect = stage.getBoundingClientRect(); return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height }; })(),
       tableRect: table && (() => { const rect = table.getBoundingClientRect(); return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height }; })(),
+      stageLayout: stage?.getAttribute("data-target-card-pool-layout"),
+      stageReady: stage?.getAttribute("data-target-card-pool-ready"),
+      stageWidth: stage?.getBoundingClientRect().width,
+      centerLane: table && (() => {
+        const board = table.querySelector(".player-board");
+        const sides = [...(board?.querySelectorAll(":scope > [data-side-column]") ?? [])].map((seat) => seat.getBoundingClientRect()).filter((rect) => rect.width > 0);
+        const left = Math.max(table.getBoundingClientRect().left + 8, ...sides.filter((rect) => rect.right < table.getBoundingClientRect().left + table.getBoundingClientRect().width / 2).map((rect) => rect.right + 8));
+        const right = Math.min(table.getBoundingClientRect().right - 8, ...sides.filter((rect) => rect.left > table.getBoundingClientRect().left + table.getBoundingClientRect().width / 2).map((rect) => rect.left - 8));
+        return { left, right, width: right - left, midpoint: (left + right) / 2 };
+      })(),
       stagePointerEvents: stageStyle?.pointerEvents,
       panelWidthCss: panelStyle.width,
       panelMaxWidthCss: panelStyle.maxWidth,
@@ -183,6 +213,18 @@ async function expectTargetPool(page, title, instruction, cta) {
         const rect = button.getBoundingClientRect();
         return { width: rect.width, height: rect.height };
       }),
+      targetRow: (() => {
+        const row = element.querySelector(".card-pool-panel__target-row");
+        if (!row) return null;
+        const rowRect = row.getBoundingClientRect();
+        return {
+          left: rowRect.left, right: rowRect.right, clientWidth: row.clientWidth, scrollWidth: row.scrollWidth,
+          cards: [...row.querySelectorAll(".card-pool-panel__target-choice")].map((choice) => {
+            const rect = choice.getBoundingClientRect();
+            return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
+          }),
+        };
+      })(),
       obstacles: [...document.querySelectorAll(".opponent-player-card, .public-card-display-journey-copy, .public-card-journey-card.is-current, .public-activity-chip, .visible-countdown, .stage-system-cluster, .opponent-inspection-floating-shell, .local-player-dock, .local-hand-section, .turn-controls")]
         .map((obstacle) => ({ element: obstacle, rect: obstacle.getBoundingClientRect(), style: getComputedStyle(obstacle) }))
         .filter(({ rect, style }) => style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0)
@@ -202,7 +244,20 @@ async function expectTargetPool(page, title, instruction, cta) {
   expect(geometry.stagePointerEvents).toBe("none");
   expect(geometry.panelPointerEvents).toBe("auto");
   expect(geometry.touches.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
-  expect(geometry.obstacles.filter(({ separated }) => !separated), JSON.stringify(geometry)).toEqual([]);
+  const overlappingObstacles = geometry.obstacles.filter(({ separated }) => !separated);
+  if (mergedPhoneSelection) {
+    expect(overlappingObstacles.every(({ name }) => String(name).includes("public-card-journey-card")), JSON.stringify(geometry)).toBe(true);
+  } else expect(overlappingObstacles, JSON.stringify(geometry)).toEqual([]);
+  if (mergedPhoneSelection) {
+    expect(geometry.stageReady).toBe("true");
+    expect(geometry.stageWidth).toBeLessThanOrEqual(geometry.centerLane.width + 1);
+    expect(Math.abs((geometry.left + geometry.right) / 2 - geometry.centerLane.midpoint), JSON.stringify(geometry)).toBeLessThanOrEqual(4);
+    expect(geometry.targetRow.cards.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
+    if (geometry.targetRow.cards.length === 3) {
+      expect(geometry.targetRow.cards.every(({ left, right }) => left >= geometry.targetRow.left - 1 && right <= geometry.targetRow.right + 1)).toBe(true);
+      expect(geometry.targetRow.scrollWidth).toBeLessThanOrEqual(geometry.targetRow.clientWidth + 1);
+    }
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(geometry.viewportWidth);
   return pool;
 }
@@ -239,7 +294,7 @@ function responsivePlayers(seatCount, { sourceName = "SOURCE", targetName = "TAR
   }));
 }
 
-async function openRealTargetCardDecision({ page, request, kind, viewport, handCount = 4, equipment = true, judgement = true }) {
+async function openRealTargetCardDecision({ page, request, kind, viewport, handCount = 4, equipment = true, judgement = true, seatCount = 4 }) {
   const prefix = `real-${kind.toLowerCase()}-${viewport.width}-${handCount}`;
   const material = card(kind, `${prefix}-material`);
   const hidden = Array.from({ length: handCount }, (_, index) => card("Peach", `${prefix}-hidden-${index}`));
@@ -248,10 +303,12 @@ async function openRealTargetCardDecision({ page, request, kind, viewport, handC
   const delayed = judgement ? card("Lightning", `${prefix}-judgement`) : null;
   const targetEquipment = equipment ? { weapon, armor } : undefined;
   const targetJudgement = judgement ? [delayed] : undefined;
-  const seed = await seedGame(request, fourPlayers(
-    { hand: [material] },
-    { hand: hidden, equipment: targetEquipment, judgement: targetJudgement },
-  ));
+  const seedPlayers = seatCount === 4
+    ? fourPlayers({ hand: [material] }, { hand: hidden, equipment: targetEquipment, judgement: targetJudgement })
+    : responsivePlayers(seatCount, {
+      sourceHand: [material], targetHand: hidden, equipment: targetEquipment, judgement: targetJudgement,
+    });
+  const seed = await seedGame(request, seedPlayers);
   await openGame(page, seed, 0, viewport);
   await playCardThroughPage(page, material.id, "TARGET");
   await passEmptyResponses(request, seed);
@@ -425,9 +482,11 @@ for (const kind of ["Steal", "Dismantle"]) {
       const publicCardDisplay = page.locator('[data-public-card-display="true"]');
       await expect(publicCardDisplay).toHaveCount(1);
       const announcement = publicCardDisplay.locator('[data-public-card-announcement="true"]');
-      await expect(announcement).toHaveCount(1);
-      await expect(announcement).toContainText("SOURCE played Burning Bridge on TARGET.");
-      await expect(announcement.locator("small,span,strong")).toHaveCount(0);
+      if (await page.evaluate(() => innerWidth) > 520) {
+        await expect(announcement).toHaveCount(1);
+        await expect(announcement).toContainText("SOURCE played Burning Bridges on TARGET.");
+        await expect(announcement.locator("small,span,strong")).toHaveCount(0);
+      }
     }
 
     const actorView = await roomView(request, seed, 0);
@@ -443,6 +502,9 @@ for (const kind of ["Steal", "Dismantle"]) {
     const action = kind === "Steal" ? "Steal" : "Burning Bridge";
     const instruction = kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
     const dialog = await expectTargetPool(page, action, instruction, `Use ${action}`);
+    if (kind === "Dismantle" && await page.evaluate(() => innerWidth) <= 520) {
+      await expect(page.locator('[data-public-card-display="true"] [data-public-card-announcement="true"]')).toHaveCount(0);
+    }
     await expect(dialog.locator('.card-pool-panel__target-choice[data-choice-key-type="concealed-position"]')).toHaveCount(2);
     await dialog.getByRole("tab", { name: "EQUIPMENT 1" }).click();
     await expect(dialog.getByRole("button", { name: "Equipment: Nio Shield", exact: true })).toBeVisible();
@@ -452,6 +514,10 @@ for (const kind of ["Steal", "Dismantle"]) {
     try {
       await openGame(spectatorPage, seed, 2);
       await expect(spectatorPage.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
+      if (kind === "Dismantle") {
+        await expect(spectatorPage.locator('[data-public-card-display="true"] [data-public-card-announcement="true"]'))
+          .toContainText("SOURCE played Burning Bridge on TARGET.");
+      }
       const spectatorView = await roomView(request, seed, 2);
       expect(spectatorView.isMyAction).toBe(false);
       expect(spectatorView.currentAction?.targetCardSelection).toBeUndefined();
@@ -473,7 +539,7 @@ for (const kind of ["Steal", "Dismantle"]) {
 
     await dialog.getByRole("tab", { name: "JUDGEMENT 1" }).click();
     const judgment = dialog.getByRole("button", { name: "Judgement: Lightning", exact: true });
-    await judgment.click();
+    await judgment.click({ position: { x: 8, y: 8 } });
     await expect(judgment).toHaveAttribute("aria-pressed", "true");
     await expect(dialog.locator(".card-pool-panel__selection-count")).toHaveText("1 / 1 selected");
 
@@ -540,45 +606,66 @@ for (const kind of ["Steal", "Dismantle"]) {
         if (index !== 1) expect(JSON.stringify(choiceViews[index])).not.toContain(hidden.id);
       }
 
+      // Each independent mobile context may have been backgrounded while the
+      // API advanced the response window. Re-fetch the authoritative current
+      // projection before checking its rendered presentation.
+      await Promise.all(pages.map((viewerPage, index) => openGame(viewerPage, seed, index, { width: 390, height: 844 })));
+
       const effectName = kind === "Steal" ? "Steal" : "Burning Bridges";
       const modalTitle = kind === "Steal" ? "Steal" : "Burning Bridge";
       const sharedLabel = `SOURCE is choosing one card from TARGET · ${effectName}`;
       for (let index = 0; index < pages.length; index++) {
         const viewerPage = pages[index];
         const chip = viewerPage.locator('.public-activity-chip[data-public-activity-kind="target-card-choice"]');
-        await expect(chip).toBeVisible();
-        await expect(chip).toHaveAttribute("aria-label", sharedLabel);
-        await expect(chip.locator("strong")).toHaveText("Choosing TARGET's card");
-        const chipRect = await chip.boundingBox();
+        const actorStage = viewerPage.locator('.card-pool-target-stage[data-target-card-pool-layout="central"]');
+        const actorMergesCopy = index === 0 && await actorStage.count() > 0;
+        if (actorMergesCopy) {
+          await expect(actorStage).toHaveAttribute("data-target-card-pool-ready", "true", { timeout: 12_000 });
+          await expect(chip).toHaveCount(0);
+          await expect(viewerPage.locator(".public-card-display-journey-copy")).toHaveCount(0);
+          await expect(viewerPage.locator(".card-pool-panel__title")).toContainText(new RegExp(`played ${modalTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} on TARGET\\.`));
+          await expect(viewerPage.locator(".card-pool-panel__instruction")).toContainText("You are choosing one card");
+        } else {
+          await expect(chip).toHaveAttribute("data-public-activity-kind", "target-card-choice", { timeout: 15_000 });
+          await expect(chip).toBeVisible();
+          await expect(chip).toHaveAttribute("aria-label", sharedLabel);
+          await expect(chip.locator("strong")).toHaveText("Choosing TARGET's card");
+          await expect(viewerPage.locator(".public-card-display-journey-copy")).toContainText(`SOURCE played ${modalTitle} on TARGET.`);
+        }
+        const chipRect = actorMergesCopy ? null : await chip.boundingBox();
         const tableRect = await viewerPage.locator(".play-table").boundingBox();
-        expect(chipRect && tableRect).toBeTruthy();
-        expect(chipRect.x).toBeGreaterThanOrEqual(tableRect.x);
-        expect(chipRect.y).toBeGreaterThanOrEqual(tableRect.y);
-        expect(chipRect.x + chipRect.width).toBeLessThanOrEqual(tableRect.x + tableRect.width);
-        expect(chipRect.y + chipRect.height).toBeLessThanOrEqual(tableRect.y + tableRect.height);
-        if (index !== 1) {
+        expect(tableRect).toBeTruthy();
+        if (chipRect) {
+          expect(chipRect.x).toBeGreaterThanOrEqual(tableRect.x);
+          expect(chipRect.y).toBeGreaterThanOrEqual(tableRect.y);
+          expect(chipRect.x + chipRect.width).toBeLessThanOrEqual(tableRect.x + tableRect.width);
+          expect(chipRect.y + chipRect.height).toBeLessThanOrEqual(tableRect.y + tableRect.height);
+        }
+        if (chipRect && index !== 1) {
           const layout = await chip.getAttribute("data-public-activity-layout");
           expect(layout).toMatch(/^(target-seat-adjacent|bottom-center|lower-band-(center|left|right))$/);
         }
         const targetPicker = viewerPage.locator(".card-pool-panel--actor-target-select");
-        if (await targetPicker.count()) {
+        if (await targetPicker.isVisible().catch(() => false) && chipRect) {
           const pickerRect = await targetPicker.boundingBox();
           expect(pickerRect && (chipRect.x + chipRect.width <= pickerRect.x
             || pickerRect.x + pickerRect.width <= chipRect.x
             || chipRect.y + chipRect.height <= pickerRect.y
             || pickerRect.y + pickerRect.height <= chipRect.y)).toBeTruthy();
         }
-        for (const obstacle of await viewerPage.locator(".public-card-journey-card, .public-card-display-journey-copy").all()) {
-          const obstacleRect = await obstacle.boundingBox();
-          if (!obstacleRect) continue;
-          expect(chipRect.x + chipRect.width <= obstacleRect.x
-            || obstacleRect.x + obstacleRect.width <= chipRect.x
-            || chipRect.y + chipRect.height <= obstacleRect.y
-            || obstacleRect.y + obstacleRect.height <= chipRect.y).toBeTruthy();
+        if (chipRect) {
+          for (const obstacle of await viewerPage.locator(".public-card-journey-card, .public-card-display-journey-copy").all()) {
+            const obstacleRect = await obstacle.boundingBox();
+            if (!obstacleRect) continue;
+            expect(chipRect.x + chipRect.width <= obstacleRect.x
+              || obstacleRect.x + obstacleRect.width <= chipRect.x
+              || chipRect.y + chipRect.height <= obstacleRect.y
+              || obstacleRect.y + obstacleRect.height <= chipRect.y).toBeTruthy();
+          }
+          const chipText = `${await chip.innerText()} ${await chip.innerHTML()}`;
+          expect(chipText).not.toMatch(/Hand|Equipment|Judgement|hand:|index|eligible|candidate/i);
+          expect(chipText).not.toContain(hidden.id);
         }
-        const chipText = `${await chip.innerText()} ${await chip.innerHTML()}`;
-        expect(chipText).not.toMatch(/Hand|Equipment|Judgement|hand:|index|eligible|candidate/i);
-        expect(chipText).not.toContain(hidden.id);
         if (index > 0) await expect(viewerPage.locator(".card-pool-panel--actor-target-select")).toHaveCount(0);
       }
 
@@ -1604,6 +1691,50 @@ for (const kind of ["Dismantle", "Steal"]) {
   }
 }
 
+test("real Steal and Burning Bridge pools stay centred inside 5/6/8-seat phone lanes", async ({ browser, request }) => {
+  test.setTimeout(150_000);
+  const scenarios = [
+    { seatCount: 5, kind: "Dismantle", viewport: { width: 390, height: 844 } },
+    { seatCount: 6, kind: "Steal", viewport: { width: 390, height: 844 } },
+    { seatCount: 8, kind: "Dismantle", viewport: { width: 390, height: 844 } },
+    { seatCount: 8, kind: "Steal", viewport: { width: 440, height: 894 } },
+  ];
+  const page = await browser.newPage({ viewport: scenarios[0].viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+  try {
+    for (const scenario of scenarios) {
+      await page.setViewportSize(scenario.viewport);
+      const { title } = await openRealTargetCardDecision({ ...scenario, page, request });
+      const instruction = scenario.kind === "Steal" ? "Choose 1 card to obtain" : "Choose 1 card to discard";
+      const pool = await expectTargetPool(page, title, instruction, `Use ${title}`);
+      const geometry = await pool.evaluate((element) => {
+        const panel = element.getBoundingClientRect();
+        const stage = element.parentElement;
+        const table = stage?.parentElement;
+        const board = table?.querySelector(".player-board");
+        const seats = [...(board?.querySelectorAll(":scope > [data-side-column]") ?? [])].map((seat) => seat.getBoundingClientRect()).filter((rect) => rect.width > 0);
+        const center = table ? (table.getBoundingClientRect().left + table.getBoundingClientRect().right) / 2 : 0;
+        const left = Math.max(table?.getBoundingClientRect().left ?? 0, ...seats.filter((rect) => rect.right < center).map((rect) => rect.right + 8));
+        const right = Math.min(table?.getBoundingClientRect().right ?? innerWidth, ...seats.filter((rect) => rect.left > center).map((rect) => rect.left - 8));
+        return {
+          panelLeft: panel.left,
+          panelRight: panel.right,
+          laneLeft: left,
+          laneRight: right,
+          laneMidpoint: (left + right) / 2,
+          panelMidpoint: (panel.left + panel.right) / 2,
+          seats,
+        };
+      });
+      expect(geometry.panelLeft).toBeGreaterThanOrEqual(geometry.laneLeft - 1);
+      expect(geometry.panelRight).toBeLessThanOrEqual(geometry.laneRight + 1);
+      expect(Math.abs(geometry.panelMidpoint - geometry.laneMidpoint), JSON.stringify(geometry)).toBeLessThanOrEqual(4);
+      expect(await page.locator(".local-player-dock").isVisible()).toBe(true);
+    }
+  } finally {
+    await page.close();
+  }
+});
+
 test("real Burning Bridge omits empty Judgement and keeps available zones in tabs", async ({ browser, request }, testInfo) => {
   const viewport = { width: 390, height: 844 };
   const page = await browser.newPage({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
@@ -1626,13 +1757,44 @@ test("real Burning Bridge one-card Hand-only choice submits the anonymous positi
   const { dialog: pool, actorView } = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 1, equipment: false, judgement: false });
   const handCard = pool.getByRole("button", { name: "Choose hidden Hand position 1", exact: true });
   const use = pool.getByRole("button", { name: "Use Burning Bridge", exact: true });
+  const targetStage = page.locator('.card-pool-target-stage[data-target-card-pool-layout="central"]');
   await expect(pool.getByRole("tab")).toHaveCount(0);
   expect(actorView.currentAction.targetCardSelection.eligibleKeys).toEqual(["hand:0"]);
+  await expect(targetStage).toHaveAttribute("data-target-card-pool-root-overlap", "true");
+  const overlapLayering = await targetStage.evaluate((stage) => {
+    const rootEventId = stage.getAttribute("data-target-card-pool-root-event-id");
+    const root = [...document.querySelectorAll(".public-card-journey-card[data-public-card-journey-role='root']")]
+      .find((card) => card.getAttribute("data-public-card-journey-event-id") === rootEventId);
+    const display = root?.closest(".public-card-display-journey");
+    const panel = stage.querySelector(".card-pool-panel--actor-target-select");
+    if (!root || !display || !panel) return null;
+    const rootRect = root.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const x = (Math.max(rootRect.left, panelRect.left) + Math.min(rootRect.right, panelRect.right)) / 2;
+    const y = (Math.max(rootRect.top, panelRect.top) + Math.min(rootRect.bottom, panelRect.bottom)) / 2;
+    const hit = document.elementFromPoint(x, y);
+    return {
+      rootEventId,
+      rootRole: root.getAttribute("data-public-card-journey-role"),
+      overlapWidth: Math.min(rootRect.right, panelRect.right) - Math.max(rootRect.left, panelRect.left),
+      overlapHeight: Math.min(rootRect.bottom, panelRect.bottom) - Math.max(rootRect.top, panelRect.top),
+      hitInsidePanel: Boolean(hit?.closest(".card-pool-panel--actor-target-select")),
+      stageZIndex: Number.parseInt(getComputedStyle(stage).zIndex, 10),
+      displayZIndex: Number.parseInt(getComputedStyle(display).zIndex, 10),
+    };
+  });
+  expect(overlapLayering).toBeTruthy();
+  expect(overlapLayering.rootRole).toBe("root");
+  expect(overlapLayering.overlapWidth).toBeGreaterThan(0);
+  expect(overlapLayering.overlapHeight).toBeGreaterThan(0);
+  expect(overlapLayering.hitInsidePanel).toBe(true);
+  expect(overlapLayering.stageZIndex).toBeGreaterThan(overlapLayering.displayZIndex);
   await expect(handCard).toBeVisible();
   await expect(use).toBeDisabled();
   await tapMobile(page, handCard);
   await expect(handCard).toHaveAttribute("aria-pressed", "true");
   await expect(use).toBeEnabled();
+  const oneChoiceWidth = await pool.evaluate((element) => element.getBoundingClientRect().width);
 
   const submitPromise = page.waitForResponse((response) => {
     if (response.url() !== `${API}/api/rooms` || response.request().method() !== "POST") return false;
@@ -1646,6 +1808,32 @@ test("real Burning Bridge one-card Hand-only choice submits the anonymous positi
     action: "choose_target_card", targetCardZone: "hand", targetCardIndex: 0,
   });
   await attachScreenshot(testInfo, "burning-bridge-one-card-hand-only-390x700", page);
+
+  const threeChoice = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 3, equipment: false, judgement: false });
+  const threeRow = threeChoice.dialog.locator(".card-pool-panel__target-row");
+  const threeGeometry = await threeRow.evaluate((element) => ({
+    left: element.getBoundingClientRect().left,
+    right: element.getBoundingClientRect().right,
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    cards: [...element.querySelectorAll(".card-pool-panel__target-choice")].map((choice) => {
+      const rect = choice.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, width: rect.width, height: rect.height };
+    }),
+  }));
+  const threeChoiceWidth = await threeChoice.dialog.evaluate((element) => element.getBoundingClientRect().width);
+  expect(Math.abs(threeChoiceWidth - oneChoiceWidth)).toBeLessThanOrEqual(2);
+  expect(threeGeometry.cards).toHaveLength(3);
+  expect(threeGeometry.cards.every(({ width, height }) => width >= 44 && height >= 44)).toBe(true);
+  expect(threeGeometry.cards.every(({ left, right }) => left >= threeGeometry.left - 1 && right <= threeGeometry.right + 1)).toBe(true);
+  expect(threeGeometry.scrollWidth).toBeLessThanOrEqual(threeGeometry.clientWidth + 1);
+  await attachScreenshot(testInfo, "burning-bridge-three-hand-choices-390x700", page);
+
+  const fiveChoice = await openRealTargetCardDecision({ page, request, kind: "Dismantle", viewport, handCount: 5, equipment: false, judgement: false });
+  const fiveRow = fiveChoice.dialog.locator(".card-pool-panel__target-row");
+  const fiveGeometry = await fiveRow.evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
+  expect(Math.abs(await fiveChoice.dialog.evaluate((element) => element.getBoundingClientRect().width) - oneChoiceWidth)).toBeLessThanOrEqual(2);
+  expect(fiveGeometry.scrollWidth).toBeGreaterThan(fiveGeometry.clientWidth);
 });
 
 test("real Burning Bridge equipment-only choice omits empty zones and submits the public card", async ({ browser, request }, testInfo) => {
@@ -1657,7 +1845,7 @@ test("real Burning Bridge equipment-only choice omits empty zones and submits th
   await expect(pool.getByRole("tab")).toHaveCount(0);
   await expect(pool.locator(".card-pool-panel__target-row .card-pool-panel__target-choice")).toHaveCount(2);
   await expect(use).toBeDisabled();
-  await tapMobile(page, equipmentCard);
+  await equipmentCard.tap({ position: { x: 8, y: 8 } });
   await expect(equipmentCard).toHaveAttribute("aria-pressed", "true");
   await expect(use).toBeEnabled();
 

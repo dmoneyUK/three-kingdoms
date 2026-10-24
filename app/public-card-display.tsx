@@ -3314,6 +3314,7 @@ function preserveGroupRootJourneyEvents(
 function SingleTargetCardJourney({
   action,
   enabled,
+  suppressAnnouncement = false,
   retainHarvestHistory = false,
   responseHistoryOwnership = [],
   harvestChoiceActive,
@@ -3330,6 +3331,7 @@ function SingleTargetCardJourney({
 }: {
   action: PublicCardDisplayAction;
   enabled: boolean;
+  suppressAnnouncement?: boolean;
   retainHarvestHistory?: boolean;
   responseHistoryOwnership?: readonly { eventId: string; cardIds: readonly string[] }[];
   harvestChoiceActive: boolean;
@@ -4137,7 +4139,7 @@ function SingleTargetCardJourney({
           : isBumperHarvest ? `Public card event ${event.globalOrdinal}: ${event.ariaLabel}` : event.ariaLabel}
       </li>)}
     </ol>
-    {!historyOnly && <PublicCardAnnouncement
+    {!historyOnly && !suppressAnnouncement && <PublicCardAnnouncement
       eventId={negationNarration?.eventId ?? (motion?.type === "lust-cost" && action.lustCostFrame ? action.lustCostFrame.activationEventId : announcementEventId)}
       placementKey={`${publicCardAnnouncementPlacementKey(action)}${harvestPoolVisible ? ":harvest-public-pool" : ""}`}
       viewerLayoutKey={harvestPoolVisible ? "public-harvest" : viewerId}
@@ -5077,6 +5079,7 @@ export function publicCardActionKey(action: PresentationSnapshotRootAction): str
 export function PublicCardDisplay({
   action,
   enabled,
+  suppressAnnouncement = false,
   retainHarvestHistory = false,
   retainDuelHistoryDuringInspection = false,
   harvestChoiceActive = false,
@@ -5096,6 +5099,7 @@ export function PublicCardDisplay({
 }: {
   action: PublicCardDisplayAction | null;
   enabled: boolean;
+  suppressAnnouncement?: boolean;
   retainHarvestHistory?: boolean;
   retainDuelHistoryDuringInspection?: boolean;
   harvestChoiceActive?: boolean;
@@ -5124,7 +5128,7 @@ export function PublicCardDisplay({
   }
   if (action.motion?.type === "single-target" || action.motion?.type === "negation"
     || action.motion?.type === "group-root" || action.motion?.type === "lust-cost") {
-    return <SingleTargetCardJourney action={action} enabled={enabled} retainHarvestHistory={retainHarvestHistory} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
+    return <SingleTargetCardJourney action={action} enabled={enabled} suppressAnnouncement={suppressAnnouncement} retainHarvestHistory={retainHarvestHistory} responseHistoryOwnership={responseHistoryOwnership} harvestChoiceActive={harvestChoiceActive} harvestPoolReadOnly={harvestPoolReadOnly} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneySettled={onJourneySettled} onJourneyEventParked={onJourneyEventParked} onJourneyOwnershipChange={onJourneyOwnershipChange} />;
   }
   if (action.motion?.type === "duel" || action.motion?.type === "lust-duel") {
     return <DuelCardJourney action={action} enabled={enabled} retainHistoryDuringInspection={retainDuelHistoryDuringInspection} sourceName={sourceName} targetName={targetName} compactPlayerNamesById={compactPlayerNamesById} viewerId={viewerId} viewerSeat={viewerSeat} resultReadRemainingMs={resultReadRemainingMs} onInspectCard={onInspectCard} onJourneyEventParked={onJourneyEventParked} />;
@@ -5171,7 +5175,7 @@ export function PublicCardDisplay({
     data-public-card-result-remaining-ms={resultReadRemainingMs ?? undefined}
   >
     {card && <div className="public-card-display-static-card" data-public-card-copy-anchor-event-id={eventId} data-public-card-static-event-id={eventId} data-public-card-static-card-id={card.id} data-harvest-root-parked={harvestRootParked ? "true" : undefined}><CardFace card={card} /></div>}
-    <PublicCardAnnouncement
+    {!suppressAnnouncement && <PublicCardAnnouncement
       eventId={eventId}
       placementKey={publicCardAnnouncementPlacementKey(action, roomCode)}
       viewerLayoutKey={viewerId}
@@ -5183,6 +5187,6 @@ export function PublicCardDisplay({
       phaseNotice={action.phaseNotice}
       outcome={action.settlement?.outcome}
       negationWaiting={Boolean(action.phaseNotice?.includes("NEGATION"))}
-    />
+    />}
   </section>;
 }

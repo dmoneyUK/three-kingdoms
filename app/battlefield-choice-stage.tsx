@@ -4,7 +4,7 @@ import { forwardRef, useLayoutEffect, useRef, useState, type ComponentPropsWitho
 
 export type BattlefieldChoiceRect = Pick<DOMRect, "left" | "top" | "right" | "bottom" | "width" | "height">;
 
-export type BattlefieldChoiceInsets = { left: number; right: number };
+export type BattlefieldChoiceInsets = { left: number; right: number; width?: number };
 
 type BattlefieldChoiceStageProps = Omit<ComponentPropsWithoutRef<"div">, "children" | "className" | "style" | "title"> & {
   className: string;
@@ -51,15 +51,24 @@ type BattlefieldChoicePlacementOptions = {
   enabled: boolean;
   playerCount: number;
   placementKey: string;
+  centralTargetLayout?: boolean;
+  rootEventId?: string;
 };
 
 type ScheduledBattlefieldFrame = { kind: "animation"; id: number } | { kind: "timeout"; id: ReturnType<typeof setTimeout> };
 
 /** Measures the shared panel and places it in Harvest's current safe battlefield corridor. */
-export function useBattlefieldChoicePlacement({ enabled, playerCount, placementKey }: BattlefieldChoicePlacementOptions) {
+export function useBattlefieldChoicePlacement({ enabled, playerCount, placementKey, centralTargetLayout = false, rootEventId }: BattlefieldChoicePlacementOptions) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [top, setTop] = useState<number | null>(null);
   const [insets, setInsets] = useState<BattlefieldChoiceInsets | null>(null);
+  const [ready, setReady] = useState(false);
+  const [rootCardOverlap, setRootCardOverlap] = useState(false);
+  const insetsRef = useRef<BattlefieldChoiceInsets | null>(null);
+
+  useLayoutEffect(() => {
+    insetsRef.current = insets;
+  }, [insets]);
 
   useLayoutEffect(() => {
     const scheduleFrame = (callback: FrameRequestCallback): ScheduledBattlefieldFrame => typeof window.requestAnimationFrame === "function"
@@ -75,20 +84,35 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
       const resetFrame = scheduleFrame(() => {
         setTop(null);
         setInsets(null);
+        insetsRef.current = null;
+        setReady(false);
+        setRootCardOverlap(false);
       });
       return () => cancelFrame(resetFrame);
     }
     const stage = ref.current;
     const table = stage?.closest<HTMLElement>(".play-table");
     if (!stage || !table) return;
+    const resetFrame = centralTargetLayout ? scheduleFrame(() => {
+      setTop(null);
+      setInsets(null);
+      insetsRef.current = null;
+      setReady(false);
+      setRootCardOverlap(false);
+    }) : null;
     let frame: ScheduledBattlefieldFrame | null = null;
     const observed = new Set<Element>();
     let observer: ResizeObserver | null = null;
     const targetCardSelect = stage.dataset.choiceMode === "actor-target-select";
+    const targetWidthProbe = centralTargetLayout ? document.createElement("div") : null;
+    if (targetWidthProbe) {
+      targetWidthProbe.style.cssText = "position:absolute;left:-10000px;top:0;height:0;visibility:hidden;pointer-events:none;contain:layout;";
+      document.body.append(targetWidthProbe);
+    }
     const protectedSelectors = [
       ".player-board > .opponent-player-card",
       ".public-card-display-journey-copy",
-      ...(targetCardSelect ? [".public-card-journey-card.is-current"] : []),
+      ...(targetCardSelect ? [centralTargetLayout ? ".public-card-journey-card" : ".public-card-journey-card.is-current"] : []),
       ".public-activity-chip",
       "[data-public-activity-chip]",
       ".visible-countdown",
@@ -108,6 +132,95 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
         if (panelRect.width <= 0 || panelRect.height <= 0) return;
 
         const margin = 6;
+        const mobileCentralTarget = centralTargetLayout && targetCardSelect && window.matchMedia("(max-width: 520px)").matches;
+        if (mobileCentralTarget) {
+          const board = table.querySelector<HTMLElement>(".player-board");
+          const leftSeats = [...(board?.querySelectorAll<HTMLElement>(":scope > [data-side-column='left']") ?? [])]
+            .map((seat) => seat.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
+          const rightSeats = [...(board?.querySelectorAll<HTMLElement>(":scope > [data-side-column='right']") ?? [])]
+            .map((seat) => seat.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
+          const actualLeft = Math.max(tableRect.left + 8, ...leftSeats.map((rect) => rect.right + 8));
+          const actualRight = Math.min(tableRect.right - 8, ...rightSeats.map((rect) => rect.left - 8));
+          const resolveLength = (property: string) => {
+            if (!targetWidthProbe) return 0;
+            targetWidthProbe.style.width = window.getComputedStyle(table).getPropertyValue(property).trim();
+            return targetWidthProbe.getBoundingClientRect().width;
+          };
+          const virtualBoardInset = resolveLength("--target-pool-side-seat-inset");
+          const virtualSeatWidth = resolveLength("--target-pool-side-seat-width");
+          const eightSeatEdge = tableRect.width * 0.15 + virtualBoardInset * 0.7 + virtualSeatWidth * 0.5 + 8;
+          const eightSeatSafeWidth = Math.max(0, tableRect.width - eightSeatEdge * 2);
+          const laneWidth = Math.max(0, actualRight - actualLeft);
+          const poolWidth = Math.min(eightSeatSafeWidth, laneWidth);
+          if (poolWidth <= 0) {
+            setTop(null);
+            setInsets(null);
+            insetsRef.current = null;
+            setReady(false);
+            setRootCardOverlap(false);
+            return;
+          }
+          const laneCenter = (actualLeft + actualRight) / 2;
+          const left = Math.max(actualLeft, Math.min(actualRight - poolWidth, laneCenter - poolWidth / 2));
+          const nextInsets = {
+            left: Math.round((left - tableRect.left) * 2) / 2,
+            right: Math.round((tableRect.right - left - poolWidth) * 2) / 2,
+            width: Math.round(poolWidth * 2) / 2,
+          };
+          const currentInsets = insetsRef.current;
+          if (currentInsets?.left !== nextInsets.left || currentInsets.right !== nextInsets.right || currentInsets.width !== nextInsets.width) {
+            insetsRef.current = nextInsets;
+            setInsets(nextInsets);
+            setTop(null);
+            setReady(false);
+            setRootCardOverlap(false);
+            return;
+          }
+
+          const obstacles = [...new Set(protectedSelectors.flatMap((selector) => [...document.querySelectorAll<HTMLElement>(selector)]))]
+            .filter((element) => element !== stage && !stage.contains(element))
+            .filter((element) => !element.matches(".public-card-display-journey-copy, .public-activity-chip, [data-public-activity-chip]"))
+            .map((element) => ({ element, rect: element.getBoundingClientRect() }))
+            .filter(({ element, rect }) => {
+              const style = window.getComputedStyle(element);
+              return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
+                && panelRect.left < rect.right + margin && panelRect.right > rect.left - margin;
+            });
+          const visualViewport = window.visualViewport;
+          const viewportBottom = Math.min(window.innerHeight, (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? window.innerHeight));
+          const safePlacement = {
+            table: tableRect,
+            panel: panelRect,
+            obstacles: obstacles.map(({ rect }) => rect),
+            viewportHeight: viewportBottom,
+            margin,
+          };
+          const safeTop = findBattlefieldChoiceSafeTopOffset(safePlacement);
+          const mergedCopyFallbackTop = safeTop === null
+            ? findBattlefieldChoiceSafeTopOffset({
+              ...safePlacement,
+              obstacles: obstacles.filter(({ element }) => !(
+                rootEventId
+                && element.matches(".public-card-journey-card[data-public-card-journey-role='root']")
+                && element.dataset.publicCardJourneyEventId === rootEventId
+              )).map(({ rect }) => rect),
+            })
+            : null;
+          const resolvedTop = safeTop ?? mergedCopyFallbackTop;
+          const rootCard = rootEventId
+            ? obstacles.find(({ element }) => element.matches(".public-card-journey-card[data-public-card-journey-role='root']")
+              && element.dataset.publicCardJourneyEventId === rootEventId)
+            : undefined;
+          const resolvedPanelTop = resolvedTop === null ? null : tableRect.top + resolvedTop;
+          const overlapsRootCard = Boolean(rootCard && resolvedPanelTop !== null
+            && panelRect.left < rootCard.rect.right && panelRect.right > rootCard.rect.left
+            && resolvedPanelTop < rootCard.rect.bottom && resolvedPanelTop + panelRect.height > rootCard.rect.top);
+          setTop((current) => current === resolvedTop ? current : resolvedTop);
+          setReady(resolvedTop !== null);
+          setRootCardOverlap(overlapsRootCard);
+          return;
+        }
+
         const actorSelect = stage.dataset.choiceMode === "actor-select" || stage.dataset.choiceMode === "actor-target-select";
         const compactFiveSeatPhoneActor = playerCount === 5
           && window.matchMedia("(max-width: 400px)").matches
@@ -164,6 +277,8 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
           margin,
         });
         setTop((current) => current === offset ? current : offset);
+        setReady(true);
+        setRootCardOverlap(false);
       });
     };
     const observeLayout = () => {
@@ -184,17 +299,23 @@ export function useBattlefieldChoicePlacement({ enabled, playerCount, placementK
     measure();
     window.addEventListener("resize", measure);
     window.visualViewport?.addEventListener("resize", measure);
+    table.addEventListener("transitionend", measure);
+    table.addEventListener("animationend", measure);
     mutationObserver?.observe(table, { attributes: true, childList: true, subtree: true, characterData: true });
     return () => {
       window.removeEventListener("resize", measure);
       window.visualViewport?.removeEventListener("resize", measure);
+      table.removeEventListener("transitionend", measure);
+      table.removeEventListener("animationend", measure);
       observer?.disconnect();
       mutationObserver?.disconnect();
       cancelFrame(frame);
+      cancelFrame(resetFrame);
+      targetWidthProbe?.remove();
     };
-  }, [enabled, playerCount, placementKey]);
+  }, [centralTargetLayout, enabled, playerCount, placementKey, rootEventId]);
 
-  return { ref, top, insets };
+  return { ref, top, insets, ready, rootCardOverlap };
 }
 
 type SideLanePlacementInput = {
@@ -238,6 +359,36 @@ type VerticalPlacementInput = {
   viewportHeight: number;
   margin?: number;
 };
+
+/** Returns a safe table-relative top, or null when the measured panel cannot fit. */
+export function findBattlefieldChoiceSafeTopOffset({
+  table,
+  panel,
+  obstacles,
+  viewportHeight,
+  margin = 6,
+}: VerticalPlacementInput): number | null {
+  const minimumTop = Math.max(table.top + margin, margin);
+  const maximumTop = Math.min(table.bottom, viewportHeight) - panel.height - margin;
+  if (maximumTop < minimumTop) return null;
+  let safeRanges = [{ minimum: minimumTop, maximum: maximumTop }];
+  for (const rect of obstacles) {
+    const blockedMinimum = rect.top - panel.height - margin;
+    const blockedMaximum = rect.bottom + margin;
+    safeRanges = safeRanges.flatMap((range) => {
+      if (blockedMaximum <= range.minimum || blockedMinimum >= range.maximum) return [range];
+      return [
+        ...(range.minimum < blockedMinimum ? [{ minimum: range.minimum, maximum: Math.min(range.maximum, blockedMinimum) }] : []),
+        ...(range.maximum > blockedMaximum ? [{ minimum: Math.max(range.minimum, blockedMaximum), maximum: range.maximum }] : []),
+      ];
+    }).filter((range) => range.maximum >= range.minimum);
+  }
+  const desiredTop = minimumTop + Math.max(0, maximumTop - minimumTop) / 2;
+  const nearestSafeTop = safeRanges
+    .map((range) => Math.max(range.minimum, Math.min(range.maximum, desiredTop)))
+    .sort((first, second) => Math.abs(first - desiredTop) - Math.abs(second - desiredTop))[0];
+  return nearestSafeTop === undefined ? null : Math.round(nearestSafeTop - table.top);
+}
 
 /** Reuses Harvest's current safe-range and least-overlap fallback verbatim. */
 export function chooseBattlefieldChoiceTopOffset({

@@ -2376,9 +2376,22 @@
    15% of table width + 70% of board inset + half the thumbnail width.
    Reserve another 8px, including a 2px rounding margin over the 6px contract.
    This uses geometry only; no gameplay or participant roles affect layout. */
+.game-shell .play-table {
+  --target-pool-side-seat-inset: clamp(10px, 4vw, 48px);
+  --target-pool-side-seat-width: clamp(74px, 13vw, 86px);
+}
+@media (max-width: 650px) {
+  .game-shell .play-table {
+    --target-pool-side-seat-inset: clamp(5px, 2.5vw, 18px);
+    --target-pool-side-seat-width: clamp(56px, 15.5vw, 74px);
+  }
+}
+@media (max-width: 480px) {
+  .game-shell .play-table { --target-pool-side-seat-inset: 3px; }
+}
 .game-shell .play-table[data-seat-topology="side-column"] {
-  --side-safe-board-inset: clamp(10px, 4vw, 48px);
-  --side-safe-thumb-width: clamp(74px, 13vw, 86px);
+  --side-safe-board-inset: var(--target-pool-side-seat-inset);
+  --side-safe-thumb-width: var(--target-pool-side-seat-width);
   --side-safe-edge: calc(15% + var(--side-safe-board-inset) * .7 + var(--side-safe-thumb-width) * .5 + 8px);
 }
 .game-shell .play-table[data-seat-topology="side-column"] > .interaction-safe-zone {
@@ -2402,13 +2415,13 @@
 }
 @media (max-width: 650px) {
   .game-shell .play-table[data-seat-topology="side-column"] {
-    --side-safe-board-inset: clamp(5px, 2.5vw, 18px);
-    --side-safe-thumb-width: clamp(56px, 15.5vw, 74px);
+    --side-safe-board-inset: var(--target-pool-side-seat-inset);
+    --side-safe-thumb-width: var(--target-pool-side-seat-width);
   }
 }
 @media (max-width: 480px) {
   .game-shell .play-table[data-seat-topology="side-column"] {
-    --side-safe-board-inset: 3px;
+    --side-safe-board-inset: var(--target-pool-side-seat-inset);
   }
 }
 
@@ -6630,36 +6643,122 @@
 }
 
 @media (max-width: 520px) {
-  /* Keep a full-width timer/system cluster clear by using its left-side lane. */
-  .game-shell .play-table:has(.visible-countdown) > .card-pool-target-stage {
+  .game-shell .play-table > .card-pool-target-stage[data-target-card-pool-layout="central"] {
     box-sizing: border-box;
-    justify-content: flex-start;
-    padding-inline: 6px;
+    justify-content: center;
+    padding: 0;
+    visibility: hidden;
   }
-  .game-shell .play-table:has(.visible-countdown) .card-pool-panel--actor-target-select.harvest-choice-panel {
-    max-width: calc(100vw - 96px);
+  .game-shell .play-table > .card-pool-target-stage[data-target-card-pool-layout="central"][data-target-card-pool-ready="true"] {
+    visibility: visible;
   }
-
-  /* A live public root remains in the centre while an actor chooses its target.
-     Use the clear left lane on phones so the pool cannot cover that card. */
-  .game-shell:has(.public-card-journey-card.is-current) .play-table > .card-pool-target-stage {
+  .game-shell .play-table > .card-pool-target-stage[data-target-card-pool-root-overlap="true"] {
+    /* The approved compact-phone fallback may cover only the proved root
+       card. Keep its text in the picker heading and lift the touch-through
+       stage above the root so selection controls remain usable. */
+    z-index: 35;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel--actor-target-select.harvest-choice-panel {
     box-sizing: border-box;
-    justify-content: flex-start;
-    padding-inline: 8px;
-  }
-  .game-shell:has(.public-card-journey-card.is-current) .card-pool-panel--actor-target-select.harvest-choice-panel {
-    max-width: calc((100vw - 90px) / 2 - 8px);
-  }
-  .game-shell:has(.public-card-journey-card.is-current) .card-pool-panel--actor-target-select .card-pool-panel__footer {
     align-items: stretch;
-    flex-direction: column;
-    width: 100%;
-  }
-  .game-shell:has(.public-card-journey-card.is-current) .card-pool-panel--actor-target-select .card-pool-panel__confirm {
     width: 100%;
     min-width: 0;
     max-width: 100%;
-    white-space: normal;
+    padding: 4px;
+    gap: 4px;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__heading,
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__title,
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__instruction,
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__tabs,
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__tabpanel,
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-row,
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__footer {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__title,
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__instruction {
+    overflow: visible;
     overflow-wrap: anywhere;
+    white-space: normal;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__heading {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__title {
+    color: #f2e3bd;
+    font: 700 10px/1.12 Arial, sans-serif;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__instruction {
+    color: #e9d08f;
+    font: 600 9px/1.15 Arial, sans-serif;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__tabs {
+    flex: 0 0 auto;
+    gap: 4px;
+    overflow-x: auto;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__tab {
+    flex: 1 0 0;
+    min-width: 50px;
+    padding-inline: 3px;
+    font-size: 7px;
+    letter-spacing: 0;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__tabpanel {
+    flex: 0 0 auto;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-row {
+    box-sizing: border-box;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 2px 2px 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-choice {
+    box-sizing: border-box;
+    flex: 0 0 max(44px, min(var(--hand-card-face-width), calc((100% - 8px) / 3)));
+    width: max(44px, min(var(--hand-card-face-width), calc((100% - 8px) / 3)));
+    height: auto;
+    aspect-ratio: 2 / 3;
+    overflow: visible;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__target-choice > .played-card {
+    width: 100%;
+    height: 100%;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__footer {
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__selection-count {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+    font-size: 7px;
+    text-align: left;
+    white-space: normal;
+  }
+  .game-shell .card-pool-target-stage[data-target-card-pool-layout="central"] .card-pool-panel__confirm {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    min-height: 44px;
+    max-width: none;
+    padding-inline: 6px;
+    overflow: visible;
+    font-size: 7px;
+    letter-spacing: .01em;
+    text-overflow: clip;
+    white-space: nowrap;
   }
 }
