@@ -422,6 +422,56 @@ function verifiedEquilibriumCostFrameForEvent(
 
   return { costEvent, effect, costCards: costEvent.cards, owner };
 }
+type VerifiedFirstAidConversionFrameProof = {
+  conversionEvent: CardEvent;
+  effect: PresentationSnapshotPublicCardEffect;
+  sourceCard: Card;
+  owner: Player;
+  target: Player;
+};
+function verifiedFirstAidConversionFrameForEvent(
+  timeline: readonly GameEvent[],
+  effects: readonly PresentationSnapshotPublicCardEffect[],
+  players: readonly Player[],
+  eventId: string,
+): VerifiedFirstAidConversionFrameProof | null {
+  const eventMatches = timeline.filter((event) => event.id === eventId);
+  const conversionEvent = eventMatches.length === 1 && eventMatches[0].type === "card" ? eventMatches[0] : null;
+  if (!conversionEvent || conversionEvent.action !== "play" || conversionEvent.presentation === false
+    || conversionEvent.privateToPlayerId || conversionEvent.playedAs !== "peach") return null;
+
+  const projectedMatches = effects.filter((effect) => effect.eventId === conversionEvent.id && effect.effectId === "hua_tuo_first_aid");
+  const rawMatches = (conversionEvent.publicCardEffects ?? []).filter((effect) => effect.effectId === "hua_tuo_first_aid");
+  if (projectedMatches.length !== 1 || rawMatches.length !== 1) return null;
+  const effect = projectedMatches[0];
+  const rawEffect = rawMatches[0];
+  const [material] = effect.materials;
+  const [rawMaterial] = rawEffect.materials;
+  const [projectedCard] = effect.cards;
+  const sourceCard = conversionEvent.card;
+  if (effect.semantics !== "PROVEN" || effect.effectClass !== "CONVERSION" || rawEffect.effectClass !== "CONVERSION"
+    || effect.activationEventId !== undefined || rawEffect.activationEventId !== undefined
+    || effect.rootEventId !== undefined || rawEffect.rootEventId !== undefined
+    || effect.rootResolutionId !== undefined || rawEffect.rootResolutionId !== undefined
+    || effect.activationOwnerId !== rawEffect.activationOwnerId
+    || effect.targetId !== rawEffect.targetId || !effect.targetId
+    || effect.resultingCardKind !== "Peach" || rawEffect.resultingCardKind !== "Peach"
+    || effect.outcome !== "AS_PEACH" || rawEffect.outcome !== "AS_PEACH"
+    || effect.cards.length !== 1 || effect.materials.length !== 1 || rawEffect.materials.length !== 1
+    || !material || !rawMaterial || !projectedCard
+    || sourceCard.kind === "Peach" || (sourceCard.suit !== "♥" && sourceCard.suit !== "♦")
+    || sourceCard.id !== projectedCard.id || sourceCard.id !== material.cardId || sourceCard.id !== rawMaterial.cardId
+    || sourceCard.kind !== projectedCard.kind || sourceCard.suit !== projectedCard.suit || sourceCard.rank !== projectedCard.rank
+    || material.ownerId !== effect.activationOwnerId || rawMaterial.ownerId !== effect.activationOwnerId
+    || material.fromZone !== "HAND" || rawMaterial.fromZone !== "HAND"
+    || material.toZone !== "PUBLIC_PLAY" || rawMaterial.toZone !== "PUBLIC_PLAY") return null;
+
+  const owner = players.find((player) => player.id === effect.activationOwnerId && player.hero === "hua-tuo");
+  const target = players.find((player) => player.id === effect.targetId);
+  if (!owner?.name || !target?.name || owner.id === target.id
+    || conversionEvent.player !== owner.name || conversionEvent.target !== target.name) return null;
+  return { conversionEvent, effect, sourceCard, owner, target };
+}
 function verifiedLustCostFrameForEvent(
   timeline: readonly GameEvent[],
   notices: readonly PresentationSnapshotDiaoChanSkillNotice[],
@@ -5918,8 +5968,42 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
       ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
     }) ?? undefined,
   } : null;
-  const latestW3CostFrameAction = [
-    prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction, betrothmentCostFrameAction, equilibriumCostFrameAction,
+  const firstAidConversionFrameCandidate = (() => {
+    const effects = room.presentationSnapshot?.publicCardEffects ?? [];
+    const proved = effects.filter((effect) => effect.effectId === "hua_tuo_first_aid")
+      .flatMap((effect) => {
+        const frame = verifiedFirstAidConversionFrameForEvent(room.timeline, effects, room.players, effect.eventId);
+        return frame && frame.effect.eventId === effect.eventId ? [frame] : [];
+      });
+    return proved.sort((left, right) => room.timeline.indexOf(right.conversionEvent) - room.timeline.indexOf(left.conversionEvent))[0] ?? null;
+  })();
+  const firstAidConversionFrameAction: PublicCardDisplayAction | null = firstAidConversionFrameCandidate ? {
+    key: ["first-aid-conversion", firstAidConversionFrameCandidate.conversionEvent.id].join(":"),
+    rootEventId: firstAidConversionFrameCandidate.conversionEvent.id,
+    sourceId: firstAidConversionFrameCandidate.owner.id,
+    targetId: firstAidConversionFrameCandidate.target.id,
+    cardKind: "Peach",
+    cardFace: firstAidConversionFrameCandidate.sourceCard,
+    cardLabel: "FIRST AID · AS PEACH",
+    ariaLabel: `${firstAidConversionFrameCandidate.owner.name} used First Aid to play ${cardDefinition(firstAidConversionFrameCandidate.sourceCard.kind).name} as Peach for ${firstAidConversionFrameCandidate.target.name}'s Dying response.`,
+    publicNotice: `${firstAidConversionFrameCandidate.owner.name} used First Aid to play ${cardDefinition(firstAidConversionFrameCandidate.sourceCard.kind).name} AS PEACH for ${firstAidConversionFrameCandidate.target.name}.`,
+    publicNoticeCompact: `First Aid: ${firstAidConversionFrameCandidate.owner.name} used ${cardDefinition(firstAidConversionFrameCandidate.sourceCard.kind).name} AS PEACH for ${firstAidConversionFrameCandidate.target.name}.`,
+    motion: {
+      type: "single-target",
+      scopeKey: [room.code, "hua_tuo_first_aid", firstAidConversionFrameCandidate.conversionEvent.id].join(":"),
+      freshEventIds: publicCardJourneySeenEventIds.has(firstAidConversionFrameCandidate.conversionEvent.id)
+        ? [] : [firstAidConversionFrameCandidate.conversionEvent.id],
+    },
+    publicCardEffectFrame: createPublicCardEffectFrameView(firstAidConversionFrameCandidate.effect, {
+      title: "FIRST AID · AS PEACH",
+      accessibleLabel: `${firstAidConversionFrameCandidate.owner.name} used First Aid. ${cardDefinition(firstAidConversionFrameCandidate.sourceCard.kind).name}, ${firstAidConversionFrameCandidate.sourceCard.rank} ${firstAidConversionFrameCandidate.sourceCard.suit}, was played as Peach for ${firstAidConversionFrameCandidate.target.name}'s Dying response.`,
+      activationOwnerName: firstAidConversionFrameCandidate.owner.name,
+      ownerNamesById: Object.fromEntries(room.players.map((player) => [player.id, player.name])),
+    }) ?? undefined,
+  } : null;
+  const latestHeroPublicCardEffectFrameAction = [
+    prodigalHealerCostFrameAction, divineWisdomCostFrameAction, dauntlessCostFrameAction, betrothmentCostFrameAction,
+    equilibriumCostFrameAction, firstAidConversionFrameAction,
   ].filter((action): action is PublicCardDisplayAction => Boolean(action))
     .reduce<PublicCardDisplayAction | null>((latest, action) => {
       if (!latest) return action;
@@ -6000,8 +6084,8 @@ export function GameRoom({ room, presentationView, busy, busyAction = null, erro
     ? lustDuelPublicAction
     : lustCostFrameAction
     ? lustCostFrameAction
-    : latestW3CostFrameAction
-    ? latestW3CostFrameAction
+    : latestHeroPublicCardEffectFrameAction
+    ? latestHeroPublicCardEffectFrameAction
     : groupSettlementCandidate
     ? {
       key: ["group", groupSettlementCandidate.settlement.interactionId, groupSettlementCandidate.settlement.groupFrameId, groupSettlementCandidate.rootEvent.id].join(":"),

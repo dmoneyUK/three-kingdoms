@@ -17,9 +17,9 @@ async function view(request, seedData, index) {
   return response.json();
 }
 
-async function openPlayer(page, seedData, index) {
+async function openPlayer(page, seedData, index, viewport = { width: 390, height: 844 }) {
   const member = seedData.players[index];
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize(viewport);
   await page.addInitScript(({ code, token, name }) => {
     localStorage.setItem("three-realms-session", JSON.stringify({ code, token, name }));
   }, { code: seedData.code, token: member.token, name: member.name });
@@ -153,6 +153,210 @@ test("real Hua Tuo First Aid is selected from Skills during Dying and uses only 
   expect(submitted.request().postDataJSON()).toMatchObject({ action: "respond", providerId: "hua_tuo_first_aid", cardId: redAttack.id });
   expect((await view(request, seedData, 1)).players.find((player) => player.id === seedData.players[1].id).hp).toBe(1);
   await expect(duplicate).toHaveCount(0);
+});
+
+test("W4: First Aid frames the genuine card as Peach for every mobile viewer", async ({ page, browser, request }) => {
+  test.setTimeout(120_000);
+  const attack = card("Attack", "w4-first-aid-dying-attack", "♠");
+  const redCard = card("Attack", "w4-first-aid-red-material", "♥");
+  const privateCard = card("Dodge", "w4-first-aid-private-dodge", "♠");
+  const seedData = await seed(request, [
+    { name: "SOURCE", role: "Lord", hero: "cao-cao", hp: 4, maxHp: 4, hand: [attack] },
+    { name: "DYING TARGET", role: "Loyalist", hero: "liu-bei", hp: 1, maxHp: 4, hand: [] },
+    { name: "HUA TUO", role: "Rebel", hero: "hua-tuo", hp: 3, maxHp: 3, hand: [redCard, privateCard] },
+    { name: "FOURTH VIEWER", role: "Renegade", hero: "sun-quan", hp: 4, maxHp: 4, hand: [] },
+  ]);
+  const viewports = [
+    { width: 390, height: 844 }, { width: 440, height: 894 },
+    { width: 390, height: 844 }, { width: 440, height: 894 },
+  ];
+  const opened = [];
+  try {
+    const viewers = await Promise.all(seedData.players.map(async (player, index) => {
+      const context = index === 2 ? null : await browser.newContext({ viewport: viewports[index] });
+      if (context) opened.push(context);
+      const viewerPage = context ? await context.newPage() : page;
+      await openPlayer(viewerPage, seedData, index, viewports[index]);
+      return { player, index, page: viewerPage };
+    }));
+    await Promise.all(viewers.map(({ player, page: viewerPage }) =>
+      expect(viewerPage.locator(`.local-player-dock[data-player-anchor="${player.id}"]`)).toBeVisible()));
+
+    const openedAttack = await request.post(`${API}/api/rooms`, {
+      data: { action: "play_card", code: seedData.code, token: seedData.players[0].token, cardId: attack.id, targetId: seedData.players[1].id },
+    });
+    expect(openedAttack.ok()).toBeTruthy();
+    const declinedDodge = await request.post(`${API}/api/rooms`, {
+      data: { action: "decline_response", code: seedData.code, token: seedData.players[1].token },
+    });
+    expect(declinedDodge.ok()).toBeTruthy();
+    for (const index of [0, 1]) {
+      const skipped = await request.post(`${API}/api/rooms`, {
+        data: { action: "skip_rescue", code: seedData.code, token: seedData.players[index].token },
+      });
+      expect(skipped.ok()).toBeTruthy();
+    }
+
+    const huaTuo = seedData.players[2];
+    const ownerDock = page.locator(`.local-player-dock[data-player-anchor="${huaTuo.id}"]`);
+    const skill = ownerDock.locator(".local-hero-skills").getByRole("button", { name: "First Aid", exact: true });
+    await expect(skill).toBeEnabled({ timeout: 20_000 });
+    await skill.click();
+    const legalCard = ownerDock.locator(`[data-hand-card-id="${redCard.id}"] .game-card`);
+    await expect(legalCard).toBeEnabled();
+    await expect(ownerDock.locator(`[data-hand-card-id="${privateCard.id}"] .game-card`)).toBeDisabled();
+    await legalCard.click();
+    const confirm = ownerDock.locator('[data-action-slot="primary"] button.primary');
+    await expect(confirm).toHaveText("Confirm");
+    await expect(confirm).toBeEnabled();
+    const responsePromise = page.waitForResponse((response) => response.url() === `${API}/api/rooms`
+      && response.request().method() === "POST"
+      && response.request().postDataJSON()?.action === "respond"
+      && response.request().postDataJSON()?.providerId === "hua_tuo_first_aid");
+    await confirm.click();
+    const response = await responsePromise;
+    expect(response.ok()).toBeTruthy();
+    expect(response.request().postDataJSON()).toMatchObject({
+      action: "respond", providerId: "hua_tuo_first_aid", cardId: redCard.id, token: huaTuo.token,
+    });
+    const result = await response.json();
+    const conversionEvent = result.room.timeline.find((event) => event.type === "card" && event.card?.id === redCard.id);
+    expect(conversionEvent).toBeTruthy();
+    const rawEffect = conversionEvent.publicCardEffects.find((effect) => effect.effectId === "hua_tuo_first_aid");
+    expect(rawEffect).toMatchObject({
+      effectClass: "CONVERSION", activationOwnerId: huaTuo.id, targetId: seedData.players[1].id,
+      resultingCardKind: "Peach", outcome: "AS_PEACH",
+      materials: [{ cardId: redCard.id, ownerId: huaTuo.id, fromZone: "HAND", toZone: "PUBLIC_PLAY" }],
+    });
+    expect(conversionEvent).toMatchObject({ action: "play", playedAs: "peach", player: huaTuo.name, target: seedData.players[1].name });
+
+    const frameEvidence = await Promise.all(viewers.map(async ({ player, page: viewerPage }) => {
+      try {
+        const handle = await viewerPage.waitForFunction(({ viewerId, eventId }) => {
+          const journeyCard = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
+            .find((element) => element.dataset.publicCardJourneyEventId === eventId);
+          const display = journeyCard?.closest(".public-card-display");
+          if (!journeyCard || !display || display.dataset.publicCardViewerId !== viewerId) return false;
+          const frame = journeyCard.querySelector('[data-public-card-frame-effect-id="hua_tuo_first_aid"]');
+          const announcement = display.querySelector('[data-public-card-announcement="true"]');
+          const announcementStyle = announcement ? getComputedStyle(announcement) : null;
+          const phase = journeyCard.dataset.publicCardJourneyPhase;
+          const announcementVisible = Boolean(announcement && announcementStyle && announcementStyle.display !== "none"
+            && announcementStyle.visibility === "visible" && Number(announcementStyle.opacity) > 0);
+          if (!frame || display.dataset.publicCardLayoutPending !== "false"
+            || !["reveal", "move"].includes(phase)
+            || announcement?.dataset.publicCardAnnouncementPositioned !== "true" || !announcementVisible) return false;
+          const frameRect = frame?.getBoundingClientRect();
+          const announcementRect = announcement?.getBoundingClientRect();
+          const materialFaces = [...(frame?.querySelectorAll("[data-public-card-effect-frame-card-id]") ?? [])]
+            .map((element) => element.getAttribute("data-public-card-effect-frame-card-id"));
+          return {
+            eventId: journeyCard.dataset.publicCardJourneyEventId,
+            phase,
+            viewerId: display.dataset.publicCardViewerId,
+            layoutPending: display.dataset.publicCardLayoutPending,
+            actorId: journeyCard.dataset.publicCardJourneyActorId,
+            journeyCardIds: journeyCard.dataset.publicCardJourneyCardIds,
+            framePresent: Boolean(frame),
+            effectId: frame?.dataset.publicCardFrameEffectId,
+            effectClass: frame?.dataset.publicCardFrameClass,
+            activationOwnerId: frame?.dataset.publicCardFrameActivationOwnerId,
+            materialOwnerIds: frame?.dataset.publicCardFrameMaterialOwnerIds,
+            materialCardIds: frame?.dataset.publicCardFrameMaterialCardIds,
+            materialFaces,
+            materialCount: Number(frame?.dataset.publicCardFrameMaterialCount ?? 0),
+            title: frame?.querySelector(".public-card-effect-frame-title")?.textContent?.trim(),
+            accessibleLabel: journeyCard.getAttribute("aria-label"),
+            announcementCount: display.querySelectorAll('[data-public-card-announcement="true"]').length,
+            announcement: {
+              text: announcement?.textContent?.trim(),
+              positioned: announcement?.dataset.publicCardAnnouncementPositioned === "true",
+              visible: announcementVisible,
+              overlapsFrame: Boolean(frameRect && announcementRect && announcementRect.left < frameRect.right
+                && announcementRect.right > frameRect.left && announcementRect.top < frameRect.bottom
+                && announcementRect.bottom > frameRect.top),
+            },
+            viewport: { width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth },
+          };
+        }, { viewerId: player.id, eventId: conversionEvent.id }, { timeout: 12_000 });
+        return await handle.jsonValue();
+      } catch {
+        return viewerPage.evaluate(({ eventId }) => {
+          const journeyCard = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
+            .find((element) => element.dataset.publicCardJourneyEventId === eventId);
+          const display = journeyCard?.closest(".public-card-display");
+          return {
+            eventId: journeyCard?.dataset.publicCardJourneyEventId,
+            phase: journeyCard?.dataset.publicCardJourneyPhase,
+            viewerId: display?.dataset.publicCardViewerId,
+            layoutPending: display?.dataset.publicCardLayoutPending,
+            framePresent: Boolean(journeyCard?.querySelector('[data-public-card-frame-effect-id="hua_tuo_first_aid"]')),
+            publicDisplays: [...document.querySelectorAll(".public-card-display")].map((element) => ({
+              eventId: element.getAttribute("data-public-card-event-id"),
+              viewerId: element.getAttribute("data-public-card-viewer-id"),
+              layoutPending: element.getAttribute("data-public-card-layout-pending"),
+              events: [...element.querySelectorAll("[data-public-card-journey-event-id]")]
+                .map((card) => card.getAttribute("data-public-card-journey-event-id")),
+            })),
+          };
+        }, { eventId: conversionEvent.id });
+      }
+    }));
+    const projections = await Promise.all(viewers.map(({ index }) => view(request, seedData, index)));
+    for (const [index, { player }] of viewers.entries()) {
+      expect(frameEvidence[index]).toMatchObject({
+        eventId: conversionEvent.id, viewerId: player.id, actorId: huaTuo.id,
+        journeyCardIds: redCard.id, framePresent: true, effectId: "hua_tuo_first_aid", effectClass: "CONVERSION",
+        activationOwnerId: huaTuo.id, materialOwnerIds: huaTuo.id, materialCardIds: redCard.id,
+        materialFaces: [redCard.id], materialCount: 1, title: "FIRST AID · AS PEACH", announcementCount: 1,
+        viewport: { width: viewports[index].width, height: viewports[index].height, scrollWidth: viewports[index].width },
+      });
+      expect(frameEvidence[index].accessibleLabel).toContain("AS PEACH");
+      expect(frameEvidence[index].accessibleLabel).toContain(seedData.players[1].name);
+      expect(frameEvidence[index].phase).toMatch(/^(reveal|move)$/);
+      expect(frameEvidence[index].announcement.positioned).toBe(true);
+      expect(frameEvidence[index].announcement.visible).toBe(true);
+      expect(frameEvidence[index].announcement.text).toContain("AS PEACH");
+      expect(frameEvidence[index].announcement.overlapsFrame).toBe(false);
+    }
+
+    for (const [index, projection] of projections.entries()) {
+      expect(projection.timeline.some((event) => event.type === "card" && event.card?.id === redCard.id)).toBe(true);
+      expect(JSON.stringify(projection).includes(privateCard.id)).toBe(index === 2);
+      expect(projection.myHand.some((held) => held.id === privateCard.id)).toBe(index === 2);
+      expect(projection.players.find((player) => player.id === seedData.players[1].id)).toMatchObject({ hp: 1, alive: true });
+      expect(projection.pendingDying).toBeNull();
+      await expect(viewers[index].page.locator(`[data-hand-card-id="${privateCard.id}"]`)).toHaveCount(index === 2 ? 1 : 0);
+    }
+
+    for (const { player, page: viewerPage } of viewers) {
+      await viewerPage.waitForFunction(({ viewerId, actorId, journeyEventId }) => {
+        const cardElement = [...document.querySelectorAll("[data-public-card-journey-event-id]")]
+          .find((element) => element.dataset.publicCardJourneyEventId === journeyEventId);
+        const display = cardElement?.closest(".public-card-display");
+        const anchor = viewerId === actorId
+          ? document.querySelector(`.local-player-dock[data-player-anchor="${actorId}"]`)
+          : document.querySelector(`.opponent-player-card[data-player-anchor="${actorId}"]`);
+        if (!cardElement || !display || !anchor || display.dataset.publicCardLayoutPending !== "false"
+          || cardElement.dataset.publicCardJourneyPhase !== "parked") return false;
+        const cardRect = cardElement.getBoundingClientRect();
+        const anchorRect = anchor.getBoundingClientRect();
+        const target = {
+          left: Number(cardElement.dataset.publicCardJourneyTargetLeft),
+          top: Number(cardElement.dataset.publicCardJourneyTargetTop),
+          width: Number(cardElement.dataset.publicCardJourneyTargetWidth),
+          height: Number(cardElement.dataset.publicCardJourneyTargetHeight),
+        };
+        const expected = viewerId === actorId
+          ? { left: anchorRect.left + 8, top: anchorRect.top - target.height - 6 }
+          : { left: anchorRect.left + (anchorRect.width - target.width) / 2, top: anchorRect.bottom + 6 };
+        return Math.abs(target.left - expected.left) < 1 && Math.abs(target.top - expected.top) < 1
+          && Math.abs(cardRect.left - target.left) < 1 && Math.abs(cardRect.top - target.top) < 1;
+      }, { viewerId: player.id, actorId: huaTuo.id, journeyEventId: conversionEvent.id }, { timeout: 12_000 });
+    }
+  } finally {
+    await Promise.all(opened.map((context) => context.close()));
+  }
 });
 
 test("real God of War is offered for a Duel Attack response and accepts only the red card", async ({ page, request }) => {
